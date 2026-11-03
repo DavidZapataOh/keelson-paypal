@@ -1,0 +1,439 @@
+---
+const steps = [
+  {
+    time: "Thu 18:40",
+    title: "The buyer opens a claim",
+    text: "Wrong size. The claim is opened in PayPal as usual, against an order that carries its Alibi.",
+  },
+  {
+    time: "18:40:02",
+    title: "Keelson reads the Alibi",
+    text: "It checks the signature, the attestation and the log entry, then opens only the field in question: size.",
+  },
+  {
+    time: "18:40:03",
+    title: "Fault goes to whoever stated it",
+    text: "The size was stated by the agent's operator, under bond. The price, store and date were fine.",
+  },
+  {
+    time: "18:41",
+    title: "The party at fault pays",
+    text: "The merchant refunds the buyer through PayPal. The operator's bond reimburses the merchant.",
+  },
+];
+---
+
+<section class="section dispute on-dark" id="dispute" aria-labelledby="dispute-title">
+  <div class="wrap">
+    <div class="head">
+      <h2 id="dispute-title">The party at fault <span class="hl">pays.</span></h2>
+      <p>One wrong-size order, from claim to refund. Nobody argues about who said what.</p>
+    </div>
+
+    <div class="stage" id="dispute-stage" data-step="4">
+      <ol class="steps" aria-label="How a dispute is resolved">
+        {
+          steps.map((s, i) => (
+            <li>
+              <button class="step" type="button" data-to={i + 1} aria-current={i === 3 ? "step" : undefined}>
+                <span class="time mono">{s.time}</span>
+                <span class="title">{s.title}</span>
+                <span class="text">{s.text}</span>
+              </button>
+            </li>
+          ))
+        }
+      </ol>
+
+      <div class="console" aria-hidden="true">
+        <div class="console-top mono">
+          <span>Order 7RX-2214 · $94.00</span>
+          <span class="live"><i></i>Synthetic run</span>
+        </div>
+
+        <div class="lines mono">
+          <p class="ln" data-at="1"><span class="k">webhook</span> CUSTOMER.DISPUTE.CREATED</p>
+          <p class="ln sub" data-at="1">reason NOT_AS_DESCRIBED · amount $94.00</p>
+
+          <p class="ln" data-at="2"><span class="k">alibi</span> kls_7f3c…a9d2</p>
+          <p class="ln sub" data-at="2">
+            <span class="ok">✓</span> passkey <span class="ok">✓</span> attestation <span class="ok">✓</span> inclusion
+          </p>
+
+          <div class="field" data-at="3">
+            <div class="redact">
+              <span class="label">size</span>
+              <span class="bar"><span class="val">signed US 10 · delivered US 11</span></span>
+            </div>
+            <div class="redact">
+              <span class="label"></span>
+              <p class="who">
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 1.8 18.2 10 10 18.2 1.8 10Z" fill="currentColor" fill-opacity=".2" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" /></svg>
+                <span>Operator-attested&nbsp;·&nbsp;bonded</span>
+              </p>
+            </div>
+            <div class="redact">
+              <span class="label"></span>
+              <p class="fine">price, store, date <span class="ok">✓</span> as signed</p>
+            </div>
+          </div>
+
+          <div class="ledger" data-at="4">
+            <p class="ln"><span class="k">verdict</span> party at fault: operator</p>
+            <div class="moves">
+              <p><span>refund</span><span>merchant → buyer</span><span>$94.00</span><span class="via">PayPal</span></p>
+              <p><span>bond</span><span>operator → merchant</span><span>$94.00</span><span class="slash">Slashed</span></p>
+            </div>
+            <p class="net">Buyer out of pocket <b>$0.00</b> · Merchant <b>$0.00</b> · Operator <b>−$94.00</b></p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p class="foot mono">
+      Synthetic example. PayPal still decides the dispute on its platform; Keelson's verdict decides
+      who reimburses whom, and the Alibi goes in as evidence.
+    </p>
+  </div>
+</section>
+
+<style>
+  .dispute {
+    --ok-d: #4fbf8f;
+    --warn-d: #e0a526;
+    background: var(--graphite);
+    color: var(--bone);
+  }
+
+  .dispute ::selection {
+    background: var(--vermilion);
+    color: var(--graphite);
+  }
+
+  .head {
+    display: grid;
+    gap: 20px;
+    max-width: 60ch;
+  }
+
+  h2 {
+    font-size: clamp(2.5rem, 6vw, 5.25rem);
+  }
+
+  .head p {
+    color: #a8a59e;
+    font-size: clamp(1.05rem, 1.4vw, 1.25rem);
+    max-width: 44ch;
+  }
+
+  .stage {
+    margin-top: clamp(48px, 6vw, 80px);
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    gap: clamp(32px, 5vw, 72px);
+    align-items: start;
+  }
+
+  /* Step list */
+  .steps {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+  }
+
+  .step {
+    display: grid;
+    gap: 6px;
+    width: 100%;
+    padding: 20px 0 20px 20px;
+    border: 0;
+    border-left: 1.5px solid #2e3036;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition:
+      border-color var(--dur-menu) ease,
+      opacity var(--dur-menu) ease;
+    opacity: 0.42;
+  }
+
+  .step:hover {
+    opacity: 0.75;
+  }
+
+  .step[aria-current="step"] {
+    opacity: 1;
+    border-left-color: var(--vermilion);
+  }
+
+  .stage[data-step="4"] .step,
+  .step.done {
+    opacity: 1;
+  }
+
+  .time {
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #a8a59e;
+  }
+
+  .title {
+    font-size: clamp(1.15rem, 1.6vw, 1.4rem);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .text {
+    color: #a8a59e;
+    max-width: 44ch;
+  }
+
+  /* Console */
+  .console {
+    border: 1.5px solid #2e3036;
+    border-radius: var(--radius-l);
+    background: var(--graphite-2);
+    overflow: hidden;
+  }
+
+  .console-top {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px 22px;
+    border-bottom: 1.5px solid #2e3036;
+    font-size: 0.78rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #a8a59e;
+  }
+
+  .live {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .live i {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--vermilion);
+  }
+
+  .lines {
+    display: grid;
+    gap: 6px;
+    padding: 22px;
+    min-height: 420px;
+    align-content: start;
+    font-size: 0.9rem;
+  }
+
+  .ln {
+    line-height: 1.6;
+  }
+
+  .ln.sub {
+    color: #a8a59e;
+    padding-left: 2ch;
+  }
+
+  .ln + .ln:not(.sub) {
+    margin-top: 12px;
+  }
+
+  .k {
+    display: inline-block;
+    min-width: 9ch;
+    color: #a8a59e;
+  }
+
+  .ok {
+    color: var(--ok-d);
+  }
+
+  .field,
+  .ledger {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px dashed #2e3036;
+  }
+
+  .redact {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .label {
+    min-width: 9ch;
+    color: #a8a59e;
+  }
+
+  .bar {
+    position: relative;
+    display: inline-block;
+  }
+
+  .bar::after {
+    content: "";
+    position: absolute;
+    inset: -2px -4px;
+    background: var(--bone);
+    border-radius: 2px;
+    transform-origin: right center;
+    transition: transform 220ms var(--ease-out);
+  }
+
+  .stage:is([data-step="3"], [data-step="4"]) .bar::after {
+    transform: scaleX(0);
+  }
+
+  .val {
+    color: var(--bone);
+  }
+
+  .field .redact + .redact {
+    margin-top: 8px;
+  }
+
+  .who {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--warn-d);
+    font-family: var(--font-sans);
+    font-weight: 600;
+  }
+
+  .who svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .fine {
+    color: #a8a59e;
+  }
+
+  .moves {
+    display: grid;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .moves p {
+    display: grid;
+    grid-template-columns: 9ch 1fr auto 9ch;
+    gap: 12px;
+    align-items: center;
+    padding: 10px 12px;
+    border: 1px solid #2e3036;
+    border-radius: var(--radius-s);
+  }
+
+  .moves span:first-child {
+    color: #a8a59e;
+  }
+
+  .via,
+  .slash {
+    justify-self: end;
+    padding: 2px 8px;
+    border-radius: 2px;
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .via {
+    border: 1px solid #a8a59e;
+    color: var(--bone);
+  }
+
+  .slash {
+    background: var(--vermilion);
+    color: var(--graphite);
+  }
+
+  .net {
+    margin-top: 14px;
+    color: #a8a59e;
+  }
+
+  .net b {
+    color: var(--bone);
+    font-weight: 500;
+  }
+
+  /* Progressive reveal driven by data-step */
+  [data-at] {
+    transition:
+      opacity 360ms var(--ease-out),
+      transform 360ms var(--ease-out);
+  }
+
+  .stage[data-step="1"] [data-at="2"],
+  .stage[data-step="1"] [data-at="3"],
+  .stage[data-step="1"] [data-at="4"],
+  .stage[data-step="2"] [data-at="3"],
+  .stage[data-step="2"] [data-at="4"],
+  .stage[data-step="3"] [data-at="4"] {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  .foot {
+    margin-top: 18px;
+    font-size: 0.8rem;
+    color: #a8a59e;
+    max-width: 80ch;
+  }
+
+  @media (max-width: 900px) {
+    .stage {
+      grid-template-columns: 1fr;
+    }
+
+    .lines {
+      min-height: 0;
+      padding: 18px;
+      font-size: 0.82rem;
+    }
+
+    .label:empty {
+      display: none;
+    }
+
+    .moves p {
+      grid-template-columns: 1fr auto;
+      gap: 6px 12px;
+    }
+
+    .moves span:nth-child(1) {
+      grid-area: 1 / 1;
+    }
+
+    .moves span:nth-child(3) {
+      grid-area: 1 / 2;
+      justify-self: end;
+    }
+
+    .moves span:nth-child(2) {
+      grid-area: 2 / 1;
+    }
+
+    .moves span:nth-child(4) {
+      grid-area: 2 / 2;
+    }
+
+    .console-top {
+      flex-direction: column;
+      gap: 6px;
+    }
+  }
+</style>
