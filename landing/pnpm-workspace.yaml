@@ -1,0 +1,2 @@
+minimumReleaseAgeExclude:
+  - '@rive-app/canvas@2.49.1'
