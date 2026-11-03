@@ -28,6 +28,8 @@ export interface StageOptions {
   stage: HTMLElement;
   canvas: HTMLCanvasElement;
   artboard: string;
+  /** a tall artboard with the same state machine, used on narrow screens */
+  narrowArtboard?: string;
   stateMachine: string;
   /** name of the boolean view model property the buttons and the loop drive;
    * leave it out for a scene that just plays */
@@ -46,8 +48,12 @@ export function mountStage(o: StageOptions) {
   });
 }
 
+const NARROW = "(max-width: 700px)";
+
 async function start(o: StageOptions) {
   const { mod, file } = await load();
+  const artboard = o.narrowArtboard && matchMedia(NARROW).matches ? o.narrowArtboard : o.artboard;
+  o.stage.dataset.artboard = artboard;
   const buttons = [...o.stage.querySelectorAll<HTMLButtonElement>("[data-value]")];
   let timer = 0;
   let auto = true;
@@ -57,14 +63,14 @@ async function start(o: StageOptions) {
   const rive: RiveInstance = new mod.Rive({
     riveFile: file,
     canvas: o.canvas,
-    artboard: o.artboard,
+    artboard,
     stateMachine: o.stateMachine,
     autoplay: true,
     autoBind: Boolean(o.flag),
     layout: new mod.Layout({ fit: mod.Fit.Contain, alignment: mod.Alignment.Center }),
     onLoad: () => {
       // a file without this scene keeps the HTML fallback rather than an empty canvas
-      if (rive.activeArtboard !== o.artboard) {
+      if (rive.activeArtboard !== artboard) {
         rive.cleanup();
         return;
       }

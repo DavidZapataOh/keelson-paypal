@@ -8,6 +8,7 @@ if (stage && canvas) {
     stage,
     canvas,
     artboard: "Proof",
+    narrowArtboard: "ProofMobile",
     stateMachine: "Proof",
     flag: "forged",
     hold: { off: 4200, on: 7600 },

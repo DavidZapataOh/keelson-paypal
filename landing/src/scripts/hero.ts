@@ -8,6 +8,7 @@ if (stage && canvas) {
     stage,
     canvas,
     artboard: "Hero",
+    narrowArtboard: "HeroMobile",
     stateMachine: "Checkout",
     flag: "attacked",
     hold: { off: 6200, on: 8200 },
