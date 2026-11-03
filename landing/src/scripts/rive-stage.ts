@@ -5,8 +5,10 @@
 // HTML fallback inside the stage stays instead).
 
 import type { Rive as RiveInstance, RiveFile as RiveFileType } from "@rive-app/canvas";
+import { RIVE_VERSION } from "../rive-version";
 
-const SRC = "/rive/landing.riv";
+// the version changes whenever the file is rebuilt, so a browser never keeps an old copy
+const SRC = `/rive/landing.riv?v=${RIVE_VERSION}`;
 const WASM = "/rive/rive.wasm";
 
 let runtime: Promise<{ mod: typeof import("@rive-app/canvas"); file: RiveFileType }> | null = null;
@@ -61,8 +63,14 @@ async function start(o: StageOptions) {
     autoBind: Boolean(o.flag),
     layout: new mod.Layout({ fit: mod.Fit.Contain, alignment: mod.Alignment.Center }),
     onLoad: () => {
-      rive.resizeDrawingSurfaceToCanvas();
+      // a file without this scene keeps the HTML fallback rather than an empty canvas
+      if (rive.activeArtboard !== o.artboard) {
+        rive.cleanup();
+        return;
+      }
+      // show the canvas first, then size its drawing surface to what it now occupies
       o.stage.dataset.ready = "true";
+      requestAnimationFrame(() => rive.resizeDrawingSurfaceToCanvas());
       schedule();
     },
   });

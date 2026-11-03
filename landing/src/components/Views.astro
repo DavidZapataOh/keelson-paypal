@@ -24,6 +24,8 @@ const views = [
       </p>
     </div>
 
+    <div class="stage" id="views-stage" data-ready="false">
+      <canvas width="1080" height="430" aria-hidden="true"></canvas>
     <div class="windows">
       {
         views.map((v) => (
@@ -59,6 +61,7 @@ const views = [
         ))
       }
     </div>
+    </div>
     <p class="foot mono">Synthetic example. The Alibi carries claims and hashes; the mandate itself is never published.</p>
   </div>
 </section>
@@ -81,8 +84,30 @@ const views = [
     color: var(--text-2);
   }
 
-  .windows {
+  .stage {
+    position: relative;
     margin-top: clamp(48px, 6vw, 88px);
+  }
+
+  .stage canvas {
+    display: none;
+  }
+
+  .stage[data-ready="true"] canvas {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1080 / 430;
+  }
+
+  /* the windows stay as the page's text, and show instead of the scene below 1180px */
+  .stage[data-ready="true"] .windows {
+    position: absolute;
+    inset: 0;
+    clip-path: inset(50%);
+    opacity: 0;
+  }
+
+  .windows {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: clamp(16px, 2vw, 28px);

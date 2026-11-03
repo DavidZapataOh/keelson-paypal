@@ -8,23 +8,6 @@ if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
     ...root.querySelectorAll<T>(sel),
   ];
 
-  for (const win of q<HTMLElement>(".win")) {
-    const covers = q(".cover", win);
-    const idx = q<HTMLElement>(".win").indexOf(win);
-    gsap.fromTo(
-      covers,
-      { scaleX: 1 },
-      {
-        scaleX: 0,
-        duration: 0.7,
-        stagger: 0.09,
-        delay: idx * 0.12,
-        ease: EASE,
-        scrollTrigger: { trigger: win, start: "top 75%", once: true },
-      },
-    );
-  }
-
   const sheet = document.getElementById("sheet");
   if (sheet) {
     const tl = gsap.timeline({
