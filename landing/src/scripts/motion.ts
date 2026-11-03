@@ -95,60 +95,6 @@ if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
     );
   }
 
-  const track = document.getElementById("track");
-  if (track) {
-    const gates = q<HTMLElement>(".gate", track);
-    const tl = gsap.timeline({
-      defaults: { ease: "none" },
-      scrollTrigger: { trigger: track, start: "top 70%", end: "bottom 70%", scrub: 0.4 },
-    });
-    tl.fromTo("#proof-beam", { "--p": 0 }, { "--p": 1, duration: 1 }, 0);
-    gates.forEach((gate, i) => {
-      const at = 0.2 + i * 0.26;
-      const open = q(".ap", gate);
-      if (open.length) tl.to(open, { stroke: "#FF4B1F", duration: 0.06 }, at);
-      const face = gate.classList.contains("last") ? gate.querySelector(".face-fill") : null;
-      if (face) tl.fromTo(face, { fill: "#F2F0EA" }, { fill: "#FF4B1F", duration: 0.1 }, at);
-      const tick = gate.querySelector(".tick");
-      if (tick)
-        tl.fromTo(tick, { strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 0.1 }, at + 0.06);
-    });
-
-    const beam = document.getElementById("proof-beam");
-    const threads = q<HTMLElement>(".thread", track);
-    let spans: { t0: number; t1: number }[] = [];
-    let vertical = false;
-    const measure = () => {
-      if (!beam) return;
-      vertical = matchMedia("(max-width: 820px)").matches;
-      const b = beam.getBoundingClientRect();
-      spans = threads.map((t) => {
-        const r = t.getBoundingClientRect();
-        return vertical
-          ? { t0: (r.top - b.top) / b.height, t1: (r.bottom - b.top) / b.height }
-          : { t0: (r.left - b.left) / b.width, t1: (r.right - b.left) / b.width };
-      });
-    };
-    const sync = () => {
-      if (!beam) return;
-      const p = Number(gsap.getProperty(beam, "--p"));
-      threads.forEach((t, i) => {
-        const span = spans[i];
-        if (!span) return;
-        const v = Math.min(1, Math.max(0, (p - span.t0) / (span.t1 - span.t0)));
-        const rest = `${(1 - v) * 100}%`;
-        t.style.clipPath = vertical ? `inset(0 0 ${rest} 0)` : `inset(0 ${rest} 0 0)`;
-      });
-    };
-    measure();
-    tl.eventCallback("onUpdate", sync);
-    sync();
-    ScrollTrigger.addEventListener("refresh", () => {
-      measure();
-      sync();
-    });
-  }
-
   const sheet = document.getElementById("sheet");
   if (sheet) {
     const tl = gsap.timeline({

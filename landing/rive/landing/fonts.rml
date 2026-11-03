@@ -1,0 +1,4 @@
+<Rive version="1" kind="fragment">
+<FontAsset file="../fonts/GeistMono.ttf" name="Geist Mono" id="0:10"/>
+<FontAsset file="../fonts/InstrumentSans.ttf" name="Instrument Sans" id="0:11"/>
+</Rive>
