@@ -8,27 +8,6 @@ if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
     ...root.querySelectorAll<T>(sel),
   ];
 
-  for (const msg of q<HTMLElement>(".msg")) {
-    const tl = gsap.timeline({
-      scrollTrigger: { trigger: msg, start: "top 88%", once: true },
-    });
-    tl.from(msg.querySelector(".bubble-wrap"), { opacity: 0, y: 18, duration: 0.5, ease: EASE });
-    const line = msg.querySelector(".note .line");
-    const sq = msg.querySelector(".note .sq");
-    if (line) tl.from(line, { scaleX: 0, duration: 0.5, ease: EASE }, 0.15);
-    if (sq) tl.from(sq, { scale: 0, duration: 0.3, ease: "back.out(3)" }, 0.3);
-    const note = msg.querySelector(".note");
-    if (note) tl.from(note, { opacity: 0, duration: 0.4 }, 0.15);
-  }
-
-  const exposed = document.querySelector(".exposed");
-  if (exposed) {
-    gsap
-      .timeline({ scrollTrigger: { trigger: exposed, start: "top 92%", once: true } })
-      .from(exposed.querySelector(".bracket"), { scaleX: 0, duration: 0.6, ease: EASE })
-      .from(exposed, { opacity: 0, duration: 0.4 }, 0);
-  }
-
   const steps = document.getElementById("steps");
   if (steps) {
     const beam = document.getElementById("beam");

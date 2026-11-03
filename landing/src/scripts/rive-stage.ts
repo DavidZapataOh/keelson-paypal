@@ -27,10 +27,11 @@ export interface StageOptions {
   canvas: HTMLCanvasElement;
   artboard: string;
   stateMachine: string;
-  /** name of the boolean view model property the buttons and the loop drive */
-  flag: string;
+  /** name of the boolean view model property the buttons and the loop drive;
+   * leave it out for a scene that just plays */
+  flag?: string;
   /** how long each side plays before the loop flips it (ms) */
-  hold: { off: number; on: number };
+  hold?: { off: number; on: number };
   /** what a screen reader hears for each side */
   captions?: { off: string; on: string };
   live?: HTMLElement | null;
@@ -57,7 +58,7 @@ async function start(o: StageOptions) {
     artboard: o.artboard,
     stateMachine: o.stateMachine,
     autoplay: true,
-    autoBind: true,
+    autoBind: Boolean(o.flag),
     layout: new mod.Layout({ fit: mod.Fit.Contain, alignment: mod.Alignment.Center }),
     onLoad: () => {
       rive.resizeDrawingSurfaceToCanvas();
@@ -67,6 +68,7 @@ async function start(o: StageOptions) {
   });
 
   const set = (value: boolean) => {
+    if (!o.flag) return;
     on = value;
     const flag = rive.viewModelInstance?.boolean(o.flag);
     if (flag) flag.value = value;
@@ -76,13 +78,13 @@ async function start(o: StageOptions) {
 
   const schedule = () => {
     clearTimeout(timer);
-    if (!auto || !visible) return;
+    if (!o.flag || !o.hold || !auto || !visible) return;
     timer = window.setTimeout(
       () => {
         set(!on);
         schedule();
       },
-      on ? o.hold.on : o.hold.off,
+      on ? o.hold!.on : o.hold!.off,
     );
   };
 

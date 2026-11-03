@@ -1,12 +1,14 @@
 ---
-const messages = [
-  { side: "a", who: "You", text: "Running shoes, size 10, under $100.", time: "MON 09:12" },
-  { side: "b", who: "Agent", text: "Found a pair for $94. Ordered.", time: "MON 09:14", note: "No record of what you asked" },
-  { side: "a", who: "You", text: "They sent a size 11.", time: "THU 18:40" },
-  { side: "b", who: "Store", text: "The order matches the listing.", time: "FRI 10:05", note: "Not the store's error" },
-  { side: "a", who: "You", text: "So who pays for this?", time: "FRI 10:06" },
-  { side: "b", who: "Agent", text: "", time: "FRI 10:06", note: "No answer", typing: true },
-] as const;
+const transcript = [
+  { who: "You", text: "Running shoes, size 10, under $100." },
+  { who: "Agent", text: "Found a pair for $94. Ordered. Trail runner, US 10, paid Monday 09:14." },
+  { who: "You", text: "They sent a size 11. Delivered Thursday: ordered US 10, got US 11." },
+  { who: "Agent", text: "I ordered what the listing showed." },
+  { who: "Store", text: "The order matches the listing." },
+  { who: "Card rules", text: "The cardholder answers for the agent." },
+  { who: "You", text: "So who pays for this?" },
+  { who: "Agent", text: "No answer." },
+];
 ---
 
 <section class="section problem" id="problem" aria-labelledby="problem-title">
@@ -19,52 +21,31 @@ const messages = [
       </p>
     </div>
 
-    <ol class="thread" aria-label="A synthetic agent purchase that went wrong">
-      {
-        messages.map((m) => (
-          <li class={`msg ${m.side}`} data-reveal>
-            <div class="bubble-wrap">
-              <div class="bubble">
-                <span class="who mono" aria-hidden="true">{m.who.toUpperCase()}</span>
-                {"typing" in m ? (
-                  <span class="dots" aria-label="No reply">
-                    <i /><i /><i />
-                  </span>
-                ) : (
-                  <span class="text">{m.text}</span>
-                )}
-              </div>
-              <span class="time mono">{m.who.toUpperCase()} {m.time}</span>
-            </div>
-            {"note" in m && (
-              <span class="note mono">
-                <i class="line" />
-                <i class="sq" />
-                {m.note}
-              </span>
-            )}
-          </li>
-        ))
-      }
-      <li class="exposed mono" data-reveal>
-        <span class="bracket" aria-hidden="true"></span>
-        <span><i class="sq"></i>You carry the loss</span>
-      </li>
-    </ol>
+    <figure class="stage" id="problem-stage" data-ready="false">
+      <div class="frame">
+        <canvas id="problem-rive" width="560" height="640" aria-hidden="true"></canvas>
+        <ol class="transcript" aria-label="A synthetic agent purchase that went wrong">
+          {
+            transcript.map((m) => (
+              <li class={m.who === "You" ? "you" : m.who === "Card rules" ? "rule" : "them"}>
+                <span class="who mono">{m.who}</span>
+                <span class="text">{m.text}</span>
+              </li>
+            ))
+          }
+          <li class="loss mono">You carry the loss · −$94.00</li>
+        </ol>
+      </div>
+    </figure>
   </div>
 </section>
 
 <style>
   .grid {
     display: grid;
-    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
     gap: clamp(40px, 6vw, 96px);
-    align-items: start;
-  }
-
-  .lede {
-    position: sticky;
-    top: calc(var(--header-h) + 48px);
+    align-items: center;
   }
 
   h2 {
@@ -79,172 +60,96 @@ const messages = [
     color: var(--text-2);
   }
 
-  .thread {
-    list-style: none;
+  .stage {
     margin: 0;
-    padding: 0;
-    display: grid;
-    gap: 22px;
-  }
-
-  .msg {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 190px;
-    align-items: center;
-    gap: 24px;
-  }
-
-  .bubble-wrap {
-    display: grid;
-    gap: 8px;
-    max-width: 420px;
-  }
-
-  .msg.b .bubble-wrap {
+    width: 100%;
+    max-width: 600px;
     justify-self: end;
   }
 
-  .bubble {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    min-height: 68px;
-    padding: 0 20px;
-    border: 1.5px solid var(--graphite);
-    border-radius: 16px;
-    background: color-mix(in srgb, var(--bone) 88%, white);
-    font-family: var(--font-mono);
-    font-size: 1rem;
+  .frame {
+    position: relative;
+    aspect-ratio: 560 / 640;
   }
 
-  .msg.b .bubble {
-    flex-direction: row-reverse;
-    justify-content: flex-end;
+  canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    transition: opacity 400ms var(--ease-out);
   }
 
-  .who {
+  .stage[data-ready="true"] canvas {
+    opacity: 1;
+  }
+
+  /* The transcript: the page's text, and what shows without the animation */
+  .transcript {
+    position: absolute;
+    inset: 3% 3.6%;
+    list-style: none;
+    margin: 0;
+    padding: 24px;
     display: grid;
-    place-items: center;
-    flex: none;
-    width: 28px;
-    height: 28px;
+    align-content: start;
+    gap: 12px;
+    overflow: hidden;
     border: 1.5px solid var(--graphite);
-    border-radius: 50%;
+    border-radius: 18px;
+    background: #fff;
+  }
+
+  .transcript li {
+    display: grid;
+    gap: 2px;
+    max-width: 78%;
+    padding: 10px 14px;
+    border-radius: 14px;
+    background: var(--bone-2);
+  }
+
+  .transcript .you {
+    justify-self: end;
+    background: var(--graphite);
+    color: var(--bone);
+  }
+
+  .transcript .rule {
+    justify-self: center;
+    background: var(--bone);
+    font-size: 0.85rem;
+  }
+
+  .transcript .who {
     font-size: 0.7rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    opacity: 0.7;
+  }
+
+  .transcript .loss {
+    max-width: none;
+    margin-top: 8px;
+    background: var(--vermilion);
+    color: var(--graphite);
     font-weight: 600;
-  }
-
-  .time {
-    padding-inline: 8px;
-    font-size: 0.8rem;
-    color: var(--text-2);
-  }
-
-  .msg.b .time {
-    text-align: right;
-  }
-
-  .note {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 0.8rem;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    white-space: nowrap;
-  }
-
-  .note .line {
-    flex: 1 1 24px;
-    height: 1px;
-    background: var(--graphite);
-    transform-origin: left;
-  }
-
-  .sq {
-    flex: none;
-    width: 9px;
-    height: 9px;
-    background: var(--vermilion);
-  }
-
-  .dots {
-    display: inline-flex;
-    gap: 6px;
-  }
-
-  .dots i {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--graphite);
-    animation: blink 1.4s infinite ease-in-out;
-  }
-
-  .dots i:nth-child(2) {
-    animation-delay: 0.2s;
-  }
-
-  .dots i:nth-child(3) {
-    animation-delay: 0.4s;
-  }
-
-  @keyframes blink {
-    0%,
-    80%,
-    100% {
-      opacity: 0.25;
-    }
-    40% {
-      opacity: 1;
-    }
-  }
-
-  .exposed {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    justify-content: flex-end;
-    padding-right: 0;
-    font-size: 0.8rem;
-    font-weight: 500;
-    letter-spacing: 0.04em;
     text-transform: uppercase;
   }
 
-  .exposed .sq {
-    display: inline-block;
-    margin-right: 10px;
-  }
-
-  .bracket {
-    flex: 1;
-    height: 1.5px;
-    background: var(--vermilion);
-    max-width: 120px;
-    transform-origin: right;
+  .stage[data-ready="true"] .transcript {
+    clip-path: inset(50%);
+    opacity: 0;
   }
 
   @media (max-width: 900px) {
     .grid {
-      grid-template-columns: minmax(0, 1fr);
+      grid-template-columns: 1fr;
     }
 
-    .lede {
-      position: static;
-    }
-
-    .msg {
-      grid-template-columns: minmax(0, 1fr);
-      gap: 8px;
-    }
-
-    .note .line {
-      display: none;
-    }
-
-    .msg.b .note {
-      justify-content: flex-end;
+    .stage {
+      justify-self: center;
     }
   }
 </style>
