@@ -3,10 +3,6 @@
     <h2 id="how-title">Three steps.<br />Proof before <span class="hl">payment.</span></h2>
 
     <div class="steps" id="steps">
-      <div class="beam" id="beam" aria-hidden="true">
-        <i class="beam-line"></i>
-        <i class="beam-end"></i>
-      </div>
 
       <article class="step" data-step="1">
         <header>
@@ -17,7 +13,9 @@
           You sign a mandate once, with a passkey: what to buy, the most to spend, where, and by
           when.
         </p>
-        <svg class="fig" viewBox="0 0 360 220" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true">
+        <div class="fig-stage" id="fig-1" data-artboard="StepSign" data-ready="false">
+          <canvas width="360" height="220" aria-hidden="true"></canvas>
+          <svg class="fig" viewBox="0 0 360 220" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true">
           <g class="key">
             <circle cx="62" cy="64" r="24" fill="var(--bone)" />
             <circle cx="62" cy="64" r="6" />
@@ -31,6 +29,7 @@
             <path fill="var(--bone)" d="M293 88v82l5 8 5-8v-14l-9-4 9-4v-8l-6-3 6-3V88Z" />
           </g>
         </svg>
+        </div>
       </article>
 
       <article class="step" data-step="2">
@@ -39,7 +38,9 @@
           <h3>Check</h3>
         </header>
         <p>Before anything is paid, Keelson checks the agent's cart against the mandate, field by field.</p>
-        <svg class="fig" viewBox="0 0 360 220" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+        <div class="fig-stage" id="fig-2" data-artboard="StepCheck" data-ready="false">
+          <canvas width="360" height="220" aria-hidden="true"></canvas>
+          <svg class="fig" viewBox="0 0 360 220" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
           <rect x="30" y="38" width="120" height="144" rx="8" fill="var(--bone)" />
           <g class="bars" fill="currentColor" stroke="none">
             <rect x="48" y="62" width="84" height="12" />
@@ -56,6 +57,7 @@
             <rect x="228" y="134" width="44" height="12" />
           </g>
         </svg>
+        </div>
       </article>
 
       <article class="step" data-step="3">
@@ -67,7 +69,9 @@
           If it matches, Keelson countersigns and PayPal takes the payment with the Alibi attached.
           Otherwise nothing is paid.
         </p>
-        <svg class="fig" viewBox="0 0 360 220" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+        <div class="fig-stage" id="fig-3" data-artboard="StepPay" data-ready="false">
+          <canvas width="360" height="220" aria-hidden="true"></canvas>
+          <svg class="fig" viewBox="0 0 360 220" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
           <g class="pane pane-l">
             <rect x="74" y="30" width="66" height="160" rx="8" fill="var(--bone)" />
             <path d="M88 96h38M88 106h38M88 116h38" stroke-dasharray="5 4" />
@@ -77,6 +81,7 @@
             <path d="M210 96h38M210 106h38M210 116h38" stroke-dasharray="5 4" />
           </g>
         </svg>
+        </div>
       </article>
     </div>
   </div>
@@ -89,12 +94,11 @@
   }
 
   .steps {
-    --beam: 6px;
     position: relative;
     margin-top: clamp(56px, 8vw, 112px);
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    grid-template-rows: auto auto 220px;
+    grid-template-rows: auto auto auto;
     column-gap: clamp(24px, 4vw, 56px);
   }
 
@@ -154,40 +158,38 @@
     color: var(--text-2);
   }
 
+  .fig-stage {
+    position: relative;
+    width: 100%;
+    max-width: 440px;
+    aspect-ratio: 360 / 220;
+  }
+
+  .fig-stage canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    transition: opacity 400ms var(--ease-out);
+  }
+
+  .fig-stage[data-ready="true"] canvas {
+    opacity: 1;
+  }
+
+  .fig-stage[data-ready="true"] .fig {
+    visibility: hidden;
+  }
+
   .fig {
     width: 100%;
-    height: 220px;
+    height: 100%;
     overflow: visible;
   }
 
-  .beam {
-    position: relative;
-    z-index: 0;
-    grid-row: 3;
-    grid-column: 1 / -1;
-    align-self: center;
-    height: 24px;
-    clip-path: inset(0 calc((1 - var(--p, 1)) * 100%) 0 0);
-  }
 
-  .beam-line {
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: 50%;
-    height: var(--beam);
-    transform: translateY(-50%);
-    background: var(--vermilion);
-  }
 
-  .beam-end {
-    position: absolute;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    width: 15%;
-    background: var(--vermilion);
-  }
 
   .check {
     stroke-dasharray: 1;
@@ -198,13 +200,12 @@
     .steps {
       grid-template-columns: 1fr;
       grid-template-rows: repeat(9, auto);
-      padding-left: 40px;
     }
 
     .step[data-step] {
       grid-column: 1;
       grid-row: auto;
-      grid-template-rows: auto auto 200px;
+      grid-template-rows: auto auto auto;
       padding: 0 0 56px;
     }
 
@@ -213,40 +214,8 @@
       padding-left: 0;
     }
 
-    .fig {
-      height: 200px;
-      max-width: 360px;
-    }
-
-    .beam {
-      position: absolute;
-      grid-row: auto;
-      grid-column: auto;
-      left: 0;
-      top: 0;
-      bottom: 0;
-      width: 24px;
-      height: auto;
-      clip-path: inset(0 0 calc((1 - var(--p, 1)) * 100%) 0);
-    }
-
-    .beam-line {
-      left: 50%;
-      right: auto;
-      top: 0;
-      bottom: 0;
-      width: var(--beam);
-      height: auto;
-      transform: translateX(-50%);
-    }
-
-    .beam-end {
-      left: 0;
-      right: 0;
-      top: auto;
-      bottom: 0;
-      width: auto;
-      height: 12%;
+    .fig-stage {
+      max-width: 420px;
     }
   }
 </style>

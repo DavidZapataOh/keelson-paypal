@@ -8,55 +8,6 @@ if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
     ...root.querySelectorAll<T>(sel),
   ];
 
-  const steps = document.getElementById("steps");
-  if (steps) {
-    const beam = document.getElementById("beam");
-    gsap.fromTo(
-      beam,
-      { "--p": 0 },
-      {
-        "--p": 1,
-        ease: "none",
-        scrollTrigger: { trigger: steps, start: "top 70%", end: "bottom 65%", scrub: 0.4 },
-      },
-    );
-
-    const stepEls = q<HTMLElement>(".step", steps);
-    const at = (el: Element) => ({ trigger: el, start: "top 72%", once: true });
-    const [s1, s2, s3] = stepEls;
-    if (s1) {
-      gsap.from(q(".check", s1), {
-        strokeDashoffset: 1,
-        duration: 0.7,
-        ease: "power2.out",
-        scrollTrigger: at(s1),
-      });
-      gsap.from(q(".key", s1), {
-        y: -14,
-        opacity: 0,
-        duration: 0.7,
-        stagger: 0.12,
-        ease: EASE,
-        scrollTrigger: at(s1),
-      });
-    }
-    if (s2) {
-      gsap.from(q(".bars rect", s2), {
-        scaleX: 0,
-        transformOrigin: "left center",
-        transformBox: "fill-box",
-        duration: 0.6,
-        stagger: 0.06,
-        ease: EASE,
-        scrollTrigger: at(s2),
-      });
-    }
-    if (s3) {
-      gsap.from(q(".pane-l", s3), { x: -40, duration: 0.9, ease: EASE, scrollTrigger: at(s3) });
-      gsap.from(q(".pane-r", s3), { x: 40, duration: 0.9, ease: EASE, scrollTrigger: at(s3) });
-    }
-  }
-
   for (const win of q<HTMLElement>(".win")) {
     const covers = q(".cover", win);
     const idx = q<HTMLElement>(".win").indexOf(win);
