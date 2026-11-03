@@ -1,0 +1,409 @@
+---
+type Owner = "verified" | "attested" | "yours";
+
+const owners: Record<Owner, { name: string; pays: string }> = {
+  verified: { name: "Keelson-verified", pays: "Keelson pays" },
+  attested: { name: "Operator-attested", pays: "The operator's bond pays" },
+  yours: { name: "Yours", pays: "Not covered" },
+};
+
+const fields: { field: string; value: string; owner: Owner; why: string }[] = [
+  { field: "Total", value: "≤ $100.00", owner: "verified", why: "Checked against the cart before anything is paid." },
+  { field: "Store", value: "On your allowed list", owner: "verified", why: "Checked against the list you signed." },
+  { field: "Quantity", value: "1 pair", owner: "verified", why: "Checked against the cart line items." },
+  { field: "Deliver by", value: "Fri, Nov 13", owner: "verified", why: "Checked against the store's quoted date." },
+  { field: "Size", value: "US 10", owner: "attested", why: "The agent's operator states it, signs it and backs it with a bond." },
+  { field: "Returns", value: "Free, 30 days", owner: "attested", why: "Stated by the operator from the store's policy, and bonded." },
+  { field: "Style", value: "Something that looks good", owner: "yours", why: "Taste can't be checked. You see this before you sign." },
+];
+
+const count = (o: Owner) => fields.filter((f) => f.owner === o).length;
+---
+
+<section class="section liability" id="liability" aria-labelledby="liability-title">
+  <div class="wrap">
+    <div class="head">
+      <h2 id="liability-title">Every field has an owner.</h2>
+      <p>
+        Before you sign, you see who answers for each line if it goes wrong. Nothing is decided after
+        the fact.
+      </p>
+    </div>
+
+    <div class="legend" role="group" aria-label="Show fields by who answers for them">
+      {
+        (Object.keys(owners) as Owner[]).map((o) => (
+          <button class={`chip chip-${o}`} type="button" data-owner={o} aria-pressed="false">
+            <svg class="mark" viewBox="0 0 20 20" aria-hidden="true">
+              {o === "verified" && (
+                <>
+                  <rect x="2" y="2" width="16" height="16" rx="2" fill="currentColor" />
+                  <path d="M6 10.5l2.6 2.6L14 7.4" fill="none" stroke="var(--bone)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </>
+              )}
+              {o === "attested" && (
+                <path d="M10 1.8 18.2 10 10 18.2 1.8 10Z" fill="currentColor" fill-opacity=".16" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+              )}
+              {o === "yours" && (
+                <circle cx="10" cy="10" r="7.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2.6 2.4" />
+              )}
+            </svg>
+            <span>{owners[o].name}</span>
+            <span class="n mono">{count(o)}</span>
+          </button>
+        ))
+      }
+    </div>
+
+    <div class="sheet" id="sheet" data-filter="">
+      <div class="sheet-top mono">
+        <span>Mandate · running shoes</span>
+        <span class="signed">Signed with a passkey · Mon 09:12</span>
+      </div>
+
+      <table>
+        <caption class="sr">Who answers for each field of a signed mandate if it goes wrong</caption>
+        <thead>
+          <tr class="mono">
+            <th scope="col">Field</th>
+            <th scope="col">What you signed</th>
+            <th scope="col"><span class="sr">Leader</span></th>
+            <th scope="col">Who answers</th>
+            <th scope="col">If it goes wrong</th>
+          </tr>
+        </thead>
+        <tbody>
+          {
+            fields.map((f) => (
+              <tr class={`row row-${f.owner}`} data-owner={f.owner}>
+                <th scope="row" class="mono field">{f.field}</th>
+                <td class="value">{f.value}</td>
+                <td class="leader" aria-hidden="true"><i /></td>
+                <td class="owner">
+                  <span class={`tag tag-${f.owner}`}>
+                    <svg class="mark" viewBox="0 0 20 20" aria-hidden="true">
+                      {f.owner === "verified" && (
+                        <>
+                          <rect x="2" y="2" width="16" height="16" rx="2" fill="currentColor" />
+                          <path d="M6 10.5l2.6 2.6L14 7.4" fill="none" stroke="var(--bone)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                        </>
+                      )}
+                      {f.owner === "attested" && (
+                        <path d="M10 1.8 18.2 10 10 18.2 1.8 10Z" fill="currentColor" fill-opacity=".16" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+                      )}
+                      {f.owner === "yours" && (
+                        <circle cx="10" cy="10" r="7.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2.6 2.4" />
+                      )}
+                    </svg>
+                    {owners[f.owner].name}
+                  </span>
+                  <span class="why">{f.why}</span>
+                </td>
+                <td class="pays">{owners[f.owner].pays}</td>
+              </tr>
+            ))
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <p class="foot mono">
+      Synthetic example. A store that ships the wrong item still goes through PayPal's dispute
+      process; the Alibi travels with it as evidence.
+    </p>
+  </div>
+</section>
+
+<style>
+  .liability {
+    --ok: #26704f;
+    --warn: #855a06;
+  }
+
+  .head {
+    display: grid;
+    gap: 20px;
+    max-width: 60ch;
+  }
+
+  h2 {
+    font-size: clamp(2.5rem, 6vw, 5.25rem);
+  }
+
+  .head p {
+    color: var(--text-2);
+    font-size: clamp(1.05rem, 1.4vw, 1.25rem);
+    max-width: 46ch;
+  }
+
+  /* Legend doubles as a filter */
+  .legend {
+    margin-top: clamp(40px, 5vw, 64px);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    padding: 0 16px 0 12px;
+    border: 1.5px solid var(--line);
+    border-radius: 999px;
+    background: var(--bone);
+    color: var(--graphite);
+    font: 500 0.95rem / 1 var(--font-sans);
+    cursor: pointer;
+    transition:
+      border-color var(--dur-hover) ease,
+      background-color var(--dur-hover) ease;
+  }
+
+  .chip:hover {
+    border-color: var(--graphite);
+  }
+
+  .chip[aria-pressed="true"] {
+    border-color: var(--graphite);
+    background: var(--bone-2);
+  }
+
+  .chip .n {
+    font-size: 0.8rem;
+    color: var(--text-2);
+  }
+
+  .mark {
+    width: 18px;
+    height: 18px;
+    flex: none;
+  }
+
+  .chip-verified .mark,
+  .tag-verified {
+    color: var(--ok);
+  }
+
+  .chip-attested .mark,
+  .tag-attested {
+    color: var(--warn);
+  }
+
+  .chip-yours .mark,
+  .tag-yours {
+    color: var(--text-2);
+  }
+
+  /* The signed sheet */
+  .sheet {
+    margin-top: 20px;
+    border: 1.5px solid var(--graphite);
+    border-radius: var(--radius-l);
+    background: var(--bone);
+    overflow: hidden;
+  }
+
+  .sheet-top {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 8px 24px;
+    padding: 18px clamp(18px, 2.4vw, 32px);
+    border-bottom: 1.5px solid var(--graphite);
+    font-size: 0.8rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .signed {
+    color: var(--text-2);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  thead th {
+    padding: 14px 12px;
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    text-align: left;
+    color: var(--text-2);
+    border-bottom: 1px solid var(--line);
+  }
+
+  thead th:first-child,
+  tbody th {
+    padding-left: clamp(18px, 2.4vw, 32px);
+  }
+
+  thead th:last-child,
+  .pays {
+    padding-right: clamp(18px, 2.4vw, 32px);
+  }
+
+  .row > * {
+    padding: 16px 12px;
+    vertical-align: top;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .row > .field {
+    padding-left: clamp(18px, 2.4vw, 32px);
+  }
+
+  .row > .pays {
+    padding-right: clamp(18px, 2.4vw, 32px);
+  }
+
+
+  .row:last-child > * {
+    border-bottom: 0;
+  }
+
+  .field {
+    width: 12%;
+    font-size: 0.85rem;
+    font-weight: 500;
+    text-align: left;
+    padding-top: 21px;
+  }
+
+  .value {
+    width: 24%;
+    font-size: 1.05rem;
+    font-weight: 500;
+  }
+
+  .leader {
+    width: 8%;
+    padding-top: 28px !important;
+  }
+
+  .leader i {
+    display: block;
+    height: 0;
+    border-top: 1.5px dotted var(--warm-gray);
+    transform-origin: left center;
+  }
+
+  .owner {
+    width: 36%;
+  }
+
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+  }
+
+  .why {
+    display: block;
+    margin-top: 6px;
+    color: var(--text-2);
+    font-size: 0.95rem;
+    max-width: 42ch;
+  }
+
+  .pays {
+    width: 20%;
+    font-weight: 500;
+    text-align: right;
+  }
+
+  thead th:last-child {
+    text-align: right;
+  }
+
+  .row-yours .pays {
+    color: var(--text-2);
+  }
+
+  /* Filter: dim what isn't selected */
+  .row {
+    transition: opacity var(--dur-menu) ease;
+  }
+
+  .sheet:not([data-filter=""]) .row {
+    opacity: 0.3;
+  }
+
+  .sheet[data-filter="verified"] .row-verified,
+  .sheet[data-filter="attested"] .row-attested,
+  .sheet[data-filter="yours"] .row-yours {
+    opacity: 1;
+  }
+
+  .foot {
+    margin-top: 18px;
+    font-size: 0.8rem;
+    color: var(--text-2);
+    max-width: 80ch;
+  }
+
+  @media (max-width: 900px) {
+    thead {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+    }
+
+    table,
+    tbody,
+    .row,
+    .row > * {
+      display: block;
+      width: auto;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 4px 16px;
+      padding: 18px clamp(18px, 4vw, 24px);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .row:last-child {
+      border-bottom: 0;
+    }
+
+    .row > * {
+      padding: 0 !important;
+      border: 0 !important;
+    }
+
+    .field {
+      grid-column: 1;
+      color: var(--text-2);
+    }
+
+    .value {
+      grid-column: 1;
+    }
+
+    .row > .leader {
+      display: none;
+    }
+
+    .owner {
+      grid-column: 1 / -1;
+      margin-top: 12px;
+    }
+
+    .pays {
+      grid-column: 2;
+      grid-row: 1 / span 2;
+      align-self: center;
+      font-size: 0.9rem;
+    }
+  }
+</style>
