@@ -1,0 +1,216 @@
+---
+import { appUrl } from "../config";
+---
+
+<section class="hero ticks" id="top" aria-labelledby="hero-title">
+  <canvas class="field" id="field" aria-hidden="true"></canvas>
+
+  <div class="wrap layout">
+    <div class="copy">
+      <h1 id="hero-title">Your agent buys wrong.<br />The party at fault <span class="hl">pays.</span></h1>
+      <p class="sub">
+        Keelson checks every AI-agent purchase against what you signed before it's paid, and seals
+        it with an Alibi anyone can verify.
+      </p>
+      <div class="cta">
+        <a class="btn" href={appUrl}>
+          Try the demo
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 12 12 4M5.5 4H12v6.5" /></svg>
+        </a>
+        <a class="link" href="#how">How it works</a>
+      </div>
+    </div>
+
+    <div
+      class="ledger"
+      id="ledger"
+      role="img"
+      aria-label="Synthetic example: the mandate allows up to 100 dollars, the agent's cart is 340 dollars, Keelson blocks the purchase before it is paid"
+    >
+      <div class="rows mono" aria-hidden="true">
+        <span><b>MANDATE</b></span><span>SHOES · SIZE 10 · MAX $100</span>
+        <span><b>CART</b></span><span>$340.00 · BUNDLE</span>
+        <span><b>CHECK</b></span><span>TOTAL &gt; MAX</span>
+        <span><b>PAID</b></span><span>$0.00</span>
+        <span><b>STATUS</b></span><span><i class="seal">BLOCKED</i></span>
+        <span class="note-row">SYNTHETIC DEMONSTRATION DATA</span>
+      </div>
+    </div>
+  </div>
+
+  <p class="foot mono">The liability layer for AI-agent purchases on PayPal</p>
+  <p class="key mono" id="key-note" aria-hidden="true">What the Alibi proves: this.</p>
+</section>
+
+<style>
+  .hero {
+    position: relative;
+    min-height: 100svh;
+    padding-top: calc(var(--header-h) + 24px);
+    padding-bottom: 96px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+  }
+
+  .field {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: none;
+  }
+
+  :global(html.js-field) .hero {
+    background-image: none;
+  }
+
+  :global(html.js-field) .field {
+    display: block;
+  }
+
+  .layout {
+    position: relative;
+    z-index: 2;
+  }
+
+  h1 {
+    font-size: clamp(2.5rem, 5.3vw, 5.25rem);
+    max-width: 11ch;
+    letter-spacing: -0.045em;
+    line-height: 0.9;
+  }
+
+  .sub {
+    margin-top: clamp(24px, 3vw, 40px);
+    max-width: 34ch;
+    font-size: clamp(1.15rem, 1.7vw, 1.5rem);
+    line-height: 1.4;
+    letter-spacing: -0.01em;
+  }
+
+  .cta {
+    margin-top: clamp(28px, 3.4vw, 44px);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px 28px;
+  }
+
+  .ledger {
+    position: absolute;
+    right: var(--gutter);
+    top: 50%;
+    z-index: 1;
+    width: min(46vw, 640px);
+    transform: translateY(-38%);
+    pointer-events: none;
+    -webkit-mask-image: radial-gradient(
+      circle var(--lr, 270px) at var(--lx, 50%) var(--ly, 50%),
+      #000 0,
+      #000 66%,
+      transparent 96%
+    );
+    mask-image: radial-gradient(
+      circle var(--lr, 270px) at var(--lx, 50%) var(--ly, 50%),
+      #000 0,
+      #000 66%,
+      transparent 96%
+    );
+  }
+
+  :global(html:not(.js-field)) .ledger {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+
+  .rows {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    column-gap: 28px;
+    row-gap: 6px;
+    padding: 14px 20px;
+    font-size: clamp(0.85rem, 1.2vw, 1.15rem);
+    line-height: 1.7;
+    background: color-mix(in srgb, var(--bone) 92%, transparent);
+    border-radius: 4px;
+    margin-left: auto;
+    width: max-content;
+    max-width: 100%;
+  }
+
+  .rows b {
+    font-weight: 600;
+  }
+
+  .seal {
+    font-style: normal;
+    background: var(--vermilion);
+    padding: 0 8px;
+    border-radius: 2px;
+  }
+
+  .note-row {
+    grid-column: 1 / -1;
+    color: var(--text-2);
+  }
+
+  .foot {
+    position: absolute;
+    left: var(--gutter);
+    bottom: 28px;
+    z-index: 2;
+    font-size: 0.8rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-2);
+  }
+
+  .key {
+    position: absolute;
+    left: 0;
+    top: 0;
+    z-index: 2;
+    font-size: 0.8rem;
+    color: var(--text-2);
+    white-space: nowrap;
+    pointer-events: none;
+    display: none;
+    will-change: transform;
+  }
+
+  :global(html.js-field) .key {
+    display: block;
+  }
+
+  @media (max-width: 900px) {
+    .hero {
+      align-items: flex-start;
+      padding-bottom: 128px;
+    }
+
+    .ledger {
+      position: relative;
+      right: auto;
+      top: auto;
+      width: auto;
+      margin: 56px var(--gutter) 0;
+      transform: none;
+    }
+
+    .hero .layout {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .rows {
+      margin-left: 0;
+      font-size: 0.8rem;
+      column-gap: 18px;
+    }
+
+    .key {
+      display: none !important;
+    }
+  }
+</style>

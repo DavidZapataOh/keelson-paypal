@@ -1,0 +1,272 @@
+---
+import { repoUrl } from "../config";
+
+const tabs = [
+  { id: "merchants", label: "Merchants", text: "Can read who answers for each field of an order." },
+  { id: "engineers", label: "Developers", text: "Add one call before the agent pays." },
+  { id: "operators", label: "Operators", text: "Can show every order stayed inside the mandate." },
+] as const;
+---
+
+<section class="section verify" id="verify" aria-labelledby="verify-title">
+  <div class="wrap grid">
+    <div class="lede">
+      <h2 id="verify-title">Built to be verified.</h2>
+      <p>An open SDK, an MCP server and an Alibi verifier anyone can run.</p>
+      <div class="links">
+        <a class="link" href={repoUrl}>Read the code</a>
+        <a class="link" href={`${repoUrl}/tree/main/contracts`}>Contracts</a>
+        <a class="link" href={`${repoUrl}/tree/main/sdk`}>SDK</a>
+      </div>
+    </div>
+
+    <div class="deck" id="deck">
+      <div class="card on-dark">
+        <div class="card-top">
+          <span class="lang mono" id="lang">TypeScript</span>
+          <button class="copy" type="button" id="copy" aria-label="Copy the code">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="7" y="7" width="9" height="9" rx="1.5" /><path d="M13 7V5.5A1.5 1.5 0 0 0 11.5 4h-6A1.5 1.5 0 0 0 4 5.5v6A1.5 1.5 0 0 0 5.5 13H7" /></svg>
+          </button>
+          <span class="sr" role="status" id="copy-status"></span>
+        </div>
+
+        <div id="panel-merchants" role="tabpanel" aria-labelledby="tab-merchants" hidden>
+          <pre class="mono"><code><span class="c">// What every order carries in its Alibi</span>
+<span class="k">mandate</span>      hash of what the user signed
+<span class="k">cart</span>         hash of what the agent bought
+<span class="k">policy</span>       hash of the rules that ran
+<span class="k">decision</span>     countersigned or blocked
+<span class="k">attestation</span>  the hardware that ran the check
+<span class="k">log</span>          where the record lives
+<span class="k">fields</span>       who answers for each field</code></pre>
+        </div>
+
+        <div id="panel-engineers" role="tabpanel" aria-labelledby="tab-engineers">
+          <pre class="mono"><code><span class="k">import</span> &#123; Keelson &#125; <span class="k">from</span> <span class="s">"@keelson/sdk"</span>;
+
+<span class="k">const</span> keelson = <span class="k">new</span> Keelson(&#123; apiKey &#125;);
+
+<span class="c">// Before the agent pays</span>
+<span class="k">const</span> alibi = <span class="k">await</span> keelson.requestCountersign(&#123; mandate, cart &#125;);
+<span class="k">if</span> (alibi.decision === <span class="s">"blocked"</span>) <span class="k">return</span> alibi.reason;
+
+<span class="k">await</span> paypal.createOrder(&#123;
+  intent: <span class="s">"AUTHORIZE"</span>, customId: alibi.customId, ...cart,
+&#125;);</code></pre>
+        </div>
+
+        <div id="panel-operators" role="tabpanel" aria-labelledby="tab-operators" hidden>
+          <pre class="mono"><code><span class="c">// The calls an operator makes, and nothing else</span>
+<span class="k">keelson</span>.requestCountersign(mandate, cart)
+<span class="k">keelson</span>.attestField(orderId, field, value)
+<span class="k">keelson</span>.bond.deposit(amount)</code></pre>
+        </div>
+      </div>
+
+      <div class="tabs" role="tablist" aria-label="Who it is for">
+        {
+          tabs.map((t) => (
+            <button
+              class="tab"
+              role="tab"
+              type="button"
+              id={`tab-${t.id}`}
+              aria-controls={`panel-${t.id}`}
+              aria-selected={t.id === "engineers" ? "true" : "false"}
+              tabindex={t.id === "engineers" ? 0 : -1}
+              data-lang={t.id === "engineers" ? "TypeScript" : t.id === "merchants" ? "Alibi fields" : "Operator calls"}
+            >
+              <span class="mono name">{t.label}</span>
+              <span class="desc">{t.text}</span>
+            </button>
+          ))
+        }
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .grid {
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    gap: clamp(40px, 6vw, 96px);
+    align-items: center;
+  }
+
+  h2 {
+    font-size: clamp(2.6rem, 5.8vw, 5.4rem);
+  }
+
+  .lede p {
+    margin-top: 28px;
+    max-width: 30ch;
+    font-size: 1.2rem;
+    line-height: 1.5;
+    color: var(--text-2);
+  }
+
+  .links {
+    margin-top: 28px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 28px;
+  }
+
+  .card {
+    background: var(--graphite);
+    color: var(--bone);
+    border-radius: var(--radius-l);
+    padding: 20px 8px 20px 24px;
+    min-height: 372px;
+  }
+
+  .card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-right: 12px;
+    margin-bottom: 20px;
+  }
+
+  .lang {
+    padding: 4px 10px;
+    border-radius: 4px;
+    background: var(--graphite-2);
+    font-size: 0.75rem;
+    color: var(--warm-gray);
+  }
+
+  .copy {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border: 0;
+    border-radius: var(--radius-s);
+    background: transparent;
+    color: var(--warm-gray);
+    cursor: pointer;
+    transition: color var(--dur-hover) ease, background-color var(--dur-hover) ease;
+  }
+
+  .copy:hover {
+    color: var(--bone);
+    background: var(--graphite-2);
+  }
+
+  .copy svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  pre {
+    margin: 0;
+    overflow-x: auto;
+    padding: 0 16px 8px 0;
+    font-size: 0.875rem;
+    line-height: 1.85;
+    tab-size: 2;
+    scrollbar-color: #3a3c42 transparent;
+  }
+
+  .k {
+    color: var(--vermilion);
+  }
+
+  .s {
+    color: #c8c4b8;
+  }
+
+  .c {
+    color: var(--warm-gray);
+  }
+
+  .tabs {
+    margin-top: 16px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border: 1px solid var(--line);
+    border-radius: var(--radius-m);
+    overflow: hidden;
+  }
+
+  .tab {
+    position: relative;
+    display: grid;
+    align-content: start;
+    gap: 8px;
+    min-height: 44px;
+    padding: 18px 18px 20px;
+    border: 0;
+    background: transparent;
+    color: var(--text-2);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition:
+      background-color var(--dur-hover) ease,
+      color var(--dur-hover) ease;
+  }
+
+  .tab + .tab {
+    border-left: 1px solid var(--line);
+  }
+
+  .tab[aria-selected="true"] {
+    color: var(--graphite);
+    background: color-mix(in srgb, var(--bone) 80%, white);
+  }
+
+  .tab[aria-selected="true"] .name::before {
+    transform: scale(1);
+  }
+
+  .tab:hover {
+    background: var(--bone-2);
+    color: var(--graphite);
+  }
+
+  .name {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.8rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+
+  .name::before {
+    content: "";
+    width: 9px;
+    height: 9px;
+    background: var(--vermilion);
+    transform: scale(0);
+    transition: transform var(--dur-menu) var(--ease-out);
+  }
+
+  .desc {
+    font-size: 0.95rem;
+    line-height: 1.4;
+  }
+
+  @media (max-width: 900px) {
+    .grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .tabs {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .tab + .tab {
+      border-left: 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .card {
+      min-height: 0;
+    }
+  }
+</style>

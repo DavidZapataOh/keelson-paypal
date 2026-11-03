@@ -1,0 +1,397 @@
+---
+const gates = [
+  { n: "01", claim: "Signed by the user, inside the mandate.", inputs: "mandateHash, passkeyAssertion" },
+  { n: "02", claim: "Checked by code that can prove what it ran.", inputs: "attestation, policyHash, cartHash" },
+  { n: "03", claim: "Recorded where no one can rewrite it.", inputs: "logIndex, inclusionProof, checkpoint" },
+];
+---
+
+<section class="section proof" id="proof" aria-labelledby="proof-title">
+  <div class="wrap">
+    <div class="head">
+      <h2 id="proof-title">Proof, not logs.</h2>
+      <p>Every purchase passes three checks before it is paid. Each one leaves something anyone can verify.</p>
+    </div>
+
+    <div class="track" id="track">
+      <div class="rail">
+      <div class="beam" id="proof-beam" aria-hidden="true"><i></i></div>
+
+      <div class="node start mono">
+        <span class="dot"></span>
+        <span>Agent<br />checkout</span>
+      </div>
+
+      {
+        gates.map((g, i) => (
+          <div class={`gate ${i === 2 ? "last" : ""}`} data-gate={i + 1}>
+            <p class="claim">
+              <span class="mono">{g.n}</span>
+              {g.claim}
+            </p>
+            <div class="door" aria-hidden="true">
+              <svg viewBox="0 0 196 292" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round">
+                <path d="M10 22 L162 66 Q170 68 170 77 V229 Q170 238 162 240 L10 284 Q2 286 2 278 V30 Q2 24 10 22Z M60 146 a40 54 0 1 0 80 0 a40 54 0 1 0 -80 0Z" fill="var(--bone)" fill-rule="evenodd" stroke="none" />
+                <path d="M10 22 L162 66 Q170 68 170 77 V229 Q170 238 162 240 L10 284 Q2 286 2 278 V30 Q2 24 10 22Z" />
+                <path class="face-fill" d="M16 14 L168 58 Q176 60 176 69 V221 Q176 230 168 232 L16 276 Q8 278 8 270 V22 Q8 16 16 14Z M60 146 a40 54 0 1 0 80 0 a40 54 0 1 0 -80 0Z" fill-rule="evenodd" stroke="none" />
+                <path d="M16 14 L168 58 Q176 60 176 69 V221 Q176 230 168 232 L16 276 Q8 278 8 270 V22 Q8 16 16 14Z" />
+                <ellipse class="ap" cx="100" cy="146" rx="40" ry="54" />
+                {i < 2 && <path class="lip" d="M64 118 A40 54 0 0 0 100 200" stroke-width="5" stroke-linecap="round" />}
+                {i === 2 && <path class="tick" d="M80 148 L96 164 L122 128" stroke-width="3" stroke-linecap="round" pathLength="1" />}
+              </svg>
+              <i class="thread" />
+              {i < 2 && (
+                <svg class="chev" viewBox="0 0 12 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3l8 9-8 9" /></svg>
+              )}
+            </div>
+          </div>
+        ))
+      }
+
+      <div class="node end mono">
+        <span class="dot ok">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M6 12.5l4 4 8-9" /></svg>
+        </span>
+        <span>Alibi<br />issued</span>
+      </div>
+
+      </div>
+
+      <div class="strip on-dark mono">
+        {
+          gates.map((g) => (
+            <div>
+              <span class="k">Public inputs</span>
+              <span class="v">{g.inputs}</span>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+
+    <p class="measured mono">
+      Rewrite the record after the fact and the inclusion proof no longer matches the published
+      checkpoint.
+    </p>
+  </div>
+</section>
+
+<style>
+  .head {
+    display: grid;
+    gap: 24px;
+  }
+
+  h2 {
+    font-size: clamp(2.6rem, 6vw, 5.6rem);
+  }
+
+  .head p {
+    max-width: 44ch;
+    font-size: 1.2rem;
+    line-height: 1.5;
+    color: var(--text-2);
+  }
+
+  .track {
+    --beam: 10px;
+    position: relative;
+    margin-top: clamp(56px, 8vw, 104px);
+    display: grid;
+    grid-template-columns: 0.55fr repeat(3, minmax(0, 1fr)) 0.55fr;
+    grid-template-rows: auto auto auto;
+    column-gap: 0;
+    align-items: start;
+  }
+
+  .rail {
+    display: contents;
+  }
+
+  .beam {
+    position: relative;
+    z-index: 0;
+    grid-row: 2;
+    grid-column: 1 / -1;
+    align-self: center;
+    margin-inline: 24px;
+    height: 24px;
+    clip-path: inset(0 calc((1 - var(--p, 1)) * 100%) 0 0);
+    pointer-events: none;
+  }
+
+  .beam i {
+    position: absolute;
+    inset: 50% 0 auto 0;
+    height: var(--beam);
+    transform: translateY(-50%);
+    background: var(--vermilion);
+  }
+
+  .gate {
+    display: contents;
+  }
+
+  .claim {
+    grid-row: 1;
+    padding: 0 20px 28px 0;
+    max-width: 26ch;
+    font-family: var(--font-mono);
+    font-size: 0.95rem;
+    line-height: 1.5;
+  }
+
+  .claim .mono {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 0.8rem;
+    color: var(--vermilion-deep);
+  }
+
+  .gate[data-gate="1"] .claim,
+  .gate[data-gate="1"] .door {
+    grid-column: 2;
+  }
+
+  .gate[data-gate="2"] .claim,
+  .gate[data-gate="2"] .door {
+    grid-column: 3;
+  }
+
+  .gate[data-gate="3"] .claim,
+  .gate[data-gate="3"] .door {
+    grid-column: 4;
+  }
+
+  .door {
+    grid-row: 2;
+    position: relative;
+    z-index: 1;
+    justify-self: start;
+    width: min(100% - 32px, 236px);
+    color: var(--graphite);
+  }
+
+  .door svg {
+    width: 100%;
+    height: auto;
+    overflow: visible;
+  }
+
+  .thread {
+    position: absolute;
+    left: 50%;
+    width: 47%;
+    top: 50%;
+    height: var(--beam);
+    transform: translateY(-50%);
+    transform-origin: left;
+    background: var(--vermilion);
+  }
+
+  .ap {
+    transition: stroke 240ms var(--ease-out);
+  }
+
+  .door .chev {
+    position: absolute;
+    left: calc(100% + 24px);
+    top: calc(50% - 56px);
+    width: 14px;
+    height: 28px;
+    transform: translateY(-50%);
+    overflow: visible;
+  }
+
+  .face-fill {
+    fill: var(--bone);
+  }
+
+  .last .face-fill {
+    fill: var(--vermilion);
+  }
+
+  .tick {
+    stroke-dasharray: 1;
+    stroke-dashoffset: var(--tick, 0);
+  }
+
+  .node {
+    grid-row: 2;
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding-top: 48px;
+    text-align: center;
+    font-size: 0.8rem;
+    line-height: 1.4;
+  }
+
+  .node.start {
+    grid-column: 1;
+  }
+
+  .node.end {
+    grid-column: 5;
+  }
+
+  .dot {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border: 1.5px solid var(--graphite);
+    border-radius: 50%;
+    background: var(--bone);
+    position: relative;
+    z-index: 3;
+  }
+
+  .dot.ok {
+    color: var(--vermilion-deep);
+    border-color: var(--vermilion);
+  }
+
+  .dot svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .strip {
+    grid-row: 3;
+    grid-column: 2 / 5;
+    margin-top: 28px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    background: var(--graphite);
+    color: var(--bone);
+    border-radius: var(--radius-m);
+  }
+
+  .strip div {
+    display: grid;
+    gap: 6px;
+    padding: 18px 20px;
+    font-size: 0.8rem;
+    line-height: 1.45;
+  }
+
+  .strip div + div {
+    border-left: 1px solid #2e3036;
+  }
+
+  .k {
+    color: var(--warm-gray);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 0.7rem;
+  }
+
+  .measured {
+    margin-top: 28px;
+    max-width: 70ch;
+    font-size: 0.8rem;
+    line-height: 1.6;
+    color: var(--text-2);
+  }
+
+  @media (max-width: 820px) {
+    .track {
+      display: block;
+    }
+
+    .rail {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 40px;
+      padding-block: 8px;
+    }
+
+    .beam {
+      position: absolute;
+      grid-row: auto;
+      grid-column: auto;
+      left: 50%;
+      top: 20px;
+      width: 24px;
+      height: calc(100% - 100px);
+      align-self: auto;
+      margin: 0 0 0 -12px;
+      clip-path: inset(0 0 calc((1 - var(--p, 1)) * 100%) 0);
+    }
+
+    .beam i {
+      inset: 0 auto 0 50%;
+      width: var(--beam);
+      height: 100%;
+      transform: translateX(-50%);
+    }
+
+    .gate {
+      display: grid;
+      justify-items: center;
+      gap: 20px;
+      width: 100%;
+    }
+
+    .gate .claim,
+    .gate .door {
+      grid-column: auto !important;
+      grid-row: auto;
+    }
+
+    .claim {
+      position: relative;
+      z-index: 1;
+      padding: 8px 14px;
+      text-align: center;
+      max-width: 30ch;
+      background: var(--bg);
+    }
+
+    .door {
+      justify-self: center;
+      width: min(60vw, 190px);
+      margin: 0;
+    }
+
+    .thread {
+      left: 50%;
+      width: var(--beam);
+      top: 50%;
+      height: 44%;
+      transform: translateX(-50%);
+      transform-origin: top;
+    }
+
+    .door .chev {
+      display: none;
+    }
+
+    .node {
+      grid-row: auto;
+      grid-column: auto;
+      padding: 0;
+      justify-content: flex-start;
+    }
+
+    .node.end {
+      order: 5;
+    }
+
+    .strip {
+      margin-top: 40px;
+      grid-template-columns: 1fr;
+    }
+
+    .strip div + div {
+      border-left: 0;
+      border-top: 1px solid #2e3036;
+    }
+  }
+</style>

@@ -1,0 +1,118 @@
+---
+import { appUrl, repoUrl } from "../config";
+---
+
+<section class="closing ticks" aria-labelledby="closing-title">
+  <div class="wrap inner">
+    <div class="split" aria-hidden="true"><i class="l"></i><i class="r"></i></div>
+    <h2 id="closing-title">Proof before<br /><span class="hl">payment.</span></h2>
+    <div class="cta">
+      <a class="btn btn-dark" href={appUrl}>
+        Try the demo
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 12 12 4M5.5 4H12v6.5" /></svg>
+      </a>
+      <a class="link" href={repoUrl}>Read the code</a>
+    </div>
+  </div>
+</section>
+
+<footer class="foot">
+  <div class="wrap">
+    <div class="row">
+      <a class="brand" href="#top" aria-label="Keelson, back to top"><img src="/keelson.svg" alt="" width="190" height="56" /></a>
+      <nav aria-label="Footer">
+        <a class="link" href={repoUrl}>Repository</a>
+        <a class="link" href={`${repoUrl}/tree/main/contracts`}>Contracts</a>
+        <a class="link" href={`${repoUrl}/tree/main/sdk`}>SDK</a>
+        <a class="link" href={`${repoUrl}/issues`}>Issues</a>
+      </nav>
+    </div>
+    <p class="legal mono">Keelson is an independent project. It is not affiliated with or endorsed by PayPal.</p>
+    <p class="legal mono">Keelson is not insurance. PayPal decides disputes on its own platform.</p>
+  </div>
+</footer>
+
+<style>
+  .closing {
+    position: relative;
+    padding-block: clamp(96px, 14vw, 200px);
+    text-align: center;
+    overflow: hidden;
+  }
+
+  .inner {
+    display: grid;
+    justify-items: center;
+  }
+
+  .split {
+    display: flex;
+    width: 100vw;
+    margin-bottom: clamp(40px, 6vw, 72px);
+    height: 40px;
+  }
+
+  .split i {
+    flex: 1;
+    background: var(--vermilion);
+  }
+
+  .split .l {
+    clip-path: polygon(0 0, calc(100% - 40px) 0, 100% 100%, 0 100%);
+    margin-right: clamp(16px, 5vw, 64px);
+    transform-origin: left;
+  }
+
+  .split .r {
+    clip-path: polygon(40px 0, 100% 0, 100% 100%, 0 100%);
+    margin-left: clamp(16px, 5vw, 64px);
+    transform-origin: right;
+  }
+
+  h2 {
+    font-size: clamp(3.4rem, 11vw, 9.5rem);
+    letter-spacing: -0.045em;
+    line-height: 0.92;
+  }
+
+  .cta {
+    margin-top: clamp(32px, 4vw, 56px);
+    display: grid;
+    justify-items: center;
+    gap: 8px;
+  }
+
+  .foot {
+    border-top: 1px solid var(--line);
+    padding-block: 40px 56px;
+  }
+
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px 48px;
+  }
+
+  .brand img {
+    height: 44px;
+    width: auto;
+  }
+
+  nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 36px;
+  }
+
+  .legal {
+    margin-top: 12px;
+    font-size: 0.8rem;
+    color: var(--text-2);
+  }
+
+  .row + .legal {
+    margin-top: 32px;
+  }
+</style>

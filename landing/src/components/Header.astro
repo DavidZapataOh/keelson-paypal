@@ -1,0 +1,96 @@
+---
+import { appUrl } from "../config";
+---
+
+<header class="site-header" id="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="#top" aria-label="Keelson, back to top">
+      <img src="/keelson.svg" alt="" width="148" height="44" />
+    </a>
+    <nav aria-label="Primary">
+      <a class="nav-link" href="#how">How it works</a>
+      <a class="nav-link" href="#views">Who pays</a>
+      <a class="nav-link" href="#verify">Developers</a>
+      <a class="btn" href={appUrl}>
+        Try the demo
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 12 12 4M5.5 4H12v6.5" /></svg>
+      </a>
+    </nav>
+  </div>
+</header>
+
+<style>
+  .site-header {
+    position: fixed;
+    inset: 0 0 auto 0;
+    z-index: 50;
+    height: var(--header-h);
+    background: color-mix(in srgb, var(--bone) 92%, transparent);
+    border-bottom: 1px solid transparent;
+    transition:
+      transform var(--dur-menu) var(--ease-out),
+      border-color var(--dur-menu) ease;
+  }
+
+  .site-header[data-scrolled="true"] {
+    border-bottom-color: var(--line);
+  }
+
+  .site-header[data-hidden="true"] {
+    transform: translateY(-100%);
+  }
+
+  .bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 100%;
+  }
+
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  .brand img {
+    height: 30px;
+    width: auto;
+  }
+
+  nav {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .nav-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding-inline: 14px;
+    font-weight: 500;
+    text-decoration: none;
+    background-image: linear-gradient(var(--vermilion), var(--vermilion));
+    background-repeat: no-repeat;
+    background-position: 14px calc(50% + 14px);
+    background-size: 0 2px;
+    transition: background-size var(--dur-menu) var(--ease-out);
+  }
+
+  .nav-link:hover {
+    background-size: calc(100% - 28px) 2px;
+  }
+
+  nav .btn {
+    margin-left: 10px;
+    min-height: 44px;
+    padding-inline: 20px;
+  }
+
+  @media (max-width: 760px) {
+    .nav-link {
+      display: none;
+    }
+  }
+</style>

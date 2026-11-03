@@ -1,0 +1,36 @@
+:root {
+  --font-sans: "Instrument Sans Variable", "Instrument Sans", system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, monospace;
+
+  --graphite: #17181b;
+  --graphite-2: #1f2024;
+  --bone: #f2f0ea;
+  --bone-2: #e9e6de;
+  --vermilion: #ff4b1f;
+  --vermilion-deep: #b82e06;
+  --warm-gray: #8d8a83;
+
+  --bg: var(--bone);
+  --surface: var(--bone-2);
+  --text: var(--graphite);
+  --text-2: #5f5c56;
+  --line: #d8d4c9;
+  --accent: var(--vermilion);
+  --accent-text: var(--vermilion-deep);
+  --on-accent: var(--graphite);
+
+  --radius-s: 6px;
+  --radius-m: 10px;
+  --radius-l: 14px;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-hover: 150ms;
+  --dur-menu: 200ms;
+  --dur-reveal: 480ms;
+
+  --gutter: clamp(20px, 4vw, 48px);
+  --max: 1360px;
+  --header-h: 72px;
+
+  color-scheme: light;
+}
