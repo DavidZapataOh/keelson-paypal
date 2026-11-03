@@ -27,12 +27,5 @@ if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
     });
   }
 
-  const split = document.querySelector(".split");
-  if (split) {
-    const st = { trigger: split, start: "top 90%", once: true };
-    gsap.from(split.querySelector(".l"), { scaleX: 0, duration: 1, ease: EASE, scrollTrigger: st });
-    gsap.from(split.querySelector(".r"), { scaleX: 0, duration: 1, ease: EASE, scrollTrigger: st });
-  }
-
   document.fonts.ready.then(() => ScrollTrigger.refresh());
 }

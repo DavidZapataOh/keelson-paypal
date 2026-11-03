@@ -4,7 +4,10 @@ import { appUrl, repoUrl } from "../config";
 
 <section class="closing ticks" aria-labelledby="closing-title">
   <div class="wrap inner">
-    <div class="split" aria-hidden="true"><i class="l"></i><i class="r"></i></div>
+    <div class="seal-stage" id="closing-stage" data-ready="false" aria-hidden="true">
+      <canvas width="1440" height="200"></canvas>
+      <div class="split"><i class="l"></i><i class="r"></i></div>
+    </div>
     <h2 id="closing-title">Proof before<br /><span class="hl">payment.</span></h2>
     <div class="cta">
       <a class="btn btn-dark" href={appUrl}>
@@ -45,13 +48,37 @@ import { appUrl, repoUrl } from "../config";
     justify-items: center;
   }
 
-  .split {
-    display: flex;
+  .seal-stage {
+    position: relative;
     justify-self: stretch;
     width: 100vw;
     margin-inline: calc(50% - 50vw);
-    margin-bottom: clamp(40px, 6vw, 72px);
-    height: 40px;
+    margin-bottom: clamp(24px, 4vw, 48px);
+    aspect-ratio: 1440 / 200;
+    display: grid;
+    align-items: center;
+  }
+
+  .seal-stage canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+  }
+
+  .seal-stage[data-ready="true"] canvas {
+    opacity: 1;
+  }
+
+  .seal-stage[data-ready="true"] .split {
+    visibility: hidden;
+  }
+
+  .split {
+    display: flex;
+    width: 100%;
+    height: 20%;
   }
 
   .split i {
