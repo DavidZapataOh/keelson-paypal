@@ -50,6 +50,13 @@
       "when": 1793915261653,
       "tag": "0006_mandate_signatures",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793916531832,
+      "tag": "0007_passkey_payment",
+      "breakpoints": true
     }
   ]
 }

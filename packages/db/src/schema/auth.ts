@@ -291,6 +291,8 @@ export const passkey = pgTable(
     transports: text("transports"),
     createdAt: timestamp("created_at", { withTimezone: true }),
     aaguid: text("aaguid"),
+    /** Registered with the SPC `payment` extension the server issued for that ceremony. */
+    payment: boolean("payment").default(false).notNull(),
   },
   (table) => [
     index("passkey_userId_idx").on(table.userId),

@@ -182,14 +182,12 @@ export interface Signing {
 /**
  * Builds the selectively disclosable payload, its commitment and challenge, the card to show and
  * the Secure Payment Confirmation details. `C_m` does not cover `zk.commitment`, so it is computed
- * first and written into the payload that `H_sd` and the challenge then cover. `origin` is the app
- * origin shown as the payee.
+ * first and written into the payload that `H_sd` and the challenge then cover.
  */
 export async function prepareSigning(
   m: Mandate,
   salt: Uint8Array,
   evidence: Evidence,
-  origin: string,
 ): Promise<Signing> {
   const cm = await mandateCommitment(m, salt);
   const bound: Mandate = {
@@ -207,6 +205,6 @@ export async function prepareSigning(
     cm,
     challenge: mandateChallenge(h, cm),
     card: renderCard(payloadSd, disclosures, evidence),
-    spc: spcDetails(bound, origin),
+    spc: spcDetails(bound),
   };
 }

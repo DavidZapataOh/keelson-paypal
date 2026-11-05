@@ -92,20 +92,16 @@ describe("card contents", () => {
       for (const c of m.checkout.constraints) {
         if (c.type === "checkout.allowed_merchants") for (const x of c.allowed) x.name = name;
       }
-      await expect(
-        prepareSigning(m, randomSalt(), evidence, "https://keelson.finance"),
-      ).rejects.toThrow(/control or format/);
+      await expect(prepareSigning(m, randomSalt(), evidence)).rejects.toThrow(/control or format/);
     }
   });
 });
 
 describe("prepareSigning", () => {
-  const origin = "https://keelson.finance";
-
   it("binds C_m into the signed payload and the challenge", async () => {
     const salt = randomSalt();
     const m = mandate();
-    const s = await prepareSigning(m, salt, evidence, origin);
+    const s = await prepareSigning(m, salt, evidence);
     const cm = await mandateCommitment(m, salt);
     expect(s.cm).toBe(cm);
     const decoded = decodeMandate(s.payloadSd, s.disclosures);
@@ -117,10 +113,10 @@ describe("prepareSigning", () => {
   });
 
   it("derives the payment confirmation details from the mandate", async () => {
-    const s = await prepareSigning(mandate(), randomSalt(), evidence, origin);
+    const s = await prepareSigning(mandate(), randomSalt(), evidence);
     expect(s.spc).toEqual({
       payeeName: "Keelson",
-      payeeOrigin: origin,
+      payeeOrigin: "https://keelson.finance",
       total: { currency: "USD", value: "100.00" },
     });
   });

@@ -8,6 +8,12 @@ export interface SpcDetails {
   total: { currency: string; value: string };
 }
 
+/** The WebAuthn RP ID every passkey is scoped to. */
+export const RP_ID = "keelson.finance";
+
+/** The SPC payee: Keelson, at its RP ID domain (SPC requires an https payee origin). */
+export const SPC_PAYEE_ORIGIN: string = `https://${RP_ID}`;
+
 /** The payment instrument every mandate is confirmed with. */
 export const SPC_INSTRUMENT: { readonly displayName: string; readonly icon: string } = {
   displayName: "Keelson mandate",
@@ -15,15 +21,16 @@ export const SPC_INSTRUMENT: { readonly displayName: string; readonly icon: stri
 };
 
 /**
- * The SPC dialog details for `m`: Keelson at `payeeOrigin` as the payee and the per-purchase cap,
- * `payment.amount_range.max`, as the total. Signer and verifier both derive them with this.
+ * The SPC dialog details for `m`: Keelson at {@link SPC_PAYEE_ORIGIN} as the payee and the
+ * per-purchase cap, `payment.amount_range.max`, as the total. Signer and verifier both derive
+ * them with this.
  */
-export function spcDetails(m: Mandate, payeeOrigin: string): SpcDetails {
+export function spcDetails(m: Mandate): SpcDetails {
   const cap = m.payment.constraints.find((c) => c.type === "payment.amount_range");
   if (cap?.type !== "payment.amount_range") throw new RangeError("mandate lacks amount_range");
   return {
     payeeName: "Keelson",
-    payeeOrigin,
+    payeeOrigin: SPC_PAYEE_ORIGIN,
     total: {
       currency: m.payment.currency,
       value: toPayPalValue({ currency: m.payment.currency, minor: BigInt(cap.max) }),

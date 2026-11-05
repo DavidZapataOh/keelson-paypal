@@ -1,5 +1,5 @@
 import { type AuthenticationResponseJSON, startAuthentication } from "@simplewebauthn/browser";
-import { SPC_INSTRUMENT, type SpcDetails } from "./spc.ts";
+import { RP_ID, SPC_INSTRUMENT, type SpcDetails } from "./spc.ts";
 
 /** The WebAuthn assertion fields the server verifies, base64url-encoded as in `AuthenticationResponseJSON`. */
 export interface SignedChallenge {
@@ -13,7 +13,13 @@ export interface SignedChallenge {
 /** The `spc` of `prepareSigning`. */
 export type SpcOptions = SpcDetails;
 
-const RP_ID = "keelson.finance";
+/** One of the user's passkeys, as `GET /v1/passkeys` lists it. */
+export interface PasskeyRef {
+  credentialId: string;
+  /** Registered with the SPC `payment` extension, so SPC can use it. */
+  payment: boolean;
+}
+
 const TIMEOUT_MS = 120_000;
 
 const toBase64Url = (bytes: Uint8Array): string => {
@@ -37,21 +43,20 @@ async function spcAvailable(): Promise<boolean> {
 /** Per-request passkey registration options: universal unless SPC can be used on this device. */
 export interface RegistrationOptions {
   authenticatorAttachment?: "platform";
-  extensions?: { payment: { isPayment: true } };
 }
 
 /**
  * Registration options for a new passkey. Any authenticator (security key, phone, platform) can
- * register; only when the browser supports Secure Payment Confirmation and has a user-verifying
- * platform authenticator is the passkey created there with the SPC `payment` extension, which
- * SPC requires.
+ * register. When the browser supports Secure Payment Confirmation and has a user-verifying
+ * platform authenticator, the passkey is created there; the server then issues the SPC `payment`
+ * extension and records the passkey as payment-capable.
  */
 export async function passkeyRegistrationOptions(): Promise<RegistrationOptions> {
   const platform =
     (await globalThis.PublicKeyCredential?.isUserVerifyingPlatformAuthenticatorAvailable?.()) ===
     true;
   if (!platform || !(await spcAvailable())) return {};
-  return { authenticatorAttachment: "platform", extensions: { payment: { isPayment: true } } };
+  return { authenticatorAttachment: "platform" };
 }
 
 const isNotSupported = (e: unknown): boolean =>
@@ -87,19 +92,21 @@ async function signWithSpc(
 }
 
 /**
- * Signs `challenge` with a registered passkey, requiring user verification. With `opts.spc`
- * (the `spc` of `prepareSigning`) and a browser that supports Secure Payment Confirmation, the
- * browser shows the payee and total in its own confirmation dialog. A plain WebAuthn assertion is
- * used only when SPC is unsupported; a cancelled or failed SPC prompt is never retried.
+ * Signs `challenge` with one of `passkeys`, requiring user verification. With `opts.spc` (the
+ * `spc` of `prepareSigning`), a browser that supports Secure Payment Confirmation and at least one
+ * payment-capable passkey, the browser shows the payee and total in its own confirmation dialog
+ * and only those passkeys are offered. Otherwise, or when SPC is unsupported, a plain WebAuthn
+ * assertion is requested from every passkey; a cancelled or failed SPC prompt is never retried.
  */
 export async function signMandate(
   challenge: Uint8Array,
-  credentialIds: string[],
+  passkeys: readonly PasskeyRef[],
   opts?: { spc?: SpcOptions },
 ): Promise<SignedChallenge> {
-  if (opts?.spc && (await spcAvailable())) {
+  const payment = passkeys.filter((p) => p.payment).map((p) => p.credentialId);
+  if (opts?.spc && payment.length > 0 && (await spcAvailable())) {
     try {
-      return await signWithSpc(challenge, credentialIds, opts.spc);
+      return await signWithSpc(challenge, payment, opts.spc);
     } catch (e) {
       if (!isNotSupported(e)) throw e;
     }
@@ -110,7 +117,7 @@ export async function signMandate(
       rpId: RP_ID,
       userVerification: "required",
       timeout: TIMEOUT_MS,
-      allowCredentials: credentialIds.map((id) => ({ id, type: "public-key" })),
+      allowCredentials: passkeys.map((p) => ({ id: p.credentialId, type: "public-key" })),
     },
   });
   return fromCredential(assertion);

@@ -155,6 +155,24 @@ components:
         - rows
         - warnings
       description: The card rendered from the stored payload, before any checkout evidence.
+    Passkeys:
+      type: object
+      properties:
+        passkeys:
+          type: array
+          items:
+            type: object
+            properties:
+              credentialId:
+                type: string
+              payment:
+                type: boolean
+                description: Registered with the SPC `payment` extension, so SPC can use it.
+            required:
+              - credentialId
+              - payment
+      required:
+        - passkeys
   parameters: {}
 paths:
   /health:
@@ -354,6 +372,25 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "404":
           description: No such mandate for this user
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/passkeys:
+    get:
+      tags:
+        - passkeys
+      summary: List the signed-in user's passkeys
+      description: The credentials a mandate can be signed with, oldest first.
+      responses:
+        "200":
+          description: The passkeys
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Passkeys"
+        "401":
+          description: Not signed in
           content:
             application/problem+json:
               schema:

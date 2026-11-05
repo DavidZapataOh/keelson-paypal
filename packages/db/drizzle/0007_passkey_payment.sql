@@ -1,0 +1,1 @@
+ALTER TABLE "passkey" ADD COLUMN "payment" boolean DEFAULT false NOT NULL;

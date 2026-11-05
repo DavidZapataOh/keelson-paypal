@@ -6,12 +6,12 @@ import {
   hSd,
   type Mandate,
   mandateChallenge,
+  RP_ID,
   renderCard,
   spcDetails,
 } from "@keelson/mandate";
 import type { SignedChallenge } from "@keelson/mandate/browser";
 import type { Deps } from "../app.ts";
-import { DEFAULT_RP_ID } from "../auth.ts";
 import { passkeyJwk, SignatureError, verifyMandateSignature } from "../mandate-signature.ts";
 import { requireSession } from "../middleware/auth.ts";
 import type { Principal } from "../principal.ts";
@@ -173,7 +173,7 @@ export function registerMandates(
     const now = Date.now();
     if (m.exp * 1000 <= now) return invalid("exp has passed");
     if (m.nbf * 1000 > now) return invalid("nbf is in the future");
-    const rpId = deps.passkeyRpId ?? DEFAULT_RP_ID;
+    const rpId = deps.passkeyRpId ?? RP_ID;
     if (m.user.cred.rp_id !== rpId) return invalid(`user.cred.rp_id must be ${rpId}`);
     const budget = m.payment.constraints.find((x) => x.type === "payment.budget");
     const merchants = m.checkout.constraints.find((x) => x.type === "checkout.allowed_merchants");
@@ -247,8 +247,7 @@ export function registerMandates(
         passkey: key,
         expectedOrigin: origin,
         expectedRpId: rpId,
-        // SPC requires an https payee; the payee is Keelson at its RP ID domain.
-        spc: spcDetails(m, `https://${rpId}`),
+        spc: spcDetails(m),
       }));
     } catch (err) {
       if (err instanceof SignatureError) return invalidSignature();

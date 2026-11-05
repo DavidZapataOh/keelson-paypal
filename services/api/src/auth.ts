@@ -1,7 +1,9 @@
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { oauthProvider } from "@better-auth/oauth-provider";
 import { passkey } from "@better-auth/passkey";
-import type { Db } from "@keelson/db";
+import { type Db, passkey as passkeyTable, sql } from "@keelson/db";
+import { RP_ID } from "@keelson/mandate";
+import type { AuthenticationExtensionsClientInputs } from "@simplewebauthn/server";
 import { cose, decodeCredentialPublicKey } from "@simplewebauthn/server/helpers";
 import { betterAuth } from "better-auth";
 import { APIError, createAuthMiddleware } from "better-auth/api";
@@ -10,11 +12,15 @@ import { jwt } from "better-auth/plugins";
 /** RFC 8707 resource identifier of this API; the `aud` of every access token it accepts. */
 export const apiAudience = "https://api.keelson.finance";
 
-/** The WebAuthn RP ID of every passkey outside tests. */
-export const DEFAULT_RP_ID = "keelson.finance";
-
 /** ES256 only: mandate signatures are verified with P-256 on chain. */
 const pubKeyCredParams = [{ type: "public-key", alg: cose.COSEALG.ES256 }];
+
+/** The Secure Payment Confirmation `payment` extension, which the WebAuthn typings lack. */
+const paymentExtension = { payment: { isPayment: true } } as AuthenticationExtensionsClientInputs;
+
+/** Verification-table prefix marking a registration challenge issued with `paymentExtension`. */
+const PAYMENT_CEREMONY = "passkey-payment:";
+const PAYMENT_CEREMONY_MS = 10 * 60_000;
 
 const scopes = ["countersign:write", "alibis:read", "disputes:read", "operators:write"] as const;
 
@@ -38,11 +44,37 @@ export function createAuth(db: Db, env: AuthEnv) {
     trustedOrigins: [env.APP_ORIGIN],
     disabledPaths: ["/token"],
     hooks: {
+      // A passkey is payment-capable only if the server issued the `payment` extension for its
+      // ceremony; the verified registration's challenge identifies that ceremony.
       after: createAuthMiddleware(async (ctx) => {
         const returned = ctx.context.returned;
-        if (ctx.path !== "/passkey/generate-register-options" || returned instanceof APIError)
-          return;
-        return ctx.json({ ...(returned as object), pubKeyCredParams });
+        if (returned instanceof APIError) return;
+        if (ctx.path === "/passkey/generate-register-options") {
+          const options = returned as { challenge: string; extensions?: { payment?: unknown } };
+          if (options.extensions?.payment) {
+            await ctx.context.internalAdapter.createVerificationValue({
+              identifier: `${PAYMENT_CEREMONY}${options.challenge}`,
+              value: "payment",
+              expiresAt: new Date(Date.now() + PAYMENT_CEREMONY_MS),
+            });
+          }
+          return ctx.json({ ...options, pubKeyCredParams });
+        }
+        if (ctx.path === "/passkey/verify-registration") {
+          const body = ctx.body as { response?: { response?: { clientDataJSON?: string } } };
+          const clientData = JSON.parse(
+            Buffer.from(body.response?.response?.clientDataJSON ?? "", "base64url").toString(),
+          ) as { challenge: string };
+          const issued = await ctx.context.internalAdapter.consumeVerificationValue(
+            `${PAYMENT_CEREMONY}${clientData.challenge}`,
+          );
+          if (!issued) return;
+          const { id } = returned as { id: string };
+          await db
+            .update(passkeyTable)
+            .set({ payment: true })
+            .where(sql`${passkeyTable.id} = ${id}`);
+        }
       }),
     },
     user: {
@@ -68,14 +100,16 @@ export function createAuth(db: Db, env: AuthEnv) {
         clientPrivileges: ({ user }) => user?.role === "admin",
       }),
       // The app origin is a subdomain of the RP ID, so WebAuthn accepts it without a
-      // Related Origins `/.well-known/webauthn` document. Any authenticator may register; the
-      // client asks for a platform one with the SPC `payment` extension when the device has it.
+      // Related Origins `/.well-known/webauthn` document. Any authenticator may register; a
+      // client asking for a platform one gets the SPC `payment` extension, which needs it.
       passkey({
-        rpID: env.PASSKEY_RP_ID ?? DEFAULT_RP_ID,
+        rpID: env.PASSKEY_RP_ID ?? RP_ID,
         rpName: "Keelson",
         origin: env.APP_ORIGIN,
         authenticatorSelection: { userVerification: "required", residentKey: "required" },
         registration: {
+          extensions: ({ ctx }) =>
+            ctx.query?.authenticatorAttachment === "platform" ? paymentExtension : undefined,
           afterVerification: ({ verification }) => {
             const key = verification.registrationInfo?.credential.publicKey;
             const alg = key && decodeCredentialPublicKey(key).get(cose.COSEKEYS.alg);

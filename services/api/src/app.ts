@@ -19,6 +19,7 @@ import { ProblemSchema, problem } from "./problem.ts";
 import { registerEvents } from "./routes/events.ts";
 import { registerHealth } from "./routes/health.ts";
 import { registerMandates } from "./routes/mandates.ts";
+import { registerPasskeys } from "./routes/passkeys.ts";
 import { registerStatus } from "./routes/status.ts";
 
 export interface Deps {
@@ -116,6 +117,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerStatus(app, deps);
   registerEvents(app, deps);
   registerMandates(app, deps);
+  registerPasskeys(app, deps);
   app.get("/openapi.json", (c) =>
     c.json(app.getOpenAPI31Document({ openapi: "3.1.0", info: apiInfo })),
   );
