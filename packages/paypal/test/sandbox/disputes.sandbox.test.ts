@@ -8,7 +8,7 @@ import {
   provideEvidence,
   requireEvidence,
 } from "../../src/disputes.ts";
-import { fromSdkError } from "../../src/errors.ts";
+import { fromSdkError, PayPalError } from "../../src/errors.ts";
 import { parseInvoiceId } from "../../src/ids.ts";
 import { createPayPal, type PayPal } from "../../src/sdk.ts";
 import { TokenCache } from "../../src/token.ts";
@@ -26,6 +26,19 @@ async function onePagePdf(text: string): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   doc.addPage().drawText(text, { x: 50, y: 700, size: 14 });
   return doc.save();
+}
+
+async function act<T>(name: string, run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (e) {
+    if (e instanceof PayPalError) {
+      console.info(
+        `${name} failed: ${e.status} ${e.name} ${e.details.map((d) => d.issue).join(",")} debug_id=${e.debugId}`,
+      );
+    }
+    throw e;
+  }
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -72,26 +85,31 @@ describe("disputes (sandbox)", () => {
 
         if (d.status === "WAITING_FOR_SELLER_RESPONSE" && links.has("provide_evidence")) {
           if (!provided) {
-            await provideEvidence(
-              paypal.fetch,
-              id,
-              {
-                evidences: [
-                  {
-                    evidence_type: "OTHER",
-                    notes: "Sandbox evidence submitted by the integration test.",
-                    documents: [{ name: "evidence.pdf" }],
-                  },
-                ],
-              },
-              [{ name: "evidence.pdf", bytes: await onePagePdf("Keelson sandbox evidence") }],
+            const pdf = await onePagePdf("Keelson sandbox evidence");
+            await act("provideEvidence", () =>
+              provideEvidence(
+                paypal.fetch,
+                id,
+                {
+                  evidences: [
+                    {
+                      evidence_type: "OTHER",
+                      notes: "Sandbox evidence submitted by the integration test.",
+                      documents: [{ name: "evidence.pdf" }],
+                    },
+                  ],
+                },
+                [{ name: "evidence.pdf", bytes: pdf }],
+              ),
             );
             provided = true;
             log("evidence provided");
           }
         } else if (d.status === "WAITING_FOR_SELLER_RESPONSE" && links.has("escalate")) {
           if (!escalated) {
-            await escalate(paypal.fetch, id, "Escalating to a claim for resolution.");
+            await act("escalate", () =>
+              escalate(paypal.fetch, id, "Escalating to a claim for resolution."),
+            );
             escalated = true;
             log("escalated");
           }
@@ -101,13 +119,15 @@ describe("disputes (sandbox)", () => {
           links.has("adjudicate")
         ) {
           if (!adjudicated) {
-            await adjudicate(paypal.fetch, id, "SELLER_FAVOR");
+            await act("adjudicate", () => adjudicate(paypal.fetch, id, "SELLER_FAVOR"));
             adjudicated = true;
             log("adjudicated SELLER_FAVOR");
           }
         } else if (d.status === "UNDER_REVIEW" && !provided && links.has("require_evidence")) {
           if (!requested) {
-            await requireEvidence(paypal.fetch, id, "SELLER_EVIDENCE");
+            await act("requireEvidence", () =>
+              requireEvidence(paypal.fetch, id, "SELLER_EVIDENCE"),
+            );
             requested = true;
             log("evidence required from the seller");
           }

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { PayPalConfig } from "../src/config.ts";
 import { adjudicate, evidenceForm, requireEvidence } from "../src/disputes.ts";
 import { createRestClient } from "../src/rest.ts";
+import { subsequentAction } from "../src/schemas/disputes.ts";
 import { TokenCache } from "../src/token.ts";
 
 const production: PayPalConfig = {
@@ -62,5 +63,16 @@ describe("evidence multipart body", () => {
       bytes: new Uint8Array(9 * 1024 * 1024),
     }));
     expect(() => evidenceForm(input, files)).toThrow(/50 MB in total/);
+  });
+});
+
+describe("action responses", () => {
+  it("parses the bare link PayPal returns from adjudicate", () => {
+    const body = {
+      href: "https://api.sandbox.paypal.com/v1/customer/disputes/PP-R-LNA-10196668",
+      rel: "self",
+      method: "GET",
+    };
+    expect(subsequentAction.parse(body)).toMatchObject(body);
   });
 });
