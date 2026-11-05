@@ -1,9 +1,13 @@
 import { BN254_FR_MODULUS } from "@aztec/bb.js";
 import { describe, expect, test } from "vitest";
 import { fieldFromAscii, KEELSON_MANDATE, poseidon2 } from "../src/poseidon2.js";
+import vectors from "./vectors/poseidon2.json" with { type: "json" };
 
 describe("poseidon2", () => {
-  test.todo("poseidon2([1n, 2n]) matches the barretenberg vector");
+  test.each(vectors)("matches the golden vector $name", async ({ input, expected }) => {
+    const hash = await poseidon2(input.map((value) => BigInt(value)));
+    expect(`0x${hash.toString(16).padStart(64, "0")}`).toBe(expected);
+  });
 
   test("rejects an input at or above the field modulus", async () => {
     await expect(poseidon2([BN254_FR_MODULUS])).rejects.toThrow(RangeError);

@@ -10,6 +10,7 @@ import {
   fromPayPalValue,
   toPayPalValue,
 } from "../src/money.js";
+import vectors from "./vectors/money.json" with { type: "json" };
 
 const PAYPAL_CURRENCIES = [
   ["AUD", 36],
@@ -125,5 +126,17 @@ describe("fromPayPalValue", () => {
 describe("currencyNumeric", () => {
   it("returns the ISO 4217 numeric code", () => {
     expect(currencyNumeric("USD")).toBe(840);
+  });
+});
+
+describe("golden vectors", () => {
+  it.each(vectors)("$name", ({ input, expected }) => {
+    const currency = input.currency as CurrencyCode;
+    const run = () =>
+      input.op === "toPayPalValue"
+        ? toPayPalValue({ currency, minor: BigInt(input.minor as string) })
+        : fromPayPalValue(currency, input.value as string).minor.toString();
+    if (expected === "error") expect(run).toThrow();
+    else expect(run()).toBe(expected);
   });
 });

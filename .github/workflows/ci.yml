@@ -31,3 +31,28 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm turbo run typecheck test build --cache-dir=.turbo
+      - run: pnpm --filter @keelson/core vectors && git diff --exit-code
+
+  rust:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.99.1
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+
+  noir:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: |
+          curl -L https://raw.githubusercontent.com/noir-lang/noirup/refs/heads/main/install | bash
+          echo "$HOME/.nargo/bin" >> "$GITHUB_PATH"
+      - run: noirup -v 1.0.0
+      - run: nargo test
+        working-directory: circuits/vectors

@@ -1,0 +1,350 @@
+[
+  {
+    "name": "mandate/flat",
+    "input": {
+      "dst": "keelson/mandate/v1",
+      "value": {
+        "zeta": 1,
+        "alpha": "a",
+        "mid": true,
+        "none": null
+      }
+    },
+    "expected": "0x5f78f37498f651812eb351322488c51a5f177ca8f19264d39f66b7173cf9269a"
+  },
+  {
+    "name": "mandate/nested-unicode",
+    "input": {
+      "dst": "keelson/mandate/v1",
+      "value": {
+        "merchant": {
+          "name": "Café Ñandú 東京",
+          "tags": [
+            "€",
+            "😀",
+            "\u0000"
+          ]
+        },
+        "lines": [
+          {
+            "sku": "A-1",
+            "qty": 2
+          },
+          {
+            "sku": "B-2",
+            "qty": 10
+          }
+        ],
+        "note": "line\nbreak \"quoted\" back\\slash"
+      }
+    },
+    "expected": "0x1781af7e555090db29d9c65faa335475eb1c5c6718285b7048fc8c12de5be03f"
+  },
+  {
+    "name": "mandateChallenge/flat",
+    "input": {
+      "dst": "keelson/mandate-challenge/v1",
+      "value": {
+        "zeta": 1,
+        "alpha": "a",
+        "mid": true,
+        "none": null
+      }
+    },
+    "expected": "0xea9cc126cf9b2e631bc38fe0dfe1445b65503c10bec7aaaf9217c5fe498da9ed"
+  },
+  {
+    "name": "mandateChallenge/nested-unicode",
+    "input": {
+      "dst": "keelson/mandate-challenge/v1",
+      "value": {
+        "merchant": {
+          "name": "Café Ñandú 東京",
+          "tags": [
+            "€",
+            "😀",
+            "\u0000"
+          ]
+        },
+        "lines": [
+          {
+            "sku": "A-1",
+            "qty": 2
+          },
+          {
+            "sku": "B-2",
+            "qty": 10
+          }
+        ],
+        "note": "line\nbreak \"quoted\" back\\slash"
+      }
+    },
+    "expected": "0x7f6f0874da8f1715abe151298bf5e6e3af9ae688db9d133cda43d5c36463e403"
+  },
+  {
+    "name": "cart/flat",
+    "input": {
+      "dst": "keelson/cart/v1",
+      "value": {
+        "zeta": 1,
+        "alpha": "a",
+        "mid": true,
+        "none": null
+      }
+    },
+    "expected": "0x9c1e492dddde5ddcfdf02b490618b8a783d5e212f297f22795de29569ecb7458"
+  },
+  {
+    "name": "cart/nested-unicode",
+    "input": {
+      "dst": "keelson/cart/v1",
+      "value": {
+        "merchant": {
+          "name": "Café Ñandú 東京",
+          "tags": [
+            "€",
+            "😀",
+            "\u0000"
+          ]
+        },
+        "lines": [
+          {
+            "sku": "A-1",
+            "qty": 2
+          },
+          {
+            "sku": "B-2",
+            "qty": 10
+          }
+        ],
+        "note": "line\nbreak \"quoted\" back\\slash"
+      }
+    },
+    "expected": "0x1df9fc61ffbd91ec88368ff02005074f05ae9cf58959827a30566ab721163e1f"
+  },
+  {
+    "name": "evidenceItem/flat",
+    "input": {
+      "dst": "keelson/evidence-item/v1",
+      "value": {
+        "zeta": 1,
+        "alpha": "a",
+        "mid": true,
+        "none": null
+      }
+    },
+    "expected": "0x5ec7b5070526841c9d4196daaa32d217066949fae610324b11a5c13e402fdc99"
+  },
+  {
+    "name": "evidenceItem/nested-unicode",
+    "input": {
+      "dst": "keelson/evidence-item/v1",
+      "value": {
+        "merchant": {
+          "name": "Café Ñandú 東京",
+          "tags": [
+            "€",
+            "😀",
+            "\u0000"
+          ]
+        },
+        "lines": [
+          {
+            "sku": "A-1",
+            "qty": 2
+          },
+          {
+            "sku": "B-2",
+            "qty": 10
+          }
+        ],
+        "note": "line\nbreak \"quoted\" back\\slash"
+      }
+    },
+    "expected": "0x1179cd244a06982e08d6516ae47af6353eed999a6f6d848dd75416c11a9e3899"
+  },
+  {
+    "name": "eval/flat",
+    "input": {
+      "dst": "keelson/eval/v1",
+      "value": {
+        "zeta": 1,
+        "alpha": "a",
+        "mid": true,
+        "none": null
+      }
+    },
+    "expected": "0xb78cebb672273d5f756f5ad7c518f0167a26b77d54a3f136e82c7fb1a0f66f90"
+  },
+  {
+    "name": "eval/nested-unicode",
+    "input": {
+      "dst": "keelson/eval/v1",
+      "value": {
+        "merchant": {
+          "name": "Café Ñandú 東京",
+          "tags": [
+            "€",
+            "😀",
+            "\u0000"
+          ]
+        },
+        "lines": [
+          {
+            "sku": "A-1",
+            "qty": 2
+          },
+          {
+            "sku": "B-2",
+            "qty": 10
+          }
+        ],
+        "note": "line\nbreak \"quoted\" back\\slash"
+      }
+    },
+    "expected": "0x4e5fc901822a1eaf99757239895cffc30ed9c6832246fc0207d10194c1a3fa2f"
+  },
+  {
+    "name": "alibi/flat",
+    "input": {
+      "dst": "keelson/alibi/v1",
+      "value": {
+        "zeta": 1,
+        "alpha": "a",
+        "mid": true,
+        "none": null
+      }
+    },
+    "expected": "0x322a81f7844b6faeaee6e44a0db11d3593d91708c01e414d955b409dd92c4bd7"
+  },
+  {
+    "name": "alibi/nested-unicode",
+    "input": {
+      "dst": "keelson/alibi/v1",
+      "value": {
+        "merchant": {
+          "name": "Café Ñandú 東京",
+          "tags": [
+            "€",
+            "😀",
+            "\u0000"
+          ]
+        },
+        "lines": [
+          {
+            "sku": "A-1",
+            "qty": 2
+          },
+          {
+            "sku": "B-2",
+            "qty": 10
+          }
+        ],
+        "note": "line\nbreak \"quoted\" back\\slash"
+      }
+    },
+    "expected": "0x657be53bcc146d52bee38d1e32e562d41a8c652d49a058860cdd57471b52b0c8"
+  },
+  {
+    "name": "verdict/flat",
+    "input": {
+      "dst": "keelson/verdict/v1",
+      "value": {
+        "zeta": 1,
+        "alpha": "a",
+        "mid": true,
+        "none": null
+      }
+    },
+    "expected": "0x076e1cece0768632ab47d9e4d02e0847b6d1e5a2a67feb1bdf6ff3d82eabd361"
+  },
+  {
+    "name": "verdict/nested-unicode",
+    "input": {
+      "dst": "keelson/verdict/v1",
+      "value": {
+        "merchant": {
+          "name": "Café Ñandú 東京",
+          "tags": [
+            "€",
+            "😀",
+            "\u0000"
+          ]
+        },
+        "lines": [
+          {
+            "sku": "A-1",
+            "qty": 2
+          },
+          {
+            "sku": "B-2",
+            "qty": 10
+          }
+        ],
+        "note": "line\nbreak \"quoted\" back\\slash"
+      }
+    },
+    "expected": "0x480db81335561343d4ce3cc33a8c4f31bb8e1d835eb4fa7ef61cc8c5716317f2"
+  },
+  {
+    "name": "empty-object",
+    "input": {
+      "dst": "keelson/cart/v1",
+      "value": {}
+    },
+    "expected": "0xca7b2640eb4c5c55ec2e5f962a8d3133a1b48af9494d5b116a9e778e61ec6c51"
+  },
+  {
+    "name": "empty-array",
+    "input": {
+      "dst": "keelson/cart/v1",
+      "value": []
+    },
+    "expected": "0x979d0aad21022e7082c5ed593d463be992f3bb936fdeb6198c19dd55acb9b599"
+  },
+  {
+    "name": "null",
+    "input": {
+      "dst": "keelson/eval/v1",
+      "value": null
+    },
+    "expected": "0x7677567f806a23f61f732fda4f298d4dd61d9416be957aa11177c86bcfafe27f"
+  },
+  {
+    "name": "max-safe-integer",
+    "input": {
+      "dst": "keelson/mandate/v1",
+      "value": {
+        "n": 9007199254740991
+      }
+    },
+    "expected": "0x8bba86b566db50d211987e8e35f1bf2b30ec914e5f3e6f94d891bfc308853c2a"
+  },
+  {
+    "name": "negative-zero-and-ints",
+    "input": {
+      "dst": "keelson/verdict/v1",
+      "value": [
+        0,
+        0,
+        -1,
+        1000
+      ]
+    },
+    "expected": "0x18d1d92c37d6995e5c98e40b6e24dbb138ae9829be06440d2e1fc90c54de328a"
+  },
+  {
+    "name": "key-order",
+    "input": {
+      "dst": "keelson/alibi/v1",
+      "value": {
+        "9": 5,
+        "10": 4,
+        "b": 2,
+        "a": 1,
+        "é": 3
+      }
+    },
+    "expected": "0x297a4cad188dfb17d48d0e74de86e7f2c4b6faceb72f59d9d7dc1d7271503a89"
+  }
+]

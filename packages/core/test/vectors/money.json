@@ -1,0 +1,659 @@
+[
+  {
+    "name": "to/AUD/9400",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "AUD",
+      "minor": "9400"
+    },
+    "expected": "94.00"
+  },
+  {
+    "name": "to/AUD/5",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "AUD",
+      "minor": "5"
+    },
+    "expected": "0.05"
+  },
+  {
+    "name": "to/BRL/9400",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "BRL",
+      "minor": "9400"
+    },
+    "expected": "94.00"
+  },
+  {
+    "name": "to/BRL/5",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "BRL",
+      "minor": "5"
+    },
+    "expected": "0.05"
+  },
+  {
+    "name": "to/CAD/9400",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "CAD",
+      "minor": "9400"
+    },
+    "expected": "94.00"
+  },
+  {
+    "name": "to/CAD/5",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "CAD",
+      "minor": "5"
+    },
+    "expected": "0.05"
+  },
+  {
+    "name": "to/CNY/9400",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "CNY",
+      "minor": "9400"
+    },
+    "expected": "94.00"
+  },
+  {
+    "name": "to/CNY/5",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "CNY",
+      "minor": "5"
+    },
+    "expected": "0.05"
+  },
+  {
+    "name": "to/CZK/9400",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "CZK",
+      "minor": "9400"
+    },
+    "expected": "94.00"
+  },
+  {
+    "name": "to/CZK/5",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "CZK",
+      "minor": "5"
+    },
+    "expected": "0.05"
+  },
+  {
+    "name": "to/DKK/9400",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "DKK",
+      "minor": "9400"
+    },
+    "expected": "94.00"
+  },
+  {
+    "name": "to/DKK/5",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "DKK",
+      "minor": "5"
+    },
+    "expected": "0.05"
+  },
+  {
+    "name": "to/EUR/9400",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "EUR",
+      "minor": "9400"
+    },
+    "expected": "94.00"
+  },
+  {
+    "name": "to/EUR/5",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "EUR",
+      "minor": "5"
+    },
+    "expected": "0.05"
+  },
+  {
+    "name": "to/HKD/9400",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "HKD",
+      "minor": "9400"
+    },
+    "expected": "94.00"
+  },
+  {
+    "name": "to/HKD/5",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "HKD",
+      "minor": "5"
+    },
+    "expected": "0.05"
+  },
+  {
+    "name": "to/HUF/9400",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "HUF",
+      "minor": "9400"
+    },
+    "expected": "94"
+  },
+  {
+    "name": "to/HUF/5",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "HUF",
+      "minor": "5"
+    },
+    "expected": "error"
+  },
+  {
+    "name": "to/ILS/9400",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "ILS",
+      "minor": "9400"
+    },
+    "expected": "94.00"
+  },
+  {
+    "name": "to/ILS/5",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "ILS",
+      "minor": "5"
+    },
+    "expected": "0.05"
+  },
+  {
+    "name": "to/JPY/9400",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "JPY",
+      "minor": "9400"
+    },
+    "expected": "9400"
+  },
+  {
+    "name": "to/JPY/5",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "JPY",
+      "minor": "5"
+    },
+    "expected": "5"
+  },
+  {
+    "name": "to/MYR/9400",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "MYR",
+      "minor": "9400"
+    },
+    "expected": "94.00"
+  },
+  {
+    "name": "to/MYR/5",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "MYR",
+      "minor": "5"
+    },
+    "expected": "0.05"
+  },
+  {
+    "name": "to/MXN/9400",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "MXN",
+      "minor": "9400"
+    },
+    "expected": "94.00"
+  },
+  {
+    "name": "to/MXN/5",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "MXN",
+      "minor": "5"
+    },
+    "expected": "0.05"
+  },
+  {
+    "name": "to/TWD/9400",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "TWD",
+      "minor": "9400"
+    },
+    "expected": "94"
+  },
+  {
+    "name": "to/TWD/5",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "TWD",
+      "minor": "5"
+    },
+    "expected": "error"
+  },
+  {
+    "name": "to/NZD/9400",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "NZD",
+      "minor": "9400"
+    },
+    "expected": "94.00"
+  },
+  {
+    "name": "to/NZD/5",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "NZD",
+      "minor": "5"
+    },
+    "expected": "0.05"
+  },
+  {
+    "name": "to/NOK/9400",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "NOK",
+      "minor": "9400"
+    },
+    "expected": "94.00"
+  },
+  {
+    "name": "to/NOK/5",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "NOK",
+      "minor": "5"
+    },
+    "expected": "0.05"
+  },
+  {
+    "name": "to/PHP/9400",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "PHP",
+      "minor": "9400"
+    },
+    "expected": "94.00"
+  },
+  {
+    "name": "to/PHP/5",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "PHP",
+      "minor": "5"
+    },
+    "expected": "0.05"
+  },
+  {
+    "name": "to/PLN/9400",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "PLN",
+      "minor": "9400"
+    },
+    "expected": "94.00"
+  },
+  {
+    "name": "to/PLN/5",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "PLN",
+      "minor": "5"
+    },
+    "expected": "0.05"
+  },
+  {
+    "name": "to/GBP/9400",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "GBP",
+      "minor": "9400"
+    },
+    "expected": "94.00"
+  },
+  {
+    "name": "to/GBP/5",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "GBP",
+      "minor": "5"
+    },
+    "expected": "0.05"
+  },
+  {
+    "name": "to/SGD/9400",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "SGD",
+      "minor": "9400"
+    },
+    "expected": "94.00"
+  },
+  {
+    "name": "to/SGD/5",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "SGD",
+      "minor": "5"
+    },
+    "expected": "0.05"
+  },
+  {
+    "name": "to/SEK/9400",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "SEK",
+      "minor": "9400"
+    },
+    "expected": "94.00"
+  },
+  {
+    "name": "to/SEK/5",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "SEK",
+      "minor": "5"
+    },
+    "expected": "0.05"
+  },
+  {
+    "name": "to/CHF/9400",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "CHF",
+      "minor": "9400"
+    },
+    "expected": "94.00"
+  },
+  {
+    "name": "to/CHF/5",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "CHF",
+      "minor": "5"
+    },
+    "expected": "0.05"
+  },
+  {
+    "name": "to/THB/9400",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "THB",
+      "minor": "9400"
+    },
+    "expected": "94.00"
+  },
+  {
+    "name": "to/THB/5",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "THB",
+      "minor": "5"
+    },
+    "expected": "0.05"
+  },
+  {
+    "name": "to/USD/9400",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "USD",
+      "minor": "9400"
+    },
+    "expected": "94.00"
+  },
+  {
+    "name": "to/USD/5",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "USD",
+      "minor": "5"
+    },
+    "expected": "0.05"
+  },
+  {
+    "name": "to/USD/0",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "USD",
+      "minor": "0"
+    },
+    "expected": "0.00"
+  },
+  {
+    "name": "to/USD/1",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "USD",
+      "minor": "1"
+    },
+    "expected": "0.01"
+  },
+  {
+    "name": "to/USD/9",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "USD",
+      "minor": "9"
+    },
+    "expected": "0.09"
+  },
+  {
+    "name": "to/USD/10",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "USD",
+      "minor": "10"
+    },
+    "expected": "0.10"
+  },
+  {
+    "name": "to/USD/100",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "USD",
+      "minor": "100"
+    },
+    "expected": "1.00"
+  },
+  {
+    "name": "to/USD/9400",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "USD",
+      "minor": "9400"
+    },
+    "expected": "94.00"
+  },
+  {
+    "name": "to/USD/123456789",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "USD",
+      "minor": "123456789"
+    },
+    "expected": "1234567.89"
+  },
+  {
+    "name": "to/USD/-1",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "USD",
+      "minor": "-1"
+    },
+    "expected": "-0.01"
+  },
+  {
+    "name": "to/USD/-9400",
+    "input": {
+      "op": "toPayPalValue",
+      "currency": "USD",
+      "minor": "-9400"
+    },
+    "expected": "-94.00"
+  },
+  {
+    "name": "from/USD/94.00",
+    "input": {
+      "op": "fromPayPalValue",
+      "currency": "USD",
+      "value": "94.00"
+    },
+    "expected": "9400"
+  },
+  {
+    "name": "from/USD/94.5",
+    "input": {
+      "op": "fromPayPalValue",
+      "currency": "USD",
+      "value": "94.5"
+    },
+    "expected": "9450"
+  },
+  {
+    "name": "from/USD/94",
+    "input": {
+      "op": "fromPayPalValue",
+      "currency": "USD",
+      "value": "94"
+    },
+    "expected": "9400"
+  },
+  {
+    "name": "from/USD/0.01",
+    "input": {
+      "op": "fromPayPalValue",
+      "currency": "USD",
+      "value": "0.01"
+    },
+    "expected": "1"
+  },
+  {
+    "name": "from/USD/-0.50",
+    "input": {
+      "op": "fromPayPalValue",
+      "currency": "USD",
+      "value": "-0.50"
+    },
+    "expected": "-50"
+  },
+  {
+    "name": "from/USD/94.001",
+    "input": {
+      "op": "fromPayPalValue",
+      "currency": "USD",
+      "value": "94.001"
+    },
+    "expected": "error"
+  },
+  {
+    "name": "from/USD/-0",
+    "input": {
+      "op": "fromPayPalValue",
+      "currency": "USD",
+      "value": "-0"
+    },
+    "expected": "error"
+  },
+  {
+    "name": "from/USD/01.00",
+    "input": {
+      "op": "fromPayPalValue",
+      "currency": "USD",
+      "value": "01.00"
+    },
+    "expected": "error"
+  },
+  {
+    "name": "from/USD/.5",
+    "input": {
+      "op": "fromPayPalValue",
+      "currency": "USD",
+      "value": ".5"
+    },
+    "expected": "error"
+  },
+  {
+    "name": "from/USD/1e3",
+    "input": {
+      "op": "fromPayPalValue",
+      "currency": "USD",
+      "value": "1e3"
+    },
+    "expected": "error"
+  },
+  {
+    "name": "from/JPY/94",
+    "input": {
+      "op": "fromPayPalValue",
+      "currency": "JPY",
+      "value": "94"
+    },
+    "expected": "94"
+  },
+  {
+    "name": "from/JPY/94.0",
+    "input": {
+      "op": "fromPayPalValue",
+      "currency": "JPY",
+      "value": "94.0"
+    },
+    "expected": "error"
+  },
+  {
+    "name": "from/HUF/1000",
+    "input": {
+      "op": "fromPayPalValue",
+      "currency": "HUF",
+      "value": "1000"
+    },
+    "expected": "100000"
+  },
+  {
+    "name": "from/HUF/1000.5",
+    "input": {
+      "op": "fromPayPalValue",
+      "currency": "HUF",
+      "value": "1000.5"
+    },
+    "expected": "error"
+  },
+  {
+    "name": "from/TWD/300",
+    "input": {
+      "op": "fromPayPalValue",
+      "currency": "TWD",
+      "value": "300"
+    },
+    "expected": "30000"
+  },
+  {
+    "name": "from/EUR/12345678901234567890.12",
+    "input": {
+      "op": "fromPayPalValue",
+      "currency": "EUR",
+      "value": "12345678901234567890.12"
+    },
+    "expected": "1234567890123456789012"
+  }
+]

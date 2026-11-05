@@ -19,7 +19,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "vectors": "tsc -p tsconfig.build.json && node scripts/vectors.ts"
   },
   "dependencies": {
     "@aztec/bb.js": "5.3.0",

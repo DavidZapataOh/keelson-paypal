@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { DST, fromHex, hashObject, sha256, toHex } from "../src/hash.js";
+import { DST, type Dst, fromHex, hashObject, sha256, toHex } from "../src/hash.js";
+import type { Json } from "../src/jcs.js";
+import vectors from "./vectors/hash.json" with { type: "json" };
 
 const utf8 = (s: string): Uint8Array => new TextEncoder().encode(s);
 
@@ -48,5 +50,11 @@ describe("hex", () => {
   it("rejects malformed input", () => {
     expect(() => fromHex("0x123")).toThrow();
     expect(() => fromHex("0xzz")).toThrow();
+  });
+});
+
+describe("golden vectors", () => {
+  it.each(vectors)("$name", ({ input, expected }) => {
+    expect(toHex(hashObject(input.dst as Dst, input.value as Json))).toBe(expected);
   });
 });

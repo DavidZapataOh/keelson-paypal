@@ -1,5 +1,13 @@
 import { describe, expect, test } from "vitest";
-import { CHAIN_IDS, hashKeelson, keelsonDomain } from "../src/eip712.js";
+import {
+  CHAIN_IDS,
+  hashKeelson,
+  KEELSON_TYPES,
+  type KeelsonChainId,
+  type KeelsonPrimaryType,
+  keelsonDomain,
+} from "../src/eip712.js";
+import vectors from "./vectors/eip712.json" with { type: "json" };
 
 const verifyingContract = "0x0000000000000000000000000000000000000001" as const;
 const word = (n: number) => `0x${n.toString(16).padStart(64, "0")}` as const;
@@ -22,7 +30,17 @@ const verdict = {
 } as const;
 
 describe("eip712", () => {
-  test.todo("Checkpoint hash matches the golden vector");
+  test.each(vectors)("matches the golden vector $name", ({ input, expected }) => {
+    const primaryType = input.primaryType as KeelsonPrimaryType;
+    const message = Object.fromEntries(
+      KEELSON_TYPES[primaryType].map(({ name, type }) => {
+        const raw = (input.message as Record<string, string>)[name] as string;
+        return [name, type.startsWith("uint") ? BigInt(raw) : raw];
+      }),
+    );
+    const domain = keelsonDomain(input.chainId as KeelsonChainId, input.verifyingContract as never);
+    expect(hashKeelson(primaryType, message as never, domain)).toBe(expected);
+  });
 
   test("rejects an unsupported chain id", () => {
     expect(() => keelsonDomain(1 as never, verifyingContract)).toThrow();
