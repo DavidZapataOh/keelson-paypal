@@ -25,7 +25,7 @@ const pageScript = `
 import { createAuthClient } from "better-auth/client";
 import { passkeyClient } from "@better-auth/passkey/client";
 import { prepareSigning } from "@keelson/mandate";
-import { signMandate } from "@keelson/mandate/browser";
+import { passkeyRegistrationOptions, signMandate } from "@keelson/mandate/browser";
 
 const authClient = createAuthClient({ plugins: [passkeyClient()] });
 const noEvidence = { merchantSignedCheckout: false, zkTlsFields: new Set() };
@@ -35,14 +35,17 @@ const toBase64Url = (bytes) =>
 
 window.keelson = {
   addPasskey: async () => {
-    const { data, error } = await authClient.passkey.addPasskey({ name: "Test passkey" });
+    const options = await passkeyRegistrationOptions();
+    const { data, error } = await authClient.passkey.addPasskey({ name: "Test passkey", ...options });
     return { data: data ?? null, error: error ?? null };
   },
   // The user confirms the card, then signs M with a passkey through SPC or plain WebAuthn.
-  sign: async (mandate, credentialId, spc) => {
+  // \`shown\` replaces SPC dialog details, as a compromised page would.
+  sign: async (mandate, credentialId, { spc, payeeOrigin, shown }) => {
     const salt = crypto.getRandomValues(new Uint8Array(16));
-    const s = await prepareSigning(mandate, salt, noEvidence, "https://app.keelson.finance");
-    const assertion = await signMandate(s.challenge, [credentialId], spc ? { spc: s.spc } : undefined);
+    const s = await prepareSigning(mandate, salt, noEvidence, payeeOrigin);
+    const opts = spc ? { spc: { ...s.spc, ...shown } } : undefined;
+    const assertion = await signMandate(s.challenge, [credentialId], opts);
     const type = JSON.parse(atob(assertion.clientDataJSON.replaceAll("-", "+").replaceAll("_", "/"))).type;
     return {
       type,
@@ -181,14 +184,15 @@ afterAll(async () => {
 
 interface Signer {
   userId: string;
+  transports: string | null;
   page: Page;
   credentialId: string;
   jwk: { x: string; y: string };
   setUserVerified(verified: boolean): Promise<void>;
 }
 
-/** A new signed-in user on the app page, with one passkey on a virtual platform authenticator. */
-async function signer(): Promise<Signer> {
+/** A new signed-in user on the app page, with one passkey on a virtual authenticator. */
+async function signer(transport: "internal" | "usb" = "internal"): Promise<Signer> {
   const { test: utils } = await helpers.$context;
   const user = await utils.saveUser(utils.createUser());
   const context = await browser.newContext({ baseURL: appOrigin });
@@ -201,7 +205,7 @@ async function signer(): Promise<Signer> {
   const { authenticatorId } = await cdp.send("WebAuthn.addVirtualAuthenticator", {
     options: {
       protocol: "ctap2",
-      transport: "internal",
+      transport,
       hasResidentKey: true,
       hasUserVerification: true,
       isUserVerified: true,
@@ -221,6 +225,7 @@ async function signer(): Promise<Signer> {
     isoBase64URL.fromBuffer(new Uint8Array(bytes ?? []));
   return {
     userId: user.id,
+    transports: stored.transports,
     page,
     credentialId: stored.credentialID,
     jwk: { x: coordinate(key.get(cose.COSEKEYS.x)), y: coordinate(key.get(cose.COSEKEYS.y)) },
@@ -230,9 +235,12 @@ async function signer(): Promise<Signer> {
   };
 }
 
-function mandateFor(s: Pick<Signer, "credentialId" | "jwk">): Mandate {
+function mandateFor(
+  s: Pick<Signer, "userId" | "credentialId" | "jwk">,
+  edit: (m: Mandate) => void = () => {},
+): Mandate {
   const now = Math.floor(Date.now() / 1000);
-  return parseMandate({
+  const m = parseMandate({
     ...structuredClone(demo),
     mid: ulid(),
     iat: now,
@@ -240,6 +248,7 @@ function mandateFor(s: Pick<Signer, "credentialId" | "jwk">): Mandate {
     exp: now + 7 * 86_400,
     user: {
       ...demo.user,
+      sub: s.userId,
       cred: {
         id: s.credentialId,
         rp_id: "keelson.finance",
@@ -248,17 +257,24 @@ function mandateFor(s: Pick<Signer, "credentialId" | "jwk">): Mandate {
     },
     agent: { ...demo.agent, operator: { ...demo.agent.operator, agent_id: String(operatorId) } },
   });
+  edit(m);
+  return m;
 }
 
-const sign = (page: Page, m: Mandate, credentialId: string, spc = true) =>
+interface SignOptions {
+  spc?: boolean;
+  shown?: Record<string, unknown>;
+}
+
+const sign = (page: Page, m: Mandate, credentialId: string, opts: SignOptions = {}) =>
   page.evaluate(
-    ([m, id, spc]) =>
+    ([m, id, opts]) =>
       (window as unknown as { keelson: { sign(...a: unknown[]): Promise<Signed> } }).keelson.sign(
         m,
         id,
-        spc,
+        opts,
       ),
-    [m, credentialId, spc] as const,
+    [m, credentialId, { spc: true, payeeOrigin: "https://keelson.finance", ...opts }] as const,
   );
 
 const post = (page: Page, body: unknown, key = `k-${crypto.randomUUID()}`) =>
@@ -330,7 +346,7 @@ test("a mandate signed through SPC is verified and stored as SIGNED", {
 
 test("a plain WebAuthn signature is accepted too", { timeout: 60_000 }, async () => {
   const s = await signer();
-  const signed = await sign(s.page, mandateFor(s), s.credentialId, false);
+  const signed = await sign(s.page, mandateFor(s), s.credentialId, { spc: false });
   expect(signed.type).toBe("webauthn.get");
   expect((await post(s.page, signed.body)).status).toBe(201);
 });
@@ -360,7 +376,8 @@ test("an assertion without user verification is rejected", { timeout: 60_000 }, 
   );
   const res = await post(s.page, { ...signed.body, assertion });
   expect(res.status).toBe(401);
-  expect(res.body.detail).toContain("User verification required");
+  expect(res.body.type).toBe(problemType("invalid-signature"));
+  expect(res.body.detail).toBe("The passkey signature does not verify for this mandate.");
 });
 
 test("a signature made on another origin is rejected", { timeout: 60_000 }, async () => {
@@ -374,7 +391,7 @@ test("a signature made on another origin is rejected", { timeout: 60_000 }, asyn
   await s.page.waitForFunction("window.keelson !== undefined");
   const res = await post(s.page, signed.body);
   expect(res.status).toBe(401);
-  expect(res.body.detail).toContain(evilOrigin);
+  expect(res.body.type).toBe(problemType("invalid-signature"));
 });
 
 test("another user's passkey cannot sign for the session user", { timeout: 60_000 }, async () => {
@@ -436,4 +453,67 @@ test("the server verifies and stores a signed mandate within budget", {
   ms.sort((a, b) => a - b);
   const p95 = ms[Math.ceil(ms.length * 0.95) - 1] as number;
   expect(p95, `p95 ${p95.toFixed(2)} ms`).toBeLessThan(50);
+});
+
+test("SPC must have shown the mandate's payee and total", { timeout: 60_000 }, async () => {
+  const s = await signer();
+  for (const shown of [
+    { total: { currency: "USD", value: "0.01" } },
+    { payeeName: "Totally Different" },
+    { payeeOrigin: "https://other.example" },
+  ]) {
+    const signed = await sign(s.page, mandateFor(s), s.credentialId, { shown });
+    expect(signed.type).toBe("payment.get");
+    const res = await post(s.page, signed.body);
+    expect(res.status, JSON.stringify(shown)).toBe(401);
+    expect(res.body.type).toBe(problemType("invalid-signature"));
+  }
+});
+
+test("a security key registers and signs with plain WebAuthn", { timeout: 60_000 }, async () => {
+  const s = await signer("usb");
+  expect(s.transports).toContain("usb");
+  const signed = await sign(s.page, mandateFor(s), s.credentialId);
+  expect(signed.type).toBe("webauthn.get");
+  expect((await post(s.page, signed.body)).status).toBe(201);
+});
+
+test("the mandate must name the signer", { timeout: 60_000 }, async () => {
+  const s = await signer();
+  const cases: [(m: Mandate) => void, number, string][] = [
+    [(m) => (m.user.sub = "someone-else"), 403, "credential-not-owned"],
+    [(m) => (m.user.cred.id = "c29tZW9uZS1lbHNl"), 403, "credential-not-owned"],
+    [(m) => (m.user.cred.rp_id = "other.example"), 422, "invalid-mandate"],
+    [(m) => (m.nbf = m.iat + 3600), 422, "invalid-mandate"],
+  ];
+  for (const [edit, status, slug] of cases) {
+    const signed = await sign(s.page, mandateFor(s, edit), s.credentialId);
+    const res = await post(s.page, signed.body);
+    expect(res.status, slug).toBe(status);
+    expect(res.body.type).toBe(problemType(slug));
+  }
+});
+
+test("a payload changed after signing is rejected", { timeout: 60_000 }, async () => {
+  const s = await signer();
+  const signed = await sign(s.page, mandateFor(s), s.credentialId);
+  const payloadSd = structuredClone(signed.body.payloadSd) as { policy: { version: string } };
+  payloadSd.policy.version = "9.9.9";
+  const res = await post(s.page, { ...signed.body, payloadSd });
+  expect(res.status).toBe(401);
+  expect(res.body.type).toBe(problemType("invalid-signature"));
+});
+
+test("concurrent submissions of one assertion store one mandate", { timeout: 60_000 }, async () => {
+  const s = await signer();
+  const m = mandateFor(s);
+  const signed = await sign(s.page, m, s.credentialId);
+  const results = await Promise.all(Array.from({ length: 5 }, () => post(s.page, signed.body)));
+  const statuses = results.map((r) => r.status).sort();
+  expect(statuses).toEqual([201, 409, 409, 409, 409]);
+  for (const r of results.filter((r) => r.status === 409)) {
+    expect(r.body.type).toBe(problemType("mandate-exists"));
+  }
+  const rows = await testDb.query.mandates.findMany({ where: (t, { eq }) => eq(t.id, m.mid) });
+  expect(rows).toHaveLength(1);
 });

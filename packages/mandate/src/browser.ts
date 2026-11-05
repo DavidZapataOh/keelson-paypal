@@ -1,4 +1,5 @@
 import { type AuthenticationResponseJSON, startAuthentication } from "@simplewebauthn/browser";
+import { SPC_INSTRUMENT, type SpcDetails } from "./spc.ts";
 
 /** The WebAuthn assertion fields the server verifies, base64url-encoded as in `AuthenticationResponseJSON`. */
 export interface SignedChallenge {
@@ -9,16 +10,11 @@ export interface SignedChallenge {
   userHandle?: string;
 }
 
-export interface SpcOptions {
-  payeeName: string;
-  payeeOrigin: string;
-  total: { currency: string; value: string };
-}
+/** The `spc` of `prepareSigning`. */
+export type SpcOptions = SpcDetails;
 
 const RP_ID = "keelson.finance";
 const TIMEOUT_MS = 120_000;
-const INSTRUMENT_ICON =
-  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Crect width='32' height='32' rx='6' fill='%23111'/%3E%3C/svg%3E";
 
 const toBase64Url = (bytes: Uint8Array): string => {
   let s = "";
@@ -38,6 +34,26 @@ async function spcAvailable(): Promise<boolean> {
   return (await request?.securePaymentConfirmationAvailability?.()) === "available";
 }
 
+/** Per-request passkey registration options: universal unless SPC can be used on this device. */
+export interface RegistrationOptions {
+  authenticatorAttachment?: "platform";
+  extensions?: { payment: { isPayment: true } };
+}
+
+/**
+ * Registration options for a new passkey. Any authenticator (security key, phone, platform) can
+ * register; only when the browser supports Secure Payment Confirmation and has a user-verifying
+ * platform authenticator is the passkey created there with the SPC `payment` extension, which
+ * SPC requires.
+ */
+export async function passkeyRegistrationOptions(): Promise<RegistrationOptions> {
+  const platform =
+    (await globalThis.PublicKeyCredential?.isUserVerifyingPlatformAuthenticatorAvailable?.()) ===
+    true;
+  if (!platform || !(await spcAvailable())) return {};
+  return { authenticatorAttachment: "platform", extensions: { payment: { isPayment: true } } };
+}
+
 const isNotSupported = (e: unknown): boolean =>
   e instanceof DOMException && e.name === "NotSupportedError";
 
@@ -54,7 +70,7 @@ async function signWithSpc(
           credentialIds: credentialIds.map(fromBase64Url),
           challenge: Uint8Array.from(challenge),
           rpId: RP_ID,
-          instrument: { displayName: "Keelson mandate", icon: INSTRUMENT_ICON },
+          instrument: { ...SPC_INSTRUMENT },
           payeeName,
           payeeOrigin,
           timeout: TIMEOUT_MS,

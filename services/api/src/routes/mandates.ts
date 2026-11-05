@@ -1,7 +1,14 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { fromHex, toHex } from "@keelson/core";
 import { createQueries, mandates, passkey, sql, transition } from "@keelson/db";
-import { decodeMandate, hSd, type Mandate, mandateChallenge, renderCard } from "@keelson/mandate";
+import {
+  decodeMandate,
+  hSd,
+  type Mandate,
+  mandateChallenge,
+  renderCard,
+  spcDetails,
+} from "@keelson/mandate";
 import type { SignedChallenge } from "@keelson/mandate/browser";
 import type { Deps } from "../app.ts";
 import { DEFAULT_RP_ID } from "../auth.ts";
@@ -122,6 +129,8 @@ const read = createRoute({
 const NO_EVIDENCE = { merchantSignedCheckout: false, zkTlsFields: new Set<never>() };
 const AGENT_ID = /^(0|[1-9]\d{0,77})$/;
 
+class CounterError extends Error {}
+
 function isUniqueViolation(err: unknown): boolean {
   for (let e = err; e && typeof e === "object"; e = (e as { cause?: unknown }).cause) {
     if ((e as { code?: unknown }).code === "23505") return true;
@@ -161,7 +170,11 @@ export function registerMandates(
     if (body.commitment !== m.zk.commitment) {
       return invalid("commitment differs from zk.commitment");
     }
-    if (m.exp * 1000 <= Date.now()) return invalid("exp has passed");
+    const now = Date.now();
+    if (m.exp * 1000 <= now) return invalid("exp has passed");
+    if (m.nbf * 1000 > now) return invalid("nbf is in the future");
+    const rpId = deps.passkeyRpId ?? DEFAULT_RP_ID;
+    if (m.user.cred.rp_id !== rpId) return invalid(`user.cred.rp_id must be ${rpId}`);
     const budget = m.payment.constraints.find((x) => x.type === "payment.budget");
     const merchants = m.checkout.constraints.find((x) => x.type === "checkout.allowed_merchants");
     if (budget?.type !== "payment.budget" || merchants?.type !== "checkout.allowed_merchants") {
@@ -186,7 +199,14 @@ export function registerMandates(
     } catch {
       return notOwned();
     }
-    if (m.user.cred.jwk.x !== jwk.x || m.user.cred.jwk.y !== jwk.y) return notOwned();
+    if (
+      m.user.sub !== userId ||
+      m.user.cred.id !== key.credentialID ||
+      m.user.cred.jwk.x !== jwk.x ||
+      m.user.cred.jwk.y !== jwk.y
+    ) {
+      return notOwned();
+    }
 
     const assertion: SignedChallenge = {
       authenticatorData: body.assertion.authenticatorData,
@@ -204,13 +224,20 @@ export function registerMandates(
     }
     const exists = () =>
       problem(c, 409, "mandate-exists", "Mandate exists", "This signed mandate is already stored.");
-    const stored = await db.query.mandates.findFirst({
-      columns: { id: true },
-      where: (row, { eq }) => eq(row.mandateHash, Buffer.from(M)),
-    });
-    if (stored) return exists();
-    const invalidSignature = (detail: string) =>
-      problem(c, 401, "invalid-signature", "Invalid signature", detail);
+    const storedHash = () =>
+      db.query.mandates.findFirst({
+        columns: { id: true },
+        where: (row, { eq }) => eq(row.mandateHash, Buffer.from(M)),
+      });
+    if (await storedHash()) return exists();
+    const invalidSignature = () =>
+      problem(
+        c,
+        401,
+        "invalid-signature",
+        "Invalid signature",
+        "The passkey signature does not verify for this mandate.",
+      );
     let newCounter: number;
     try {
       ({ newCounter } = await verifyMandateSignature({
@@ -219,10 +246,12 @@ export function registerMandates(
         assertion,
         passkey: key,
         expectedOrigin: origin,
-        expectedRpId: deps.passkeyRpId ?? DEFAULT_RP_ID,
+        expectedRpId: rpId,
+        // SPC requires an https payee; the payee is Keelson at its RP ID domain.
+        spc: spcDetails(m, `https://${rpId}`),
       }));
     } catch (err) {
-      if (err instanceof SignatureError) return invalidSignature(err.message);
+      if (err instanceof SignatureError) return invalidSignature();
       throw err;
     }
 
@@ -234,7 +263,7 @@ export function registerMandates(
           .where(
             sql`${passkey.id} = ${key.id} and (${newCounter} = 0 or ${passkey.counter} < ${newCounter})`,
           );
-        if (counted.rowCount !== 1) throw new SignatureError("signature counter did not increase");
+        if (counted.rowCount !== 1) throw new CounterError();
         await tx.insert(mandates).values({
           id: m.mid,
           userId,
@@ -260,7 +289,8 @@ export function registerMandates(
       });
     } catch (err) {
       if (isUniqueViolation(err)) return exists();
-      if (err instanceof SignatureError) return invalidSignature(err.message);
+      // A concurrent request with the same assertion advanced the counter first.
+      if (err instanceof CounterError) return (await storedHash()) ? exists() : invalidSignature();
       throw err;
     }
 

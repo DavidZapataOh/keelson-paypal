@@ -2,7 +2,6 @@ import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { oauthProvider } from "@better-auth/oauth-provider";
 import { passkey } from "@better-auth/passkey";
 import type { Db } from "@keelson/db";
-import type { AuthenticationExtensionsClientInputs } from "@simplewebauthn/server";
 import { cose, decodeCredentialPublicKey } from "@simplewebauthn/server/helpers";
 import { betterAuth } from "better-auth";
 import { APIError, createAuthMiddleware } from "better-auth/api";
@@ -16,9 +15,6 @@ export const DEFAULT_RP_ID = "keelson.finance";
 
 /** ES256 only: mandate signatures are verified with P-256 on chain. */
 const pubKeyCredParams = [{ type: "public-key", alg: cose.COSEALG.ES256 }];
-
-/** The Secure Payment Confirmation `payment` extension, which the WebAuthn typings lack. */
-const paymentExtension = { payment: { isPayment: true } } as AuthenticationExtensionsClientInputs;
 
 const scopes = ["countersign:write", "alibis:read", "disputes:read", "operators:write"] as const;
 
@@ -72,20 +68,14 @@ export function createAuth(db: Db, env: AuthEnv) {
         clientPrivileges: ({ user }) => user?.role === "admin",
       }),
       // The app origin is a subdomain of the RP ID, so WebAuthn accepts it without a
-      // Related Origins `/.well-known/webauthn` document. The `payment` extension lets the
-      // passkey sign through Secure Payment Confirmation, which requires a user-verifying
-      // platform authenticator holding a discoverable credential.
+      // Related Origins `/.well-known/webauthn` document. Any authenticator may register; the
+      // client asks for a platform one with the SPC `payment` extension when the device has it.
       passkey({
         rpID: env.PASSKEY_RP_ID ?? DEFAULT_RP_ID,
         rpName: "Keelson",
         origin: env.APP_ORIGIN,
-        authenticatorSelection: {
-          authenticatorAttachment: "platform",
-          userVerification: "required",
-          residentKey: "required",
-        },
+        authenticatorSelection: { userVerification: "required", residentKey: "required" },
         registration: {
-          extensions: paymentExtension,
           afterVerification: ({ verification }) => {
             const key = verification.registrationInfo?.credential.publicKey;
             const alg = key && decodeCredentialPublicKey(key).get(cose.COSEKEYS.alg);

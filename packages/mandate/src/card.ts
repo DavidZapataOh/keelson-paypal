@@ -4,6 +4,7 @@ import { type Color, type Evidence, type FieldId, fieldColors } from "./colors.t
 import { mandateCommitment } from "./commitment.ts";
 import { CATEGORY_TABLE, type Mandate } from "./schema.ts";
 import { buildSdPayload, decodeMandate } from "./sd.ts";
+import { type SpcDetails, spcDetails } from "./spc.ts";
 
 export type Answerer = "Keelson" | "Agent operator" | "You";
 
@@ -166,13 +167,6 @@ export function renderCard(payloadSd: object, disclosures: string[], evidence: E
   return { rows, warnings };
 }
 
-/** What the browser's Secure Payment Confirmation dialog shows; derived from the mandate. */
-export interface SpcDetails {
-  payeeName: string;
-  payeeOrigin: string;
-  total: { currency: string; value: string };
-}
-
 export interface Signing {
   /** The payload as signed: the mandate with `zk.commitment` set to `C_m`. */
   payloadSd: object;
@@ -206,8 +200,6 @@ export async function prepareSigning(
     crypto.getRandomValues(new Uint8Array(16)),
   );
   const h = hashSd(payloadSd);
-  const cap = bound.payment.constraints.find((c) => c.type === "payment.amount_range");
-  if (cap?.type !== "payment.amount_range") throw new RangeError("mandate lacks amount_range");
   return {
     payloadSd,
     disclosures,
@@ -215,13 +207,6 @@ export async function prepareSigning(
     cm,
     challenge: mandateChallenge(h, cm),
     card: renderCard(payloadSd, disclosures, evidence),
-    spc: {
-      payeeName: "Keelson",
-      payeeOrigin: origin,
-      total: {
-        currency: bound.payment.currency,
-        value: toPayPalValue({ currency: bound.payment.currency, minor: BigInt(cap.max) }),
-      },
-    },
+    spc: spcDetails(bound, origin),
   };
 }

@@ -5,3 +5,4 @@ export * from "./commitment.ts";
 export * from "./credentials.ts";
 export * from "./schema.ts";
 export * from "./sd.ts";
+export * from "./spc.ts";

@@ -1,4 +1,4 @@
-import { hSd, mandateChallenge } from "@keelson/mandate";
+import { hSd, mandateChallenge, SPC_INSTRUMENT, type SpcDetails } from "@keelson/mandate";
 import type { SignedChallenge } from "@keelson/mandate/browser";
 import { verifyAuthenticationResponse } from "@simplewebauthn/server";
 import { cose, decodeCredentialPublicKey, isoBase64URL } from "@simplewebauthn/server/helpers";
@@ -28,6 +28,9 @@ export function passkeyJwk(passkey: Pick<Passkey, "publicKey">): { x: string; y:
  * caller: the salt behind `C_m` never reaches the server. User verification is required, and the
  * client data may come from WebAuthn (`webauthn.get`) or Secure Payment Confirmation
  * (`payment.get`). The signature counter must increase unless the authenticator reports zero.
+ * Cross-origin (framed) assertions are refused. For `payment.get`, the payment data the browser
+ * showed must be `spc`, the SPC details derived from the mandate (SPC section "Verifying an
+ * Authentication Assertion").
  */
 export async function verifyMandateSignature(args: {
   payloadSd: object;
@@ -36,9 +39,11 @@ export async function verifyMandateSignature(args: {
   passkey: Passkey;
   expectedOrigin: string;
   expectedRpId: string;
+  spc: SpcDetails;
 }): Promise<{ M: Uint8Array; newCounter: number }> {
   const M = mandateChallenge(hSd(args.payloadSd), args.cm);
   const { credentialId, ...response } = args.assertion;
+  checkClientData(args.assertion.clientDataJSON, args);
   try {
     const { verified, authenticationInfo } = await verifyAuthenticationResponse({
       response: {
@@ -64,5 +69,46 @@ export async function verifyMandateSignature(args: {
   } catch (err) {
     if (err instanceof SignatureError) throw err;
     throw new SignatureError(err instanceof Error ? err.message : String(err));
+  }
+}
+
+interface CollectedClientData {
+  type?: unknown;
+  crossOrigin?: unknown;
+  payment?: {
+    rpId?: unknown;
+    topOrigin?: unknown;
+    payeeName?: unknown;
+    payeeOrigin?: unknown;
+    total?: { currency?: unknown; value?: unknown };
+    instrument?: { displayName?: unknown; icon?: unknown };
+  };
+}
+
+function checkClientData(
+  clientDataJSON: string,
+  expected: { expectedOrigin: string; expectedRpId: string; spc: SpcDetails },
+): void {
+  let data: CollectedClientData;
+  try {
+    data = JSON.parse(isoBase64URL.toUTF8String(clientDataJSON)) as CollectedClientData;
+  } catch {
+    throw new SignatureError("clientDataJSON is not JSON");
+  }
+  if (data.crossOrigin === true) throw new SignatureError("cross-origin assertion");
+  if (data.type !== "payment.get") return;
+  const p = data.payment;
+  const { spc } = expected;
+  if (
+    p?.rpId !== expected.expectedRpId ||
+    p.topOrigin !== expected.expectedOrigin ||
+    p.payeeName !== spc.payeeName ||
+    p.payeeOrigin !== spc.payeeOrigin ||
+    p.total?.currency !== spc.total.currency ||
+    p.total.value !== spc.total.value ||
+    p.instrument?.displayName !== SPC_INSTRUMENT.displayName ||
+    p.instrument.icon !== SPC_INSTRUMENT.icon
+  ) {
+    throw new SignatureError("payment data differs from the mandate");
   }
 }
