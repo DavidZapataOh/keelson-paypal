@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { writeFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
@@ -577,3 +578,59 @@ test("concurrent submissions of one assertion store one mandate", { timeout: 60_
   const rows = await testDb.query.mandates.findMany({ where: (t, { eq }) => eq(t.id, m.mid) });
   expect(rows).toHaveLength(1);
 });
+
+const capturePath = process.env.KEELSON_CAPTURE_WEBAUTHN;
+
+// Real assertions for the cross-language verifier vectors; see packages/mandate/scripts.
+test.runIf(capturePath)(
+  "captures assertions for the verifier vectors",
+  {
+    timeout: 60_000,
+  },
+  async () => {
+    const s = await signer();
+    const [stored] = await userPasskeys(testDb, s.userId);
+    const payment = await sign(s.page, mandateFor(s));
+    const webauthn = await sign(s.page, mandateFor(s), { spc: false });
+    const shownTotal = await sign(s.page, mandateFor(s), {
+      shown: { total: { currency: "USD", value: "0.01" } },
+    });
+    const shownPayee = await sign(s.page, mandateFor(s), { shown: { payeeName: "Someone Else" } });
+    expect([payment, webauthn, shownTotal, shownPayee].map((x) => x.type)).toEqual([
+      "payment.get",
+      "webauthn.get",
+      "payment.get",
+      "payment.get",
+    ]);
+    const challenge = JSON.parse(
+      Buffer.from(webauthn.body.assertion.clientDataJSON, "base64url").toString(),
+    ).challenge as string;
+    await s.setUserVerified(false);
+    const unverified = await s.page.evaluate(
+      ([challenge, id]) =>
+        (
+          window as unknown as { keelson: { assert(...a: unknown[]): Promise<unknown> } }
+        ).keelson.assert(challenge, id, "discouraged"),
+      [challenge, s.credentialId] as const,
+    );
+    writeFileSync(
+      capturePath as string,
+      `${JSON.stringify(
+        {
+          origin: appOrigin,
+          rpId: "keelson.finance",
+          publicKey: stored?.publicKey,
+          signed: {
+            payment: payment.body,
+            webauthn: webauthn.body,
+            shownTotal: shownTotal.body,
+            shownPayee: shownPayee.body,
+            unverified: { ...webauthn.body, assertion: unverified },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  },
+);

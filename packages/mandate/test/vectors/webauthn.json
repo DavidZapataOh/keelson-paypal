@@ -1,0 +1,4253 @@
+[
+  {
+    "name": "verify/ok/payment.get",
+    "input": {
+      "op": "verify",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01M6PXPG82DTZ02R90Y0PS2TBK",
+        "iat": 1793918189,
+        "nbf": 1793918189,
+        "exp": 1794522989,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "5i-P1YlNJrU-wdNQOiNt9HLt24rtmX6MLTZABJ-_pYM",
+            "EbKcTbHd-OXzIvEl81g6PqAdeFFWatgiGf32wC3ApV0",
+            "jN16J8dNFcWANh_q0_NgrgFsydgv6QBl1eV7PH0A0TE"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "10105869945848359578"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "vh8Ni-72JcomePW8z5WiLLE0aZ0nqfXrEp89ADw9XBc"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "99uu_mcHiCs2N-MQLjSOu4gjVPOC5C5lsr5IAhN7tvM"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "839B6c2mmTi0pSUU5g8QbU2eBNJL0iRVR_AtKeG9-cI"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "SDmPtcV2YSmJdt3gfNVPTP2s8x1Bd-WpjgbXpWOF6XU"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "AlDe-tyw4wrvXRUCZ8RqI9cZLFmbXWj3CDtzTswpv_o"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "AxQ1PRDFT-s5tkmc2crxXtjlbu4pyFcz7PGV9VGz4wY",
+            "PNY3hxBXPCkFCrVU4gHuZHMLeiWnOE14erabhYjJb_8"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x2de747f619285557a70720004d2929d50785f2c37fe7360f5fea932eb22a598d"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "TInP23rNnB8mAtwEq-q8jBXNVrnTNKJcLQ7lDsUrbv4"
+        ]
+      },
+      "disclosures": [
+        "WyJtOVpBRUx2MDBrX3ExUU5mcEQ4NVRnIiwic3ViIiwiczVYbjczZ2hNTjNkYUtGVDRoSklKQnljTE9JRXYxWVAiXQ",
+        "WyJ4bEtWdWdHNXpQTENaajJBOHNCTWF3IiwiY3JlZCIseyJpZCI6IklwYzFhbzJ4RzBHaHdodnlZZnAtcTk4WEw5Wllhc1FrNE91b1ZxZ2pvS1kiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6InlMMUU5ZlRnMWk4Z0tVTUxJNWlBUGVBZ2VOQldSZ0k0Ny1OSXFfbHhGVzAiLCJ5IjoiN2RESUNTbFhUNDUtNS1ZUjJJSzR6UDQ1cG9EOHdqQW14WEZZUDQxZV9OUSJ9fV0",
+        "WyJFd1VwN3dHQ2tfeEMycl9xbm1zRGRnIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJPdWlpOFZEakxsX3dNSWhHYnBnaTl3IiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJDX2djV1FoZWd5ZEhWaHJGYWs3eHpnIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyJScnN2T0oxT2FuQTFDY1FBWV8xaFRnIiwibWF4IiwxMDAwMF0",
+        "WyI1U2s3NWdjQTVBSC1yblRHUUZUa21RIix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJ1RU5iUXlRZXBFbWJQTjhQanpVZzVnIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyIySi1QSnlLN1ppajNiQXlFNDcxQTF3Iix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyI4S2dvY1poaTVNdnNKZGp4NVFDLWJ3Iix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyJxZERCU2JsTjBNbDBKSTdEYTdqSDl3Iiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ],
+      "cm": "0x2de747f619285557a70720004d2929d50785f2c37fe7360f5fea932eb22a598d",
+      "origin": "http://app.keelson.finance:56358",
+      "rpId": "keelson.finance",
+      "publicKey": "pQECAyYgASFYIMi9RPX04NYvIClDCyOYgD3gIHjQVkYCOO/jSKv5cRVtIlgg7dDICSlXT45+5+YR2IK4zP45poD8wjAmxXFYP41e/NQ=",
+      "publicKeySec1": "0x04c8bd44f5f4e0d62f2029430b2398803de02078d056460238efe348abf971156dedd0c80929574f8e7ee7e611d882b8ccfe39a680fcc23026c571583f8d5efcd4",
+      "assertion": {
+        "authenticatorData": "EHHKqDnsJdN7IzwdSzf9Op0bCgmDDhN-RSEFwH1vxPcFAAAAAg",
+        "clientDataJSON": "eyJ0eXBlIjoicGF5bWVudC5nZXQiLCJjaGFsbGVuZ2UiOiJLdmVRclZ6RmhheTJLSVEwSUZjcDkzZlhVUVFVN2UyNXByM3NkNUdDX1IwIiwib3JpZ2luIjoiaHR0cDovL2FwcC5rZWVsc29uLmZpbmFuY2U6NTYzNTgiLCJjcm9zc09yaWdpbiI6ZmFsc2UsInBheW1lbnQiOnsicnBJZCI6ImtlZWxzb24uZmluYW5jZSIsInRvcE9yaWdpbiI6Imh0dHA6Ly9hcHAua2VlbHNvbi5maW5hbmNlOjU2MzU4IiwicGF5ZWVOYW1lIjoiS2VlbHNvbiIsInBheWVlT3JpZ2luIjoiaHR0cHM6Ly9rZWVsc29uLmZpbmFuY2UiLCJwYXltZW50RW50aXRpZXNMb2dvcyI6W10sInRvdGFsIjp7InZhbHVlIjoiMTAwLjAwIiwiY3VycmVuY3kiOiJVU0QifSwiaW5zdHJ1bWVudCI6eyJpY29uIjoiZGF0YTppbWFnZS9zdmcreG1sLCUzQ3N2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSczMicgaGVpZ2h0PSczMiclM0UlM0NyZWN0IHdpZHRoPSczMicgaGVpZ2h0PSczMicgcng9JzYnIGZpbGw9JyUyMzExMScvJTNFJTNDL3N2ZyUzRSIsImRpc3BsYXlOYW1lIjoiS2VlbHNvbiBtYW5kYXRlIn19fQ",
+        "signature": "MEUCIF9A0N7-h4Hzlxdk2lR-IALO_pavgkIVBL1Cd4nkzQnNAiEA6EZwaoQ_I_p-9fQ3EB_Pyj37lhXEMcf9GXKp2oDVRiA",
+        "credentialId": "Ipc1ao2xG0GhwhvyYfp-q98XL9ZYasQk4OuoVqgjoKY",
+        "userHandle": "Nzk0cWd6MzVndWthdmR3YXFsZzIwN3lzNWQxOTEyOHU"
+      }
+    },
+    "expected": "ok"
+  },
+  {
+    "name": "verify/ok/webauthn.get",
+    "input": {
+      "op": "verify",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01M6PXPGCM21H2EAZX2T7TMEJV",
+        "iat": 1793918189,
+        "nbf": 1793918189,
+        "exp": 1794522989,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "G82b4FJqU_p_2CX5tkYWdBkTw0dbmBaZGhka6vor8cs",
+            "f5vCfiOmQcjp9lIvXJs6_fQZfVqA79qZQ-6U_3yTDJc",
+            "wsLPNCSKoLlPJeEkmAMXPB3-MvvpniqLLmhxMfXICSE"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "10105869945848359578"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "NVwKvbmChgvwbQUnWIOggLl1quv6qlNa-vr7qlYutyE"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "FgA0C5z-o0tFK9PDoWGFc8NcUQO5cB1yHlZCq9Ss9FU"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "nI-A0PGizX6pfiAZOLHQhCGrIBLdDh_nwLGI82HMpGM"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "YEpN4UI0urCr0l8S0wBAXS7_axUMs63omix8bcCh5SQ"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "1EqWcdVsV8-i6XQakQmzwRLkWtVLrUNmREZ3cVhiXk4"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "LCj4l3rVySHvFBHU8Jwj_lIgulokZi-W_D_VtXWf06U",
+            "hjfZP8IDmxAIIBCgR9WJ8QnZwsJyulL5YwWVAkuvhqU"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "s4EEmfadG6DWSEoydp_MJgZNUNgQ22W7I7wJr52w78I"
+        ]
+      },
+      "disclosures": [
+        "WyJLYjI0eUxxUE5fOEJRYS1tdHJLVVB3Iiwic3ViIiwiczVYbjczZ2hNTjNkYUtGVDRoSklKQnljTE9JRXYxWVAiXQ",
+        "WyIzQ3JwN0pUWTlHcUxTcFd3V0xDQTN3IiwiY3JlZCIseyJpZCI6IklwYzFhbzJ4RzBHaHdodnlZZnAtcTk4WEw5Wllhc1FrNE91b1ZxZ2pvS1kiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6InlMMUU5ZlRnMWk4Z0tVTUxJNWlBUGVBZ2VOQldSZ0k0Ny1OSXFfbHhGVzAiLCJ5IjoiN2RESUNTbFhUNDUtNS1ZUjJJSzR6UDQ1cG9EOHdqQW14WEZZUDQxZV9OUSJ9fV0",
+        "WyJhMnJNSTlFZjBsRUhIeGtUVzcwTndRIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJ1R1ZDZms3MlpKWV9WZjhBWEJvQS13IiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJoYVI3TUd3SUptMXZNSDVEZ2dTV1ZnIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyJmTnkwc01TWk50bHNtVENfNTlxY19nIiwibWF4IiwxMDAwMF0",
+        "WyJqbE9Ubk9TWjdlSXFoU0Q3anFka2VnIix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJCbFJXUVpBYzBycndvUlVnZ3dSdFZnIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyJnT1FkTFJ6bmtEZGxMRWw0azVrVFdnIix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJ6MFJsVnM5WnpQN1lGNmlwV0J6by1BIix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyJvUjE1UzA2bjNSenhvbHNZWkZpbXl3Iiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ],
+      "cm": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9",
+      "origin": "http://app.keelson.finance:56358",
+      "rpId": "keelson.finance",
+      "publicKey": "pQECAyYgASFYIMi9RPX04NYvIClDCyOYgD3gIHjQVkYCOO/jSKv5cRVtIlgg7dDICSlXT45+5+YR2IK4zP45poD8wjAmxXFYP41e/NQ=",
+      "publicKeySec1": "0x04c8bd44f5f4e0d62f2029430b2398803de02078d056460238efe348abf971156dedd0c80929574f8e7ee7e611d882b8ccfe39a680fcc23026c571583f8d5efcd4",
+      "assertion": {
+        "authenticatorData": "EHHKqDnsJdN7IzwdSzf9Op0bCgmDDhN-RSEFwH1vxPcFAAAAAw",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoieWwtSVRaaXNJVDVnd0JVdzhrd3I2MHpxcmtaajR2aEdOdFNWWS1EZ1JMMCIsIm9yaWdpbiI6Imh0dHA6Ly9hcHAua2VlbHNvbi5maW5hbmNlOjU2MzU4IiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ",
+        "signature": "MEUCIF3Oz6sUgOcVkSDqZ3fk7vgDed5C2hcvkNEUGZS0Gj-CAiEAwpItv6xZ6ntm-HteWzxTQmo6ygtjUmqyiVEAhRk7u3c",
+        "credentialId": "Ipc1ao2xG0GhwhvyYfp-q98XL9ZYasQk4OuoVqgjoKY",
+        "userHandle": "Nzk0cWd6MzVndWthdmR3YXFsZzIwN3lzNWQxOTEyOHU"
+      }
+    },
+    "expected": "ok"
+  },
+  {
+    "name": "verify/ok/high-s",
+    "input": {
+      "op": "verify",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01M6PXPGCM21H2EAZX2T7TMEJV",
+        "iat": 1793918189,
+        "nbf": 1793918189,
+        "exp": 1794522989,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "G82b4FJqU_p_2CX5tkYWdBkTw0dbmBaZGhka6vor8cs",
+            "f5vCfiOmQcjp9lIvXJs6_fQZfVqA79qZQ-6U_3yTDJc",
+            "wsLPNCSKoLlPJeEkmAMXPB3-MvvpniqLLmhxMfXICSE"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "10105869945848359578"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "NVwKvbmChgvwbQUnWIOggLl1quv6qlNa-vr7qlYutyE"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "FgA0C5z-o0tFK9PDoWGFc8NcUQO5cB1yHlZCq9Ss9FU"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "nI-A0PGizX6pfiAZOLHQhCGrIBLdDh_nwLGI82HMpGM"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "YEpN4UI0urCr0l8S0wBAXS7_axUMs63omix8bcCh5SQ"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "1EqWcdVsV8-i6XQakQmzwRLkWtVLrUNmREZ3cVhiXk4"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "LCj4l3rVySHvFBHU8Jwj_lIgulokZi-W_D_VtXWf06U",
+            "hjfZP8IDmxAIIBCgR9WJ8QnZwsJyulL5YwWVAkuvhqU"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "s4EEmfadG6DWSEoydp_MJgZNUNgQ22W7I7wJr52w78I"
+        ]
+      },
+      "disclosures": [
+        "WyJLYjI0eUxxUE5fOEJRYS1tdHJLVVB3Iiwic3ViIiwiczVYbjczZ2hNTjNkYUtGVDRoSklKQnljTE9JRXYxWVAiXQ",
+        "WyIzQ3JwN0pUWTlHcUxTcFd3V0xDQTN3IiwiY3JlZCIseyJpZCI6IklwYzFhbzJ4RzBHaHdodnlZZnAtcTk4WEw5Wllhc1FrNE91b1ZxZ2pvS1kiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6InlMMUU5ZlRnMWk4Z0tVTUxJNWlBUGVBZ2VOQldSZ0k0Ny1OSXFfbHhGVzAiLCJ5IjoiN2RESUNTbFhUNDUtNS1ZUjJJSzR6UDQ1cG9EOHdqQW14WEZZUDQxZV9OUSJ9fV0",
+        "WyJhMnJNSTlFZjBsRUhIeGtUVzcwTndRIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJ1R1ZDZms3MlpKWV9WZjhBWEJvQS13IiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJoYVI3TUd3SUptMXZNSDVEZ2dTV1ZnIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyJmTnkwc01TWk50bHNtVENfNTlxY19nIiwibWF4IiwxMDAwMF0",
+        "WyJqbE9Ubk9TWjdlSXFoU0Q3anFka2VnIix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJCbFJXUVpBYzBycndvUlVnZ3dSdFZnIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyJnT1FkTFJ6bmtEZGxMRWw0azVrVFdnIix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJ6MFJsVnM5WnpQN1lGNmlwV0J6by1BIix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyJvUjE1UzA2bjNSenhvbHNZWkZpbXl3Iiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ],
+      "cm": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9",
+      "origin": "http://app.keelson.finance:56358",
+      "rpId": "keelson.finance",
+      "publicKey": "pQECAyYgASFYIMi9RPX04NYvIClDCyOYgD3gIHjQVkYCOO/jSKv5cRVtIlgg7dDICSlXT45+5+YR2IK4zP45poD8wjAmxXFYP41e/NQ=",
+      "publicKeySec1": "0x04c8bd44f5f4e0d62f2029430b2398803de02078d056460238efe348abf971156dedd0c80929574f8e7ee7e611d882b8ccfe39a680fcc23026c571583f8d5efcd4",
+      "assertion": {
+        "authenticatorData": "EHHKqDnsJdN7IzwdSzf9Op0bCgmDDhN-RSEFwH1vxPcFAAAAAw",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoieWwtSVRaaXNJVDVnd0JVdzhrd3I2MHpxcmtaajR2aEdOdFNWWS1EZ1JMMCIsIm9yaWdpbiI6Imh0dHA6Ly9hcHAua2VlbHNvbi5maW5hbmNlOjU2MzU4IiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ",
+        "signature": "MEQCIF3Oz6sUgOcVkSDqZ3fk7vgDed5C2hcvkNEUGZS0Gj-CAiA9bdI_U6YVhZkHhKGkw6y9UqwwokPFM9JqaMo94ydp2g",
+        "credentialId": "Ipc1ao2xG0GhwhvyYfp-q98XL9ZYasQk4OuoVqgjoKY",
+        "userHandle": "Nzk0cWd6MzVndWthdmR3YXFsZzIwN3lzNWQxOTEyOHU"
+      }
+    },
+    "expected": "ok"
+  },
+  {
+    "name": "verify/error/other-mandate",
+    "input": {
+      "op": "verify",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01M6PXPGCM21H2EAZX2T7TMEJV",
+        "iat": 1793918189,
+        "nbf": 1793918189,
+        "exp": 1794522989,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "G82b4FJqU_p_2CX5tkYWdBkTw0dbmBaZGhka6vor8cs",
+            "f5vCfiOmQcjp9lIvXJs6_fQZfVqA79qZQ-6U_3yTDJc",
+            "wsLPNCSKoLlPJeEkmAMXPB3-MvvpniqLLmhxMfXICSE"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "10105869945848359578"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "NVwKvbmChgvwbQUnWIOggLl1quv6qlNa-vr7qlYutyE"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "FgA0C5z-o0tFK9PDoWGFc8NcUQO5cB1yHlZCq9Ss9FU"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "nI-A0PGizX6pfiAZOLHQhCGrIBLdDh_nwLGI82HMpGM"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "YEpN4UI0urCr0l8S0wBAXS7_axUMs63omix8bcCh5SQ"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "1EqWcdVsV8-i6XQakQmzwRLkWtVLrUNmREZ3cVhiXk4"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "LCj4l3rVySHvFBHU8Jwj_lIgulokZi-W_D_VtXWf06U",
+            "hjfZP8IDmxAIIBCgR9WJ8QnZwsJyulL5YwWVAkuvhqU"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "s4EEmfadG6DWSEoydp_MJgZNUNgQ22W7I7wJr52w78I"
+        ]
+      },
+      "disclosures": [
+        "WyJLYjI0eUxxUE5fOEJRYS1tdHJLVVB3Iiwic3ViIiwiczVYbjczZ2hNTjNkYUtGVDRoSklKQnljTE9JRXYxWVAiXQ",
+        "WyIzQ3JwN0pUWTlHcUxTcFd3V0xDQTN3IiwiY3JlZCIseyJpZCI6IklwYzFhbzJ4RzBHaHdodnlZZnAtcTk4WEw5Wllhc1FrNE91b1ZxZ2pvS1kiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6InlMMUU5ZlRnMWk4Z0tVTUxJNWlBUGVBZ2VOQldSZ0k0Ny1OSXFfbHhGVzAiLCJ5IjoiN2RESUNTbFhUNDUtNS1ZUjJJSzR6UDQ1cG9EOHdqQW14WEZZUDQxZV9OUSJ9fV0",
+        "WyJhMnJNSTlFZjBsRUhIeGtUVzcwTndRIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJ1R1ZDZms3MlpKWV9WZjhBWEJvQS13IiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJoYVI3TUd3SUptMXZNSDVEZ2dTV1ZnIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyJmTnkwc01TWk50bHNtVENfNTlxY19nIiwibWF4IiwxMDAwMF0",
+        "WyJqbE9Ubk9TWjdlSXFoU0Q3anFka2VnIix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJCbFJXUVpBYzBycndvUlVnZ3dSdFZnIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyJnT1FkTFJ6bmtEZGxMRWw0azVrVFdnIix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJ6MFJsVnM5WnpQN1lGNmlwV0J6by1BIix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyJvUjE1UzA2bjNSenhvbHNZWkZpbXl3Iiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ],
+      "cm": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9",
+      "origin": "http://app.keelson.finance:56358",
+      "rpId": "keelson.finance",
+      "publicKey": "pQECAyYgASFYIMi9RPX04NYvIClDCyOYgD3gIHjQVkYCOO/jSKv5cRVtIlgg7dDICSlXT45+5+YR2IK4zP45poD8wjAmxXFYP41e/NQ=",
+      "publicKeySec1": "0x04c8bd44f5f4e0d62f2029430b2398803de02078d056460238efe348abf971156dedd0c80929574f8e7ee7e611d882b8ccfe39a680fcc23026c571583f8d5efcd4",
+      "assertion": {
+        "authenticatorData": "EHHKqDnsJdN7IzwdSzf9Op0bCgmDDhN-RSEFwH1vxPcFAAAAAg",
+        "clientDataJSON": "eyJ0eXBlIjoicGF5bWVudC5nZXQiLCJjaGFsbGVuZ2UiOiJLdmVRclZ6RmhheTJLSVEwSUZjcDkzZlhVUVFVN2UyNXByM3NkNUdDX1IwIiwib3JpZ2luIjoiaHR0cDovL2FwcC5rZWVsc29uLmZpbmFuY2U6NTYzNTgiLCJjcm9zc09yaWdpbiI6ZmFsc2UsInBheW1lbnQiOnsicnBJZCI6ImtlZWxzb24uZmluYW5jZSIsInRvcE9yaWdpbiI6Imh0dHA6Ly9hcHAua2VlbHNvbi5maW5hbmNlOjU2MzU4IiwicGF5ZWVOYW1lIjoiS2VlbHNvbiIsInBheWVlT3JpZ2luIjoiaHR0cHM6Ly9rZWVsc29uLmZpbmFuY2UiLCJwYXltZW50RW50aXRpZXNMb2dvcyI6W10sInRvdGFsIjp7InZhbHVlIjoiMTAwLjAwIiwiY3VycmVuY3kiOiJVU0QifSwiaW5zdHJ1bWVudCI6eyJpY29uIjoiZGF0YTppbWFnZS9zdmcreG1sLCUzQ3N2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSczMicgaGVpZ2h0PSczMiclM0UlM0NyZWN0IHdpZHRoPSczMicgaGVpZ2h0PSczMicgcng9JzYnIGZpbGw9JyUyMzExMScvJTNFJTNDL3N2ZyUzRSIsImRpc3BsYXlOYW1lIjoiS2VlbHNvbiBtYW5kYXRlIn19fQ",
+        "signature": "MEUCIF9A0N7-h4Hzlxdk2lR-IALO_pavgkIVBL1Cd4nkzQnNAiEA6EZwaoQ_I_p-9fQ3EB_Pyj37lhXEMcf9GXKp2oDVRiA",
+        "credentialId": "Ipc1ao2xG0GhwhvyYfp-q98XL9ZYasQk4OuoVqgjoKY",
+        "userHandle": "Nzk0cWd6MzVndWthdmR3YXFsZzIwN3lzNWQxOTEyOHU"
+      }
+    },
+    "expected": "challenge"
+  },
+  {
+    "name": "verify/error/origin",
+    "input": {
+      "op": "verify",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01M6PXPGCM21H2EAZX2T7TMEJV",
+        "iat": 1793918189,
+        "nbf": 1793918189,
+        "exp": 1794522989,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "G82b4FJqU_p_2CX5tkYWdBkTw0dbmBaZGhka6vor8cs",
+            "f5vCfiOmQcjp9lIvXJs6_fQZfVqA79qZQ-6U_3yTDJc",
+            "wsLPNCSKoLlPJeEkmAMXPB3-MvvpniqLLmhxMfXICSE"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "10105869945848359578"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "NVwKvbmChgvwbQUnWIOggLl1quv6qlNa-vr7qlYutyE"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "FgA0C5z-o0tFK9PDoWGFc8NcUQO5cB1yHlZCq9Ss9FU"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "nI-A0PGizX6pfiAZOLHQhCGrIBLdDh_nwLGI82HMpGM"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "YEpN4UI0urCr0l8S0wBAXS7_axUMs63omix8bcCh5SQ"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "1EqWcdVsV8-i6XQakQmzwRLkWtVLrUNmREZ3cVhiXk4"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "LCj4l3rVySHvFBHU8Jwj_lIgulokZi-W_D_VtXWf06U",
+            "hjfZP8IDmxAIIBCgR9WJ8QnZwsJyulL5YwWVAkuvhqU"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "s4EEmfadG6DWSEoydp_MJgZNUNgQ22W7I7wJr52w78I"
+        ]
+      },
+      "disclosures": [
+        "WyJLYjI0eUxxUE5fOEJRYS1tdHJLVVB3Iiwic3ViIiwiczVYbjczZ2hNTjNkYUtGVDRoSklKQnljTE9JRXYxWVAiXQ",
+        "WyIzQ3JwN0pUWTlHcUxTcFd3V0xDQTN3IiwiY3JlZCIseyJpZCI6IklwYzFhbzJ4RzBHaHdodnlZZnAtcTk4WEw5Wllhc1FrNE91b1ZxZ2pvS1kiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6InlMMUU5ZlRnMWk4Z0tVTUxJNWlBUGVBZ2VOQldSZ0k0Ny1OSXFfbHhGVzAiLCJ5IjoiN2RESUNTbFhUNDUtNS1ZUjJJSzR6UDQ1cG9EOHdqQW14WEZZUDQxZV9OUSJ9fV0",
+        "WyJhMnJNSTlFZjBsRUhIeGtUVzcwTndRIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJ1R1ZDZms3MlpKWV9WZjhBWEJvQS13IiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJoYVI3TUd3SUptMXZNSDVEZ2dTV1ZnIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyJmTnkwc01TWk50bHNtVENfNTlxY19nIiwibWF4IiwxMDAwMF0",
+        "WyJqbE9Ubk9TWjdlSXFoU0Q3anFka2VnIix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJCbFJXUVpBYzBycndvUlVnZ3dSdFZnIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyJnT1FkTFJ6bmtEZGxMRWw0azVrVFdnIix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJ6MFJsVnM5WnpQN1lGNmlwV0J6by1BIix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyJvUjE1UzA2bjNSenhvbHNZWkZpbXl3Iiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ],
+      "cm": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9",
+      "origin": "http://evil.example",
+      "rpId": "keelson.finance",
+      "publicKey": "pQECAyYgASFYIMi9RPX04NYvIClDCyOYgD3gIHjQVkYCOO/jSKv5cRVtIlgg7dDICSlXT45+5+YR2IK4zP45poD8wjAmxXFYP41e/NQ=",
+      "publicKeySec1": "0x04c8bd44f5f4e0d62f2029430b2398803de02078d056460238efe348abf971156dedd0c80929574f8e7ee7e611d882b8ccfe39a680fcc23026c571583f8d5efcd4",
+      "assertion": {
+        "authenticatorData": "EHHKqDnsJdN7IzwdSzf9Op0bCgmDDhN-RSEFwH1vxPcFAAAAAw",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoieWwtSVRaaXNJVDVnd0JVdzhrd3I2MHpxcmtaajR2aEdOdFNWWS1EZ1JMMCIsIm9yaWdpbiI6Imh0dHA6Ly9hcHAua2VlbHNvbi5maW5hbmNlOjU2MzU4IiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ",
+        "signature": "MEUCIF3Oz6sUgOcVkSDqZ3fk7vgDed5C2hcvkNEUGZS0Gj-CAiEAwpItv6xZ6ntm-HteWzxTQmo6ygtjUmqyiVEAhRk7u3c",
+        "credentialId": "Ipc1ao2xG0GhwhvyYfp-q98XL9ZYasQk4OuoVqgjoKY",
+        "userHandle": "Nzk0cWd6MzVndWthdmR3YXFsZzIwN3lzNWQxOTEyOHU"
+      }
+    },
+    "expected": "origin"
+  },
+  {
+    "name": "verify/error/rp-id",
+    "input": {
+      "op": "verify",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01M6PXPGCM21H2EAZX2T7TMEJV",
+        "iat": 1793918189,
+        "nbf": 1793918189,
+        "exp": 1794522989,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "G82b4FJqU_p_2CX5tkYWdBkTw0dbmBaZGhka6vor8cs",
+            "f5vCfiOmQcjp9lIvXJs6_fQZfVqA79qZQ-6U_3yTDJc",
+            "wsLPNCSKoLlPJeEkmAMXPB3-MvvpniqLLmhxMfXICSE"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "10105869945848359578"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "NVwKvbmChgvwbQUnWIOggLl1quv6qlNa-vr7qlYutyE"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "FgA0C5z-o0tFK9PDoWGFc8NcUQO5cB1yHlZCq9Ss9FU"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "nI-A0PGizX6pfiAZOLHQhCGrIBLdDh_nwLGI82HMpGM"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "YEpN4UI0urCr0l8S0wBAXS7_axUMs63omix8bcCh5SQ"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "1EqWcdVsV8-i6XQakQmzwRLkWtVLrUNmREZ3cVhiXk4"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "LCj4l3rVySHvFBHU8Jwj_lIgulokZi-W_D_VtXWf06U",
+            "hjfZP8IDmxAIIBCgR9WJ8QnZwsJyulL5YwWVAkuvhqU"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "s4EEmfadG6DWSEoydp_MJgZNUNgQ22W7I7wJr52w78I"
+        ]
+      },
+      "disclosures": [
+        "WyJLYjI0eUxxUE5fOEJRYS1tdHJLVVB3Iiwic3ViIiwiczVYbjczZ2hNTjNkYUtGVDRoSklKQnljTE9JRXYxWVAiXQ",
+        "WyIzQ3JwN0pUWTlHcUxTcFd3V0xDQTN3IiwiY3JlZCIseyJpZCI6IklwYzFhbzJ4RzBHaHdodnlZZnAtcTk4WEw5Wllhc1FrNE91b1ZxZ2pvS1kiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6InlMMUU5ZlRnMWk4Z0tVTUxJNWlBUGVBZ2VOQldSZ0k0Ny1OSXFfbHhGVzAiLCJ5IjoiN2RESUNTbFhUNDUtNS1ZUjJJSzR6UDQ1cG9EOHdqQW14WEZZUDQxZV9OUSJ9fV0",
+        "WyJhMnJNSTlFZjBsRUhIeGtUVzcwTndRIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJ1R1ZDZms3MlpKWV9WZjhBWEJvQS13IiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJoYVI3TUd3SUptMXZNSDVEZ2dTV1ZnIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyJmTnkwc01TWk50bHNtVENfNTlxY19nIiwibWF4IiwxMDAwMF0",
+        "WyJqbE9Ubk9TWjdlSXFoU0Q3anFka2VnIix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJCbFJXUVpBYzBycndvUlVnZ3dSdFZnIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyJnT1FkTFJ6bmtEZGxMRWw0azVrVFdnIix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJ6MFJsVnM5WnpQN1lGNmlwV0J6by1BIix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyJvUjE1UzA2bjNSenhvbHNZWkZpbXl3Iiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ],
+      "cm": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9",
+      "origin": "http://app.keelson.finance:56358",
+      "rpId": "evil.example",
+      "publicKey": "pQECAyYgASFYIMi9RPX04NYvIClDCyOYgD3gIHjQVkYCOO/jSKv5cRVtIlgg7dDICSlXT45+5+YR2IK4zP45poD8wjAmxXFYP41e/NQ=",
+      "publicKeySec1": "0x04c8bd44f5f4e0d62f2029430b2398803de02078d056460238efe348abf971156dedd0c80929574f8e7ee7e611d882b8ccfe39a680fcc23026c571583f8d5efcd4",
+      "assertion": {
+        "authenticatorData": "EHHKqDnsJdN7IzwdSzf9Op0bCgmDDhN-RSEFwH1vxPcFAAAAAw",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoieWwtSVRaaXNJVDVnd0JVdzhrd3I2MHpxcmtaajR2aEdOdFNWWS1EZ1JMMCIsIm9yaWdpbiI6Imh0dHA6Ly9hcHAua2VlbHNvbi5maW5hbmNlOjU2MzU4IiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ",
+        "signature": "MEUCIF3Oz6sUgOcVkSDqZ3fk7vgDed5C2hcvkNEUGZS0Gj-CAiEAwpItv6xZ6ntm-HteWzxTQmo6ygtjUmqyiVEAhRk7u3c",
+        "credentialId": "Ipc1ao2xG0GhwhvyYfp-q98XL9ZYasQk4OuoVqgjoKY",
+        "userHandle": "Nzk0cWd6MzVndWthdmR3YXFsZzIwN3lzNWQxOTEyOHU"
+      }
+    },
+    "expected": "rp-id"
+  },
+  {
+    "name": "verify/error/user-not-verified",
+    "input": {
+      "op": "verify",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01M6PXPGCM21H2EAZX2T7TMEJV",
+        "iat": 1793918189,
+        "nbf": 1793918189,
+        "exp": 1794522989,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "G82b4FJqU_p_2CX5tkYWdBkTw0dbmBaZGhka6vor8cs",
+            "f5vCfiOmQcjp9lIvXJs6_fQZfVqA79qZQ-6U_3yTDJc",
+            "wsLPNCSKoLlPJeEkmAMXPB3-MvvpniqLLmhxMfXICSE"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "10105869945848359578"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "NVwKvbmChgvwbQUnWIOggLl1quv6qlNa-vr7qlYutyE"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "FgA0C5z-o0tFK9PDoWGFc8NcUQO5cB1yHlZCq9Ss9FU"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "nI-A0PGizX6pfiAZOLHQhCGrIBLdDh_nwLGI82HMpGM"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "YEpN4UI0urCr0l8S0wBAXS7_axUMs63omix8bcCh5SQ"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "1EqWcdVsV8-i6XQakQmzwRLkWtVLrUNmREZ3cVhiXk4"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "LCj4l3rVySHvFBHU8Jwj_lIgulokZi-W_D_VtXWf06U",
+            "hjfZP8IDmxAIIBCgR9WJ8QnZwsJyulL5YwWVAkuvhqU"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "s4EEmfadG6DWSEoydp_MJgZNUNgQ22W7I7wJr52w78I"
+        ]
+      },
+      "disclosures": [
+        "WyJLYjI0eUxxUE5fOEJRYS1tdHJLVVB3Iiwic3ViIiwiczVYbjczZ2hNTjNkYUtGVDRoSklKQnljTE9JRXYxWVAiXQ",
+        "WyIzQ3JwN0pUWTlHcUxTcFd3V0xDQTN3IiwiY3JlZCIseyJpZCI6IklwYzFhbzJ4RzBHaHdodnlZZnAtcTk4WEw5Wllhc1FrNE91b1ZxZ2pvS1kiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6InlMMUU5ZlRnMWk4Z0tVTUxJNWlBUGVBZ2VOQldSZ0k0Ny1OSXFfbHhGVzAiLCJ5IjoiN2RESUNTbFhUNDUtNS1ZUjJJSzR6UDQ1cG9EOHdqQW14WEZZUDQxZV9OUSJ9fV0",
+        "WyJhMnJNSTlFZjBsRUhIeGtUVzcwTndRIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJ1R1ZDZms3MlpKWV9WZjhBWEJvQS13IiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJoYVI3TUd3SUptMXZNSDVEZ2dTV1ZnIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyJmTnkwc01TWk50bHNtVENfNTlxY19nIiwibWF4IiwxMDAwMF0",
+        "WyJqbE9Ubk9TWjdlSXFoU0Q3anFka2VnIix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJCbFJXUVpBYzBycndvUlVnZ3dSdFZnIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyJnT1FkTFJ6bmtEZGxMRWw0azVrVFdnIix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJ6MFJsVnM5WnpQN1lGNmlwV0J6by1BIix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyJvUjE1UzA2bjNSenhvbHNZWkZpbXl3Iiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ],
+      "cm": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9",
+      "origin": "http://app.keelson.finance:56358",
+      "rpId": "keelson.finance",
+      "publicKey": "pQECAyYgASFYIMi9RPX04NYvIClDCyOYgD3gIHjQVkYCOO/jSKv5cRVtIlgg7dDICSlXT45+5+YR2IK4zP45poD8wjAmxXFYP41e/NQ=",
+      "publicKeySec1": "0x04c8bd44f5f4e0d62f2029430b2398803de02078d056460238efe348abf971156dedd0c80929574f8e7ee7e611d882b8ccfe39a680fcc23026c571583f8d5efcd4",
+      "assertion": {
+        "authenticatorData": "EHHKqDnsJdN7IzwdSzf9Op0bCgmDDhN-RSEFwH1vxPcBAAAABg",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoieWwtSVRaaXNJVDVnd0JVdzhrd3I2MHpxcmtaajR2aEdOdFNWWS1EZ1JMMCIsIm9yaWdpbiI6Imh0dHA6Ly9hcHAua2VlbHNvbi5maW5hbmNlOjU2MzU4IiwiY3Jvc3NPcmlnaW4iOmZhbHNlLCJvdGhlcl9rZXlzX2Nhbl9iZV9hZGRlZF9oZXJlIjoiZG8gbm90IGNvbXBhcmUgY2xpZW50RGF0YUpTT04gYWdhaW5zdCBhIHRlbXBsYXRlLiBTZWUgaHR0cHM6Ly9nb28uZ2wveWFiUGV4In0",
+        "signature": "MEUCICNkAEowQO_99-4dnKksdVGrY7FQ2Cnrl8Yv34JiLonOAiEA2R9tLTpqwYgdX9qvy1yS3ifmAmjIIm0iah6NQiKoEK0",
+        "credentialId": "Ipc1ao2xG0GhwhvyYfp-q98XL9ZYasQk4OuoVqgjoKY"
+      }
+    },
+    "expected": "user-verified"
+  },
+  {
+    "name": "verify/error/bad-signature",
+    "input": {
+      "op": "verify",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01M6PXPGCM21H2EAZX2T7TMEJV",
+        "iat": 1793918189,
+        "nbf": 1793918189,
+        "exp": 1794522989,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "G82b4FJqU_p_2CX5tkYWdBkTw0dbmBaZGhka6vor8cs",
+            "f5vCfiOmQcjp9lIvXJs6_fQZfVqA79qZQ-6U_3yTDJc",
+            "wsLPNCSKoLlPJeEkmAMXPB3-MvvpniqLLmhxMfXICSE"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "10105869945848359578"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "NVwKvbmChgvwbQUnWIOggLl1quv6qlNa-vr7qlYutyE"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "FgA0C5z-o0tFK9PDoWGFc8NcUQO5cB1yHlZCq9Ss9FU"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "nI-A0PGizX6pfiAZOLHQhCGrIBLdDh_nwLGI82HMpGM"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "YEpN4UI0urCr0l8S0wBAXS7_axUMs63omix8bcCh5SQ"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "1EqWcdVsV8-i6XQakQmzwRLkWtVLrUNmREZ3cVhiXk4"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "LCj4l3rVySHvFBHU8Jwj_lIgulokZi-W_D_VtXWf06U",
+            "hjfZP8IDmxAIIBCgR9WJ8QnZwsJyulL5YwWVAkuvhqU"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "s4EEmfadG6DWSEoydp_MJgZNUNgQ22W7I7wJr52w78I"
+        ]
+      },
+      "disclosures": [
+        "WyJLYjI0eUxxUE5fOEJRYS1tdHJLVVB3Iiwic3ViIiwiczVYbjczZ2hNTjNkYUtGVDRoSklKQnljTE9JRXYxWVAiXQ",
+        "WyIzQ3JwN0pUWTlHcUxTcFd3V0xDQTN3IiwiY3JlZCIseyJpZCI6IklwYzFhbzJ4RzBHaHdodnlZZnAtcTk4WEw5Wllhc1FrNE91b1ZxZ2pvS1kiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6InlMMUU5ZlRnMWk4Z0tVTUxJNWlBUGVBZ2VOQldSZ0k0Ny1OSXFfbHhGVzAiLCJ5IjoiN2RESUNTbFhUNDUtNS1ZUjJJSzR6UDQ1cG9EOHdqQW14WEZZUDQxZV9OUSJ9fV0",
+        "WyJhMnJNSTlFZjBsRUhIeGtUVzcwTndRIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJ1R1ZDZms3MlpKWV9WZjhBWEJvQS13IiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJoYVI3TUd3SUptMXZNSDVEZ2dTV1ZnIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyJmTnkwc01TWk50bHNtVENfNTlxY19nIiwibWF4IiwxMDAwMF0",
+        "WyJqbE9Ubk9TWjdlSXFoU0Q3anFka2VnIix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJCbFJXUVpBYzBycndvUlVnZ3dSdFZnIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyJnT1FkTFJ6bmtEZGxMRWw0azVrVFdnIix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJ6MFJsVnM5WnpQN1lGNmlwV0J6by1BIix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyJvUjE1UzA2bjNSenhvbHNZWkZpbXl3Iiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ],
+      "cm": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9",
+      "origin": "http://app.keelson.finance:56358",
+      "rpId": "keelson.finance",
+      "publicKey": "pQECAyYgASFYIMi9RPX04NYvIClDCyOYgD3gIHjQVkYCOO/jSKv5cRVtIlgg7dDICSlXT45+5+YR2IK4zP45poD8wjAmxXFYP41e/NQ=",
+      "publicKeySec1": "0x04c8bd44f5f4e0d62f2029430b2398803de02078d056460238efe348abf971156dedd0c80929574f8e7ee7e611d882b8ccfe39a680fcc23026c571583f8d5efcd4",
+      "assertion": {
+        "authenticatorData": "EHHKqDnsJdN7IzwdSzf9Op0bCgmDDhN-RSEFwH1vxPcFAAAAAw",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoieWwtSVRaaXNJVDVnd0JVdzhrd3I2MHpxcmtaajR2aEdOdFNWWS1EZ1JMMCIsIm9yaWdpbiI6Imh0dHA6Ly9hcHAua2VlbHNvbi5maW5hbmNlOjU2MzU4IiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ",
+        "signature": "MEUCIF3Oz6sUgOcVkSDqZ3fk7vgDed5C2hcvkNEUGZS0Gj-CAiEAwpItv6xZ6ntm-HteWzxTQmo6ygtjUmqyiVEAhRk7u3Y",
+        "credentialId": "Ipc1ao2xG0GhwhvyYfp-q98XL9ZYasQk4OuoVqgjoKY",
+        "userHandle": "Nzk0cWd6MzVndWthdmR3YXFsZzIwN3lzNWQxOTEyOHU"
+      }
+    },
+    "expected": "signature"
+  },
+  {
+    "name": "verify/error/spc-total-shown",
+    "input": {
+      "op": "verify",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01M6PXPGF7ZR1HH6D6F53TJWWR",
+        "iat": 1793918190,
+        "nbf": 1793918190,
+        "exp": 1794522990,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "jVqX_ZgNdF1DXsScUmLbvz8GCSRy5geLRnhqsOG4Q7c",
+            "l5uU1EOZTWb7TZbB78vCKIcYgpjel4ffm-9cb7FYzD8",
+            "x8n02notGaSdzclHoBoEKovP5euZ-JdZAfCDP7QQJqc"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "10105869945848359578"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "4fIz4sR7l9Sp95JgCUY_DR0FdTbNSmcIZRGtXrnafg4"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "N47x90K8Xq6A_B4dFbHF5ZczZqO27OqRBdZxLtzIbkI"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "mHSqfp6UmnB7NeqzDebz5Ofhe6zP7HdL0fG7XToqt8k"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "-9_X7EB1IBox0VYabLMavPffNjHUf6sjiOKdRmsgjKc"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "dbHoemmYmaYQhDl4yFpCSTUwpxYxufpNKplxxbPs2qU"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "5VCozqM1RQ8AMTV_tXDaVruvZIjTkovV13d49OeuTtQ",
+            "WJyLrNY6Vs_IqhquB4pHboE-313Hk3yNJzwOfjpI7-k"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1f9bb0cdefda550921d362482796e717f50e987bdd30050c36a3f26202495212"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "r-tUQJR9pMkfrVYTwqHMHHeCetY7yP4JTDLrqAEqFzU"
+        ]
+      },
+      "disclosures": [
+        "WyJuRjRVem5uWnFRV3ZTNUtUVWlxLTF3Iiwic3ViIiwiczVYbjczZ2hNTjNkYUtGVDRoSklKQnljTE9JRXYxWVAiXQ",
+        "WyJZeU51aXAzN1VjRG5DalZNSWVtcXhRIiwiY3JlZCIseyJpZCI6IklwYzFhbzJ4RzBHaHdodnlZZnAtcTk4WEw5Wllhc1FrNE91b1ZxZ2pvS1kiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6InlMMUU5ZlRnMWk4Z0tVTUxJNWlBUGVBZ2VOQldSZ0k0Ny1OSXFfbHhGVzAiLCJ5IjoiN2RESUNTbFhUNDUtNS1ZUjJJSzR6UDQ1cG9EOHdqQW14WEZZUDQxZV9OUSJ9fV0",
+        "WyJjUU1JRHBNZXBKcmZHNzRuMXRUUHV3IiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyI0UGpDaDg0TWdRX296eGduWWNQZUF3IiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJuSXpBNWdRUnIyRWJpcGJSV3BoUFZnIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyJuTXVLaktzZzRra2dOZExkLW4wQURBIiwibWF4IiwxMDAwMF0",
+        "WyJGQ1U4ODRPeTJUMVNVbDYxdWgzbFZBIix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJhOUhiUVNkVDlMSzRGdU8xWkU2MTFRIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyIxYmFUcmZDeWZNX1lLbmNpOUY2VVl3Iix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJIaVdkeFIwUGV5S1htU2NUTk0xNnRRIix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyI4QktjcTBFNjlDVUZfUnRBeDhJS19nIiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ],
+      "cm": "0x1f9bb0cdefda550921d362482796e717f50e987bdd30050c36a3f26202495212",
+      "origin": "http://app.keelson.finance:56358",
+      "rpId": "keelson.finance",
+      "publicKey": "pQECAyYgASFYIMi9RPX04NYvIClDCyOYgD3gIHjQVkYCOO/jSKv5cRVtIlgg7dDICSlXT45+5+YR2IK4zP45poD8wjAmxXFYP41e/NQ=",
+      "publicKeySec1": "0x04c8bd44f5f4e0d62f2029430b2398803de02078d056460238efe348abf971156dedd0c80929574f8e7ee7e611d882b8ccfe39a680fcc23026c571583f8d5efcd4",
+      "assertion": {
+        "authenticatorData": "EHHKqDnsJdN7IzwdSzf9Op0bCgmDDhN-RSEFwH1vxPcFAAAABA",
+        "clientDataJSON": "eyJ0eXBlIjoicGF5bWVudC5nZXQiLCJjaGFsbGVuZ2UiOiI5VlZERGtEckRfbkJxQWM1azgzVW9ma05welVmZUFYYXM5SlpHSi1ydkFjIiwib3JpZ2luIjoiaHR0cDovL2FwcC5rZWVsc29uLmZpbmFuY2U6NTYzNTgiLCJjcm9zc09yaWdpbiI6ZmFsc2UsInBheW1lbnQiOnsicnBJZCI6ImtlZWxzb24uZmluYW5jZSIsInRvcE9yaWdpbiI6Imh0dHA6Ly9hcHAua2VlbHNvbi5maW5hbmNlOjU2MzU4IiwicGF5ZWVOYW1lIjoiS2VlbHNvbiIsInBheWVlT3JpZ2luIjoiaHR0cHM6Ly9rZWVsc29uLmZpbmFuY2UiLCJwYXltZW50RW50aXRpZXNMb2dvcyI6W10sInRvdGFsIjp7InZhbHVlIjoiMC4wMSIsImN1cnJlbmN5IjoiVVNEIn0sImluc3RydW1lbnQiOnsiaWNvbiI6ImRhdGE6aW1hZ2Uvc3ZnK3htbCwlM0NzdmcgeG1sbnM9J2h0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnJyB3aWR0aD0nMzInIGhlaWdodD0nMzInJTNFJTNDcmVjdCB3aWR0aD0nMzInIGhlaWdodD0nMzInIHJ4PSc2JyBmaWxsPSclMjMxMTEnLyUzRSUzQy9zdmclM0UiLCJkaXNwbGF5TmFtZSI6IktlZWxzb24gbWFuZGF0ZSJ9fX0",
+        "signature": "MEYCIQDcg9nwEXLlRNJXwWTQyabfXlWn8zaKham1Iv6xxs8UbAIhAIkcomOI7cej1-5Mbdv_EMx8Qjka4Xfw-rRdGSUxBCgA",
+        "credentialId": "Ipc1ao2xG0GhwhvyYfp-q98XL9ZYasQk4OuoVqgjoKY",
+        "userHandle": "Nzk0cWd6MzVndWthdmR3YXFsZzIwN3lzNWQxOTEyOHU"
+      }
+    },
+    "expected": "payment"
+  },
+  {
+    "name": "verify/error/spc-payee-shown",
+    "input": {
+      "op": "verify",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01M6PXPGFVCSZ9ZQDE0NTAP4P5",
+        "iat": 1793918190,
+        "nbf": 1793918190,
+        "exp": 1794522990,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "Lzar0qAD7OrDClq-fCKuUh6DfqMT1pPDNgGAITu2hgI",
+            "MG4CuOP9olPujverQLkKgvD_Sk17vh8DdGOvY-Iyg2k",
+            "XvAMVD15cZKCHijC7_fzOSTNr7chU4N5O8PfNfs246U"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "10105869945848359578"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "DD1CZa-SnTd5Un-sTF9bRvW3iNogpUbDTYD_OMRaprc"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "GntCSYTcvaft3965JFfnocfQymDHFQXO_-7_CvTT9Gk"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "_IXogLzCZ2xe8HvPvAEzew5WL1hAZb1ISAH1M27EKkY"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "QUZUr-M3BRRDOWpN8XBFVEVjxCa6gmFCthIWVqhpbTw"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "xX_AOYfOMNX59hSmkRUMWo7I7bLkYre-IXK98AD_otM"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "dxX3lzcM23AF9gtsqQ2bLwXZX-VKbikg33iDSEAwlG4",
+            "z3t0s80WUA4DnNhj3wg-Sd7Z5wLEar1zXjDEPAMHlOw"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x233738bc13645f27f4f3b49e463c97461db360de13b249b7150d08364003e896"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "of33zK65_e-0laSQjOIARUX3RAZYpmLYkfbB8Zrr3UE"
+        ]
+      },
+      "disclosures": [
+        "WyJVWmJza2tRWlNrY0xOVy04aF9jSmZnIiwic3ViIiwiczVYbjczZ2hNTjNkYUtGVDRoSklKQnljTE9JRXYxWVAiXQ",
+        "WyJCdnBYZE5lWjg5SUI5dmpYNzBUVlFBIiwiY3JlZCIseyJpZCI6IklwYzFhbzJ4RzBHaHdodnlZZnAtcTk4WEw5Wllhc1FrNE91b1ZxZ2pvS1kiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6InlMMUU5ZlRnMWk4Z0tVTUxJNWlBUGVBZ2VOQldSZ0k0Ny1OSXFfbHhGVzAiLCJ5IjoiN2RESUNTbFhUNDUtNS1ZUjJJSzR6UDQ1cG9EOHdqQW14WEZZUDQxZV9OUSJ9fV0",
+        "WyJab3NXS01mRVBRMlpaQ24yWnhqeWtnIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJvczBUQl8tMXg3NnNrNWNsU19Fd1d3IiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJLWVBzd2phMlZnOURUOUtJQjZ1TWp3IiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyJYdWtGRzBJSGxISnJUTGY5dEdVT3dRIiwibWF4IiwxMDAwMF0",
+        "WyJNYlBqQk1fWmdHbE5yVzZ4OVd0Rlp3Iix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJFQ1NsWlF0dEFuQktkSERocGJBRXRnIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyJ6c1EzS2JnWkFHSElRYkhHa3FtZlFBIix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJjRWdnTk43bEduWHF2RnFwdVV3cUtRIix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyJWRkprRl8taW5oQ2tQUElGNnplbzBnIiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ],
+      "cm": "0x233738bc13645f27f4f3b49e463c97461db360de13b249b7150d08364003e896",
+      "origin": "http://app.keelson.finance:56358",
+      "rpId": "keelson.finance",
+      "publicKey": "pQECAyYgASFYIMi9RPX04NYvIClDCyOYgD3gIHjQVkYCOO/jSKv5cRVtIlgg7dDICSlXT45+5+YR2IK4zP45poD8wjAmxXFYP41e/NQ=",
+      "publicKeySec1": "0x04c8bd44f5f4e0d62f2029430b2398803de02078d056460238efe348abf971156dedd0c80929574f8e7ee7e611d882b8ccfe39a680fcc23026c571583f8d5efcd4",
+      "assertion": {
+        "authenticatorData": "EHHKqDnsJdN7IzwdSzf9Op0bCgmDDhN-RSEFwH1vxPcFAAAABQ",
+        "clientDataJSON": "eyJ0eXBlIjoicGF5bWVudC5nZXQiLCJjaGFsbGVuZ2UiOiJ5dS1WSE5oOHNiNjVsWERUN2VSRGtFYjVsVDJXc0tZdUFGUzJsZmJUako4Iiwib3JpZ2luIjoiaHR0cDovL2FwcC5rZWVsc29uLmZpbmFuY2U6NTYzNTgiLCJjcm9zc09yaWdpbiI6ZmFsc2UsInBheW1lbnQiOnsicnBJZCI6ImtlZWxzb24uZmluYW5jZSIsInRvcE9yaWdpbiI6Imh0dHA6Ly9hcHAua2VlbHNvbi5maW5hbmNlOjU2MzU4IiwicGF5ZWVOYW1lIjoiU29tZW9uZSBFbHNlIiwicGF5ZWVPcmlnaW4iOiJodHRwczovL2tlZWxzb24uZmluYW5jZSIsInBheW1lbnRFbnRpdGllc0xvZ29zIjpbXSwidG90YWwiOnsidmFsdWUiOiIxMDAuMDAiLCJjdXJyZW5jeSI6IlVTRCJ9LCJpbnN0cnVtZW50Ijp7Imljb24iOiJkYXRhOmltYWdlL3N2Zyt4bWwsJTNDc3ZnIHhtbG5zPSdodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2Zycgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyUzRSUzQ3JlY3Qgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyByeD0nNicgZmlsbD0nJTIzMTExJy8lM0UlM0Mvc3ZnJTNFIiwiZGlzcGxheU5hbWUiOiJLZWVsc29uIG1hbmRhdGUifX19",
+        "signature": "MEUCIQC2H_YR-plLYLHEBZbKrAgUWPsOAIptGYtPEN-PVwz3PwIgRmzioWCF3GwdwK7Xingkbdwxng_KloQN3oj9vCI596k",
+        "credentialId": "Ipc1ao2xG0GhwhvyYfp-q98XL9ZYasQk4OuoVqgjoKY",
+        "userHandle": "Nzk0cWd6MzVndWthdmR3YXFsZzIwN3lzNWQxOTEyOHU"
+      }
+    },
+    "expected": "payment"
+  },
+  {
+    "name": "verify/error/spc-instrument",
+    "input": {
+      "op": "verify",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01M6PXPG82DTZ02R90Y0PS2TBK",
+        "iat": 1793918189,
+        "nbf": 1793918189,
+        "exp": 1794522989,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "5i-P1YlNJrU-wdNQOiNt9HLt24rtmX6MLTZABJ-_pYM",
+            "EbKcTbHd-OXzIvEl81g6PqAdeFFWatgiGf32wC3ApV0",
+            "jN16J8dNFcWANh_q0_NgrgFsydgv6QBl1eV7PH0A0TE"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "10105869945848359578"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "vh8Ni-72JcomePW8z5WiLLE0aZ0nqfXrEp89ADw9XBc"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "99uu_mcHiCs2N-MQLjSOu4gjVPOC5C5lsr5IAhN7tvM"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "839B6c2mmTi0pSUU5g8QbU2eBNJL0iRVR_AtKeG9-cI"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "SDmPtcV2YSmJdt3gfNVPTP2s8x1Bd-WpjgbXpWOF6XU"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "AlDe-tyw4wrvXRUCZ8RqI9cZLFmbXWj3CDtzTswpv_o"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "AxQ1PRDFT-s5tkmc2crxXtjlbu4pyFcz7PGV9VGz4wY",
+            "PNY3hxBXPCkFCrVU4gHuZHMLeiWnOE14erabhYjJb_8"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x2de747f619285557a70720004d2929d50785f2c37fe7360f5fea932eb22a598d"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "TInP23rNnB8mAtwEq-q8jBXNVrnTNKJcLQ7lDsUrbv4"
+        ]
+      },
+      "disclosures": [
+        "WyJtOVpBRUx2MDBrX3ExUU5mcEQ4NVRnIiwic3ViIiwiczVYbjczZ2hNTjNkYUtGVDRoSklKQnljTE9JRXYxWVAiXQ",
+        "WyJ4bEtWdWdHNXpQTENaajJBOHNCTWF3IiwiY3JlZCIseyJpZCI6IklwYzFhbzJ4RzBHaHdodnlZZnAtcTk4WEw5Wllhc1FrNE91b1ZxZ2pvS1kiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6InlMMUU5ZlRnMWk4Z0tVTUxJNWlBUGVBZ2VOQldSZ0k0Ny1OSXFfbHhGVzAiLCJ5IjoiN2RESUNTbFhUNDUtNS1ZUjJJSzR6UDQ1cG9EOHdqQW14WEZZUDQxZV9OUSJ9fV0",
+        "WyJFd1VwN3dHQ2tfeEMycl9xbm1zRGRnIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJPdWlpOFZEakxsX3dNSWhHYnBnaTl3IiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJDX2djV1FoZWd5ZEhWaHJGYWs3eHpnIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyJScnN2T0oxT2FuQTFDY1FBWV8xaFRnIiwibWF4IiwxMDAwMF0",
+        "WyI1U2s3NWdjQTVBSC1yblRHUUZUa21RIix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJ1RU5iUXlRZXBFbWJQTjhQanpVZzVnIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyIySi1QSnlLN1ppajNiQXlFNDcxQTF3Iix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyI4S2dvY1poaTVNdnNKZGp4NVFDLWJ3Iix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyJxZERCU2JsTjBNbDBKSTdEYTdqSDl3Iiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ],
+      "cm": "0x2de747f619285557a70720004d2929d50785f2c37fe7360f5fea932eb22a598d",
+      "origin": "http://app.keelson.finance:56358",
+      "rpId": "keelson.finance",
+      "publicKey": "pQECAyYgASFYIMi9RPX04NYvIClDCyOYgD3gIHjQVkYCOO/jSKv5cRVtIlgg7dDICSlXT45+5+YR2IK4zP45poD8wjAmxXFYP41e/NQ=",
+      "publicKeySec1": "0x04c8bd44f5f4e0d62f2029430b2398803de02078d056460238efe348abf971156dedd0c80929574f8e7ee7e611d882b8ccfe39a680fcc23026c571583f8d5efcd4",
+      "assertion": {
+        "authenticatorData": "EHHKqDnsJdN7IzwdSzf9Op0bCgmDDhN-RSEFwH1vxPcFAAAAAg",
+        "clientDataJSON": "eyJ0eXBlIjoicGF5bWVudC5nZXQiLCJjaGFsbGVuZ2UiOiJLdmVRclZ6RmhheTJLSVEwSUZjcDkzZlhVUVFVN2UyNXByM3NkNUdDX1IwIiwib3JpZ2luIjoiaHR0cDovL2FwcC5rZWVsc29uLmZpbmFuY2U6NTYzNTgiLCJjcm9zc09yaWdpbiI6ZmFsc2UsInBheW1lbnQiOnsicnBJZCI6ImtlZWxzb24uZmluYW5jZSIsInRvcE9yaWdpbiI6Imh0dHA6Ly9hcHAua2VlbHNvbi5maW5hbmNlOjU2MzU4IiwicGF5ZWVOYW1lIjoiS2VlbHNvbiIsInBheWVlT3JpZ2luIjoiaHR0cHM6Ly9rZWVsc29uLmZpbmFuY2UiLCJwYXltZW50RW50aXRpZXNMb2dvcyI6W10sInRvdGFsIjp7InZhbHVlIjoiMTAwLjAwIiwiY3VycmVuY3kiOiJVU0QifSwiaW5zdHJ1bWVudCI6eyJpY29uIjoiZGF0YTppbWFnZS9zdmcreG1sLCUzQ3N2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSczMicgaGVpZ2h0PSczMiclM0UlM0NyZWN0IHdpZHRoPSczMicgaGVpZ2h0PSczMicgcng9JzYnIGZpbGw9JyUyMzExMScvJTNFJTNDL3N2ZyUzRSIsImRpc3BsYXlOYW1lIjoiQ2FyZCJ9fX0",
+        "signature": "MEUCIF9A0N7-h4Hzlxdk2lR-IALO_pavgkIVBL1Cd4nkzQnNAiEA6EZwaoQ_I_p-9fQ3EB_Pyj37lhXEMcf9GXKp2oDVRiA",
+        "credentialId": "Ipc1ao2xG0GhwhvyYfp-q98XL9ZYasQk4OuoVqgjoKY",
+        "userHandle": "Nzk0cWd6MzVndWthdmR3YXFsZzIwN3lzNWQxOTEyOHU"
+      }
+    },
+    "expected": "payment"
+  },
+  {
+    "name": "verify/error/spc-no-payment",
+    "input": {
+      "op": "verify",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01M6PXPG82DTZ02R90Y0PS2TBK",
+        "iat": 1793918189,
+        "nbf": 1793918189,
+        "exp": 1794522989,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "5i-P1YlNJrU-wdNQOiNt9HLt24rtmX6MLTZABJ-_pYM",
+            "EbKcTbHd-OXzIvEl81g6PqAdeFFWatgiGf32wC3ApV0",
+            "jN16J8dNFcWANh_q0_NgrgFsydgv6QBl1eV7PH0A0TE"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "10105869945848359578"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "vh8Ni-72JcomePW8z5WiLLE0aZ0nqfXrEp89ADw9XBc"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "99uu_mcHiCs2N-MQLjSOu4gjVPOC5C5lsr5IAhN7tvM"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "839B6c2mmTi0pSUU5g8QbU2eBNJL0iRVR_AtKeG9-cI"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "SDmPtcV2YSmJdt3gfNVPTP2s8x1Bd-WpjgbXpWOF6XU"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "AlDe-tyw4wrvXRUCZ8RqI9cZLFmbXWj3CDtzTswpv_o"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "AxQ1PRDFT-s5tkmc2crxXtjlbu4pyFcz7PGV9VGz4wY",
+            "PNY3hxBXPCkFCrVU4gHuZHMLeiWnOE14erabhYjJb_8"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x2de747f619285557a70720004d2929d50785f2c37fe7360f5fea932eb22a598d"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "TInP23rNnB8mAtwEq-q8jBXNVrnTNKJcLQ7lDsUrbv4"
+        ]
+      },
+      "disclosures": [
+        "WyJtOVpBRUx2MDBrX3ExUU5mcEQ4NVRnIiwic3ViIiwiczVYbjczZ2hNTjNkYUtGVDRoSklKQnljTE9JRXYxWVAiXQ",
+        "WyJ4bEtWdWdHNXpQTENaajJBOHNCTWF3IiwiY3JlZCIseyJpZCI6IklwYzFhbzJ4RzBHaHdodnlZZnAtcTk4WEw5Wllhc1FrNE91b1ZxZ2pvS1kiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6InlMMUU5ZlRnMWk4Z0tVTUxJNWlBUGVBZ2VOQldSZ0k0Ny1OSXFfbHhGVzAiLCJ5IjoiN2RESUNTbFhUNDUtNS1ZUjJJSzR6UDQ1cG9EOHdqQW14WEZZUDQxZV9OUSJ9fV0",
+        "WyJFd1VwN3dHQ2tfeEMycl9xbm1zRGRnIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJPdWlpOFZEakxsX3dNSWhHYnBnaTl3IiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJDX2djV1FoZWd5ZEhWaHJGYWs3eHpnIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyJScnN2T0oxT2FuQTFDY1FBWV8xaFRnIiwibWF4IiwxMDAwMF0",
+        "WyI1U2s3NWdjQTVBSC1yblRHUUZUa21RIix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJ1RU5iUXlRZXBFbWJQTjhQanpVZzVnIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyIySi1QSnlLN1ppajNiQXlFNDcxQTF3Iix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyI4S2dvY1poaTVNdnNKZGp4NVFDLWJ3Iix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyJxZERCU2JsTjBNbDBKSTdEYTdqSDl3Iiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ],
+      "cm": "0x2de747f619285557a70720004d2929d50785f2c37fe7360f5fea932eb22a598d",
+      "origin": "http://app.keelson.finance:56358",
+      "rpId": "keelson.finance",
+      "publicKey": "pQECAyYgASFYIMi9RPX04NYvIClDCyOYgD3gIHjQVkYCOO/jSKv5cRVtIlgg7dDICSlXT45+5+YR2IK4zP45poD8wjAmxXFYP41e/NQ=",
+      "publicKeySec1": "0x04c8bd44f5f4e0d62f2029430b2398803de02078d056460238efe348abf971156dedd0c80929574f8e7ee7e611d882b8ccfe39a680fcc23026c571583f8d5efcd4",
+      "assertion": {
+        "authenticatorData": "EHHKqDnsJdN7IzwdSzf9Op0bCgmDDhN-RSEFwH1vxPcFAAAAAg",
+        "clientDataJSON": "eyJ0eXBlIjoicGF5bWVudC5nZXQiLCJjaGFsbGVuZ2UiOiJLdmVRclZ6RmhheTJLSVEwSUZjcDkzZlhVUVFVN2UyNXByM3NkNUdDX1IwIiwib3JpZ2luIjoiaHR0cDovL2FwcC5rZWVsc29uLmZpbmFuY2U6NTYzNTgiLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "signature": "MEUCIF9A0N7-h4Hzlxdk2lR-IALO_pavgkIVBL1Cd4nkzQnNAiEA6EZwaoQ_I_p-9fQ3EB_Pyj37lhXEMcf9GXKp2oDVRiA",
+        "credentialId": "Ipc1ao2xG0GhwhvyYfp-q98XL9ZYasQk4OuoVqgjoKY",
+        "userHandle": "Nzk0cWd6MzVndWthdmR3YXFsZzIwN3lzNWQxOTEyOHU"
+      }
+    },
+    "expected": "payment"
+  },
+  {
+    "name": "verify/error/cross-origin",
+    "input": {
+      "op": "verify",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01M6PXPG82DTZ02R90Y0PS2TBK",
+        "iat": 1793918189,
+        "nbf": 1793918189,
+        "exp": 1794522989,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "5i-P1YlNJrU-wdNQOiNt9HLt24rtmX6MLTZABJ-_pYM",
+            "EbKcTbHd-OXzIvEl81g6PqAdeFFWatgiGf32wC3ApV0",
+            "jN16J8dNFcWANh_q0_NgrgFsydgv6QBl1eV7PH0A0TE"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "10105869945848359578"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "vh8Ni-72JcomePW8z5WiLLE0aZ0nqfXrEp89ADw9XBc"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "99uu_mcHiCs2N-MQLjSOu4gjVPOC5C5lsr5IAhN7tvM"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "839B6c2mmTi0pSUU5g8QbU2eBNJL0iRVR_AtKeG9-cI"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "SDmPtcV2YSmJdt3gfNVPTP2s8x1Bd-WpjgbXpWOF6XU"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "AlDe-tyw4wrvXRUCZ8RqI9cZLFmbXWj3CDtzTswpv_o"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "AxQ1PRDFT-s5tkmc2crxXtjlbu4pyFcz7PGV9VGz4wY",
+            "PNY3hxBXPCkFCrVU4gHuZHMLeiWnOE14erabhYjJb_8"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x2de747f619285557a70720004d2929d50785f2c37fe7360f5fea932eb22a598d"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "TInP23rNnB8mAtwEq-q8jBXNVrnTNKJcLQ7lDsUrbv4"
+        ]
+      },
+      "disclosures": [
+        "WyJtOVpBRUx2MDBrX3ExUU5mcEQ4NVRnIiwic3ViIiwiczVYbjczZ2hNTjNkYUtGVDRoSklKQnljTE9JRXYxWVAiXQ",
+        "WyJ4bEtWdWdHNXpQTENaajJBOHNCTWF3IiwiY3JlZCIseyJpZCI6IklwYzFhbzJ4RzBHaHdodnlZZnAtcTk4WEw5Wllhc1FrNE91b1ZxZ2pvS1kiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6InlMMUU5ZlRnMWk4Z0tVTUxJNWlBUGVBZ2VOQldSZ0k0Ny1OSXFfbHhGVzAiLCJ5IjoiN2RESUNTbFhUNDUtNS1ZUjJJSzR6UDQ1cG9EOHdqQW14WEZZUDQxZV9OUSJ9fV0",
+        "WyJFd1VwN3dHQ2tfeEMycl9xbm1zRGRnIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJPdWlpOFZEakxsX3dNSWhHYnBnaTl3IiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJDX2djV1FoZWd5ZEhWaHJGYWs3eHpnIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyJScnN2T0oxT2FuQTFDY1FBWV8xaFRnIiwibWF4IiwxMDAwMF0",
+        "WyI1U2s3NWdjQTVBSC1yblRHUUZUa21RIix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJ1RU5iUXlRZXBFbWJQTjhQanpVZzVnIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyIySi1QSnlLN1ppajNiQXlFNDcxQTF3Iix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyI4S2dvY1poaTVNdnNKZGp4NVFDLWJ3Iix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyJxZERCU2JsTjBNbDBKSTdEYTdqSDl3Iiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ],
+      "cm": "0x2de747f619285557a70720004d2929d50785f2c37fe7360f5fea932eb22a598d",
+      "origin": "http://app.keelson.finance:56358",
+      "rpId": "keelson.finance",
+      "publicKey": "pQECAyYgASFYIMi9RPX04NYvIClDCyOYgD3gIHjQVkYCOO/jSKv5cRVtIlgg7dDICSlXT45+5+YR2IK4zP45poD8wjAmxXFYP41e/NQ=",
+      "publicKeySec1": "0x04c8bd44f5f4e0d62f2029430b2398803de02078d056460238efe348abf971156dedd0c80929574f8e7ee7e611d882b8ccfe39a680fcc23026c571583f8d5efcd4",
+      "assertion": {
+        "authenticatorData": "EHHKqDnsJdN7IzwdSzf9Op0bCgmDDhN-RSEFwH1vxPcFAAAAAg",
+        "clientDataJSON": "eyJ0eXBlIjoicGF5bWVudC5nZXQiLCJjaGFsbGVuZ2UiOiJLdmVRclZ6RmhheTJLSVEwSUZjcDkzZlhVUVFVN2UyNXByM3NkNUdDX1IwIiwib3JpZ2luIjoiaHR0cDovL2FwcC5rZWVsc29uLmZpbmFuY2U6NTYzNTgiLCJjcm9zc09yaWdpbiI6dHJ1ZSwicGF5bWVudCI6eyJycElkIjoia2VlbHNvbi5maW5hbmNlIiwidG9wT3JpZ2luIjoiaHR0cDovL2FwcC5rZWVsc29uLmZpbmFuY2U6NTYzNTgiLCJwYXllZU5hbWUiOiJLZWVsc29uIiwicGF5ZWVPcmlnaW4iOiJodHRwczovL2tlZWxzb24uZmluYW5jZSIsInBheW1lbnRFbnRpdGllc0xvZ29zIjpbXSwidG90YWwiOnsidmFsdWUiOiIxMDAuMDAiLCJjdXJyZW5jeSI6IlVTRCJ9LCJpbnN0cnVtZW50Ijp7Imljb24iOiJkYXRhOmltYWdlL3N2Zyt4bWwsJTNDc3ZnIHhtbG5zPSdodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2Zycgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyUzRSUzQ3JlY3Qgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyByeD0nNicgZmlsbD0nJTIzMTExJy8lM0UlM0Mvc3ZnJTNFIiwiZGlzcGxheU5hbWUiOiJLZWVsc29uIG1hbmRhdGUifX19",
+        "signature": "MEUCIF9A0N7-h4Hzlxdk2lR-IALO_pavgkIVBL1Cd4nkzQnNAiEA6EZwaoQ_I_p-9fQ3EB_Pyj37lhXEMcf9GXKp2oDVRiA",
+        "credentialId": "Ipc1ao2xG0GhwhvyYfp-q98XL9ZYasQk4OuoVqgjoKY",
+        "userHandle": "Nzk0cWd6MzVndWthdmR3YXFsZzIwN3lzNWQxOTEyOHU"
+      }
+    },
+    "expected": "cross-origin"
+  },
+  {
+    "name": "verify/error/type",
+    "input": {
+      "op": "verify",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01M6PXPGCM21H2EAZX2T7TMEJV",
+        "iat": 1793918189,
+        "nbf": 1793918189,
+        "exp": 1794522989,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "G82b4FJqU_p_2CX5tkYWdBkTw0dbmBaZGhka6vor8cs",
+            "f5vCfiOmQcjp9lIvXJs6_fQZfVqA79qZQ-6U_3yTDJc",
+            "wsLPNCSKoLlPJeEkmAMXPB3-MvvpniqLLmhxMfXICSE"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "10105869945848359578"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "NVwKvbmChgvwbQUnWIOggLl1quv6qlNa-vr7qlYutyE"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "FgA0C5z-o0tFK9PDoWGFc8NcUQO5cB1yHlZCq9Ss9FU"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "nI-A0PGizX6pfiAZOLHQhCGrIBLdDh_nwLGI82HMpGM"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "YEpN4UI0urCr0l8S0wBAXS7_axUMs63omix8bcCh5SQ"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "1EqWcdVsV8-i6XQakQmzwRLkWtVLrUNmREZ3cVhiXk4"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "LCj4l3rVySHvFBHU8Jwj_lIgulokZi-W_D_VtXWf06U",
+            "hjfZP8IDmxAIIBCgR9WJ8QnZwsJyulL5YwWVAkuvhqU"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "s4EEmfadG6DWSEoydp_MJgZNUNgQ22W7I7wJr52w78I"
+        ]
+      },
+      "disclosures": [
+        "WyJLYjI0eUxxUE5fOEJRYS1tdHJLVVB3Iiwic3ViIiwiczVYbjczZ2hNTjNkYUtGVDRoSklKQnljTE9JRXYxWVAiXQ",
+        "WyIzQ3JwN0pUWTlHcUxTcFd3V0xDQTN3IiwiY3JlZCIseyJpZCI6IklwYzFhbzJ4RzBHaHdodnlZZnAtcTk4WEw5Wllhc1FrNE91b1ZxZ2pvS1kiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6InlMMUU5ZlRnMWk4Z0tVTUxJNWlBUGVBZ2VOQldSZ0k0Ny1OSXFfbHhGVzAiLCJ5IjoiN2RESUNTbFhUNDUtNS1ZUjJJSzR6UDQ1cG9EOHdqQW14WEZZUDQxZV9OUSJ9fV0",
+        "WyJhMnJNSTlFZjBsRUhIeGtUVzcwTndRIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJ1R1ZDZms3MlpKWV9WZjhBWEJvQS13IiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJoYVI3TUd3SUptMXZNSDVEZ2dTV1ZnIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyJmTnkwc01TWk50bHNtVENfNTlxY19nIiwibWF4IiwxMDAwMF0",
+        "WyJqbE9Ubk9TWjdlSXFoU0Q3anFka2VnIix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJCbFJXUVpBYzBycndvUlVnZ3dSdFZnIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyJnT1FkTFJ6bmtEZGxMRWw0azVrVFdnIix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJ6MFJsVnM5WnpQN1lGNmlwV0J6by1BIix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyJvUjE1UzA2bjNSenhvbHNZWkZpbXl3Iiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ],
+      "cm": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9",
+      "origin": "http://app.keelson.finance:56358",
+      "rpId": "keelson.finance",
+      "publicKey": "pQECAyYgASFYIMi9RPX04NYvIClDCyOYgD3gIHjQVkYCOO/jSKv5cRVtIlgg7dDICSlXT45+5+YR2IK4zP45poD8wjAmxXFYP41e/NQ=",
+      "publicKeySec1": "0x04c8bd44f5f4e0d62f2029430b2398803de02078d056460238efe348abf971156dedd0c80929574f8e7ee7e611d882b8ccfe39a680fcc23026c571583f8d5efcd4",
+      "assertion": {
+        "authenticatorData": "EHHKqDnsJdN7IzwdSzf9Op0bCgmDDhN-RSEFwH1vxPcFAAAAAw",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoieWwtSVRaaXNJVDVnd0JVdzhrd3I2MHpxcmtaajR2aEdOdFNWWS1EZ1JMMCIsIm9yaWdpbiI6Imh0dHA6Ly9hcHAua2VlbHNvbi5maW5hbmNlOjU2MzU4IiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ",
+        "signature": "MEUCIF3Oz6sUgOcVkSDqZ3fk7vgDed5C2hcvkNEUGZS0Gj-CAiEAwpItv6xZ6ntm-HteWzxTQmo6ygtjUmqyiVEAhRk7u3c",
+        "credentialId": "Ipc1ao2xG0GhwhvyYfp-q98XL9ZYasQk4OuoVqgjoKY",
+        "userHandle": "Nzk0cWd6MzVndWthdmR3YXFsZzIwN3lzNWQxOTEyOHU"
+      }
+    },
+    "expected": "type"
+  },
+  {
+    "name": "verify/error/client-data",
+    "input": {
+      "op": "verify",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01M6PXPGCM21H2EAZX2T7TMEJV",
+        "iat": 1793918189,
+        "nbf": 1793918189,
+        "exp": 1794522989,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "G82b4FJqU_p_2CX5tkYWdBkTw0dbmBaZGhka6vor8cs",
+            "f5vCfiOmQcjp9lIvXJs6_fQZfVqA79qZQ-6U_3yTDJc",
+            "wsLPNCSKoLlPJeEkmAMXPB3-MvvpniqLLmhxMfXICSE"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "10105869945848359578"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "NVwKvbmChgvwbQUnWIOggLl1quv6qlNa-vr7qlYutyE"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "FgA0C5z-o0tFK9PDoWGFc8NcUQO5cB1yHlZCq9Ss9FU"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "nI-A0PGizX6pfiAZOLHQhCGrIBLdDh_nwLGI82HMpGM"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "YEpN4UI0urCr0l8S0wBAXS7_axUMs63omix8bcCh5SQ"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "1EqWcdVsV8-i6XQakQmzwRLkWtVLrUNmREZ3cVhiXk4"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "LCj4l3rVySHvFBHU8Jwj_lIgulokZi-W_D_VtXWf06U",
+            "hjfZP8IDmxAIIBCgR9WJ8QnZwsJyulL5YwWVAkuvhqU"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "s4EEmfadG6DWSEoydp_MJgZNUNgQ22W7I7wJr52w78I"
+        ]
+      },
+      "disclosures": [
+        "WyJLYjI0eUxxUE5fOEJRYS1tdHJLVVB3Iiwic3ViIiwiczVYbjczZ2hNTjNkYUtGVDRoSklKQnljTE9JRXYxWVAiXQ",
+        "WyIzQ3JwN0pUWTlHcUxTcFd3V0xDQTN3IiwiY3JlZCIseyJpZCI6IklwYzFhbzJ4RzBHaHdodnlZZnAtcTk4WEw5Wllhc1FrNE91b1ZxZ2pvS1kiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6InlMMUU5ZlRnMWk4Z0tVTUxJNWlBUGVBZ2VOQldSZ0k0Ny1OSXFfbHhGVzAiLCJ5IjoiN2RESUNTbFhUNDUtNS1ZUjJJSzR6UDQ1cG9EOHdqQW14WEZZUDQxZV9OUSJ9fV0",
+        "WyJhMnJNSTlFZjBsRUhIeGtUVzcwTndRIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJ1R1ZDZms3MlpKWV9WZjhBWEJvQS13IiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJoYVI3TUd3SUptMXZNSDVEZ2dTV1ZnIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyJmTnkwc01TWk50bHNtVENfNTlxY19nIiwibWF4IiwxMDAwMF0",
+        "WyJqbE9Ubk9TWjdlSXFoU0Q3anFka2VnIix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJCbFJXUVpBYzBycndvUlVnZ3dSdFZnIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyJnT1FkTFJ6bmtEZGxMRWw0azVrVFdnIix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJ6MFJsVnM5WnpQN1lGNmlwV0J6by1BIix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyJvUjE1UzA2bjNSenhvbHNZWkZpbXl3Iiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ],
+      "cm": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9",
+      "origin": "http://app.keelson.finance:56358",
+      "rpId": "keelson.finance",
+      "publicKey": "pQECAyYgASFYIMi9RPX04NYvIClDCyOYgD3gIHjQVkYCOO/jSKv5cRVtIlgg7dDICSlXT45+5+YR2IK4zP45poD8wjAmxXFYP41e/NQ=",
+      "publicKeySec1": "0x04c8bd44f5f4e0d62f2029430b2398803de02078d056460238efe348abf971156dedd0c80929574f8e7ee7e611d882b8ccfe39a680fcc23026c571583f8d5efcd4",
+      "assertion": {
+        "authenticatorData": "EHHKqDnsJdN7IzwdSzf9Op0bCgmDDhN-RSEFwH1vxPcFAAAAAw",
+        "clientDataJSON": "ew",
+        "signature": "MEUCIF3Oz6sUgOcVkSDqZ3fk7vgDed5C2hcvkNEUGZS0Gj-CAiEAwpItv6xZ6ntm-HteWzxTQmo6ygtjUmqyiVEAhRk7u3c",
+        "credentialId": "Ipc1ao2xG0GhwhvyYfp-q98XL9ZYasQk4OuoVqgjoKY",
+        "userHandle": "Nzk0cWd6MzVndWthdmR3YXFsZzIwN3lzNWQxOTEyOHU"
+      }
+    },
+    "expected": "client-data"
+  },
+  {
+    "name": "verify/error/user-not-present",
+    "input": {
+      "op": "verify",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01M6PXPGCM21H2EAZX2T7TMEJV",
+        "iat": 1793918189,
+        "nbf": 1793918189,
+        "exp": 1794522989,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "G82b4FJqU_p_2CX5tkYWdBkTw0dbmBaZGhka6vor8cs",
+            "f5vCfiOmQcjp9lIvXJs6_fQZfVqA79qZQ-6U_3yTDJc",
+            "wsLPNCSKoLlPJeEkmAMXPB3-MvvpniqLLmhxMfXICSE"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "10105869945848359578"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "NVwKvbmChgvwbQUnWIOggLl1quv6qlNa-vr7qlYutyE"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "FgA0C5z-o0tFK9PDoWGFc8NcUQO5cB1yHlZCq9Ss9FU"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "nI-A0PGizX6pfiAZOLHQhCGrIBLdDh_nwLGI82HMpGM"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "YEpN4UI0urCr0l8S0wBAXS7_axUMs63omix8bcCh5SQ"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "1EqWcdVsV8-i6XQakQmzwRLkWtVLrUNmREZ3cVhiXk4"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "LCj4l3rVySHvFBHU8Jwj_lIgulokZi-W_D_VtXWf06U",
+            "hjfZP8IDmxAIIBCgR9WJ8QnZwsJyulL5YwWVAkuvhqU"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "s4EEmfadG6DWSEoydp_MJgZNUNgQ22W7I7wJr52w78I"
+        ]
+      },
+      "disclosures": [
+        "WyJLYjI0eUxxUE5fOEJRYS1tdHJLVVB3Iiwic3ViIiwiczVYbjczZ2hNTjNkYUtGVDRoSklKQnljTE9JRXYxWVAiXQ",
+        "WyIzQ3JwN0pUWTlHcUxTcFd3V0xDQTN3IiwiY3JlZCIseyJpZCI6IklwYzFhbzJ4RzBHaHdodnlZZnAtcTk4WEw5Wllhc1FrNE91b1ZxZ2pvS1kiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6InlMMUU5ZlRnMWk4Z0tVTUxJNWlBUGVBZ2VOQldSZ0k0Ny1OSXFfbHhGVzAiLCJ5IjoiN2RESUNTbFhUNDUtNS1ZUjJJSzR6UDQ1cG9EOHdqQW14WEZZUDQxZV9OUSJ9fV0",
+        "WyJhMnJNSTlFZjBsRUhIeGtUVzcwTndRIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJ1R1ZDZms3MlpKWV9WZjhBWEJvQS13IiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJoYVI3TUd3SUptMXZNSDVEZ2dTV1ZnIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyJmTnkwc01TWk50bHNtVENfNTlxY19nIiwibWF4IiwxMDAwMF0",
+        "WyJqbE9Ubk9TWjdlSXFoU0Q3anFka2VnIix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJCbFJXUVpBYzBycndvUlVnZ3dSdFZnIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyJnT1FkTFJ6bmtEZGxMRWw0azVrVFdnIix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJ6MFJsVnM5WnpQN1lGNmlwV0J6by1BIix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyJvUjE1UzA2bjNSenhvbHNZWkZpbXl3Iiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ],
+      "cm": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9",
+      "origin": "http://app.keelson.finance:56358",
+      "rpId": "keelson.finance",
+      "publicKey": "pQECAyYgASFYIMi9RPX04NYvIClDCyOYgD3gIHjQVkYCOO/jSKv5cRVtIlgg7dDICSlXT45+5+YR2IK4zP45poD8wjAmxXFYP41e/NQ=",
+      "publicKeySec1": "0x04c8bd44f5f4e0d62f2029430b2398803de02078d056460238efe348abf971156dedd0c80929574f8e7ee7e611d882b8ccfe39a680fcc23026c571583f8d5efcd4",
+      "assertion": {
+        "authenticatorData": "EHHKqDnsJdN7IzwdSzf9Op0bCgmDDhN-RSEFwH1vxPcEAAAAAw",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoieWwtSVRaaXNJVDVnd0JVdzhrd3I2MHpxcmtaajR2aEdOdFNWWS1EZ1JMMCIsIm9yaWdpbiI6Imh0dHA6Ly9hcHAua2VlbHNvbi5maW5hbmNlOjU2MzU4IiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ",
+        "signature": "MEUCIF3Oz6sUgOcVkSDqZ3fk7vgDed5C2hcvkNEUGZS0Gj-CAiEAwpItv6xZ6ntm-HteWzxTQmo6ygtjUmqyiVEAhRk7u3c",
+        "credentialId": "Ipc1ao2xG0GhwhvyYfp-q98XL9ZYasQk4OuoVqgjoKY",
+        "userHandle": "Nzk0cWd6MzVndWthdmR3YXFsZzIwN3lzNWQxOTEyOHU"
+      }
+    },
+    "expected": "user-present"
+  },
+  {
+    "name": "verify/error/backup-state",
+    "input": {
+      "op": "verify",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01M6PXPGCM21H2EAZX2T7TMEJV",
+        "iat": 1793918189,
+        "nbf": 1793918189,
+        "exp": 1794522989,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "G82b4FJqU_p_2CX5tkYWdBkTw0dbmBaZGhka6vor8cs",
+            "f5vCfiOmQcjp9lIvXJs6_fQZfVqA79qZQ-6U_3yTDJc",
+            "wsLPNCSKoLlPJeEkmAMXPB3-MvvpniqLLmhxMfXICSE"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "10105869945848359578"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "NVwKvbmChgvwbQUnWIOggLl1quv6qlNa-vr7qlYutyE"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "FgA0C5z-o0tFK9PDoWGFc8NcUQO5cB1yHlZCq9Ss9FU"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "nI-A0PGizX6pfiAZOLHQhCGrIBLdDh_nwLGI82HMpGM"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "YEpN4UI0urCr0l8S0wBAXS7_axUMs63omix8bcCh5SQ"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "1EqWcdVsV8-i6XQakQmzwRLkWtVLrUNmREZ3cVhiXk4"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "LCj4l3rVySHvFBHU8Jwj_lIgulokZi-W_D_VtXWf06U",
+            "hjfZP8IDmxAIIBCgR9WJ8QnZwsJyulL5YwWVAkuvhqU"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "s4EEmfadG6DWSEoydp_MJgZNUNgQ22W7I7wJr52w78I"
+        ]
+      },
+      "disclosures": [
+        "WyJLYjI0eUxxUE5fOEJRYS1tdHJLVVB3Iiwic3ViIiwiczVYbjczZ2hNTjNkYUtGVDRoSklKQnljTE9JRXYxWVAiXQ",
+        "WyIzQ3JwN0pUWTlHcUxTcFd3V0xDQTN3IiwiY3JlZCIseyJpZCI6IklwYzFhbzJ4RzBHaHdodnlZZnAtcTk4WEw5Wllhc1FrNE91b1ZxZ2pvS1kiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6InlMMUU5ZlRnMWk4Z0tVTUxJNWlBUGVBZ2VOQldSZ0k0Ny1OSXFfbHhGVzAiLCJ5IjoiN2RESUNTbFhUNDUtNS1ZUjJJSzR6UDQ1cG9EOHdqQW14WEZZUDQxZV9OUSJ9fV0",
+        "WyJhMnJNSTlFZjBsRUhIeGtUVzcwTndRIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJ1R1ZDZms3MlpKWV9WZjhBWEJvQS13IiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJoYVI3TUd3SUptMXZNSDVEZ2dTV1ZnIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyJmTnkwc01TWk50bHNtVENfNTlxY19nIiwibWF4IiwxMDAwMF0",
+        "WyJqbE9Ubk9TWjdlSXFoU0Q3anFka2VnIix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJCbFJXUVpBYzBycndvUlVnZ3dSdFZnIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyJnT1FkTFJ6bmtEZGxMRWw0azVrVFdnIix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJ6MFJsVnM5WnpQN1lGNmlwV0J6by1BIix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyJvUjE1UzA2bjNSenhvbHNZWkZpbXl3Iiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ],
+      "cm": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9",
+      "origin": "http://app.keelson.finance:56358",
+      "rpId": "keelson.finance",
+      "publicKey": "pQECAyYgASFYIMi9RPX04NYvIClDCyOYgD3gIHjQVkYCOO/jSKv5cRVtIlgg7dDICSlXT45+5+YR2IK4zP45poD8wjAmxXFYP41e/NQ=",
+      "publicKeySec1": "0x04c8bd44f5f4e0d62f2029430b2398803de02078d056460238efe348abf971156dedd0c80929574f8e7ee7e611d882b8ccfe39a680fcc23026c571583f8d5efcd4",
+      "assertion": {
+        "authenticatorData": "EHHKqDnsJdN7IzwdSzf9Op0bCgmDDhN-RSEFwH1vxPcVAAAAAw",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoieWwtSVRaaXNJVDVnd0JVdzhrd3I2MHpxcmtaajR2aEdOdFNWWS1EZ1JMMCIsIm9yaWdpbiI6Imh0dHA6Ly9hcHAua2VlbHNvbi5maW5hbmNlOjU2MzU4IiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ",
+        "signature": "MEUCIF3Oz6sUgOcVkSDqZ3fk7vgDed5C2hcvkNEUGZS0Gj-CAiEAwpItv6xZ6ntm-HteWzxTQmo6ygtjUmqyiVEAhRk7u3c",
+        "credentialId": "Ipc1ao2xG0GhwhvyYfp-q98XL9ZYasQk4OuoVqgjoKY",
+        "userHandle": "Nzk0cWd6MzVndWthdmR3YXFsZzIwN3lzNWQxOTEyOHU"
+      }
+    },
+    "expected": "backup-state"
+  },
+  {
+    "name": "verify/error/authenticator-data-trailing",
+    "input": {
+      "op": "verify",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01M6PXPGCM21H2EAZX2T7TMEJV",
+        "iat": 1793918189,
+        "nbf": 1793918189,
+        "exp": 1794522989,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "G82b4FJqU_p_2CX5tkYWdBkTw0dbmBaZGhka6vor8cs",
+            "f5vCfiOmQcjp9lIvXJs6_fQZfVqA79qZQ-6U_3yTDJc",
+            "wsLPNCSKoLlPJeEkmAMXPB3-MvvpniqLLmhxMfXICSE"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "10105869945848359578"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "NVwKvbmChgvwbQUnWIOggLl1quv6qlNa-vr7qlYutyE"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "FgA0C5z-o0tFK9PDoWGFc8NcUQO5cB1yHlZCq9Ss9FU"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "nI-A0PGizX6pfiAZOLHQhCGrIBLdDh_nwLGI82HMpGM"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "YEpN4UI0urCr0l8S0wBAXS7_axUMs63omix8bcCh5SQ"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "1EqWcdVsV8-i6XQakQmzwRLkWtVLrUNmREZ3cVhiXk4"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "LCj4l3rVySHvFBHU8Jwj_lIgulokZi-W_D_VtXWf06U",
+            "hjfZP8IDmxAIIBCgR9WJ8QnZwsJyulL5YwWVAkuvhqU"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "s4EEmfadG6DWSEoydp_MJgZNUNgQ22W7I7wJr52w78I"
+        ]
+      },
+      "disclosures": [
+        "WyJLYjI0eUxxUE5fOEJRYS1tdHJLVVB3Iiwic3ViIiwiczVYbjczZ2hNTjNkYUtGVDRoSklKQnljTE9JRXYxWVAiXQ",
+        "WyIzQ3JwN0pUWTlHcUxTcFd3V0xDQTN3IiwiY3JlZCIseyJpZCI6IklwYzFhbzJ4RzBHaHdodnlZZnAtcTk4WEw5Wllhc1FrNE91b1ZxZ2pvS1kiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6InlMMUU5ZlRnMWk4Z0tVTUxJNWlBUGVBZ2VOQldSZ0k0Ny1OSXFfbHhGVzAiLCJ5IjoiN2RESUNTbFhUNDUtNS1ZUjJJSzR6UDQ1cG9EOHdqQW14WEZZUDQxZV9OUSJ9fV0",
+        "WyJhMnJNSTlFZjBsRUhIeGtUVzcwTndRIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJ1R1ZDZms3MlpKWV9WZjhBWEJvQS13IiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJoYVI3TUd3SUptMXZNSDVEZ2dTV1ZnIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyJmTnkwc01TWk50bHNtVENfNTlxY19nIiwibWF4IiwxMDAwMF0",
+        "WyJqbE9Ubk9TWjdlSXFoU0Q3anFka2VnIix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJCbFJXUVpBYzBycndvUlVnZ3dSdFZnIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyJnT1FkTFJ6bmtEZGxMRWw0azVrVFdnIix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJ6MFJsVnM5WnpQN1lGNmlwV0J6by1BIix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyJvUjE1UzA2bjNSenhvbHNZWkZpbXl3Iiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ],
+      "cm": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9",
+      "origin": "http://app.keelson.finance:56358",
+      "rpId": "keelson.finance",
+      "publicKey": "pQECAyYgASFYIMi9RPX04NYvIClDCyOYgD3gIHjQVkYCOO/jSKv5cRVtIlgg7dDICSlXT45+5+YR2IK4zP45poD8wjAmxXFYP41e/NQ=",
+      "publicKeySec1": "0x04c8bd44f5f4e0d62f2029430b2398803de02078d056460238efe348abf971156dedd0c80929574f8e7ee7e611d882b8ccfe39a680fcc23026c571583f8d5efcd4",
+      "assertion": {
+        "authenticatorData": "EHHKqDnsJdN7IzwdSzf9Op0bCgmDDhN-RSEFwH1vxPcFAAAAAwA",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoieWwtSVRaaXNJVDVnd0JVdzhrd3I2MHpxcmtaajR2aEdOdFNWWS1EZ1JMMCIsIm9yaWdpbiI6Imh0dHA6Ly9hcHAua2VlbHNvbi5maW5hbmNlOjU2MzU4IiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ",
+        "signature": "MEUCIF3Oz6sUgOcVkSDqZ3fk7vgDed5C2hcvkNEUGZS0Gj-CAiEAwpItv6xZ6ntm-HteWzxTQmo6ygtjUmqyiVEAhRk7u3c",
+        "credentialId": "Ipc1ao2xG0GhwhvyYfp-q98XL9ZYasQk4OuoVqgjoKY",
+        "userHandle": "Nzk0cWd6MzVndWthdmR3YXFsZzIwN3lzNWQxOTEyOHU"
+      }
+    },
+    "expected": "authenticator-data"
+  },
+  {
+    "name": "verify/error/authenticator-data-short",
+    "input": {
+      "op": "verify",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01M6PXPGCM21H2EAZX2T7TMEJV",
+        "iat": 1793918189,
+        "nbf": 1793918189,
+        "exp": 1794522989,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "G82b4FJqU_p_2CX5tkYWdBkTw0dbmBaZGhka6vor8cs",
+            "f5vCfiOmQcjp9lIvXJs6_fQZfVqA79qZQ-6U_3yTDJc",
+            "wsLPNCSKoLlPJeEkmAMXPB3-MvvpniqLLmhxMfXICSE"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "10105869945848359578"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "NVwKvbmChgvwbQUnWIOggLl1quv6qlNa-vr7qlYutyE"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "FgA0C5z-o0tFK9PDoWGFc8NcUQO5cB1yHlZCq9Ss9FU"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "nI-A0PGizX6pfiAZOLHQhCGrIBLdDh_nwLGI82HMpGM"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "YEpN4UI0urCr0l8S0wBAXS7_axUMs63omix8bcCh5SQ"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "1EqWcdVsV8-i6XQakQmzwRLkWtVLrUNmREZ3cVhiXk4"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "LCj4l3rVySHvFBHU8Jwj_lIgulokZi-W_D_VtXWf06U",
+            "hjfZP8IDmxAIIBCgR9WJ8QnZwsJyulL5YwWVAkuvhqU"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "s4EEmfadG6DWSEoydp_MJgZNUNgQ22W7I7wJr52w78I"
+        ]
+      },
+      "disclosures": [
+        "WyJLYjI0eUxxUE5fOEJRYS1tdHJLVVB3Iiwic3ViIiwiczVYbjczZ2hNTjNkYUtGVDRoSklKQnljTE9JRXYxWVAiXQ",
+        "WyIzQ3JwN0pUWTlHcUxTcFd3V0xDQTN3IiwiY3JlZCIseyJpZCI6IklwYzFhbzJ4RzBHaHdodnlZZnAtcTk4WEw5Wllhc1FrNE91b1ZxZ2pvS1kiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6InlMMUU5ZlRnMWk4Z0tVTUxJNWlBUGVBZ2VOQldSZ0k0Ny1OSXFfbHhGVzAiLCJ5IjoiN2RESUNTbFhUNDUtNS1ZUjJJSzR6UDQ1cG9EOHdqQW14WEZZUDQxZV9OUSJ9fV0",
+        "WyJhMnJNSTlFZjBsRUhIeGtUVzcwTndRIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJ1R1ZDZms3MlpKWV9WZjhBWEJvQS13IiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJoYVI3TUd3SUptMXZNSDVEZ2dTV1ZnIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyJmTnkwc01TWk50bHNtVENfNTlxY19nIiwibWF4IiwxMDAwMF0",
+        "WyJqbE9Ubk9TWjdlSXFoU0Q3anFka2VnIix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJCbFJXUVpBYzBycndvUlVnZ3dSdFZnIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyJnT1FkTFJ6bmtEZGxMRWw0azVrVFdnIix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJ6MFJsVnM5WnpQN1lGNmlwV0J6by1BIix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyJvUjE1UzA2bjNSenhvbHNZWkZpbXl3Iiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ],
+      "cm": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9",
+      "origin": "http://app.keelson.finance:56358",
+      "rpId": "keelson.finance",
+      "publicKey": "pQECAyYgASFYIMi9RPX04NYvIClDCyOYgD3gIHjQVkYCOO/jSKv5cRVtIlgg7dDICSlXT45+5+YR2IK4zP45poD8wjAmxXFYP41e/NQ=",
+      "publicKeySec1": "0x04c8bd44f5f4e0d62f2029430b2398803de02078d056460238efe348abf971156dedd0c80929574f8e7ee7e611d882b8ccfe39a680fcc23026c571583f8d5efcd4",
+      "assertion": {
+        "authenticatorData": "EHHKqDnsJdN7IzwdSzf9Op0bCgmDDhN-RSEFwH1vxPcFAAAA",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoieWwtSVRaaXNJVDVnd0JVdzhrd3I2MHpxcmtaajR2aEdOdFNWWS1EZ1JMMCIsIm9yaWdpbiI6Imh0dHA6Ly9hcHAua2VlbHNvbi5maW5hbmNlOjU2MzU4IiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ",
+        "signature": "MEUCIF3Oz6sUgOcVkSDqZ3fk7vgDed5C2hcvkNEUGZS0Gj-CAiEAwpItv6xZ6ntm-HteWzxTQmo6ygtjUmqyiVEAhRk7u3c",
+        "credentialId": "Ipc1ao2xG0GhwhvyYfp-q98XL9ZYasQk4OuoVqgjoKY",
+        "userHandle": "Nzk0cWd6MzVndWthdmR3YXFsZzIwN3lzNWQxOTEyOHU"
+      }
+    },
+    "expected": "authenticator-data"
+  },
+  {
+    "name": "spcDetails/demo",
+    "input": {
+      "op": "spcDetails",
+      "mandate": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "sub": "kls_usr_7f3a9c21",
+          "cred": {
+            "id": "Zk3p0xQmH8vN1sLwT5uYdA",
+            "rp_id": "keelson.finance",
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "f83OJ3D2xF1Bg8vnKwxo1Ao8jzV5TnQ1rM7bY0qk2cA",
+              "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+            }
+          },
+          "app_login_id": "andres@example.com"
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "agt-01",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "type": "payment.amount_range",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.budget",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "id": "mrc_runfast",
+                  "name": "RunFast",
+                  "website": "https://runfast.example",
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "id": "sku-trail-10",
+                      "title": "Trail running shoe"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "prompt_summary": "Running shoes, size 10, under $100, free returns, by Friday",
+          "prompt_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "subjective": [
+            "look good"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "risk_data": {
+          "device_fp": "fp_3c9a71",
+          "ip": "203.0.113.7"
+        }
+      }
+    },
+    "expected": {
+      "payeeName": "Keelson",
+      "payeeOrigin": "https://keelson.finance",
+      "total": {
+        "currency": "USD",
+        "value": "100.00"
+      }
+    }
+  },
+  {
+    "name": "spcDetails/usd-cents",
+    "input": {
+      "op": "spcDetails",
+      "mandate": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "sub": "kls_usr_7f3a9c21",
+          "cred": {
+            "id": "Zk3p0xQmH8vN1sLwT5uYdA",
+            "rp_id": "keelson.finance",
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "f83OJ3D2xF1Bg8vnKwxo1Ao8jzV5TnQ1rM7bY0qk2cA",
+              "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+            }
+          },
+          "app_login_id": "andres@example.com"
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "agt-01",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "type": "payment.amount_range",
+              "max": 1,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.budget",
+              "max": 1,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "id": "mrc_runfast",
+                  "name": "RunFast",
+                  "website": "https://runfast.example",
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "id": "sku-trail-10",
+                      "title": "Trail running shoe"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "prompt_summary": "Running shoes, size 10, under $100, free returns, by Friday",
+          "prompt_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "subjective": [
+            "look good"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "risk_data": {
+          "device_fp": "fp_3c9a71",
+          "ip": "203.0.113.7"
+        }
+      }
+    },
+    "expected": {
+      "payeeName": "Keelson",
+      "payeeOrigin": "https://keelson.finance",
+      "total": {
+        "currency": "USD",
+        "value": "0.01"
+      }
+    }
+  },
+  {
+    "name": "spcDetails/jpy",
+    "input": {
+      "op": "spcDetails",
+      "mandate": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "sub": "kls_usr_7f3a9c21",
+          "cred": {
+            "id": "Zk3p0xQmH8vN1sLwT5uYdA",
+            "rp_id": "keelson.finance",
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "f83OJ3D2xF1Bg8vnKwxo1Ao8jzV5TnQ1rM7bY0qk2cA",
+              "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+            }
+          },
+          "app_login_id": "andres@example.com"
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "agt-01",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "JPY",
+          "constraints": [
+            {
+              "type": "payment.amount_range",
+              "max": 12345,
+              "currency": "JPY"
+            },
+            {
+              "type": "payment.budget",
+              "max": 12345,
+              "currency": "JPY"
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "id": "mrc_runfast",
+                  "name": "RunFast",
+                  "website": "https://runfast.example",
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "id": "sku-trail-10",
+                      "title": "Trail running shoe"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "prompt_summary": "Running shoes, size 10, under $100, free returns, by Friday",
+          "prompt_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "subjective": [
+            "look good"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "risk_data": {
+          "device_fp": "fp_3c9a71",
+          "ip": "203.0.113.7"
+        }
+      }
+    },
+    "expected": {
+      "payeeName": "Keelson",
+      "payeeOrigin": "https://keelson.finance",
+      "total": {
+        "currency": "JPY",
+        "value": "12345"
+      }
+    }
+  },
+  {
+    "name": "spcDetails/huf-whole",
+    "input": {
+      "op": "spcDetails",
+      "mandate": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "sub": "kls_usr_7f3a9c21",
+          "cred": {
+            "id": "Zk3p0xQmH8vN1sLwT5uYdA",
+            "rp_id": "keelson.finance",
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "f83OJ3D2xF1Bg8vnKwxo1Ao8jzV5TnQ1rM7bY0qk2cA",
+              "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+            }
+          },
+          "app_login_id": "andres@example.com"
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "agt-01",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "HUF",
+          "constraints": [
+            {
+              "type": "payment.amount_range",
+              "max": 12300,
+              "currency": "HUF"
+            },
+            {
+              "type": "payment.budget",
+              "max": 12300,
+              "currency": "HUF"
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "id": "mrc_runfast",
+                  "name": "RunFast",
+                  "website": "https://runfast.example",
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "id": "sku-trail-10",
+                      "title": "Trail running shoe"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "prompt_summary": "Running shoes, size 10, under $100, free returns, by Friday",
+          "prompt_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "subjective": [
+            "look good"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "risk_data": {
+          "device_fp": "fp_3c9a71",
+          "ip": "203.0.113.7"
+        }
+      }
+    },
+    "expected": {
+      "payeeName": "Keelson",
+      "payeeOrigin": "https://keelson.finance",
+      "total": {
+        "currency": "HUF",
+        "value": "123"
+      }
+    }
+  },
+  {
+    "name": "spcDetails/huf-fraction",
+    "input": {
+      "op": "spcDetails",
+      "mandate": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "sub": "kls_usr_7f3a9c21",
+          "cred": {
+            "id": "Zk3p0xQmH8vN1sLwT5uYdA",
+            "rp_id": "keelson.finance",
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "f83OJ3D2xF1Bg8vnKwxo1Ao8jzV5TnQ1rM7bY0qk2cA",
+              "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+            }
+          },
+          "app_login_id": "andres@example.com"
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "agt-01",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "HUF",
+          "constraints": [
+            {
+              "type": "payment.amount_range",
+              "max": 12345,
+              "currency": "HUF"
+            },
+            {
+              "type": "payment.budget",
+              "max": 12345,
+              "currency": "HUF"
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "id": "mrc_runfast",
+                  "name": "RunFast",
+                  "website": "https://runfast.example",
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "id": "sku-trail-10",
+                      "title": "Trail running shoe"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "prompt_summary": "Running shoes, size 10, under $100, free returns, by Friday",
+          "prompt_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "subjective": [
+            "look good"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "risk_data": {
+          "device_fp": "fp_3c9a71",
+          "ip": "203.0.113.7"
+        }
+      }
+    },
+    "expected": "error"
+  }
+]

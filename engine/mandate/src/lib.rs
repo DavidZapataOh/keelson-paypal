@@ -11,7 +11,9 @@ mod credentials;
 mod error;
 mod schema;
 mod sd;
+mod spc;
 mod strict;
+mod webauthn;
 
 pub use challenge::{h_sd, mandate_challenge};
 pub use commitment::{
@@ -27,6 +29,11 @@ pub use credentials::{
 pub use error::Error;
 pub use schema::{MAX_LIFETIME_SECONDS, parse_mandate};
 pub use sd::{decode_disclosed, decode_mandate};
+pub use spc::{
+    RP_ID, SPC_INSTRUMENT_DISPLAY_NAME, SPC_INSTRUMENT_ICON, SPC_PAYEE_NAME, SPC_PAYEE_ORIGIN,
+    SpcDetails, spc_details,
+};
+pub use webauthn::{Assertion, Expected, WebAuthnError, verify_assertion};
 
 /// An element of the BN254 scalar field.
 pub type Fr = keelson_core::FieldElement;
