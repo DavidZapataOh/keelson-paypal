@@ -1,6 +1,6 @@
 import type { MiddlewareHandler } from "hono";
 import { pino } from "pino";
-import { expect, test } from "vitest";
+import { afterAll, beforeAll, expect, test, vi } from "vitest";
 import { createApp } from "../src/app.ts";
 import { createKv } from "../src/kv.ts";
 import { testDb, testKv } from "./setup.ts";
@@ -21,7 +21,19 @@ function build(options: Parameters<typeof createApp>[0]["rateLimit"] = {}, kv = 
   return app;
 }
 
+// Freeze the clock mid-window so no test straddles a fixed-window boundary.
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(Math.floor(Date.now() / 60_000) * 60_000 + 30_000);
+});
+afterAll(() => {
+  vi.useRealTimers();
+});
+
 const subject = (): string => `s-${crypto.randomUUID()}`;
+const ip = (): string => crypto.getRandomValues(new Uint8Array(4)).join(".");
+const remaining = (res: Response): number =>
+  Number(/;r=(\d+);/.exec(res.headers.get("ratelimit") ?? "")?.[1]);
 const get = (app: ReturnType<typeof build>, who: string, headers: Record<string, string> = {}) =>
   app.request("/v1/test/ping", { headers: { "x-test-subject": who, ...headers } });
 
@@ -54,48 +66,37 @@ test("counts each principal separately", async () => {
 
 test("keys anonymous callers by Cloudflare's client IP only behind a trusted proxy", async () => {
   const proxied = build({ anonymousLimit: 1, trustProxy: true });
-  const octet = () => Math.floor(Math.random() * 250);
-  const real = `203.0.113.${octet()}`;
   const call = (headers: Record<string, string>) => proxied.request("/v1/test/ping", { headers });
 
-  expect(
-    (
-      await call({
-        "cf-connecting-ip": real,
-        "x-forwarded-for": "6.6.6.6, 9.9.9.9, 10.0.0.1",
-        "true-client-ip": "1.1.1.1",
-      })
-    ).status,
-  ).toBe(200);
-  expect(
-    (
-      await call({
-        "cf-connecting-ip": real,
-        "x-forwarded-for": "7.7.7.7, 8.8.8.8, 10.0.0.2",
-        "true-client-ip": "2.2.2.2",
-      })
-    ).status,
-  ).toBe(429);
-
-  const viaXff = `198.51.100.${octet()}`;
-  const xff = (forged: string, edge: string) => ({
-    "x-forwarded-for": `${forged}, ${viaXff}, ${edge}, 10.0.0.${octet()}`,
+  const real = ip();
+  const viaCf = (forged: string) => ({
+    "cf-connecting-ip": real,
+    "x-forwarded-for": `${forged}, ${ip()}, ${ip()}`,
+    "true-client-ip": forged,
   });
-  expect((await call(xff("6.6.6.6", "172.70.1.1"))).status).toBe(200);
-  expect((await call(xff("7.7.7.7", "172.70.2.2"))).status).toBe(429);
+  expect((await call(viaCf(ip()))).status).toBe(200);
+  expect((await call(viaCf(ip()))).status).toBe(429);
 
-  const stale = await testKv.keys("rl:ip:unknown:*");
-  if (stale.length > 0) await testKv.del(stale);
-  const short = (n: number) => ({ "x-forwarded-for": `9.9.9.${n}, 10.0.0.1` });
-  expect((await call(short(1))).status).toBe(200);
-  expect((await call(short(2))).status).toBe(429);
+  const client = ip();
+  const viaXff = (forged: string) => ({
+    "x-forwarded-for": `${forged}, ${client}, ${ip()}, ${ip()}`,
+  });
+  expect((await call(viaXff(ip()))).status).toBe(200);
+  expect((await call(viaXff(ip()))).status).toBe(429);
+});
 
-  const direct = build({ anonymousLimit: 1 });
-  const stale2 = await testKv.keys("rl:ip:unknown:*");
-  if (stale2.length > 0) await testKv.del(stale2);
-  const spoof = (n: number) => ({ headers: { "x-forwarded-for": `198.51.100.${n}` } });
-  expect((await direct.request("/v1/test/ping", spoof(1))).status).toBe(200);
-  expect((await direct.request("/v1/test/ping", spoof(2))).status).toBe(429);
+test("shares one bucket for callers whose IP cannot be trusted", async () => {
+  // Other suites also hit the shared `unknown` bucket, so compare remaining quota instead of
+  // counting from zero: two separate fresh buckets would report the same value.
+  const proxied = build({ anonymousLimit: 1_000_000, trustProxy: true });
+  const short = () => ({ headers: { "x-forwarded-for": `${ip()}, ${ip()}` } });
+  const first = remaining(await proxied.request("/v1/test/ping", short()));
+  expect(remaining(await proxied.request("/v1/test/ping", short()))).toBeLessThan(first);
+
+  const direct = build({ anonymousLimit: 1_000_000 });
+  const spoof = () => ({ headers: { "x-forwarded-for": ip(), "cf-connecting-ip": ip() } });
+  const before = remaining(await direct.request("/v1/test/ping", spoof()));
+  expect(remaining(await direct.request("/v1/test/ping", spoof()))).toBeLessThan(before);
 });
 
 test("lets reads through when the store is unreachable and leaves writes to idempotency", async () => {
