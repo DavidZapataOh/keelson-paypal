@@ -10,11 +10,11 @@ mod jcs;
 mod money;
 mod poseidon2;
 
-pub use acir::FieldElement;
+pub use acir::{AcirField, FieldElement};
 pub use alibi::{AlibiFields, alibi_digest};
 pub use eip712::domain;
 pub use error::Error;
 pub use hash::{Dst, hash_object};
 pub use jcs::jcs;
-pub use money::{Money, from_paypal_value, to_paypal_value};
-pub use poseidon2::poseidon2;
+pub use money::{Money, currency_numeric, from_paypal_value, to_paypal_value};
+pub use poseidon2::{field_from_ascii, poseidon2};

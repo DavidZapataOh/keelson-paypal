@@ -15,7 +15,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "vectors": "node scripts/vectors.ts"
   },
   "dependencies": {
     "@keelson/core": "workspace:*",
@@ -25,6 +26,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@noble/curves": "2.4.0",
     "@types/node": "26.6.6",
     "typescript": "catalog:",
     "vitest": "catalog:"
