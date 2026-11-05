@@ -1,0 +1,87 @@
+services:
+  - type: web
+    runtime: node
+    name: keelson-api
+    plan: 0.5c-512mb
+    region: oregon
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm turbo run build --filter=@keelson/api...
+    preDeployCommand: pnpm migrate
+    startCommand: pnpm --filter @keelson/api start
+    healthCheckPath: /health
+    autoDeployTrigger: checksPass
+    buildFilter:
+      paths:
+        - services/api/**
+        - packages/**
+        - pnpm-lock.yaml
+        - render.yaml
+    domains:
+      - api.keelson.finance
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: keelson-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: keelson-kv
+          property: connectionString
+      - key: NODE_ENV
+        value: production
+      - key: PAYPAL_ENV
+        value: sandbox
+      - key: BETTER_AUTH_URL
+        value: https://api.keelson.finance
+      # sync: false is ignored inside environment groups, so the PayPal credentials are prompted for here.
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - fromGroup: keelson-secrets
+
+  - type: web
+    runtime: static
+    name: keelson-landing
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm turbo run build --filter=@keelson/landing
+    staticPublishPath: ./apps/landing/dist
+    autoDeployTrigger: checksPass
+    buildFilter:
+      paths:
+        - apps/landing/**
+    # Render adds www.keelson.finance and redirects it to the apex when the apex is added.
+    domains:
+      - keelson.finance
+    headers:
+      - path: /_astro/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+
+  - type: keyvalue
+    name: keelson-kv
+    plan: 256mb
+    region: oregon
+    ipAllowList: []
+    maxmemoryPolicy: noeviction
+
+databases:
+  - name: keelson-db
+    plan: 0.5c-1g
+    region: oregon
+    postgresMajorVersion: "18"
+    ipAllowList: []
+
+envVarGroups:
+  - name: keelson-secrets
+    envVars:
+      - key: BETTER_AUTH_SECRET
+        generateValue: true

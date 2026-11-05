@@ -11,7 +11,8 @@
     "lint": "biome ci .",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "bench": "turbo run bench"
+    "bench": "turbo run bench",
+    "migrate": "pnpm --filter @keelson/db migrate"
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",
