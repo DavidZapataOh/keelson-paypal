@@ -24,7 +24,8 @@
   "dependencies": {
     "@noble/hashes": "catalog:",
     "canonicalize": "5.1.0",
-    "ulid": "3.0.2"
+    "ulid": "3.0.2",
+    "viem": "catalog:"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

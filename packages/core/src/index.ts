@@ -1,3 +1,4 @@
+export * from "./eip712.js";
 export * from "./hash.js";
 export * from "./jcs.js";
 export * from "./money.js";
