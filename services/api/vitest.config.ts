@@ -7,6 +7,7 @@ export default defineConfig({
     env: {
       DATABASE_URL:
         process.env.DATABASE_URL ?? "postgres://postgres:keelson@localhost:5432/keelson",
+      REDIS_URL: process.env.REDIS_URL ?? "redis://localhost:6379",
     },
   },
 });

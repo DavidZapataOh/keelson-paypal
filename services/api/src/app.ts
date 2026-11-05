@@ -4,11 +4,14 @@ import { HTTPException } from "hono/http-exception";
 import { requestId } from "hono/request-id";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { Logger } from "pino";
+import type { RedisClientType } from "redis";
+import { idempotency } from "./middleware/idempotency.ts";
 import { ProblemSchema, problem } from "./problem.ts";
 import { registerHealth } from "./routes/health.ts";
 
 export interface Deps {
   db: Db;
+  kv: RedisClientType;
   log: Logger;
 }
 
@@ -36,6 +39,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   });
 
   app.use(requestId());
+  app.use("/v1/*", idempotency(deps.kv));
   app.openAPIRegistry.register("Problem", ProblemSchema);
 
   app.notFound((c) => problem(c, 404, "not-found", "Not found"));

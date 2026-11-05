@@ -1,7 +1,9 @@
 import { randomBytes } from "node:crypto";
 import { createDb, type Db, migrate } from "@keelson/db";
 import pg from "pg";
+import type { RedisClientType } from "redis";
 import { afterAll } from "vitest";
+import { createKv } from "../src/kv.ts";
 
 const baseUrl = process.env.DATABASE_URL;
 if (!baseUrl) throw new Error("DATABASE_URL is not set");
@@ -29,8 +31,12 @@ await migrate(url);
 const handle = createDb(url);
 
 export const testDb: Db = handle.db;
+export const testKv: RedisClientType = await createKv(
+  process.env.REDIS_URL ?? "redis://localhost:6379",
+);
 
 afterAll(async () => {
   await handle.pool.end();
+  await testKv.close();
   await admin(`DROP DATABASE ${name} WITH (FORCE)`);
 });
