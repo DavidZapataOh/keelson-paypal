@@ -46,6 +46,7 @@ describe("disputes (sandbox)", () => {
 
       // Documented transitions only: require-evidence (UNDER_REVIEW -> WAITING_FOR_SELLER_RESPONSE),
       // provide-evidence (WAITING_FOR_SELLER_RESPONSE), adjudicate (UNDER_REVIEW).
+      let requested = false;
       let provided = false;
       let adjudicated = false;
       let last = "";
@@ -59,42 +60,46 @@ describe("disputes (sandbox)", () => {
         if (d.status === "RESOLVED") break;
         const links = new Set(d.links?.map((l) => l.rel));
 
-        if (
-          d.status === "WAITING_FOR_SELLER_RESPONSE" &&
-          links.has("provide-evidence") &&
-          !provided
-        ) {
-          await provideEvidence(
-            paypal.fetch,
-            id,
-            {
-              evidences: [
-                {
-                  evidence_type: "PROOF_OF_FULFILLMENT",
-                  notes: "Sandbox evidence submitted by the integration test.",
-                  documents: [{ name: "evidence.pdf" }],
-                },
-              ],
-            },
-            [{ name: "evidence.pdf", bytes: await onePagePdf("Keelson sandbox evidence") }],
-          );
-          provided = true;
+        if (d.status === "WAITING_FOR_SELLER_RESPONSE" && links.has("provide-evidence")) {
+          if (!provided) {
+            await provideEvidence(
+              paypal.fetch,
+              id,
+              {
+                evidences: [
+                  {
+                    evidence_type: "PROOF_OF_FULFILLMENT",
+                    notes: "Sandbox evidence submitted by the integration test.",
+                    documents: [{ name: "evidence.pdf" }],
+                  },
+                ],
+              },
+              [{ name: "evidence.pdf", bytes: await onePagePdf("Keelson sandbox evidence") }],
+            );
+            provided = true;
+          }
         } else if (d.status === "UNDER_REVIEW" && !provided && links.has("require-evidence")) {
-          await requireEvidence(paypal.fetch, id, "SELLER_EVIDENCE");
-        } else if (
-          d.status === "UNDER_REVIEW" &&
-          provided &&
-          links.has("adjudicate") &&
-          !adjudicated
-        ) {
-          await adjudicate(paypal.fetch, id, "SELLER_FAVOR");
-          adjudicated = true;
+          if (!requested) {
+            await requireEvidence(paypal.fetch, id, "SELLER_EVIDENCE");
+            requested = true;
+          }
+        } else if (d.status === "UNDER_REVIEW" && provided && links.has("adjudicate")) {
+          if (!adjudicated) {
+            await adjudicate(paypal.fetch, id, "SELLER_FAVOR");
+            adjudicated = true;
+          }
+        } else if (!requested && !provided) {
+          throw new Error(
+            `dispute ${id}: no documented action for status ${d.status}; links: ${[...links].join(", ") || "none"}`,
+          );
         }
         await sleep(3_000);
       }
 
-      expect(provided).toBe(true);
-      expect(adjudicated).toBe(true);
+      expect(
+        { requested, provided, adjudicated },
+        `dispute ${id} did not resolve in time; last status ${last}`,
+      ).toMatchObject({ provided: true, adjudicated: true });
       expect((await getDispute(paypal.fetch, id)).status).toBe("RESOLVED");
     },
     180_000,
