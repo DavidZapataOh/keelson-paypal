@@ -1,3 +1,4 @@
+import { httpInstrumentationMiddleware } from "@hono/otel";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import type { Db } from "@keelson/db";
 import type { MiddlewareHandler } from "hono";
@@ -8,7 +9,9 @@ import { timeout } from "hono/timeout";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
+import { ulid } from "ulid";
 import type { Auth } from "./auth.ts";
+import { requestLogger } from "./logger.ts";
 import { idempotency } from "./middleware/idempotency.ts";
 import { type RateLimitOptions, rateLimit } from "./middleware/rate-limit.ts";
 import { ProblemSchema, problem } from "./problem.ts";
@@ -52,7 +55,9 @@ export function createApp(deps: Deps): OpenAPIHono {
     },
   });
 
-  app.use(requestId());
+  app.use(httpInstrumentationMiddleware());
+  app.use(requestId({ generator: () => ulid() }));
+  app.use(requestLogger(deps.log));
   app.use(
     "/v1/*",
     bodyLimit({

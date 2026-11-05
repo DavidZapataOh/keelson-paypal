@@ -1,3 +1,4 @@
+import "./telemetry.ts";
 import { serve } from "@hono/node-server";
 import { createDb } from "@keelson/db";
 import { pino } from "pino";
@@ -5,10 +6,12 @@ import { createApp } from "./app.ts";
 import { createAuth } from "./auth.ts";
 import { parseEnv } from "./env.ts";
 import { createKv } from "./kv.ts";
+import { createLogger } from "./logger.ts";
 import { authenticate } from "./middleware/auth.ts";
 
 const env = parseEnv();
-const log = pino();
+const destination = pino.destination({ sync: false });
+const log = createLogger(destination);
 const { db, pool } = createDb(env.DATABASE_URL);
 const kv = await createKv(env.REDIS_URL, log);
 const auth = createAuth(db, env);
@@ -27,6 +30,9 @@ const server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
 
 process.once("SIGTERM", () => {
   server.close(() => {
-    void Promise.all([pool.end(), kv.close()]).then(() => process.exit(0));
+    void Promise.all([pool.end(), kv.close()]).then(() => {
+      destination.flushSync();
+      process.exit(0);
+    });
   });
 });
