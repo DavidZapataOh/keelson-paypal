@@ -89,7 +89,7 @@ function inputForm(input: unknown): FormData {
   return form;
 }
 
-/** The spec lists `multipart/form-data` only, with an optional `accept-claim-document` part. */
+/** PayPal's OpenAPI spec accepts only `multipart/form-data`, with an optional `accept-claim-document` part. */
 export async function acceptClaim(
   f: PayPalFetch,
   id: string,
@@ -109,7 +109,7 @@ export async function acceptClaim(
   );
 }
 
-/** The spec lists `multipart/form-data` only, with an optional `message_document` part. Inquiry stage only. */
+/** PayPal's OpenAPI spec accepts only `multipart/form-data`, with an optional `message_document` part. Inquiry stage only. */
 export async function sendMessage(
   f: PayPalFetch,
   id: string,
