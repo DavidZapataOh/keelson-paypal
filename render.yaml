@@ -4,7 +4,7 @@ services:
     name: keelson-api
     plan: 0.5c-512mb
     region: oregon
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm turbo run build --filter=@keelson/api...
+    buildCommand: npm install -g pnpm@12.16.1 && pnpm install --frozen-lockfile && pnpm turbo run build --filter=@keelson/api...
     preDeployCommand: pnpm migrate
     startCommand: pnpm --filter @keelson/api start
     healthCheckPath: /health
@@ -43,7 +43,7 @@ services:
   - type: web
     runtime: static
     name: keelson-landing
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm turbo run build --filter=@keelson/landing
+    buildCommand: npm install -g pnpm@12.16.1 && pnpm install --frozen-lockfile && pnpm turbo run build --filter=@keelson/landing
     staticPublishPath: ./apps/landing/dist
     autoDeployTrigger: checksPass
     buildFilter:
