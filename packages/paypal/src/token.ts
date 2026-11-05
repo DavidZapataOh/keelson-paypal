@@ -1,14 +1,16 @@
 import type { OAuthToken } from "@paypal/paypal-server-sdk";
+import { z } from "zod";
 import type { PayPalConfig } from "./config.js";
+import { fromResponse } from "./errors.js";
 
 const REFRESH_WINDOW_MS = 300_000;
 
-interface TokenResponse {
-  access_token: string;
-  token_type: string;
-  expires_in: number;
-  scope?: string;
-}
+const tokenResponse = z.object({
+  access_token: z.string().min(1),
+  expires_in: z.number().positive(),
+});
+
+export const TOKEN_TIMEOUT_MS = 10_000;
 
 /** Client-credentials access token shared by the SDK and the REST core. */
 export class TokenCache {
@@ -20,6 +22,7 @@ export class TokenCache {
   constructor(
     private readonly cfg: PayPalConfig,
     private readonly fetchImpl: typeof fetch = fetch,
+    private readonly timeoutMs: number = TOKEN_TIMEOUT_MS,
   ) {}
 
   get(): Promise<string> {
@@ -54,13 +57,10 @@ export class TokenCache {
         accept: "application/json",
       },
       body: "grant_type=client_credentials",
+      signal: AbortSignal.timeout(this.timeoutMs),
     });
-    if (!res.ok) {
-      throw new Error(
-        `PayPal OAuth token request failed: HTTP ${res.status} (debug id ${res.headers.get("paypal-debug-id") ?? "n/a"})`,
-      );
-    }
-    const body = (await res.json()) as TokenResponse;
+    if (!res.ok) throw await fromResponse(res);
+    const body = tokenResponse.parse(await res.json());
     this.token = body.access_token;
     this.expiresAt = Date.now() + body.expires_in * 1000;
     return this.token;

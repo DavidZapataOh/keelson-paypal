@@ -20,7 +20,8 @@
   },
   "dependencies": {
     "@keelson/core": "workspace:*",
-    "@paypal/paypal-server-sdk": "2.5.0"
+    "@paypal/paypal-server-sdk": "2.5.0",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

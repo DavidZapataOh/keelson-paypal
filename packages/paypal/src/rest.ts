@@ -7,15 +7,28 @@ export const REQUEST_TIMEOUT_MS = 15_000;
 export type PayPalFetch = <T>(
   method: "GET" | "POST" | "PATCH" | "DELETE",
   path: string,
-  init?: { body?: unknown | FormData; requestId?: string; query?: Record<string, string> },
+  init?: {
+    body?: unknown | FormData;
+    requestId?: string;
+    query?: Record<string, string>;
+    timeoutMs?: number;
+  },
 ) => Promise<T>;
 
 export function createRestClient(cfg: PayPalConfig, tokens: TokenCache): PayPalFetch {
   return async <T>(
     method: "GET" | "POST" | "PATCH" | "DELETE",
     path: string,
-    init: { body?: unknown | FormData; requestId?: string; query?: Record<string, string> } = {},
+    init: {
+      body?: unknown | FormData;
+      requestId?: string;
+      query?: Record<string, string>;
+      timeoutMs?: number;
+    } = {},
   ): Promise<T> => {
+    if (!path.startsWith("/") || path.startsWith("//") || path.includes("\\")) {
+      throw new Error("PayPal path must be a relative path starting with a single '/'");
+    }
     const url = new URL(path, cfg.baseUrl);
     for (const [key, value] of Object.entries(init.query ?? {})) url.searchParams.set(key, value);
 
@@ -25,7 +38,11 @@ export function createRestClient(cfg: PayPalConfig, tokens: TokenCache): PayPalF
     };
     if (init.requestId) headers["paypal-request-id"] = init.requestId;
 
-    const req: RequestInit = { method, headers, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) };
+    const req: RequestInit = {
+      method,
+      headers,
+      signal: AbortSignal.timeout(init.timeoutMs ?? REQUEST_TIMEOUT_MS),
+    };
     if (init.body instanceof FormData) {
       req.body = init.body;
     } else if (init.body !== undefined) {
