@@ -1,5 +1,3 @@
-use base64::Engine;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use keelson_core::AcirField;
 use keelson_mandate::{
     Assertion, Expected, Fr, WebAuthnError, decode_mandate, h_sd, mandate_challenge, parse_mandate,
@@ -42,6 +40,7 @@ fn kind(e: WebAuthnError) -> &'static str {
         WebAuthnError::Challenge => "challenge",
         WebAuthnError::Origin => "origin",
         WebAuthnError::CrossOrigin => "cross-origin",
+        WebAuthnError::TokenBinding => "token-binding",
         WebAuthnError::Payment(_) => "payment",
         WebAuthnError::AuthenticatorData => "authenticator-data",
         WebAuthnError::RpId => "rp-id",
@@ -77,12 +76,17 @@ fn verify(i: &Value) -> Result<(), WebAuthnError> {
 #[test]
 fn webauthn_vectors() {
     let vectors = vectors();
-    assert_eq!(vectors.len(), 24);
+    assert_eq!(vectors.len(), 59);
     for v in vectors {
         match v.input["op"].as_str() {
             Some("verify") => {
-                let verdict = verify(&v.input).err().map_or("ok", kind);
+                let result = verify(&v.input);
+                let verdict = result.err().map_or("ok", kind);
                 assert_eq!(verdict, v.expected, "{}", v.name);
+                if let Some(field) = v.input["paymentField"].as_str() {
+                    let named = matches!(result, Err(WebAuthnError::Payment(f)) if f == field);
+                    assert!(named, "{}: {result:?}", v.name);
+                }
             }
             Some("spcDetails") => {
                 let details = parse_mandate(&v.input["mandate"])
@@ -133,7 +137,10 @@ fn hostile_input_is_rejected_without_panicking() {
         verify(&i)
     };
     assert_eq!(with("clientDataJSON", "!!"), Err(WebAuthnError::ClientData));
-    assert_eq!(with("clientDataJSON", "W10"), Err(WebAuthnError::Type));
+    assert_eq!(
+        with("clientDataJSON", "W10"),
+        Err(WebAuthnError::ClientData)
+    );
     assert_eq!(
         with("authenticatorData", ""),
         Err(WebAuthnError::AuthenticatorData)
@@ -141,30 +148,16 @@ fn hostile_input_is_rejected_without_panicking() {
     assert_eq!(with("signature", ""), Err(WebAuthnError::Signature));
     assert_eq!(with("signature", "MAA"), Err(WebAuthnError::Signature));
 
-    let auth = URL_SAFE_NO_PAD
-        .decode(ok["assertion"]["authenticatorData"].as_str().unwrap())
-        .unwrap();
-    for tail in [
-        &[0xff][..],
-        &[0x9f, 0x00],
-        &[0x5b, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff],
-        &[0x81; 64],
-        &[0xa1, 0x61, 0x78, 0xf5],
-    ] {
-        let mut d = auth.clone();
-        d[32] |= 0x80;
-        d.extend_from_slice(tail);
-        let mut i = base();
-        i["assertion"]["authenticatorData"] = json!(URL_SAFE_NO_PAD.encode(&d));
-        let r = verify(&i);
-        let well_formed = tail == [0xa1, 0x61, 0x78, 0xf5];
-        let expected = if well_formed {
-            WebAuthnError::Signature
-        } else {
-            WebAuthnError::AuthenticatorData
-        };
-        assert_eq!(r, Err(expected), "{tail:02x?}");
-    }
+    let huge = "A".repeat(1 << 24);
+    assert_eq!(
+        with("clientDataJSON", &huge),
+        Err(WebAuthnError::ClientData)
+    );
+    assert_eq!(
+        with("authenticatorData", &huge),
+        Err(WebAuthnError::AuthenticatorData)
+    );
+    assert_eq!(with("signature", &huge), Err(WebAuthnError::Signature));
 
     let mut i = base();
     i["publicKeySec1"] = json!("0x04");

@@ -6,19 +6,22 @@ import { verifyMandateSignature } from "../src/mandate-signature.ts";
 import type { Passkey } from "../src/passkeys.ts";
 
 // The Rust verifier checks the same file; each kind maps to the message this verifier gives.
+// Vectors scoped to Rust carry inputs a COSE passkey cannot express, such as compressed points.
 const messages: Record<string, RegExp> = {
-  "client-data": /clientDataJSON is not JSON/,
+  "client-data": /clientDataJSON is (not a JSON object|too large)/,
   type: /Unexpected authentication response type/,
   challenge: /Unexpected authentication response challenge/,
   origin: /Unexpected authentication response origin/,
   "cross-origin": /cross-origin assertion/,
+  "token-binding": /token binding/,
   payment: /payment data differs from the mandate/,
-  "authenticator-data": /Authenticator data was|Leftover bytes/,
+  "authenticator-data":
+    /authenticatorData (is too large|has extension or credential data|is not 37 bytes)/,
   "rp-id": /Unexpected RP ID hash/,
   "user-present": /User not present/,
   "user-verified": /User verification required/,
   "backup-state": /backed up/,
-  signature: /signature did not verify/,
+  signature: /signature (did not verify|is too large)/,
 };
 
 interface VerifyInput {
@@ -31,7 +34,9 @@ interface VerifyInput {
   assertion: SignedChallenge;
 }
 
-const cases = vectors.filter((v) => v.input.op === "verify");
+const cases = vectors.filter(
+  (v) => v.input.op === "verify" && !("scope" in v && v.scope === "rust"),
+);
 
 test("the webauthn vectors cover every check", () => {
   expect(new Set(cases.map((v) => v.expected))).toEqual(new Set(["ok", ...Object.keys(messages)]));
