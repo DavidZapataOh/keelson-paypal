@@ -59,6 +59,29 @@ export async function passkeyRegistrationOptions(): Promise<RegistrationOptions>
   return { authenticatorAttachment: "platform" };
 }
 
+const PAYMENT_PASSKEYS_KEY = "keelson.paymentCredentials";
+
+function localPaymentPasskeys(): Set<string> {
+  try {
+    const ids: unknown = JSON.parse(globalThis.localStorage?.getItem(PAYMENT_PASSKEYS_KEY) ?? "[]");
+    return new Set(Array.isArray(ids) ? ids.filter((id) => typeof id === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+/**
+ * Records that this browser registered `credentialId` with the SPC `payment` extension, that is,
+ * after registering with the platform options of {@link passkeyRegistrationOptions}. SPC is only
+ * offered passkeys recorded here, so a payment passkey living on another device never hides the
+ * passkeys usable on this one.
+ */
+export function rememberPaymentPasskey(credentialId: string): void {
+  const ids = localPaymentPasskeys();
+  ids.add(credentialId);
+  globalThis.localStorage?.setItem(PAYMENT_PASSKEYS_KEY, JSON.stringify([...ids]));
+}
+
 const isNotSupported = (e: unknown): boolean =>
   e instanceof DOMException && e.name === "NotSupportedError";
 
@@ -94,16 +117,21 @@ async function signWithSpc(
 /**
  * Signs `challenge` with one of `passkeys`, requiring user verification. With `opts.spc` (the
  * `spc` of `prepareSigning`), a browser that supports Secure Payment Confirmation and at least one
- * payment-capable passkey, the browser shows the payee and total in its own confirmation dialog
- * and only those passkeys are offered. Otherwise, or when SPC is unsupported, a plain WebAuthn
- * assertion is requested from every passkey; a cancelled or failed SPC prompt is never retried.
+ * passkey that is payment-capable and was registered in this browser
+ * ({@link rememberPaymentPasskey}), the browser shows the payee and total in its own confirmation
+ * dialog and only those passkeys are offered. Otherwise, or when SPC is unsupported, a plain
+ * WebAuthn assertion is requested from every passkey; a cancelled or failed SPC prompt is never
+ * retried.
  */
 export async function signMandate(
   challenge: Uint8Array,
   passkeys: readonly PasskeyRef[],
   opts?: { spc?: SpcOptions },
 ): Promise<SignedChallenge> {
-  const payment = passkeys.filter((p) => p.payment).map((p) => p.credentialId);
+  const local = localPaymentPasskeys();
+  const payment = passkeys
+    .filter((p) => p.payment && local.has(p.credentialId))
+    .map((p) => p.credentialId);
   if (opts?.spc && payment.length > 0 && (await spcAvailable())) {
     try {
       return await signWithSpc(challenge, payment, opts.spc);

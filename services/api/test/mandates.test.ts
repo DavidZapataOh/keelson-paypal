@@ -25,7 +25,11 @@ const pageScript = `
 import { createAuthClient } from "better-auth/client";
 import { passkeyClient } from "@better-auth/passkey/client";
 import { prepareSigning } from "@keelson/mandate";
-import { passkeyRegistrationOptions, signMandate } from "@keelson/mandate/browser";
+import {
+  passkeyRegistrationOptions,
+  rememberPaymentPasskey,
+  signMandate,
+} from "@keelson/mandate/browser";
 
 const authClient = createAuthClient({ plugins: [passkeyClient()] });
 const noEvidence = { merchantSignedCheckout: false, zkTlsFields: new Set() };
@@ -37,6 +41,7 @@ window.keelson = {
   addPasskey: async () => {
     const options = await passkeyRegistrationOptions();
     const { data, error } = await authClient.passkey.addPasskey({ name: "Test passkey", ...options });
+    if (data && options.authenticatorAttachment === "platform") rememberPaymentPasskey(data.credentialID);
     return { data: data ?? null, error: error ?? null };
   },
   // The user confirms the card, then signs M with a passkey through SPC or plain WebAuthn.
@@ -78,6 +83,7 @@ window.keelson = {
     };
   },
   passkeys: async () => (await fetch("/v1/passkeys")).json(),
+  rememberPaymentPasskey,
   spcAvailable: async () => PaymentRequest.securePaymentConfirmationAvailability(),
   post: async (body, key) => {
     const res = await fetch("/v1/mandates", {
@@ -198,9 +204,13 @@ interface Signer {
 }
 
 /** A new signed-in user on the app page, with one passkey on a virtual authenticator. */
-async function signer(transport: "internal" | "usb" = "internal"): Promise<Signer> {
+/** `userId` signs the user in from another browser profile, with a fresh authenticator. */
+async function signer(
+  transport: "internal" | "usb" = "internal",
+  userId?: string,
+): Promise<Signer> {
   const { test: utils } = await helpers.$context;
-  const user = await utils.saveUser(utils.createUser());
+  const user = userId ? { id: userId } : await utils.saveUser(utils.createUser());
   const context = await browser.newContext({ baseURL: appOrigin });
   await context.addCookies(
     await utils.getCookies({ userId: user.id, domain: "app.keelson.finance" }),
@@ -224,7 +234,7 @@ async function signer(transport: "internal" | "usb" = "internal"): Promise<Signe
   await page.waitForFunction("window.keelson !== undefined");
   const added = await page.evaluate<{ error: unknown }>("window.keelson.addPasskey()");
   expect(added.error).toBeNull();
-  const [stored] = await userPasskeys(testDb, user.id);
+  const stored = (await userPasskeys(testDb, user.id)).at(-1);
   if (!stored) throw new Error("passkey was not stored");
   const key = decodeCredentialPublicKey(
     isoBase64URL.toBuffer(stored.publicKey, "base64"),
@@ -400,6 +410,8 @@ test("a signature made on another origin is rejected", { timeout: 60_000 }, asyn
   const m = mandateFor(s);
   await s.page.goto(`${evilOrigin}/test`);
   await s.page.waitForFunction("window.keelson !== undefined");
+  // The attacker's page controls its own storage and knows the public credential id.
+  await s.page.evaluate(`window.keelson.rememberPaymentPasskey(${JSON.stringify(s.credentialId)})`);
   const signed = await sign(s.page, m, {
     passkeys: [{ credentialId: s.credentialId, payment: true }],
   });
@@ -505,6 +517,23 @@ test("on an SPC device, a security key still signs", { timeout: 60_000 }, async 
   const signed = await sign(s.page, mandateFor(s));
   expect(signed.type).toBe("webauthn.get");
   expect((await post(s.page, signed.body)).status).toBe(201);
+});
+
+test("a payment passkey from another device is not offered to SPC", {
+  timeout: 60_000,
+}, async () => {
+  const phone = await signer("internal");
+  const laptop = await signer("usb", phone.userId);
+  await laptop.addPlatformAuthenticator();
+  expect(await laptop.page.evaluate("window.keelson.spcAvailable()")).toBe("available");
+  expect((await passkeys(laptop.page)).passkeys.map((p) => p.payment)).toEqual([true, false]);
+  const signed = await sign(laptop.page, mandateFor(laptop));
+  expect(signed.type).toBe("webauthn.get");
+  expect((await post(laptop.page, signed.body)).status).toBe(201);
+
+  const again = await sign(phone.page, mandateFor(phone));
+  expect(again.type).toBe("payment.get");
+  expect((await post(phone.page, again.body)).status).toBe(201);
 });
 
 test("the mandate must name the signer", { timeout: 60_000 }, async () => {
