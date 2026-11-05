@@ -1,0 +1,30 @@
+import { BN254_FR_MODULUS } from "@aztec/bb.js";
+import { describe, expect, test } from "vitest";
+import { fieldFromAscii, KEELSON_MANDATE, poseidon2 } from "../src/poseidon2.js";
+
+describe("poseidon2", () => {
+  test.todo("poseidon2([1n, 2n]) matches the barretenberg vector");
+
+  test("rejects an input at or above the field modulus", async () => {
+    await expect(poseidon2([BN254_FR_MODULUS])).rejects.toThrow(RangeError);
+    await expect(poseidon2([-1n])).rejects.toThrow(RangeError);
+  });
+
+  test("is deterministic and input-sensitive", async () => {
+    const h = await poseidon2([1n, 2n]);
+    expect(await poseidon2([1n, 2n])).toBe(h);
+    expect(await poseidon2([2n, 1n])).not.toBe(h);
+    expect(h).toBeLessThan(BN254_FR_MODULUS);
+  });
+
+  test("encodes the domain tag as big-endian ASCII", () => {
+    const hex = Buffer.from("KEELSON_MANDATE", "ascii").toString("hex");
+    expect(fieldFromAscii("KEELSON_MANDATE")).toBe(BigInt(`0x${hex}`));
+    expect(KEELSON_MANDATE).toBe(BigInt(`0x${hex}`));
+  });
+
+  test("rejects a tag longer than 31 bytes", () => {
+    expect(() => fieldFromAscii("a".repeat(32))).toThrow();
+    expect(() => fieldFromAscii("a".repeat(31))).not.toThrow();
+  });
+});
