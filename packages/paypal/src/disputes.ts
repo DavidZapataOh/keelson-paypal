@@ -1,0 +1,127 @@
+import type { PayPalConfig } from "./config.js";
+import type { PayPalFetch } from "./rest.js";
+import {
+  type Dispute,
+  type DisputeSearch,
+  dispute,
+  disputeSearch,
+  type SubsequentAction,
+  subsequentAction,
+} from "./schemas/disputes.js";
+
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_TOTAL_BYTES = 50 * 1024 * 1024;
+
+export interface Evidence {
+  evidence_type: string;
+  notes?: string;
+  evidence_info?: {
+    tracking_info?: { carrier_name: string; tracking_number: string }[];
+    refund_ids?: string[];
+  };
+  documents?: { name: string }[];
+}
+
+export interface EvidenceFile {
+  name: string;
+  bytes: Uint8Array;
+}
+
+const path = (id: string, action = "") =>
+  `/v1/customer/disputes/${encodeURIComponent(id)}${action}`;
+
+export async function listDisputes(
+  f: PayPalFetch,
+  q: { disputedTransactionId?: string; updateTimeAfter?: string } = {},
+): Promise<DisputeSearch> {
+  const query: Record<string, string> = {};
+  if (q.disputedTransactionId) query.disputed_transaction_id = q.disputedTransactionId;
+  if (q.updateTimeAfter) query.update_time_after = q.updateTimeAfter;
+  return disputeSearch.parse(await f<unknown>("GET", "/v1/customer/disputes", { query }));
+}
+
+export async function getDispute(f: PayPalFetch, id: string): Promise<Dispute> {
+  return dispute.parse(await f<unknown>("GET", path(id)));
+}
+
+/** Multipart: an `input` JSON part plus one PDF/image part per file (10 MB each, 50 MB total). */
+export async function provideEvidence(
+  f: PayPalFetch,
+  id: string,
+  input: { evidences: Evidence[] },
+  files: EvidenceFile[],
+): Promise<SubsequentAction> {
+  let total = 0;
+  for (const file of files) {
+    if (file.bytes.byteLength > MAX_FILE_BYTES) throw new RangeError(`${file.name} exceeds 10 MB`);
+    total += file.bytes.byteLength;
+  }
+  if (total > MAX_TOTAL_BYTES) throw new RangeError("evidence files exceed 50 MB in total");
+
+  const form = new FormData();
+  form.append("input", new Blob([JSON.stringify(input)], { type: "application/json" }));
+  files.forEach((file, i) => {
+    form.append(
+      `file${i + 1}`,
+      new Blob([new Uint8Array(file.bytes)], { type: mimeOf(file.name) }),
+      file.name,
+    );
+  });
+  return subsequentAction.parse(
+    await f<unknown>("POST", path(id, "/provide-evidence"), { body: form }),
+  );
+}
+
+function mimeOf(name: string): string {
+  const ext = name.slice(name.lastIndexOf(".") + 1).toLowerCase();
+  if (ext === "pdf") return "application/pdf";
+  if (ext === "png") return "image/png";
+  if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+  throw new TypeError(`unsupported evidence file type: ${name}`);
+}
+
+export async function acceptClaim(
+  f: PayPalFetch,
+  id: string,
+  body: { note: string; accept_claim_reason?: string; invoice_id?: string },
+): Promise<SubsequentAction> {
+  return subsequentAction.parse(await f<unknown>("POST", path(id, "/accept-claim"), { body }));
+}
+
+export async function sendMessage(
+  f: PayPalFetch,
+  id: string,
+  message: string,
+): Promise<SubsequentAction> {
+  return subsequentAction.parse(
+    await f<unknown>("POST", path(id, "/send-message"), { body: { message } }),
+  );
+}
+
+function sandboxOnly(cfg: Pick<PayPalConfig, "env">, endpoint: string): void {
+  if (cfg.env === "production") throw new Error(`${endpoint} is available in the sandbox only`);
+}
+
+export async function requireEvidence(
+  f: PayPalFetch,
+  cfg: Pick<PayPalConfig, "env">,
+  id: string,
+  action: "BUYER_EVIDENCE" | "SELLER_EVIDENCE",
+): Promise<SubsequentAction> {
+  sandboxOnly(cfg, "require-evidence");
+  return subsequentAction.parse(
+    await f<unknown>("POST", path(id, "/require-evidence"), { body: { action } }),
+  );
+}
+
+export async function adjudicate(
+  f: PayPalFetch,
+  cfg: Pick<PayPalConfig, "env">,
+  id: string,
+  outcome: "BUYER_FAVOR" | "SELLER_FAVOR",
+): Promise<SubsequentAction> {
+  sandboxOnly(cfg, "adjudicate");
+  return subsequentAction.parse(
+    await f<unknown>("POST", path(id, "/adjudicate"), { body: { adjudication_outcome: outcome } }),
+  );
+}
