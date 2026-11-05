@@ -30,6 +30,7 @@ jobs:
             ${{ runner.os }}-turbo-
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
+      - run: '! rg -n "paypalMockResponse|PayPal-Mock-Response" packages services apps'
       - run: pnpm turbo run typecheck test build --filter='!./packages/db' --filter='!./services/api' --cache-dir=.turbo
       - run: pnpm --filter @keelson/core vectors && test -z "$(git status --porcelain)"
 
