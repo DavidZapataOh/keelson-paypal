@@ -156,8 +156,12 @@ test("fails closed within a second when the connection drops", async () => {
   await new Promise((resolve) => setTimeout(resolve, 100));
 
   const started = Date.now();
-  const res = await post(uniqueKey(), { a: 1 }, build(kv));
-  kv.destroy();
+  let res: Response;
+  try {
+    res = await post(uniqueKey(), { a: 1 }, build(kv));
+  } finally {
+    kv.destroy();
+  }
   expect(res.status).toBe(503);
   expect(Date.now() - started).toBeLessThan(1000);
   expect((await res.json()).type).toBe(
@@ -232,14 +236,41 @@ test("does not share keys between principals", async () => {
   expect(count).toBe(2);
 });
 
-test("answers 504 on timeout and releases the key", async () => {
+test("answers 504 on timeout and keeps the lock until the handler finishes", async () => {
   const slow = build(testKv, { requestTimeoutMs: 50 });
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let runs = 0;
+  let finished!: () => void;
+  const done = new Promise<void>((resolve) => {
+    finished = resolve;
+  });
+  slow.post("/v1/test/slow", async (c) => {
+    runs += 1;
+    await gate;
+    finished();
+    return c.json({ ok: true });
+  });
   const key = uniqueKey();
-  const first = await post(key, { a: 1 }, slow);
+  const call = () =>
+    slow.request("/v1/test/slow", {
+      method: "POST",
+      headers: { "idempotency-key": key, "content-type": "application/json" },
+      body: "{}",
+    });
+  const first = await call();
   expect(first.status).toBe(504);
   expect((await first.json()).type).toBe("https://api.keelson.finance/problems/timeout");
-  const retry = await post(key, { a: 1 }, slow);
-  expect(retry.headers.get("idempotent-replayed")).toBeNull();
+  const retry = await call();
+  expect(retry.status).toBe(409);
+  expect((await retry.json()).type).toBe(
+    "https://api.keelson.finance/problems/idempotency-in-progress",
+  );
+  expect(runs).toBe(1);
+  release();
+  await done;
 });
 
 test("releases the key when the handler throws", async () => {

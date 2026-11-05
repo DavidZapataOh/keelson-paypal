@@ -57,10 +57,10 @@ export function createApp(deps: Deps): OpenAPIHono {
   app.use("/v1/*", idempotency(deps.kv, deps.log));
   app.use(
     "/v1/*",
-    timeout(
-      deps.requestTimeoutMs ?? 30_000,
-      () => new HTTPException(504, { message: "The request took too long." }),
-    ),
+    timeout(deps.requestTimeoutMs ?? 30_000, (c) => {
+      c.set("timedOut", true);
+      return new HTTPException(504, { message: "The request took too long." });
+    }),
   );
   app.openAPIRegistry.register("Problem", ProblemSchema);
 

@@ -13,6 +13,7 @@ export interface Principal {
 declare module "hono" {
   interface ContextVariableMap {
     principal: Principal | undefined;
+    timedOut: boolean | undefined;
   }
 }
 
@@ -42,7 +43,12 @@ function fingerprint(method: string, target: string, body: Uint8Array): string {
   return toHex(sha256(input));
 }
 
-/** Enforces the `Idempotency-Key` header on POST requests (draft-ietf-httpapi-idempotency-key-header). */
+/**
+ * Enforces the `Idempotency-Key` header on POST requests (draft-ietf-httpapi-idempotency-key-header).
+ * A timed-out request keeps its lock until the TTL expires, since the handler may still be running.
+ * Downstream effects must also be idempotent at their own layer (PayPal-Request-Id, the database
+ * state machine), because a lock that expires after a failed save can allow a later retry.
+ */
 export function idempotency(kv: RedisClientType, log: Logger): MiddlewareHandler {
   return async (c, next) => {
     if (c.req.method !== "POST") return next();
@@ -122,6 +128,8 @@ export function idempotency(kv: RedisClientType, log: Logger): MiddlewareHandler
       await release(kv, key);
       throw err;
     }
+
+    if (c.get("timedOut")) return;
 
     const res = c.res;
     if (res.status >= 500) {
