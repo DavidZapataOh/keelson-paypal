@@ -16,7 +16,8 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:sandbox": "node --env-file=../../.env ./node_modules/vitest/vitest.mjs run --config vitest.sandbox.config.ts"
+    "test:sandbox": "node --env-file=../../.env ./node_modules/vitest/vitest.mjs run --config vitest.sandbox.config.ts",
+    "age-authorization": "tsc -p tsconfig.build.json && node --env-file=../../.env scripts/age-authorization.ts"
   },
   "dependencies": {
     "@keelson/core": "workspace:*",
