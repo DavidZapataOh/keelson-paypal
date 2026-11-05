@@ -30,8 +30,45 @@ jobs:
             ${{ runner.os }}-turbo-
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
-      - run: pnpm turbo run typecheck test build --cache-dir=.turbo
+      - run: pnpm turbo run typecheck test build --filter='!./packages/db' --cache-dir=.turbo
       - run: pnpm --filter @keelson/core vectors && test -z "$(git status --porcelain)"
+
+  services:
+    runs-on: ubuntu-24.04
+    env:
+      DATABASE_URL: postgres://postgres:keelson@localhost:5432/keelson
+      REDIS_URL: redis://localhost:6379
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: keelson
+          POSTGRES_DB: keelson
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d keelson"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      valkey:
+        image: valkey/valkey:8
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run typecheck test --filter=./packages/db
 
   rust:
     runs-on: ubuntu-24.04

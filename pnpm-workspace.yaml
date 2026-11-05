@@ -26,4 +26,5 @@ minimumReleaseAgeExclude:
   - "@biomejs/cli-win32-x64@2.6.5"
 
 allowBuilds:
+  esbuild: false
   msgpackr-extract: false
