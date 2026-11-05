@@ -15,15 +15,18 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:sandbox": "node --env-file=../../.env ./node_modules/vitest/vitest.mjs run --config vitest.sandbox.config.ts"
   },
   "dependencies": {
-    "@keelson/core": "workspace:*"
+    "@keelson/core": "workspace:*",
+    "@paypal/paypal-server-sdk": "2.5.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
     "fast-check": "4.10.2",
     "typescript": "catalog:",
+    "undici": "^8.12.3",
     "vitest": "catalog:"
   }
 }
