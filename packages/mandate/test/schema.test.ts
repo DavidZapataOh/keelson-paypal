@@ -4,7 +4,8 @@ import { MandateError, parseMandate } from "../src/schema.ts";
 import demo from "./fixtures/demo-mandate.json" with { type: "json" };
 
 // biome-ignore lint/suspicious/noExplicitAny: tests mutate arbitrary fields to build invalid input
-const clone = () => structuredClone(demo) as Record<string, any>;
+type Mock = Record<string, any>;
+const clone = () => structuredClone(demo) as Mock;
 
 function fieldOf(input: unknown): string {
   try {
@@ -81,9 +82,105 @@ describe("parseMandate", () => {
   });
 });
 
+describe("encodings", () => {
+  it("requires a 16-byte unpadded nonce", () => {
+    for (const nonce of ["AAAA", `${"A".repeat(22)}A`, `${"A".repeat(22)}==`, "A".repeat(21)]) {
+      const m = clone();
+      m.nonce = nonce;
+      expect(fieldOf(m)).toBe("nonce");
+    }
+  });
+
+  it("requires 32-byte P-256 coordinates", () => {
+    for (const x of ["AAAA", "A".repeat(44), `${"A".repeat(43)}=`]) {
+      const m = clone();
+      m.user.cred.jwk.x = x;
+      expect(fieldOf(m)).toBe("user.cred.jwk.x");
+    }
+  });
+
+  it("requires the P-256 curve", () => {
+    const m = clone();
+    m.user.cred.jwk.crv = "P-384";
+    expect(fieldOf(m)).toBe("user.cred.jwk.crv");
+  });
+
+  it("enforces iat <= nbf", () => {
+    const m = clone();
+    m.nbf = m.iat - 1;
+    expect(fieldOf(m)).toBe("nbf");
+  });
+
+  it("validates commitment and hash formats", () => {
+    const m = clone();
+    m.zk.commitment = "0x1234";
+    expect(fieldOf(m)).toBe("zk.commitment");
+    const n = clone();
+    n.policy.policy_set_hash = "abc";
+    expect(fieldOf(n)).toBe("policy.policy_set_hash");
+  });
+});
+
+describe("nested strictness", () => {
+  it.each([
+    ["user.cred.jwk", (m: Mock) => m.user.cred.jwk],
+    ["payment.constraints.0", (m: Mock) => m.payment.constraints[0]],
+    ["checkout.constraints.0.allowed.0", (m: Mock) => m.checkout.constraints[0].allowed[0]],
+    ["consent", (m: Mock) => m.consent],
+  ])("rejects an unknown key in %s", (path, pick) => {
+    const m = clone();
+    pick(m).extra = 1;
+    expect(fieldOf(m)).toBe(path);
+  });
+});
+
+describe("constraint cardinality", () => {
+  it.each([
+    "payment.amount_range",
+    "payment.budget",
+    "payment.allowed_payees",
+    "payment.execution_date",
+  ])("requires %s", (type) => {
+    const m = clone();
+    m.payment.constraints = m.payment.constraints.filter((c: { type: string }) => c.type !== type);
+    expect(fieldOf(m)).toBe("payment.constraints");
+  });
+
+  it("rejects duplicate payment constraints", () => {
+    const m = clone();
+    m.payment.constraints.push(m.payment.constraints[0]);
+    expect(fieldOf(m)).toBe("payment.constraints");
+  });
+
+  it("requires exactly one allowed_merchants and at most one of each other type", () => {
+    const m = clone();
+    m.checkout.constraints.shift();
+    expect(fieldOf(m)).toBe("checkout.constraints");
+    const n = clone();
+    n.checkout.constraints.push(n.checkout.constraints[4]);
+    expect(fieldOf(n)).toBe("checkout.constraints");
+  });
+});
+
 describe("fieldColors", () => {
   const mandate = parseMandate(demo);
   const none = { merchantSignedCheckout: false, zkTlsFields: new Set<string>() };
+
+  it("colors a minimal mandate with no unproven fields", () => {
+    const m = clone();
+    m.checkout.constraints = m.checkout.constraints.slice(0, 1);
+    m.intent.subjective = [];
+    expect(fieldColors(parseMandate(m), none)).toEqual({
+      total: "green",
+      currency: "green",
+      budget: "green",
+      merchant: "green",
+      deadline: "green",
+      quantity: "green",
+      agent: "green",
+      bond: "green",
+    });
+  });
 
   it("colors an unproven mandate", () => {
     expect(fieldColors(mandate, none)).toEqual({

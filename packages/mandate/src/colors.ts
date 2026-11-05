@@ -25,12 +25,13 @@ export interface Evidence {
 }
 
 /**
- * Trust color of each mandate field. Fields the TEE checks deterministically are green;
+ * Trust color of each mandate field the mandate constrains. Fields the TEE checks deterministically are green;
  * fields that depend on page content are amber until proven; subjective intent is never green.
  */
-export function fieldColors(_m: Mandate, evidence: Evidence): Record<FieldId, Color> {
+export function fieldColors(m: Mandate, evidence: Evidence): Partial<Record<FieldId, Color>> {
+  const has = (type: string) => m.checkout.constraints.some((c) => c.type === type);
   const proven = (key: string): Color => (evidence.zkTlsFields.has(key) ? "green" : "amber");
-  return {
+  const colors: Partial<Record<FieldId, Color>> = {
     total: "green",
     currency: "green",
     budget: "green",
@@ -39,10 +40,12 @@ export function fieldColors(_m: Mandate, evidence: Evidence): Record<FieldId, Co
     quantity: "green",
     agent: "green",
     bond: "green",
-    items: evidence.merchantSignedCheckout ? "green" : "amber",
-    category: proven("category"),
-    variant: proven("variant"),
-    return_policy: proven("returns"),
-    subjective: "gray",
   };
+  if (has("checkout.line_items"))
+    colors.items = evidence.merchantSignedCheckout ? "green" : "amber";
+  if (has("keelson.category")) colors.category = proven("category");
+  if (has("keelson.attributes")) colors.variant = proven("variant");
+  if (has("keelson.returns")) colors.return_policy = proven("returns");
+  if (m.intent.subjective.length > 0) colors.subjective = "gray";
+  return colors;
 }
