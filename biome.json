@@ -6,7 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!**/dist", "!**/.astro", "!**/target", "!openapi"]
+    "includes": ["**", "!**/dist", "!**/.astro", "!**/target", "!openapi", "!**/rfc8785"]
   },
   "formatter": {
     "indentStyle": "space",
