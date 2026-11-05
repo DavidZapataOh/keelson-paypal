@@ -10,17 +10,20 @@ export interface RateLimitOptions {
   anonymousLimit?: number;
   windowSec?: number;
   /**
-   * Read the client IP from the last `X-Forwarded-For` entry, the hop the trusted proxy appended;
-   * earlier entries are client-controlled. To be verified against a real Render request at deploy time.
+   * Behind Render, which sits behind Cloudflare: read the client IP from `CF-Connecting-IP`, which
+   * Cloudflare overwrites; else the third-from-right `X-Forwarded-For` entry (`<client>, <edge>,
+   * <render>`); else the socket address. Left-hand entries and `True-Client-IP` are never used.
    */
   trustProxy?: boolean;
 }
 
 function clientIp(c: Context, trustProxy: boolean): string {
   if (trustProxy) {
+    const cf = c.req.header("cf-connecting-ip")?.trim();
+    if (cf) return cf;
     const hops = c.req.header("x-forwarded-for")?.split(",");
-    const last = hops?.[hops.length - 1]?.trim();
-    if (last) return last;
+    const appended = hops !== undefined && hops.length >= 3 ? hops[hops.length - 3]?.trim() : "";
+    if (appended) return appended;
   }
   try {
     return getConnInfo(c).remote.address ?? "unknown";

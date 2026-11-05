@@ -52,17 +52,47 @@ test("counts each principal separately", async () => {
   expect((await get(app, subject())).status).toBe(200);
 });
 
-test("keys anonymous callers by the last forwarded hop only behind a trusted proxy", async () => {
+test("keys anonymous callers by Cloudflare's client IP only behind a trusted proxy", async () => {
   const proxied = build({ anonymousLimit: 1, trustProxy: true });
-  const real = `203.0.113.${Math.floor(Math.random() * 250)}`;
-  const call = (forged: string) =>
-    proxied.request("/v1/test/ping", { headers: { "x-forwarded-for": `${forged}, ${real}` } });
-  expect((await call("6.6.6.6")).status).toBe(200);
-  expect((await call("7.7.7.7")).status).toBe(429);
+  const octet = () => Math.floor(Math.random() * 250);
+  const real = `203.0.113.${octet()}`;
+  const call = (headers: Record<string, string>) => proxied.request("/v1/test/ping", { headers });
 
-  const direct = build({ anonymousLimit: 1 });
+  expect(
+    (
+      await call({
+        "cf-connecting-ip": real,
+        "x-forwarded-for": "6.6.6.6, 9.9.9.9, 10.0.0.1",
+        "true-client-ip": "1.1.1.1",
+      })
+    ).status,
+  ).toBe(200);
+  expect(
+    (
+      await call({
+        "cf-connecting-ip": real,
+        "x-forwarded-for": "7.7.7.7, 8.8.8.8, 10.0.0.2",
+        "true-client-ip": "2.2.2.2",
+      })
+    ).status,
+  ).toBe(429);
+
+  const viaXff = `198.51.100.${octet()}`;
+  const xff = (forged: string, edge: string) => ({
+    "x-forwarded-for": `${forged}, ${viaXff}, ${edge}, 10.0.0.${octet()}`,
+  });
+  expect((await call(xff("6.6.6.6", "172.70.1.1"))).status).toBe(200);
+  expect((await call(xff("7.7.7.7", "172.70.2.2"))).status).toBe(429);
+
   const stale = await testKv.keys("rl:ip:unknown:*");
   if (stale.length > 0) await testKv.del(stale);
+  const short = (n: number) => ({ "x-forwarded-for": `9.9.9.${n}, 10.0.0.1` });
+  expect((await call(short(1))).status).toBe(200);
+  expect((await call(short(2))).status).toBe(429);
+
+  const direct = build({ anonymousLimit: 1 });
+  const stale2 = await testKv.keys("rl:ip:unknown:*");
+  if (stale2.length > 0) await testKv.del(stale2);
   const spoof = (n: number) => ({ headers: { "x-forwarded-for": `198.51.100.${n}` } });
   expect((await direct.request("/v1/test/ping", spoof(1))).status).toBe(200);
   expect((await direct.request("/v1/test/ping", spoof(2))).status).toBe(429);
