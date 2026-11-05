@@ -15,7 +15,8 @@
       "passThroughEnv": ["DATABASE_URL", "REDIS_URL"]
     },
     "bench": {
-      "cache": false
+      "cache": false,
+      "passThroughEnv": ["DATABASE_URL"]
     }
   }
 }
