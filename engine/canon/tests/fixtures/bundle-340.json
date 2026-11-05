@@ -1,0 +1,23 @@
+{
+  "cart": {
+    "merchant": "MERCHANT-SHOES-01",
+    "currency": "USD",
+    "return_days": 14,
+    "lines": [
+      { "sku": "RUN-100", "size": "10", "color": "black", "category": "gpt:187", "qty": 2, "unit_minor": 9400 },
+      { "sku": "SOCK-6", "size": null, "color": "white", "category": "gpt:1604", "qty": 3, "unit_minor": 1500 },
+      { "sku": "BAG-20", "size": null, "color": null, "category": "gpt:100", "qty": 1, "unit_minor": 10700 }
+    ]
+  },
+  "unit": {
+    "amount": {
+      "currency_code": "USD",
+      "value": "340.00",
+      "breakdown": {
+        "item_total": { "currency_code": "USD", "value": "340.00" },
+        "shipping": { "currency_code": "USD", "value": "10.00" },
+        "shipping_discount": { "currency_code": "USD", "value": "10.00" }
+      }
+    }
+  }
+}

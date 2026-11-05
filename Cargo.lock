@@ -2021,6 +2021,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "keelson-canon"
+version = "0.0.0"
+dependencies = [
+ "keelson-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "keelson-core"
 version = "0.0.0"
 dependencies = [
