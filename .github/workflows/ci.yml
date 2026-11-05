@@ -45,6 +45,8 @@ jobs:
     env:
       DATABASE_URL: postgres://postgres:keelson@localhost:5432/keelson
       REDIS_URL: redis://localhost:6379
+      PAYPAL_CLIENT_ID: ${{ secrets.PAYPAL_CLIENT_ID }}
+      PAYPAL_CLIENT_SECRET: ${{ secrets.PAYPAL_CLIENT_SECRET }}
     services:
       postgres:
         image: postgres:18

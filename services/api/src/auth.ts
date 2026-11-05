@@ -44,7 +44,7 @@ export function createAuth(db: Db, env: AuthEnv) {
     },
     user: {
       additionalFields: {
-        role: { type: ["user", "admin"], required: false, defaultValue: "user", input: false },
+        role: { type: ["user", "admin"], required: true, defaultValue: "user", input: false },
       },
     },
     socialProviders: {
@@ -64,6 +64,8 @@ export function createAuth(db: Db, env: AuthEnv) {
         resources: [apiAudience],
         clientPrivileges: ({ user }) => user?.role === "admin",
       }),
+      // The app origin is a subdomain of the RP ID, so WebAuthn accepts it without a
+      // Related Origins `/.well-known/webauthn` document.
       passkey({
         rpID: env.PASSKEY_RP_ID ?? "keelson.finance",
         rpName: "Keelson",

@@ -7,7 +7,9 @@ import {
   events,
   mandates,
   operators,
+  passkey,
   purchases,
+  user,
   verdicts,
 } from "../src/index.ts";
 import { testDb } from "./setup.ts";
@@ -160,4 +162,38 @@ test("an out-of-range liable value violates the dispute check", async () => {
       .values({ id: "PP-D-2", purchaseId: values.id, reason: "r", liable: 5, raw: {} }),
   );
   expect(code).toBe("23514");
+});
+
+async function newUser() {
+  const id = ulid();
+  const [row] = await db
+    .insert(user)
+    .values({ id, name: "u", email: `${id}@example.com` })
+    .returning();
+  assert(row);
+  return row;
+}
+
+test("a user's role defaults to user and cannot be null", async () => {
+  expect((await newUser()).role).toBe("user");
+  const id = ulid();
+  const code = await sqlState(
+    db.insert(user).values({ id, name: "u", email: `${id}@example.com`, role: null as never }),
+  );
+  expect(code).toBe("23502");
+});
+
+test("a credential id can be registered only once", async () => {
+  const passkeyValues = (userId: string) => ({
+    id: ulid(),
+    publicKey: "pk",
+    userId,
+    credentialID: "cred-dup",
+    counter: 0,
+    deviceType: "singleDevice",
+    backedUp: false,
+  });
+  await db.insert(passkey).values(passkeyValues((await newUser()).id));
+  const code = await sqlState(db.insert(passkey).values(passkeyValues((await newUser()).id)));
+  expect(code).toBe("23505");
 });

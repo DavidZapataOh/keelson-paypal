@@ -198,24 +198,30 @@ test("two clients sending the same idempotency key do not collide", async () => 
   expect((await replay.json()).client).toBe(a.id);
 });
 
-test("a signed-in user who is not an admin cannot create or list OAuth clients", async () => {
-  const create = await app.request("/api/auth/oauth2/create-client", {
-    method: "POST",
-    headers: {
-      cookie: userHeaders.get("cookie") as string,
-      origin: baseURL,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      client_name: "Rogue",
-      redirect_uris: ["https://rogue.example/callback"],
-    }),
-  });
-  expect(create.status).toBe(401);
-  const list = await app.request("/api/auth/oauth2/get-clients", {
-    headers: { cookie: userHeaders.get("cookie") as string },
-  });
-  expect(list.status).toBe(401);
+test("a signed-in user who is not an admin cannot create or manage OAuth clients", async () => {
+  const { id: clientId } = await registerClient(["alibis:read"]);
+  const routes: [method: "GET" | "POST", path: string, body?: object][] = [
+    ["POST", "/oauth2/create-client", { redirect_uris: ["https://rogue.example/callback"] }],
+    ["GET", "/oauth2/get-clients"],
+    ["GET", `/oauth2/get-client?client_id=${clientId}`],
+    ["POST", "/oauth2/update-client", { client_id: clientId, update: { client_name: "Rogue" } }],
+    ["POST", "/oauth2/client/rotate-secret", { client_id: clientId }],
+    ["POST", "/oauth2/delete-client", { client_id: clientId }],
+  ];
+  const send = (headers: Headers, [method, path, body]: (typeof routes)[number]) =>
+    app.request(`/api/auth${path}`, {
+      method,
+      headers: {
+        cookie: headers.get("cookie") as string,
+        origin: baseURL,
+        ...(body ? { "content-type": "application/json" } : {}),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+  for (const route of routes) {
+    expect((await send(userHeaders, route)).status, route[1]).toBe(401);
+  }
+  expect((await send(sessionHeaders, routes[2] as (typeof routes)[number])).status).toBe(200);
   await expect(
     auth.api.adminCreateOAuthClient({
       headers: userHeaders,

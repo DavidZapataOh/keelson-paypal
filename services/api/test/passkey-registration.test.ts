@@ -29,6 +29,22 @@ window.keelson = {
   signInWithPasskey: async () => result(await authClient.signIn.passkey({ autoFill: false })),
   signOut: async () => result(await authClient.signOut()),
   getSession: async () => result(await authClient.getSession()),
+  // Skips the client library so the authenticator can be offered an algorithm the server never offers.
+  registerWithAlgorithm: async (alg) => {
+    const options = await (await fetch("/api/auth/passkey/generate-register-options")).json();
+    const credential = await navigator.credentials.create({
+      publicKey: PublicKeyCredential.parseCreationOptionsFromJSON({
+        ...options,
+        pubKeyCredParams: [{ type: "public-key", alg }],
+      }),
+    });
+    const res = await fetch("/api/auth/passkey/verify-registration", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ response: credential.toJSON() }),
+    });
+    return { status: res.status, body: await res.json() };
+  },
 };
 `;
 
@@ -84,12 +100,10 @@ const helpers = betterAuth({
 });
 
 let browser!: Browser;
-let context!: BrowserContext;
 let page!: Page;
 
 beforeAll(async () => {
   browser = await chromium.launch();
-  context = await browser.newContext({ baseURL });
 });
 
 afterAll(async () => {
@@ -99,11 +113,12 @@ afterAll(async () => {
 
 const call = <T>(name: string) => page.evaluate<Result<T>>(`window.keelson.${name}()`);
 
-test("a signed-in user registers a passkey and signs in with it", { timeout: 60_000 }, async () => {
+/** Opens the test page as a new signed-in user, with a virtual platform authenticator attached. */
+async function signedInPage() {
   const { test: utils } = await helpers.$context;
   const user = await utils.saveUser(utils.createUser());
+  const context: BrowserContext = await browser.newContext({ baseURL });
   await context.addCookies(await utils.getCookies({ userId: user.id, domain: "localhost" }));
-
   page = await context.newPage();
   const cdp = await context.newCDPSession(page);
   await cdp.send("WebAuthn.enable");
@@ -118,6 +133,11 @@ test("a signed-in user registers a passkey and signs in with it", { timeout: 60_
   });
   await page.goto("/test");
   await page.waitForFunction("window.keelson !== undefined");
+  return { user, cdp, authenticatorId };
+}
+
+test("a signed-in user registers a passkey and signs in with it", { timeout: 60_000 }, async () => {
+  const { user, cdp, authenticatorId } = await signedInPage();
 
   const added = await call<{ id: string }>("addPasskey");
   expect(added.error).toBeNull();
@@ -145,4 +165,24 @@ test("a signed-in user registers a passkey and signs in with it", { timeout: 60_
   expect(publicKey.get(cose.COSEKEYS.alg)).toBe(cose.COSEALG.ES256);
   expect(stored?.counter).toBeGreaterThanOrEqual(0);
   expect(stored?.transports).toContain("internal");
+});
+
+test("registration rejects passkeys that are not ES256", { timeout: 60_000 }, async () => {
+  const { user, cdp, authenticatorId } = await signedInPage();
+  for (const alg of [cose.COSEALG.EdDSA, cose.COSEALG.RS256]) {
+    const res = await page.evaluate<{ status: number; body: { message?: string } }>(
+      `window.keelson.registerWithAlgorithm(${alg})`,
+    );
+    expect(res.status, `alg ${alg}`).toBe(400);
+    expect(res.body.message).toBe("Passkeys must use ES256.");
+  }
+  const { credentials } = await cdp.send("WebAuthn.getCredentials", { authenticatorId });
+  expect(credentials).toHaveLength(2);
+  expect(await userPasskeys(testDb, user.id)).toHaveLength(0);
+
+  const control = await page.evaluate<{ status: number }>(
+    `window.keelson.registerWithAlgorithm(${cose.COSEALG.ES256})`,
+  );
+  expect(control.status).toBe(200);
+  expect(await userPasskeys(testDb, user.id)).toHaveLength(1);
 });
