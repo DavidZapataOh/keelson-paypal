@@ -1,7 +1,10 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import type { Db } from "@keelson/db";
+import type { MiddlewareHandler } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { HTTPException } from "hono/http-exception";
 import { requestId } from "hono/request-id";
+import { timeout } from "hono/timeout";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
@@ -13,6 +16,10 @@ export interface Deps {
   db: Db;
   kv: RedisClientType;
   log: Logger;
+  /** Resolves `c.var.principal`; runs before idempotency so keys are scoped per principal. */
+  authenticate?: MiddlewareHandler;
+  /** Handler deadline in milliseconds; must stay below the idempotency lock lifetime. */
+  requestTimeoutMs?: number;
 }
 
 export const apiInfo = { title: "Keelson API", version: "0.0.0" } as const;
@@ -39,13 +46,31 @@ export function createApp(deps: Deps): OpenAPIHono {
   });
 
   app.use(requestId());
-  app.use("/v1/*", idempotency(deps.kv));
+  app.use(
+    "/v1/*",
+    bodyLimit({
+      maxSize: 1024 * 1024,
+      onError: (c) => problem(c, 413, "payload-too-large", "Payload too large"),
+    }),
+  );
+  if (deps.authenticate) app.use("/v1/*", deps.authenticate);
+  app.use("/v1/*", idempotency(deps.kv, deps.log));
+  app.use(
+    "/v1/*",
+    timeout(
+      deps.requestTimeoutMs ?? 30_000,
+      () => new HTTPException(504, { message: "The request took too long." }),
+    ),
+  );
   app.openAPIRegistry.register("Problem", ProblemSchema);
 
   app.notFound((c) => problem(c, 404, "not-found", "Not found"));
   app.onError((err, c) => {
     if (err instanceof HTTPException && err.status === 400) {
       return problem(c, 400, "malformed-body", "Malformed body", err.message);
+    }
+    if (err instanceof HTTPException && err.status === 504) {
+      return problem(c, 504, "timeout", "Request timed out", err.message);
     }
     if (err instanceof HTTPException) {
       return problem(

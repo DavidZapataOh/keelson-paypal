@@ -1,5 +1,6 @@
 import { sha256, toHex } from "@keelson/core";
 import type { MiddlewareHandler } from "hono";
+import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
 import { problem } from "../problem.ts";
 
@@ -15,7 +16,9 @@ declare module "hono" {
   }
 }
 
-const TTL_SECONDS = 86_400;
+/** The lock must outlive the request timeout (30 s) so a handler cannot outlast it. */
+const LOCK_SECONDS = 60;
+const DONE_SECONDS = 86_400;
 const encoder = new TextEncoder();
 
 interface Running {
@@ -31,8 +34,8 @@ interface Done {
   body: string;
 }
 
-function fingerprint(method: string, path: string, body: Uint8Array): string {
-  const head = encoder.encode(`${method}\0${path}\0`);
+function fingerprint(method: string, target: string, body: Uint8Array): string {
+  const head = encoder.encode(`${method}\0${target}\0`);
   const input = new Uint8Array(head.length + body.length);
   input.set(head, 0);
   input.set(body, head.length);
@@ -40,7 +43,7 @@ function fingerprint(method: string, path: string, body: Uint8Array): string {
 }
 
 /** Enforces the `Idempotency-Key` header on POST requests (draft-ietf-httpapi-idempotency-key-header). */
-export function idempotency(kv: RedisClientType): MiddlewareHandler {
+export function idempotency(kv: RedisClientType, log: Logger): MiddlewareHandler {
   return async (c, next) => {
     if (c.req.method !== "POST") return next();
 
@@ -55,14 +58,24 @@ export function idempotency(kv: RedisClientType): MiddlewareHandler {
       );
     }
 
-    const fp = fingerprint(c.req.method, c.req.path, new Uint8Array(await c.req.arrayBuffer()));
-    const key = `idem:${c.get("principal")?.subject ?? "anon"}:${idemKey}`;
+    const url = new URL(c.req.url);
+    const fp = fingerprint(
+      c.req.method,
+      url.pathname + url.search,
+      new Uint8Array(await c.req.arrayBuffer()),
+    );
+    const principal = c.get("principal");
+    const owner =
+      principal === undefined
+        ? "anon"
+        : Buffer.from(`${principal.kind}:${principal.subject}`).toString("base64url");
+    const key = `idem:${owner}:${idemKey}`;
     const running: Running = { state: "running", fp };
 
     let locked: string | null;
     let existing: string | null = null;
     try {
-      locked = await kv.set(key, JSON.stringify(running), { NX: true, EX: TTL_SECONDS });
+      locked = await kv.set(key, JSON.stringify(running), { NX: true, EX: LOCK_SECONDS });
       if (locked === null) existing = await kv.get(key);
     } catch {
       return unavailable(c);
@@ -120,17 +133,19 @@ export function idempotency(kv: RedisClientType): MiddlewareHandler {
     const location = res.headers.get("location");
     if (contentType !== null) headers["content-type"] = contentType;
     if (location !== null) headers.location = location;
-    const done: Done = {
-      state: "done",
-      fp,
-      status: res.status,
-      headers,
-      body: Buffer.from(await res.clone().arrayBuffer()).toString("base64"),
-    };
     try {
-      await kv.set(key, JSON.stringify(done), { XX: true, KEEPTTL: true });
-    } catch {
-      await release(kv, key);
+      const done: Done = {
+        state: "done",
+        fp,
+        status: res.status,
+        headers,
+        body: Buffer.from(await res.clone().arrayBuffer()).toString("base64"),
+      };
+      const saved = await kv.set(key, JSON.stringify(done), { XX: true, EX: DONE_SECONDS });
+      if (saved === null) throw new Error("idempotency key vanished before the response was saved");
+    } catch (err) {
+      // The handler already ran: keep the lock so a retry gets 409 instead of a second execution.
+      log.error({ err, requestId: c.get("requestId") }, "failed to save idempotent response");
     }
   };
 }

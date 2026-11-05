@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { createDb, type Db, migrate } from "@keelson/db";
 import pg from "pg";
+import { pino } from "pino";
 import type { RedisClientType } from "redis";
 import { afterAll } from "vitest";
 import { createKv } from "../src/kv.ts";
@@ -33,6 +34,7 @@ const handle = createDb(url);
 export const testDb: Db = handle.db;
 export const testKv: RedisClientType = await createKv(
   process.env.REDIS_URL ?? "redis://localhost:6379",
+  pino({ level: "silent" }),
 );
 
 afterAll(async () => {

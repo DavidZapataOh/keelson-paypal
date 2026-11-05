@@ -8,7 +8,7 @@ import { createKv } from "./kv.ts";
 const env = parseEnv();
 const log = pino();
 const { db, pool } = createDb(env.DATABASE_URL);
-const kv = await createKv(env.REDIS_URL);
+const kv = await createKv(env.REDIS_URL, log);
 const app = createApp({ db, kv, log });
 
 const server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
