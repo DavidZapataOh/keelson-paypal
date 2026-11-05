@@ -1,7 +1,7 @@
 import { performance } from "node:perf_hooks";
 import { expect, test } from "vitest";
 import { hSd, mandateChallenge } from "../src/challenge.ts";
-import { mandateCommitment } from "../src/commitment.ts";
+import { MERCHANT_TREE_CAPACITY, mandateCommitment, merchantTree } from "../src/commitment.ts";
 import { type Mandate, parseMandate } from "../src/schema.ts";
 import { buildSdPayload } from "../src/sd.ts";
 import demo from "../test/fixtures/demo-mandate.json" with { type: "json" };
@@ -39,4 +39,19 @@ test("mandate derivation: buildSdPayload + hSd + mandateCommitment + mandateChal
     { runs: RUNS, p50_ms: +p50.toFixed(3), p99_ms: +p99.toFixed(3), budget_ms: BUDGET_MS },
   ]);
   expect(p99).toBeLessThan(BUDGET_MS);
+});
+
+test("a full merchant tree builds within budget", async () => {
+  const full = Array.from({ length: MERCHANT_TREE_CAPACITY }, (_, i) => `mrc_${i}`);
+  await merchantTree(full);
+  const samples: number[] = [];
+  for (let i = 0; i < 20; i++) {
+    const start = performance.now();
+    await merchantTree(full);
+    samples.push(performance.now() - start);
+  }
+  samples.sort((a, b) => a - b);
+  const p50 = percentile(samples, 0.5);
+  console.table([{ leaves: full.length, p50_ms: +p50.toFixed(1), budget_ms: 100 }]);
+  expect(p50).toBeLessThan(100);
 });

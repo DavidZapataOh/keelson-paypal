@@ -337,20 +337,4 @@ describe("mandateCommitment", () => {
     ]);
     expect(c).toBe(expected);
   });
-
-  it("builds a full tree and a commitment within budget", async () => {
-    const full = Array.from({ length: MERCHANT_TREE_CAPACITY }, (_, i) => `mrc_${i}`);
-    await merchantTree(full);
-    const t0 = performance.now();
-    await merchantTree(full);
-    const tree = performance.now() - t0;
-    const t1 = performance.now();
-    await mandateCommitment(mandate(), salt);
-    const commit = performance.now() - t1;
-    console.info(
-      `merchantTree(${full.length}): ${tree.toFixed(1)} ms, C_m: ${commit.toFixed(2)} ms`,
-    );
-    expect(tree).toBeLessThan(100);
-    expect(commit).toBeLessThan(10);
-  });
 });
