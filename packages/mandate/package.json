@@ -19,6 +19,9 @@
   },
   "dependencies": {
     "@keelson/core": "workspace:*",
+    "@sd-jwt/core": "0.24.3",
+    "@sd-jwt/sd-jwt-vc": "0.24.3",
+    "jose": "6.2.15",
     "zod": "catalog:"
   },
   "devDependencies": {

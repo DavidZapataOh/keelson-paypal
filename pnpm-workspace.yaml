@@ -12,6 +12,7 @@ catalog:
   zod: 4.6.7
 
 allowBuilds:
+  cbor-extract: false
   esbuild: false
   msgpackr-extract: false
   protobufjs: false
