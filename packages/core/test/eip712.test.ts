@@ -83,11 +83,26 @@ describe("eip712", () => {
 
   test("rejects malformed bytes32 and address values", () => {
     const domain = keelsonDomain(421614, verifyingContract);
-    expect(() => hashKeelson("Checkpoint", { ...checkpoint, origin: "0x01" }, domain)).toThrow();
+    expect(() => hashKeelson("Checkpoint", { ...checkpoint, origin: "0x01" }, domain)).toThrow(
+      TypeError,
+    );
     expect(() =>
       hashKeelson("Checkpoint", { ...checkpoint, rootHash: `0x${"zz".repeat(32)}` }, domain),
-    ).toThrow();
-    expect(() => hashKeelson("Verdict", { ...verdict, payee: "0x1234" }, domain)).toThrow();
+    ).toThrow(TypeError);
+    expect(() => hashKeelson("Verdict", { ...verdict, payee: "0x1234" }, domain)).toThrow(
+      TypeError,
+    );
+  });
+
+  test("rejects a mixed-case address with a bad EIP-55 checksum", () => {
+    const domain = keelsonDomain(421614, verifyingContract);
+    const payee = "0x5aaeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
+    expect(() => hashKeelson("Verdict", { ...verdict, payee }, domain)).toThrow(
+      new TypeError("Verdict.payee must be an address"),
+    );
+    expect(() =>
+      hashKeelson("Verdict", { ...verdict, payee: payee.toLowerCase() as `0x${string}` }, domain),
+    ).not.toThrow();
   });
 
   test("bounds uint256", () => {

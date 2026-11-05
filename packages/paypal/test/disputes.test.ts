@@ -54,4 +54,12 @@ describe("evidence multipart body", () => {
       TypeError,
     );
   });
+
+  it("rejects files that exceed 50 MB in total", () => {
+    const files = Array.from({ length: 6 }, (_, i) => ({
+      name: `${i}.pdf`,
+      bytes: new Uint8Array(9 * 1024 * 1024),
+    }));
+    expect(() => evidenceForm(input, files)).toThrow(/50 MB in total/);
+  });
 });

@@ -8,6 +8,7 @@ describe("assertLocalHost", () => {
     "postgres://postgres:pw@[::1]:5432/k",
     "postgres://localhost/k?host=/var/run/postgresql",
     "postgres://localhost/k?host=/tmp",
+    "postgres://localhost/k?host=evil.com&host=localhost",
   ])("accepts %s", (url) => {
     expect(() => assertLocalHost(url)).not.toThrow();
   });
@@ -19,6 +20,9 @@ describe("assertLocalHost", () => {
     "postgres://localhost/k?hostaddr=1.2.3.4",
     "postgres://localhost/k?host=/etc/sockets",
     "postgres://localhost/k?host=/tmp/../etc",
+    "postgres:///k",
+    "postgres://localhost/k?host=localhost,evil.com",
+    "postgres://localhost/k?host=localhost&host=evil.com",
   ])("rejects %s", (url) => {
     expect(() => assertLocalHost(url)).toThrow(/refusing/);
   });

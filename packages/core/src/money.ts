@@ -91,9 +91,7 @@ export function toPayPalValue(m: Money): string {
     if (frac !== 0n) throw new RangeError(`${m.currency} does not allow fractional amounts`);
     return `${sign}${whole}`;
   }
-  return exponent === 0
-    ? `${sign}${whole}`
-    : `${sign}${whole}.${frac.toString().padStart(exponent, "0")}`;
+  return `${sign}${whole}.${frac.toString().padStart(exponent, "0")}`;
 }
 
 /** Parses a PayPal decimal string into minor units without going through a float. */

@@ -28,10 +28,7 @@ async function admin(sql: string): Promise<void> {
 const name = `keelson_api_test_${process.pid}_${randomBytes(4).toString("hex")}`;
 await admin(`CREATE DATABASE ${name}`);
 const url = urlFor(name);
-await migrate(url);
 const handle = createDb(url);
-
-export const testDb: Db = handle.db;
 export const testKv: RedisClientType = await createKv(
   process.env.REDIS_URL ?? "redis://localhost:6379",
   pino({ level: "silent" }),
@@ -42,3 +39,7 @@ afterAll(async () => {
   await testKv.close();
   await admin(`DROP DATABASE ${name} WITH (FORCE)`);
 });
+
+await migrate(url);
+
+export const testDb: Db = handle.db;

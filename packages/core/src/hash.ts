@@ -12,7 +12,7 @@ export const DST: {
   readonly eval: "keelson/eval/v1";
   readonly alibi: "keelson/alibi/v1";
   readonly verdict: "keelson/verdict/v1";
-} = {
+} = Object.freeze({
   mandate: "keelson/mandate/v1",
   mandateChallenge: "keelson/mandate-challenge/v1",
   cart: "keelson/cart/v1",
@@ -20,7 +20,7 @@ export const DST: {
   eval: "keelson/eval/v1",
   alibi: "keelson/alibi/v1",
   verdict: "keelson/verdict/v1",
-};
+});
 
 export type Dst = (typeof DST)[keyof typeof DST];
 

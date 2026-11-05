@@ -55,7 +55,7 @@
       }
     },
     {
-      "includes": ["**/*.css"],
+      "includes": ["apps/landing/src/styles/global.css"],
       "linter": {
         "rules": {
           "complexity": {

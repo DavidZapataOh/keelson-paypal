@@ -1,6 +1,7 @@
 import { createRoute, z } from "@hono/zod-openapi";
+import { HTTPException } from "hono/http-exception";
 import { pino } from "pino";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { createApp } from "../src/app.ts";
 import { testDb, testKv } from "./setup.ts";
 
@@ -22,6 +23,10 @@ app.openapi(
 
 app.get("/test/boom", () => {
   throw new Error("kaboom");
+});
+
+app.get("/test/conflict", () => {
+  throw new HTTPException(409, { message: "Already exists." });
 });
 
 const json = { "content-type": "application/json" };
@@ -65,9 +70,35 @@ test("an uncaught error returns a 500 internal problem without a stack", async (
   const res = await app.request("/test/boom");
   expect(res.status).toBe(500);
   expect(res.headers.get("content-type")).toContain("application/problem+json");
-  const text = await res.text();
-  expect(JSON.parse(text).type).toBe("https://api.keelson.finance/problems/internal");
-  expect(text).not.toMatch(/at .*\.ts|stack/);
+  const body = await res.json();
+  expect(body).toEqual({
+    type: "https://api.keelson.finance/problems/internal",
+    title: "Internal server error",
+    status: 500,
+    detail: "kaboom",
+    instance: "/test/boom",
+  });
+});
+
+test("in production a 500 problem omits the error message", async () => {
+  vi.stubEnv("NODE_ENV", "production");
+  try {
+    const body = await (await app.request("/test/boom")).json();
+    expect(body.type).toBe("https://api.keelson.finance/problems/internal");
+    expect(body).not.toHaveProperty("detail");
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});
+
+test("any other HTTPException returns an http-error problem with its status", async () => {
+  const res = await app.request("/test/conflict");
+  expect(res.status).toBe(409);
+  expect(await res.json()).toMatchObject({
+    type: "https://api.keelson.finance/problems/http-error",
+    status: 409,
+    detail: "Already exists.",
+  });
 });
 
 test("the Problem schema is a component of the document", async () => {

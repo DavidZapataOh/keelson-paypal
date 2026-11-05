@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { expect, test } from "vitest";
+import { assert, expect, test } from "vitest";
 import {
   alibis,
   attacks,
@@ -41,12 +41,13 @@ async function newMandate(overrides: Partial<typeof mandates.$inferInsert> = {})
       cnfJwk: { kty: "OKP" },
     })
     .returning();
+  assert(operator);
   const [mandate] = await db
     .insert(mandates)
     .values({
       id: ulid(),
       userId: "user-1",
-      operatorAgentId: operator!.agentId,
+      operatorAgentId: operator.agentId,
       currency: "USD",
       maxMinor: 10_000n,
       remainingMinor: 10_000n,
@@ -55,7 +56,8 @@ async function newMandate(overrides: Partial<typeof mandates.$inferInsert> = {})
       ...overrides,
     })
     .returning();
-  return mandate!;
+  assert(mandate);
+  return mandate;
 }
 
 const purchaseValues = (mandateId: string): typeof purchases.$inferInsert => ({
@@ -70,21 +72,24 @@ const purchaseValues = (mandateId: string): typeof purchases.$inferInsert => ({
 test("inserts one valid row per table", async () => {
   const mandate = await newMandate({ mandateHash: hash(), commitment: hash() });
   expect(mandate.state).toBe("DRAFT");
-  const operator = (await db.select().from(operators).limit(1))[0]!;
+  const [operator] = await db.select().from(operators).limit(1);
+  assert(operator);
   expect(typeof operator.agentId).toBe("bigint");
 
   const [purchase] = await db.insert(purchases).values(purchaseValues(mandate.id)).returning();
-  expect(purchase!.state).toBe("PROPOSED");
+  assert(purchase);
+  expect(purchase.state).toBe("PROPOSED");
 
-  await db.insert(alibis).values({ purchaseId: purchase!.id, leafHash: hash(), bundle: { v: 1 } });
+  await db.insert(alibis).values({ purchaseId: purchase.id, leafHash: hash(), bundle: { v: 1 } });
   const [dispute] = await db
     .insert(disputes)
-    .values({ id: "PP-D-1", purchaseId: purchase!.id, reason: "item_not_received", raw: {} })
+    .values({ id: "PP-D-1", purchaseId: purchase.id, reason: "item_not_received", raw: {} })
     .returning();
-  expect(dispute!.state).toBe("OPEN");
+  assert(dispute);
+  expect(dispute.state).toBe("OPEN");
   await db.insert(verdicts).values({
     id: ulid(),
-    disputeId: dispute!.id,
+    disputeId: dispute.id,
     liable: 1,
     ruleId: 3,
     amountMinor: 1_500n,
@@ -103,7 +108,8 @@ test("inserts one valid row per table", async () => {
     .insert(events)
     .values({ channel: "purchase", subjectId: "x", payload: {} })
     .returning();
-  expect(typeof event!.id).toBe("bigint");
+  assert(event);
+  expect(typeof event.id).toBe("bigint");
 });
 
 test("a 31-byte hash violates the length check", async () => {

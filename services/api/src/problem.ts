@@ -2,7 +2,7 @@ import { z } from "@hono/zod-openapi";
 import type { Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 
-export const problemBase = "https://api.keelson.finance/problems/";
+const problemBase = "https://api.keelson.finance/problems/";
 
 export const ProblemSchema = z
   .object({

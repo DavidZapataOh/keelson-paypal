@@ -7,12 +7,7 @@ import { jwt } from "better-auth/plugins";
 /** RFC 8707 resource identifier of this API; the `aud` of every access token it accepts. */
 export const apiAudience = "https://api.keelson.finance";
 
-export const scopes = [
-  "countersign:write",
-  "alibis:read",
-  "disputes:read",
-  "operators:write",
-] as const;
+const scopes = ["countersign:write", "alibis:read", "disputes:read", "operators:write"] as const;
 
 export interface AuthEnv {
   BETTER_AUTH_SECRET: string;

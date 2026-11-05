@@ -93,14 +93,14 @@ async function start(o: StageOptions) {
 
   const schedule = () => {
     clearTimeout(timer);
-    if (!o.flag || !o.hold || !auto || !visible) return;
+    const hold = o.hold;
+    if (!o.flag || !hold || !auto || !visible) return;
     timer = window.setTimeout(
       () => {
         set(!on);
         schedule();
       },
-      // biome-ignore lint/style/noNonNullAssertion: narrowed by the guard above, which the timer closure loses
-      on ? o.hold!.on : o.hold!.off,
+      on ? hold.on : hold.off,
     );
   };
 

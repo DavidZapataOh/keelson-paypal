@@ -106,7 +106,7 @@ function assertMessage(primaryType: KeelsonPrimaryType, message: Record<string, 
       continue;
     }
     if (type === "address") {
-      if (typeof value !== "string" || !isAddress(value, { strict: false })) {
+      if (typeof value !== "string" || !isAddress(value)) {
         throw new TypeError(`${primaryType}.${name} must be an address`);
       }
       continue;

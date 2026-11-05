@@ -4,7 +4,7 @@ const money = z.looseObject({ currency_code: z.string(), value: z.string() });
 
 const link = z.looseObject({ href: z.string(), rel: z.string(), method: z.string().optional() });
 
-export const disputedTransaction = z.looseObject({
+const disputedTransaction = z.looseObject({
   buyer_transaction_id: z.string().optional(),
   seller_transaction_id: z.string().optional(),
   invoice_number: z.string().optional(),

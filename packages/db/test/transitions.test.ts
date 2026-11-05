@@ -1,7 +1,6 @@
 import { randomBytes } from "node:crypto";
-import { expect, test } from "vitest";
-import { mandates, operators, purchases } from "../src/index.js";
-import { transition, transitions } from "../src/transitions.js";
+import { assert, expect, test } from "vitest";
+import { disputes, mandates, operators, purchases, transition, transitions } from "../src/index.js";
 import { testDb } from "./setup.js";
 
 const { db, pool } = testDb;
@@ -18,12 +17,13 @@ async function newPurchase(state: (typeof purchases.$inferSelect)["state"] = "PR
       cnfJwk: { kty: "OKP" },
     })
     .returning();
+  assert(operator);
   const [mandate] = await db
     .insert(mandates)
     .values({
       id: ulid(),
       userId: "user-1",
-      operatorAgentId: operator!.agentId,
+      operatorAgentId: operator.agentId,
       currency: "USD",
       maxMinor: 10_000n,
       remainingMinor: 10_000n,
@@ -31,11 +31,12 @@ async function newPurchase(state: (typeof purchases.$inferSelect)["state"] = "PR
       expiresAt: new Date(Date.now() + 86_400_000),
     })
     .returning();
+  assert(mandate);
   const [purchase] = await db
     .insert(purchases)
     .values({
       id: ulid(),
-      mandateId: mandate!.id,
+      mandateId: mandate.id,
       merchantId: "m1",
       currency: "USD",
       amountMinor: 1_500n,
@@ -43,7 +44,8 @@ async function newPurchase(state: (typeof purchases.$inferSelect)["state"] = "PR
       state,
     })
     .returning();
-  return purchase!;
+  assert(purchase);
+  return purchase;
 }
 
 test("every allowed purchase transition succeeds", async () => {
@@ -67,6 +69,13 @@ test("a mandate and a dispute walk their paths", async () => {
   ] as const) {
     expect(await transition(db, "mandates", mandateId, from, to)).toBe(true);
   }
+});
+
+test("the types reject an edge the map does not allow", () => {
+  const illegal = (id: string) =>
+    // @ts-expect-error CAPTURED cannot move to LOGGED
+    transition(db, "purchases", id, "CAPTURED", "LOGGED");
+  expect(illegal).toBeTypeOf("function");
 });
 
 test("a stale from-state returns false", async () => {
@@ -98,6 +107,27 @@ test("an illegal transition raises P0001 with the exact message", async () => {
   });
 });
 
+test("mandates and disputes reject illegal transitions too", async () => {
+  const purchase = await newPurchase();
+  await expect(
+    pool.query("update mandates set state = 'ACTIVE' where id = $1", [purchase.mandateId]),
+  ).rejects.toMatchObject({
+    code: "P0001",
+    message: "illegal transition mandates DRAFT -> ACTIVE",
+  });
+  const disputeId = `PP-D-${purchase.id}`;
+  await db
+    .insert(disputes)
+    .values({ id: disputeId, purchaseId: purchase.id, reason: "r", raw: {} });
+  expect(await transition(db, "disputes", disputeId, "OPEN", "RESOLVED")).toBe(true);
+  await expect(
+    pool.query("update disputes set state = 'ATTRIBUTED' where id = $1", [disputeId]),
+  ).rejects.toMatchObject({
+    code: "P0001",
+    message: "illegal transition disputes RESOLVED -> ATTRIBUTED",
+  });
+});
+
 test("updating another column on a CAPTURED row does not fire the trigger", async () => {
   const purchase = await newPurchase("CAPTURED");
   await pool.query("update purchases set paypal_capture_id = 'CAP-2' where id = $1", [purchase.id]);
@@ -119,14 +149,17 @@ test("concurrent transitions from the same state produce exactly one winner", as
       transition(db, "purchases", purchase.id, "CAPTURED", "SETTLED"),
     ];
 
-    for (let i = 0; i < 100; i++) {
-      const { rows } = await locker.query(
+    let waiters = 0;
+    for (let i = 0; i < 100 && waiters < 2; i++) {
+      // Polled outside the locker's transaction, which would see a frozen statistics snapshot.
+      const { rows } = await pool.query(
         "select count(*)::int as n from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock' and query like 'update \"purchases\"%'",
       );
-      if (rows[0].n === 2) break;
-      await new Promise((r) => setTimeout(r, 20));
+      waiters = rows[0].n;
+      if (waiters < 2) await new Promise((r) => setTimeout(r, 20));
     }
     await locker.query("commit");
+    expect(waiters).toBe(2);
 
     const results = await Promise.all(racers);
     expect(results.filter(Boolean)).toHaveLength(1);

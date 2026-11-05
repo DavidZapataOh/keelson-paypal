@@ -30,7 +30,10 @@ jobs:
             ${{ runner.os }}-turbo-
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
-      - run: if grep -rEn "paypalMockResponse|PayPal-Mock-Response" packages services apps --exclude-dir=node_modules --exclude-dir=dist; then exit 1; fi
+      - run: |
+          status=0
+          grep -rEn "paypalMockResponse|PayPal-Mock-Response" packages services apps --exclude-dir=node_modules --exclude-dir=dist || status=$?
+          test "$status" -eq 1
       - run: pnpm turbo run typecheck test build --filter='!./packages/db' --filter='!./services/api' --cache-dir=.turbo
       - run: pnpm --filter @keelson/core vectors && test -z "$(git status --porcelain)"
 
@@ -69,17 +72,15 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm turbo run typecheck test --filter=./packages/db --filter=./services/api
+      - run: pnpm turbo run typecheck test build --filter=./packages/db --filter=./services/api
+      - run: pnpm migrate
       - run: pnpm --filter @keelson/api openapi && git diff --exit-code openapi/
 
   rust:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.99.1
-          components: rustfmt, clippy
+      - run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
@@ -89,9 +90,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-      - run: |
-          curl -L https://raw.githubusercontent.com/noir-lang/noirup/refs/heads/main/install | bash
-          echo "$HOME/.nargo/bin" >> "$GITHUB_PATH"
-      - run: noirup -v 1.0.0
+      - uses: noir-lang/noirup@v0.1.5
+        with:
+          toolchain: 1.0.0
       - run: nargo test
         working-directory: circuits/vectors

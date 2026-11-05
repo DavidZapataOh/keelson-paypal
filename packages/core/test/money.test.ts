@@ -76,8 +76,8 @@ describe("toPayPalValue", () => {
 
   it("formats integer-only currencies and rejects fractions", () => {
     expect(toPayPalValue({ currency: "HUF", minor: 15000n })).toBe("150");
-    expect(() => toPayPalValue({ currency: "HUF", minor: 150n })).toThrow();
-    expect(() => toPayPalValue({ currency: "TWD", minor: 1n })).toThrow();
+    expect(() => toPayPalValue({ currency: "HUF", minor: 150n })).toThrow(RangeError);
+    expect(() => toPayPalValue({ currency: "TWD", minor: 1n })).toThrow(RangeError);
   });
 });
 
@@ -106,13 +106,15 @@ describe("fromPayPalValue", () => {
       "0x10",
       "-0",
     ]) {
-      expect(() => fromPayPalValue("USD", bad), bad).toThrow();
+      expect(() => fromPayPalValue("USD", bad), bad).toThrow(
+        bad === "1.005" ? RangeError : SyntaxError,
+      );
     }
   });
 
   it("rejects decimals where the currency has none", () => {
-    expect(() => fromPayPalValue("JPY", "94.00")).toThrow();
-    expect(() => fromPayPalValue("HUF", "150.50")).toThrow();
+    expect(() => fromPayPalValue("JPY", "94.00")).toThrow(RangeError);
+    expect(() => fromPayPalValue("HUF", "150.50")).toThrow(RangeError);
   });
 
   it("round-trips with toPayPalValue", () => {

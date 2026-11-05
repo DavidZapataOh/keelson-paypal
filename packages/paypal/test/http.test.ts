@@ -57,6 +57,24 @@ describe("token cache against a local server", () => {
     expect(calls).toBe(2);
   });
 
+  it("keeps a still-valid token when the early refresh fails", async () => {
+    let calls = 0;
+    const cfg = await listen((_req, res) => {
+      calls++;
+      res.setHeader("content-type", "application/json");
+      if (calls === 1) {
+        res.end(JSON.stringify({ access_token: "tok", token_type: "Bearer", expires_in: 200 }));
+      } else {
+        res.statusCode = 503;
+        res.end(JSON.stringify({ name: "SERVICE_UNAVAILABLE" }));
+      }
+    });
+    const cache = new TokenCache(cfg);
+    await expect(cache.get()).resolves.toBe("tok");
+    await expect(cache.get()).resolves.toBe("tok");
+    expect(calls).toBe(2);
+  });
+
   it("rejects a malformed token response", async () => {
     const cfg = await listen((_req, res) => {
       res.end(JSON.stringify({ token_type: "Bearer" }));

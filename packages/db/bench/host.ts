@@ -1,6 +1,7 @@
 import { parse } from "pg-connection-string";
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+// Default Unix-socket directories of the PostgreSQL builds we run locally (Homebrew, Debian, Docker).
 const SOCKET_DIRS = new Set(["/tmp", "/var/run/postgresql"]);
 
 /** Throws unless the host pg would actually connect to is local. */

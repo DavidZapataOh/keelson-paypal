@@ -39,6 +39,12 @@ describe("custom_id", () => {
     );
   });
 
+  it("rejects a digest that is not 32 bytes", () => {
+    expect(() =>
+      encodeCustomId({ env: "s", kind: "a", id: newId(), digest: new Uint8Array(31) }),
+    ).toThrow(RangeError);
+  });
+
   it("rejects malformed input", () => {
     const good = encodeCustomId({ env: "s", kind: "a", id: newId(), digest: new Uint8Array(32) });
     expect(parseCustomId(`ks1.xa.${good.slice(7)}`)).toBeNull();
@@ -65,6 +71,11 @@ describe("invoice_id", () => {
     expect(() => encodeInvoiceId(newId(), 100, d)).toThrow();
     expect(() => encodeInvoiceId(newId(), -1, d)).toThrow();
     expect(() => encodeInvoiceId(newId(), 1.5, d)).toThrow();
+  });
+
+  it("rejects an invalid ULID and a short digest", () => {
+    expect(() => encodeInvoiceId("not-a-ulid", 0, new Uint8Array(32))).toThrow(TypeError);
+    expect(() => encodeInvoiceId(newId(), 0, new Uint8Array(15))).toThrow(RangeError);
   });
 
   it("rejects lowercase, foreign separators and an overflowing first digit", () => {

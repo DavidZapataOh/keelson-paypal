@@ -10,7 +10,7 @@ const tokenResponse = z.object({
   expires_in: z.number().positive(),
 });
 
-export const TOKEN_TIMEOUT_MS = 10_000;
+const TOKEN_TIMEOUT_MS = 10_000;
 
 /** Client-credentials access token shared by the SDK and the REST core. */
 export class TokenCache {
@@ -37,9 +37,14 @@ export class TokenCache {
     if (this.token && this.expiresAt - Date.now() > REFRESH_WINDOW_MS) {
       return Promise.resolve(this.token);
     }
-    this.inflight ??= this.refresh().finally(() => {
-      this.inflight = undefined;
-    });
+    this.inflight ??= this.refresh()
+      .catch((e: unknown) => {
+        if (this.token && this.expiresAt > Date.now()) return this.token;
+        throw e;
+      })
+      .finally(() => {
+        this.inflight = undefined;
+      });
     return this.inflight;
   }
 

@@ -26,6 +26,10 @@ describe("hashObject", () => {
 });
 
 describe("DST", () => {
+  it("is frozen", () => {
+    expect(Object.isFrozen(DST)).toBe(true);
+  });
+
   it("has the exact domain strings", () => {
     expect(DST).toEqual({
       mandate: "keelson/mandate/v1",

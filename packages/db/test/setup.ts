@@ -40,12 +40,13 @@ export async function withTestDb<T>(fn: (db: Db) => Promise<T>): Promise<T> {
 const name = `keelson_test_${process.pid}_${randomBytes(4).toString("hex")}`;
 await admin((c) => c.query(`CREATE DATABASE ${name}`));
 const url = urlFor(name);
-await migrate(url);
 const handle = createDb(url);
-
-export const testDb: { db: Db; pool: pg.Pool } = handle;
 
 afterAll(async () => {
   await handle.pool.end();
   await admin((c) => c.query(`DROP DATABASE ${name} WITH (FORCE)`));
 });
+
+await migrate(url);
+
+export const testDb: { db: Db; pool: pg.Pool } = handle;

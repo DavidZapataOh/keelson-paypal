@@ -44,10 +44,17 @@ describe("jcs", () => {
     expect(jcs(Number.MIN_SAFE_INTEGER)).toBe("-9007199254740991");
   });
 
+  it("escapes control characters the RFC 8785 way", () => {
+    expect(jcs('\b\f\n\r\t\u0000\u001f\u007f"\\/')).toBe(
+      '"\\b\\f\\n\\r\\t\\u0000\\u001f\u007f\\"\\\\/"',
+    );
+  });
+
   it("rejects lone surrogates in values and keys", () => {
-    expect(() => jcs("\ud800")).toThrow();
-    expect(() => jcs({ "\udc00": 1 })).toThrow();
-    expect(() => jcs(["ok", { a: "\ud800" }])).toThrow();
+    const loneSurrogate = new TypeError("lone surrogate");
+    expect(() => jcs("\ud800")).toThrow(loneSurrogate);
+    expect(() => jcs({ "\udc00": 1 })).toThrow(loneSurrogate);
+    expect(() => jcs(["ok", { a: "\ud800" }])).toThrow(loneSurrogate);
   });
 
   it("rejects non-integers nested in containers", () => {

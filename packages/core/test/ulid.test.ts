@@ -58,7 +58,7 @@ describe("ulidToBytes", () => {
   });
 
   it("throws on an invalid ULID", () => {
-    expect(() => ulidToBytes("8ZZZZZZZZZZZZZZZZZZZZZZZZZ")).toThrow();
+    expect(() => ulidToBytes("8ZZZZZZZZZZZZZZZZZZZZZZZZZ")).toThrow(TypeError);
   });
 });
 

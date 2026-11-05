@@ -9,8 +9,8 @@ import {
 } from "@paypal/paypal-server-sdk";
 import { chromium, type Page } from "playwright";
 
-export const RETURN_URL = "https://keelson.finance/return";
-export const CANCEL_URL = "https://keelson.finance/cancel";
+const RETURN_URL = "https://keelson.finance/return";
+const CANCEL_URL = "https://keelson.finance/cancel";
 
 /** `payment_source.paypal.experience_context` for orders the sandbox buyer approves. */
 export const experienceContext: PaypalWalletExperienceContext = {
