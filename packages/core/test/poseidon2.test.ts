@@ -27,4 +27,9 @@ describe("poseidon2", () => {
     expect(() => fieldFromAscii("a".repeat(32))).toThrow();
     expect(() => fieldFromAscii("a".repeat(31))).not.toThrow();
   });
+
+  test("rejects non-ASCII and empty tags", () => {
+    expect(() => fieldFromAscii("é")).toThrow(RangeError);
+    expect(() => fieldFromAscii("")).toThrow(RangeError);
+  });
 });

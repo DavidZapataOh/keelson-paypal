@@ -1,4 +1,4 @@
-import { hashTypedData, type TypedDataDefinition, type TypedDataDomain } from "viem";
+import { hashTypedData, isAddress, type TypedDataDefinition, type TypedDataDomain } from "viem";
 
 export const KEELSON_TYPES = {
   Countersign: [
@@ -96,11 +96,23 @@ export function keelsonDomain(
   return { name: "Keelson", version: "1", chainId, verifyingContract };
 }
 
-function assertUintBounds(primaryType: KeelsonPrimaryType, message: Record<string, unknown>) {
+function assertMessage(primaryType: KeelsonPrimaryType, message: Record<string, unknown>) {
   for (const { name, type } of KEELSON_TYPES[primaryType]) {
+    const value = message[name];
+    if (type === "bytes32") {
+      if (typeof value !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(value)) {
+        throw new TypeError(`${primaryType}.${name} must be a 32-byte hex string`);
+      }
+      continue;
+    }
+    if (type === "address") {
+      if (typeof value !== "string" || !isAddress(value, { strict: false })) {
+        throw new TypeError(`${primaryType}.${name} must be an address`);
+      }
+      continue;
+    }
     const match = /^uint(\d+)$/.exec(type);
     if (!match) continue;
-    const value = message[name];
     if (typeof value !== "bigint" && !Number.isSafeInteger(value)) {
       throw new RangeError(`${primaryType}.${name} must be an integer`);
     }
@@ -116,6 +128,6 @@ export function hashKeelson<T extends KeelsonPrimaryType>(
   message: TypedDataDefinition<typeof KEELSON_TYPES, T>["message"],
   domain: TypedDataDomain,
 ): `0x${string}` {
-  assertUintBounds(primaryType, message as Record<string, unknown>);
+  assertMessage(primaryType, message as Record<string, unknown>);
   return hashTypedData({ domain, types: KEELSON_TYPES, primaryType, message } as never);
 }
