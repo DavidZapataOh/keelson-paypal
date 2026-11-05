@@ -36,6 +36,7 @@
     "@types/pg": "8.23.1",
     "autocannon": "8.0.0",
     "pg": "8.23.1",
+    "pg-connection-string": "2.14.1",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

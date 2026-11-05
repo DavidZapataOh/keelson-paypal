@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { createDb } from "@keelson/db";
 import autocannon from "autocannon";
+import { parse } from "pg-connection-string";
 import { pino } from "pino";
 import { createClient, type RedisClientType } from "redis";
 import { ulid } from "ulid";
@@ -34,6 +35,17 @@ function percentile(sorted: number[], q: number): number {
 function round(ms: number): number {
   return Math.round(ms * 100) / 100;
 }
+
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+
+function assertLocal(name: string, host: string | null | undefined): void {
+  if (!host || !LOCAL_HOSTS.has(host)) {
+    throw new Error(`refusing to run the benchmark: ${name} host is ${host ?? "missing"}`);
+  }
+}
+
+assertLocal("DATABASE_URL", parse(databaseUrl).host);
+assertLocal("REDIS_URL", new URL(redisUrl).hostname);
 
 async function run(options: autocannon.Options): Promise<Summary> {
   const times: number[] = [];

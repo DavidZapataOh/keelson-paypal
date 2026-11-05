@@ -37,3 +37,4 @@ minimumReleaseAgeExclude:
 allowBuilds:
   esbuild: false
   msgpackr-extract: false
+  protobufjs: false
