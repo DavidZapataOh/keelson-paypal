@@ -13,7 +13,12 @@ services:
       paths:
         - services/api/**
         - packages/**
+        - package.json
         - pnpm-lock.yaml
+        - pnpm-workspace.yaml
+        - turbo.json
+        - tsconfig.base.json
+        - .node-version
         - render.yaml
     domains:
       - api.keelson.finance
@@ -49,6 +54,12 @@ services:
     buildFilter:
       paths:
         - apps/landing/**
+        - package.json
+        - pnpm-lock.yaml
+        - pnpm-workspace.yaml
+        - turbo.json
+        - .node-version
+        - render.yaml
     # Render adds www.keelson.finance and redirects it to the apex when the apex is added.
     domains:
       - keelson.finance
