@@ -8,6 +8,7 @@ import { timeout } from "hono/timeout";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
+import type { Auth } from "./auth.ts";
 import { idempotency } from "./middleware/idempotency.ts";
 import { ProblemSchema, problem } from "./problem.ts";
 import { registerHealth } from "./routes/health.ts";
@@ -16,6 +17,8 @@ export interface Deps {
   db: Db;
   kv: RedisClientType;
   log: Logger;
+  /** Better Auth instance served at `/api/auth/*`. */
+  auth?: Auth;
   /** Resolves `c.var.principal`; runs before idempotency so keys are scoped per principal. */
   authenticate?: MiddlewareHandler;
   /** Handler deadline in milliseconds; must stay below the idempotency lock lifetime. */
@@ -86,6 +89,10 @@ export function createApp(deps: Deps): OpenAPIHono {
     return problem(c, 500, "internal", "Internal server error", detail);
   });
 
+  if (deps.auth) {
+    const { auth } = deps;
+    app.all("/api/auth/*", (c) => auth.handler(c.req.raw));
+  }
   registerHealth(app);
   app.get("/openapi.json", (c) =>
     c.json(app.getOpenAPI31Document({ openapi: "3.1.0", info: apiInfo })),

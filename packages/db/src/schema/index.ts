@@ -1,5 +1,6 @@
 export * from "./alibis.js";
 export * from "./attacks.js";
+export * from "./auth.js";
 export * from "./disputes.js";
 export * from "./enums.js";
 export * from "./events.js";
