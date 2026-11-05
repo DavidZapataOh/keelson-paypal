@@ -27,7 +27,16 @@ const VERDICT_REF = /^ksv1\.([^.]{26})\.([^.]{16})$/;
 
 /** Computes `hashObject(DST.alibi, fields)`. */
 export function alibiDigest(fields: AlibiFields): Uint8Array {
-  return hashObject(DST.alibi, { ...fields });
+  return hashObject(DST.alibi, {
+    mandate_hash: fields.mandateHash,
+    cart_hash: fields.cartHash,
+    policy_set_hash: fields.policySetHash,
+    countersign_digest: fields.countersignDigest,
+    merchant_id: fields.merchantId,
+    amount: fields.amount,
+    currency: fields.currency,
+    ...(fields.paypalOrderId === undefined ? {} : { paypal_order_id: fields.paypalOrderId }),
+  });
 }
 
 const B64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
