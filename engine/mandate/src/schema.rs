@@ -123,8 +123,8 @@ fn each(v: &Value, path: &str, min: usize, f: impl Fn(&Value, &str) -> Result) -
     Ok(())
 }
 
-fn chars_in(s: &str, ok: impl Fn(u8) -> bool) -> bool {
-    s.bytes().all(ok)
+fn chars_in(s: &[u8], ok: impl Fn(u8) -> bool) -> bool {
+    s.iter().copied().all(ok)
 }
 
 fn is_b64url_char(b: u8) -> bool {
@@ -138,9 +138,10 @@ fn is_lower_hex(b: u8) -> bool {
 /// Unpadded base64url of exactly `bytes` bytes with zero pad bits.
 fn is_b64url_bytes(s: &str, last: &[u8], bytes: usize) -> bool {
     let len = (bytes * 8).div_ceil(6);
-    s.len() == len
-        && chars_in(&s[..len - 1], is_b64url_char)
-        && last.contains(&s.as_bytes()[len - 1])
+    match s.as_bytes().split_last() {
+        Some((end, body)) if s.len() == len => chars_in(body, is_b64url_char) && last.contains(end),
+        _ => false,
+    }
 }
 
 fn is_b64url16(s: &str) -> bool {
@@ -153,7 +154,7 @@ fn is_b64url32(s: &str) -> bool {
 
 fn is_prefixed_hex(s: &str, prefix: &str) -> bool {
     s.strip_prefix(prefix)
-        .is_some_and(|h| h.len() == 64 && chars_in(h, is_lower_hex))
+        .is_some_and(|h| h.len() == 64 && chars_in(h.as_bytes(), is_lower_hex))
 }
 
 fn is_sha256(s: &str) -> bool {
@@ -171,6 +172,7 @@ fn is_ulid(s: &str) -> bool {
         })
 }
 
+/// Reads two to four ASCII digits.
 fn digits(b: &[u8]) -> Option<u32> {
     b.iter().try_fold(0u32, |n, c| {
         c.is_ascii_digit().then(|| n * 10 + u32::from(c - b'0'))
@@ -198,7 +200,9 @@ fn is_datetime(s: &str) -> bool {
     };
     let fraction = &b[19..b.len() - 1];
     if !fraction.is_empty()
-        && (fraction[0] != b'.' || fraction.len() < 2 || digits(&fraction[1..]).is_none())
+        && (fraction[0] != b'.'
+            || fraction.len() < 2
+            || !fraction[1..].iter().all(u8::is_ascii_digit))
     {
         return false;
     }

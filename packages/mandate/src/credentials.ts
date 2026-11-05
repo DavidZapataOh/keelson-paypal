@@ -12,6 +12,7 @@ import { SDJwtVcInstance } from "@sd-jwt/sd-jwt-vc";
 import { compactVerify, importJWK } from "jose";
 import { type Mandate, parseMandate } from "./schema.ts";
 import { assertSdAlg, sdHasher } from "./sd.ts";
+import { assertStrictJson, assertStrictJwt, decodeStrictJson } from "./strict.ts";
 
 /** `typ` of the user credential, an SD-JWT VC. */
 export const USER_CREDENTIAL_TYP = "dc+sd-jwt";
@@ -85,6 +86,8 @@ interface TimeOptions {
 }
 
 const B64URL = /^[A-Za-z0-9_-]+$/;
+// Canonical unpadded base64url of 32 bytes: 42 characters, then one with zero pad bits.
+const B64URL32 = /^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/;
 const encoder = new TextEncoder();
 
 const publicJwk = ({ kty, crv, x, y }: P256PublicJwk): P256PublicJwk => ({ kty, crv, x, y });
@@ -112,8 +115,9 @@ const es256Verifier = (key: CryptoKey) => async (data: string, signature: string
 
 function jwkOf(cnf: unknown): P256PublicJwk {
   const jwk = (cnf as { jwk?: P256PublicJwk } | undefined)?.jwk;
-  if (jwk?.kty !== "EC" || jwk.crv !== "P-256" || typeof jwk.x !== "string") {
-    throw new RangeError("missing cnf.jwk");
+  if (jwk?.kty !== "EC" || jwk.crv !== "P-256") throw new RangeError("missing cnf.jwk");
+  if (!B64URL32.test(String(jwk.x)) || !B64URL32.test(String(jwk.y))) {
+    throw new RangeError("cnf.jwk coordinates are not canonical base64url");
   }
   return jwk;
 }
@@ -211,6 +215,8 @@ async function verifyUserCredential(
   if (parts.at(-1) !== "" || parts.slice(0, -1).includes("")) {
     throw new RangeError("not an SD-JWT without key binding");
   }
+  assertStrictJwt(parts[0] as string);
+  parts.slice(1, -1).forEach(decodeStrictJson);
   const payload = Jwt.decodeJWT(parts[0] as string).payload;
   assertSdAlg(payload);
   const { header, payload: claims } = await new SDJwtVcInstance({
@@ -220,7 +226,11 @@ async function verifyUserCredential(
     ...time,
     allowedIssuerAlgorithms: ["ES256"],
     expectedVct: USER_CREDENTIAL_VCT,
+    disableStatusVerification: true,
   });
+  assertStrictJson(claims);
+  // Status lists are never fetched, so a credential that carries one cannot be checked.
+  if ("status" in claims) throw new RangeError("status is not supported");
   if (header?.typ !== USER_CREDENTIAL_TYP) throw new RangeError("unexpected typ");
   jwkOf(claims.cnf);
   return { header, payload, claims };
@@ -249,23 +259,32 @@ async function verifyOpenMandate(
   const [kbJwt, ...rest] = parts.slice(split + 1);
   const userCredential = await verifyUserCredential(sdJwt, key, time);
   const holderKey = (await importJWK(jwkOf(userCredential.claims.cnf), "ES256")) as CryptoKey;
+  assertStrictJwt(kbJwt as string);
+  rest.slice(0, -1).forEach(decodeStrictJson);
   const signed = Jwt.decodeJWT(kbJwt as string).payload;
   assertSdAlg(signed);
   const { header, payload: claims } = await new SDJwtInstance({
     verifier: es256Verifier(holderKey),
     hasher: sdHasher,
   }).verify(`${kbJwt}~${rest.join("~")}`, { ...time, allowedIssuerAlgorithms: ["ES256"] });
+  assertStrictJson(claims);
   if (header?.typ !== OPEN_MANDATE_TYP) throw new RangeError("unexpected typ");
   if (typeof signed.iat !== "number" || signed.sd_hash !== sdHash(sdJwt)) {
     throw new RangeError("invalid key binding");
   }
   if (signed.aud !== expectedAud) throw new RangeError("unexpected aud");
   if (signed.nonce !== expectedNonce) throw new RangeError("unexpected nonce");
-  const slot = (signed.delegate_payload as { "..."?: string }[] | undefined)?.[0]?.["..."];
-  const delegates = claims.delegate_payload as Record<string, unknown>[] | undefined;
-  if ((signed.delegate_payload as unknown[]).length !== 1 || delegates?.length !== 1) {
+  const signedDelegates = signed.delegate_payload;
+  const delegates = claims.delegate_payload;
+  if (
+    !Array.isArray(signedDelegates) ||
+    !Array.isArray(delegates) ||
+    signedDelegates.length !== 1 ||
+    delegates.length !== 1
+  ) {
     throw new RangeError("expected exactly one disclosed delegate payload");
   }
+  const slot = (signedDelegates[0] as { "..."?: unknown } | null)?.["..."];
   const disclosure = rest
     .slice(0, -1)
     .map((d) => Disclosure.fromEncodeSync(d, { hasher: sdHasher, alg: "sha-256" }))

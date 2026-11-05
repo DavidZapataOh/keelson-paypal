@@ -86,13 +86,24 @@ impl LeafPreimage {
     }
 }
 
-/// Ordered merchant tree. `leaves` are the merchant fields in ascending order; leaf `i + 1` of
-/// the tree holds `leaves[i]`, and leaf 0 holds the zero value.
+/// Ordered merchant tree, built by [`merchant_tree`]. Leaf `i + 1` of the tree holds the `i`-th
+/// smallest merchant field, and leaf 0 holds the zero value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MerchantTree {
-    pub root: Fr,
-    pub leaves: Vec<Fr>,
-    pub layers: Vec<Vec<Fr>>,
+    root: Fr,
+    leaves: Vec<Fr>,
+    layers: Vec<Vec<Fr>>,
+}
+
+impl MerchantTree {
+    pub fn root(&self) -> Fr {
+        self.root
+    }
+
+    /// The merchant fields in ascending order.
+    pub fn leaves(&self) -> &[Fr] {
+        &self.leaves
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

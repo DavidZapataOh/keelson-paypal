@@ -7,6 +7,7 @@ import {
   uint8ArrayToBase64Url,
 } from "@sd-jwt/core";
 import { type Mandate, parseMandate } from "./schema.ts";
+import { assertStrictJson, decodeStrictJson } from "./strict.ts";
 
 /** The SD-JWT `sha-256` hasher (RFC 9901 section 4.2.3); every other algorithm is refused. */
 export function sdHasher(data: string | ArrayBuffer, alg: string): Uint8Array {
@@ -98,19 +99,24 @@ export async function buildSdPayload(
 
 /**
  * Applies `disclosures` to `payloadSd` (RFC 9901 section 7.1, step 3): every disclosure must match
- * exactly one digest, and duplicates are rejected. Fields whose disclosure is missing are absent
+ * exactly one digest, and duplicates are rejected. The payload, the disclosures and the result
+ * must pass {@link assertStrictJson}. Fields whose disclosure is missing are absent
  * from the result, so it is a full {@link Mandate} only when every disclosure is given.
  */
 export function decodeDisclosed(payloadSd: object, disclosures: string[]): Mandate {
   assertSdAlg(payloadSd);
-  const decoded = disclosures.map((d) =>
-    Disclosure.fromEncodeSync(d, { hasher: sdHasher, alg: "sha-256" }),
-  );
-  const { cnf, ...m } = getClaimsSync<Mandate & { cnf?: unknown }>(
+  assertStrictJson(payloadSd);
+  const decoded = disclosures.map((d) => {
+    decodeStrictJson(d);
+    return Disclosure.fromEncodeSync(d, { hasher: sdHasher, alg: "sha-256" });
+  });
+  const claims = getClaimsSync<Mandate & { cnf?: unknown }>(
     payloadSd as Record<string, unknown>,
     decoded,
     sdHasher,
   );
+  assertStrictJson(claims);
+  const { cnf, ...m } = claims;
   if (jcs({ jwk: m.agent?.cnf?.jwk } as Json) !== jcs((cnf ?? null) as Json)) {
     throw new RangeError("cnf differs from agent.cnf");
   }

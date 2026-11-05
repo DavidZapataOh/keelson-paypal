@@ -289,3 +289,43 @@ describe("mandateChallenge", () => {
     expect(() => mandateChallenge(h, BN254_FR_MODULUS)).toThrow(RangeError);
   });
 });
+
+describe("decodeDisclosed input limits", () => {
+  const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64url");
+  const digestOf = (d: string) => createHash("sha256").update(d).digest("base64url");
+  /** `payloadSd` with one extra top-level disclosure whose raw JSON is `json`. */
+  async function withRaw(json: string) {
+    const { payloadSd, disclosures } = await buildSdPayload(mandate(), randomSalt);
+    const d = b64(json);
+    const p = structuredClone(payloadSd) as { _sd: string[] };
+    p._sd.push(digestOf(d));
+    return () => decodeDisclosed(p, [...disclosures, d]) as unknown as Record<string, unknown>;
+  }
+
+  it("accepts only safe integers as numbers", async () => {
+    for (const n of ["9007199254740991", "-9007199254740991", "0", "-1"]) {
+      expect((await withRaw(`["s","n",${n}]`))()).toHaveProperty("n");
+    }
+    for (const n of ["1.0", "-0", "1e2", "1e400", "9007199254740992", "1.5", "-0.0"]) {
+      expect(await withRaw(`["s","n",${n}]`)).toThrow(/number/);
+    }
+  });
+
+  it("rejects lone surrogates", async () => {
+    expect(await withRaw('["s","n","\\ud800"]')).toThrow(/surrogate/);
+    expect(await withRaw('["s","n",{"\\udc00":1}]')).toThrow(/surrogate/);
+  });
+
+  it("rejects nesting deeper than 32 levels", async () => {
+    const nest = (n: number) => "[".repeat(n) + "]".repeat(n);
+    expect((await withRaw(`["s","n",${nest(31)}]`))()).toHaveProperty("n");
+    expect(await withRaw(`["s","n",${nest(32)}]`)).toThrow(/deep/);
+  });
+
+  it("rejects an Object.prototype name as an array placeholder digest", async () => {
+    const { payloadSd, disclosures } = await buildSdPayload(mandate(), randomSalt);
+    const p = structuredClone(payloadSd) as { intent: { subjective: unknown[] } };
+    p.intent.subjective.push({ "...": "toString" });
+    expect(() => decodeDisclosed(p, disclosures)).toThrow(/toString/);
+  });
+});

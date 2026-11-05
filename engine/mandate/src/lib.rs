@@ -11,6 +11,7 @@ mod credentials;
 mod error;
 mod schema;
 mod sd;
+mod strict;
 
 pub use challenge::{h_sd, mandate_challenge};
 pub use commitment::{

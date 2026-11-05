@@ -96,10 +96,17 @@ async function key(label: string): Promise<Key> {
 /** Deterministic (RFC 6979) ES256 `r || s` over the JWS signing input. */
 const es256 = (k: Key) => (data: string) => b64u(p256.sign(utf8(data), k.secret));
 
-function jws(header: object, payload: unknown, k: Key): string {
-  const input = `${b64uJson(header)}.${b64uJson(payload)}`;
+/** A compact JWS whose payload is the given JSON text, which may be outside what `JSON.stringify` writes. */
+function jwsRaw(header: object, payload: string, k: Key): string {
+  const input = `${b64uJson(header)}.${b64u(utf8(payload))}`;
   return `${input}.${es256(k)(input)}`;
 }
+
+const jws = (header: object, payload: unknown, k: Key): string =>
+  jwsRaw(header, JSON.stringify(payload), k);
+
+/** `n` nested arrays, nesting `n` levels deep. */
+const nest = (n: number): string => "[".repeat(n) + "]".repeat(n);
 
 const P256_N = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
 
@@ -269,7 +276,57 @@ async function sdVectors() {
     element,
   ]);
   await inArray("error/placeholder-not-string", { "...": 1 }, []);
-  await inArray("crafted/placeholder-prototype-name", { "...": "toString" }, []);
+  await inArray("error/placeholder-prototype-name", { "...": "toString" }, []);
+
+  /** `payloadSd` with one top-level disclosure given as raw JSON text. */
+  const raw = async (name: string, json: string) => {
+    const encoded = b64u(utf8(json));
+    const p = clone(payloadSd) as { _sd: string[] };
+    p._sd.push(b64u(sdHasher(encoded, "sha-256")));
+    await add(name, p, [...disclosures, encoded]);
+  };
+  for (const n of ["9007199254740991", "-9007199254740991", "0", "-1"]) {
+    await raw(`number/${n}`, `["${salt(30)}","n",${n}]`);
+  }
+  for (const n of [
+    "1.0",
+    "-0",
+    "-0.0",
+    "1e2",
+    "1E2",
+    "1e400",
+    "1.5",
+    "9007199254740992",
+    "9007199254740993",
+    "-9007199254740992",
+  ]) {
+    await raw(`error/number-${n}`, `["${salt(30)}","n",${n}]`);
+  }
+  await raw("error/lone-surrogate-value", `["${salt(31)}","n","\\ud800"]`);
+  await raw("error/lone-surrogate-name", `["${salt(31)}","\\udc00",1]`);
+  await raw("error/lone-surrogate-nested-key", `["${salt(31)}","n",{"\\ud800x":1}]`);
+  await raw("surrogate-pair", `["${salt(31)}","n","\\ud83d\\ude00"]`);
+  await raw("depth/disclosure-32", `["${salt(32)}","n",${nest(31)}]`);
+  await raw("error/depth/disclosure-33", `["${salt(32)}","n",${nest(32)}]`);
+  await add("depth/payload-32", { ...payloadSd, deep: JSON.parse(nest(31)) }, disclosures);
+  await add("error/depth/payload-33", { ...payloadSd, deep: JSON.parse(nest(32)) }, disclosures);
+  await add("error/payload-number-fraction", { ...payloadSd, n: 1.5 }, disclosures);
+  await add("error/payload-number-unsafe", { ...payloadSd, n: 2 ** 53 }, disclosures);
+  /** A chain of `n` disclosures, each the only claim of the previous one's value. */
+  const chain = async (name: string, n: number) => {
+    let value: object = {};
+    const encoded: string[] = [];
+    for (let i = 0; i < n; i++) {
+      const d = disclosure([salt(100 + i), "c", value]);
+      encoded.push(d.encoded);
+      value = { _sd: [d.digest] };
+    }
+    const p = clone(payloadSd) as { _sd: string[] };
+    p._sd.push(...(value as { _sd: string[] })._sd);
+    await add(name, p, [...disclosures, ...encoded]);
+  };
+  await chain("depth/chain-32", 31);
+  await chain("error/depth/chain-33", 32);
 
   const badSd = clone(payloadSd) as { user: { _sd: unknown } };
   badSd.user._sd = "not-an-array";
@@ -339,6 +396,16 @@ async function commitmentVectors() {
       fieldOr(await attempt(() => merchantLeaf(id))),
     );
   }
+  // Lone surrogates cannot appear in JSON vectors that a strict parser reads, so these carry
+  // the id as UTF-16 code units.
+  for (const units of [[0x61, 0xd800], [0xdc00], [0xd800, 0x61], [0xd83d, 0xde00]]) {
+    const id = String.fromCharCode(...units);
+    push(
+      `merchantLeaf/utf16-${units.map((u) => u.toString(16)).join("-")}`,
+      { op: "merchantLeaf", utf16: units },
+      fieldOr(await attempt(() => merchantLeaf(id))),
+    );
+  }
 
   const many = (n: number) => Array.from({ length: n }, (_, i) => `mrc_${i}`);
   const sets: [string, string[]][] = [
@@ -383,6 +450,47 @@ async function commitmentVectors() {
       non === "error" ? non : proofJson(non, non.low),
     );
   }
+  /** The first `probe-i` id whose leaf is below the smallest or above the largest of `t`. */
+  const probe = async (t: { leaves: bigint[] }, below: boolean) => {
+    const [min, max] = [t.leaves[0] as bigint, t.leaves.at(-1) as bigint];
+    for (let i = 0; ; i++) {
+      const v = await merchantLeaf(`probe-${i}`);
+      if (below ? v < min : v > max) return `probe-${i}`;
+    }
+  };
+  const full = many(MERCHANT_TREE_CAPACITY);
+  const fullTree = await merchantTree(full);
+  const lastId = full[
+    (await Promise.all(full.map(merchantLeaf))).indexOf(fullTree.leaves.at(-1) as bigint)
+  ] as string;
+  const edges: [string, string[], string][] = [
+    ["low-leaf-zero", treeIds, await probe(tree, true)],
+    ["low-leaf-last", treeIds, await probe(tree, false)],
+    ["full/below", full, await probe(fullTree, true)],
+    ["full/above", full, await probe(fullTree, false)],
+    ["full/last-slot", full, lastId],
+  ];
+  for (const [name, set, id] of edges) {
+    const t = set === full ? fullTree : tree;
+    const member = await attempt(() => merchantMembership(t, id));
+    push(
+      `membership/edge/${name}`,
+      { op: "membership", ids: set, id },
+      member === "error" ? member : proofJson(member, member.leaf),
+    );
+    const non = await attempt(() => merchantNonMembership(t, id));
+    push(
+      `nonMembership/edge/${name}`,
+      { op: "nonMembership", ids: set, id },
+      non === "error" ? non : proofJson(non, non.low),
+    );
+  }
+  push(
+    "merchantRoot/error/full-plus-one",
+    { op: "merchantRoot", ids: [...full, `${lastId}x`] },
+    fieldOr(await attempt(async () => (await merchantTree([...full, `${lastId}x`])).root)),
+  );
+
   const absent = await merchantNonMembership(tree, "mrc_absent");
   const empty = { value: 0n, next: 0n, nextIndex: 0 };
   const pathAt = (index: number) =>
@@ -494,6 +602,16 @@ async function commitmentVectors() {
       },
     ],
     ["error/nonce-non-canonical", (m) => (m.nonce = "q83vE1n2k0Zr7yT4aB9cDh")],
+    ["error/nonce-non-ascii", (m) => (m.nonce = `${"A".repeat(20)}é`)],
+    ["error/jwk-x-non-ascii", (m) => (m.user.cred.jwk.x = `${"A".repeat(41)}é`)],
+    [
+      "datetime-long-fraction",
+      (m) => {
+        for (const c of m.payment.constraints)
+          if (c.type === "payment.execution_date")
+            c.not_after = "2026-11-13T23:59:59.123456789012Z";
+      },
+    ],
     ["error/bad-ulid", (m) => (m.mid = "81JBXG3K5N7Q9R2T4V6W8Y0Z1A")],
     [
       "error/bad-website",
@@ -829,6 +947,52 @@ async function credentialVectors() {
       (p) => (p.status = { status_list: { idx: 0, uri: "https://keelson.finance/status" } }),
     );
   }
+  await l1Case("error/status-string", `${resignL1(l1Header, (p) => (p.status = "x"))}${rest}`);
+  await l1Case("error/status-null", `${resignL1(l1Header, (p) => (p.status = null))}${rest}`);
+  const rawL1 = (edit: (json: string) => string) =>
+    `${jwsRaw(l1Header, edit(JSON.stringify(l1Signed)), keys.issuer)}${rest}`;
+  await l1Case(
+    "error/claim-fraction",
+    rawL1((j) => j.replace(/}$/, ',"score":1.5}')),
+  );
+  await l1Case(
+    "error/claim-integral-float",
+    rawL1((j) => j.replace(/}$/, ',"score":1.0}')),
+  );
+  await l1Case(
+    "error/iat-float",
+    rawL1((j) => j.replace(`"iat":${L1_IAT}`, `"iat":${L1_IAT}.0`)),
+  );
+  await l1Case(
+    "error/claim-lone-surrogate",
+    rawL1((j) => j.replace(/}$/, ',"nick":"\\ud800"}')),
+  );
+  await l1Case(
+    "error/claim-depth-33",
+    rawL1((j) => j.replace(/}$/, `,"deep":${nest(32)}}`)),
+  );
+  await l1Case(
+    "valid-claim-depth-32",
+    rawL1((j) => j.replace(/}$/, `,"deep":${nest(31)}}`)),
+  );
+  const holderX = keys.holder.jwk.x;
+  const badXs: [string, string][] = [
+    ["padded", `${holderX}=`],
+    ["leading-space", ` ${holderX}`],
+    ["trailing-dot", `${holderX}.`],
+    ["short", holderX.slice(1)],
+    ["plus", `+${holderX.slice(1)}`],
+    [
+      "pad-bits",
+      `${holderX.slice(0, -1)}${alphabet[alphabet.indexOf(holderX.at(-1) as string) ^ 1]}`,
+    ],
+  ];
+  for (const [name, x] of badXs) {
+    await l1Case(
+      `error/holder-x-${name}`,
+      `${resignL1(l1Header, (p) => ((p.cnf as { jwk: { x: string } }).jwk.x = x))}${rest}`,
+    );
+  }
   await l1Case("error/no-separator", l1Jwt);
   await l1Case("error/empty-disclosure", `${l1Jwt}~~${l1Disclosures[0]}~`);
   await l1Case("error/key-binding-present", `${l1}${l1Jwt}`);
@@ -1001,6 +1165,17 @@ async function credentialVectors() {
     );
     await l2Case("error/holder-cnf-with-d", await issueL2({ ...base, userCredential: leaky }));
   }
+  {
+    const padded = await issueL1(
+      keys,
+      l1Payload(keys, { cnf: { jwk: { ...keys.holder.jwk, y: `${keys.holder.jwk.y}=` } } }),
+    );
+    await l2Case("error/holder-y-padded", await issueL2({ ...base, userCredential: padded }));
+  }
+  await l2Case(
+    "error/delegate-payload-object",
+    await issueL2({ ...base, delegatePayload: () => ({ 0: payloadSd, length: 1 }) }),
+  );
   {
     const { packedClaims, disclosures: ds } = await pack(
       { cnf: { jwk: keys.agent.jwk }, cap: 100 },

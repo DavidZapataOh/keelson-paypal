@@ -65,7 +65,7 @@ fn sd_vectors() {
     let vectors = load(include_str!(
         "../../../packages/mandate/test/vectors/sd.json"
     ));
-    assert_eq!(vectors.len(), 64);
+    assert_eq!(vectors.len(), 90);
     for v in vectors {
         let disclosures = strings(&v.input["disclosures"]);
         let result = decode_disclosed(&v.input["payloadSd"], &disclosures);
@@ -121,17 +121,21 @@ fn commitment_vectors() {
     let vectors = load(include_str!(
         "../../../packages/mandate/test/vectors/commitment.json"
     ));
-    assert_eq!(vectors.len(), 67);
+    assert_eq!(vectors.len(), 85);
     for v in vectors {
         let (i, name, expected) = (&v.input, v.name.as_str(), &v.expected);
         match i["op"].as_str().unwrap() {
             "merchantLeaf" => {
-                assert_outcome(
-                    name,
-                    merchant_leaf(i["id"].as_str().unwrap()),
-                    expected,
-                    |f| field_hex(&f),
-                );
+                let id = match i.get("utf16") {
+                    Some(units) => String::from_utf16(
+                        &serde_json::from_value::<Vec<u16>>(units.clone()).unwrap(),
+                    ),
+                    None => Ok(i["id"].as_str().unwrap().to_owned()),
+                };
+                match id {
+                    Ok(id) => assert_outcome(name, merchant_leaf(&id), expected, |f| field_hex(&f)),
+                    Err(_) => assert!(is_error(expected), "{name}: not UTF-16 but accepted by TS"),
+                }
             }
             "merchantRoot" => {
                 assert_outcome(name, merchant_root(&strings(&i["ids"])), expected, |f| {
@@ -144,7 +148,7 @@ fn commitment_vectors() {
                 let proof = merchant_membership(&tree, id);
                 if let Ok(p) = &proof {
                     assert!(
-                        verify_merchant_membership(&tree.root, id, p).unwrap(),
+                        verify_merchant_membership(&tree.root(), id, p).unwrap(),
                         "{name}"
                     );
                     let forged = MembershipProof {
@@ -152,7 +156,7 @@ fn commitment_vectors() {
                         ..p.clone()
                     };
                     assert!(
-                        !verify_merchant_membership(&tree.root, id, &forged).unwrap(),
+                        !verify_merchant_membership(&tree.root(), id, &forged).unwrap(),
                         "{name}"
                     );
                 }
@@ -169,7 +173,7 @@ fn commitment_vectors() {
                 let proof = merchant_non_membership(&tree, id);
                 if let Ok(p) = &proof {
                     assert!(
-                        verify_merchant_non_membership(&tree.root, id, p).unwrap(),
+                        verify_merchant_non_membership(&tree.root(), id, p).unwrap(),
                         "{name}"
                     );
                 }
@@ -245,7 +249,7 @@ fn credential_vectors() {
     let vectors = load(include_str!(
         "../../../packages/mandate/test/vectors/credentials.json"
     ));
-    assert_eq!(vectors.len(), 78);
+    assert_eq!(vectors.len(), 94);
     for v in vectors {
         assert_outcome(&v.name, verify(&v.input), &v.expected, |c| {
             credential_json(&c)
@@ -278,4 +282,22 @@ fn open_mandate_is_tamper_evident() {
         })
         .collect();
     assert_eq!(accepted, Vec::<usize>::new());
+}
+
+/// A chain of thousands of disclosures, each nested in the previous one, is rejected without
+/// exhausting the stack.
+#[test]
+fn deep_disclosure_chain_is_rejected() {
+    use base64::Engine;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use sha2::{Digest, Sha256};
+
+    let mut value = json!({});
+    let mut disclosures = Vec::new();
+    for i in 0..5000 {
+        let encoded = URL_SAFE_NO_PAD.encode(json!([format!("salt{i}"), "c", value]).to_string());
+        value = json!({ "_sd": [URL_SAFE_NO_PAD.encode(Sha256::digest(&encoded))] });
+        disclosures.push(encoded);
+    }
+    assert!(decode_disclosed(&value, &disclosures).is_err());
 }

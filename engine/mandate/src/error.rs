@@ -11,6 +11,9 @@ pub enum Error {
     Credential(String),
     /// A commitment input is out of range.
     Commitment(String),
+    /// Input JSON is outside the accepted profile: unsafe numbers, deep nesting or reserved
+    /// digests.
+    Json(String),
     /// A core primitive failed.
     Core(keelson_core::Error),
 }
@@ -31,6 +34,7 @@ impl fmt::Display for Error {
             Self::Disclosure(e) => write!(f, "invalid disclosure: {e}"),
             Self::Credential(e) => write!(f, "invalid credential: {e}"),
             Self::Commitment(e) => write!(f, "invalid commitment input: {e}"),
+            Self::Json(e) => write!(f, "rejected JSON: {e}"),
             Self::Core(e) => e.fmt(f),
         }
     }

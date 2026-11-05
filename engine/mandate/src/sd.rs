@@ -4,24 +4,8 @@ use keelson_core::jcs;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 
+use crate::strict::{MAX_DEPTH, PROTOTYPE_NAMES, check};
 use crate::{Error, b64};
-
-/// Names every JavaScript object inherits. The reference implementation looks digests and claim
-/// names up with the `in` operator, so it treats these as already present.
-const OBJECT_PROTOTYPE: [&str; 12] = [
-    "__defineGetter__",
-    "__defineSetter__",
-    "__lookupGetter__",
-    "__lookupSetter__",
-    "__proto__",
-    "constructor",
-    "hasOwnProperty",
-    "isPrototypeOf",
-    "propertyIsEnumerable",
-    "toLocaleString",
-    "toString",
-    "valueOf",
-];
 
 fn invalid(reason: impl Into<String>) -> Error {
     Error::Disclosure(reason.into())
@@ -68,43 +52,37 @@ pub(crate) fn assert_sd_alg(payload: &Map<String, Value>) -> Result<(), Error> {
     }
 }
 
-enum Lookup<'a> {
-    Absent,
-    Disclosed(&'a Disclosure),
-    Inherited,
-}
-
 struct Unpacker<'a> {
     map: &'a HashMap<String, Disclosure>,
     seen: HashSet<String>,
 }
 
 impl Unpacker<'_> {
-    fn lookup(&mut self, digest: &str) -> Result<Lookup<'_>, Error> {
+    fn lookup(&mut self, digest: &str) -> Result<Option<&Disclosure>, Error> {
         if !self.seen.insert(digest.to_owned()) {
             return Err(invalid("duplicate digest in the payload"));
         }
-        Ok(match self.map.get(digest) {
-            Some(d) => Lookup::Disclosed(d),
-            None if OBJECT_PROTOTYPE.contains(&digest) => Lookup::Inherited,
-            None => Lookup::Absent,
-        })
+        Ok(self.map.get(digest))
     }
 
-    /// `nested` is whether the value sits below a non-empty claim path.
-    fn value(&mut self, v: &Value, nested: bool) -> Result<Value, Error> {
+    /// `nested` is whether the value sits below a non-empty claim path, and `depth` is the
+    /// number of arrays and objects around it in the result.
+    fn value(&mut self, v: &Value, nested: bool, depth: usize) -> Result<Value, Error> {
         match v {
-            Value::Object(obj) => self.object(obj, nested),
-            Value::Array(items) => self.array(items),
+            Value::Object(_) | Value::Array(_) if depth >= MAX_DEPTH => {
+                Err(invalid("disclosed claims nested too deep"))
+            }
+            Value::Object(obj) => self.object(obj, nested, depth),
+            Value::Array(items) => self.array(items, depth),
             other => Ok(other.clone()),
         }
     }
 
-    fn array(&mut self, items: &[Value]) -> Result<Value, Error> {
+    fn array(&mut self, items: &[Value], depth: usize) -> Result<Value, Error> {
         let mut out = Vec::with_capacity(items.len());
         for item in items {
             let Some(obj) = item.as_object().filter(|o| o.contains_key("...")) else {
-                out.push(self.value(item, true)?);
+                out.push(self.value(item, true, depth + 1)?);
                 continue;
             };
             let digest = match obj.get("...") {
@@ -112,21 +90,25 @@ impl Unpacker<'_> {
                 _ => return Err(invalid("invalid array element placeholder")),
             };
             match self.lookup(digest)? {
-                Lookup::Absent => {}
-                Lookup::Inherited => out.push(Value::Null),
-                Lookup::Disclosed(Disclosure { key: Some(_), .. }) => {
+                None => {}
+                Some(Disclosure { key: Some(_), .. }) => {
                     return Err(invalid("claim disclosure used as an array element"));
                 }
-                Lookup::Disclosed(Disclosure { key: None, value }) => {
+                Some(Disclosure { key: None, value }) => {
                     let value = value.clone();
-                    out.push(self.value(&value, true)?);
+                    out.push(self.value(&value, true, depth + 1)?);
                 }
             }
         }
         Ok(Value::Array(out))
     }
 
-    fn object(&mut self, obj: &Map<String, Value>, nested: bool) -> Result<Value, Error> {
+    fn object(
+        &mut self,
+        obj: &Map<String, Value>,
+        nested: bool,
+        depth: usize,
+    ) -> Result<Value, Error> {
         let mut payload = Map::new();
         for (key, v) in obj {
             if nested && key == "_sd_alg" {
@@ -134,7 +116,7 @@ impl Unpacker<'_> {
             }
             let v = match v {
                 Value::Object(_) | Value::Array(_) if key != "_sd" && key != "..." => {
-                    self.value(v, nested || !key.is_empty())?
+                    self.value(v, nested || !key.is_empty(), depth + 1)?
                 }
                 _ => v.clone(),
             };
@@ -150,20 +132,20 @@ impl Unpacker<'_> {
         let mut claims = Map::new();
         for digest in digests.iter().filter_map(Value::as_str) {
             let (key, value) = match self.lookup(digest)? {
-                Lookup::Absent => continue,
-                Lookup::Disclosed(Disclosure {
+                None => continue,
+                Some(Disclosure {
                     key: Some(key),
                     value,
                 }) => (key.clone(), value.clone()),
-                _ => return Err(invalid("array disclosure used as a claim")),
+                Some(_) => return Err(invalid("array disclosure used as a claim")),
             };
-            if payload.contains_key(&key) || OBJECT_PROTOTYPE.contains(&key.as_str()) {
+            if payload.contains_key(&key) || PROTOTYPE_NAMES.contains(&key.as_str()) {
                 return Err(invalid(format!("claim {key:?} conflicts with the payload")));
             }
             if claims.contains_key(&key) {
                 return Err(invalid(format!("claim {key:?} is disclosed twice")));
             }
-            let value = self.value(&value, nested || !key.is_empty())?;
+            let value = self.value(&value, nested || !key.is_empty(), depth + 1)?;
             claims.insert(key, value);
         }
         payload.extend(claims);
@@ -191,7 +173,7 @@ pub(crate) fn unpack(
         map: &map,
         seen: HashSet::new(),
     };
-    let Value::Object(claims) = unpacker.object(&payload, false)? else {
+    let Value::Object(claims) = unpacker.object(&payload, false, 0)? else {
         unreachable!("objects unpack to objects");
     };
     if map.keys().any(|d| !unpacker.seen.contains(d)) {
@@ -203,12 +185,15 @@ pub(crate) fn unpack(
 /// Applies `disclosures` to `payload_SD` (RFC 9901 section 7.1, step 3): every disclosure must
 /// match exactly one digest, and duplicates are rejected. Fields whose disclosure is missing are
 /// absent from the result, so it is a full mandate only when every disclosure is given. The
-/// top-level `cnf` must be `{ "jwk": agent.cnf.jwk }` and is removed.
+/// top-level `cnf` must be `{ "jwk": agent.cnf.jwk }` and is removed. The payload, the
+/// disclosures and the result must stay within the strict JSON profile: safe integers only and
+/// at most 32 levels of nesting.
 pub fn decode_disclosed(payload_sd: &Value, disclosures: &[String]) -> Result<Value, Error> {
     let payload = payload_sd
         .as_object()
         .ok_or_else(|| invalid("payload is not an object"))?;
     assert_sd_alg(payload)?;
+    check(payload_sd)?;
     let disclosures: Vec<&str> = disclosures.iter().map(String::as_str).collect();
     let mut m = unpack(payload, &disclosures)?;
     let cnf = m.remove("cnf").unwrap_or(Value::Null);

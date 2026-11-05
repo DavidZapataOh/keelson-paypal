@@ -49,10 +49,7 @@ impl Jwk {
     }
 
     fn verifying_key(&self) -> Result<VerifyingKey, Error> {
-        let coordinate = |c: &str| b64::decode(c).filter(|b| b.len() == 32);
-        let (Some(x), Some(y)) = (coordinate(&self.x), coordinate(&self.y)) else {
-            return Err(invalid("JWK coordinates are not 32 bytes"));
-        };
+        let (x, y) = (coordinate(&self.x)?, coordinate(&self.y)?);
         let point = [&[0x04][..], &x, &y].concat();
         VerifyingKey::from_sec1_bytes(&point).map_err(|_| invalid("JWK is not a P-256 point"))
     }
@@ -83,6 +80,13 @@ pub struct VerifiedCredential {
     pub user_auth: Option<Value>,
     /// The user credential an open mandate is chained to.
     pub user_credential: Option<Box<VerifiedCredential>>,
+}
+
+/// A 32-byte coordinate in canonical unpadded base64url: exactly 43 characters, zero pad bits.
+fn coordinate(c: &str) -> Result<[u8; 32], Error> {
+    b64::decode_canonical(c)
+        .and_then(|b| b.try_into().ok())
+        .ok_or_else(|| invalid("JWK coordinate is not canonical base64url of 32 bytes"))
 }
 
 #[derive(Clone, Copy)]
@@ -179,16 +183,6 @@ fn has_selectively_disclosable_parts(v: &Value) -> bool {
     }
 }
 
-fn is_truthy(v: Option<&Value>) -> bool {
-    match v {
-        None | Some(Value::Null) => false,
-        Some(Value::Bool(b)) => *b,
-        Some(Value::Number(n)) => n.as_f64() != Some(0.0),
-        Some(Value::String(s)) => !s.is_empty(),
-        Some(Value::Array(_) | Value::Object(_)) => true,
-    }
-}
-
 /// Verifies an SD-JWT (RFC 9901 section 7.1) with no key binding and returns the header, the
 /// signed payload and the claims with the disclosures applied.
 fn verify_sd_jwt(
@@ -210,13 +204,16 @@ fn verify_sd_jwt(
     Ok(claims)
 }
 
-/// The `cnf.jwk` member, which must name a P-256 key.
+/// The `cnf.jwk` member, which must name a P-256 key with canonical coordinates.
 fn cnf_jwk(cnf: Option<&Value>) -> Result<&Value, Error> {
     let jwk = cnf
         .and_then(|c| c.get("jwk"))
         .filter(|j| j.get("kty") == Some(&json!("EC")) && j.get("crv") == Some(&json!("P-256")))
-        .filter(|j| j.get("x").is_some_and(Value::is_string));
-    jwk.ok_or_else(|| invalid("missing cnf.jwk"))
+        .ok_or_else(|| invalid("missing cnf.jwk"))?;
+    for c in ["x", "y"] {
+        coordinate(jwk.get(c).and_then(Value::as_str).unwrap_or_default())?;
+    }
+    Ok(jwk)
 }
 
 fn verify_user_credential(
@@ -252,10 +249,10 @@ fn verify_user_credential(
             )));
         }
     }
-    // Status lists (draft-ietf-oauth-status-list) are not fetched, so a credential that
-    // references one cannot be verified.
-    if is_truthy(claims.get("status")) && is_truthy(claims["status"].get("status_list")) {
-        return Err(invalid("status lists are not supported"));
+    // Status lists (draft-ietf-oauth-status-list) are never fetched, so a credential that
+    // carries a status cannot be checked.
+    if claims.contains_key("status") {
+        return Err(invalid("status is not supported"));
     }
     if jwt.header.get("typ").and_then(Value::as_str) != Some(USER_CREDENTIAL_TYP) {
         return Err(invalid("unexpected typ"));

@@ -40,11 +40,13 @@ function base64urlToBigInt(s: string, bytes: number): bigint {
 /**
  * Maps a merchant id to a field: `poseidon2([KEELSON_MERCHANT, c_0, …, c_k])` where `c_i` are
  * the UTF-8 bytes in consecutive 31-byte chunks, each read big-endian. NUL is rejected so that
- * no chunk starts with a zero byte, which makes the chunk encoding injective.
+ * no chunk starts with a zero byte, which makes the chunk encoding injective, and lone
+ * surrogates are rejected because UTF-8 would encode them all as U+FFFD.
  */
 export async function merchantLeaf(merchantId: string): Promise<bigint> {
   if (merchantId.length === 0) throw new RangeError("empty merchant id");
   if (merchantId.includes("\0")) throw new RangeError("merchant id contains NUL");
+  if (!merchantId.isWellFormed()) throw new RangeError("merchant id contains a lone surrogate");
   const bytes = new TextEncoder().encode(merchantId);
   const chunks: bigint[] = [];
   for (let i = 0; i < bytes.length; i += CHUNK) {

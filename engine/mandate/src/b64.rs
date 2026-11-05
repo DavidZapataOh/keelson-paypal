@@ -21,9 +21,11 @@ pub(crate) fn decode_canonical(s: &str) -> Option<Vec<u8>> {
     decode(s).filter(|bytes| encode(bytes) == s)
 }
 
-/// Decodes base64url-encoded UTF-8 JSON, rejecting invalid UTF-8.
+/// Decodes base64url-encoded UTF-8 JSON, rejecting invalid UTF-8, lone surrogates and values
+/// that fail [`crate::strict::check`].
 pub(crate) fn decode_json(s: &str) -> Option<Value> {
-    serde_json::from_str(std::str::from_utf8(&decode(s)?).ok()?).ok()
+    let value = serde_json::from_str(std::str::from_utf8(&decode(s)?).ok()?).ok()?;
+    crate::strict::check(&value).ok().map(|()| value)
 }
 
 pub(crate) fn is_base64url(s: &str) -> bool {

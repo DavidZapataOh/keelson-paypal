@@ -51,6 +51,11 @@ describe("merchantLeaf", () => {
     await expect(merchantLeaf("")).rejects.toThrow(RangeError);
     await expect(merchantLeaf("a\0b")).rejects.toThrow(RangeError);
   });
+
+  it("rejects lone surrogates, which would otherwise encode as U+FFFD", async () => {
+    await expect(merchantLeaf("a\uD800")).rejects.toThrow(/surrogate/);
+    await expect(merchantLeaf("\uDC00")).rejects.toThrow(/surrogate/);
+  });
 });
 
 describe("merchantTree", () => {

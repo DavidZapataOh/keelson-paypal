@@ -210,7 +210,56 @@ describe("user credential (L1)", () => {
   });
 });
 
+describe("strict input", () => {
+  /** The user credential re-signed with `extra` merged into its payload. */
+  const issueWith = async (extra: Record<string, unknown>) => {
+    const jwt = l1.slice(0, l1.indexOf("~"));
+    const forged = await resign(jwt, (p) => Object.assign(p, extra), issuer.privateKey);
+    return `${forged}${l1.slice(jwt.length)}`;
+  };
+
+  it("rejects a credential carrying a status, without fetching it", async () => {
+    for (const status of ["x", { status_list: { idx: 0, uri: "https://127.0.0.1:1/s" } }]) {
+      const token = await issueWith({ status });
+      await expect(verifyCredential(token, USER_CREDENTIAL_TYP, issuer.publicKey)).rejects.toThrow(
+        /status/,
+      );
+    }
+  });
+
+  it("rejects non-integer numbers in a signed payload", async () => {
+    const token = await issueWith({ score: 1.5 });
+    await expect(verifyCredential(token, USER_CREDENTIAL_TYP, issuer.publicKey)).rejects.toThrow(
+      /number/,
+    );
+  });
+
+  it("rejects holder key coordinates that are not canonical base64url", async () => {
+    const jwk = await publicJwk(holder);
+    for (const x of [`${jwk.x}=`, ` ${jwk.x}`, `${jwk.x}.`, jwk.x.slice(1), `+${jwk.x.slice(1)}`]) {
+      const token = await issueWith({ cnf: { jwk: { ...jwk, x } } });
+      await expect(verifyCredential(token, USER_CREDENTIAL_TYP, issuer.publicKey)).rejects.toThrow(
+        /cnf/,
+      );
+    }
+  });
+});
+
 describe("open mandate (L2)", () => {
+  it("rejects a delegate_payload that is not an array", async () => {
+    const { token, payloadSd, opts } = await openMandate();
+    const parts = token.split("~");
+    parts[2] = await resign(
+      parts[2] as string,
+      (p) => {
+        p.delegate_payload = { 0: payloadSd, length: 1 };
+      },
+      holder.privateKey,
+    );
+    // The delegate payload is now in the clear, so its disclosure is dropped.
+    await rejects(parts.toSpliced(3, 1).join("~"), opts).toThrow(/delegate/);
+  });
+
   it("is a kb-sd-jwt+kb chained to L1, carrying the passkey assertion over M", async () => {
     const { m, cm, token, payloadSd, challenge, userAuth, opts } = await openMandate();
     expect(token.startsWith(`${l1.slice(0, l1.indexOf("~"))}~~`)).toBe(true);
