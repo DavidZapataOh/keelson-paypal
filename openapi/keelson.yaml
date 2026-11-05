@@ -3,7 +3,27 @@ info:
   title: Keelson API
   version: 0.0.0
 components:
-  schemas: {}
+  schemas:
+    Problem:
+      type: object
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+      required:
+        - type
+        - title
+        - status
+        - instance
+      additionalProperties: {}
   parameters: {}
 paths:
   /health:
