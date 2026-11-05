@@ -136,6 +136,11 @@ function disclosure(value: unknown[]): { encoded: string; digest: string } {
 // ---------------------------------------------------------------------------------------------
 // Mandates
 
+type Merchant = Extract<
+  Mandate["checkout"]["constraints"][number],
+  { type: "checkout.allowed_merchants" }
+>["allowed"][number];
+
 const mandate = (): Mandate => parseMandate(clone(demo));
 
 /** A mandate whose merchants have non-BMP names and whose amounts are 2^53 - 1. */
@@ -704,6 +709,13 @@ async function commitmentVectors() {
       fieldOr(await attempt(() => mandateCommitment(clone(m), salt))),
     );
   }
+  const merchants = (m: Mandate, edit: (x: Merchant) => void) => {
+    for (const c of m.checkout.constraints)
+      if (c.type === "checkout.allowed_merchants") c.allowed.forEach(edit);
+  };
+  const attributes = (m: Mandate, must: Record<string, string>) => {
+    for (const c of m.checkout.constraints) if (c.type === "keelson.attributes") c.must = must;
+  };
   const parseCases: [string, (m: Mandate) => void][] = [
     ["demo", () => {}],
     [
@@ -729,6 +741,33 @@ async function commitmentVectors() {
         }
       },
     ],
+    [
+      "error/bidi-override-in-merchant-name",
+      (m) => merchants(m, (x) => (x.name = "Run\u202eFast")),
+    ],
+    ["error/newline-in-merchant-name", (m) => merchants(m, (x) => (x.name = "Run\nFast"))],
+    ["error/zero-width-in-merchant-id", (m) => merchants(m, (x) => (x.id = "mrc\u200b_runfast"))],
+    ["error/bom-in-subjective", (m) => (m.intent.subjective = ["look\ufeff good"])],
+    ["error/c1-control-in-prompt-summary", (m) => (m.intent.prompt_summary = "buy\u0085shoes")],
+    ["error/tag-character-in-attribute-value", (m) => attributes(m, { size_us: "10\u{e0041}" })],
+    ["error/format-character-in-attribute-key", (m) => attributes(m, { "size\u2066_us": "10" })],
+    ["error/astral-format-character", (m) => merchants(m, (x) => (x.name = "Run\u{110bd}Fast"))],
+    [
+      "ok/non-format-space-and-astral-text",
+      (m) => merchants(m, (x) => (x.name = "Run\u2009Fast \u{1f45f}")),
+    ],
+    ["ok/name-at-byte-limit", (m) => merchants(m, (x) => (x.name = "\u{1f45f}".repeat(32)))],
+    [
+      "error/name-over-byte-limit",
+      (m) => merchants(m, (x) => (x.name = `${"\u{1f45f}".repeat(32)}a`)),
+    ],
+    [
+      "error/website-over-limit",
+      (m) => merchants(m, (x) => (x.website = `https://a.example/${"p".repeat(2040)}`)),
+    ],
+    ["error/summary-over-limit", (m) => (m.intent.prompt_summary = "a".repeat(1025))],
+    ["ok/summary-at-limit", (m) => (m.intent.prompt_summary = "a".repeat(1024))],
+    ["error/subjective-over-limit", (m) => (m.intent.subjective = ["a".repeat(257)])],
   ];
   for (const [name, edit] of parseCases) {
     const m = clone(demo) as unknown as Mandate;

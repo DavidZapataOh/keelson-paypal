@@ -5,6 +5,13 @@ use crate::{CATEGORY_IDS, Error};
 /// Maximum lifetime of a mandate, in seconds.
 pub const MAX_LIFETIME_SECONDS: i64 = 30 * 86400;
 
+/// Maximum UTF-8 length, in bytes, of each free-form string; mirrors `STRING_LIMITS` in the
+/// TypeScript schema.
+const SHORT: usize = 128;
+const MEDIUM: usize = 256;
+const SUMMARY: usize = 1024;
+const URL: usize = 2048;
+
 const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
 
 const CURRENCIES: [&str; 24] = [
@@ -65,10 +72,46 @@ fn string<'a>(v: &'a Value, path: &str) -> Result<&'a str> {
     v.as_str().ok_or_else(|| invalid(path, "expected string"))
 }
 
-fn non_empty<'a>(v: &'a Value, path: &str) -> Result<&'a str> {
+/// Unicode general category Cf (format) characters, as of Unicode 17.
+fn is_format(c: char) -> bool {
+    matches!(
+        c,
+        '\u{ad}'
+            | '\u{600}'..='\u{605}'
+            | '\u{61c}'
+            | '\u{6dd}'
+            | '\u{70f}'
+            | '\u{890}'..='\u{891}'
+            | '\u{8e2}'
+            | '\u{180e}'
+            | '\u{200b}'..='\u{200f}'
+            | '\u{202a}'..='\u{202e}'
+            | '\u{2060}'..='\u{2064}'
+            | '\u{2066}'..='\u{206f}'
+            | '\u{feff}'
+            | '\u{fff9}'..='\u{fffb}'
+            | '\u{110bd}'
+            | '\u{110cd}'
+            | '\u{13430}'..='\u{1343f}'
+            | '\u{1bca0}'..='\u{1bca3}'
+            | '\u{1d173}'..='\u{1d17a}'
+            | '\u{e0001}'
+            | '\u{e0020}'..='\u{e007f}'
+    )
+}
+
+/// A string of at most `max` UTF-8 bytes (non-empty unless `empty`) with no Unicode control (Cc)
+/// or format (Cf) characters.
+fn text<'a>(v: &'a Value, path: &str, max: usize, empty: bool) -> Result<&'a str> {
     let s = string(v, path)?;
-    if s.is_empty() {
+    if !empty && s.is_empty() {
         return Err(invalid(path, "too small"));
+    }
+    if s.chars().any(|c| c.is_control() || is_format(c)) {
+        return Err(invalid(path, "control or format characters"));
+    }
+    if s.len() > max {
+        return Err(invalid(path, "too long"));
     }
     Ok(s)
 }
@@ -256,7 +299,7 @@ fn p256_jwk(v: &Value, path: &str, kid: bool) -> Result {
     matching(get(jwk, "x"), &join(path, "x"), is_b64url32)?;
     matching(get(jwk, "y"), &join(path, "y"), is_b64url32)?;
     if kid {
-        non_empty(get(jwk, "kid"), &join(path, "kid"))?;
+        text(get(jwk, "kid"), &join(path, "kid"), SHORT, false)?;
     }
     Ok(())
 }
@@ -290,9 +333,11 @@ fn payment_constraint(c: &Value, path: &str) -> Result {
             let o = strict(c, path, &["type", "allowed"])?;
             each(get(o, "allowed"), &p("allowed"), 1, |v, path| {
                 let payee = strict(v, path, &["paypal_merchant_id"])?;
-                non_empty(
+                text(
                     get(payee, "paypal_merchant_id"),
                     &join(path, "paypal_merchant_id"),
+                    SHORT,
+                    false,
                 )
                 .map(drop)
             })
@@ -315,28 +360,32 @@ fn category(v: &Value, path: &str) -> Result {
 
 fn merchant(v: &Value, path: &str) -> Result {
     let m = strict(v, path, &["id", "name", "website", "paypal_merchant_id"])?;
-    non_empty(get(m, "id"), &join(path, "id"))?;
-    non_empty(get(m, "name"), &join(path, "name"))?;
-    matching(get(m, "website"), &join(path, "website"), is_url)?;
-    non_empty(
+    text(get(m, "id"), &join(path, "id"), SHORT, false)?;
+    text(get(m, "name"), &join(path, "name"), SHORT, false)?;
+    if matching(get(m, "website"), &join(path, "website"), is_url)?.len() > URL {
+        return Err(invalid(&join(path, "website"), "too long"));
+    }
+    text(
         get(m, "paypal_merchant_id"),
         &join(path, "paypal_merchant_id"),
+        SHORT,
+        false,
     )
     .map(drop)
 }
 
 fn line_item(v: &Value, path: &str) -> Result {
     let item = strict(v, path, &["id", "acceptable_items", "quantity"])?;
-    non_empty(get(item, "id"), &join(path, "id"))?;
+    text(get(item, "id"), &join(path, "id"), SHORT, false)?;
     each(
         get(item, "acceptable_items"),
         &join(path, "acceptable_items"),
         1,
         |v, path| {
             let a = strict(v, path, &["id", "title?"])?;
-            non_empty(get(a, "id"), &join(path, "id"))?;
+            text(get(a, "id"), &join(path, "id"), SHORT, false)?;
             match a.get("title") {
-                Some(t) => string(t, &join(path, "title")).map(drop),
+                Some(t) => text(t, &join(path, "title"), MEDIUM, true).map(drop),
                 None => Ok(()),
             }
         },
@@ -366,7 +415,9 @@ fn checkout_constraint(c: &Value, path: &str) -> Result {
                 .as_object()
                 .ok_or_else(|| invalid(&p("must"), "expected record"))?;
             for (k, v) in must {
-                string(v, &join(&p("must"), k))?;
+                let path = join(&p("must"), k);
+                text(&Value::String(k.clone()), &path, SHORT, true)?;
+                text(v, &path, MEDIUM, true)?;
             }
             Ok(())
         }
@@ -380,7 +431,7 @@ fn checkout_constraint(c: &Value, path: &str) -> Result {
 }
 
 fn strings(v: &Value, path: &str) -> Result {
-    each(v, path, 0, |v, path| string(v, path).map(drop))
+    each(v, path, 0, |v, path| text(v, path, MEDIUM, true).map(drop))
 }
 
 /// Each required type appears exactly once and each optional type at most once.
@@ -446,12 +497,17 @@ pub fn parse_mandate(m: &Value) -> Result {
     }
 
     let user = strict(at("user"), "user", &["sub", "cred", "app_login_id"])?;
-    non_empty(get(user, "sub"), "user.sub")?;
+    text(get(user, "sub"), "user.sub", SHORT, false)?;
     let cred = strict(get(user, "cred"), "user.cred", &["id", "rp_id", "jwk"])?;
     matching(get(cred, "id"), "user.cred.id", crate::b64::is_base64url)?;
-    non_empty(get(cred, "rp_id"), "user.cred.rp_id")?;
+    text(get(cred, "rp_id"), "user.cred.rp_id", SHORT, false)?;
     p256_jwk(get(cred, "jwk"), "user.cred.jwk", false)?;
-    non_empty(get(user, "app_login_id"), "user.app_login_id")?;
+    text(
+        get(user, "app_login_id"),
+        "user.app_login_id",
+        MEDIUM,
+        false,
+    )?;
 
     let agent = strict(at("agent"), "agent", &["operator", "cnf", "bond"])?;
     let operator = strict(
@@ -459,16 +515,23 @@ pub fn parse_mandate(m: &Value) -> Result {
         "agent.operator",
         &["agent_registry", "agent_id"],
     )?;
-    non_empty(
+    text(
         get(operator, "agent_registry"),
         "agent.operator.agent_registry",
+        MEDIUM,
+        false,
     )?;
-    non_empty(get(operator, "agent_id"), "agent.operator.agent_id")?;
+    text(
+        get(operator, "agent_id"),
+        "agent.operator.agent_id",
+        SHORT,
+        false,
+    )?;
     let cnf = strict(get(agent, "cnf"), "agent.cnf", &["jwk"])?;
     p256_jwk(get(cnf, "jwk"), "agent.cnf.jwk", true)?;
     let bond = strict(get(agent, "bond"), "agent.bond", &["vault", "asset", "min"])?;
-    non_empty(get(bond, "vault"), "agent.bond.vault")?;
-    non_empty(get(bond, "asset"), "agent.bond.asset")?;
+    text(get(bond, "vault"), "agent.bond.vault", MEDIUM, false)?;
+    text(get(bond, "asset"), "agent.bond.asset", SHORT, false)?;
     integer(get(bond, "min"), "agent.bond.min", 0.0)?;
 
     let payment = strict(
@@ -498,7 +561,12 @@ pub fn parse_mandate(m: &Value) -> Result {
         "intent",
         &["prompt_summary", "prompt_hash", "subjective"],
     )?;
-    string(get(intent, "prompt_summary"), "intent.prompt_summary")?;
+    text(
+        get(intent, "prompt_summary"),
+        "intent.prompt_summary",
+        SUMMARY,
+        true,
+    )?;
     matching(get(intent, "prompt_hash"), "intent.prompt_hash", is_sha256)?;
     strings(get(intent, "subjective"), "intent.subjective")?;
 
@@ -507,8 +575,8 @@ pub fn parse_mandate(m: &Value) -> Result {
         "policy",
         &["engine", "version", "policy_set_hash", "measurements"],
     )?;
-    non_empty(get(policy, "engine"), "policy.engine")?;
-    non_empty(get(policy, "version"), "policy.version")?;
+    text(get(policy, "engine"), "policy.engine", SHORT, false)?;
+    text(get(policy, "version"), "policy.version", SHORT, false)?;
     matching(
         get(policy, "policy_set_hash"),
         "policy.policy_set_hash",
@@ -533,9 +601,11 @@ pub fn parse_mandate(m: &Value) -> Result {
         get(consent, "responsibility_ack"),
         "consent.responsibility_ack",
     )?;
-    non_empty(
+    text(
         get(consent, "merchant_policy_ack"),
         "consent.merchant_policy_ack",
+        SHORT,
+        false,
     )?;
     boolean(get(consent, "recurrence_ack"), "consent.recurrence_ack")?;
 
@@ -545,8 +615,8 @@ pub fn parse_mandate(m: &Value) -> Result {
     })?;
 
     let risk = strict(at("risk_data"), "risk_data", &["device_fp", "ip"])?;
-    string(get(risk, "device_fp"), "risk_data.device_fp")?;
-    string(get(risk, "ip"), "risk_data.ip")?;
+    text(get(risk, "device_fp"), "risk_data.device_fp", SHORT, true)?;
+    text(get(risk, "ip"), "risk_data.ip", SHORT, true)?;
 
     if nbf < iat {
         return Err(invalid("nbf", "nbf is before iat"));

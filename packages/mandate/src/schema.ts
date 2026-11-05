@@ -36,6 +36,35 @@ export const CATEGORY_TABLE: { readonly version: "v1"; readonly ids: readonly st
 
 const categoryId = z.enum(CATEGORY_TABLE.ids as [string, ...string[]]);
 
+const FORBIDDEN_CHARS = /[\p{Cc}\p{Cf}]/u;
+const utf8 = new TextEncoder();
+
+/**
+ * Maximum UTF-8 length, in bytes, of each free-form string. The caps are part of the mandate
+ * format and are mirrored by the Rust engine.
+ */
+export const STRING_LIMITS = {
+  /** Short identifiers and names: ids, names, asset, version, attribute keys and `kid`. */
+  short: 128,
+  /** Titles, attribute values, registries, vaults and similar descriptive text. */
+  medium: 256,
+  /** `intent.prompt_summary`. */
+  summary: 1024,
+  /** `website`. */
+  url: 2048,
+} as const;
+
+/**
+ * A non-empty (unless `empty`) string of at most `max` UTF-8 bytes with no Unicode control (Cc)
+ * or format (Cf) characters, so a displayed value cannot hide text, reorder it or break lines.
+ */
+const text = (max: number, empty = false) =>
+  z
+    .string()
+    .refine((s) => empty || s.length > 0, "too small")
+    .refine((s) => !FORBIDDEN_CHARS.test(s), "control or format characters")
+    .refine((s) => utf8.encode(s).length <= max, "too long");
+
 const amount = z.number().int().nonnegative().safe();
 const b64url = z.string().regex(/^[A-Za-z0-9_-]+$/);
 // Unpadded base64url with zero trailing bits: 22 chars decode to 16 bytes, 43 chars to 32 bytes.
@@ -52,10 +81,10 @@ const p256Jwk = z.strictObject({
 });
 
 const merchant = z.strictObject({
-  id: z.string().min(1),
-  name: z.string().min(1),
-  website: z.url(),
-  paypal_merchant_id: z.string().min(1),
+  id: text(STRING_LIMITS.short),
+  name: text(STRING_LIMITS.short),
+  website: z.url().refine((s) => utf8.encode(s).length <= STRING_LIMITS.url, "too long"),
+  paypal_merchant_id: text(STRING_LIMITS.short),
 });
 
 const paymentConstraint = z.discriminatedUnion("type", [
@@ -63,7 +92,7 @@ const paymentConstraint = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("payment.budget"), max: amount, currency }),
   z.strictObject({
     type: z.literal("payment.allowed_payees"),
-    allowed: z.array(z.strictObject({ paypal_merchant_id: z.string().min(1) })).min(1),
+    allowed: z.array(z.strictObject({ paypal_merchant_id: text(STRING_LIMITS.short) })).min(1),
   }),
   z.strictObject({ type: z.literal("payment.execution_date"), not_after: z.iso.datetime() }),
 ]);
@@ -77,9 +106,14 @@ const checkoutConstraint = z.discriminatedUnion("type", [
     type: z.literal("checkout.line_items"),
     items: z.array(
       z.strictObject({
-        id: z.string().min(1),
+        id: text(STRING_LIMITS.short),
         acceptable_items: z
-          .array(z.strictObject({ id: z.string().min(1), title: z.string().optional() }))
+          .array(
+            z.strictObject({
+              id: text(STRING_LIMITS.short),
+              title: text(STRING_LIMITS.medium, true).optional(),
+            }),
+          )
           .min(1),
         quantity: z.number().int().positive().safe(),
       }),
@@ -92,7 +126,7 @@ const checkoutConstraint = z.discriminatedUnion("type", [
   }),
   z.strictObject({
     type: z.literal("keelson.attributes"),
-    must: z.record(z.string(), z.string()),
+    must: z.record(text(STRING_LIMITS.short, true), text(STRING_LIMITS.medium, true)),
   }),
   z.strictObject({
     type: z.literal("keelson.returns"),
@@ -111,14 +145,21 @@ export const MandateSchema = z.strictObject({
   nonce: b64url16,
   mode: z.enum(["immediate", "autonomous"]),
   user: z.strictObject({
-    sub: z.string().min(1),
-    cred: z.strictObject({ id: b64url, rp_id: z.string().min(1), jwk: p256Jwk }),
-    app_login_id: z.string().min(1),
+    sub: text(STRING_LIMITS.short),
+    cred: z.strictObject({ id: b64url, rp_id: text(STRING_LIMITS.short), jwk: p256Jwk }),
+    app_login_id: text(STRING_LIMITS.medium),
   }),
   agent: z.strictObject({
-    operator: z.strictObject({ agent_registry: z.string().min(1), agent_id: z.string().min(1) }),
-    cnf: z.strictObject({ jwk: p256Jwk.extend({ kid: z.string().min(1) }) }),
-    bond: z.strictObject({ vault: z.string().min(1), asset: z.string().min(1), min: amount }),
+    operator: z.strictObject({
+      agent_registry: text(STRING_LIMITS.medium),
+      agent_id: text(STRING_LIMITS.short),
+    }),
+    cnf: z.strictObject({ jwk: p256Jwk.extend({ kid: text(STRING_LIMITS.short) }) }),
+    bond: z.strictObject({
+      vault: text(STRING_LIMITS.medium),
+      asset: text(STRING_LIMITS.short),
+      min: amount,
+    }),
   }),
   payment: z.strictObject({
     rail: z.literal("paypal"),
@@ -127,25 +168,28 @@ export const MandateSchema = z.strictObject({
   }),
   checkout: z.strictObject({ constraints: z.array(checkoutConstraint) }),
   intent: z.strictObject({
-    prompt_summary: z.string(),
+    prompt_summary: text(STRING_LIMITS.summary, true),
     prompt_hash: sha256,
-    subjective: z.array(z.string()),
+    subjective: z.array(text(STRING_LIMITS.medium, true)),
   }),
   policy: z.strictObject({
-    engine: z.string().min(1),
-    version: z.string().min(1),
+    engine: text(STRING_LIMITS.short),
+    version: text(STRING_LIMITS.short),
     policy_set_hash: sha256,
-    measurements: z.array(z.string()),
+    measurements: z.array(text(STRING_LIMITS.medium, true)),
   }),
   consent: z.strictObject({
     terms_hash: sha256,
     instruction_use: z.boolean(),
     responsibility_ack: z.boolean(),
-    merchant_policy_ack: z.string().min(1),
+    merchant_policy_ack: text(STRING_LIMITS.short),
     recurrence_ack: z.boolean(),
   }),
   zk: z.strictObject({ commitment: z.string().regex(/^0x[0-9a-f]{64}$/) }),
-  risk_data: z.strictObject({ device_fp: z.string(), ip: z.string() }),
+  risk_data: z.strictObject({
+    device_fp: text(STRING_LIMITS.short, true),
+    ip: text(STRING_LIMITS.short, true),
+  }),
 });
 
 export type Mandate = z.infer<typeof MandateSchema>;

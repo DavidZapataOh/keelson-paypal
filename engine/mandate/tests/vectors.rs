@@ -126,7 +126,7 @@ fn commitment_vectors() {
     let vectors = load(include_str!(
         "../../../packages/mandate/test/vectors/commitment.json"
     ));
-    assert_eq!(vectors.len(), 89);
+    assert_eq!(vectors.len(), 104);
     for v in vectors {
         let (i, name, expected) = (&v.input, v.name.as_str(), &v.expected);
         match i["op"].as_str().unwrap() {

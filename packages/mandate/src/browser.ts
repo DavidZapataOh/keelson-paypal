@@ -38,10 +38,43 @@ async function spcAvailable(): Promise<boolean> {
   return (await request?.securePaymentConfirmationAvailability?.()) === "available";
 }
 
+const isNotSupported = (e: unknown): boolean =>
+  e instanceof DOMException && e.name === "NotSupportedError";
+
+async function signWithSpc(
+  challenge: Uint8Array,
+  credentialIds: string[],
+  { payeeName, payeeOrigin, total }: SpcOptions,
+): Promise<SignedChallenge> {
+  const request = new PaymentRequest(
+    [
+      {
+        supportedMethods: "secure-payment-confirmation",
+        data: {
+          credentialIds: credentialIds.map(fromBase64Url),
+          challenge: Uint8Array.from(challenge),
+          rpId: RP_ID,
+          instrument: { displayName: "Keelson mandate", icon: INSTRUMENT_ICON },
+          payeeName,
+          payeeOrigin,
+          timeout: TIMEOUT_MS,
+        },
+      },
+    ],
+    { total: { label: "Total", amount: total } },
+  );
+  const response = await request.show();
+  await response.complete("success");
+  return fromCredential(
+    (response.details as PublicKeyCredential).toJSON() as unknown as AuthenticationResponseJSON,
+  );
+}
+
 /**
- * Signs `challenge` with a registered passkey, requiring user verification. With `opts.spc` and a
- * browser that supports Secure Payment Confirmation, the browser shows the payee and total in its own
- * confirmation dialog; otherwise this is a plain WebAuthn assertion.
+ * Signs `challenge` with a registered passkey, requiring user verification. With `opts.spc`
+ * (the `spc` of `prepareSigning`) and a browser that supports Secure Payment Confirmation, the
+ * browser shows the payee and total in its own confirmation dialog. A plain WebAuthn assertion is
+ * used only when SPC is unsupported; a cancelled or failed SPC prompt is never retried.
  */
 export async function signMandate(
   challenge: Uint8Array,
@@ -49,29 +82,11 @@ export async function signMandate(
   opts?: { spc?: SpcOptions },
 ): Promise<SignedChallenge> {
   if (opts?.spc && (await spcAvailable())) {
-    const { payeeName, payeeOrigin, total } = opts.spc;
-    const request = new PaymentRequest(
-      [
-        {
-          supportedMethods: "secure-payment-confirmation",
-          data: {
-            credentialIds: credentialIds.map(fromBase64Url),
-            challenge: Uint8Array.from(challenge),
-            rpId: RP_ID,
-            instrument: { displayName: "Keelson mandate", icon: INSTRUMENT_ICON },
-            payeeName,
-            payeeOrigin,
-            timeout: TIMEOUT_MS,
-          },
-        },
-      ],
-      { total: { label: "Total", amount: total } },
-    );
-    const response = await request.show();
-    await response.complete("success");
-    return fromCredential(
-      (response.details as PublicKeyCredential).toJSON() as unknown as AuthenticationResponseJSON,
-    );
+    try {
+      return await signWithSpc(challenge, credentialIds, opts.spc);
+    } catch (e) {
+      if (!isNotSupported(e)) throw e;
+    }
   }
   const assertion = await startAuthentication({
     optionsJSON: {

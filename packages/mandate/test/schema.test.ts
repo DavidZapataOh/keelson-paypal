@@ -194,6 +194,8 @@ describe("fieldColors", () => {
     m.checkout.constraints = m.checkout.constraints.slice(0, 1);
     m.intent.subjective = [];
     expect(fieldColors(parseMandate(m), none)).toEqual({
+      mode: "green",
+      recurrence: "green",
       total: "green",
       currency: "green",
       budget: "green",
@@ -207,6 +209,8 @@ describe("fieldColors", () => {
 
   it("colors an unproven mandate", () => {
     expect(fieldColors(mandate, none)).toEqual({
+      mode: "green",
+      recurrence: "green",
       total: "green",
       currency: "green",
       budget: "green",

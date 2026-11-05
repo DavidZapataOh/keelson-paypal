@@ -4,6 +4,8 @@ export type Color = "green" | "amber" | "gray";
 
 export type FieldId =
   | "total"
+  | "mode"
+  | "recurrence"
   | "currency"
   | "budget"
   | "merchant"
@@ -35,6 +37,8 @@ export function fieldColors(m: Mandate, evidence: Evidence): Partial<Record<Fiel
   const has = (type: string) => m.checkout.constraints.some((c) => c.type === type);
   const proven = (key: ZkTlsField): Color => (evidence.zkTlsFields.has(key) ? "green" : "amber");
   const colors: Partial<Record<FieldId, Color>> = {
+    mode: "green",
+    recurrence: "green",
     total: "green",
     currency: "green",
     budget: "green",
