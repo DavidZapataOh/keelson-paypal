@@ -1,5 +1,6 @@
 import { relations } from "drizzle-orm";
 import {
+  bigint,
   boolean,
   index,
   integer,
@@ -16,6 +17,9 @@ export const user = pgTable("user", {
   email: text("email").notNull().unique(),
   emailVerified: boolean("email_verified").default(false).notNull(),
   image: text("image"),
+  role: text("role", { enum: ["user", "admin"] })
+    .default("user")
+    .notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .defaultNow()
@@ -272,6 +276,32 @@ export const oauthClientAssertion = pgTable("oauth_client_assertion", {
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 });
 
+export const passkey = pgTable(
+  "passkey",
+  {
+    id: text("id").primaryKey(),
+    name: text("name"),
+    publicKey: text("public_key").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    credentialID: text("credential_id").notNull(),
+    /** WebAuthn signCount is a uint32, beyond `integer`. */
+    counter: bigint("counter", { mode: "number" }).notNull(),
+    deviceType: text("device_type").notNull(),
+    backedUp: boolean("backed_up").notNull(),
+    transports: text("transports"),
+    createdAt: timestamp("created_at", { withTimezone: true }),
+    aaguid: text("aaguid"),
+    /** Registered with the SPC `payment` extension the server issued for that ceremony. */
+    payment: boolean("payment").default(false).notNull(),
+  },
+  (table) => [
+    index("passkey_userId_idx").on(table.userId),
+    uniqueIndex("passkey_credentialID_uidx").on(table.credentialID),
+  ],
+);
+
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
   accounts: many(account),
@@ -279,6 +309,7 @@ export const userRelations = relations(user, ({ many }) => ({
   oauthRefreshTokens: many(oauthRefreshToken),
   oauthAccessTokens: many(oauthAccessToken),
   oauthConsents: many(oauthConsent),
+  passkeys: many(passkey),
 }));
 
 export const sessionRelations = relations(session, ({ one, many }) => ({
@@ -365,6 +396,13 @@ export const oauthConsentRelations = relations(oauthConsent, ({ one }) => ({
   }),
   user: one(user, {
     fields: [oauthConsent.userId],
+    references: [user.id],
+  }),
+}));
+
+export const passkeyRelations = relations(passkey, ({ one }) => ({
+  user: one(user, {
+    fields: [passkey.userId],
     references: [user.id],
   }),
 }));

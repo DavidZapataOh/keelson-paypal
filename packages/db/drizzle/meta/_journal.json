@@ -29,6 +29,41 @@
       "when": 1793859264127,
       "tag": "0003_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793913264338,
+      "tag": "0004_passkeys",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793913829015,
+      "tag": "0005_passkey_invariants",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793915261653,
+      "tag": "0006_mandate_signatures",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793916531832,
+      "tag": "0007_passkey_payment",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793919691407,
+      "tag": "0008_passkey_counter_bigint",
+      "breakpoints": true
     }
   ]
 }

@@ -44,6 +44,9 @@ async function populate(p: pg.Pool): Promise<void> {
     `insert into operators (agent_id, chain_id, name, cnf_jwk) values (1, 84532, 'bench', '{"kty":"OKP"}')`,
   );
   await p.query(`
+    insert into "user" (id, name, email)
+    select 'user-' || i, 'bench', 'user-' || i || '@example.com' from generate_series(0, 2499) i`);
+  await p.query(`
     insert into mandates (id, user_id, operator_agent_id, state, currency, max_minor, remaining_minor,
                           merchant_ids, expires_at, mandate_hash, created_at)
     select lpad(i::text, 26, '0'), 'user-' || (i % 2500), 1, 'ACTIVE', 'USD', 1000000, 1000000 - (i % 1000),

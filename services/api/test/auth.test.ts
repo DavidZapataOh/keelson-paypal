@@ -3,6 +3,7 @@ import type { AddressInfo } from "node:net";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { serve } from "@hono/node-server";
 import type { OpenAPIHono } from "@hono/zod-openapi";
+import { sql, user as users } from "@keelson/db";
 import { betterAuth } from "better-auth";
 import { testUtils } from "better-auth/plugins";
 import { pino } from "pino";
@@ -10,7 +11,7 @@ import { afterAll, beforeAll, expect, test } from "vitest";
 import { createApp } from "../src/app.ts";
 import { apiAudience, createAuth } from "../src/auth.ts";
 import { authenticate, requireClient, requireSession } from "../src/middleware/auth.ts";
-import { testDb, testKv } from "./setup.ts";
+import { testAuthEnv, testDb, testKv } from "./setup.ts";
 
 const secret = randomBytes(32).toString("base64url");
 let app!: OpenAPIHono;
@@ -20,7 +21,7 @@ const server = serve({ fetch: (req) => app.fetch(req), port: 0, hostname: "127.0
 await new Promise<void>((resolve) => server.once("listening", () => resolve()));
 const baseURL = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 
-const auth = createAuth(testDb, { BETTER_AUTH_SECRET: secret, BETTER_AUTH_URL: baseURL });
+const auth = createAuth(testDb, testAuthEnv(baseURL, secret));
 app = createApp({
   db: testDb,
   kv: testKv,
@@ -44,11 +45,15 @@ const helpers = betterAuth({
 });
 
 let sessionHeaders!: Headers;
+let userHeaders!: Headers;
 
 beforeAll(async () => {
   const { test: utils } = await helpers.$context;
+  const admin = await utils.saveUser(utils.createUser());
+  await testDb.update(users).set({ role: "admin" }).where(sql`${users.id} = ${admin.id}`);
+  sessionHeaders = await utils.getAuthHeaders({ userId: admin.id });
   const user = await utils.saveUser(utils.createUser());
-  sessionHeaders = await utils.getAuthHeaders({ userId: user.id });
+  userHeaders = await utils.getAuthHeaders({ userId: user.id });
 });
 
 afterAll(async () => {
@@ -192,3 +197,59 @@ test("two clients sending the same idempotency key do not collide", async () => 
   expect(replay.headers.get("idempotent-replayed")).toBe("true");
   expect((await replay.json()).client).toBe(a.id);
 });
+
+test("a signed-in user who is not an admin cannot create or manage OAuth clients", async () => {
+  const { id: clientId } = await registerClient(["alibis:read"]);
+  const routes: [method: "GET" | "POST", path: string, body?: object][] = [
+    ["POST", "/oauth2/create-client", { redirect_uris: ["https://rogue.example/callback"] }],
+    ["GET", "/oauth2/get-clients"],
+    ["GET", `/oauth2/get-client?client_id=${clientId}`],
+    ["POST", "/oauth2/update-client", { client_id: clientId, update: { client_name: "Rogue" } }],
+    ["POST", "/oauth2/client/rotate-secret", { client_id: clientId }],
+    ["POST", "/oauth2/delete-client", { client_id: clientId }],
+  ];
+  const send = (headers: Headers, [method, path, body]: (typeof routes)[number]) =>
+    app.request(`/api/auth${path}`, {
+      method,
+      headers: {
+        cookie: headers.get("cookie") as string,
+        origin: baseURL,
+        ...(body ? { "content-type": "application/json" } : {}),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+  for (const route of routes) {
+    expect((await send(userHeaders, route)).status, route[1]).toBe(401);
+  }
+  expect((await send(sessionHeaders, routes[2] as (typeof routes)[number])).status).toBe(200);
+  await expect(
+    auth.api.adminCreateOAuthClient({
+      headers: userHeaders,
+      body: {
+        client_name: "Rogue agent",
+        token_endpoint_auth_method: "client_secret_basic",
+        grant_types: ["client_credentials"],
+        client_credentials_scopes: ["operators:write"],
+        resources: [apiAudience],
+      },
+    }),
+  ).rejects.toMatchObject({ statusCode: 401 });
+});
+
+test.skipIf(!process.env.PAYPAL_CLIENT_ID)(
+  "sign in with PayPal starts at the sandbox authorize endpoint with our callback",
+  async () => {
+    const res = await app.request("/api/auth/sign-in/social", {
+      method: "POST",
+      headers: { origin: baseURL, "content-type": "application/json" },
+      body: JSON.stringify({ provider: "paypal" }),
+    });
+    expect(res.status).toBe(200);
+    const url = new URL((await res.json()).url);
+    expect(`${url.origin}${url.pathname}`).toBe("https://www.sandbox.paypal.com/signin/authorize");
+    expect(url.searchParams.get("client_id")).toBe(process.env.PAYPAL_CLIENT_ID);
+    expect(url.searchParams.get("redirect_uri")).toBe(`${baseURL}/api/auth/callback/paypal`);
+    expect(url.searchParams.get("response_type")).toBe("code");
+    expect(res.headers.get("set-cookie")).toContain("state");
+  },
+);

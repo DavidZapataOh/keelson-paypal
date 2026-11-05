@@ -38,11 +38,11 @@ type Patch<T extends TableName> = Partial<
 const tables: Tables = { mandates, purchases, disputes };
 
 /**
- * Moves a row from `from` to `to` in one conditional UPDATE.
+ * Moves a row from `from` to `to` in one conditional UPDATE, on `db` or inside a transaction.
  * Resolves to `false` when the row is no longer in `from`.
  */
 export async function transition<T extends TableName, F extends keyof Transitions[T]>(
-  db: Db,
+  db: Pick<Db, "update">,
   table: T,
   id: string,
   from: F,

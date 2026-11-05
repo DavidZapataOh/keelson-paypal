@@ -3,6 +3,7 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import type { Db } from "@keelson/db";
 import type { MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
 import { requestId } from "hono/request-id";
 import { timeout } from "hono/timeout";
@@ -17,6 +18,8 @@ import { type RateLimitOptions, rateLimit } from "./middleware/rate-limit.ts";
 import { ProblemSchema, problem } from "./problem.ts";
 import { registerEvents } from "./routes/events.ts";
 import { registerHealth } from "./routes/health.ts";
+import { registerMandates } from "./routes/mandates.ts";
+import { registerPasskeys } from "./routes/passkeys.ts";
 import { registerStatus } from "./routes/status.ts";
 
 export interface Deps {
@@ -25,6 +28,10 @@ export interface Deps {
   log: Logger;
   /** Better Auth instance served at `/api/auth/*`. */
   auth?: Auth;
+  /** Browser origin allowed to call `/api/auth/*` with credentials; where mandates are signed. */
+  appOrigin?: string;
+  /** WebAuthn RP ID that mandate signatures must be scoped to; defaults to `keelson.finance`. */
+  passkeyRpId?: string | undefined;
   /** Resolves `c.var.principal`; runs before idempotency so keys are scoped per principal. */
   authenticate?: MiddlewareHandler;
   /** Handler deadline in milliseconds; must stay below the idempotency lock lifetime. */
@@ -60,6 +67,19 @@ export function createApp(deps: Deps): OpenAPIHono {
   app.use(httpInstrumentationMiddleware());
   app.use(requestId({ generator: () => ulid() }));
   app.use(requestLogger(deps.log));
+  // The app calls the API cross-origin with its session cookie; preflights end here, before
+  // authentication, rate limiting and idempotency.
+  if (deps.appOrigin) {
+    app.use(
+      "/v1/*",
+      cors({
+        origin: deps.appOrigin,
+        credentials: true,
+        allowHeaders: ["content-type", "idempotency-key"],
+        exposeHeaders: ["location", "idempotent-replayed"],
+      }),
+    );
+  }
   app.use(
     "/v1/*",
     bodyLimit({
@@ -103,11 +123,14 @@ export function createApp(deps: Deps): OpenAPIHono {
 
   if (deps.auth) {
     const { auth } = deps;
+    if (deps.appOrigin) app.use("/api/auth/*", cors({ origin: deps.appOrigin, credentials: true }));
     app.all("/api/auth/*", (c) => auth.handler(c.req.raw));
   }
   registerHealth(app);
   registerStatus(app, deps);
   registerEvents(app, deps);
+  registerMandates(app, deps);
+  registerPasskeys(app, deps);
   app.get("/openapi.json", (c) =>
     c.json(app.getOpenAPI31Document({ openapi: "3.1.0", info: apiInfo })),
   );

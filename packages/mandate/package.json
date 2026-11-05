@@ -1,0 +1,41 @@
+{
+  "name": "@keelson/mandate",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "default": "./dist/browser.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "bench": "vitest bench --reporter=verbose",
+    "vectors": "node scripts/vectors.ts && node scripts/webauthn-vectors.ts"
+  },
+  "dependencies": {
+    "@keelson/core": "workspace:*",
+    "@sd-jwt/core": "0.24.3",
+    "@sd-jwt/sd-jwt-vc": "0.24.3",
+    "@simplewebauthn/browser": "14.0.0",
+    "jose": "6.2.15",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@noble/curves": "2.4.0",
+    "@types/node": "26.6.6",
+    "esbuild": "0.28.2",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

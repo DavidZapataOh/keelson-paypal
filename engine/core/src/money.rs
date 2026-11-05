@@ -2,44 +2,47 @@ use crate::Error;
 
 struct Currency {
     code: &'static str,
+    numeric: u16,
     exponent: u32,
     integer_only: bool,
 }
 
-const fn currency(code: &'static str, exponent: u32, integer_only: bool) -> Currency {
+const fn currency(code: &'static str, numeric: u16, exponent: u32, integer_only: bool) -> Currency {
     Currency {
         code,
+        numeric,
         exponent,
         integer_only,
     }
 }
 
-/// Currencies supported by the PayPal REST API, with ISO 4217 exponents and PayPal's decimal rules.
+/// Currencies supported by the PayPal REST API, with ISO 4217 numeric codes and exponents and
+/// PayPal's decimal rules.
 const CURRENCIES: [Currency; 24] = [
-    currency("AUD", 2, false),
-    currency("BRL", 2, false),
-    currency("CAD", 2, false),
-    currency("CNY", 2, false),
-    currency("CZK", 2, false),
-    currency("DKK", 2, false),
-    currency("EUR", 2, false),
-    currency("HKD", 2, false),
-    currency("HUF", 2, true),
-    currency("ILS", 2, false),
-    currency("JPY", 0, true),
-    currency("MYR", 2, false),
-    currency("MXN", 2, false),
-    currency("TWD", 2, true),
-    currency("NZD", 2, false),
-    currency("NOK", 2, false),
-    currency("PHP", 2, false),
-    currency("PLN", 2, false),
-    currency("GBP", 2, false),
-    currency("SGD", 2, false),
-    currency("SEK", 2, false),
-    currency("CHF", 2, false),
-    currency("THB", 2, false),
-    currency("USD", 2, false),
+    currency("AUD", 36, 2, false),
+    currency("BRL", 986, 2, false),
+    currency("CAD", 124, 2, false),
+    currency("CNY", 156, 2, false),
+    currency("CZK", 203, 2, false),
+    currency("DKK", 208, 2, false),
+    currency("EUR", 978, 2, false),
+    currency("HKD", 344, 2, false),
+    currency("HUF", 348, 2, true),
+    currency("ILS", 376, 2, false),
+    currency("JPY", 392, 0, true),
+    currency("MYR", 458, 2, false),
+    currency("MXN", 484, 2, false),
+    currency("TWD", 901, 2, true),
+    currency("NZD", 554, 2, false),
+    currency("NOK", 578, 2, false),
+    currency("PHP", 608, 2, false),
+    currency("PLN", 985, 2, false),
+    currency("GBP", 826, 2, false),
+    currency("SGD", 702, 2, false),
+    currency("SEK", 752, 2, false),
+    currency("CHF", 756, 2, false),
+    currency("THB", 764, 2, false),
+    currency("USD", 840, 2, false),
 ];
 
 /// An amount in minor units; never a float.
@@ -54,6 +57,11 @@ fn info(code: &str) -> Result<&'static Currency, Error> {
         .iter()
         .find(|c| c.code == code)
         .ok_or_else(|| Error::UnsupportedCurrency(code.to_owned()))
+}
+
+/// The ISO 4217 numeric code of a supported currency.
+pub fn currency_numeric(code: &str) -> Result<u16, Error> {
+    info(code).map(|c| c.numeric)
 }
 
 /// Formats an amount as the decimal string PayPal expects, e.g. `"94.00"` or `"94"` for JPY.

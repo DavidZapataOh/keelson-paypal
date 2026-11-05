@@ -4,6 +4,7 @@ import pg from "pg";
 import { pino } from "pino";
 import type { RedisClientType } from "redis";
 import { afterAll } from "vitest";
+import type { AuthEnv } from "../src/auth.ts";
 import { createKv } from "../src/kv.ts";
 
 const baseUrl = process.env.DATABASE_URL;
@@ -43,3 +44,15 @@ afterAll(async () => {
 await migrate(url);
 
 export const testDb: Db = handle.db;
+
+/** Auth settings for a server at `baseURL` that also serves the app. */
+export function testAuthEnv(baseURL: string, secret: string): AuthEnv {
+  return {
+    BETTER_AUTH_SECRET: secret,
+    BETTER_AUTH_URL: baseURL,
+    APP_ORIGIN: baseURL,
+    PAYPAL_CLIENT_ID: process.env.PAYPAL_CLIENT_ID ?? "",
+    PAYPAL_CLIENT_SECRET: process.env.PAYPAL_CLIENT_SECRET ?? "",
+    PAYPAL_ENV: "sandbox",
+  };
+}

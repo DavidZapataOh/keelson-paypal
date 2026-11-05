@@ -1,5 +1,16 @@
 import { sql } from "drizzle-orm";
-import { bigint, char, check, index, numeric, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  char,
+  check,
+  index,
+  jsonb,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+} from "drizzle-orm/pg-core";
+import { user } from "./auth.ts";
 import { mandateState } from "./enums.ts";
 import { operators } from "./operators.ts";
 import { bytea, createdAt, updatedAt } from "./types.ts";
@@ -8,7 +19,9 @@ export const mandates = pgTable(
   "mandates",
   {
     id: char({ length: 26 }).primaryKey(),
-    userId: text().notNull(),
+    userId: text()
+      .notNull()
+      .references(() => user.id),
     operatorAgentId: numeric({ precision: 78, scale: 0, mode: "bigint" })
       .notNull()
       .references(() => operators.agentId),
@@ -20,6 +33,12 @@ export const mandates = pgTable(
     expiresAt: timestamp({ withTimezone: true }).notNull(),
     mandateHash: bytea().unique("mandates_mandate_hash_unique"),
     commitment: bytea(),
+    /** The SD-JWT payload with its `_sd` digests, as signed. */
+    payloadSd: jsonb(),
+    disclosures: jsonb().$type<string[]>(),
+    /** The WebAuthn assertion over `mandate_hash`. */
+    userAuth: jsonb(),
+    credentialId: text(),
     paypalOrderId: text().unique("mandates_paypal_order_id_unique"),
     paypalAuthorizationId: text().unique("mandates_paypal_authorization_id_unique"),
     createdAt: createdAt(),

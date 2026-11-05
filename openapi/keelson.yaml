@@ -24,6 +24,155 @@ components:
         - status
         - instance
       additionalProperties: {}
+    CreatedMandate:
+      type: object
+      properties:
+        id:
+          type: string
+        mandateHash:
+          type: string
+          pattern: ^0x[0-9a-f]{64}$
+        state:
+          type: string
+          enum:
+            - SIGNED
+      required:
+        - id
+        - mandateHash
+        - state
+    CreateMandate:
+      type: object
+      properties:
+        payloadSd:
+          type: object
+          additionalProperties: {}
+          description: The SD-JWT payload with its `_sd` digests, as signed.
+        disclosures:
+          type: array
+          items:
+            type: string
+          maxItems: 1024
+          description: Every disclosure of the payload; each digest must resolve.
+        commitment:
+          type: string
+          pattern: ^0x[0-9a-f]{64}$
+          description: "`C_m`; must equal the payload's `zk.commitment`."
+        assertion:
+          $ref: "#/components/schemas/PasskeyAssertion"
+      required:
+        - payloadSd
+        - disclosures
+        - commitment
+        - assertion
+    PasskeyAssertion:
+      type: object
+      properties:
+        authenticatorData:
+          type: string
+        clientDataJSON:
+          type: string
+        signature:
+          type: string
+        credentialId:
+          type: string
+        userHandle:
+          type: string
+      required:
+        - authenticatorData
+        - clientDataJSON
+        - signature
+        - credentialId
+      description: A WebAuthn or Secure Payment Confirmation assertion, base64url fields.
+    Mandate:
+      type: object
+      properties:
+        id:
+          type: string
+        state:
+          type: string
+          enum:
+            - DRAFT
+            - COMPILED
+            - SIGNED
+            - HOLD_PENDING
+            - ACTIVE
+            - EXHAUSTED
+            - EXPIRED
+            - REVOKED
+        mandateHash:
+          type:
+            - string
+            - "null"
+          pattern: ^0x[0-9a-f]{64}$
+        card:
+          $ref: "#/components/schemas/MandateCard"
+      required:
+        - id
+        - state
+        - mandateHash
+        - card
+    MandateCard:
+      type:
+        - object
+        - "null"
+      properties:
+        rows:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              label:
+                type: string
+              values:
+                type: array
+                items:
+                  type: string
+              color:
+                type: string
+                enum:
+                  - green
+                  - amber
+                  - gray
+              answers:
+                type: string
+                enum:
+                  - Keelson
+                  - Agent operator
+                  - You
+            required:
+              - field
+              - label
+              - values
+              - color
+              - answers
+        warnings:
+          type: array
+          items:
+            type: string
+      required:
+        - rows
+        - warnings
+      description: The card rendered from the stored payload, before any checkout evidence.
+    Passkeys:
+      type: object
+      properties:
+        passkeys:
+          type: array
+          items:
+            type: object
+            properties:
+              credentialId:
+                type: string
+              payment:
+                type: boolean
+                description: Registered with the SPC `payment` extension, so SPC can use it.
+            required:
+              - credentialId
+              - payment
+      required:
+        - passkeys
   parameters: {}
 paths:
   /health:
@@ -135,6 +284,113 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "429":
           description: Too many concurrent streams for this principal
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/mandates:
+    post:
+      tags:
+        - mandates
+      summary: Store a passkey-signed mandate
+      description: Verifies the passkey assertion over `M =
+        SHA-256("keelson/mandate-challenge/v1" || 0x00 || H_sd || C_m)` and
+        stores the mandate as `SIGNED`.
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMandate"
+      responses:
+        "201":
+          description: The mandate was stored
+          headers:
+            location:
+              schema:
+                type: string
+              required: true
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedMandate"
+        "401":
+          description: Not signed in, or the signature is invalid
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The passkey is not the signer's
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: The mandate is already stored
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: The mandate is invalid
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/mandates/{id}:
+    get:
+      tags:
+        - mandates
+      summary: Get a mandate
+      parameters:
+        - schema:
+            type: string
+          required: true
+          name: id
+          in: path
+      responses:
+        "200":
+          description: The mandate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Mandate"
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: No such mandate for this user
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/passkeys:
+    get:
+      tags:
+        - passkeys
+      summary: List the signed-in user's passkeys
+      description: The credentials a mandate can be signed with, oldest first.
+      responses:
+        "200":
+          description: The passkeys
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Passkeys"
+        "401":
+          description: Not signed in
           content:
             application/problem+json:
               schema:

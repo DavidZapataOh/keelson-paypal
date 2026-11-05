@@ -15,6 +15,8 @@ pub enum Error {
     UnsupportedCurrency(String),
     /// A PayPal amount string was malformed or out of range.
     InvalidAmount(String),
+    /// A field tag was empty, longer than 31 bytes or not ASCII.
+    InvalidTag(String),
 }
 
 impl fmt::Display for Error {
@@ -26,6 +28,7 @@ impl fmt::Display for Error {
             Self::UnsupportedChain(id) => write!(f, "unsupported chain id: {id}"),
             Self::UnsupportedCurrency(c) => write!(f, "unsupported currency: {c}"),
             Self::InvalidAmount(a) => write!(f, "invalid amount: {a}"),
+            Self::InvalidTag(t) => write!(f, "invalid field tag: {t:?}"),
         }
     }
 }

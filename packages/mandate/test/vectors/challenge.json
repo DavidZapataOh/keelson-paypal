@@ -1,0 +1,356 @@
+[
+  {
+    "name": "hSd/demo",
+    "input": {
+      "op": "hSd",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "WvzMA2YaXVDHf6oKonWkL60O_ew25L5WDdqJiQerjFk",
+            "_GvUEuEGenYe6311L2X-bobfvKA50B62OSiDg2b82No",
+            "tu6DqX_JiTngl7F4gNmolRmpVzmR_DHdg0ydb4BeBlo"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "QMt9eaaudXcMRjnKDuLS2byspX5YlZcLcY5_m2580cM"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "GvXzKF355_0IAWPS8UWqst3arKoHW3Rce9ryAttPcI4"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "8aIurcwWMRiPsaWKZ-PNPlvM_w1gN1ojgABytdjj7Oc"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "_LREs0csuZyQJwAwwVgGNIBdNIPnklTWVTMjSXmedtY"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "jcrrgEZ8jxYQijwOSLRM5jcNADScvOs07lpespjfny4"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "XqaKySvrr5FTnnxG-3L_APLWajPiE3xDdw96WeqZtkA",
+            "ZV1pth3Yd7Ke-nZ_A5R3ziJlNOjC6-2JYyViQfAfm68"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "W_cgG9NH9DlJB2RNAK5kEG-Fo0HLO7QTjZiVgG5dmZ4"
+        ]
+      }
+    },
+    "expected": "0xc004109c7fed5206d11922b9be1bb8a67f518bcf1fefa7de2bf2fdc060c2e986"
+  },
+  {
+    "name": "hSd/edge",
+    "input": {
+      "op": "hSd",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "4LruYbE9-siDldLJ4Mct-U0X-Kausy_kYS-_UI2QySU",
+            "5YADUOFf9cdCQdDdQXXAL6QXp5JTcAjXLeuuKUJbMTo",
+            "nPJPRA4kzxc_a9dM1KBXgLxPJaRYNpT2ro0_ZXZFkU4"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 9007199254740991
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "DsD7HE-bFI_UcrDLd0R5IxtfBmmH9jXydV_ljonCnAg"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "zS60AXlGOcTw4OPEhj4wnzGl1gEJT8aPOuj6bMNJ9uo"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "5akFyCYL4uYamVgzK2D12dpS626Gh9h23ZvXUNblTDo"
+                },
+                {
+                  "...": "3iZJWcto6H_890GwUge6FNx7WFKCGy68ob-RYZ6g4ds"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "fgtvVfSYC_8aoNs1jsdKdkwcE6pXsqnz_8aiWMAYi-I"
+                },
+                {
+                  "...": "ynLyEu0Ge6azxDoAK7JrE5taewrZkx_59eRlymNoVTQ"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "X0gPC9091_96V6VhOixJvUU-XsePpBn_YiV2T_DxG68"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "mZpTY09nxzETemQwgumh3xWC3c8bRBnHM0qaly2o5jQ",
+            "sVb8F6BdnqZRGfYzp1BGT1te3K76MnrhQDHUu-4oxo4"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "lx5Q3Y_Qs-KGpTk_2zRHjjCsIjIy6a5vPzyWpSw723c"
+        ]
+      }
+    },
+    "expected": "0xc77e3326f8c49e8a8be1187b1f8cf0a062b3681ed9805500ec5a4801b6075b82"
+  },
+  {
+    "name": "challenge/demo",
+    "input": {
+      "op": "mandateChallenge",
+      "hSd": "0xc004109c7fed5206d11922b9be1bb8a67f518bcf1fefa7de2bf2fdc060c2e986",
+      "cm": "0x24a786c9e01c54ecea42239a898ccf411a74a828c3029bdeb35ab94aacd7cfd9"
+    },
+    "expected": "0xc5596b116d401fa90efdb1660dfc8d7e058f07d1e844822eb5b3dc06141ca37a"
+  },
+  {
+    "name": "challenge/zero",
+    "input": {
+      "op": "mandateChallenge",
+      "hSd": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "cm": "0x0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "expected": "0x263563df660c36c636d9827a54fe9d8cc453770a992e32382c0540ba00268879"
+  },
+  {
+    "name": "challenge/one",
+    "input": {
+      "op": "mandateChallenge",
+      "hSd": "0xc004109c7fed5206d11922b9be1bb8a67f518bcf1fefa7de2bf2fdc060c2e986",
+      "cm": "0x0000000000000000000000000000000000000000000000000000000000000001"
+    },
+    "expected": "0x9c0209cd37734ad68bb5fd848d9b08501bb7abff1735b42cffee678c1aaa610f"
+  },
+  {
+    "name": "challenge/max",
+    "input": {
+      "op": "mandateChallenge",
+      "hSd": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "cm": "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000"
+    },
+    "expected": "0xf098b45b870e2a0b92843ca7cbeebb41d59769137086862cd04c0d117d120b94"
+  }
+]

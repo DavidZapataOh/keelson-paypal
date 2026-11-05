@@ -1,4 +1,6 @@
 use acir::{AcirField, FieldElement};
+
+use crate::Error;
 use bn254_blackbox_solver::poseidon2_permutation;
 
 const RATE: usize = 3;
@@ -33,4 +35,12 @@ pub fn poseidon2(inputs: &[FieldElement]) -> FieldElement {
     }
 
     state[0]
+}
+
+/// Interprets up to 31 ASCII bytes as a big-endian field element.
+pub fn field_from_ascii(tag: &str) -> Result<FieldElement, Error> {
+    if tag.is_empty() || tag.len() > 31 || !tag.is_ascii() {
+        return Err(Error::InvalidTag(tag.to_owned()));
+    }
+    Ok(FieldElement::from_be_bytes_reduce(tag.as_bytes()))
 }

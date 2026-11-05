@@ -6,3 +6,16 @@ resolver = "3"
 edition = "2024"
 license = "Apache-2.0"
 publish = false
+
+# The mandate tests check thousands of P-256 signatures, which take ~10x longer unoptimized.
+[profile.dev.package.p256]
+opt-level = 3
+
+[profile.dev.package.primeorder]
+opt-level = 3
+
+[profile.dev.package.primefield]
+opt-level = 3
+
+[profile.dev.package.crypto-bigint]
+opt-level = 3

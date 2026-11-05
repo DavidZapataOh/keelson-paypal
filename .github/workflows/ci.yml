@@ -35,13 +35,18 @@ jobs:
           grep -rEn "paypalMockResponse|PayPal-Mock-Response" packages services apps --exclude-dir=node_modules --exclude-dir=dist || status=$?
           test "$status" -eq 1
       - run: pnpm turbo run typecheck test build --filter='!./packages/db' --filter='!./services/api' --cache-dir=.turbo
-      - run: pnpm --filter @keelson/core vectors && test -z "$(git status --porcelain)"
+      - run: |
+          pnpm --filter @keelson/core vectors
+          pnpm --filter @keelson/mandate vectors
+          test -z "$(git status --porcelain)"
 
   services:
     runs-on: ubuntu-24.04
     env:
       DATABASE_URL: postgres://postgres:keelson@localhost:5432/keelson
       REDIS_URL: redis://localhost:6379
+      PAYPAL_CLIENT_ID: ${{ secrets.PAYPAL_CLIENT_ID }}
+      PAYPAL_CLIENT_SECRET: ${{ secrets.PAYPAL_CLIENT_SECRET }}
     services:
       postgres:
         image: postgres:18
@@ -72,6 +77,7 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @keelson/api exec playwright install --with-deps chromium
       - run: pnpm turbo run typecheck test build --filter=./packages/db --filter=./services/api
       - run: pnpm migrate
       - run: pnpm --filter @keelson/api openapi && git diff --exit-code openapi/
