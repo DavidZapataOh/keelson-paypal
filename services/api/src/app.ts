@@ -30,6 +30,8 @@ export interface Deps {
   /** Handler deadline in milliseconds; must stay below the idempotency lock lifetime. */
   requestTimeoutMs?: number;
   rateLimit?: RateLimitOptions;
+  /** Aborting it ends every open event stream so the server can close. */
+  shutdown?: AbortSignal;
 }
 
 export const apiInfo = { title: "Keelson API", version: "0.0.0" } as const;

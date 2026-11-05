@@ -8,6 +8,9 @@ import { parseEnv } from "./env.ts";
 import { createKv } from "./kv.ts";
 import { createLogger } from "./logger.ts";
 import { authenticate } from "./middleware/auth.ts";
+import { closeServer } from "./shutdown.ts";
+
+const FORCE_EXIT_MS = 10_000;
 
 const env = parseEnv();
 const destination = pino.destination({ sync: false });
@@ -15,6 +18,7 @@ const log = createLogger(destination);
 const { db, pool } = createDb(env.DATABASE_URL);
 const kv = await createKv(env.REDIS_URL, log);
 const auth = createAuth(db, env);
+const shutdown = new AbortController();
 const app = createApp({
   db,
   kv,
@@ -22,6 +26,7 @@ const app = createApp({
   auth,
   authenticate: authenticate(auth, env.BETTER_AUTH_URL),
   rateLimit: { trustProxy: process.env.RENDER === "true" },
+  shutdown: shutdown.signal,
 });
 
 const server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
@@ -29,10 +34,22 @@ const server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
 });
 
 process.once("SIGTERM", () => {
-  server.close(() => {
-    void Promise.all([pool.end(), kv.close()]).then(() => {
+  setTimeout(() => {
+    log.error("shutdown timed out");
+    destination.flushSync();
+    process.exit(1);
+  }, FORCE_EXIT_MS).unref();
+  void closeServer(server, shutdown)
+    .then(() => Promise.all([pool.end(), kv.close()]))
+    .then(
+      () => 0,
+      (err: unknown) => {
+        log.error({ err }, "shutdown failed");
+        return 1;
+      },
+    )
+    .then((code) => {
       destination.flushSync();
-      process.exit(0);
+      process.exit(code);
     });
-  });
 });

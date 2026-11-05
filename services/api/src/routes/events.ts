@@ -60,7 +60,10 @@ const route = createRoute({
   },
 });
 
-export function registerEvents(app: OpenAPIHono, deps: Pick<Deps, "db" | "kv" | "log">): void {
+export function registerEvents(
+  app: OpenAPIHono,
+  deps: Pick<Deps, "db" | "kv" | "log" | "shutdown">,
+): void {
   const queries = createQueries(deps.db);
   // Per-instance count; the API runs as a single instance.
   const streams = new Map<string, number>();
@@ -141,6 +144,9 @@ export function registerEvents(app: OpenAPIHono, deps: Pick<Deps, "db" | "kv" | 
       };
 
       const closed = new Promise<void>((resolve) => stream.onAbort(resolve));
+      const end = (): void => stream.abort();
+      deps.shutdown?.addEventListener("abort", end, { once: true });
+      if (deps.shutdown?.aborted) end();
       const heartbeat = setInterval(() => {
         stream.write(": heartbeat\n\n").catch(() => {});
         if (cursor !== undefined) void drain();
@@ -161,6 +167,7 @@ export function registerEvents(app: OpenAPIHono, deps: Pick<Deps, "db" | "kv" | 
         if (left <= 0) streams.delete(owner);
         else streams.set(owner, left);
         clearInterval(heartbeat);
+        deps.shutdown?.removeEventListener("abort", end);
         await subscriber.unsubscribe(topic).catch(() => {});
         await subscriber.close().catch(() => subscriber.destroy());
       }
