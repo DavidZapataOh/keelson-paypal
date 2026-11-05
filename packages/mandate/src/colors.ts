@@ -17,11 +17,14 @@ export type FieldId =
   | "return_policy"
   | "subjective";
 
+/** Fields that zkTLS evidence can prove. */
+export type ZkTlsField = Extract<FieldId, "category" | "variant" | "return_policy">;
+
 export interface Evidence {
   /** The merchant signed the checkout, so items and prices are attested. */
   merchantSignedCheckout: boolean;
-  /** Fields proven with zkTLS: any of `category`, `variant`, `returns`. */
-  zkTlsFields: ReadonlySet<string>;
+  /** Fields proven with zkTLS. */
+  zkTlsFields: ReadonlySet<ZkTlsField>;
 }
 
 /**
@@ -30,7 +33,7 @@ export interface Evidence {
  */
 export function fieldColors(m: Mandate, evidence: Evidence): Partial<Record<FieldId, Color>> {
   const has = (type: string) => m.checkout.constraints.some((c) => c.type === type);
-  const proven = (key: string): Color => (evidence.zkTlsFields.has(key) ? "green" : "amber");
+  const proven = (key: ZkTlsField): Color => (evidence.zkTlsFields.has(key) ? "green" : "amber");
   const colors: Partial<Record<FieldId, Color>> = {
     total: "green",
     currency: "green",
@@ -45,7 +48,7 @@ export function fieldColors(m: Mandate, evidence: Evidence): Partial<Record<Fiel
     colors.items = evidence.merchantSignedCheckout ? "green" : "amber";
   if (has("keelson.category")) colors.category = proven("category");
   if (has("keelson.attributes")) colors.variant = proven("variant");
-  if (has("keelson.returns")) colors.return_policy = proven("returns");
+  if (has("keelson.returns")) colors.return_policy = proven("return_policy");
   if (m.intent.subjective.length > 0) colors.subjective = "gray";
   return colors;
 }

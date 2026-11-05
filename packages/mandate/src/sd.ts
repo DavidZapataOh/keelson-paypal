@@ -7,7 +7,7 @@ import {
   uint8ArrayToBase64Url,
 } from "@sd-jwt/core";
 import { type Mandate, parseMandate } from "./schema.ts";
-import { assertStrictJson, decodeStrictJson } from "./strict.ts";
+import { assertDigestsResolved, assertStrictJson, decodeStrictJson } from "./strict.ts";
 
 /** The SD-JWT `sha-256` hasher (RFC 9901 section 4.2.3); every other algorithm is refused. */
 export function sdHasher(data: string | ArrayBuffer, alg: string): Uint8Array {
@@ -97,13 +97,20 @@ export async function buildSdPayload(
   return { payloadSd: packedClaims, disclosures: disclosures.map((d) => d.encode()) };
 }
 
+/** A value with any object member possibly absent, as selective disclosure leaves it. */
+export type Disclosed<T> = T extends readonly (infer U)[]
+  ? Disclosed<U>[]
+  : T extends object
+    ? { [K in keyof T]?: Disclosed<T[K]> }
+    : T;
+
 /**
  * Applies `disclosures` to `payloadSd` (RFC 9901 section 7.1, step 3): every disclosure must match
  * exactly one digest, and duplicates are rejected. The payload, the disclosures and the result
- * must pass {@link assertStrictJson}. Fields whose disclosure is missing are absent
- * from the result, so it is a full {@link Mandate} only when every disclosure is given.
+ * must pass {@link assertStrictJson}. Fields and array elements whose disclosure is missing are
+ * absent from the result; use {@link decodeMandate} when every disclosure is required.
  */
-export function decodeDisclosed(payloadSd: object, disclosures: string[]): Mandate {
+export function decodeDisclosed(payloadSd: object, disclosures: string[]): Disclosed<Mandate> {
   assertSdAlg(payloadSd);
   assertStrictJson(payloadSd);
   const decoded = disclosures.map((d) => {
@@ -121,6 +128,16 @@ export function decodeDisclosed(payloadSd: object, disclosures: string[]): Manda
     throw new RangeError("cnf differs from agent.cnf");
   }
   return m;
+}
+
+/**
+ * {@link decodeDisclosed} for a fully disclosed mandate: every digest in `payloadSd` and in the
+ * disclosures must be resolved, and the result is parsed with {@link parseMandate}.
+ */
+export function decodeMandate(payloadSd: object, disclosures: string[]): Mandate {
+  const m = decodeDisclosed(payloadSd, disclosures);
+  assertDigestsResolved(payloadSd, disclosures);
+  return parseMandate(m);
 }
 
 export interface MerchantView {

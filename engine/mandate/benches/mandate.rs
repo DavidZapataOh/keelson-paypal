@@ -2,7 +2,7 @@ use std::hint::black_box;
 use std::time::Instant;
 
 use criterion::Criterion;
-use keelson_mandate::{decode_disclosed, h_sd, mandate_challenge, mandate_commitment};
+use keelson_mandate::{decode_mandate, h_sd, mandate_challenge, mandate_commitment};
 use serde_json::Value;
 
 const BUDGET_US: f64 = 1000.0;
@@ -29,7 +29,7 @@ fn input() -> Input {
 }
 
 fn derive(i: &Input, salt: [u8; 16]) -> [u8; 32] {
-    let m = decode_disclosed(&i.payload_sd, &i.disclosures).unwrap();
+    let m = decode_mandate(&i.payload_sd, &i.disclosures).unwrap();
     let h = h_sd(&i.payload_sd).unwrap();
     let cm = mandate_commitment(&m, salt).unwrap();
     mandate_challenge(&h, &cm)

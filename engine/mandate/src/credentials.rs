@@ -5,7 +5,7 @@ use p256::ecdsa::signature::Verifier;
 use p256::ecdsa::{Signature, VerifyingKey};
 use serde_json::{Map, Value, json};
 
-use crate::sd::{Disclosure, assert_sd_alg, digest, unpack};
+use crate::sd::{Disclosure, assert_digests_resolved, assert_sd_alg, digest, unpack};
 use crate::{Error, b64, parse_mandate};
 
 /// `typ` of the user credential, an SD-JWT VC.
@@ -71,8 +71,8 @@ pub struct OpenMandateOptions {
 pub struct VerifiedCredential {
     pub header: Map<String, Value>,
     /// The payload as signed, with its `_sd` digests. For an open mandate, the delegate payload
-    /// as disclosed, or `None` if it was not delegated through a disclosure.
-    pub payload: Option<Value>,
+    /// as disclosed.
+    pub payload: Value,
     /// The payload with the presented disclosures applied. For an open mandate, the delegate
     /// payload, `cnf` included.
     pub claims: Map<String, Value>,
@@ -260,7 +260,7 @@ fn verify_user_credential(
     cnf_jwk(claims.get("cnf"))?;
     Ok(VerifiedCredential {
         header: jwt.header,
-        payload: Some(Value::Object(jwt.payload)),
+        payload: Value::Object(jwt.payload),
         claims,
         user_auth: None,
         user_credential: None,
@@ -285,8 +285,8 @@ fn safe_integer(n: i64) -> bool {
 }
 
 /// Verifies a dSD-JWT as in section 6 of draft-ietf-oauth-delegate-sd-jwt-00, with one
-/// delegation, and requires every delegated disclosure, so that the delegate payload parses as a
-/// mandate.
+/// delegation, and requires every delegated disclosure: the delegate payload must itself be
+/// disclosed, and every digest in it, object member or array element, must be resolved.
 fn verify_open_mandate(
     token: &str,
     key: &VerifyingKey,
@@ -345,7 +345,9 @@ fn verify_open_mandate(
         .iter()
         .find(|d| Some(digest(d).as_str()) == slot)
         .map(|d| Disclosure::decode(d).map(|d| d.value))
-        .transpose()?;
+        .transpose()?
+        .ok_or_else(|| invalid("delegate payload is not disclosed"))?;
+    assert_digests_resolved(&Value::Object(signed.clone()), disclosures)?;
     let Value::Object(delegate) = delegates else {
         return Err(invalid("delegate payload is not an object"));
     };
@@ -395,6 +397,9 @@ pub fn verify_credential(
                 skew: 0.0,
             },
         );
+    }
+    if expected_typ != OPEN_MANDATE_TYP {
+        return Err(invalid(format!("unexpected typ {expected_typ}")));
     }
     let opts = opts.ok_or_else(|| invalid("open mandate verification needs options"))?;
     verify_open_mandate(token, &key, opts)

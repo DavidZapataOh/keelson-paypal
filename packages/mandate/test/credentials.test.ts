@@ -246,6 +246,76 @@ describe("strict input", () => {
 });
 
 describe("open mandate (L2)", () => {
+  /** The token with every disclosure whose decoded value satisfies `drop` removed. */
+  const without = (token: string, drop: (value: unknown) => boolean) =>
+    token
+      .split("~")
+      .filter(
+        (d, i) => i < 3 || d === "" || !drop(JSON.parse(Buffer.from(d, "base64url").toString())[1]),
+      )
+      .join("~");
+
+  it("rejects a withheld array element, which the schema alone would accept", async () => {
+    const { token, opts } = await openMandate();
+    const isItem = (v: unknown) => (v as { id?: unknown })?.id === "sku-trail-10";
+    await rejects(without(token, isItem), opts).toThrow(/digest/);
+  });
+
+  it("rejects a withheld merchant or payee when others remain", async () => {
+    const m = await liveMandate();
+    for (const c of m.payment.constraints) {
+      if (c.type === "payment.allowed_payees") c.allowed.push({ paypal_merchant_id: "MERCH2" });
+    }
+    for (const c of m.checkout.constraints) {
+      if (c.type === "checkout.allowed_merchants") {
+        c.allowed.push({
+          id: "mrc_two",
+          name: "Two",
+          website: "https://two.example",
+          paypal_merchant_id: "MERCH2",
+        });
+      }
+    }
+    const { payloadSd, disclosures } = await buildSdPayload(m, randomSalt);
+    const token = await issueOpenMandate(
+      {
+        userCredential: l1,
+        payloadSd,
+        disclosures,
+        userAuth: await assertion(passkey, randomSalt()),
+        aud: AUD,
+        nonce: m.nonce,
+      },
+      holder.privateKey,
+    );
+    const opts = {
+      expectedAud: AUD,
+      expectedNonce: m.nonce,
+      now: Math.floor(Date.now() / 1000),
+      maxSkewSec: 60,
+    };
+    await verifyCredential(token, OPEN_MANDATE_TYP, issuer.publicKey, opts);
+    const merchant = (v: unknown) => (v as { id?: unknown })?.id === "mrc_two";
+    const payee = (v: unknown) =>
+      (v as { paypal_merchant_id?: unknown })?.paypal_merchant_id === "MERCH2" &&
+      Object.keys(v as object).length === 1;
+    await rejects(without(token, merchant), opts).toThrow(/digest/);
+    await rejects(without(token, payee), opts).toThrow(/digest/);
+  });
+
+  it("rejects an unknown expected typ", async () => {
+    const { token, opts } = await openMandate();
+    await expect(
+      verifyCredential(token, "vc+sd-jwt" as typeof OPEN_MANDATE_TYP, issuer.publicKey, opts),
+    ).rejects.toThrow(/typ/);
+  });
+
+  it("returns the delegate payload as signed", async () => {
+    const { token, payloadSd, opts } = await openMandate();
+    const v = await verifyCredential(token, OPEN_MANDATE_TYP, issuer.publicKey, opts);
+    const payload: Record<string, unknown> = v.payload;
+    expect(payload).toEqual(payloadSd);
+  });
   it("rejects a delegate_payload that is not an array", async () => {
     const { token, payloadSd, opts } = await openMandate();
     const parts = token.split("~");
@@ -289,7 +359,7 @@ describe("open mandate (L2)", () => {
   it("rejects an open mandate with a withheld delegated disclosure", async () => {
     const { token, disclosures, opts } = await openMandate();
     const login = disclosures.find(isLogin);
-    await rejects(token.replace(`~${login}~`, "~"), opts).toThrow(/app_login_id/);
+    await rejects(token.replace(`~${login}~`, "~"), opts).toThrow(/digest/);
   });
 
   it("rejects a wrong audience or nonce", async () => {

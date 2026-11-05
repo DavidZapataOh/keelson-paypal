@@ -1,7 +1,6 @@
 import { poseidon2 } from "@keelson/core/poseidon2";
 import { describe, expect, it } from "vitest";
 import {
-  CATEGORY_TABLE,
   categoryMask,
   MERCHANT_TREE_CAPACITY,
   mandateCommitment,
@@ -13,7 +12,7 @@ import {
   verifyMerchantMembership,
   verifyMerchantNonMembership,
 } from "../src/commitment.ts";
-import { type Mandate, MandateError, parseMandate } from "../src/schema.ts";
+import { CATEGORY_TABLE, type Mandate, MandateError, parseMandate } from "../src/schema.ts";
 import demo from "./fixtures/demo-mandate.json" with { type: "json" };
 
 const USER_KEY_HASH_VECTOR = 0x219595c517c8f29d11b2230ac8ae01c2b9f57251612bb8f8c7812ca67885d92fn;
@@ -318,7 +317,7 @@ describe("mandateCommitment", () => {
     expect(seen.size).toBe(10);
   });
 
-  it("matches the spec formula over its ten inputs", async () => {
+  it("matches the C_m formula over its ten inputs", async () => {
     const m = mandate();
     const c = await mandateCommitment(m, salt);
     const tree = await merchantTree(merchants(m).map((x) => x.id));

@@ -1,6 +1,41 @@
 import { CURRENCIES, isUlid } from "@keelson/core";
 import { z } from "zod";
 
+/**
+ * Category bit table, version `v1`. Bit `i` of a category mask stands for `ids[i]`; entries are
+ * only ever appended. Ids are Google Product Taxonomy ids (taxonomy version 2021-09-21): the 21
+ * top-level categories in taxonomy order, then `gpt:187` (Apparel & Accessories > Shoes).
+ */
+export const CATEGORY_TABLE: { readonly version: "v1"; readonly ids: readonly string[] } = {
+  version: "v1",
+  ids: [
+    "gpt:1", // Animals & Pet Supplies
+    "gpt:166", // Apparel & Accessories
+    "gpt:8", // Arts & Entertainment
+    "gpt:537", // Baby & Toddler
+    "gpt:111", // Business & Industrial
+    "gpt:141", // Cameras & Optics
+    "gpt:222", // Electronics
+    "gpt:412", // Food, Beverages & Tobacco
+    "gpt:436", // Furniture
+    "gpt:632", // Hardware
+    "gpt:469", // Health & Beauty
+    "gpt:536", // Home & Garden
+    "gpt:5181", // Luggage & Bags
+    "gpt:772", // Mature
+    "gpt:783", // Media
+    "gpt:922", // Office Supplies
+    "gpt:5605", // Religious & Ceremonial
+    "gpt:2092", // Software
+    "gpt:988", // Sporting Goods
+    "gpt:1239", // Toys & Games
+    "gpt:888", // Vehicles & Parts
+    "gpt:187", // Apparel & Accessories > Shoes
+  ],
+};
+
+const categoryId = z.enum(CATEGORY_TABLE.ids as [string, ...string[]]);
+
 const amount = z.number().int().nonnegative().safe();
 const b64url = z.string().regex(/^[A-Za-z0-9_-]+$/);
 // Unpadded base64url with zero trailing bits: 22 chars decode to 16 bytes, 43 chars to 32 bytes.
@@ -43,17 +78,17 @@ const checkoutConstraint = z.discriminatedUnion("type", [
     items: z.array(
       z.strictObject({
         id: z.string().min(1),
-        acceptable_items: z.array(
-          z.strictObject({ id: z.string().min(1), title: z.string().optional() }),
-        ),
+        acceptable_items: z
+          .array(z.strictObject({ id: z.string().min(1), title: z.string().optional() }))
+          .min(1),
         quantity: z.number().int().positive().safe(),
       }),
     ),
   }),
   z.strictObject({
     type: z.literal("keelson.category"),
-    allow: z.array(z.string()).min(1),
-    deny: z.array(z.string()),
+    allow: z.array(categoryId).min(1),
+    deny: z.array(categoryId),
   }),
   z.strictObject({
     type: z.literal("keelson.attributes"),

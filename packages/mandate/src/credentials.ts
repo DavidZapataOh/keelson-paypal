@@ -12,7 +12,12 @@ import { SDJwtVcInstance } from "@sd-jwt/sd-jwt-vc";
 import { compactVerify, importJWK } from "jose";
 import { type Mandate, parseMandate } from "./schema.ts";
 import { assertSdAlg, sdHasher } from "./sd.ts";
-import { assertStrictJson, assertStrictJwt, decodeStrictJson } from "./strict.ts";
+import {
+  assertDigestsResolved,
+  assertStrictJson,
+  assertStrictJwt,
+  decodeStrictJson,
+} from "./strict.ts";
 
 /** `typ` of the user credential, an SD-JWT VC. */
 export const USER_CREDENTIAL_TYP = "dc+sd-jwt";
@@ -238,7 +243,8 @@ async function verifyUserCredential(
 
 /**
  * Verifies a dSD-JWT as in section 6 of draft-ietf-oauth-delegate-sd-jwt-00, with one delegation,
- * and requires every delegated disclosure, so that the delegate payload parses as a mandate.
+ * and requires every delegated disclosure: the delegate payload must itself be disclosed, and every
+ * digest in it, object member or array element, must be resolved.
  */
 async function verifyOpenMandate(
   token: string,
@@ -289,6 +295,8 @@ async function verifyOpenMandate(
     .slice(0, -1)
     .map((d) => Disclosure.fromEncodeSync(d, { hasher: sdHasher, alg: "sha-256" }))
     .find((d) => d._digest === slot);
+  if (!disclosure) throw new RangeError("delegate payload is not disclosed");
+  assertDigestsResolved(signed, rest.slice(0, -1));
   const delegate = delegates[0] as Record<string, unknown>;
   const { cnf, ...rawMandate } = delegate;
   jwkOf(cnf);
@@ -300,7 +308,7 @@ async function verifyOpenMandate(
   assertUserAuth(claims.user_auth);
   return {
     header,
-    payload: disclosure?.value as Record<string, unknown>,
+    payload: disclosure.value as Record<string, unknown>,
     claims: delegate,
     mandate,
     userAuth: claims.user_auth,
@@ -335,6 +343,9 @@ export function verifyCredential(
   opts?: OpenMandateVerifyOptions,
 ): Promise<VerifiedCredential> {
   if (expectedTyp === USER_CREDENTIAL_TYP) return verifyUserCredential(token, publicKey);
+  if (expectedTyp !== OPEN_MANDATE_TYP) {
+    return Promise.reject(new TypeError(`unexpected typ ${expectedTyp}`));
+  }
   if (!opts) return Promise.reject(new TypeError("open mandate verification needs opts"));
   return verifyOpenMandate(token, publicKey, opts);
 }

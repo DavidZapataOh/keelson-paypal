@@ -2038,7 +2038,6 @@ dependencies = [
 name = "keelson-mandate"
 version = "0.0.0"
 dependencies = [
- "alloy-primitives",
  "base64",
  "criterion",
  "keelson-core",

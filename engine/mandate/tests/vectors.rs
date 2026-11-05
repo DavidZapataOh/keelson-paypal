@@ -1,9 +1,10 @@
 use keelson_core::AcirField;
 use keelson_mandate::{
     Fr, Jwk, LeafPreimage, MembershipProof, NonMembershipProof, OpenMandateOptions,
-    VerifiedCredential, decode_disclosed, h_sd, mandate_challenge, mandate_commitment,
-    merchant_leaf, merchant_membership, merchant_non_membership, merchant_root, merchant_tree,
-    user_key_hash, verify_credential, verify_merchant_membership, verify_merchant_non_membership,
+    VerifiedCredential, decode_disclosed, decode_mandate, h_sd, mandate_challenge,
+    mandate_commitment, merchant_leaf, merchant_membership, merchant_non_membership, merchant_root,
+    merchant_tree, parse_mandate, user_key_hash, verify_credential, verify_merchant_membership,
+    verify_merchant_non_membership,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -65,10 +66,14 @@ fn sd_vectors() {
     let vectors = load(include_str!(
         "../../../packages/mandate/test/vectors/sd.json"
     ));
-    assert_eq!(vectors.len(), 90);
+    assert_eq!(vectors.len(), 106);
     for v in vectors {
         let disclosures = strings(&v.input["disclosures"]);
-        let result = decode_disclosed(&v.input["payloadSd"], &disclosures);
+        let result = match v.input["op"].as_str() {
+            None => decode_disclosed(&v.input["payloadSd"], &disclosures),
+            Some("decodeMandate") => decode_mandate(&v.input["payloadSd"], &disclosures),
+            Some(op) => panic!("unknown op {op}"),
+        };
         assert_outcome(&v.name, result, &v.expected, |m| m);
     }
 }
@@ -121,7 +126,7 @@ fn commitment_vectors() {
     let vectors = load(include_str!(
         "../../../packages/mandate/test/vectors/commitment.json"
     ));
-    assert_eq!(vectors.len(), 85);
+    assert_eq!(vectors.len(), 89);
     for v in vectors {
         let (i, name, expected) = (&v.input, v.name.as_str(), &v.expected);
         match i["op"].as_str().unwrap() {
@@ -207,6 +212,11 @@ fn commitment_vectors() {
                 let result = mandate_commitment(&i["mandate"], bytes(&i["salt"]));
                 assert_outcome(name, result, expected, |f| field_hex(&f));
             }
+            "parseMandate" => {
+                assert_outcome(name, parse_mandate(&i["mandate"]), expected, |()| {
+                    json!(true)
+                });
+            }
             op => panic!("unknown op {op}"),
         }
     }
@@ -222,10 +232,7 @@ fn options(v: &Value) -> Option<OpenMandateOptions> {
 }
 
 fn credential_json(v: &VerifiedCredential) -> Value {
-    let mut out = json!({ "header": v.header, "claims": v.claims });
-    if let Some(payload) = &v.payload {
-        out["payload"] = payload.clone();
-    }
+    let mut out = json!({ "header": v.header, "payload": v.payload, "claims": v.claims });
     if let Some(user_auth) = &v.user_auth {
         out["userAuth"] = user_auth.clone();
     }
@@ -249,7 +256,7 @@ fn credential_vectors() {
     let vectors = load(include_str!(
         "../../../packages/mandate/test/vectors/credentials.json"
     ));
-    assert_eq!(vectors.len(), 94);
+    assert_eq!(vectors.len(), 99);
     for v in vectors {
         assert_outcome(&v.name, verify(&v.input), &v.expected, |c| {
             credential_json(&c)

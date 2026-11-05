@@ -5,7 +5,7 @@ use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::strict::{MAX_DEPTH, PROTOTYPE_NAMES, check};
-use crate::{Error, b64};
+use crate::{Error, b64, parse_mandate};
 
 fn invalid(reason: impl Into<String>) -> Error {
     Error::Disclosure(reason.into())
@@ -184,7 +184,7 @@ pub(crate) fn unpack(
 
 /// Applies `disclosures` to `payload_SD` (RFC 9901 section 7.1, step 3): every disclosure must
 /// match exactly one digest, and duplicates are rejected. Fields whose disclosure is missing are
-/// absent from the result, so it is a full mandate only when every disclosure is given. The
+/// absent from the result; use [`decode_mandate`] when every disclosure is required. The
 /// top-level `cnf` must be `{ "jwk": agent.cnf.jwk }` and is removed. The payload, the
 /// disclosures and the result must stay within the strict JSON profile: safe integers only and
 /// at most 32 levels of nesting.
@@ -209,4 +209,46 @@ pub fn decode_disclosed(payload_sd: &Value, disclosures: &[String]) -> Result<Va
         return Err(invalid("cnf differs from agent.cnf"));
     }
     Ok(Value::Object(m))
+}
+
+/// Requires every `_sd` digest and every array element placeholder in `payload` and in the
+/// disclosed values to belong to one of `disclosures`. Keelson issues no decoy digests, so an
+/// unresolved digest is a withheld disclosure.
+pub(crate) fn assert_digests_resolved(payload: &Value, disclosures: &[&str]) -> Result<(), Error> {
+    fn walk(v: &Value, present: &HashSet<String>) -> Result<(), Error> {
+        let resolved = |d: &Value| match d.as_str() {
+            Some(d) if !present.contains(d) => Err(invalid("undisclosed digest")),
+            _ => Ok(()),
+        };
+        match v {
+            Value::Array(items) => items.iter().try_for_each(|item| {
+                if let Some(d) = item.as_object().and_then(|o| o.get("...")) {
+                    resolved(d)?;
+                }
+                walk(item, present)
+            }),
+            Value::Object(o) => {
+                if let Some(Value::Array(digests)) = o.get("_sd") {
+                    digests.iter().try_for_each(resolved)?;
+                }
+                o.values().try_for_each(|item| walk(item, present))
+            }
+            _ => Ok(()),
+        }
+    }
+    let present: HashSet<String> = disclosures.iter().map(|d| digest(d)).collect();
+    walk(payload, &present)?;
+    disclosures
+        .iter()
+        .try_for_each(|d| walk(&Disclosure::decode(d)?.value, &present))
+}
+
+/// [`decode_disclosed`] for a fully disclosed mandate: every digest in `payload_sd` and in the
+/// disclosures must be resolved, and the result must pass [`parse_mandate`].
+pub fn decode_mandate(payload_sd: &Value, disclosures: &[String]) -> Result<Value, Error> {
+    let m = decode_disclosed(payload_sd, disclosures)?;
+    let disclosures: Vec<&str> = disclosures.iter().map(String::as_str).collect();
+    assert_digests_resolved(payload_sd, &disclosures)?;
+    parse_mandate(&m)?;
+    Ok(m)
 }

@@ -1,4 +1,5 @@
-import { base64UrlToUint8Array } from "@sd-jwt/core";
+import { sha256 } from "@keelson/core";
+import { base64UrlToUint8Array, uint8ArrayToBase64Url } from "@sd-jwt/core";
 
 /** Deepest nesting of arrays and objects accepted in any credential or disclosure JSON. */
 export const MAX_DEPTH = 32;
@@ -23,6 +24,7 @@ const PROTOTYPE_NAMES: ReadonlySet<string> = new Set([
 ]);
 
 const INTEGER = /^-?(0|[1-9][0-9]*)$/;
+const encoder = new TextEncoder();
 
 function assertString(s: string): void {
   if (!s.isWellFormed()) throw new RangeError("string contains a lone surrogate");
@@ -91,4 +93,35 @@ export function assertStrictJwt(jwt: string): void {
   if (parts.length !== 3) throw new RangeError("invalid JWT");
   decodeStrictJson(parts[0] as string);
   decodeStrictJson(parts[1] as string);
+}
+
+/**
+ * Requires every `_sd` digest and every array element placeholder in `payload` and in the
+ * disclosed values to belong to one of `disclosures`. Keelson issues no decoy digests, so an
+ * unresolved digest is a withheld disclosure.
+ */
+export function assertDigestsResolved(payload: unknown, disclosures: readonly string[]): void {
+  const present = new Set(disclosures.map((d) => uint8ArrayToBase64Url(sha256(encoder.encode(d)))));
+  const resolved = (digest: unknown) => {
+    if (typeof digest === "string" && !present.has(digest)) {
+      throw new RangeError("undisclosed digest");
+    }
+  };
+  const walk = (v: unknown): void => {
+    if (v === null || typeof v !== "object") return;
+    if (Array.isArray(v)) {
+      for (const item of v) {
+        if (item !== null && typeof item === "object" && !Array.isArray(item) && "..." in item) {
+          resolved((item as Record<string, unknown>)["..."]);
+        }
+        walk(item);
+      }
+      return;
+    }
+    const o = v as Record<string, unknown>;
+    if (Array.isArray(o._sd)) o._sd.forEach(resolved);
+    for (const item of Object.values(o)) walk(item);
+  };
+  walk(payload);
+  for (const d of disclosures) walk((decodeStrictJson(d) as unknown[]).at(-1));
 }

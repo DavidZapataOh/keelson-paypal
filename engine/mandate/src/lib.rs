@@ -26,7 +26,7 @@ pub use credentials::{
 };
 pub use error::Error;
 pub use schema::{MAX_LIFETIME_SECONDS, parse_mandate};
-pub use sd::decode_disclosed;
+pub use sd::{decode_disclosed, decode_mandate};
 
 /// An element of the BN254 scalar field.
 pub type Fr = keelson_core::FieldElement;

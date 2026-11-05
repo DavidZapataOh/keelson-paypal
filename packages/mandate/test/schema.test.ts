@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { fieldColors } from "../src/colors.ts";
+import { fieldColors, type ZkTlsField } from "../src/colors.ts";
 import { MandateError, parseMandate } from "../src/schema.ts";
 import demo from "./fixtures/demo-mandate.json" with { type: "json" };
 
 // biome-ignore lint/suspicious/noExplicitAny: tests mutate arbitrary fields to build invalid input
-type Mock = Record<string, any>;
-const clone = () => structuredClone(demo) as Mock;
+type Loose = Record<string, any>;
+const clone = () => structuredClone(demo) as Loose;
 
 function fieldOf(input: unknown): string {
   try {
@@ -62,9 +62,25 @@ describe("parseMandate", () => {
 
   it("rejects an empty keelson.category allow list", () => {
     const m = clone();
-    const i = m.checkout.constraints.findIndex((c: Mock) => c.type === "keelson.category");
+    const i = m.checkout.constraints.findIndex((c: Loose) => c.type === "keelson.category");
     m.checkout.constraints[i].allow = [];
     expect(fieldOf(m)).toBe(`checkout.constraints.${i}.allow`);
+  });
+
+  it("rejects category ids outside the category table", () => {
+    const m = clone();
+    const i = m.checkout.constraints.findIndex((c: Loose) => c.type === "keelson.category");
+    m.checkout.constraints[i].allow = ["gpt:187", "gpt:999999"];
+    expect(fieldOf(m)).toBe(`checkout.constraints.${i}.allow.1`);
+    const n = clone();
+    n.checkout.constraints[i].deny = ["nope"];
+    expect(fieldOf(n)).toBe(`checkout.constraints.${i}.deny.0`);
+  });
+
+  it("rejects a line item with no acceptable items", () => {
+    const m = clone();
+    m.checkout.constraints[1].items[0].acceptable_items = [];
+    expect(fieldOf(m)).toBe("checkout.constraints.1.items.0.acceptable_items");
   });
 
   it("rejects empty allowed_merchants", () => {
@@ -130,10 +146,10 @@ describe("encodings", () => {
 
 describe("nested strictness", () => {
   it.each([
-    ["user.cred.jwk", (m: Mock) => m.user.cred.jwk],
-    ["payment.constraints.0", (m: Mock) => m.payment.constraints[0]],
-    ["checkout.constraints.0.allowed.0", (m: Mock) => m.checkout.constraints[0].allowed[0]],
-    ["consent", (m: Mock) => m.consent],
+    ["user.cred.jwk", (m: Loose) => m.user.cred.jwk],
+    ["payment.constraints.0", (m: Loose) => m.payment.constraints[0]],
+    ["checkout.constraints.0.allowed.0", (m: Loose) => m.checkout.constraints[0].allowed[0]],
+    ["consent", (m: Loose) => m.consent],
   ])("rejects an unknown key in %s", (path, pick) => {
     const m = clone();
     pick(m).extra = 1;
@@ -171,7 +187,7 @@ describe("constraint cardinality", () => {
 
 describe("fieldColors", () => {
   const mandate = parseMandate(demo);
-  const none = { merchantSignedCheckout: false, zkTlsFields: new Set<string>() };
+  const none = { merchantSignedCheckout: false, zkTlsFields: new Set<ZkTlsField>() };
 
   it("colors a minimal mandate with no unproven fields", () => {
     const m = clone();
@@ -216,10 +232,12 @@ describe("fieldColors", () => {
     expect(c.variant).toBe("green");
     expect(c.category).toBe("amber");
     expect(c.return_policy).toBe("amber");
+    const proven = fieldColors(mandate, { ...none, zkTlsFields: new Set(["return_policy"]) });
+    expect(proven.return_policy).toBe("green");
   });
 
   it("never makes subjective green", () => {
-    const all = new Set(["category", "variant", "returns", "subjective"]);
+    const all = new Set<ZkTlsField>(["category", "variant", "return_policy"]);
     expect(
       fieldColors(mandate, { merchantSignedCheckout: true, zkTlsFields: all }).subjective,
     ).toBe("gray");

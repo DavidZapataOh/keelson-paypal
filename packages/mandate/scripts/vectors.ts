@@ -30,7 +30,13 @@ import {
   verifyCredential,
 } from "../src/credentials.ts";
 import { type Mandate, parseMandate } from "../src/schema.ts";
-import { buildSdPayload, decodeDisclosed, merchantDisclosures, sdHasher } from "../src/sd.ts";
+import {
+  buildSdPayload,
+  decodeDisclosed,
+  decodeMandate,
+  merchantDisclosures,
+  sdHasher,
+} from "../src/sd.ts";
 import demo from "../test/fixtures/demo-mandate.json" with { type: "json" };
 
 const vectorsDir = resolve(dirname(fileURLToPath(import.meta.url)), "../test/vectors");
@@ -332,6 +338,39 @@ async function sdVectors() {
   badSd.user._sd = "not-an-array";
   await add("error/sd-not-array", badSd, disclosures);
   await add("error/payload-not-object", [] as unknown as object, []);
+
+  /** Full decoding: every digest must be resolved and the result must parse as a mandate. */
+  const full = async (name: string, payload: object, ds: string[]) => {
+    vectors.push({
+      name: `decodeMandate/${name}`,
+      input: { op: "decodeMandate", payloadSd: payload, disclosures: ds },
+      expected: await attempt(() => decodeMandate(clone(payload), ds)),
+    });
+  };
+  await full("demo", payloadSd, disclosures);
+  await full("edge", edge.payloadSd, edge.disclosures);
+  for (const [i, d] of disclosures.entries()) {
+    await full(
+      `error/without-${i}`,
+      payloadSd,
+      disclosures.filter((x) => x !== d),
+    );
+  }
+  for (const [label, test] of [
+    ["merchant", (v: Record<string, unknown>) => v.id === "mrc_𝄞_東京_😀"],
+    ["payee", (v: Record<string, unknown>) => v.paypal_merchant_id === "MERCH😀2" && !("id" in v)],
+  ] as const) {
+    const kept = edge.disclosures.filter((d) => {
+      const v = decodeDisclosure(d).at(-1);
+      return !(v !== null && typeof v === "object" && test(v as Record<string, unknown>));
+    });
+    await full(`error/edge-without-${label}`, edge.payloadSd, kept);
+  }
+  await full(
+    "error/decoy-digest",
+    { ...payloadSd, _sd: [...(payloadSd as { _sd: string[] })._sd, b64u(seed("decoy"))] },
+    disclosures,
+  );
   return vectors;
 }
 
@@ -663,6 +702,44 @@ async function commitmentVectors() {
       `mandateCommitment/${name}`,
       { op: "mandateCommitment", mandate: m, salt: hex(salt) },
       fieldOr(await attempt(() => mandateCommitment(clone(m), salt))),
+    );
+  }
+  const parseCases: [string, (m: Mandate) => void][] = [
+    ["demo", () => {}],
+    [
+      "error/unknown-allow-category",
+      (m) => {
+        for (const c of m.checkout.constraints)
+          if (c.type === "keelson.category") c.allow.push("gpt:999999");
+      },
+    ],
+    [
+      "error/unknown-deny-category",
+      (m) => {
+        for (const c of m.checkout.constraints)
+          if (c.type === "keelson.category") c.deny = ["nope"];
+      },
+    ],
+    [
+      "error/no-acceptable-items",
+      (m) => {
+        for (const c of m.checkout.constraints) {
+          if (c.type === "checkout.line_items")
+            (c.items[0] as { acceptable_items: unknown[] }).acceptable_items = [];
+        }
+      },
+    ],
+  ];
+  for (const [name, edit] of parseCases) {
+    const m = clone(demo) as unknown as Mandate;
+    edit(m);
+    push(
+      `parseMandate/${name}`,
+      { op: "parseMandate", mandate: m },
+      await attempt(() => {
+        parseMandate(clone(m));
+        return true;
+      }),
     );
   }
   return vectors;
@@ -1076,7 +1153,7 @@ async function credentialVectors() {
     })(),
   );
   await l2Case(
-    "valid-delegate-in-clear",
+    "error/delegate-in-clear",
     await issueL2({ ...base, delegatePayload: () => [payloadSd] }),
   );
   await l2Case(
@@ -1188,6 +1265,61 @@ async function credentialVectors() {
       await issueL2({ ...base, payloadSd: packedClaims, disclosures: ds.map((d) => d.encode()) }),
     );
   }
+  {
+    const isItem = (v: unknown) => (v as { id?: unknown } | null)?.id === "sku-trail-10";
+    await l2Case(
+      "error/withheld-acceptable-item",
+      l2
+        .split("~")
+        .filter((d, i) => i < 3 || d === "" || !isItem(decodeDisclosure(d).at(-1)))
+        .join("~"),
+    );
+    const two = clone(live);
+    two.payment.constraints.forEach((c) => {
+      if (c.type === "payment.allowed_payees") c.allowed.push({ paypal_merchant_id: "MERCH2" });
+    });
+    two.checkout.constraints.forEach((c) => {
+      if (c.type === "checkout.allowed_merchants") {
+        c.allowed.push({
+          id: "mrc_two",
+          name: "Two",
+          website: "https://two.example",
+          paypal_merchant_id: "MERCH2",
+        });
+      }
+    });
+    const twoSd = await buildSdPayload(two, salts("l2/two"));
+    const twoToken = await issueL2({
+      ...base,
+      payloadSd: twoSd.payloadSd,
+      disclosures: twoSd.disclosures,
+    });
+    await l2Case("valid-two-merchants", twoToken);
+    const strip = (test: (v: Record<string, unknown>) => boolean) =>
+      twoToken
+        .split("~")
+        .filter((d, i) => {
+          if (i < 3 || d === "") return true;
+          const v = decodeDisclosure(d).at(-1);
+          return !(v !== null && typeof v === "object" && test(v as Record<string, unknown>));
+        })
+        .join("~");
+    await l2Case(
+      "error/withheld-merchant",
+      strip((v) => v.id === "mrc_two"),
+    );
+    await l2Case(
+      "error/withheld-payee",
+      strip((v) => v.paypal_merchant_id === "MERCH2" && !("id" in v)),
+    );
+  }
+  vectors.push({
+    name: "l2/error/unknown-typ",
+    input: { token: l2, typ: "vc+sd-jwt", jwk: keys.issuer.jwk, opts },
+    expected: await attempt(() =>
+      verifyCredential(l2, "vc+sd-jwt" as typeof OPEN_MANDATE_TYP, keys.issuer.publicKey, opts),
+    ),
+  });
   await l2Case("error/missing-key-binding", `${l1Jwt}~~`);
   await l2Case("error/l1-only", l1);
   await l2Case("error/trailing-separator-missing", l2.slice(0, -1));

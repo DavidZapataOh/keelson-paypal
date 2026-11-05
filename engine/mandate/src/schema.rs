@@ -1,6 +1,6 @@
 use serde_json::{Map, Value};
 
-use crate::Error;
+use crate::{CATEGORY_IDS, Error};
 
 /// Maximum lifetime of a mandate, in seconds.
 pub const MAX_LIFETIME_SECONDS: i64 = 30 * 86400;
@@ -305,6 +305,14 @@ fn payment_constraint(c: &Value, path: &str) -> Result {
     }
 }
 
+/// A category id from [`CATEGORY_IDS`].
+fn category(v: &Value, path: &str) -> Result {
+    if !CATEGORY_IDS.contains(&string(v, path)?) {
+        return Err(invalid(path, "unknown category"));
+    }
+    Ok(())
+}
+
 fn merchant(v: &Value, path: &str) -> Result {
     let m = strict(v, path, &["id", "name", "website", "paypal_merchant_id"])?;
     non_empty(get(m, "id"), &join(path, "id"))?;
@@ -323,7 +331,7 @@ fn line_item(v: &Value, path: &str) -> Result {
     each(
         get(item, "acceptable_items"),
         &join(path, "acceptable_items"),
-        0,
+        1,
         |v, path| {
             let a = strict(v, path, &["id", "title?"])?;
             non_empty(get(a, "id"), &join(path, "id"))?;
@@ -349,12 +357,8 @@ fn checkout_constraint(c: &Value, path: &str) -> Result {
         }
         "keelson.category" => {
             let o = strict(c, path, &["type", "allow", "deny"])?;
-            each(get(o, "allow"), &p("allow"), 1, |v, path| {
-                string(v, path).map(drop)
-            })?;
-            each(get(o, "deny"), &p("deny"), 0, |v, path| {
-                string(v, path).map(drop)
-            })
+            each(get(o, "allow"), &p("allow"), 1, category)?;
+            each(get(o, "deny"), &p("deny"), 0, category)
         }
         "keelson.attributes" => {
             let o = strict(c, path, &["type", "must"])?;

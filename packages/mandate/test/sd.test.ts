@@ -5,7 +5,13 @@ import { BN254_FR_MODULUS } from "@keelson/core/poseidon2";
 import { describe, expect, it } from "vitest";
 import { hSd, mandateChallenge } from "../src/challenge.ts";
 import { type Mandate, parseMandate } from "../src/schema.ts";
-import { buildSdPayload, decodeDisclosed, merchantDisclosures, SD_FIELDS } from "../src/sd.ts";
+import {
+  buildSdPayload,
+  decodeDisclosed,
+  decodeMandate,
+  merchantDisclosures,
+  SD_FIELDS,
+} from "../src/sd.ts";
 import demo from "./fixtures/demo-mandate.json" with { type: "json" };
 
 /** The demo mandate, with a budget that differs from the per-purchase cap. */
@@ -130,9 +136,9 @@ describe("decodeDisclosed", () => {
     const { payloadSd, disclosures } = await buildSdPayload(m, randomSalt);
     const bare = decodeDisclosed(payloadSd, []);
     expect(bare).toEqual(withoutDisclosures(m, disclosures));
-    expect(bare.user.app_login_id).toBeUndefined();
+    expect(bare.user?.app_login_id).toBeUndefined();
     expect(bare.risk_data).toBeUndefined();
-    expect(bare.payment.constraints.map((c) => c.type)).not.toContain("payment.amount_range");
+    expect(bare.payment?.constraints?.map((c) => c.type)).not.toContain("payment.amount_range");
   });
 
   it("throws on a duplicate disclosure", async () => {
@@ -200,13 +206,13 @@ describe("merchantDisclosures", () => {
     expect(seen.user).toEqual({});
     expect(seen.intent).toEqual({ subjective: ["look good"] });
     expect(seen.risk_data).toBeUndefined();
-    expect(seen.payment.constraints).toEqual([
+    expect(seen.payment?.constraints).toEqual([
       { type: "payment.budget", currency: "USD" },
       { type: "payment.allowed_payees", allowed: [{ paypal_merchant_id: "MERCH7XK2Q9LD" }] },
       { type: "payment.execution_date", not_after: "2026-11-13T23:59:59Z" },
     ]);
-    const checkout = seen.checkout.constraints;
-    expect(checkout[0]).toEqual({
+    const checkout = seen.checkout?.constraints;
+    expect(checkout?.[0]).toEqual({
       type: "checkout.allowed_merchants",
       allowed: [
         {
@@ -217,7 +223,7 @@ describe("merchantDisclosures", () => {
         },
       ],
     });
-    expect(checkout[1]).toEqual({
+    expect(checkout?.[1]).toEqual({
       type: "checkout.line_items",
       items: [{ id: "l1", acceptable_items: [], quantity: 1 }],
     });
@@ -225,13 +231,13 @@ describe("merchantDisclosures", () => {
 
   it("adds the requested items and, when the user chooses, the cap", async () => {
     const { m, seen } = await view({ merchant: "mrc_trailco", items: ["sku-trail-11"], cap: true });
-    expect(seen.payment.constraints[0]).toEqual(m.payment.constraints[0]);
-    expect(seen.payment.constraints[1]).toEqual({ type: "payment.budget", currency: "USD" });
-    expect(seen.payment.constraints[2]).toEqual({
+    expect(seen.payment?.constraints?.[0]).toEqual(m.payment.constraints[0]);
+    expect(seen.payment?.constraints?.[1]).toEqual({ type: "payment.budget", currency: "USD" });
+    expect(seen.payment?.constraints?.[2]).toEqual({
       type: "payment.allowed_payees",
       allowed: [{ paypal_merchant_id: "MERCH2TRAILCO" }],
     });
-    expect(seen.checkout.constraints[1]).toEqual({
+    expect(seen.checkout?.constraints?.[1]).toEqual({
       type: "checkout.line_items",
       items: [
         {
@@ -242,7 +248,7 @@ describe("merchantDisclosures", () => {
       ],
     });
     expect(seen.user).toEqual({});
-    expect(seen.intent.prompt_hash).toBeUndefined();
+    expect(seen.intent?.prompt_hash).toBeUndefined();
   });
 
   it("throws for a merchant that is not in the mandate", async () => {
@@ -327,5 +333,25 @@ describe("decodeDisclosed input limits", () => {
     const p = structuredClone(payloadSd) as { intent: { subjective: unknown[] } };
     p.intent.subjective.push({ "...": "toString" });
     expect(() => decodeDisclosed(p, disclosures)).toThrow(/toString/);
+  });
+});
+
+describe("decodeMandate", () => {
+  it("decodes and parses a fully disclosed mandate", async () => {
+    const m = mandate();
+    const { payloadSd, disclosures } = await buildSdPayload(m, randomSalt);
+    expect(decodeMandate(payloadSd, disclosures)).toEqual(m);
+  });
+
+  it("rejects any withheld disclosure, including a single array element", async () => {
+    const { payloadSd, disclosures } = await buildSdPayload(twoMerchants(), randomSalt);
+    for (const d of disclosures) {
+      expect(() =>
+        decodeMandate(
+          payloadSd,
+          disclosures.filter((x) => x !== d),
+        ),
+      ).toThrow(/digest/);
+    }
   });
 });

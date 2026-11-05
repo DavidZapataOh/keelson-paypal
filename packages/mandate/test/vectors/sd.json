@@ -21144,5 +21144,3028 @@
       "disclosures": []
     },
     "expected": "error"
+  },
+  {
+    "name": "decodeMandate/demo",
+    "input": {
+      "op": "decodeMandate",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "WvzMA2YaXVDHf6oKonWkL60O_ew25L5WDdqJiQerjFk",
+            "_GvUEuEGenYe6311L2X-bobfvKA50B62OSiDg2b82No",
+            "tu6DqX_JiTngl7F4gNmolRmpVzmR_DHdg0ydb4BeBlo"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "QMt9eaaudXcMRjnKDuLS2byspX5YlZcLcY5_m2580cM"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "GvXzKF355_0IAWPS8UWqst3arKoHW3Rce9ryAttPcI4"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "8aIurcwWMRiPsaWKZ-PNPlvM_w1gN1ojgABytdjj7Oc"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "_LREs0csuZyQJwAwwVgGNIBdNIPnklTWVTMjSXmedtY"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "jcrrgEZ8jxYQijwOSLRM5jcNADScvOs07lpespjfny4"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "XqaKySvrr5FTnnxG-3L_APLWajPiE3xDdw96WeqZtkA",
+            "ZV1pth3Yd7Ke-nZ_A5R3ziJlNOjC6-2JYyViQfAfm68"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "W_cgG9NH9DlJB2RNAK5kEG-Fo0HLO7QTjZiVgG5dmZ4"
+        ]
+      },
+      "disclosures": [
+        "WyJ4WjBUTjJRQmFFS3hkMWZoN2s3NDdnIiwic3ViIiwia2xzX3Vzcl83ZjNhOWMyMSJd",
+        "WyJ5QTU0WFZSSEd4RUpTSDRhcFNicUlRIiwiY3JlZCIseyJpZCI6IlprM3AweFFtSDh2TjFzTHdUNXVZZEEiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6ImY4M09KM0QyeEYxQmc4dm5Ld3hvMUFvOGp6VjVUblExck03YlkwcWsyY0EiLCJ5IjoieF9GRXpSdTltMzZITE5fdHVlNjU5TE5wWFc2cEN5U3Rpa1lqS0lXSTVhMCJ9fV0",
+        "WyJSSEl2UnF0QmlucWlDMGNTVHFYVVdnIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJhNFQ5cG05YlV0UUpiMDlKcWNEUFVnIiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJaMWxhNGV4YTVDVmh2elJSUWVfcVlnIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyIybHl0ZG1FTWdES3FiOUFfbFVKX1hRIiwibWF4IiwxMDAwMF0",
+        "WyIyRjJwQ2ZHMU5LclVTNTRGTG94dGx3Iix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJNaEdXZDdaTHhmbTVYN252QlJIRUxBIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyJSLVFhUVR6RnVOdGNmd0JrM1p2V0F3Iix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJuakhoNmV0SnhiN21EcmQzc2tJOWZBIix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyIxNDNZVVNpRURyUXl6bllaT3E5NUlRIiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ]
+    },
+    "expected": {
+      "v": "keelson.mandate.1",
+      "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+      "iat": 1793750400,
+      "nbf": 1793750400,
+      "exp": 1794355200,
+      "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+      "mode": "autonomous",
+      "user": {
+        "sub": "kls_usr_7f3a9c21",
+        "cred": {
+          "id": "Zk3p0xQmH8vN1sLwT5uYdA",
+          "rp_id": "keelson.finance",
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "f83OJ3D2xF1Bg8vnKwxo1Ao8jzV5TnQ1rM7bY0qk2cA",
+            "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+          }
+        },
+        "app_login_id": "andres@example.com"
+      },
+      "agent": {
+        "operator": {
+          "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+          "agent_id": "42"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "bond": {
+          "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+          "asset": "PYUSD",
+          "min": 5000
+        }
+      },
+      "payment": {
+        "rail": "paypal",
+        "currency": "USD",
+        "constraints": [
+          {
+            "type": "payment.amount_range",
+            "max": 10000,
+            "currency": "USD"
+          },
+          {
+            "type": "payment.budget",
+            "max": 10000,
+            "currency": "USD"
+          },
+          {
+            "type": "payment.allowed_payees",
+            "allowed": [
+              {
+                "paypal_merchant_id": "MERCH7XK2Q9LD"
+              }
+            ]
+          },
+          {
+            "type": "payment.execution_date",
+            "not_after": "2026-11-13T23:59:59Z"
+          }
+        ]
+      },
+      "checkout": {
+        "constraints": [
+          {
+            "type": "checkout.allowed_merchants",
+            "allowed": [
+              {
+                "id": "mrc_runfast",
+                "name": "RunFast",
+                "website": "https://runfast.example",
+                "paypal_merchant_id": "MERCH7XK2Q9LD"
+              }
+            ]
+          },
+          {
+            "type": "checkout.line_items",
+            "items": [
+              {
+                "id": "l1",
+                "acceptable_items": [
+                  {
+                    "id": "sku-trail-10",
+                    "title": "Trail running shoe"
+                  }
+                ],
+                "quantity": 1
+              }
+            ]
+          },
+          {
+            "type": "keelson.category",
+            "allow": [
+              "gpt:187"
+            ],
+            "deny": []
+          },
+          {
+            "type": "keelson.attributes",
+            "must": {
+              "size_us": "10",
+              "color": "any"
+            }
+          },
+          {
+            "type": "keelson.returns",
+            "min_days": 30,
+            "free": true
+          }
+        ]
+      },
+      "intent": {
+        "prompt_summary": "Running shoes, size 10, under $100, free returns, by Friday",
+        "prompt_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "subjective": [
+          "look good"
+        ]
+      },
+      "policy": {
+        "engine": "keelson-engine",
+        "version": "1.0.0",
+        "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+        "measurements": [
+          "tdx:0a1b2c",
+          "nitro:3d4e5f"
+        ]
+      },
+      "consent": {
+        "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+        "instruction_use": true,
+        "responsibility_ack": true,
+        "merchant_policy_ack": "at_capture",
+        "recurrence_ack": false
+      },
+      "zk": {
+        "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+      },
+      "risk_data": {
+        "device_fp": "fp_3c9a71",
+        "ip": "203.0.113.7"
+      }
+    }
+  },
+  {
+    "name": "decodeMandate/edge",
+    "input": {
+      "op": "decodeMandate",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "4LruYbE9-siDldLJ4Mct-U0X-Kausy_kYS-_UI2QySU",
+            "5YADUOFf9cdCQdDdQXXAL6QXp5JTcAjXLeuuKUJbMTo",
+            "nPJPRA4kzxc_a9dM1KBXgLxPJaRYNpT2ro0_ZXZFkU4"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 9007199254740991
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "DsD7HE-bFI_UcrDLd0R5IxtfBmmH9jXydV_ljonCnAg"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "zS60AXlGOcTw4OPEhj4wnzGl1gEJT8aPOuj6bMNJ9uo"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "5akFyCYL4uYamVgzK2D12dpS626Gh9h23ZvXUNblTDo"
+                },
+                {
+                  "...": "3iZJWcto6H_890GwUge6FNx7WFKCGy68ob-RYZ6g4ds"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "fgtvVfSYC_8aoNs1jsdKdkwcE6pXsqnz_8aiWMAYi-I"
+                },
+                {
+                  "...": "ynLyEu0Ge6azxDoAK7JrE5taewrZkx_59eRlymNoVTQ"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "X0gPC9091_96V6VhOixJvUU-XsePpBn_YiV2T_DxG68"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "mZpTY09nxzETemQwgumh3xWC3c8bRBnHM0qaly2o5jQ",
+            "sVb8F6BdnqZRGfYzp1BGT1te3K76MnrhQDHUu-4oxo4"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "lx5Q3Y_Qs-KGpTk_2zRHjjCsIjIy6a5vPzyWpSw723c"
+        ]
+      },
+      "disclosures": [
+        "WyJHb182OUlTQ3BVX0tkWVd3SnBUWkRnIiwic3ViIiwia2xzX3Vzcl83ZjNhOWMyMSJd",
+        "WyJhRUx1bEk4TTRISDlGcXZzNG5YcWNnIiwiY3JlZCIseyJpZCI6IlprM3AweFFtSDh2TjFzTHdUNXVZZEEiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6ImY4M09KM0QyeEYxQmc4dm5Ld3hvMUFvOGp6VjVUblExck03YlkwcWsyY0EiLCJ5IjoieF9GRXpSdTltMzZITE5fdHVlNjU5TE5wWFc2cEN5U3Rpa1lqS0lXSTVhMCJ9fV0",
+        "WyJtMlZqbGJsbE1IVzZjazl0R1BjUnJBIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJibVlKVGFrVVZEbFFLRDNYakZDYjJBIiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJtWElGOF8tbnZKNktZLUFsejYzNFRBIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyJvWkJucWU3ZFE5VlJXZFItakxnZDBBIiwibWF4Iiw5MDA3MTk5MjU0NzQwOTkxXQ",
+        "WyJCVG9RZFo2WFhHRlpmWkY0Q3RWS3NBIix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJWOTlpUjg4azhfSVJXdlpObldub3VBIix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNI8J-YgDIifV0",
+        "WyJjajhOWWtQRW5lT1lSNnN5WXRrejBBIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6OTAwNzE5OTI1NDc0MDk5MSwiY3VycmVuY3kiOiJVU0QifV0",
+        "WyJaWkItaERyWndXTDlHX2Zxb2NGVm5nIix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJDV1pBMUVrZmIxNGN6ZmdMZDFWbjVBIix7ImlkIjoibXJjX_CdhJ5f5p2x5LqsX_CfmIAiLCJuYW1lIjoiQ2Fmw6kg8J2EniDmnbHkuqwg8J-YgCIsIndlYnNpdGUiOiJodHRwczovL3huLS1jYWYtZG1hLmV4YW1wbGUiLCJwYXlwYWxfbWVyY2hhbnRfaWQiOiJNRVJDSPCfmIAyIn1d",
+        "WyJPQjd2MVpaRnZZbm9Cd3hrckhXZWtBIix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyJlM19ncHdzekVFRGtPY0Y5VnZOQWdRIiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ]
+    },
+    "expected": {
+      "v": "keelson.mandate.1",
+      "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+      "iat": 1793750400,
+      "nbf": 1793750400,
+      "exp": 1794355200,
+      "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+      "mode": "autonomous",
+      "user": {
+        "sub": "kls_usr_7f3a9c21",
+        "cred": {
+          "id": "Zk3p0xQmH8vN1sLwT5uYdA",
+          "rp_id": "keelson.finance",
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "f83OJ3D2xF1Bg8vnKwxo1Ao8jzV5TnQ1rM7bY0qk2cA",
+            "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+          }
+        },
+        "app_login_id": "andres@example.com"
+      },
+      "agent": {
+        "operator": {
+          "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+          "agent_id": "42"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "bond": {
+          "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+          "asset": "PYUSD",
+          "min": 9007199254740991
+        }
+      },
+      "payment": {
+        "rail": "paypal",
+        "currency": "USD",
+        "constraints": [
+          {
+            "type": "payment.amount_range",
+            "max": 9007199254740991,
+            "currency": "USD"
+          },
+          {
+            "type": "payment.budget",
+            "max": 9007199254740991,
+            "currency": "USD"
+          },
+          {
+            "type": "payment.allowed_payees",
+            "allowed": [
+              {
+                "paypal_merchant_id": "MERCH7XK2Q9LD"
+              },
+              {
+                "paypal_merchant_id": "MERCH😀2"
+              }
+            ]
+          },
+          {
+            "type": "payment.execution_date",
+            "not_after": "2026-11-13T23:59:59Z"
+          }
+        ]
+      },
+      "checkout": {
+        "constraints": [
+          {
+            "type": "checkout.allowed_merchants",
+            "allowed": [
+              {
+                "id": "mrc_runfast",
+                "name": "RunFast",
+                "website": "https://runfast.example",
+                "paypal_merchant_id": "MERCH7XK2Q9LD"
+              },
+              {
+                "id": "mrc_𝄞_東京_😀",
+                "name": "Café 𝄞 東京 😀",
+                "website": "https://xn--caf-dma.example",
+                "paypal_merchant_id": "MERCH😀2"
+              }
+            ]
+          },
+          {
+            "type": "checkout.line_items",
+            "items": [
+              {
+                "id": "l1",
+                "acceptable_items": [
+                  {
+                    "id": "sku-trail-10",
+                    "title": "Trail running shoe"
+                  }
+                ],
+                "quantity": 1
+              }
+            ]
+          },
+          {
+            "type": "keelson.category",
+            "allow": [
+              "gpt:187"
+            ],
+            "deny": []
+          },
+          {
+            "type": "keelson.attributes",
+            "must": {
+              "size_us": "10",
+              "color": "any"
+            }
+          },
+          {
+            "type": "keelson.returns",
+            "min_days": 30,
+            "free": true
+          }
+        ]
+      },
+      "intent": {
+        "prompt_summary": "Running shoes, size 10, under $100, free returns, by Friday",
+        "prompt_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "subjective": [
+          "look good"
+        ]
+      },
+      "policy": {
+        "engine": "keelson-engine",
+        "version": "1.0.0",
+        "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+        "measurements": [
+          "tdx:0a1b2c",
+          "nitro:3d4e5f"
+        ]
+      },
+      "consent": {
+        "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+        "instruction_use": true,
+        "responsibility_ack": true,
+        "merchant_policy_ack": "at_capture",
+        "recurrence_ack": false
+      },
+      "zk": {
+        "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+      },
+      "risk_data": {
+        "device_fp": "fp_3c9a71",
+        "ip": "203.0.113.7"
+      }
+    }
+  },
+  {
+    "name": "decodeMandate/error/without-0",
+    "input": {
+      "op": "decodeMandate",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "WvzMA2YaXVDHf6oKonWkL60O_ew25L5WDdqJiQerjFk",
+            "_GvUEuEGenYe6311L2X-bobfvKA50B62OSiDg2b82No",
+            "tu6DqX_JiTngl7F4gNmolRmpVzmR_DHdg0ydb4BeBlo"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "QMt9eaaudXcMRjnKDuLS2byspX5YlZcLcY5_m2580cM"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "GvXzKF355_0IAWPS8UWqst3arKoHW3Rce9ryAttPcI4"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "8aIurcwWMRiPsaWKZ-PNPlvM_w1gN1ojgABytdjj7Oc"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "_LREs0csuZyQJwAwwVgGNIBdNIPnklTWVTMjSXmedtY"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "jcrrgEZ8jxYQijwOSLRM5jcNADScvOs07lpespjfny4"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "XqaKySvrr5FTnnxG-3L_APLWajPiE3xDdw96WeqZtkA",
+            "ZV1pth3Yd7Ke-nZ_A5R3ziJlNOjC6-2JYyViQfAfm68"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "W_cgG9NH9DlJB2RNAK5kEG-Fo0HLO7QTjZiVgG5dmZ4"
+        ]
+      },
+      "disclosures": [
+        "WyJ5QTU0WFZSSEd4RUpTSDRhcFNicUlRIiwiY3JlZCIseyJpZCI6IlprM3AweFFtSDh2TjFzTHdUNXVZZEEiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6ImY4M09KM0QyeEYxQmc4dm5Ld3hvMUFvOGp6VjVUblExck03YlkwcWsyY0EiLCJ5IjoieF9GRXpSdTltMzZITE5fdHVlNjU5TE5wWFc2cEN5U3Rpa1lqS0lXSTVhMCJ9fV0",
+        "WyJSSEl2UnF0QmlucWlDMGNTVHFYVVdnIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJhNFQ5cG05YlV0UUpiMDlKcWNEUFVnIiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJaMWxhNGV4YTVDVmh2elJSUWVfcVlnIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyIybHl0ZG1FTWdES3FiOUFfbFVKX1hRIiwibWF4IiwxMDAwMF0",
+        "WyIyRjJwQ2ZHMU5LclVTNTRGTG94dGx3Iix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJNaEdXZDdaTHhmbTVYN252QlJIRUxBIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyJSLVFhUVR6RnVOdGNmd0JrM1p2V0F3Iix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJuakhoNmV0SnhiN21EcmQzc2tJOWZBIix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyIxNDNZVVNpRURyUXl6bllaT3E5NUlRIiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ]
+    },
+    "expected": "error"
+  },
+  {
+    "name": "decodeMandate/error/without-1",
+    "input": {
+      "op": "decodeMandate",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "WvzMA2YaXVDHf6oKonWkL60O_ew25L5WDdqJiQerjFk",
+            "_GvUEuEGenYe6311L2X-bobfvKA50B62OSiDg2b82No",
+            "tu6DqX_JiTngl7F4gNmolRmpVzmR_DHdg0ydb4BeBlo"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "QMt9eaaudXcMRjnKDuLS2byspX5YlZcLcY5_m2580cM"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "GvXzKF355_0IAWPS8UWqst3arKoHW3Rce9ryAttPcI4"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "8aIurcwWMRiPsaWKZ-PNPlvM_w1gN1ojgABytdjj7Oc"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "_LREs0csuZyQJwAwwVgGNIBdNIPnklTWVTMjSXmedtY"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "jcrrgEZ8jxYQijwOSLRM5jcNADScvOs07lpespjfny4"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "XqaKySvrr5FTnnxG-3L_APLWajPiE3xDdw96WeqZtkA",
+            "ZV1pth3Yd7Ke-nZ_A5R3ziJlNOjC6-2JYyViQfAfm68"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "W_cgG9NH9DlJB2RNAK5kEG-Fo0HLO7QTjZiVgG5dmZ4"
+        ]
+      },
+      "disclosures": [
+        "WyJ4WjBUTjJRQmFFS3hkMWZoN2s3NDdnIiwic3ViIiwia2xzX3Vzcl83ZjNhOWMyMSJd",
+        "WyJSSEl2UnF0QmlucWlDMGNTVHFYVVdnIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJhNFQ5cG05YlV0UUpiMDlKcWNEUFVnIiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJaMWxhNGV4YTVDVmh2elJSUWVfcVlnIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyIybHl0ZG1FTWdES3FiOUFfbFVKX1hRIiwibWF4IiwxMDAwMF0",
+        "WyIyRjJwQ2ZHMU5LclVTNTRGTG94dGx3Iix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJNaEdXZDdaTHhmbTVYN252QlJIRUxBIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyJSLVFhUVR6RnVOdGNmd0JrM1p2V0F3Iix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJuakhoNmV0SnhiN21EcmQzc2tJOWZBIix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyIxNDNZVVNpRURyUXl6bllaT3E5NUlRIiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ]
+    },
+    "expected": "error"
+  },
+  {
+    "name": "decodeMandate/error/without-2",
+    "input": {
+      "op": "decodeMandate",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "WvzMA2YaXVDHf6oKonWkL60O_ew25L5WDdqJiQerjFk",
+            "_GvUEuEGenYe6311L2X-bobfvKA50B62OSiDg2b82No",
+            "tu6DqX_JiTngl7F4gNmolRmpVzmR_DHdg0ydb4BeBlo"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "QMt9eaaudXcMRjnKDuLS2byspX5YlZcLcY5_m2580cM"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "GvXzKF355_0IAWPS8UWqst3arKoHW3Rce9ryAttPcI4"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "8aIurcwWMRiPsaWKZ-PNPlvM_w1gN1ojgABytdjj7Oc"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "_LREs0csuZyQJwAwwVgGNIBdNIPnklTWVTMjSXmedtY"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "jcrrgEZ8jxYQijwOSLRM5jcNADScvOs07lpespjfny4"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "XqaKySvrr5FTnnxG-3L_APLWajPiE3xDdw96WeqZtkA",
+            "ZV1pth3Yd7Ke-nZ_A5R3ziJlNOjC6-2JYyViQfAfm68"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "W_cgG9NH9DlJB2RNAK5kEG-Fo0HLO7QTjZiVgG5dmZ4"
+        ]
+      },
+      "disclosures": [
+        "WyJ4WjBUTjJRQmFFS3hkMWZoN2s3NDdnIiwic3ViIiwia2xzX3Vzcl83ZjNhOWMyMSJd",
+        "WyJ5QTU0WFZSSEd4RUpTSDRhcFNicUlRIiwiY3JlZCIseyJpZCI6IlprM3AweFFtSDh2TjFzTHdUNXVZZEEiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6ImY4M09KM0QyeEYxQmc4dm5Ld3hvMUFvOGp6VjVUblExck03YlkwcWsyY0EiLCJ5IjoieF9GRXpSdTltMzZITE5fdHVlNjU5TE5wWFc2cEN5U3Rpa1lqS0lXSTVhMCJ9fV0",
+        "WyJhNFQ5cG05YlV0UUpiMDlKcWNEUFVnIiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJaMWxhNGV4YTVDVmh2elJSUWVfcVlnIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyIybHl0ZG1FTWdES3FiOUFfbFVKX1hRIiwibWF4IiwxMDAwMF0",
+        "WyIyRjJwQ2ZHMU5LclVTNTRGTG94dGx3Iix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJNaEdXZDdaTHhmbTVYN252QlJIRUxBIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyJSLVFhUVR6RnVOdGNmd0JrM1p2V0F3Iix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJuakhoNmV0SnhiN21EcmQzc2tJOWZBIix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyIxNDNZVVNpRURyUXl6bllaT3E5NUlRIiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ]
+    },
+    "expected": "error"
+  },
+  {
+    "name": "decodeMandate/error/without-3",
+    "input": {
+      "op": "decodeMandate",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "WvzMA2YaXVDHf6oKonWkL60O_ew25L5WDdqJiQerjFk",
+            "_GvUEuEGenYe6311L2X-bobfvKA50B62OSiDg2b82No",
+            "tu6DqX_JiTngl7F4gNmolRmpVzmR_DHdg0ydb4BeBlo"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "QMt9eaaudXcMRjnKDuLS2byspX5YlZcLcY5_m2580cM"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "GvXzKF355_0IAWPS8UWqst3arKoHW3Rce9ryAttPcI4"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "8aIurcwWMRiPsaWKZ-PNPlvM_w1gN1ojgABytdjj7Oc"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "_LREs0csuZyQJwAwwVgGNIBdNIPnklTWVTMjSXmedtY"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "jcrrgEZ8jxYQijwOSLRM5jcNADScvOs07lpespjfny4"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "XqaKySvrr5FTnnxG-3L_APLWajPiE3xDdw96WeqZtkA",
+            "ZV1pth3Yd7Ke-nZ_A5R3ziJlNOjC6-2JYyViQfAfm68"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "W_cgG9NH9DlJB2RNAK5kEG-Fo0HLO7QTjZiVgG5dmZ4"
+        ]
+      },
+      "disclosures": [
+        "WyJ4WjBUTjJRQmFFS3hkMWZoN2s3NDdnIiwic3ViIiwia2xzX3Vzcl83ZjNhOWMyMSJd",
+        "WyJ5QTU0WFZSSEd4RUpTSDRhcFNicUlRIiwiY3JlZCIseyJpZCI6IlprM3AweFFtSDh2TjFzTHdUNXVZZEEiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6ImY4M09KM0QyeEYxQmc4dm5Ld3hvMUFvOGp6VjVUblExck03YlkwcWsyY0EiLCJ5IjoieF9GRXpSdTltMzZITE5fdHVlNjU5TE5wWFc2cEN5U3Rpa1lqS0lXSTVhMCJ9fV0",
+        "WyJSSEl2UnF0QmlucWlDMGNTVHFYVVdnIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJaMWxhNGV4YTVDVmh2elJSUWVfcVlnIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyIybHl0ZG1FTWdES3FiOUFfbFVKX1hRIiwibWF4IiwxMDAwMF0",
+        "WyIyRjJwQ2ZHMU5LclVTNTRGTG94dGx3Iix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJNaEdXZDdaTHhmbTVYN252QlJIRUxBIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyJSLVFhUVR6RnVOdGNmd0JrM1p2V0F3Iix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJuakhoNmV0SnhiN21EcmQzc2tJOWZBIix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyIxNDNZVVNpRURyUXl6bllaT3E5NUlRIiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ]
+    },
+    "expected": "error"
+  },
+  {
+    "name": "decodeMandate/error/without-4",
+    "input": {
+      "op": "decodeMandate",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "WvzMA2YaXVDHf6oKonWkL60O_ew25L5WDdqJiQerjFk",
+            "_GvUEuEGenYe6311L2X-bobfvKA50B62OSiDg2b82No",
+            "tu6DqX_JiTngl7F4gNmolRmpVzmR_DHdg0ydb4BeBlo"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "QMt9eaaudXcMRjnKDuLS2byspX5YlZcLcY5_m2580cM"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "GvXzKF355_0IAWPS8UWqst3arKoHW3Rce9ryAttPcI4"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "8aIurcwWMRiPsaWKZ-PNPlvM_w1gN1ojgABytdjj7Oc"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "_LREs0csuZyQJwAwwVgGNIBdNIPnklTWVTMjSXmedtY"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "jcrrgEZ8jxYQijwOSLRM5jcNADScvOs07lpespjfny4"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "XqaKySvrr5FTnnxG-3L_APLWajPiE3xDdw96WeqZtkA",
+            "ZV1pth3Yd7Ke-nZ_A5R3ziJlNOjC6-2JYyViQfAfm68"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "W_cgG9NH9DlJB2RNAK5kEG-Fo0HLO7QTjZiVgG5dmZ4"
+        ]
+      },
+      "disclosures": [
+        "WyJ4WjBUTjJRQmFFS3hkMWZoN2s3NDdnIiwic3ViIiwia2xzX3Vzcl83ZjNhOWMyMSJd",
+        "WyJ5QTU0WFZSSEd4RUpTSDRhcFNicUlRIiwiY3JlZCIseyJpZCI6IlprM3AweFFtSDh2TjFzTHdUNXVZZEEiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6ImY4M09KM0QyeEYxQmc4dm5Ld3hvMUFvOGp6VjVUblExck03YlkwcWsyY0EiLCJ5IjoieF9GRXpSdTltMzZITE5fdHVlNjU5TE5wWFc2cEN5U3Rpa1lqS0lXSTVhMCJ9fV0",
+        "WyJSSEl2UnF0QmlucWlDMGNTVHFYVVdnIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJhNFQ5cG05YlV0UUpiMDlKcWNEUFVnIiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyIybHl0ZG1FTWdES3FiOUFfbFVKX1hRIiwibWF4IiwxMDAwMF0",
+        "WyIyRjJwQ2ZHMU5LclVTNTRGTG94dGx3Iix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJNaEdXZDdaTHhmbTVYN252QlJIRUxBIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyJSLVFhUVR6RnVOdGNmd0JrM1p2V0F3Iix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJuakhoNmV0SnhiN21EcmQzc2tJOWZBIix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyIxNDNZVVNpRURyUXl6bllaT3E5NUlRIiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ]
+    },
+    "expected": "error"
+  },
+  {
+    "name": "decodeMandate/error/without-5",
+    "input": {
+      "op": "decodeMandate",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "WvzMA2YaXVDHf6oKonWkL60O_ew25L5WDdqJiQerjFk",
+            "_GvUEuEGenYe6311L2X-bobfvKA50B62OSiDg2b82No",
+            "tu6DqX_JiTngl7F4gNmolRmpVzmR_DHdg0ydb4BeBlo"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "QMt9eaaudXcMRjnKDuLS2byspX5YlZcLcY5_m2580cM"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "GvXzKF355_0IAWPS8UWqst3arKoHW3Rce9ryAttPcI4"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "8aIurcwWMRiPsaWKZ-PNPlvM_w1gN1ojgABytdjj7Oc"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "_LREs0csuZyQJwAwwVgGNIBdNIPnklTWVTMjSXmedtY"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "jcrrgEZ8jxYQijwOSLRM5jcNADScvOs07lpespjfny4"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "XqaKySvrr5FTnnxG-3L_APLWajPiE3xDdw96WeqZtkA",
+            "ZV1pth3Yd7Ke-nZ_A5R3ziJlNOjC6-2JYyViQfAfm68"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "W_cgG9NH9DlJB2RNAK5kEG-Fo0HLO7QTjZiVgG5dmZ4"
+        ]
+      },
+      "disclosures": [
+        "WyJ4WjBUTjJRQmFFS3hkMWZoN2s3NDdnIiwic3ViIiwia2xzX3Vzcl83ZjNhOWMyMSJd",
+        "WyJ5QTU0WFZSSEd4RUpTSDRhcFNicUlRIiwiY3JlZCIseyJpZCI6IlprM3AweFFtSDh2TjFzTHdUNXVZZEEiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6ImY4M09KM0QyeEYxQmc4dm5Ld3hvMUFvOGp6VjVUblExck03YlkwcWsyY0EiLCJ5IjoieF9GRXpSdTltMzZITE5fdHVlNjU5TE5wWFc2cEN5U3Rpa1lqS0lXSTVhMCJ9fV0",
+        "WyJSSEl2UnF0QmlucWlDMGNTVHFYVVdnIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJhNFQ5cG05YlV0UUpiMDlKcWNEUFVnIiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJaMWxhNGV4YTVDVmh2elJSUWVfcVlnIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyIyRjJwQ2ZHMU5LclVTNTRGTG94dGx3Iix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJNaEdXZDdaTHhmbTVYN252QlJIRUxBIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyJSLVFhUVR6RnVOdGNmd0JrM1p2V0F3Iix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJuakhoNmV0SnhiN21EcmQzc2tJOWZBIix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyIxNDNZVVNpRURyUXl6bllaT3E5NUlRIiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ]
+    },
+    "expected": "error"
+  },
+  {
+    "name": "decodeMandate/error/without-6",
+    "input": {
+      "op": "decodeMandate",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "WvzMA2YaXVDHf6oKonWkL60O_ew25L5WDdqJiQerjFk",
+            "_GvUEuEGenYe6311L2X-bobfvKA50B62OSiDg2b82No",
+            "tu6DqX_JiTngl7F4gNmolRmpVzmR_DHdg0ydb4BeBlo"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "QMt9eaaudXcMRjnKDuLS2byspX5YlZcLcY5_m2580cM"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "GvXzKF355_0IAWPS8UWqst3arKoHW3Rce9ryAttPcI4"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "8aIurcwWMRiPsaWKZ-PNPlvM_w1gN1ojgABytdjj7Oc"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "_LREs0csuZyQJwAwwVgGNIBdNIPnklTWVTMjSXmedtY"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "jcrrgEZ8jxYQijwOSLRM5jcNADScvOs07lpespjfny4"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "XqaKySvrr5FTnnxG-3L_APLWajPiE3xDdw96WeqZtkA",
+            "ZV1pth3Yd7Ke-nZ_A5R3ziJlNOjC6-2JYyViQfAfm68"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "W_cgG9NH9DlJB2RNAK5kEG-Fo0HLO7QTjZiVgG5dmZ4"
+        ]
+      },
+      "disclosures": [
+        "WyJ4WjBUTjJRQmFFS3hkMWZoN2s3NDdnIiwic3ViIiwia2xzX3Vzcl83ZjNhOWMyMSJd",
+        "WyJ5QTU0WFZSSEd4RUpTSDRhcFNicUlRIiwiY3JlZCIseyJpZCI6IlprM3AweFFtSDh2TjFzTHdUNXVZZEEiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6ImY4M09KM0QyeEYxQmc4dm5Ld3hvMUFvOGp6VjVUblExck03YlkwcWsyY0EiLCJ5IjoieF9GRXpSdTltMzZITE5fdHVlNjU5TE5wWFc2cEN5U3Rpa1lqS0lXSTVhMCJ9fV0",
+        "WyJSSEl2UnF0QmlucWlDMGNTVHFYVVdnIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJhNFQ5cG05YlV0UUpiMDlKcWNEUFVnIiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJaMWxhNGV4YTVDVmh2elJSUWVfcVlnIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyIybHl0ZG1FTWdES3FiOUFfbFVKX1hRIiwibWF4IiwxMDAwMF0",
+        "WyJNaEdXZDdaTHhmbTVYN252QlJIRUxBIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyJSLVFhUVR6RnVOdGNmd0JrM1p2V0F3Iix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJuakhoNmV0SnhiN21EcmQzc2tJOWZBIix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyIxNDNZVVNpRURyUXl6bllaT3E5NUlRIiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ]
+    },
+    "expected": "error"
+  },
+  {
+    "name": "decodeMandate/error/without-7",
+    "input": {
+      "op": "decodeMandate",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "WvzMA2YaXVDHf6oKonWkL60O_ew25L5WDdqJiQerjFk",
+            "_GvUEuEGenYe6311L2X-bobfvKA50B62OSiDg2b82No",
+            "tu6DqX_JiTngl7F4gNmolRmpVzmR_DHdg0ydb4BeBlo"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "QMt9eaaudXcMRjnKDuLS2byspX5YlZcLcY5_m2580cM"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "GvXzKF355_0IAWPS8UWqst3arKoHW3Rce9ryAttPcI4"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "8aIurcwWMRiPsaWKZ-PNPlvM_w1gN1ojgABytdjj7Oc"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "_LREs0csuZyQJwAwwVgGNIBdNIPnklTWVTMjSXmedtY"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "jcrrgEZ8jxYQijwOSLRM5jcNADScvOs07lpespjfny4"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "XqaKySvrr5FTnnxG-3L_APLWajPiE3xDdw96WeqZtkA",
+            "ZV1pth3Yd7Ke-nZ_A5R3ziJlNOjC6-2JYyViQfAfm68"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "W_cgG9NH9DlJB2RNAK5kEG-Fo0HLO7QTjZiVgG5dmZ4"
+        ]
+      },
+      "disclosures": [
+        "WyJ4WjBUTjJRQmFFS3hkMWZoN2s3NDdnIiwic3ViIiwia2xzX3Vzcl83ZjNhOWMyMSJd",
+        "WyJ5QTU0WFZSSEd4RUpTSDRhcFNicUlRIiwiY3JlZCIseyJpZCI6IlprM3AweFFtSDh2TjFzTHdUNXVZZEEiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6ImY4M09KM0QyeEYxQmc4dm5Ld3hvMUFvOGp6VjVUblExck03YlkwcWsyY0EiLCJ5IjoieF9GRXpSdTltMzZITE5fdHVlNjU5TE5wWFc2cEN5U3Rpa1lqS0lXSTVhMCJ9fV0",
+        "WyJSSEl2UnF0QmlucWlDMGNTVHFYVVdnIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJhNFQ5cG05YlV0UUpiMDlKcWNEUFVnIiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJaMWxhNGV4YTVDVmh2elJSUWVfcVlnIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyIybHl0ZG1FTWdES3FiOUFfbFVKX1hRIiwibWF4IiwxMDAwMF0",
+        "WyIyRjJwQ2ZHMU5LclVTNTRGTG94dGx3Iix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJSLVFhUVR6RnVOdGNmd0JrM1p2V0F3Iix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJuakhoNmV0SnhiN21EcmQzc2tJOWZBIix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyIxNDNZVVNpRURyUXl6bllaT3E5NUlRIiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ]
+    },
+    "expected": "error"
+  },
+  {
+    "name": "decodeMandate/error/without-8",
+    "input": {
+      "op": "decodeMandate",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "WvzMA2YaXVDHf6oKonWkL60O_ew25L5WDdqJiQerjFk",
+            "_GvUEuEGenYe6311L2X-bobfvKA50B62OSiDg2b82No",
+            "tu6DqX_JiTngl7F4gNmolRmpVzmR_DHdg0ydb4BeBlo"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "QMt9eaaudXcMRjnKDuLS2byspX5YlZcLcY5_m2580cM"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "GvXzKF355_0IAWPS8UWqst3arKoHW3Rce9ryAttPcI4"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "8aIurcwWMRiPsaWKZ-PNPlvM_w1gN1ojgABytdjj7Oc"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "_LREs0csuZyQJwAwwVgGNIBdNIPnklTWVTMjSXmedtY"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "jcrrgEZ8jxYQijwOSLRM5jcNADScvOs07lpespjfny4"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "XqaKySvrr5FTnnxG-3L_APLWajPiE3xDdw96WeqZtkA",
+            "ZV1pth3Yd7Ke-nZ_A5R3ziJlNOjC6-2JYyViQfAfm68"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "W_cgG9NH9DlJB2RNAK5kEG-Fo0HLO7QTjZiVgG5dmZ4"
+        ]
+      },
+      "disclosures": [
+        "WyJ4WjBUTjJRQmFFS3hkMWZoN2s3NDdnIiwic3ViIiwia2xzX3Vzcl83ZjNhOWMyMSJd",
+        "WyJ5QTU0WFZSSEd4RUpTSDRhcFNicUlRIiwiY3JlZCIseyJpZCI6IlprM3AweFFtSDh2TjFzTHdUNXVZZEEiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6ImY4M09KM0QyeEYxQmc4dm5Ld3hvMUFvOGp6VjVUblExck03YlkwcWsyY0EiLCJ5IjoieF9GRXpSdTltMzZITE5fdHVlNjU5TE5wWFc2cEN5U3Rpa1lqS0lXSTVhMCJ9fV0",
+        "WyJSSEl2UnF0QmlucWlDMGNTVHFYVVdnIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJhNFQ5cG05YlV0UUpiMDlKcWNEUFVnIiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJaMWxhNGV4YTVDVmh2elJSUWVfcVlnIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyIybHl0ZG1FTWdES3FiOUFfbFVKX1hRIiwibWF4IiwxMDAwMF0",
+        "WyIyRjJwQ2ZHMU5LclVTNTRGTG94dGx3Iix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJNaEdXZDdaTHhmbTVYN252QlJIRUxBIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyJuakhoNmV0SnhiN21EcmQzc2tJOWZBIix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyIxNDNZVVNpRURyUXl6bllaT3E5NUlRIiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ]
+    },
+    "expected": "error"
+  },
+  {
+    "name": "decodeMandate/error/without-9",
+    "input": {
+      "op": "decodeMandate",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "WvzMA2YaXVDHf6oKonWkL60O_ew25L5WDdqJiQerjFk",
+            "_GvUEuEGenYe6311L2X-bobfvKA50B62OSiDg2b82No",
+            "tu6DqX_JiTngl7F4gNmolRmpVzmR_DHdg0ydb4BeBlo"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "QMt9eaaudXcMRjnKDuLS2byspX5YlZcLcY5_m2580cM"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "GvXzKF355_0IAWPS8UWqst3arKoHW3Rce9ryAttPcI4"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "8aIurcwWMRiPsaWKZ-PNPlvM_w1gN1ojgABytdjj7Oc"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "_LREs0csuZyQJwAwwVgGNIBdNIPnklTWVTMjSXmedtY"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "jcrrgEZ8jxYQijwOSLRM5jcNADScvOs07lpespjfny4"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "XqaKySvrr5FTnnxG-3L_APLWajPiE3xDdw96WeqZtkA",
+            "ZV1pth3Yd7Ke-nZ_A5R3ziJlNOjC6-2JYyViQfAfm68"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "W_cgG9NH9DlJB2RNAK5kEG-Fo0HLO7QTjZiVgG5dmZ4"
+        ]
+      },
+      "disclosures": [
+        "WyJ4WjBUTjJRQmFFS3hkMWZoN2s3NDdnIiwic3ViIiwia2xzX3Vzcl83ZjNhOWMyMSJd",
+        "WyJ5QTU0WFZSSEd4RUpTSDRhcFNicUlRIiwiY3JlZCIseyJpZCI6IlprM3AweFFtSDh2TjFzTHdUNXVZZEEiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6ImY4M09KM0QyeEYxQmc4dm5Ld3hvMUFvOGp6VjVUblExck03YlkwcWsyY0EiLCJ5IjoieF9GRXpSdTltMzZITE5fdHVlNjU5TE5wWFc2cEN5U3Rpa1lqS0lXSTVhMCJ9fV0",
+        "WyJSSEl2UnF0QmlucWlDMGNTVHFYVVdnIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJhNFQ5cG05YlV0UUpiMDlKcWNEUFVnIiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJaMWxhNGV4YTVDVmh2elJSUWVfcVlnIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyIybHl0ZG1FTWdES3FiOUFfbFVKX1hRIiwibWF4IiwxMDAwMF0",
+        "WyIyRjJwQ2ZHMU5LclVTNTRGTG94dGx3Iix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJNaEdXZDdaTHhmbTVYN252QlJIRUxBIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyJSLVFhUVR6RnVOdGNmd0JrM1p2V0F3Iix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyIxNDNZVVNpRURyUXl6bllaT3E5NUlRIiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ]
+    },
+    "expected": "error"
+  },
+  {
+    "name": "decodeMandate/error/without-10",
+    "input": {
+      "op": "decodeMandate",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "WvzMA2YaXVDHf6oKonWkL60O_ew25L5WDdqJiQerjFk",
+            "_GvUEuEGenYe6311L2X-bobfvKA50B62OSiDg2b82No",
+            "tu6DqX_JiTngl7F4gNmolRmpVzmR_DHdg0ydb4BeBlo"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "QMt9eaaudXcMRjnKDuLS2byspX5YlZcLcY5_m2580cM"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "GvXzKF355_0IAWPS8UWqst3arKoHW3Rce9ryAttPcI4"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "8aIurcwWMRiPsaWKZ-PNPlvM_w1gN1ojgABytdjj7Oc"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "_LREs0csuZyQJwAwwVgGNIBdNIPnklTWVTMjSXmedtY"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "jcrrgEZ8jxYQijwOSLRM5jcNADScvOs07lpespjfny4"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "XqaKySvrr5FTnnxG-3L_APLWajPiE3xDdw96WeqZtkA",
+            "ZV1pth3Yd7Ke-nZ_A5R3ziJlNOjC6-2JYyViQfAfm68"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "W_cgG9NH9DlJB2RNAK5kEG-Fo0HLO7QTjZiVgG5dmZ4"
+        ]
+      },
+      "disclosures": [
+        "WyJ4WjBUTjJRQmFFS3hkMWZoN2s3NDdnIiwic3ViIiwia2xzX3Vzcl83ZjNhOWMyMSJd",
+        "WyJ5QTU0WFZSSEd4RUpTSDRhcFNicUlRIiwiY3JlZCIseyJpZCI6IlprM3AweFFtSDh2TjFzTHdUNXVZZEEiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6ImY4M09KM0QyeEYxQmc4dm5Ld3hvMUFvOGp6VjVUblExck03YlkwcWsyY0EiLCJ5IjoieF9GRXpSdTltMzZITE5fdHVlNjU5TE5wWFc2cEN5U3Rpa1lqS0lXSTVhMCJ9fV0",
+        "WyJSSEl2UnF0QmlucWlDMGNTVHFYVVdnIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJhNFQ5cG05YlV0UUpiMDlKcWNEUFVnIiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJaMWxhNGV4YTVDVmh2elJSUWVfcVlnIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyIybHl0ZG1FTWdES3FiOUFfbFVKX1hRIiwibWF4IiwxMDAwMF0",
+        "WyIyRjJwQ2ZHMU5LclVTNTRGTG94dGx3Iix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJNaEdXZDdaTHhmbTVYN252QlJIRUxBIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyJSLVFhUVR6RnVOdGNmd0JrM1p2V0F3Iix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJuakhoNmV0SnhiN21EcmQzc2tJOWZBIix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0"
+      ]
+    },
+    "expected": "error"
+  },
+  {
+    "name": "decodeMandate/error/edge-without-merchant",
+    "input": {
+      "op": "decodeMandate",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "4LruYbE9-siDldLJ4Mct-U0X-Kausy_kYS-_UI2QySU",
+            "5YADUOFf9cdCQdDdQXXAL6QXp5JTcAjXLeuuKUJbMTo",
+            "nPJPRA4kzxc_a9dM1KBXgLxPJaRYNpT2ro0_ZXZFkU4"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 9007199254740991
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "DsD7HE-bFI_UcrDLd0R5IxtfBmmH9jXydV_ljonCnAg"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "zS60AXlGOcTw4OPEhj4wnzGl1gEJT8aPOuj6bMNJ9uo"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "5akFyCYL4uYamVgzK2D12dpS626Gh9h23ZvXUNblTDo"
+                },
+                {
+                  "...": "3iZJWcto6H_890GwUge6FNx7WFKCGy68ob-RYZ6g4ds"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "fgtvVfSYC_8aoNs1jsdKdkwcE6pXsqnz_8aiWMAYi-I"
+                },
+                {
+                  "...": "ynLyEu0Ge6azxDoAK7JrE5taewrZkx_59eRlymNoVTQ"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "X0gPC9091_96V6VhOixJvUU-XsePpBn_YiV2T_DxG68"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "mZpTY09nxzETemQwgumh3xWC3c8bRBnHM0qaly2o5jQ",
+            "sVb8F6BdnqZRGfYzp1BGT1te3K76MnrhQDHUu-4oxo4"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "lx5Q3Y_Qs-KGpTk_2zRHjjCsIjIy6a5vPzyWpSw723c"
+        ]
+      },
+      "disclosures": [
+        "WyJHb182OUlTQ3BVX0tkWVd3SnBUWkRnIiwic3ViIiwia2xzX3Vzcl83ZjNhOWMyMSJd",
+        "WyJhRUx1bEk4TTRISDlGcXZzNG5YcWNnIiwiY3JlZCIseyJpZCI6IlprM3AweFFtSDh2TjFzTHdUNXVZZEEiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6ImY4M09KM0QyeEYxQmc4dm5Ld3hvMUFvOGp6VjVUblExck03YlkwcWsyY0EiLCJ5IjoieF9GRXpSdTltMzZITE5fdHVlNjU5TE5wWFc2cEN5U3Rpa1lqS0lXSTVhMCJ9fV0",
+        "WyJtMlZqbGJsbE1IVzZjazl0R1BjUnJBIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJibVlKVGFrVVZEbFFLRDNYakZDYjJBIiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJtWElGOF8tbnZKNktZLUFsejYzNFRBIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyJvWkJucWU3ZFE5VlJXZFItakxnZDBBIiwibWF4Iiw5MDA3MTk5MjU0NzQwOTkxXQ",
+        "WyJCVG9RZFo2WFhHRlpmWkY0Q3RWS3NBIix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJWOTlpUjg4azhfSVJXdlpObldub3VBIix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNI8J-YgDIifV0",
+        "WyJjajhOWWtQRW5lT1lSNnN5WXRrejBBIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6OTAwNzE5OTI1NDc0MDk5MSwiY3VycmVuY3kiOiJVU0QifV0",
+        "WyJaWkItaERyWndXTDlHX2Zxb2NGVm5nIix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJPQjd2MVpaRnZZbm9Cd3hrckhXZWtBIix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyJlM19ncHdzekVFRGtPY0Y5VnZOQWdRIiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ]
+    },
+    "expected": "error"
+  },
+  {
+    "name": "decodeMandate/error/edge-without-payee",
+    "input": {
+      "op": "decodeMandate",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "4LruYbE9-siDldLJ4Mct-U0X-Kausy_kYS-_UI2QySU",
+            "5YADUOFf9cdCQdDdQXXAL6QXp5JTcAjXLeuuKUJbMTo",
+            "nPJPRA4kzxc_a9dM1KBXgLxPJaRYNpT2ro0_ZXZFkU4"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 9007199254740991
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "DsD7HE-bFI_UcrDLd0R5IxtfBmmH9jXydV_ljonCnAg"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "zS60AXlGOcTw4OPEhj4wnzGl1gEJT8aPOuj6bMNJ9uo"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "5akFyCYL4uYamVgzK2D12dpS626Gh9h23ZvXUNblTDo"
+                },
+                {
+                  "...": "3iZJWcto6H_890GwUge6FNx7WFKCGy68ob-RYZ6g4ds"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "fgtvVfSYC_8aoNs1jsdKdkwcE6pXsqnz_8aiWMAYi-I"
+                },
+                {
+                  "...": "ynLyEu0Ge6azxDoAK7JrE5taewrZkx_59eRlymNoVTQ"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "X0gPC9091_96V6VhOixJvUU-XsePpBn_YiV2T_DxG68"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "mZpTY09nxzETemQwgumh3xWC3c8bRBnHM0qaly2o5jQ",
+            "sVb8F6BdnqZRGfYzp1BGT1te3K76MnrhQDHUu-4oxo4"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "lx5Q3Y_Qs-KGpTk_2zRHjjCsIjIy6a5vPzyWpSw723c"
+        ]
+      },
+      "disclosures": [
+        "WyJHb182OUlTQ3BVX0tkWVd3SnBUWkRnIiwic3ViIiwia2xzX3Vzcl83ZjNhOWMyMSJd",
+        "WyJhRUx1bEk4TTRISDlGcXZzNG5YcWNnIiwiY3JlZCIseyJpZCI6IlprM3AweFFtSDh2TjFzTHdUNXVZZEEiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6ImY4M09KM0QyeEYxQmc4dm5Ld3hvMUFvOGp6VjVUblExck03YlkwcWsyY0EiLCJ5IjoieF9GRXpSdTltMzZITE5fdHVlNjU5TE5wWFc2cEN5U3Rpa1lqS0lXSTVhMCJ9fV0",
+        "WyJtMlZqbGJsbE1IVzZjazl0R1BjUnJBIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJibVlKVGFrVVZEbFFLRDNYakZDYjJBIiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJtWElGOF8tbnZKNktZLUFsejYzNFRBIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyJvWkJucWU3ZFE5VlJXZFItakxnZDBBIiwibWF4Iiw5MDA3MTk5MjU0NzQwOTkxXQ",
+        "WyJCVG9RZFo2WFhHRlpmWkY0Q3RWS3NBIix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJjajhOWWtQRW5lT1lSNnN5WXRrejBBIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6OTAwNzE5OTI1NDc0MDk5MSwiY3VycmVuY3kiOiJVU0QifV0",
+        "WyJaWkItaERyWndXTDlHX2Zxb2NGVm5nIix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJDV1pBMUVrZmIxNGN6ZmdMZDFWbjVBIix7ImlkIjoibXJjX_CdhJ5f5p2x5LqsX_CfmIAiLCJuYW1lIjoiQ2Fmw6kg8J2EniDmnbHkuqwg8J-YgCIsIndlYnNpdGUiOiJodHRwczovL3huLS1jYWYtZG1hLmV4YW1wbGUiLCJwYXlwYWxfbWVyY2hhbnRfaWQiOiJNRVJDSPCfmIAyIn1d",
+        "WyJPQjd2MVpaRnZZbm9Cd3hrckhXZWtBIix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyJlM19ncHdzekVFRGtPY0Y5VnZOQWdRIiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ]
+    },
+    "expected": "error"
+  },
+  {
+    "name": "decodeMandate/error/decoy-digest",
+    "input": {
+      "op": "decodeMandate",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "WvzMA2YaXVDHf6oKonWkL60O_ew25L5WDdqJiQerjFk",
+            "_GvUEuEGenYe6311L2X-bobfvKA50B62OSiDg2b82No",
+            "tu6DqX_JiTngl7F4gNmolRmpVzmR_DHdg0ydb4BeBlo"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "QMt9eaaudXcMRjnKDuLS2byspX5YlZcLcY5_m2580cM"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "GvXzKF355_0IAWPS8UWqst3arKoHW3Rce9ryAttPcI4"
+              ]
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "8aIurcwWMRiPsaWKZ-PNPlvM_w1gN1ojgABytdjj7Oc"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "_LREs0csuZyQJwAwwVgGNIBdNIPnklTWVTMjSXmedtY"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "jcrrgEZ8jxYQijwOSLRM5jcNADScvOs07lpespjfny4"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "XqaKySvrr5FTnnxG-3L_APLWajPiE3xDdw96WeqZtkA",
+            "ZV1pth3Yd7Ke-nZ_A5R3ziJlNOjC6-2JYyViQfAfm68"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "W_cgG9NH9DlJB2RNAK5kEG-Fo0HLO7QTjZiVgG5dmZ4",
+          "zQz5jGYrptL8qnrudlCApAgmj3sCQaYnaweDi0AVZyM"
+        ]
+      },
+      "disclosures": [
+        "WyJ4WjBUTjJRQmFFS3hkMWZoN2s3NDdnIiwic3ViIiwia2xzX3Vzcl83ZjNhOWMyMSJd",
+        "WyJ5QTU0WFZSSEd4RUpTSDRhcFNicUlRIiwiY3JlZCIseyJpZCI6IlprM3AweFFtSDh2TjFzTHdUNXVZZEEiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6ImY4M09KM0QyeEYxQmc4dm5Ld3hvMUFvOGp6VjVUblExck03YlkwcWsyY0EiLCJ5IjoieF9GRXpSdTltMzZITE5fdHVlNjU5TE5wWFc2cEN5U3Rpa1lqS0lXSTVhMCJ9fV0",
+        "WyJSSEl2UnF0QmlucWlDMGNTVHFYVVdnIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJhNFQ5cG05YlV0UUpiMDlKcWNEUFVnIiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJaMWxhNGV4YTVDVmh2elJSUWVfcVlnIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyIybHl0ZG1FTWdES3FiOUFfbFVKX1hRIiwibWF4IiwxMDAwMF0",
+        "WyIyRjJwQ2ZHMU5LclVTNTRGTG94dGx3Iix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJNaEdXZDdaTHhmbTVYN252QlJIRUxBIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyJSLVFhUVR6RnVOdGNmd0JrM1p2V0F3Iix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJuakhoNmV0SnhiN21EcmQzc2tJOWZBIix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyIxNDNZVVNpRURyUXl6bllaT3E5NUlRIiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ]
+    },
+    "expected": "error"
   }
 ]

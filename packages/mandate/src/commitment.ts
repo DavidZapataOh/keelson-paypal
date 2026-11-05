@@ -5,7 +5,7 @@ import {
   KEELSON_MANDATE,
   poseidon2,
 } from "@keelson/core/poseidon2";
-import { type Mandate, parseMandate } from "./schema.ts";
+import { CATEGORY_TABLE, type Mandate, parseMandate } from "./schema.ts";
 
 const KEELSON_MERCHANT = fieldFromAscii("KEELSON_MERCHANT");
 const DEPTH = 8;
@@ -227,39 +227,6 @@ export async function verifyMerchantNonMembership(
     opens(root, low, proof.index, proof.path)
   );
 }
-
-/**
- * Category bit table, version `v1`. Bit `i` of a category mask stands for `ids[i]`; entries are
- * only ever appended. Ids are Google Product Taxonomy ids (taxonomy version 2021-09-21): the 21
- * top-level categories in taxonomy order, then `gpt:187` (Apparel & Accessories > Shoes).
- */
-export const CATEGORY_TABLE: { readonly version: "v1"; readonly ids: readonly string[] } = {
-  version: "v1",
-  ids: [
-    "gpt:1", // Animals & Pet Supplies
-    "gpt:166", // Apparel & Accessories
-    "gpt:8", // Arts & Entertainment
-    "gpt:537", // Baby & Toddler
-    "gpt:111", // Business & Industrial
-    "gpt:141", // Cameras & Optics
-    "gpt:222", // Electronics
-    "gpt:412", // Food, Beverages & Tobacco
-    "gpt:436", // Furniture
-    "gpt:632", // Hardware
-    "gpt:469", // Health & Beauty
-    "gpt:536", // Home & Garden
-    "gpt:5181", // Luggage & Bags
-    "gpt:772", // Mature
-    "gpt:783", // Media
-    "gpt:922", // Office Supplies
-    "gpt:5605", // Religious & Ceremonial
-    "gpt:2092", // Software
-    "gpt:988", // Sporting Goods
-    "gpt:1239", // Toys & Games
-    "gpt:888", // Vehicles & Parts
-    "gpt:187", // Apparel & Accessories > Shoes
-  ],
-};
 
 const ALL_CATEGORIES = (1n << BigInt(CATEGORY_TABLE.ids.length)) - 1n;
 
