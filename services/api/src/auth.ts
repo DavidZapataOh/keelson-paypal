@@ -8,6 +8,7 @@ import { cose, decodeCredentialPublicKey } from "@simplewebauthn/server/helpers"
 import { betterAuth } from "better-auth";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { jwt } from "better-auth/plugins";
+import type { PayPalProfile } from "better-auth/social-providers";
 
 /** RFC 8707 resource identifier of this API; the `aud` of every access token it accepts. */
 export const apiAudience = "https://api.keelson.finance";
@@ -21,6 +22,19 @@ const paymentExtension = { payment: { isPayment: true } } as AuthenticationExten
 /** Verification-table prefix marking a registration challenge issued with `paymentExtension`. */
 const PAYMENT_CEREMONY = "passkey-payment:";
 const PAYMENT_CEREMONY_MS = 10 * 60_000;
+
+const paypalAuthorizeURL = {
+  sandbox: "https://www.sandbox.paypal.com/signin/authorize",
+  live: "https://www.paypal.com/signin/authorize",
+} as const;
+const paypalScopes = "openid email profile https://uri.paypal.com/services/paypalattributes";
+
+/** An entry of `emails` in PayPal's `userinfo?schema=paypalv1.1` response. */
+interface PayPalEmail {
+  value: string;
+  primary: boolean;
+  confirmed: boolean;
+}
 
 const scopes = ["countersign:write", "alibis:read", "disputes:read", "operators:write"] as const;
 
@@ -87,6 +101,14 @@ export function createAuth(db: Db, env: AuthEnv) {
         clientId: env.PAYPAL_CLIENT_ID,
         clientSecret: env.PAYPAL_CLIENT_SECRET,
         environment: env.PAYPAL_ENV,
+        // The provider sends no `scope`, which PayPal rejects; query parameters on the
+        // endpoint are kept, so the identity scopes ride on it.
+        authorizationEndpoint: `${paypalAuthorizeURL[env.PAYPAL_ENV]}?${new URLSearchParams({ scope: paypalScopes })}`,
+        mapProfileToUser: (profile) => {
+          const { emails } = profile as PayPalProfile & { emails?: PayPalEmail[] };
+          const email = emails?.find((e) => e.primary && e.confirmed);
+          return email ? { email: email.value, emailVerified: true } : {};
+        },
       },
     },
     plugins: [

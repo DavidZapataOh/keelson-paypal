@@ -250,6 +250,35 @@ test.skipIf(!process.env.PAYPAL_CLIENT_ID)(
     expect(url.searchParams.get("client_id")).toBe(process.env.PAYPAL_CLIENT_ID);
     expect(url.searchParams.get("redirect_uri")).toBe(`${baseURL}/api/auth/callback/paypal`);
     expect(url.searchParams.get("response_type")).toBe("code");
+    expect(url.searchParams.get("scope")).toBe(
+      "openid email profile https://uri.paypal.com/services/paypalattributes",
+    );
     expect(res.headers.get("set-cookie")).toContain("state");
   },
 );
+
+/** A PayPal `userinfo?schema=paypalv1.1` response, as returned by the sandbox, with values redacted. */
+const paypalUserInfo = {
+  user_id: "https://www.paypal.com/webapps/auth/identity/user/REDACTED",
+  sub: "https://www.paypal.com/webapps/auth/identity/user/REDACTED",
+  name: "Sandbox Buyer",
+  payer_id: "REDACTEDPAYER",
+  verified_account: "true",
+  emails: [
+    { value: "secondary@example.com", primary: false, confirmed: true },
+    { value: "buyer@example.com", primary: true, confirmed: true },
+  ],
+};
+
+test("a PayPal profile signs in with its primary confirmed email", async () => {
+  const toUser = auth.options.socialProviders.paypal.mapProfileToUser;
+  expect(await toUser?.(paypalUserInfo as never)).toEqual({
+    email: "buyer@example.com",
+    emailVerified: true,
+  });
+  const unconfirmed = {
+    ...paypalUserInfo,
+    emails: [{ value: "buyer@example.com", primary: true, confirmed: false }],
+  };
+  expect(await toUser?.(unconfirmed as never)).toEqual({});
+});
