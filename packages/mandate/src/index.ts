@@ -1,3 +1,4 @@
+export * from "./card.ts";
 export * from "./challenge.ts";
 export * from "./colors.ts";
 export * from "./commitment.ts";
