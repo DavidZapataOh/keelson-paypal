@@ -31,7 +31,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm turbo run typecheck test build --cache-dir=.turbo
-      - run: pnpm --filter @keelson/core vectors && git diff --exit-code
+      - run: pnpm --filter @keelson/core vectors && test -z "$(git status --porcelain)"
 
   rust:
     runs-on: ubuntu-24.04

@@ -1,9 +1,11 @@
 // RFC 8785 vectors: https://github.com/cyberphone/json-canonicalization
 // testdata/input and testdata/output at commit 32a48195b9b20fe67b1795e39e4509f14d860b45.
 // values.json is excluded: it contains non-integer numbers, which jcs() rejects by design.
+
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { type Json, jcs } from "../src/jcs.js";
+import raw from "./vectors/jcs-raw.json" with { type: "json" };
 
 const vectors = ["arrays", "french", "structures", "unicode", "weird"];
 const excluded = ["values"];
@@ -50,5 +52,12 @@ describe("jcs", () => {
 
   it("rejects non-integers nested in containers", () => {
     expect(() => jcs({ a: [1, { b: 0.5 }] })).toThrow("non-integer number");
+  });
+});
+
+describe("raw JSON parity vectors", () => {
+  it.each(raw)("$name", ({ input, expected }) => {
+    if (expected === "error") expect(() => jcs(JSON.parse(input) as Json)).toThrow();
+    else expect(jcs(JSON.parse(input) as Json)).toBe(expected);
   });
 });

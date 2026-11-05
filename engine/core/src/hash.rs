@@ -16,6 +16,7 @@ pub enum Dst {
 }
 
 impl Dst {
+    /// The tag string hashed ahead of the payload.
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Mandate => "keelson/mandate/v1",
@@ -28,6 +29,7 @@ impl Dst {
         }
     }
 
+    /// Looks up a tag by its string form.
     pub fn parse(tag: &str) -> Option<Self> {
         [
             Self::Mandate,

@@ -27,7 +27,7 @@ fn hash_vectors() {
     let vectors = load(include_str!(
         "../../../packages/core/test/vectors/hash.json"
     ));
-    assert_eq!(vectors.len(), 20);
+    assert_eq!(vectors.len(), 22);
     for v in vectors {
         let dst = Dst::parse(v.input["dst"].as_str().unwrap()).expect("known dst");
         let digest = hash_object(dst, &v.input["value"]).unwrap();
@@ -232,6 +232,43 @@ fn money_vectors() {
             v.name
         );
     }
+}
+
+#[test]
+fn jcs_raw_vectors() {
+    let vectors = load(include_str!(
+        "../../../packages/core/test/vectors/jcs-raw.json"
+    ));
+    for v in vectors {
+        let source = v.input.as_str().unwrap();
+        let actual = serde_json::from_str::<Value>(source)
+            .map_err(|_| ())
+            .and_then(|value| keelson_core::jcs(&value).map_err(|_| ()));
+        assert_eq!(
+            actual.unwrap_or_else(|()| "error".into()),
+            v.expected,
+            "{}",
+            v.name
+        );
+    }
+}
+
+#[test]
+fn jcs_integer_bounds() {
+    use keelson_core::{Error, jcs};
+    use serde_json::json;
+    assert_eq!(jcs(&json!([i64::MIN])), Err(Error::UnsafeInteger));
+    assert_eq!(jcs(&json!([i64::MAX])), Err(Error::UnsafeInteger));
+    assert_eq!(
+        jcs(&json!([-9_007_199_254_740_991_i64])).unwrap(),
+        "[-9007199254740991]"
+    );
+    assert_eq!(jcs(&json!([u64::MAX])), Err(Error::UnsafeInteger));
+    assert_eq!(
+        jcs(&json!([9_007_199_254_740_993_u64])),
+        Err(Error::UnsafeInteger)
+    );
+    assert_eq!(jcs(&json!([-0.0])).unwrap(), "[0]");
 }
 
 #[test]

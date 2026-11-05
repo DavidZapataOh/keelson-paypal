@@ -287,6 +287,29 @@
     "expected": "0x480db81335561343d4ce3cc33a8c4f31bb8e1d835eb4fa7ef61cc8c5716317f2"
   },
   {
+    "name": "control-escapes",
+    "input": {
+      "dst": "keelson/cart/v1",
+      "value": {
+        "s": "\b\f\t\u001f  "
+      }
+    },
+    "expected": "0x63ae29e29b6bddb31ec4bb829074d4a831df91016fdc6fce3cb242c686b20bc7"
+  },
+  {
+    "name": "utf16-key-order",
+    "input": {
+      "dst": "keelson/cart/v1",
+      "value": {
+        "😀": 1,
+        "～": 2,
+        "": 3,
+        "a": 4
+      }
+    },
+    "expected": "0x9ee828e678a28051197cd5c53711e1cd0c53922bafd904affe483c79029c878f"
+  },
+  {
     "name": "empty-object",
     "input": {
       "dst": "keelson/cart/v1",

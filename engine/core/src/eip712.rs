@@ -1,6 +1,6 @@
 //! EIP-712 types of the Keelson protocol.
 
-use alloy_primitives::Address;
+use alloy_primitives::{Address, U256};
 use alloy_sol_types::{Eip712Domain, sol};
 
 use crate::Error;
@@ -99,7 +99,7 @@ pub fn domain(chain_id: u64, verifying_contract: Address) -> Result<Eip712Domain
     Ok(Eip712Domain::new(
         Some("Keelson".into()),
         Some("1".into()),
-        Some(chain_id.try_into().expect("chain id fits in U256")),
+        Some(U256::from(chain_id)),
         Some(verifying_contract),
         None,
     ))

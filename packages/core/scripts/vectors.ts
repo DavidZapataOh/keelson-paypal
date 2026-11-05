@@ -11,6 +11,7 @@ import {
   hashKeelson,
   hashObject,
   type Json,
+  jcs,
   KEELSON_TYPES,
   type KeelsonPrimaryType,
   keelsonDomain,
@@ -29,6 +30,36 @@ const FIELD_MODULUS =
 function write(path: string, contents: string): void {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, contents);
+}
+
+function jcsRawVectors() {
+  const sources = [
+    "1.0",
+    "1e3",
+    "-0",
+    "-0.0",
+    "[1.0,2e0,-0.0,1E2]",
+    '{"a":1.50}',
+    "1.5",
+    "9007199254740991",
+    "-9007199254740991",
+    "9007199254740992",
+    "-9007199254740992",
+    "9223372036854775807",
+    "-9223372036854775808",
+    "18446744073709551615",
+    "1e300",
+    "9007199254740992.0",
+  ];
+  return sources.map((source) => {
+    let expected: string;
+    try {
+      expected = jcs(JSON.parse(source) as Json);
+    } catch {
+      expected = "error";
+    }
+    return { name: source, input: source, expected };
+  });
 }
 
 function writeJson(name: string, vectors: unknown): void {
@@ -58,6 +89,16 @@ function hashVectors() {
       },
     });
   }
+  cases.push({
+    name: "control-escapes",
+    dst: DST.cart,
+    value: { s: "\b\f\t\u001f\u007f\u2028\u2029\u0085" },
+  });
+  cases.push({
+    name: "utf16-key-order",
+    dst: DST.cart,
+    value: { "\u{1F600}": 1, "\uFF5E": 2, "\uE000": 3, a: 4 },
+  });
   cases.push({ name: "empty-object", dst: DST.cart, value: {} });
   cases.push({ name: "empty-array", dst: DST.cart, value: [] });
   cases.push({ name: "null", dst: DST.eval, value: null });
@@ -212,6 +253,7 @@ ${tests.join("\n")}`;
 
 const poseidon = await poseidon2Vectors();
 writeJson("hash", hashVectors());
+writeJson("jcs-raw", jcsRawVectors());
 writeJson("eip712", eip712Vectors());
 writeJson("poseidon2", poseidon);
 writeJson("money", moneyVectors());
