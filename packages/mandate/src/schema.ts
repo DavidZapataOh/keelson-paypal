@@ -52,7 +52,7 @@ const checkoutConstraint = z.discriminatedUnion("type", [
   }),
   z.strictObject({
     type: z.literal("keelson.category"),
-    allow: z.array(z.string()),
+    allow: z.array(z.string()).min(1),
     deny: z.array(z.string()),
   }),
   z.strictObject({

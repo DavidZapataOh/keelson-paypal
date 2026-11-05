@@ -60,6 +60,13 @@ describe("parseMandate", () => {
     expect(fieldOf(m)).toBe("agent.bond.min");
   });
 
+  it("rejects an empty keelson.category allow list", () => {
+    const m = clone();
+    const i = m.checkout.constraints.findIndex((c: Mock) => c.type === "keelson.category");
+    m.checkout.constraints[i].allow = [];
+    expect(fieldOf(m)).toBe(`checkout.constraints.${i}.allow`);
+  });
+
   it("rejects empty allowed_merchants", () => {
     const m = clone();
     m.checkout.constraints[0].allowed = [];

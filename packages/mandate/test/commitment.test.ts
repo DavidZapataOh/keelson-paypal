@@ -13,9 +13,10 @@ import {
   verifyMerchantMembership,
   verifyMerchantNonMembership,
 } from "../src/commitment.ts";
-import { type Mandate, parseMandate } from "../src/schema.ts";
+import { type Mandate, MandateError, parseMandate } from "../src/schema.ts";
 import demo from "./fixtures/demo-mandate.json" with { type: "json" };
 
+const USER_KEY_HASH_VECTOR = 0x219595c517c8f29d11b2230ac8ae01c2b9f57251612bb8f8c7812ca67885d92fn;
 const salt = Uint8Array.from({ length: 16 }, (_, i) => i + 1);
 const mandate = (): Mandate => parseMandate(structuredClone(demo));
 
@@ -115,6 +116,48 @@ describe("merchantTree", () => {
     }
   });
 
+  it("rejects an empty low leaf opened at an unused slot", async () => {
+    const tree = await merchantTree(["shop-a", "shop-b"]);
+    const empty = { value: 0n, next: 0n, nextIndex: 0 };
+    for (const index of [3, 5, 200, 255]) {
+      const path = tree.layers.slice(0, 8).map((layer, h) => layer[(index >> h) ^ 1] as bigint);
+      for (const id of ["shop-a", "shop-b", "shop-c"]) {
+        const proof = { low: empty, path, index };
+        expect(await verifyMerchantNonMembership(tree.root, id, proof)).toBe(false);
+      }
+    }
+    expect(
+      await verifyMerchantNonMembership(
+        tree.root,
+        "shop-c",
+        await merchantNonMembership(tree, "shop-c"),
+      ),
+    ).toBe(true);
+  });
+
+  it("uses the zero leaf below the smallest id and the max leaf above the largest", async () => {
+    const tree = await merchantTree(ids);
+    const values = await Promise.all(
+      Array.from({ length: 400 }, (_, i) => `probe_${i}`).map(async (id) => ({
+        id,
+        v: await merchantLeaf(id),
+      })),
+    );
+    const min = tree.leaves[0] as bigint;
+    const max = tree.leaves.at(-1) as bigint;
+    const below = values.find((p) => p.v < min);
+    const above = values.find((p) => p.v > max);
+    if (!below || !above) throw new Error("no probe below the min or above the max");
+    const low = await merchantNonMembership(tree, below.id);
+    expect(low.index).toBe(0);
+    expect(low.low).toEqual({ value: 0n, next: min, nextIndex: 1 });
+    expect(await verifyMerchantNonMembership(tree.root, below.id, low)).toBe(true);
+    const high = await merchantNonMembership(tree, above.id);
+    expect(high.index).toBe(ids.length);
+    expect(high.low).toEqual({ value: max, next: 0n, nextIndex: 0 });
+    expect(await verifyMerchantNonMembership(tree.root, above.id, high)).toBe(true);
+  });
+
   it("rejects a proof against another root", async () => {
     const tree = await merchantTree(ids);
     const other = await merchantTree([...ids, "mrc_runfast"]);
@@ -140,12 +183,41 @@ describe("categoryMask", () => {
 });
 
 describe("userKeyHash", () => {
-  it("hashes the P-256 coordinates as field elements", async () => {
+  const limbs = (b64: string) => {
+    const v = BigInt(`0x${Buffer.from(b64, "base64url").toString("hex")}`);
+    return [v >> 128n, v & ((1n << 128n) - 1n)];
+  };
+
+  it("hashes the P-256 coordinates as four 128-bit big-endian limbs", async () => {
     const { x, y } = demo.user.cred.jwk;
-    const qx = BigInt(`0x${Buffer.from(x, "base64url").toString("hex")}`);
-    const qy = BigInt(`0x${Buffer.from(y, "base64url").toString("hex")}`);
-    const p = 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001n;
-    expect(await userKeyHash({ x, y })).toBe(await poseidon2([qx % p, qy % p]));
+    expect(await userKeyHash({ x, y })).toBe(await poseidon2([...limbs(x), ...limbs(y)]));
+  });
+
+  it("matches the pinned vector for the demo key", async () => {
+    expect(await userKeyHash(demo.user.cred.jwk)).toBe(USER_KEY_HASH_VECTOR);
+  });
+
+  it("separates different keys and swapped coordinates", async () => {
+    const a = demo.user.cred.jwk;
+    const b = demo.agent.cnf.jwk;
+    const hashes = new Set(
+      await Promise.all([
+        userKeyHash(a),
+        userKeyHash(b),
+        userKeyHash({ x: a.y, y: a.x }),
+        userKeyHash({ x: a.x, y: b.y }),
+      ]),
+    );
+    expect(hashes.size).toBe(4);
+  });
+
+  it("rejects non-canonical or wrong-length coordinates", async () => {
+    const { x, y } = demo.user.cred.jwk;
+    const last = x.at(-1) === "A" ? "B" : "A";
+    await expect(userKeyHash({ x: `${x.slice(0, -1)}B`, y })).rejects.toThrow(RangeError);
+    await expect(userKeyHash({ x: x.slice(0, -1), y })).rejects.toThrow(RangeError);
+    await expect(userKeyHash({ x: `${x}${last}`, y })).rejects.toThrow(RangeError);
+    await expect(userKeyHash({ x: `${x.slice(0, -1)}=`, y })).rejects.toThrow(RangeError);
   });
 });
 
@@ -158,6 +230,18 @@ describe("mandateCommitment", () => {
 
   it("rejects a salt that is not 16 bytes", async () => {
     await expect(mandateCommitment(mandate(), new Uint8Array(15))).rejects.toThrow(RangeError);
+  });
+
+  it("validates the mandate it commits to", async () => {
+    const bad = mandate();
+    bad.nonce = "AAAAAAAAAAAAAAAAAAAAAB";
+    await expect(mandateCommitment(bad, salt)).rejects.toThrow(MandateError);
+    const padded = mandate();
+    padded.agent.operator.agent_id = "042";
+    await expect(mandateCommitment(padded, salt)).rejects.toThrow(RangeError);
+    const zero = mandate();
+    zero.agent.operator.agent_id = "0";
+    await expect(mandateCommitment(zero, salt)).resolves.toBeTypeOf("bigint");
   });
 
   it("changes when any one of its inputs changes", async () => {
@@ -180,6 +264,7 @@ describe("mandateCommitment", () => {
         (m) => {
           m.payment.currency = "EUR";
           constraint(m, "payment.amount_range").currency = "EUR";
+          constraint(m, "payment.budget").currency = "EUR";
         },
       ],
       [

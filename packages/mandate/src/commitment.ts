@@ -5,7 +5,7 @@ import {
   KEELSON_MANDATE,
   poseidon2,
 } from "@keelson/core/poseidon2";
-import type { Mandate } from "./schema.ts";
+import { type Mandate, parseMandate } from "./schema.ts";
 
 const KEELSON_MERCHANT = fieldFromAscii("KEELSON_MERCHANT");
 const DEPTH = 8;
@@ -18,15 +18,23 @@ const bytesToBigInt = (bytes: Uint8Array): bigint => BigInt(toHex(bytes));
 
 const B64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
-/** Reads unpadded base64url as a big-endian integer, dropping the trailing pad bits. */
-function base64urlToBigInt(s: string): bigint {
+/**
+ * Reads the canonical unpadded base64url encoding (RFC 4648 section 5) of exactly `bytes` bytes
+ * as a big-endian integer. Non-zero pad bits, padding and wrong lengths are rejected.
+ */
+function base64urlToBigInt(s: string, bytes: number): bigint {
+  if (s.length !== Math.ceil((bytes * 8) / 6)) {
+    throw new RangeError(`not ${bytes} bytes of base64url`);
+  }
   let acc = 0n;
   for (const ch of s) {
     const v = B64URL.indexOf(ch);
     if (v < 0) throw new RangeError("not base64url");
     acc = (acc << 6n) | BigInt(v);
   }
-  return acc >> BigInt((s.length * 6) % 8);
+  const pad = BigInt((s.length * 6) % 8);
+  if (acc & ((1n << pad) - 1n)) throw new RangeError("non-canonical base64url");
+  return acc >> pad;
 }
 
 /**
@@ -197,7 +205,11 @@ export async function verifyMerchantMembership(
   );
 }
 
-/** Checks that `proof` opens a leaf of `root` with `low.value < id < low.next` (or no next). */
+/**
+ * Checks that `proof` opens a non-empty leaf of `root` with `low.value < id < low.next` (or no
+ * next). The low leaf must not be the empty preimage: it hashes to 0 like every unused slot and
+ * would otherwise pass as a low leaf for any id.
+ */
 export async function verifyMerchantNonMembership(
   root: bigint,
   id: string,
@@ -206,7 +218,12 @@ export async function verifyMerchantNonMembership(
   const v = await merchantLeaf(id);
   const { low } = proof;
   const last = low.next === 0n && low.nextIndex === 0;
-  return low.value < v && (last || v < low.next) && opens(root, low, proof.index, proof.path);
+  return (
+    !isEmpty(low) &&
+    low.value < v &&
+    (last || v < low.next) &&
+    opens(root, low, proof.index, proof.path)
+  );
 }
 
 /**
@@ -255,36 +272,40 @@ export function categoryMask(categories: readonly string[]): bigint {
   return mask;
 }
 
-/** The mandate's allowed categories (every category when `allow` is absent or empty) minus `deny`. */
+/** The mandate's allowed categories minus `deny`; without a category constraint, every category. */
 function mandateCategoryMask(m: Mandate): bigint {
   const c = m.checkout.constraints.find((x) => x.type === "keelson.category");
   if (c?.type !== "keelson.category") return ALL_CATEGORIES;
-  const allow = c.allow.length === 0 ? ALL_CATEGORIES : categoryMask(c.allow);
-  return allow & ~categoryMask(c.deny);
+  return categoryMask(c.allow) & ~categoryMask(c.deny);
 }
 
-/** `poseidon2([qx, qy])` with each P-256 coordinate read big-endian and reduced mod the BN254 field. */
-export function userKeyHash(jwk: { x: string; y: string }): Promise<bigint> {
-  return poseidon2([
-    base64urlToBigInt(jwk.x) % BN254_FR_MODULUS,
-    base64urlToBigInt(jwk.y) % BN254_FR_MODULUS,
-  ]);
+const LIMB = (1n << 128n) - 1n;
+
+/**
+ * `poseidon2([x_hi, x_lo, y_hi, y_lo])`: each 32-byte P-256 coordinate split into two 128-bit
+ * big-endian limbs, which is injective and matches a circuit taking the key as `[u8; 32]` pairs.
+ */
+export async function userKeyHash(jwk: { x: string; y: string }): Promise<bigint> {
+  const x = base64urlToBigInt(jwk.x, 32);
+  const y = base64urlToBigInt(jwk.y, 32);
+  return poseidon2([x >> 128n, x & LIMB, y >> 128n, y & LIMB]);
 }
 
 /**
  * `C_m = poseidon2([KEELSON_MANDATE, user_key_hash, max_amount, currency_num, category_mask,
  * merchant_root, expiry, operator_id, nonce, salt])`, with `nonce` and the 16-byte `salt` read
- * big-endian.
+ * big-endian. The mandate is validated with {@link parseMandate} first.
  */
-export async function mandateCommitment(m: Mandate, salt: Uint8Array): Promise<bigint> {
+export async function mandateCommitment(input: Mandate, salt: Uint8Array): Promise<bigint> {
   if (salt.length !== 16) throw new RangeError("salt must be 16 bytes");
+  const m = parseMandate(input);
   const range = m.payment.constraints.find((c) => c.type === "payment.amount_range");
   const merchants = m.checkout.constraints.find((c) => c.type === "checkout.allowed_merchants");
   if (range?.type !== "payment.amount_range" || merchants?.type !== "checkout.allowed_merchants") {
     throw new RangeError("mandate lacks amount_range or allowed_merchants");
   }
   const agentId = m.agent.operator.agent_id;
-  const operatorId = /^\d+$/.test(agentId) ? BigInt(agentId) : BN254_FR_MODULUS;
+  const operatorId = /^(0|[1-9]\d*)$/.test(agentId) ? BigInt(agentId) : BN254_FR_MODULUS;
   if (operatorId >= BN254_FR_MODULUS) {
     throw new RangeError("operator id is not a field element");
   }
@@ -301,7 +322,7 @@ export async function mandateCommitment(m: Mandate, salt: Uint8Array): Promise<b
     tree.root,
     BigInt(m.exp),
     operatorId,
-    base64urlToBigInt(m.nonce),
+    base64urlToBigInt(m.nonce, 16),
     bytesToBigInt(salt),
   ]);
 }
