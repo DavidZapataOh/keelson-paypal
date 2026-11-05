@@ -18,6 +18,7 @@ import { type RateLimitOptions, rateLimit } from "./middleware/rate-limit.ts";
 import { ProblemSchema, problem } from "./problem.ts";
 import { registerEvents } from "./routes/events.ts";
 import { registerHealth } from "./routes/health.ts";
+import { registerMandates } from "./routes/mandates.ts";
 import { registerStatus } from "./routes/status.ts";
 
 export interface Deps {
@@ -26,8 +27,10 @@ export interface Deps {
   log: Logger;
   /** Better Auth instance served at `/api/auth/*`. */
   auth?: Auth;
-  /** Browser origin allowed to call `/api/auth/*` with credentials. */
+  /** Browser origin allowed to call `/api/auth/*` with credentials; where mandates are signed. */
   appOrigin?: string;
+  /** WebAuthn RP ID that mandate signatures must be scoped to; defaults to `keelson.finance`. */
+  passkeyRpId?: string | undefined;
   /** Resolves `c.var.principal`; runs before idempotency so keys are scoped per principal. */
   authenticate?: MiddlewareHandler;
   /** Handler deadline in milliseconds; must stay below the idempotency lock lifetime. */
@@ -112,6 +115,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerHealth(app);
   registerStatus(app, deps);
   registerEvents(app, deps);
+  registerMandates(app, deps);
   app.get("/openapi.json", (c) =>
     c.json(app.getOpenAPI31Document({ openapi: "3.1.0", info: apiInfo })),
   );

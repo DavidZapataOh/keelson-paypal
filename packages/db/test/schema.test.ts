@@ -197,3 +197,7 @@ test("a credential id can be registered only once", async () => {
   const code = await sqlState(db.insert(passkey).values(passkeyValues((await newUser()).id)));
   expect(code).toBe("23505");
 });
+
+test("a mandate must belong to an existing user", async () => {
+  expect(await sqlState(newMandate({ userId: ulid() }))).toBe("23503");
+});

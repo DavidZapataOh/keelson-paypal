@@ -43,6 +43,13 @@
       "when": 1793913829015,
       "tag": "0005_passkey_invariants",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793915261653,
+      "tag": "0006_mandate_signatures",
+      "breakpoints": true
     }
   ]
 }

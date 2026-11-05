@@ -372,6 +372,9 @@ importers:
       '@keelson/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@keelson/mandate':
+        specifier: workspace:*
+        version: link:../../packages/mandate
       '@opentelemetry/api':
         specifier: 1.10.0
         version: 1.10.0

@@ -103,7 +103,8 @@ let browser!: Browser;
 let page!: Page;
 
 beforeAll(async () => {
-  browser = await chromium.launch();
+  // The full build: the headless shell has no Secure Payment Confirmation service.
+  browser = await chromium.launch({ channel: "chromium" });
 });
 
 afterAll(async () => {

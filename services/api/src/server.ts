@@ -25,6 +25,7 @@ const app = createApp({
   log,
   auth,
   appOrigin: env.APP_ORIGIN,
+  passkeyRpId: env.PASSKEY_RP_ID,
   authenticate: authenticate(auth, env.BETTER_AUTH_URL),
   rateLimit: { trustProxy: process.env.RENDER === "true" },
   shutdown: shutdown.signal,

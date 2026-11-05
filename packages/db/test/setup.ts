@@ -48,5 +48,8 @@ afterAll(async () => {
 });
 
 await migrate(url);
+await handle.pool.query(
+  `insert into "user" (id, name, email) values ('user-1', 'User 1', 'user-1@example.com')`,
+);
 
 export const testDb: { db: Db; pool: pg.Pool } = handle;
