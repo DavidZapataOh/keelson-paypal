@@ -1,0 +1,36 @@
+{
+  "name": "@keelson/paypal",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:sandbox": "node --env-file=../../.env ./node_modules/vitest/vitest.mjs run --config vitest.sandbox.config.ts",
+    "age-authorization": "node --env-file=../../.env scripts/age-authorization.ts"
+  },
+  "dependencies": {
+    "@keelson/core": "workspace:*",
+    "@paypal/paypal-server-sdk": "2.5.0",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "fast-check": "4.10.2",
+    "pdf-lib": "1.17.1",
+    "playwright": "1.64.1",
+    "typescript": "catalog:",
+    "undici": "8.12.3",
+    "vitest": "catalog:"
+  }
+}

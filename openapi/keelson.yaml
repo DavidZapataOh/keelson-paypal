@@ -1,0 +1,142 @@
+openapi: 3.1.0
+info:
+  title: Keelson API
+  version: 0.0.0
+components:
+  schemas:
+    Problem:
+      type: object
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+      required:
+        - type
+        - title
+        - status
+        - instance
+      additionalProperties: {}
+  parameters: {}
+paths:
+  /health:
+    get:
+      tags:
+        - system
+      summary: Liveness probe
+      responses:
+        "200":
+          description: The service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum:
+                      - ok
+                required:
+                  - status
+  /status:
+    get:
+      tags:
+        - system
+      summary: Dependency status
+      responses:
+        "200":
+          description: Status of the service and its dependencies; always 200
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum:
+                      - ok
+                      - degraded
+                  dependencies:
+                    type: object
+                    properties:
+                      db:
+                        type: string
+                        enum:
+                          - up
+                          - down
+                      kv:
+                        type: string
+                        enum:
+                          - up
+                          - down
+                    required:
+                      - db
+                      - kv
+                  version:
+                    type: string
+                required:
+                  - status
+                  - dependencies
+                  - version
+  /v1/events:
+    get:
+      tags:
+        - events
+      summary: Stream events
+      description: Server-sent events for one channel. Send `Last-Event-ID` to replay
+        the events after that id before going live.
+      parameters:
+        - schema:
+            type: string
+            description: "`public:<name>`, or the caller's own namespace
+              `<base64url(kind:subject)>` with an optional `:<suffix>`."
+          required: true
+          description: "`public:<name>`, or the caller's own namespace
+            `<base64url(kind:subject)>` with an optional `:<suffix>`."
+          name: channel
+          in: query
+        - schema:
+            type: string
+          required: false
+          name: last-event-id
+          in: header
+      responses:
+        "200":
+          description: An event stream; each event carries the row id, the channel and a
+            JSON payload
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "400":
+          description: Invalid channel or Last-Event-ID
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: Not authenticated
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The channel belongs to another principal
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Too many concurrent streams for this principal
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+webhooks: {}

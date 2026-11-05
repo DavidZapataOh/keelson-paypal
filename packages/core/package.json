@@ -1,0 +1,38 @@
+{
+  "name": "@keelson/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./poseidon2": {
+      "types": "./dist/poseidon2.d.ts",
+      "default": "./dist/poseidon2.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "vectors": "tsc -p tsconfig.build.json && node scripts/vectors.ts",
+    "bench": "vitest bench --reporter=verbose"
+  },
+  "dependencies": {
+    "@aztec/bb.js": "5.3.0",
+    "@noble/hashes": "catalog:",
+    "canonicalize": "5.1.0",
+    "ulid": "3.0.2",
+    "viem": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
