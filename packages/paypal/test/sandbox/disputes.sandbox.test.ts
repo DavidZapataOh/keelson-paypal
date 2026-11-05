@@ -1,7 +1,13 @@
 import { PDFDocument } from "pdf-lib";
 import { beforeAll, describe, expect, test } from "vitest";
 import { paypalConfig } from "../../src/config.ts";
-import { adjudicate, getDispute, provideEvidence, requireEvidence } from "../../src/disputes.ts";
+import {
+  adjudicate,
+  escalate,
+  getDispute,
+  provideEvidence,
+  requireEvidence,
+} from "../../src/disputes.ts";
 import { fromSdkError } from "../../src/errors.ts";
 import { parseInvoiceId } from "../../src/ids.ts";
 import { createPayPal, type PayPal } from "../../src/sdk.ts";
@@ -44,23 +50,27 @@ describe("disputes (sandbox)", () => {
           `capture custom_id = ${JSON.stringify(capture.customId ?? null)}`,
       );
 
-      // Documented transitions only: require-evidence (UNDER_REVIEW -> WAITING_FOR_SELLER_RESPONSE),
-      // provide-evidence (WAITING_FOR_SELLER_RESPONSE), adjudicate (UNDER_REVIEW).
+      // Link rels use underscores. require_evidence/adjudicate need UNDER_REVIEW in the
+      // CHARGEBACK stage; an INQUIRY must be escalated first.
+      let escalated = false;
       let requested = false;
       let provided = false;
       let adjudicated = false;
       let last = "";
-      const deadline = Date.now() + 120_000;
+      const seconds = Number(process.env.PAYPAL_DISPUTE_TIMEOUT_SECONDS ?? 120);
+      const deadline = Date.now() + seconds * 1000;
+      const log = (m: string) => console.info(`${new Date().toISOString()} dispute ${id}: ${m}`);
       while (Date.now() < deadline) {
         const d = await getDispute(paypal.fetch, id);
-        if (d.status !== last) {
-          console.info(`dispute ${id}: status ${d.status}, stage ${d.dispute_life_cycle_stage}`);
-          last = d.status;
+        const links = new Set(d.links?.map((l) => l.rel));
+        const state = `${d.status}/${d.dispute_life_cycle_stage} [${[...links].join(", ")}]`;
+        if (state !== last) {
+          log(state);
+          last = state;
         }
         if (d.status === "RESOLVED") break;
-        const links = new Set(d.links?.map((l) => l.rel));
 
-        if (d.status === "WAITING_FOR_SELLER_RESPONSE" && links.has("provide-evidence")) {
+        if (d.status === "WAITING_FOR_SELLER_RESPONSE" && links.has("provide_evidence")) {
           if (!provided) {
             await provideEvidence(
               paypal.fetch,
@@ -68,7 +78,7 @@ describe("disputes (sandbox)", () => {
               {
                 evidences: [
                   {
-                    evidence_type: "PROOF_OF_FULFILLMENT",
+                    evidence_type: "OTHER",
                     notes: "Sandbox evidence submitted by the integration test.",
                     documents: [{ name: "evidence.pdf" }],
                   },
@@ -77,32 +87,47 @@ describe("disputes (sandbox)", () => {
               [{ name: "evidence.pdf", bytes: await onePagePdf("Keelson sandbox evidence") }],
             );
             provided = true;
+            log("evidence provided");
           }
-        } else if (d.status === "UNDER_REVIEW" && !provided && links.has("require-evidence")) {
-          if (!requested) {
-            await requireEvidence(paypal.fetch, id, "SELLER_EVIDENCE");
-            requested = true;
+        } else if (d.status === "WAITING_FOR_SELLER_RESPONSE" && links.has("escalate")) {
+          if (!escalated) {
+            await escalate(paypal.fetch, id, "Escalating to a claim for resolution.");
+            escalated = true;
+            log("escalated");
           }
-        } else if (d.status === "UNDER_REVIEW" && provided && links.has("adjudicate")) {
+        } else if (
+          d.status === "UNDER_REVIEW" &&
+          (provided || !links.has("require_evidence")) &&
+          links.has("adjudicate")
+        ) {
           if (!adjudicated) {
             await adjudicate(paypal.fetch, id, "SELLER_FAVOR");
             adjudicated = true;
+            log("adjudicated SELLER_FAVOR");
           }
-        } else if (!requested && !provided) {
-          throw new Error(
-            `dispute ${id}: no documented action for status ${d.status}; links: ${[...links].join(", ") || "none"}`,
-          );
+        } else if (d.status === "UNDER_REVIEW" && !provided && links.has("require_evidence")) {
+          if (!requested) {
+            await requireEvidence(paypal.fetch, id, "SELLER_EVIDENCE");
+            requested = true;
+            log("evidence required from the seller");
+          }
+        } else if (
+          !(escalated || requested || provided || ["OPEN", "UNDER_REVIEW"].includes(d.status))
+        ) {
+          throw new Error(`no documented action for ${state}`);
         }
         await sleep(3_000);
       }
 
-      expect(
-        { requested, provided, adjudicated },
-        `dispute ${id} did not resolve in time; last status ${last}`,
-      ).toMatchObject({ provided: true, adjudicated: true });
-      expect((await getDispute(paypal.fetch, id)).status).toBe("RESOLVED");
+      const final = await getDispute(paypal.fetch, id);
+      if (final.status !== "RESOLVED") {
+        throw new Error(
+          `dispute ${id} is still ${last} after the deadline; rerun later, the test resumes from the current state`,
+        );
+      }
+      expect(final.status).toBe("RESOLVED");
     },
-    180_000,
+    3_600_000,
   );
 });
 

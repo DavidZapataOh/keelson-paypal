@@ -43,7 +43,7 @@ export async function getDispute(f: PayPalFetch, id: string): Promise<Dispute> {
   return dispute.parse(await f<unknown>("GET", path(id)));
 }
 
-/** The request body: a plain `input` field plus one `evidence-file` part per file (10 MB each, 50 MB total). */
+/** The request body: an `input` JSON part plus one `file<n>` part per file (10 MB each, 50 MB total). */
 export function evidenceForm(input: { evidences: Evidence[] }, files: EvidenceFile[]): FormData {
   let total = 0;
   for (const file of files) {
@@ -53,14 +53,14 @@ export function evidenceForm(input: { evidences: Evidence[] }, files: EvidenceFi
   if (total > MAX_TOTAL_BYTES) throw new RangeError("evidence files exceed 50 MB in total");
 
   const form = new FormData();
-  form.append("input", JSON.stringify(input));
-  for (const file of files) {
+  form.append("input", new Blob([JSON.stringify(input)], { type: "application/json" }));
+  files.forEach((file, i) => {
     form.append(
-      "evidence-file",
+      `file${i + 1}`,
       new Blob([new Uint8Array(file.bytes)], { type: mimeOf(file.name) }),
       file.name,
     );
-  }
+  });
   return form;
 }
 
@@ -83,9 +83,20 @@ function mimeOf(name: string): string {
   throw new TypeError(`unsupported evidence file type: ${name}`);
 }
 
+/** Moves an inquiry to a chargeback; PayPal then asks the seller for evidence. */
+export async function escalate(
+  f: PayPalFetch,
+  id: string,
+  note: string,
+): Promise<SubsequentAction> {
+  return subsequentAction.parse(
+    await f<unknown>("POST", path(id, "/escalate"), { body: { note } }),
+  );
+}
+
 function inputForm(input: unknown): FormData {
   const form = new FormData();
-  form.append("input", JSON.stringify(input));
+  form.append("input", new Blob([JSON.stringify(input)], { type: "application/json" }));
   return form;
 }
 

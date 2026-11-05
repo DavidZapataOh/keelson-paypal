@@ -32,15 +32,16 @@ describe("evidence multipart body", () => {
     evidences: [{ evidence_type: "PROOF_OF_FULFILLMENT", documents: [{ name: "a.pdf" }] }],
   };
 
-  it("sends input as a plain string field and files as evidence-file parts", () => {
+  it("sends input as a JSON part and files as file<n> parts", async () => {
     const form = evidenceForm(input, [
       { name: "a.pdf", bytes: new Uint8Array([1, 2, 3]) },
       { name: "b.png", bytes: new Uint8Array([4]) },
     ]);
     const entries = [...form.entries()];
-    expect(entries.map(([k]) => k)).toEqual(["input", "evidence-file", "evidence-file"]);
-    expect(typeof entries[0]?.[1]).toBe("string");
-    expect(JSON.parse(entries[0]?.[1] as string)).toEqual(input);
+    expect(entries.map(([k]) => k)).toEqual(["input", "file1", "file2"]);
+    const part = entries[0]?.[1] as File;
+    expect(part.type).toBe("application/json");
+    expect(JSON.parse(await part.text())).toEqual(input);
     const files = entries.slice(1).map(([, v]) => v as File);
     expect(files.map((f) => f.name)).toEqual(["a.pdf", "b.png"]);
     expect(files.map((f) => f.type)).toEqual(["application/pdf", "image/png"]);
