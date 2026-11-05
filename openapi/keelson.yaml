@@ -95,14 +95,15 @@ paths:
       parameters:
         - schema:
             type: string
-            minLength: 1
-            maxLength: 200
+            description: "`public:<name>`, or the caller's own namespace
+              `<kind>:<base64url(subject)>` with an optional `:<suffix>`."
           required: true
+          description: "`public:<name>`, or the caller's own namespace
+            `<kind>:<base64url(subject)>` with an optional `:<suffix>`."
           name: channel
           in: query
         - schema:
             type: string
-            pattern: ^\d+$
           required: false
           name: last-event-id
           in: header
@@ -114,8 +115,26 @@ paths:
             text/event-stream:
               schema:
                 type: string
+        "400":
+          description: Invalid channel or Last-Event-ID
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "401":
           description: Not authenticated
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The channel belongs to another principal
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Too many concurrent streams for this principal
           content:
             application/problem+json:
               schema:

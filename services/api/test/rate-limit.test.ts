@@ -52,13 +52,13 @@ test("counts each principal separately", async () => {
   expect((await get(app, subject())).status).toBe(200);
 });
 
-test("limits anonymous callers by the first forwarded hop only behind a trusted proxy", async () => {
+test("keys anonymous callers by the last forwarded hop only behind a trusted proxy", async () => {
   const proxied = build({ anonymousLimit: 1, trustProxy: true });
-  const ip = `203.0.113.${Math.floor(Math.random() * 250)}`;
-  const call = (xff: string) =>
-    proxied.request("/v1/test/ping", { headers: { "x-forwarded-for": xff } });
-  expect((await call(`${ip}, 10.0.0.1`)).status).toBe(200);
-  expect((await call(`${ip}, 10.0.0.2`)).status).toBe(429);
+  const real = `203.0.113.${Math.floor(Math.random() * 250)}`;
+  const call = (forged: string) =>
+    proxied.request("/v1/test/ping", { headers: { "x-forwarded-for": `${forged}, ${real}` } });
+  expect((await call("6.6.6.6")).status).toBe(200);
+  expect((await call("7.7.7.7")).status).toBe(429);
 
   const direct = build({ anonymousLimit: 1 });
   const stale = await testKv.keys("rl:ip:unknown:*");

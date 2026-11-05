@@ -9,14 +9,18 @@ export interface RateLimitOptions {
   /** Requests per window for an anonymous caller, keyed by client IP. */
   anonymousLimit?: number;
   windowSec?: number;
-  /** Read the client IP from the first `X-Forwarded-For` hop; enable only behind a trusted proxy. */
+  /**
+   * Read the client IP from the last `X-Forwarded-For` entry, the hop the trusted proxy appended;
+   * earlier entries are client-controlled. To be verified against a real Render request at deploy time.
+   */
   trustProxy?: boolean;
 }
 
 function clientIp(c: Context, trustProxy: boolean): string {
   if (trustProxy) {
-    const first = c.req.header("x-forwarded-for")?.split(",")[0]?.trim();
-    if (first) return first;
+    const hops = c.req.header("x-forwarded-for")?.split(",");
+    const last = hops?.[hops.length - 1]?.trim();
+    if (last) return last;
   }
   try {
     return getConnInfo(c).remote.address ?? "unknown";
@@ -51,6 +55,7 @@ export function rateLimit(kv: RedisClientType, options: RateLimitOptions = {}): 
         .expire(`rl:${owner}:${window}`, windowSec, "NX")
         .exec();
       count = Number(incr);
+      if (!Number.isFinite(count)) return next();
     } catch {
       return next();
     }

@@ -15,7 +15,8 @@ const asPrincipal: MiddlewareHandler = async (c, next) => {
 };
 
 const app = createApp({ db: testDb, kv: testKv, log, authenticate: asPrincipal });
-const channel = (): string => `test-${crypto.randomUUID()}`;
+const ns = (subject: string): string => `user:${Buffer.from(subject).toString("base64url")}`;
+const channel = (): string => `${ns("u1")}:${crypto.randomUUID().replaceAll("-", "")}`;
 
 interface Frame {
   id?: string;
@@ -147,13 +148,76 @@ test("releases the subscriber connection when the client goes away", async () =>
   expect(Number(await subscribers())).toBe(0);
 });
 
+test("keeps ids in commit order with parallel publishers", async () => {
+  const name = channel();
+  const sse = await connect(name);
+  const ids = await Promise.all(
+    Array.from({ length: 50 }, (_, n) => publishEvent(deps, name, "m1", { n })),
+  );
+  const received: bigint[] = [];
+  for (let i = 0; i < ids.length; i++) received.push(BigInt((await sse.event()).id as string));
+  expect(received).toEqual([...ids].sort((a, b) => Number(a - b)));
+  expect(await sse.next(150)).toBeUndefined();
+  await sse.close();
+});
+
+const open = (target: string, headers: Record<string, string> = {}) =>
+  app.request(`/v1/events?channel=${target}`, { headers: { "x-test-subject": "u1", ...headers } });
+const slug = async (res: Response) =>
+  ((await res.json()) as { type: string }).type.split("/").pop();
+
 test("requires a principal and a channel", async () => {
-  const anonymous = await app.request("/v1/events?channel=x");
-  expect(anonymous.status).toBe(401);
-  const missing = await app.request("/v1/events", { headers: { "x-test-subject": "u1" } });
-  expect(missing.status).toBe(422);
-  const bad = await app.request("/v1/events?channel=x", {
-    headers: { "x-test-subject": "u1", "last-event-id": "abc" },
-  });
-  expect(bad.status).toBe(422);
+  expect((await app.request("/v1/events?channel=public:x")).status).toBe(401);
+  expect((await app.request("/v1/events", { headers: { "x-test-subject": "u1" } })).status).toBe(
+    422,
+  );
+});
+
+test("accepts public channels and the caller's own namespace only", async () => {
+  const pub = await open("public:prices");
+  expect(pub.status).toBe(200);
+  await pub.body?.cancel();
+  const bare = await open(ns("u1"));
+  expect(bare.status).toBe(200);
+  await bare.body?.cancel();
+  for (const other of [ns("u2"), `${ns("u2")}:x`, `${ns("u1")}x`, "public:", "client:abc"]) {
+    const res = await open(other);
+    expect([other, res.status]).toEqual([other, 403]);
+    expect(await slug(res)).toBe("forbidden-channel");
+  }
+});
+
+test("rejects malformed channels and Last-Event-ID without opening a stream", async () => {
+  for (const bad of ["a%0Ab", "a.b", "x".repeat(129)]) {
+    const res = await open(bad);
+    expect([bad.length, res.status, await slug(res)]).toEqual([bad.length, 400, "invalid-channel"]);
+  }
+  for (const id of ["abc", "-1", "", "9223372036854775808", "1".repeat(20)]) {
+    const res = await open("public:x", { "last-event-id": id });
+    expect([id, res.status, await slug(res)]).toEqual([id, 400, "invalid-last-event-id"]);
+  }
+  const max = await open("public:x", { "last-event-id": "9223372036854775807" });
+  expect(max.status).toBe(200);
+  await max.body?.cancel();
+});
+
+test("caps concurrent streams per principal", async () => {
+  const held: Response[] = [];
+  const user = { "x-test-subject": "capped" };
+  for (let i = 0; i < 5; i++) {
+    const res = await app.request(`/v1/events?channel=public:cap${i}`, { headers: user });
+    expect(res.status).toBe(200);
+    held.push(res);
+  }
+  const sixth = await app.request("/v1/events?channel=public:cap", { headers: user });
+  expect([sixth.status, await slug(sixth)]).toEqual([429, "too-many-streams"]);
+  const other = await open("public:cap");
+  expect(other.status).toBe(200);
+  await other.body?.cancel();
+  await held[0]?.body?.cancel();
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  const again = await app.request("/v1/events?channel=public:cap", { headers: user });
+  expect(again.status).toBe(200);
+  await again.body?.cancel();
+  for (const res of held.slice(1)) await res.body?.cancel();
 });
