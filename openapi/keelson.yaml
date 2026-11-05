@@ -85,4 +85,39 @@ paths:
                   - status
                   - dependencies
                   - version
+  /v1/events:
+    get:
+      tags:
+        - events
+      summary: Stream events
+      description: Server-sent events for one channel. Send `Last-Event-ID` to replay
+        the events after that id before going live.
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+          required: true
+          name: channel
+          in: query
+        - schema:
+            type: string
+            pattern: ^\d+$
+          required: false
+          name: last-event-id
+          in: header
+      responses:
+        "200":
+          description: An event stream; each event carries the row id, the channel and a
+            JSON payload
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "401":
+          description: Not authenticated
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
 webhooks: {}

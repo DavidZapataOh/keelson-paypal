@@ -12,6 +12,7 @@ import type { Auth } from "./auth.ts";
 import { idempotency } from "./middleware/idempotency.ts";
 import { type RateLimitOptions, rateLimit } from "./middleware/rate-limit.ts";
 import { ProblemSchema, problem } from "./problem.ts";
+import { registerEvents } from "./routes/events.ts";
 import { registerHealth } from "./routes/health.ts";
 import { registerStatus } from "./routes/status.ts";
 
@@ -99,6 +100,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   }
   registerHealth(app);
   registerStatus(app, deps);
+  registerEvents(app, deps);
   app.get("/openapi.json", (c) =>
     c.json(app.getOpenAPI31Document({ openapi: "3.1.0", info: apiInfo })),
   );

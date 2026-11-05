@@ -95,3 +95,21 @@ export function requireSession(): MiddlewareHandler {
     await next();
   };
 }
+
+/** Admits any signed-in user or OAuth client. */
+export function requirePrincipal(): MiddlewareHandler {
+  return async (c, next) => {
+    if (c.var.invalidToken) return invalidToken(c);
+    if (!c.var.principal) {
+      c.header("WWW-Authenticate", "Bearer");
+      return problem(
+        c,
+        401,
+        "unauthorized",
+        "Unauthorized",
+        "A session or access token is required.",
+      );
+    }
+    await next();
+  };
+}
