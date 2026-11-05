@@ -5,23 +5,30 @@ import { BN254_FR_MODULUS } from "@keelson/core/poseidon2";
 import { describe, expect, it } from "vitest";
 import { hSd, mandateChallenge } from "../src/challenge.ts";
 import { type Mandate, parseMandate } from "../src/schema.ts";
-import { buildSdPayload, decodeDisclosed, SD_FIELDS } from "../src/sd.ts";
+import { buildSdPayload, decodeDisclosed, merchantDisclosures, SD_FIELDS } from "../src/sd.ts";
 import demo from "./fixtures/demo-mandate.json" with { type: "json" };
 
-const mandate = (): Mandate => parseMandate(structuredClone(demo));
+/** The demo mandate, with a budget that differs from the per-purchase cap. */
+function mandate(): Mandate {
+  const m = structuredClone(demo) as unknown as Mandate;
+  for (const c of m.payment.constraints) if (c.type === "payment.budget") c.max = 25000;
+  return parseMandate(m);
+}
 const randomSalt = () => crypto.getRandomValues(new Uint8Array(16));
 
 const decode = (d: string): unknown[] => JSON.parse(Buffer.from(d, "base64url").toString("utf8"));
 
-/** Drops every value that `hidden` would have revealed: claim names, or array elements. */
+/** Drops every value that `hidden` would have revealed: claims, or array elements. */
 function withoutDisclosures(m: Mandate, hidden: string[]): unknown {
-  const keys = new Set<string>();
+  const claims: [string, unknown][] = [];
   const elements: unknown[] = [];
   for (const d of hidden) {
     const parts = decode(d);
-    if (parts.length === 3) keys.add(parts[1] as string);
+    if (parts.length === 3) claims.push([parts[1] as string, parts[2]]);
     else elements.push(parts[1]);
   }
+  const isHidden = (k: string, x: unknown) =>
+    claims.some(([ck, cv]) => ck === k && isDeepStrictEqual(cv, x));
   const walk = (v: unknown): unknown => {
     if (Array.isArray(v)) {
       return v.filter((x) => !elements.some((e) => isDeepStrictEqual(e, x))).map(walk);
@@ -29,7 +36,7 @@ function withoutDisclosures(m: Mandate, hidden: string[]): unknown {
     if (v !== null && typeof v === "object") {
       return Object.fromEntries(
         Object.entries(v)
-          .filter(([k]) => !keys.has(k))
+          .filter(([k, x]) => !isHidden(k, x))
           .map(([k, x]) => [k, walk(x)]),
       );
     }
@@ -57,7 +64,13 @@ describe("buildSdPayload", () => {
     const json = JSON.stringify(payloadSd);
     for (const secret of [
       m.user.app_login_id,
+      m.user.sub,
+      m.user.cred.id,
+      m.user.cred.jwk.x,
       m.intent.prompt_summary,
+      m.intent.prompt_hash,
+      "25000",
+      "10000",
       "fp_3c9a71",
       "203.0.113.7",
       "MERCH7XK2Q9LD",
@@ -67,8 +80,8 @@ describe("buildSdPayload", () => {
     ]) {
       expect(json).not.toContain(secret);
     }
-    expect(disclosures).toHaveLength(7);
-    expect(SD_FIELDS).toHaveLength(7);
+    expect(disclosures).toHaveLength(11);
+    expect(SD_FIELDS).toHaveLength(11);
     expect((payloadSd as Mandate).nonce).toBe(m.nonce);
   });
 
@@ -141,6 +154,99 @@ describe("decodeDisclosed", () => {
     const { payloadSd, disclosures } = await buildSdPayload(mandate(), randomSalt);
     const forged = { ...payloadSd, cnf: { jwk: mandate().user.cred.jwk } };
     expect(() => decodeDisclosed(forged, disclosures)).toThrow(/cnf/);
+  });
+
+  it("rejects an _sd_alg other than sha-256", async () => {
+    const { payloadSd, disclosures } = await buildSdPayload(mandate(), randomSalt);
+    for (const alg of ["sha-512", "SHA-256", "sha-384"]) {
+      expect(() => decodeDisclosed({ ...payloadSd, _sd_alg: alg }, disclosures)).toThrow(/_sd_alg/);
+    }
+    expect(decodeDisclosed({ ...payloadSd, _sd_alg: "sha-256" }, disclosures)).toEqual(mandate());
+  });
+});
+
+/** The demo mandate with a second merchant, its payee and a second acceptable item. */
+function twoMerchants(): Mandate {
+  const m = mandate();
+  for (const c of m.payment.constraints) {
+    if (c.type === "payment.allowed_payees")
+      c.allowed.push({ paypal_merchant_id: "MERCH2TRAILCO" });
+  }
+  for (const c of m.checkout.constraints) {
+    if (c.type === "checkout.allowed_merchants") {
+      c.allowed.push({
+        id: "mrc_trailco",
+        name: "TrailCo",
+        website: "https://trailco.example",
+        paypal_merchant_id: "MERCH2TRAILCO",
+      });
+    }
+    if (c.type === "checkout.line_items") {
+      c.items[0]?.acceptable_items.push({ id: "sku-trail-11", title: "Trail shoe, wide" });
+    }
+  }
+  return parseMandate(m);
+}
+
+describe("merchantDisclosures", () => {
+  const view = async (opts: Parameters<typeof merchantDisclosures>[1]) => {
+    const m = twoMerchants();
+    const { payloadSd, disclosures } = await buildSdPayload(m, randomSalt);
+    return { m, seen: decodeDisclosed(payloadSd, merchantDisclosures(disclosures, opts)) };
+  };
+
+  it("shows a merchant only its own entries, withholding the cap, budget, prompt hash and user", async () => {
+    const { seen } = await view({ merchant: "mrc_runfast" });
+    expect(seen.user).toEqual({});
+    expect(seen.intent).toEqual({ subjective: ["look good"] });
+    expect(seen.risk_data).toBeUndefined();
+    expect(seen.payment.constraints).toEqual([
+      { type: "payment.budget", currency: "USD" },
+      { type: "payment.allowed_payees", allowed: [{ paypal_merchant_id: "MERCH7XK2Q9LD" }] },
+      { type: "payment.execution_date", not_after: "2026-11-13T23:59:59Z" },
+    ]);
+    const checkout = seen.checkout.constraints;
+    expect(checkout[0]).toEqual({
+      type: "checkout.allowed_merchants",
+      allowed: [
+        {
+          id: "mrc_runfast",
+          name: "RunFast",
+          website: "https://runfast.example",
+          paypal_merchant_id: "MERCH7XK2Q9LD",
+        },
+      ],
+    });
+    expect(checkout[1]).toEqual({
+      type: "checkout.line_items",
+      items: [{ id: "l1", acceptable_items: [], quantity: 1 }],
+    });
+  });
+
+  it("adds the requested items and, when the user chooses, the cap", async () => {
+    const { m, seen } = await view({ merchant: "mrc_trailco", items: ["sku-trail-11"], cap: true });
+    expect(seen.payment.constraints[0]).toEqual(m.payment.constraints[0]);
+    expect(seen.payment.constraints[1]).toEqual({ type: "payment.budget", currency: "USD" });
+    expect(seen.payment.constraints[2]).toEqual({
+      type: "payment.allowed_payees",
+      allowed: [{ paypal_merchant_id: "MERCH2TRAILCO" }],
+    });
+    expect(seen.checkout.constraints[1]).toEqual({
+      type: "checkout.line_items",
+      items: [
+        {
+          id: "l1",
+          acceptable_items: [{ id: "sku-trail-11", title: "Trail shoe, wide" }],
+          quantity: 1,
+        },
+      ],
+    });
+    expect(seen.user).toEqual({});
+    expect(seen.intent.prompt_hash).toBeUndefined();
+  });
+
+  it("throws for a merchant that is not in the mandate", async () => {
+    await expect(view({ merchant: "mrc_unknown" })).rejects.toThrow(/mrc_unknown/);
   });
 });
 

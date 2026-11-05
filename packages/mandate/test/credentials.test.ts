@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { pack } from "@sd-jwt/core";
-import { exportJWK } from "jose";
+import { CompactSign, decodeJwt, decodeProtectedHeader, exportJWK } from "jose";
 import { beforeAll, describe, expect, it } from "vitest";
 import { hSd, mandateChallenge } from "../src/challenge.ts";
 import { mandateCommitment } from "../src/commitment.ts";
@@ -8,6 +8,7 @@ import {
   issueOpenMandate,
   issueUserCredential,
   OPEN_MANDATE_TYP,
+  type OpenMandateVerifyOptions,
   USER_CREDENTIAL_TYP,
   type UserAuth,
   verifyCredential,
@@ -102,48 +103,60 @@ async function liveMandate(): Promise<Mandate> {
   return parseMandate(m);
 }
 
+const AUD = "agt-01";
+
+/** The open mandate for the live mandate, with `zk.commitment` set to the `C_m` that `M` binds. */
 async function openMandate() {
   const m = await liveMandate();
   const salt = randomSalt();
-  const { payloadSd, disclosures } = await buildSdPayload(m, randomSalt);
-  const h = hSd(payloadSd);
   const cm = await mandateCommitment(m, salt);
-  const challenge = mandateChallenge(h, cm);
+  m.zk.commitment = `0x${cm.toString(16).padStart(64, "0")}`;
+  const { payloadSd, disclosures } = await buildSdPayload(m, randomSalt);
+  const challenge = mandateChallenge(hSd(payloadSd), cm);
   const userAuth = await assertion(passkey, challenge);
   const token = await issueOpenMandate(
-    { userCredential: l1, payloadSd, disclosures, userAuth, aud: "agt-01", nonce: m.nonce },
+    { userCredential: l1, payloadSd, disclosures, userAuth, aud: AUD, nonce: m.nonce },
     holder.privateKey,
   );
-  return { m, cm, token, payloadSd, disclosures, challenge, userAuth };
+  const opts: OpenMandateVerifyOptions = {
+    expectedAud: AUD,
+    expectedNonce: m.nonce,
+    now: Math.floor(Date.now() / 1000),
+    maxSkewSec: 60,
+  };
+  return { m, cm, token, payloadSd, disclosures, challenge, userAuth, opts };
 }
 
-/** A small open mandate, so that flipping each of its bytes is cheap. */
-async function smallOpenMandate(): Promise<string> {
-  const hash = {
-    alg: "sha-256",
-    hasher: (data: string | ArrayBuffer) =>
-      new Uint8Array(sha256(typeof data === "string" ? data : new Uint8Array(data))),
-  };
-  const salt = () => b64u(randomSalt());
-  const { packedClaims, disclosures } = await pack(
-    { cnf: { jwk: await publicJwk(agent) }, cap: 100 },
-    { _sd: ["cap"] },
-    hash,
-    salt,
-  );
-  const userAuth = await assertion(passkey, randomSalt());
+/** An open mandate over `payloadSd`, which need not be a mandate. */
+async function openMandateOver(payloadSd: object, disclosures: string[]): Promise<string> {
   return issueOpenMandate(
     {
       userCredential: l1,
-      payloadSd: packedClaims as object,
-      disclosures: disclosures.map((d) => d.encode()),
-      userAuth,
-      aud: "a",
+      payloadSd,
+      disclosures,
+      userAuth: await assertion(passkey, randomSalt()),
+      aud: AUD,
       nonce: "n",
     },
     holder.privateKey,
   );
 }
+
+/** Re-signs a compact JWS after `edit` changes its payload. */
+async function resign(
+  jws: string,
+  edit: (p: Record<string, unknown>) => void,
+  key: CryptoKey,
+): Promise<string> {
+  const payload = decodeJwt(jws) as Record<string, unknown>;
+  edit(payload);
+  return new CompactSign(new TextEncoder().encode(JSON.stringify(payload)))
+    .setProtectedHeader(decodeProtectedHeader(jws) as { alg: string })
+    .sign(key);
+}
+
+const rejects = (token: string, opts: OpenMandateVerifyOptions) =>
+  expect(verifyCredential(token, OPEN_MANDATE_TYP, issuer.publicKey, opts)).rejects;
 
 describe("user credential (L1)", () => {
   it("is a dc+sd-jwt, ES256, with cnf.jwk set to the holder key", async () => {
@@ -156,6 +169,28 @@ describe("user credential (L1)", () => {
     expect(l1.endsWith("~")).toBe(true);
   });
 
+  it("makes sub and cred selectively disclosable", async () => {
+    const jwt = l1.slice(0, l1.indexOf("~"));
+    const signed = decodeJwt(jwt);
+    expect(signed.sub).toBeUndefined();
+    expect(signed.cred).toBeUndefined();
+    expect(l1.split("~").slice(1, -1)).toHaveLength(2);
+    const bare = await verifyCredential(`${jwt}~`, USER_CREDENTIAL_TYP, issuer.publicKey);
+    expect(bare.claims.sub).toBeUndefined();
+    expect(bare.claims.cred).toBeUndefined();
+    expect(bare.claims.cnf).toEqual({ jwk: await publicJwk(holder) });
+  });
+
+  it("rejects an _sd_alg other than sha-256", async () => {
+    const jwt = l1.slice(0, l1.indexOf("~"));
+    const forged = await resign(jwt, (p) => (p._sd_alg = "sha-512"), issuer.privateKey);
+    for (const token of [`${forged}${l1.slice(jwt.length)}`, `${forged}~`]) {
+      await expect(verifyCredential(token, USER_CREDENTIAL_TYP, issuer.publicKey)).rejects.toThrow(
+        /sha-512/,
+      );
+    }
+  });
+
   it("never carries private key material in cnf", async () => {
     const leaky = { ...(await userParams()), holderJwk: await exportJWK(holder.privateKey) };
     const token = await issueUserCredential(leaky as never, issuer.privateKey);
@@ -165,47 +200,121 @@ describe("user credential (L1)", () => {
 
   it("fails with a wrong key or a wrong typ", async () => {
     await expect(verifyCredential(l1, USER_CREDENTIAL_TYP, other.publicKey)).rejects.toThrow();
-    await expect(verifyCredential(l1, OPEN_MANDATE_TYP, issuer.publicKey)).rejects.toThrow();
+    const opts = {
+      expectedAud: AUD,
+      expectedNonce: "n",
+      now: Math.floor(Date.now() / 1000),
+      maxSkewSec: 0,
+    };
+    await expect(verifyCredential(l1, OPEN_MANDATE_TYP, issuer.publicKey, opts)).rejects.toThrow();
   });
 });
 
 describe("open mandate (L2)", () => {
   it("is a kb-sd-jwt+kb chained to L1, carrying the passkey assertion over M", async () => {
-    const { m, cm, token, payloadSd, challenge, userAuth } = await openMandate();
-    expect(token.startsWith(`${l1}~`)).toBe(true);
-    const v = await verifyCredential(token, OPEN_MANDATE_TYP, issuer.publicKey);
+    const { m, cm, token, payloadSd, challenge, userAuth, opts } = await openMandate();
+    expect(token.startsWith(`${l1.slice(0, l1.indexOf("~"))}~~`)).toBe(true);
+    const v = await verifyCredential(token, OPEN_MANDATE_TYP, issuer.publicKey, opts);
     expect(v.header).toMatchObject({ typ: "kb-sd-jwt+kb", alg: "ES256" });
     expect(v.userCredential.claims.cnf).toEqual({ jwk: await publicJwk(holder) });
     expect(v.payload).toEqual(payloadSd);
     expect(v.claims).toEqual({ ...m, cnf: { jwk: m.agent.cnf.jwk } });
+    expect(v.mandate).toEqual(m);
     expect(v.userAuth).toEqual(userAuth);
 
-    // A verifier recomputes M from the signed payload and C_m, and finds it in the assertion.
-    expect(mandateChallenge(hSd(v.payload), cm)).toEqual(challenge);
+    // A verifier recomputes M from the signed payload and the C_m it carries.
+    expect(BigInt(v.mandate.zk.commitment)).toBe(cm);
+    expect(mandateChallenge(hSd(v.payload), BigInt(v.mandate.zk.commitment))).toEqual(challenge);
     const clientData = JSON.parse(Buffer.from(v.userAuth.clientDataJSON, "base64url").toString());
     expect(clientData.challenge).toBe(b64u(challenge));
   });
 
-  it("lets the holder withhold delegated disclosures", async () => {
-    const { token, disclosures } = await openMandate();
+  it("embeds the user credential without sub and cred", async () => {
+    const { token, opts } = await openMandate();
+    const v = await verifyCredential(token, OPEN_MANDATE_TYP, issuer.publicKey, opts);
+    expect(v.userCredential.claims.sub).toBeUndefined();
+    expect(v.userCredential.claims.cred).toBeUndefined();
+    for (const d of l1.split("~").slice(1, -1)) expect(token).not.toContain(d);
+  });
+
+  it("rejects an open mandate with a withheld delegated disclosure", async () => {
+    const { token, disclosures, opts } = await openMandate();
     const login = disclosures.find(isLogin);
-    const v = await verifyCredential(
-      token.replace(`~${login}~`, "~"),
+    await rejects(token.replace(`~${login}~`, "~"), opts).toThrow(/app_login_id/);
+  });
+
+  it("rejects a wrong audience or nonce", async () => {
+    const { token, opts } = await openMandate();
+    await rejects(token, { ...opts, expectedAud: "agt-02" }).toThrow(/aud/);
+    await rejects(token, { ...opts, expectedNonce: "AAAAAAAAAAAAAAAAAAAAAA" }).toThrow(/nonce/);
+  });
+
+  it("rejects a key binding iat in the future beyond the skew, and accepts it within", async () => {
+    const { token, opts } = await openMandate();
+    const parts = token.split("~");
+    const withIat = async (iat: number) => {
+      const kb = await resign(parts[2] as string, (p) => (p.iat = iat), holder.privateKey);
+      return parts.with(2, kb).join("~");
+    };
+    const skewed = { ...opts, maxSkewSec: 30 };
+    await rejects(await withIat(opts.now + 31), skewed).toThrow(/not yet valid/);
+    await verifyCredential(
+      await withIat(opts.now + 30),
       OPEN_MANDATE_TYP,
       issuer.publicKey,
+      skewed,
     );
-    expect((v.claims.user as Record<string, unknown>).app_login_id).toBeUndefined();
+  });
+
+  it("rejects an expired mandate", async () => {
+    const { m, token, opts } = await openMandate();
+    const at = (now: number) => ({ ...opts, now, maxSkewSec: 30 });
+    await rejects(token, at(m.exp + 30)).toThrow(/expired/);
+    await verifyCredential(token, OPEN_MANDATE_TYP, issuer.publicKey, at(m.exp + 29));
+  });
+
+  it("rejects a delegate cnf that differs from agent.cnf", async () => {
+    const { payloadSd, disclosures, opts } = await openMandate();
+    const forged = { ...payloadSd, cnf: { jwk: await publicJwk(other) } };
+    await rejects(await openMandateOver(forged, disclosures), {
+      ...opts,
+      expectedNonce: "n",
+    }).toThrow(/cnf/);
+  });
+
+  it("rejects a delegate payload that is not a mandate", async () => {
+    const { opts } = await openMandate();
+    const { packedClaims, disclosures } = await pack(
+      { cnf: { jwk: await publicJwk(agent) }, cap: 100 },
+      { _sd: ["cap"] },
+      { alg: "sha-256", hasher: (d: string | ArrayBuffer) => new Uint8Array(sha256(d as string)) },
+      () => b64u(randomSalt()),
+    );
+    const token = await openMandateOver(
+      packedClaims as object,
+      disclosures.map((d) => d.encode()),
+    );
+    await rejects(token, { ...opts, expectedNonce: "n" }).toThrow();
+  });
+
+  it("rejects an _sd_alg other than sha-256 in the key binding", async () => {
+    const { token, opts } = await openMandate();
+    const parts = token.split("~");
+    parts[2] = await resign(parts[2] as string, (p) => (p._sd_alg = "sha-512"), holder.privateKey);
+    await rejects(parts.join("~"), opts).toThrow(/sha-512/);
   });
 
   it("fails with a wrong issuer key, a wrong holder key or a wrong typ", async () => {
-    const { m, token, payloadSd, disclosures, userAuth } = await openMandate();
-    await expect(verifyCredential(token, OPEN_MANDATE_TYP, other.publicKey)).rejects.toThrow();
+    const { m, token, payloadSd, disclosures, userAuth, opts } = await openMandate();
+    await expect(
+      verifyCredential(token, OPEN_MANDATE_TYP, other.publicKey, opts),
+    ).rejects.toThrow();
     await expect(verifyCredential(token, USER_CREDENTIAL_TYP, issuer.publicKey)).rejects.toThrow();
     const notHolder = await issueOpenMandate(
-      { userCredential: l1, payloadSd, disclosures, userAuth, aud: "agt-01", nonce: m.nonce },
+      { userCredential: l1, payloadSd, disclosures, userAuth, aud: AUD, nonce: m.nonce },
       other.privateKey,
     );
-    await expect(verifyCredential(notHolder, OPEN_MANDATE_TYP, issuer.publicKey)).rejects.toThrow();
+    await rejects(notHolder, opts).toThrow();
   });
 
   it("requires a delegate cnf", async () => {
@@ -220,9 +329,8 @@ describe("open mandate (L2)", () => {
   });
 
   it("fails when any byte of the token changes", async () => {
-    const token = await smallOpenMandate();
-    expect(token.length).toBeLessThan(2000);
-    await verifyCredential(token, OPEN_MANDATE_TYP, issuer.publicKey);
+    const { token, opts } = await openMandate();
+    await verifyCredential(token, OPEN_MANDATE_TYP, issuer.publicKey, opts);
     const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
     const accepted: number[] = [];
     for (let i = 0; i < token.length; i++) {
@@ -230,7 +338,7 @@ describe("open mandate (L2)", () => {
       const j = alphabet.indexOf(c);
       const flipped = j < 0 ? "A" : (alphabet[j ^ 1] as string);
       const tampered = token.slice(0, i) + flipped + token.slice(i + 1);
-      const ok = await verifyCredential(tampered, OPEN_MANDATE_TYP, issuer.publicKey).then(
+      const ok = await verifyCredential(tampered, OPEN_MANDATE_TYP, issuer.publicKey, opts).then(
         () => true,
         () => false,
       );
