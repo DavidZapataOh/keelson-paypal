@@ -1,0 +1,958 @@
+{
+  "id": "8c8cffbd-0cbd-4e0a-8b21-2280a68c85a5",
+  "prevId": "e1cfb569-84ff-49d3-8f87-525521326624",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.alibis": {
+      "name": "alibis",
+      "schema": "",
+      "columns": {
+        "purchase_id": {
+          "name": "purchase_id",
+          "type": "char(26)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "leaf_hash": {
+          "name": "leaf_hash",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bundle": {
+          "name": "bundle",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "alibis_purchase_id_purchases_id_fk": {
+          "name": "alibis_purchase_id_purchases_id_fk",
+          "tableFrom": "alibis",
+          "tableTo": "purchases",
+          "columnsFrom": ["purchase_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "alibis_leaf_hash_unique": {
+          "name": "alibis_leaf_hash_unique",
+          "nullsNotDistinct": false,
+          "columns": ["leaf_hash"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "alibis_leaf_hash_len": {
+          "name": "alibis_leaf_hash_len",
+          "value": "octet_length(\"alibis\".\"leaf_hash\") = 32"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.attacks": {
+      "name": "attacks",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "char(26)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "campaign": {
+          "name": "campaign",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "backbone": {
+          "name": "backbone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload_hash": {
+          "name": "payload_hash",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "attack_outcome",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "purchase_id": {
+          "name": "purchase_id",
+          "type": "char(26)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "attacks_created_at_idx": {
+          "name": "attacks_created_at_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "attacks_purchase_id_purchases_id_fk": {
+          "name": "attacks_purchase_id_purchases_id_fk",
+          "tableFrom": "attacks",
+          "tableTo": "purchases",
+          "columnsFrom": ["purchase_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "attacks_payload_hash_len": {
+          "name": "attacks_payload_hash_len",
+          "value": "octet_length(\"attacks\".\"payload_hash\") = 32"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.disputes": {
+      "name": "disputes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "purchase_id": {
+          "name": "purchase_id",
+          "type": "char(26)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "dispute_state",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'OPEN'"
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rule_id": {
+          "name": "rule_id",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "liable": {
+          "name": "liable",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "raw": {
+          "name": "raw",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "disputes_purchase_id_idx": {
+          "name": "disputes_purchase_id_idx",
+          "columns": [
+            {
+              "expression": "purchase_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "disputes_purchase_id_purchases_id_fk": {
+          "name": "disputes_purchase_id_purchases_id_fk",
+          "tableFrom": "disputes",
+          "tableTo": "purchases",
+          "columnsFrom": ["purchase_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "disputes_liable_valid": {
+          "name": "disputes_liable_valid",
+          "value": "\"disputes\".\"liable\" in (1, 2, 3, 4)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.events": {
+      "name": "events",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "events_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "channel": {
+          "name": "channel",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject_id": {
+          "name": "subject_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "events_channel_id_idx": {
+          "name": "events_channel_id_idx",
+          "columns": [
+            {
+              "expression": "channel",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.mandates": {
+      "name": "mandates",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "char(26)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "operator_agent_id": {
+          "name": "operator_agent_id",
+          "type": "numeric(78, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "mandate_state",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'DRAFT'"
+        },
+        "currency": {
+          "name": "currency",
+          "type": "char(3)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_minor": {
+          "name": "max_minor",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "remaining_minor": {
+          "name": "remaining_minor",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "merchant_ids": {
+          "name": "merchant_ids",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mandate_hash": {
+          "name": "mandate_hash",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "commitment": {
+          "name": "commitment",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "paypal_order_id": {
+          "name": "paypal_order_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "paypal_authorization_id": {
+          "name": "paypal_authorization_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "mandates_user_id_created_at_idx": {
+          "name": "mandates_user_id_created_at_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "mandates_operator_agent_id_operators_agent_id_fk": {
+          "name": "mandates_operator_agent_id_operators_agent_id_fk",
+          "tableFrom": "mandates",
+          "tableTo": "operators",
+          "columnsFrom": ["operator_agent_id"],
+          "columnsTo": ["agent_id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "mandates_mandate_hash_unique": {
+          "name": "mandates_mandate_hash_unique",
+          "nullsNotDistinct": false,
+          "columns": ["mandate_hash"]
+        },
+        "mandates_paypal_order_id_unique": {
+          "name": "mandates_paypal_order_id_unique",
+          "nullsNotDistinct": false,
+          "columns": ["paypal_order_id"]
+        },
+        "mandates_paypal_authorization_id_unique": {
+          "name": "mandates_paypal_authorization_id_unique",
+          "nullsNotDistinct": false,
+          "columns": ["paypal_authorization_id"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "mandates_remaining_within_max": {
+          "name": "mandates_remaining_within_max",
+          "value": "\"mandates\".\"remaining_minor\" between 0 and \"mandates\".\"max_minor\""
+        },
+        "mandates_mandate_hash_len": {
+          "name": "mandates_mandate_hash_len",
+          "value": "octet_length(\"mandates\".\"mandate_hash\") = 32"
+        },
+        "mandates_commitment_len": {
+          "name": "mandates_commitment_len",
+          "value": "octet_length(\"mandates\".\"commitment\") = 32"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.operators": {
+      "name": "operators",
+      "schema": "",
+      "columns": {
+        "agent_id": {
+          "name": "agent_id",
+          "type": "numeric(78, 0)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "chain_id": {
+          "name": "chain_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cnf_jwk": {
+          "name": "cnf_jwk",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.purchases": {
+      "name": "purchases",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "char(26)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "mandate_id": {
+          "name": "mandate_id",
+          "type": "char(26)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "purchase_state",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'PROPOSED'"
+        },
+        "failure_reason": {
+          "name": "failure_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "merchant_id": {
+          "name": "merchant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "currency": {
+          "name": "currency",
+          "type": "char(3)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount_minor": {
+          "name": "amount_minor",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cart_hash": {
+          "name": "cart_hash",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "countersign_digest": {
+          "name": "countersign_digest",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decision": {
+          "name": "decision",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failed_fields_mask": {
+          "name": "failed_fields_mask",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "invoice_id": {
+          "name": "invoice_id",
+          "type": "varchar(60)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "paypal_capture_id": {
+          "name": "paypal_capture_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "log_index": {
+          "name": "log_index",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "anchored_size": {
+          "name": "anchored_size",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "chain_id": {
+          "name": "chain_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "purchases_mandate_id_created_at_idx": {
+          "name": "purchases_mandate_id_created_at_idx",
+          "columns": [
+            {
+              "expression": "mandate_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "purchases_merchant_id_created_at_idx": {
+          "name": "purchases_merchant_id_created_at_idx",
+          "columns": [
+            {
+              "expression": "merchant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "purchases_open_created_at_idx": {
+          "name": "purchases_open_created_at_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"purchases\".\"state\" not in ('SETTLED', 'DENIED', 'FAILED', 'SLASHED', 'WARRANTY_PAID', 'DEFENDED', 'MERCHANT_LIABLE')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "purchases_mandate_id_mandates_id_fk": {
+          "name": "purchases_mandate_id_mandates_id_fk",
+          "tableFrom": "purchases",
+          "tableTo": "mandates",
+          "columnsFrom": ["mandate_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "purchases_countersign_digest_unique": {
+          "name": "purchases_countersign_digest_unique",
+          "nullsNotDistinct": false,
+          "columns": ["countersign_digest"]
+        },
+        "purchases_invoice_id_unique": {
+          "name": "purchases_invoice_id_unique",
+          "nullsNotDistinct": false,
+          "columns": ["invoice_id"]
+        },
+        "purchases_paypal_capture_id_unique": {
+          "name": "purchases_paypal_capture_id_unique",
+          "nullsNotDistinct": false,
+          "columns": ["paypal_capture_id"]
+        },
+        "purchases_log_index_unique": {
+          "name": "purchases_log_index_unique",
+          "nullsNotDistinct": false,
+          "columns": ["log_index"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "purchases_amount_positive": {
+          "name": "purchases_amount_positive",
+          "value": "\"purchases\".\"amount_minor\" > 0"
+        },
+        "purchases_decision_valid": {
+          "name": "purchases_decision_valid",
+          "value": "\"purchases\".\"decision\" in (1, 2)"
+        },
+        "purchases_cart_hash_len": {
+          "name": "purchases_cart_hash_len",
+          "value": "octet_length(\"purchases\".\"cart_hash\") = 32"
+        },
+        "purchases_countersign_digest_len": {
+          "name": "purchases_countersign_digest_len",
+          "value": "octet_length(\"purchases\".\"countersign_digest\") = 32"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.verdicts": {
+      "name": "verdicts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "char(26)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "dispute_id": {
+          "name": "dispute_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "liable": {
+          "name": "liable",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rule_id": {
+          "name": "rule_id",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount_minor": {
+          "name": "amount_minor",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "currency": {
+          "name": "currency",
+          "type": "char(3)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payee": {
+          "name": "payee",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "digest": {
+          "name": "digest",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tx_hash": {
+          "name": "tx_hash",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "verdicts_dispute_id_disputes_id_fk": {
+          "name": "verdicts_dispute_id_disputes_id_fk",
+          "tableFrom": "verdicts",
+          "tableTo": "disputes",
+          "columnsFrom": ["dispute_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "verdicts_dispute_id_unique": {
+          "name": "verdicts_dispute_id_unique",
+          "nullsNotDistinct": false,
+          "columns": ["dispute_id"]
+        },
+        "verdicts_digest_unique": {
+          "name": "verdicts_digest_unique",
+          "nullsNotDistinct": false,
+          "columns": ["digest"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "verdicts_digest_len": {
+          "name": "verdicts_digest_len",
+          "value": "octet_length(\"verdicts\".\"digest\") = 32"
+        },
+        "verdicts_tx_hash_len": {
+          "name": "verdicts_tx_hash_len",
+          "value": "octet_length(\"verdicts\".\"tx_hash\") = 32"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "public.attack_outcome": {
+      "name": "attack_outcome",
+      "schema": "public",
+      "values": ["BLOCKED", "SUCCEEDED", "NO_EFFECT"]
+    },
+    "public.dispute_state": {
+      "name": "dispute_state",
+      "schema": "public",
+      "values": ["OPEN", "ATTRIBUTED", "RESOLVED"]
+    },
+    "public.mandate_state": {
+      "name": "mandate_state",
+      "schema": "public",
+      "values": [
+        "DRAFT",
+        "COMPILED",
+        "SIGNED",
+        "HOLD_PENDING",
+        "ACTIVE",
+        "EXHAUSTED",
+        "EXPIRED",
+        "REVOKED"
+      ]
+    },
+    "public.purchase_state": {
+      "name": "purchase_state",
+      "schema": "public",
+      "values": [
+        "PROPOSED",
+        "EVALUATING",
+        "DENIED",
+        "COUNTERSIGNED",
+        "LOGGED",
+        "COVERED",
+        "CAPTURED",
+        "DELIVERED",
+        "SETTLED",
+        "DISPUTED",
+        "ATTRIBUTED",
+        "SLASHED",
+        "WARRANTY_PAID",
+        "DEFENDED",
+        "MERCHANT_LIABLE",
+        "FAILED"
+      ]
+    }
+  },
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

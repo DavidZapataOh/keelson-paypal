@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   bigint,
   char,
   check,
@@ -13,6 +14,9 @@ import {
 import { purchaseState } from "./enums.js";
 import { mandates } from "./mandates.js";
 import { bytea, createdAt, updatedAt } from "./types.js";
+
+export const openPurchase = (state: AnyPgColumn) =>
+  sql`${state} not in ('SETTLED', 'DENIED', 'FAILED', 'SLASHED', 'WARRANTY_PAID', 'DEFENDED', 'MERCHANT_LIABLE')`;
 
 export const purchases = pgTable(
   "purchases",
@@ -43,12 +47,8 @@ export const purchases = pgTable(
     check("purchases_decision_valid", sql`${t.decision} in (1, 2)`),
     check("purchases_cart_hash_len", sql`octet_length(${t.cartHash}) = 32`),
     check("purchases_countersign_digest_len", sql`octet_length(${t.countersignDigest}) = 32`),
-    index("purchases_mandate_id_created_at_idx").on(t.mandateId, t.createdAt.desc()),
+    index("purchases_mandate_id_created_at_idx").on(t.mandateId, t.createdAt.desc(), t.id.desc()),
     index("purchases_merchant_id_created_at_idx").on(t.merchantId, t.createdAt.desc()),
-    index("purchases_open_state_idx")
-      .on(t.state)
-      .where(
-        sql`${t.state} not in ('SETTLED', 'DENIED', 'FAILED', 'SLASHED', 'WARRANTY_PAID', 'DEFENDED', 'MERCHANT_LIABLE')`,
-      ),
+    index("purchases_open_created_at_idx").on(t.createdAt, t.id).where(openPurchase(t.state)),
   ],
 );

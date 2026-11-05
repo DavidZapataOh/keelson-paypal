@@ -29,6 +29,6 @@ export const mandates = pgTable(
     check("mandates_remaining_within_max", sql`${t.remainingMinor} between 0 and ${t.maxMinor}`),
     check("mandates_mandate_hash_len", sql`octet_length(${t.mandateHash}) = 32`),
     check("mandates_commitment_len", sql`octet_length(${t.commitment}) = 32`),
-    index("mandates_user_id_created_at_idx").on(t.userId, t.createdAt.desc()),
+    index("mandates_user_id_created_at_idx").on(t.userId, t.createdAt.desc(), t.id.desc()),
   ],
 );
