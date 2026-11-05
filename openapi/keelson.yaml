@@ -1,0 +1,28 @@
+openapi: 3.1.0
+info:
+  title: Keelson API
+  version: 0.0.0
+components:
+  schemas: {}
+  parameters: {}
+paths:
+  /health:
+    get:
+      tags:
+        - system
+      summary: Liveness probe
+      responses:
+        "200":
+          description: The service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum:
+                      - ok
+                required:
+                  - status
+webhooks: {}
