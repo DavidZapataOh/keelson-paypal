@@ -464,7 +464,7 @@ test("the commitment must be the one the payload carries", { timeout: 60_000 }, 
   expect(res.body.type).toBe(problemType("invalid-mandate"));
 });
 
-test("the server verifies and stores a signed mandate within budget", {
+test("the server verifies and stores signed mandates (latency budget)", {
   timeout: 120_000,
 }, async () => {
   const s = await signer();
@@ -488,7 +488,9 @@ test("the server verifies and stores a signed mandate within budget", {
   }
   ms.sort((a, b) => a - b);
   const p95 = ms[Math.ceil(ms.length * 0.95) - 1] as number;
-  expect(p95, `p95 ${p95.toFixed(2)} ms`).toBeLessThan(50);
+  console.info(`POST /v1/mandates p95 ${p95.toFixed(2)} ms`);
+  // Shared CI runners are too noisy for a latency budget; `pnpm budgets` enforces it.
+  if (process.env.KEELSON_BUDGETS) expect(p95).toBeLessThan(30);
 });
 
 test("SPC must have shown the mandate's payee and total", { timeout: 60_000 }, async () => {

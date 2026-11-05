@@ -9,7 +9,8 @@
     "test": "vitest run",
     "start": "node dist/server.js",
     "openapi": "node scripts/openapi.ts",
-    "bench": "pnpm run build && node bench/health.bench.ts"
+    "bench": "pnpm run build && node bench/health.bench.ts",
+    "budgets": "KEELSON_BUDGETS=1 vitest run test/mandates.test.ts -t \"latency budget\""
   },
   "dependencies": {
     "@better-auth/drizzle-adapter": "1.7.17",
