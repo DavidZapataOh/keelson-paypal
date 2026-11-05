@@ -173,6 +173,8 @@ export interface Signing {
   disclosures: string[];
   hSd: Uint8Array;
   cm: bigint;
+  /** `C_m` as `0x`-prefixed hex: the `commitment` of `POST /v1/mandates`. */
+  commitment: string;
   /** The passkey challenge `M`. */
   challenge: Uint8Array;
   card: Card;
@@ -190,10 +192,8 @@ export async function prepareSigning(
   evidence: Evidence,
 ): Promise<Signing> {
   const cm = await mandateCommitment(m, salt);
-  const bound: Mandate = {
-    ...m,
-    zk: { commitment: `0x${cm.toString(16).padStart(64, "0")}` },
-  };
+  const commitment = `0x${cm.toString(16).padStart(64, "0")}`;
+  const bound: Mandate = { ...m, zk: { commitment } };
   const { payloadSd, disclosures } = await buildSdPayload(bound, () =>
     crypto.getRandomValues(new Uint8Array(16)),
   );
@@ -203,6 +203,7 @@ export async function prepareSigning(
     disclosures,
     hSd: h,
     cm,
+    commitment,
     challenge: mandateChallenge(h, cm),
     card: renderCard(payloadSd, disclosures, evidence),
     spc: spcDetails(bound),

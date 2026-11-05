@@ -201,3 +201,19 @@ test("a credential id can be registered only once", async () => {
 test("a mandate must belong to an existing user", async () => {
   expect(await sqlState(newMandate({ userId: ulid() }))).toBe("23503");
 });
+
+test("a passkey counter holds any WebAuthn signCount (uint32)", async () => {
+  const [row] = await db
+    .insert(passkey)
+    .values({
+      id: ulid(),
+      publicKey: "pk",
+      userId: (await newUser()).id,
+      credentialID: ulid(),
+      counter: 2 ** 32 - 1,
+      deviceType: "singleDevice",
+      backedUp: false,
+    })
+    .returning();
+  expect(row?.counter).toBe(2 ** 32 - 1);
+});

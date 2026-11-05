@@ -1,5 +1,6 @@
 import { relations } from "drizzle-orm";
 import {
+  bigint,
   boolean,
   index,
   integer,
@@ -285,7 +286,8 @@ export const passkey = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     credentialID: text("credential_id").notNull(),
-    counter: integer("counter").notNull(),
+    /** WebAuthn signCount is a uint32, beyond `integer`. */
+    counter: bigint("counter", { mode: "number" }).notNull(),
     deviceType: text("device_type").notNull(),
     backedUp: boolean("backed_up").notNull(),
     transports: text("transports"),

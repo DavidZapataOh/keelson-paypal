@@ -25,14 +25,21 @@ import { testAuthEnv, testDb, testKv } from "./setup.ts";
 const pageScript = `
 import { createAuthClient } from "better-auth/client";
 import { passkeyClient } from "@better-auth/passkey/client";
-import { prepareSigning } from "@keelson/mandate";
 import {
   passkeyRegistrationOptions,
+  prepareSigning,
   rememberPaymentPasskey,
   signMandate,
 } from "@keelson/mandate/browser";
 
-const authClient = createAuthClient({ plugins: [passkeyClient()] });
+// The app and the API are separate origins, as app.keelson.finance and api.keelson.finance are.
+const api = document.documentElement.dataset.api;
+const call = (path, init) => fetch(api + path, { ...init, credentials: "include" });
+const authClient = createAuthClient({
+  baseURL: api,
+  fetchOptions: { credentials: "include" },
+  plugins: [passkeyClient()],
+});
 const noEvidence = { merchantSignedCheckout: false, zkTlsFields: new Set() };
 const toBase64Url = (bytes) =>
   btoa(String.fromCharCode(...new Uint8Array(bytes)))
@@ -51,7 +58,7 @@ window.keelson = {
   sign: async (mandate, { spc, shown, passkeys: given }) => {
     const salt = crypto.getRandomValues(new Uint8Array(16));
     const s = await prepareSigning(mandate, salt, noEvidence);
-    const passkeys = given ?? (await (await fetch("/v1/passkeys")).json()).passkeys;
+    const passkeys = given ?? (await (await call("/v1/passkeys")).json()).passkeys;
     const opts = spc ? { spc: { ...s.spc, ...shown } } : undefined;
     const assertion = await signMandate(s.challenge, passkeys, opts);
     const type = JSON.parse(atob(assertion.clientDataJSON.replaceAll("-", "+").replaceAll("_", "/"))).type;
@@ -60,7 +67,7 @@ window.keelson = {
       body: {
         payloadSd: s.payloadSd,
         disclosures: s.disclosures,
-        commitment: "0x" + s.cm.toString(16).padStart(64, "0"),
+        commitment: s.commitment,
         assertion,
       },
     };
@@ -83,11 +90,11 @@ window.keelson = {
       credentialId: credential.id,
     };
   },
-  passkeys: async () => (await fetch("/v1/passkeys")).json(),
+  passkeys: async () => (await call("/v1/passkeys")).json(),
   rememberPaymentPasskey,
   spcAvailable: async () => PaymentRequest.securePaymentConfirmationAvailability(),
   post: async (body, key) => {
-    const res = await fetch("/v1/mandates", {
+    const res = await call("/v1/mandates", {
       method: "POST",
       headers: { "content-type": "application/json", "idempotency-key": key },
       body: JSON.stringify(body),
@@ -100,7 +107,7 @@ window.keelson = {
     };
   },
   get: async (id) => {
-    const res = await fetch("/v1/mandates/" + id);
+    const res = await call("/v1/mandates/" + id);
     return { status: res.status, body: await res.json() };
   },
 };
@@ -127,18 +134,20 @@ let app!: OpenAPIHono;
 const server = serve({ fetch: (req) => app.fetch(req), port: 0, hostname: "127.0.0.1" });
 await new Promise<void>((resolve) => server.once("listening", () => resolve()));
 const port = (server.address() as AddressInfo).port;
-// Served under the production RP ID: Chromium resolves both hosts to this server.
+// Served under the production RP ID: Chromium resolves every host to this server, so the API,
+// the app and the attacker's page are three origins.
+const apiOrigin = `http://api.keelson.finance:${port}`;
 const appOrigin = `http://app.keelson.finance:${port}`;
 const evilOrigin = `http://evil.example:${port}`;
 
-const auth = createAuth(testDb, testAuthEnv(appOrigin, secret));
+const auth = createAuth(testDb, { ...testAuthEnv(apiOrigin, secret), APP_ORIGIN: appOrigin });
 app = createApp({
   db: testDb,
   kv: testKv,
   log: pino({ level: "silent" }),
   auth,
   appOrigin,
-  authenticate: authenticate(auth, appOrigin),
+  authenticate: authenticate(auth, apiOrigin),
 });
 
 const bundle = await build({
@@ -157,14 +166,14 @@ const clientJs = bundle.outputFiles[0]?.text ?? "";
 app.get("/test/client.js", (c) => c.body(clientJs, 200, { "content-type": "text/javascript" }));
 app.get("/test", (c) =>
   c.html(
-    '<!doctype html><title>Keelson</title><script type="module" src="/test/client.js"></script>',
+    `<!doctype html><html data-api="${apiOrigin}"><title>Keelson</title><script type="module" src="/test/client.js"></script></html>`,
   ),
 );
 
 const helpers = betterAuth({
   database: drizzleAdapter(testDb, { provider: "pg" }),
   secret,
-  baseURL: appOrigin,
+  baseURL: apiOrigin,
   plugins: [testUtils()],
 });
 
@@ -184,8 +193,8 @@ beforeAll(async () => {
     channel: "chromium",
     args: [
       "--enable-features=SecurePaymentConfirmationBrowser",
-      "--host-resolver-rules=MAP app.keelson.finance 127.0.0.1, MAP evil.example 127.0.0.1",
-      `--unsafely-treat-insecure-origin-as-secure=${appOrigin},${evilOrigin}`,
+      "--host-resolver-rules=MAP *.keelson.finance 127.0.0.1, MAP evil.example 127.0.0.1",
+      `--unsafely-treat-insecure-origin-as-secure=${apiOrigin},${appOrigin},${evilOrigin}`,
     ],
   });
 });
@@ -216,7 +225,7 @@ async function signer(
   const user = userId ? { id: userId } : await utils.saveUser(utils.createUser());
   const context = await browser.newContext({ baseURL: appOrigin });
   await context.addCookies(
-    await utils.getCookies({ userId: user.id, domain: "app.keelson.finance" }),
+    await utils.getCookies({ userId: user.id, domain: "api.keelson.finance" }),
   );
   const page = await context.newPage();
   const cdp = await context.newCDPSession(page);
@@ -634,3 +643,33 @@ test.runIf(capturePath)(
     );
   },
 );
+
+test("only the app origin may call the API from a browser", { timeout: 60_000 }, async () => {
+  const preflight = (origin: string) =>
+    app.request("/v1/mandates", {
+      method: "OPTIONS",
+      headers: {
+        origin,
+        "access-control-request-method": "POST",
+        "access-control-request-headers": "content-type,idempotency-key",
+      },
+    });
+  const allowed = await preflight(appOrigin);
+  expect(allowed.status).toBe(204);
+  expect(allowed.headers.get("access-control-allow-origin")).toBe(appOrigin);
+  expect(allowed.headers.get("access-control-allow-credentials")).toBe("true");
+  expect(allowed.headers.get("access-control-allow-headers")).toContain("idempotency-key");
+  const denied = await preflight(evilOrigin);
+  expect(denied.headers.get("access-control-allow-origin")).toBeNull();
+
+  const s = await signer();
+  await s.page.goto(`${evilOrigin}/test`);
+  await s.page.waitForFunction("window.keelson !== undefined");
+  const read = await s.page.evaluate(() =>
+    (window as unknown as { keelson: { passkeys(): Promise<unknown> } }).keelson.passkeys().then(
+      () => "read",
+      (e: unknown) => String(e),
+    ),
+  );
+  expect(read).toContain("Failed to fetch");
+});

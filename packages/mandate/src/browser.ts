@@ -1,5 +1,44 @@
+/**
+ * The signing API for the user app. A mandate is signed in this order:
+ *
+ * 1. Register a passkey: `const opts = await passkeyRegistrationOptions()`, then Better Auth's
+ *    `authClient.passkey.addPasskey({ ...opts })`. When `opts.authenticatorAttachment` is
+ *    `"platform"`, call `rememberPaymentPasskey(data.credentialID)` so this device signs through
+ *    Secure Payment Confirmation; skipping it only falls back to plain WebAuthn.
+ * 2. `const s = await prepareSigning(mandate, salt, evidence)` and show `s.card` to the user.
+ * 3. Fetch the user's `passkeys` from `GET /v1/passkeys` (with credentials).
+ * 4. `const assertion = await signMandate(s.challenge, passkeys, { spc: s.spc })`.
+ * 5. `POST /v1/mandates` (with credentials) with an `Idempotency-Key` header and the body
+ *    `{ payloadSd: s.payloadSd, disclosures: s.disclosures, commitment: s.commitment, assertion }`.
+ *
+ * The mandate code and Poseidon2 (bb.js and its wasm) load on the first `prepareSigning`, not with
+ * this module.
+ *
+ * @module
+ */
 import { type AuthenticationResponseJSON, startAuthentication } from "@simplewebauthn/browser";
+import type { Signing } from "./card.ts";
+import type { Evidence } from "./colors.ts";
+import type { Mandate } from "./schema.ts";
 import { RP_ID, SPC_INSTRUMENT, type SpcDetails } from "./spc.ts";
+
+export type { Card, CardRow, Signing } from "./card.ts";
+export type { Evidence } from "./colors.ts";
+export type { Mandate } from "./schema.ts";
+export type { SpcDetails } from "./spc.ts";
+
+/**
+ * Builds the payload, commitment, challenge, card and SPC details of `m`; see the card module's
+ * `prepareSigning`. The mandate code and Poseidon2 load on the first call.
+ */
+export async function prepareSigning(
+  m: Mandate,
+  salt: Uint8Array,
+  evidence: Evidence,
+): Promise<Signing> {
+  const card = await import("./card.ts");
+  return card.prepareSigning(m, salt, evidence);
+}
 
 /** The WebAuthn assertion fields the server verifies, base64url-encoded as in `AuthenticationResponseJSON`. */
 export interface SignedChallenge {
@@ -9,9 +48,6 @@ export interface SignedChallenge {
   credentialId: string;
   userHandle?: string;
 }
-
-/** The `spc` of `prepareSigning`. */
-export type SpcOptions = SpcDetails;
 
 /** One of the user's passkeys, as `GET /v1/passkeys` lists it. */
 export interface PasskeyRef {
@@ -88,7 +124,7 @@ const isNotSupported = (e: unknown): boolean =>
 async function signWithSpc(
   challenge: Uint8Array,
   credentialIds: string[],
-  { payeeName, payeeOrigin, total }: SpcOptions,
+  { payeeName, payeeOrigin, total }: SpcDetails,
 ): Promise<SignedChallenge> {
   const request = new PaymentRequest(
     [
@@ -126,7 +162,7 @@ async function signWithSpc(
 export async function signMandate(
   challenge: Uint8Array,
   passkeys: readonly PasskeyRef[],
-  opts?: { spc?: SpcOptions },
+  opts?: { spc?: SpcDetails },
 ): Promise<SignedChallenge> {
   const local = localPaymentPasskeys();
   const payment = passkeys

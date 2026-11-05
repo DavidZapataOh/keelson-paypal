@@ -1,0 +1,1 @@
+ALTER TABLE "passkey" ALTER COLUMN "counter" SET DATA TYPE bigint;

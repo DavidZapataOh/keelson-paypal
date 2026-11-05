@@ -67,6 +67,19 @@ export function createApp(deps: Deps): OpenAPIHono {
   app.use(httpInstrumentationMiddleware());
   app.use(requestId({ generator: () => ulid() }));
   app.use(requestLogger(deps.log));
+  // The app calls the API cross-origin with its session cookie; preflights end here, before
+  // authentication, rate limiting and idempotency.
+  if (deps.appOrigin) {
+    app.use(
+      "/v1/*",
+      cors({
+        origin: deps.appOrigin,
+        credentials: true,
+        allowHeaders: ["content-type", "idempotency-key"],
+        exposeHeaders: ["location", "idempotent-replayed"],
+      }),
+    );
+  }
   app.use(
     "/v1/*",
     bodyLimit({
