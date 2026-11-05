@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { DST, type Dst, fromHex, hashObject, sha256, toHex } from "../src/hash.js";
-import type { Json } from "../src/jcs.js";
+import { DST, type Dst, fromHex, hashObject, sha256, toHex } from "../src/hash.ts";
+import type { Json } from "../src/jcs.ts";
 import vectors from "./vectors/hash.json" with { type: "json" };
 
 const utf8 = (s: string): Uint8Array => new TextEncoder().encode(s);

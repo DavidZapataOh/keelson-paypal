@@ -1,8 +1,8 @@
 import { sql } from "drizzle-orm";
 import { char, check, index, pgTable, text } from "drizzle-orm/pg-core";
-import { attackOutcome } from "./enums.js";
-import { purchases } from "./purchases.js";
-import { bytea, createdAt } from "./types.js";
+import { attackOutcome } from "./enums.ts";
+import { purchases } from "./purchases.ts";
+import { bytea, createdAt } from "./types.ts";
 
 export const attacks = pgTable(
   "attacks",

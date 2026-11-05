@@ -4,7 +4,8 @@
     "isolatedDeclarations": false,
     "outDir": "dist",
     "rootDir": "src",
-    "types": []
+    "types": [],
+    "rewriteRelativeImportExtensions": true
   },
   "include": ["src"]
 }

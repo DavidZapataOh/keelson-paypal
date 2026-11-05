@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { char, check, jsonb, pgTable } from "drizzle-orm/pg-core";
-import { purchases } from "./purchases.js";
-import { bytea, createdAt } from "./types.js";
+import { purchases } from "./purchases.ts";
+import { bytea, createdAt } from "./types.ts";
 
 export const alibis = pgTable(
   "alibis",

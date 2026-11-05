@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { bigint, char, check, pgTable, smallint, text } from "drizzle-orm/pg-core";
-import { disputes } from "./disputes.js";
-import { bytea, createdAt } from "./types.js";
+import { disputes } from "./disputes.ts";
+import { bytea, createdAt } from "./types.ts";
 
 export const verdicts = pgTable(
   "verdicts",

@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gt, sql } from "drizzle-orm";
-import type { Db } from "./client.js";
-import { disputes, events, mandates, openPurchase, purchases } from "./schema/index.js";
+import type { Db } from "./client.ts";
+import { disputes, events, mandates, openPurchase, purchases } from "./schema/index.ts";
 
 const ph = (name: string) => sql.placeholder(name);
 

@@ -11,9 +11,9 @@ import {
   text,
   varchar,
 } from "drizzle-orm/pg-core";
-import { purchaseState } from "./enums.js";
-import { mandates } from "./mandates.js";
-import { bytea, createdAt, updatedAt } from "./types.js";
+import { purchaseState } from "./enums.ts";
+import { mandates } from "./mandates.ts";
+import { bytea, createdAt, updatedAt } from "./types.ts";
 
 export const openPurchase = (state: AnyPgColumn) =>
   sql`${state} not in ('SETTLED', 'DENIED', 'FAILED', 'SLASHED', 'WARRANTY_PAID', 'DEFENDED', 'MERCHANT_LIABLE')`;

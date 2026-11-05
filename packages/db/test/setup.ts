@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import pg from "pg";
 import { afterAll } from "vitest";
-import { createDb, type Db, migrate } from "../src/client.js";
+import { createDb, type Db, migrate } from "../src/client.ts";
 
 const baseUrl = process.env.DATABASE_URL;
 if (!baseUrl) throw new Error("DATABASE_URL is not set");

@@ -1,5 +1,5 @@
 import { BarretenbergSync, BN254_FR_MODULUS } from "@aztec/bb.js";
-import { fromHex, toHex } from "./hash.js";
+import { fromHex, toHex } from "./hash.ts";
 
 let instance: Promise<BarretenbergSync> | undefined;
 

@@ -1,6 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
-import type { Db } from "./client.js";
-import { disputes, mandates, purchases } from "./schema/index.js";
+import type { Db } from "./client.ts";
+import { disputes, mandates, purchases } from "./schema/index.ts";
 
 /** Allowed state changes. Mirrors the `state_transitions` table. */
 export const transitions = {

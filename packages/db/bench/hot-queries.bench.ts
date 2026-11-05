@@ -2,10 +2,10 @@ import { performance } from "node:perf_hooks";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { migrate } from "../src/client.js";
-import { createQueries } from "../src/queries.js";
-import * as schema from "../src/schema/index.js";
-import { assertLocalHost } from "./host.js";
+import { migrate } from "../src/client.ts";
+import { createQueries } from "../src/queries.ts";
+import * as schema from "../src/schema/index.ts";
+import { assertLocalHost } from "./host.ts";
 
 const BUDGET_MS = 5;
 const RUNS = 1000;

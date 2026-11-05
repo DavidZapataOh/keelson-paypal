@@ -3,7 +3,8 @@
   "compilerOptions": {
     "isolatedDeclarations": false,
     "noEmit": true,
-    "types": ["node"]
+    "types": ["node"],
+    "allowImportingTsExtensions": true
   },
   "include": ["src", "test", "bench"]
 }

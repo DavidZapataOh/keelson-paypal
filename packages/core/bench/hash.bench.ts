@@ -1,7 +1,7 @@
 import { test } from "vitest";
-import { DST, hashObject } from "../src/hash.js";
-import { type Json, jcs } from "../src/jcs.js";
-import { poseidon2 } from "../src/poseidon2.js";
+import { DST, hashObject } from "../src/hash.ts";
+import { type Json, jcs } from "../src/jcs.ts";
+import { poseidon2 } from "../src/poseidon2.ts";
 import fixture from "../test/fixtures/alibi-4kb.json" with { type: "json" };
 
 const alibi = fixture as Json;

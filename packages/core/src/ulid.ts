@@ -1,5 +1,5 @@
 import { monotonicFactory } from "ulid";
-import { toHex } from "./hash.js";
+import { toHex } from "./hash.ts";
 
 const ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 const ULID = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/;

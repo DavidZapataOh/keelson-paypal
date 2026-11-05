@@ -1,5 +1,5 @@
 import { bigint, index, jsonb, pgTable, text } from "drizzle-orm/pg-core";
-import { createdAt } from "./types.js";
+import { createdAt } from "./types.ts";
 
 export const events = pgTable(
   "events",

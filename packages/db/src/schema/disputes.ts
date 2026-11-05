@@ -1,8 +1,8 @@
 import { sql } from "drizzle-orm";
 import { char, check, index, jsonb, pgTable, smallint, text } from "drizzle-orm/pg-core";
-import { disputeState } from "./enums.js";
-import { purchases } from "./purchases.js";
-import { createdAt, updatedAt } from "./types.js";
+import { disputeState } from "./enums.ts";
+import { purchases } from "./purchases.ts";
+import { createdAt, updatedAt } from "./types.ts";
 
 export const disputes = pgTable(
   "disputes",

@@ -9,8 +9,8 @@ import {
   operators,
   purchases,
   verdicts,
-} from "../src/index.js";
-import { testDb } from "./setup.js";
+} from "../src/index.ts";
+import { testDb } from "./setup.ts";
 
 const { db } = testDb;
 const ulid = (): string =>

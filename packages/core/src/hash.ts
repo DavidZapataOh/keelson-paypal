@@ -1,6 +1,6 @@
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
-import { type Json, jcs } from "./jcs.js";
+import { type Json, jcs } from "./jcs.ts";
 
 export { sha256 };
 

@@ -17,8 +17,8 @@ import {
   keelsonDomain,
   toHex,
   toPayPalValue,
-} from "../dist/index.js";
-import { KEELSON_MANDATE, poseidon2 } from "../dist/poseidon2.js";
+} from "../src/index.ts";
+import { KEELSON_MANDATE, poseidon2 } from "../src/poseidon2.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const vectorsDir = resolve(root, "test/vectors");
@@ -126,17 +126,19 @@ function eip712Vectors() {
     const verifyingContract = ADDRESSES[max ? 1 : 0] as `0x${string}`;
     for (const primaryType of Object.keys(KEELSON_TYPES) as KeelsonPrimaryType[]) {
       const message: Record<string, string> = {};
-      KEELSON_TYPES[primaryType].forEach(({ name, type }, index) => {
-        if (type === "bytes32") message[name] = field(BigInt(index + 1) * 0x0101010101010101n);
-        else if (type === "address")
-          message[name] = ADDRESSES[(index + (max ? 1 : 0)) % 3] as string;
-        else {
-          const bits = BigInt(type.slice("uint".length));
-          message[name] = (
-            max ? (1n << bits) - 1n : BigInt(index + 1) * (bits >= 32n ? 1_000_000n : 7n)
-          ).toString();
-        }
-      });
+      KEELSON_TYPES[primaryType].forEach(
+        ({ name, type }: { name: string; type: string }, index: number) => {
+          if (type === "bytes32") message[name] = field(BigInt(index + 1) * 0x0101010101010101n);
+          else if (type === "address")
+            message[name] = ADDRESSES[(index + (max ? 1 : 0)) % 3] as string;
+          else {
+            const bits = BigInt(type.slice("uint".length));
+            message[name] = (
+              max ? (1n << bits) - 1n : BigInt(index + 1) * (bits >= 32n ? 1_000_000n : 7n)
+            ).toString();
+          }
+        },
+      );
       const typed: Record<string, unknown> = {};
       for (const { name, type } of KEELSON_TYPES[primaryType]) {
         const raw = message[name] as string;

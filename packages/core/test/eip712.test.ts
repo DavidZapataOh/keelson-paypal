@@ -6,7 +6,7 @@ import {
   type KeelsonChainId,
   type KeelsonPrimaryType,
   keelsonDomain,
-} from "../src/eip712.js";
+} from "../src/eip712.ts";
 import vectors from "./vectors/eip712.json" with { type: "json" };
 
 const verifyingContract = "0x0000000000000000000000000000000000000001" as const;

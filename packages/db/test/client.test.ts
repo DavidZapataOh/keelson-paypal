@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { expect, test } from "vitest";
-import { testDb, withTestDb } from "./setup.js";
+import { testDb, withTestDb } from "./setup.ts";
 
 test("runs on Postgres 18 or newer", async () => {
   const { rows } = await testDb.db.execute<{ v: number }>(

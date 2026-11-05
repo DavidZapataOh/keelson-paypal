@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { assertLocalHost } from "../bench/host.js";
+import { assertLocalHost } from "../bench/host.ts";
 
 describe("assertLocalHost", () => {
   test.each([

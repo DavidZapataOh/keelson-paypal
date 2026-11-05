@@ -1,6 +1,6 @@
 import { BN254_FR_MODULUS } from "@aztec/bb.js";
 import { describe, expect, test } from "vitest";
-import { fieldFromAscii, KEELSON_MANDATE, poseidon2 } from "../src/poseidon2.js";
+import { fieldFromAscii, KEELSON_MANDATE, poseidon2 } from "../src/poseidon2.ts";
 import vectors from "./vectors/poseidon2.json" with { type: "json" };
 
 describe("poseidon2", () => {

@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { beforeEach, expect, test } from "vitest";
-import { disputes, events, mandates, operators, purchases } from "../src/index.js";
-import { createQueries } from "../src/queries.js";
-import { testDb } from "./setup.js";
+import { disputes, events, mandates, operators, purchases } from "../src/index.ts";
+import { createQueries } from "../src/queries.ts";
+import { testDb } from "./setup.ts";
 
 const { db, pool } = testDb;
 const q = createQueries(db);

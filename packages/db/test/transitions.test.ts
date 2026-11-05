@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { assert, expect, test } from "vitest";
-import { disputes, mandates, operators, purchases, transition, transitions } from "../src/index.js";
-import { testDb } from "./setup.js";
+import { disputes, mandates, operators, purchases, transition, transitions } from "../src/index.ts";
+import { testDb } from "./setup.ts";
 
 const { db, pool } = testDb;
 const ulid = (): string =>

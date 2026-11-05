@@ -4,7 +4,7 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { type Json, jcs } from "../src/jcs.js";
+import { type Json, jcs } from "../src/jcs.ts";
 import raw from "./vectors/jcs-raw.json" with { type: "json" };
 
 const vectors = ["arrays", "french", "structures", "unicode", "weird"];

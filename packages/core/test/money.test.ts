@@ -9,7 +9,7 @@ import {
   currencyNumeric,
   fromPayPalValue,
   toPayPalValue,
-} from "../src/money.js";
+} from "../src/money.ts";
 import vectors from "./vectors/money.json" with { type: "json" };
 
 const PAYPAL_CURRENCIES = [

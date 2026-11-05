@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isUlid, newId, ulidToBytes, ulidToBytes32 } from "../src/ulid.js";
+import { isUlid, newId, ulidToBytes, ulidToBytes32 } from "../src/ulid.ts";
 
 const ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 

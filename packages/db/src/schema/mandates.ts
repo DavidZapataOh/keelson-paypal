@@ -1,8 +1,8 @@
 import { sql } from "drizzle-orm";
 import { bigint, char, check, index, numeric, pgTable, text, timestamp } from "drizzle-orm/pg-core";
-import { mandateState } from "./enums.js";
-import { operators } from "./operators.js";
-import { bytea, createdAt, updatedAt } from "./types.js";
+import { mandateState } from "./enums.ts";
+import { operators } from "./operators.ts";
+import { bytea, createdAt, updatedAt } from "./types.ts";
 
 export const mandates = pgTable(
   "mandates",
