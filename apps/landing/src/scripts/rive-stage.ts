@@ -4,7 +4,7 @@
 // buttons, pauses off screen, and is skipped entirely with reduced motion (the
 // HTML fallback inside the stage stays instead).
 
-import type { Rive as RiveInstance, RiveFile as RiveFileType } from "@rive-app/canvas";
+import type { RiveFile as RiveFileType, Rive as RiveInstance } from "@rive-app/canvas";
 import { RIVE_VERSION } from "../rive-version";
 
 // the version changes whenever the file is rebuilt, so a browser never keeps an old copy
@@ -86,7 +86,8 @@ async function start(o: StageOptions) {
     on = value;
     const flag = rive.viewModelInstance?.boolean(o.flag);
     if (flag) flag.value = value;
-    for (const b of buttons) b.setAttribute("aria-pressed", String(b.dataset.value === String(value)));
+    for (const b of buttons)
+      b.setAttribute("aria-pressed", String(b.dataset.value === String(value)));
     if (o.live && o.captions) o.live.textContent = value ? o.captions.on : o.captions.off;
   };
 
@@ -98,6 +99,7 @@ async function start(o: StageOptions) {
         set(!on);
         schedule();
       },
+      // biome-ignore lint/style/noNonNullAssertion: narrowed by the guard above, which the timer closure loses
       on ? o.hold!.on : o.hold!.off,
     );
   };

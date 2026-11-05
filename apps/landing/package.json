@@ -1,5 +1,6 @@
 {
   "name": "@keelson/landing",
+  "version": "0.0.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -16,6 +17,6 @@
     "gsap": "^3.15.0"
   },
   "devDependencies": {
-    "typescript": "7.0.2"
+    "typescript": "catalog:"
   }
 }

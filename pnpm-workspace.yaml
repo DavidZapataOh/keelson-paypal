@@ -1,0 +1,26 @@
+packages:
+  - apps/*
+  - services/*
+  - packages/*
+
+catalog:
+  "@biomejs/biome": 2.6.5
+  "@noble/hashes": 2.4.0
+  typescript: 7.0.2
+  viem: 2.57.16
+  vitest: 5.1.0
+  zod: 4.6.7
+
+minimumReleaseAgeExclude:
+  - "@rive-app/canvas@2.49.1"
+  - "@biomejs/biome@2.6.5"
+  - "@biomejs/cli-android-arm64@2.6.5"
+  - "@biomejs/cli-android-x64@2.6.5"
+  - "@biomejs/cli-darwin-arm64@2.6.5"
+  - "@biomejs/cli-darwin-x64@2.6.5"
+  - "@biomejs/cli-linux-arm64-musl@2.6.5"
+  - "@biomejs/cli-linux-arm64@2.6.5"
+  - "@biomejs/cli-linux-x64-musl@2.6.5"
+  - "@biomejs/cli-linux-x64@2.6.5"
+  - "@biomejs/cli-win32-arm64@2.6.5"
+  - "@biomejs/cli-win32-x64@2.6.5"

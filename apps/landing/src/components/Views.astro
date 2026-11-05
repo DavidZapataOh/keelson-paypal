@@ -2,9 +2,24 @@
 const mandate = "shoes · size 10 · max $100 · by Fri";
 const rows = [
   { label: "What the user signed", merchant: null, operator: mandate, dispute: mandate },
-  { label: "Price inside the mandate", merchant: "yes · checked by Keelson", operator: "yes · checked by Keelson", dispute: "yes · checked by Keelson" },
-  { label: "Who stated the size", merchant: null, operator: "operator · bonded", dispute: "operator · bonded" },
-  { label: "Countersigned", merchant: "Mon 09:14:07 UTC", operator: "Mon 09:14:07 UTC", dispute: "Mon 09:14:07 UTC" },
+  {
+    label: "Price inside the mandate",
+    merchant: "yes · checked by Keelson",
+    operator: "yes · checked by Keelson",
+    dispute: "yes · checked by Keelson",
+  },
+  {
+    label: "Who stated the size",
+    merchant: null,
+    operator: "operator · bonded",
+    dispute: "operator · bonded",
+  },
+  {
+    label: "Countersigned",
+    merchant: "Mon 09:14:07 UTC",
+    operator: "Mon 09:14:07 UTC",
+    dispute: "Mon 09:14:07 UTC",
+  },
   { label: "Party at fault", merchant: null, operator: null, dispute: "operator · bond pays $94" },
 ];
 const views = [

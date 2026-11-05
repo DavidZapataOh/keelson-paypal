@@ -1,8 +1,14 @@
 ---
 const checks = [
   { claim: "Signed by the user, inside the mandate.", inputs: "mandateHash, passkeyAssertion" },
-  { claim: "Checked by code that can prove what it ran.", inputs: "attestation, policyHash, cartHash" },
-  { claim: "Recorded where no one can rewrite it.", inputs: "logIndex, inclusionProof, checkpoint" },
+  {
+    claim: "Checked by code that can prove what it ran.",
+    inputs: "attestation, policyHash, cartHash",
+  },
+  {
+    claim: "Recorded where no one can rewrite it.",
+    inputs: "logIndex, inclusionProof, checkpoint",
+  },
 ];
 ---
 

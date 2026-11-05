@@ -23,7 +23,12 @@ if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
           { scale: 1, autoAlpha: 1, duration: 0.45 },
           at + 0.25,
         )
-        .fromTo(row.querySelector(".pays"), { autoAlpha: 0, x: -8 }, { autoAlpha: 1, x: 0, duration: 0.5 }, at + 0.3);
+        .fromTo(
+          row.querySelector(".pays"),
+          { autoAlpha: 0, x: -8 },
+          { autoAlpha: 1, x: 0, duration: 0.5 },
+          at + 0.3,
+        );
     });
   }
 

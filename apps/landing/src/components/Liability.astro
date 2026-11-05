@@ -8,13 +8,48 @@ const owners: Record<Owner, { name: string; pays: string }> = {
 };
 
 const fields: { field: string; value: string; owner: Owner; why: string }[] = [
-  { field: "Total", value: "≤ $100.00", owner: "verified", why: "Checked against the cart before anything is paid." },
-  { field: "Store", value: "On your allowed list", owner: "verified", why: "Checked against the list you signed." },
-  { field: "Quantity", value: "1 pair", owner: "verified", why: "Checked against the cart line items." },
-  { field: "Deliver by", value: "Fri, Nov 13", owner: "verified", why: "Checked against the store's quoted date." },
-  { field: "Size", value: "US 10", owner: "attested", why: "The agent's operator states it, signs it and backs it with a bond." },
-  { field: "Returns", value: "Free, 30 days", owner: "attested", why: "Stated by the operator from the store's policy, and bonded." },
-  { field: "Style", value: "Something that looks good", owner: "yours", why: "Taste can't be checked. You see this before you sign." },
+  {
+    field: "Total",
+    value: "≤ $100.00",
+    owner: "verified",
+    why: "Checked against the cart before anything is paid.",
+  },
+  {
+    field: "Store",
+    value: "On your allowed list",
+    owner: "verified",
+    why: "Checked against the list you signed.",
+  },
+  {
+    field: "Quantity",
+    value: "1 pair",
+    owner: "verified",
+    why: "Checked against the cart line items.",
+  },
+  {
+    field: "Deliver by",
+    value: "Fri, Nov 13",
+    owner: "verified",
+    why: "Checked against the store's quoted date.",
+  },
+  {
+    field: "Size",
+    value: "US 10",
+    owner: "attested",
+    why: "The agent's operator states it, signs it and backs it with a bond.",
+  },
+  {
+    field: "Returns",
+    value: "Free, 30 days",
+    owner: "attested",
+    why: "Stated by the operator from the store's policy, and bonded.",
+  },
+  {
+    field: "Style",
+    value: "Something that looks good",
+    owner: "yours",
+    why: "Taste can't be checked. You see this before you sign.",
+  },
 ];
 
 const count = (o: Owner) => fields.filter((f) => f.owner === o).length;
