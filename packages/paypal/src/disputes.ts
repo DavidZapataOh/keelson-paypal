@@ -1,4 +1,3 @@
-import type { PayPalConfig } from "./config.js";
 import type { PayPalFetch } from "./rest.js";
 import {
   type Dispute,
@@ -80,35 +79,62 @@ function mimeOf(name: string): string {
   throw new TypeError(`unsupported evidence file type: ${name}`);
 }
 
+function inputForm(input: unknown): FormData {
+  const form = new FormData();
+  form.append("input", JSON.stringify(input));
+  return form;
+}
+
+/** The spec lists `multipart/form-data` only, with an optional `accept-claim-document` part. */
 export async function acceptClaim(
   f: PayPalFetch,
   id: string,
   body: { note: string; accept_claim_reason?: string; invoice_id?: string },
+  document?: EvidenceFile,
 ): Promise<SubsequentAction> {
-  return subsequentAction.parse(await f<unknown>("POST", path(id, "/accept-claim"), { body }));
+  const form = inputForm(body);
+  if (document) {
+    form.append(
+      "accept-claim-document",
+      new Blob([new Uint8Array(document.bytes)], { type: mimeOf(document.name) }),
+      document.name,
+    );
+  }
+  return subsequentAction.parse(
+    await f<unknown>("POST", path(id, "/accept-claim"), { body: form }),
+  );
 }
 
+/** The spec lists `multipart/form-data` only, with an optional `message_document` part. Inquiry stage only. */
 export async function sendMessage(
   f: PayPalFetch,
   id: string,
   message: string,
+  document?: EvidenceFile,
 ): Promise<SubsequentAction> {
+  const form = inputForm({ message });
+  if (document) {
+    form.append(
+      "message_document",
+      new Blob([new Uint8Array(document.bytes)], { type: mimeOf(document.name) }),
+      document.name,
+    );
+  }
   return subsequentAction.parse(
-    await f<unknown>("POST", path(id, "/send-message"), { body: { message } }),
+    await f<unknown>("POST", path(id, "/send-message"), { body: form }),
   );
 }
 
-function sandboxOnly(cfg: Pick<PayPalConfig, "env">, endpoint: string): void {
-  if (cfg.env === "production") throw new Error(`${endpoint} is available in the sandbox only`);
+function sandboxOnly(f: PayPalFetch, endpoint: string): void {
+  if (f.env === "production") throw new Error(`${endpoint} is available in the sandbox only`);
 }
 
 export async function requireEvidence(
   f: PayPalFetch,
-  cfg: Pick<PayPalConfig, "env">,
   id: string,
   action: "BUYER_EVIDENCE" | "SELLER_EVIDENCE",
 ): Promise<SubsequentAction> {
-  sandboxOnly(cfg, "require-evidence");
+  sandboxOnly(f, "require-evidence");
   return subsequentAction.parse(
     await f<unknown>("POST", path(id, "/require-evidence"), { body: { action } }),
   );
@@ -116,11 +142,10 @@ export async function requireEvidence(
 
 export async function adjudicate(
   f: PayPalFetch,
-  cfg: Pick<PayPalConfig, "env">,
   id: string,
   outcome: "BUYER_FAVOR" | "SELLER_FAVOR",
 ): Promise<SubsequentAction> {
-  sandboxOnly(cfg, "adjudicate");
+  sandboxOnly(f, "adjudicate");
   return subsequentAction.parse(
     await f<unknown>("POST", path(id, "/adjudicate"), { body: { adjudication_outcome: outcome } }),
   );

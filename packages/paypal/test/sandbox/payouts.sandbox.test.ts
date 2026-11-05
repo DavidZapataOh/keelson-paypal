@@ -41,7 +41,16 @@ describe("payouts (sandbox)", () => {
 
     const deadline = Date.now() + 60_000;
     let batch = await getPayoutBatch(paypal.fetch, batchId);
-    while (batch.batch_header.batch_status !== "SUCCESS" && Date.now() < deadline) {
+    const failed = (b: typeof batch) =>
+      ["DENIED", "CANCELED"].includes(b.batch_header.batch_status) ||
+      ["FAILED", "RETURNED", "BLOCKED", "REFUNDED", "REVERSED"].includes(
+        b.items?.[0]?.transaction_status ?? "",
+      );
+    while (
+      batch.batch_header.batch_status !== "SUCCESS" &&
+      !failed(batch) &&
+      Date.now() < deadline
+    ) {
       await new Promise((r) => setTimeout(r, 3_000));
       batch = await getPayoutBatch(paypal.fetch, batchId);
     }
