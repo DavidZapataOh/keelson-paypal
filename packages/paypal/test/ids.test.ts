@@ -1,8 +1,7 @@
-import { DST, hashObject, newId, toHex } from "@keelson/core";
+import { newId } from "@keelson/core";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import {
-  alibiDigest,
   encodeCustomId,
   encodeInvoiceId,
   encodeVerdictRef,
@@ -122,49 +121,6 @@ describe("verdict ref", () => {
     const s = encodeVerdictRef(newId(), new Uint8Array(32));
     expect(parseVerdictRef(s.replace("ksv1.", "ksv2."))).toBeNull();
     expect(parseVerdictRef(s.slice(1))).toBeNull();
-  });
-});
-
-describe("alibiDigest", () => {
-  const fields = {
-    mandateHash: `0x${"11".repeat(32)}`,
-    cartHash: `0x${"22".repeat(32)}`,
-    policySetHash: `0x${"33".repeat(32)}`,
-    countersignDigest: `0x${"44".repeat(32)}`,
-    merchantId: "MERCHANT1",
-    amount: "10.00",
-    currency: "USD",
-  } as const;
-
-  const snake = {
-    mandate_hash: fields.mandateHash,
-    cart_hash: fields.cartHash,
-    policy_set_hash: fields.policySetHash,
-    countersign_digest: fields.countersignDigest,
-    merchant_id: "MERCHANT1",
-    amount: "10.00",
-    currency: "USD",
-  };
-
-  it("hashes the snake_case object under the alibi tag", () => {
-    expect(alibiDigest(fields)).toEqual(hashObject(DST.alibi, snake));
-    const withOrder = { ...fields, paypalOrderId: "5O190127TN364715T" };
-    expect(alibiDigest(withOrder)).toEqual(
-      hashObject(DST.alibi, { ...snake, paypal_order_id: "5O190127TN364715T" }),
-    );
-  });
-
-  it("matches pinned vectors", () => {
-    expect(toHex(alibiDigest(fields))).toBe(
-      "0xa9bfed1cfc1b617e6512bcef367eb3a788df976d0405e2f304b86ac735e40506",
-    );
-    expect(toHex(alibiDigest({ ...fields, paypalOrderId: "5O190127TN364715T" }))).toBe(
-      "0xb125aa17594491cd19c92041c89247ba704a7db126a43c95b33d1d522e8d29f9",
-    );
-  });
-
-  it("rejects non-string amounts", () => {
-    expect(() => alibiDigest({ ...fields, amount: 10.5 as unknown as string })).toThrow();
   });
 });
 

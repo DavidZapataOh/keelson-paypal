@@ -2,6 +2,7 @@
 //!
 //! Every function here produces byte-identical output to its TypeScript counterpart.
 
+mod alibi;
 pub mod eip712;
 mod error;
 mod hash;
@@ -10,6 +11,7 @@ mod money;
 mod poseidon2;
 
 pub use acir::FieldElement;
+pub use alibi::{AlibiFields, alibi_digest};
 pub use eip712::domain;
 pub use error::Error;
 pub use hash::{Dst, hash_object};

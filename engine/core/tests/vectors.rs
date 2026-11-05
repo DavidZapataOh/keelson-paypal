@@ -2,7 +2,8 @@ use acir::{AcirField, FieldElement};
 use alloy_primitives::{Address, B256, U256};
 use alloy_sol_types::SolStruct;
 use keelson_core::{
-    Dst, Money, domain, eip712, from_paypal_value, hash_object, poseidon2, to_paypal_value,
+    AlibiFields, Dst, Money, alibi_digest, domain, eip712, from_paypal_value, hash_object,
+    poseidon2, to_paypal_value,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -33,6 +34,62 @@ fn hash_vectors() {
         let digest = hash_object(dst, &v.input["value"]).unwrap();
         assert_eq!(format!("0x{}", hex(&digest)), v.expected, "{}", v.name);
     }
+}
+
+#[test]
+fn alibi_vectors() {
+    let vectors = load(include_str!(
+        "../../../packages/core/test/vectors/alibi.json"
+    ));
+    assert_eq!(vectors.len(), 4);
+    for v in vectors {
+        let i = &v.input;
+        let s = |key: &str| i[key].as_str().unwrap();
+        let amount = Money {
+            currency: i["amount"]["currency"].as_str().unwrap().into(),
+            minor: i["amount"]["minor"].as_str().unwrap().parse().unwrap(),
+        };
+        let digest = alibi_digest(&AlibiFields {
+            mandate_hash: s("mandateHash"),
+            cart_hash: s("cartHash"),
+            policy_set_hash: s("policySetHash"),
+            countersign_digest: s("countersignDigest"),
+            merchant_id: s("merchantId"),
+            amount: &amount,
+            paypal_order_id: i.get("paypalOrderId").map(|o| o.as_str().unwrap()),
+        })
+        .unwrap();
+        assert_eq!(format!("0x{}", hex(&digest)), v.expected, "{}", v.name);
+    }
+}
+
+#[test]
+fn alibi_rejects_amounts_paypal_cannot_represent() {
+    let fields = |amount| AlibiFields {
+        mandate_hash: "0x11",
+        cart_hash: "0x22",
+        policy_set_hash: "0x33",
+        countersign_digest: "0x44",
+        merchant_id: "MERCHANT1",
+        amount,
+        paypal_order_id: None,
+    };
+    let huf = Money {
+        currency: "HUF".into(),
+        minor: 150,
+    };
+    let xxx = Money {
+        currency: "XXX".into(),
+        minor: 1,
+    };
+    assert!(matches!(
+        alibi_digest(&fields(&huf)),
+        Err(keelson_core::Error::InvalidAmount(_))
+    ));
+    assert!(matches!(
+        alibi_digest(&fields(&xxx)),
+        Err(keelson_core::Error::UnsupportedCurrency(_))
+    ));
 }
 
 fn hex(bytes: &[u8]) -> String {

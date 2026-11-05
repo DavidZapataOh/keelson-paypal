@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { DST, hashObject, newId, toHex, toPayPalValue } from "@keelson/core";
+import { alibiDigest, DST, hashObject, newId, toHex, toPayPalValue } from "@keelson/core";
 import {
   type ApiResponse,
   AuthorizationStatus,
@@ -9,7 +9,6 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { paypalConfig } from "../../src/config.ts";
 import { fromSdkError, PayPalError } from "../../src/errors.ts";
 import {
-  alibiDigest,
   encodeCustomId,
   encodeInvoiceId,
   encodeVerdictRef,
@@ -125,8 +124,7 @@ describe("mandate hold (sandbox)", () => {
           policySetHash: hex(),
           countersignDigest: toHex(countersign),
           merchantId,
-          amount: dollars(minor),
-          currency: "USD",
+          amount: { currency: "USD", minor },
           paypalOrderId: orderId,
         });
         return {

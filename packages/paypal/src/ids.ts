@@ -1,18 +1,4 @@
-import { DST, hashObject, isUlid, toHex } from "@keelson/core";
-
-type Hex = `0x${string}`;
-
-export interface AlibiFields {
-  mandateHash: Hex;
-  cartHash: Hex;
-  policySetHash: Hex;
-  countersignDigest: Hex;
-  merchantId: string;
-  /** Decimal string in PayPal's format, for example `"10.00"`. */
-  amount: string;
-  currency: string;
-  paypalOrderId?: string;
-}
+import { isUlid, toHex } from "@keelson/core";
 
 export type Env = "s" | "p";
 export type Kind = "a" | "m";
@@ -24,20 +10,6 @@ const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 const CUSTOM_ID = /^ks1\.([sp])([am])\.([^.]{26})\.([^.]{43})$/;
 const INVOICE_ID = /^KS1-([^-]{26})-(\d{2})-([^-]{26})$/;
 const VERDICT_REF = /^ksv1\.([^.]{26})\.([^.]{16})$/;
-
-/** Computes `hashObject(DST.alibi, fields)`. */
-export function alibiDigest(fields: AlibiFields): Uint8Array {
-  return hashObject(DST.alibi, {
-    mandate_hash: fields.mandateHash,
-    cart_hash: fields.cartHash,
-    policy_set_hash: fields.policySetHash,
-    countersign_digest: fields.countersignDigest,
-    merchant_id: fields.merchantId,
-    amount: fields.amount,
-    currency: fields.currency,
-    ...(fields.paypalOrderId === undefined ? {} : { paypal_order_id: fields.paypalOrderId }),
-  });
-}
 
 const B64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 

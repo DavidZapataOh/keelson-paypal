@@ -2,6 +2,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  type AlibiFields,
+  alibiDigest,
   CHAIN_IDS,
   CURRENCIES,
   type CurrencyCode,
@@ -66,7 +68,7 @@ function writeJson(name: string, vectors: unknown): void {
   write(resolve(vectorsDir, `${name}.json`), `${JSON.stringify(vectors, null, 2)}\n`);
 }
 
-const field = (n: bigint) => `0x${n.toString(16).padStart(64, "0")}`;
+const field = (n: bigint): `0x${string}` => `0x${n.toString(16).padStart(64, "0")}`;
 
 function hashVectors() {
   const cases: { name: string; dst: Dst; value: Json }[] = [];
@@ -235,6 +237,39 @@ function moneyVectors() {
   return vectors;
 }
 
+function alibiVectors() {
+  const base: AlibiFields = {
+    mandateHash: field(0x11n),
+    cartHash: field(0x22n),
+    policySetHash: field(0x33n),
+    countersignDigest: field(0x44n),
+    merchantId: "MERCHANT1",
+    amount: { currency: "USD", minor: 1000n },
+  };
+  const cases: { name: string; fields: AlibiFields }[] = [
+    { name: "without-order", fields: base },
+    { name: "with-order", fields: { ...base, paypalOrderId: "5O190127TN364715T" } },
+    {
+      name: "jpy-with-order",
+      fields: {
+        ...base,
+        merchantId: "7Z9X3ABC5DEFG",
+        amount: { currency: "JPY", minor: 9400n },
+        paypalOrderId: "8MC585209K746392H",
+      },
+    },
+    {
+      name: "unicode-merchant",
+      fields: { ...base, merchantId: "Café Ñandú", amount: { currency: "EUR", minor: 5n } },
+    },
+  ];
+  return cases.map(({ name, fields }) => ({
+    name,
+    input: { ...fields, amount: { ...fields.amount, minor: fields.amount.minor.toString() } },
+    expected: toHex(alibiDigest(fields)),
+  }));
+}
+
 function noirSource(vectors: { name: string; input: string[]; expected: string }[]): string {
   const tests = vectors.map(({ name, input, expected }) => {
     const id = name.replaceAll("-", "_");
@@ -259,4 +294,5 @@ writeJson("jcs-raw", jcsRawVectors());
 writeJson("eip712", eip712Vectors());
 writeJson("poseidon2", poseidon);
 writeJson("money", moneyVectors());
+writeJson("alibi", alibiVectors());
 write(noirFile, noirSource(poseidon));
