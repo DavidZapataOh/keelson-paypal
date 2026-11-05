@@ -45,4 +45,44 @@ paths:
                       - ok
                 required:
                   - status
+  /status:
+    get:
+      tags:
+        - system
+      summary: Dependency status
+      responses:
+        "200":
+          description: Status of the service and its dependencies; always 200
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum:
+                      - ok
+                      - degraded
+                  dependencies:
+                    type: object
+                    properties:
+                      db:
+                        type: string
+                        enum:
+                          - up
+                          - down
+                      kv:
+                        type: string
+                        enum:
+                          - up
+                          - down
+                    required:
+                      - db
+                      - kv
+                  version:
+                    type: string
+                required:
+                  - status
+                  - dependencies
+                  - version
 webhooks: {}

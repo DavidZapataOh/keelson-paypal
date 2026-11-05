@@ -10,8 +10,10 @@ import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
 import type { Auth } from "./auth.ts";
 import { idempotency } from "./middleware/idempotency.ts";
+import { type RateLimitOptions, rateLimit } from "./middleware/rate-limit.ts";
 import { ProblemSchema, problem } from "./problem.ts";
 import { registerHealth } from "./routes/health.ts";
+import { registerStatus } from "./routes/status.ts";
 
 export interface Deps {
   db: Db;
@@ -23,6 +25,7 @@ export interface Deps {
   authenticate?: MiddlewareHandler;
   /** Handler deadline in milliseconds; must stay below the idempotency lock lifetime. */
   requestTimeoutMs?: number;
+  rateLimit?: RateLimitOptions;
 }
 
 export const apiInfo = { title: "Keelson API", version: "0.0.0" } as const;
@@ -57,6 +60,7 @@ export function createApp(deps: Deps): OpenAPIHono {
     }),
   );
   if (deps.authenticate) app.use("/v1/*", deps.authenticate);
+  app.use("/v1/*", rateLimit(deps.kv, deps.rateLimit));
   app.use("/v1/*", idempotency(deps.kv, deps.log));
   app.use(
     "/v1/*",
@@ -94,6 +98,7 @@ export function createApp(deps: Deps): OpenAPIHono {
     app.all("/api/auth/*", (c) => auth.handler(c.req.raw));
   }
   registerHealth(app);
+  registerStatus(app, deps);
   app.get("/openapi.json", (c) =>
     c.json(app.getOpenAPI31Document({ openapi: "3.1.0", info: apiInfo })),
   );

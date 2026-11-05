@@ -12,7 +12,14 @@ const log = pino();
 const { db, pool } = createDb(env.DATABASE_URL);
 const kv = await createKv(env.REDIS_URL, log);
 const auth = createAuth(db, env);
-const app = createApp({ db, kv, log, auth, authenticate: authenticate(auth, env.BETTER_AUTH_URL) });
+const app = createApp({
+  db,
+  kv,
+  log,
+  auth,
+  authenticate: authenticate(auth, env.BETTER_AUTH_URL),
+  rateLimit: { trustProxy: process.env.RENDER === "true" },
+});
 
 const server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
   log.info({ port: info.port }, "listening");
