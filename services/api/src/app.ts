@@ -3,6 +3,7 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import type { Db } from "@keelson/db";
 import type { MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
 import { requestId } from "hono/request-id";
 import { timeout } from "hono/timeout";
@@ -25,6 +26,8 @@ export interface Deps {
   log: Logger;
   /** Better Auth instance served at `/api/auth/*`. */
   auth?: Auth;
+  /** Browser origin allowed to call `/api/auth/*` with credentials. */
+  appOrigin?: string;
   /** Resolves `c.var.principal`; runs before idempotency so keys are scoped per principal. */
   authenticate?: MiddlewareHandler;
   /** Handler deadline in milliseconds; must stay below the idempotency lock lifetime. */
@@ -103,6 +106,7 @@ export function createApp(deps: Deps): OpenAPIHono {
 
   if (deps.auth) {
     const { auth } = deps;
+    if (deps.appOrigin) app.use("/api/auth/*", cors({ origin: deps.appOrigin, credentials: true }));
     app.all("/api/auth/*", (c) => auth.handler(c.req.raw));
   }
   registerHealth(app);
