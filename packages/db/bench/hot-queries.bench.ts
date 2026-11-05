@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { migrate } from "../src/client.js";
 import { createQueries } from "../src/queries.js";
 import * as schema from "../src/schema/index.js";
+import { assertLocalHost } from "./host.js";
 
 const BUDGET_MS = 5;
 const RUNS = 1000;
@@ -14,9 +15,7 @@ const GUARDED_TABLES = new Set(["purchases", "mandates", "events"]);
 const baseUrl = new URL(
   process.env.DATABASE_URL ?? "postgres://postgres:keelson@localhost:5432/keelson",
 );
-if (!["localhost", "127.0.0.1", "[::1]"].includes(baseUrl.hostname)) {
-  throw new Error(`refusing to run the benchmark against host ${baseUrl.hostname}`);
-}
+assertLocalHost(baseUrl.toString());
 
 const benchDb = `keelson_bench_${process.pid}`;
 const benchUrl = new URL(baseUrl);
@@ -135,8 +134,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await pool?.end();
-  await withAdmin((c) => c.query(`drop database if exists ${benchDb} with (force)`));
+  try {
+    await pool?.end();
+  } finally {
+    await withAdmin((c) => c.query(`drop database if exists ${benchDb} with (force)`));
+  }
   console.table(
     results.map((r) => ({
       query: r.query,
