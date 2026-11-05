@@ -69,14 +69,17 @@ async function registerClient(scopes: string[]): Promise<{ id: string; secret: s
   return { id: client.client_id, secret: client.client_secret as string };
 }
 
-async function issueToken(client: { id: string; secret: string }): Promise<string> {
+async function issueToken(
+  client: { id: string; secret: string },
+  params: Record<string, string> = { resource: apiAudience },
+): Promise<string> {
   const res = await app.request("/api/auth/oauth2/token", {
     method: "POST",
     headers: {
       authorization: `Basic ${Buffer.from(`${client.id}:${client.secret}`).toString("base64")}`,
       "content-type": "application/x-www-form-urlencoded",
     },
-    body: new URLSearchParams({ grant_type: "client_credentials", resource: apiAudience }),
+    body: new URLSearchParams({ grant_type: "client_credentials", ...params }),
   });
   expect(res.status).toBe(200);
   const body = await res.json();
@@ -85,6 +88,12 @@ async function issueToken(client: { id: string; secret: string }): Promise<strin
 }
 
 const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
+
+async function expectInvalidToken(res: Response): Promise<void> {
+  expect(res.status).toBe(401);
+  expect(res.headers.get("www-authenticate")).toBe('Bearer error="invalid_token"');
+  expect((await res.json()).type).toBe("https://api.keelson.finance/problems/invalid-token");
+}
 
 test("a client credentials token passes a route that needs its scope", async () => {
   const client = await registerClient(["alibis:read"]);
@@ -116,9 +125,36 @@ test("a tampered token gets 401", async () => {
   const claims = JSON.parse(Buffer.from(payload, "base64url").toString());
   claims.scope = "alibis:read disputes:read";
   const forged = `${header}.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.${signature}`;
-  const res = await app.request("/v1/test/disputes", { headers: bearer(forged) });
-  expect(res.status).toBe(401);
-  expect(res.headers.get("www-authenticate")).toMatch(/^Bearer/);
+  await expectInvalidToken(await app.request("/v1/test/disputes", { headers: bearer(forged) }));
+});
+
+test("an invalid bearer token is rejected even next to a valid session cookie", async () => {
+  for (const path of ["/v1/test/alibis", "/v1/test/me"]) {
+    const headers = new Headers(sessionHeaders);
+    headers.set("authorization", "Bearer a.b.c");
+    await expectInvalidToken(await app.request(path, { headers }));
+  }
+});
+
+test("a JWT signed with our key that is not an access token gets 401", async () => {
+  const client = await registerClient(["alibis:read"]);
+  const { token } = await auth.api.signJWT({
+    body: {
+      payload: {
+        iss: `${baseURL}/api/auth`,
+        aud: apiAudience,
+        azp: client.id,
+        scope: "alibis:read",
+      },
+    },
+  });
+  await expectInvalidToken(await app.request("/v1/test/alibis", { headers: bearer(token) }));
+});
+
+test("an opaque token minted without a resource gets 401", async () => {
+  const token = await issueToken(await registerClient(["alibis:read"]), {});
+  expect(token.split(".")).toHaveLength(1);
+  await expectInvalidToken(await app.request("/v1/test/alibis", { headers: bearer(token) }));
 });
 
 test("a session principal is a user and cannot use client routes", async () => {

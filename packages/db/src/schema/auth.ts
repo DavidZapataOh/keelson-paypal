@@ -16,8 +16,8 @@ export const user = pgTable("user", {
   email: text("email").notNull().unique(),
   emailVerified: boolean("email_verified").default(false).notNull(),
   image: text("image"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at")
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
     .defaultNow()
     .$onUpdate(() => /* @__PURE__ */ new Date())
     .notNull(),
@@ -27,10 +27,10 @@ export const session = pgTable(
   "session",
   {
     id: text("id").primaryKey(),
-    expiresAt: timestamp("expires_at").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     token: text("token").notNull().unique(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at")
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
       .$onUpdate(() => /* @__PURE__ */ new Date())
       .notNull(),
     ipAddress: text("ip_address"),
@@ -54,12 +54,12 @@ export const account = pgTable(
     accessToken: text("access_token"),
     refreshToken: text("refresh_token"),
     idToken: text("id_token"),
-    accessTokenExpiresAt: timestamp("access_token_expires_at"),
-    refreshTokenExpiresAt: timestamp("refresh_token_expires_at"),
+    accessTokenExpiresAt: timestamp("access_token_expires_at", { withTimezone: true }),
+    refreshTokenExpiresAt: timestamp("refresh_token_expires_at", { withTimezone: true }),
     scope: text("scope"),
     password: text("password"),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at")
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
       .$onUpdate(() => /* @__PURE__ */ new Date())
       .notNull(),
   },
@@ -72,9 +72,9 @@ export const verification = pgTable(
     id: text("id").primaryKey(),
     identifier: text("identifier").notNull(),
     value: text("value").notNull(),
-    expiresAt: timestamp("expires_at").notNull(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at")
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()
       .$onUpdate(() => /* @__PURE__ */ new Date())
       .notNull(),
@@ -86,8 +86,8 @@ export const jwks = pgTable("jwks", {
   id: text("id").primaryKey(),
   publicKey: text("public_key").notNull(),
   privateKey: text("private_key").notNull(),
-  createdAt: timestamp("created_at").notNull(),
-  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
   alg: text("alg"),
   crv: text("crv"),
 });
@@ -106,8 +106,8 @@ export const oauthClient = pgTable(
     scopes: text("scopes").array(),
     clientCredentialsScopes: text("client_credentials_scopes").array().default([]),
     userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
-    createdAt: timestamp("created_at"),
-    updatedAt: timestamp("updated_at"),
+    createdAt: timestamp("created_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }),
     name: text("name"),
     uri: text("uri"),
     icon: text("icon"),
@@ -147,8 +147,8 @@ export const oauthResource = pgTable("oauth_resource", {
   customClaims: jsonb("custom_claims"),
   dpopBoundAccessTokensRequired: boolean("dpop_bound_access_tokens_required").default(false),
   disabled: boolean("disabled").default(false),
-  createdAt: timestamp("created_at"),
-  updatedAt: timestamp("updated_at"),
+  createdAt: timestamp("created_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }),
   policyVersion: integer("policy_version").default(1),
   metadata: jsonb("metadata"),
 });
@@ -164,7 +164,7 @@ export const oauthClientResource = pgTable(
       .notNull()
       .references(() => oauthResource.identifier, { onDelete: "cascade" }),
     metadata: jsonb("metadata"),
-    createdAt: timestamp("created_at"),
+    createdAt: timestamp("created_at", { withTimezone: true }),
   },
   (table) => [
     uniqueIndex("oauthClientResource_clientId_resourceId_uidx").on(
@@ -194,13 +194,13 @@ export const oauthRefreshToken = pgTable(
     authorizationCodeId: text("authorization_code_id"),
     resources: text("resources").array(),
     requestedUserInfoClaims: text("requested_user_info_claims").array(),
-    expiresAt: timestamp("expires_at").notNull(),
-    createdAt: timestamp("created_at").notNull(),
-    revoked: timestamp("revoked"),
-    rotatedAt: timestamp("rotated_at"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    revoked: timestamp("revoked", { withTimezone: true }),
+    rotatedAt: timestamp("rotated_at", { withTimezone: true }),
     rotationReplayResponse: text("rotation_replay_response"),
-    rotationReplayExpiresAt: timestamp("rotation_replay_expires_at"),
-    authTime: timestamp("auth_time"),
+    rotationReplayExpiresAt: timestamp("rotation_replay_expires_at", { withTimezone: true }),
+    authTime: timestamp("auth_time", { withTimezone: true }),
     confirmation: jsonb("confirmation"),
     scopes: text("scopes").array().notNull(),
   },
@@ -231,9 +231,9 @@ export const oauthAccessToken = pgTable(
     refreshId: text("refresh_id").references(() => oauthRefreshToken.id, {
       onDelete: "cascade",
     }),
-    expiresAt: timestamp("expires_at").notNull(),
-    createdAt: timestamp("created_at").notNull(),
-    revoked: timestamp("revoked"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    revoked: timestamp("revoked", { withTimezone: true }),
     confirmation: jsonb("confirmation"),
     scopes: text("scopes").array().notNull(),
   },
@@ -258,8 +258,8 @@ export const oauthConsent = pgTable(
     resources: text("resources").array(),
     requestedUserInfoClaims: text("requested_user_info_claims").array(),
     scopes: text("scopes").array().notNull(),
-    createdAt: timestamp("created_at").notNull(),
-    updatedAt: timestamp("updated_at").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
   },
   (table) => [
     index("oauthConsent_clientId_idx").on(table.clientId),
@@ -269,7 +269,7 @@ export const oauthConsent = pgTable(
 
 export const oauthClientAssertion = pgTable("oauth_client_assertion", {
   id: text("id").primaryKey(),
-  expiresAt: timestamp("expires_at").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 });
 
 export const userRelations = relations(user, ({ many }) => ({

@@ -6,20 +6,20 @@ CREATE TABLE "account" (
 	"access_token" text,
 	"refresh_token" text,
 	"id_token" text,
-	"access_token_expires_at" timestamp,
-	"refresh_token_expires_at" timestamp,
+	"access_token_expires_at" timestamp with time zone,
+	"refresh_token_expires_at" timestamp with time zone,
 	"scope" text,
 	"password" text,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "jwks" (
 	"id" text PRIMARY KEY NOT NULL,
 	"public_key" text NOT NULL,
 	"private_key" text NOT NULL,
-	"created_at" timestamp NOT NULL,
-	"expires_at" timestamp,
+	"created_at" timestamp with time zone NOT NULL,
+	"expires_at" timestamp with time zone,
 	"alg" text,
 	"crv" text
 );
@@ -35,9 +35,9 @@ CREATE TABLE "oauth_access_token" (
 	"resources" text[],
 	"requested_user_info_claims" text[],
 	"refresh_id" text,
-	"expires_at" timestamp NOT NULL,
-	"created_at" timestamp NOT NULL,
-	"revoked" timestamp,
+	"expires_at" timestamp with time zone NOT NULL,
+	"created_at" timestamp with time zone NOT NULL,
+	"revoked" timestamp with time zone,
 	"confirmation" jsonb,
 	"scopes" text[] NOT NULL,
 	CONSTRAINT "oauth_access_token_token_unique" UNIQUE("token")
@@ -55,8 +55,8 @@ CREATE TABLE "oauth_client" (
 	"scopes" text[],
 	"client_credentials_scopes" text[] DEFAULT '{}',
 	"user_id" text,
-	"created_at" timestamp,
-	"updated_at" timestamp,
+	"created_at" timestamp with time zone,
+	"updated_at" timestamp with time zone,
 	"name" text,
 	"uri" text,
 	"icon" text,
@@ -85,7 +85,7 @@ CREATE TABLE "oauth_client" (
 --> statement-breakpoint
 CREATE TABLE "oauth_client_assertion" (
 	"id" text PRIMARY KEY NOT NULL,
-	"expires_at" timestamp NOT NULL
+	"expires_at" timestamp with time zone NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "oauth_client_resource" (
@@ -93,7 +93,7 @@ CREATE TABLE "oauth_client_resource" (
 	"client_id" text NOT NULL,
 	"resource_id" text NOT NULL,
 	"metadata" jsonb,
-	"created_at" timestamp
+	"created_at" timestamp with time zone
 );
 --> statement-breakpoint
 CREATE TABLE "oauth_consent" (
@@ -104,8 +104,8 @@ CREATE TABLE "oauth_consent" (
 	"resources" text[],
 	"requested_user_info_claims" text[],
 	"scopes" text[] NOT NULL,
-	"created_at" timestamp NOT NULL,
-	"updated_at" timestamp NOT NULL
+	"created_at" timestamp with time zone NOT NULL,
+	"updated_at" timestamp with time zone NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "oauth_refresh_token" (
@@ -118,13 +118,13 @@ CREATE TABLE "oauth_refresh_token" (
 	"authorization_code_id" text,
 	"resources" text[],
 	"requested_user_info_claims" text[],
-	"expires_at" timestamp NOT NULL,
-	"created_at" timestamp NOT NULL,
-	"revoked" timestamp,
-	"rotated_at" timestamp,
+	"expires_at" timestamp with time zone NOT NULL,
+	"created_at" timestamp with time zone NOT NULL,
+	"revoked" timestamp with time zone,
+	"rotated_at" timestamp with time zone,
 	"rotation_replay_response" text,
-	"rotation_replay_expires_at" timestamp,
-	"auth_time" timestamp,
+	"rotation_replay_expires_at" timestamp with time zone,
+	"auth_time" timestamp with time zone,
 	"confirmation" jsonb,
 	"scopes" text[] NOT NULL,
 	CONSTRAINT "oauth_refresh_token_token_unique" UNIQUE("token")
@@ -142,8 +142,8 @@ CREATE TABLE "oauth_resource" (
 	"custom_claims" jsonb,
 	"dpop_bound_access_tokens_required" boolean DEFAULT false,
 	"disabled" boolean DEFAULT false,
-	"created_at" timestamp,
-	"updated_at" timestamp,
+	"created_at" timestamp with time zone,
+	"updated_at" timestamp with time zone,
 	"policy_version" integer DEFAULT 1,
 	"metadata" jsonb,
 	CONSTRAINT "oauth_resource_identifier_unique" UNIQUE("identifier")
@@ -151,10 +151,10 @@ CREATE TABLE "oauth_resource" (
 --> statement-breakpoint
 CREATE TABLE "session" (
 	"id" text PRIMARY KEY NOT NULL,
-	"expires_at" timestamp NOT NULL,
+	"expires_at" timestamp with time zone NOT NULL,
 	"token" text NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone NOT NULL,
 	"ip_address" text,
 	"user_agent" text,
 	"user_id" text NOT NULL,
@@ -167,8 +167,8 @@ CREATE TABLE "user" (
 	"email" text NOT NULL,
 	"email_verified" boolean DEFAULT false NOT NULL,
 	"image" text,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "user_email_unique" UNIQUE("email")
 );
 --> statement-breakpoint
@@ -176,9 +176,9 @@ CREATE TABLE "verification" (
 	"id" text PRIMARY KEY NOT NULL,
 	"identifier" text NOT NULL,
 	"value" text NOT NULL,
-	"expires_at" timestamp NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"expires_at" timestamp with time zone NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 ALTER TABLE "account" ADD CONSTRAINT "account_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint

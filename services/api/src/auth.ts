@@ -33,6 +33,7 @@ export function createAuth(db: Db, env: AuthEnv) {
         scopes: [...scopes],
         grantTypes: ["client_credentials"],
         resources: [apiAudience],
+        /** Must be gated on an operator or admin role once user sign-in exists. */
         clientPrivileges: () => true,
       }),
     ],
