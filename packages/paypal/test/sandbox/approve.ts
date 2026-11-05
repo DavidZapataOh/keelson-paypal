@@ -1,11 +1,13 @@
+import { sha256, toHex, toPayPalValue } from "@keelson/core";
 import {
+  type Money,
   type Order,
   PaypalExperienceLandingPage,
   PaypalExperienceUserAction,
   PaypalWalletContextShippingPreference,
   type PaypalWalletExperienceContext,
 } from "@paypal/paypal-server-sdk";
-import { chromium } from "playwright";
+import { chromium, type Page } from "playwright";
 
 export const RETURN_URL = "https://keelson.finance/return";
 export const CANCEL_URL = "https://keelson.finance/cancel";
@@ -20,7 +22,19 @@ export const experienceContext: PaypalWalletExperienceContext = {
   locale: "en-US",
 };
 
-const CONSENT = /^(Complete Purchase|Pay Now|Agree & Continue|Continue to Review Order|Continue)$/;
+/** The consent buttons PayPal shows for `user_action: PAY_NOW`. */
+const CONSENT = /^(Complete Purchase|Pay Now)$/;
+const CHALLENGE = /captcha|security check|security challenge|confirm it's you|verify it's you/i;
+
+export const usd = (minor: bigint): Money => ({
+  currencyCode: "USD",
+  value: toPayPalValue({ currency: "USD", minor }),
+});
+
+/** A `PayPal-Request-Id` derived from the order and the operation, so retries stay idempotent. */
+export function operationRequestId(orderId: string, operation: "authorize" | "void"): string {
+  return toHex(sha256(new TextEncoder().encode(`${operation}:${orderId}`))).slice(2, 38);
+}
 
 export function payerActionUrl(order: Order): string {
   const link = order.links?.find((l) => l.rel === "payer-action" || l.rel === "approve");
@@ -46,14 +60,37 @@ export async function approveOrder(approveUrl: string): Promise<void> {
     const page = await context.newPage();
     page.setDefaultTimeout(45_000);
 
-    await page.goto(approveUrl);
-    await page.getByRole("textbox", { name: "Email or mobile number" }).fill(email);
-    await page.getByRole("button", { name: "Next" }).click();
-    await page.getByLabel("Password", { exact: true }).fill(password);
-    await page.getByRole("button", { name: "Log In" }).click();
-    await page.getByRole("button", { name: CONSENT }).click();
-    await page.waitForURL((url) => url.href.startsWith(RETURN_URL));
+    let step = "login";
+    try {
+      await page.goto(approveUrl);
+      await page.getByRole("textbox", { name: "Email or mobile number" }).fill(email);
+      await page.getByRole("button", { name: "Next" }).click();
+      step = "password";
+      await page.getByLabel("Password", { exact: true }).fill(password);
+      await page.getByRole("button", { name: "Log In" }).click();
+      step = "consent";
+      await page.getByRole("button", { name: CONSENT }).click();
+      step = "return";
+      await page.waitForURL((url) => url.href.startsWith(RETURN_URL));
+    } catch (cause) {
+      throw await approvalError(page, step, cause);
+    }
   } finally {
     await browser.close();
   }
+}
+
+async function approvalError(page: Page, step: string, cause: unknown): Promise<Error> {
+  const url = new URL(page.url());
+  const title = await page.title().catch(() => "");
+  const challenged =
+    (await page
+      .getByText(CHALLENGE)
+      .count()
+      .catch(() => 0)) > 0;
+  const what = challenged ? "a challenge or captcha" : `no ${step} step`;
+  return new Error(
+    `PayPal showed ${what} at ${url.origin}${url.pathname} ("${title}"); rerun with PLAYWRIGHT_HEADED=1 to see it`,
+    { cause },
+  );
 }

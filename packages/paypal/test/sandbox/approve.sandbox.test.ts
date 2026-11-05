@@ -5,7 +5,9 @@ import { paypalConfig } from "../../src/config.js";
 import { fromSdkError } from "../../src/errors.js";
 import { createPayPal, type PayPal } from "../../src/sdk.js";
 import { TokenCache } from "../../src/token.js";
-import { approveOrder, experienceContext, payerActionUrl } from "./approve.js";
+import { approveOrder, experienceContext, payerActionUrl, usd } from "./approve.js";
+
+const ORDER = 100n;
 
 let paypal: PayPal;
 
@@ -21,7 +23,7 @@ describe("buyer approval (sandbox)", () => {
         paypalRequestId: randomUUID(),
         body: {
           intent: CheckoutPaymentIntent.Capture,
-          purchaseUnits: [{ amount: { currencyCode: "USD", value: "1.00" } }],
+          purchaseUnits: [{ amount: usd(ORDER) }],
           paymentSource: { paypal: { experienceContext } },
         },
       })
