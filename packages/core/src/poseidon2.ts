@@ -1,6 +1,8 @@
 import { BarretenbergSync, BN254_FR_MODULUS } from "@aztec/bb.js";
 import { fromHex, toHex } from "./hash.ts";
 
+export { BN254_FR_MODULUS };
+
 let instance: Promise<BarretenbergSync> | undefined;
 
 function toField(value: bigint): Uint8Array {
