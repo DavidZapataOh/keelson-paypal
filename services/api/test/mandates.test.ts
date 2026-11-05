@@ -177,10 +177,12 @@ beforeAll(async () => {
     name: "Test operator",
     cnfJwk: demo.agent.cnf.jwk,
   });
-  // The full build: the headless shell has no Secure Payment Confirmation service.
+  // The full build: the headless shell has no Secure Payment Confirmation service. SPC is off by
+  // default on Linux (`kSecurePaymentConfirmation` in content_features.cc), so it is enabled here.
   browser = await chromium.launch({
     channel: "chromium",
     args: [
+      "--enable-features=SecurePaymentConfirmationBrowser",
       "--host-resolver-rules=MAP app.keelson.finance 127.0.0.1, MAP evil.example 127.0.0.1",
       `--unsafely-treat-insecure-origin-as-secure=${appOrigin},${evilOrigin}`,
     ],
