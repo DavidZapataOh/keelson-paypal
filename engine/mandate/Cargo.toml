@@ -16,3 +16,8 @@ url = "2.5.8"
 
 [dev-dependencies]
 serde = { version = "1", features = ["derive"] }
+criterion = { version = "0.8.2", default-features = false }
+
+[[bench]]
+name = "mandate"
+harness = false

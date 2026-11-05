@@ -16,6 +16,7 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "bench": "vitest bench --reporter=verbose",
     "vectors": "node scripts/vectors.ts"
   },
   "dependencies": {
