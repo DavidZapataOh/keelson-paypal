@@ -1,10 +1,10 @@
-import type { PayPalFetch } from "./rest.js";
+import type { PayPalFetch } from "./rest.ts";
 import {
   verifyWebhookSignatureResponse,
   type Webhook,
   webhook,
   webhookList,
-} from "./schemas/webhooks.js";
+} from "./schemas/webhooks.ts";
 
 export async function createWebhook(
   f: PayPalFetch,

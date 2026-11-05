@@ -10,7 +10,7 @@ import {
   parseInvoiceId,
   parseVerdictRef,
   requestIdFromDigest,
-} from "../src/ids.js";
+} from "../src/ids.ts";
 
 const ULID_CHARS = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 const ulid = fc

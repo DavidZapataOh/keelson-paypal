@@ -6,9 +6,9 @@ import {
   TransactionSearchController,
   VaultController,
 } from "@paypal/paypal-server-sdk";
-import type { PayPalConfig } from "./config.js";
-import { createRestClient, type PayPalFetch, REQUEST_TIMEOUT_MS } from "./rest.js";
-import type { TokenCache } from "./token.js";
+import type { PayPalConfig } from "./config.ts";
+import { createRestClient, type PayPalFetch, REQUEST_TIMEOUT_MS } from "./rest.ts";
+import type { TokenCache } from "./token.ts";
 
 export interface PayPal {
   orders: OrdersController;

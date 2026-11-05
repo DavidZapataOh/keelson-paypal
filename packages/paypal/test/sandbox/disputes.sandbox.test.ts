@@ -1,11 +1,11 @@
 import { PDFDocument } from "pdf-lib";
 import { beforeAll, describe, expect, test } from "vitest";
-import { paypalConfig } from "../../src/config.js";
-import { adjudicate, getDispute, provideEvidence, requireEvidence } from "../../src/disputes.js";
-import { fromSdkError } from "../../src/errors.js";
-import { parseInvoiceId } from "../../src/ids.js";
-import { createPayPal, type PayPal } from "../../src/sdk.js";
-import { TokenCache } from "../../src/token.js";
+import { paypalConfig } from "../../src/config.ts";
+import { adjudicate, getDispute, provideEvidence, requireEvidence } from "../../src/disputes.ts";
+import { fromSdkError } from "../../src/errors.ts";
+import { parseInvoiceId } from "../../src/ids.ts";
+import { createPayPal, type PayPal } from "../../src/sdk.ts";
+import { TokenCache } from "../../src/token.ts";
 
 const disputeId = process.env.PAYPAL_SANDBOX_DISPUTE_ID;
 

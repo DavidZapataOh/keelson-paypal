@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { PayPalConfig } from "../src/config.js";
-import { adjudicate, evidenceForm, requireEvidence } from "../src/disputes.js";
-import { createRestClient } from "../src/rest.js";
-import { TokenCache } from "../src/token.js";
+import type { PayPalConfig } from "../src/config.ts";
+import { adjudicate, evidenceForm, requireEvidence } from "../src/disputes.ts";
+import { createRestClient } from "../src/rest.ts";
+import { TokenCache } from "../src/token.ts";
 
 const production: PayPalConfig = {
   env: "production",

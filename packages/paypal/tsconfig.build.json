@@ -3,6 +3,7 @@
   "compilerOptions": {
     "isolatedDeclarations": false,
     "outDir": "dist",
+    "rewriteRelativeImportExtensions": true,
     "rootDir": "src",
     "types": []
   },

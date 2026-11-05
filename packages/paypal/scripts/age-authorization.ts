@@ -1,6 +1,6 @@
 import { DST, hashObject, newId, toPayPalValue } from "@keelson/core";
 import { CheckoutPaymentIntent } from "@paypal/paypal-server-sdk";
-import { createPayPal, fromSdkError, ids, paypalConfig, TokenCache } from "../dist/index.js";
+import { createPayPal, fromSdkError, ids, paypalConfig, TokenCache } from "../src/index.ts";
 import {
   approveOrder,
   experienceContext,

@@ -1,7 +1,7 @@
 import type { OAuthToken } from "@paypal/paypal-server-sdk";
 import { z } from "zod";
-import type { PayPalConfig } from "./config.js";
-import { fromResponse } from "./errors.js";
+import type { PayPalConfig } from "./config.ts";
+import { fromResponse } from "./errors.ts";
 
 const REFRESH_WINDOW_MS = 300_000;
 
@@ -19,11 +19,19 @@ export class TokenCache {
   private token = "";
   private inflight: Promise<string> | undefined;
 
+  private readonly cfg: PayPalConfig;
+  private readonly fetchImpl: typeof fetch;
+  private readonly timeoutMs: number;
+
   constructor(
-    private readonly cfg: PayPalConfig,
-    private readonly fetchImpl: typeof fetch = fetch,
-    private readonly timeoutMs: number = TOKEN_TIMEOUT_MS,
-  ) {}
+    cfg: PayPalConfig,
+    fetchImpl: typeof fetch = fetch,
+    timeoutMs: number = TOKEN_TIMEOUT_MS,
+  ) {
+    this.cfg = cfg;
+    this.fetchImpl = fetchImpl;
+    this.timeoutMs = timeoutMs;
+  }
 
   get(): Promise<string> {
     if (this.token && this.expiresAt - Date.now() > REFRESH_WINDOW_MS) {

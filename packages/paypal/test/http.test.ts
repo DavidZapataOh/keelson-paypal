@@ -1,10 +1,10 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
-import type { PayPalConfig } from "../src/config.js";
-import { PayPalError } from "../src/errors.js";
-import { createRestClient } from "../src/rest.js";
-import { TokenCache } from "../src/token.js";
+import type { PayPalConfig } from "../src/config.ts";
+import { PayPalError } from "../src/errors.ts";
+import { createRestClient } from "../src/rest.ts";
+import { TokenCache } from "../src/token.ts";
 
 const servers: Server[] = [];
 

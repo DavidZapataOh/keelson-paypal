@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { paypalConfig } from "../../src/config.js";
-import { createPayPal, type PayPal } from "../../src/sdk.js";
-import { TokenCache } from "../../src/token.js";
-import { createWebhook, deleteWebhook, listWebhooks } from "../../src/webhooks.js";
+import { paypalConfig } from "../../src/config.ts";
+import { createPayPal, type PayPal } from "../../src/sdk.ts";
+import { TokenCache } from "../../src/token.ts";
+import { createWebhook, deleteWebhook, listWebhooks } from "../../src/webhooks.ts";
 
 const URL = "https://api.keelson.finance/webhooks/paypal";
 const EVENT_TYPES = [

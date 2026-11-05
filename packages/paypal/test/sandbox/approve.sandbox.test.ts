@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { CheckoutPaymentIntent, OrderStatus } from "@paypal/paypal-server-sdk";
 import { beforeAll, describe, expect, it } from "vitest";
-import { paypalConfig } from "../../src/config.js";
-import { fromSdkError } from "../../src/errors.js";
-import { createPayPal, type PayPal } from "../../src/sdk.js";
-import { TokenCache } from "../../src/token.js";
-import { approveOrder, experienceContext, payerActionUrl, usd } from "./approve.js";
+import { paypalConfig } from "../../src/config.ts";
+import { fromSdkError } from "../../src/errors.ts";
+import { createPayPal, type PayPal } from "../../src/sdk.ts";
+import { TokenCache } from "../../src/token.ts";
+import { approveOrder, experienceContext, payerActionUrl, usd } from "./approve.ts";
 
 const ORDER = 100n;
 

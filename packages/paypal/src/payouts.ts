@@ -1,6 +1,6 @@
 import { type Money, toPayPalValue } from "@keelson/core";
-import type { PayPalFetch } from "./rest.js";
-import { createPayoutResponse, type PayoutBatch, payoutBatch } from "./schemas/payouts.js";
+import type { PayPalFetch } from "./rest.ts";
+import { createPayoutResponse, type PayoutBatch, payoutBatch } from "./schemas/payouts.ts";
 
 export interface PayoutItem {
   amount: Money;

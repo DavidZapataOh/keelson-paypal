@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fromResponse } from "../src/errors.js";
+import { fromResponse } from "../src/errors.ts";
 
 describe("fromResponse", () => {
   it("parses the REST error shape and the debug id", async () => {

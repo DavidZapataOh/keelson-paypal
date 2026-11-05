@@ -1,7 +1,7 @@
 import { Agent, fetch as undiciFetch } from "undici";
 import { describe, expect, it } from "vitest";
-import { paypalConfig } from "../../src/config.js";
-import { TokenCache } from "../../src/token.js";
+import { paypalConfig } from "../../src/config.ts";
+import { TokenCache } from "../../src/token.ts";
 
 function countingCache() {
   const requests: string[] = [];

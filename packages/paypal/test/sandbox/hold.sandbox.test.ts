@@ -6,24 +6,24 @@ import {
   CheckoutPaymentIntent,
 } from "@paypal/paypal-server-sdk";
 import { beforeAll, describe, expect, it } from "vitest";
-import { paypalConfig } from "../../src/config.js";
-import { fromSdkError, PayPalError } from "../../src/errors.js";
+import { paypalConfig } from "../../src/config.ts";
+import { fromSdkError, PayPalError } from "../../src/errors.ts";
 import {
   alibiDigest,
   encodeCustomId,
   encodeInvoiceId,
   encodeVerdictRef,
   requestIdFromDigest,
-} from "../../src/ids.js";
-import { createPayPal, type PayPal } from "../../src/sdk.js";
-import { TokenCache } from "../../src/token.js";
+} from "../../src/ids.ts";
+import { createPayPal, type PayPal } from "../../src/sdk.ts";
+import { TokenCache } from "../../src/token.ts";
 import {
   approveOrder,
   experienceContext,
   operationRequestId,
   payerActionUrl,
   usd,
-} from "./approve.js";
+} from "./approve.ts";
 
 let paypal: PayPal;
 

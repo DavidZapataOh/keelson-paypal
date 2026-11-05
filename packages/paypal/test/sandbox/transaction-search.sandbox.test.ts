@@ -1,8 +1,8 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { paypalConfig } from "../../src/config.js";
-import { fromSdkError } from "../../src/errors.js";
-import { createPayPal, type PayPal } from "../../src/sdk.js";
-import { TokenCache } from "../../src/token.js";
+import { paypalConfig } from "../../src/config.ts";
+import { fromSdkError } from "../../src/errors.ts";
+import { createPayPal, type PayPal } from "../../src/sdk.ts";
+import { TokenCache } from "../../src/token.ts";
 
 const MIN_AGE_MS = 3 * 60 * 60 * 1000;
 const orderId = process.env.PAYPAL_SEARCHABLE_ORDER_ID;

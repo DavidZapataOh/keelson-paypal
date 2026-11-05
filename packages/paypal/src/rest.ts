@@ -1,6 +1,6 @@
-import type { PayPalConfig, PayPalEnv } from "./config.js";
-import { fromResponse } from "./errors.js";
-import type { TokenCache } from "./token.js";
+import type { PayPalConfig, PayPalEnv } from "./config.ts";
+import { fromResponse } from "./errors.ts";
+import type { TokenCache } from "./token.ts";
 
 export const REQUEST_TIMEOUT_MS = 15_000;
 

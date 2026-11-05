@@ -1,4 +1,4 @@
-import type { PayPalFetch } from "./rest.js";
+import type { PayPalFetch } from "./rest.ts";
 import {
   type Dispute,
   type DisputeSearch,
@@ -6,7 +6,7 @@ import {
   disputeSearch,
   type SubsequentAction,
   subsequentAction,
-} from "./schemas/disputes.js";
+} from "./schemas/disputes.ts";
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 50 * 1024 * 1024;

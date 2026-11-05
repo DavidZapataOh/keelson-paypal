@@ -1,10 +1,10 @@
 import { DST, hashObject, newId } from "@keelson/core";
 import { beforeAll, describe, expect, it } from "vitest";
-import { paypalConfig } from "../../src/config.js";
-import { encodeVerdictRef } from "../../src/ids.js";
-import { createPayout, getPayoutBatch } from "../../src/payouts.js";
-import { createPayPal, type PayPal } from "../../src/sdk.js";
-import { TokenCache } from "../../src/token.js";
+import { paypalConfig } from "../../src/config.ts";
+import { encodeVerdictRef } from "../../src/ids.ts";
+import { createPayout, getPayoutBatch } from "../../src/payouts.ts";
+import { createPayPal, type PayPal } from "../../src/sdk.ts";
+import { TokenCache } from "../../src/token.ts";
 
 let paypal: PayPal;
 

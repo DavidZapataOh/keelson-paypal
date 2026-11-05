@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { AuthorizationStatus } from "@paypal/paypal-server-sdk";
 import { describe, expect, it } from "vitest";
-import { paypalConfig } from "../../src/config.js";
-import { fromSdkError } from "../../src/errors.js";
-import { createPayPal } from "../../src/sdk.js";
-import { TokenCache } from "../../src/token.js";
+import { paypalConfig } from "../../src/config.ts";
+import { fromSdkError } from "../../src/errors.ts";
+import { createPayPal } from "../../src/sdk.ts";
+import { TokenCache } from "../../src/token.ts";
 
 const MIN_AGE_DAYS = 4;
 const DAY_MS = 86_400_000;
