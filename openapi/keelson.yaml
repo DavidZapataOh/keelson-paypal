@@ -96,10 +96,10 @@ paths:
         - schema:
             type: string
             description: "`public:<name>`, or the caller's own namespace
-              `<kind>:<base64url(subject)>` with an optional `:<suffix>`."
+              `<base64url(kind:subject)>` with an optional `:<suffix>`."
           required: true
           description: "`public:<name>`, or the caller's own namespace
-            `<kind>:<base64url(subject)>` with an optional `:<suffix>`."
+            `<base64url(kind:subject)>` with an optional `:<suffix>`."
           name: channel
           in: query
         - schema:

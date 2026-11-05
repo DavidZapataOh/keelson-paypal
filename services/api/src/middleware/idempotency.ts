@@ -2,17 +2,11 @@ import { sha256, toHex } from "@keelson/core";
 import type { MiddlewareHandler } from "hono";
 import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
+import { principalKey } from "../principal.ts";
 import { problem } from "../problem.ts";
-
-export interface Principal {
-  kind: "user" | "client";
-  subject: string;
-  scopes?: string[];
-}
 
 declare module "hono" {
   interface ContextVariableMap {
-    principal: Principal | undefined;
     timedOut: boolean | undefined;
   }
 }
@@ -71,10 +65,7 @@ export function idempotency(kv: RedisClientType, log: Logger): MiddlewareHandler
       new Uint8Array(await c.req.arrayBuffer()),
     );
     const principal = c.get("principal");
-    const owner =
-      principal === undefined
-        ? "anon"
-        : Buffer.from(`${principal.kind}:${principal.subject}`).toString("base64url");
+    const owner = principal === undefined ? "anon" : principalKey(principal);
     const key = `idem:${owner}:${idemKey}`;
     const running: Running = { state: "running", fp };
 

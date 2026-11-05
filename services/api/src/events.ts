@@ -2,6 +2,9 @@ import type { Json } from "@keelson/core";
 import { type Db, events, sql } from "@keelson/db";
 import type { RedisClientType } from "redis";
 
+/** Channel names: 1 to 128 of A-Z a-z 0-9 : _ -. */
+export const CHANNEL = /^[A-Za-z0-9:_-]{1,128}$/;
+
 export const eventsChannel = (channel: string): string => `events:${channel}`;
 
 /**

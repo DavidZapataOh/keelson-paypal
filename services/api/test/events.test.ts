@@ -3,6 +3,7 @@ import { pino } from "pino";
 import { expect, test } from "vitest";
 import { createApp } from "../src/app.ts";
 import { publishEvent } from "../src/events.ts";
+import { principalChannel } from "../src/principal.ts";
 import { testDb, testKv } from "./setup.ts";
 
 const log = pino({ level: "silent" });
@@ -15,8 +16,9 @@ const asPrincipal: MiddlewareHandler = async (c, next) => {
 };
 
 const app = createApp({ db: testDb, kv: testKv, log, authenticate: asPrincipal });
-const ns = (subject: string): string => `user:${Buffer.from(subject).toString("base64url")}`;
-const channel = (): string => `${ns("u1")}:${crypto.randomUUID().replaceAll("-", "")}`;
+const ns = (subject: string): string => principalChannel({ kind: "user", subject });
+const channel = (): string =>
+  principalChannel({ kind: "user", subject: "u1" }, crypto.randomUUID().replaceAll("-", ""));
 
 interface Frame {
   id?: string;
@@ -220,4 +222,17 @@ test("caps concurrent streams per principal", async () => {
   expect(again.status).toBe(200);
   await again.body?.cancel();
   for (const res of held.slice(1)) await res.body?.cancel();
+});
+
+test("a channel built by a publisher reaches the principal that owns it", async () => {
+  const name = principalChannel({ kind: "user", subject: "u1" }, "mandates");
+  const sse = await connect(name);
+  const id = await publishEvent(deps, name, "m1", { ok: true });
+  expect((await sse.event()).id).toBe(String(id));
+  await sse.close();
+  const spoof = await app.request(
+    `/v1/events?channel=${principalChannel({ kind: "client", subject: "x" })}`,
+    { headers: { "x-test-subject": "client:x" } },
+  );
+  expect([spoof.status, await slug(spoof)]).toEqual([403, "forbidden-channel"]);
 });

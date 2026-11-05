@@ -2,21 +2,20 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { createQueries } from "@keelson/db";
 import { streamSSE } from "hono/streaming";
 import type { Deps } from "../app.ts";
-import { eventsChannel } from "../events.ts";
+import { CHANNEL, eventsChannel } from "../events.ts";
 import { requirePrincipal } from "../middleware/auth.ts";
-import type { Principal } from "../middleware/idempotency.ts";
+import { type Principal, principalKey } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 
 const HEARTBEAT_MS = 15_000;
 const BATCH = 100;
 const MAX_STREAMS_PER_PRINCIPAL = 5;
 const MAX_EVENT_ID = 2n ** 63n - 1n;
-const CHANNEL = /^[A-Za-z0-9:_-]{1,128}$/;
 const EVENT_ID = /^\d{1,19}$/;
 
-function mayRead(principal: { kind: string; subject: string }, channel: string): boolean {
+function mayRead(principal: Principal, channel: string): boolean {
   if (channel.startsWith("public:") && channel.length > "public:".length) return true;
-  const namespace = `${principal.kind}:${Buffer.from(principal.subject).toString("base64url")}`;
+  const namespace = principalKey(principal);
   return channel === namespace || channel.startsWith(`${namespace}:`);
 }
 
@@ -32,7 +31,7 @@ const route = createRoute({
     query: z.object({
       channel: z.string().openapi({
         description:
-          "`public:<name>`, or the caller's own namespace `<kind>:<base64url(subject)>` with an optional `:<suffix>`.",
+          "`public:<name>`, or the caller's own namespace `<base64url(kind:subject)>` with an optional `:<suffix>`.",
       }),
     }),
     headers: z.object({ "last-event-id": z.string().optional() }),
@@ -88,7 +87,7 @@ export function registerEvents(app: OpenAPIHono, deps: Pick<Deps, "db" | "kv" | 
     ) {
       return problem(c, 400, "invalid-last-event-id", "Invalid Last-Event-ID");
     }
-    const owner = `${principal.kind}:${principal.subject}`;
+    const owner = principalKey(principal);
     const open = streams.get(owner) ?? 0;
     if (open >= MAX_STREAMS_PER_PRINCIPAL) {
       return problem(

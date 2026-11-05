@@ -1,6 +1,7 @@
 import { getConnInfo } from "@hono/node-server/conninfo";
 import type { Context, MiddlewareHandler } from "hono";
 import type { RedisClientType } from "redis";
+import { principalKey } from "../principal.ts";
 import { problem } from "../problem.ts";
 
 export interface RateLimitOptions {
@@ -42,9 +43,7 @@ export function rateLimit(kv: RedisClientType, options: RateLimitOptions = {}): 
   return async (c, next) => {
     const principal = c.get("principal");
     const owner =
-      principal === undefined
-        ? `ip:${clientIp(c, trustProxy)}`
-        : Buffer.from(`${principal.kind}:${principal.subject}`).toString("base64url");
+      principal === undefined ? `ip:${clientIp(c, trustProxy)}` : principalKey(principal);
     const quota = principal === undefined ? anonymousLimit : limit;
     const nowSec = Math.floor(Date.now() / 1000);
     const window = Math.floor(nowSec / windowSec);
