@@ -5,10 +5,15 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[[bin]]
+name = "keelson-engine"
+path = "src/main.rs"
+
 [dependencies]
 aes-gcm = { version = "0.11.1", features = ["zeroize"] }
 alloy-primitives = { version = "1.7.3", features = ["serde"] }
 alloy-sol-types = "1.7.3"
+axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "tokio"] }
 base64 = "0.23.1"
 getrandom = "0.4.3"
 hkdf = "0.13.0"
@@ -22,9 +27,13 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # `zeroize` wipes the HKDF and HMAC hash states on drop.
 sha2 = { version = "0.11.1", features = ["zeroize"] }
+subtle = "2.6.1"
 time = { version = "0.3.55", features = ["formatting", "macros"] }
+tokio = { version = "1.54.1", features = ["macros", "net", "rt-multi-thread"] }
 ulid = { version = "3.0.0", features = ["serde"] }
 zeroize = "1.9.1"
 
 [dev-dependencies]
 alloy-primitives = { version = "1.7.3", features = ["k256", "serde"] }
+http-body-util = "0.1.5"
+tower = { version = "0.5.3", features = ["util"] }

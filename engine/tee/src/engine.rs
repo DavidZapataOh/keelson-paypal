@@ -55,6 +55,26 @@ const MAX_OBSERVATION_SKEW_MS: u64 = 2_000;
 /// `category` of a cart with no single category in `CATEGORY_IDS`.
 const NO_CATEGORY: u8 = 255;
 
+/// Longest `sub`, in bytes; the mandate schema's limit for `user.sub`.
+const MAX_SUB: usize = 128;
+/// Longest free-form string of a cart, a purchase unit or an evidence source, in bytes.
+const MAX_STRING: usize = 256;
+/// Longest credential or presentation, in bytes.
+const MAX_TOKEN: usize = 128 * 1024;
+/// Longest serialized `payload_sd`, in bytes.
+const MAX_PAYLOAD: usize = 128 * 1024;
+/// Most disclosures a mandate comes with.
+const MAX_DISCLOSURES: usize = 512;
+/// Longest disclosure or assertion part, in bytes: the mandate schema's longest string, base64url
+/// encoded in a disclosure with its salt and name.
+const MAX_PART: usize = 4096;
+/// Most cart lines the engine reads; the canonicalizer denies more than it supports.
+const MAX_CART_LINES: usize = 64;
+/// Most fields with evidence.
+const MAX_EVIDENCE_FIELDS: usize = 16;
+/// Most evidence sources of one field.
+const MAX_SOURCES: usize = 16;
+
 /// Boot configuration, bound into the attestation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EngineConfig {
@@ -101,6 +121,12 @@ pub enum EngineError {
     /// The salt does not open the mandate's `zk.commitment`.
     CommitmentMismatch,
     BadRequest(&'static str),
+    /// An input is longer or more numerous than the engine reads.
+    TooLarge(&'static str),
+    /// The mandate's `exp` has passed.
+    Expired,
+    /// The mandate's `nbf` has not been reached.
+    NotYetValid,
     /// A leg A input is missing: the captured amount or the user records.
     NotReady,
     /// The request id was already countersigned for another cart.
@@ -118,6 +144,9 @@ impl EngineError {
             Self::NoRoot => "no_root".into(),
             Self::CommitmentMismatch => "commitment_mismatch".into(),
             Self::BadRequest(_) => "bad_request".into(),
+            Self::TooLarge(_) => "payload_too_large".into(),
+            Self::Expired => "mandate_expired".into(),
+            Self::NotYetValid => "mandate_not_yet_valid".into(),
             Self::NotReady => "not_ready".into(),
             Self::Replay => "replay".into(),
             Self::Signer(_) => "signer".into(),
@@ -129,6 +158,7 @@ impl fmt::Display for EngineError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::BadRequest(what) => write!(f, "bad_request: {what}"),
+            Self::TooLarge(what) => write!(f, "payload_too_large: {what}"),
             Self::Signer(e) => write!(f, "signer: {e}"),
             other => f.write_str(&other.code()),
         }
@@ -217,6 +247,16 @@ impl Engine {
         self
     }
 
+    /// The boot configuration.
+    pub fn config(&self) -> &EngineConfig {
+        &self.config
+    }
+
+    /// The boot time, in Unix seconds.
+    pub fn boot_epoch(&self) -> u64 {
+        u64::try_from(self.boot.unix_timestamp()).unwrap_or_default()
+    }
+
     /// The countersign signer's address.
     pub fn signer(&self) -> Address {
         self.signer.address()
@@ -231,9 +271,22 @@ impl Engine {
     ) -> Result<MandateIssued, EngineError> {
         let root = self.root.as_ref().ok_or(EngineError::NoRoot)?;
         let users = self.users.as_ref().ok_or(EngineError::NotReady)?;
+        check_register(r)?;
         let m = decode_mandate(&r.payload_sd, &r.disclosures).map_err(|_| bad("mandate"))?;
         if m["user"]["sub"] != r.sub.as_str() {
             return Err(bad("sub"));
+        }
+        let at = now.unix_timestamp();
+        match (m["nbf"].as_i64(), m["exp"].as_i64()) {
+            (Some(nbf), Some(exp)) => {
+                if exp <= at {
+                    return Err(EngineError::Expired);
+                }
+                if nbf > at {
+                    return Err(EngineError::NotYetValid);
+                }
+            }
+            _ => return Err(bad("mandate")),
         }
         let cm = mandate_commitment(&m, r.salt).map_err(|_| bad("mandate"))?;
         if Some(field_bytes(&cm)) != commitment(&m) {
@@ -324,6 +377,7 @@ impl Engine {
         r: &CountersignRequest,
         clock_now: OffsetDateTime,
     ) -> Result<Countersigned, EngineError> {
+        check_countersign(r)?;
         let captured = match (&self.root, &r.observation) {
             (Some(_), Some(_)) | (None, None) => return Err(bad("observation")),
             (Some(_), None) => Some(self.captured.as_ref().ok_or(EngineError::NotReady)?),
@@ -631,6 +685,92 @@ impl Engine {
                 .unwrap_or_default(),
         }
     }
+}
+
+fn within(s: &str, max: usize, what: &'static str) -> Result<(), EngineError> {
+    (s.len() <= max)
+        .then_some(())
+        .ok_or(EngineError::TooLarge(what))
+}
+
+fn check_register(r: &RegisterMandate) -> Result<(), EngineError> {
+    within(&r.sub, MAX_SUB, "sub")?;
+    if r.disclosures.len() > MAX_DISCLOSURES {
+        return Err(EngineError::TooLarge("disclosures"));
+    }
+    for d in &r.disclosures {
+        within(d, MAX_PART, "disclosure")?;
+    }
+    let a = &r.assertion;
+    for part in [&a.authenticator_data, &a.client_data_json, &a.signature] {
+        within(part, MAX_PART, "assertion")?;
+    }
+    if let Some(l1) = &r.user_credential {
+        within(l1, MAX_TOKEN, "user_credential")?;
+    }
+    let payload = serde_json::to_vec(&r.payload_sd).map_err(|_| bad("payload_sd"))?;
+    if payload.len() > MAX_PAYLOAD {
+        return Err(EngineError::TooLarge("payload_sd"));
+    }
+    Ok(())
+}
+
+fn check_countersign(r: &CountersignRequest) -> Result<(), EngineError> {
+    within(&r.closed_mandate, MAX_TOKEN, "closed_mandate")?;
+    within(&r.sub, MAX_SUB, "sub")?;
+    let cart = &r.cart;
+    if cart.lines.len() > MAX_CART_LINES {
+        return Err(EngineError::TooLarge("cart.lines"));
+    }
+    within(&cart.merchant, MAX_STRING, "cart")?;
+    within(&cart.currency, MAX_STRING, "cart")?;
+    for line in &cart.lines {
+        let optional = [&line.size, &line.color].into_iter().flatten();
+        for s in [&line.sku, &line.category].into_iter().chain(optional) {
+            within(s, MAX_STRING, "cart")?;
+        }
+    }
+    let b = &r.unit.breakdown;
+    let amounts = [
+        &b.item_total,
+        &b.tax_total,
+        &b.shipping,
+        &b.handling,
+        &b.insurance,
+        &b.discount,
+        &b.shipping_discount,
+    ];
+    within(&r.unit.currency, MAX_STRING, "unit")?;
+    within(&r.unit.value, MAX_STRING, "unit")?;
+    for a in amounts.into_iter().flatten() {
+        within(&a.currency_code, MAX_STRING, "unit")?;
+        within(&a.value, MAX_STRING, "unit")?;
+    }
+    if r.evidence.len() > MAX_EVIDENCE_FIELDS {
+        return Err(EngineError::TooLarge("evidence"));
+    }
+    for (field, sources) in &r.evidence {
+        within(field, MAX_STRING, "evidence")?;
+        if sources.len() > MAX_SOURCES {
+            return Err(EngineError::TooLarge("evidence"));
+        }
+        for s in sources {
+            within(s, MAX_STRING, "evidence")?;
+        }
+    }
+    if let Some(o) = &r.observation {
+        let k = &o.user_key;
+        for s in [Some(&k.x), Some(&k.y), k.kid.as_ref()]
+            .into_iter()
+            .flatten()
+        {
+            within(s, MAX_STRING, "observation")?;
+        }
+        if o.paypal.raw.0.len() > MAX_TOKEN {
+            return Err(EngineError::TooLarge("observation"));
+        }
+    }
+    Ok(())
 }
 
 /// Binds `sub` to `passkey` on its first registration, in a record sealed to `sub`. Later

@@ -39,9 +39,30 @@ A countersign is valid through its `expiresAt` second, so its reservation is hel
 
 Reservations live only in RAM. An engine allows nothing for the first 900 seconds after boot, the lifetime of a countersign, so a reservation lost in a restart can never be spent twice.
 
+## Limits
+
+Registering refuses a mandate whose `exp` has passed (`mandate_expired`) or whose `nbf` has not been reached (`mandate_not_yet_valid`). Every request is bounded before anything is parsed further: bodies at 256 KiB at the HTTP boundary, and in the engine `sub` at 128 bytes, tokens at 128 KiB, `payload_sd` at 128 KiB, 512 disclosures of at most 4 KiB, 64 cart lines, 16 evidence fields of 16 sources, and 256 bytes for any other string. Anything over a limit fails with `payload_too_large`.
+
 ## Errors
 
-Refusals carry no signature and one of these stable codes: `auth.closed_*`, `auth.open_*`, `auth.webauthn_*`, `auth.sub_bound`, `clock_skew`, `no_root`, `not_ready`, `commitment_mismatch`, `replay`, `bad_request` and `signer`.
+Refusals carry no signature and one of these stable codes: `auth.closed_*`, `auth.open_*`, `auth.webauthn_*`, `auth.sub_bound`, `clock_skew`, `no_root`, `not_ready`, `commitment_mismatch`, `replay`, `bad_request`, `payload_too_large`, `mandate_expired`, `mandate_not_yet_valid` and `signer`.
+
+## HTTP
+
+`keelson-engine --listen tcp:<addr>` serves `POST /v1/countersign`, `POST /v1/mandates/register` and `GET /v1/health` (`{ tee, signer, boot_epoch, oci_digest, version }`). Every route except health needs `Authorization: Bearer <token>`; the engine holds only the token's SHA-256 and compares it in constant time. Refusals are `application/problem+json` (RFC 9457) with `type` `https://keelson.finance/problems/<code>` and the stable code, and never echo the request. Bodies are JSON with unknown fields rejected.
+
+| Status | Codes |
+| --- | --- |
+| 401 | `unauthorized` |
+| 403 | `auth.*` |
+| 409 | `replay`, `clock_skew` |
+| 413 | `payload_too_large` |
+| 422 | `bad_request`, `commitment_mismatch`, `mandate_expired`, `mandate_not_yet_valid` |
+| 501 | `no_root` |
+| 503 | `not_ready` |
+| 500 | `signer`, `internal` |
+
+The binary reads its configuration from `KEELSON_*` environment variables (see `src/main.rs`) and holds no KMS root.
 
 ## Sealing
 

@@ -1,367 +1,22 @@
-use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex};
+mod common;
+
+use std::sync::Arc;
 use std::thread;
 
-use alloy_primitives::{Address, Signature};
 use base64::Engine as _;
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
-use keelson_canon::{Cart, PayPalUnit};
-use keelson_core::{AcirField, Dst, hash_object};
+use keelson_mandate::decode_mandate;
 use keelson_mandate::{
-    CLOSED_MANDATE_AUD, Fr, Jwk, OPEN_MANDATE_TYP, OpenMandateVerifyOptions, USER_CREDENTIAL_TYP,
-    decode_mandate, h_sd, mandate_challenge, mandate_commitment, verify_credential,
+    OPEN_MANDATE_TYP, OpenMandateVerifyOptions, USER_CREDENTIAL_TYP, verify_credential,
 };
-use keelson_tee::wire::{
-    Assertion, Base64, CountersignRequest, Countersigned, Hex, MandateIssued, Observation,
-    PayPalObservation, RegisterMandate,
-};
+use keelson_tee::wire::{Base64, CountersignRequest, Countersigned, RegisterMandate};
 use keelson_tee::{
-    BIT_CANON, CapturedSource, Engine, EngineConfig, EngineError, MANDATE_SALT_PURPOSE, Root,
-    SealAad, TeeKind, UserRecords,
+    BIT_CANON, Engine, EngineError, MANDATE_SALT_PURPOSE, Root, SealAad, TeeKind, UserRecords,
 };
-use p256::ecdsa::signature::Signer as _;
-use p256::ecdsa::{Signature as P256Signature, SigningKey};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use time::OffsetDateTime;
-use ulid::Ulid;
 
-/// Clock of the test runs: one minute after the demo mandate's `iat`.
-const NOW: i64 = 1_793_750_460;
-const ORIGIN: &str = "https://keelson.finance";
-const BIT_AMOUNT: u32 = 1 << 3;
-const BIT_BUDGET: u32 = 1 << 4;
-
-fn issued() -> Value {
-    serde_json::from_str(include_str!(
-        "../../../packages/mandate/test/vectors/issued.json"
-    ))
-    .unwrap()
-}
-
-fn hex_bytes(s: &str) -> Vec<u8> {
-    let s = s.strip_prefix("0x").unwrap_or(s);
-    (0..s.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
-        .collect()
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
-}
-
-fn b64u(bytes: impl AsRef<[u8]>) -> String {
-    URL_SAFE_NO_PAD.encode(bytes)
-}
-
-/// The deterministic bytes the TypeScript vector script derives from a label.
-fn seed(label: &str) -> [u8; 32] {
-    Sha256::digest(format!("keelson/vectors/{label}")).into()
-}
-
-fn root() -> Root {
-    Root::new(
-        &hex_bytes(issued()["root"].as_str().unwrap())
-            .try_into()
-            .unwrap(),
-    )
-}
-
-fn sub() -> String {
-    issued()["users"][0]["sub"].as_str().unwrap().into()
-}
-
-fn agent_key() -> SigningKey {
-    SigningKey::from_slice(&seed("key/agent")).unwrap()
-}
-
-fn jwk_of(key: &SigningKey) -> Jwk {
-    Jwk::from_verifying_key(key.verifying_key())
-}
-
-fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::from_unix_timestamp(seconds).unwrap()
-}
-
-fn config(issuer: Option<Jwk>) -> EngineConfig {
-    EngineConfig {
-        chain_id: 421_614,
-        bond_vault: Address::ZERO,
-        verifying_contract: Address::ZERO,
-        oci_digest: format!("sha256:{}", "ab".repeat(32)),
-        canonicalizer: "keelson-canon/0.0.0".into(),
-        tee_kind: TeeKind::Tdx,
-        issuer,
-        origin: ORIGIN.into(),
-    }
-}
-
-/// What the engine's own PayPal read reports as captured, for one mandate.
-struct Captured {
-    mandate_hash: [u8; 32],
-    minor: i64,
-}
-
-impl CapturedSource for Captured {
-    fn captured_minor(&self, mandate_hash: &[u8; 32]) -> Option<i64> {
-        (*mandate_hash == self.mandate_hash).then_some(self.minor)
-    }
-}
-
-/// Sealed user records kept in memory.
-#[derive(Default)]
-struct Records(Mutex<BTreeMap<String, Vec<u8>>>);
-
-impl UserRecords for Records {
-    fn get(&self, sub: &str) -> Option<Vec<u8>> {
-        self.0.lock().unwrap().get(sub).cloned()
-    }
-
-    fn insert_new(&self, sub: &str, record: Vec<u8>) -> bool {
-        let mut records = self.0.lock().unwrap();
-        if records.contains_key(sub) {
-            return false;
-        }
-        records.insert(sub.to_owned(), record);
-        true
-    }
-}
-
-fn demo_mandate_hash() -> [u8; 32] {
-    expected_mandate_hash(&register_request())
-}
-
-/// Leg A with nothing captured on the demo mandate, booted at `boot`.
-fn leg_a_at(boot: i64, captured: i64) -> Engine {
-    Engine::booted_at(config(None), Some(root()), at(boot))
-        .with_captured(Arc::new(Captured {
-            mandate_hash: demo_mandate_hash(),
-            minor: captured,
-        }))
-        .with_user_records(Arc::new(Records::default()))
-}
-
-/// Leg A: holds the KMS root; booted long enough ago that its budget ledger is live.
-fn leg_a() -> Engine {
-    leg_a_at(NOW - 1_000, 0)
-}
-
-/// Leg B: no root, only the issuer public key.
-fn leg_b() -> Engine {
-    let issuer = jwk_of(&root().issuer_key());
-    Engine::booted_at(config(Some(issuer)), None, at(NOW - 1_000))
-}
-
-fn register_request() -> RegisterMandate {
-    let params = &issued()["openMandate"]["params"];
-    let auth = &params["userAuth"];
-    let s = |v: &Value| v.as_str().unwrap().to_owned();
-    RegisterMandate {
-        sub: sub(),
-        payload_sd: params["payloadSd"].clone(),
-        disclosures: params["disclosures"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(s)
-            .collect(),
-        assertion: Assertion {
-            authenticator_data: s(&auth["authenticatorData"]),
-            client_data_json: s(&auth["clientDataJSON"]),
-            signature: s(&auth["signature"]),
-        },
-        salt: seed("salt/l2/commitment")[..16].try_into().unwrap(),
-        user_credential: None,
-    }
-}
-
-fn register() -> MandateIssued {
-    leg_a()
-        .register_mandate(&register_request(), at(NOW))
-        .unwrap()
-}
-
-/// `M` computed from the request, independently of the engine.
-fn expected_mandate_hash(r: &RegisterMandate) -> [u8; 32] {
-    let cm = r.payload_sd["zk"]["commitment"].as_str().unwrap();
-    let cm = Fr::from_be_bytes_reduce(&hex_bytes(cm));
-    mandate_challenge(&h_sd(&r.payload_sd).unwrap(), &cm)
-}
-
-/// The passkey assertion a browser returns over `challenge` (WebAuthn section 7.2).
-fn assertion(passkey: &SigningKey, challenge: &[u8; 32]) -> Assertion {
-    let mut authenticator_data = Sha256::digest("keelson.finance").to_vec();
-    authenticator_data.extend_from_slice(&[0x05, 0, 0, 0, 1]);
-    let client_data_json = json!({
-        "type": "webauthn.get",
-        "challenge": b64u(challenge),
-        "origin": ORIGIN,
-        "crossOrigin": false,
-    })
-    .to_string();
-    let signed = [&authenticator_data[..], &Sha256::digest(&client_data_json)].concat();
-    let signature: P256Signature = passkey.sign(&signed);
-    Assertion {
-        authenticator_data: b64u(&authenticator_data),
-        client_data_json: b64u(&client_data_json),
-        signature: b64u(signature.to_der().as_bytes()),
-    }
-}
-
-/// The demo mandate for `sub`, confirmed with `passkey`, with every claim disclosed in place.
-fn mandate_for(sub: &str, passkey: &SigningKey) -> RegisterMandate {
-    let base = register_request();
-    let mut m = decode_mandate(&base.payload_sd, &base.disclosures).unwrap();
-    let key = jwk_of(passkey);
-    m["user"]["sub"] = json!(sub);
-    m["user"]["cred"]["jwk"] = json!({ "kty": "EC", "crv": "P-256", "x": key.x, "y": key.y });
-    let cm = mandate_commitment(&m, base.salt).unwrap();
-    m["zk"]["commitment"] = json!(format!("0x{}", hex(&cm.to_be_bytes())));
-    let mut payload_sd = m.clone();
-    payload_sd["cnf"] = json!({ "jwk": m["agent"]["cnf"]["jwk"] });
-    let challenge = mandate_challenge(&h_sd(&payload_sd).unwrap(), &cm);
-    RegisterMandate {
-        sub: sub.into(),
-        payload_sd,
-        disclosures: Vec::new(),
-        assertion: assertion(passkey, &challenge),
-        salt: base.salt,
-        user_credential: None,
-    }
-}
-
-fn other_passkey() -> SigningKey {
-    SigningKey::from_slice(&seed("key/other")).unwrap()
-}
-
-struct CartFixture {
-    raw: Value,
-}
-
-impl CartFixture {
-    fn load(json: &str) -> Self {
-        Self {
-            raw: serde_json::from_str(json).unwrap(),
-        }
-    }
-
-    fn demo() -> Self {
-        Self::load(include_str!("../../canon/tests/fixtures/demo-shoes.json"))
-    }
-
-    fn bundle() -> Self {
-        Self::load(include_str!("../../canon/tests/fixtures/bundle-340.json"))
-    }
-
-    fn breakdown_mismatch() -> Self {
-        Self::load(include_str!(
-            "../../canon/tests/fixtures/breakdown-mismatch.json"
-        ))
-    }
-
-    /// The demo shoes at $60.
-    fn sixty() -> Self {
-        let mut f = Self::demo();
-        f.raw["cart"]["lines"][0]["unit_minor"] = json!(6000);
-        f.raw["unit"]["amount"]["value"] = json!("60.00");
-        f.raw["unit"]["amount"]["breakdown"]["item_total"]["value"] = json!("60.00");
-        f
-    }
-
-    fn cart(&self) -> Cart {
-        serde_json::from_value(self.raw["cart"].clone()).unwrap()
-    }
-
-    fn unit(&self) -> PayPalUnit {
-        serde_json::from_value(self.raw["unit"].clone()).unwrap()
-    }
-
-    /// `H("keelson/cart/v1", cart)` over the fixture JSON.
-    fn hash(&self) -> [u8; 32] {
-        hash_object(Dst::Cart, &self.raw["cart"]).unwrap()
-    }
-}
-
-/// Closes an open mandate with the agent's KB-JWT (RFC 9901 section 4.3).
-fn close(open: &str, nonce: &str, cart_hash: &[u8; 32], iat: i64) -> String {
-    let final_kb_sd_jwt = open.split_once("~~").unwrap().1;
-    let header = json!({ "typ": "kb+jwt", "alg": "ES256" });
-    let payload = json!({
-        "iat": iat,
-        "aud": CLOSED_MANDATE_AUD,
-        "nonce": nonce,
-        "cart_hash": format!("sha256:{}", hex(cart_hash)),
-        "sd_hash": b64u(Sha256::digest(final_kb_sd_jwt)),
-    });
-    let input = format!("{}.{}", b64u(header.to_string()), b64u(payload.to_string()));
-    let signature: P256Signature = agent_key().sign(input.as_bytes());
-    format!("{open}{input}.{}", b64u(signature.to_bytes()))
-}
-
-fn request_id(n: u128) -> Ulid {
-    request_id_at(n, NOW * 1000)
-}
-
-/// A request id whose ULID time is `ms`.
-fn request_id_at(n: u128, ms: i64) -> Ulid {
-    Ulid::from_parts(ms as u64, n)
-}
-
-/// Countersigns `f` under `id` with the agent's key binding issued at `clock`.
-fn countersign_at(
-    engine: &Engine,
-    issued: &MandateIssued,
-    f: &CartFixture,
-    id: Ulid,
-    clock: i64,
-) -> Result<Countersigned, EngineError> {
-    let mut r = countersign_request(issued, f, id, None);
-    r.closed_mandate = close(&issued.open_mandate, &id.to_string(), &f.hash(), clock);
-    engine.countersign(&r, at(clock))
-}
-
-fn countersign_request(
-    issued: &MandateIssued,
-    f: &CartFixture,
-    id: Ulid,
-    observation: Option<Observation>,
-) -> CountersignRequest {
-    CountersignRequest {
-        request_id: id,
-        closed_mandate: close(&issued.open_mandate, &id.to_string(), &f.hash(), NOW),
-        sub: sub(),
-        cart: f.cart(),
-        unit: f.unit(),
-        evidence: BTreeMap::new(),
-        evidence_root: Hex([0x55; 32]),
-        observation,
-    }
-}
-
-fn observation(now_ms: i64) -> Observation {
-    Observation {
-        now_ms,
-        budget_left_minor: 10_000,
-        user_key: jwk_of(&root().user_key(&sub())),
-        paypal: PayPalObservation::default(),
-    }
-}
-
-fn trace(c: &Countersigned) -> Value {
-    serde_json::from_slice(&c.trace_jcs.0).unwrap()
-}
-
-fn mask(c: &Countersigned) -> u32 {
-    c.countersign.failed_fields_mask.parse().unwrap()
-}
-
-fn recover(c: &Countersigned) -> Address {
-    Signature::from_raw(&c.signature.0)
-        .unwrap()
-        .recover_address_from_prehash(&c.digest.0.into())
-        .unwrap()
-}
+use common::*;
 
 #[test]
 fn registers_the_demo_mandate() {
@@ -1126,4 +781,101 @@ fn a_zero_cart_in_warm_up_over_captured_returns() {
             "boot {boot}, captured {captured}"
         );
     }
+}
+
+fn demo_mandate_times() -> (i64, i64) {
+    let r = register_request();
+    let m = decode_mandate(&r.payload_sd, &r.disclosures).unwrap();
+    (m["nbf"].as_i64().unwrap(), m["exp"].as_i64().unwrap())
+}
+
+#[test]
+fn refuses_to_register_an_expired_or_not_yet_valid_mandate() {
+    let (nbf, exp) = demo_mandate_times();
+    let engine = leg_a();
+    let r = register_request();
+    assert_eq!(
+        engine.register_mandate(&r, at(exp)).unwrap_err(),
+        EngineError::Expired
+    );
+    assert_eq!(
+        engine.register_mandate(&r, at(nbf - 1)).unwrap_err(),
+        EngineError::NotYetValid
+    );
+    engine.register_mandate(&r, at(nbf)).unwrap();
+    engine.register_mandate(&r, at(exp - 1)).unwrap();
+}
+
+#[test]
+fn rejects_oversized_register_inputs() {
+    let engine = leg_a();
+    let too_large = |r: RegisterMandate| {
+        let err = engine.register_mandate(&r, at(NOW)).unwrap_err();
+        assert!(matches!(err, EngineError::TooLarge(_)), "{err:?}");
+        assert_eq!(err.code(), "payload_too_large");
+    };
+    let base = register_request;
+
+    let mut r = base();
+    r.sub = "u".repeat(129);
+    too_large(r);
+    let mut r = base();
+    r.disclosures = vec!["a".to_owned(); 513];
+    too_large(r);
+    let mut r = base();
+    r.disclosures.push("a".repeat(4097));
+    too_large(r);
+    let mut r = base();
+    r.assertion.signature = "a".repeat(4097);
+    too_large(r);
+    let mut r = base();
+    r.user_credential = Some("a".repeat(128 * 1024 + 1));
+    too_large(r);
+    let mut r = base();
+    r.payload_sd["pad"] = json!("a".repeat(128 * 1024));
+    too_large(r);
+}
+
+#[test]
+fn rejects_oversized_countersign_inputs() {
+    let engine = leg_a();
+    let issued = register();
+    let f = CartFixture::demo();
+    let too_large = |r: CountersignRequest| {
+        let err = engine.countersign(&r, at(NOW)).unwrap_err();
+        assert!(matches!(err, EngineError::TooLarge(_)), "{err:?}");
+    };
+    let base = || countersign_request(&issued, &f, request_id(1), None);
+
+    let mut r = base();
+    r.closed_mandate = "a".repeat(128 * 1024 + 1);
+    too_large(r);
+    let mut r = base();
+    r.sub = "u".repeat(129);
+    too_large(r);
+    let mut r = base();
+    r.cart.lines = vec![r.cart.lines[0].clone(); 65];
+    too_large(r);
+    let mut r = base();
+    r.cart.lines[0].sku = "s".repeat(257);
+    too_large(r);
+    let mut r = base();
+    r.cart.merchant = "m".repeat(257);
+    too_large(r);
+    let mut r = base();
+    r.unit.value = "1".repeat(257);
+    too_large(r);
+    let mut r = base();
+    r.evidence
+        .insert("merchant".to_owned(), vec!["e".to_owned(); 17]);
+    too_large(r);
+    let mut r = base();
+    r.evidence
+        .insert("merchant".to_owned(), vec!["e".repeat(257)]);
+    too_large(r);
+    let mut r = base();
+    for i in 0..17 {
+        r.evidence.insert(format!("field{i}"), Vec::new());
+    }
+    too_large(r);
 }
