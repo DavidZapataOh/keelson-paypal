@@ -1,6 +1,6 @@
 # @keelson/core
 
-Canonical JSON (RFC 8785), domain-separated hashing, Poseidon2, EIP-712, money and ULID primitives. `keelson-core` in `engine/core` mirrors them, and the vectors in `test/vectors` pin both: `pnpm vectors` regenerates them from this package, and `cargo test -p keelson-core` checks them.
+Canonical JSON (RFC 8785), domain-separated hashing, Poseidon2, EIP-712, money and ULID primitives. Poseidon2 and EIP-712 live in the `@keelson/core/poseidon2` and `@keelson/core/eip712` subpaths, so importing the root does not load bb.js or viem. `keelson-core` in `engine/core` mirrors them, and the vectors in `test/vectors` pin both: `pnpm vectors` regenerates them from this package, and `cargo test -p keelson-core` checks them.
 
 ## TypeScript and Rust names
 

@@ -8,6 +8,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./eip712": {
+      "types": "./dist/eip712.d.ts",
+      "default": "./dist/eip712.js"
+    },
     "./poseidon2": {
       "types": "./dist/poseidon2.d.ts",
       "default": "./dist/poseidon2.js"

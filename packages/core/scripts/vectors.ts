@@ -2,22 +2,24 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  CHAIN_IDS,
+  hashKeelson,
+  KEELSON_TYPES,
+  type KeelsonPrimaryType,
+  keelsonDomain,
+} from "../src/eip712.ts";
+import {
   type AlibiFields,
   alibiDigest,
-  CHAIN_IDS,
   CURRENCIES,
   type CurrencyCode,
   currencyNumeric,
   DST,
   type Dst,
   fromPayPalValue,
-  hashKeelson,
   hashObject,
   type Json,
   jcs,
-  KEELSON_TYPES,
-  type KeelsonPrimaryType,
-  keelsonDomain,
   toHex,
   toPayPalValue,
 } from "../src/index.ts";
