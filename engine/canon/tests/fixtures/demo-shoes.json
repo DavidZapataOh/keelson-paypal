@@ -4,7 +4,14 @@
     "currency": "USD",
     "return_days": 30,
     "lines": [
-      { "sku": "RUN-100", "size": "10", "color": "black", "category": "gpt:187", "qty": 1, "unit_minor": 9400 }
+      {
+        "sku": "RUN-100",
+        "size": "10",
+        "color": "black",
+        "category": "gpt:187",
+        "qty": 1,
+        "unit_minor": 9400
+      }
     ]
   },
   "unit": {
