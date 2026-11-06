@@ -1,6 +1,7 @@
 //! The Keelson Cedar schema, the constant policy set, the `Mandate` entity builder and the
 //! fail-closed evaluator that emits the `keelson.eval/1` trace, and the closed set of user extras
-//! that compile to further `forbid` policies.
+//! that compile to further `forbid` policies, and the symcc proofs that the policy set states the
+//! mandate rules.
 //!
 //! The policy set is a base `permit` plus one `forbid` per mandate field. Each policy carries
 //! `@id`, `@field` and `@color` annotations, and its Cedar policy id is its `@id`.
@@ -9,6 +10,7 @@ mod entity;
 mod evaluate;
 mod extras;
 mod hashes;
+mod prove;
 mod trace;
 
 pub(crate) use entity::{agent_entity_uid, variant_expr};
@@ -19,6 +21,10 @@ pub use evaluate::{
 };
 pub use extras::{Extra, ExtrasError, InvalidExtra, MAX_EXTRAS, compile_extras};
 pub use hashes::{policy_set_hash, policy_set_hash_tag, schema_hash, schema_hash_tag};
+pub use prove::{
+    CVC5_VERSION, Cvc5, ProofBundle, ProofResult, SPEC_SRC, SYMCC_VERSION, Verdict, prove_all,
+    spec_hash_tag,
+};
 pub use trace::{Decision, Engine, FieldTrace, TRACE_VERSION, Trace, trace_jcs};
 
 use std::collections::BTreeMap;
