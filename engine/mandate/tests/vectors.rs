@@ -303,7 +303,7 @@ fn credential_vectors() {
     let vectors = load(include_str!(
         "../../../packages/mandate/test/vectors/credentials.json"
     ));
-    assert_eq!(vectors.len(), 107);
+    assert_eq!(vectors.len(), 109);
     for v in vectors {
         assert_outcome(&v.name, verify(&v.input), &v.expected, |c| {
             credential_json(&c)

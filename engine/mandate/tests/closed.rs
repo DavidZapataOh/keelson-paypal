@@ -40,11 +40,14 @@ fn outcome(input: &Value) -> Value {
         &options(&input["opts"]),
     );
     match result {
-        Ok(v) => json!({
-            "agentJwk": { "kty": "EC", "crv": "P-256", "x": v.agent_jwk.x, "y": v.agent_jwk.y },
-            "iat": v.iat,
-            "claims": v.open.claims,
-        }),
+        Ok(v) => {
+            let mut jwk =
+                json!({ "kty": "EC", "crv": "P-256", "x": v.agent_jwk.x, "y": v.agent_jwk.y });
+            if let Some(kid) = v.agent_jwk.kid {
+                jwk["kid"] = json!(kid);
+            }
+            json!({ "agentJwk": jwk, "iat": v.iat, "claims": v.open.claims })
+        }
         Err(Error::Credential(code)) if code.starts_with("closed_") => json!({ "error": code }),
         Err(_) => json!("error"),
     }
@@ -53,7 +56,7 @@ fn outcome(input: &Value) -> Value {
 #[test]
 fn closed_mandate_vectors() {
     let vectors = vectors();
-    assert_eq!(vectors.len(), 16);
+    assert_eq!(vectors.len(), 24);
     for v in vectors {
         assert_eq!(outcome(&v.input), v.expected, "{}", v.name);
     }

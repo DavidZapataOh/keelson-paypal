@@ -34,10 +34,12 @@ fn invalid(reason: impl Into<String>) -> Error {
 pub struct Jwk {
     pub x: String,
     pub y: String,
+    pub kid: Option<String>,
 }
 
 impl Jwk {
-    /// Reads `{ "kty": "EC", "crv": "P-256", "x", "y" }`. Private keys are rejected.
+    /// Reads `{ "kty": "EC", "crv": "P-256", "x", "y" }` and a string `kid`. Private keys are
+    /// rejected.
     pub fn from_value(v: &Value) -> Result<Self, Error> {
         let field = |k: &str| v.get(k).and_then(Value::as_str);
         if field("kty") != Some("EC") || field("crv") != Some("P-256") || v.get("d").is_some() {
@@ -47,6 +49,7 @@ impl Jwk {
             (Some(x), Some(y)) => Ok(Self {
                 x: x.to_owned(),
                 y: y.to_owned(),
+                kid: field("kid").map(str::to_owned),
             }),
             _ => Err(invalid("not a P-256 public JWK")),
         }
@@ -437,6 +440,21 @@ pub fn verify_credential(
     verify_open_mandate(token, &key, opts)
 }
 
+/// A ULID in its canonical Crockford base32 form.
+fn is_ulid(s: &str) -> bool {
+    s.len() == 26
+        && s.starts_with(|c: char| ('0'..='7').contains(&c))
+        && s
+            .bytes()
+            .all(|b| matches!(b, b'0'..=b'9' | b'A'..=b'H' | b'J' | b'K' | b'M' | b'N' | b'P'..=b'T' | b'V'..=b'Z'))
+}
+
+/// `sha256:` and 64 lowercase hex digits.
+fn is_cart_hash(s: &str) -> bool {
+    s.strip_prefix("sha256:")
+        .is_some_and(|h| h.len() == 64 && h.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')))
+}
+
 /// Verifies a closed mandate: the open mandate against the issuer's public key and `opts.open`,
 /// then the agent's KB-JWT against the delegate payload's `cnf.jwk` (RFC 9901 section 7.3,
 /// step 5), bound to `opts.request_id` and `opts.cart_hash` and issued within the skew of `now`.
@@ -452,6 +470,12 @@ pub fn verify_closed_mandate(
     issuer: &Jwk,
     opts: &ClosedMandateVerifyOptions,
 ) -> Result<VerifiedClosedMandate, Error> {
+    if !is_ulid(&opts.request_id) {
+        return Err(invalid("request_id is not a ULID"));
+    }
+    if !is_cart_hash(&opts.cart_hash) {
+        return Err(invalid("cart_hash is not sha256:<hex>"));
+    }
     let split = token.rfind('~').map_or(0, |i| i + 1);
     let (open_mandate, kb_jwt) = token.split_at(split);
     let open = verify_open_mandate(open_mandate, &issuer.verifying_key()?, &opts.open)?;

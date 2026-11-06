@@ -36,6 +36,7 @@ export interface P256PublicJwk {
   crv: "P-256";
   x: string;
   y: string;
+  kid?: string;
 }
 
 /** What {@link issueUserCredential} binds into the user credential. */
@@ -167,6 +168,8 @@ const es256Verifier = (key: CryptoKey) => async (data: string, signature: string
   try {
     // RFC 4648 section 3.5: non-zero pad bits would give the same signature a second encoding.
     if (uint8ArrayToBase64Url(base64UrlToUint8Array(signature)) !== signature) return false;
+    // No critical header extension is supported, including the `b64` that jose understands.
+    if ("crit" in decodeProtectedHeader(`${data}.${signature}`)) return false;
     await compactVerify(`${data}.${signature}`, key, { algorithms: ["ES256"] });
     return true;
   } catch {
@@ -437,8 +440,11 @@ export async function verifyClosedMandate(
   const split = token.lastIndexOf("~") + 1;
   const openMandate = token.slice(0, split);
   const kbJwt = token.slice(split);
+  if (!ULID.test(opts.requestId)) throw new RangeError("requestId is not a ULID");
+  if (!CART_HASH.test(opts.cartHash)) throw new RangeError("cartHash is not sha256:<hex>");
   const open = await verifyOpenMandate(openMandate, issuerKey, opts.open);
-  const agentJwk = publicJwk(jwkOf(open.claims.cnf));
+  const { kid, ...key } = jwkOf(open.claims.cnf);
+  const agentJwk = kid === undefined ? publicJwk(key) : { ...publicJwk(key), kid };
   let payload: Record<string, unknown>;
   try {
     assertStrictJwt(kbJwt);

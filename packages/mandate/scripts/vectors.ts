@@ -1259,6 +1259,10 @@ async function credentialVectors() {
     `${resignL1({ ...l1Header, kid: "issuer" }, () => {}, keys.other)}${rest}`,
   );
   await l1Case("error/crit", `${resignL1({ ...l1Header, crit: ["exp"] }, () => {})}${rest}`);
+  await l1Case(
+    "error/crit-b64",
+    `${resignL1({ ...l1Header, crit: ["b64"], b64: true }, () => {})}${rest}`,
+  );
   await l1Case("error/typ", `${resignL1({ ...l1Header, typ: "vc+sd-jwt" }, () => {})}${rest}`);
   await l1Case("error/typ-missing", `${resignL1({ alg: "ES256" }, () => {})}${rest}`);
   await l1Case(
@@ -1488,6 +1492,13 @@ async function credentialVectors() {
     })(),
   );
   await l2Case(
+    "error/kb-crit-b64",
+    await issueL2({
+      ...base,
+      header: { typ: OPEN_MANDATE_TYP, alg: "ES256", crit: ["b64"], b64: true },
+    }),
+  );
+  await l2Case(
     "error/kb-header-jwk-injection",
     await issueL2({
       ...base,
@@ -1705,6 +1716,45 @@ async function closedMandateVectors() {
     open: { ...open, expectedNonce: "AAAAAAAAAAAAAAAAAAAAAA" },
   });
   await closedCase("error/trailing-separator", `${valid}~`);
+  await closedCase(
+    "error/crit-b64",
+    close(undefined, keys.agent, {
+      typ: CLOSED_MANDATE_TYP,
+      alg: "ES256",
+      crit: ["b64"],
+      b64: true,
+    }),
+  );
+  {
+    const kb = valid.slice(l2.length);
+    const header = b64uJson({ typ: CLOSED_MANDATE_TYP, alg: "none" });
+    await closedCase(
+      "error/alg-none",
+      `${l2}${header}${kb.slice(kb.indexOf("."), kb.lastIndexOf(".") + 1)}`,
+    );
+  }
+  await closedCase("error/other-agent", close(undefined, keys.other));
+  {
+    const other = await issueL2({ ...base, edit: (kb) => (kb.iat = KB_IAT + 1) });
+    await closedCase("error/replay-from-other-mandate", `${other}${valid.slice(l2.length)}`);
+  }
+  {
+    const parts = l2.split("~");
+    const swapped = parts
+      .with(3, parts[4] as string)
+      .with(4, parts[3] as string)
+      .join("~");
+    await closedCase("error/swapped-disclosures", `${swapped}${valid.slice(l2.length)}`);
+  }
+  await closedCase("error/request-id-lowercase", valid, {
+    ...opts,
+    requestId: REQUEST_ID.toLowerCase(),
+  });
+  await closedCase("error/request-id-empty", valid, { ...opts, requestId: "" });
+  await closedCase("error/cart-hash-uppercase", valid, {
+    ...opts,
+    cartHash: CART_HASH.toUpperCase(),
+  });
   return vectors;
 }
 

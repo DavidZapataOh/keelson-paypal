@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { decodeJwt, decodeProtectedHeader, exportJWK } from "jose";
+import { CompactSign, decodeJwt, decodeProtectedHeader, exportJWK } from "jose";
 import { beforeAll, describe, expect, it } from "vitest";
 import { hSd, mandateChallenge } from "../src/challenge.ts";
 import { mandateCommitment } from "../src/commitment.ts";
@@ -116,7 +116,7 @@ describe("closed mandate", () => {
       cart_hash: CART_HASH,
     });
     const v = await verifyClosedMandate(token, issuer.publicKey, opts);
-    expect(v.agentJwk).toEqual(await publicJwk(agent));
+    expect(v.agentJwk).toEqual({ ...(await publicJwk(agent)), kid: "agt-01" });
     expect(v.open.mandate.nonce).toBe(opts.open.expectedNonce);
   });
 
@@ -145,6 +145,43 @@ describe("closed mandate", () => {
     expect(await verify({ requestId: "01JC3XQ7ZK8M4N6P9R2T5V7W0Z" })).toBe("closed_nonce");
     expect(await verify({ cartHash: `sha256:${"cd".repeat(32)}` })).toBe("closed_cart_hash");
     expect(await verify({ open: { ...opts.open, now: opts.open.now + 61 } })).toBe("closed_iat");
+  });
+
+  it("rejects a key binding with a critical header extension, even one jose understands", async () => {
+    const kb = await new CompactSign(
+      new TextEncoder().encode(
+        JSON.stringify({
+          iat: opts.open.now,
+          aud: CLOSED_MANDATE_AUD,
+          nonce: REQUEST_ID,
+          sd_hash: b64u(sha256(open.slice(open.indexOf("~~") + 2))),
+          cart_hash: CART_HASH,
+        }),
+      ),
+    )
+      .setProtectedHeader({ typ: CLOSED_MANDATE_TYP, alg: "ES256", crit: ["b64"], b64: true })
+      .sign(agent.privateKey);
+    expect(await code(verifyClosedMandate(`${open}${kb}`, issuer.publicKey, opts))).toBe(
+      "closed_signature",
+    );
+  });
+
+  it("refuses to verify against a malformed request id or cart hash", async () => {
+    const token = await closeMandate(
+      open,
+      { requestId: REQUEST_ID, cartHash: CART_HASH, iat: opts.open.now },
+      agent.privateKey,
+    );
+    for (const o of [
+      { requestId: "" },
+      { requestId: REQUEST_ID.toLowerCase() },
+      { cartHash: CART_HASH.toUpperCase() },
+      { cartHash: CART_HASH.slice("sha256:".length) },
+    ]) {
+      expect(await code(verifyClosedMandate(token, issuer.publicKey, { ...opts, ...o }))).toBe(
+        "error",
+      );
+    }
   });
 
   it("refuses to close with a malformed request id or cart hash, or an already closed mandate", async () => {
