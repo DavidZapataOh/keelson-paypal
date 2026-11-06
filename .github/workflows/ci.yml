@@ -95,11 +95,6 @@ jobs:
 
   proofs:
     runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      id-token: write
-      attestations: write
-      artifact-metadata: write
     steps:
       - uses: actions/checkout@v7
       - run: rustup toolchain install
@@ -115,10 +110,21 @@ jobs:
             status=0
             cargo run -q -p keelson-policy --bin prove -- --seed-bug "$bug" > "$RUNNER_TEMP/$bug.json" || status=$?
             test "$status" -eq 1
-            jq -e '.counterexamples[] | select(.check == "equivalent") | .replay.seeded == "allow" and .replay.spec == "deny"' "$RUNNER_TEMP/$bug.json"
+            jq -e '[.counterexamples[] | select(.check == "equivalent")] | length > 0 and all(.replay.seeded == "allow" and .replay.spec == "deny")' "$RUNNER_TEMP/$bug.json"
           done
-      - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/attest-build-provenance@v4
+
+  attest-proofs:
+    needs: proofs
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/attest-build-provenance@v4
         with:
           subject-path: engine/policy/proofs/proof-bundle.json
 
