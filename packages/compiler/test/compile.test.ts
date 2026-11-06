@@ -127,6 +127,7 @@ describe("compileMandate", () => {
     if (r.ok) return;
     expect(r.error.code).toBe("prompt_too_long");
     expect(r.usage).toEqual([]);
+    expect(r.drafts).toEqual({ opus: null, sonnet: null });
     expect(r.check).toEqual({ status: "skipped", discrepancies: null });
   });
 });

@@ -16,7 +16,8 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:live": "vitest run --config vitest.live.config.ts"
+    "test:live": "vitest run --config vitest.live.config.ts",
+    "eval": "node eval/run.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.5.0",

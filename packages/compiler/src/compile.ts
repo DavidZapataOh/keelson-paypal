@@ -53,6 +53,8 @@ export interface Usage {
 
 export type CompileResult = {
   sources: Record<Role, Source>;
+  /** Each compiler model's draft as it answered, before the merge; null when it did not. */
+  drafts: Record<"opus" | "sonnet", Draft | null>;
   check: Check;
   usage: Usage[];
 } & (
@@ -247,10 +249,12 @@ export async function compileMandate(
 ): Promise<CompileResult> {
   const usage: Usage[] = [];
   const sources: Record<Role, Source> = { opus: SKIPPED, sonnet: SKIPPED, haiku: SKIPPED };
+  const drafts: CompileResult["drafts"] = { opus: null, sonnet: null };
   const stop = (error: CompileError): CompileResult => ({
     ok: false,
     error,
     sources,
+    drafts,
     check: { status: "skipped", discrepancies: null },
     usage,
   });
@@ -269,6 +273,8 @@ export async function compileMandate(
   ];
   sources.opus = opus.source;
   sources.sonnet = sonnet.source;
+  drafts.opus = opus.value;
+  drafts.sonnet = sonnet.value;
   if (opts.signal?.aborted) return stop(new CompileError("aborted"));
 
   let built: { mandate: Mandate; ambiguous: FieldId[]; singleSource: boolean; card: Card };
@@ -300,7 +306,7 @@ export async function compileMandate(
     usage,
   );
   sources.haiku = verdict.source;
-  return { ok: true, ...built, check: toCheck(verdict), sources, usage };
+  return { ok: true, ...built, check: toCheck(verdict), sources, drafts, usage };
 }
 
 function toCheck(verdict: Outcome<{ discrepancies: Discrepancy[] }>): Check {

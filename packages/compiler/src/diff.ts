@@ -174,7 +174,8 @@ export function mergeDrafts(
   };
 }
 
-const CARD_FIELD: Readonly<Record<DraftField, FieldId | undefined>> = {
+/** The card row each draft field becomes; the summary has none. */
+export const CARD_FIELD: Readonly<Record<DraftField, FieldId | undefined>> = {
   currency: "currency",
   maxTotalMinor: "total",
   budgetMinor: "budget",
