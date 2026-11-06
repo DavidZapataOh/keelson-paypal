@@ -17,8 +17,8 @@ use crate::extras::{Extra, InvalidExtra, compile};
 use crate::hashes::hex;
 use crate::trace::{Decision, Engine, FieldTrace, TRACE_VERSION, Trace};
 use crate::{
-    MAX_SAFE_INTEGER, PolicyError, agent_uid, cedar_datetime, mandate_entity, policies,
-    policy_set_hash_tag, policy_texts, schema, schema_hash_tag,
+    PolicyError, agent_uid, cedar_datetime, mandate_entity, policies, policy_set_hash_tag,
+    policy_texts, safe_int, schema, schema_hash_tag,
 };
 
 /// A policy `@field` value.
@@ -135,9 +135,7 @@ impl Kind {
         let strings = |v: &Value| v.as_array().is_some_and(|a| a.iter().all(Value::is_string));
         match self {
             Self::String => v.is_string(),
-            Self::Long => v
-                .as_i64()
-                .is_some_and(|i| (-MAX_SAFE_INTEGER..=MAX_SAFE_INTEGER).contains(&i)),
+            Self::Long => safe_int(v).is_some(),
             Self::Bool => v.is_boolean(),
             Self::Strings => strings(v),
             Self::Variants => v.as_array().is_some_and(|a| {
@@ -508,13 +506,14 @@ fn pick(source: &Value, keys: &[&str]) -> Option<Value> {
     }
 }
 
-/// Carries every number that is not a safe integer as its decimal string, so the trace always
-/// has a JCS form. Cedar then rejects the string where it expects a `Long`.
+/// Writes every number that stands for a safe integer as that integer, and any other as its
+/// decimal string, so the trace always has a JCS form. Cedar then rejects the string where it
+/// expects a `Long`.
 fn safe(value: Value) -> Value {
     match value {
-        Value::Number(n) => match n.as_i64() {
-            Some(i) if (-MAX_SAFE_INTEGER..=MAX_SAFE_INTEGER).contains(&i) => Value::Number(n),
-            _ => Value::String(n.to_string()),
+        Value::Number(n) => match safe_int(&Value::Number(n.clone())) {
+            Some(i) => Value::from(i),
+            None => Value::String(n.to_string()),
         },
         Value::Array(items) => Value::Array(items.into_iter().map(safe).collect()),
         Value::Object(map) => Value::Object(map.into_iter().map(|(k, v)| (k, safe(v))).collect()),

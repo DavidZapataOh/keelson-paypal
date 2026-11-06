@@ -1,4 +1,5 @@
 import {
+  type AuthorizationAnswer,
   type Context as CedarContext,
   checkParseContext,
   checkParseEntities,
@@ -31,7 +32,17 @@ import {
   SCHEMA_SRC,
 } from "./policy.ts";
 import { type FieldTrace, TRACE_VERSION, type Trace } from "./trace.ts";
-import { compareStrings, get, hex, isObject, type JsonObject, safe, sortedSet } from "./value.ts";
+import {
+  compareStrings,
+  get,
+  hex,
+  isObject,
+  isSafeInt,
+  type JsonObject,
+  safe,
+  sortedSet,
+  wellFormed,
+} from "./value.ts";
 
 export type { Variant };
 
@@ -137,7 +148,7 @@ function accepts(kind: Kind, v: unknown): boolean {
     case "string":
       return typeof v === "string";
     case "long":
-      return Number.isSafeInteger(v);
+      return isSafeInt(v);
     case "bool":
       return typeof v === "boolean";
     case "strings":
@@ -182,7 +193,7 @@ class Faults {
 /**
  * Evaluates a cart against a mandate with the policies [`compileExtras`] builds from `extras`
  * added to the policy set, emitting the same `keelson.eval/1` trace as the Rust engine. Fails
- * closed: any error denies and is recorded.
+ * closed and total: any error denies and is recorded, and every input yields a trace.
  *
  * The context passed to Cedar is `input.context` projected onto the attributes the mandate
  * constrains: each variant keeps its `size` only when `keelson.attributes` requires a `size_us`,
@@ -196,8 +207,12 @@ class Faults {
  */
 export function evaluate(input: EvalInput, meta: EngineMeta, extras: readonly Extra[] = []): Trace {
   const faults = new Faults();
-  const context = project(input, faults);
-  return run(input, context, faults, extras, meta);
+  const ill = { found: false };
+  const clean = { ...wellFormedInput(input, ill), context: wellFormed(input.context, ill) };
+  const cleanExtras = wellFormed(extras, ill);
+  if (ill.found) faults.add(undefined, "request.invalid");
+  const context = project(clean, faults);
+  return run(clean, context, faults, cleanExtras, meta);
 }
 
 /**
@@ -211,7 +226,29 @@ export function evaluateContext(
   meta: EngineMeta,
   extras: readonly Extra[] = [],
 ): Trace {
-  return run(input, context, new Faults(), extras, meta);
+  const faults = new Faults();
+  const ill = { found: false };
+  const clean = wellFormedInput(input, ill);
+  const cleanContext = wellFormed(context, ill);
+  const cleanExtras = wellFormed(extras, ill);
+  if (ill.found) faults.add(undefined, "request.invalid");
+  return run(clean, cleanContext, faults, cleanExtras, meta);
+}
+
+/**
+ * The strings of the input with lone surrogates replaced, which the Rust engine's JSON parser
+ * rejects outright: here they deny with `request.invalid`, and the trace keeps a JCS form.
+ */
+function wellFormedInput<T extends Omit<EvalInput, "context">>(
+  input: T,
+  ill: { found: boolean },
+): T {
+  return {
+    ...input,
+    mandate: wellFormed(input.mandate, ill),
+    agent: wellFormed(input.agent, ill),
+    evidence: wellFormed(input.evidence, ill),
+  };
 }
 
 const variantKey = (v: Variant) => JSON.stringify([v.sku, v.size ?? null, v.color ?? null]);
@@ -247,11 +284,11 @@ function project(input: EvalInput, faults: Faults): JsonObject {
   const canonical =
     quantities.length === cartVariants.length &&
     quantities.every(([v], n) => compareVariants(v, cartVariants[n] as Variant) === 0) &&
-    quantities.every(([, q]) => q >= 1) &&
+    quantities.every(([, q]) => isSafeInt(q) && q >= 1) &&
     Math.max(0, ...quantities.map(([, q]) => q)) === c.max_line_qty;
   const sums = new Map<string, bigint>();
   let overflow = false;
-  for (const [v, qty] of quantities) {
+  for (const [v, qty] of canonical ? quantities : []) {
     const key = variantKey(projected(v));
     const sum = (sums.get(key) ?? 0n) + BigInt(qty);
     if (sum > 0x7fff_ffff_ffff_ffffn || sum < -0x8000_0000_0000_0000n) overflow = true;
@@ -327,18 +364,17 @@ function withExtras(extras: readonly Extra[], hash: string): ExtrasSet {
     const staticPolicies: Record<string, string> = {};
     for (const [id, info] of base) staticPolicies[id] = info.text;
     for (const { id, text } of compiled) staticPolicies[id] = text;
-    out =
-      preparsePolicySet(EXTRAS_SET, { staticPolicies }).type === "success"
-        ? {
-            hash,
-            compiled: compiled.map(({ id, text }) => [id, text]),
-            set: new Map([
-              ...base,
-              ...compiled.map(({ id, text, json }) => [id, policyInfo(text, json)] as const),
-            ]),
-            setId: EXTRAS_SET,
-          }
-        : { hash, compiled: [], set: base, setId: BASE_SET, error: "extras.invalid:cedar" };
+    out = succeeds(() => preparsePolicySet(EXTRAS_SET, { staticPolicies }))
+      ? {
+          hash,
+          compiled: compiled.map(({ id, text }) => [id, text]),
+          set: new Map([
+            ...base,
+            ...compiled.map(({ id, text, json }) => [id, policyInfo(text, json)] as const),
+          ]),
+          setId: EXTRAS_SET,
+        }
+      : { hash, compiled: [], set: base, setId: BASE_SET, error: "extras.invalid:cedar" };
   } catch (e) {
     if (!(e instanceof ExtrasError)) throw e;
     const error = e.reason === "too_many" ? "extras.invalid:too_many" : `extras.invalid:${e.index}`;
@@ -375,18 +411,24 @@ function run(
   }
   let response: Response | undefined;
   if (entity && contextOk) {
-    const answer = statefulIsAuthorized({
-      principal: { type: AGENT_TYPE, id: input.agent },
-      action: ACTION,
-      resource: entity.uid,
-      context: context as CedarContext,
-      preparsedSchemaName: SCHEMA_NAME,
-      validateRequest: true,
-      preparsedPolicySetId: setId,
-      entities: [entity],
-    });
-    if (answer.type === "success") response = answer.response;
-    else entity = diagnose(entity, context as CedarContext, faults);
+    let answer: AuthorizationAnswer | undefined;
+    try {
+      answer = statefulIsAuthorized({
+        principal: { type: AGENT_TYPE, id: input.agent },
+        action: ACTION,
+        resource: entity.uid,
+        context: context as CedarContext,
+        preparsedSchemaName: SCHEMA_NAME,
+        validateRequest: true,
+        preparsedPolicySetId: setId,
+        entities: [entity],
+      });
+    } catch {
+      // Cedar throws on values it cannot read at all; that request is refused like any other.
+      faults.add(undefined, "request.invalid");
+    }
+    if (answer?.type === "success") response = answer.response;
+    else if (answer) entity = diagnose(entity, context as CedarContext, faults);
   } else if (entity && !buildsInCedar(entity)) {
     faults.add(undefined, "entity.invalid:cedar");
     entity = undefined;
@@ -476,7 +518,16 @@ function run(
  * is `entity.invalid:cedar` and leaves no bounds to show.
  */
 const buildsInCedar = (entity: MandateEntity) =>
-  checkParseEntities({ entities: [entity] }).type === "success";
+  succeeds(() => checkParseEntities({ entities: [entity] }));
+
+/** Whether a Cedar call answers `success`; a call that throws has failed. */
+function succeeds(call: () => { type: string }): boolean {
+  try {
+    return call().type === "success";
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Records why Cedar refused the request, checking in the Rust engine's order: the entity, then
@@ -491,9 +542,9 @@ function diagnose(
     faults.add(undefined, "entity.invalid:cedar");
     return undefined;
   }
-  if (checkParseContext({ context, schema: SCHEMA_SRC, action: ACTION }).type !== "success") {
+  if (!succeeds(() => checkParseContext({ context, schema: SCHEMA_SRC, action: ACTION }))) {
     faults.add(undefined, "context.invalid");
-  } else if (checkParseEntities({ entities: [entity], schema: SCHEMA_SRC }).type !== "success") {
+  } else if (!succeeds(() => checkParseEntities({ entities: [entity], schema: SCHEMA_SRC }))) {
     faults.add(undefined, "entity.invalid:cedar");
   } else {
     faults.add(undefined, "request.invalid");

@@ -412,3 +412,56 @@ fn trace_jcs_is_deterministic() {
     let v: Value = serde_json::from_slice(&first).unwrap();
     assert_eq!(keelson_core::jcs(&v).unwrap().into_bytes(), first);
 }
+
+/// Numbers are read as JSON carries them exactly, the same in every JSON implementation: an
+/// integer is a safe integer, with or without a fraction or exponent, and `-0` is not one.
+#[test]
+fn mandate_and_context_integers_are_safe_integers() {
+    let with = |path: &[&str], ty: &str, value: Value| {
+        let mut i = input(demo_cart());
+        let group = &mut i.mandate[path[0]]["constraints"];
+        let c = group
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|c| c["type"] == ty)
+            .unwrap();
+        c[path[1]] = value;
+        evaluate(&i, &meta())
+    };
+    for bad in [json!(9_007_199_254_740_992i64), json!(-0.0), json!(1.5)] {
+        let t = with(&["payment", "max"], "payment.amount_range", bad.clone());
+        assert_eq!(
+            t.errors,
+            ["entity.invalid:payment.amount_range.max"],
+            "{bad}"
+        );
+        let t = with(&["checkout", "min_days"], "keelson.returns", bad.clone());
+        assert_eq!(
+            t.errors,
+            ["entity.invalid:keelson.returns.min_days"],
+            "{bad}"
+        );
+    }
+    let exact = trace_jcs(&evaluate(&input(demo_cart()), &meta()));
+    for same in [
+        json!(10_000.0),
+        serde_json::from_str::<Value>("1E4").unwrap(),
+    ] {
+        let t = with(&["payment", "max"], "payment.amount_range", same);
+        assert_eq!(trace_jcs(&t), exact);
+    }
+
+    let i = input(demo_cart());
+    let replay = |key: &str, value: Value| {
+        let mut c = evaluate(&i, &meta()).context;
+        c[key] = value;
+        evaluate_context(&i, c, &meta())
+    };
+    let t = replay("total_minor", json!(9400.0));
+    assert_eq!(t.decision, Decision::Allow, "{:?}", t.errors);
+    assert_eq!(t.context["total_minor"], json!(9400));
+    let t = replay("total_minor", json!(-0.0));
+    assert_eq!(t.errors, ["context.type:total_minor"]);
+    assert_eq!(t.context["total_minor"], json!("-0.0"));
+}

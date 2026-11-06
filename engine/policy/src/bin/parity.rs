@@ -497,9 +497,11 @@ fn break_mandate(r: &mut Rng, m: &mut Value) {
         json!([]),
         json!({}),
         json!(true),
+        json!(-0.0),
+        json!(9_007_199_254_740_992i64),
     ];
     let junk = r.pick(&bad).clone();
-    match r.below(26) {
+    match r.below(28) {
         0 => m["mid"] = junk,
         1 => m["payment"]["constraints"] = junk,
         2 => m["checkout"]["constraints"] = junk,
@@ -599,6 +601,32 @@ fn break_mandate(r: &mut Rng, m: &mut Value) {
             m["nbf"] = json!(*r.pick(&[-62_135_596_801i64, -62_198_755_200, 253_402_300_800]));
         }
         24 => m["exp"] = json!(*r.pick(&[-62_198_755_201i64, -377_705_116_801])),
+        // A whole number written with a fraction is the same integer.
+        25 => {
+            let n = find(m, "payment", "payment.amount_range").unwrap()["max"]
+                .as_i64()
+                .unwrap();
+            find(m, "payment", "payment.amount_range").unwrap()["max"] = json!(n as f64);
+            m["nbf"] = json!(m["nbf"].as_i64().unwrap() as f64);
+        }
+        // Keys that name JavaScript object internals are data like any other.
+        26 => match r.below(3) {
+            0 => {
+                let mid = m.as_object_mut().unwrap().remove("mid").unwrap();
+                m["__proto__"] = json!({ "mid": mid });
+            }
+            1 => m["checkout"]["constraints"]
+                .as_array_mut()
+                .unwrap()
+                .push(json!({ "type": "keelson.attributes", "must": { "__proto__": "10" } })),
+            _ => {
+                m["payment"]["constraints"]
+                    .as_array_mut()
+                    .unwrap()
+                    .push(json!({ "__proto__": { "type": "payment.budget", "max": 1 } }));
+                m["constructor"] = json!({ "prototype": 1 });
+            }
+        },
         _ => m["agent"] = junk,
     }
 }
@@ -618,9 +646,21 @@ fn raw_context(r: &mut Rng, mut c: Value) -> Value {
         "now",
     ];
     let o = c.as_object_mut().unwrap();
-    match r.below(14) {
+    match r.below(15) {
         0 => {
             o.remove(*r.pick(&attrs));
+        }
+        // A whole number written with a fraction is the same integer.
+        14 => {
+            for attr in [
+                "total_minor",
+                "max_line_qty",
+                "max_unit_minor",
+                "return_days",
+            ] {
+                let n = o[attr].as_i64().unwrap();
+                o.insert(attr.to_owned(), json!(n as f64));
+            }
         }
         1 => {
             let bad = [
@@ -630,11 +670,16 @@ fn raw_context(r: &mut Rng, mut c: Value) -> Value {
                 json!([1]),
                 json!({}),
                 json!(false),
+                json!(-0.0),
             ];
             o.insert(r.pick(&attrs).to_string(), r.pick(&bad).clone());
         }
         2 => {
-            o.insert("price".to_owned(), json!(1));
+            let key = *r.pick(&["price", "__proto__", "constructor", "prototype", "toString"]);
+            o.insert(
+                key.to_owned(),
+                r.pick(&[json!(1), json!({ "size": "10" })]).clone(),
+            );
         }
         3 => {
             o.insert("variants".to_owned(), json!([]));
@@ -670,6 +715,9 @@ fn raw_context(r: &mut Rng, mut c: Value) -> Value {
                 json!([{ "sku": "sku-a", "size": 10 }]),
                 json!(["sku-a"]),
                 json!([{ "sku": "sku-a", "color": null }]),
+                json!([{ "sku": "sku-a", "__proto__": "10" }]),
+                json!([{ "sku": "sku-a", "__proto__": { "size": "10" } }]),
+                json!([{ "sku": "sku-a", "constructor": "x" }]),
             ];
             o.insert("variants".to_owned(), r.pick(&variants).clone());
         }

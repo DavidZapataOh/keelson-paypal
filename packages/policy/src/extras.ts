@@ -36,29 +36,44 @@ const SHAPES = {
 export function parseExtras(value: unknown): Extra[] {
   if (!Array.isArray(value)) throw new TypeError("extras: expected array");
   return value.map((x, n) => {
-    const shape = isObject(x) && Object.hasOwn(SHAPES, x.type as string) ? x : undefined;
-    const [key, kind] = shape ? SHAPES[shape.type as keyof typeof SHAPES] : [];
-    const v = shape && key ? shape[key] : undefined;
-    const ok =
-      shape !== undefined &&
-      Object.keys(shape).length === 2 &&
-      (kind === "string" ? typeof v === "string" : Number.isInteger(v));
-    if (!ok) throw new TypeError(`extras[${n}]: not a known extra`);
-    return shape as Extra;
+    if (!inGrammar(x)) throw new TypeError(`extras[${n}]: not a known extra`);
+    return x;
   });
 }
 
-/** Why an extra is rejected; `index` is the position of the first rejected extra. */
-export type InvalidExtra = "price" | "return_days" | "merchant_id" | "category_id" | "cedar";
+/** Whether `x` is one of the four extras, with an integer that is not `-0` where one is due. */
+function inGrammar(x: unknown): x is Extra {
+  if (!isObject(x) || typeof x.type !== "string" || !Object.hasOwn(SHAPES, x.type)) return false;
+  const [key, kind] = SHAPES[x.type as keyof typeof SHAPES];
+  const v = x[key];
+  const typed =
+    kind === "string" ? typeof v === "string" : Number.isInteger(v) && !Object.is(v, -0);
+  return typed && Object.keys(x).length === 2;
+}
+
+/**
+ * Why an extra is rejected: `grammar` when it is not one of the four extras, which the Rust
+ * engine rejects when it reads them.
+ */
+export type InvalidExtra =
+  | "grammar"
+  | "price"
+  | "return_days"
+  | "merchant_id"
+  | "category_id"
+  | "cedar";
 
 /** The first extra that cannot be compiled, or `too_many` past [`MAX_EXTRAS`]. */
 export class ExtrasError extends Error {
-  constructor(
-    readonly index: number,
-    readonly reason: InvalidExtra | "too_many",
-  ) {
+  /** The position of the first rejected extra. */
+  readonly index: number;
+  readonly reason: InvalidExtra | "too_many";
+
+  constructor(index: number, reason: InvalidExtra | "too_many") {
     super(`extra ${index}: ${reason}`);
     this.name = "ExtrasError";
+    this.index = index;
+    this.reason = reason;
   }
 }
 
@@ -169,20 +184,26 @@ export function compile(
 ): { id: string; text: string; json: PolicyJson }[] {
   if (extras.length > MAX_EXTRAS) throw new ExtrasError(MAX_EXTRAS, "too_many");
   return extras.map((extra, index) => {
+    if (!inGrammar(extra)) throw new ExtrasError(index, "grammar");
     const reason = check(extra);
     if (reason) throw new ExtrasError(index, reason);
     const id = `extra.${index}`;
     const policy = est(extra, id) as unknown as PolicyJson;
-    const built = policyToJson(policy);
-    const text = policyToText(policy);
-    if (built.type !== "success" || text.type !== "success") throw new ExtrasError(index, "cedar");
-    const parsed = policyToJson(text.text);
-    const same = (a: PolicyJson, b: PolicyJson) =>
-      jcs(a as unknown as Json) === jcs(b as unknown as Json);
-    if (parsed.type !== "success" || !same(parsed.json, built.json)) {
-      throw new ExtrasError(index, "cedar");
+    try {
+      const built = policyToJson(policy);
+      const text = policyToText(policy);
+      if (built.type === "success" && text.type === "success") {
+        const parsed = policyToJson(text.text);
+        const same = (a: PolicyJson, b: PolicyJson) =>
+          jcs(a as unknown as Json) === jcs(b as unknown as Json);
+        if (parsed.type === "success" && same(parsed.json, built.json)) {
+          return { id, text: text.text, json: parsed.json };
+        }
+      }
+    } catch {
+      // Cedar throws on values it cannot read; the extra is rejected like any other.
     }
-    return { id, text: text.text, json: parsed.json };
+    throw new ExtrasError(index, "cedar");
   });
 }
 

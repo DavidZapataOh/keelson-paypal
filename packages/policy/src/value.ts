@@ -41,24 +41,74 @@ export function sortedSet(values: Iterable<string>): string[] {
 }
 
 /**
- * Carries every number that is not a safe integer as its decimal string, so the value always has
- * a JCS form. Cedar then rejects the string where it expects a `Long`.
+ * Whether `v` is an integer as JSON carries it exactly: a safe integer, but not `-0`. The Rust
+ * engine reads JSON numbers the same way.
+ */
+export function isSafeInt(v: unknown): v is number {
+  return Number.isSafeInteger(v) && !Object.is(v, -0);
+}
+
+/** The objects JSON produces, as opposed to class instances such as `Date`. */
+const isPlain = (v: unknown): v is Record<string, unknown> => {
+  if (!isObject(v)) return false;
+  const proto = Object.getPrototypeOf(v);
+  return proto === Object.prototype || proto === null;
+};
+
+/**
+ * Writes every number that stands for a safe integer as that integer, and any other as its
+ * decimal string as the Rust engine writes it, so the value always has a JCS form. Cedar then
+ * rejects the string where it expects a `Long`.
+ *
+ * Objects are rebuilt with `Object.fromEntries`, so keys such as `__proto__` stay data.
  */
 export function safe(value: unknown): Json {
   if (typeof value === "number") {
-    if (Number.isSafeInteger(value)) return value;
+    if (isSafeInt(value)) return value;
+    if (Object.is(value, -0)) return "-0.0";
     return Number.isInteger(value) ? BigInt(value).toString() : String(value);
   }
   if (typeof value === "bigint") {
     return value >= -MAX_SAFE_INTEGER && value <= MAX_SAFE_INTEGER ? Number(value) : String(value);
   }
   if (Array.isArray(value)) return value.map(safe);
-  if (isObject(value)) {
-    const out: JsonObject = {};
-    for (const [k, v] of Object.entries(value)) out[k] = safe(v);
-    return out;
-  }
+  if (isObject(value))
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, safe(v)]));
   return value as Json;
+}
+
+/**
+ * `value` with every lone surrogate in its strings and keys replaced by U+FFFD, so it has a JCS
+ * form; `ill.found` is set when one is. Values that are not JSON, such as a `Date`, are kept.
+ */
+export function wellFormed<T>(value: T, ill: { found: boolean }): T {
+  if (typeof value === "string") {
+    if (value.isWellFormed()) return value;
+    ill.found = true;
+    return value.toWellFormed() as T;
+  }
+  if (Array.isArray(value)) {
+    let out: unknown[] | undefined;
+    value.forEach((x, n) => {
+      const y = wellFormed(x, ill);
+      if (y !== x) {
+        out ??= [...value];
+        out[n] = y;
+      }
+    });
+    return (out ?? value) as T;
+  }
+  if (isPlain(value)) {
+    let changed = false;
+    const entries = Object.entries(value).map(([k, x]) => {
+      const key = wellFormed(k, ill);
+      const y = wellFormed(x, ill);
+      if (key !== k || y !== x) changed = true;
+      return [key, y] as const;
+    });
+    return (changed ? Object.fromEntries(entries) : value) as T;
+  }
+  return value;
 }
 
 const HEX = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, "0"));

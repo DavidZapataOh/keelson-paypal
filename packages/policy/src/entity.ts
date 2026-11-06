@@ -1,18 +1,18 @@
 import type { Json } from "@keelson/core";
 import { CATEGORY_TABLE } from "@keelson/mandate";
-import { compareStrings, get, isObject, type JsonObject, sortedSet } from "./value.ts";
+import { compareStrings, get, isObject, isSafeInt, type JsonObject, sortedSet } from "./value.ts";
 
 /** A `keelson.attributes` value that leaves the attribute unconstrained. */
 const ANY = "any";
 
 /** Why the `Mandate` entity cannot be built: a mandate field, or `cedar` when Cedar rejects it. */
 export class EntityError extends Error {
-  constructor(
-    readonly field: string,
-    reason: string,
-  ) {
+  readonly field: string;
+
+  constructor(field: string, reason: string) {
     super(`${field}: ${reason}`);
     this.name = "EntityError";
+    this.field = field;
   }
 }
 
@@ -23,10 +23,10 @@ function str(v: unknown, field: string): string {
   return v;
 }
 
-/** An integer; JSON numbers are JS numbers here, so only safe integers are exact. */
+/** An integer, read as [`isSafeInt`] reads JSON numbers. */
 function int(v: unknown, field: string): number {
-  if (!Number.isSafeInteger(v)) throw invalid(field, "expected integer");
-  return v as number;
+  if (!isSafeInt(v)) throw invalid(field, "expected integer");
+  return v;
 }
 
 function array(v: unknown, field: string): unknown[] {

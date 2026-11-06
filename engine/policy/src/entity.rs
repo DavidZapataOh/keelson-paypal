@@ -8,7 +8,7 @@ use serde_json::Value;
 use time::format_description::well_known::Rfc3339;
 use time::{OffsetDateTime, macros::format_description};
 
-use crate::PolicyError;
+use crate::{PolicyError, safe_int};
 
 /// A `keelson.attributes` value that leaves the attribute unconstrained.
 const ANY: &str = "any";
@@ -29,7 +29,7 @@ fn str_at<'a>(v: &'a Value, field: &str) -> Result<&'a str, PolicyError> {
 }
 
 fn int_at(v: &Value, field: &str) -> Result<i64, PolicyError> {
-    v.as_i64().ok_or_else(|| invalid(field, "expected integer"))
+    safe_int(v).ok_or_else(|| invalid(field, "expected integer"))
 }
 
 fn array_at<'a>(v: &'a Value, field: &str) -> Result<&'a [Value], PolicyError> {

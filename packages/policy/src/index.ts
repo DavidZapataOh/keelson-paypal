@@ -1,3 +1,17 @@
+/**
+ * The Keelson policy evaluator for the browser: the same Cedar policies, entity and
+ * `keelson.eval/1` trace as the Rust engine, on `@cedar-policy/cedar-wasm`.
+ *
+ * The package imports Cedar's bundler build, which loads its `.wasm` as an ES module: browsers
+ * need a bundler with WebAssembly support (Vite with `vite-plugin-wasm`, webpack with
+ * `experiments.asyncWebAssembly`), and Node loads it natively.
+ *
+ * Traces from the TEE are authoritative. In the browser, the evaluator verifies one by
+ * evaluating the same input with the `engine` meta the trace records and comparing the result
+ * byte for byte; a trace it emits is never a substitute for the TEE's.
+ *
+ * @packageDocumentation
+ */
 export { cedarDatetime, EntityError, mandateAgent, mandateEntity } from "./entity.ts";
 export {
   type Context,

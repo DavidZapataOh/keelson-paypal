@@ -30,6 +30,22 @@ use cedar_policy::{Policy, PolicyId, PolicySet, Schema};
 /// The largest integer JSON numbers carry exactly, `2^53 - 1`.
 pub(crate) const MAX_SAFE_INTEGER: i64 = (1 << 53) - 1;
 
+/// The integer a JSON number stands for in every JSON implementation, JavaScript's included: a
+/// safe integer, with or without a fraction or exponent (`1E4` is `10000`). `-0` and integers
+/// past `2^53 - 1`, which JavaScript cannot tell from their neighbours, are not integers.
+pub(crate) fn safe_int(v: &serde_json::Value) -> Option<i64> {
+    if let Some(i) = v.as_i64() {
+        return (-MAX_SAFE_INTEGER..=MAX_SAFE_INTEGER)
+            .contains(&i)
+            .then_some(i);
+    }
+    let f = v.as_f64()?;
+    let integral = f.fract() == 0.0 && f.abs() <= MAX_SAFE_INTEGER as f64;
+    // The bound is checked, so the cast is exact.
+    #[allow(clippy::cast_possible_truncation)]
+    (integral && !(f == 0.0 && f.is_sign_negative())).then_some(f as i64)
+}
+
 /// The policy set source, `policy/keelson.cedar`.
 pub const POLICY_SET_SRC: &str = include_str!("../policy/keelson.cedar");
 /// The schema source, `policy/keelson.cedarschema`.

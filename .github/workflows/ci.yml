@@ -94,8 +94,9 @@ jobs:
 
   policy-parity:
     runs-on: ubuntu-24.04
-    env:
-      PARITY_SEED: ${{ github.run_id }}
+    strategy:
+      matrix:
+        seed: [1, 2]
     steps:
       - uses: actions/checkout@v7
       - run: rustup toolchain install
@@ -111,8 +112,8 @@ jobs:
           pnpm --filter @keelson/policy embed
           cargo run -p keelson-policy --bin parity -- --seed 1 --n 105 > packages/policy/test/vectors/parity.jsonl
           git diff --exit-code packages/policy
-      - name: Generate 10,000 cases with seed ${{ env.PARITY_SEED }}
-        run: cargo run -p keelson-policy --bin parity -- --seed "$PARITY_SEED" --n 10000 > "$RUNNER_TEMP/parity.jsonl"
+      - name: Generate 10,000 cases with seed ${{ matrix.seed }}
+        run: cargo run -p keelson-policy --bin parity -- --seed ${{ matrix.seed }} --n 10000 > "$RUNNER_TEMP/parity.jsonl"
       - run: pnpm turbo run build --filter=@keelson/policy^...
       - run: pnpm --filter @keelson/policy test
         env:
