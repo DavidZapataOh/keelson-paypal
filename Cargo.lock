@@ -2221,6 +2221,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "keelson-tee"
+version = "0.0.0"
+dependencies = [
+ "alloy-primitives",
+ "alloy-sol-types",
+ "k256 0.14.0",
+ "keelson-core",
+ "keelson-policy",
+ "serde_json",
+]
+
+[[package]]
 name = "konst"
 version = "0.2.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"

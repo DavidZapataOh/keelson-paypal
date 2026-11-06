@@ -1,0 +1,682 @@
+[
+  {
+    "name": "allow",
+    "input": {
+      "domain": {
+        "name": "Keelson",
+        "version": "1",
+        "chainId": 421614,
+        "verifyingContract": "0x0000000000000000000000000000000000000000"
+      },
+      "message": {
+        "requestId": "0x000000000000000000000000000000000192f3a1b2c3d4e5f60718293a4b5c6d",
+        "mandateHash": "0x0000000000000000000000000000000000000000000000000000000000000011",
+        "mandateCommitment": "0x0000000000000000000000000000000000000000000000000000000000000022",
+        "cartHash": "0x0000000000000000000000000000000000000000000000000000000000000033",
+        "agentId": "7",
+        "merchantId": "0x0000000000000000000000000000000000000000000000000000000000000044",
+        "amount": "9400",
+        "currency": "840",
+        "category": "3",
+        "evidenceRoot": "0x0000000000000000000000000000000000000000000000000000000000000055",
+        "evalHash": "0x0000000000000000000000000000000000000000000000000000000000000066",
+        "policySetHash": "0x0000000000000000000000000000000000000000000000000000000000000077",
+        "decision": "1",
+        "failedFieldsMask": "0",
+        "issuedAt": "1762400000",
+        "expiresAt": "1762400900"
+      },
+      "privateKey": "0xa440691f0ec7cadb862efd9c19922dfd7fb6bc32a350d05e8d45a0ed294aa897"
+    },
+    "expected": {
+      "digest": "0xdb25cbbba91fb49b784f941745320f812f0dfb33b53e443fc176248a6911ef3f",
+      "signature": "0x60d8c9c0ac3206e15427b82b1315790c2a96210e9ce145209080d108a7015c65675699f47d4316fd89db5e31a2a7c05de3449ac0c3690cf6dd04e49ddd40ca9d1b"
+    }
+  },
+  {
+    "name": "allow/contract",
+    "input": {
+      "domain": {
+        "name": "Keelson",
+        "version": "1",
+        "chainId": 421614,
+        "verifyingContract": "0x0000000000000000000000000000000000000001"
+      },
+      "message": {
+        "requestId": "0x000000000000000000000000000000000192f3a1b2c3d4e5f60718293a4b5c6d",
+        "mandateHash": "0x0000000000000000000000000000000000000000000000000000000000000011",
+        "mandateCommitment": "0x0000000000000000000000000000000000000000000000000000000000000022",
+        "cartHash": "0x0000000000000000000000000000000000000000000000000000000000000033",
+        "agentId": "7",
+        "merchantId": "0x0000000000000000000000000000000000000000000000000000000000000044",
+        "amount": "9400",
+        "currency": "840",
+        "category": "3",
+        "evidenceRoot": "0x0000000000000000000000000000000000000000000000000000000000000055",
+        "evalHash": "0x0000000000000000000000000000000000000000000000000000000000000066",
+        "policySetHash": "0x0000000000000000000000000000000000000000000000000000000000000077",
+        "decision": "1",
+        "failedFieldsMask": "0",
+        "issuedAt": "1762400000",
+        "expiresAt": "1762400900"
+      },
+      "privateKey": "0xa440691f0ec7cadb862efd9c19922dfd7fb6bc32a350d05e8d45a0ed294aa897"
+    },
+    "expected": {
+      "digest": "0x812ca76515baaf05caa648a782077da3b131424fdf5d073175429397c5022fa5",
+      "signature": "0x104cecb659f9cf74c7b7f6bc71c16201ef37c3a44ed80600bba48f14bb9d76711630694e2730b515e9ffc0096fb47069a868e8c78a45b1e8c4205e8bae7121c01b"
+    }
+  },
+  {
+    "name": "allow/arbitrum-one",
+    "input": {
+      "domain": {
+        "name": "Keelson",
+        "version": "1",
+        "chainId": 42161,
+        "verifyingContract": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"
+      },
+      "message": {
+        "requestId": "0x000000000000000000000000000000000192f3a1b2c3d4e5f60718293a4b5c6d",
+        "mandateHash": "0x0000000000000000000000000000000000000000000000000000000000000011",
+        "mandateCommitment": "0x0000000000000000000000000000000000000000000000000000000000000022",
+        "cartHash": "0x0000000000000000000000000000000000000000000000000000000000000033",
+        "agentId": "7",
+        "merchantId": "0x0000000000000000000000000000000000000000000000000000000000000044",
+        "amount": "9400",
+        "currency": "840",
+        "category": "3",
+        "evidenceRoot": "0x0000000000000000000000000000000000000000000000000000000000000055",
+        "evalHash": "0x0000000000000000000000000000000000000000000000000000000000000066",
+        "policySetHash": "0x0000000000000000000000000000000000000000000000000000000000000077",
+        "decision": "1",
+        "failedFieldsMask": "0",
+        "issuedAt": "1762400000",
+        "expiresAt": "1762400900"
+      },
+      "privateKey": "0xa440691f0ec7cadb862efd9c19922dfd7fb6bc32a350d05e8d45a0ed294aa897"
+    },
+    "expected": {
+      "digest": "0x031eabd5f2718fe831fb5b7faa8ca46df682a79fe012da9fb68fb5e5f50f770f",
+      "signature": "0x92c5cdd32dc392bd3a612d9665d3326311959511527064113d1990d202be3a7362cc0b4d45889e995b9cb778b8987ac8194aba7d1d9770c5e0e0c625147751821c"
+    }
+  },
+  {
+    "name": "deny/amount",
+    "input": {
+      "domain": {
+        "name": "Keelson",
+        "version": "1",
+        "chainId": 421614,
+        "verifyingContract": "0x0000000000000000000000000000000000000000"
+      },
+      "message": {
+        "requestId": "0x000000000000000000000000000000000192f3a1b2c3d4e5f60718293a4b5c6d",
+        "mandateHash": "0x0000000000000000000000000000000000000000000000000000000000000011",
+        "mandateCommitment": "0x0000000000000000000000000000000000000000000000000000000000000022",
+        "cartHash": "0x0000000000000000000000000000000000000000000000000000000000000033",
+        "agentId": "7",
+        "merchantId": "0x0000000000000000000000000000000000000000000000000000000000000044",
+        "amount": "9400",
+        "currency": "840",
+        "category": "3",
+        "evidenceRoot": "0x0000000000000000000000000000000000000000000000000000000000000055",
+        "evalHash": "0x0000000000000000000000000000000000000000000000000000000000000066",
+        "policySetHash": "0x0000000000000000000000000000000000000000000000000000000000000077",
+        "decision": "2",
+        "failedFieldsMask": "8",
+        "issuedAt": "1762400000",
+        "expiresAt": "1762400900"
+      },
+      "privateKey": "0xa440691f0ec7cadb862efd9c19922dfd7fb6bc32a350d05e8d45a0ed294aa897"
+    },
+    "expected": {
+      "digest": "0x61da3aeb2611887c3b6764e82e00729ac5e158e04b88ab3a5a01c8e3149e4cee",
+      "signature": "0x1620a9785f6573ad7c39ba2f794fc6eb988565a787a5db0a90bfb2a53de5174d3663985d3e6fcc3c862c3ea67af44290695fb5d2492811974e7e00d8f25836101c"
+    }
+  },
+  {
+    "name": "deny/amount-variant",
+    "input": {
+      "domain": {
+        "name": "Keelson",
+        "version": "1",
+        "chainId": 421614,
+        "verifyingContract": "0x0000000000000000000000000000000000000000"
+      },
+      "message": {
+        "requestId": "0x000000000000000000000000000000000192f3a1b2c3d4e5f60718293a4b5c6d",
+        "mandateHash": "0x0000000000000000000000000000000000000000000000000000000000000011",
+        "mandateCommitment": "0x0000000000000000000000000000000000000000000000000000000000000022",
+        "cartHash": "0x0000000000000000000000000000000000000000000000000000000000000033",
+        "agentId": "7",
+        "merchantId": "0x0000000000000000000000000000000000000000000000000000000000000044",
+        "amount": "9400",
+        "currency": "840",
+        "category": "3",
+        "evidenceRoot": "0x0000000000000000000000000000000000000000000000000000000000000055",
+        "evalHash": "0x0000000000000000000000000000000000000000000000000000000000000066",
+        "policySetHash": "0x0000000000000000000000000000000000000000000000000000000000000077",
+        "decision": "2",
+        "failedFieldsMask": "520",
+        "issuedAt": "1762400000",
+        "expiresAt": "1762400900"
+      },
+      "privateKey": "0xa440691f0ec7cadb862efd9c19922dfd7fb6bc32a350d05e8d45a0ed294aa897"
+    },
+    "expected": {
+      "digest": "0xec81e13c3a5f83460636c9e1f4106e5fabd836b90bd5b5b62473d53899924eb9",
+      "signature": "0xd5849bd2183a8bd1ea28026a32f26f753606d38dee8b41a9fff21aec1fe366ce31d727b30074f9d11ce6582cbddca20cd993941c162fa03a4232e7fffb259b841b"
+    }
+  },
+  {
+    "name": "deny/all-fields",
+    "input": {
+      "domain": {
+        "name": "Keelson",
+        "version": "1",
+        "chainId": 421614,
+        "verifyingContract": "0x0000000000000000000000000000000000000000"
+      },
+      "message": {
+        "requestId": "0x000000000000000000000000000000000192f3a1b2c3d4e5f60718293a4b5c6d",
+        "mandateHash": "0x0000000000000000000000000000000000000000000000000000000000000011",
+        "mandateCommitment": "0x0000000000000000000000000000000000000000000000000000000000000022",
+        "cartHash": "0x0000000000000000000000000000000000000000000000000000000000000033",
+        "agentId": "7",
+        "merchantId": "0x0000000000000000000000000000000000000000000000000000000000000044",
+        "amount": "9400",
+        "currency": "840",
+        "category": "3",
+        "evidenceRoot": "0x0000000000000000000000000000000000000000000000000000000000000055",
+        "evalHash": "0x0000000000000000000000000000000000000000000000000000000000000066",
+        "policySetHash": "0x0000000000000000000000000000000000000000000000000000000000000077",
+        "decision": "2",
+        "failedFieldsMask": "4095",
+        "issuedAt": "1762400000",
+        "expiresAt": "1762400900"
+      },
+      "privateKey": "0xa440691f0ec7cadb862efd9c19922dfd7fb6bc32a350d05e8d45a0ed294aa897"
+    },
+    "expected": {
+      "digest": "0xb6ce2fa2393a5107b8c45995ad21320c88ba552823595ca78bca782923cfdb4a",
+      "signature": "0x5df1e7a648660d3fcc68fa8e295b86564619c8b115d43205094c70ec539b37d4653160bdb562a4e8865c6e18e1f812e769fabbae977bc1058f17ab368cd3e93b1b"
+    }
+  },
+  {
+    "name": "deny/canon",
+    "input": {
+      "domain": {
+        "name": "Keelson",
+        "version": "1",
+        "chainId": 421614,
+        "verifyingContract": "0x0000000000000000000000000000000000000000"
+      },
+      "message": {
+        "requestId": "0x000000000000000000000000000000000192f3a1b2c3d4e5f60718293a4b5c6d",
+        "mandateHash": "0x0000000000000000000000000000000000000000000000000000000000000011",
+        "mandateCommitment": "0x0000000000000000000000000000000000000000000000000000000000000022",
+        "cartHash": "0x0000000000000000000000000000000000000000000000000000000000000033",
+        "agentId": "7",
+        "merchantId": "0x0000000000000000000000000000000000000000000000000000000000000044",
+        "amount": "9400",
+        "currency": "840",
+        "category": "3",
+        "evidenceRoot": "0x0000000000000000000000000000000000000000000000000000000000000055",
+        "evalHash": "0x0000000000000000000000000000000000000000000000000000000000000066",
+        "policySetHash": "0x0000000000000000000000000000000000000000000000000000000000000077",
+        "decision": "2",
+        "failedFieldsMask": "536870912",
+        "issuedAt": "1762400000",
+        "expiresAt": "1762400900"
+      },
+      "privateKey": "0xa440691f0ec7cadb862efd9c19922dfd7fb6bc32a350d05e8d45a0ed294aa897"
+    },
+    "expected": {
+      "digest": "0x29276ca65595e2559211defe074de11decfac1ac4f6ef40d59337c3f9fdeea54",
+      "signature": "0x386499a935504c513c4ab9905cc2f2a1a6264fe30d6480ee886c296d5db96b1d460518a7736d3a07b964c624981f302ebe3700e319db2873b7b4b6a25d68df2a1c"
+    }
+  },
+  {
+    "name": "deny/cedar-error",
+    "input": {
+      "domain": {
+        "name": "Keelson",
+        "version": "1",
+        "chainId": 421614,
+        "verifyingContract": "0x0000000000000000000000000000000000000000"
+      },
+      "message": {
+        "requestId": "0x000000000000000000000000000000000192f3a1b2c3d4e5f60718293a4b5c6d",
+        "mandateHash": "0x0000000000000000000000000000000000000000000000000000000000000011",
+        "mandateCommitment": "0x0000000000000000000000000000000000000000000000000000000000000022",
+        "cartHash": "0x0000000000000000000000000000000000000000000000000000000000000033",
+        "agentId": "7",
+        "merchantId": "0x0000000000000000000000000000000000000000000000000000000000000044",
+        "amount": "9400",
+        "currency": "840",
+        "category": "3",
+        "evidenceRoot": "0x0000000000000000000000000000000000000000000000000000000000000055",
+        "evalHash": "0x0000000000000000000000000000000000000000000000000000000000000066",
+        "policySetHash": "0x0000000000000000000000000000000000000000000000000000000000000077",
+        "decision": "2",
+        "failedFieldsMask": "1073741824",
+        "issuedAt": "1762400000",
+        "expiresAt": "1762400900"
+      },
+      "privateKey": "0xa440691f0ec7cadb862efd9c19922dfd7fb6bc32a350d05e8d45a0ed294aa897"
+    },
+    "expected": {
+      "digest": "0x6364c50eaecf820b4c2ea09d25e7e9cb2e0350ff96761aa626854d92a7898a65",
+      "signature": "0xda11ac7f4fd63ec2ab3c6def21107a01681241b18b9b119e52e5208435438d6015e0f2622d63d930cc76499f6a62b68d5c262fdbc91e00fea14956144ccbe4ee1b"
+    }
+  },
+  {
+    "name": "deny/paypal",
+    "input": {
+      "domain": {
+        "name": "Keelson",
+        "version": "1",
+        "chainId": 421614,
+        "verifyingContract": "0x0000000000000000000000000000000000000000"
+      },
+      "message": {
+        "requestId": "0x000000000000000000000000000000000192f3a1b2c3d4e5f60718293a4b5c6d",
+        "mandateHash": "0x0000000000000000000000000000000000000000000000000000000000000011",
+        "mandateCommitment": "0x0000000000000000000000000000000000000000000000000000000000000022",
+        "cartHash": "0x0000000000000000000000000000000000000000000000000000000000000033",
+        "agentId": "7",
+        "merchantId": "0x0000000000000000000000000000000000000000000000000000000000000044",
+        "amount": "9400",
+        "currency": "840",
+        "category": "3",
+        "evidenceRoot": "0x0000000000000000000000000000000000000000000000000000000000000055",
+        "evalHash": "0x0000000000000000000000000000000000000000000000000000000000000066",
+        "policySetHash": "0x0000000000000000000000000000000000000000000000000000000000000077",
+        "decision": "2",
+        "failedFieldsMask": "2147483648",
+        "issuedAt": "1762400000",
+        "expiresAt": "1762400900"
+      },
+      "privateKey": "0xa440691f0ec7cadb862efd9c19922dfd7fb6bc32a350d05e8d45a0ed294aa897"
+    },
+    "expected": {
+      "digest": "0x70d7617d236e3057076f15e3c18eb859b73b4bdd4534844939e42a752f7c0760",
+      "signature": "0xbdfcbae15810df78af4ca19b4cf1879e4df5f4999fe7ad74ce5ae945b53249d17b720840edef58ae3219ed8d7d32ac5bbcbb974529fffb53828b14c7f4a657171b"
+    }
+  },
+  {
+    "name": "deny/all-ones-mask",
+    "input": {
+      "domain": {
+        "name": "Keelson",
+        "version": "1",
+        "chainId": 421614,
+        "verifyingContract": "0x0000000000000000000000000000000000000000"
+      },
+      "message": {
+        "requestId": "0x000000000000000000000000000000000192f3a1b2c3d4e5f60718293a4b5c6d",
+        "mandateHash": "0x0000000000000000000000000000000000000000000000000000000000000011",
+        "mandateCommitment": "0x0000000000000000000000000000000000000000000000000000000000000022",
+        "cartHash": "0x0000000000000000000000000000000000000000000000000000000000000033",
+        "agentId": "7",
+        "merchantId": "0x0000000000000000000000000000000000000000000000000000000000000044",
+        "amount": "9400",
+        "currency": "840",
+        "category": "3",
+        "evidenceRoot": "0x0000000000000000000000000000000000000000000000000000000000000055",
+        "evalHash": "0x0000000000000000000000000000000000000000000000000000000000000066",
+        "policySetHash": "0x0000000000000000000000000000000000000000000000000000000000000077",
+        "decision": "2",
+        "failedFieldsMask": "4294967295",
+        "issuedAt": "1762400000",
+        "expiresAt": "1762400900"
+      },
+      "privateKey": "0xa440691f0ec7cadb862efd9c19922dfd7fb6bc32a350d05e8d45a0ed294aa897"
+    },
+    "expected": {
+      "digest": "0x242d783380688a6e75e87d0da0fe529b7b7a3606f39fe04849fbd7fae64ccbf9",
+      "signature": "0x589fbb84c9171caf355fc95cd1094dc9c7891a53236f85a3149e8e972bc233e46f382e2003396025c2470b03e255034647cb20157abcea58858be0b81c71ee771b"
+    }
+  },
+  {
+    "name": "uint40-max",
+    "input": {
+      "domain": {
+        "name": "Keelson",
+        "version": "1",
+        "chainId": 421614,
+        "verifyingContract": "0x0000000000000000000000000000000000000000"
+      },
+      "message": {
+        "requestId": "0x000000000000000000000000000000000192f3a1b2c3d4e5f60718293a4b5c6d",
+        "mandateHash": "0x0000000000000000000000000000000000000000000000000000000000000011",
+        "mandateCommitment": "0x0000000000000000000000000000000000000000000000000000000000000022",
+        "cartHash": "0x0000000000000000000000000000000000000000000000000000000000000033",
+        "agentId": "7",
+        "merchantId": "0x0000000000000000000000000000000000000000000000000000000000000044",
+        "amount": "9400",
+        "currency": "840",
+        "category": "3",
+        "evidenceRoot": "0x0000000000000000000000000000000000000000000000000000000000000055",
+        "evalHash": "0x0000000000000000000000000000000000000000000000000000000000000066",
+        "policySetHash": "0x0000000000000000000000000000000000000000000000000000000000000077",
+        "decision": "1",
+        "failedFieldsMask": "0",
+        "issuedAt": "1099511627775",
+        "expiresAt": "1099511627775"
+      },
+      "privateKey": "0xa440691f0ec7cadb862efd9c19922dfd7fb6bc32a350d05e8d45a0ed294aa897"
+    },
+    "expected": {
+      "digest": "0xeabffdd27bca27a81f3eebc47a0d580d9115c31cee996b29cdd1cb4a38d697e2",
+      "signature": "0x9681b5eb42015551c4f690cd9b94af439fb115a1298f09ddc68fdd5f773dd3a93ab8fdb7ed512316a3a2f63c4091ad64c28e60df0bf475d53d73f70eb20a58851c"
+    }
+  },
+  {
+    "name": "uint64-max",
+    "input": {
+      "domain": {
+        "name": "Keelson",
+        "version": "1",
+        "chainId": 421614,
+        "verifyingContract": "0x0000000000000000000000000000000000000000"
+      },
+      "message": {
+        "requestId": "0x000000000000000000000000000000000192f3a1b2c3d4e5f60718293a4b5c6d",
+        "mandateHash": "0x0000000000000000000000000000000000000000000000000000000000000011",
+        "mandateCommitment": "0x0000000000000000000000000000000000000000000000000000000000000022",
+        "cartHash": "0x0000000000000000000000000000000000000000000000000000000000000033",
+        "agentId": "7",
+        "merchantId": "0x0000000000000000000000000000000000000000000000000000000000000044",
+        "amount": "18446744073709551615",
+        "currency": "840",
+        "category": "3",
+        "evidenceRoot": "0x0000000000000000000000000000000000000000000000000000000000000055",
+        "evalHash": "0x0000000000000000000000000000000000000000000000000000000000000066",
+        "policySetHash": "0x0000000000000000000000000000000000000000000000000000000000000077",
+        "decision": "1",
+        "failedFieldsMask": "0",
+        "issuedAt": "1762400000",
+        "expiresAt": "1762400900"
+      },
+      "privateKey": "0xa440691f0ec7cadb862efd9c19922dfd7fb6bc32a350d05e8d45a0ed294aa897"
+    },
+    "expected": {
+      "digest": "0x7381382b995fa23e98b9b220017d070053c586130c5ee2ab63e051dd3199cef4",
+      "signature": "0xb60abb1c5723e0f944c3dc8a59722f6ee38512834849b31d0d851e529d018a645c0aa86a7ef2cb09ddaa5635f09be8883df68cec4b5f7a3929388031fb9534a21b"
+    }
+  },
+  {
+    "name": "uint256-max",
+    "input": {
+      "domain": {
+        "name": "Keelson",
+        "version": "1",
+        "chainId": 421614,
+        "verifyingContract": "0x0000000000000000000000000000000000000000"
+      },
+      "message": {
+        "requestId": "0x000000000000000000000000000000000192f3a1b2c3d4e5f60718293a4b5c6d",
+        "mandateHash": "0x0000000000000000000000000000000000000000000000000000000000000011",
+        "mandateCommitment": "0x0000000000000000000000000000000000000000000000000000000000000022",
+        "cartHash": "0x0000000000000000000000000000000000000000000000000000000000000033",
+        "agentId": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+        "merchantId": "0x0000000000000000000000000000000000000000000000000000000000000044",
+        "amount": "9400",
+        "currency": "840",
+        "category": "3",
+        "evidenceRoot": "0x0000000000000000000000000000000000000000000000000000000000000055",
+        "evalHash": "0x0000000000000000000000000000000000000000000000000000000000000066",
+        "policySetHash": "0x0000000000000000000000000000000000000000000000000000000000000077",
+        "decision": "1",
+        "failedFieldsMask": "0",
+        "issuedAt": "1762400000",
+        "expiresAt": "1762400900"
+      },
+      "privateKey": "0xa440691f0ec7cadb862efd9c19922dfd7fb6bc32a350d05e8d45a0ed294aa897"
+    },
+    "expected": {
+      "digest": "0xed1aacbf646d761f9631e7d5f552ba0e347ffc9aa8e66ea58ca250dcbc7eefea",
+      "signature": "0x476665c6652c8ae48eae06b5a966b9e5f63e08be7fb84498b9a51e40a8fef76d046c357e1c5a7f9a5f6a0fe20c7685e42bb41c44bf897c72462dca2f3a6213371b"
+    }
+  },
+  {
+    "name": "category-mixed",
+    "input": {
+      "domain": {
+        "name": "Keelson",
+        "version": "1",
+        "chainId": 421614,
+        "verifyingContract": "0x0000000000000000000000000000000000000000"
+      },
+      "message": {
+        "requestId": "0x000000000000000000000000000000000192f3a1b2c3d4e5f60718293a4b5c6d",
+        "mandateHash": "0x0000000000000000000000000000000000000000000000000000000000000011",
+        "mandateCommitment": "0x0000000000000000000000000000000000000000000000000000000000000022",
+        "cartHash": "0x0000000000000000000000000000000000000000000000000000000000000033",
+        "agentId": "7",
+        "merchantId": "0x0000000000000000000000000000000000000000000000000000000000000044",
+        "amount": "9400",
+        "currency": "840",
+        "category": "255",
+        "evidenceRoot": "0x0000000000000000000000000000000000000000000000000000000000000055",
+        "evalHash": "0x0000000000000000000000000000000000000000000000000000000000000066",
+        "policySetHash": "0x0000000000000000000000000000000000000000000000000000000000000077",
+        "decision": "1",
+        "failedFieldsMask": "0",
+        "issuedAt": "1762400000",
+        "expiresAt": "1762400900"
+      },
+      "privateKey": "0xa440691f0ec7cadb862efd9c19922dfd7fb6bc32a350d05e8d45a0ed294aa897"
+    },
+    "expected": {
+      "digest": "0x618b0c5c76947e18c4c9daea13fe5035d74d747ef7201f76148d01a58a0981ca",
+      "signature": "0x51a02ab26da9df2fb8b7e126f59940e30e7dc5f02d6d0e38745ef32802efbf31221a7045f76eec5d2fb211e36c3bb1a71802a1e4e283942168c209e44eed7e491c"
+    }
+  },
+  {
+    "name": "currency-jpy",
+    "input": {
+      "domain": {
+        "name": "Keelson",
+        "version": "1",
+        "chainId": 421614,
+        "verifyingContract": "0x0000000000000000000000000000000000000000"
+      },
+      "message": {
+        "requestId": "0x000000000000000000000000000000000192f3a1b2c3d4e5f60718293a4b5c6d",
+        "mandateHash": "0x0000000000000000000000000000000000000000000000000000000000000011",
+        "mandateCommitment": "0x0000000000000000000000000000000000000000000000000000000000000022",
+        "cartHash": "0x0000000000000000000000000000000000000000000000000000000000000033",
+        "agentId": "7",
+        "merchantId": "0x0000000000000000000000000000000000000000000000000000000000000044",
+        "amount": "9400",
+        "currency": "392",
+        "category": "3",
+        "evidenceRoot": "0x0000000000000000000000000000000000000000000000000000000000000055",
+        "evalHash": "0x0000000000000000000000000000000000000000000000000000000000000066",
+        "policySetHash": "0x0000000000000000000000000000000000000000000000000000000000000077",
+        "decision": "1",
+        "failedFieldsMask": "0",
+        "issuedAt": "1762400000",
+        "expiresAt": "1762400900"
+      },
+      "privateKey": "0xa440691f0ec7cadb862efd9c19922dfd7fb6bc32a350d05e8d45a0ed294aa897"
+    },
+    "expected": {
+      "digest": "0x183e4eae37d4e975b2e908e5fc43bacb5f90e701c4746ce590121c3249e95ddd",
+      "signature": "0x3682d3f0ac2e0b5baaf94d234caf8f68a92f95ce2fa17d477b2185c7f52ccf98574d3b6685f2fb2c799ecde53a1f09c79d66428658e1b04ae13b9ecdbc474e2a1c"
+    }
+  },
+  {
+    "name": "currency-max",
+    "input": {
+      "domain": {
+        "name": "Keelson",
+        "version": "1",
+        "chainId": 421614,
+        "verifyingContract": "0x0000000000000000000000000000000000000000"
+      },
+      "message": {
+        "requestId": "0x000000000000000000000000000000000192f3a1b2c3d4e5f60718293a4b5c6d",
+        "mandateHash": "0x0000000000000000000000000000000000000000000000000000000000000011",
+        "mandateCommitment": "0x0000000000000000000000000000000000000000000000000000000000000022",
+        "cartHash": "0x0000000000000000000000000000000000000000000000000000000000000033",
+        "agentId": "7",
+        "merchantId": "0x0000000000000000000000000000000000000000000000000000000000000044",
+        "amount": "9400",
+        "currency": "65535",
+        "category": "3",
+        "evidenceRoot": "0x0000000000000000000000000000000000000000000000000000000000000055",
+        "evalHash": "0x0000000000000000000000000000000000000000000000000000000000000066",
+        "policySetHash": "0x0000000000000000000000000000000000000000000000000000000000000077",
+        "decision": "1",
+        "failedFieldsMask": "0",
+        "issuedAt": "1762400000",
+        "expiresAt": "1762400900"
+      },
+      "privateKey": "0xa440691f0ec7cadb862efd9c19922dfd7fb6bc32a350d05e8d45a0ed294aa897"
+    },
+    "expected": {
+      "digest": "0x5f94f39e0d06bcea80aa4e8e82ae3616bd8f0e62c39b68266594275707a19c3a",
+      "signature": "0x32dc12996a39cc0c4c55f7ca67b0d8fc8c55de719a580f3fceec7a4705e8514824fb4044903023a351af7762953e4fd2eb576b36e165f2460ec2a0ce4c19338a1b"
+    }
+  },
+  {
+    "name": "amount-zero",
+    "input": {
+      "domain": {
+        "name": "Keelson",
+        "version": "1",
+        "chainId": 421614,
+        "verifyingContract": "0x0000000000000000000000000000000000000000"
+      },
+      "message": {
+        "requestId": "0x000000000000000000000000000000000192f3a1b2c3d4e5f60718293a4b5c6d",
+        "mandateHash": "0x0000000000000000000000000000000000000000000000000000000000000011",
+        "mandateCommitment": "0x0000000000000000000000000000000000000000000000000000000000000022",
+        "cartHash": "0x0000000000000000000000000000000000000000000000000000000000000033",
+        "agentId": "7",
+        "merchantId": "0x0000000000000000000000000000000000000000000000000000000000000044",
+        "amount": "0",
+        "currency": "840",
+        "category": "3",
+        "evidenceRoot": "0x0000000000000000000000000000000000000000000000000000000000000055",
+        "evalHash": "0x0000000000000000000000000000000000000000000000000000000000000066",
+        "policySetHash": "0x0000000000000000000000000000000000000000000000000000000000000077",
+        "decision": "1",
+        "failedFieldsMask": "0",
+        "issuedAt": "1762400000",
+        "expiresAt": "1762400900"
+      },
+      "privateKey": "0xa440691f0ec7cadb862efd9c19922dfd7fb6bc32a350d05e8d45a0ed294aa897"
+    },
+    "expected": {
+      "digest": "0xc8177ba7c7e6fcc560f57ef2ec5ff4be18b4b0175e72d63a7827c8be8ce8537b",
+      "signature": "0xc3a6e26137ec271e2e417b04ec25a6bd11a6a2c98d144fbc817e59b380f4058249b16d56b75f5dcb5fa4a6fbe8ab92af1987f8b7b1f12ab0049d4a839fa7fd501b"
+    }
+  },
+  {
+    "name": "bytes32-ones",
+    "input": {
+      "domain": {
+        "name": "Keelson",
+        "version": "1",
+        "chainId": 421614,
+        "verifyingContract": "0xffffffffffffffffffffffffffffffffffffffff"
+      },
+      "message": {
+        "requestId": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "mandateHash": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "mandateCommitment": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "cartHash": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "agentId": "7",
+        "merchantId": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "amount": "9400",
+        "currency": "840",
+        "category": "3",
+        "evidenceRoot": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "evalHash": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "policySetHash": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "decision": "1",
+        "failedFieldsMask": "0",
+        "issuedAt": "1762400000",
+        "expiresAt": "1762400900"
+      },
+      "privateKey": "0xa440691f0ec7cadb862efd9c19922dfd7fb6bc32a350d05e8d45a0ed294aa897"
+    },
+    "expected": {
+      "digest": "0x7df6847842a89249465e68f8d49ebac6f3ea43a6eb381e4946831fa90ec52028",
+      "signature": "0x663920287a581fa2e47d30676a764e9c95b07144a3398cd356e5d1a6b04dd7241992e73eb8df4b34583a8abc154e76c0fc3a7be29c8d4ce98945067ce87123471b"
+    }
+  },
+  {
+    "name": "all-max",
+    "input": {
+      "domain": {
+        "name": "Keelson",
+        "version": "1",
+        "chainId": 42161,
+        "verifyingContract": "0xffffffffffffffffffffffffffffffffffffffff"
+      },
+      "message": {
+        "requestId": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "mandateHash": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "mandateCommitment": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "cartHash": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "agentId": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+        "merchantId": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "amount": "18446744073709551615",
+        "currency": "65535",
+        "category": "255",
+        "evidenceRoot": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "evalHash": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "policySetHash": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "decision": "255",
+        "failedFieldsMask": "4294967295",
+        "issuedAt": "1099511627775",
+        "expiresAt": "1099511627775"
+      },
+      "privateKey": "0xa440691f0ec7cadb862efd9c19922dfd7fb6bc32a350d05e8d45a0ed294aa897"
+    },
+    "expected": {
+      "digest": "0xe12eccb1ba85283315426a24c22665f1b81cecdf2944cebf0ceb52118a9d4ca2",
+      "signature": "0xb972eb9de48fff0e0d35e298dc910ea752e35d7e40507fb16dd9872aa7716fc215c8eff14c7afffa713adfb5b6eaf301ed6347b3c6c74b4b3cb9c3fd1c35414e1b"
+    }
+  },
+  {
+    "name": "all-zero",
+    "input": {
+      "domain": {
+        "name": "Keelson",
+        "version": "1",
+        "chainId": 421614,
+        "verifyingContract": "0x0000000000000000000000000000000000000000"
+      },
+      "message": {
+        "requestId": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "mandateHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "mandateCommitment": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "cartHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "agentId": "0",
+        "merchantId": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "amount": "0",
+        "currency": "0",
+        "category": "0",
+        "evidenceRoot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "evalHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "policySetHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "decision": "0",
+        "failedFieldsMask": "0",
+        "issuedAt": "0",
+        "expiresAt": "0"
+      },
+      "privateKey": "0xa440691f0ec7cadb862efd9c19922dfd7fb6bc32a350d05e8d45a0ed294aa897"
+    },
+    "expected": {
+      "digest": "0x4166b1d8265f0644d2b72910c0a11380ccc1a769a00c908837d13095cbb2fec4",
+      "signature": "0x18838d530287fbaaaec275e9e9465674692b6697a2b8c0ab0200bd83905c73ea548617324216f19519e85972f47096e3b6a56da02227f31cf2168a9ce9b9fd121b"
+    }
+  }
+]

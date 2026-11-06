@@ -1,4 +1,15 @@
-import { hashTypedData, isAddress, type TypedDataDefinition, type TypedDataDomain } from "viem";
+import {
+  type Address,
+  concat,
+  encodeAbiParameters,
+  type Hex,
+  hashTypedData,
+  isAddress,
+  keccak256,
+  stringToHex,
+  type TypedDataDefinition,
+  type TypedDataDomain,
+} from "viem";
 
 export const KEELSON_TYPES = {
   Countersign: [
@@ -130,4 +141,59 @@ export function hashKeelson<T extends KeelsonPrimaryType>(
 ): `0x${string}` {
   assertMessage(primaryType, message as Record<string, unknown>);
   return hashTypedData({ domain, types: KEELSON_TYPES, primaryType, message } as never);
+}
+
+export type Countersign = TypedDataDefinition<typeof KEELSON_TYPES, "Countersign">["message"];
+
+/** The EIP-712 signing hash of a `Countersign`. */
+export function countersignDigest(c: Countersign, domain: TypedDataDomain): Hex {
+  return hashKeelson("Countersign", c, domain);
+}
+
+export const TeeKind = { TDX: 1, NITRO: 2 } as const;
+
+/** Everything a TEE attestation binds the countersign signer to. */
+export interface SignerBinding {
+  chainId: bigint;
+  bondVault: Address;
+  teeKind: (typeof TeeKind)[keyof typeof TeeKind];
+  signer: Address;
+  policySetHash: Hex;
+  engineBuildId: Hex;
+  bootEpoch: bigint;
+}
+
+const SIGNER_TAG = keccak256(stringToHex("KEELSON_TEE_SIGNER_V1"));
+
+/**
+ * The 64-byte `report_data` of a TEE attestation: the keccak256 of the ABI-encoded binding,
+ * followed by a recent L2 block hash.
+ */
+export function reportData(b: SignerBinding, blockHash: Hex): Hex {
+  const binding = keccak256(
+    encodeAbiParameters(
+      [
+        { type: "bytes32" },
+        { type: "uint256" },
+        { type: "address" },
+        { type: "uint8" },
+        { type: "address" },
+        { type: "bytes32" },
+        { type: "bytes32" },
+        { type: "uint64" },
+      ],
+      [
+        SIGNER_TAG,
+        b.chainId,
+        b.bondVault,
+        b.teeKind,
+        b.signer,
+        b.policySetHash,
+        b.engineBuildId,
+        b.bootEpoch,
+      ],
+    ),
+  );
+  if (!/^0x[0-9a-fA-F]{64}$/.test(blockHash)) throw new TypeError("blockHash must be 32 bytes");
+  return concat([binding, blockHash]).toLowerCase() as Hex;
 }

@@ -1,12 +1,19 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { type Hex, keccak256, stringToHex } from "viem";
+import { signTypedData } from "viem/accounts";
 import {
   CHAIN_IDS,
+  type Countersign,
+  countersignDigest,
   hashKeelson,
   KEELSON_TYPES,
   type KeelsonPrimaryType,
   keelsonDomain,
+  reportData,
+  type SignerBinding,
+  TeeKind,
 } from "../src/eip712.ts";
 import {
   type AlibiFields,
@@ -305,6 +312,199 @@ function alibiVectors() {
   }));
 }
 
+const UINT40_MAX = (1n << 40n) - 1n;
+const UINT64_MAX = (1n << 64n) - 1n;
+const UINT256_MAX = (1n << 256n) - 1n;
+const ONES = `0x${"ff".repeat(32)}` as const;
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
+
+async function countersignVectors() {
+  const privateKey = keccak256(stringToHex("keelson/test/countersign-signer"));
+  const base: Countersign = {
+    requestId: field(0x0192f3a1b2c3d4e5f60718293a4b5c6dn),
+    mandateHash: field(0x11n),
+    mandateCommitment: field(0x22n),
+    cartHash: field(0x33n),
+    agentId: 7n,
+    merchantId: field(0x44n),
+    amount: 9400n,
+    currency: 840,
+    category: 3,
+    evidenceRoot: field(0x55n),
+    evalHash: field(0x66n),
+    policySetHash: field(0x77n),
+    decision: 1,
+    failedFieldsMask: 0,
+    issuedAt: 1_762_400_000,
+    expiresAt: 1_762_400_900,
+  };
+  const deny = (mask: number) => ({ decision: 2, failedFieldsMask: mask });
+  const cases: { name: string; chainId: 421614 | 42161; contract: Hex; patch: object }[] = [
+    { name: "allow", chainId: 421614, contract: ZERO_ADDRESS, patch: {} },
+    { name: "allow/contract", chainId: 421614, contract: ADDRESSES[0] as Hex, patch: {} },
+    { name: "allow/arbitrum-one", chainId: 42161, contract: ADDRESSES[1] as Hex, patch: {} },
+    { name: "deny/amount", chainId: 421614, contract: ZERO_ADDRESS, patch: deny(1 << 3) },
+    { name: "deny/amount-variant", chainId: 421614, contract: ZERO_ADDRESS, patch: deny(0x208) },
+    { name: "deny/all-fields", chainId: 421614, contract: ZERO_ADDRESS, patch: deny(0xfff) },
+    { name: "deny/canon", chainId: 421614, contract: ZERO_ADDRESS, patch: deny(1 << 29) },
+    { name: "deny/cedar-error", chainId: 421614, contract: ZERO_ADDRESS, patch: deny(1 << 30) },
+    { name: "deny/paypal", chainId: 421614, contract: ZERO_ADDRESS, patch: deny(2 ** 31) },
+    {
+      name: "deny/all-ones-mask",
+      chainId: 421614,
+      contract: ZERO_ADDRESS,
+      patch: deny(2 ** 32 - 1),
+    },
+    {
+      name: "uint40-max",
+      chainId: 421614,
+      contract: ZERO_ADDRESS,
+      patch: { issuedAt: UINT40_MAX, expiresAt: UINT40_MAX },
+    },
+    { name: "uint64-max", chainId: 421614, contract: ZERO_ADDRESS, patch: { amount: UINT64_MAX } },
+    {
+      name: "uint256-max",
+      chainId: 421614,
+      contract: ZERO_ADDRESS,
+      patch: { agentId: UINT256_MAX },
+    },
+    { name: "category-mixed", chainId: 421614, contract: ZERO_ADDRESS, patch: { category: 255 } },
+    { name: "currency-jpy", chainId: 421614, contract: ZERO_ADDRESS, patch: { currency: 392 } },
+    { name: "currency-max", chainId: 421614, contract: ZERO_ADDRESS, patch: { currency: 65535 } },
+    { name: "amount-zero", chainId: 421614, contract: ZERO_ADDRESS, patch: { amount: 0n } },
+    {
+      name: "bytes32-ones",
+      chainId: 421614,
+      contract: ADDRESSES[2] as Hex,
+      patch: {
+        requestId: ONES,
+        mandateHash: ONES,
+        mandateCommitment: ONES,
+        cartHash: ONES,
+        merchantId: ONES,
+        evidenceRoot: ONES,
+        evalHash: ONES,
+        policySetHash: ONES,
+      },
+    },
+    {
+      name: "all-max",
+      chainId: 42161,
+      contract: ADDRESSES[2] as Hex,
+      patch: {
+        requestId: ONES,
+        mandateHash: ONES,
+        mandateCommitment: ONES,
+        cartHash: ONES,
+        agentId: UINT256_MAX,
+        merchantId: ONES,
+        amount: UINT64_MAX,
+        currency: 65535,
+        category: 255,
+        evidenceRoot: ONES,
+        evalHash: ONES,
+        policySetHash: ONES,
+        decision: 255,
+        failedFieldsMask: 2 ** 32 - 1,
+        issuedAt: UINT40_MAX,
+        expiresAt: UINT40_MAX,
+      },
+    },
+    {
+      name: "all-zero",
+      chainId: 421614,
+      contract: ZERO_ADDRESS,
+      patch: Object.fromEntries(
+        KEELSON_TYPES.Countersign.map(({ name, type }) => [
+          name,
+          type === "bytes32" ? field(0n) : type === "uint256" || type === "uint64" ? 0n : 0,
+        ]),
+      ),
+    },
+  ];
+  const vectors = [];
+  for (const { name, chainId, contract, patch } of cases) {
+    const message = { ...base, ...patch } as Countersign;
+    const domain = keelsonDomain(chainId, contract);
+    vectors.push({
+      name,
+      input: {
+        domain,
+        message: Object.fromEntries(
+          Object.entries(message).map(([k, v]) => [k, typeof v === "string" ? v : String(v)]),
+        ),
+        privateKey,
+      },
+      expected: {
+        digest: countersignDigest(message, domain),
+        signature: await signTypedData({
+          privateKey,
+          domain,
+          types: KEELSON_TYPES,
+          primaryType: "Countersign",
+          message,
+        }),
+      },
+    });
+  }
+  return vectors;
+}
+
+function reportDataVectors() {
+  const base: SignerBinding = {
+    chainId: 421614n,
+    bondVault: ZERO_ADDRESS,
+    teeKind: TeeKind.TDX,
+    signer: ADDRESSES[1] as Hex,
+    policySetHash: field(0x77n),
+    engineBuildId: keccak256(stringToHex("oci-digest")),
+    bootEpoch: 1_762_400_000n,
+  };
+  const cases: { name: string; binding: SignerBinding; blockHash: Hex }[] = [
+    { name: "tdx/zero-vault", binding: base, blockHash: field(0xb10cn) },
+    {
+      name: "nitro/zero-vault",
+      binding: { ...base, teeKind: TeeKind.NITRO },
+      blockHash: field(0xb10cn),
+    },
+    {
+      name: "tdx/deployed-vault",
+      binding: { ...base, bondVault: ADDRESSES[0] as Hex },
+      blockHash: keccak256(stringToHex("block")),
+    },
+    {
+      name: "nitro/arbitrum-one",
+      binding: { ...base, chainId: 42161n, teeKind: TeeKind.NITRO, bondVault: ADDRESSES[1] as Hex },
+      blockHash: ONES,
+    },
+    {
+      name: "max",
+      binding: {
+        chainId: UINT64_MAX,
+        bondVault: ADDRESSES[2] as Hex,
+        teeKind: TeeKind.NITRO,
+        signer: ADDRESSES[2] as Hex,
+        policySetHash: ONES,
+        engineBuildId: ONES,
+        bootEpoch: UINT64_MAX,
+      },
+      blockHash: ONES,
+    },
+  ];
+  return cases.map(({ name, binding, blockHash }) => ({
+    name,
+    input: {
+      binding: {
+        ...binding,
+        chainId: String(binding.chainId),
+        bootEpoch: String(binding.bootEpoch),
+      },
+      blockHash,
+    },
+    expected: reportData(binding, blockHash),
+  }));
+}
+
 function noirSource(vectors: { name: string; input: string[]; expected: string }[]): string {
   const tests = vectors.map(({ name, input, expected }) => {
     const id = name.replaceAll("-", "_");
@@ -331,4 +531,6 @@ writeJson("poseidon2", poseidon);
 writeJson("money", moneyVectors());
 writeJson("alibi", alibiVectors());
 writeJson("field-from-ascii", fieldFromAsciiVectors());
+writeJson("countersign", await countersignVectors());
+writeJson("report-data", reportDataVectors());
 write(noirFile, noirSource(poseidon));
