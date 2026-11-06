@@ -48,7 +48,7 @@ fn sixteen_lines() -> Input {
     let total = items + 500 + 799 + 100 + 50 - 300 - 200;
     serde_json::from_value(json!({
         "cart": {
-            "merchant": "MERCHANT-SHOES-01",
+            "merchant": "mrc_runfast",
             "currency": "USD",
             "return_days": 30,
             "returns_free": true,

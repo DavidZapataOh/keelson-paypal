@@ -1,13 +1,18 @@
-//! The Keelson Cedar schema, the constant policy set and the `Mandate` entity builder.
+//! The Keelson Cedar schema, the constant policy set, the `Mandate` entity builder and the
+//! fail-closed evaluator that emits the `keelson.eval/1` trace.
 //!
 //! The policy set is a base `permit` plus one `forbid` per mandate field. Each policy carries
 //! `@id`, `@field` and `@color` annotations, and its Cedar policy id is its `@id`.
 
 mod entity;
+mod evaluate;
 mod hashes;
+mod trace;
 
 pub use entity::{agent_uid, cedar_datetime, mandate_agent, mandate_entity, variant_expr};
+pub use evaluate::{EngineMeta, EvalInput, FieldId, evaluate, evaluate_context};
 pub use hashes::{policy_set_hash, policy_set_hash_tag, schema_hash, schema_hash_tag};
+pub use trace::{Decision, Engine, FieldTrace, TRACE_VERSION, Trace, trace_jcs};
 
 use std::collections::BTreeMap;
 use std::fmt;

@@ -114,14 +114,9 @@ fn strings(values: impl IntoIterator<Item = String>) -> RestrictedExpression {
     RestrictedExpression::new_set(values.into_iter().map(RestrictedExpression::new_string))
 }
 
-/// The allowed variants and the quantity bound.
-///
-/// Variants are each acceptable item of each line, with the `keelson.attributes` size (`size_us`)
-/// and color unless they are `any`. The quantity bound is the smallest line quantity: the policy
-/// set has no arithmetic and the entity holds a single bound, so Cedar cannot tie a quantity to
-/// a variant, and the smallest quantity is the bound that never allows more than any line does.
-/// It is 0, which denies every cart, when the mandate has no lines.
-fn variants(m: &Value) -> Result<(BTreeSet<Variant>, i64), PolicyError> {
+/// The size and color the mandate's `keelson.attributes` require; `None` when an attribute is
+/// absent or `any`, which leaves it unconstrained.
+pub(crate) fn attributes(m: &Value) -> Result<(Option<String>, Option<String>), PolicyError> {
     let mut size = None;
     let mut color = None;
     if let Some(attrs) = constraint(m, "checkout", "keelson.attributes")? {
@@ -139,6 +134,18 @@ fn variants(m: &Value) -> Result<(BTreeSet<Variant>, i64), PolicyError> {
             *slot = (value != ANY).then(|| value.to_owned());
         }
     }
+    Ok((size, color))
+}
+
+/// The allowed variants and the quantity bound.
+///
+/// Variants are each acceptable item of each line, with the `keelson.attributes` size (`size_us`)
+/// and color unless they are `any`. The quantity bound is the smallest line quantity: the policy
+/// set has no arithmetic and the entity holds a single bound, so Cedar cannot tie a quantity to
+/// a variant, and the smallest quantity is the bound that never allows more than any line does.
+/// It is 0, which denies every cart, when the mandate has no lines.
+fn variants(m: &Value) -> Result<(BTreeSet<Variant>, i64), PolicyError> {
+    let (size, color) = attributes(m)?;
     let mut out = BTreeSet::new();
     let mut max_qty: Option<i64> = None;
     if let Some(lines) = constraint(m, "checkout", "checkout.line_items")? {

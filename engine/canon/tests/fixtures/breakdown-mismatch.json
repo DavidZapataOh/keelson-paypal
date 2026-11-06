@@ -1,12 +1,12 @@
 {
   "cart": {
-    "merchant": "MERCHANT-SHOES-01",
+    "merchant": "mrc_runfast",
     "currency": "USD",
     "return_days": 30,
     "returns_free": true,
     "lines": [
       {
-        "sku": "RUN-100",
+        "sku": "sku-trail-10",
         "size": "10",
         "color": "black",
         "category": "gpt:187",

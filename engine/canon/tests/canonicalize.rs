@@ -40,12 +40,13 @@ fn demo_cart() {
     assert_eq!(
         ctx.variants.into_iter().collect::<Vec<_>>(),
         [Variant {
-            sku: "RUN-100".into(),
+            sku: "sku-trail-10".into(),
             size: Some("10".into()),
             color: Some("black".into()),
         }]
     );
     assert_eq!(ctx.max_line_qty, 1);
+    assert_eq!(ctx.quantities.values().copied().collect::<Vec<_>>(), [1]);
     assert_eq!(ctx.return_days, 30);
     assert!(ctx.returns_free);
 }
@@ -58,6 +59,11 @@ fn bundle_is_not_judged() {
     assert_eq!(ctx.categories.len(), 3);
     assert_eq!(ctx.variants.len(), 3);
     assert_eq!(ctx.max_line_qty, 3);
+    assert_eq!(
+        ctx.quantities.values().copied().collect::<Vec<_>>(),
+        [1, 3, 2]
+    );
+    assert!(ctx.quantities.keys().eq(ctx.variants.iter()));
 }
 
 #[test]
@@ -218,13 +224,13 @@ fn context_json_has_no_nulls() {
     let ctx = canonicalize(&f.cart, &f.unit).unwrap();
     assert_eq!(
         serde_json::to_string(&ctx).unwrap(),
-        r#"{"currency":"USD","total_minor":9400,"merchant":"MERCHANT-SHOES-01","categories":["gpt:187"],"variants":[{"sku":"RUN-100","size":"10","color":"black"}],"max_line_qty":1,"return_days":30,"returns_free":true}"#
+        r#"{"currency":"USD","total_minor":9400,"merchant":"mrc_runfast","categories":["gpt:187"],"variants":[{"sku":"sku-trail-10","size":"10","color":"black"}],"max_line_qty":1,"return_days":30,"returns_free":true}"#
     );
     let f = fixture(include_str!("fixtures/bundle-340.json"));
     let ctx = canonicalize(&f.cart, &f.unit).unwrap();
     assert_eq!(
         serde_json::to_string(&ctx).unwrap(),
-        r#"{"currency":"USD","total_minor":34000,"merchant":"MERCHANT-SHOES-01","categories":["gpt:100","gpt:1604","gpt:187"],"variants":[{"sku":"BAG-20"},{"sku":"RUN-100","size":"10","color":"black"},{"sku":"SOCK-6","color":"white"}],"max_line_qty":3,"return_days":14,"returns_free":false}"#
+        r#"{"currency":"USD","total_minor":34000,"merchant":"mrc_runfast","categories":["gpt:100","gpt:1604","gpt:187"],"variants":[{"sku":"BAG-20"},{"sku":"SOCK-6","color":"white"},{"sku":"sku-trail-10","size":"10","color":"black"}],"max_line_qty":3,"return_days":14,"returns_free":false}"#
     );
 }
 

@@ -23,10 +23,10 @@ pub fn schema_hash_tag() -> String {
 }
 
 fn tag(digest: &[u8; 32]) -> String {
-    let mut s = String::with_capacity(71);
-    s.push_str("sha256:");
-    for b in digest {
-        s.push_str(&format!("{b:02x}"));
-    }
-    s
+    format!("sha256:{}", hex(digest))
+}
+
+/// Lowercase hex.
+pub(crate) fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }

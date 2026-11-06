@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -115,6 +115,10 @@ pub struct Context {
     pub max_line_qty: i64,
     pub return_days: i64,
     pub returns_free: bool,
+    /// The total quantity of each variant, keyed by the elements of `variants`. Not part of the
+    /// Cedar context: the evaluator uses it to recompute `max_line_qty` after projecting variants.
+    #[serde(skip)]
+    pub quantities: BTreeMap<Variant, i64>,
 }
 
 /// Why a cart cannot be canonicalized.
