@@ -67,7 +67,7 @@
     "name": "max",
     "input": {
       "binding": {
-        "chainId": "18446744073709551615",
+        "chainId": "42161",
         "bondVault": "0xffffffffffffffffffffffffffffffffffffffff",
         "teeKind": 2,
         "signer": "0xffffffffffffffffffffffffffffffffffffffff",
@@ -77,6 +77,70 @@
       },
       "blockHash": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
     },
-    "expected": "0x95254fa41c61a3d8e6d11b8ec8369a850bd972734ebe38bbdf9782f74d52ec4cffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    "expected": "0xfa4c84b1fb9a6bf88b98382220b56fd169f8ecb69f12c2ac0587bebcbecfcfe8ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  },
+  {
+    "name": "error/chain-1",
+    "input": {
+      "binding": {
+        "chainId": "1",
+        "bondVault": "0x0000000000000000000000000000000000000000",
+        "teeKind": 1,
+        "signer": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+        "policySetHash": "0x0000000000000000000000000000000000000000000000000000000000000077",
+        "engineBuildId": "0x98badd9f4daab7445e29671123fdbe7589b5546a499d3cab26a275ded063141f",
+        "bootEpoch": "1762400000"
+      },
+      "blockHash": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    "expected": "error"
+  },
+  {
+    "name": "error/chain-u64-max",
+    "input": {
+      "binding": {
+        "chainId": "18446744073709551615",
+        "bondVault": "0x0000000000000000000000000000000000000000",
+        "teeKind": 1,
+        "signer": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+        "policySetHash": "0x0000000000000000000000000000000000000000000000000000000000000077",
+        "engineBuildId": "0x98badd9f4daab7445e29671123fdbe7589b5546a499d3cab26a275ded063141f",
+        "bootEpoch": "1762400000"
+      },
+      "blockHash": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    "expected": "error"
+  },
+  {
+    "name": "error/tee-kind-0",
+    "input": {
+      "binding": {
+        "chainId": "421614",
+        "bondVault": "0x0000000000000000000000000000000000000000",
+        "teeKind": 0,
+        "signer": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+        "policySetHash": "0x0000000000000000000000000000000000000000000000000000000000000077",
+        "engineBuildId": "0x98badd9f4daab7445e29671123fdbe7589b5546a499d3cab26a275ded063141f",
+        "bootEpoch": "1762400000"
+      },
+      "blockHash": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    "expected": "error"
+  },
+  {
+    "name": "error/tee-kind-3",
+    "input": {
+      "binding": {
+        "chainId": "421614",
+        "bondVault": "0x0000000000000000000000000000000000000000",
+        "teeKind": 3,
+        "signer": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+        "policySetHash": "0x0000000000000000000000000000000000000000000000000000000000000077",
+        "engineBuildId": "0x98badd9f4daab7445e29671123fdbe7589b5546a499d3cab26a275ded063141f",
+        "bootEpoch": "1762400000"
+      },
+      "blockHash": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    "expected": "error"
   }
 ]

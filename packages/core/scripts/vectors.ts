@@ -7,6 +7,8 @@ import {
   CHAIN_IDS,
   type Countersign,
   countersignDigest,
+  FIELD_BITS,
+  failedFieldsMask,
   hashKeelson,
   KEELSON_TYPES,
   type KeelsonPrimaryType,
@@ -480,7 +482,7 @@ function reportDataVectors() {
     {
       name: "max",
       binding: {
-        chainId: UINT64_MAX,
+        chainId: 42161n,
         bondVault: ADDRESSES[2] as Hex,
         teeKind: TeeKind.NITRO,
         signer: ADDRESSES[2] as Hex,
@@ -491,17 +493,64 @@ function reportDataVectors() {
       blockHash: ONES,
     },
   ];
-  return cases.map(({ name, binding, blockHash }) => ({
-    name,
-    input: {
-      binding: {
-        ...binding,
-        chainId: String(binding.chainId),
-        bootEpoch: String(binding.bootEpoch),
+  const bad = (patch: object) => ({ ...base, ...patch }) as SignerBinding;
+  cases.push(
+    { name: "error/chain-1", binding: bad({ chainId: 1n }), blockHash: ONES },
+    { name: "error/chain-u64-max", binding: bad({ chainId: UINT64_MAX }), blockHash: ONES },
+    { name: "error/tee-kind-0", binding: bad({ teeKind: 0 }), blockHash: ONES },
+    { name: "error/tee-kind-3", binding: bad({ teeKind: 3 }), blockHash: ONES },
+  );
+  return cases.map(({ name, binding, blockHash }) => {
+    let expected: string;
+    try {
+      expected = reportData(binding, blockHash);
+    } catch {
+      expected = "error";
+    }
+    return {
+      name,
+      input: {
+        binding: {
+          ...binding,
+          chainId: String(binding.chainId),
+          bootEpoch: String(binding.bootEpoch),
+        },
+        blockHash,
       },
-      blockHash,
+      expected,
+    };
+  });
+}
+
+function failedFieldsMaskVectors() {
+  const cases: {
+    name: string;
+    fired: string[];
+    errors?: boolean;
+    canon?: boolean;
+    paypal?: boolean;
+  }[] = [
+    { name: "none", fired: [] },
+    { name: "base-only", fired: ["base"] },
+    { name: "amount-variant", fired: ["amount", "variant"] },
+    { name: "all-fields", fired: Object.keys(FIELD_BITS) },
+    { name: "extra", fired: ["extra.0"] },
+    { name: "extras-and-field", fired: ["extra.0", "extra.3", "window"] },
+    { name: "canon", fired: [], canon: true },
+    { name: "cedar-error", fired: ["agent"], errors: true },
+    { name: "paypal", fired: [], paypal: true },
+    {
+      name: "everything",
+      fired: [...Object.keys(FIELD_BITS), "extra.1"],
+      errors: true,
+      canon: true,
+      paypal: true,
     },
-    expected: reportData(binding, blockHash),
+  ];
+  return cases.map(({ name, fired, errors = false, canon = false, paypal = false }) => ({
+    name,
+    input: { fired, errors, canon, paypal },
+    expected: failedFieldsMask(fired, { errors, canon, paypal }),
   }));
 }
 
@@ -533,4 +582,5 @@ writeJson("alibi", alibiVectors());
 writeJson("field-from-ascii", fieldFromAsciiVectors());
 writeJson("countersign", await countersignVectors());
 writeJson("report-data", reportDataVectors());
+writeJson("failed-fields-mask", failedFieldsMaskVectors());
 write(noirFile, noirSource(poseidon));

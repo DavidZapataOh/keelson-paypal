@@ -2,9 +2,11 @@ import { type Hex, hashTypedData, type TypedDataDomain } from "viem";
 import { signTypedData } from "viem/accounts";
 import { describe, expect, test } from "vitest";
 import {
+  BIT_EXTRA,
   CHAIN_IDS,
   type Countersign,
   countersignDigest,
+  failedFieldsMask,
   hashKeelson,
   KEELSON_TYPES,
   type KeelsonChainId,
@@ -16,6 +18,7 @@ import {
 } from "../src/eip712.ts";
 import countersignVectors from "./vectors/countersign.json" with { type: "json" };
 import vectors from "./vectors/eip712.json" with { type: "json" };
+import maskVectors from "./vectors/failed-fields-mask.json" with { type: "json" };
 import reportDataVectors from "./vectors/report-data.json" with { type: "json" };
 
 const verifyingContract = "0x0000000000000000000000000000000000000001" as const;
@@ -153,6 +156,12 @@ describe("countersign", () => {
     );
   });
 
+  test("rejects a domain on an unsupported chain", () => {
+    const message = parseCountersign(countersignVectors[0]?.input.message ?? {});
+    const domain = { name: "Keelson", version: "1", chainId: 1, verifyingContract };
+    expect(() => countersignDigest(message, domain)).toThrow(RangeError);
+  });
+
   test("rejects an out-of-range uint40", () => {
     const domain = keelsonDomain(CHAIN_IDS.arbitrumSepolia, verifyingContract);
     const message = parseCountersign(countersignVectors[0]?.input.message ?? {});
@@ -167,7 +176,11 @@ describe("reportData", () => {
       chainId: BigInt(input.binding.chainId),
       bootEpoch: BigInt(input.binding.bootEpoch),
     } as SignerBinding;
-    expect(reportData(binding, input.blockHash as Hex)).toBe(expected);
+    if (expected === "error") {
+      expect(() => reportData(binding, input.blockHash as Hex)).toThrow(RangeError);
+    } else {
+      expect(reportData(binding, input.blockHash as Hex)).toBe(expected);
+    }
   });
 
   test("is 64 bytes ending in the block hash", () => {
@@ -184,6 +197,17 @@ describe("reportData", () => {
     const data = reportData(binding, blockHash);
     expect(data).toHaveLength(2 + 128);
     expect(data.slice(66)).toBe(blockHash.slice(2));
+  });
+});
+
+describe("failedFieldsMask", () => {
+  test.each(maskVectors)("matches the golden vector $name", ({ input, expected }) => {
+    expect(failedFieldsMask(input.fired, input)).toBe(expected);
+  });
+
+  test("sets the extra bit for any fired policy outside the base table", () => {
+    expect(failedFieldsMask(["amount", "extra.0"], {})).toBe((1 << 3) | (1 << BIT_EXTRA));
+    expect(failedFieldsMask(["base"], {})).toBe(0);
   });
 });
 

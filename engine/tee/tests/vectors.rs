@@ -1,8 +1,9 @@
 use alloy_primitives::{Address, B256, Signature, U256, keccak256};
+use alloy_sol_types::Eip712Domain;
 use keelson_core::{domain, eip712::Countersign};
 use keelson_tee::{
-    BIT_CANON, BIT_CEDAR_ERROR, BIT_PAYPAL, FIELD_BITS, Signer, SignerBinding, TeeKind,
-    countersign_digest, failed_fields_mask, report_data,
+    BIT_CANON, BIT_CEDAR_ERROR, BIT_EXTRA, BIT_PAYPAL, Error, FIELD_BITS, Signer, SignerBinding,
+    TeeKind, countersign_digest, failed_fields_mask, report_data,
 };
 use serde_json::Value;
 
@@ -67,25 +68,55 @@ fn report_data_vectors() {
     let vectors = load(include_str!(
         "../../../packages/core/test/vectors/report-data.json"
     ));
-    assert_eq!(vectors.len(), 5);
+    assert_eq!(vectors.len(), 9);
     for v in vectors {
         let b = &v["input"]["binding"];
-        let binding = SignerBinding {
-            chain_id: b["chainId"].as_str().unwrap().parse().unwrap(),
-            bond_vault: b["bondVault"].as_str().unwrap().parse().unwrap(),
-            tee_kind: match b["teeKind"].as_u64().unwrap() {
-                1 => TeeKind::Tdx,
-                2 => TeeKind::Nitro,
-                k => panic!("unknown tee kind {k}"),
-            },
-            signer: b["signer"].as_str().unwrap().parse().unwrap(),
-            policy_set_hash: b32(&b["policySetHash"]).0,
-            engine_build_id: b32(&b["engineBuildId"]).0,
-            boot_epoch: b["bootEpoch"].as_str().unwrap().parse().unwrap(),
-        };
-        let data = report_data(&binding, b32(&v["input"]["blockHash"]).0);
-        assert_eq!(hex(&data), v["expected"], "{}", v["name"]);
+        let data = TeeKind::try_from(b["teeKind"].as_u64().unwrap() as u8).and_then(|tee_kind| {
+            let binding = SignerBinding {
+                chain_id: b["chainId"].as_str().unwrap().parse().unwrap(),
+                bond_vault: b["bondVault"].as_str().unwrap().parse().unwrap(),
+                tee_kind,
+                signer: b["signer"].as_str().unwrap().parse().unwrap(),
+                policy_set_hash: b32(&b["policySetHash"]).0,
+                engine_build_id: b32(&b["engineBuildId"]).0,
+                boot_epoch: b["bootEpoch"].as_str().unwrap().parse().unwrap(),
+            };
+            report_data(&binding, b32(&v["input"]["blockHash"]).0)
+        });
+        match data {
+            Ok(data) => assert_eq!(hex(&data), v["expected"], "{}", v["name"]),
+            Err(_) => assert_eq!(v["expected"], "error", "{}", v["name"]),
+        }
     }
+}
+
+#[test]
+fn failed_fields_mask_vectors() {
+    let vectors = load(include_str!(
+        "../../../packages/core/test/vectors/failed-fields-mask.json"
+    ));
+    assert_eq!(vectors.len(), 10);
+    for v in vectors {
+        let i = &v["input"];
+        let fired: Vec<&str> = i["fired"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|f| f.as_str().unwrap())
+            .collect();
+        let flag = |k: &str| i[k].as_bool().unwrap();
+        let mask = failed_fields_mask(&fired, flag("errors"), flag("canon"), flag("paypal"));
+        assert_eq!(
+            u64::from(mask),
+            v["expected"].as_u64().unwrap(),
+            "{}",
+            v["name"]
+        );
+    }
+}
+
+fn sepolia() -> Eip712Domain {
+    domain(421_614, Address::ZERO).unwrap()
 }
 
 #[test]
@@ -95,6 +126,11 @@ fn signatures_are_low_s_and_recover_the_signer() {
         16,
     )
     .unwrap();
+    let vectors = load(include_str!(
+        "../../../packages/core/test/vectors/countersign.json"
+    ));
+    let mut c = countersign(&vectors[0]["input"]["message"]);
+    let d = sepolia();
     let signer = Signer::generate();
     let address = signer.address();
     assert_eq!(
@@ -102,17 +138,43 @@ fn signatures_are_low_s_and_recover_the_signer() {
         address
     );
     for i in 0u64..10_000 {
-        let digest = keccak256(i.to_be_bytes());
-        let raw = signer.sign_digest(&digest.0);
+        c.requestId = keccak256(i.to_be_bytes());
+        let raw = signer.sign_countersign(&c, &d).unwrap();
         assert!(raw[64] == 27 || raw[64] == 28);
         let signature = Signature::from_raw_array(&raw).unwrap();
         assert!(signature.s() <= half_n, "high s at {i}");
+        let digest = B256::new(countersign_digest(&c, &d));
         assert_eq!(
             signature.recover_address_from_prehash(&digest).unwrap(),
             address,
             "recovery at {i}"
         );
     }
+}
+
+#[test]
+fn signing_rejects_unsupported_chains() {
+    let vectors = load(include_str!(
+        "../../../packages/core/test/vectors/countersign.json"
+    ));
+    let c = countersign(&vectors[0]["input"]["message"]);
+    let signer = Signer::generate();
+    let mut d = sepolia();
+    d.chain_id = Some(U256::from(1));
+    assert_eq!(
+        signer.sign_countersign(&c, &d),
+        Err(Error::UnsupportedChain(1))
+    );
+    d.chain_id = None;
+    assert!(signer.sign_countersign(&c, &d).is_err());
+}
+
+#[test]
+fn tee_kind_accepts_only_tdx_and_nitro() {
+    assert_eq!(TeeKind::try_from(1), Ok(TeeKind::Tdx));
+    assert_eq!(TeeKind::try_from(2), Ok(TeeKind::Nitro));
+    assert_eq!(TeeKind::try_from(0), Err(Error::UnknownTeeKind(0)));
+    assert_eq!(TeeKind::try_from(3), Err(Error::UnknownTeeKind(3)));
 }
 
 #[test]
@@ -130,6 +192,10 @@ fn mask_sets_field_and_fault_bits() {
     assert_eq!(
         failed_fields_mask(&["base"], true, true, true),
         (1 << BIT_CEDAR_ERROR) | (1 << BIT_CANON) | (1 << BIT_PAYPAL)
+    );
+    assert_eq!(
+        failed_fields_mask(&["extra.0", "extra.7", "amount"], false, false, false),
+        (1 << BIT_EXTRA) | (1 << 3)
     );
     let all: Vec<String> = FIELD_BITS.iter().map(|(id, _)| id.to_string()).collect();
     assert_eq!(failed_fields_mask(&all, false, false, false), 0xfff);

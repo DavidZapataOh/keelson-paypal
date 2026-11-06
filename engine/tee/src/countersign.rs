@@ -18,6 +18,8 @@ pub const FIELD_BITS: [(&str, u8); 12] = [
     ("returns", 10),
     ("returns_free", 11),
 ];
+/// Set when any fired policy is outside the base table (a user extra such as `extra.0`).
+pub const BIT_EXTRA: u8 = 28;
 /// Set when the canonicalizer denied the cart.
 pub const BIT_CANON: u8 = 29;
 /// Set when Cedar reported diagnostics errors.
@@ -32,17 +34,21 @@ pub fn countersign_digest(c: &Countersign, domain: &Eip712Domain) -> [u8; 32] {
 
 /// Builds `failedFieldsMask` from the fired policy ids and the fault flags.
 ///
-/// Ids without a bit (the `base` permit, user extras) set nothing.
+/// Ids outside [`FIELD_BITS`] set [`BIT_EXTRA`], except the `base` permit.
 pub fn failed_fields_mask(
     fired: &[impl AsRef<str>],
     errors: bool,
     canon: bool,
     paypal: bool,
 ) -> u32 {
-    let mut mask = fired
-        .iter()
-        .filter_map(|id| FIELD_BITS.iter().find(|(f, _)| *f == id.as_ref()))
-        .fold(0, |mask, (_, bit)| mask | 1 << bit);
+    let mut mask = 0;
+    for id in fired.iter().map(AsRef::as_ref) {
+        match FIELD_BITS.iter().find(|(f, _)| *f == id) {
+            Some((_, bit)) => mask |= 1 << bit,
+            None if id == "base" => {}
+            None => mask |= 1 << BIT_EXTRA,
+        }
+    }
     for (set, bit) in [
         (canon, BIT_CANON),
         (errors, BIT_CEDAR_ERROR),

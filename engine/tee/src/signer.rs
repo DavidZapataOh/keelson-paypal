@@ -3,28 +3,37 @@
 use std::fmt;
 
 use alloy_primitives::Address;
-use k256::ecdsa::SigningKey;
+use alloy_sol_types::Eip712Domain;
+use k256::ecdsa::{RecoveryId, SigningKey};
 use k256::elliptic_curve::Generate;
+use k256::elliptic_curve::zeroize::ZeroizeOnDrop;
+use keelson_core::eip712::Countersign;
+
+use crate::countersign_digest;
+use crate::error::{Error, check_chain};
 
 /// A secp256k1 key that exists only in this process.
 ///
-/// `SigningKey` zeroizes its scalar on drop; there is no `Clone` and no way to export it.
+/// The key is boxed so moving a `Signer` never copies the scalar; `SigningKey` zeroizes it on
+/// drop. There is no `Clone` and no way to export it, and it only signs `Countersign` payloads.
 pub struct Signer {
-    key: SigningKey,
+    key: Box<SigningKey>,
 }
+
+impl ZeroizeOnDrop for Signer {}
 
 impl Signer {
     /// Generates a key from the OS RNG.
     pub fn generate() -> Self {
         Self {
-            key: SigningKey::generate(),
+            key: Box::new(SigningKey::generate()),
         }
     }
 
     #[cfg(test)]
     fn from_test_key(bytes: &[u8; 32]) -> Self {
         Self {
-            key: SigningKey::from_slice(bytes).expect("valid test key"),
+            key: Box::new(SigningKey::from_slice(bytes).expect("valid test key")),
         }
     }
 
@@ -42,14 +51,37 @@ impl Signer {
             .expect("uncompressed SEC1 point")
     }
 
-    /// Signs a 32-byte digest with RFC 6979: `r ‖ s ‖ v`, low-S, `v ∈ {27, 28}`.
-    pub fn sign_digest(&self, digest: &[u8; 32]) -> [u8; 65] {
+    /// Signs the EIP-712 digest of `c`: `r ‖ s ‖ v`, RFC 6979, low-S, `v ∈ {27, 28}`.
+    ///
+    /// Fails on domains outside Arbitrum Sepolia and Arbitrum One.
+    pub fn sign_countersign(
+        &self,
+        c: &Countersign,
+        domain: &Eip712Domain,
+    ) -> Result<[u8; 65], Error> {
+        let chain_id = domain
+            .chain_id
+            .and_then(|id| u64::try_from(id).ok())
+            .ok_or(Error::MissingChain)?;
+        check_chain(chain_id)?;
+        self.sign_digest(&countersign_digest(c, domain))
+    }
+
+    fn sign_digest(&self, digest: &[u8; 32]) -> Result<[u8; 65], Error> {
         // k256 normalizes to low-S and flips the recovery id accordingly.
         let (signature, recovery_id) = self.key.sign_prehash_recoverable(digest);
         let mut out = [0; 65];
         out[..64].copy_from_slice(&signature.to_bytes());
-        out[64] = 27 + recovery_id.to_byte();
-        out
+        out[64] = v_byte(recovery_id)?;
+        Ok(out)
+    }
+}
+
+/// Recovery ids 2 and 3 (x-reduced `R`) have no Ethereum `v`.
+fn v_byte(recovery_id: RecoveryId) -> Result<u8, Error> {
+    match recovery_id.to_byte() {
+        id @ (0 | 1) => Ok(27 + id),
+        _ => Err(Error::UnusableSignature),
     }
 }
 
@@ -63,10 +95,12 @@ impl fmt::Debug for Signer {
 
 #[cfg(test)]
 mod tests {
+    use k256::ecdsa::RecoveryId;
     use k256::elliptic_curve::zeroize::ZeroizeOnDrop;
     use serde_json::Value;
 
-    use super::Signer;
+    use super::{Signer, v_byte};
+    use crate::Error;
 
     fn bytes<const N: usize>(v: &Value) -> [u8; N] {
         let s = v.as_str().unwrap().strip_prefix("0x").unwrap();
@@ -86,7 +120,9 @@ mod tests {
         assert_eq!(vectors.len(), 20);
         for v in vectors {
             let signer = Signer::from_test_key(&bytes(&v["input"]["privateKey"]));
-            let signature = signer.sign_digest(&bytes(&v["expected"]["digest"]));
+            let signature = signer
+                .sign_digest(&bytes(&v["expected"]["digest"]))
+                .unwrap();
             assert_eq!(
                 signature,
                 bytes::<65>(&v["expected"]["signature"]),
@@ -97,9 +133,21 @@ mod tests {
     }
 
     #[test]
-    fn key_is_zeroized_on_drop() {
+    fn signer_is_zeroized_on_drop() {
         fn assert_zeroize_on_drop<T: ZeroizeOnDrop>() {}
-        assert_zeroize_on_drop::<k256::ecdsa::SigningKey>();
+        assert_zeroize_on_drop::<Signer>();
+    }
+
+    #[test]
+    fn rejects_recovery_ids_ethereum_cannot_express() {
+        assert_eq!(v_byte(RecoveryId::from_byte(0).unwrap()), Ok(27));
+        assert_eq!(v_byte(RecoveryId::from_byte(1).unwrap()), Ok(28));
+        for id in [2, 3] {
+            assert_eq!(
+                v_byte(RecoveryId::from_byte(id).unwrap()),
+                Err(Error::UnusableSignature)
+            );
+        }
     }
 
     #[test]

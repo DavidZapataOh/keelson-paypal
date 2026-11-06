@@ -3,6 +3,9 @@
 use alloy_primitives::{Address, B256, U256, keccak256};
 use alloy_sol_types::{SolType, sol_data};
 
+use crate::Error;
+use crate::error::check_chain;
+
 type Binding = (
     sol_data::FixedBytes<32>,
     sol_data::Uint<256>,
@@ -22,6 +25,18 @@ pub enum TeeKind {
     Nitro = 2,
 }
 
+impl TryFrom<u8> for TeeKind {
+    type Error = Error;
+
+    fn try_from(kind: u8) -> Result<Self, Error> {
+        match kind {
+            1 => Ok(Self::Tdx),
+            2 => Ok(Self::Nitro),
+            k => Err(Error::UnknownTeeKind(k)),
+        }
+    }
+}
+
 /// Everything the attestation binds the signer to.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SignerBinding {
@@ -37,7 +52,10 @@ pub struct SignerBinding {
 
 /// `keccak256(abi.encode(keccak256("KEELSON_TEE_SIGNER_V1"), chainId, bondVault, teeKind,
 /// signer, policySetHash, engineBuildId, bootEpoch)) ‖ blockHash`.
-pub fn report_data(b: &SignerBinding, block_hash: [u8; 32]) -> [u8; 64] {
+///
+/// Fails on chains other than Arbitrum Sepolia and Arbitrum One.
+pub fn report_data(b: &SignerBinding, block_hash: [u8; 32]) -> Result<[u8; 64], Error> {
+    check_chain(b.chain_id)?;
     let binding = keccak256(Binding::abi_encode(&(
         keccak256("KEELSON_TEE_SIGNER_V1"),
         U256::from(b.chain_id),
@@ -51,5 +69,5 @@ pub fn report_data(b: &SignerBinding, block_hash: [u8; 32]) -> [u8; 64] {
     let mut out = [0; 64];
     out[..32].copy_from_slice(binding.as_slice());
     out[32..].copy_from_slice(&block_hash);
-    out
+    Ok(out)
 }
