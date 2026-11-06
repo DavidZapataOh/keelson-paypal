@@ -104,7 +104,8 @@ pub struct Variant {
 
 /// The Cedar request context derived from a cart.
 ///
-/// `max_line_qty` is the largest total quantity of any single variant, summed across lines.
+/// `max_line_qty` is the largest total quantity of any single variant, summed across lines, and
+/// `max_unit_minor` the largest unit price of any line.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Context {
     pub currency: String,
@@ -113,6 +114,7 @@ pub struct Context {
     pub categories: BTreeSet<String>,
     pub variants: BTreeSet<Variant>,
     pub max_line_qty: i64,
+    pub max_unit_minor: i64,
     pub return_days: i64,
     pub returns_free: bool,
     /// The total quantity of each variant, keyed by the elements of `variants`. Not part of the

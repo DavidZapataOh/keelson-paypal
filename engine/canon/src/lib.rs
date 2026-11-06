@@ -87,6 +87,7 @@ pub fn canonicalize(cart: &Cart, unit: &PayPalUnit) -> Result<Context, Deny> {
             .map(|l| l.category.clone())
             .collect::<BTreeSet<_>>(),
         max_line_qty: per_variant.values().copied().max().unwrap_or(0),
+        max_unit_minor: cart.lines.iter().map(|l| l.unit_minor).max().unwrap_or(0),
         variants: per_variant.keys().cloned().collect(),
         return_days: cart.return_days,
         returns_free: cart.returns_free,

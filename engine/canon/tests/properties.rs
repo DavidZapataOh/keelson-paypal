@@ -155,6 +155,10 @@ fn check(
                 .entry((&l.sku, &l.size, &l.color))
                 .or_insert(0i128) += l.qty as i128;
         }
+        prop_assert_eq!(
+            Some(ctx.max_unit_minor),
+            cart.lines.iter().map(|l| l.unit_minor).max()
+        );
         prop_assert_eq!(ctx.variants.len(), per_variant.len());
         prop_assert_eq!(
             ctx.max_line_qty as i128,

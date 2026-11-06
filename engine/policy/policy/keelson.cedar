@@ -3,7 +3,7 @@ permit(principal, action == Keelson::Action::"checkout", resource) when { resour
 @id("agent") @field("agent") @color("green")
 forbid(principal, action == Keelson::Action::"checkout", resource) unless { resource.agent == principal };
 @id("sanity") @field("cart") @color("green")
-forbid(principal, action == Keelson::Action::"checkout", resource) when { context.total_minor < 0 || context.max_line_qty < 1 };
+forbid(principal, action == Keelson::Action::"checkout", resource) when { context.total_minor < 0 || context.max_line_qty < 1 || context.max_unit_minor < 0 };
 @id("currency") @field("currency") @color("green")
 forbid(principal, action == Keelson::Action::"checkout", resource) unless { context.currency == resource.currency };
 @id("amount") @field("total") @color("green")

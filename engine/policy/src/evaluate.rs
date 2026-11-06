@@ -1,9 +1,10 @@
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::str::FromStr;
 
 use cedar_policy::{
     AuthorizationError, Authorizer, Context, Effect, Entities, Entity, EntityUid, PolicyId,
-    Request, Response,
+    PolicySet, Request, Response,
 };
 use keelson_canon::Variant;
 use serde_json::{Map, Value, json};
@@ -11,6 +12,7 @@ use time::OffsetDateTime;
 use time::macros::format_description;
 
 use crate::entity::attributes;
+use crate::extras::{Extra, compile};
 use crate::hashes::hex;
 use crate::trace::{Decision, Engine, FieldTrace, TRACE_VERSION, Trace};
 use crate::{
@@ -83,7 +85,11 @@ const MAX_SAFE_INTEGER: i64 = (1 << 53) - 1;
 /// is shown as its value, several as a record of them.
 const BINDINGS: [(&str, &[&str], &[&str]); 12] = [
     ("agent", &[], &["agent"]),
-    ("sanity", &["max_line_qty", "total_minor"], &[]),
+    (
+        "sanity",
+        &["max_line_qty", "max_unit_minor", "total_minor"],
+        &[],
+    ),
     ("currency", &["currency"], &["currency"]),
     ("amount", &["total_minor"], &["max_total_minor"]),
     ("budget", &["total_minor"], &["budget_left_minor"]),
@@ -101,13 +107,14 @@ const BINDINGS: [(&str, &[&str], &[&str]); 12] = [
 ];
 
 /// The context attributes of the `checkout` action and their types.
-const CONTEXT: [(&str, Kind); 9] = [
+const CONTEXT: [(&str, Kind); 10] = [
     ("currency", Kind::String),
     ("total_minor", Kind::Long),
     ("merchant", Kind::String),
     ("categories", Kind::Strings),
     ("variants", Kind::Variants),
     ("max_line_qty", Kind::Long),
+    ("max_unit_minor", Kind::Long),
     ("return_days", Kind::Long),
     ("returns_free", Kind::Bool),
     ("now", Kind::Datetime),
@@ -184,11 +191,20 @@ impl Faults {
 /// - `entity.invalid:<field>`: the mandate field is missing or ill-typed, and
 ///   `entity.invalid:cedar` when Cedar rejects the entity;
 /// - `request.invalid`: Cedar rejects the request;
-/// - `policy.error:<id>`: Cedar could not evaluate policy `<id>`.
+/// - `policy.error:<id>`: Cedar could not evaluate policy `<id>`;
+/// - `extras.invalid:<n>`: extra `n` does not compile (see [`evaluate_with_extras`]).
 pub fn evaluate(input: &EvalInput, meta: &EngineMeta) -> Trace {
+    evaluate_with_extras(input, &[], meta)
+}
+
+/// Evaluates like [`evaluate`] with the policies [`crate::compile_extras`] builds from `extras`
+/// added to the policy set. Each extra adds a field `extra.<n>` after the mandate fields, whose
+/// `bound` is the extra's constant. An extra that does not compile denies with
+/// `extras.invalid:<n>`, and no extra is then evaluated.
+pub fn evaluate_with_extras(input: &EvalInput, extras: &[Extra], meta: &EngineMeta) -> Trace {
     let mut faults = Faults::default();
     let context = project(input, &mut faults);
-    run(input, context, faults, meta)
+    run(input, context, faults, extras, meta)
 }
 
 /// Evaluates `context`, a context in Cedar JSON form such as a trace records, in place of the
@@ -197,7 +213,7 @@ pub fn evaluate(input: &EvalInput, meta: &EngineMeta) -> Trace {
 /// It applies the same fail-closed checks as [`evaluate`] to the context it is given, except
 /// those on `input.context.quantities`, which a recorded context does not carry.
 pub fn evaluate_context(input: &EvalInput, context: Value, meta: &EngineMeta) -> Trace {
-    run(input, context, Faults::default(), meta)
+    run(input, context, Faults::default(), &[], meta)
 }
 
 fn project(input: &EvalInput, faults: &mut Faults) -> Value {
@@ -244,6 +260,7 @@ fn project(input: &EvalInput, faults: &mut Faults) -> Value {
         "categories": c.categories,
         "variants": variants,
         "max_line_qty": max_line_qty,
+        "max_unit_minor": c.max_unit_minor,
         "return_days": c.return_days,
         "returns_free": c.returns_free,
         "now": now,
@@ -279,7 +296,29 @@ fn check_context(context: &Value, faults: &mut Faults) {
     }
 }
 
-fn run(input: &EvalInput, context: Value, mut faults: Faults, meta: &EngineMeta) -> Trace {
+fn run(
+    input: &EvalInput,
+    context: Value,
+    mut faults: Faults,
+    extras: &[Extra],
+    meta: &EngineMeta,
+) -> Trace {
+    let compiled = compile(extras).unwrap_or_else(|e| {
+        faults.add(None, format!("extras.invalid:{}", e.index));
+        Vec::new()
+    });
+    let set = if compiled.is_empty() {
+        Cow::Borrowed(policies())
+    } else {
+        let mut set = policies().clone();
+        for (_, policy, _) in &compiled {
+            if set.add(policy.clone()).is_err() {
+                faults.add(None, "extras.invalid:cedar");
+            }
+        }
+        Cow::Owned(set)
+    };
+
     let context = safe(context);
     let before = faults.errors.len();
     check_context(&context, &mut faults);
@@ -301,7 +340,7 @@ fn run(input: &EvalInput, context: Value, mut faults: Faults, meta: &EngineMeta)
         .and_then(|e| e.to_json_value().ok())
         .map(|e| safe(e["attrs"].clone()));
     let response = entity.filter(|_| context_ok).and_then(|e| {
-        authorize(&input.agent, &context, e)
+        authorize(&set, &input.agent, &context, e)
             .map_err(|code| faults.add(None, code))
             .ok()
     });
@@ -311,7 +350,7 @@ fn run(input: &EvalInput, context: Value, mut faults: Faults, meta: &EngineMeta)
     if let Some(r) = &response {
         allowed = r.decision() == cedar_policy::Decision::Allow;
         for id in r.diagnostics().reason() {
-            if policies().policy(id).map(|p| p.effect()) == Some(Effect::Forbid) {
+            if set.policy(id).map(|p| p.effect()) == Some(Effect::Forbid) {
                 fired.push(id.to_string());
             }
         }
@@ -331,17 +370,35 @@ fn run(input: &EvalInput, context: Value, mut faults: Faults, meta: &EngineMeta)
     };
 
     let principal = json!({ "__entity": { "type": AGENT_TYPE, "id": input.agent } });
-    let fields = policy_texts()
-        .keys()
-        .filter(|id| *id != "base")
-        .map(|id| {
-            let policy = policies()
-                .policy(&PolicyId::new(id))
-                .expect("policy_texts and policies hold the same ids");
+    let base = policy_texts().keys().filter(|id| *id != "base").map(|id| {
+        let (observed, bound) =
+            BINDINGS
+                .iter()
+                .find(|(b, ..)| b == id)
+                .map_or((None, None), |(_, ctx, attrs)| {
+                    let observed = if id == "agent" {
+                        Some(principal.clone())
+                    } else {
+                        pick(&context, ctx)
+                    };
+                    (observed, bounds.as_ref().and_then(|b| pick(b, attrs)))
+                });
+        (id.clone(), observed, bound)
+    });
+    let added = compiled.iter().zip(extras).map(|((id, ..), extra)| {
+        let (attr, literal) = extra.binding();
+        (id.clone(), pick(&context, &[attr]), Some(literal))
+    });
+    let fields = base
+        .chain(added)
+        .map(|(id, observed, bound)| {
+            let policy = set
+                .policy(&PolicyId::new(&id))
+                .expect("every field is a policy of the set");
             let annotation = |key| {
                 policy
                     .annotation(key)
-                    .expect("every bundled policy has @field and @color")
+                    .expect("every policy has @field and @color")
                     .to_owned()
             };
             let field = annotation("field");
@@ -349,30 +406,18 @@ fn run(input: &EvalInput, context: Value, mut faults: Faults, meta: &EngineMeta)
             let proven = evidence
                 .iter()
                 .any(|e| e.starts_with("ucp:") || e.starts_with("zktls:"));
-            let (observed, bound) =
-                BINDINGS
-                    .iter()
-                    .find(|(b, ..)| b == id)
-                    .map_or((None, None), |(_, ctx, attrs)| {
-                        let observed = if id == "agent" {
-                            Some(principal.clone())
-                        } else {
-                            pick(&context, ctx)
-                        };
-                        (observed, bounds.as_ref().and_then(|b| pick(b, attrs)))
-                    });
             FieldTrace {
-                id: id.clone(),
                 color: if proven {
                     "green".to_owned()
                 } else {
                     annotation("color")
                 },
                 field,
-                pass: response.is_some() && !fired.contains(id) && !faults.policies.contains(id),
+                pass: response.is_some() && !fired.contains(&id) && !faults.policies.contains(&id),
                 observed,
                 bound,
                 evidence,
+                id,
             }
         })
         .collect();
@@ -409,7 +454,12 @@ fn run(input: &EvalInput, context: Value, mut faults: Faults, meta: &EngineMeta)
 }
 
 /// Builds the request against the schema and runs the authorizer.
-fn authorize(agent: &str, context: &Value, entity: Entity) -> Result<Response, &'static str> {
+fn authorize(
+    policies: &PolicySet,
+    agent: &str,
+    context: &Value,
+    entity: Entity,
+) -> Result<Response, &'static str> {
     let action = EntityUid::from_str(ACTION).map_err(|_| "request.invalid")?;
     let principal = agent_uid(agent).map_err(|_| "request.invalid")?;
     let resource = entity.uid();
@@ -419,7 +469,7 @@ fn authorize(agent: &str, context: &Value, entity: Entity) -> Result<Response, &
         .map_err(|_| "request.invalid")?;
     let entities =
         Entities::from_entities([entity], Some(schema())).map_err(|_| "entity.invalid:cedar")?;
-    Ok(Authorizer::new().is_authorized(&request, policies(), &entities))
+    Ok(Authorizer::new().is_authorized(&request, policies, &entities))
 }
 
 fn pick(source: &Value, keys: &[&str]) -> Option<Value> {

@@ -1,16 +1,21 @@
 //! The Keelson Cedar schema, the constant policy set, the `Mandate` entity builder and the
-//! fail-closed evaluator that emits the `keelson.eval/1` trace.
+//! fail-closed evaluator that emits the `keelson.eval/1` trace, and the closed set of user extras
+//! that compile to further `forbid` policies.
 //!
 //! The policy set is a base `permit` plus one `forbid` per mandate field. Each policy carries
 //! `@id`, `@field` and `@color` annotations, and its Cedar policy id is its `@id`.
 
 mod entity;
 mod evaluate;
+mod extras;
 mod hashes;
 mod trace;
 
 pub use entity::{agent_uid, cedar_datetime, mandate_agent, mandate_entity, variant_expr};
-pub use evaluate::{EngineMeta, EvalInput, FieldId, evaluate, evaluate_context};
+pub use evaluate::{
+    EngineMeta, EvalInput, FieldId, evaluate, evaluate_context, evaluate_with_extras,
+};
+pub use extras::{Extra, ExtrasError, InvalidExtra, compile_extras};
 pub use hashes::{policy_set_hash, policy_set_hash_tag, schema_hash, schema_hash_tag};
 pub use trace::{Decision, Engine, FieldTrace, TRACE_VERSION, Trace, trace_jcs};
 

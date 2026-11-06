@@ -313,10 +313,10 @@ fn hashes_are_sha256_of_the_file_bytes() {
     );
     assert_eq!(
         policy_set_hash_tag(),
-        "sha256:db3a692569a0c1f4fa047a1488d675249a1384195cd2732b60340e22cacecf6a"
+        "sha256:2dd99dc8274d5831bc43d13308df77263b583462cc9c333b96cca63969ba9d6a"
     );
     assert_eq!(
         schema_hash_tag(),
-        "sha256:205162d42b2e9d644062ea93a6fe168fc4d9aa3eeee5249913f7cc13e4c1623c"
+        "sha256:23cc9c5823da3feaa404e115245dbd8e37411c719256e0f47992bd35ae592eb6"
     );
 }

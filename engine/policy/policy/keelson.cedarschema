@@ -32,6 +32,7 @@ namespace Keelson {
       categories: Set<String>,
       variants: Set<Variant>,
       max_line_qty: Long,
+      max_unit_minor: Long,
       return_days: Long,
       returns_free: Bool,
       now: __cedar::datetime,
