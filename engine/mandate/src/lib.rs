@@ -24,8 +24,9 @@ pub use commitment::{
     verify_merchant_membership, verify_merchant_non_membership,
 };
 pub use credentials::{
-    Jwk, OPEN_MANDATE_TYP, OpenMandateVerifyOptions, USER_CREDENTIAL_TYP, USER_CREDENTIAL_VCT,
-    VerifiedCredential, verify_credential,
+    CLOSED_MANDATE_AUD, CLOSED_MANDATE_TYP, ClosedMandateVerifyOptions, Jwk, OPEN_MANDATE_TYP,
+    OpenMandateVerifyOptions, USER_CREDENTIAL_TYP, USER_CREDENTIAL_VCT, VerifiedClosedMandate,
+    VerifiedCredential, verify_closed_mandate, verify_credential,
 };
 pub use error::Error;
 pub use schema::{ANY_ITEM, MAX_LIFETIME_SECONDS, is_merchant_id, parse_mandate};

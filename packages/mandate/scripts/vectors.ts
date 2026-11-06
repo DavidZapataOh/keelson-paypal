@@ -23,6 +23,10 @@ import {
   verifyMerchantNonMembership,
 } from "../src/commitment.ts";
 import {
+  CLOSED_MANDATE_AUD,
+  CLOSED_MANDATE_TYP,
+  ClosedMandateError,
+  type ClosedMandateVerifyOptions,
   OPEN_MANDATE_TYP,
   type OpenMandateVerifyOptions,
   type P256PublicJwk,
@@ -31,6 +35,7 @@ import {
   type UserAuth,
   type VerifiedCredential,
   type VerifiedOpenMandate,
+  verifyClosedMandate,
   verifyCredential,
 } from "../src/credentials.ts";
 import { CONTROL_OR_FORMAT } from "../src/generated/unicode.ts";
@@ -1126,14 +1131,43 @@ const pickL1 = (v: VerifiedCredential) => ({
   claims: v.claims,
 });
 
-async function credentialVectors() {
-  const keys: Keys = {
-    issuer: await key("issuer"),
-    holder: await key("holder"),
-    passkey: await key("passkey"),
-    agent: await key("agent"),
-    other: await key("other"),
+const credentialKeys = async (): Promise<Keys> => ({
+  issuer: await key("issuer"),
+  holder: await key("holder"),
+  passkey: await key("passkey"),
+  agent: await key("agent"),
+  other: await key("other"),
+});
+
+/** The open mandate every L2 and closed-mandate vector derives from. */
+async function openMandateFixture(keys: Keys, l1: string) {
+  const live = mandate();
+  live.user.cred.jwk = keys.passkey.jwk;
+  live.agent.cnf.jwk = { ...keys.agent.jwk, kid: "agt-01" };
+  const cmSalt = seed("salt/l2/commitment").subarray(0, 16);
+  const cm = await mandateCommitment(live, cmSalt);
+  live.zk.commitment = field(cm);
+  const { payloadSd, disclosures } = await buildSdPayload(live, salts("l2/sd"));
+  const userAuth = assertion(keys.passkey, mandateChallenge(hSd(payloadSd), cm));
+  const base: L2Params = {
+    keys,
+    userCredential: l1,
+    payloadSd,
+    disclosures,
+    userAuth,
+    nonce: live.nonce,
   };
+  const opts: OpenMandateVerifyOptions = {
+    expectedAud: AUD,
+    expectedNonce: live.nonce,
+    now: NOW,
+    maxSkewSec: 60,
+  };
+  return { live, payloadSd, disclosures, userAuth, base, opts };
+}
+
+async function credentialVectors() {
+  const keys = await credentialKeys();
   const vectors: { name: string; input: unknown; expected: unknown }[] = [];
 
   const l1Case = async (name: string, token: string, k: Key = keys.issuer) =>
@@ -1360,28 +1394,7 @@ async function credentialVectors() {
   });
 
   // Open mandates.
-  const live = mandate();
-  live.user.cred.jwk = keys.passkey.jwk;
-  live.agent.cnf.jwk = { ...keys.agent.jwk, kid: "agt-01" };
-  const cmSalt = seed("salt/l2/commitment").subarray(0, 16);
-  const cm = await mandateCommitment(live, cmSalt);
-  live.zk.commitment = field(cm);
-  const { payloadSd, disclosures } = await buildSdPayload(live, salts("l2/sd"));
-  const userAuth = assertion(keys.passkey, mandateChallenge(hSd(payloadSd), cm));
-  const base: L2Params = {
-    keys,
-    userCredential: l1,
-    payloadSd,
-    disclosures,
-    userAuth,
-    nonce: live.nonce,
-  };
-  const opts: OpenMandateVerifyOptions = {
-    expectedAud: AUD,
-    expectedNonce: live.nonce,
-    now: NOW,
-    maxSkewSec: 60,
-  };
+  const { live, payloadSd, disclosures, userAuth, base, opts } = await openMandateFixture(keys, l1);
 
   const l2Case = async (
     name: string,
@@ -1598,10 +1611,108 @@ async function credentialVectors() {
   return vectors;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Closed mandates
+
+const REQUEST_ID = "01JC3XQ7ZK8M4N6P9R2T5V7W0Y";
+const CART_HASH = `sha256:${Buffer.from(seed("cart")).toString("hex")}`;
+
+async function closedMandateVectors() {
+  const keys = await credentialKeys();
+  const l1 = await issueL1(keys, l1Payload(keys));
+  const { base, opts: open } = await openMandateFixture(keys, l1);
+  const l2 = await issueL2(base);
+  const opts: ClosedMandateVerifyOptions = {
+    open,
+    requestId: REQUEST_ID,
+    cartHash: CART_HASH,
+  };
+  const kbPayload = (sdHashOver = l2.slice(l2.indexOf("~~") + 2)) => ({
+    iat: NOW,
+    aud: CLOSED_MANDATE_AUD,
+    nonce: REQUEST_ID,
+    sd_hash: b64u(sdHasher(sdHashOver, "sha-256")),
+    cart_hash: CART_HASH,
+  });
+  /** The closed mandate as `closeMandate` closes it, with a deterministic signature. */
+  const close = (
+    edit: (kb: Record<string, unknown>) => void = () => {},
+    signer = keys.agent,
+    header: object = { typ: CLOSED_MANDATE_TYP, alg: "ES256" },
+  ) => {
+    const kb: Record<string, unknown> = kbPayload();
+    edit(kb);
+    return `${l2}${jws(header, kb, signer)}`;
+  };
+
+  const vectors: { name: string; input: unknown; expected: unknown }[] = [];
+  const closedCase = async (
+    name: string,
+    token: string,
+    o: ClosedMandateVerifyOptions = opts,
+    k: Key = keys.issuer,
+  ) =>
+    vectors.push({
+      name,
+      input: { token, jwk: k.jwk, opts: o },
+      expected: await verifyClosedMandate(token, k.publicKey, o).then(
+        (v) => ({ agentJwk: v.agentJwk, iat: v.iat, claims: v.open.claims }),
+        (e) => (e instanceof ClosedMandateError ? { error: e.code } : "error"),
+      ),
+    });
+
+  const valid = close();
+  await closedCase("valid", valid);
+  await closedCase("valid-high-s", highS(valid));
+  await closedCase(
+    "valid-iat-at-skew",
+    close((kb) => (kb.iat = NOW - open.maxSkewSec)),
+  );
+  await closedCase("error/holder-signed", close(undefined, keys.holder));
+  await closedCase("error/no-key-binding", l2);
+  await closedCase(
+    "error/typ",
+    close(undefined, keys.agent, { typ: OPEN_MANDATE_TYP, alg: "ES256" }),
+  );
+  await closedCase(
+    "error/sd-hash-over-whole-presentation",
+    close((kb) => (kb.sd_hash = kbPayload(l2).sd_hash)),
+  );
+  await closedCase(
+    "error/aud",
+    close((kb) => (kb.aud = open.expectedAud)),
+  );
+  await closedCase("error/nonce", valid, { ...opts, requestId: "01JC3XQ7ZK8M4N6P9R2T5V7W0Z" });
+  await closedCase("error/cart-hash", valid, {
+    ...opts,
+    cartHash: `sha256:${Buffer.from(seed("other-cart")).toString("hex")}`,
+  });
+  await closedCase(
+    "error/iat-beyond-skew",
+    close((kb) => (kb.iat = NOW + open.maxSkewSec + 1)),
+  );
+  await closedCase(
+    "error/iat-stale",
+    close((kb) => (kb.iat = NOW - open.maxSkewSec - 1)),
+  );
+  await closedCase(
+    "error/iat-missing",
+    close((kb) => delete kb.iat),
+  );
+  await closedCase("error/open-mandate-wrong-issuer", valid, opts, keys.other);
+  await closedCase("error/open-mandate-nonce", valid, {
+    ...opts,
+    open: { ...open, expectedNonce: "AAAAAAAAAAAAAAAAAAAAAA" },
+  });
+  await closedCase("error/trailing-separator", `${valid}~`);
+  return vectors;
+}
+
 writeJson("sd", await sdVectors());
 writeJson("challenge", await challengeVectors());
 writeJson("commitment", await commitmentVectors());
 writeJson("credentials", await credentialVectors());
+writeJson("closed-mandate", await closedMandateVectors());
 writeJson(
   "colors",
   fieldColors(mandate(), { merchantSignedCheckout: false, zkTlsFields: new Set() }),

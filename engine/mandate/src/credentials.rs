@@ -12,6 +12,10 @@ use crate::{Error, b64, parse_mandate};
 pub const USER_CREDENTIAL_TYP: &str = "dc+sd-jwt";
 /// `typ` of the open mandate, a KB-SD-JWT+KB.
 pub const OPEN_MANDATE_TYP: &str = "kb-sd-jwt+kb";
+/// `typ` of the closed mandate's Key Binding JWT (RFC 9901 section 4.3).
+pub const CLOSED_MANDATE_TYP: &str = "kb+jwt";
+/// `aud` of the closed mandate's Key Binding JWT.
+pub const CLOSED_MANDATE_AUD: &str = "keelson.finance/countersign";
 /// `vct` of the user credential.
 pub const USER_CREDENTIAL_VCT: &str = "https://keelson.finance/credentials/user/v1";
 
@@ -64,6 +68,25 @@ pub struct OpenMandateVerifyOptions {
     pub now: i64,
     /// Clock skew tolerated on `iat`, `nbf` and `exp`, in seconds.
     pub max_skew_sec: i64,
+}
+
+/// What a closed mandate must be bound to, on top of its open mandate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClosedMandateVerifyOptions {
+    pub open: OpenMandateVerifyOptions,
+    /// The request ULID, signed as `nonce`.
+    pub request_id: String,
+    /// `sha256:<hex>` of the cart.
+    pub cart_hash: String,
+}
+
+/// A verified closed mandate.
+#[derive(Debug, Clone, PartialEq)]
+pub struct VerifiedClosedMandate {
+    pub open: VerifiedCredential,
+    /// The delegate payload's `cnf.jwk`, which signed the key binding.
+    pub agent_jwk: Jwk,
+    pub iat: i64,
 }
 
 /// A verified credential.
@@ -412,4 +435,60 @@ pub fn verify_credential(
     }
     let opts = opts.ok_or_else(|| invalid("open mandate verification needs options"))?;
     verify_open_mandate(token, &key, opts)
+}
+
+/// Verifies a closed mandate: the open mandate against the issuer's public key and `opts.open`,
+/// then the agent's KB-JWT against the delegate payload's `cnf.jwk` (RFC 9901 section 7.3,
+/// step 5), bound to `opts.request_id` and `opts.cart_hash` and issued within the skew of `now`.
+/// Its `sd_hash` covers the final KB-SD-JWT and its disclosures
+/// (draft-ietf-oauth-delegate-sd-jwt-00, section 6).
+///
+/// A rejected key binding fails with [`Error::Credential`] carrying one of `closed_signature`,
+/// `closed_sd_hash`, `closed_aud`, `closed_nonce`, `closed_cart_hash` or `closed_iat`.
+///
+/// The WebAuthn assertion in the open mandate's `user_auth` is NOT verified here.
+pub fn verify_closed_mandate(
+    token: &str,
+    issuer: &Jwk,
+    opts: &ClosedMandateVerifyOptions,
+) -> Result<VerifiedClosedMandate, Error> {
+    let split = token.rfind('~').map_or(0, |i| i + 1);
+    let (open_mandate, kb_jwt) = token.split_at(split);
+    let open = verify_open_mandate(open_mandate, &issuer.verifying_key()?, &opts.open)?;
+    let agent_jwk = Jwk::from_value(cnf_jwk(open.claims.get("cnf"))?)?;
+    let agent = agent_jwk.verifying_key()?;
+
+    let kb = decode_jwt(kb_jwt)
+        .ok()
+        .filter(|kb| kb.header.get("typ").and_then(Value::as_str) == Some(CLOSED_MANDATE_TYP))
+        .filter(|kb| kb.verify(&agent).is_ok())
+        .ok_or_else(|| invalid("closed_signature"))?;
+    let claim = |k: &str| kb.payload.get(k).and_then(Value::as_str);
+    let final_kb_sd_jwt = open_mandate
+        .split_once("~~")
+        .map_or(open_mandate, |(_, rest)| rest);
+    if claim("sd_hash") != Some(&digest(final_kb_sd_jwt)) {
+        return Err(invalid("closed_sd_hash"));
+    }
+    if claim("aud") != Some(CLOSED_MANDATE_AUD) {
+        return Err(invalid("closed_aud"));
+    }
+    if claim("nonce") != Some(&opts.request_id) {
+        return Err(invalid("closed_nonce"));
+    }
+    if claim("cart_hash") != Some(&opts.cart_hash) {
+        return Err(invalid("closed_cart_hash"));
+    }
+    let skew = opts.open.max_skew_sec;
+    let iat = kb
+        .payload
+        .get("iat")
+        .and_then(Value::as_i64)
+        .filter(|iat| (opts.open.now - skew..=opts.open.now + skew).contains(iat))
+        .ok_or_else(|| invalid("closed_iat"))?;
+    Ok(VerifiedClosedMandate {
+        open,
+        agent_jwk,
+        iat,
+    })
 }

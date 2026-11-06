@@ -9,7 +9,7 @@ import {
   validateJwtPayload,
 } from "@sd-jwt/core";
 import { SDJwtVcInstance } from "@sd-jwt/sd-jwt-vc";
-import { compactVerify, importJWK } from "jose";
+import { compactVerify, decodeJwt, decodeProtectedHeader, importJWK } from "jose";
 import { type Mandate, parseMandate } from "./schema.ts";
 import { assertSdAlg, sdHasher } from "./sd.ts";
 import {
@@ -23,6 +23,10 @@ import {
 export const USER_CREDENTIAL_TYP = "dc+sd-jwt";
 /** `typ` of the open mandate, a KB-SD-JWT+KB. */
 export const OPEN_MANDATE_TYP = "kb-sd-jwt+kb";
+/** `typ` of the closed mandate's Key Binding JWT (RFC 9901 section 4.3). */
+export const CLOSED_MANDATE_TYP = "kb+jwt";
+/** `aud` of the closed mandate's Key Binding JWT. */
+export const CLOSED_MANDATE_AUD = "keelson.finance/countersign";
 /** `vct` of the user credential. */
 export const USER_CREDENTIAL_VCT = "https://keelson.finance/credentials/user/v1";
 
@@ -90,12 +94,59 @@ export interface OpenMandateVerifyOptions {
   maxSkewSec: number;
 }
 
+/** What {@link closeMandate} binds the open mandate to. */
+export interface ClosedMandateParams {
+  /** The request ULID, signed as `nonce`. */
+  requestId: string;
+  /** `sha256:<hex>` of the cart. */
+  cartHash: string;
+  /** Defaults to now, in seconds since the epoch. */
+  iat?: number;
+}
+
+/** What a closed mandate must be bound to, on top of its open mandate. */
+export interface ClosedMandateVerifyOptions {
+  open: OpenMandateVerifyOptions;
+  requestId: string;
+  cartHash: string;
+}
+
+/** A closed mandate that {@link verifyClosedMandate} accepted. */
+export interface VerifiedClosedMandate {
+  open: VerifiedOpenMandate;
+  /** The delegate payload's `cnf.jwk`, which signed the key binding. */
+  agentJwk: P256PublicJwk;
+  iat: number;
+}
+
+/** Why {@link verifyClosedMandate} rejected the agent's key binding. */
+export type ClosedMandateErrorCode =
+  | "closed_signature"
+  | "closed_aud"
+  | "closed_nonce"
+  | "closed_cart_hash"
+  | "closed_sd_hash"
+  | "closed_iat";
+
+/** A closed mandate whose open mandate verified but whose key binding did not. */
+export class ClosedMandateError extends RangeError {
+  readonly code: ClosedMandateErrorCode;
+
+  constructor(code: ClosedMandateErrorCode) {
+    super(code);
+    this.name = "ClosedMandateError";
+    this.code = code;
+  }
+}
+
 interface TimeOptions {
   currentDate?: number;
   skewSeconds?: number;
 }
 
 const B64URL = /^[A-Za-z0-9_-]+$/;
+const ULID = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/;
+const CART_HASH = /^sha256:[0-9a-f]{64}$/;
 // Canonical unpadded base64url of 32 bytes: 42 characters, then one with zero pad bits.
 const B64URL32 = /^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/;
 const encoder = new TextEncoder();
@@ -332,6 +383,87 @@ async function verifyOpenMandate(
     userAuth: claims.user_auth,
     userCredential,
   };
+}
+
+/** The final KB-SD-JWT of a dSD-JWT and its disclosures, which the closing KB-JWT's `sd_hash` covers. */
+function finalKbSdJwt(openMandate: string): string {
+  return openMandate.slice(openMandate.indexOf("~~") + 2);
+}
+
+/**
+ * Closes an open mandate for one request: appends a KB-JWT signed by the agent key (the delegate
+ * payload's `cnf.jwk`) that binds the request ULID as `nonce` and the cart as `cart_hash`, which
+ * makes the dSD-JWT a dSD-JWT+KB (draft-ietf-oauth-delegate-sd-jwt-00, section 5).
+ * @see https://www.rfc-editor.org/rfc/rfc9901#section-4.3
+ */
+export async function closeMandate(
+  openMandate: string,
+  params: ClosedMandateParams,
+  agentKey: CryptoKey,
+): Promise<string> {
+  const { requestId, cartHash, iat = Math.floor(Date.now() / 1000) } = params;
+  if (!openMandate.endsWith("~") || !openMandate.includes("~~") || openMandate.endsWith("~~")) {
+    throw new RangeError("not an open mandate");
+  }
+  if (!ULID.test(requestId)) throw new RangeError("requestId is not a ULID");
+  if (!CART_HASH.test(cartHash)) throw new RangeError("cartHash is not sha256:<hex>");
+  if (!Number.isSafeInteger(iat)) throw new RangeError("iat must be whole seconds");
+  const kbJwt = await new Jwt({
+    header: { typ: CLOSED_MANDATE_TYP, alg: "ES256" },
+    payload: {
+      iat,
+      aud: CLOSED_MANDATE_AUD,
+      nonce: requestId,
+      sd_hash: sdHash(finalKbSdJwt(openMandate)),
+      cart_hash: cartHash,
+    },
+  }).sign(es256Signer(agentKey));
+  return `${openMandate}${kbJwt}`;
+}
+
+/**
+ * Verifies a closed mandate: the open mandate against the issuer's public key and `opts.open`,
+ * then the agent's KB-JWT against the delegate payload's `cnf.jwk` (RFC 9901 section 7.3,
+ * step 5), bound to `opts.requestId` and `opts.cartHash` and issued within the skew of `now`.
+ * A rejected key binding throws a {@link ClosedMandateError}.
+ *
+ * The WebAuthn assertion in the open mandate's `user_auth` is NOT verified here.
+ */
+export async function verifyClosedMandate(
+  token: string,
+  issuerKey: CryptoKey,
+  opts: ClosedMandateVerifyOptions,
+): Promise<VerifiedClosedMandate> {
+  const split = token.lastIndexOf("~") + 1;
+  const openMandate = token.slice(0, split);
+  const kbJwt = token.slice(split);
+  const open = await verifyOpenMandate(openMandate, issuerKey, opts.open);
+  const agentJwk = publicJwk(jwkOf(open.claims.cnf));
+  let payload: Record<string, unknown>;
+  try {
+    assertStrictJwt(kbJwt);
+    if (decodeProtectedHeader(kbJwt).typ !== CLOSED_MANDATE_TYP) throw new RangeError("typ");
+    const agentKey = (await importJWK(agentJwk, "ES256")) as CryptoKey;
+    const dot = kbJwt.lastIndexOf(".");
+    if (!(await es256Verifier(agentKey)(kbJwt.slice(0, dot), kbJwt.slice(dot + 1)))) {
+      throw new RangeError("signature");
+    }
+    payload = decodeJwt(kbJwt);
+  } catch {
+    throw new ClosedMandateError("closed_signature");
+  }
+  if (payload.sd_hash !== sdHash(finalKbSdJwt(openMandate))) {
+    throw new ClosedMandateError("closed_sd_hash");
+  }
+  if (payload.aud !== CLOSED_MANDATE_AUD) throw new ClosedMandateError("closed_aud");
+  if (payload.nonce !== opts.requestId) throw new ClosedMandateError("closed_nonce");
+  if (payload.cart_hash !== opts.cartHash) throw new ClosedMandateError("closed_cart_hash");
+  const { iat } = payload;
+  const { now, maxSkewSec } = opts.open;
+  if (typeof iat !== "number" || Math.abs(iat - now) > maxSkewSec) {
+    throw new ClosedMandateError("closed_iat");
+  }
+  return { open, agentJwk, iat };
 }
 
 /**
