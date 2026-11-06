@@ -14,7 +14,8 @@
       "!openapi",
       "!**/rfc8785",
       "!**/test/vectors",
-      "!**/src/generated"
+      "!**/src/generated",
+      "!engine/policy/proofs"
     ]
   },
   "formatter": {

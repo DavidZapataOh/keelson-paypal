@@ -6,9 +6,9 @@ The Cedar schema and policy set, the fail-closed evaluator, and the symcc proofs
 
 The proofs need [cvc5 1.3.1](https://github.com/cvc5/cvc5/releases/tag/cvc5-1.3.1), the solver `cedar-policy-symcc` 0.8.1 is verified against. Put it on `PATH` or point `CVC5` at it, and check the release asset before using it:
 
-| Asset | SHA-256 |
-|---|---|
-| `cvc5-macOS-arm64-static.zip` | `a0e7f5b03b1bc4284fbfff7cdfb08c704801701cf7ece83a13f8a505e7581215` |
+| Asset                          | SHA-256                                                            |
+| ------------------------------ | ------------------------------------------------------------------ |
+| `cvc5-macOS-arm64-static.zip`  | `a0e7f5b03b1bc4284fbfff7cdfb08c704801701cf7ece83a13f8a505e7581215` |
 | `cvc5-Linux-x86_64-static.zip` | `1a1cda20d2df4938fa4944a69f33ddc9172e319ece0eed0aa09c4d7abede3ed1` |
 
 ```sh
