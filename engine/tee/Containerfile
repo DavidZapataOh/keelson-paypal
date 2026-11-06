@@ -9,10 +9,15 @@ WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY engine/ ./engine/
 RUN cargo fetch --locked --target x86_64-unknown-linux-musl
-# StageX's Rust links musl dynamically unless asked otherwise.
+# StageX's Rust links musl dynamically unless asked otherwise. Crate-local ThinLTO over 16
+# codegen units names promoted symbols after a hash of each unit's bitcode, which LLVM does not
+# produce deterministically (rust-lang/rust#165355); one unit with fat LTO, symbols stripped.
 RUN --network=none <<EOF
     set -eu
     RUSTFLAGS="-C target-feature=+crt-static" \
+    CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
+    CARGO_PROFILE_RELEASE_LTO=fat \
+    CARGO_PROFILE_RELEASE_STRIP=symbols \
     cargo build \
         --frozen \
         --release \

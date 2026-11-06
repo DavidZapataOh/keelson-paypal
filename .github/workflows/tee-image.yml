@@ -20,6 +20,7 @@ env:
   IMAGE: ghcr.io/davidzapataoh/keelson-engine
   BUILDKIT_IMAGE: moby/buildkit:v0.34.2@sha256:c5f8862f52499773af85bc07695b2379ef08e8002352b0df2c4864c91d78dabe
   BUILDX_VERSION: v0.38.2
+  SKOPEO_IMAGE: quay.io/skopeo/stable:v1.22.3@sha256:2681eccb8b02c495b013c2669cbf7f41d5c0b0b0e644e7c69bd3ea9bcb20641f
   # 25 MB, compressed layers and config.
   MAX_IMAGE_BYTES: 25000000
 
@@ -118,9 +119,10 @@ jobs:
           curl -fsSL -o diffoci "$DIFFOCI_URL"
           echo "$DIFFOCI_SHA256  diffoci" | sha256sum --check --strict
           chmod +x diffoci
+          # Docker cannot load an OCI archive holding an image index, so skopeo copies each image in.
           for builder in a b; do
-            docker load -i "oci-$builder/keelson-engine.tar"
-            docker tag "$IMAGE:$GITHUB_SHA" "keelson-engine:$builder"
+            docker run --rm -v "$PWD:/work" -v /var/run/docker.sock:/var/run/docker.sock "$SKOPEO_IMAGE" \
+              copy "oci-archive:/work/oci-$builder/keelson-engine.tar" "docker-daemon:keelson-engine:$builder"
           done
           ./diffoci diff --semantic --report-dir=report docker://keelson-engine:a docker://keelson-engine:b
       - if: failure() && steps.compare.outcome == 'failure'
@@ -140,8 +142,6 @@ jobs:
       id-token: write
       attestations: write
       artifact-metadata: write
-    env:
-      SKOPEO_IMAGE: quay.io/skopeo/stable:v1.22.3@sha256:2681eccb8b02c495b013c2669cbf7f41d5c0b0b0e644e7c69bd3ea9bcb20641f
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
