@@ -7,6 +7,7 @@ publish.workspace = true
 
 [dependencies]
 cedar-policy = "=4.14.1"
+cedar-policy-symcc = "=0.8.1"
 keelson-canon = { path = "../canon" }
 keelson-core = { path = "../core" }
 keelson-mandate = { path = "../mandate" }
@@ -14,9 +15,15 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.11.1"
 time = { version = "0.3.55", features = ["formatting", "macros", "parsing"] }
+tokio = { version = "1.54.1", features = ["process", "rt"] }
 
 [dev-dependencies]
 criterion = { version = "0.8.2", default-features = false }
+
+[build-dependencies]
+keelson-core = { path = "../core" }
+serde_json = "1"
+sha2 = "0.11.1"
 
 [[bench]]
 name = "evaluate"

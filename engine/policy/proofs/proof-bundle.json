@@ -1,0 +1,275 @@
+{
+  "symcc": "0.8.1",
+  "cvc5": "1.3.1",
+  "cedar_policy": "4.14.1",
+  "policy_set_hash": "sha256:76e3a5959eddc084b99b80a7376d85eeb86f005a7ce447420ac67c3e80902123",
+  "schema_hash": "sha256:3796252b1574d67485d2901c37027334b74bf30de98371b30c7e159558fbc7f9",
+  "spec_hash": "sha256:ef9f19bd456f8517d37ce029ea4754293b4ef906ebe63777ce5a53447d4f3fd7",
+  "results": [
+    {
+      "check": "equivalent",
+      "subject": "checkout/policy_set=spec",
+      "verdict": "verified"
+    },
+    {
+      "check": "never_errors",
+      "subject": "checkout/agent",
+      "verdict": "verified"
+    },
+    {
+      "check": "never_errors",
+      "subject": "checkout/amount",
+      "verdict": "verified"
+    },
+    {
+      "check": "never_errors",
+      "subject": "checkout/budget",
+      "verdict": "verified"
+    },
+    {
+      "check": "never_errors",
+      "subject": "checkout/category",
+      "verdict": "verified"
+    },
+    {
+      "check": "never_errors",
+      "subject": "checkout/currency",
+      "verdict": "verified"
+    },
+    {
+      "check": "never_errors",
+      "subject": "checkout/merchant",
+      "verdict": "verified"
+    },
+    {
+      "check": "never_errors",
+      "subject": "checkout/quantity",
+      "verdict": "verified"
+    },
+    {
+      "check": "never_errors",
+      "subject": "checkout/returns",
+      "verdict": "verified"
+    },
+    {
+      "check": "never_errors",
+      "subject": "checkout/returns_free",
+      "verdict": "verified"
+    },
+    {
+      "check": "never_errors",
+      "subject": "checkout/sanity",
+      "verdict": "verified"
+    },
+    {
+      "check": "never_errors",
+      "subject": "checkout/variant",
+      "verdict": "verified"
+    },
+    {
+      "check": "never_errors",
+      "subject": "checkout/window",
+      "verdict": "verified"
+    },
+    {
+      "check": "never_errors",
+      "subject": "checkout/extra:max_unit_price",
+      "verdict": "verified"
+    },
+    {
+      "check": "never_errors",
+      "subject": "checkout/extra:deny_merchant",
+      "verdict": "verified"
+    },
+    {
+      "check": "never_errors",
+      "subject": "checkout/extra:deny_category",
+      "verdict": "verified"
+    },
+    {
+      "check": "never_errors",
+      "subject": "checkout/extra:require_return_days",
+      "verdict": "verified"
+    },
+    {
+      "check": "satisfiable",
+      "subject": "checkout/policy_set",
+      "verdict": "verified",
+      "witness": {
+        "principal": {
+          "__entity": {
+            "type": "Keelson::Agent",
+            "id": ""
+          }
+        },
+        "action": {
+          "__entity": {
+            "type": "Keelson::Action",
+            "id": "checkout"
+          }
+        },
+        "resource": {
+          "__entity": {
+            "type": "Keelson::Mandate",
+            "id": ""
+          }
+        },
+        "context": {
+          "categories": [],
+          "currency": "",
+          "max_line_qty": 9007199254740991,
+          "max_unit_minor": 9007199254740991,
+          "merchant": "",
+          "now_ms": -1,
+          "return_days": -1,
+          "returns_free": true,
+          "total_minor": 9007199254740991,
+          "variants": []
+        },
+        "entities": [
+          {
+            "uid": {
+              "type": "Keelson::Action",
+              "id": "checkout"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Agent",
+              "id": ""
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Mandate",
+              "id": ""
+            },
+            "attrs": {
+              "agent": {
+                "__entity": {
+                  "type": "Keelson::Agent",
+                  "id": ""
+                }
+              },
+              "budget_left_minor": 9007199254740991,
+              "categories": [],
+              "currency": "",
+              "expires_at_ms": 9007199254740991,
+              "max_qty_per_line": 9007199254740991,
+              "max_total_minor": 9007199254740991,
+              "merchants": [
+                ""
+              ],
+              "min_return_days": -1,
+              "not_before_ms": -1,
+              "returns_free_required": false,
+              "variants": []
+            },
+            "parents": []
+          }
+        ]
+      }
+    },
+    {
+      "check": "not_always_allows",
+      "subject": "checkout/policy_set",
+      "verdict": "verified",
+      "witness": {
+        "principal": {
+          "__entity": {
+            "type": "Keelson::Agent",
+            "id": ""
+          }
+        },
+        "action": {
+          "__entity": {
+            "type": "Keelson::Action",
+            "id": "checkout"
+          }
+        },
+        "resource": {
+          "__entity": {
+            "type": "Keelson::Mandate",
+            "id": ""
+          }
+        },
+        "context": {
+          "categories": [],
+          "currency": "",
+          "max_line_qty": -1,
+          "max_unit_minor": -1,
+          "merchant": "",
+          "now_ms": -1,
+          "return_days": -1,
+          "returns_free": true,
+          "total_minor": -1,
+          "variants": []
+        },
+        "entities": [
+          {
+            "uid": {
+              "type": "Keelson::Action",
+              "id": "checkout"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Agent",
+              "id": ""
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Agent",
+              "id": "A"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Mandate",
+              "id": ""
+            },
+            "attrs": {
+              "agent": {
+                "__entity": {
+                  "type": "Keelson::Agent",
+                  "id": "A"
+                }
+              },
+              "budget_left_minor": -1,
+              "categories": [
+                "A"
+              ],
+              "currency": "",
+              "expires_at_ms": -1,
+              "max_qty_per_line": -1,
+              "max_total_minor": -1,
+              "merchants": [
+                ""
+              ],
+              "min_return_days": -1,
+              "not_before_ms": -1,
+              "returns_free_required": true,
+              "variants": [
+                {
+                  "sku": ""
+                }
+              ]
+            },
+            "parents": []
+          }
+        ]
+      }
+    }
+  ]
+}

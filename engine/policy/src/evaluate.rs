@@ -84,6 +84,17 @@ impl EngineMeta {
             proof_bundle_hash: proof_bundle_hash.to_owned(),
         }
     }
+
+    /// [`Self::new`] with the symcc and cvc5 versions and the proof bundle hash of this build.
+    pub fn current(oci_digest: &str, canonicalizer: &str) -> Self {
+        Self::new(
+            crate::SYMCC_VERSION,
+            crate::CVC5_VERSION,
+            oci_digest,
+            canonicalizer,
+            crate::PROOF_BUNDLE_HASH,
+        )
+    }
 }
 
 const AGENT_TYPE: &str = "Keelson::Agent";
