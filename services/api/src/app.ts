@@ -47,6 +47,10 @@ export interface Deps {
   shutdown?: AbortSignal;
 }
 
+/**
+ * The `info` object of the OpenAPI document.
+ * @internal
+ */
 export const apiInfo = { title: "Keelson API", version: "0.0.0" } as const;
 
 export function createApp(deps: Deps): OpenAPIHono {

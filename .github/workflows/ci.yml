@@ -30,6 +30,7 @@ jobs:
             ${{ runner.os }}-turbo-
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
+      - run: pnpm dlx knip@6.44.1 --production
       - run: |
           status=0
           grep -rEn "paypalMockResponse|PayPal-Mock-Response" packages services apps --exclude-dir=node_modules --exclude-dir=dist || status=$?
@@ -38,6 +39,7 @@ jobs:
       - run: |
           pnpm --filter @keelson/core vectors
           pnpm --filter @keelson/mandate vectors
+          pnpm --filter @keelson/policy vectors
           test -z "$(git status --porcelain)"
 
   services:

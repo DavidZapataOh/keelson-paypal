@@ -1,5 +1,6 @@
 use serde_json::{Map, Value};
 
+use crate::unicode::is_control_or_format;
 use crate::{CATEGORY_IDS, Error};
 
 /// The `acceptable_items` id that stands for any SKU. A mandate that uses it has a single line,
@@ -51,22 +52,26 @@ fn join(path: &str, key: &str) -> String {
     }
 }
 
-/// An object with exactly the given keys; keys marked optional (`?` suffix) may be absent.
-fn strict<'a>(v: &'a Value, path: &str, keys: &[&str]) -> Result<&'a Map<String, Value>> {
+/// An object with exactly the given keys, where keys marked `?` may be absent. `check` validates
+/// the members first and unrecognized keys are rejected after it, the order in which the
+/// TypeScript schema reports them, so both name the same field. A missing key reaches `check` as
+/// `null`.
+fn strict<'a, T>(
+    v: &'a Value,
+    path: &str,
+    keys: &[&str],
+    check: impl FnOnce(&'a Map<String, Value>) -> Result<T>,
+) -> Result<T> {
     let obj = v
         .as_object()
         .ok_or_else(|| invalid(path, "expected object"))?;
+    let out = check(obj)?;
     for key in obj.keys() {
         if !keys.iter().any(|k| k.trim_end_matches('?') == key) {
             return Err(invalid(path, &format!("unrecognized key {key:?}")));
         }
     }
-    for key in keys.iter().filter(|k| !k.ends_with('?')) {
-        if !obj.contains_key(*key) {
-            return Err(invalid(&join(path, key), "required"));
-        }
-    }
-    Ok(obj)
+    Ok(out)
 }
 
 fn get<'a>(obj: &'a Map<String, Value>, key: &str) -> &'a Value {
@@ -77,34 +82,6 @@ fn string<'a>(v: &'a Value, path: &str) -> Result<&'a str> {
     v.as_str().ok_or_else(|| invalid(path, "expected string"))
 }
 
-/// Unicode general category Cf (format) characters, as of Unicode 17.
-fn is_format(c: char) -> bool {
-    matches!(
-        c,
-        '\u{ad}'
-            | '\u{600}'..='\u{605}'
-            | '\u{61c}'
-            | '\u{6dd}'
-            | '\u{70f}'
-            | '\u{890}'..='\u{891}'
-            | '\u{8e2}'
-            | '\u{180e}'
-            | '\u{200b}'..='\u{200f}'
-            | '\u{202a}'..='\u{202e}'
-            | '\u{2060}'..='\u{2064}'
-            | '\u{2066}'..='\u{206f}'
-            | '\u{feff}'
-            | '\u{fff9}'..='\u{fffb}'
-            | '\u{110bd}'
-            | '\u{110cd}'
-            | '\u{13430}'..='\u{1343f}'
-            | '\u{1bca0}'..='\u{1bca3}'
-            | '\u{1d173}'..='\u{1d17a}'
-            | '\u{e0001}'
-            | '\u{e0020}'..='\u{e007f}'
-    )
-}
-
 /// A string of at most `max` UTF-8 bytes (non-empty unless `empty`) with no Unicode control (Cc)
 /// or format (Cf) characters.
 fn text<'a>(v: &'a Value, path: &str, max: usize, empty: bool) -> Result<&'a str> {
@@ -112,7 +89,7 @@ fn text<'a>(v: &'a Value, path: &str, max: usize, empty: bool) -> Result<&'a str
     if !empty && s.is_empty() {
         return Err(invalid(path, "too small"));
     }
-    if s.chars().any(|c| c.is_control() || is_format(c)) {
+    if s.chars().any(is_control_or_format) {
         return Err(invalid(path, "control or format characters"));
     }
     if s.len() > max {
@@ -124,7 +101,7 @@ fn text<'a>(v: &'a Value, path: &str, max: usize, empty: bool) -> Result<&'a str
 /// Whether `s` is a valid merchant `id`: 1 to 128 UTF-8 bytes with no Unicode control (Cc) or
 /// format (Cf) characters.
 pub fn is_merchant_id(s: &str) -> bool {
-    !s.is_empty() && s.len() <= SHORT && !s.chars().any(|c| c.is_control() || is_format(c))
+    !s.is_empty() && s.len() <= SHORT && !s.chars().any(is_control_or_format)
 }
 
 fn matching<'a>(v: &'a Value, path: &str, ok: impl Fn(&str) -> bool) -> Result<&'a str> {
@@ -293,9 +270,33 @@ fn is_js_whitespace(c: char) -> bool {
     )
 }
 
-/// A string the WHATWG URL parser accepts after trimming.
-fn is_url(s: &str) -> bool {
-    url::Url::parse(s.trim_matches(is_js_whitespace)).is_ok()
+fn is_label(l: &[u8]) -> bool {
+    let alnum = |b: &u8| b.is_ascii_lowercase() || b.is_ascii_digit();
+    (1..=63).contains(&l.len())
+        && l.first().is_some_and(alnum)
+        && l.last().is_some_and(alnum)
+        && l.iter().all(|b| alnum(b) || *b == b'-')
+}
+
+fn is_path_char(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b"-._~!$&'()*+,;=:@/?#%".contains(&b)
+}
+
+/// Whether `s` is `https://`, a lowercase ASCII host name whose last label starts with a letter,
+/// and an optional path, with no port or user info: a subset of what every WHATWG URL parser
+/// accepts, checked the same way in every language.
+fn is_website(s: &str) -> bool {
+    let Some(rest) = s.strip_prefix("https://") else {
+        return false;
+    };
+    let (host, path) = rest.split_at(rest.find('/').unwrap_or(rest.len()));
+    let mut labels = host.as_bytes().split(|b| *b == b'.');
+    host.len() <= 253
+        && labels.clone().all(is_label)
+        && labels
+            .next_back()
+            .is_some_and(|l| l.first().is_some_and(u8::is_ascii_lowercase))
+        && path.bytes().all(is_path_char)
 }
 
 fn p256_jwk(v: &Value, path: &str, kid: bool) -> Result {
@@ -304,15 +305,16 @@ fn p256_jwk(v: &Value, path: &str, kid: bool) -> Result {
     } else {
         &["kty", "crv", "x", "y"]
     };
-    let jwk = strict(v, path, keys)?;
-    literal(get(jwk, "kty"), &join(path, "kty"), "EC")?;
-    literal(get(jwk, "crv"), &join(path, "crv"), "P-256")?;
-    matching(get(jwk, "x"), &join(path, "x"), is_b64url32)?;
-    matching(get(jwk, "y"), &join(path, "y"), is_b64url32)?;
-    if kid {
-        text(get(jwk, "kid"), &join(path, "kid"), SHORT, false)?;
-    }
-    Ok(())
+    strict(v, path, keys, |jwk| {
+        literal(get(jwk, "kty"), &join(path, "kty"), "EC")?;
+        literal(get(jwk, "crv"), &join(path, "crv"), "P-256")?;
+        matching(get(jwk, "x"), &join(path, "x"), is_b64url32)?;
+        matching(get(jwk, "y"), &join(path, "y"), is_b64url32)?;
+        if kid {
+            text(get(jwk, "kid"), &join(path, "kid"), SHORT, false)?;
+        }
+        Ok(())
+    })
 }
 
 fn currency(v: &Value, path: &str) -> Result {
@@ -336,27 +338,27 @@ fn payment_constraint(c: &Value, path: &str) -> Result {
     let p = |k: &str| join(path, k);
     match constraint_type(c, path)? {
         "payment.amount_range" | "payment.budget" => {
-            let o = strict(c, path, &["type", "max", "currency"])?;
-            integer(get(o, "max"), &p("max"), 0.0)?;
-            currency(get(o, "currency"), &p("currency"))
-        }
-        "payment.allowed_payees" => {
-            let o = strict(c, path, &["type", "allowed"])?;
-            each(get(o, "allowed"), &p("allowed"), 1, |v, path| {
-                let payee = strict(v, path, &["paypal_merchant_id"])?;
-                text(
-                    get(payee, "paypal_merchant_id"),
-                    &join(path, "paypal_merchant_id"),
-                    SHORT,
-                    false,
-                )
-                .map(drop)
+            strict(c, path, &["type", "max", "currency"], |o| {
+                integer(get(o, "max"), &p("max"), 0.0)?;
+                currency(get(o, "currency"), &p("currency"))
             })
         }
-        "payment.execution_date" => {
-            let o = strict(c, path, &["type", "not_after"])?;
+        "payment.allowed_payees" => strict(c, path, &["type", "allowed"], |o| {
+            each(get(o, "allowed"), &p("allowed"), 1, |v, path| {
+                strict(v, path, &["paypal_merchant_id"], |payee| {
+                    text(
+                        get(payee, "paypal_merchant_id"),
+                        &join(path, "paypal_merchant_id"),
+                        SHORT,
+                        false,
+                    )
+                    .map(drop)
+                })
+            })
+        }),
+        "payment.execution_date" => strict(c, path, &["type", "not_after"], |o| {
             matching(get(o, "not_after"), &p("not_after"), is_datetime).map(drop)
-        }
+        }),
         _ => Err(invalid(&p("type"), "invalid discriminator")),
     }
 }
@@ -370,38 +372,46 @@ fn category(v: &Value, path: &str) -> Result {
 }
 
 fn merchant(v: &Value, path: &str) -> Result {
-    let m = strict(v, path, &["id", "name", "website", "paypal_merchant_id"])?;
-    text(get(m, "id"), &join(path, "id"), SHORT, false)?;
-    text(get(m, "name"), &join(path, "name"), SHORT, false)?;
-    if matching(get(m, "website"), &join(path, "website"), is_url)?.len() > URL {
-        return Err(invalid(&join(path, "website"), "too long"));
-    }
-    text(
-        get(m, "paypal_merchant_id"),
-        &join(path, "paypal_merchant_id"),
-        SHORT,
-        false,
+    strict(
+        v,
+        path,
+        &["id", "name", "website", "paypal_merchant_id"],
+        |m| {
+            text(get(m, "id"), &join(path, "id"), SHORT, false)?;
+            text(get(m, "name"), &join(path, "name"), SHORT, false)?;
+            if matching(get(m, "website"), &join(path, "website"), is_website)?.len() > URL {
+                return Err(invalid(&join(path, "website"), "too long"));
+            }
+            text(
+                get(m, "paypal_merchant_id"),
+                &join(path, "paypal_merchant_id"),
+                SHORT,
+                false,
+            )
+            .map(drop)
+        },
     )
-    .map(drop)
 }
 
 fn line_item(v: &Value, path: &str) -> Result {
-    let item = strict(v, path, &["id", "acceptable_items", "quantity"])?;
-    text(get(item, "id"), &join(path, "id"), SHORT, false)?;
-    each(
-        get(item, "acceptable_items"),
-        &join(path, "acceptable_items"),
-        1,
-        |v, path| {
-            let a = strict(v, path, &["id", "title?"])?;
-            text(get(a, "id"), &join(path, "id"), SHORT, false)?;
-            match a.get("title") {
-                Some(t) => text(t, &join(path, "title"), MEDIUM, true).map(drop),
-                None => Ok(()),
-            }
-        },
-    )?;
-    integer(get(item, "quantity"), &join(path, "quantity"), 1.0).map(drop)
+    strict(v, path, &["id", "acceptable_items", "quantity"], |item| {
+        text(get(item, "id"), &join(path, "id"), SHORT, false)?;
+        each(
+            get(item, "acceptable_items"),
+            &join(path, "acceptable_items"),
+            1,
+            |v, path| {
+                strict(v, path, &["id", "title?"], |a| {
+                    text(get(a, "id"), &join(path, "id"), SHORT, false)?;
+                    match a.get("title") {
+                        Some(t) => text(t, &join(path, "title"), MEDIUM, true).map(drop),
+                        None => Ok(()),
+                    }
+                })
+            },
+        )?;
+        integer(get(item, "quantity"), &join(path, "quantity"), 1.0).map(drop)
+    })
 }
 
 /// Whether a line accepts any item. Such a line accepts nothing else, and its title, which says
@@ -425,21 +435,17 @@ fn any_item(line: &Value, path: &str) -> Result<bool> {
 fn checkout_constraint(c: &Value, path: &str) -> Result {
     let p = |k: &str| join(path, k);
     match constraint_type(c, path)? {
-        "checkout.allowed_merchants" => {
-            let o = strict(c, path, &["type", "allowed"])?;
+        "checkout.allowed_merchants" => strict(c, path, &["type", "allowed"], |o| {
             each(get(o, "allowed"), &p("allowed"), 1, merchant)
-        }
-        "checkout.line_items" => {
-            let o = strict(c, path, &["type", "items"])?;
+        }),
+        "checkout.line_items" => strict(c, path, &["type", "items"], |o| {
             each(get(o, "items"), &p("items"), 0, line_item)
-        }
-        "keelson.category" => {
-            let o = strict(c, path, &["type", "allow", "deny"])?;
+        }),
+        "keelson.category" => strict(c, path, &["type", "allow", "deny"], |o| {
             each(get(o, "allow"), &p("allow"), 1, category)?;
             each(get(o, "deny"), &p("deny"), 0, category)
-        }
-        "keelson.attributes" => {
-            let o = strict(c, path, &["type", "must"])?;
+        }),
+        "keelson.attributes" => strict(c, path, &["type", "must"], |o| {
             let must = get(o, "must")
                 .as_object()
                 .ok_or_else(|| invalid(&p("must"), "expected record"))?;
@@ -449,12 +455,11 @@ fn checkout_constraint(c: &Value, path: &str) -> Result {
                 text(v, &path, MEDIUM, true)?;
             }
             Ok(())
-        }
-        "keelson.returns" => {
-            let o = strict(c, path, &["type", "min_days", "free"])?;
+        }),
+        "keelson.returns" => strict(c, path, &["type", "min_days", "free"], |o| {
             integer(get(o, "min_days"), &p("min_days"), 0.0)?;
             boolean(get(o, "free"), &p("free"))
-        }
+        }),
         _ => Err(invalid(&p("type"), "invalid discriminator")),
     }
 }
@@ -488,31 +493,8 @@ fn require_counts(
     Ok(())
 }
 
-/// Validates a `keelson.mandate.1` payload: unknown keys and constraint types are rejected, and
-/// the error names the offending field.
-pub fn parse_mandate(m: &Value) -> Result {
-    let root = strict(
-        m,
-        "",
-        &[
-            "v",
-            "mid",
-            "iat",
-            "nbf",
-            "exp",
-            "nonce",
-            "mode",
-            "user",
-            "agent",
-            "payment",
-            "checkout",
-            "intent",
-            "policy",
-            "consent",
-            "zk",
-            "risk_data",
-        ],
-    )?;
+/// Checks the members of a mandate in schema order and returns it with `iat`, `nbf` and `exp`.
+fn members(root: &Map<String, Value>) -> Result<(&Map<String, Value>, i64, i64, i64)> {
     let at = |k: &str| get(root, k);
     literal(at("v"), "v", "keelson.mandate.1")?;
     matching(at("mid"), "mid", is_ulid)?;
@@ -525,95 +507,131 @@ pub fn parse_mandate(m: &Value) -> Result {
         return Err(invalid("mode", "invalid option"));
     }
 
-    let user = strict(at("user"), "user", &["sub", "cred", "app_login_id"])?;
-    text(get(user, "sub"), "user.sub", SHORT, false)?;
-    let cred = strict(get(user, "cred"), "user.cred", &["id", "rp_id", "jwk"])?;
-    matching(get(cred, "id"), "user.cred.id", crate::b64::is_base64url)?;
-    text(get(cred, "rp_id"), "user.cred.rp_id", SHORT, false)?;
-    p256_jwk(get(cred, "jwk"), "user.cred.jwk", false)?;
-    text(
-        get(user, "app_login_id"),
-        "user.app_login_id",
-        MEDIUM,
-        false,
+    strict(
+        at("user"),
+        "user",
+        &["sub", "cred", "app_login_id"],
+        |user| {
+            text(get(user, "sub"), "user.sub", SHORT, false)?;
+            strict(
+                get(user, "cred"),
+                "user.cred",
+                &["id", "rp_id", "jwk"],
+                |cred| {
+                    matching(get(cred, "id"), "user.cred.id", crate::b64::is_base64url)?;
+                    text(get(cred, "rp_id"), "user.cred.rp_id", SHORT, false)?;
+                    p256_jwk(get(cred, "jwk"), "user.cred.jwk", false)
+                },
+            )?;
+            text(
+                get(user, "app_login_id"),
+                "user.app_login_id",
+                MEDIUM,
+                false,
+            )
+            .map(drop)
+        },
     )?;
 
-    let agent = strict(at("agent"), "agent", &["operator", "cnf", "bond"])?;
-    let operator = strict(
-        get(agent, "operator"),
-        "agent.operator",
-        &["agent_registry", "agent_id"],
+    strict(
+        at("agent"),
+        "agent",
+        &["operator", "cnf", "bond"],
+        |agent| {
+            strict(
+                get(agent, "operator"),
+                "agent.operator",
+                &["agent_registry", "agent_id"],
+                |operator| {
+                    text(
+                        get(operator, "agent_registry"),
+                        "agent.operator.agent_registry",
+                        MEDIUM,
+                        false,
+                    )?;
+                    text(
+                        get(operator, "agent_id"),
+                        "agent.operator.agent_id",
+                        SHORT,
+                        false,
+                    )
+                    .map(drop)
+                },
+            )?;
+            strict(get(agent, "cnf"), "agent.cnf", &["jwk"], |cnf| {
+                p256_jwk(get(cnf, "jwk"), "agent.cnf.jwk", true)
+            })?;
+            strict(
+                get(agent, "bond"),
+                "agent.bond",
+                &["vault", "asset", "min"],
+                |bond| {
+                    text(get(bond, "vault"), "agent.bond.vault", MEDIUM, false)?;
+                    text(get(bond, "asset"), "agent.bond.asset", SHORT, false)?;
+                    integer(get(bond, "min"), "agent.bond.min", 0.0).map(drop)
+                },
+            )
+        },
     )?;
-    text(
-        get(operator, "agent_registry"),
-        "agent.operator.agent_registry",
-        MEDIUM,
-        false,
-    )?;
-    text(
-        get(operator, "agent_id"),
-        "agent.operator.agent_id",
-        SHORT,
-        false,
-    )?;
-    let cnf = strict(get(agent, "cnf"), "agent.cnf", &["jwk"])?;
-    p256_jwk(get(cnf, "jwk"), "agent.cnf.jwk", true)?;
-    let bond = strict(get(agent, "bond"), "agent.bond", &["vault", "asset", "min"])?;
-    text(get(bond, "vault"), "agent.bond.vault", MEDIUM, false)?;
-    text(get(bond, "asset"), "agent.bond.asset", SHORT, false)?;
-    integer(get(bond, "min"), "agent.bond.min", 0.0)?;
 
-    let payment = strict(
+    strict(
         at("payment"),
         "payment",
         &["rail", "currency", "constraints"],
-    )?;
-    literal(get(payment, "rail"), "payment.rail", "paypal")?;
-    currency(get(payment, "currency"), "payment.currency")?;
-    each(
-        get(payment, "constraints"),
-        "payment.constraints",
-        0,
-        payment_constraint,
-    )?;
-
-    let checkout = strict(at("checkout"), "checkout", &["constraints"])?;
-    each(
-        get(checkout, "constraints"),
-        "checkout.constraints",
-        0,
-        checkout_constraint,
+        |payment| {
+            literal(get(payment, "rail"), "payment.rail", "paypal")?;
+            currency(get(payment, "currency"), "payment.currency")?;
+            each(
+                get(payment, "constraints"),
+                "payment.constraints",
+                0,
+                payment_constraint,
+            )
+        },
     )?;
 
-    let intent = strict(
+    strict(at("checkout"), "checkout", &["constraints"], |checkout| {
+        each(
+            get(checkout, "constraints"),
+            "checkout.constraints",
+            0,
+            checkout_constraint,
+        )
+    })?;
+
+    strict(
         at("intent"),
         "intent",
         &["prompt_summary", "prompt_hash", "subjective"],
+        |intent| {
+            text(
+                get(intent, "prompt_summary"),
+                "intent.prompt_summary",
+                SUMMARY,
+                true,
+            )?;
+            matching(get(intent, "prompt_hash"), "intent.prompt_hash", is_sha256)?;
+            strings(get(intent, "subjective"), "intent.subjective")
+        },
     )?;
-    text(
-        get(intent, "prompt_summary"),
-        "intent.prompt_summary",
-        SUMMARY,
-        true,
-    )?;
-    matching(get(intent, "prompt_hash"), "intent.prompt_hash", is_sha256)?;
-    strings(get(intent, "subjective"), "intent.subjective")?;
 
-    let policy = strict(
+    strict(
         at("policy"),
         "policy",
         &["engine", "version", "policy_set_hash", "measurements"],
+        |policy| {
+            text(get(policy, "engine"), "policy.engine", SHORT, false)?;
+            text(get(policy, "version"), "policy.version", SHORT, false)?;
+            matching(
+                get(policy, "policy_set_hash"),
+                "policy.policy_set_hash",
+                is_sha256,
+            )?;
+            strings(get(policy, "measurements"), "policy.measurements")
+        },
     )?;
-    text(get(policy, "engine"), "policy.engine", SHORT, false)?;
-    text(get(policy, "version"), "policy.version", SHORT, false)?;
-    matching(
-        get(policy, "policy_set_hash"),
-        "policy.policy_set_hash",
-        is_sha256,
-    )?;
-    strings(get(policy, "measurements"), "policy.measurements")?;
 
-    let consent = strict(
+    strict(
         at("consent"),
         "consent",
         &[
@@ -623,30 +641,62 @@ pub fn parse_mandate(m: &Value) -> Result {
             "merchant_policy_ack",
             "recurrence_ack",
         ],
+        |consent| {
+            matching(get(consent, "terms_hash"), "consent.terms_hash", is_sha256)?;
+            boolean(get(consent, "instruction_use"), "consent.instruction_use")?;
+            boolean(
+                get(consent, "responsibility_ack"),
+                "consent.responsibility_ack",
+            )?;
+            text(
+                get(consent, "merchant_policy_ack"),
+                "consent.merchant_policy_ack",
+                SHORT,
+                false,
+            )?;
+            boolean(get(consent, "recurrence_ack"), "consent.recurrence_ack")
+        },
     )?;
-    matching(get(consent, "terms_hash"), "consent.terms_hash", is_sha256)?;
-    boolean(get(consent, "instruction_use"), "consent.instruction_use")?;
-    boolean(
-        get(consent, "responsibility_ack"),
-        "consent.responsibility_ack",
-    )?;
-    text(
-        get(consent, "merchant_policy_ack"),
-        "consent.merchant_policy_ack",
-        SHORT,
-        false,
-    )?;
-    boolean(get(consent, "recurrence_ack"), "consent.recurrence_ack")?;
 
-    let zk = strict(at("zk"), "zk", &["commitment"])?;
-    matching(get(zk, "commitment"), "zk.commitment", |s| {
-        is_prefixed_hex(s, "0x")
+    strict(at("zk"), "zk", &["commitment"], |zk| {
+        matching(get(zk, "commitment"), "zk.commitment", |s| {
+            is_prefixed_hex(s, "0x")
+        })
+        .map(drop)
     })?;
 
-    let risk = strict(at("risk_data"), "risk_data", &["device_fp", "ip"])?;
-    text(get(risk, "device_fp"), "risk_data.device_fp", SHORT, true)?;
-    text(get(risk, "ip"), "risk_data.ip", SHORT, true)?;
+    strict(at("risk_data"), "risk_data", &["device_fp", "ip"], |risk| {
+        text(get(risk, "device_fp"), "risk_data.device_fp", SHORT, true)?;
+        text(get(risk, "ip"), "risk_data.ip", SHORT, true).map(drop)
+    })?;
+    Ok((root, iat, nbf, exp))
+}
 
+/// Validates a `keelson.mandate.1` payload: unknown keys and constraint types are rejected, and
+/// the error names the offending field.
+pub fn parse_mandate(m: &Value) -> Result {
+    let keys = [
+        "v",
+        "mid",
+        "iat",
+        "nbf",
+        "exp",
+        "nonce",
+        "mode",
+        "user",
+        "agent",
+        "payment",
+        "checkout",
+        "intent",
+        "policy",
+        "consent",
+        "zk",
+        "risk_data",
+    ];
+    let (root, iat, nbf, exp) = strict(m, "", &keys, members)?;
+    let at = |k: &str| get(root, k);
+    let payment = at("payment").as_object().expect("checked by members");
+    let checkout = at("checkout").as_object().expect("checked by members");
     if nbf < iat {
         return Err(invalid("nbf", "nbf is before iat"));
     }

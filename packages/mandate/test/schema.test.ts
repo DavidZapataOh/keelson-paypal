@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fieldColors, type ZkTlsField } from "../src/colors.ts";
-import { MandateError, parseMandate } from "../src/schema.ts";
+import { isMerchantId, MandateError, parseMandate } from "../src/schema.ts";
 import demo from "./fixtures/demo-mandate.json" with { type: "json" };
 
 // biome-ignore lint/suspicious/noExplicitAny: tests mutate arbitrary fields to build invalid input
@@ -198,6 +198,64 @@ describe("encodings", () => {
     const n = clone();
     n.policy.policy_set_hash = "abc";
     expect(fieldOf(n)).toBe("policy.policy_set_hash");
+  });
+});
+
+describe("text", () => {
+  const website = "checkout.constraints.0.allowed.0.website";
+  const withWebsite = (url: string) => {
+    const m = clone();
+    m.checkout.constraints[0].allowed[0].website = url;
+    return m;
+  };
+
+  it.each([
+    "https://shop.example",
+    "https://xn--caf-dma.example",
+    "https://xn--a.example",
+    "https://a-b.c0.example/path/to?q=1&r=%20#top",
+    "https://localhost",
+  ])("accepts the website %s", (url) => {
+    expect(() => parseMandate(withWebsite(url))).not.toThrow();
+  });
+
+  it.each([
+    "http://shop.example",
+    "HTTPS://shop.example",
+    "https://Shop.example",
+    "https://shop.example:443",
+    "https://user@shop.example",
+    " https://shop.example",
+    "https://shop.example ",
+    "https://-shop.example",
+    "https://shop-.example",
+    "https://shop..example",
+    "https://shop.example.",
+    "https://",
+    "https://shop.example/a b",
+    "https://shop.example/a\\b",
+    "https://shop.example?q",
+    "https://192.168.0.1",
+    `https://${"a".repeat(64)}.example`,
+    `https://${"a.".repeat(127)}example`,
+    "https://café.example",
+  ])("rejects the website %j", (url) => {
+    expect(fieldOf(withWebsite(url))).toBe(website);
+  });
+
+  it("rejects lone surrogates", () => {
+    const m = clone();
+    m.checkout.constraints[0].allowed[0].name = "a\ud800";
+    expect(fieldOf(m)).toBe("checkout.constraints.0.allowed.0.name");
+  });
+
+  it("checks merchant ids against the same character table", () => {
+    for (const id of ["mrc_runfast", "東京の店", "😀", "a".repeat(128)]) {
+      expect(isMerchantId(id), id).toBe(true);
+    }
+    for (const id of ["", "a".repeat(129), "a\u200bb", "a\u0085", "a\u{e0041}", "a\ud800"]) {
+      expect(isMerchantId(id), id).toBe(false);
+    }
   });
 });
 

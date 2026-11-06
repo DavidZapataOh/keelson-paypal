@@ -134,10 +134,13 @@ describe("currencyNumeric", () => {
 describe("golden vectors", () => {
   it.each(vectors)("$name", ({ input, expected }) => {
     const currency = input.currency as CurrencyCode;
-    const run = () =>
-      input.op === "toPayPalValue"
-        ? toPayPalValue({ currency, minor: BigInt(input.minor as string) })
-        : fromPayPalValue(currency, input.value as string).minor.toString();
+    const run = () => {
+      if (input.op === "toPayPalValue") {
+        return toPayPalValue({ currency, minor: BigInt(input.minor as string) });
+      }
+      if (input.op === "currencyNumeric") return currencyNumeric(currency).toString();
+      return fromPayPalValue(currency, input.value as string).minor.toString();
+    };
     if (expected === "error") expect(run).toThrow();
     else expect(run()).toBe(expected);
   });

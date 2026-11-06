@@ -26,6 +26,7 @@ export const OPEN_MANDATE_TYP = "kb-sd-jwt+kb";
 /** `vct` of the user credential. */
 export const USER_CREDENTIAL_VCT = "https://keelson.finance/credentials/user/v1";
 
+/** A P-256 public key as a JWK (RFC 7518 section 6.2.1). */
 export interface P256PublicJwk {
   kty: "EC";
   crv: "P-256";
@@ -33,6 +34,7 @@ export interface P256PublicJwk {
   y: string;
 }
 
+/** What {@link issueUserCredential} binds into the user credential. */
 export interface UserCredentialParams {
   iss: string;
   sub: string;
@@ -49,6 +51,7 @@ export interface UserAuth {
   signature: string;
 }
 
+/** What {@link issueOpenMandate} signs into the open mandate. */
 export interface OpenMandateParams {
   /** The user credential, as issued: an SD-JWT with its trailing `~`. Its disclosures are dropped. */
   userCredential: string;
@@ -59,6 +62,7 @@ export interface OpenMandateParams {
   nonce: string;
 }
 
+/** A credential that {@link verifyCredential} accepted. */
 export interface VerifiedCredential {
   header: Record<string, unknown>;
   /** The payload as signed, with its `_sd` digests. */
@@ -67,6 +71,7 @@ export interface VerifiedCredential {
   claims: Record<string, unknown>;
 }
 
+/** An open mandate that {@link verifyCredential} accepted. */
 export interface VerifiedOpenMandate extends VerifiedCredential {
   /** The delegate payload without its `cnf`, parsed as a mandate. */
   mandate: Mandate;
@@ -118,9 +123,22 @@ const es256Verifier = (key: CryptoKey) => async (data: string, signature: string
   }
 };
 
+const JWK_MEMBERS: ReadonlySet<string> = new Set(["kty", "crv", "x", "y", "kid"]);
+
+/**
+ * The `cnf.jwk` member: a P-256 key with canonical coordinates and no members but `kty`, `crv`,
+ * `x`, `y` and a string `kid`, so `key_ops`, `ext` and private key material never reach WebCrypto.
+ */
 function jwkOf(cnf: unknown): P256PublicJwk {
   const jwk = (cnf as { jwk?: P256PublicJwk } | undefined)?.jwk;
   if (jwk?.kty !== "EC" || jwk.crv !== "P-256") throw new RangeError("missing cnf.jwk");
+  const { kid } = jwk as { kid?: unknown };
+  if (
+    Object.keys(jwk).some((k) => !JWK_MEMBERS.has(k)) ||
+    !["undefined", "string"].includes(typeof kid)
+  ) {
+    throw new RangeError("cnf.jwk has members other than kty, crv, x, y and kid");
+  }
   if (!B64URL32.test(String(jwk.x)) || !B64URL32.test(String(jwk.y))) {
     throw new RangeError("cnf.jwk coordinates are not canonical base64url");
   }

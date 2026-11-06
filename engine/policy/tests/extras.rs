@@ -472,3 +472,37 @@ fn evidence_never_changes_the_color_of_an_extra() {
         assert!(f.evidence.is_empty(), "{f:?}");
     }
 }
+
+/// Extras read from JSON and compiled exactly as the TypeScript evaluator reads and compiles
+/// them, policy text included.
+#[test]
+fn extras_vectors() {
+    let vectors: Vec<Value> = serde_json::from_str(include_str!(
+        "../../../packages/policy/test/vectors/extras.json"
+    ))
+    .unwrap();
+    assert_eq!(vectors.len(), 24);
+    for v in vectors {
+        let (name, expected) = (&v["name"], &v["expected"]);
+        let Ok(extras) = serde_json::from_value::<Vec<Extra>>(v["input"].clone()) else {
+            assert_eq!(*expected, json!({ "error": "grammar" }), "{name}");
+            continue;
+        };
+        let got = match compile_extras(&extras) {
+            Ok(compiled) => json!(compiled),
+            Err(e) => json!({ "error": reason(e.reason), "index": e.index }),
+        };
+        assert_eq!(got, *expected, "{name}");
+    }
+}
+
+fn reason(r: InvalidExtra) -> &'static str {
+    match r {
+        InvalidExtra::Price => "price",
+        InvalidExtra::ReturnDays => "return_days",
+        InvalidExtra::MerchantId => "merchant_id",
+        InvalidExtra::CategoryId => "category_id",
+        InvalidExtra::Cedar => "cedar",
+        InvalidExtra::TooMany => "too_many",
+    }
+}

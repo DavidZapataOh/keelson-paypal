@@ -1,0 +1,57 @@
+[
+  {
+    "name": "fieldFromAscii/\"KEELSON_MANDATE\"",
+    "input": "KEELSON_MANDATE",
+    "expected": "0x00000000000000000000000000000000004b45454c534f4e5f4d414e44415445"
+  },
+  {
+    "name": "fieldFromAscii/\"KEELSON_MERCHANT\"",
+    "input": "KEELSON_MERCHANT",
+    "expected": "0x000000000000000000000000000000004b45454c534f4e5f4d45524348414e54"
+  },
+  {
+    "name": "fieldFromAscii/\"A\"",
+    "input": "A",
+    "expected": "0x0000000000000000000000000000000000000000000000000000000000000041"
+  },
+  {
+    "name": "fieldFromAscii/\"\\u0000A\"",
+    "input": "\u0000A",
+    "expected": "0x0000000000000000000000000000000000000000000000000000000000000041"
+  },
+  {
+    "name": "fieldFromAscii/\"ab\\u0000\"",
+    "input": "ab\u0000",
+    "expected": "0x0000000000000000000000000000000000000000000000000000000000616200"
+  },
+  {
+    "name": "fieldFromAscii/\"\"",
+    "input": "",
+    "expected": "0x000000000000000000000000000000000000000000000000000000000000007f"
+  },
+  {
+    "name": "fieldFromAscii/\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"",
+    "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "expected": "0x0078787878787878787878787878787878787878787878787878787878787878"
+  },
+  {
+    "name": "fieldFromAscii/\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"",
+    "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "expected": "error"
+  },
+  {
+    "name": "fieldFromAscii/\"\"",
+    "input": "",
+    "expected": "error"
+  },
+  {
+    "name": "fieldFromAscii/\"é\"",
+    "input": "é",
+    "expected": "error"
+  },
+  {
+    "name": "fieldFromAscii/\"😀\"",
+    "input": "😀",
+    "expected": "error"
+  }
+]

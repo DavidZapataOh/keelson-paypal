@@ -11,7 +11,10 @@ declare module "hono" {
   }
 }
 
-/** The lock must outlive the request timeout (30 s) so a handler cannot outlast it. */
+/**
+ * The lock must outlive the request timeout (30 s) so a handler cannot outlast it.
+ * @internal
+ */
 export const LOCK_SECONDS = 60;
 const DONE_SECONDS = 86_400;
 const encoder = new TextEncoder();

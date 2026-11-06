@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use keelson_canon::{Cart, Context, PayPalUnit, canonicalize};
-use keelson_mandate::{Jwk, OpenMandateOptions, verify_credential};
+use keelson_mandate::{Jwk, OpenMandateVerifyOptions, verify_credential};
 use keelson_policy::{
     Decision, EngineMeta, EvalInput, Trace, agent_uid, evaluate, evaluate_context, mandate_agent,
     policy_texts, trace_jcs,
@@ -555,7 +555,7 @@ fn a_signed_open_mandate_allows_its_cart() {
     .unwrap();
     let valid = &vectors.iter().find(|v| v["name"] == "l2/valid").unwrap()["input"];
     let o = &valid["opts"];
-    let opts = OpenMandateOptions {
+    let opts = OpenMandateVerifyOptions {
         expected_aud: o["expectedAud"].as_str().unwrap().into(),
         expected_nonce: o["expectedNonce"].as_str().unwrap().into(),
         now: o["now"].as_i64().unwrap(),

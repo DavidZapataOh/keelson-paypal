@@ -66,21 +66,25 @@ export interface LeafPreimage {
 }
 
 /**
- * Ordered merchant tree. `leaves` are the merchant fields in ascending order; leaf `i + 1`
- * of the tree holds `leaves[i]`, and leaf 0 holds the zero value.
+ * Ordered merchant tree, as {@link merchantTree} builds it. `leaves` are the merchant fields in
+ * ascending order; leaf `i + 1` of the tree holds `leaves[i]`, and leaf 0 holds the zero value.
  */
 export interface MerchantTree {
-  root: bigint;
-  leaves: bigint[];
-  layers: bigint[][];
+  readonly root: bigint;
+  readonly leaves: readonly bigint[];
 }
 
+/** The node layers of each tree {@link merchantTree} built, from the leaves up. */
+const LAYERS = new WeakMap<MerchantTree, readonly bigint[][]>();
+
+/** The opening of the leaf that holds a merchant, at slot `index`. */
 export interface MembershipProof {
   leaf: LeafPreimage;
   path: bigint[];
   index: number;
 }
 
+/** The opening of the low leaf of a merchant that is not in the tree, at slot `index`. */
 export interface NonMembershipProof {
   low: LeafPreimage;
   path: bigint[];
@@ -147,11 +151,22 @@ export async function merchantTree(ids: readonly string[]): Promise<MerchantTree
     layers.push(next);
     layer = next;
   }
-  return { root: layer[0] as bigint, leaves, layers };
+  const tree: MerchantTree = Object.freeze({
+    root: layer[0] as bigint,
+    leaves: Object.freeze(leaves),
+  });
+  LAYERS.set(tree, layers);
+  return tree;
 }
 
-function pathOf(tree: MerchantTree, index: number): bigint[] {
-  return tree.layers.slice(0, DEPTH).map((layer, h) => layer[(index >> h) ^ 1] as bigint);
+/**
+ * The siblings on the path from slot `index` to the root.
+ * @internal
+ */
+export function pathOf(tree: MerchantTree, index: number): bigint[] {
+  const layers = LAYERS.get(tree);
+  if (!layers) throw new TypeError("not a tree built by merchantTree");
+  return layers.slice(0, DEPTH).map((layer, h) => layer[(index >> h) ^ 1] as bigint);
 }
 
 async function rootOf(leaf: LeafPreimage, index: number, path: readonly bigint[]): Promise<bigint> {

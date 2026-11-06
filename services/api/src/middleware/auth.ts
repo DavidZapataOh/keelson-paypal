@@ -53,7 +53,10 @@ function invalidToken(c: Context): Response {
   );
 }
 
-/** Admits only OAuth clients whose access token carries every scope in `scopes`. */
+/**
+ * Admits only OAuth clients whose access token carries every scope in `scopes`.
+ * @internal
+ */
 export function requireClient(scopes: string[]): MiddlewareHandler {
   return async (c, next) => {
     if (c.var.invalidToken) return invalidToken(c);

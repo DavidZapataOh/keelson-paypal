@@ -1,6 +1,10 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "workspaces": {
+    "packages/compiler": {
+      "entry": ["src/index.ts!", "eval/run.ts"],
+      "project": ["src/**/*.ts!", "eval/**/*.ts", "test/**/*.ts"]
+    },
     "packages/core": {
       "entry": ["src/index.ts!", "src/poseidon2.ts!", "bench/*.bench.ts"],
       "project": ["src/**/*.ts!", "scripts/**/*.ts", "bench/**/*.ts", "test/**/*.ts"]
@@ -9,9 +13,17 @@
       "entry": ["src/index.ts!", "src/migrate.ts!", "bench/*.bench.ts"],
       "project": ["src/**/*.ts!", "bench/**/*.ts", "test/**/*.ts"]
     },
+    "packages/mandate": {
+      "entry": ["src/index.ts!", "src/browser.ts!", "scripts/*.ts", "bench/*.bench.ts"],
+      "project": ["src/**/*.ts!", "scripts/**/*.ts", "bench/**/*.ts", "test/**/*.ts"]
+    },
     "packages/paypal": {
       "entry": ["src/index.ts!", "scripts/*.ts", "test/sandbox/*.sandbox.test.ts"],
       "project": ["src/**/*.ts!", "scripts/**/*.ts", "test/**/*.ts"]
+    },
+    "packages/policy": {
+      "entry": ["src/index.ts!", "src/generated/hashes.ts!", "scripts/*.ts", "bench/*.bench.ts"],
+      "project": ["src/**/*.ts!", "scripts/**/*.ts", "bench/**/*.ts", "test/**/*.ts"]
     },
     "services/api": {
       "entry": ["src/server.ts!", "scripts/*.ts", "bench/*.bench.ts"],

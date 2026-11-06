@@ -21,7 +21,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "bench": "node bench/evaluate.bench.ts",
-    "embed": "node scripts/embed.ts"
+    "embed": "node scripts/embed.ts",
+    "vectors": "node scripts/vectors.ts"
   },
   "dependencies": {
     "@cedar-policy/cedar-wasm": "4.14.0",

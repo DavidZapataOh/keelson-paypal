@@ -1,5 +1,9 @@
 import { ANY_ITEM, type Mandate } from "./schema.ts";
 
+/**
+ * How a field is enforced: green when Keelson checks it, amber when the agent operator answers for
+ * it, gray when only the user can judge it.
+ */
 export type Color = "green" | "amber" | "gray";
 
 /** The fields of a mandate card, in the order the card shows them. */
@@ -22,11 +26,13 @@ export const FIELD_IDS = [
   "summary",
 ] as const;
 
+/** A field of the mandate card. */
 export type FieldId = (typeof FIELD_IDS)[number];
 
 /** Fields that zkTLS evidence can prove. */
 export type ZkTlsField = Extract<FieldId, "category" | "variant" | "return_policy">;
 
+/** What the checkout proves, which can raise a field's {@link Color}. */
 export interface Evidence {
   /** The merchant signed the checkout, so items and prices are attested. */
   merchantSignedCheckout: boolean;

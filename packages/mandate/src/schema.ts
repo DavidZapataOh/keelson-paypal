@@ -1,5 +1,6 @@
 import { CURRENCIES, isUlid } from "@keelson/core";
 import { z } from "zod";
+import { CONTROL_OR_FORMAT } from "./generated/unicode.ts";
 
 /**
  * Category bit table, version `v1`. Bit `i` of a category mask stands for `ids[i]`; entries are
@@ -36,7 +37,11 @@ export const CATEGORY_TABLE: { readonly version: "v1"; readonly ids: readonly st
 
 const categoryId = z.enum(CATEGORY_TABLE.ids as [string, ...string[]]);
 
-const FORBIDDEN_CHARS = /[\p{Cc}\p{Cf}]/u;
+const codePoint = (c: number) => `\\u{${c.toString(16)}}`;
+const FORBIDDEN_CHARS = new RegExp(
+  `[${CONTROL_OR_FORMAT.map(([lo, hi]) => `${codePoint(lo)}-${codePoint(hi)}`).join("")}]`,
+  "u",
+);
 const utf8 = new TextEncoder();
 
 /**
@@ -55,15 +60,51 @@ export const STRING_LIMITS = {
 } as const;
 
 /**
- * A non-empty (unless `empty`) string of at most `max` UTF-8 bytes with no Unicode control (Cc)
- * or format (Cf) characters, so a displayed value cannot hide text, reorder it or break lines.
+ * A non-empty (unless `empty`) well-formed string of at most `max` UTF-8 bytes with no Unicode
+ * control (Cc) or format (Cf) characters, so a displayed value cannot hide text, reorder it or
+ * break lines.
  */
 const text = (max: number, empty = false) =>
   z
     .string()
     .refine((s) => empty || s.length > 0, "too small")
-    .refine((s) => !FORBIDDEN_CHARS.test(s), "control or format characters")
+    .refine((s) => s.isWellFormed() && !FORBIDDEN_CHARS.test(s), "control or format characters")
     .refine((s) => utf8.encode(s).length <= max, "too long");
+
+/**
+ * Whether `s` is a valid merchant `id`: 1 to 128 UTF-8 bytes of well-formed text with no Unicode
+ * control (Cc) or format (Cf) characters.
+ */
+export function isMerchantId(s: string): boolean {
+  return (
+    s.length > 0 &&
+    s.isWellFormed() &&
+    !FORBIDDEN_CHARS.test(s) &&
+    utf8.encode(s).length <= STRING_LIMITS.short
+  );
+}
+
+const LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+const URL_PATH = /^(?:\/[A-Za-z0-9\-._~!$&'()*+,;=:@/?#%]*)?$/;
+
+/**
+ * Whether `s` is `https://`, a lowercase ASCII host name whose last label starts with a letter,
+ * and an optional path, with no port or user info: a subset of what every WHATWG URL parser
+ * accepts, checked the same way in every language.
+ */
+function isWebsite(s: string): boolean {
+  if (!s.startsWith("https://")) return false;
+  const rest = s.slice("https://".length);
+  const slash = rest.indexOf("/");
+  const host = slash < 0 ? rest : rest.slice(0, slash);
+  const labels = host.split(".");
+  return (
+    host.length <= 253 &&
+    labels.every((l) => LABEL.test(l)) &&
+    /^[a-z]/.test(labels.at(-1) as string) &&
+    URL_PATH.test(slash < 0 ? "" : rest.slice(slash))
+  );
+}
 
 const amount = z.number().int().nonnegative().safe();
 const b64url = z.string().regex(/^[A-Za-z0-9_-]+$/);
@@ -83,7 +124,10 @@ const p256Jwk = z.strictObject({
 const merchant = z.strictObject({
   id: text(STRING_LIMITS.short),
   name: text(STRING_LIMITS.short),
-  website: z.url().refine((s) => utf8.encode(s).length <= STRING_LIMITS.url, "too long"),
+  website: z
+    .string()
+    .refine(isWebsite, "invalid url")
+    .refine((s) => s.length <= STRING_LIMITS.url, "too long"),
   paypal_merchant_id: text(STRING_LIMITS.short),
 });
 
@@ -192,6 +236,7 @@ export const MandateSchema = z.strictObject({
   }),
 });
 
+/** A `keelson.mandate.1` payload. */
 export type Mandate = z.infer<typeof MandateSchema>;
 
 /**
@@ -204,8 +249,11 @@ export const ANY_ITEM = "*";
 /** Maximum lifetime of a mandate, in seconds. */
 export const MAX_LIFETIME_SECONDS = 30 * 86400;
 
+/** A mandate that fails validation. */
 export class MandateError extends Error {
+  /** The dotted path of the offending field, `""` for the mandate itself. */
   readonly field: string;
+  /** Why the field is rejected. */
   readonly reason: string;
 
   constructor(field: string, reason: string) {

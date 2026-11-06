@@ -1,6 +1,7 @@
 import { BN254_FR_MODULUS as BB_MODULUS } from "@aztec/bb.js";
 import { describe, expect, test } from "vitest";
 import { BN254_FR_MODULUS, fieldFromAscii, KEELSON_MANDATE, poseidon2 } from "../src/poseidon2.ts";
+import tags from "./vectors/field-from-ascii.json" with { type: "json" };
 import vectors from "./vectors/poseidon2.json" with { type: "json" };
 
 describe("poseidon2", () => {
@@ -39,5 +40,12 @@ describe("poseidon2", () => {
   test("rejects non-ASCII and empty tags", () => {
     expect(() => fieldFromAscii("é")).toThrow(RangeError);
     expect(() => fieldFromAscii("")).toThrow(RangeError);
+  });
+});
+
+describe("fieldFromAscii", () => {
+  test.each(tags)("matches the golden vector $name", ({ input, expected }) => {
+    if (expected === "error") expect(() => fieldFromAscii(input)).toThrow(RangeError);
+    else expect(`0x${fieldFromAscii(input).toString(16).padStart(64, "0")}`).toBe(expected);
   });
 });

@@ -8,6 +8,7 @@ import {
   merchantMembership,
   merchantNonMembership,
   merchantTree,
+  pathOf,
   userKeyHash,
   verifyMerchantMembership,
   verifyMerchantNonMembership,
@@ -124,7 +125,7 @@ describe("merchantTree", () => {
     const tree = await merchantTree(["shop-a", "shop-b"]);
     const empty = { value: 0n, next: 0n, nextIndex: 0 };
     for (const index of [3, 5, 200, 255]) {
-      const path = tree.layers.slice(0, 8).map((layer, h) => layer[(index >> h) ^ 1] as bigint);
+      const path = pathOf(tree, index);
       for (const id of ["shop-a", "shop-b", "shop-c"]) {
         const proof = { low: empty, path, index };
         expect(await verifyMerchantNonMembership(tree.root, id, proof)).toBe(false);

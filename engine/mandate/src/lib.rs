@@ -13,6 +13,7 @@ mod schema;
 mod sd;
 mod spc;
 mod strict;
+mod unicode;
 mod webauthn;
 
 pub use challenge::{h_sd, mandate_challenge};
@@ -23,7 +24,7 @@ pub use commitment::{
     verify_merchant_membership, verify_merchant_non_membership,
 };
 pub use credentials::{
-    Jwk, OPEN_MANDATE_TYP, OpenMandateOptions, USER_CREDENTIAL_TYP, USER_CREDENTIAL_VCT,
+    Jwk, OPEN_MANDATE_TYP, OpenMandateVerifyOptions, USER_CREDENTIAL_TYP, USER_CREDENTIAL_VCT,
     VerifiedCredential, verify_credential,
 };
 pub use error::Error;

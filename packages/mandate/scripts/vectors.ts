@@ -9,6 +9,7 @@ import { SDJwtVcInstance } from "@sd-jwt/sd-jwt-vc";
 import { hSd, mandateChallenge } from "../src/challenge.ts";
 import { fieldColors } from "../src/colors.ts";
 import {
+  categoryMask,
   MERCHANT_TREE_CAPACITY,
   mandateCommitment,
   merchantLeaf,
@@ -16,7 +17,9 @@ import {
   merchantNonMembership,
   merchantTree,
   type NonMembershipProof,
+  pathOf,
   userKeyHash,
+  verifyMerchantMembership,
   verifyMerchantNonMembership,
 } from "../src/commitment.ts";
 import {
@@ -30,7 +33,15 @@ import {
   type VerifiedOpenMandate,
   verifyCredential,
 } from "../src/credentials.ts";
-import { ANY_ITEM, type Mandate, parseMandate } from "../src/schema.ts";
+import { CONTROL_OR_FORMAT } from "../src/generated/unicode.ts";
+import {
+  ANY_ITEM,
+  CATEGORY_TABLE,
+  isMerchantId,
+  type Mandate,
+  MandateError,
+  parseMandate,
+} from "../src/schema.ts";
 import {
   buildSdPayload,
   decodeDisclosed,
@@ -84,11 +95,17 @@ function writeJson(name: string, vectors: unknown): void {
   writeFileSync(path, `${JSON.stringify(vectors, null, 2)}\n`);
 }
 
-async function attempt<T>(fn: () => T | Promise<T>): Promise<T | "error"> {
+/** A rejected mandate is recorded with the field it names, which the Rust engine must match. */
+type Failure = "error" | { error: "mandate"; field: string };
+
+const isFailure = (v: unknown): v is Failure =>
+  v === "error" || (typeof v === "object" && v !== null && "error" in v);
+
+async function attempt<T>(fn: () => T | Promise<T>): Promise<T | Failure> {
   try {
     return await fn();
-  } catch {
-    return "error";
+  } catch (e) {
+    return e instanceof MandateError ? { error: "mandate", field: e.field } : "error";
   }
 }
 
@@ -439,7 +456,7 @@ async function commitmentVectors() {
   const vectors: { name: string; input: unknown; expected: unknown }[] = [];
   const push = (name: string, input: unknown, expected: unknown) =>
     vectors.push({ name, input, expected });
-  const fieldOr = (v: bigint | "error") => (v === "error" ? v : field(v));
+  const fieldOr = (v: bigint | Failure) => (typeof v === "bigint" ? field(v) : v);
 
   const ids = [
     "mrc_runfast",
@@ -506,17 +523,17 @@ async function commitmentVectors() {
     push(
       `membership/${id}`,
       { op: "membership", ids: treeIds, id },
-      member === "error" ? member : proofJson(member, member.leaf),
+      isFailure(member) ? member : proofJson(member, member.leaf),
     );
     const non = await attempt(() => merchantNonMembership(tree, id));
     push(
       `nonMembership/${id}`,
       { op: "nonMembership", ids: treeIds, id },
-      non === "error" ? non : proofJson(non, non.low),
+      isFailure(non) ? non : proofJson(non, non.low),
     );
   }
   /** The first `probe-i` id whose leaf is below the smallest or above the largest of `t`. */
-  const probe = async (t: { leaves: bigint[] }, below: boolean) => {
+  const probe = async (t: { leaves: readonly bigint[] }, below: boolean) => {
     const [min, max] = [t.leaves[0] as bigint, t.leaves.at(-1) as bigint];
     for (let i = 0; ; i++) {
       const v = await merchantLeaf(`probe-${i}`);
@@ -541,13 +558,13 @@ async function commitmentVectors() {
     push(
       `membership/edge/${name}`,
       { op: "membership", ids: set, id },
-      member === "error" ? member : proofJson(member, member.leaf),
+      isFailure(member) ? member : proofJson(member, member.leaf),
     );
     const non = await attempt(() => merchantNonMembership(t, id));
     push(
       `nonMembership/edge/${name}`,
       { op: "nonMembership", ids: set, id },
-      non === "error" ? non : proofJson(non, non.low),
+      isFailure(non) ? non : proofJson(non, non.low),
     );
   }
   push(
@@ -558,8 +575,7 @@ async function commitmentVectors() {
 
   const absent = await merchantNonMembership(tree, "mrc_absent");
   const empty = { value: 0n, next: 0n, nextIndex: 0 };
-  const pathAt = (index: number) =>
-    tree.layers.slice(0, 8).map((layer, h) => layer[(index >> h) ^ 1] as bigint);
+  const pathAt = (index: number) => pathOf(tree, index);
   const forged: [string, NonMembershipProof][] = [
     ["empty-low-leaf", { low: empty, path: pathAt(200), index: 200 }],
     ["genuine", absent],
@@ -575,6 +591,24 @@ async function commitmentVectors() {
         proof: proofJson(proof, proof.low),
       },
       await verifyMerchantNonMembership(tree.root, "mrc_absent", proof),
+    );
+  }
+
+  const memberId = treeIds[0] as string;
+  const member = await merchantMembership(tree, memberId);
+  const memberCases: [string, string, typeof member][] = [
+    ["genuine", memberId, member],
+    ["wrong-index", memberId, { ...member, index: member.index ^ 1 }],
+    ["index-out-of-range", memberId, { ...member, index: member.index + 256 }],
+    ["short-path", memberId, { ...member, path: member.path.slice(1) }],
+    ["wrong-id", treeIds[1] as string, member],
+    ["empty-leaf", memberId, { ...member, leaf: empty }],
+  ];
+  for (const [name, id, proof] of memberCases) {
+    push(
+      `verifyMembership/${name}`,
+      { op: "verifyMembership", root: field(tree.root), id, proof: proofJson(proof, proof.leaf) },
+      await verifyMerchantMembership(tree.root, id, proof),
     );
   }
 
@@ -745,8 +779,55 @@ async function commitmentVectors() {
   const attributes = (m: Mandate, must: Record<string, string>) => {
     for (const c of m.checkout.constraints) if (c.type === "keelson.attributes") c.must = must;
   };
+  // biome-ignore lint/suspicious/noExplicitAny: these cases build mandates outside the schema
+  const loose = (m: Mandate) => m as any;
   const parseCases: [string, (m: Mandate) => void][] = [
     ["demo", () => {}],
+    // Several issues at once: both sides report the first in schema order, an object's
+    // unrecognized keys after its members.
+    [
+      "error/order/extra-key-and-bad-mid",
+      (m) => {
+        loose(m).extra = 1;
+        m.mid = "x";
+      },
+    ],
+    [
+      "error/order/missing-v-and-bad-mid",
+      (m) => {
+        delete loose(m).v;
+        loose(m).mid = 1;
+      },
+    ],
+    [
+      "error/order/missing-mode-and-bad-mid",
+      (m) => {
+        delete loose(m).mode;
+        loose(m).mid = 1;
+      },
+    ],
+    [
+      "error/order/user-extra-key-and-bad-bond",
+      (m) => {
+        loose(m).user.extra = 1;
+        m.agent.bond.min = -1;
+      },
+    ],
+    [
+      "error/order/jwk-extra-key-and-bad-x",
+      (m) => {
+        loose(m).user.cred.jwk.extra = 1;
+        m.user.cred.jwk.x = "bad";
+      },
+    ],
+    [
+      "error/order/constraint-extra-key-and-no-merchants",
+      (m) => {
+        const c = loose(m).checkout.constraints[0];
+        c.extra = 1;
+        c.allowed = [];
+      },
+    ],
     [
       "error/unknown-allow-category",
       (m) => {
@@ -827,6 +908,48 @@ async function commitmentVectors() {
       },
     ],
   ];
+  const websites: [string, string][] = [
+    ["ok/website-punycode", "https://xn--caf-dma.example"],
+    ["ok/website-invalid-punycode", "https://xn--a.example"],
+    ["ok/website-path", "https://a-b.c0.example/path/to?q=1&r=%20#top"],
+    ["ok/website-single-label", "https://localhost"],
+    ["error/website-http", "http://shop.example"],
+    ["error/website-uppercase-scheme", "HTTPS://shop.example"],
+    ["error/website-uppercase-host", "https://Shop.example"],
+    ["error/website-port", "https://shop.example:443"],
+    ["error/website-userinfo", "https://user@shop.example"],
+    ["error/website-leading-space", " https://shop.example"],
+    ["error/website-trailing-space", "https://shop.example "],
+    ["error/website-leading-hyphen", "https://-shop.example"],
+    ["error/website-trailing-hyphen", "https://shop-.example"],
+    ["error/website-empty-label", "https://shop..example"],
+    ["error/website-trailing-dot", "https://shop.example."],
+    ["error/website-no-host", "https://"],
+    ["error/website-space-in-path", "https://shop.example/a b"],
+    ["error/website-backslash", "https://shop.example/a\\b"],
+    ["error/website-query-without-path", "https://shop.example?q"],
+    ["error/website-ipv4", "https://192.168.0.1"],
+    ["error/website-hex-label", "https://shop.0x1f"],
+    ["error/website-label-64", `https://${"a".repeat(64)}.example`],
+    ["ok/website-label-63", `https://${"a".repeat(63)}.example`],
+    ["error/website-host-over-253", `https://${"a.".repeat(127)}example`],
+    ["ok/website-host-253", `https://${"a.".repeat(123)}example`],
+    ["error/website-unicode-host", "https://café.example"],
+    ["error/website-not-a-url", "not a url"],
+  ];
+  // The demo mandate with the first merchant's website replaced, which both sides rebuild.
+  for (const [name, website] of websites) {
+    const m = clone(demo) as unknown as Mandate;
+    merchants(m, (x) => (x.website = website));
+    push(
+      `parseWebsite/${name}`,
+      { op: "parseWebsite", website },
+      await attempt(() => {
+        parseMandate(m);
+        return true;
+      }),
+    );
+  }
   for (const [name, edit] of parseCases) {
     const m = clone(demo) as unknown as Mandate;
     edit(m);
@@ -838,6 +961,46 @@ async function commitmentVectors() {
         return true;
       }),
     );
+  }
+  const categories: string[][] = [
+    ...CATEGORY_TABLE.ids.map((id) => [id]),
+    [],
+    [...CATEGORY_TABLE.ids],
+    ["gpt:187", "gpt:1", "gpt:187"],
+    ["gpt:999"],
+    ["GPT:1"],
+  ];
+  for (const ids of categories) {
+    push(
+      `categoryMask/${ids.length > 3 ? "all" : ids.join(",") || "none"}`,
+      { op: "categoryMask", categories: ids },
+      await attempt(() => categoryMask(ids).toString()),
+    );
+  }
+  for (const id of [
+    "mrc_runfast",
+    "東京の店",
+    "😀",
+    "a".repeat(128),
+    "a".repeat(129),
+    "\u{1f45f}".repeat(32),
+    `${"\u{1f45f}".repeat(32)}a`,
+    "",
+    " ",
+    "a b",
+  ]) {
+    push(
+      `isMerchantId/${JSON.stringify([...id].slice(0, 12).join(""))}${id.length > 12 ? `-${id.length}` : ""}`,
+      { op: "isMerchantId", id },
+      isMerchantId(id),
+    );
+  }
+  for (const [lo, hi] of CONTROL_OR_FORMAT) {
+    for (const c of new Set([lo - 1, lo, hi, hi + 1])) {
+      if (c < 0 || (c >= 0xd800 && c <= 0xdfff)) continue;
+      const id = `mrc_${String.fromCodePoint(c)}`;
+      push(`isMerchantId/u+${c.toString(16)}`, { op: "isMerchantId", id }, isMerchantId(id));
+    }
   }
   return vectors;
 }
@@ -1009,10 +1172,17 @@ async function credentialVectors() {
     "valid-explicit-sd-alg",
     `${resignL1(l1Header, (p) => (p._sd_alg = "sha-256"))}${rest}`,
   );
-  await l1Case(
-    "valid-cnf-with-d",
-    `${resignL1(l1Header, (p) => ((p.cnf as { jwk: object }).jwk = { ...keys.holder.jwk, d: b64u(keys.holder.secret) }))}${rest}`,
-  );
+  const cnfWith = (extra: Record<string, unknown>) =>
+    `${resignL1(l1Header, (p) => ((p.cnf as { jwk: object }).jwk = { ...keys.holder.jwk, ...extra }))}${rest}`;
+  await l1Case("error/cnf-with-d", cnfWith({ d: b64u(keys.holder.secret) }));
+  await l1Case("valid-cnf-kid", cnfWith({ kid: "holder-1" }));
+  await l1Case("error/cnf-kid-not-string", cnfWith({ kid: 1 }));
+  await l1Case("error/cnf-key-ops-verify", cnfWith({ key_ops: ["verify"] }));
+  await l1Case("error/cnf-key-ops-sign", cnfWith({ key_ops: ["sign"] }));
+  await l1Case("error/cnf-ext-true", cnfWith({ ext: true }));
+  await l1Case("error/cnf-ext-false", cnfWith({ ext: false }));
+  await l1Case("error/cnf-alg", cnfWith({ alg: "ES256" }));
+  await l1Case("error/cnf-use", cnfWith({ use: "sig" }));
   await l1Case("error/wrong-key", l1, keys.other);
   await l1Case(
     "error/tampered-payload",
