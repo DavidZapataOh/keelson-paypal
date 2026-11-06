@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 /// One line of the proposed cart.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CartLine {
     pub sku: String,
@@ -14,8 +14,8 @@ pub struct CartLine {
     pub unit_minor: i64,
 }
 
-/// The proposed cart.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+/// The proposed cart. An absent `size` or `color` serializes as `null`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Cart {
     pub merchant: String,
@@ -27,7 +27,7 @@ pub struct Cart {
 }
 
 /// A PayPal amount: `{currency_code, value}`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Amount {
     pub currency_code: String,
@@ -35,23 +35,30 @@ pub struct Amount {
 }
 
 /// The amount breakdown of a PayPal purchase unit.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Breakdown {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub item_total: Option<Amount>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub tax_total: Option<Amount>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub shipping: Option<Amount>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub handling: Option<Amount>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub insurance: Option<Amount>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub discount: Option<Amount>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub shipping_discount: Option<Amount>,
 }
 
 /// The `amount` of a PayPal Orders v2 `purchase_units[]` entry.
 ///
-/// Deserializes from the Orders v2 wire shape, `{"amount": {currency_code, value, breakdown}}`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(from = "wire::PurchaseUnit")]
+/// Serializes to and from the Orders v2 wire shape, `{"amount": {currency_code, value, breakdown}}`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "wire::PurchaseUnit", into = "wire::PurchaseUnit")]
 pub struct PayPalUnit {
     pub currency: String,
     pub value: String,
@@ -60,9 +67,9 @@ pub struct PayPalUnit {
 
 mod wire {
     use super::{Breakdown, PayPalUnit};
-    use serde::Deserialize;
+    use serde::{Deserialize, Serialize};
 
-    #[derive(Deserialize)]
+    #[derive(Serialize, Deserialize)]
     #[serde(deny_unknown_fields)]
     struct Amount {
         currency_code: String,
@@ -71,7 +78,7 @@ mod wire {
         breakdown: Breakdown,
     }
 
-    #[derive(Deserialize)]
+    #[derive(Serialize, Deserialize)]
     pub struct PurchaseUnit {
         amount: Amount,
     }
@@ -87,6 +94,18 @@ mod wire {
                 currency: currency_code,
                 value,
                 breakdown,
+            }
+        }
+    }
+
+    impl From<PayPalUnit> for PurchaseUnit {
+        fn from(unit: PayPalUnit) -> Self {
+            Self {
+                amount: Amount {
+                    currency_code: unit.currency,
+                    value: unit.value,
+                    breakdown: unit.breakdown,
+                },
             }
         }
     }

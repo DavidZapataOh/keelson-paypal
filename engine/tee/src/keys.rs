@@ -31,6 +31,41 @@ impl fmt::Display for SealError {
 
 impl std::error::Error for SealError {}
 
+/// What a sealed blob is bound to. One sealing key covers every purpose, so each blob opens only
+/// for the purpose, the user and the record it was sealed for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SealAad<'a> {
+    /// A versioned label such as `keelson/seal/mandate-salt/v1`.
+    pub purpose: &'a str,
+    /// The user the record belongs to, for per-user records.
+    pub sub: Option<&'a str>,
+    /// The id of the sealed record.
+    pub record: &'a [u8],
+}
+
+impl SealAad<'_> {
+    /// `len(purpose) ‖ purpose ‖ (0x00 | 0x01 ‖ len(sub) ‖ sub) ‖ record`, lengths as `u32`
+    /// big-endian, so no two contexts share an encoding.
+    fn encode(&self) -> Vec<u8> {
+        fn put(out: &mut Vec<u8>, bytes: &[u8]) {
+            let len = u32::try_from(bytes.len()).expect("AAD parts shorter than 4 GiB");
+            out.extend_from_slice(&len.to_be_bytes());
+            out.extend_from_slice(bytes);
+        }
+        let mut out = Vec::with_capacity(16 + self.purpose.len() + self.record.len());
+        put(&mut out, self.purpose.as_bytes());
+        match self.sub {
+            None => out.push(0),
+            Some(sub) => {
+                out.push(1);
+                put(&mut out, sub.as_bytes());
+            }
+        }
+        out.extend_from_slice(self.record);
+        out
+    }
+}
+
 /// The 32-byte root key from the KMS. It lives only in this process, boxed so moves never copy
 /// it, and is zeroized on drop; there is no `Clone`, `Debug` or way to export it.
 pub struct Root(Box<Zeroizing<[u8; 32]>>);
@@ -55,9 +90,9 @@ impl Root {
         self.signing_key(b"user/", sub.as_bytes())
     }
 
-    /// AES-256-GCM under the sealing key (`info` = `seal`) with a random 96-bit nonce:
-    /// `0x01 ‖ nonce ‖ ciphertext ‖ tag`.
-    pub fn seal(&self, aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+    /// AES-256-GCM under the sealing key (`info` = `seal`) with a random 96-bit nonce and `aad`
+    /// as the associated data: `0x01 ‖ nonce ‖ ciphertext ‖ tag`.
+    pub fn seal(&self, aad: &SealAad<'_>, plaintext: &[u8]) -> Vec<u8> {
         let nonce = Nonce::<Aes256Gcm>::generate();
         let ciphertext = self
             .cipher()
@@ -65,7 +100,7 @@ impl Root {
                 &nonce,
                 Payload {
                     msg: plaintext,
-                    aad,
+                    aad: &aad.encode(),
                 },
             )
             .expect("plaintext within the AES-GCM limit");
@@ -77,7 +112,7 @@ impl Root {
     }
 
     /// Opens a blob from [`Root::seal`] sealed with the same `aad`.
-    pub fn unseal(&self, aad: &[u8], blob: &[u8]) -> Result<Vec<u8>, SealError> {
+    pub fn unseal(&self, aad: &SealAad<'_>, blob: &[u8]) -> Result<Vec<u8>, SealError> {
         let Some((&SEAL_VERSION, rest)) = blob.split_first() else {
             return Err(SealError);
         };
@@ -91,7 +126,7 @@ impl Root {
                 &nonce,
                 Payload {
                     msg: ciphertext,
-                    aad,
+                    aad: &aad.encode(),
                 },
             )
             .map_err(|_| SealError)

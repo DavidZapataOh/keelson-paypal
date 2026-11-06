@@ -2,6 +2,7 @@
 
 use alloy_primitives::{Address, B256, U256, keccak256};
 use alloy_sol_types::{SolType, sol_data};
+use serde::{Deserialize, Serialize};
 
 use crate::Error;
 use crate::error::check_chain;
@@ -17,12 +18,19 @@ type Binding = (
     sol_data::Uint<64>,
 );
 
-/// The TEE technology that produced the attestation.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// The TEE technology that produced the attestation; serialized as its number.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(into = "u8", try_from = "u8")]
 #[repr(u8)]
 pub enum TeeKind {
     Tdx = 1,
     Nitro = 2,
+}
+
+impl From<TeeKind> for u8 {
+    fn from(kind: TeeKind) -> Self {
+        kind as u8
+    }
 }
 
 impl TryFrom<u8> for TeeKind {

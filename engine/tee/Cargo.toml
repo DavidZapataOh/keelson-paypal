@@ -7,18 +7,24 @@ publish.workspace = true
 
 [dependencies]
 aes-gcm = { version = "0.11.1", features = ["zeroize"] }
-alloy-primitives = "1.7.3"
+alloy-primitives = { version = "1.7.3", features = ["serde"] }
 alloy-sol-types = "1.7.3"
+base64 = "0.23.1"
+getrandom = "0.4.3"
 hkdf = "0.13.0"
 k256 = { version = "0.14.0", default-features = false, features = ["ecdsa", "getrandom", "std"] }
+keelson-canon = { path = "../canon" }
 keelson-core = { path = "../core" }
+keelson-mandate = { path = "../mandate" }
+keelson-policy = { path = "../policy" }
 p256 = { version = "0.14.0", default-features = false, features = ["ecdsa", "std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 # `zeroize` wipes the HKDF and HMAC hash states on drop.
 sha2 = { version = "0.11.1", features = ["zeroize"] }
+time = { version = "0.3.55", features = ["formatting", "macros"] }
+ulid = { version = "3.0.0", features = ["serde"] }
 zeroize = "1.9.1"
 
 [dev-dependencies]
-alloy-primitives = { version = "1.7.3", features = ["k256"] }
-keelson-mandate = { path = "../mandate" }
-keelson-policy = { path = "../policy" }
-serde_json = "1"
+alloy-primitives = { version = "1.7.3", features = ["k256", "serde"] }

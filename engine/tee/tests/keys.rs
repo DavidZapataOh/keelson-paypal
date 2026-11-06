@@ -2,7 +2,7 @@ use keelson_mandate::{
     Jwk, OPEN_MANDATE_TYP, OpenMandateParams, OpenMandateVerifyOptions, PasskeyCredential,
     UserAuth, UserCredentialParams, issue_open_mandate, issue_user_credential, verify_credential,
 };
-use keelson_tee::{Root, SealError};
+use keelson_tee::{Root, SealAad, SealError};
 use p256::ecdsa::SigningKey;
 use serde_json::Value;
 
@@ -141,44 +141,89 @@ fn issues_credentials_the_verifiers_accept() {
     .unwrap();
 }
 
+const AAD: SealAad = SealAad {
+    purpose: "keelson/seal/test/v1",
+    sub: Some("kls_usr_7f3a9c21"),
+    record: b"record",
+};
+
 #[test]
 fn unseals_what_it_sealed() {
     let root = root();
     for plaintext in [&b""[..], b"x", &[0xa5; 4096]] {
-        let blob = root.seal(b"aad", plaintext);
+        let blob = root.seal(&AAD, plaintext);
         assert_eq!(blob[0], 1);
         assert_eq!(blob.len(), 1 + 12 + plaintext.len() + 16);
-        assert_eq!(root.unseal(b"aad", &blob).unwrap(), plaintext);
+        assert_eq!(root.unseal(&AAD, &blob).unwrap(), plaintext);
     }
 }
 
 #[test]
 fn draws_a_fresh_nonce_per_seal() {
     let root = root();
-    assert_ne!(root.seal(b"", b"same"), root.seal(b"", b"same"));
+    assert_ne!(root.seal(&AAD, b"same"), root.seal(&AAD, b"same"));
 }
 
 #[test]
 fn rejects_tampered_blobs() {
     let root = root();
-    let blob = root.seal(b"aad", b"secret");
+    let blob = root.seal(&AAD, b"secret");
     for i in 0..blob.len() {
         let mut tampered = blob.clone();
         tampered[i] ^= 1;
-        assert_eq!(root.unseal(b"aad", &tampered), Err(SealError), "byte {i}");
+        assert_eq!(root.unseal(&AAD, &tampered), Err(SealError), "byte {i}");
     }
-    assert_eq!(root.unseal(b"other", &blob), Err(SealError));
-    assert_eq!(root.unseal(b"aad", &blob[..blob.len() - 1]), Err(SealError));
+    assert_eq!(root.unseal(&AAD, &blob[..blob.len() - 1]), Err(SealError));
     for short in 0..29 {
         assert_eq!(
-            root.unseal(b"aad", &blob[..short.min(blob.len())]),
+            root.unseal(&AAD, &blob[..short.min(blob.len())]),
             Err(SealError)
         );
     }
 }
 
 #[test]
+fn a_blob_opens_only_for_its_purpose_user_and_record() {
+    let root = root();
+    let blob = root.seal(&AAD, b"secret");
+    let others = [
+        SealAad {
+            purpose: "keelson/seal/other/v1",
+            ..AAD
+        },
+        SealAad {
+            sub: Some("kls_usr_other"),
+            ..AAD
+        },
+        SealAad { sub: None, ..AAD },
+        SealAad {
+            sub: Some(""),
+            ..AAD
+        },
+        SealAad {
+            record: b"other",
+            ..AAD
+        },
+        SealAad { record: b"", ..AAD },
+        // The same bytes split differently between the parts.
+        SealAad {
+            purpose: "keelson/seal/test/v1kls",
+            sub: Some("_usr_7f3a9c21"),
+            record: b"record",
+        },
+        SealAad {
+            purpose: "keelson/seal/test/v1",
+            sub: Some("kls_usr_7f3a9c21rec"),
+            record: b"ord",
+        },
+    ];
+    for other in &others {
+        assert_eq!(root.unseal(other, &blob), Err(SealError), "{other:?}");
+    }
+}
+
+#[test]
 fn rejects_blobs_sealed_under_another_root() {
-    let blob = root().seal(b"aad", b"secret");
-    assert_eq!(Root::new(&[7; 32]).unseal(b"aad", &blob), Err(SealError));
+    let blob = root().seal(&AAD, b"secret");
+    assert_eq!(Root::new(&[7; 32]).unseal(&AAD, &blob), Err(SealError));
 }
