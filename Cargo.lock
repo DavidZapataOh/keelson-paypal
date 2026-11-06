@@ -2419,6 +2419,7 @@ dependencies = [
  "alloy-sol-types",
  "axum",
  "base64",
+ "criterion",
  "getrandom 0.4.3",
  "hkdf",
  "http-body-util",

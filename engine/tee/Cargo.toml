@@ -35,5 +35,10 @@ zeroize = "1.9.1"
 
 [dev-dependencies]
 alloy-primitives = { version = "1.7.3", features = ["k256", "serde"] }
+criterion = { version = "0.8.2", default-features = false }
 http-body-util = "0.1.5"
 tower = { version = "0.5.3", features = ["util"] }
+
+[[bench]]
+name = "countersign"
+harness = false

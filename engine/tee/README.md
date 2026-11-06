@@ -67,3 +67,20 @@ The binary reads its configuration from `KEELSON_*` environment variables (see `
 ## Sealing
 
 One sealing key covers every purpose. Each sealed blob is bound to a purpose label, the user it belongs to and the record id, and opens for nothing else.
+
+## Image
+
+`Containerfile` builds `keelson-engine` as a static musl binary with the StageX Rust pallet, network off, and ships it alone in a `scratch` image with the CA roots, running as user 65534. Every base image is pinned by digest. Build it from the repository root:
+
+```sh
+SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)" docker buildx build -f engine/tee/Containerfile . \
+  --no-cache --platform linux/amd64 --build-arg BUILDKIT_MULTI_PLATFORM=1 \
+  --provenance=false --sbom=false \
+  --output type=oci,rewrite-timestamp=true,force-compression=true,dest=keelson-engine.tar
+```
+
+The `tee-image` workflow builds the image twice on separate runners from fresh checkouts and fails unless both digests are equal. On `main` it pushes that archive unchanged to `ghcr.io/davidzapataoh/keelson-engine` with a build provenance attestation. The image index digest is the `engine_build_id` bound into `report_data`; the engine receives it as `KEELSON_OCI_DIGEST`.
+
+## Benchmarks
+
+`cargo bench -p keelson-tee` measures the demo countersign on both legs (closed-mandate and passkey verification through signing) and `register_mandate`, and fails if a p99 is over budget: 2 ms per countersign, 5 ms per registration.
