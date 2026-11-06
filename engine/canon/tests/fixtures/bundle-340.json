@@ -3,6 +3,7 @@
     "merchant": "MERCHANT-SHOES-01",
     "currency": "USD",
     "return_days": 14,
+    "returns_free": false,
     "lines": [
       {
         "sku": "RUN-100",

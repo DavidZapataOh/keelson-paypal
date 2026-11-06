@@ -38,11 +38,17 @@ fn array_at<'a>(v: &'a Value, field: &str) -> Result<&'a [Value], PolicyError> {
         .ok_or_else(|| invalid(field, "expected array"))
 }
 
+/// The constraint of type `ty`, if any; a repeated type is an error rather than a first match.
 fn constraint<'a>(m: &'a Value, group: &str, ty: &str) -> Result<Option<&'a Value>, PolicyError> {
     let field = format!("{group}.constraints");
-    Ok(array_at(&m[group]["constraints"], &field)?
+    let mut found = array_at(&m[group]["constraints"], &field)?
         .iter()
-        .find(|c| c["type"].as_str() == Some(ty)))
+        .filter(|c| c["type"].as_str() == Some(ty));
+    let first = found.next();
+    if found.next().is_some() {
+        return Err(invalid(&field, &format!("more than one {ty}")));
+    }
+    Ok(first)
 }
 
 fn uid(ty: &str, id: &str) -> Result<EntityUid, PolicyError> {
@@ -58,10 +64,22 @@ pub fn agent_uid(id: &str) -> Result<EntityUid, PolicyError> {
 }
 
 /// The agent a mandate authorizes: `<agent_registry>/<agent_id>`, its ERC-8004 identity.
+///
+/// `agent_id` must be a canonical decimal, so it never contains `/`. The id is then everything
+/// after the last `/` and the registry everything before it, which makes the encoding injective
+/// even when the registry contains `/`.
 pub fn mandate_agent(m: &Value) -> Result<String, PolicyError> {
     let op = &m["agent"]["operator"];
     let registry = str_at(&op["agent_registry"], "agent.operator.agent_registry")?;
     let id = str_at(&op["agent_id"], "agent.operator.agent_id")?;
+    let canonical = id == "0"
+        || (!id.is_empty() && !id.starts_with('0') && id.bytes().all(|b| b.is_ascii_digit()));
+    if !canonical {
+        return Err(invalid(
+            "agent.operator.agent_id",
+            "expected a canonical decimal",
+        ));
+    }
     Ok(format!("{registry}/{id}"))
 }
 
@@ -96,8 +114,13 @@ fn strings(values: impl IntoIterator<Item = String>) -> RestrictedExpression {
     RestrictedExpression::new_set(values.into_iter().map(RestrictedExpression::new_string))
 }
 
-/// The allowed variants: each acceptable item of each line, with the `keelson.attributes` size
-/// (`size_us`) and color unless they are `any`.
+/// The allowed variants and the quantity bound.
+///
+/// Variants are each acceptable item of each line, with the `keelson.attributes` size (`size_us`)
+/// and color unless they are `any`. The quantity bound is the smallest line quantity: the policy
+/// set has no arithmetic and the entity holds a single bound, so Cedar cannot tie a quantity to
+/// a variant, and the smallest quantity is the bound that never allows more than any line does.
+/// It is 0, which denies every cart, when the mandate has no lines.
 fn variants(m: &Value) -> Result<(BTreeSet<Variant>, i64), PolicyError> {
     let mut size = None;
     let mut color = None;
@@ -117,10 +140,11 @@ fn variants(m: &Value) -> Result<(BTreeSet<Variant>, i64), PolicyError> {
         }
     }
     let mut out = BTreeSet::new();
-    let mut max_qty = 0;
+    let mut max_qty: Option<i64> = None;
     if let Some(lines) = constraint(m, "checkout", "checkout.line_items")? {
         for line in array_at(&lines["items"], "checkout.line_items.items")? {
-            max_qty = max_qty.max(int_at(&line["quantity"], "checkout.line_items.quantity")?);
+            let qty = int_at(&line["quantity"], "checkout.line_items.quantity")?;
+            max_qty = Some(max_qty.map_or(qty, |q| q.min(qty)));
             let items = array_at(
                 &line["acceptable_items"],
                 "checkout.line_items.acceptable_items",
@@ -134,7 +158,7 @@ fn variants(m: &Value) -> Result<(BTreeSet<Variant>, i64), PolicyError> {
             }
         }
     }
-    Ok((out, max_qty))
+    Ok((out, max_qty.unwrap_or(0)))
 }
 
 /// `keelson.category` allow minus deny; every category when the mandate has no category
@@ -172,11 +196,18 @@ fn expires_at_ms(m: &Value) -> Result<i128, PolicyError> {
 }
 
 /// Builds the `Keelson::Mandate` entity from a decoded mandate and the budget left on it.
+///
+/// `budget_left_minor` is capped at `payment.budget.max`, so a wrong counter can never raise the
+/// budget above what the user signed.
 pub fn mandate_entity(m: &Value, budget_left_minor: i64) -> Result<Entity, PolicyError> {
     let mid = str_at(&m["mid"], "mid")?;
     let Some(range) = constraint(m, "payment", "payment.amount_range")? else {
         return Err(invalid("payment.amount_range", "required"));
     };
+    let Some(budget) = constraint(m, "payment", "payment.budget")? else {
+        return Err(invalid("payment.budget", "required"));
+    };
+    let budget_left_minor = budget_left_minor.min(int_at(&budget["max"], "payment.budget.max")?);
     let Some(allowed) = constraint(m, "checkout", "checkout.allowed_merchants")? else {
         return Err(invalid("checkout.allowed_merchants", "required"));
     };
@@ -184,10 +215,16 @@ pub fn mandate_entity(m: &Value, budget_left_minor: i64) -> Result<Entity, Polic
         .iter()
         .map(|x| str_at(&x["id"], "checkout.allowed_merchants.allowed.id").map(str::to_owned))
         .collect::<Result<BTreeSet<_>, _>>()?;
-    let min_return_days = match constraint(m, "checkout", "keelson.returns")? {
-        Some(r) => int_at(&r["min_days"], "keelson.returns.min_days")?,
-        None => 0,
-    };
+    let (min_return_days, returns_free_required) =
+        match constraint(m, "checkout", "keelson.returns")? {
+            Some(r) => (
+                int_at(&r["min_days"], "keelson.returns.min_days")?,
+                r["free"]
+                    .as_bool()
+                    .ok_or_else(|| invalid("keelson.returns.free", "expected boolean"))?,
+            ),
+            None => (0, false),
+        };
     let (variants, max_qty_per_line) = variants(m)?;
 
     let attrs = HashMap::from([
@@ -227,6 +264,10 @@ pub fn mandate_entity(m: &Value, budget_left_minor: i64) -> Result<Entity, Polic
         (
             "min_return_days".to_owned(),
             RestrictedExpression::new_long(min_return_days),
+        ),
+        (
+            "returns_free_required".to_owned(),
+            RestrictedExpression::new_bool(returns_free_required),
         ),
     ]);
     Entity::new(uid("Keelson::Mandate", mid)?, attrs, HashSet::new()).map_err(cedar)

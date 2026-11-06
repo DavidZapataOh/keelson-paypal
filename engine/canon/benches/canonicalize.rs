@@ -51,6 +51,7 @@ fn sixteen_lines() -> Input {
             "merchant": "MERCHANT-SHOES-01",
             "currency": "USD",
             "return_days": 30,
+            "returns_free": true,
             "lines": lines,
         },
         "unit": {

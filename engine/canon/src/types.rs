@@ -22,6 +22,8 @@ pub struct Cart {
     pub currency: String,
     pub lines: Vec<CartLine>,
     pub return_days: i64,
+    /// Whether the merchant's returns are free.
+    pub returns_free: bool,
 }
 
 /// A PayPal amount: `{currency_code, value}`.
@@ -112,6 +114,7 @@ pub struct Context {
     pub variants: BTreeSet<Variant>,
     pub max_line_qty: i64,
     pub return_days: i64,
+    pub returns_free: bool,
 }
 
 /// Why a cart cannot be canonicalized.

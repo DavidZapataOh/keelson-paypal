@@ -19,6 +19,7 @@ namespace Keelson {
     not_before: __cedar::datetime,
     expires_at: __cedar::datetime,
     min_return_days: Long,
+    returns_free_required: Bool,
   };
 
   action "checkout" appliesTo {
@@ -32,6 +33,7 @@ namespace Keelson {
       variants: Set<Variant>,
       max_line_qty: Long,
       return_days: Long,
+      returns_free: Bool,
       now: __cedar::datetime,
     },
   };

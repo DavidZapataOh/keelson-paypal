@@ -70,13 +70,17 @@ fn cart() -> impl Strategy<Value = Cart> {
         currency(),
         proptest::collection::vec(line(), 0..=20),
         int(),
+        any::<bool>(),
     )
-        .prop_map(|(merchant, currency, lines, return_days)| Cart {
-            merchant,
-            currency,
-            lines,
-            return_days,
-        })
+        .prop_map(
+            |(merchant, currency, lines, return_days, returns_free)| Cart {
+                merchant,
+                currency,
+                lines,
+                return_days,
+                returns_free,
+            },
+        )
 }
 
 fn unit() -> impl Strategy<Value = PayPalUnit> {
@@ -143,6 +147,8 @@ fn check(
 ) -> Result<(), TestCaseError> {
     if let Ok(ctx) = result {
         prop_assert_eq!(ctx.total_minor as i128, expected_total(cart, unit));
+        prop_assert_eq!(ctx.return_days, cart.return_days);
+        prop_assert_eq!(ctx.returns_free, cart.returns_free);
         let mut per_variant = BTreeMap::new();
         for l in &cart.lines {
             *per_variant
@@ -199,6 +205,7 @@ proptest! {
                 })
                 .collect(),
             return_days: 30,
+            returns_free: true,
         };
         let unit = PayPalUnit {
             currency: "USD".to_owned(),

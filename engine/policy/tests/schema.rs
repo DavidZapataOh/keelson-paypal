@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use cedar_policy::{Effect, Entities, PolicyId, ValidationMode, Validator};
+use cedar_policy::{Effect, Entities, Policy, PolicyId, ValidationMode, Validator};
 use keelson_policy::{
     POLICY_SET_SRC, SCHEMA_SRC, mandate_agent, mandate_entity, policies, policy_set_hash,
     policy_set_hash_tag, policy_texts, schema, schema_hash, schema_hash_tag,
@@ -8,9 +8,20 @@ use keelson_policy::{
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-const POLICY_IDS: [&str; 12] = [
-    "agent", "amount", "base", "budget", "category", "currency", "merchant", "quantity", "returns",
-    "sanity", "variant", "window",
+const POLICY_IDS: [&str; 13] = [
+    "agent",
+    "amount",
+    "base",
+    "budget",
+    "category",
+    "currency",
+    "merchant",
+    "quantity",
+    "returns",
+    "returns_free",
+    "sanity",
+    "variant",
+    "window",
 ];
 
 /// Each policy `@field` and the `fieldColors` field it is shown as on the mandate card. The cart
@@ -144,7 +155,8 @@ fn demo_mandate_entity_matches_the_schema() {
                 "max_qty_per_line": 1,
                 "not_before": { "__extn": { "fn": "datetime", "arg": "2026-11-04T00:00:00.000Z" } },
                 "expires_at": { "__extn": { "fn": "datetime", "arg": "2026-11-11T00:00:00.000Z" } },
-                "min_return_days": 30
+                "min_return_days": 30,
+                "returns_free_required": true
             },
             "parents": []
         })
@@ -177,6 +189,7 @@ fn absent_optional_constraints_leave_open_bounds_or_none() {
     assert_eq!(attrs["variants"], json!([]));
     assert_eq!(attrs["max_qty_per_line"], 0);
     assert_eq!(attrs["min_return_days"], 0);
+    assert_eq!(attrs["returns_free_required"], false);
     assert_eq!(
         attrs["categories"].as_array().map(Vec::len),
         Some(keelson_mandate::CATEGORY_IDS.len())
@@ -195,6 +208,97 @@ fn malformed_mandates_are_rejected() {
 }
 
 #[test]
+fn duplicate_constraints_are_rejected() {
+    let mut m = demo();
+    let mut lower = m["payment"]["constraints"][0].clone();
+    lower["max"] = json!(1);
+    m["payment"]["constraints"]
+        .as_array_mut()
+        .expect("constraints")
+        .push(lower);
+    assert!(mandate_entity(&m, 0).is_err());
+    let mut m = demo();
+    let returns = m["checkout"]["constraints"][4].clone();
+    m["checkout"]["constraints"]
+        .as_array_mut()
+        .expect("constraints")
+        .push(returns);
+    assert!(mandate_entity(&m, 0).is_err());
+}
+
+fn attrs(m: &Value, budget_left_minor: i64) -> Value {
+    mandate_entity(m, budget_left_minor)
+        .expect("entity builds")
+        .to_json_value()
+        .expect("entity serializes")["attrs"]
+        .clone()
+}
+
+#[test]
+fn quantity_bound_is_the_smallest_line_quantity() {
+    let mut m = demo();
+    m["checkout"]["constraints"][1]["items"] = json!([
+        { "id": "l1", "acceptable_items": [{ "id": "A" }], "quantity": 1 },
+        { "id": "l2", "acceptable_items": [{ "id": "B" }], "quantity": 3 }
+    ]);
+    assert_eq!(attrs(&m, 0)["max_qty_per_line"], 1);
+}
+
+#[test]
+fn budget_left_is_capped_by_the_mandate_budget() {
+    assert_eq!(attrs(&demo(), 50_000)["budget_left_minor"], 10000);
+    assert_eq!(attrs(&demo(), 4000)["budget_left_minor"], 4000);
+}
+
+#[test]
+fn free_returns_are_required_only_when_the_mandate_says_so() {
+    let mut m = demo();
+    m["checkout"]["constraints"][4]["free"] = json!(false);
+    assert_eq!(attrs(&m, 0)["returns_free_required"], false);
+}
+
+#[test]
+fn agent_ids_must_be_canonical_decimals() {
+    for id in ["", "042", "4/2", "x"] {
+        let mut m = demo();
+        m["agent"]["operator"]["agent_id"] = json!(id);
+        assert!(mandate_agent(&m).is_err(), "{id:?}");
+        assert!(mandate_entity(&m, 0).is_err(), "{id:?}");
+    }
+    let mut m = demo();
+    m["agent"]["operator"]["agent_id"] = json!("0");
+    assert!(mandate_agent(&m).is_ok());
+}
+
+/// Whether a policy's JSON form uses an arithmetic operator anywhere.
+fn has_arithmetic(v: &Value) -> bool {
+    match v {
+        Value::Object(o) => o
+            .iter()
+            .any(|(k, v)| matches!(k.as_str(), "+" | "-" | "*" | "neg") || has_arithmetic(v)),
+        Value::Array(a) => a.iter().any(has_arithmetic),
+        _ => false,
+    }
+}
+
+#[test]
+fn policies_contain_no_arithmetic() {
+    let probe = Policy::parse(
+        None,
+        "forbid(principal, action, resource) when { -context.a * 2 + 1 - 3 < 0 };",
+    )
+    .expect("probe parses");
+    assert!(has_arithmetic(&probe.to_json().expect("probe json")));
+    for p in policies().policies() {
+        assert!(
+            !has_arithmetic(&p.to_json().expect("policy json")),
+            "{} uses arithmetic",
+            p.id()
+        );
+    }
+}
+
+#[test]
 fn hashes_are_sha256_of_the_file_bytes() {
     let digest = |b: &[u8]| -> [u8; 32] { Sha256::digest(b).into() };
     assert_eq!(policy_set_hash(), digest(POLICY_SET_SRC.as_bytes()));
@@ -209,10 +313,10 @@ fn hashes_are_sha256_of_the_file_bytes() {
     );
     assert_eq!(
         policy_set_hash_tag(),
-        "sha256:af6703bc629b02c95059ecd30710497b7d5688fe0ce24895af38375730593cc5"
+        "sha256:db3a692569a0c1f4fa047a1488d675249a1384195cd2732b60340e22cacecf6a"
     );
     assert_eq!(
         schema_hash_tag(),
-        "sha256:ea0d509820ca7f302463b526f4d5aba1c347aae5d1f5ca98aad05dc5aa2199ac"
+        "sha256:205162d42b2e9d644062ea93a6fe168fc4d9aa3eeee5249913f7cc13e4c1623c"
     );
 }

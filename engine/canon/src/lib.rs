@@ -89,6 +89,7 @@ pub fn canonicalize(cart: &Cart, unit: &PayPalUnit) -> Result<Context, Deny> {
         max_line_qty: per_variant.values().copied().max().unwrap_or(0),
         variants: per_variant.into_keys().collect(),
         return_days: cart.return_days,
+        returns_free: cart.returns_free,
     })
 }
 

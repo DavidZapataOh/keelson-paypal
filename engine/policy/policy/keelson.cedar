@@ -22,3 +22,5 @@ forbid(principal, action == Keelson::Action::"checkout", resource) unless { reso
 forbid(principal, action == Keelson::Action::"checkout", resource) unless { resource.variants.containsAll(context.variants) };
 @id("returns") @field("return_policy") @color("amber")
 forbid(principal, action == Keelson::Action::"checkout", resource) unless { context.return_days >= resource.min_return_days };
+@id("returns_free") @field("return_policy") @color("amber")
+forbid(principal, action == Keelson::Action::"checkout", resource) unless { !resource.returns_free_required || context.returns_free };
