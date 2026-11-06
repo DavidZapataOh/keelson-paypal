@@ -3,10 +3,17 @@
 use std::collections::BTreeMap;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use time::OffsetDateTime;
+use time::{Duration, OffsetDateTime};
 use ulid::Ulid;
 
 use crate::wire::Countersigned;
+
+/// Whether a record expiring at `expires_at` (whole seconds) is live at `now`. A countersign is
+/// valid through its `expiresAt` second (`block.timestamp <= expiresAt`), so its record and
+/// reservation are held until that second is over.
+fn live(expires_at: OffsetDateTime, now: OffsetDateTime) -> bool {
+    now < expires_at + Duration::SECOND
+}
 
 /// One request on one mandate: its input, what it reserved and its answer, all until one
 /// expiry.
@@ -72,7 +79,7 @@ impl Budget {
     ) -> Result<Claimed<'_>, Replay> {
         let mut ledger = self.lock();
         let records = ledger.entry(*mandate).or_default();
-        records.retain(|_, r| r.running > 0 || r.expires_at > now);
+        records.retain(|_, r| r.running > 0 || live(r.expires_at, now));
         let record = records.entry(request).or_insert(Record {
             digest,
             reserved_minor: None,
@@ -80,7 +87,7 @@ impl Budget {
             running: 0,
             answer: None,
         });
-        if record.digest != digest || record.expires_at <= now {
+        if record.digest != digest || !live(record.expires_at, now) {
             return Err(Replay);
         }
         if let Some(out) = &record.answer {
@@ -107,9 +114,17 @@ impl ClaimGuard<'_> {
         self.expires_at
     }
 
-    /// `max − captured − Σ reservations of records unexpired at now` on the request's mandate.
+    /// `max − captured − Σ reservations of the other live records` on the request's mandate.
+    /// The request's own reservation is left out, so every runner of it decides alike.
     pub fn left(&self, max: i64, captured_minor: i64, now: OffsetDateTime) -> i64 {
-        left(&self.budget.lock(), &self.mandate, max, captured_minor, now)
+        left(
+            &self.budget.lock(),
+            &self.mandate,
+            self.request,
+            max,
+            captured_minor,
+            now,
+        )
     }
 
     /// Reserves `amount` for the request if it is within what is [`Self::left`]; the check and
@@ -123,7 +138,14 @@ impl ClaimGuard<'_> {
         now: OffsetDateTime,
     ) -> Result<bool, Replay> {
         let mut ledger = self.budget.lock();
-        let room = left(&ledger, &self.mandate, max, captured_minor, now);
+        let room = left(
+            &ledger,
+            &self.mandate,
+            self.request,
+            max,
+            captured_minor,
+            now,
+        );
         let record = ledger
             .get_mut(&self.mandate)
             .and_then(|records| records.get_mut(&self.request))
@@ -140,14 +162,18 @@ impl ClaimGuard<'_> {
     }
 
     /// Records `out` as the answer. A countersign of the same request that answered first keeps
-    /// its answer, which is returned.
+    /// its answer, which is returned. A DENY answer holds no reservation.
     pub fn answer(self, out: Countersigned) -> Result<Countersigned, Replay> {
         let mut ledger = self.budget.lock();
         let record = ledger
             .get_mut(&self.mandate)
             .and_then(|records| records.get_mut(&self.request))
             .ok_or(Replay)?;
-        Ok((**record.answer.get_or_insert_with(|| Box::new(out))).clone())
+        let answer = record.answer.get_or_insert_with(|| Box::new(out));
+        if answer.countersign.decision != "1" {
+            record.reserved_minor = None;
+        }
+        Ok((**answer).clone())
     }
 }
 
@@ -170,6 +196,7 @@ impl Drop for ClaimGuard<'_> {
 fn left(
     ledger: &Ledger,
     mandate: &[u8; 32],
+    except: Ulid,
     max: i64,
     captured_minor: i64,
     now: OffsetDateTime,
@@ -177,8 +204,10 @@ fn left(
     let reserved = ledger
         .get(mandate)
         .into_iter()
-        .flat_map(BTreeMap::values)
-        .filter(|r| r.expires_at > now)
+        .flatten()
+        .filter(|(id, _)| **id != except)
+        .map(|(_, r)| r)
+        .filter(|r| live(r.expires_at, now))
         .filter_map(|r| r.reserved_minor)
         .fold(0i64, i64::saturating_add);
     max.saturating_sub(captured_minor).saturating_sub(reserved)
@@ -219,7 +248,10 @@ mod tests {
         assert_eq!(g2.left(10_000, 1_000, at(899)), 3_000);
         assert_eq!(g2.reserve(10_000, 1_000, 3_001, at(899)), Ok(false));
         assert_eq!(g2.reserve(10_000, 1_000, 3_000, at(899)), Ok(true));
-        assert_eq!(g2.left(10_000, 1_000, at(900)), 6_000);
+        // A record is held through its expiry second.
+        let probe = work(&b, id(9), 9, 1_800, 899);
+        assert_eq!(probe.left(10_000, 1_000, at(900)), 0);
+        assert_eq!(probe.left(10_000, 1_000, at(901)), 6_000);
     }
 
     #[test]
@@ -233,7 +265,9 @@ mod tests {
         let again = work(&b, id(1), 1, 900, 0);
         assert_eq!(again.reserve(10_000, 0, 6_000, at(0)), Ok(true));
         assert_eq!(again.reserve(10_000, 0, 9_400, at(0)), Err(Replay));
-        assert_eq!(again.left(10_000, 0, at(0)), 4_000);
+        // A runner does not count its own request's reservation; other requests do.
+        assert_eq!(again.left(10_000, 0, at(0)), 10_000);
+        assert_eq!(work(&b, id(9), 9, 900, 0).left(10_000, 0, at(0)), 4_000);
         // The same id on another mandate is another request.
         assert!(b.claim(&[2; 32], id(1), [2; 32], at(900), at(0)).is_ok());
     }
@@ -246,13 +280,15 @@ mod tests {
         // A later runner of the same request gets the record's expiry, not its own.
         let late = work(&b, id(1), 1, 901, 1);
         assert_eq!(late.expires_at(), at(900));
-        assert_eq!(late.left(10_000, 0, at(899)), 4_000);
-        // At the record's expiry its reservation no longer counts.
-        let next = work(&b, id(2), 2, 1_800, 900);
-        assert_eq!(next.left(10_000, 0, at(900)), 10_000);
+        assert_eq!(late.left(10_000, 0, at(899)), 10_000);
+        // After the record's expiry second its reservation no longer counts.
+        let next = work(&b, id(2), 2, 1_800, 901);
+        assert_eq!(next.left(10_000, 0, at(900)), 4_000);
+        assert_eq!(next.left(10_000, 0, at(901)), 10_000);
         drop((g, late));
-        assert_eq!(next.reserve(10_000, 0, 9_400, at(900)), Ok(true));
-        assert_eq!(next.left(10_000, 0, at(900)), 600);
+        assert_eq!(next.reserve(10_000, 0, 9_400, at(901)), Ok(true));
+        let probe = work(&b, id(9), 9, 1_800, 901);
+        assert_eq!(probe.left(10_000, 0, at(901)), 600);
     }
 
     #[test]
@@ -262,7 +298,7 @@ mod tests {
         assert_eq!(g.reserve(10_000, 0, 6_000, at(0)), Ok(true));
         drop(g);
         // Another countersign of the request still holds it.
-        assert_eq!(other.left(10_000, 0, at(0)), 4_000);
+        assert_eq!(work(&b, id(9), 9, 900, 0).left(10_000, 0, at(0)), 4_000);
         drop(other);
         let fresh = work(&b, id(2), 2, 900, 0);
         assert_eq!(fresh.left(10_000, 0, at(0)), 10_000);

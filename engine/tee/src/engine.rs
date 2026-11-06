@@ -74,8 +74,10 @@ pub struct EngineConfig {
 
 /// The amount captured against each mandate, as the engine's own PayPal read reports it.
 pub trait CapturedSource: Send + Sync {
-    /// Minor units captured against the mandate whose challenge is `mandate_hash`, or `None`
-    /// while it has not been read, which refuses the countersign.
+    /// Minor units authorized or captured, and not voided or refunded, against the mandate whose
+    /// challenge is `mandate_hash`, read fresh; or `None` while it has not been read, which
+    /// refuses the countersign. A reservation lasts only as long as its countersign, so anything
+    /// spent under it must show here by then.
     fn captured_minor(&self, mandate_hash: &[u8; 32]) -> Option<i64>;
 }
 
@@ -338,6 +340,13 @@ impl Engine {
         let now = OffsetDateTime::from_unix_timestamp_nanos(i128::from(now_ms) * 1_000_000)
             .map_err(|_| bad("clock"))?;
         let now_s = now_ms.div_euclid(1000);
+        // A request id is accepted only while a record for it could still be live, so it can
+        // never be signed again once its record has expired, across restarts too.
+        let id_ms = i64::try_from(r.request_id.timestamp_ms()).map_err(|_| EngineError::Replay)?;
+        let skew_ms = MAX_SKEW_SEC * 1000;
+        if id_ms <= now_ms - COUNTERSIGN_TTL * 1000 + skew_ms || id_ms > now_ms + skew_ms {
+            return Err(EngineError::Replay);
+        }
         let forged = |e: &String| e.starts_with("ucp:") || e.starts_with("zktls:");
         if r.evidence.values().flatten().any(forged) {
             return Err(bad("evidence"));
@@ -392,7 +401,8 @@ impl Engine {
         let out = loop {
             let budget_left = match &r.observation {
                 Some(o) => o.budget_left_minor,
-                None if warming_up => 0,
+                // While warming up nothing above zero is allowed, and never more than is left.
+                None if warming_up => claim.left(budget_max, captured, now).min(0),
                 None => claim.left(budget_max, captured, now),
             };
             let (trace, canon) = match &context {
@@ -454,9 +464,10 @@ impl Engine {
                 .signer
                 .sign_countersign(&c, &self.domain)
                 .map_err(EngineError::Signer)?;
-            // Reserving is the last step, so no failure can leave a reservation behind. If a
-            // concurrent request reserved since `left`, evaluate again.
+            // Reserving is the last step, so no failure can leave a reservation behind. Cedar allowed `total ≤ budget_left`, so a failed reservation means another request
+            // reserved since, and evaluating again makes progress. A zero total reserves nothing.
             if allow
+                && total > 0
                 && r.observation.is_none()
                 && !claim
                     .reserve(budget_max, captured, total, now)

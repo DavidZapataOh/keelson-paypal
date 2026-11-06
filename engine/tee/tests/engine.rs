@@ -300,7 +300,25 @@ fn close(open: &str, nonce: &str, cart_hash: &[u8; 32], iat: i64) -> String {
 }
 
 fn request_id(n: u128) -> Ulid {
-    Ulid::from_parts(NOW as u64 * 1000, n)
+    request_id_at(n, NOW * 1000)
+}
+
+/// A request id whose ULID time is `ms`.
+fn request_id_at(n: u128, ms: i64) -> Ulid {
+    Ulid::from_parts(ms as u64, n)
+}
+
+/// Countersigns `f` under `id` with the agent's key binding issued at `clock`.
+fn countersign_at(
+    engine: &Engine,
+    issued: &MandateIssued,
+    f: &CartFixture,
+    id: Ulid,
+    clock: i64,
+) -> Result<Countersigned, EngineError> {
+    let mut r = countersign_request(issued, f, id, None);
+    r.closed_mandate = close(&issued.open_mandate, &id.to_string(), &f.hash(), clock);
+    engine.countersign(&r, at(clock))
 }
 
 fn countersign_request(
@@ -870,10 +888,7 @@ fn allows_nothing_in_the_first_900_seconds_after_boot() {
     let f = CartFixture::demo();
     let engine = leg_a_at(NOW, 0);
     let at_clock = |n: u128, clock: i64| {
-        let id = request_id(n);
-        let mut r = countersign_request(&issued, &f, id, None);
-        r.closed_mandate = close(&issued.open_mandate, &id.to_string(), &f.hash(), clock);
-        engine.countersign(&r, at(clock)).unwrap()
+        countersign_at(&engine, &issued, &f, request_id_at(n, clock * 1000), clock).unwrap()
     };
     let early = at_clock(12, NOW + 899);
     assert_eq!(early.countersign.decision, "2");
@@ -1024,31 +1039,91 @@ fn racing_units_under_one_request_id_reserve_what_is_signed() {
     }
 }
 
-/// A request id's claim and its reservation expire together, with the countersign.
+/// A reservation is held for the whole signed validity: through the second `expiresAt` and
+/// freed only after it.
 #[test]
-fn a_request_id_and_its_reservation_expire_together() {
+fn a_reservation_is_held_through_its_expiry_second() {
     let issued = register();
     let engine = leg_a();
-    let id = request_id(70);
-    let at_clock = |f: &CartFixture, id: Ulid, clock: i64| {
-        let mut r = countersign_request(&issued, f, id, None);
-        r.closed_mandate = close(&issued.open_mandate, &id.to_string(), &f.hash(), clock);
-        engine.countersign(&r, at(clock))
-    };
-    let first = at_clock(&CartFixture::sixty(), id, NOW + 10).unwrap();
+    let id = request_id_at(70, (NOW + 10) * 1000);
+    let first = countersign_at(&engine, &issued, &CartFixture::sixty(), id, NOW + 10).unwrap();
     assert_eq!(first.countersign.decision, "1");
     let expires: i64 = first.countersign.expires_at.parse().unwrap();
+    let probe = |n: u128, clock: i64| {
+        let id = request_id_at(n, clock * 1000);
+        countersign_at(&engine, &issued, &CartFixture::demo(), id, clock).unwrap()
+    };
 
-    // Until then the id is taken and the $60 stays reserved.
-    let err = at_clock(&CartFixture::demo(), id, expires - 1).unwrap_err();
+    // At `expiresAt` the countersign is still valid, so the $60 is still reserved.
+    let still = probe(71, expires);
+    assert_eq!(still.countersign.decision, "2");
+    assert_eq!(still.observation.budget_left_minor, 4_000);
+    // The same id with another cart is still a replay.
+    let err = countersign_at(&engine, &issued, &CartFixture::demo(), id, expires).unwrap_err();
     assert_eq!(err, EngineError::Replay);
-    let probe = at_clock(&CartFixture::demo(), request_id(71), expires - 1).unwrap();
-    assert_eq!(probe.observation.budget_left_minor, 4_000);
 
-    // Then both are gone: the id is free, and a new cart under it is charged in full.
-    let again = at_clock(&CartFixture::demo(), id, expires).unwrap();
-    assert_eq!(again.countersign.decision, "1");
-    assert_eq!(again.observation.budget_left_minor, 10_000);
-    let probe = at_clock(&CartFixture::sixty(), request_id(72), expires).unwrap();
-    assert_eq!(probe.observation.budget_left_minor, 600);
+    // A second later it is freed.
+    let freed = probe(72, expires + 1);
+    assert_eq!(freed.countersign.decision, "1");
+    assert_eq!(freed.observation.budget_left_minor, 10_000);
+}
+
+/// A request id is accepted only while a record for it could still be live, so it is never
+/// signed again after its record expires.
+#[test]
+fn request_ids_are_accepted_only_within_their_lifetime() {
+    let issued = register();
+    let clock = NOW + 1_000;
+    let now_ms = clock * 1000;
+    // The oldest id still accepted is one millisecond inside `TTL − skew`.
+    let oldest = now_ms - (900 - 60) * 1000;
+    let cases = [
+        (oldest + 1, true),
+        (oldest, false),
+        (now_ms + 60_000, true),
+        (now_ms + 60_001, false),
+    ];
+    for (n, (ms, ok)) in cases.into_iter().enumerate() {
+        let id = request_id_at(80 + n as u128, ms);
+        let result = countersign_at(&leg_a(), &issued, &CartFixture::demo(), id, clock);
+        match ok {
+            true => assert!(result.is_ok(), "{ms}: {:?}", result.err()),
+            false => assert_eq!(result.err(), Some(EngineError::Replay), "{ms}"),
+        }
+    }
+
+    // The id of an expired countersign is refused, not signed again.
+    let engine = leg_a();
+    let id = request_id_at(90, (NOW + 10) * 1000);
+    let first = countersign_at(&engine, &issued, &CartFixture::sixty(), id, NOW + 10).unwrap();
+    let expires: i64 = first.countersign.expires_at.parse().unwrap();
+    let again = countersign_at(&engine, &issued, &CartFixture::sixty(), id, expires + 1);
+    assert_eq!(again.err(), Some(EngineError::Replay));
+}
+
+/// During warm-up a $0 cart on a mandate captured past its max is answered once, not retried.
+#[test]
+fn a_zero_cart_in_warm_up_over_captured_returns() {
+    let issued = register();
+    let mut free = CartFixture::demo();
+    free.raw["cart"]["lines"][0]["unit_minor"] = json!(0);
+    free.raw["unit"]["amount"]["value"] = json!("0.00");
+    free.raw["unit"]["amount"]["breakdown"]["item_total"]["value"] = json!("0.00");
+    for (boot, captured) in [(NOW, 10_001), (NOW, 0), (NOW - 1_000, 10_001)] {
+        let r = countersign_request(&issued, &free, request_id(100), None);
+        let (tx, rx) = std::sync::mpsc::channel();
+        thread::spawn(move || {
+            let out = leg_a_at(boot, captured).countersign(&r, at(NOW + 10));
+            let _ = tx.send(out);
+        });
+        let out = rx
+            .recv_timeout(std::time::Duration::from_secs(30))
+            .expect("countersign returns")
+            .unwrap();
+        let expected = if captured > 10_000 { "2" } else { "1" };
+        assert_eq!(
+            out.countersign.decision, expected,
+            "boot {boot}, captured {captured}"
+        );
+    }
 }
