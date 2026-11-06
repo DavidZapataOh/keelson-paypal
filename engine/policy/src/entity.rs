@@ -1,5 +1,6 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::str::FromStr;
+use std::sync::OnceLock;
 
 use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid, RestrictedExpression};
 use keelson_canon::Variant;
@@ -60,7 +61,11 @@ fn uid(ty: &str, id: &str) -> Result<EntityUid, PolicyError> {
 
 /// The `Keelson::Agent` entity uid for an agent id.
 pub fn agent_uid(id: &str) -> Result<EntityUid, PolicyError> {
-    uid("Keelson::Agent", id)
+    static AGENT: OnceLock<Result<EntityTypeName, PolicyError>> = OnceLock::new();
+    let ty = AGENT
+        .get_or_init(|| EntityTypeName::from_str("Keelson::Agent").map_err(cedar))
+        .clone()?;
+    Ok(EntityUid::from_type_name_and_id(ty, EntityId::new(id)))
 }
 
 /// The agent a mandate authorizes: `<agent_registry>/<agent_id>`, its ERC-8004 identity.

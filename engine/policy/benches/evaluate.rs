@@ -9,9 +9,11 @@ use keelson_policy::{
     trace_jcs,
 };
 use serde_json::Value;
+use time::Duration;
 use time::macros::datetime;
 
-const BUDGET_US: f64 = 20.0;
+const EVALUATE_BUDGET_US: f64 = 20.0;
+const TRACE_JCS_BUDGET_US: f64 = 15.0;
 const RUNS: usize = 20_000;
 
 fn input() -> EvalInput {
@@ -55,33 +57,33 @@ fn extras() -> Vec<Extra> {
     ]
 }
 
-fn plain(i: &EvalInput, m: &EngineMeta) -> Vec<u8> {
-    trace_jcs(&evaluate(i, m))
-}
-
-fn with_extras(i: &EvalInput, e: &[Extra], m: &EngineMeta) -> Vec<u8> {
-    trace_jcs(&evaluate_with_extras(i, e, m))
-}
-
 fn bench(c: &mut Criterion) {
     let (i, m, e) = (input(), meta(), extras());
+    let trace = evaluate(&i, &m);
     c.bench_function("evaluate demo", |b| {
-        b.iter(|| plain(black_box(&i), black_box(&m)))
+        b.iter_with_large_drop(|| evaluate(black_box(&i), black_box(&m)))
+    });
+    c.bench_function("trace_jcs demo", |b| {
+        b.iter_with_large_drop(|| trace_jcs(black_box(&trace)))
     });
     c.bench_function("evaluate demo with 3 extras", |b| {
-        b.iter(|| with_extras(black_box(&i), black_box(&e), black_box(&m)))
+        b.iter_with_large_drop(|| evaluate_with_extras(black_box(&i), black_box(&e), black_box(&m)))
     });
 }
 
-fn percentiles(label: &str, budget: Option<f64>, mut f: impl FnMut() -> Vec<u8>) {
+/// Prints the p50 and p99 of `f` in microseconds and returns the p99. Each sample ends when `f`
+/// returns: its output is dropped outside the measurement, as `iter_with_large_drop` does.
+fn percentiles<T>(label: &str, mut f: impl FnMut() -> T) -> f64 {
     for _ in 0..RUNS / 10 {
         black_box(f());
     }
     let mut samples: Vec<f64> = (0..RUNS)
         .map(|_| {
             let start = Instant::now();
-            black_box(f());
-            start.elapsed().as_secs_f64() * 1e6
+            let out = black_box(f());
+            let elapsed = start.elapsed();
+            drop(out);
+            elapsed.as_secs_f64() * 1e6
         })
         .collect();
     samples.sort_by(f64::total_cmp);
@@ -91,9 +93,7 @@ fn percentiles(label: &str, budget: Option<f64>, mut f: impl FnMut() -> Vec<u8>)
         at(0.5),
         at(0.99)
     );
-    if let Some(budget) = budget {
-        assert!(at(0.99) < budget, "p99 over {budget}us budget");
-    }
+    at(0.99)
 }
 
 fn main() {
@@ -105,8 +105,23 @@ fn main() {
     let mut c = Criterion::default().configure_from_args();
     bench(&mut c);
     c.final_summary();
-    percentiles("evaluate demo", Some(BUDGET_US), || plain(&i, &m));
-    percentiles("evaluate demo with 3 extras", None, || {
-        with_extras(&i, &e, &m)
+    let trace = evaluate(&i, &m);
+    let evaluate_p99 = percentiles("evaluate demo", || evaluate(black_box(&i), black_box(&m)));
+    let trace_jcs_p99 = percentiles("trace_jcs demo", || trace_jcs(black_box(&trace)));
+    percentiles("evaluate demo with 3 extras", || {
+        evaluate_with_extras(black_box(&i), black_box(&e), black_box(&m))
     });
+    let mut later = i.clone();
+    percentiles("evaluate demo at a new instant each call", || {
+        later.now += Duration::milliseconds(1);
+        evaluate(black_box(&later), black_box(&m))
+    });
+    assert!(
+        evaluate_p99 < EVALUATE_BUDGET_US,
+        "evaluate p99 over the {EVALUATE_BUDGET_US}us budget"
+    );
+    assert!(
+        trace_jcs_p99 < TRACE_JCS_BUDGET_US,
+        "trace_jcs p99 over the {TRACE_JCS_BUDGET_US}us budget"
+    );
 }

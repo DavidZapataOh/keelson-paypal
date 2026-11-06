@@ -1,10 +1,12 @@
-use std::borrow::Cow;
+use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
+use std::rc::Rc;
 use std::str::FromStr;
+use std::sync::OnceLock;
 
 use cedar_policy::{
-    AuthorizationError, Authorizer, Context, Effect, Entities, Entity, EntityUid, PolicyId,
-    PolicySet, Request, Response,
+    AuthorizationError, Authorizer, Context, Effect, Entities, EntityUid, PolicyId, PolicySet,
+    Request, Response, RestrictedExpression,
 };
 use keelson_canon::Variant;
 use serde_json::{Map, Value, json};
@@ -17,8 +19,8 @@ use crate::extras::{Extra, InvalidExtra, compile};
 use crate::hashes::hex;
 use crate::trace::{Decision, Engine, FieldTrace, TRACE_VERSION, Trace};
 use crate::{
-    PolicyError, agent_uid, cedar_datetime, mandate_entity, policies, policy_set_hash_tag,
-    policy_texts, safe_int, schema, schema_hash_tag,
+    MAX_SAFE_INTEGER, PolicyError, agent_uid, cedar_datetime, mandate_entity, policies,
+    policy_set_hash_tag, policy_texts, safe_int, schema, schema_hash_tag, variant_expr,
 };
 
 /// A policy `@field` value.
@@ -148,9 +150,14 @@ impl Kind {
                     })
                 })
             }),
-            Self::Datetime => v["__extn"]["arg"]
-                .as_str()
-                .is_some_and(|arg| *v == json!({ "__extn": { "fn": "datetime", "arg": arg } })),
+            Self::Datetime => v.as_object().is_some_and(|o| {
+                o.len() == 1
+                    && o.get("__extn").and_then(Value::as_object).is_some_and(|e| {
+                        e.len() == 2
+                            && e.get("fn").and_then(Value::as_str) == Some("datetime")
+                            && e.get("arg").is_some_and(Value::is_string)
+                    })
+            }),
         }
     }
 }
@@ -205,9 +212,18 @@ pub fn evaluate(input: &EvalInput, meta: &EngineMeta) -> Trace {
 /// With any extras, the trace's `extras_hash` is the SHA-256 of the JCS form of `extras` in the
 /// order given: the order is part of the input, since it sets the `extra.<n>` ids.
 pub fn evaluate_with_extras(input: &EvalInput, extras: &[Extra], meta: &EngineMeta) -> Trace {
+    let mandate = mandate_parts(input);
     let mut faults = Faults::default();
-    let context = project(input, &mut faults);
-    run(input, context, faults, extras, meta)
+    let (context, projection) = project(input, &mandate, &mut faults);
+    run(
+        input,
+        &mandate,
+        context,
+        Some(projection),
+        faults,
+        extras,
+        meta,
+    )
 }
 
 /// Evaluates `context`, a context in Cedar JSON form such as a trace records, in place of the
@@ -226,15 +242,205 @@ pub fn evaluate_context_with_extras(
     extras: &[Extra],
     meta: &EngineMeta,
 ) -> Trace {
-    run(input, context, Faults::default(), extras, meta)
+    let mandate = mandate_parts(input);
+    run(
+        input,
+        &mandate,
+        safe(context),
+        None,
+        Faults::default(),
+        extras,
+        meta,
+    )
 }
 
-fn project(input: &EvalInput, faults: &mut Faults) -> Value {
+/// What one mandate and budget give every evaluation against them.
+struct MandateParts {
+    mandate_hash: [u8; 32],
+    budget_left_minor: i64,
+    /// The [`read`] members of the mandate, the only ones the parts are built from.
+    mandate: Value,
+    /// Whether the projection keeps each variant's `size` and `color`.
+    keep: (bool, bool),
+    /// The `Mandate` entity, or the error that keeps it from being built.
+    resource: Result<Resource, String>,
+}
+
+struct Resource {
+    uid: EntityUid,
+    /// The entity store, `None` when Cedar rejects the entity against the schema.
+    entities: Option<Entities>,
+    /// The `bound` of each of [`base_fields`]: entity attributes in Cedar JSON form.
+    bounds: Vec<Option<Value>>,
+}
+
+impl MandateParts {
+    fn new(input: &EvalInput) -> Self {
+        let [mid, nbf, exp, operator, currency, payment, checkout] =
+            read(&input.mandate).map(Value::clone);
+        let mandate = json!({
+            "mid": mid,
+            "nbf": nbf,
+            "exp": exp,
+            "agent": { "operator": operator },
+            "payment": { "currency": currency, "constraints": payment },
+            "checkout": { "constraints": checkout },
+        });
+        // An unreadable mandate denies anyway; its error is recorded when the entity is built.
+        let keep = attributes(&mandate).map_or((true, true), |(size, color)| {
+            (size.is_some(), color.is_some())
+        });
+        let resource = mandate_entity(&mandate, input.budget_left_minor)
+            .map(|entity| {
+                let attrs = entity
+                    .to_json_value()
+                    .ok()
+                    .map(|e| safe(e["attrs"].clone()));
+                Resource {
+                    uid: entity.uid(),
+                    bounds: base_fields()
+                        .iter()
+                        .map(|f| {
+                            let (_, keys) = f.bindings?;
+                            pick(attrs.as_ref()?, keys)
+                        })
+                        .collect(),
+                    entities: Entities::from_entities([entity], Some(schema())).ok(),
+                }
+            })
+            .map_err(|e| match e {
+                PolicyError::Mandate { field, .. } => format!("entity.invalid:{field}"),
+                PolicyError::Cedar(_) => "entity.invalid:cedar".to_owned(),
+            });
+        Self {
+            mandate_hash: input.mandate_hash,
+            budget_left_minor: input.budget_left_minor,
+            mandate,
+            keep,
+            resource,
+        }
+    }
+
+    fn matches(&self, input: &EvalInput) -> bool {
+        self.mandate_hash == input.mandate_hash
+            && self.budget_left_minor == input.budget_left_minor
+            && read(&self.mandate)
+                .into_iter()
+                .zip(read(&input.mandate))
+                .all(|(a, b)| same(a, b))
+    }
+}
+
+/// The members of a mandate that [`mandate_entity`] and [`attributes`] read.
+fn read(m: &Value) -> [&Value; 7] {
+    [
+        &m["mid"],
+        &m["nbf"],
+        &m["exp"],
+        &m["agent"]["operator"],
+        &m["payment"]["currency"],
+        &m["payment"]["constraints"],
+        &m["checkout"]["constraints"],
+    ]
+}
+
+/// Whether two values are written the same, keys in the same order and numbers in the same
+/// representation, so `0.0` and `-0.0` differ. Stricter than `==`, and cheaper.
+fn same(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::Object(a), Value::Object(b)) => {
+            a.len() == b.len()
+                && a.iter()
+                    .zip(b)
+                    .all(|((ka, va), (kb, vb))| ka == kb && same(va, vb))
+        }
+        (Value::Array(a), Value::Array(b)) => {
+            a.len() == b.len() && a.iter().zip(b).all(|(a, b)| same(a, b))
+        }
+        (Value::Number(a), Value::Number(b)) => {
+            a.as_i64() == b.as_i64()
+                && a.as_u64() == b.as_u64()
+                && a.as_f64().map(f64::to_bits) == b.as_f64().map(f64::to_bits)
+        }
+        (a, b) => a == b,
+    }
+}
+
+thread_local! {
+    static MANDATE: Cell<Option<Rc<MandateParts>>> = const { Cell::new(None) };
+    static EXTRAS: Cell<Option<Rc<ExtrasParts>>> = const { Cell::new(None) };
+}
+
+/// The parts of the last mandate evaluated on this thread, rebuilt when the mandate, its hash or
+/// the budget differ.
+fn mandate_parts(input: &EvalInput) -> Rc<MandateParts> {
+    MANDATE.with(|slot| {
+        let parts = slot
+            .take()
+            .filter(|p| p.matches(input))
+            .unwrap_or_else(|| Rc::new(MandateParts::new(input)));
+        slot.set(Some(Rc::clone(&parts)));
+        parts
+    })
+}
+
+/// A list of extras compiled into the policy set.
+struct ExtrasParts {
+    extras: Vec<Extra>,
+    hash: String,
+    /// The policy set with every extra added, or the error that keeps them all out.
+    set: Result<PolicySet, String>,
+}
+
+impl ExtrasParts {
+    fn new(extras: &[Extra]) -> Self {
+        let list = safe(serde_json::to_value(extras).unwrap_or_default());
+        let jcs = keelson_core::jcs(&list).unwrap_or_default();
+        let set = match compile(extras) {
+            Err(e) => Err(match e.reason {
+                InvalidExtra::TooMany => "extras.invalid:too_many".to_owned(),
+                _ => format!("extras.invalid:{}", e.index),
+            }),
+            Ok(compiled) => {
+                let mut with = policies().clone();
+                if compiled.into_iter().all(|(_, p, _)| with.add(p).is_ok()) {
+                    Ok(with)
+                } else {
+                    Err("extras.invalid:cedar".to_owned())
+                }
+            }
+        };
+        Self {
+            extras: extras.to_vec(),
+            hash: hex("sha256:", &Sha256::digest(jcs.as_bytes())),
+            set,
+        }
+    }
+}
+
+/// The last list of extras compiled on this thread, compiled again when the list differs.
+fn extras_parts(extras: &[Extra]) -> Rc<ExtrasParts> {
+    EXTRAS.with(|slot| {
+        let parts = slot
+            .take()
+            .filter(|p| p.extras == extras)
+            .unwrap_or_else(|| Rc::new(ExtrasParts::new(extras)));
+        slot.set(Some(Rc::clone(&parts)));
+        parts
+    })
+}
+
+/// The projected values the Cedar context is built from, besides those of `input.context`.
+struct Projection {
+    variants: BTreeSet<Variant>,
+    max_line_qty: i64,
+    now: Option<String>,
+}
+
+/// The projection of `input.context` in Cedar JSON form, and the values Cedar reads.
+fn project(input: &EvalInput, mandate: &MandateParts, faults: &mut Faults) -> (Value, Projection) {
     let c = &input.context;
-    // An unreadable mandate denies anyway; its error is recorded when the entity is built.
-    let (size, color) = attributes(&input.mandate).map_or((true, true), |(size, color)| {
-        (size.is_some(), color.is_some())
-    });
+    let (size, color) = mandate.keep;
     let projected = |v: &Variant| Variant {
         sku: v.sku.clone(),
         size: v.size.clone().filter(|_| size),
@@ -245,10 +451,15 @@ fn project(input: &EvalInput, faults: &mut Faults) -> Value {
     let canonical = c.quantities.keys().eq(c.variants.iter())
         && c.quantities.values().all(|&q| q >= 1)
         && c.quantities.values().copied().max().unwrap_or(0) == c.max_line_qty;
-    let mut sums: BTreeMap<Variant, i64> = BTreeMap::new();
+    let mut sums: BTreeMap<(&str, Option<&str>, Option<&str>), i64> = BTreeMap::new();
     let mut overflow = false;
     for (v, &qty) in &c.quantities {
-        let sum = sums.entry(projected(v)).or_insert(0);
+        let key = (
+            v.sku.as_str(),
+            v.size.as_deref().filter(|_| size),
+            v.color.as_deref().filter(|_| color),
+        );
+        let sum = sums.entry(key).or_insert(0);
         match sum.checked_add(qty) {
             Some(s) => *sum = s,
             None => overflow = true,
@@ -262,21 +473,116 @@ fn project(input: &EvalInput, faults: &mut Faults) -> Value {
     };
 
     // A clock Cedar cannot represent is recorded as `context.type:now`.
-    let now = cedar_datetime(input.now).map_or(
-        Value::Null,
-        |now| json!({ "__extn": { "fn": "datetime", "arg": now } }),
+    let now = cedar_datetime(input.now).ok();
+    let mut context = Map::with_capacity(CONTEXT.len());
+    let mut put = |key: &str, value: Value| context.insert(key.to_owned(), value);
+    put("currency", Value::from(c.currency.as_str()));
+    put("total_minor", long(c.total_minor));
+    put("merchant", Value::from(c.merchant.as_str()));
+    put(
+        "categories",
+        Value::Array(
+            c.categories
+                .iter()
+                .map(|s| Value::from(s.as_str()))
+                .collect(),
+        ),
     );
-    json!({
-        "currency": c.currency,
-        "total_minor": c.total_minor,
-        "merchant": c.merchant,
-        "categories": c.categories,
-        "variants": variants,
-        "max_line_qty": max_line_qty,
-        "max_unit_minor": c.max_unit_minor,
-        "return_days": c.return_days,
-        "returns_free": c.returns_free,
-        "now": now,
+    put(
+        "variants",
+        Value::Array(variants.iter().map(variant_json).collect()),
+    );
+    put("max_line_qty", long(max_line_qty));
+    put("max_unit_minor", long(c.max_unit_minor));
+    put("return_days", long(c.return_days));
+    put("returns_free", Value::Bool(c.returns_free));
+    put(
+        "now",
+        now.as_ref().map_or(
+            Value::Null,
+            |now| json!({ "__extn": { "fn": "datetime", "arg": now } }),
+        ),
+    );
+    let projection = Projection {
+        variants,
+        max_line_qty,
+        now,
+    };
+    (Value::Object(context), projection)
+}
+
+/// A `Long` as [`safe`] writes it.
+fn long(n: i64) -> Value {
+    if (-MAX_SAFE_INTEGER..=MAX_SAFE_INTEGER).contains(&n) {
+        Value::from(n)
+    } else {
+        Value::String(n.to_string())
+    }
+}
+
+/// A variant in Cedar JSON form; absent size and color are omitted.
+fn variant_json(v: &Variant) -> Value {
+    let mut record = Map::with_capacity(3);
+    record.insert("sku".to_owned(), Value::from(v.sku.as_str()));
+    if let Some(size) = &v.size {
+        record.insert("size".to_owned(), Value::from(size.as_str()));
+    }
+    if let Some(color) = &v.color {
+        record.insert("color".to_owned(), Value::from(color.as_str()));
+    }
+    Value::Object(record)
+}
+
+impl Projection {
+    /// The Cedar context, built from the values the trace shows. It is only built once
+    /// [`check_context`] has accepted those values, so it has the `checkout` context type.
+    fn cedar(&self, c: &keelson_canon::Context) -> Option<Context> {
+        let string = |s: &String| RestrictedExpression::new_string(s.clone());
+        let pairs = [
+            ("currency", string(&c.currency)),
+            ("total_minor", RestrictedExpression::new_long(c.total_minor)),
+            ("merchant", string(&c.merchant)),
+            (
+                "categories",
+                RestrictedExpression::new_set(c.categories.iter().map(string)),
+            ),
+            (
+                "variants",
+                RestrictedExpression::new_set(self.variants.iter().map(variant_expr)),
+            ),
+            (
+                "max_line_qty",
+                RestrictedExpression::new_long(self.max_line_qty),
+            ),
+            (
+                "max_unit_minor",
+                RestrictedExpression::new_long(c.max_unit_minor),
+            ),
+            ("return_days", RestrictedExpression::new_long(c.return_days)),
+            (
+                "returns_free",
+                RestrictedExpression::new_bool(c.returns_free),
+            ),
+            ("now", datetime(self.now.as_deref()?)),
+        ];
+        Context::from_pairs(pairs.map(|(k, v)| (k.to_owned(), v))).ok()
+    }
+}
+
+/// The `datetime` literal for `now`, kept for the next evaluation at the same instant: building
+/// one costs more than the rest of the context.
+fn datetime(now: &str) -> RestrictedExpression {
+    thread_local! {
+        static LAST: Cell<Option<Rc<(String, RestrictedExpression)>>> = const { Cell::new(None) };
+    }
+    LAST.with(|slot| {
+        let last = slot
+            .take()
+            .filter(|last| last.0 == now)
+            .unwrap_or_else(|| Rc::new((now.to_owned(), RestrictedExpression::new_datetime(now))));
+        let expr = last.1.clone();
+        slot.set(Some(last));
+        expr
     })
 }
 
@@ -309,61 +615,75 @@ fn check_context(context: &Value, faults: &mut Faults) {
     }
 }
 
+/// A policy of the bundled set other than `base`, and what its field trace shows.
+struct BaseField {
+    id: String,
+    field: String,
+    color: String,
+    /// The context and entity attributes from [`BINDINGS`].
+    bindings: Option<(&'static [&'static str], &'static [&'static str])>,
+}
+
+/// The bundled policies other than `base`, in id order.
+fn base_fields() -> &'static [BaseField] {
+    static FIELDS: OnceLock<Vec<BaseField>> = OnceLock::new();
+    FIELDS.get_or_init(|| {
+        policy_texts()
+            .keys()
+            .filter(|id| *id != "base")
+            .filter_map(|id| {
+                let policy = policies().policy(&PolicyId::new(id))?;
+                let annotation = |key| policy.annotation(key).unwrap_or_default().to_owned();
+                Some(BaseField {
+                    id: id.clone(),
+                    field: annotation("field"),
+                    color: annotation("color"),
+                    bindings: BINDINGS
+                        .iter()
+                        .find(|(b, ..)| b == id)
+                        .map(|&(_, ctx, attrs)| (ctx, attrs)),
+                })
+            })
+            .collect()
+    })
+}
+
 fn run(
     input: &EvalInput,
+    mandate: &MandateParts,
     context: Value,
+    projection: Option<Projection>,
     mut faults: Faults,
     extras: &[Extra],
     meta: &EngineMeta,
 ) -> Trace {
-    let extras_hash = (!extras.is_empty()).then(|| {
-        let list = safe(serde_json::to_value(extras).unwrap_or_default());
-        let jcs = keelson_core::jcs(&list).unwrap_or_default();
-        format!("sha256:{}", hex(&Sha256::digest(jcs.as_bytes())))
-    });
-    let mut compiled = compile(extras).unwrap_or_else(|e| {
-        faults.add(
-            None,
-            match e.reason {
-                InvalidExtra::TooMany => "extras.invalid:too_many".to_owned(),
-                _ => format!("extras.invalid:{}", e.index),
-            },
-        );
-        Vec::new()
-    });
-    let mut set = Cow::Borrowed(policies());
-    if !compiled.is_empty() {
-        let mut with = policies().clone();
-        if compiled.iter().all(|(_, p, _)| with.add(p.clone()).is_ok()) {
-            set = Cow::Owned(with);
-        } else {
-            faults.add(None, "extras.invalid:cedar");
-            compiled.clear();
+    let compiled = (!extras.is_empty()).then(|| extras_parts(extras));
+    let (set, added) = match compiled.as_deref() {
+        None => (policies(), &[][..]),
+        Some(ExtrasParts { set: Ok(set), .. }) => (set, extras),
+        Some(ExtrasParts { set: Err(code), .. }) => {
+            faults.add(None, code.clone());
+            (policies(), &[][..])
         }
-    }
+    };
 
-    let context = safe(context);
     let before = faults.errors.len();
     check_context(&context, &mut faults);
     let context_ok = faults.errors.len() == before;
 
-    let entity = mandate_entity(&input.mandate, input.budget_left_minor)
-        .map_err(|e| {
-            faults.add(
-                None,
-                match e {
-                    PolicyError::Mandate { field, .. } => format!("entity.invalid:{field}"),
-                    PolicyError::Cedar(_) => "entity.invalid:cedar".to_owned(),
-                },
-            )
-        })
-        .ok();
-    let bounds = entity
-        .as_ref()
-        .and_then(|e| e.to_json_value().ok())
-        .map(|e| safe(e["attrs"].clone()));
-    let response = entity.filter(|_| context_ok).and_then(|e| {
-        authorize(&set, &input.agent, &context, e)
+    let resource = match &mandate.resource {
+        Ok(r) => Some(r),
+        Err(code) => {
+            faults.add(None, code.clone());
+            None
+        }
+    };
+    let response = resource.filter(|_| context_ok).and_then(|resource| {
+        let cedar_context = |action: &EntityUid| match &projection {
+            Some(p) => p.cedar(&input.context),
+            None => Context::from_json_value(context.clone(), Some((schema(), action))).ok(),
+        };
+        authorize(set, &input.agent, cedar_context, resource)
             .map_err(|code| faults.add(None, code))
             .ok()
     });
@@ -392,56 +712,51 @@ fn run(
         Decision::Deny
     };
 
-    let principal = json!({ "__entity": { "type": AGENT_TYPE, "id": input.agent } });
-    let base = policy_texts().keys().filter(|id| *id != "base").map(|id| {
-        let (observed, bound) =
-            BINDINGS
-                .iter()
-                .find(|(b, ..)| b == id)
-                .map_or((None, None), |(_, ctx, attrs)| {
-                    let observed = if id == "agent" {
-                        Some(principal.clone())
-                    } else {
-                        pick(&context, ctx)
-                    };
-                    (observed, bounds.as_ref().and_then(|b| pick(b, attrs)))
-                });
-        (id.clone(), observed, bound, false)
-    });
-    let added = compiled.iter().zip(extras).map(|((id, ..), extra)| {
-        let (attr, literal) = extra.binding();
-        (id.clone(), pick(&context, &[attr]), Some(literal), true)
-    });
-    let fields = base
-        .chain(added)
-        .filter_map(|(id, observed, bound, extra)| {
-            let policy = set.policy(&PolicyId::new(&id))?;
-            let annotation = |key| policy.annotation(key).unwrap_or_default().to_owned();
-            let field = annotation("field");
-            // Extras are always green, so evidence is not shown for them.
-            let evidence = if extra {
-                Vec::new()
+    let pass = |id: &str| {
+        response.is_some() && !fired.iter().any(|f| f == id) && !faults.policies.contains(id)
+    };
+    let mut fields = Vec::with_capacity(base_fields().len() + added.len());
+    for (n, f) in base_fields().iter().enumerate() {
+        let observed = f.bindings.and_then(|(keys, _)| {
+            if f.id == "agent" {
+                Some(json!({ "__entity": { "type": AGENT_TYPE, "id": input.agent } }))
             } else {
-                input.evidence.get(&field).cloned().unwrap_or_default()
-            };
-            let proven = evidence
-                .iter()
-                .any(|e| e.starts_with("ucp:") || e.starts_with("zktls:"));
-            Some(FieldTrace {
-                color: if proven {
-                    "green".to_owned()
-                } else {
-                    annotation("color")
-                },
-                field,
-                pass: response.is_some() && !fired.contains(&id) && !faults.policies.contains(&id),
-                observed,
-                bound,
-                evidence,
-                id,
-            })
-        })
-        .collect();
+                pick(&context, keys)
+            }
+        });
+        let bound = resource.and_then(|r| r.bounds.get(n).cloned().flatten());
+        let evidence = input.evidence.get(&f.field).cloned().unwrap_or_default();
+        let proven = evidence
+            .iter()
+            .any(|e| e.starts_with("ucp:") || e.starts_with("zktls:"));
+        fields.push(FieldTrace {
+            id: f.id.clone(),
+            field: f.field.clone(),
+            color: if proven {
+                "green".to_owned()
+            } else {
+                f.color.clone()
+            },
+            pass: pass(&f.id),
+            observed,
+            bound,
+            evidence,
+        });
+    }
+    // Extras are always green, so evidence is not shown for them.
+    for (n, extra) in added.iter().enumerate() {
+        let (field, attr, _, literal) = extra.parts();
+        let id = format!("extra.{n}");
+        fields.push(FieldTrace {
+            field: field.to_owned(),
+            color: "green".to_owned(),
+            pass: pass(&id),
+            observed: pick(&context, &[attr]),
+            bound: Some(literal),
+            evidence: Vec::new(),
+            id,
+        });
+    }
 
     let t_tee = input
         .now
@@ -463,9 +778,9 @@ fn run(
         policy_set_hash: policy_set_hash_tag(),
         schema_hash: schema_hash_tag(),
         proof_bundle_hash: meta.proof_bundle_hash.clone(),
-        extras_hash,
-        mandate_hash: format!("0x{}", hex(&input.mandate_hash)),
-        cart_hash: format!("sha256:{}", hex(&input.cart_hash)),
+        extras_hash: compiled.as_ref().map(|p| p.hash.clone()),
+        mandate_hash: hex("0x", &input.mandate_hash),
+        cart_hash: hex("sha256:", &input.cart_hash),
         context,
         decision,
         fired,
@@ -475,23 +790,35 @@ fn run(
     }
 }
 
-/// Builds the request against the schema and runs the authorizer.
+fn action_uid() -> Option<&'static EntityUid> {
+    static ACTION_UID: OnceLock<Option<EntityUid>> = OnceLock::new();
+    ACTION_UID
+        .get_or_init(|| EntityUid::from_str(ACTION).ok())
+        .as_ref()
+}
+
+/// Builds the request and runs the authorizer.
 fn authorize(
     policies: &PolicySet,
     agent: &str,
-    context: &Value,
-    entity: Entity,
+    context: impl FnOnce(&EntityUid) -> Option<Context>,
+    resource: &Resource,
 ) -> Result<Response, &'static str> {
-    let action = EntityUid::from_str(ACTION).map_err(|_| "request.invalid")?;
+    let action = action_uid().ok_or("request.invalid")?;
     let principal = agent_uid(agent).map_err(|_| "request.invalid")?;
-    let resource = entity.uid();
-    let context = Context::from_json_value(context.clone(), Some((schema(), &action)))
-        .map_err(|_| "context.invalid")?;
-    let request = Request::new(principal, action, resource, context, Some(schema()))
-        .map_err(|_| "request.invalid")?;
-    let entities =
-        Entities::from_entities([entity], Some(schema())).map_err(|_| "entity.invalid:cedar")?;
-    Ok(Authorizer::new().is_authorized(&request, policies, &entities))
+    let context = context(action).ok_or("context.invalid")?;
+    // The context already has the `checkout` context type, and the principal and resource are
+    // built with the schema's entity types, so the request is not validated a second time.
+    let request = Request::new(
+        principal,
+        action.clone(),
+        resource.uid.clone(),
+        context,
+        None,
+    )
+    .map_err(|_| "request.invalid")?;
+    let entities = resource.entities.as_ref().ok_or("entity.invalid:cedar")?;
+    Ok(Authorizer::new().is_authorized(&request, policies, entities))
 }
 
 fn pick(source: &Value, keys: &[&str]) -> Option<Value> {

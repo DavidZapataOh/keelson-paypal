@@ -64,7 +64,7 @@ impl std::error::Error for ExtrasError {}
 
 impl Extra {
     /// The `@field` annotation, the context attribute read, the comparison and the literal.
-    fn parts(&self) -> (&'static str, &'static str, &'static str, Value) {
+    pub(crate) fn parts(&self) -> (&'static str, &'static str, &'static str, Value) {
         match self {
             Self::MaxUnitPrice { minor } => ("total", "max_unit_minor", ">", json!(minor)),
             Self::DenyMerchant { id } => ("merchant", "merchant", "==", json!(id)),
@@ -92,12 +92,6 @@ impl Extra {
             Self::DenyMerchant { .. } => InvalidExtra::MerchantId,
             Self::DenyCategory { .. } => InvalidExtra::CategoryId,
         })
-    }
-
-    /// The context attribute the policy reads and the constant it compares it with.
-    pub(crate) fn binding(&self) -> (&'static str, Value) {
-        let (_, attr, _, literal) = self.parts();
-        (attr, literal)
     }
 
     /// The policy in Cedar's JSON form, so string values are data and never policy syntax.

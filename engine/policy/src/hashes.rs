@@ -1,3 +1,5 @@
+use std::sync::OnceLock;
+
 use sha2::{Digest, Sha256};
 
 use crate::{POLICY_SET_SRC, SCHEMA_SRC};
@@ -14,19 +16,28 @@ pub fn schema_hash() -> [u8; 32] {
 
 /// [`policy_set_hash`] as `sha256:<hex>`.
 pub fn policy_set_hash_tag() -> String {
-    tag(&policy_set_hash())
+    static TAG: OnceLock<String> = OnceLock::new();
+    TAG.get_or_init(|| tag(&policy_set_hash())).clone()
 }
 
 /// [`schema_hash`] as `sha256:<hex>`.
 pub fn schema_hash_tag() -> String {
-    tag(&schema_hash())
+    static TAG: OnceLock<String> = OnceLock::new();
+    TAG.get_or_init(|| tag(&schema_hash())).clone()
 }
 
 fn tag(digest: &[u8; 32]) -> String {
-    format!("sha256:{}", hex(digest))
+    hex("sha256:", digest)
 }
 
-/// Lowercase hex.
-pub(crate) fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+/// `prefix` followed by `bytes` in lowercase hex.
+pub(crate) fn hex(prefix: &str, bytes: &[u8]) -> String {
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    let mut s = String::with_capacity(prefix.len() + bytes.len() * 2);
+    s.push_str(prefix);
+    for &b in bytes {
+        s.push(char::from(DIGITS[usize::from(b >> 4)]));
+        s.push(char::from(DIGITS[usize::from(b & 0xf)]));
+    }
+    s
 }
