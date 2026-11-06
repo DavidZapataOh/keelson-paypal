@@ -16,13 +16,14 @@ use axum::http::{Request, StatusCode, header};
 use common::*;
 use http_body_util::BodyExt;
 use keelson_tee::chain;
-use keelson_tee::server::{AppState, router};
+use keelson_tee::server::{ATTESTATION_MAX_AGE, AppState, REATTEST_EVERY, router};
 use keelson_tee::tdx::{
     Attestation, Block, Dstack, DstackError, QUOTE_REPORT_DATA, decode_attestation,
 };
 use keelson_tee::wire::Hex;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use time::OffsetDateTime;
 use tower::ServiceExt;
 
 const TOKEN: &str = "k-test-token";
@@ -105,9 +106,27 @@ async fn an_rpc_that_does_not_answer_is_an_error() {
     ));
 }
 
-/// Leg A serving the evidence captured on hardware. Its quote binds other report data than this
-/// engine's, which the routes neither check nor need.
-fn app() -> (Router, Attestation) {
+/// When the served attestation's block was read.
+const ATTESTED: i64 = NOW;
+
+fn after_59_minutes() -> OffsetDateTime {
+    at(ATTESTED + 59 * 60)
+}
+
+fn after_an_hour_and_a_second() -> OffsetDateTime {
+    at(ATTESTED + 3_601)
+}
+
+/// Points the agent socket at nothing, so attesting fails.
+fn no_agent() {
+    // SAFETY: every test in this binary that reads the variable sets it to this same value.
+    unsafe { std::env::set_var("DSTACK_SIMULATOR_ENDPOINT", "/nonexistent/dstack.sock") };
+}
+
+/// Leg A serving the evidence captured on hardware, attested at `ATTESTED` and read at `clock`.
+/// Its quote binds other report data than this engine's, which the routes neither check nor
+/// need.
+fn app(clock: fn() -> OffsetDateTime) -> (Router, Attestation) {
     let engine = leg_a();
     let bytes = captured();
     let evidence = decode_attestation(&bytes).unwrap();
@@ -126,8 +145,9 @@ fn app() -> (Router, Attestation) {
         compose_hash: "00".repeat(32),
         dstack_version: "0.6.1".into(),
     };
-    let state =
-        AppState::new(engine, Sha256::digest(TOKEN).into()).with_attestation(attestation.clone());
+    let state = AppState::new(engine, Sha256::digest(TOKEN).into())
+        .with_clock(clock)
+        .with_attestation(attestation.clone(), at(ATTESTED));
     (router(Arc::new(state)), attestation)
 }
 
@@ -140,36 +160,59 @@ async fn send(app: &Router, req: Request<Body>) -> (StatusCode, Value) {
 
 #[tokio::test]
 async fn serves_the_attestation_without_a_bearer() {
-    let (app, attestation) = app();
-    let (status, body) = send(
-        &app,
-        Request::get("/v1/attestation").body(Body::empty()).unwrap(),
-    )
-    .await;
+    let (app, attestation) = app(after_59_minutes);
+    let (status, body) = send(&app, get_attestation()).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body, serde_json::to_value(&attestation).unwrap());
     let served: Attestation = serde_json::from_value(body).unwrap();
     assert_eq!(served, attestation);
 }
 
+fn refresh(token: Option<&str>) -> Request<Body> {
+    let mut req = Request::post("/v1/attestation/refresh");
+    if let Some(token) = token {
+        req = req.header(header::AUTHORIZATION, format!("Bearer {token}"));
+    }
+    req.body(Body::empty()).unwrap()
+}
+
+fn get_attestation() -> Request<Body> {
+    Request::get("/v1/attestation").body(Body::empty()).unwrap()
+}
+
 #[tokio::test]
 async fn refresh_needs_the_bearer_and_the_agent() {
-    let (app, _) = app();
-    let refresh = |token: Option<&str>| {
-        let mut req = Request::post("/v1/attestation/refresh");
-        if let Some(token) = token {
-            req = req.header(header::AUTHORIZATION, format!("Bearer {token}"));
-        }
-        req.body(Body::empty()).unwrap()
-    };
+    let (app, _) = app(after_59_minutes);
     let (status, body) = send(&app, refresh(None)).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     assert_eq!(body["code"], "unauthorized");
-    // SAFETY: no other test in this binary reads the variable.
-    unsafe { std::env::set_var("DSTACK_SIMULATOR_ENDPOINT", "/nonexistent/dstack.sock") };
+    no_agent();
     let (status, body) = send(&app, refresh(Some(TOKEN))).await;
     assert_eq!(status, StatusCode::BAD_GATEWAY);
     assert_eq!(body["code"], "attestation");
+}
+
+#[tokio::test]
+async fn a_failed_refresh_keeps_the_attestation_until_its_block_is_an_hour_old() {
+    let (fresh, attestation) = app(after_59_minutes);
+    no_agent();
+    let (status, _) = send(&fresh, refresh(Some(TOKEN))).await;
+    assert_eq!(status, StatusCode::BAD_GATEWAY);
+    let (status, body) = send(&fresh, get_attestation()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, serde_json::to_value(&attestation).unwrap());
+
+    let (stale, _) = app(after_an_hour_and_a_second);
+    let (status, body) = send(&stale, get_attestation()).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(body["code"], "attestation_stale");
+}
+
+#[test]
+fn reattests_well_inside_the_hour() {
+    assert!(REATTEST_EVERY < ATTESTATION_MAX_AGE);
+    assert_eq!(ATTESTATION_MAX_AGE, time::Duration::hours(1));
+    assert_eq!(REATTEST_EVERY, time::Duration::minutes(50));
 }
 
 #[tokio::test]
@@ -178,11 +221,7 @@ async fn without_an_attestation_there_are_no_attestation_routes() {
         leg_a(),
         Sha256::digest(TOKEN).into(),
     )));
-    let (status, body) = send(
-        &app,
-        Request::get("/v1/attestation").body(Body::empty()).unwrap(),
-    )
-    .await;
+    let (status, body) = send(&app, get_attestation()).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert_eq!(body["code"], "not_found");
 }

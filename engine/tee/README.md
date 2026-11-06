@@ -49,7 +49,7 @@ Refusals carry no signature and one of these stable codes: `auth.closed_*`, `aut
 
 ## HTTP
 
-`keelson-engine --listen tcp:<addr>` serves `POST /v1/countersign`, `POST /v1/mandates/register` and `GET /v1/health` (`{ tee, signer, boot_epoch, oci_digest, version }`). With `--platform tdx` it also serves `GET /v1/attestation` and `POST /v1/attestation/refresh` (see below). Every route except health and `GET /v1/attestation` needs `Authorization: Bearer <token>`; the engine holds only the token's SHA-256 and compares it in constant time. Refusals are `application/problem+json` (RFC 9457) with `type` `https://keelson.finance/problems/<code>` and the stable code, and never echo the request. Bodies are JSON with unknown fields rejected.
+`keelson-engine --listen tcp:<addr>` serves `POST /v1/countersign`, `POST /v1/mandates/register` and `GET /v1/health` (`{ tee, signer, boot_epoch, oci_digest, version }`). With `--platform tdx` it also serves `GET /v1/attestation` and `POST /v1/attestation/refresh` (see below). Every route except health and `GET /v1/attestation` needs `Authorization: Bearer <token>`; the engine holds only the token's SHA-256, from `KEELSON_TEE_TOKEN_SHA256`, and compares it in constant time. Refusals are `application/problem+json` (RFC 9457) with `type` `https://keelson.finance/problems/<code>` and the stable code, and never echo the request. Bodies are JSON with unknown fields rejected.
 
 | Status | Codes |
 | --- | --- |
@@ -59,7 +59,7 @@ Refusals carry no signature and one of these stable codes: `auth.closed_*`, `aut
 | 413 | `payload_too_large` |
 | 422 | `bad_request`, `commitment_mismatch`, `mandate_expired`, `mandate_not_yet_valid` |
 | 501 | `no_root` |
-| 503 | `not_ready` |
+| 503 | `not_ready`, `attestation_stale` |
 | 500 | `signer`, `internal` |
 | 502 | `attestation` |
 
@@ -89,7 +89,7 @@ Built with the cargo feature `tdx`, `keelson-engine --platform tdx --listen tcp:
 }
 ```
 
-A relying party checks that `dstack-verifier` accepts `attestation`, that its report data is `report_data(binding, block.hash)` and `binding.signer` is the signer it trusts, and that `block.hash` is the hash of block `block.number` on the chain and the block is recent. `POST /v1/attestation/refresh` (bearer) attests the same signer over the latest block and serves that attestation from then on; it fails with `attestation` when the agent or the RPC does not answer.
+A relying party checks that `dstack-verifier` accepts `attestation`, that its report data is `report_data(binding, block.hash)` and `binding.signer` is the signer it trusts, and that `block.hash` is the hash of block `block.number` on the chain and the block is recent. The engine attests the same signer over the latest block every 50 minutes, and `POST /v1/attestation/refresh` (bearer) does it on demand, failing with `attestation` when the agent or the RPC does not answer. A failed attempt keeps the attestation already served; once its block was read more than an hour ago, `GET /v1/attestation` answers `503 attestation_stale` until an attempt succeeds. So a served attestation always names a block less than an hour old.
 
 `tests/tdx_simulator.rs` runs the boot against the dstack guest agent simulator, whose quote is a captured one with the report data written in, so it checks what the engine asks for and binds, not the quote. `tests/tdx_live.rs` checks a deployed CVM end to end, including `dstack-verifier`.
 

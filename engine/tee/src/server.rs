@@ -32,7 +32,7 @@ pub struct AppState {
     token_hash: [u8; 32],
     clock: fn() -> OffsetDateTime,
     #[cfg(feature = "tdx")]
-    attestation: Option<std::sync::RwLock<crate::tdx::Attestation>>,
+    attestation: Option<std::sync::RwLock<Attested>>,
 }
 
 impl AppState {
@@ -47,11 +47,15 @@ impl AppState {
         }
     }
 
-    /// Serves `attestation` on `GET /v1/attestation` and renews it on
-    /// `POST /v1/attestation/refresh`.
+    /// Serves `attestation`, whose block was read at `at`, on `GET /v1/attestation` and renews
+    /// it on `POST /v1/attestation/refresh` and [`spawn_reattest`].
     #[cfg(feature = "tdx")]
-    pub fn with_attestation(mut self, attestation: crate::tdx::Attestation) -> Self {
-        self.attestation = Some(std::sync::RwLock::new(attestation));
+    pub fn with_attestation(
+        mut self,
+        attestation: crate::tdx::Attestation,
+        at: OffsetDateTime,
+    ) -> Self {
+        self.attestation = Some(std::sync::RwLock::new(Attested { attestation, at }));
         self
     }
 
@@ -245,37 +249,85 @@ async fn register(
     blocking(move || state.engine.register_mandate(&request, (state.clock)())).await
 }
 
+/// How long an attestation is served after its block was read; past it `GET /v1/attestation`
+/// answers `attestation_stale`.
 #[cfg(feature = "tdx")]
-fn current(state: &AppState) -> crate::tdx::Attestation {
-    let slot = state
-        .attestation
-        .as_ref()
-        .expect("routed only with an attestation");
-    slot.read().unwrap_or_else(|e| e.into_inner()).clone()
+pub const ATTESTATION_MAX_AGE: time::Duration = time::Duration::hours(1);
+
+/// How often [`spawn_reattest`] attests over a new block, inside [`ATTESTATION_MAX_AGE`] so one
+/// failed attempt leaves the served attestation valid.
+#[cfg(feature = "tdx")]
+pub const REATTEST_EVERY: time::Duration = time::Duration::minutes(50);
+
+/// An attestation and when its block was read.
+#[cfg(feature = "tdx")]
+struct Attested {
+    attestation: crate::tdx::Attestation,
+    at: OffsetDateTime,
 }
 
 #[cfg(feature = "tdx")]
-async fn attestation(State(state): State<Arc<AppState>>) -> Json<crate::tdx::Attestation> {
-    Json(current(&state))
+impl AppState {
+    fn attested(&self) -> &std::sync::RwLock<Attested> {
+        self.attestation
+            .as_ref()
+            .expect("routed only with an attestation")
+    }
 }
 
-/// Attests the same signer over the latest block and serves that from then on, unless a newer
-/// one is already served.
+/// Attests the engine's signer over the latest block and serves that from then on, unless a
+/// newer one is already served. On failure the served attestation stays as it was.
+#[cfg(feature = "tdx")]
+pub async fn reattest(state: &AppState) -> Result<crate::tdx::Attestation, crate::tdx::BootError> {
+    let at = (state.clock)();
+    let fresh = crate::tdx::attest(&state.engine).await?;
+    let mut served = state.attested().write().unwrap_or_else(|e| e.into_inner());
+    if fresh.block.number >= served.attestation.block.number {
+        *served = Attested {
+            attestation: fresh,
+            at,
+        };
+    }
+    Ok(served.attestation.clone())
+}
+
+/// Calls [`reattest`] every [`REATTEST_EVERY`], so the served block is never an hour old while
+/// the agent and the RPC answer.
+#[cfg(feature = "tdx")]
+pub fn spawn_reattest(state: Arc<AppState>) -> tokio::task::JoinHandle<()> {
+    let period = std::time::Duration::try_from(REATTEST_EVERY).expect("a positive period");
+    tokio::spawn(async move {
+        let mut ticks = tokio::time::interval_at(tokio::time::Instant::now() + period, period);
+        ticks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            ticks.tick().await;
+            if let Err(e) = reattest(&state).await {
+                eprintln!("keelson-engine: attestation refresh failed: {e}");
+            }
+        }
+    })
+}
+
+#[cfg(feature = "tdx")]
+async fn attestation(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<crate::tdx::Attestation>, Problem> {
+    let served = state.attested().read().unwrap_or_else(|e| e.into_inner());
+    if (state.clock)() - served.at > ATTESTATION_MAX_AGE {
+        return Err(Problem::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "attestation_stale",
+        ));
+    }
+    Ok(Json(served.attestation.clone()))
+}
+
 #[cfg(feature = "tdx")]
 async fn refresh(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<crate::tdx::Attestation>, Problem> {
-    let fresh = crate::tdx::attest(&state.engine).await.map_err(|e| {
+    reattest(&state).await.map(Json).map_err(|e| {
         eprintln!("keelson-engine: attestation refresh failed: {e}");
         Problem::new(StatusCode::BAD_GATEWAY, "attestation")
-    })?;
-    let slot = state
-        .attestation
-        .as_ref()
-        .expect("routed only with an attestation");
-    let mut served = slot.write().unwrap_or_else(|e| e.into_inner());
-    if fresh.block.number >= served.block.number {
-        *served = fresh;
-    }
-    Ok(Json(served.clone()))
+    })
 }

@@ -16,10 +16,12 @@ use std::path::Path;
 use alloy_primitives::hex;
 use common::*;
 use hkdf::Hkdf;
+use keelson_tee::server::{self, AppState};
 use keelson_tee::tdx::{self, Dstack, QUOTE_REPORT_DATA, ROOT_DOMAIN, decode_attestation};
 use keelson_tee::{Root, chain, report_data};
 use serde_json::Value;
 use sha2::Sha256;
+use time::OffsetDateTime;
 
 fn endpoint() -> String {
     std::env::var("DSTACK_SIMULATOR_ENDPOINT").expect("DSTACK_SIMULATOR_ENDPOINT is set")
@@ -100,7 +102,9 @@ async fn boot_attests_the_signer_over_the_latest_block() {
     assert_eq!(attestation.compose_hash, info.compose_hash);
     assert_eq!(attestation.dstack_version, dstack.version().await.unwrap());
 
-    let refreshed = tdx::attest(&engine).await.unwrap();
+    let state = AppState::new(engine, [0; 32])
+        .with_attestation(attestation.clone(), OffsetDateTime::now_utc());
+    let refreshed = server::reattest(&state).await.unwrap();
     assert_eq!(refreshed.binding, attestation.binding);
     assert!(refreshed.block.number >= attestation.block.number);
 }

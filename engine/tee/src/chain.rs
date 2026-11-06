@@ -1,6 +1,7 @@
 //! The Arbitrum block whose hash `report_data` carries, read over Ethereum JSON-RPC.
 
 use std::fmt;
+use std::sync::Once;
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -34,6 +35,17 @@ impl fmt::Display for ChainError {
 }
 
 impl std::error::Error for ChainError {}
+
+/// An HTTP client on rustls with the ring crypto provider, which the first call installs as the
+/// process default.
+pub fn http_client() -> reqwest::Client {
+    static PROVIDER: Once = Once::new();
+    PROVIDER.call_once(|| {
+        // Fails only when a provider is already installed, which then serves as well.
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    });
+    reqwest::Client::new()
+}
 
 /// `ARBITRUM_SEPOLIA_RPC_URL` when set, otherwise [`ARBITRUM_SEPOLIA_RPC`].
 pub fn rpc_url() -> String {
@@ -71,7 +83,7 @@ async fn call<T: for<'de> Deserialize<'de>>(
     struct RpcError {
         message: String,
     }
-    let response: Response<T> = reqwest::Client::new()
+    let response: Response<T> = http_client()
         .post(rpc)
         .timeout(TIMEOUT)
         .json(&json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }))

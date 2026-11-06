@@ -26,7 +26,9 @@ fn env(name: &str) -> String {
 }
 
 async fn get(url: &str) -> Value {
-    reqwest::get(url)
+    chain::http_client()
+        .get(url)
+        .send()
         .await
         .and_then(reqwest::Response::error_for_status)
         .unwrap()
@@ -36,7 +38,7 @@ async fn get(url: &str) -> Value {
 }
 
 async fn rpc(method: &str, params: Value) -> Value {
-    let response: Value = reqwest::Client::new()
+    let response: Value = chain::http_client()
         .post(chain::rpc_url())
         .json(&json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }))
         .send()
@@ -80,7 +82,7 @@ async fn check(attestation: &Attestation, signer: Address) -> Value {
         attestation.block.number
     );
 
-    let verified: Value = reqwest::Client::new()
+    let verified: Value = chain::http_client()
         .post(format!("{}/verify", env("DSTACK_VERIFIER_URL")))
         .json(&json!({ "attestation": attestation.attestation }))
         .send()
@@ -122,7 +124,7 @@ async fn refresh_reattests_the_same_signer_over_a_new_block() {
     let url = env("TEE_A_URL");
     let before: Attestation =
         serde_json::from_value(get(&format!("{url}/v1/attestation")).await).unwrap();
-    let refreshed: Attestation = reqwest::Client::new()
+    let refreshed: Attestation = chain::http_client()
         .post(format!("{url}/v1/attestation/refresh"))
         .bearer_auth(env("KEELSON_TEE_TOKEN"))
         .send()

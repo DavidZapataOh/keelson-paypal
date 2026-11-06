@@ -18,7 +18,7 @@
 //! | `KEELSON_CANONICALIZER` | the canonicalizer version recorded in every trace |
 //! | `KEELSON_ORIGIN` | the origin passkey assertions are made on |
 //! | `KEELSON_ISSUER_JWK` | the credential issuer's public JWK; not read with `--platform tdx` |
-//! | `KEELSON_TOKEN_SHA256` | the hex SHA-256 of the bearer token |
+//! | `KEELSON_TEE_TOKEN_SHA256` | the hex SHA-256 of the bearer token |
 //! | `KEELSON_CHAIN_ID` | optional, `421614` by default |
 //! | `KEELSON_BOND_VAULT`, `KEELSON_VERIFYING_CONTRACT` | optional, the zero address by default |
 //!
@@ -71,9 +71,9 @@ fn config(platform: Platform) -> Result<(EngineConfig, [u8; 32]), String> {
             _ => return Err("KEELSON_TEE_KIND must be tdx or nitro".into()),
         },
     };
-    let token_hash = var("KEELSON_TOKEN_SHA256")?;
+    let token_hash = var("KEELSON_TEE_TOKEN_SHA256")?;
     let token_hash = serde_json::from_value::<Hex32>(format!("0x{token_hash}").into())
-        .map_err(|_| "KEELSON_TOKEN_SHA256 must be 64 lowercase hex digits")?;
+        .map_err(|_| "KEELSON_TEE_TOKEN_SHA256 must be 64 lowercase hex digits")?;
     let chain_id = optional("KEELSON_CHAIN_ID", DEFAULT_CHAIN_ID)?;
     keelson_core::domain(chain_id, Address::ZERO)
         .map_err(|_| format!("unsupported chain id {chain_id}"))?;
@@ -113,6 +113,7 @@ fn args() -> Result<(Platform, String), String> {
 #[cfg(feature = "tdx")]
 async fn tdx_state(config: EngineConfig, token_hash: [u8; 32]) -> Result<AppState, String> {
     let started = std::time::Instant::now();
+    let at = time::OffsetDateTime::now_utc();
     let (engine, attestation) = keelson_tee::tdx::boot(config)
         .await
         .map_err(|e| e.to_string())?;
@@ -123,7 +124,7 @@ async fn tdx_state(config: EngineConfig, token_hash: [u8; 32]) -> Result<AppStat
         attestation.block.number,
         started.elapsed().as_millis()
     );
-    Ok(AppState::new(engine, token_hash).with_attestation(attestation))
+    Ok(AppState::new(engine, token_hash).with_attestation(attestation, at))
 }
 
 #[cfg(not(feature = "tdx"))]
@@ -138,10 +139,15 @@ async fn run() -> Result<(), String> {
         Platform::Plain => AppState::new(Engine::new(config, None), token_hash),
         Platform::Tdx => tdx_state(config, token_hash).await?,
     };
+    let state = Arc::new(state);
+    #[cfg(feature = "tdx")]
+    if platform == Platform::Tdx {
+        keelson_tee::server::spawn_reattest(state.clone());
+    }
     let listener = tokio::net::TcpListener::bind(&address)
         .await
         .map_err(|e| format!("cannot listen on {address}: {e}"))?;
-    axum::serve(listener, router(Arc::new(state)))
+    axum::serve(listener, router(state))
         .await
         .map_err(|e| e.to_string())
 }
