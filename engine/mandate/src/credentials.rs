@@ -55,6 +55,22 @@ impl Jwk {
         }
     }
 
+    /// The public key of `key`, without a `kid`.
+    pub fn from_verifying_key(key: &VerifyingKey) -> Self {
+        let point = key.to_sec1_point(false);
+        let xy = &point.as_bytes()[1..];
+        Self {
+            x: b64::encode(&xy[..32]),
+            y: b64::encode(&xy[32..]),
+            kid: None,
+        }
+    }
+
+    /// `{ "kty", "crv", "x", "y" }`, without the `kid`.
+    pub(crate) fn public_value(&self) -> Value {
+        json!({ "kty": "EC", "crv": "P-256", "x": self.x, "y": self.y })
+    }
+
     fn verifying_key(&self) -> Result<VerifyingKey, Error> {
         let (x, y) = (coordinate(&self.x)?, coordinate(&self.y)?);
         let point = [&[0x04][..], &x, &y].concat();
@@ -232,7 +248,7 @@ fn verify_sd_jwt(
 
 /// The `cnf.jwk` member: a P-256 key with canonical coordinates and no members but `kty`, `crv`,
 /// `x`, `y` and a string `kid`.
-fn cnf_jwk(cnf: Option<&Value>) -> Result<&Value, Error> {
+pub(crate) fn cnf_jwk(cnf: Option<&Value>) -> Result<&Value, Error> {
     let jwk = cnf
         .and_then(|c| c.get("jwk"))
         .filter(|j| j.get("kty") == Some(&json!("EC")) && j.get("crv") == Some(&json!("P-256")))
@@ -302,7 +318,7 @@ fn verify_user_credential(
     })
 }
 
-fn assert_user_auth(u: Option<&Value>) -> Result<(), Error> {
+pub(crate) fn assert_user_auth(u: Option<&Value>) -> Result<(), Error> {
     for k in ["authenticatorData", "clientDataJSON", "signature"] {
         if !u
             .and_then(|u| u.get(k))
@@ -315,7 +331,7 @@ fn assert_user_auth(u: Option<&Value>) -> Result<(), Error> {
     Ok(())
 }
 
-fn safe_integer(n: i64) -> bool {
+pub(crate) fn safe_integer(n: i64) -> bool {
     (-MAX_SAFE_INTEGER..=MAX_SAFE_INTEGER).contains(&n)
 }
 

@@ -47,6 +47,8 @@ export interface UserCredentialParams {
   cred: { id: string; rp_id: string; jwk: P256PublicJwk };
   /** Public key of the per-user signing key that issues the user's open mandates. */
   holderJwk: P256PublicJwk;
+  /** Defaults to now, in seconds since the epoch. */
+  iat?: number;
 }
 
 /** The parts of the WebAuthn assertion over `M`, each base64url. */
@@ -65,7 +67,12 @@ export interface OpenMandateParams {
   userAuth: UserAuth;
   aud: string;
   nonce: string;
+  /** Defaults to now, in seconds since the epoch. */
+  iat?: number;
 }
+
+/** Draws the 16 bytes of a disclosure salt. */
+export type SaltGenerator = () => Uint8Array;
 
 /** A credential that {@link verifyCredential} accepted. */
 export interface VerifiedCredential {
@@ -154,7 +161,15 @@ const encoder = new TextEncoder();
 
 const publicJwk = ({ kty, crv, x, y }: P256PublicJwk): P256PublicJwk => ({ kty, crv, x, y });
 
-const salt = (): string => uint8ArrayToBase64Url(crypto.getRandomValues(new Uint8Array(16)));
+const randomSalt: SaltGenerator = () => crypto.getRandomValues(new Uint8Array(16));
+
+const saltString = (salts: SaltGenerator) => (): string => uint8ArrayToBase64Url(salts());
+
+function issuedAt(iat: number | undefined): number {
+  const t = iat ?? Math.floor(Date.now() / 1000);
+  if (!Number.isSafeInteger(t)) throw new RangeError("iat must be whole seconds");
+  return t;
+}
 
 /** ES256 (RFC 7518 section 3.4): the IEEE P1363 `r || s` signature that WebCrypto returns. */
 const es256Signer = (key: CryptoKey) => async (data: string) =>
@@ -217,21 +232,23 @@ function sdHash(sdJwt: string): string {
  * holder key that signs the user's open mandates, and whose selectively disclosable `sub` and
  * `cred` are the user and their passkey.
  */
-export function issueUserCredential(
+export async function issueUserCredential(
   params: UserCredentialParams,
   signer: CryptoKey,
+  salts: SaltGenerator = randomSalt,
 ): Promise<string> {
+  const iat = issuedAt(params.iat);
   const sdJwt = new SDJwtVcInstance({
     signer: es256Signer(signer),
     signAlg: "ES256",
     hasher: sdHasher,
     hashAlg: "sha-256",
-    saltGenerator: salt,
+    saltGenerator: saltString(salts),
   });
   return sdJwt.issue(
     {
       iss: params.iss,
-      iat: Math.floor(Date.now() / 1000),
+      iat,
       vct: USER_CREDENTIAL_VCT,
       sub: params.sub,
       cnf: { jwk: publicJwk(params.holderJwk) },
@@ -253,8 +270,10 @@ export function issueUserCredential(
 export async function issueOpenMandate(
   params: OpenMandateParams,
   signer: CryptoKey,
+  salts: SaltGenerator = randomSalt,
 ): Promise<string> {
   const { payloadSd, disclosures, userAuth, aud, nonce } = params;
+  const iat = issuedAt(params.iat);
   if (!params.userCredential.endsWith("~") || params.userCredential.endsWith("~~")) {
     throw new RangeError("userCredential must be an SD-JWT without key binding");
   }
@@ -265,14 +284,14 @@ export async function issueOpenMandate(
     { delegate_payload: [payloadSd] },
     { delegate_payload: { _sd: [0] } },
     { hasher: sdHasher, alg: "sha-256" },
-    salt,
+    saltString(salts),
   );
   const kbSdJwt = await new Jwt({
     header: { typ: OPEN_MANDATE_TYP, alg: "ES256" },
     payload: {
       ...delegate.packedClaims,
       _sd_alg: "sha-256",
-      iat: Math.floor(Date.now() / 1000),
+      iat,
       aud,
       nonce,
       sd_hash: sdHash(userCredential),

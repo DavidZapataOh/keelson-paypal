@@ -27,12 +27,16 @@ import {
   CLOSED_MANDATE_TYP,
   ClosedMandateError,
   type ClosedMandateVerifyOptions,
+  issueOpenMandate,
+  issueUserCredential,
   OPEN_MANDATE_TYP,
+  type OpenMandateParams,
   type OpenMandateVerifyOptions,
   type P256PublicJwk,
   USER_CREDENTIAL_TYP,
   USER_CREDENTIAL_VCT,
   type UserAuth,
+  type UserCredentialParams,
   type VerifiedCredential,
   type VerifiedOpenMandate,
   verifyClosedMandate,
@@ -123,8 +127,9 @@ interface Key {
   publicKey: CryptoKey;
 }
 
-async function key(label: string): Promise<Key> {
-  const secret = seed(`key/${label}`);
+const key = (label: string): Promise<Key> => keyOf(seed(`key/${label}`));
+
+async function keyOf(secret: Uint8Array): Promise<Key> {
   const point = p256.getPublicKey(secret, false);
   const jwk: P256PublicJwk = {
     kty: "EC",
@@ -1758,11 +1763,139 @@ async function closedMandateVectors() {
   return vectors;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Issuance with keys derived from a root
+
+const KDF_SALT = utf8("keelson/kdf/v1");
+
+/**
+ * A P-256 scalar from HKDF-SHA256 (RFC 5869) over the root: the first 32-byte output for
+ * `info ‖ counter`, counter from 0, that lies in `[1, n)`.
+ */
+async function derivedSecret(root: Uint8Array<ArrayBuffer>, info: string): Promise<Uint8Array> {
+  const ikm = await crypto.subtle.importKey("raw", root, "HKDF", false, ["deriveBits"]);
+  for (let counter = 0; counter < 256; counter++) {
+    const okm = new Uint8Array(
+      await crypto.subtle.deriveBits(
+        {
+          name: "HKDF",
+          hash: "SHA-256",
+          salt: KDF_SALT,
+          info: Buffer.concat([utf8(info), Uint8Array.of(counter)]),
+        },
+        ikm,
+        256,
+      ),
+    );
+    const k = BigInt(hex(okm));
+    if (k > 0n && k < P256_N) return okm;
+  }
+  throw new Error("no scalar in 256 candidates");
+}
+
+const signingKey = (k: Key): Promise<CryptoKey> =>
+  crypto.subtle.importKey(
+    "jwk",
+    { ...k.jwk, d: b64u(k.secret) },
+    { name: "ECDSA", namedCurve: "P-256" },
+    false,
+    ["sign"],
+  );
+
+/** Salts that are recorded as they are drawn, so the vectors can replay them. */
+function recordedSalts(label: string): { next: () => Uint8Array; drawn: string[] } {
+  const next = salts(label);
+  const drawn: string[] = [];
+  return {
+    next: () => {
+      const s = next();
+      drawn.push(hex(s));
+      return s;
+    },
+    drawn,
+  };
+}
+
+/**
+ * The token with the JWS in part `i` re-signed with plain RFC 6979 ECDSA, without low-S
+ * normalization (ES256 has none): WebCrypto ECDSA is randomized, and only the signature changes.
+ */
+function deterministic(token: string, i: number, k: Key): string {
+  const parts = token.split("~");
+  const jwt = parts[i] as string;
+  const input = jwt.slice(0, jwt.lastIndexOf("."));
+  parts[i] = `${input}.${b64u(p256.sign(utf8(input), k.secret, { lowS: false }))}`;
+  return parts.join("~");
+}
+
+const ROOT = seed("root") as Uint8Array<ArrayBuffer>;
+const SUB = "kls_usr_7f3a9c21";
+const ISSUED_AUD = "keelson.finance";
+
+async function issuedVectors() {
+  const issuer = await keyOf(await derivedSecret(ROOT, "issuer"));
+  const subs = [SUB, "a", "b", "", "kls_usr_ñ/1"];
+  const users = await Promise.all(
+    subs.map(async (sub) => ({ sub, key: await keyOf(await derivedSecret(ROOT, `user/${sub}`)) })),
+  );
+  const holder = (users[0] as { key: Key }).key;
+  const keys: Keys = { ...(await credentialKeys()), issuer, holder };
+
+  const l1Params: UserCredentialParams = {
+    iss: ISS,
+    sub: SUB,
+    cred: { id: "Zk3p0xQmH8vN1sLwT5uYdA", rp_id: "keelson.finance", jwk: keys.passkey.jwk },
+    holderJwk: holder.jwk,
+    iat: L1_IAT,
+  };
+  const l1Salts = recordedSalts("issued/l1");
+  const l1 = deterministic(
+    await issueUserCredential(l1Params, await signingKey(issuer), l1Salts.next),
+    0,
+    issuer,
+  );
+  await verifyCredential(l1, USER_CREDENTIAL_TYP, issuer.publicKey);
+
+  const { live, payloadSd, disclosures, userAuth } = await openMandateFixture(keys, l1);
+  const l2Params: OpenMandateParams = {
+    userCredential: l1,
+    payloadSd,
+    disclosures,
+    userAuth,
+    aud: ISSUED_AUD,
+    nonce: live.mid,
+    iat: KB_IAT,
+  };
+  const l2Salts = recordedSalts("issued/l2");
+  const l2 = deterministic(
+    await issueOpenMandate(l2Params, await signingKey(holder), l2Salts.next),
+    2,
+    holder,
+  );
+  const verify: OpenMandateVerifyOptions = {
+    expectedAud: ISSUED_AUD,
+    expectedNonce: live.mid,
+    now: NOW,
+    maxSkewSec: 60,
+  };
+  await verifyCredential(l2, OPEN_MANDATE_TYP, issuer.publicKey, verify);
+
+  const derived = (k: Key) => ({ secret: hex(k.secret), jwk: k.jwk });
+  return {
+    root: hex(ROOT),
+    issuer: derived(issuer),
+    users: users.map(({ sub, key }) => ({ sub, ...derived(key) })),
+    userCredential: { params: l1Params, salts: l1Salts.drawn, expected: l1 },
+    openMandate: { params: l2Params, salts: l2Salts.drawn, verify, expected: l2 },
+  };
+}
+
 writeJson("sd", await sdVectors());
 writeJson("challenge", await challengeVectors());
 writeJson("commitment", await commitmentVectors());
 writeJson("credentials", await credentialVectors());
 writeJson("closed-mandate", await closedMandateVectors());
+writeJson("issued", await issuedVectors());
 writeJson(
   "colors",
   fieldColors(mandate(), { merchantSignedCheckout: false, zkTlsFields: new Set() }),

@@ -9,6 +9,7 @@ mod challenge;
 mod commitment;
 mod credentials;
 mod error;
+mod issue;
 mod schema;
 mod sd;
 mod spc;
@@ -29,6 +30,10 @@ pub use credentials::{
     VerifiedCredential, verify_closed_mandate, verify_credential,
 };
 pub use error::Error;
+pub use issue::{
+    OpenMandateParams, PasskeyCredential, UserAuth, UserCredentialParams, issue_open_mandate,
+    issue_user_credential,
+};
 pub use schema::{ANY_ITEM, MAX_LIFETIME_SECONDS, is_merchant_id, parse_mandate};
 pub use sd::{decode_disclosed, decode_mandate};
 pub use spc::{
