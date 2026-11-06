@@ -1,8 +1,8 @@
 //! The engine: registers mandates and countersigns carts.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::fmt;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::Arc;
 
 use alloy_primitives::aliases::U40;
 use alloy_primitives::{Address, B256, U256};
@@ -28,9 +28,8 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use time::macros::format_description;
 use time::{Duration, OffsetDateTime, UtcOffset};
-use ulid::Ulid;
 
-use crate::budget::Budget;
+use crate::budget::{Budget, Claimed, Replay};
 use crate::wire::{
     self, Base64, CountersignRequest, Countersigned, Hex, MandateIssued, Observation,
     RegisterMandate,
@@ -157,15 +156,6 @@ pub struct Engine {
     domain: Eip712Domain,
     captured: Option<Arc<dyn CapturedSource>>,
     users: Option<Arc<dyn UserRecords>>,
-    answered: Mutex<BTreeMap<([u8; 32], Ulid), Answered>>,
-}
-
-/// A countersign already given for a request, kept until it expires.
-#[derive(Clone)]
-struct Answered {
-    cart_hash: [u8; 32],
-    expires_at: i64,
-    out: Countersigned,
 }
 
 /// A closed mandate whose signatures, key binding and passkey assertion all verified.
@@ -210,7 +200,6 @@ impl Engine {
             domain,
             captured: None,
             users: None,
-            answered: Mutex::default(),
         }
     }
 
@@ -355,12 +344,16 @@ impl Engine {
         }
         let cart_hash = cart_hash(&r.cart).map_err(|_| bad("cart"))?;
         let a = self.authenticate(r, now_s, &cart_hash)?;
-        let key = (a.mandate_hash, r.request_id);
-        if let Some(done) = self.answered(&key, now_s) {
-            return (done.cart_hash == cart_hash)
-                .then_some(done.out)
-                .ok_or(EngineError::Replay);
-        }
+        // Bind the request id to this cart before anything is evaluated or reserved; the
+        // claim is released, with any reservation, if this countersign fails.
+        let claim = match self
+            .budget
+            .claim(&a.mandate_hash, r.request_id, cart_hash, now)
+        {
+            Err(Replay) => return Err(EngineError::Replay),
+            Ok(Claimed::Answered(out)) => return Ok(*out),
+            Ok(Claimed::Working(claim)) => claim,
+        };
 
         // Everything that can fail is read before any budget is reserved.
         let m = &a.mandate;
@@ -384,9 +377,11 @@ impl Engine {
         let total = context.as_ref().map_or(0, |c| c.total_minor);
         let amount = u64::try_from(total).map_err(|_| bad("cart"))?;
         let captured = match captured {
+            // A negative capture would raise the budget past its max.
             Some(source) => source
                 .captured_minor(&a.mandate_hash)
-                .ok_or(EngineError::NotReady)?,
+                .ok_or(EngineError::NotReady)?
+                .max(0),
             None => 0,
         };
         let warming_up = clock_now < self.boot + Duration::seconds(COUNTERSIGN_TTL);
@@ -395,7 +390,7 @@ impl Engine {
             let budget_left = match &r.observation {
                 Some(o) => o.budget_left_minor,
                 None if warming_up => 0,
-                None => self.budget.left(&a.mandate_hash, budget_max, captured, now),
+                None => claim.left(budget_max, captured, now),
             };
             let (trace, canon) = match &context {
                 Ok(context) => {
@@ -460,15 +455,7 @@ impl Engine {
             // concurrent request reserved since `left`, evaluate again.
             if allow
                 && r.observation.is_none()
-                && !self.budget.reserve(
-                    &a.mandate_hash,
-                    r.request_id,
-                    budget_max,
-                    captured,
-                    total,
-                    now,
-                    until,
-                )
+                && !claim.reserve(budget_max, captured, total, now, until)
             {
                 continue;
             }
@@ -491,34 +478,7 @@ impl Engine {
                 },
             };
         };
-        self.remember(key, cart_hash, expires_at, out)
-    }
-
-    /// The countersign already given for `key`, dropping those expired at `now_s`.
-    fn answered(&self, key: &([u8; 32], Ulid), now_s: i64) -> Option<Answered> {
-        let mut answered = self.answered.lock().unwrap_or_else(PoisonError::into_inner);
-        answered.retain(|_, a| a.expires_at > now_s);
-        answered.get(key).cloned()
-    }
-
-    /// Records `out` as the answer to `key`. A concurrent request with the same id answered
-    /// first keeps its answer, and a different cart under it is a replay.
-    fn remember(
-        &self,
-        key: ([u8; 32], Ulid),
-        cart_hash: [u8; 32],
-        expires_at: i64,
-        out: Countersigned,
-    ) -> Result<Countersigned, EngineError> {
-        let mut answered = self.answered.lock().unwrap_or_else(PoisonError::into_inner);
-        let entry = answered.entry(key).or_insert(Answered {
-            cart_hash,
-            expires_at,
-            out,
-        });
-        (entry.cart_hash == cart_hash)
-            .then(|| entry.out.clone())
-            .ok_or(EngineError::Replay)
+        Ok(claim.answer(until, out))
     }
 
     /// Verifies the closed mandate against the issuer key, binds its user credential to the

@@ -908,3 +908,59 @@ fn wire_types_round_trip_as_json() {
     assert_eq!(back.digest.0, out.digest.0);
     let _: Base64 = serde_json::from_value(json!("AA==")).unwrap();
 }
+
+/// Two carts racing under one request id: at most one is answered, and what is reserved is
+/// exactly what was allowed.
+#[test]
+fn racing_carts_under_one_request_id_never_overspend() {
+    let issued = register();
+    let (small, large) = (CartFixture::sixty(), CartFixture::demo());
+    let id = request_id(50);
+    let requests = [
+        countersign_request(&issued, &small, id, None),
+        countersign_request(&issued, &large, id, None),
+    ];
+    for i in 0..1_000 {
+        let engine = leg_a();
+        let barrier = std::sync::Barrier::new(2);
+        let outs: Vec<_> = thread::scope(|s| {
+            let handles: Vec<_> = requests
+                .iter()
+                .map(|r| {
+                    let (engine, barrier) = (&engine, &barrier);
+                    s.spawn(move || {
+                        barrier.wait();
+                        engine.countersign(r, at(NOW + 10))
+                    })
+                })
+                .collect();
+            handles.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        let allowed: i64 = outs
+            .iter()
+            .filter_map(|o| o.as_ref().ok())
+            .filter(|o| o.countersign.decision == "1")
+            .map(|o| o.countersign.amount.parse::<i64>().unwrap())
+            .sum();
+        let summary: Vec<_> = outs
+            .iter()
+            .map(|o| {
+                o.as_ref()
+                    .map(|o| (&o.countersign.decision, &o.countersign.amount))
+            })
+            .collect();
+        let answered = outs.iter().filter(|o| o.is_ok()).count();
+        assert_eq!(answered, 1, "iter {i}: {summary:?}");
+        for o in outs.iter().filter_map(|o| o.as_ref().err()) {
+            assert_eq!(*o, EngineError::Replay, "iter {i}");
+        }
+        let probe = engine
+            .countersign(
+                &countersign_request(&issued, &small, request_id(51), None),
+                at(NOW + 10),
+            )
+            .unwrap();
+        let left = probe.observation.budget_left_minor;
+        assert_eq!(left, 10_000 - allowed, "iter {i}: {summary:?}");
+    }
+}

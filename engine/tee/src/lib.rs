@@ -10,7 +10,7 @@ mod report_data;
 mod signer;
 pub mod wire;
 
-pub use budget::Budget;
+pub use budget::{Budget, ClaimGuard, Claimed, Replay};
 pub use countersign::{
     BIT_CANON, BIT_CEDAR_ERROR, BIT_EXTRA, BIT_PAYPAL, FIELD_BITS, countersign_digest,
     failed_fields_mask,
