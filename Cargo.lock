@@ -2089,6 +2089,7 @@ dependencies = [
 name = "keelson-canon"
 version = "0.0.0"
 dependencies = [
+ "criterion",
  "keelson-core",
  "proptest",
  "serde",
