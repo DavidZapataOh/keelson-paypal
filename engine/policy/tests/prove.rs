@@ -34,10 +34,12 @@ fn every_check_is_verified() {
     assert_eq!(bundle.policy_set_hash, sha256_tag(POLICY_SET_SRC));
     assert_eq!(bundle.schema_hash, sha256_tag(SCHEMA_SRC));
     assert_eq!(bundle.spec_hash, sha256_tag(SPEC_SRC));
-    assert_eq!(bundle.cvc5_sha256, solver.sha256());
-    assert_eq!(
-        bundle.cvc5_sha256,
-        sha256_tag(std::fs::read(solver.path()).unwrap())
+    assert!(
+        serde_json::to_value(&bundle)
+            .unwrap()
+            .get("cvc5_sha256")
+            .is_none(),
+        "the bundle does not depend on the platform's cvc5 build"
     );
 
     for r in &bundle.results {

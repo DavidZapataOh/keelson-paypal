@@ -55,6 +55,8 @@ pub(crate) fn safe_int(v: &serde_json::Value) -> Option<i64> {
 
 /// The policy set source, `policy/keelson.cedar`.
 pub const POLICY_SET_SRC: &str = include_str!("../policy/keelson.cedar");
+/// `sha256:` + hex(SHA-256(JCS)) of the committed proof bundle, `proofs/proof-bundle.json`.
+pub const PROOF_BUNDLE_HASH: &str = env!("KEELSON_PROOF_BUNDLE_HASH");
 /// The schema source, `policy/keelson.cedarschema`.
 pub const SCHEMA_SRC: &str = include_str!("../policy/keelson.cedarschema");
 

@@ -1,7 +1,10 @@
 //! Exposes the locked versions of the Cedar crates the proofs run on, so the proof bundle names
-//! the versions actually built rather than hand-written ones.
+//! the versions actually built rather than hand-written ones, and the hash of the committed proof
+//! bundle, `sha256:` + hex(SHA-256(JCS(bundle))).
 
 use std::path::Path;
+
+use sha2::{Digest, Sha256};
 
 fn main() {
     let lock_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../Cargo.lock");
@@ -13,6 +16,18 @@ fn main() {
     ] {
         println!("cargo:rustc-env={var}={}", locked_version(&lock, name));
     }
+
+    let bundle_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("proofs/proof-bundle.json");
+    println!("cargo:rerun-if-changed={}", bundle_path.display());
+    let bundle = std::fs::read(&bundle_path).expect("proofs/proof-bundle.json is readable");
+    let bundle: serde_json::Value =
+        serde_json::from_slice(&bundle).expect("proofs/proof-bundle.json is JSON");
+    let jcs = keelson_core::jcs(&bundle).expect("the proof bundle has only safe integers");
+    let hex: String = Sha256::digest(jcs)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    println!("cargo:rustc-env=KEELSON_PROOF_BUNDLE_HASH=sha256:{hex}");
 }
 
 /// The version of the single `[[package]]` entry called `name`.

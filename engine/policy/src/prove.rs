@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
-use std::{env, fs, io};
+use std::{env, io};
 
 use cedar_policy::{
     Authorizer, Context, Effect, Entities, EntityUid, Policy, PolicyId, PolicySet, Request,
@@ -35,7 +35,6 @@ pub const CVC5_VERSION: &str = "1.3.1";
 pub struct Cvc5 {
     path: PathBuf,
     version: String,
-    sha256: String,
 }
 
 impl Cvc5 {
@@ -63,18 +62,10 @@ impl Cvc5 {
                 path.display()
             )));
         }
-        let sha256 = hex(
-            "sha256:",
-            &Sha256::digest(fs::read(&path).map_err(with_path)?),
-        );
-        Ok(Self {
-            path,
-            version,
-            sha256,
-        })
+        Ok(Self { path, version })
     }
 
-    /// The binary that is hashed and run.
+    /// The binary that is run.
     pub fn path(&self) -> &Path {
         &self.path
     }
@@ -82,11 +73,6 @@ impl Cvc5 {
     /// The version the binary reports.
     pub fn version(&self) -> &str {
         &self.version
-    }
-
-    /// `sha256:<hex>` of the binary.
-    pub fn sha256(&self) -> &str {
-        &self.sha256
     }
 
     /// An interactive solver process, with the arguments `LocalSolver::cvc5` passes.
@@ -151,7 +137,6 @@ pub struct ProofResult {
 pub struct ProofBundle {
     pub symcc: String,
     pub cvc5: String,
-    pub cvc5_sha256: String,
     pub cedar_policy: String,
     pub policy_set_hash: String,
     pub schema_hash: String,
@@ -175,7 +160,6 @@ pub fn prove_all(solver: &Cvc5) -> Result<ProofBundle, Box<Error>> {
     Ok(ProofBundle {
         symcc: SYMCC_VERSION.to_owned(),
         cvc5: solver.version().to_owned(),
-        cvc5_sha256: solver.sha256().to_owned(),
         cedar_policy: CEDAR_POLICY_VERSION.to_owned(),
         policy_set_hash: policy_set_hash_tag(),
         schema_hash: schema_hash_tag(),
@@ -192,7 +176,9 @@ pub fn prove_all(solver: &Cvc5) -> Result<ProofBundle, Box<Error>> {
 /// - `satisfiable`: some request is allowed (`set` does not always deny);
 /// - `not_always_allows`: some request is denied.
 ///
-/// The last two keep the equivalence from holding vacuously.
+/// The last two keep the equivalence from holding vacuously. Their witnesses are drawn from the
+/// requests whose integers are all safe JSON integers, the only ones the engine builds, so the
+/// bundle stays canonical JSON.
 pub fn prove_set(solver: &Cvc5, set: &PolicySet) -> Result<Vec<ProofResult>, Box<Error>> {
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -225,6 +211,35 @@ fn extra_kinds() -> Vec<(&'static str, Extra)> {
     ]
 }
 
+/// The `Long` attributes of the `checkout` context and of the `Mandate` entity.
+const LONGS: [&str; 11] = [
+    "context.total_minor",
+    "context.max_line_qty",
+    "context.max_unit_minor",
+    "context.return_days",
+    "context.now_ms",
+    "resource.max_total_minor",
+    "resource.budget_left_minor",
+    "resource.max_qty_per_line",
+    "resource.not_before_ms",
+    "resource.expires_at_ms",
+    "resource.min_return_days",
+];
+
+/// A `permit` for every request whose [`LONGS`] are safe JSON integers.
+fn safe_integers() -> PolicySet {
+    let max = crate::MAX_SAFE_INTEGER;
+    let bounds: Vec<_> = LONGS
+        .iter()
+        .map(|a| format!("-{max} <= {a} && {a} <= {max}"))
+        .collect();
+    let text = format!(
+        r#"permit(principal, action == Keelson::Action::"checkout", resource) when {{ {} }};"#,
+        bounds.join(" && ")
+    );
+    PolicySet::from_str(&text).expect("the safe-integer policy parses")
+}
+
 async fn check(
     solver: &Cvc5,
     set: &PolicySet,
@@ -233,6 +248,7 @@ async fn check(
     let schema = schema();
     let (names, kinds): (Vec<_>, Vec<_>) = extra_kinds().into_iter().unzip();
     let extras = compile(&kinds).expect("each extra kind compiles");
+    let safe = safe_integers();
     let mut symcc = CedarSymCompiler::new(solver.spawn().map_err(Error::from)?)?;
     let mut results = Vec::new();
     for env in schema.request_envs() {
@@ -263,15 +279,16 @@ async fn check(
             results.push(result("never_errors", &subject(&name), cex, t));
         }
 
+        let compiled_safe = CompiledPolicySet::compile(&safe, &env, schema)?;
         let t = Instant::now();
         let allowed = symcc
-            .check_always_denies_with_counterexample_opt(&compiled)
+            .check_disjoint_with_counterexample_opt(&compiled, &compiled_safe)
             .await?;
         results.push(witnessed("satisfiable", &subject("policy_set"), allowed, t));
 
         let t = Instant::now();
         let denied = symcc
-            .check_always_allows_with_counterexample_opt(&compiled)
+            .check_implies_with_counterexample_opt(&compiled_safe, &compiled)
             .await?;
         results.push(witnessed(
             "not_always_allows",
