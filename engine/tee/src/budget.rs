@@ -1,4 +1,4 @@
-//! The in-memory ledger of request claims and the budget reserved by allowed countersigns.
+//! The in-memory ledger of requests and the budget their allowed countersigns reserve.
 
 use std::collections::BTreeMap;
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -8,34 +8,27 @@ use ulid::Ulid;
 
 use crate::wire::Countersigned;
 
-/// A request's reservation against its mandate's budget.
+/// One request on one mandate: its input, what it reserved and its answer, all until one
+/// expiry.
 #[derive(Debug)]
-struct Reservation {
-    request: Ulid,
-    cart_hash: [u8; 32],
-    amount: i64,
-    until: OffsetDateTime,
-}
-
-/// The cart a request id is bound to, and the answer once given.
-#[derive(Debug)]
-struct Claim {
-    cart_hash: [u8; 32],
+struct Record {
+    /// The hash of the request's whole input.
+    digest: [u8; 32],
+    /// The amount reserved for its ALLOW, once reserved.
+    reserved_minor: Option<i64>,
+    expires_at: OffsetDateTime,
     /// Countersigns of this request still running.
     running: usize,
-    answer: Option<(OffsetDateTime, Countersigned)>,
+    answer: Option<Box<Countersigned>>,
 }
 
-#[derive(Debug, Default)]
-struct Ledger {
-    reserved: BTreeMap<[u8; 32], Vec<Reservation>>,
-    claims: BTreeMap<([u8; 32], Ulid), Claim>,
-}
+type Ledger = BTreeMap<[u8; 32], BTreeMap<Ulid, Record>>;
 
-/// Request claims and budget reservations per mandate, keyed by the mandate challenge `M`. `M`
-/// commits to the whole mandate, so two mandates never share a budget even if they reuse a
-/// `mid`. One lock guards both, so a request id is bound to one cart before anything is
-/// reserved for it.
+/// Requests and their reservations per mandate, keyed by the mandate challenge `M`. `M` commits
+/// to the whole mandate, so two mandates never share a budget even if they reuse a `mid`.
+///
+/// A request id is bound to the digest of its whole input by its first claim. The record holds
+/// the reservation and the answer and expires with the countersign, all at once.
 ///
 /// The ledger lives only in RAM; [`crate::Engine`] allows nothing until every reservation a
 /// previous boot could have made has expired.
@@ -45,55 +38,60 @@ pub struct Budget(Mutex<Ledger>);
 /// What [`Budget::claim`] found for a request.
 #[derive(Debug)]
 pub enum Claimed<'a> {
-    /// The request was answered for this cart.
+    /// The request was answered for this input.
     Answered(Box<Countersigned>),
-    /// The request is bound to this cart; work on it holds the claim.
+    /// The request is bound to this input; work on it holds the claim.
     Working(ClaimGuard<'a>),
 }
 
-/// The id is already bound to another cart.
+/// The id is bound to another input, or its reservation is for another amount.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Replay;
 
-/// A running countersign's hold on its claim. Dropped without an answer, it releases the claim
-/// and the request's reservation once no other countersign of the request is running.
+/// A running countersign's hold on its request. Dropped without an answer by the last runner,
+/// it removes the record and with it the reservation.
 #[derive(Debug)]
 pub struct ClaimGuard<'a> {
     budget: &'a Budget,
     mandate: [u8; 32],
     request: Ulid,
+    expires_at: OffsetDateTime,
 }
 
 impl Budget {
-    /// Binds `request` on `mandate` to `cart_hash`, unless it is bound to another cart. Answers
-    /// expired at `now` are forgotten.
+    /// Binds `request` on `mandate` to `digest` until `expires_at`, unless a live record binds
+    /// it to another digest. A live record keeps its own expiry. Records expired at `now` are
+    /// dropped whole.
     pub fn claim(
         &self,
         mandate: &[u8; 32],
         request: Ulid,
-        cart_hash: [u8; 32],
+        digest: [u8; 32],
+        expires_at: OffsetDateTime,
         now: OffsetDateTime,
     ) -> Result<Claimed<'_>, Replay> {
         let mut ledger = self.lock();
-        ledger.claims.retain(|_, c| {
-            c.running > 0 || c.answer.as_ref().is_none_or(|(until, _)| *until > now)
-        });
-        let claim = ledger.claims.entry((*mandate, request)).or_insert(Claim {
-            cart_hash,
+        let records = ledger.entry(*mandate).or_default();
+        records.retain(|_, r| r.running > 0 || r.expires_at > now);
+        let record = records.entry(request).or_insert(Record {
+            digest,
+            reserved_minor: None,
+            expires_at,
             running: 0,
             answer: None,
         });
-        if claim.cart_hash != cart_hash {
+        if record.digest != digest || record.expires_at <= now {
             return Err(Replay);
         }
-        if let Some((_, out)) = &claim.answer {
-            return Ok(Claimed::Answered(Box::new(out.clone())));
+        if let Some(out) = &record.answer {
+            return Ok(Claimed::Answered(out.clone()));
         }
-        claim.running += 1;
+        record.running += 1;
         Ok(Claimed::Working(ClaimGuard {
             budget: self,
             mandate: *mandate,
             request,
+            expires_at: record.expires_at,
         }))
     }
 
@@ -104,73 +102,67 @@ impl Budget {
 }
 
 impl ClaimGuard<'_> {
-    /// `max − captured − Σ reservations unexpired at now` on the claim's mandate.
+    /// When the request's record, reservation and countersign expire.
+    pub fn expires_at(&self) -> OffsetDateTime {
+        self.expires_at
+    }
+
+    /// `max − captured − Σ reservations of records unexpired at now` on the request's mandate.
     pub fn left(&self, max: i64, captured_minor: i64, now: OffsetDateTime) -> i64 {
         left(&self.budget.lock(), &self.mandate, max, captured_minor, now)
     }
 
-    /// Reserves `amount` for the claimed cart until `until` if it is within what is
-    /// [`Self::left`]; the check and the reservation are one step, so concurrent requests never
-    /// reserve past `max`. The request's cart already holding a reservation keeps it.
+    /// Reserves `amount` for the request if it is within what is [`Self::left`]; the check and
+    /// the reservation are one step, so concurrent requests never reserve past `max`. A request
+    /// that already reserved keeps its reservation, which must be for `amount`.
     pub fn reserve(
         &self,
         max: i64,
         captured_minor: i64,
         amount: i64,
         now: OffsetDateTime,
-        until: OffsetDateTime,
-    ) -> bool {
+    ) -> Result<bool, Replay> {
         let mut ledger = self.budget.lock();
-        let cart_hash = ledger.claims[&(self.mandate, self.request)].cart_hash;
-        let reserved = ledger.reserved.entry(self.mandate).or_default();
-        reserved.retain(|r| r.until > now);
-        // The claim binds the request to one cart, so its reservation is for this amount.
-        if let Some(r) = reserved.iter().find(|r| r.request == self.request) {
-            debug_assert_eq!((r.cart_hash, r.amount), (cart_hash, amount));
-            return true;
+        let room = left(&ledger, &self.mandate, max, captured_minor, now);
+        let record = ledger
+            .get_mut(&self.mandate)
+            .and_then(|records| records.get_mut(&self.request))
+            .ok_or(Replay)?;
+        match record.reserved_minor {
+            Some(reserved) if reserved == amount => Ok(true),
+            Some(_) => Err(Replay),
+            None if amount > room => Ok(false),
+            None => {
+                record.reserved_minor = Some(amount);
+                Ok(true)
+            }
         }
-        if amount > left(&ledger, &self.mandate, max, captured_minor, now) {
-            return false;
-        }
-        ledger
-            .reserved
-            .entry(self.mandate)
-            .or_default()
-            .push(Reservation {
-                request: self.request,
-                cart_hash,
-                amount,
-                until,
-            });
-        true
     }
 
-    /// Records `out` as the answer until `until`. A countersign of the same request and cart
-    /// that answered first keeps its answer, which is returned.
-    pub fn answer(self, until: OffsetDateTime, out: Countersigned) -> Countersigned {
+    /// Records `out` as the answer. A countersign of the same request that answered first keeps
+    /// its answer, which is returned.
+    pub fn answer(self, out: Countersigned) -> Result<Countersigned, Replay> {
         let mut ledger = self.budget.lock();
-        let claim = ledger
-            .claims
-            .get_mut(&(self.mandate, self.request))
-            .expect("a running claim is kept");
-        claim.answer.get_or_insert((until, out)).1.clone()
+        let record = ledger
+            .get_mut(&self.mandate)
+            .and_then(|records| records.get_mut(&self.request))
+            .ok_or(Replay)?;
+        Ok((**record.answer.get_or_insert_with(|| Box::new(out))).clone())
     }
 }
 
 impl Drop for ClaimGuard<'_> {
     fn drop(&mut self) {
         let mut ledger = self.budget.lock();
-        let key = (self.mandate, self.request);
-        let Some(claim) = ledger.claims.get_mut(&key) else {
+        let Some(records) = ledger.get_mut(&self.mandate) else {
             return;
         };
-        claim.running -= 1;
-        if claim.running > 0 || claim.answer.is_some() {
+        let Some(record) = records.get_mut(&self.request) else {
             return;
-        }
-        ledger.claims.remove(&key);
-        if let Some(reserved) = ledger.reserved.get_mut(&self.mandate) {
-            reserved.retain(|r| r.request != self.request);
+        };
+        record.running -= 1;
+        if record.running == 0 && record.answer.is_none() {
+            records.remove(&self.request);
         }
     }
 }
@@ -183,12 +175,12 @@ fn left(
     now: OffsetDateTime,
 ) -> i64 {
     let reserved = ledger
-        .reserved
         .get(mandate)
         .into_iter()
-        .flatten()
-        .filter(|r| r.until > now)
-        .fold(0i64, |sum, r| sum.saturating_add(r.amount));
+        .flat_map(BTreeMap::values)
+        .filter(|r| r.expires_at > now)
+        .filter_map(|r| r.reserved_minor)
+        .fold(0i64, i64::saturating_add);
     max.saturating_sub(captured_minor).saturating_sub(reserved)
 }
 
@@ -207,8 +199,11 @@ mod tests {
         Ulid::from_parts(0, n)
     }
 
-    fn work(b: &Budget, request: Ulid, cart: u8) -> ClaimGuard<'_> {
-        match b.claim(&[1; 32], request, [cart; 32], at(0)).unwrap() {
+    fn work(b: &Budget, request: Ulid, digest: u8, expires: i64, now: i64) -> ClaimGuard<'_> {
+        match b
+            .claim(&[1; 32], request, [digest; 32], at(expires), at(now))
+            .unwrap()
+        {
             Claimed::Working(g) => g,
             Claimed::Answered(_) => panic!("unanswered"),
         }
@@ -217,41 +212,61 @@ mod tests {
     #[test]
     fn reservations_count_until_they_expire() {
         let b = Budget::default();
-        let (g1, g2) = (work(&b, id(1), 1), work(&b, id(2), 2));
+        let g1 = work(&b, id(1), 1, 900, 0);
+        let g2 = work(&b, id(2), 2, 1_799, 899);
         assert_eq!(g1.left(10_000, 1_000, at(0)), 9_000);
-        assert!(g1.reserve(10_000, 1_000, 6_000, at(0), at(900)));
+        assert_eq!(g1.reserve(10_000, 1_000, 6_000, at(0)), Ok(true));
         assert_eq!(g2.left(10_000, 1_000, at(899)), 3_000);
-        assert!(!g2.reserve(10_000, 1_000, 3_001, at(899), at(1_799)));
-        assert!(g2.reserve(10_000, 1_000, 3_000, at(899), at(1_799)));
+        assert_eq!(g2.reserve(10_000, 1_000, 3_001, at(899)), Ok(false));
+        assert_eq!(g2.reserve(10_000, 1_000, 3_000, at(899)), Ok(true));
         assert_eq!(g2.left(10_000, 1_000, at(900)), 6_000);
     }
 
     #[test]
-    fn a_request_id_is_bound_to_one_cart() {
+    fn a_request_id_is_bound_to_one_input_and_one_amount() {
         let b = Budget::default();
-        let g = work(&b, id(1), 1);
-        assert_eq!(b.claim(&[1; 32], id(1), [2; 32], at(0)).err(), Some(Replay));
-        assert!(g.reserve(10_000, 0, 6_000, at(0), at(900)));
-        // The same cart running twice is reserved once.
-        let again = work(&b, id(1), 1);
-        assert!(again.reserve(10_000, 0, 6_000, at(0), at(900)));
+        let g = work(&b, id(1), 1, 900, 0);
+        let other = b.claim(&[1; 32], id(1), [2; 32], at(900), at(0));
+        assert_eq!(other.err(), Some(Replay));
+        assert_eq!(g.reserve(10_000, 0, 6_000, at(0)), Ok(true));
+        // The same input running twice is reserved once, and only for the same amount.
+        let again = work(&b, id(1), 1, 900, 0);
+        assert_eq!(again.reserve(10_000, 0, 6_000, at(0)), Ok(true));
+        assert_eq!(again.reserve(10_000, 0, 9_400, at(0)), Err(Replay));
         assert_eq!(again.left(10_000, 0, at(0)), 4_000);
-        // The same id on another mandate is another claim.
-        assert!(b.claim(&[2; 32], id(1), [2; 32], at(0)).is_ok());
+        // The same id on another mandate is another request.
+        assert!(b.claim(&[2; 32], id(1), [2; 32], at(900), at(0)).is_ok());
     }
 
     #[test]
-    fn a_claim_dropped_without_an_answer_releases_its_reservation() {
+    fn a_record_keeps_its_first_expiry_and_its_reservation_expires_with_it() {
         let b = Budget::default();
-        let (g, other) = (work(&b, id(1), 1), work(&b, id(1), 1));
-        assert!(g.reserve(10_000, 0, 6_000, at(0), at(900)));
+        let g = work(&b, id(1), 1, 900, 0);
+        assert_eq!(g.reserve(10_000, 0, 6_000, at(0)), Ok(true));
+        // A later runner of the same request gets the record's expiry, not its own.
+        let late = work(&b, id(1), 1, 901, 1);
+        assert_eq!(late.expires_at(), at(900));
+        assert_eq!(late.left(10_000, 0, at(899)), 4_000);
+        // At the record's expiry its reservation no longer counts.
+        let next = work(&b, id(2), 2, 1_800, 900);
+        assert_eq!(next.left(10_000, 0, at(900)), 10_000);
+        drop((g, late));
+        assert_eq!(next.reserve(10_000, 0, 9_400, at(900)), Ok(true));
+        assert_eq!(next.left(10_000, 0, at(900)), 600);
+    }
+
+    #[test]
+    fn a_request_dropped_without_an_answer_releases_its_reservation() {
+        let b = Budget::default();
+        let (g, other) = (work(&b, id(1), 1, 900, 0), work(&b, id(1), 1, 900, 0));
+        assert_eq!(g.reserve(10_000, 0, 6_000, at(0)), Ok(true));
         drop(g);
         // Another countersign of the request still holds it.
         assert_eq!(other.left(10_000, 0, at(0)), 4_000);
         drop(other);
-        let fresh = work(&b, id(2), 2);
+        let fresh = work(&b, id(2), 2, 900, 0);
         assert_eq!(fresh.left(10_000, 0, at(0)), 10_000);
-        // And the id is free for another cart.
-        assert!(b.claim(&[1; 32], id(1), [3; 32], at(0)).is_ok());
+        // And the id is free for another input.
+        assert!(b.claim(&[1; 32], id(1), [3; 32], at(900), at(0)).is_ok());
     }
 }

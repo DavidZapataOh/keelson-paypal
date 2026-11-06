@@ -316,7 +316,7 @@ impl Engine {
     /// Leg A computes the budget from its own ledger and captured amounts, reserves an ALLOW's
     /// amount until it expires, and refuses a request that carries an observation. Leg B
     /// requires leg A's observation and reserves nothing. A request id is answered once: the
-    /// same request with the same cart gets the same countersign, another cart is a replay.
+    /// same input gets the same countersign, any other input under the id is a replay.
     pub fn countersign(
         &self,
         r: &CountersignRequest,
@@ -344,20 +344,25 @@ impl Engine {
         }
         let cart_hash = cart_hash(&r.cart).map_err(|_| bad("cart"))?;
         let a = self.authenticate(r, now_s, &cart_hash)?;
-        // Bind the request id to this cart before anything is evaluated or reserved; the
-        // claim is released, with any reservation, if this countersign fails.
+        // Bind the request id to its whole input before anything is evaluated or reserved.
+        // The record holds the reservation and expires with the countersign; dropping the claim
+        // without an answer removes both.
+        let exp = a.mandate["exp"].as_i64().ok_or(bad("mandate"))?;
+        let expires_at = now_s.saturating_add(COUNTERSIGN_TTL).min(exp);
+        let until = OffsetDateTime::from_unix_timestamp(expires_at).map_err(|_| bad("clock"))?;
+        let digest = request_digest(r)?;
         let claim = match self
             .budget
-            .claim(&a.mandate_hash, r.request_id, cart_hash, now)
+            .claim(&a.mandate_hash, r.request_id, digest, until, now)
         {
             Err(Replay) => return Err(EngineError::Replay),
             Ok(Claimed::Answered(out)) => return Ok(*out),
             Ok(Claimed::Working(claim)) => claim,
         };
+        let expires_at = claim.expires_at().unix_timestamp();
 
         // Everything that can fail is read before any budget is reserved.
         let m = &a.mandate;
-        let exp = m["exp"].as_i64().ok_or(bad("mandate"))?;
         let budget_max = constraint(m, "payment", "payment.budget")["max"]
             .as_i64()
             .ok_or(bad("mandate"))?;
@@ -370,8 +375,6 @@ impl Engine {
         .ok_or(bad("mandate"))?;
         let agent_id = U256::from_str_radix(agent_id, 10).map_err(|_| bad("mandate"))?;
         let merchant = merchant_leaf(&r.cart.merchant).map_err(|_| bad("merchant"))?;
-        let expires_at = now_s.saturating_add(COUNTERSIGN_TTL).min(exp);
-        let until = OffsetDateTime::from_unix_timestamp(expires_at).map_err(|_| bad("clock"))?;
         let (issued_at, expires) = (uint40(now_s)?, uint40(expires_at)?);
         let context = canonicalize(&r.cart, &r.unit);
         let total = context.as_ref().map_or(0, |c| c.total_minor);
@@ -455,7 +458,9 @@ impl Engine {
             // concurrent request reserved since `left`, evaluate again.
             if allow
                 && r.observation.is_none()
-                && !claim.reserve(budget_max, captured, total, now, until)
+                && !claim
+                    .reserve(budget_max, captured, total, now)
+                    .map_err(|Replay| EngineError::Replay)?
             {
                 continue;
             }
@@ -478,7 +483,7 @@ impl Engine {
                 },
             };
         };
-        Ok(claim.answer(until, out))
+        claim.answer(out).map_err(|Replay| EngineError::Replay)
     }
 
     /// Verifies the closed mandate against the issuer key, binds its user credential to the
@@ -717,6 +722,17 @@ fn constraint<'a>(m: &'a Value, section: &str, ty: &str) -> &'a Value {
         .flatten()
         .find(|c| c["type"] == ty)
         .unwrap_or(&Value::Null)
+}
+
+/// SHA-256 of the whole request as JSON: everything that decides the countersign or is signed
+/// in it, the clock aside. The serialization of the typed request is deterministic.
+fn request_digest(r: &CountersignRequest) -> Result<[u8; 32], EngineError> {
+    let json = serde_json::to_vec(r).map_err(|_| bad("request"))?;
+    Ok(Sha256::new()
+        .chain_update(b"keelson/countersign-request/v1\0")
+        .chain_update(json)
+        .finalize()
+        .into())
 }
 
 /// The bit index in `CATEGORY_IDS` of the cart's only category, or 255.

@@ -964,3 +964,91 @@ fn racing_carts_under_one_request_id_never_overspend() {
         assert_eq!(left, 10_000 - allowed, "iter {i}: {summary:?}");
     }
 }
+
+/// One cart under two PayPal units racing under one request id: the answer and the reservation
+/// always agree.
+#[test]
+fn racing_units_under_one_request_id_reserve_what_is_signed() {
+    let issued = register();
+    let sixty = CartFixture::sixty();
+    let mut shipped = CartFixture::sixty();
+    shipped.raw["unit"]["amount"]["value"] = json!("94.00");
+    shipped.raw["unit"]["amount"]["breakdown"]["shipping"] =
+        json!({ "currency_code": "USD", "value": "34.00" });
+    let id = request_id(60);
+    let requests: Vec<_> = (0..8)
+        .map(|n| {
+            let f = if n % 2 == 0 { &sixty } else { &shipped };
+            countersign_request(&issued, f, id, None)
+        })
+        .collect();
+    // The same cart, so the same key binding: only the unit differs.
+    assert_eq!(requests[0].closed_mandate, requests[1].closed_mandate);
+    for i in 0..1_500 {
+        let engine = leg_a();
+        let barrier = std::sync::Barrier::new(requests.len());
+        let outs: Vec<_> = thread::scope(|s| {
+            let handles: Vec<_> = requests
+                .iter()
+                .map(|r| {
+                    let (engine, barrier) = (&engine, &barrier);
+                    s.spawn(move || {
+                        barrier.wait();
+                        engine.countersign(r, at(NOW + 10))
+                    })
+                })
+                .collect();
+            handles.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        let answers: Vec<&Countersigned> = outs.iter().filter_map(|o| o.as_ref().ok()).collect();
+        assert!(!answers.is_empty(), "iter {i}");
+        assert!(answers.iter().all(|a| *a == answers[0]), "iter {i}");
+        for e in outs.iter().filter_map(|o| o.as_ref().err()) {
+            assert_eq!(*e, EngineError::Replay, "iter {i}");
+        }
+        let signed = match answers[0].countersign.decision.as_str() {
+            "1" => answers[0].countersign.amount.parse::<i64>().unwrap(),
+            _ => 0,
+        };
+        let probe = engine
+            .countersign(
+                &countersign_request(&issued, &CartFixture::demo(), request_id(61), None),
+                at(NOW + 10),
+            )
+            .unwrap();
+        assert_eq!(
+            probe.observation.budget_left_minor,
+            10_000 - signed,
+            "iter {i}: signed {signed}"
+        );
+    }
+}
+
+/// A request id's claim and its reservation expire together, with the countersign.
+#[test]
+fn a_request_id_and_its_reservation_expire_together() {
+    let issued = register();
+    let engine = leg_a();
+    let id = request_id(70);
+    let at_clock = |f: &CartFixture, id: Ulid, clock: i64| {
+        let mut r = countersign_request(&issued, f, id, None);
+        r.closed_mandate = close(&issued.open_mandate, &id.to_string(), &f.hash(), clock);
+        engine.countersign(&r, at(clock))
+    };
+    let first = at_clock(&CartFixture::sixty(), id, NOW + 10).unwrap();
+    assert_eq!(first.countersign.decision, "1");
+    let expires: i64 = first.countersign.expires_at.parse().unwrap();
+
+    // Until then the id is taken and the $60 stays reserved.
+    let err = at_clock(&CartFixture::demo(), id, expires - 1).unwrap_err();
+    assert_eq!(err, EngineError::Replay);
+    let probe = at_clock(&CartFixture::demo(), request_id(71), expires - 1).unwrap();
+    assert_eq!(probe.observation.budget_left_minor, 4_000);
+
+    // Then both are gone: the id is free, and a new cart under it is charged in full.
+    let again = at_clock(&CartFixture::demo(), id, expires).unwrap();
+    assert_eq!(again.countersign.decision, "1");
+    assert_eq!(again.observation.budget_left_minor, 10_000);
+    let probe = at_clock(&CartFixture::sixty(), request_id(72), expires).unwrap();
+    assert_eq!(probe.observation.budget_left_minor, 600);
+}

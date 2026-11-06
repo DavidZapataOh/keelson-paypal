@@ -22,7 +22,7 @@ The first registration of a `sub` binds it to its passkey in a sealed user recor
 3. canonicalizes the cart against the PayPal purchase unit and evaluates it with Cedar;
 4. signs the EIP-712 `Countersign`, and on leg A, on ALLOW, reserves the amount until the countersign expires.
 
-A request id is answered once per mandate. Right after authentication it is bound to its cart, under the same lock as the reservations: the same request with the same cart gets the same countersign and reserves nothing more, and the same id with another cart fails with `replay` before anything is evaluated. A countersign that fails releases its claim and any reservation it took.
+A request id is answered once per mandate. Right after authentication it is bound to the digest of the whole request (closed mandate, cart, PayPal unit, evidence, evidence root and observation), in one record that also holds its reservation and its answer and expires with the countersign. The same input gets the same countersign and reserves nothing more; any other input under the id fails with `replay` before anything is evaluated. A countersign that fails removes the record and its reservation.
 
 ## What each leg checks
 
