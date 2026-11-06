@@ -7,6 +7,7 @@ import { p256 } from "@noble/curves/nist.js";
 import { pack } from "@sd-jwt/core";
 import { SDJwtVcInstance } from "@sd-jwt/sd-jwt-vc";
 import { hSd, mandateChallenge } from "../src/challenge.ts";
+import { fieldColors } from "../src/colors.ts";
 import {
   MERCHANT_TREE_CAPACITY,
   mandateCommitment,
@@ -618,6 +619,13 @@ async function commitmentVectors() {
       "error/currency-mismatch",
       (m) => {
         for (const c of m.payment.constraints) if (c.type === "payment.budget") c.currency = "EUR";
+      },
+    ],
+    [
+      "error/amount-range-currency-mismatch",
+      (m) => {
+        for (const c of m.payment.constraints)
+          if (c.type === "payment.amount_range") c.currency = "EUR";
       },
     ],
     ["error/extra-key", (m) => Object.assign(m, { extra: 1 })],
@@ -1374,3 +1382,7 @@ writeJson("sd", await sdVectors());
 writeJson("challenge", await challengeVectors());
 writeJson("commitment", await commitmentVectors());
 writeJson("credentials", await credentialVectors());
+writeJson(
+  "colors",
+  fieldColors(mandate(), { merchantSignedCheckout: false, zkTlsFields: new Set() }),
+);

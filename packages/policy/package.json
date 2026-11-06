@@ -1,0 +1,32 @@
+{
+  "name": "@keelson/policy",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "bench": "node bench/evaluate.bench.ts",
+    "embed": "node scripts/embed.ts"
+  },
+  "dependencies": {
+    "@cedar-policy/cedar-wasm": "4.14.0",
+    "@keelson/core": "workspace:*",
+    "@keelson/mandate": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

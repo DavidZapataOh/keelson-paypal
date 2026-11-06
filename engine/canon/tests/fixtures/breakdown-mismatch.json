@@ -1,0 +1,28 @@
+{
+  "cart": {
+    "merchant": "mrc_runfast",
+    "currency": "USD",
+    "return_days": 30,
+    "returns_free": true,
+    "lines": [
+      {
+        "sku": "sku-trail-10",
+        "size": "10",
+        "color": "black",
+        "category": "gpt:187",
+        "qty": 1,
+        "unit_minor": 9400
+      }
+    ]
+  },
+  "unit": {
+    "amount": {
+      "currency_code": "USD",
+      "value": "100.01",
+      "breakdown": {
+        "item_total": { "currency_code": "USD", "value": "94.00" },
+        "tax_total": { "currency_code": "USD", "value": "6.00" }
+      }
+    }
+  }
+}

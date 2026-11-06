@@ -92,6 +92,45 @@ jobs:
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
 
+  policy-parity:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        seed: [1, 2]
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Embedded policies and the parity sample are fresh
+        run: |
+          pnpm --filter @keelson/policy embed
+          cargo run -p keelson-policy --bin parity -- --seed 1 --n 105 > packages/policy/test/vectors/parity.jsonl
+          git diff --exit-code packages/policy
+      - name: Generate 10,000 cases with seed ${{ matrix.seed }}
+        run: cargo run -p keelson-policy --bin parity -- --seed ${{ matrix.seed }} --n 10000 > "$RUNNER_TEMP/parity.jsonl"
+      - run: pnpm turbo run build --filter=@keelson/policy^...
+      - run: pnpm --filter @keelson/policy test
+        env:
+          PARITY_FILE: ${{ runner.temp }}/parity.jsonl
+
+  kani:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install
+      - uses: actions/cache@v6
+        with:
+          path: ~/.kani
+          key: ${{ runner.os }}-kani-0.68.0
+      - run: cargo install --locked kani-verifier --version 0.68.0 && cargo kani setup
+      - run: cargo kani -p keelson-canon
+
   noir:
     runs-on: ubuntu-24.04
     steps:

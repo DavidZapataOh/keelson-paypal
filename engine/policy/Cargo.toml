@@ -1,0 +1,23 @@
+[package]
+name = "keelson-policy"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+cedar-policy = "=4.14.1"
+keelson-canon = { path = "../canon" }
+keelson-core = { path = "../core" }
+keelson-mandate = { path = "../mandate" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11.1"
+time = { version = "0.3.55", features = ["formatting", "macros", "parsing"] }
+
+[dev-dependencies]
+criterion = { version = "0.8.2", default-features = false }
+
+[[bench]]
+name = "evaluate"
+harness = false

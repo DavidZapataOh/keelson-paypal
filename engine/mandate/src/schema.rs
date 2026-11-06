@@ -116,6 +116,12 @@ fn text<'a>(v: &'a Value, path: &str, max: usize, empty: bool) -> Result<&'a str
     Ok(s)
 }
 
+/// Whether `s` is a valid merchant `id`: 1 to 128 UTF-8 bytes with no Unicode control (Cc) or
+/// format (Cf) characters.
+pub fn is_merchant_id(s: &str) -> bool {
+    !s.is_empty() && s.len() <= SHORT && !s.chars().any(|c| c.is_control() || is_format(c))
+}
+
 fn matching<'a>(v: &'a Value, path: &str, ok: impl Fn(&str) -> bool) -> Result<&'a str> {
     let s = string(v, path)?;
     if !ok(s) {
