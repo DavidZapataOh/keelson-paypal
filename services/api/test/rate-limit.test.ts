@@ -134,3 +134,17 @@ test("a named limiter keeps its own quota and policy name", async () => {
   expect(second.headers.get("ratelimit")).toMatch(/, "strict";r=0;t=\d+$/);
   expect((await get(build(), who)).status).toBe(200);
 });
+
+test("a limiter that fails closed refuses requests when the store is unreachable", async () => {
+  const kv = await createKv(redisUrl, log);
+  const app = createApp({ db: testDb, kv: testKv, log, authenticate: asPrincipal });
+  app.get("/v1/test/paid", rateLimit(kv, { name: "paid", limit: 10, failClosed: true }), (c) =>
+    c.json({ ok: true }),
+  );
+  kv.destroy();
+  const res = await app.request("/v1/test/paid", { headers: { "x-test-subject": subject() } });
+  expect(res.status).toBe(503);
+  expect((await res.json()).type).toBe(
+    "https://api.keelson.finance/problems/dependency-unavailable",
+  );
+});

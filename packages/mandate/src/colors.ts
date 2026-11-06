@@ -2,22 +2,27 @@ import { ANY_ITEM, type Mandate } from "./schema.ts";
 
 export type Color = "green" | "amber" | "gray";
 
-export type FieldId =
-  | "total"
-  | "mode"
-  | "recurrence"
-  | "currency"
-  | "budget"
-  | "merchant"
-  | "deadline"
-  | "quantity"
-  | "agent"
-  | "bond"
-  | "items"
-  | "category"
-  | "variant"
-  | "return_policy"
-  | "subjective";
+/** The fields of a mandate card, in the order the card shows them. */
+export const FIELD_IDS = [
+  "mode",
+  "recurrence",
+  "total",
+  "currency",
+  "budget",
+  "merchant",
+  "deadline",
+  "quantity",
+  "items",
+  "category",
+  "variant",
+  "return_policy",
+  "agent",
+  "bond",
+  "subjective",
+  "summary",
+] as const;
+
+export type FieldId = (typeof FIELD_IDS)[number];
 
 /** Fields that zkTLS evidence can prove. */
 export type ZkTlsField = Extract<FieldId, "category" | "variant" | "return_policy">;
@@ -68,6 +73,8 @@ export function fieldColors(m: Mandate, evidence: Evidence): Partial<Record<Fiel
   if (has("keelson.attributes")) colors.variant = proven("variant");
   if (has("keelson.returns")) colors.return_policy = proven("return_policy");
   if (m.intent.subjective.length > 0) colors.subjective = "gray";
+  // The compiler's restatement of the request: signed, but nothing checks it.
+  colors.summary = "gray";
   for (const f of evidence.ambiguous ?? []) if (colors[f]) colors[f] = "gray";
   return colors;
 }

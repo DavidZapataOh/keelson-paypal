@@ -1,11 +1,12 @@
 import { generateKeyPairSync, randomBytes } from "node:crypto";
 import type { AddressInfo } from "node:net";
+import Anthropic from "@anthropic-ai/sdk";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { serve } from "@hono/node-server";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { passkey } from "@keelson/db";
-import { type Mandate, parseMandate } from "@keelson/mandate";
-import { POLICY_SET_HASH } from "@keelson/policy";
+import { type Mandate, parseMandate, prepareSigning } from "@keelson/mandate";
+import { POLICY_SET_HASH } from "@keelson/policy/hashes";
 import { cose, isoBase64URL, isoCBOR } from "@simplewebauthn/server/helpers";
 import { betterAuth } from "better-auth";
 import { testUtils } from "better-auth/plugins";
@@ -17,7 +18,8 @@ import demoJson from "../../../packages/mandate/test/fixtures/demo-mandate.json"
 import { createApp } from "../src/app.ts";
 import { createAuth } from "../src/auth.ts";
 import { authenticate } from "../src/middleware/auth.ts";
-import type { CompileSources } from "../src/routes/compile.ts";
+import { LOCK_SECONDS } from "../src/middleware/idempotency.ts";
+import { COMPILE_DEADLINE_MS, COMPILE_LIMITS, type CompileSources } from "../src/routes/compile.ts";
 import { testAuthEnv, testDb, testKv } from "./setup.ts";
 
 const live = process.env.KEELSON_LIVE === "1";
@@ -42,7 +44,9 @@ const demoSources: Required<CompileSources> = {
   }),
 };
 
-const build = (compileSources?: CompileSources) =>
+const anthropic = live ? new Anthropic() : undefined;
+
+const build = (compileSources?: CompileSources, client: Anthropic | null | undefined = anthropic) =>
   createApp({
     db: testDb,
     kv: testKv,
@@ -50,6 +54,7 @@ const build = (compileSources?: CompileSources) =>
     auth,
     authenticate: authenticate(auth, baseURL),
     ...(compileSources ? { compileSources } : {}),
+    ...(client ? { anthropic: client } : {}),
   });
 app = build(demoSources);
 
@@ -182,19 +187,44 @@ test("answers 503 naming the inputs that are not available yet", async () => {
   const user = await signIn();
   await addPasskey(user.id, new Date());
   try {
-    app = build();
+    app = build(undefined, null);
     const none = await compile({ prompt: DEMO_PROMPT }, user);
     const body = await none.json();
     expect(none.status).toBe(503);
     expect(body.type).toBe(problemType("compile-unavailable"));
-    expect(body.missing).toEqual(["agent", "consent", "engine"]);
+    expect(body.missing).toEqual(["agent", "consent", "engine", "anthropic"]);
 
-    app = build({ agent: demoSources.agent });
+    app = build({ agent: demoSources.agent }, null);
     const partial = await (await compile({ prompt: DEMO_PROMPT }, user)).json();
-    expect(partial.missing).toEqual(["consent", "engine"]);
+    expect(partial.missing).toEqual(["consent", "engine", "anthropic"]);
   } finally {
     app = build(demoSources);
   }
+});
+
+test("never records an unknown client address in a mandate", async () => {
+  const user = await signIn();
+  await addPasskey(user.id, new Date());
+  const h = new Headers(user.headers);
+  h.set("content-type", "application/json");
+  h.set("idempotency-key", crypto.randomUUID());
+  h.set("keelson-device", "dev_9f2c");
+  // Without the Node server, the request has no socket to read the address from.
+  const res = await app.request("/v1/mandates/compile", {
+    method: "POST",
+    headers: h,
+    body: JSON.stringify({ prompt: DEMO_PROMPT }),
+  });
+  expect(res.status).toBe(422);
+  expect((await res.json()).type).toBe(problemType("client-ip-required"));
+});
+
+test("ends every model call inside the request deadline and the idempotency lock", () => {
+  const worst = (l: { timeout: number; maxRetries: number }) => l.timeout * (l.maxRetries + 1);
+  const pair = Math.max(worst(COMPILE_LIMITS.opus), worst(COMPILE_LIMITS.sonnet));
+  expect(pair + worst(COMPILE_LIMITS.haiku)).toBeLessThan(COMPILE_DEADLINE_MS);
+  expect(COMPILE_DEADLINE_MS).toBeLessThan(30_000);
+  expect(30_000).toBeLessThan(LOCK_SECONDS * 1000);
 });
 
 test.runIf(live)(
@@ -226,7 +256,15 @@ test.runIf(live)(
       "100.00 USD",
     ]);
     expect(body.ambiguous).toContain("merchant");
-    console.log("ambiguous:", body.ambiguous, "check:", body.check);
+
+    // The card the user signs is the card the compile showed, ambiguous fields gray.
+    const signing = await prepareSigning(
+      draft,
+      crypto.getRandomValues(new Uint8Array(16)),
+      { merchantSignedCheckout: false, zkTlsFields: new Set() },
+      body.ambiguous,
+    );
+    expect(signing.card).toEqual(body.card);
 
     const replay = await compile({ prompt: DEMO_PROMPT, credentialId: older }, user, { key });
     expect(replay.headers.get("idempotent-replayed")).toBe("true");

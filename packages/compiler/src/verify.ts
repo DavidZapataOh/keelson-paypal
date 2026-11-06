@@ -8,7 +8,7 @@ export const CheckSchema = z.strictObject({
 
 export type Discrepancy = z.infer<typeof CheckSchema>["discrepancies"][number];
 
-/** The card fields a model compiles; the rest come from the system and are not checked. */
+/** The card fields a model writes; the rest come from the system and are not checked. */
 const COMPILED: ReadonlySet<FieldId> = new Set([
   "total",
   "currency",
@@ -21,6 +21,7 @@ const COMPILED: ReadonlySet<FieldId> = new Set([
   "variant",
   "return_policy",
   "subjective",
+  "summary",
 ]);
 
 /** The compiled rows of a card as plain text, one row per line, ambiguous rows marked. */

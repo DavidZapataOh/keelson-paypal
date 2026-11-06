@@ -14,6 +14,7 @@
     "test:live": "KEELSON_LIVE=1 vitest run test/compile.test.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "1.5.0",
     "@better-auth/drizzle-adapter": "1.7.17",
     "@better-auth/oauth-provider": "1.7.17",
     "@better-auth/passkey": "1.7.17",

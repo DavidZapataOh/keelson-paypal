@@ -1,16 +1,23 @@
 import { randomBytes } from "node:crypto";
+import type Anthropic from "@anthropic-ai/sdk";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { compileMandate, MAX_PROMPT_CHARS, type SystemFields } from "@keelson/compiler";
+import {
+  compileMandate,
+  type Limits,
+  MAX_PROMPT_CHARS,
+  type Role,
+  type SystemFields,
+} from "@keelson/compiler";
 import { sha256, toHex } from "@keelson/core";
-import { type Mandate, RP_ID, STRING_LIMITS } from "@keelson/mandate";
-import { POLICY_SET_HASH } from "@keelson/policy";
+import { FIELD_IDS, type Mandate, MandateSchema, RP_ID, STRING_LIMITS } from "@keelson/mandate";
+import { POLICY_SET_HASH } from "@keelson/policy/hashes";
 import type { Context } from "hono";
 import { ulid } from "ulid";
 import type { Deps } from "../app.ts";
 import { passkeyJwk } from "../mandate-signature.ts";
 import { MERCHANTS } from "../merchants.ts";
 import { requireSession } from "../middleware/auth.ts";
-import { clientIp, rateLimit } from "../middleware/rate-limit.ts";
+import { clientAddress, rateLimit } from "../middleware/rate-limit.ts";
 import { userPasskeys } from "../passkeys.ts";
 import type { Principal } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
@@ -30,6 +37,22 @@ export interface CompileSources {
 }
 
 const SOURCES = ["agent", "consent", "engine"] as const;
+
+/**
+ * How long a compile may run. It stays below the 30 s handler timeout, which stays below the
+ * idempotency lock, so a compile ends with its typed result before either and a retry never runs
+ * while a first attempt is still paying for model calls.
+ */
+export const COMPILE_DEADLINE_MS = 25_000;
+
+/** Per-model limits whose worst case, the pair and then the check, fits the deadline. */
+export const COMPILE_LIMITS: Readonly<
+  Record<Role, Required<Pick<Limits, "timeout" | "maxRetries">>>
+> = {
+  opus: { timeout: 12_000, maxRetries: 0 },
+  sonnet: { timeout: 12_000, maxRetries: 0 },
+  haiku: { timeout: 8_000, maxRetries: 0 },
+};
 
 const CompileRequest = z
   .object({
@@ -51,12 +74,13 @@ const CompileRequest = z
 
 const CompiledMandate = z
   .object({
-    mandateDraft: z.record(z.string(), z.unknown()).openapi({
+    mandateDraft: z.strictObject(MandateSchema.shape).openapi("MandateDraft", {
       description: "The compiled `keelson.mandate.1` payload, unsigned; its commitment is zero.",
     }),
     card: Card,
-    ambiguous: z.array(z.string()).openapi({
-      description: "Card fields the compilations disagreed on, shown gray for the user to settle.",
+    ambiguous: z.array(z.enum(FIELD_IDS)).openapi({
+      description:
+        "Card fields the compilations disagreed on or the request left unstated, shown gray for the user to settle. Pass them to `prepareSigning` so the card the user signs shows them gray too.",
     }),
     check: z
       .object({
@@ -72,7 +96,8 @@ const CompiledMandate = z
 
 const problemContent = { "application/problem+json": { schema: ProblemSchema } };
 
-const COMPILE_LIMIT = { name: "compile", limit: 10, windowSec: 60 } as const;
+// Each compile pays for three model calls, so the limit holds even when its store is down.
+const COMPILE_LIMIT = { name: "compile", limit: 10, windowSec: 60, failClosed: true } as const;
 
 /** Compile errors the user settles by restating the request, with the slug that answers each. */
 const USER_ERRORS: Readonly<Record<string, [slug: string, title: string, detail: string]>> = {
@@ -101,10 +126,10 @@ type ContextProblem = ReturnType<typeof problem<401 | 403 | 409 | 422 | 503>>;
  */
 async function compileContext(
   c: Context,
-  deps: Pick<Deps, "db" | "passkeyRpId" | "rateLimit" | "compileSources">,
+  deps: Pick<Deps, "db" | "passkeyRpId" | "rateLimit" | "compileSources" | "anthropic">,
   userId: string,
   body: { credentialId?: string | undefined; mode: Mandate["mode"] },
-): Promise<Fields | ContextProblem> {
+): Promise<(Fields & { client: Anthropic }) | ContextProblem> {
   const passkeys = await userPasskeys(deps.db, userId);
   const key = body.credentialId
     ? passkeys.find((p) => p.credentialID === body.credentialId)
@@ -139,10 +164,22 @@ async function compileContext(
     );
   }
 
+  const ip = clientAddress(c, deps.rateLimit?.trustProxy ?? false);
+  if (ip === undefined) {
+    return problem(
+      c,
+      422,
+      "client-ip-required",
+      "Client address unknown",
+      "The request's client address cannot be read, so it cannot be recorded in the mandate.",
+    );
+  }
+
   const sources = deps.compileSources ?? {};
-  const missing = SOURCES.filter((s) => sources[s] === undefined);
+  const missing: string[] = SOURCES.filter((s) => sources[s] === undefined);
+  if (!deps.anthropic) missing.push("anthropic");
   const { agent, consent, engine } = sources;
-  if (!agent || !consent || !engine) {
+  if (!agent || !consent || !engine || !deps.anthropic) {
     return problem(
       c,
       503,
@@ -172,13 +209,17 @@ async function compileContext(
     agent: await agent(userId),
     consent: await consent(userId),
     policy: { ...(await engine()), policy_set_hash: POLICY_SET_HASH },
-    risk_data: { device_fp: device, ip: clientIp(c, deps.rateLimit?.trustProxy ?? false) },
+    risk_data: { device_fp: device, ip },
+    client: deps.anthropic,
   };
 }
 
 export function registerCompile(
   app: OpenAPIHono,
-  deps: Pick<Deps, "db" | "kv" | "log" | "passkeyRpId" | "rateLimit" | "compileSources">,
+  deps: Pick<
+    Deps,
+    "db" | "kv" | "log" | "passkeyRpId" | "rateLimit" | "compileSources" | "anthropic"
+  >,
 ): void {
   const route = createRoute({
     method: "post",
@@ -213,7 +254,8 @@ export function registerCompile(
       429: { description: "Too many compilations", content: problemContent },
       502: { description: "The models failed to compile the request", content: problemContent },
       503: {
-        description: "Inputs a mandate needs are not available yet; `missing` names them",
+        description:
+          "Inputs a mandate needs are not available yet (`compile-unavailable`; `missing` names them), or the rate limit store is unreachable",
         content: problemContent,
       },
     },
@@ -235,16 +277,21 @@ export function registerCompile(
     const context = await compileContext(c, deps, userId, body);
     if (context instanceof Response) return context;
 
+    const { client, ...system } = context;
     const r = await compileMandate(
       prompt,
       {
-        ...context,
+        ...system,
         mid: ulid(),
         iat: Math.floor(Date.now() / 1000),
         nonce: randomBytes(16).toString("base64url"),
         merchants: MERCHANTS,
       },
-      { signal: c.req.raw.signal },
+      {
+        client,
+        signal: AbortSignal.any([c.req.raw.signal, AbortSignal.timeout(COMPILE_DEADLINE_MS)]),
+        limits: COMPILE_LIMITS,
+      },
     );
     deps.log.info(
       {

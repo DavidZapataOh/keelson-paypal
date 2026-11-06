@@ -1,4 +1,5 @@
 import "./telemetry.ts";
+import Anthropic from "@anthropic-ai/sdk";
 import { serve } from "@hono/node-server";
 import { createDb } from "@keelson/db";
 import { pino } from "pino";
@@ -29,6 +30,7 @@ const app = createApp({
   authenticate: authenticate(auth, env.BETTER_AUTH_URL),
   rateLimit: { trustProxy: process.env.RENDER === "true" },
   shutdown: shutdown.signal,
+  ...(env.ANTHROPIC_API_KEY ? { anthropic: new Anthropic({ apiKey: env.ANTHROPIC_API_KEY }) } : {}),
 });
 
 const server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {

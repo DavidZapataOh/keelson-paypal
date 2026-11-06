@@ -7,6 +7,8 @@ import { problem } from "../problem.ts";
 export interface RateLimitOptions {
   /** The policy name; limiters with different names count separately. */
   name?: string;
+  /** Answer 503 instead of letting requests through when the store is unreachable. */
+  failClosed?: boolean;
   /** Requests per window for an authenticated principal. */
   limit?: number;
   /** Requests per window for an anonymous caller, keyed by client IP. */
@@ -20,8 +22,8 @@ export interface RateLimitOptions {
   trustProxy?: boolean;
 }
 
-/** The caller's IP address, read as {@link RateLimitOptions.trustProxy} describes. */
-export function clientIp(c: Context, trustProxy: boolean): string {
+/** The caller's IP address, read as {@link RateLimitOptions.trustProxy} describes, if known. */
+export function clientAddress(c: Context, trustProxy: boolean): string | undefined {
   if (trustProxy) {
     const cf = c.req.header("cf-connecting-ip")?.trim();
     if (cf) return cf;
@@ -30,16 +32,17 @@ export function clientIp(c: Context, trustProxy: boolean): string {
     if (appended) return appended;
   }
   try {
-    return getConnInfo(c).remote.address ?? "unknown";
+    return getConnInfo(c).remote.address || undefined;
   } catch {
-    return "unknown";
+    return undefined;
   }
 }
 
 /**
  * Fixed-window limiter (INCR + EXPIRE NX in one MULTI) that advertises its quota with the
  * `RateLimit-Policy` and `RateLimit` fields of draft-ietf-httpapi-ratelimit-headers-11.
- * It fails open when the store is unreachable; the idempotency middleware guards writes.
+ * It fails open when the store is unreachable, unless `failClosed` is set; the idempotency
+ * middleware guards writes.
  */
 export function rateLimit(kv: RedisClientType, options: RateLimitOptions = {}): MiddlewareHandler {
   const {
@@ -48,11 +51,22 @@ export function rateLimit(kv: RedisClientType, options: RateLimitOptions = {}): 
     anonymousLimit = 120,
     windowSec = 60,
     trustProxy = false,
+    failClosed = false,
   } = options;
+  const unavailable = (c: Context) =>
+    problem(
+      c,
+      503,
+      "dependency-unavailable",
+      "Dependency unavailable",
+      "The rate limit store is unreachable.",
+    );
   return async (c, next) => {
     const principal = c.get("principal");
     const owner =
-      principal === undefined ? `ip:${clientIp(c, trustProxy)}` : principalKey(principal);
+      principal === undefined
+        ? `ip:${clientAddress(c, trustProxy) ?? "unknown"}`
+        : principalKey(principal);
     const quota = principal === undefined ? anonymousLimit : limit;
     const nowSec = Math.floor(Date.now() / 1000);
     const window = Math.floor(nowSec / windowSec);
@@ -63,9 +77,9 @@ export function rateLimit(kv: RedisClientType, options: RateLimitOptions = {}): 
       const key = `rl:${name}:${owner}:${window}`;
       const [incr] = await kv.multi().incr(key).expire(key, windowSec, "NX").exec();
       count = Number(incr);
-      if (!Number.isFinite(count)) return next();
+      if (!Number.isFinite(count)) return failClosed ? unavailable(c) : next();
     } catch {
-      return next();
+      return failClosed ? unavailable(c) : next();
     }
 
     const remaining = Math.max(quota - count, 0);

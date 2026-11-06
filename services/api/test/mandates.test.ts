@@ -57,7 +57,7 @@ window.keelson = {
   // \`passkeys\` defaults to the session user's list; a page without the session passes its own.
   sign: async (mandate, { spc, shown, passkeys: given }) => {
     const salt = crypto.getRandomValues(new Uint8Array(16));
-    const s = await prepareSigning(mandate, salt, noEvidence);
+    const s = await prepareSigning(mandate, salt, noEvidence, []);
     const passkeys = given ?? (await (await call("/v1/passkeys")).json()).passkeys;
     const opts = spc ? { spc: { ...s.spc, ...shown } } : undefined;
     const assertion = await signMandate(s.challenge, passkeys, opts);

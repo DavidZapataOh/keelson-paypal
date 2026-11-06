@@ -1,6 +1,13 @@
 import { toPayPalValue } from "@keelson/core";
 import { hSd as hashSd, mandateChallenge } from "./challenge.ts";
-import { anyItem, type Color, type Evidence, type FieldId, fieldColors } from "./colors.ts";
+import {
+  anyItem,
+  type Color,
+  type Evidence,
+  FIELD_IDS,
+  type FieldId,
+  fieldColors,
+} from "./colors.ts";
 import { mandateCommitment } from "./commitment.ts";
 import { ANY_ITEM, CATEGORY_TABLE, type Mandate } from "./schema.ts";
 import { buildSdPayload, decodeMandate } from "./sd.ts";
@@ -45,6 +52,7 @@ const LABELS: Record<FieldId, string> = {
   variant: "Variant",
   return_policy: "Returns",
   subjective: "Left to the agent's judgment",
+  summary: "Request summary",
 };
 
 /** English names of {@link CATEGORY_TABLE} ids. */
@@ -133,26 +141,9 @@ function values(m: Mandate): Partial<Record<FieldId, string[]>> {
     }
   }
   if (m.intent.subjective.length > 0) out.subjective = m.intent.subjective;
+  if (m.intent.prompt_summary !== "") out.summary = [m.intent.prompt_summary];
   return out;
 }
-
-const ORDER: readonly FieldId[] = [
-  "mode",
-  "recurrence",
-  "total",
-  "currency",
-  "budget",
-  "merchant",
-  "deadline",
-  "quantity",
-  "items",
-  "category",
-  "variant",
-  "return_policy",
-  "agent",
-  "bond",
-  "subjective",
-];
 
 /**
  * Renders the card the user signs. It is built only from the payload and its disclosures, which must
@@ -163,7 +154,7 @@ export function renderCard(payloadSd: object, disclosures: string[], evidence: E
   const colors = fieldColors(m, evidence);
   const shown = values(m);
   const rows: CardRow[] = [];
-  for (const field of ORDER) {
+  for (const field of FIELD_IDS) {
     const color = colors[field];
     const fieldValues = shown[field];
     if (color === undefined || fieldValues === undefined) continue;
@@ -196,11 +187,16 @@ export interface Signing {
  * Builds the selectively disclosable payload, its commitment and challenge, the card to show and
  * the Secure Payment Confirmation details. `C_m` does not cover `zk.commitment`, so it is computed
  * first and written into the payload that `H_sd` and the challenge then cover.
+ *
+ * `ambiguous` lists the fields the compiler could not settle, as `POST /v1/mandates/compile`
+ * returns them; the card shows them gray, answered by the user. Pass `[]` only for a mandate the
+ * user wrote field by field.
  */
 export async function prepareSigning(
   m: Mandate,
   salt: Uint8Array,
-  evidence: Evidence,
+  evidence: Omit<Evidence, "ambiguous">,
+  ambiguous: readonly FieldId[],
 ): Promise<Signing> {
   const cm = await mandateCommitment(m, salt);
   const commitment = `0x${cm.toString(16).padStart(64, "0")}`;
@@ -216,7 +212,7 @@ export async function prepareSigning(
     cm,
     commitment,
     challenge: mandateChallenge(h, cm),
-    card: renderCard(payloadSd, disclosures, evidence),
+    card: renderCard(payloadSd, disclosures, { ...evidence, ambiguous: new Set(ambiguous) }),
     spc: spcDetails(bound),
   };
 }

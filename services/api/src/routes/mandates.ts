@@ -117,6 +117,8 @@ const read = createRoute({
   path: "/v1/mandates/{id}",
   tags: ["mandates"],
   summary: "Get a mandate",
+  description:
+    "Renders the card of the signed mandate. The user answered for every field when signing, so fields that were ambiguous at compile time show with the colors the engine enforces, not gray.",
   middleware: [requireSession()],
   request: { params: z.object({ id: z.string() }) },
   responses: {

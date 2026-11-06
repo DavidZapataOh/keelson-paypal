@@ -11,6 +11,7 @@ const schema = z
     PAYPAL_CLIENT_SECRET: z.string().min(1),
     PAYPAL_ENV: z.enum(["sandbox", "live"]),
     PASSKEY_RP_ID: z.string().min(1).optional(),
+    ANTHROPIC_API_KEY: z.string().min(1).optional(),
     PORT: z.coerce.number().int().positive().default(10000),
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   })

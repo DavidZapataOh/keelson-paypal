@@ -261,6 +261,7 @@ describe("fieldColors", () => {
       quantity: "green",
       agent: "green",
       bond: "green",
+      summary: "gray",
     });
   });
 
@@ -281,6 +282,7 @@ describe("fieldColors", () => {
       variant: "amber",
       return_policy: "amber",
       subjective: "gray",
+      summary: "gray",
     });
   });
 

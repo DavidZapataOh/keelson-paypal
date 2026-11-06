@@ -33,6 +33,18 @@ describe("renderCard", () => {
     expect(card.warnings[0]).toContain("look good");
   });
 
+  it("shows the signed request summary gray, as the user's to check", async () => {
+    const { payloadSd, disclosures } = await buildSdPayload(mandate(), randomSalt);
+    const card = renderCard(payloadSd, disclosures, evidence);
+    expect(card.rows.at(-1)).toEqual({
+      field: "summary",
+      label: "Request summary",
+      values: ["Running shoes, size 10, under $100, free returns, by Friday"],
+      color: "gray",
+      answers: "You",
+    });
+  });
+
   it("turns amber fields green once zkTLS proves them", async () => {
     const { payloadSd, disclosures } = await buildSdPayload(mandate(), randomSalt);
     const proven: Evidence = {
@@ -145,7 +157,9 @@ describe("card contents", () => {
       for (const c of m.checkout.constraints) {
         if (c.type === "checkout.allowed_merchants") for (const x of c.allowed) x.name = name;
       }
-      await expect(prepareSigning(m, randomSalt(), evidence)).rejects.toThrow(/control or format/);
+      await expect(prepareSigning(m, randomSalt(), evidence, [])).rejects.toThrow(
+        /control or format/,
+      );
     }
   });
 });
@@ -154,7 +168,7 @@ describe("prepareSigning", () => {
   it("binds C_m into the signed payload and the challenge", async () => {
     const salt = randomSalt();
     const m = mandate();
-    const s = await prepareSigning(m, salt, evidence);
+    const s = await prepareSigning(m, salt, evidence, []);
     const cm = await mandateCommitment(m, salt);
     expect(s.cm).toBe(cm);
     const decoded = decodeMandate(s.payloadSd, s.disclosures);
@@ -166,8 +180,16 @@ describe("prepareSigning", () => {
     expect(s.card.rows.length).toBeGreaterThan(0);
   });
 
+  it("shows the fields the compiler could not settle gray on the card to sign", async () => {
+    const s = await prepareSigning(mandate(), randomSalt(), evidence, ["total", "merchant"]);
+    const row = (field: string) => s.card.rows.find((r) => r.field === field);
+    expect(row("total")).toMatchObject({ color: "gray", answers: "You" });
+    expect(row("merchant")).toMatchObject({ color: "gray", answers: "You" });
+    expect(row("budget")?.color).toBe("green");
+  });
+
   it("derives the payment confirmation details from the mandate", async () => {
-    const s = await prepareSigning(mandate(), randomSalt(), evidence);
+    const s = await prepareSigning(mandate(), randomSalt(), evidence, []);
     expect(s.spc).toEqual({
       payeeName: "Keelson",
       payeeOrigin: "https://keelson.finance",

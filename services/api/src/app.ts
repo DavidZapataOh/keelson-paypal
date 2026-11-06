@@ -1,3 +1,4 @@
+import type Anthropic from "@anthropic-ai/sdk";
 import { httpInstrumentationMiddleware } from "@hono/otel";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import type { Db } from "@keelson/db";
@@ -40,6 +41,8 @@ export interface Deps {
   rateLimit?: RateLimitOptions;
   /** The operator and TEE inputs of a compiled mandate; compiling answers 503 without them. */
   compileSources?: CompileSources;
+  /** The Anthropic client compiles use; compiling answers 503 without it. */
+  anthropic?: Anthropic;
   /** Aborting it ends every open event stream so the server can close. */
   shutdown?: AbortSignal;
 }

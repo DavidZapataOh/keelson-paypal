@@ -5,10 +5,10 @@ import {
   preparsePolicySet,
   preparseSchema,
 } from "@cedar-policy/cedar-wasm";
-import { sha256 } from "@keelson/core";
 import { POLICY_SET_SRC, SCHEMA_SRC } from "./generated/policy.ts";
-import { compareStrings, hex } from "./value.ts";
+import { compareStrings } from "./value.ts";
 
+export { POLICY_SET_HASH, SCHEMA_HASH } from "./generated/hashes.ts";
 export { POLICY_SET_SRC, SCHEMA_SRC };
 
 /** A policy's text, annotations and effect. */
@@ -59,9 +59,3 @@ export function policies(): ReadonlyMap<string, PolicyInfo> {
   cached = map;
   return map;
 }
-
-/** SHA-256 of the policy set file bytes, as `sha256:<hex>`. */
-export const POLICY_SET_HASH: string = `sha256:${hex(sha256(new TextEncoder().encode(POLICY_SET_SRC)))}`;
-
-/** SHA-256 of the schema file bytes, as `sha256:<hex>`. */
-export const SCHEMA_HASH: string = `sha256:${hex(sha256(new TextEncoder().encode(SCHEMA_SRC)))}`;
