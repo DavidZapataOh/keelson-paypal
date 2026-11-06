@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 
 use keelson_canon::{Cart, Context, PayPalUnit, canonicalize};
+use keelson_mandate::{Jwk, OpenMandateOptions, verify_credential};
 use keelson_policy::{
-    Decision, EngineMeta, EvalInput, Trace, evaluate, evaluate_context, mandate_agent,
+    Decision, EngineMeta, EvalInput, Trace, agent_uid, evaluate, evaluate_context, mandate_agent,
     policy_texts, trace_jcs,
 };
 use serde_json::{Value, json};
@@ -33,10 +34,14 @@ fn bundle() -> Context {
     context(include_str!("../../canon/tests/fixtures/bundle-340.json"))
 }
 
+/// The registry of the agent the demo mandate names.
+const REGISTRY: &str = "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e";
+
 fn input(context: Context) -> EvalInput {
     let mandate = mandate();
     EvalInput {
-        agent: mandate_agent(&mandate).unwrap(),
+        // The authenticated requester: here the agent the demo mandate names, ERC-8004 id 42.
+        agent: agent_uid(REGISTRY, "42").unwrap(),
         mandate,
         budget_left_minor: 10_000,
         context,
@@ -116,7 +121,9 @@ fn bundle_is_denied_on_amount_and_variant() {
 #[test]
 fn wrong_agent_is_denied() {
     let mut i = input(demo_cart());
-    i.agent = "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e/43".to_owned();
+    assert_eq!(i.agent, mandate_agent(&i.mandate).unwrap());
+    // Another agent authenticated for this request, holding the same mandate.
+    i.agent = agent_uid(REGISTRY, "43").unwrap();
     let t = evaluate(&i, &meta());
     assert_eq!(t.decision, Decision::Deny);
     assert_eq!(t.fired, ["agent"]);
@@ -494,4 +501,84 @@ fn mandate_and_context_integers_are_safe_integers() {
     let t = replay("total_minor", json!(-0.0));
     assert_eq!(t.errors, ["context.type:total_minor"]);
     assert_eq!(t.context["total_minor"], json!("-0.0"));
+}
+
+#[test]
+fn agent_uids_are_canonical() {
+    assert_eq!(
+        agent_uid("reg/with/slashes", "0").as_deref(),
+        Some("reg/with/slashes/0")
+    );
+    for id in ["", "042", "4a", "-1", "+5", "٣"] {
+        assert_eq!(agent_uid(REGISTRY, id), None, "{id:?}");
+    }
+}
+
+/// The first unsupported `keelson.attributes` key names the error, in UTF-8 byte order of the
+/// keys, whatever order the mandate writes them in.
+#[test]
+fn attribute_errors_do_not_depend_on_key_order() {
+    let with = |must: &str| {
+        let mut i = input(demo_cart());
+        let checkout = i.mandate["checkout"]["constraints"].as_array_mut().unwrap();
+        let attrs = checkout
+            .iter_mut()
+            .find(|c| c["type"] == "keelson.attributes")
+            .unwrap();
+        attrs["must"] = serde_json::from_str(must).unwrap();
+        evaluate(&i, &meta())
+    };
+    for (a, b, field) in [
+        (r#"{"fit":"x","10":"y"}"#, r#"{"10":"y","fit":"x"}"#, "10"),
+        (
+            r#"{"size_us":"10","width":1,"fit":"x"}"#,
+            r#"{"width":1,"fit":"x","size_us":"10"}"#,
+            "fit",
+        ),
+        (r#"{"é":"x","z":"y"}"#, r#"{"z":"y","é":"x"}"#, "z"),
+    ] {
+        let t = with(a);
+        assert_eq!(
+            t.errors,
+            [format!("entity.invalid:keelson.attributes.must.{field}")]
+        );
+        assert_eq!(trace_jcs(&t), trace_jcs(&with(b)));
+    }
+}
+
+/// A signed open mandate, verified and decoded, allows the cart it was issued for.
+#[test]
+fn a_signed_open_mandate_allows_its_cart() {
+    let vectors: Vec<Value> = serde_json::from_str(include_str!(
+        "../../../packages/mandate/test/vectors/credentials.json"
+    ))
+    .unwrap();
+    let valid = &vectors.iter().find(|v| v["name"] == "l2/valid").unwrap()["input"];
+    let o = &valid["opts"];
+    let opts = OpenMandateOptions {
+        expected_aud: o["expectedAud"].as_str().unwrap().into(),
+        expected_nonce: o["expectedNonce"].as_str().unwrap().into(),
+        now: o["now"].as_i64().unwrap(),
+        max_skew_sec: o["maxSkewSec"].as_i64().unwrap(),
+    };
+    let jwk = Jwk::from_value(&valid["jwk"]).unwrap();
+    let verify =
+        |token: &str| verify_credential(token, valid["typ"].as_str().unwrap(), &jwk, Some(&opts));
+    let token = valid["token"].as_str().unwrap();
+    let mandate = verify(token).unwrap().claims;
+
+    let mut i = input(demo_cart());
+    i.mandate = Value::Object(mandate);
+    let t = evaluate(&i, &meta());
+    assert_eq!(t.decision, Decision::Allow, "{:?} {:?}", t.fired, t.errors);
+
+    // Any change to a disclosure fails verification before anything is evaluated.
+    let disclosure = token.find('~').unwrap() + 3;
+    let mut tampered = token.as_bytes().to_vec();
+    tampered[disclosure] = if tampered[disclosure] == b'A' {
+        b'B'
+    } else {
+        b'A'
+    };
+    assert!(verify(std::str::from_utf8(&tampered).unwrap()).is_err());
 }

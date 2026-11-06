@@ -67,10 +67,20 @@ export interface Context {
 
 /** Everything one evaluation reads. */
 export interface EvalInput {
-  /** The fully decoded mandate. */
+  /**
+   * The mandate as `decodeMandate` from `@keelson/mandate` returns it, or the claims of an open
+   * mandate that `verifyCredential` verified. The entity builder reads only what the policies
+   * need and does not re-check the rest of the format.
+   */
   mandate: unknown;
+  /** The budget left on the mandate, from the spending ledger; capped at `payment.budget.max`. */
   budgetLeftMinor: number;
-  /** The agent principal id, as [`mandateAgent`] formats it. */
+  /**
+   * The authenticated requester: the [`agentUid`] of the agent whose signature or ERC-8004
+   * identity was verified for this request. It must never be derived from the mandate under
+   * evaluation ([`mandateAgent`]), or the `agent` policy compares the mandate with itself and can
+   * never deny.
+   */
   agent: string;
   context: Context;
   /** The TEE clock. */
@@ -177,6 +187,11 @@ class Faults {
  * Evaluates a cart against a mandate with the policies [`compileExtras`] builds from `extras`
  * added to the policy set, emitting the same `keelson.eval/1` trace as the Rust engine. Fails
  * closed and total: any error denies and is recorded, and every input yields a trace.
+ *
+ * An allow covers the mandate fields the policy set checks, and nothing the caller does before
+ * it. The caller must first decode the mandate strictly (see `EvalInput.mandate`), authenticate
+ * the agent (see `EvalInput.agent`), enforce `payment.allowed_payees` against the PayPal payee,
+ * which no policy reads, and map that payee to the `mrc_*` id it passes as `context.merchant`.
  *
  * The context passed to Cedar is `input.context` projected onto the attributes the mandate
  * constrains: each variant keeps its `size` only when `keelson.attributes` requires a `size_us`,

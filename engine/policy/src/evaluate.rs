@@ -19,7 +19,7 @@ use crate::extras::{Extra, InvalidExtra, compile};
 use crate::hashes::hex;
 use crate::trace::{Decision, Engine, FieldTrace, TRACE_VERSION, Trace};
 use crate::{
-    MAX_SAFE_INTEGER, PolicyError, agent_uid, mandate_entity, policies, policy_set_hash_tag,
+    MAX_SAFE_INTEGER, PolicyError, agent_entity_uid, mandate_entity, policies, policy_set_hash_tag,
     policy_texts, safe_int, schema, schema_hash_tag, variant_expr,
 };
 
@@ -29,10 +29,16 @@ pub type FieldId = String;
 /// Everything one evaluation reads.
 #[derive(Debug, Clone)]
 pub struct EvalInput {
-    /// The fully decoded mandate.
+    /// The mandate as [`keelson_mandate::decode_mandate`] returns it, or the claims of an open
+    /// mandate that [`keelson_mandate::verify_credential`] verified. The entity builder reads only
+    /// what the policies need and does not re-check the rest of the format.
     pub mandate: Value,
+    /// The budget left on the mandate, from the spending ledger; capped at `payment.budget.max`.
     pub budget_left_minor: i64,
-    /// The agent principal id, as [`crate::mandate_agent`] formats it.
+    /// The authenticated requester: the [`crate::agent_uid`] of the agent whose signature or
+    /// ERC-8004 identity was verified for this request. It must never be derived from the
+    /// mandate under evaluation ([`crate::mandate_agent`]), or the `agent` policy compares the
+    /// mandate with itself and can never deny.
     pub agent: String,
     pub context: keelson_canon::Context,
     /// The TEE clock.
@@ -169,6 +175,13 @@ impl Faults {
 
 /// Evaluates a cart against a mandate. Fails closed: any error denies and is recorded.
 ///
+/// An allow covers the mandate fields the policy set checks, and nothing the caller does before
+/// it. The caller must first:
+/// - decode the mandate strictly (see [`EvalInput::mandate`]) and authenticate the agent (see
+///   [`EvalInput::agent`]);
+/// - enforce `payment.allowed_payees` against the PayPal payee, which no policy reads;
+/// - map that payee to the `mrc_*` merchant id it passes as `context.merchant`.
+///
 /// The context passed to Cedar is `input.context` projected onto the attributes the mandate
 /// constrains: each variant keeps its `size` only when `keelson.attributes` requires a `size_us`,
 /// and its `color` only when it requires a `color` (a value of `any` requires nothing). The
@@ -221,7 +234,9 @@ pub fn evaluate_with_extras(input: &EvalInput, extras: &[Extra], meta: &EngineMe
 }
 
 /// Evaluates `context`, a context in Cedar JSON form such as a trace records, in place of the
-/// projection of `input.context`, to replay a recorded evaluation.
+/// projection of `input.context`, to replay a recorded evaluation. A verifier replays a trace with
+/// the trace's own `engine` meta and compares the whole result with it byte for byte, which
+/// covers `decision` and `fired` at the least.
 ///
 /// It applies the same fail-closed checks as [`evaluate`] to the context it is given, except
 /// those on `input.context.quantities`, which a recorded context does not carry.
@@ -341,9 +356,8 @@ fn read(m: &Value) -> [&Value; 7] {
 /// Whether two values are written the same, keys in the same order and numbers in the same
 /// representation, so `0.0` and `-0.0` differ. Stricter than `==`, and cheaper.
 ///
-/// It must stay order-sensitive: objects keep their key order, and the entity builder reports
-/// the first invalid key it meets (in `keelson.attributes.must`, say), so two mandates that are
-/// `==` with keys in another order can give different error codes.
+/// Two mandates with the same keys in another order are rebuilt rather than reused, which costs
+/// time but never changes the trace: nothing the entity builder reports depends on key order.
 fn same(a: &Value, b: &Value) -> bool {
     match (a, b) {
         (Value::Object(a), Value::Object(b)) => {
@@ -780,7 +794,7 @@ fn authorize(
     resource: &Resource,
 ) -> Result<Response, &'static str> {
     let action = action_uid().ok_or("request.invalid")?;
-    let principal = agent_uid(agent).map_err(|_| "request.invalid")?;
+    let principal = agent_entity_uid(agent).map_err(|_| "request.invalid")?;
     let context = context(action).ok_or("context.invalid")?;
     // The context already has the `checkout` context type, and the principal and resource are
     // built with the schema's entity types, so the request is not validated a second time.

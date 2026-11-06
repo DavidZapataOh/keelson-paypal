@@ -60,7 +60,7 @@ fn uid(ty: &str, id: &str) -> Result<EntityUid, PolicyError> {
 }
 
 /// The `Keelson::Agent` entity uid for an agent id.
-pub fn agent_uid(id: &str) -> Result<EntityUid, PolicyError> {
+pub(crate) fn agent_entity_uid(id: &str) -> Result<EntityUid, PolicyError> {
     static AGENT: OnceLock<Result<EntityTypeName, PolicyError>> = OnceLock::new();
     let ty = AGENT
         .get_or_init(|| EntityTypeName::from_str("Keelson::Agent").map_err(cedar))
@@ -68,24 +68,29 @@ pub fn agent_uid(id: &str) -> Result<EntityUid, PolicyError> {
     Ok(EntityUid::from_type_name_and_id(ty, EntityId::new(id)))
 }
 
-/// The agent a mandate authorizes: `<agent_registry>/<agent_id>`, its ERC-8004 identity.
+/// An agent's uid, `<registry>/<agent_id>`, its ERC-8004 identity; `None` unless `agent_id` is a
+/// canonical decimal.
 ///
-/// `agent_id` must be a canonical decimal, so it never contains `/`. The id is then everything
-/// after the last `/` and the registry everything before it, which makes the encoding injective
-/// even when the registry contains `/`.
+/// `agent_id` never contains `/`, so the id is everything after the last `/` and the registry
+/// everything before it, which makes the encoding injective even when the registry contains `/`.
+///
+/// [`EvalInput::agent`](crate::EvalInput::agent) is this uid for the authenticated requester.
+pub fn agent_uid(registry: &str, agent_id: &str) -> Option<String> {
+    let canonical = agent_id == "0"
+        || (!agent_id.is_empty()
+            && !agent_id.starts_with('0')
+            && agent_id.bytes().all(|b| b.is_ascii_digit()));
+    canonical.then(|| format!("{registry}/{agent_id}"))
+}
+
+/// The [`agent_uid`] of the agent a mandate authorizes, which the `agent` policy compares with
+/// the requester. It is never the requester itself: that comes from the request's authentication.
 pub fn mandate_agent(m: &Value) -> Result<String, PolicyError> {
     let op = &m["agent"]["operator"];
     let registry = str_at(&op["agent_registry"], "agent.operator.agent_registry")?;
     let id = str_at(&op["agent_id"], "agent.operator.agent_id")?;
-    let canonical = id == "0"
-        || (!id.is_empty() && !id.starts_with('0') && id.bytes().all(|b| b.is_ascii_digit()));
-    if !canonical {
-        return Err(invalid(
-            "agent.operator.agent_id",
-            "expected a canonical decimal",
-        ));
-    }
-    Ok(format!("{registry}/{id}"))
+    agent_uid(registry, id)
+        .ok_or_else(|| invalid("agent.operator.agent_id", "expected a canonical decimal"))
 }
 
 /// The first and last instants of years 0000 to 9999 in Unix milliseconds, the instants the
@@ -105,13 +110,14 @@ pub(crate) fn clock_ms(t: OffsetDateTime) -> Option<i64> {
     epoch_ms(t.unix_timestamp_nanos().div_euclid(1_000_000))
 }
 
-fn window_ms(ms: i128) -> Result<RestrictedExpression, PolicyError> {
-    let ms = epoch_ms(ms).ok_or_else(|| invalid("datetime", "outside years 0000 to 9999"))?;
+/// A window bound read from mandate `field`.
+fn window_ms(ms: i128, field: &str) -> Result<RestrictedExpression, PolicyError> {
+    let ms = epoch_ms(ms).ok_or_else(|| invalid(field, "outside years 0000 to 9999"))?;
     Ok(RestrictedExpression::new_long(ms))
 }
 
 /// The Cedar record for a variant; absent size and color are omitted, never null.
-pub fn variant_expr(v: &Variant) -> RestrictedExpression {
+pub(crate) fn variant_expr(v: &Variant) -> RestrictedExpression {
     let fields = [
         ("sku", Some(&v.sku)),
         ("size", v.size.as_ref()),
@@ -135,7 +141,11 @@ pub(crate) fn attributes(m: &Value) -> Result<(Option<String>, Option<String>), 
         let must = attrs["must"]
             .as_object()
             .ok_or_else(|| invalid("keelson.attributes.must", "expected record"))?;
-        for (key, value) in must {
+        // In key order, so the first unsupported key does not depend on how the JSON was written.
+        let mut keys: Vec<&String> = must.keys().collect();
+        keys.sort_unstable();
+        for key in keys {
+            let value = &must[key];
             let field = format!("keelson.attributes.must.{key}");
             let value = str_at(value, &field)?;
             let slot = match key.as_str() {
@@ -201,8 +211,9 @@ fn categories(m: &Value) -> Result<BTreeSet<String>, PolicyError> {
 }
 
 /// The exclusive end of the purchase window in Unix milliseconds: the earlier of `exp` and the
-/// instant after `payment.execution_date.not_after`, which is inclusive.
-fn expires_at_ms(m: &Value) -> Result<i128, PolicyError> {
+/// instant after `payment.execution_date.not_after`, which is inclusive, and the field it comes
+/// from (`exp` when both are equal).
+fn expires_at_ms(m: &Value) -> Result<(i128, &'static str), PolicyError> {
     let exp = i128::from(int_at(&m["exp"], "exp")?) * 1000;
     let Some(date) = constraint(m, "payment", "payment.execution_date")? else {
         return Err(invalid("payment.execution_date", "required"));
@@ -210,8 +221,12 @@ fn expires_at_ms(m: &Value) -> Result<i128, PolicyError> {
     let field = "payment.execution_date.not_after";
     let not_after = OffsetDateTime::parse(str_at(&date["not_after"], field)?, &Rfc3339)
         .map_err(|e| invalid(field, &e.to_string()))?;
-    let not_after_ms = not_after.unix_timestamp_nanos().div_euclid(1_000_000);
-    Ok(exp.min(not_after_ms + 1))
+    let end = not_after.unix_timestamp_nanos().div_euclid(1_000_000) + 1;
+    Ok(if exp <= end {
+        (exp, "exp")
+    } else {
+        (end, field)
+    })
 }
 
 /// Builds the `Keelson::Mandate` entity from a decoded mandate and the budget left on it.
@@ -249,7 +264,7 @@ pub fn mandate_entity(m: &Value, budget_left_minor: i64) -> Result<Entity, Polic
     let attrs = HashMap::from([
         (
             "agent".to_owned(),
-            RestrictedExpression::new_entity_uid(agent_uid(&mandate_agent(m)?)?),
+            RestrictedExpression::new_entity_uid(agent_entity_uid(&mandate_agent(m)?)?),
         ),
         (
             "currency".to_owned(),
@@ -277,9 +292,12 @@ pub fn mandate_entity(m: &Value, budget_left_minor: i64) -> Result<Entity, Polic
         ),
         (
             "not_before_ms".to_owned(),
-            window_ms(i128::from(int_at(&m["nbf"], "nbf")?) * 1000)?,
+            window_ms(i128::from(int_at(&m["nbf"], "nbf")?) * 1000, "nbf")?,
         ),
-        ("expires_at_ms".to_owned(), window_ms(expires_at_ms(m)?)?),
+        ("expires_at_ms".to_owned(), {
+            let (ms, field) = expires_at_ms(m)?;
+            window_ms(ms, field)?
+        }),
         (
             "min_return_days".to_owned(),
             RestrictedExpression::new_long(min_return_days),

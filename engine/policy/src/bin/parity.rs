@@ -541,10 +541,16 @@ fn break_mandate(r: &mut Rng, m: &mut Value) {
                 .push(json!({ "type": "keelson.returns", "min_days": 1, "free": "yes" })),
         },
         11 => {
-            let must = match r.below(4) {
+            // Unsupported keys written in an order that differs from their sorted order, including
+            // the array-index-like keys JavaScript enumerates first.
+            let must = match r.below(8) {
                 0 => json!({ "size_us": "10", "width": "wide" }),
                 1 => json!({ "color": 7, "size_us": "10" }),
                 2 => json!("size 10"),
+                3 => json!({ "fit": "x", "10": "y" }),
+                4 => json!({ "size_us": "10", "fit": 1, "0": "y", "color": "red" }),
+                5 => json!({ "zeta": "x", "alpha": 2, "é": "y" }),
+                6 => json!({ "width": "x", "4294967295": "y", "1": "z" }),
                 _ => json!({ "fit": 1, "color": "red" }),
             };
             m["checkout"]["constraints"]
@@ -819,6 +825,7 @@ fn now(ms: i64) -> OffsetDateTime {
 
 fn case(r: &mut Rng, scenario: Scenario) -> Case {
     let (mut m, s) = mandate(r);
+    // The authenticated requester is the agent the mandate names; the agent scenario replaces it.
     let agent = mandate_agent(&m).unwrap();
     let budget_left = if r.chance(20) {
         s.budget_max + r.range(1, 10_000)

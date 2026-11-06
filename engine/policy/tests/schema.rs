@@ -183,7 +183,7 @@ fn window_bounds_are_epoch_milliseconds_within_years_0_to_9999() {
     assert_eq!(attrs(&m, 0)["not_before_ms"], first * 1000);
     m["nbf"] = json!(first - 1);
     assert!(
-        matches!(mandate_entity(&m, 0), Err(PolicyError::Mandate { field, .. }) if field == "datetime")
+        matches!(mandate_entity(&m, 0), Err(PolicyError::Mandate { field, .. }) if field == "nbf")
     );
     let mut m = demo();
     m["exp"] = json!(last);
@@ -192,7 +192,13 @@ fn window_bounds_are_epoch_milliseconds_within_years_0_to_9999() {
     // The end is exclusive, but it must still be an instant within the range.
     m["exp"] = json!(last + 1);
     assert!(
-        matches!(mandate_entity(&m, 0), Err(PolicyError::Mandate { field, .. }) if field == "datetime")
+        matches!(mandate_entity(&m, 0), Err(PolicyError::Mandate { field, .. }) if field == "exp")
+    );
+    // The window ends at whichever bound comes first, and an error names that bound.
+    m["exp"] = json!(last + 2);
+    assert!(
+        matches!(mandate_entity(&m, 0), Err(PolicyError::Mandate { field, .. })
+        if field == "payment.execution_date.not_after")
     );
 }
 

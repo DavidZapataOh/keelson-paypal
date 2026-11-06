@@ -140,9 +140,9 @@ describe("the purchase window", () => {
   it("rejects mandate bounds outside years 0000 to 9999", () => {
     const i = input();
     i.mandate = { ...(i.mandate as object), nbf: -62_167_219_201 };
-    denied(evaluate(i, meta()), ["entity.invalid:datetime"]);
+    denied(evaluate(i, meta()), ["entity.invalid:nbf"]);
     i.mandate = { ...(i.mandate as object), nbf: -62_167_219_200 };
-    expect(evaluate(i, meta()).errors).not.toContain("entity.invalid:datetime");
+    expect(evaluate(i, meta()).errors).not.toContain("entity.invalid:nbf");
   });
 });
 

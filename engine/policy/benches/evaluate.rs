@@ -29,6 +29,7 @@ fn input() -> EvalInput {
     let cart: Cart = serde_json::from_value(fixture["cart"].clone()).unwrap();
     let unit: PayPalUnit = serde_json::from_value(fixture["unit"].clone()).unwrap();
     EvalInput {
+        // The authenticated requester: the agent the mandate names.
         agent: mandate_agent(&mandate).unwrap(),
         mandate,
         budget_left_minor: 10_000,

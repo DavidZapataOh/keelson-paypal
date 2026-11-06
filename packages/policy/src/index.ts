@@ -7,12 +7,13 @@
  * `experiments.asyncWebAssembly`), and Node loads it natively.
  *
  * Traces from the TEE are authoritative. In the browser, the evaluator verifies one by
- * evaluating the same input with the `engine` meta the trace records and comparing the result
- * byte for byte; a trace it emits is never a substitute for the TEE's.
+ * evaluating the same input with the `engine` meta the trace records and comparing the whole
+ * result with it byte for byte, which covers `decision` and `fired` at the least; a trace it
+ * emits is never a substitute for the TEE's.
  *
  * @packageDocumentation
  */
-export { EntityError, mandateAgent, mandateEntity } from "./entity.ts";
+export { agentUid, EntityError, mandateAgent, mandateEntity } from "./entity.ts";
 export {
   type Context,
   type EngineMeta,

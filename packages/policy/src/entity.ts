@@ -66,20 +66,29 @@ export function variantJson(v: Variant): JsonObject {
 }
 
 /**
- * The agent a mandate authorizes: `<agent_registry>/<agent_id>`, its ERC-8004 identity.
+ * An agent's uid, `<registry>/<agent_id>`, its ERC-8004 identity; `undefined` unless `agentId`
+ * is a canonical decimal.
  *
- * `agent_id` must be a canonical decimal, so it never contains `/`. The id is then everything
- * after the last `/` and the registry everything before it, which makes the encoding injective
- * even when the registry contains `/`.
+ * `agentId` never contains `/`, so the id is everything after the last `/` and the registry
+ * everything before it, which makes the encoding injective even when the registry contains `/`.
+ *
+ * `EvalInput.agent` is this uid for the authenticated requester.
+ */
+export function agentUid(registry: string, agentId: string): string | undefined {
+  return /^(0|[1-9][0-9]*)$/.test(agentId) ? `${registry}/${agentId}` : undefined;
+}
+
+/**
+ * The [`agentUid`] of the agent a mandate authorizes, which the `agent` policy compares with the
+ * requester. It is never the requester itself: that comes from the request's authentication.
  */
 export function mandateAgent(m: unknown): string {
   const op = get(get(m, "agent"), "operator");
   const registry = str(get(op, "agent_registry"), "agent.operator.agent_registry");
   const id = str(get(op, "agent_id"), "agent.operator.agent_id");
-  if (!/^(0|[1-9][0-9]*)$/.test(id)) {
-    throw invalid("agent.operator.agent_id", "expected a canonical decimal");
-  }
-  return `${registry}/${id}`;
+  const uid = agentUid(registry, id);
+  if (uid === undefined) throw invalid("agent.operator.agent_id", "expected a canonical decimal");
+  return uid;
 }
 
 /** The instants the Rust engine's clock represents: years -9999 to 9999, in Unix milliseconds. */
@@ -117,9 +126,10 @@ export function clockMs(t: Date): number | undefined {
   return Number.isFinite(ms) ? epochMs(BigInt(ms)) : undefined;
 }
 
-function windowMs(ms: bigint): number {
+/** A window bound read from mandate `field`. */
+function windowMs(ms: bigint, field: string): number {
   const v = epochMs(ms);
-  if (v === undefined) throw invalid("datetime", "outside years 0000 to 9999");
+  if (v === undefined) throw invalid(field, "outside years 0000 to 9999");
   return v;
 }
 
@@ -133,7 +143,10 @@ export function attributes(m: unknown): { size?: string; color?: string } {
   if (attrs === undefined) return out;
   const must = get(attrs, "must");
   if (!isObject(must)) throw invalid("keelson.attributes.must", "expected record");
-  for (const [key, value] of Object.entries(must)) {
+  // In UTF-8 byte order, as the Rust engine walks them: JavaScript enumerates index-like keys
+  // first, so the first unsupported key would otherwise depend on the key spelling.
+  for (const key of Object.keys(must).sort(compareStrings)) {
+    const value = must[key];
     const field = `keelson.attributes.must.${key}`;
     const v = str(value, field);
     const slot = key === "size_us" ? "size" : key === "color" ? "color" : undefined;
@@ -198,16 +211,19 @@ function compareRecords(a: JsonObject, b: JsonObject): number {
   return ka.length - kb.length;
 }
 
-/** The instant after the inclusive `payment.execution_date.not_after`, capped at `exp`. */
-function expiresAtMs(m: unknown): bigint {
+/**
+ * The instant after the inclusive `payment.execution_date.not_after`, capped at `exp`, and the
+ * field it comes from (`exp` when both are equal).
+ */
+function expiresAtMs(m: unknown): [bigint, string] {
   const exp = BigInt(int(get(m, "exp"), "exp")) * 1000n;
   const date = constraint(m, "payment", "payment.execution_date");
   if (date === undefined) throw invalid("payment.execution_date", "required");
   const field = "payment.execution_date.not_after";
   const notAfter = parseRfc3339Ms(str(get(date, "not_after"), field));
   if (notAfter === undefined) throw invalid(field, "invalid RFC 3339 date-time");
-  // biome-ignore lint/complexity/useMathMinMax: `Math.min` does not take bigints.
-  return exp < notAfter + 1n ? exp : notAfter + 1n;
+  const end = notAfter + 1n;
+  return exp <= end ? [exp, "exp"] : [end, field];
 }
 
 /** The `Keelson::Mandate` entity in Cedar JSON form. */
@@ -256,8 +272,8 @@ export function mandateEntity(m: unknown, budgetLeftMinor: number): MandateEntit
   const currency = str(get(get(m, "payment"), "currency"), "payment.currency");
   const maxTotal = int(get(range, "max"), "payment.amount_range.max");
   const cats = categories(m);
-  const notBefore = windowMs(BigInt(int(get(m, "nbf"), "nbf")) * 1000n);
-  const expiresAt = windowMs(expiresAtMs(m));
+  const notBefore = windowMs(BigInt(int(get(m, "nbf"), "nbf")) * 1000n, "nbf");
+  const expiresAt = windowMs(...expiresAtMs(m));
   return {
     uid: { type: "Keelson::Mandate", id: mid },
     attrs: {
