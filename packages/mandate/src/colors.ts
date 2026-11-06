@@ -27,6 +27,8 @@ export interface Evidence {
   merchantSignedCheckout: boolean;
   /** Fields proven with zkTLS. */
   zkTlsFields: ReadonlySet<ZkTlsField>;
+  /** Fields the compiler could not settle from the request; the user answers for them. */
+  ambiguous?: ReadonlySet<FieldId>;
 }
 
 /** Whether the mandate's line accepts any item. */
@@ -40,7 +42,8 @@ export function anyItem(m: Mandate): boolean {
 
 /**
  * Trust color of each mandate field the mandate constrains. Fields the TEE checks deterministically are green;
- * fields that depend on page content are amber until proven; subjective intent is never green.
+ * fields that depend on page content are amber until proven; subjective intent and fields the
+ * compiler could not settle are gray.
  */
 export function fieldColors(m: Mandate, evidence: Evidence): Partial<Record<FieldId, Color>> {
   const has = (type: string) => m.checkout.constraints.some((c) => c.type === type);
@@ -65,5 +68,6 @@ export function fieldColors(m: Mandate, evidence: Evidence): Partial<Record<Fiel
   if (has("keelson.attributes")) colors.variant = proven("variant");
   if (has("keelson.returns")) colors.return_policy = proven("return_policy");
   if (m.intent.subjective.length > 0) colors.subjective = "gray";
+  for (const f of evidence.ambiguous ?? []) if (colors[f]) colors[f] = "gray";
   return colors;
 }

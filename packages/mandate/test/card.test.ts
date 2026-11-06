@@ -43,6 +43,20 @@ describe("renderCard", () => {
     expect(card.rows.find((r) => r.field === "variant")?.color).toBe("green");
   });
 
+  it("shows the fields the compiler could not settle gray", async () => {
+    const { payloadSd, disclosures } = await buildSdPayload(mandate(), randomSalt);
+    const unsure: Evidence = {
+      merchantSignedCheckout: true,
+      zkTlsFields: new Set(["variant"]),
+      ambiguous: new Set(["total", "variant"]),
+    };
+    const card = renderCard(payloadSd, disclosures, unsure);
+    const row = (field: string) => card.rows.find((r) => r.field === field);
+    expect(row("total")).toMatchObject({ color: "gray", answers: "You" });
+    expect(row("variant")).toMatchObject({ color: "gray", answers: "You" });
+    expect(row("currency")?.color).toBe("green");
+  });
+
   it("rejects a swapped disclosure", async () => {
     const { payloadSd, disclosures } = await buildSdPayload(mandate(), randomSalt);
     const other = await buildSdPayload(mandate(), randomSalt);
