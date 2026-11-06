@@ -13,5 +13,6 @@
   "category": "amber",
   "variant": "amber",
   "return_policy": "amber",
-  "subjective": "gray"
+  "subjective": "gray",
+  "summary": "gray"
 }
