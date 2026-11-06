@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::Error;
 use crate::error::check_chain;
+use crate::wire::{Hex, Hex32};
 
 type Binding = (
     sol_data::FixedBytes<32>,
@@ -45,8 +46,11 @@ impl TryFrom<u8> for TeeKind {
     }
 }
 
-/// Everything the attestation binds the signer to.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// Everything the attestation binds the signer to. Its JSON form is camelCase with `chainId`
+/// and `bootEpoch` as decimal strings, addresses checksummed (EIP-55) and `teeKind` as its
+/// number.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(into = "BindingJson", try_from = "BindingJson")]
 pub struct SignerBinding {
     pub chain_id: u64,
     pub bond_vault: Address,
@@ -56,6 +60,50 @@ pub struct SignerBinding {
     /// The OCI image digest of the engine.
     pub engine_build_id: [u8; 32],
     pub boot_epoch: u64,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct BindingJson {
+    chain_id: String,
+    bond_vault: String,
+    tee_kind: TeeKind,
+    signer: String,
+    policy_set_hash: Hex32,
+    engine_build_id: Hex32,
+    boot_epoch: String,
+}
+
+impl From<SignerBinding> for BindingJson {
+    fn from(b: SignerBinding) -> Self {
+        Self {
+            chain_id: b.chain_id.to_string(),
+            bond_vault: b.bond_vault.to_checksum(None),
+            tee_kind: b.tee_kind,
+            signer: b.signer.to_checksum(None),
+            policy_set_hash: Hex(b.policy_set_hash),
+            engine_build_id: Hex(b.engine_build_id),
+            boot_epoch: b.boot_epoch.to_string(),
+        }
+    }
+}
+
+impl TryFrom<BindingJson> for SignerBinding {
+    type Error = &'static str;
+
+    fn try_from(b: BindingJson) -> Result<Self, Self::Error> {
+        let address = |a: &str| a.parse::<Address>().map_err(|_| "address");
+        let number = |n: &str| n.parse().map_err(|_| "number");
+        Ok(Self {
+            chain_id: number(&b.chain_id)?,
+            bond_vault: address(&b.bond_vault)?,
+            tee_kind: b.tee_kind,
+            signer: address(&b.signer)?,
+            policy_set_hash: b.policy_set_hash.0,
+            engine_build_id: b.engine_build_id.0,
+            boot_epoch: number(&b.boot_epoch)?,
+        })
+    }
 }
 
 /// `keccak256(abi.encode(keccak256("KEELSON_TEE_SIGNER_V1"), chainId, bondVault, teeKind,

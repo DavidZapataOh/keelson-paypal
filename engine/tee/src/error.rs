@@ -11,6 +11,8 @@ pub enum Error {
     UnknownTeeKind(u8),
     /// The signature's recovery id cannot be expressed as `v ∈ {27, 28}`.
     UnusableSignature,
+    /// The engine's OCI digest is not `sha256:` and 64 lowercase hex digits.
+    OciDigest,
 }
 
 impl fmt::Display for Error {
@@ -20,6 +22,7 @@ impl fmt::Display for Error {
             Self::MissingChain => f.write_str("the domain has no usable chain id"),
             Self::UnknownTeeKind(kind) => write!(f, "unknown tee kind: {kind}"),
             Self::UnusableSignature => f.write_str("the signature has an unusable recovery id"),
+            Self::OciDigest => f.write_str("the oci digest is not sha256:<64 lowercase hex>"),
         }
     }
 }

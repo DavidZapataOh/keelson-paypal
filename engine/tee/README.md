@@ -49,7 +49,7 @@ Refusals carry no signature and one of these stable codes: `auth.closed_*`, `aut
 
 ## HTTP
 
-`keelson-engine --listen tcp:<addr>` serves `POST /v1/countersign`, `POST /v1/mandates/register` and `GET /v1/health` (`{ tee, signer, boot_epoch, oci_digest, version }`). Every route except health needs `Authorization: Bearer <token>`; the engine holds only the token's SHA-256 and compares it in constant time. Refusals are `application/problem+json` (RFC 9457) with `type` `https://keelson.finance/problems/<code>` and the stable code, and never echo the request. Bodies are JSON with unknown fields rejected.
+`keelson-engine --listen tcp:<addr>` serves `POST /v1/countersign`, `POST /v1/mandates/register` and `GET /v1/health` (`{ tee, signer, boot_epoch, oci_digest, version }`). With `--platform tdx` it also serves `GET /v1/attestation` and `POST /v1/attestation/refresh` (see below). Every route except health and `GET /v1/attestation` needs `Authorization: Bearer <token>`; the engine holds only the token's SHA-256 and compares it in constant time. Refusals are `application/problem+json` (RFC 9457) with `type` `https://keelson.finance/problems/<code>` and the stable code, and never echo the request. Bodies are JSON with unknown fields rejected.
 
 | Status | Codes |
 | --- | --- |
@@ -61,8 +61,37 @@ Refusals carry no signature and one of these stable codes: `auth.closed_*`, `aut
 | 501 | `no_root` |
 | 503 | `not_ready` |
 | 500 | `signer`, `internal` |
+| 502 | `attestation` |
 
-The binary reads its configuration from `KEELSON_*` environment variables (see `src/main.rs`) and holds no KMS root.
+The binary reads its configuration from `KEELSON_*` environment variables (see `src/main.rs`). Without `--platform` it holds no KMS root.
+
+## Leg A on Intel TDX
+
+Built with the cargo feature `tdx`, `keelson-engine --platform tdx --listen tcp:<addr>` runs as leg A in a [dstack](https://github.com/Dstack-TEE/dstack) CVM. It talks to the guest agent's v1 API (`dstack.guest.v1`, dstack 0.6 or later) on `/var/run/dstack.sock`:
+
+1. `GetKey` with domain `keelson/root/v1` and algorithm `secp256k1` gives the 32-byte KMS root. It is the only key the engine asks the KMS for; the issuer, holder and sealing keys are derived from it.
+2. The engine boots with that root and a fresh signer, and reads the latest block from Arbitrum Sepolia (`ARBITRUM_SEPOLIA_RPC_URL`, or the public RPC), checking the RPC's `eth_chainId` is the engine's chain.
+3. `Attest` over `report_data(binding, block.hash)` gives the versioned attestation. The engine checks that the report data in it and in its TDX quote is the one it asked for.
+
+`GET /v1/attestation` is public:
+
+```json
+{
+  "tee": "tdx",
+  "attestation": "<hex: the v1 Attest attestation, MessagePack, as dstack-verifier takes it>",
+  "quote": "<hex: the TDX quote inside it>",
+  "event_log": [{ "imr": 3, "event_type": 134217729, "digest": "<hex>", "event": "compose-hash", "event_payload": "<hex>" }],
+  "binding": { "chainId": "421614", "bondVault": "0x…", "teeKind": 1, "signer": "0x…", "policySetHash": "0x…", "engineBuildId": "0x…", "bootEpoch": "…" },
+  "block": { "number": 0, "hash": "0x…" },
+  "app_id": "<hex>",
+  "compose_hash": "<hex>",
+  "dstack_version": "0.6.1"
+}
+```
+
+A relying party checks that `dstack-verifier` accepts `attestation`, that its report data is `report_data(binding, block.hash)` and `binding.signer` is the signer it trusts, and that `block.hash` is the hash of block `block.number` on the chain and the block is recent. `POST /v1/attestation/refresh` (bearer) attests the same signer over the latest block and serves that attestation from then on; it fails with `attestation` when the agent or the RPC does not answer.
+
+`tests/tdx_simulator.rs` runs the boot against the dstack guest agent simulator, whose quote is a captured one with the report data written in, so it checks what the engine asks for and binds, not the quote. `tests/tdx_live.rs` checks a deployed CVM end to end, including `dstack-verifier`.
 
 ## Sealing
 
@@ -70,7 +99,7 @@ One sealing key covers every purpose. Each sealed blob is bound to a purpose lab
 
 ## Image
 
-`Containerfile` builds `keelson-engine` as a static musl binary with the StageX Rust pallet, network off, and ships it alone in a `scratch` image with the CA roots, running as user 65534. Every base image is pinned by digest. Build it from the repository root:
+`Containerfile` builds `keelson-engine` with the `tdx` feature as a static musl binary with the StageX Rust pallet, network off, and ships it alone in a `scratch` image with the CA roots, running as user 65534. Every base image is pinned by digest. Build it from the repository root:
 
 ```sh
 SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)" docker buildx build -f engine/tee/Containerfile . \

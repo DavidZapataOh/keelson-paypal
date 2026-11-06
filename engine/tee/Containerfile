@@ -23,6 +23,7 @@ RUN --network=none <<EOF
         --release \
         --target x86_64-unknown-linux-musl \
         --package keelson-tee \
+        --features tdx \
         --bin keelson-engine
     cp target/x86_64-unknown-linux-musl/release/keelson-engine /keelson-engine
 EOF

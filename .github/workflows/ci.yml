@@ -93,7 +93,36 @@ jobs:
       - uses: ./.github/actions/setup-cvc5
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo clippy -p keelson-tee --all-targets --features tdx -- -D warnings
       - run: cargo test
+      - run: cargo test -p keelson-tee --features tdx
+
+  tee-simulator:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          repository: Dstack-TEE/dstack
+          ref: 7f143148cc49f4a09799958835d310e050137cb3 # v0.6.1
+          path: dstack
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+            dstack/dstack
+      - name: Start the dstack guest agent simulator
+        working-directory: dstack/sdk/simulator
+        run: |
+          ./build.sh
+          ./dstack-simulator > dstack-simulator.log 2>&1 &
+          for _ in $(seq 100); do [ -S dstack.sock ] && exit 0; sleep 0.2; done
+          cat dstack-simulator.log
+          exit 1
+      - run: cargo test -p keelson-tee --features tdx --test tdx_simulator -- --include-ignored
+        env:
+          DSTACK_SIMULATOR_ENDPOINT: ${{ github.workspace }}/dstack/sdk/simulator/dstack.sock
 
   proofs:
     runs-on: ubuntu-24.04

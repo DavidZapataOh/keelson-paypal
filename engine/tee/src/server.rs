@@ -31,6 +31,8 @@ pub struct AppState {
     engine: Engine,
     token_hash: [u8; 32],
     clock: fn() -> OffsetDateTime,
+    #[cfg(feature = "tdx")]
+    attestation: Option<std::sync::RwLock<crate::tdx::Attestation>>,
 }
 
 impl AppState {
@@ -40,7 +42,17 @@ impl AppState {
             engine,
             token_hash,
             clock: OffsetDateTime::now_utc,
+            #[cfg(feature = "tdx")]
+            attestation: None,
         }
+    }
+
+    /// Serves `attestation` on `GET /v1/attestation` and renews it on
+    /// `POST /v1/attestation/refresh`.
+    #[cfg(feature = "tdx")]
+    pub fn with_attestation(mut self, attestation: crate::tdx::Attestation) -> Self {
+        self.attestation = Some(std::sync::RwLock::new(attestation));
+        self
     }
 
     /// Reads the time from `clock` instead of the system clock.
@@ -50,16 +62,25 @@ impl AppState {
     }
 }
 
-/// The routes of one leg. `GET /v1/health` is open; every other route needs the bearer token.
+/// The routes of one leg. `GET /v1/health` and `GET /v1/attestation` are open; every other route
+/// needs the bearer token. The attestation routes exist only on a leg with an attestation.
 pub fn router(state: Arc<AppState>) -> Router {
+    let open = Router::new().route("/v1/health", get(health));
     let protected = Router::new()
         .route("/v1/countersign", post(countersign))
         .route("/v1/mandates/register", post(register))
-        .layer(DefaultBodyLimit::max(BODY_LIMIT))
-        .route_layer(middleware::from_fn_with_state(state.clone(), bearer));
-    Router::new()
-        .route("/v1/health", get(health))
-        .merge(protected)
+        .layer(DefaultBodyLimit::max(BODY_LIMIT));
+    #[cfg(feature = "tdx")]
+    let (open, protected) = if state.attestation.is_some() {
+        (
+            open.route("/v1/attestation", get(attestation)),
+            protected.route("/v1/attestation/refresh", post(refresh)),
+        )
+    } else {
+        (open, protected)
+    };
+    let protected = protected.route_layer(middleware::from_fn_with_state(state.clone(), bearer));
+    open.merge(protected)
         .fallback(|| async { Problem::new(StatusCode::NOT_FOUND, "not_found") })
         .method_not_allowed_fallback(|| async {
             Problem::new(StatusCode::METHOD_NOT_ALLOWED, "method_not_allowed")
@@ -222,4 +243,39 @@ async fn register(
 ) -> Result<Json<MandateIssued>, Problem> {
     let request: RegisterMandate = parse(body)?;
     blocking(move || state.engine.register_mandate(&request, (state.clock)())).await
+}
+
+#[cfg(feature = "tdx")]
+fn current(state: &AppState) -> crate::tdx::Attestation {
+    let slot = state
+        .attestation
+        .as_ref()
+        .expect("routed only with an attestation");
+    slot.read().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+#[cfg(feature = "tdx")]
+async fn attestation(State(state): State<Arc<AppState>>) -> Json<crate::tdx::Attestation> {
+    Json(current(&state))
+}
+
+/// Attests the same signer over the latest block and serves that from then on, unless a newer
+/// one is already served.
+#[cfg(feature = "tdx")]
+async fn refresh(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<crate::tdx::Attestation>, Problem> {
+    let fresh = crate::tdx::attest(&state.engine).await.map_err(|e| {
+        eprintln!("keelson-engine: attestation refresh failed: {e}");
+        Problem::new(StatusCode::BAD_GATEWAY, "attestation")
+    })?;
+    let slot = state
+        .attestation
+        .as_ref()
+        .expect("routed only with an attestation");
+    let mut served = slot.write().unwrap_or_else(|e| e.into_inner());
+    if fresh.block.number >= served.block.number {
+        *served = fresh;
+    }
+    Ok(Json(served.clone()))
 }

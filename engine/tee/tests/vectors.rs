@@ -81,6 +81,16 @@ fn report_data_vectors() {
                 engine_build_id: b32(&b["engineBuildId"]).0,
                 boot_epoch: b["bootEpoch"].as_str().unwrap().parse().unwrap(),
             };
+            let parsed: SignerBinding = serde_json::from_value(b.clone()).unwrap();
+            assert_eq!(parsed, binding, "{}", v["name"]);
+            let json = serde_json::to_value(&binding).unwrap();
+            assert_eq!(json["signer"], binding.signer.to_checksum(None));
+            assert_eq!(json["chainId"], b["chainId"]);
+            assert_eq!(json["bootEpoch"], b["bootEpoch"]);
+            assert_eq!(
+                serde_json::from_value::<SignerBinding>(json).unwrap(),
+                binding
+            );
             report_data(&binding, b32(&v["input"]["blockHash"]).0)
         });
         match data {

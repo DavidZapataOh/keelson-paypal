@@ -2,6 +2,8 @@
 //! in-memory signer and the keys derived from the KMS root.
 
 mod budget;
+#[cfg(feature = "tdx")]
+pub mod chain;
 mod countersign;
 mod engine;
 mod error;
@@ -9,6 +11,8 @@ mod keys;
 mod report_data;
 pub mod server;
 mod signer;
+#[cfg(feature = "tdx")]
+pub mod tdx;
 pub mod wire;
 
 pub use budget::{Budget, ClaimGuard, Claimed, Replay};

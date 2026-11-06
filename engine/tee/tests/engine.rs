@@ -879,3 +879,31 @@ fn rejects_oversized_countersign_inputs() {
     }
     too_large(r);
 }
+
+#[test]
+fn binding_carries_the_boot_configuration() {
+    let engine = leg_a();
+    let b = engine.binding().unwrap();
+    assert_eq!(b.chain_id, 421_614);
+    assert_eq!(b.bond_vault, alloy_primitives::Address::ZERO);
+    assert_eq!(b.tee_kind, TeeKind::Tdx);
+    assert_eq!(b.signer, engine.signer());
+    assert_eq!(b.policy_set_hash, keelson_policy::policy_set_hash());
+    assert_eq!(b.engine_build_id, [0xab; 32]);
+    assert_eq!(b.boot_epoch, engine.boot_epoch());
+}
+
+#[test]
+fn binding_needs_a_sha256_image_digest() {
+    for digest in [
+        "latest".to_owned(),
+        format!("sha512:{}", "ab".repeat(32)),
+        format!("sha256:{}", "AB".repeat(32)),
+        format!("sha256:{}", "ab".repeat(31)),
+    ] {
+        let mut config = config(None);
+        config.oci_digest = digest;
+        let engine = Engine::booted_at(config, Some(root()), at(NOW));
+        assert_eq!(engine.binding(), Err(keelson_tee::Error::OciDigest));
+    }
+}

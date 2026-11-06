@@ -34,7 +34,9 @@ use crate::wire::{
     self, Base64, CountersignRequest, Countersigned, Hex, MandateIssued, Observation,
     RegisterMandate,
 };
-use crate::{Error, Root, SealAad, Signer, TeeKind, countersign_digest, failed_fields_mask};
+use crate::{
+    Error, Root, SealAad, Signer, SignerBinding, TeeKind, countersign_digest, failed_fields_mask,
+};
 
 /// The seal purpose of a mandate's commitment salt; the record is `M`.
 pub const MANDATE_SALT_PURPOSE: &str = "keelson/seal/mandate-salt/v1";
@@ -260,6 +262,26 @@ impl Engine {
     /// The countersign signer's address.
     pub fn signer(&self) -> Address {
         self.signer.address()
+    }
+
+    /// What the attestation binds this engine's signer to; the engine build id is the image
+    /// digest.
+    pub fn binding(&self) -> Result<SignerBinding, Error> {
+        let engine_build_id = self
+            .config
+            .oci_digest
+            .strip_prefix("sha256:")
+            .and_then(|digest| wire::parse_hex(&format!("0x{digest}")))
+            .ok_or(Error::OciDigest)?;
+        Ok(SignerBinding {
+            chain_id: self.config.chain_id,
+            bond_vault: self.config.bond_vault,
+            tee_kind: self.config.tee_kind,
+            signer: self.signer(),
+            policy_set_hash: policy_set_hash(),
+            engine_build_id,
+            boot_epoch: self.boot_epoch(),
+        })
     }
 
     /// Verifies the passkey assertion over a mandate and issues its open mandate, and the user
