@@ -4,9 +4,10 @@ import {
   type FieldId,
   MAX_LIFETIME_SECONDS,
   type Mandate,
+  MandateError,
   parseMandate,
 } from "@keelson/mandate";
-import { CompileError, DRAFT_FIELDS, type Draft, type DraftField } from "./draft.ts";
+import { CompileError, DRAFT_FIELDS, type Draft, type DraftField, parseDraft } from "./draft.ts";
 
 /** A merchant of the directory that draft merchant names resolve against. */
 export type Merchant = Extract<
@@ -56,52 +57,121 @@ export function diffDrafts(a: Draft, b: Draft): DraftDiff[] {
   }));
 }
 
+const ATTRIBUTES = ["size_us", "color"] as const;
 const open = (v: string | undefined) => v === undefined || v === "any";
-const constrained = (x: string | undefined, y: string | undefined) => (open(x) && !open(y) ? y : x);
-
-function stricter(a: Draft, b: Draft): Draft {
-  const attributes: Draft["attributes"] = {};
-  const size = constrained(a.attributes.size_us, b.attributes.size_us);
-  const color = constrained(a.attributes.color, b.attributes.color);
-  if (size !== undefined) attributes.size_us = size;
-  if (color !== undefined) attributes.color = color;
-  return {
-    ...a,
-    maxTotalMinor: Math.min(a.maxTotalMinor, b.maxTotalMinor),
-    budgetMinor: Math.min(a.budgetMinor, b.budgetMinor),
-    merchants: unique(a.merchants.filter((m) => b.merchants.includes(m))),
-    category: unique(a.category.filter((c) => b.category.includes(c))),
-    attributes,
-    returns:
-      a.returns && b.returns
-        ? {
-            minDays: Math.max(a.returns.minDays, b.returns.minDays),
-            free: a.returns.free || b.returns.free,
-          }
-        : (a.returns ?? b.returns),
-    notAfter: Date.parse(b.notAfter) < Date.parse(a.notAfter) ? b.notAfter : a.notAfter,
-    quantityPerLine: Math.min(a.quantityPerLine, b.quantityPerLine),
-    subjective: unique([...a.subjective, ...b.subjective]),
-  };
-}
+const smaller = (x: string, y: string) => (y < x ? y : x);
 
 /**
- * Merges the drafts of two independent compilations. Where they differ, the merge takes the
- * stricter value and lists the field as ambiguous; a field with no stricter value (currency,
- * item, summary, conflicting attributes) keeps `a`'s. A lone draft is single-source: every field
- * is ambiguous.
+ * Narrows two sets where an empty set means no constraint: a side with none takes the other's,
+ * and two constraints intersect.
+ */
+function narrow(x: readonly string[], y: readonly string[]): string[] | undefined {
+  if (x.length === 0) return [...y].sort();
+  if (y.length === 0) return [...x].sort();
+  const both = x.filter((v) => y.includes(v)).sort();
+  return both.length ? both : undefined;
+}
+
+const sameSet = (x: readonly string[], y: readonly string[]) =>
+  x.length === y.length && x.every((v) => y.includes(v));
+
+/**
+ * Merges the drafts of two independent compilations into one that is never wider than either.
+ * A field the drafts differ on takes the narrower value and is listed as ambiguous: the lower
+ * amounts and quantity, the earlier deadline, the stricter returns, the concrete attribute, and
+ * the intersection of merchants (by directory id) and categories, where a draft with none
+ * constrains nothing. Values the drafts disagree on that cannot be narrowed fail with
+ * `conflict`; descriptive text (item, summary) takes the smaller value so the merge is
+ * symmetric. A lone draft is single-source: every field is ambiguous.
+ *
+ * @throws {@link CompileError} `both_failed`, `invalid_draft`, `conflict` naming the fields,
+ * `no_merchant` when a draft names merchants and none resolves, `no_category` when neither draft
+ * names a category.
  */
 export function mergeDrafts(
   a: Draft | null,
   b: Draft | null,
+  directory: readonly Merchant[],
 ): { draft: Draft; ambiguous: DraftField[]; singleSource: boolean } {
-  if (a && b) {
-    const ambiguous = diffDrafts(a, b).map((d) => d.field);
-    return { draft: ambiguous.length ? stricter(a, b) : a, ambiguous, singleSource: false };
+  if (!a || !b) {
+    const draft = a ?? b;
+    if (!draft) throw new CompileError("both_failed");
+    return { draft: parseDraft(draft), ambiguous: [...DRAFT_FIELDS], singleSource: true };
   }
-  const draft = a ?? b;
-  if (!draft) throw new CompileError("both_failed");
-  return { draft, ambiguous: [...DRAFT_FIELDS], singleSource: true };
+  const x = parseDraft(a);
+  const y = parseDraft(b);
+  const ambiguous = new Set<DraftField>();
+  const conflicts: string[] = [];
+  if (x.currency !== y.currency) conflicts.push("currency");
+
+  const attributes: Draft["attributes"] = {};
+  for (const key of ATTRIBUTES) {
+    const [u, v] = [x.attributes[key], y.attributes[key]];
+    if (open(u) && open(v)) {
+      if (u !== undefined && u === v) attributes[key] = u;
+    } else if (open(u) || open(v)) {
+      attributes[key] = (open(u) ? v : u) as string;
+      ambiguous.add("attributes");
+    } else if (u !== v) conflicts.push(`attributes.${key}`);
+    else attributes[key] = u as string;
+  }
+
+  const mx = resolveAll(x.merchants, directory);
+  const my = resolveAll(y.merchants, directory);
+  if (mx.unresolved || my.unresolved || !sameSet(mx.ids, my.ids) || mx.ids.length === 0) {
+    ambiguous.add("merchants");
+  }
+  const merchants = narrow(mx.ids, my.ids);
+  if (!merchants) conflicts.push("merchants");
+
+  if (x.category.length === 0 && y.category.length === 0) {
+    throw new CompileError("no_category", ["category"]);
+  }
+  if (!sameSet(x.category, y.category)) ambiguous.add("category");
+  const category = narrow(x.category, y.category);
+  if (!category) conflicts.push("category");
+  if (conflicts.length) throw new CompileError("conflict", conflicts);
+
+  const least = (f: "maxTotalMinor" | "budgetMinor" | "quantityPerLine") => {
+    if (x[f] !== y[f]) ambiguous.add(f);
+    return Math.min(x[f], y[f]);
+  };
+  const text = (f: "item" | "summary") => {
+    if (x[f] !== y[f]) ambiguous.add(f);
+    return smaller(x[f], y[f]);
+  };
+  const returns =
+    x.returns && y.returns
+      ? {
+          minDays: Math.max(x.returns.minDays, y.returns.minDays),
+          free: x.returns.free || y.returns.free,
+        }
+      : (x.returns ?? y.returns);
+  if (JSON.stringify(x.returns) !== JSON.stringify(y.returns)) ambiguous.add("returns");
+  const [tx, ty] = [Date.parse(x.notAfter), Date.parse(y.notAfter)];
+  if (tx !== ty) ambiguous.add("notAfter");
+  const notAfter = tx < ty ? x.notAfter : ty < tx ? y.notAfter : smaller(x.notAfter, y.notAfter);
+  if (!sameSet(x.subjective, y.subjective)) ambiguous.add("subjective");
+
+  const draft: Draft = {
+    currency: x.currency,
+    maxTotalMinor: least("maxTotalMinor"),
+    budgetMinor: least("budgetMinor"),
+    merchants: merchants as string[],
+    category: category as Draft["category"],
+    attributes,
+    returns,
+    notAfter,
+    quantityPerLine: least("quantityPerLine"),
+    item: text("item"),
+    subjective: unique([...x.subjective, ...y.subjective]).sort(),
+    summary: text("summary"),
+  };
+  return {
+    draft,
+    ambiguous: DRAFT_FIELDS.filter((f) => ambiguous.has(f)),
+    singleSource: false,
+  };
 }
 
 const CARD_FIELD: Readonly<Record<DraftField, FieldId | undefined>> = {
@@ -141,36 +211,68 @@ function resolve(name: string, directory: readonly Merchant[]): Merchant | undef
   );
 }
 
+/**
+ * Resolves draft merchant names to directory ids, in order and without repeats.
+ *
+ * @throws {@link CompileError} `no_merchant` when names are given and none resolves.
+ */
+function resolveAll(
+  names: readonly string[],
+  directory: readonly Merchant[],
+): { ids: string[]; unresolved: boolean } {
+  const ids: string[] = [];
+  let unresolved = false;
+  for (const name of names) {
+    const m = resolve(name, directory);
+    if (!m) unresolved = true;
+    else if (!ids.includes(m.id)) ids.push(m.id);
+  }
+  if (names.length > 0 && ids.length === 0) throw new CompileError("no_merchant", ["merchants"]);
+  return { ids, unresolved };
+}
+
 /** Seconds since the epoch as an RFC 3339 UTC date-time without a fraction. */
 const rfc3339 = (s: number) => new Date(s * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
 
+/** Parses an assembled mandate; a draft value that breaks the format is `invalid_draft`. */
+function build(m: unknown): Mandate {
+  try {
+    return parseMandate(m);
+  } catch (e) {
+    if (e instanceof MandateError) throw new CompileError("invalid_draft", [e.field]);
+    throw e;
+  }
+}
+
 /**
  * Assembles the mandate for a draft. The mandate accepts any item within the draft's categories
- * from the directory merchants the draft names; names that resolve to no merchant are dropped.
- * `zk.commitment` is zero until `prepareSigning` binds it. Returns the card fields to show as
- * ambiguous: the draft's `ambiguous` fields, merchants that did not resolve and a deadline cut to
- * the maximum lifetime.
+ * from the directory merchants the draft names, or from every directory merchant when it names
+ * none; names that resolve to no merchant are dropped. `zk.commitment` is zero until
+ * `prepareSigning` binds it. Returns the card fields to show as ambiguous: the draft's
+ * `ambiguous` fields, a merchant set that is open or lost a name, and a deadline cut to the
+ * maximum lifetime.
  *
- * @throws {@link CompileError} `no_merchant` when no merchant resolves, `no_category` without a
- * category and `deadline_passed` when `notAfter` is not after `iat`.
+ * @throws {@link CompileError} `invalid_draft`, `no_merchant` when names are given and none
+ * resolves, `no_category` without a category and `deadline_passed` when `notAfter` is not after
+ * `iat`.
  */
 export function toMandate(
-  draft: Draft,
+  input: Draft,
   system: SystemFields,
   opts: { promptHash: string; ambiguous?: readonly DraftField[] },
 ): { mandate: Mandate; ambiguous: FieldId[] } {
+  const draft = parseDraft(input);
   const ambiguous = new Set((opts.ambiguous ?? []).map((f) => CARD_FIELD[f]));
-  const merchants: Merchant[] = [];
-  for (const name of draft.merchants) {
-    const m = resolve(name, system.merchants);
-    if (!m) ambiguous.add("merchant");
-    else if (!merchants.includes(m)) merchants.push(m);
-  }
-  if (merchants.length === 0) throw new CompileError("no_merchant", ["merchant"]);
+  const { ids, unresolved } = resolveAll(draft.merchants, system.merchants);
+  if (unresolved || ids.length === 0) ambiguous.add("merchant");
+  const merchants = ids.length
+    ? ids.map((id) => system.merchants.find((m) => m.id === id) as Merchant)
+    : [...system.merchants];
+  if (merchants.length === 0) throw new CompileError("no_merchant", ["merchants"]);
   if (draft.category.length === 0) throw new CompileError("no_category", ["category"]);
 
   const deadline = Math.floor(Date.parse(draft.notAfter) / 1000);
-  if (deadline <= system.iat) throw new CompileError("deadline_passed", ["deadline"]);
+  if (deadline <= system.iat) throw new CompileError("deadline_passed", ["notAfter"]);
   const exp = Math.min(deadline, system.iat + MAX_LIFETIME_SECONDS);
   if (exp < deadline) ambiguous.add("deadline");
 
@@ -201,7 +303,7 @@ export function toMandate(
     });
   }
 
-  const mandate = parseMandate({
+  const mandate = build({
     v: "keelson.mandate.1",
     mid: system.mid,
     iat: system.iat,

@@ -25,6 +25,7 @@
   "devDependencies": {
     "@keelson/policy": "workspace:*",
     "@types/node": "26.6.6",
+    "fast-check": "4.10.2",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

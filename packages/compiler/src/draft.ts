@@ -1,5 +1,5 @@
 import { CURRENCIES, type CurrencyCode } from "@keelson/core";
-import { CATEGORY_TABLE, type FieldId } from "@keelson/mandate";
+import { CATEGORY_TABLE } from "@keelson/mandate";
 import { z } from "zod";
 
 /**
@@ -33,17 +33,35 @@ export type DraftField = keyof Draft;
 
 export const DRAFT_FIELDS = Object.keys(DraftSchema.shape) as DraftField[];
 
-export type CompileErrorCode = "both_failed" | "no_merchant" | "no_category" | "deadline_passed";
+export type CompileErrorCode =
+  | "both_failed"
+  | "conflict"
+  | "invalid_draft"
+  | "no_merchant"
+  | "no_category"
+  | "deadline_passed";
 
-/** A request that cannot become a mandate; `ambiguous` names the card fields to ask about. */
+/**
+ * A request that cannot become a mandate. `fields` names what to ask the user about: draft field
+ * paths such as `currency` or `attributes.size_us`, or the mandate path a draft value broke.
+ */
 export class CompileError extends Error {
   readonly code: CompileErrorCode;
-  readonly ambiguous: readonly FieldId[];
+  readonly fields: readonly string[];
 
-  constructor(code: CompileErrorCode, ambiguous: readonly FieldId[] = []) {
-    super(code);
+  constructor(code: CompileErrorCode, fields: readonly string[] = []) {
+    super(fields.length ? `${code}: ${fields.join(", ")}` : code);
     this.name = "CompileError";
     this.code = code;
-    this.ambiguous = ambiguous;
+    this.fields = fields;
   }
 }
+
+/** Validates a draft, throwing `invalid_draft` with the offending paths. */
+export function parseDraft(input: unknown): Draft {
+  const r = DraftSchema.safeParse(input);
+  if (r.success) return r.data;
+  throw new CompileError("invalid_draft", unique(r.error.issues.map((i) => i.path.join("."))));
+}
+
+const unique = <T>(xs: readonly T[]): T[] => [...new Set(xs)];
