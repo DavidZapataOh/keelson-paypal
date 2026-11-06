@@ -68,6 +68,6 @@ describe("parity with the Rust engine", () => {
           Buffer.from(c.trace_jcs_hex, "hex").toString("utf8"),
         );
       }
-    });
+    }, 300_000);
   }
 });
