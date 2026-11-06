@@ -83,6 +83,60 @@ describe("parseMandate", () => {
     expect(fieldOf(m)).toBe("checkout.constraints.1.items.0.acceptable_items");
   });
 
+  it("accepts a line whose only acceptable item is any item", () => {
+    const m = clone();
+    m.checkout.constraints[1].items[0].acceptable_items = [{ id: "*", title: "Trail shoes" }];
+    expect(() => parseMandate(m)).not.toThrow();
+  });
+
+  it("rejects any item next to other items", () => {
+    const path = "checkout.constraints.1.items.0.acceptable_items";
+    for (const ids of [
+      ["*", "sku-trail-10"],
+      ["sku-trail-10", "*"],
+      ["*", "*"],
+    ]) {
+      const m = clone();
+      m.checkout.constraints[1].items[0].acceptable_items = ids.map((id) => ({ id, title: "x" }));
+      expect(fieldOf(m)).toBe(path);
+    }
+  });
+
+  it("requires a title on any item", () => {
+    for (const item of [
+      { id: "*" },
+      { id: "*", title: "" },
+      { id: "*", title: " " },
+      { id: "*", title: "\u3000\u00a0" },
+    ]) {
+      const m = clone();
+      m.checkout.constraints[1].items[0].acceptable_items = [item];
+      expect(fieldOf(m)).toBe("checkout.constraints.1.items.0.acceptable_items.0.title");
+    }
+  });
+
+  it("rejects any item on more than one line or next to other lines", () => {
+    for (const ids of [["*"], ["sku-road-9"]]) {
+      const m = clone();
+      m.checkout.constraints[1].items = [
+        { id: "l1", acceptable_items: [{ id: "*", title: "Trail shoes" }], quantity: 1 },
+        { id: "l2", acceptable_items: ids.map((id) => ({ id, title: "x" })), quantity: 1 },
+      ];
+      expect(fieldOf(m)).toBe("checkout.constraints.1.items");
+      m.checkout.constraints[1].items.reverse();
+      expect(fieldOf(m)).toBe("checkout.constraints.1.items");
+    }
+  });
+
+  it("requires keelson.category with any item", () => {
+    const m = clone();
+    m.checkout.constraints[1].items[0].acceptable_items = [{ id: "*", title: "Trail shoes" }];
+    m.checkout.constraints = m.checkout.constraints.filter(
+      (c: Loose) => c.type !== "keelson.category",
+    );
+    expect(fieldOf(m)).toBe("checkout.constraints");
+  });
+
   it("rejects empty allowed_merchants", () => {
     const m = clone();
     m.checkout.constraints[0].allowed = [];
@@ -207,6 +261,7 @@ describe("fieldColors", () => {
       quantity: "green",
       agent: "green",
       bond: "green",
+      summary: "gray",
     });
   });
 
@@ -227,6 +282,7 @@ describe("fieldColors", () => {
       variant: "amber",
       return_policy: "amber",
       subjective: "gray",
+      summary: "gray",
     });
   });
 

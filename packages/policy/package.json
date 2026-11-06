@@ -7,6 +7,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./hashes": {
+      "types": "./dist/generated/hashes.d.ts",
+      "default": "./dist/generated/hashes.js"
     }
   },
   "files": [

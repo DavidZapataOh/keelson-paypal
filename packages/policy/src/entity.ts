@@ -1,4 +1,4 @@
-import { CATEGORY_TABLE } from "@keelson/mandate";
+import { ANY_ITEM, CATEGORY_TABLE } from "@keelson/mandate";
 import { compareStrings, get, isObject, isSafeInt, type JsonObject, sortedSet } from "./value.ts";
 
 /** A `keelson.attributes` value that leaves the attribute unconstrained. */
@@ -157,15 +157,40 @@ export function attributes(m: unknown): { size?: string; color?: string } {
   return out;
 }
 
+/** Whether a line accepts any item: one of its acceptable items is {@link ANY_ITEM}. */
+function lineAcceptsAny(line: unknown): boolean {
+  const items = get(line, "acceptable_items");
+  return Array.isArray(items) && items.some((item) => get(item, "id") === ANY_ITEM);
+}
+
+/**
+ * Whether the mandate has lines and every one accepts any item, in which case every SKU is
+ * projected to {@link ANY_ITEM}. A mandate that cannot be read accepts none; its error is reported
+ * when the entity is built.
+ */
+export function acceptsAnyItem(m: unknown): boolean {
+  let lines: unknown;
+  try {
+    lines = get(constraint(m, "checkout", "checkout.line_items"), "items");
+  } catch {
+    return false;
+  }
+  return Array.isArray(lines) && lines.length > 0 && lines.every(lineAcceptsAny);
+}
+
 /**
  * The allowed variants and the quantity bound: the smallest line quantity, since the policy set
  * has no arithmetic and the entity holds a single bound. It is 0, which denies every cart, when
  * the mandate has no lines.
+ *
+ * A line accepts any item when its only acceptable item is {@link ANY_ITEM}. Either every line
+ * does or none does, so that the projection of the cart's SKUs is the same for every line.
  */
 function variants(m: unknown): { variants: Variant[]; maxQty: number } {
   const { size, color } = attributes(m);
   const out = new Map<string, Variant>();
   let maxQty: number | undefined;
+  let any: boolean | undefined;
   const lines = constraint(m, "checkout", "checkout.line_items");
   if (lines !== undefined) {
     for (const line of array(get(lines, "items"), "checkout.line_items.items")) {
@@ -178,6 +203,11 @@ function variants(m: unknown): { variants: Variant[]; maxQty: number } {
         if (color !== undefined) v.color = color;
         out.set(v.sku, v);
       }
+      const lineAny = lineAcceptsAny(line);
+      if ((lineAny && items.length > 1) || (any !== undefined && any !== lineAny)) {
+        throw invalid("checkout.line_items", "any item mixed with other items");
+      }
+      any = lineAny;
     }
   }
   return { variants: [...out.values()], maxQty: maxQty ?? 0 };

@@ -105,16 +105,18 @@ components:
             - "null"
           pattern: ^0x[0-9a-f]{64}$
         card:
-          $ref: "#/components/schemas/MandateCard"
+          anyOf:
+            - $ref: "#/components/schemas/MandateCard"
+            - type: "null"
+          description: The card rendered from the stored payload, before any checkout
+            evidence.
       required:
         - id
         - state
         - mandateHash
         - card
     MandateCard:
-      type:
-        - object
-        - "null"
+      type: object
       properties:
         rows:
           type: array
@@ -154,7 +156,668 @@ components:
       required:
         - rows
         - warnings
-      description: The card rendered from the stored payload, before any checkout evidence.
+    CompiledMandate:
+      type: object
+      properties:
+        mandateDraft:
+          $ref: "#/components/schemas/MandateDraft"
+        card:
+          $ref: "#/components/schemas/MandateCard"
+        ambiguous:
+          type: array
+          items:
+            type: string
+            enum:
+              - mode
+              - recurrence
+              - total
+              - currency
+              - budget
+              - merchant
+              - deadline
+              - quantity
+              - items
+              - category
+              - variant
+              - return_policy
+              - agent
+              - bond
+              - subjective
+              - summary
+          description: Card fields the compilations disagreed on or the request left
+            unstated, shown gray for the user to settle. Pass them to
+            `prepareSigning` so the card the user signs shows them gray too.
+        check:
+          type: object
+          properties:
+            status:
+              type: string
+              enum:
+                - ok
+                - refused
+                - failed
+                - aborted
+                - skipped
+            discrepancies:
+              type:
+                - array
+                - "null"
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                  issue:
+                    type: string
+                required:
+                  - field
+                  - issue
+          required:
+            - status
+            - discrepancies
+          description: The round trip of the card against the request. Only `ok` means it
+            was checked.
+      required:
+        - mandateDraft
+        - card
+        - ambiguous
+        - check
+    MandateDraft:
+      type: object
+      properties:
+        v:
+          type: string
+          enum:
+            - keelson.mandate.1
+        mid:
+          type: string
+        iat:
+          type: integer
+          minimum: 0
+        nbf:
+          type: integer
+          minimum: 0
+        exp:
+          type: integer
+          minimum: 0
+        nonce:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{21}[AQgw]$
+        mode:
+          type: string
+          enum:
+            - immediate
+            - autonomous
+        user:
+          type: object
+          properties:
+            sub:
+              type: string
+            cred:
+              type: object
+              properties:
+                id:
+                  type: string
+                  pattern: ^[A-Za-z0-9_-]+$
+                rp_id:
+                  type: string
+                jwk:
+                  type: object
+                  properties:
+                    kty:
+                      type: string
+                      enum:
+                        - EC
+                    crv:
+                      type: string
+                      enum:
+                        - P-256
+                    x:
+                      type: string
+                      pattern: ^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$
+                    y:
+                      type: string
+                      pattern: ^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$
+                  required:
+                    - kty
+                    - crv
+                    - x
+                    - y
+                  additionalProperties: false
+              required:
+                - id
+                - rp_id
+                - jwk
+              additionalProperties: false
+            app_login_id:
+              type: string
+          required:
+            - sub
+            - cred
+            - app_login_id
+          additionalProperties: false
+        agent:
+          type: object
+          properties:
+            operator:
+              type: object
+              properties:
+                agent_registry:
+                  type: string
+                agent_id:
+                  type: string
+              required:
+                - agent_registry
+                - agent_id
+              additionalProperties: false
+            cnf:
+              type: object
+              properties:
+                jwk:
+                  type: object
+                  properties:
+                    kty:
+                      type: string
+                      enum:
+                        - EC
+                    crv:
+                      type: string
+                      enum:
+                        - P-256
+                    x:
+                      type: string
+                      pattern: ^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$
+                    y:
+                      type: string
+                      pattern: ^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$
+                    kid:
+                      type: string
+                  required:
+                    - kty
+                    - crv
+                    - x
+                    - y
+                    - kid
+                  additionalProperties: false
+              required:
+                - jwk
+              additionalProperties: false
+            bond:
+              type: object
+              properties:
+                vault:
+                  type: string
+                asset:
+                  type: string
+                min:
+                  type: integer
+                  minimum: 0
+              required:
+                - vault
+                - asset
+                - min
+              additionalProperties: false
+          required:
+            - operator
+            - cnf
+            - bond
+          additionalProperties: false
+        payment:
+          type: object
+          properties:
+            rail:
+              type: string
+              enum:
+                - paypal
+            currency:
+              type: string
+              enum:
+                - AUD
+                - BRL
+                - CAD
+                - CNY
+                - CZK
+                - DKK
+                - EUR
+                - HKD
+                - HUF
+                - ILS
+                - JPY
+                - MYR
+                - MXN
+                - TWD
+                - NZD
+                - NOK
+                - PHP
+                - PLN
+                - GBP
+                - SGD
+                - SEK
+                - CHF
+                - THB
+                - USD
+            constraints:
+              type: array
+              items:
+                oneOf:
+                  - type: object
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - payment.amount_range
+                      max:
+                        type: integer
+                        minimum: 0
+                      currency:
+                        type: string
+                        enum:
+                          - AUD
+                          - BRL
+                          - CAD
+                          - CNY
+                          - CZK
+                          - DKK
+                          - EUR
+                          - HKD
+                          - HUF
+                          - ILS
+                          - JPY
+                          - MYR
+                          - MXN
+                          - TWD
+                          - NZD
+                          - NOK
+                          - PHP
+                          - PLN
+                          - GBP
+                          - SGD
+                          - SEK
+                          - CHF
+                          - THB
+                          - USD
+                    required:
+                      - type
+                      - max
+                      - currency
+                    additionalProperties: false
+                  - type: object
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - payment.budget
+                      max:
+                        type: integer
+                        minimum: 0
+                      currency:
+                        type: string
+                        enum:
+                          - AUD
+                          - BRL
+                          - CAD
+                          - CNY
+                          - CZK
+                          - DKK
+                          - EUR
+                          - HKD
+                          - HUF
+                          - ILS
+                          - JPY
+                          - MYR
+                          - MXN
+                          - TWD
+                          - NZD
+                          - NOK
+                          - PHP
+                          - PLN
+                          - GBP
+                          - SGD
+                          - SEK
+                          - CHF
+                          - THB
+                          - USD
+                    required:
+                      - type
+                      - max
+                      - currency
+                    additionalProperties: false
+                  - type: object
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - payment.allowed_payees
+                      allowed:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            paypal_merchant_id:
+                              type: string
+                          required:
+                            - paypal_merchant_id
+                          additionalProperties: false
+                        minItems: 1
+                    required:
+                      - type
+                      - allowed
+                    additionalProperties: false
+                  - type: object
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - payment.execution_date
+                      not_after:
+                        type: string
+                        format: date-time
+                    required:
+                      - type
+                      - not_after
+                    additionalProperties: false
+          required:
+            - rail
+            - currency
+            - constraints
+          additionalProperties: false
+        checkout:
+          type: object
+          properties:
+            constraints:
+              type: array
+              items:
+                oneOf:
+                  - type: object
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - checkout.allowed_merchants
+                      allowed:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            name:
+                              type: string
+                            website:
+                              type: string
+                              format: uri
+                            paypal_merchant_id:
+                              type: string
+                          required:
+                            - id
+                            - name
+                            - website
+                            - paypal_merchant_id
+                          additionalProperties: false
+                        minItems: 1
+                    required:
+                      - type
+                      - allowed
+                    additionalProperties: false
+                  - type: object
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - checkout.line_items
+                      items:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            acceptable_items:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  id:
+                                    type: string
+                                  title:
+                                    type: string
+                                required:
+                                  - id
+                                additionalProperties: false
+                              minItems: 1
+                            quantity:
+                              type: integer
+                              exclusiveMinimum: 0
+                          required:
+                            - id
+                            - acceptable_items
+                            - quantity
+                          additionalProperties: false
+                    required:
+                      - type
+                      - items
+                    additionalProperties: false
+                  - type: object
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - keelson.category
+                      allow:
+                        type: array
+                        items:
+                          type: string
+                          enum:
+                            - gpt:1
+                            - gpt:166
+                            - gpt:8
+                            - gpt:537
+                            - gpt:111
+                            - gpt:141
+                            - gpt:222
+                            - gpt:412
+                            - gpt:436
+                            - gpt:632
+                            - gpt:469
+                            - gpt:536
+                            - gpt:5181
+                            - gpt:772
+                            - gpt:783
+                            - gpt:922
+                            - gpt:5605
+                            - gpt:2092
+                            - gpt:988
+                            - gpt:1239
+                            - gpt:888
+                            - gpt:187
+                        minItems: 1
+                      deny:
+                        type: array
+                        items:
+                          type: string
+                          enum:
+                            - gpt:1
+                            - gpt:166
+                            - gpt:8
+                            - gpt:537
+                            - gpt:111
+                            - gpt:141
+                            - gpt:222
+                            - gpt:412
+                            - gpt:436
+                            - gpt:632
+                            - gpt:469
+                            - gpt:536
+                            - gpt:5181
+                            - gpt:772
+                            - gpt:783
+                            - gpt:922
+                            - gpt:5605
+                            - gpt:2092
+                            - gpt:988
+                            - gpt:1239
+                            - gpt:888
+                            - gpt:187
+                    required:
+                      - type
+                      - allow
+                      - deny
+                    additionalProperties: false
+                  - type: object
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - keelson.attributes
+                      must:
+                        type: object
+                        additionalProperties:
+                          type: string
+                    required:
+                      - type
+                      - must
+                    additionalProperties: false
+                  - type: object
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - keelson.returns
+                      min_days:
+                        type: integer
+                        minimum: 0
+                      free:
+                        type: boolean
+                    required:
+                      - type
+                      - min_days
+                      - free
+                    additionalProperties: false
+          required:
+            - constraints
+          additionalProperties: false
+        intent:
+          type: object
+          properties:
+            prompt_summary:
+              type: string
+            prompt_hash:
+              type: string
+              pattern: ^sha256:[0-9a-f]{64}$
+            subjective:
+              type: array
+              items:
+                type: string
+          required:
+            - prompt_summary
+            - prompt_hash
+            - subjective
+          additionalProperties: false
+        policy:
+          type: object
+          properties:
+            engine:
+              type: string
+            version:
+              type: string
+            policy_set_hash:
+              type: string
+              pattern: ^sha256:[0-9a-f]{64}$
+            measurements:
+              type: array
+              items:
+                type: string
+          required:
+            - engine
+            - version
+            - policy_set_hash
+            - measurements
+          additionalProperties: false
+        consent:
+          type: object
+          properties:
+            terms_hash:
+              type: string
+              pattern: ^sha256:[0-9a-f]{64}$
+            instruction_use:
+              type: boolean
+            responsibility_ack:
+              type: boolean
+            merchant_policy_ack:
+              type: string
+            recurrence_ack:
+              type: boolean
+          required:
+            - terms_hash
+            - instruction_use
+            - responsibility_ack
+            - merchant_policy_ack
+            - recurrence_ack
+          additionalProperties: false
+        zk:
+          type: object
+          properties:
+            commitment:
+              type: string
+              pattern: ^0x[0-9a-f]{64}$
+          required:
+            - commitment
+          additionalProperties: false
+        risk_data:
+          type: object
+          properties:
+            device_fp:
+              type: string
+            ip:
+              type: string
+          required:
+            - device_fp
+            - ip
+          additionalProperties: false
+      required:
+        - v
+        - mid
+        - iat
+        - nbf
+        - exp
+        - nonce
+        - mode
+        - user
+        - agent
+        - payment
+        - checkout
+        - intent
+        - policy
+        - consent
+        - zk
+        - risk_data
+      additionalProperties: false
+      description: The compiled `keelson.mandate.1` payload, unsigned; its commitment
+        is zero.
+    CompileMandate:
+      type: object
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+          description: The shopping request in natural language, at most 2000 UTF-16 code
+            units.
+          example: Running shoes, size 10, under $100, free returns, by Friday
+        credentialId:
+          type: string
+          minLength: 1
+          description: The passkey that will sign the mandate; defaults to the most recent
+            one.
+        mode:
+          type: string
+          enum:
+            - immediate
+            - autonomous
+          default: autonomous
+          description: Whether the user is present at checkout (`immediate`) or not
+            (`autonomous`).
+      required:
+        - prompt
     Passkeys:
       type: object
       properties:
@@ -351,6 +1014,9 @@ paths:
       tags:
         - mandates
       summary: Get a mandate
+      description: Renders the card of the signed mandate. The user answered for every
+        field when signing, so fields that were ambiguous at compile time show
+        with the colors the engine enforces, not gray.
       parameters:
         - schema:
             type: string
@@ -372,6 +1038,94 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "404":
           description: No such mandate for this user
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/mandates/compile:
+    post:
+      tags:
+        - mandates
+      summary: Compile a mandate from a shopping request
+      description: Two models compile the request independently; fields they disagree
+        on or the request leaves unstated come back ambiguous, and a third model
+        checks the rendered card against the request. Limited to 10 requests a
+        minute per user.
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+        - schema:
+            type: string
+            maxLength: 128
+            description: The app's opaque device id, recorded as `risk_data.device_fp`.
+              Required.
+          required: false
+          description: The app's opaque device id, recorded as `risk_data.device_fp`.
+            Required.
+          name: keelson-device
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompileMandate"
+      responses:
+        "200":
+          description: The draft mandate and its card
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompiledMandate"
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The passkey is not the user's
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: The user has no passkey to sign with
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: The prompt is too long (`prompt-too-long`), the device id is
+            missing (`device-required`), the compilations conflict
+            (`compile-conflict`), the request leaves out a value a mandate needs
+            (`compile-needs-input`) or cannot become a mandate
+            (`compile-unresolved`); `fields` names what to ask the user
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Too many compilations
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "502":
+          description: The models failed to compile the request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: Inputs a mandate needs are not available yet
+            (`compile-unavailable`; `missing` names them), or the rate limit
+            store is unreachable
           content:
             application/problem+json:
               schema:

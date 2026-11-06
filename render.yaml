@@ -40,10 +40,12 @@ services:
         value: https://api.keelson.finance
       - key: APP_ORIGIN
         value: https://app.keelson.finance
-      # sync: false is ignored inside environment groups, so the PayPal credentials are prompted for here.
+      # sync: false is ignored inside environment groups, so these secrets are prompted for here.
       - key: PAYPAL_CLIENT_ID
         sync: false
       - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: ANTHROPIC_API_KEY
         sync: false
       - fromGroup: keelson-secrets
 

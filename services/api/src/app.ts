@@ -1,3 +1,4 @@
+import type Anthropic from "@anthropic-ai/sdk";
 import { httpInstrumentationMiddleware } from "@hono/otel";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import type { Db } from "@keelson/db";
@@ -16,6 +17,7 @@ import { requestLogger } from "./logger.ts";
 import { idempotency } from "./middleware/idempotency.ts";
 import { type RateLimitOptions, rateLimit } from "./middleware/rate-limit.ts";
 import { ProblemSchema, problem } from "./problem.ts";
+import { type CompileSources, registerCompile } from "./routes/compile.ts";
 import { registerEvents } from "./routes/events.ts";
 import { registerHealth } from "./routes/health.ts";
 import { registerMandates } from "./routes/mandates.ts";
@@ -37,6 +39,10 @@ export interface Deps {
   /** Handler deadline in milliseconds; must stay below the idempotency lock lifetime. */
   requestTimeoutMs?: number;
   rateLimit?: RateLimitOptions;
+  /** The operator and TEE inputs of a compiled mandate; compiling answers 503 without them. */
+  compileSources?: CompileSources;
+  /** The Anthropic client compiles use; compiling answers 503 without it. */
+  anthropic?: Anthropic;
   /** Aborting it ends every open event stream so the server can close. */
   shutdown?: AbortSignal;
 }
@@ -75,7 +81,7 @@ export function createApp(deps: Deps): OpenAPIHono {
       cors({
         origin: deps.appOrigin,
         credentials: true,
-        allowHeaders: ["content-type", "idempotency-key"],
+        allowHeaders: ["content-type", "idempotency-key", "keelson-device"],
         exposeHeaders: ["location", "idempotent-replayed"],
       }),
     );
@@ -130,6 +136,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerStatus(app, deps);
   registerEvents(app, deps);
   registerMandates(app, deps);
+  registerCompile(app, deps);
   registerPasskeys(app, deps);
   app.get("/openapi.json", (c) =>
     c.json(app.getOpenAPI31Document({ openapi: "3.1.0", info: apiInfo })),

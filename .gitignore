@@ -15,3 +15,6 @@ dist/
 .turbo/
 coverage/
 target/
+
+# Evaluation runs
+packages/compiler/eval/results-*.json

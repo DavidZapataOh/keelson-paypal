@@ -5,7 +5,8 @@
  *    `authClient.passkey.addPasskey({ ...opts })`. When `opts.authenticatorAttachment` is
  *    `"platform"`, call `rememberPaymentPasskey(data.credentialID)` so this device signs through
  *    Secure Payment Confirmation; skipping it only falls back to plain WebAuthn.
- * 2. `const s = await prepareSigning(mandate, salt, evidence)` and show `s.card` to the user.
+ * 2. `const s = await prepareSigning(mandateDraft, salt, evidence, ambiguous)`, with the
+ *    `mandateDraft` and `ambiguous` of `POST /v1/mandates/compile`, and show `s.card` to the user.
  * 3. Fetch the user's `passkeys` from `GET /v1/passkeys` (with credentials).
  * 4. `const assertion = await signMandate(s.challenge, passkeys, { spc: s.spc })`.
  * 5. `POST /v1/mandates` (with credentials) with an `Idempotency-Key` header and the body
@@ -18,12 +19,12 @@
  */
 import { type AuthenticationResponseJSON, startAuthentication } from "@simplewebauthn/browser";
 import type { Signing } from "./card.ts";
-import type { Evidence } from "./colors.ts";
+import type { Evidence, FieldId } from "./colors.ts";
 import type { Mandate } from "./schema.ts";
 import { RP_ID, SPC_INSTRUMENT, type SpcDetails } from "./spc.ts";
 
 export type { Card, CardRow, Signing } from "./card.ts";
-export type { Evidence } from "./colors.ts";
+export type { Evidence, FieldId } from "./colors.ts";
 export type { Mandate } from "./schema.ts";
 export type { SpcDetails } from "./spc.ts";
 
@@ -34,10 +35,11 @@ export type { SpcDetails } from "./spc.ts";
 export async function prepareSigning(
   m: Mandate,
   salt: Uint8Array,
-  evidence: Evidence,
+  evidence: Omit<Evidence, "ambiguous">,
+  ambiguous: readonly FieldId[],
 ): Promise<Signing> {
   const card = await import("./card.ts");
-  return card.prepareSigning(m, salt, evidence);
+  return card.prepareSigning(m, salt, evidence, ambiguous);
 }
 
 /** The WebAuthn assertion fields the server verifies, base64url-encoded as in `AuthenticationResponseJSON`. */

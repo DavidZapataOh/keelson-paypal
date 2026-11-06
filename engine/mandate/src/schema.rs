@@ -2,6 +2,11 @@ use serde_json::{Map, Value};
 
 use crate::{CATEGORY_IDS, Error};
 
+/// The `acceptable_items` id that stands for any SKU. A mandate that uses it has a single line,
+/// whose only acceptable item it is, and a `keelson.category` constraint; its `title` describes
+/// what the user wants and is not blank.
+pub const ANY_ITEM: &str = "*";
+
 /// Maximum lifetime of a mandate, in seconds.
 pub const MAX_LIFETIME_SECONDS: i64 = 30 * 86400;
 
@@ -399,6 +404,24 @@ fn line_item(v: &Value, path: &str) -> Result {
     integer(get(item, "quantity"), &join(path, "quantity"), 1.0).map(drop)
 }
 
+/// Whether a line accepts any item. Such a line accepts nothing else, and its title, which says
+/// what the user wants, is not blank.
+fn any_item(line: &Value, path: &str) -> Result<bool> {
+    let path = join(path, "acceptable_items");
+    let items = array(&line["acceptable_items"], &path, 1)?;
+    if !items.iter().any(|a| a["id"] == ANY_ITEM) {
+        return Ok(false);
+    }
+    if items.len() > 1 {
+        return Err(invalid(&path, "any item must be the only item"));
+    }
+    let title = items[0]["title"].as_str().unwrap_or_default();
+    if title.trim_matches(is_js_whitespace).is_empty() {
+        return Err(invalid(&join(&path, "0.title"), "required for any item"));
+    }
+    Ok(true)
+}
+
 fn checkout_constraint(c: &Value, path: &str) -> Result {
     let p = |k: &str| join(path, k);
     match constraint_type(c, path)? {
@@ -640,9 +663,10 @@ pub fn parse_mandate(m: &Value) -> Result {
         &PAYMENT_REQUIRED,
         &[],
     )?;
+    let checkout_constraints = array(get(checkout, "constraints"), "checkout.constraints", 0)?;
     require_counts(
         "checkout.constraints",
-        array(get(checkout, "constraints"), "checkout.constraints", 0)?,
+        checkout_constraints,
         &["checkout.allowed_merchants"],
         &CHECKOUT_OPTIONAL,
     )?;
@@ -653,6 +677,32 @@ pub fn parse_mandate(m: &Value) -> Result {
             return Err(invalid(
                 &format!("payment.constraints.{i}.currency"),
                 "differs from payment.currency",
+            ));
+        }
+    }
+    for (i, c) in checkout_constraints.iter().enumerate() {
+        if c["type"] != "checkout.line_items" {
+            continue;
+        }
+        let path = format!("checkout.constraints.{i}.items");
+        let lines = array(&c["items"], &path, 0)?;
+        let mut any = false;
+        for (j, line) in lines.iter().enumerate() {
+            any |= any_item(line, &join(&path, &j.to_string()))?;
+        }
+        if !any {
+            continue;
+        }
+        if lines.len() > 1 {
+            return Err(invalid(&path, "any item must be the only line"));
+        }
+        if !checkout_constraints
+            .iter()
+            .any(|k| k["type"] == "keelson.category")
+        {
+            return Err(invalid(
+                "checkout.constraints",
+                "any item requires keelson.category",
             ));
         }
     }

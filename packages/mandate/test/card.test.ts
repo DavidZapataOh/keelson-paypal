@@ -33,6 +33,18 @@ describe("renderCard", () => {
     expect(card.warnings[0]).toContain("look good");
   });
 
+  it("shows the signed request summary gray, as the user's to check", async () => {
+    const { payloadSd, disclosures } = await buildSdPayload(mandate(), randomSalt);
+    const card = renderCard(payloadSd, disclosures, evidence);
+    expect(card.rows.at(-1)).toEqual({
+      field: "summary",
+      label: "Request summary",
+      values: ["Running shoes, size 10, under $100, free returns, by Friday"],
+      color: "gray",
+      answers: "You",
+    });
+  });
+
   it("turns amber fields green once zkTLS proves them", async () => {
     const { payloadSd, disclosures } = await buildSdPayload(mandate(), randomSalt);
     const proven: Evidence = {
@@ -41,6 +53,20 @@ describe("renderCard", () => {
     };
     const card = renderCard(payloadSd, disclosures, proven);
     expect(card.rows.find((r) => r.field === "variant")?.color).toBe("green");
+  });
+
+  it("shows the fields the compiler could not settle gray", async () => {
+    const { payloadSd, disclosures } = await buildSdPayload(mandate(), randomSalt);
+    const unsure: Evidence = {
+      merchantSignedCheckout: true,
+      zkTlsFields: new Set(["variant"]),
+      ambiguous: new Set(["total", "variant"]),
+    };
+    const card = renderCard(payloadSd, disclosures, unsure);
+    const row = (field: string) => card.rows.find((r) => r.field === field);
+    expect(row("total")).toMatchObject({ color: "gray", answers: "You" });
+    expect(row("variant")).toMatchObject({ color: "gray", answers: "You" });
+    expect(row("currency")?.color).toBe("green");
   });
 
   it("rejects a swapped disclosure", async () => {
@@ -82,6 +108,45 @@ describe("card contents", () => {
     expect(row("recurrence")?.values).toEqual(["Not acknowledged"]);
   });
 
+  it("words the return policy with and without a window", async () => {
+    const returns = async (min_days: number, free: boolean) => {
+      const m = mandate();
+      for (const c of m.checkout.constraints) {
+        if (c.type === "keelson.returns") Object.assign(c, { min_days, free });
+      }
+      return (await card(m))("return_policy")?.values;
+    };
+    expect(await returns(30, true)).toEqual(["30 days or more, free"]);
+    expect(await returns(30, false)).toEqual(["30 days or more"]);
+    expect(await returns(0, true)).toEqual(["Free returns, no minimum window"]);
+    expect(await returns(0, false)).toEqual(["Returns accepted, no minimum window"]);
+  });
+
+  it("shows any item with its title", async () => {
+    const m = mandate();
+    for (const c of m.checkout.constraints) {
+      if (c.type === "checkout.line_items") {
+        c.items.push({
+          id: "l2",
+          acceptable_items: [{ id: "*", title: "Trail shoes" }],
+          quantity: 1,
+        });
+        c.items.splice(0, 1);
+      }
+    }
+    const { payloadSd, disclosures } = await buildSdPayload(m, randomSalt);
+    const c = renderCard(payloadSd, disclosures, evidence);
+    expect(c.rows.find((r) => r.field === "items")).toMatchObject({
+      values: ['Any item ("Trail shoes")'],
+      color: "gray",
+      answers: "You",
+    });
+    expect(c.rows.find((r) => r.field === "quantity")?.values).toEqual(["1"]);
+    expect(c.warnings).toContain(
+      "The item title is a description; any item in the allowed categories matches.",
+    );
+  });
+
   it("labels every category in the table", () => {
     expect(Object.keys(CATEGORY_LABELS).sort()).toEqual([...CATEGORY_TABLE.ids].sort());
   });
@@ -92,7 +157,9 @@ describe("card contents", () => {
       for (const c of m.checkout.constraints) {
         if (c.type === "checkout.allowed_merchants") for (const x of c.allowed) x.name = name;
       }
-      await expect(prepareSigning(m, randomSalt(), evidence)).rejects.toThrow(/control or format/);
+      await expect(prepareSigning(m, randomSalt(), evidence, [])).rejects.toThrow(
+        /control or format/,
+      );
     }
   });
 });
@@ -101,7 +168,7 @@ describe("prepareSigning", () => {
   it("binds C_m into the signed payload and the challenge", async () => {
     const salt = randomSalt();
     const m = mandate();
-    const s = await prepareSigning(m, salt, evidence);
+    const s = await prepareSigning(m, salt, evidence, []);
     const cm = await mandateCommitment(m, salt);
     expect(s.cm).toBe(cm);
     const decoded = decodeMandate(s.payloadSd, s.disclosures);
@@ -113,8 +180,16 @@ describe("prepareSigning", () => {
     expect(s.card.rows.length).toBeGreaterThan(0);
   });
 
+  it("shows the fields the compiler could not settle gray on the card to sign", async () => {
+    const s = await prepareSigning(mandate(), randomSalt(), evidence, ["total", "merchant"]);
+    const row = (field: string) => s.card.rows.find((r) => r.field === field);
+    expect(row("total")).toMatchObject({ color: "gray", answers: "You" });
+    expect(row("merchant")).toMatchObject({ color: "gray", answers: "You" });
+    expect(row("budget")?.color).toBe("green");
+  });
+
   it("derives the payment confirmation details from the mandate", async () => {
-    const s = await prepareSigning(mandate(), randomSalt(), evidence);
+    const s = await prepareSigning(mandate(), randomSalt(), evidence, []);
     expect(s.spc).toEqual({
       payeeName: "Keelson",
       payeeOrigin: "https://keelson.finance",

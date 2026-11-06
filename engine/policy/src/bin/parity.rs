@@ -3,15 +3,16 @@
 //!
 //! Usage: `parity --seed <u64> --n <usize>`.
 //!
-//! The generator covers allowed carts, every `forbid`, ill-formed mandates, raw contexts with
-//! missing, ill-typed or extra attributes, inconsistent quantities, the edges of the purchase
-//! window, and valid, invalid and too many extras.
+//! The generator covers allowed carts, every `forbid`, mandates that accept any item, ill-formed
+//! mandates (including any item mixed with other items), raw contexts with missing, ill-typed or
+//! extra attributes, inconsistent quantities, the edges of the purchase window, and valid,
+//! invalid and too many extras.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{BufWriter, Write};
 
 use keelson_canon::{Context, Variant};
-use keelson_mandate::CATEGORY_IDS;
+use keelson_mandate::{ANY_ITEM, CATEGORY_IDS};
 use keelson_policy::{
     EngineMeta, EvalInput, Extra, MAX_EXTRAS, evaluate_context_with_extras, evaluate_with_extras,
     mandate_agent, trace_jcs,
@@ -167,6 +168,7 @@ struct Shape {
     max_total: i64,
     budget_max: i64,
     merchants: Vec<String>,
+    /// The SKUs a cart may hold: every SKU when the lines accept any item.
     skus: Vec<String>,
     max_qty: i64,
     categories: Vec<String>,
@@ -254,11 +256,20 @@ fn mandate(r: &mut Rng) -> (Value, Shape) {
     let mut lines = Vec::new();
     let mut skus = Vec::new();
     let mut max_qty = i64::MAX;
-    for n in 0..r.range(1, 3) {
-        let items: Vec<&str> = r.subset(&SKUS, 1, 3);
+    // A mandate for any item has a single line and a category constraint, as the parser requires.
+    let any_item = r.chance(20);
+    let line_count = if any_item { 1 } else { r.range(1, 3) };
+    for n in 0..line_count {
+        let items: Vec<&str> = if any_item {
+            skus.extend(SKUS.iter().map(|s| s.to_string()));
+            vec![ANY_ITEM]
+        } else {
+            let items = r.subset(&SKUS, 1, 3);
+            skus.extend(items.iter().map(|s| s.to_string()));
+            items
+        };
         let qty = r.range(1, 4);
         max_qty = max_qty.min(qty);
-        skus.extend(items.iter().map(|s| s.to_string()));
         lines.push(json!({
             "id": format!("l{n}"),
             "acceptable_items": items.iter().map(|id| json!({ "id": id, "title": "Shoe" })).collect::<Vec<_>>(),
@@ -279,7 +290,7 @@ fn mandate(r: &mut Rng) -> (Value, Shape) {
     ];
 
     let mut categories: Vec<String> = CATEGORY_IDS.iter().map(|c| c.to_string()).collect();
-    if r.chance(75) {
+    if any_item || r.chance(75) {
         let allow = r.subset(&CATEGORY_IDS, 1, 4);
         let deny: Vec<&str> = if r.chance(30) {
             vec![*r.pick(&allow)]
@@ -501,7 +512,7 @@ fn break_mandate(r: &mut Rng, m: &mut Value) {
         json!(9_007_199_254_740_992i64),
     ];
     let junk = r.pick(&bad).clone();
-    match r.below(28) {
+    match r.below(30) {
         0 => m["mid"] = junk,
         1 => m["payment"]["constraints"] = junk,
         2 => m["checkout"]["constraints"] = junk,
@@ -633,6 +644,33 @@ fn break_mandate(r: &mut Rng, m: &mut Value) {
                 m["constructor"] = json!({ "prototype": 1 });
             }
         },
+        // Lines that accept any item next to lines that do not.
+        27 => {
+            let lines = find(m, "checkout", "checkout.line_items").unwrap()["items"]
+                .as_array_mut()
+                .unwrap();
+            let any = lines[0]["acceptable_items"][0]["id"] == ANY_ITEM;
+            let id = if any { "sku-a" } else { ANY_ITEM };
+            let at = r.below(lines.len() as u64 + 1) as usize;
+            lines.insert(
+                at,
+                json!({ "id": "lx", "acceptable_items": [{ "id": id, "title": "Shoe" }], "quantity": 1 }),
+            );
+        }
+        // Any item next to other items in one line.
+        28 => {
+            let items =
+                find(m, "checkout", "checkout.line_items").unwrap()["items"][0]["acceptable_items"]
+                    .as_array_mut()
+                    .unwrap();
+            let id = if items[0]["id"] == ANY_ITEM {
+                "sku-a"
+            } else {
+                ANY_ITEM
+            };
+            let at = r.below(items.len() as u64 + 1) as usize;
+            items.insert(at, json!({ "id": id, "title": "Shoe" }));
+        }
         _ => m["agent"] = junk,
     }
 }

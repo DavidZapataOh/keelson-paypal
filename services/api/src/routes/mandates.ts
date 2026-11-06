@@ -59,7 +59,7 @@ const CreatedMandate = z
   .object({ id: z.string(), mandateHash: Hex32, state: z.literal("SIGNED") })
   .openapi("CreatedMandate");
 
-const Card = z
+export const Card = z
   .object({
     rows: z.array(
       z.object({
@@ -79,7 +79,7 @@ const MandateView = z
     id: z.string(),
     state: MandateState,
     mandateHash: Hex32.nullable(),
-    card: Card.nullable().openapi({
+    card: z.union([Card, z.null()]).openapi({
       description: "The card rendered from the stored payload, before any checkout evidence.",
     }),
   })
@@ -117,6 +117,8 @@ const read = createRoute({
   path: "/v1/mandates/{id}",
   tags: ["mandates"],
   summary: "Get a mandate",
+  description:
+    "Renders the card of the signed mandate. The user answered for every field when signing, so fields that were ambiguous at compile time show with the colors the engine enforces, not gray.",
   middleware: [requireSession()],
   request: { params: z.object({ id: z.string() }) },
   responses: {

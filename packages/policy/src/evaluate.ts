@@ -8,7 +8,9 @@ import {
   statefulIsAuthorized,
 } from "@cedar-policy/cedar-wasm";
 import type { Json } from "@keelson/core";
+import { ANY_ITEM } from "@keelson/mandate";
 import {
+  acceptsAnyItem,
   attributes,
   clockMs,
   compareVariants,
@@ -195,8 +197,9 @@ class Faults {
  *
  * The context passed to Cedar is `input.context` projected onto the attributes the mandate
  * constrains: each variant keeps its `size` only when `keelson.attributes` requires a `size_us`,
- * and its `color` only when it requires a `color`. The quantities of variants that become equal
- * are added, and `max_line_qty` is the largest of those sums.
+ * and its `color` only when it requires a `color`, and its `sku` becomes `*` when every line of the
+ * mandate accepts any item. The quantities of variants that become equal are added, and
+ * `max_line_qty` is the largest of those sums.
  *
  * The trace `errors` are the Rust engine's stable codes: `context.invalid`,
  * `context.missing:<attr>`, `context.type:<attr>`, `context.extra:<attr>`,
@@ -269,8 +272,9 @@ function project(input: EvalInput, faults: Faults): JsonObject {
   } catch {
     // An unreadable mandate denies anyway; its error is recorded when the entity is built.
   }
+  const sku = !acceptsAnyItem(input.mandate);
   const projected = (v: Variant): Variant => {
-    const out: Variant = { sku: v.sku };
+    const out: Variant = { sku: sku ? v.sku : ANY_ITEM };
     if (size && v.size !== undefined) out.size = v.size;
     if (color && v.color !== undefined) out.color = v.color;
     return out;
