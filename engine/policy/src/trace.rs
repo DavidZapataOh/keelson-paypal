@@ -40,6 +40,9 @@ pub struct FieldTrace {
 }
 
 /// A `keelson.eval/1` trace.
+///
+/// The `Mandate` entity can be rebuilt from `fields[].bound`, which together hold every entity
+/// attribute; the policies never read the entity id.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Trace {
     pub v: String,

@@ -102,6 +102,9 @@ describe("parseMandate", () => {
     const m = clone();
     m.payment.constraints[1].currency = "EUR";
     expect(fieldOf(m)).toBe("payment.constraints.1.currency");
+    const n = clone();
+    n.payment.constraints[0].currency = "EUR";
+    expect(fieldOf(n)).toBe("payment.constraints.0.currency");
   });
 });
 

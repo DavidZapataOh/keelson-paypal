@@ -134,40 +134,101 @@ fn window_end_is_exclusive() {
     assert_eq!(evaluate(&i, &meta()).decision, Decision::Allow);
 }
 
+fn raw_context() -> (EvalInput, Value) {
+    let i = input(demo_cart());
+    let raw = evaluate(&i, &meta()).context;
+    (i, raw)
+}
+
+fn denied_with(t: &Trace, codes: &[&str]) {
+    assert_eq!(t.decision, Decision::Deny);
+    assert_eq!(t.errors, codes, "{:?}", t.fired);
+}
+
 #[test]
 fn missing_context_attribute_denies_with_an_error() {
-    let i = input(demo_cart());
-    let mut raw = evaluate(&i, &meta()).context;
+    let (i, mut raw) = raw_context();
     raw.as_object_mut().unwrap().remove("return_days");
     let t = evaluate_context(&i, raw, &meta());
-    assert_eq!(t.decision, Decision::Deny);
-    assert!(!t.errors.is_empty());
+    denied_with(&t, &["context.missing:return_days"]);
     assert!(t.fields.iter().all(|f| !f.pass));
 }
 
 #[test]
 fn ill_typed_context_attribute_denies_with_an_error() {
-    let i = input(demo_cart());
-    let mut raw = evaluate(&i, &meta()).context;
+    let (i, mut raw) = raw_context();
     raw["return_days"] = json!("30");
-    let t = evaluate_context(&i, raw, &meta());
-    assert_eq!(t.decision, Decision::Deny);
-    assert!(!t.errors.is_empty());
+    raw["returns_free"] = json!(1);
+    denied_with(
+        &evaluate_context(&i, raw, &meta()),
+        &["context.type:return_days", "context.type:returns_free"],
+    );
+}
+
+#[test]
+fn raw_context_shape_is_checked() {
+    let (i, raw) = raw_context();
+    let with = |key: &str, value: Value| {
+        let mut r = raw.clone();
+        r[key] = value;
+        evaluate_context(&i, r, &meta())
+    };
+    denied_with(&with("extra", json!(1)), &["context.extra:extra"]);
+    denied_with(
+        &with("now", json!("2026-11-05T17:02:11.250Z")),
+        &["context.type:now"],
+    );
+    denied_with(
+        &with(
+            "variants",
+            json!([{ "sku": "sku-trail-10", "size_us": "10" }]),
+        ),
+        &["context.type:variants"],
+    );
+    denied_with(
+        &with("categories", json!([187])),
+        &["context.type:categories"],
+    );
+    denied_with(
+        &with("total_minor", json!(94.5)),
+        &["context.type:total_minor"],
+    );
+    denied_with(
+        &evaluate_context(&i, json!([raw]), &meta()),
+        &["context.invalid"],
+    );
+    assert_eq!(
+        evaluate_context(&i, raw.clone(), &meta()).decision,
+        Decision::Allow
+    );
 }
 
 #[test]
 fn empty_categories_deny() {
     let mut i = input(demo_cart());
     i.context.categories.clear();
-    let t = evaluate(&i, &meta());
-    assert_eq!(t.decision, Decision::Deny);
-    assert!(!t.errors.is_empty());
+    denied_with(&evaluate(&i, &meta()), &["context.empty:categories"]);
 
     let mut i = input(demo_cart());
     i.context.categories = [String::new()].into();
-    let t = evaluate(&i, &meta());
-    assert_eq!(t.decision, Decision::Deny);
-    assert!(!t.errors.is_empty());
+    denied_with(&evaluate(&i, &meta()), &["context.empty:categories"]);
+}
+
+#[test]
+fn empty_carts_deny() {
+    let mut i = input(demo_cart());
+    i.context.variants.clear();
+    i.context.quantities.clear();
+    i.context.max_line_qty = 0;
+    denied_with(&evaluate(&i, &meta()), &["context.empty:variants"]);
+
+    let (i, mut raw) = raw_context();
+    raw["variants"] = json!([]);
+    raw["categories"] = json!([]);
+    denied_with(
+        &evaluate_context(&i, raw, &meta()),
+        &["context.empty:categories", "context.empty:variants"],
+    );
 }
 
 #[test]
@@ -189,18 +250,43 @@ fn quantity_overflow_denies_with_an_error() {
     white.color = Some("white".to_owned());
     i.context.variants.insert(white.clone());
     i.context.quantities.insert(white, i64::MAX);
+    i.context.max_line_qty = i64::MAX;
     let t = evaluate(&i, &meta());
-    assert_eq!(t.decision, Decision::Deny);
-    assert!(!t.errors.is_empty());
+    // The canonical maximum is kept, and it is not a safe integer either.
+    denied_with(&t, &["context.quantities", "context.type:max_line_qty"]);
+    assert!(!field(&t, "quantity").pass);
 }
 
 #[test]
 fn quantities_must_match_variants() {
     let mut i = input(demo_cart());
     i.context.quantities.clear();
-    let t = evaluate(&i, &meta());
-    assert_eq!(t.decision, Decision::Deny);
-    assert!(!t.errors.is_empty());
+    denied_with(&evaluate(&i, &meta()), &["context.quantities"]);
+}
+
+#[test]
+fn max_line_qty_must_match_quantities() {
+    let mut i = input(demo_cart());
+    i.context.max_line_qty = 5;
+    denied_with(&evaluate(&i, &meta()), &["context.quantities"]);
+}
+
+#[test]
+fn quantities_must_be_positive() {
+    let mut i = input(demo_cart());
+    let mut white = i.context.variants.first().unwrap().clone();
+    white.color = Some("white".to_owned());
+    i.context.variants.insert(white.clone());
+    i.context.quantities = i.context.variants.iter().cloned().zip([3, -2]).collect();
+    i.context.max_line_qty = 3;
+    denied_with(&evaluate(&i, &meta()), &["context.quantities"]);
+
+    let mut i = input(demo_cart());
+    for q in i.context.quantities.values_mut() {
+        *q = 0;
+    }
+    i.context.max_line_qty = 0;
+    denied_with(&evaluate(&i, &meta()), &["context.quantities"]);
 }
 
 #[test]
@@ -208,29 +294,30 @@ fn unsafe_integers_deny_and_still_serialize() {
     let mut i = input(demo_cart());
     i.context.total_minor = 1 << 60;
     let t = evaluate(&i, &meta());
-    assert_eq!(t.decision, Decision::Deny);
-    assert!(!t.errors.is_empty());
+    denied_with(&t, &["context.type:total_minor"]);
     assert!(!trace_jcs(&t).is_empty());
 }
 
 #[test]
 fn malformed_mandates_deny_without_panicking() {
-    for mandate in [
-        json!(null),
-        json!({}),
-        json!([1, 2]),
-        json!({ "mid": 7 }),
-        {
-            let mut m = mandate();
-            m["payment"]["constraints"] = json!("nope");
-            m
-        },
+    for (mandate, code) in [
+        (json!(null), "entity.invalid:mid"),
+        (json!({}), "entity.invalid:mid"),
+        (json!([1, 2]), "entity.invalid:mid"),
+        (json!({ "mid": 7 }), "entity.invalid:mid"),
+        (
+            {
+                let mut m = mandate();
+                m["payment"]["constraints"] = json!("nope");
+                m
+            },
+            "entity.invalid:payment.constraints",
+        ),
     ] {
         let mut i = input(demo_cart());
         i.mandate = mandate;
         let t = evaluate(&i, &meta());
-        assert_eq!(t.decision, Decision::Deny);
-        assert!(!t.errors.is_empty());
+        denied_with(&t, &[code]);
         assert!(!trace_jcs(&t).is_empty());
     }
 }

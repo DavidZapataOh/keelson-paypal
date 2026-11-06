@@ -621,6 +621,13 @@ async function commitmentVectors() {
         for (const c of m.payment.constraints) if (c.type === "payment.budget") c.currency = "EUR";
       },
     ],
+    [
+      "error/amount-range-currency-mismatch",
+      (m) => {
+        for (const c of m.payment.constraints)
+          if (c.type === "payment.amount_range") c.currency = "EUR";
+      },
+    ],
     ["error/extra-key", (m) => Object.assign(m, { extra: 1 })],
     [
       "error/missing-amount-range",

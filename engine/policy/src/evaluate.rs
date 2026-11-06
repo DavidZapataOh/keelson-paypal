@@ -14,8 +14,8 @@ use crate::entity::attributes;
 use crate::hashes::hex;
 use crate::trace::{Decision, Engine, FieldTrace, TRACE_VERSION, Trace};
 use crate::{
-    agent_uid, cedar_datetime, mandate_entity, policies, policy_set_hash_tag, policy_texts, schema,
-    schema_hash_tag,
+    PolicyError, agent_uid, cedar_datetime, mandate_entity, policies, policy_set_hash_tag,
+    policy_texts, schema, schema_hash_tag,
 };
 
 /// A policy `@field` value.
@@ -32,7 +32,9 @@ pub struct EvalInput {
     pub context: keelson_canon::Context,
     /// The TEE clock.
     pub now: OffsetDateTime,
-    /// The evidence sources for each field. A `ucp:` or `zktls:` source raises its color to green.
+    /// The evidence sources for each field. A `ucp:` or `zktls:` source raises its color to green,
+    /// so those sources must come only from the engine's own verifiers (a checked UCP merchant
+    /// signature, a checked zkTLS proof): the evaluator trusts them as given.
     pub evidence: BTreeMap<FieldId, Vec<String>>,
     /// The mandate challenge `M`.
     pub mandate_hash: [u8; 32],
@@ -98,6 +100,56 @@ const BINDINGS: [(&str, &[&str], &[&str]); 12] = [
     ),
 ];
 
+/// The context attributes of the `checkout` action and their types.
+const CONTEXT: [(&str, Kind); 9] = [
+    ("currency", Kind::String),
+    ("total_minor", Kind::Long),
+    ("merchant", Kind::String),
+    ("categories", Kind::Strings),
+    ("variants", Kind::Variants),
+    ("max_line_qty", Kind::Long),
+    ("return_days", Kind::Long),
+    ("returns_free", Kind::Bool),
+    ("now", Kind::Datetime),
+];
+
+#[derive(Clone, Copy)]
+enum Kind {
+    String,
+    Long,
+    Bool,
+    Strings,
+    Variants,
+    Datetime,
+}
+
+impl Kind {
+    fn accepts(self, v: &Value) -> bool {
+        let strings = |v: &Value| v.as_array().is_some_and(|a| a.iter().all(Value::is_string));
+        match self {
+            Self::String => v.is_string(),
+            Self::Long => v
+                .as_i64()
+                .is_some_and(|i| (-MAX_SAFE_INTEGER..=MAX_SAFE_INTEGER).contains(&i)),
+            Self::Bool => v.is_boolean(),
+            Self::Strings => strings(v),
+            Self::Variants => v.as_array().is_some_and(|a| {
+                a.iter().all(|x| {
+                    x.as_object().is_some_and(|o| {
+                        o.get("sku").is_some_and(Value::is_string)
+                            && o.iter().all(|(k, v)| {
+                                ["sku", "size", "color"].contains(&k.as_str()) && v.is_string()
+                            })
+                    })
+                })
+            }),
+            Self::Datetime => v["__extn"]["arg"]
+                .as_str()
+                .is_some_and(|arg| *v == json!({ "__extn": { "fn": "datetime", "arg": arg } })),
+        }
+    }
+}
+
 /// Errors met while evaluating, and the policies they keep from passing.
 #[derive(Default)]
 struct Faults {
@@ -106,8 +158,8 @@ struct Faults {
 }
 
 impl Faults {
-    fn add(&mut self, policy: Option<&str>, error: String) {
-        self.errors.push(error);
+    fn add(&mut self, policy: Option<&str>, code: impl Into<String>) {
+        self.errors.push(code.into());
         self.policies.extend(policy.map(str::to_owned));
     }
 }
@@ -118,7 +170,21 @@ impl Faults {
 /// constrains: each variant keeps its `size` only when `keelson.attributes` requires a `size_us`,
 /// and its `color` only when it requires a `color` (a value of `any` requires nothing). The
 /// quantities of variants that become equal are added with overflow checks, and `max_line_qty` is
-/// the largest of those sums, or 0 for an empty cart.
+/// the largest of those sums.
+///
+/// The trace `errors` are these codes, sorted and without repeats:
+/// - `context.invalid`: the context is not a record, or Cedar rejects it;
+/// - `context.missing:<attr>`, `context.type:<attr>`, `context.extra:<attr>`: an attribute is
+///   absent, has the wrong type (including a number that is not a safe integer, and a `now` that
+///   is not a `datetime` extension value), or is not in the schema;
+/// - `context.empty:variants`, `context.empty:categories`: the cart has no variant, or no
+///   category or an empty category id;
+/// - `context.quantities`: a quantity is below 1, the quantities are not keyed by the variants,
+///   their largest is not `max_line_qty`, or a projected sum overflows;
+/// - `entity.invalid:<field>`: the mandate field is missing or ill-typed, and
+///   `entity.invalid:cedar` when Cedar rejects the entity;
+/// - `request.invalid`: Cedar rejects the request;
+/// - `policy.error:<id>`: Cedar could not evaluate policy `<id>`.
 pub fn evaluate(input: &EvalInput, meta: &EngineMeta) -> Trace {
     let mut faults = Faults::default();
     let context = project(input, &mut faults);
@@ -126,7 +192,10 @@ pub fn evaluate(input: &EvalInput, meta: &EngineMeta) -> Trace {
 }
 
 /// Evaluates `context`, a context in Cedar JSON form such as a trace records, in place of the
-/// projection of `input.context`. It replays a recorded evaluation.
+/// projection of `input.context`, to replay a recorded evaluation.
+///
+/// It applies the same fail-closed checks as [`evaluate`] to the context it is given, except
+/// those on `input.context.quantities`, which a recorded context does not carry.
 pub fn evaluate_context(input: &EvalInput, context: Value, meta: &EngineMeta) -> Trace {
     run(input, context, Faults::default(), meta)
 }
@@ -144,39 +213,30 @@ fn project(input: &EvalInput, faults: &mut Faults) -> Value {
     };
     let variants: BTreeSet<Variant> = c.variants.iter().map(projected).collect();
 
-    let mut max_line_qty = c.max_line_qty;
-    if c.quantities.keys().ne(c.variants.iter()) {
-        faults.add(
-            Some("quantity"),
-            "context.quantities: does not match context.variants".to_owned(),
-        );
-    } else {
-        let mut sums: BTreeMap<Variant, i64> = BTreeMap::new();
-        let mut overflow = false;
-        for (v, &qty) in &c.quantities {
-            let sum = sums.entry(projected(v)).or_insert(0);
-            match sum.checked_add(qty) {
-                Some(s) => *sum = s,
-                None => overflow = true,
-            }
-        }
-        if overflow {
-            faults.add(
-                Some("quantity"),
-                "context.max_line_qty: overflow".to_owned(),
-            );
-        } else {
-            max_line_qty = sums.into_values().max().unwrap_or(0);
+    let canonical = c.quantities.keys().eq(c.variants.iter())
+        && c.quantities.values().all(|&q| q >= 1)
+        && c.quantities.values().copied().max().unwrap_or(0) == c.max_line_qty;
+    let mut sums: BTreeMap<Variant, i64> = BTreeMap::new();
+    let mut overflow = false;
+    for (v, &qty) in &c.quantities {
+        let sum = sums.entry(projected(v)).or_insert(0);
+        match sum.checked_add(qty) {
+            Some(s) => *sum = s,
+            None => overflow = true,
         }
     }
-
-    let now = match cedar_datetime(input.now) {
-        Ok(now) => json!({ "__extn": { "fn": "datetime", "arg": now } }),
-        Err(e) => {
-            faults.add(Some("window"), format!("now: {e}"));
-            Value::Null
-        }
+    let max_line_qty = if canonical && !overflow {
+        sums.into_values().max().unwrap_or(0)
+    } else {
+        faults.add(Some("quantity"), "context.quantities");
+        c.max_line_qty
     };
+
+    // A clock Cedar cannot represent is recorded as `context.type:now`.
+    let now = cedar_datetime(input.now).map_or(
+        Value::Null,
+        |now| json!({ "__extn": { "fn": "datetime", "arg": now } }),
+    );
     json!({
         "currency": c.currency,
         "total_minor": c.total_minor,
@@ -190,30 +250,59 @@ fn project(input: &EvalInput, faults: &mut Faults) -> Value {
     })
 }
 
+/// Checks the context against the `checkout` context type and rejects empty carts.
+fn check_context(context: &Value, faults: &mut Faults) {
+    let Some(record) = context.as_object() else {
+        faults.add(None, "context.invalid");
+        return;
+    };
+    for (attr, kind) in CONTEXT {
+        match record.get(attr) {
+            None => faults.add(None, format!("context.missing:{attr}")),
+            Some(v) if !kind.accepts(v) => faults.add(None, format!("context.type:{attr}")),
+            Some(_) => {}
+        }
+    }
+    for key in record.keys() {
+        if !CONTEXT.iter().any(|(attr, _)| attr == key) {
+            faults.add(None, format!("context.extra:{key}"));
+        }
+    }
+    if context["variants"].as_array().is_some_and(Vec::is_empty) {
+        faults.add(None, "context.empty:variants");
+    }
+    if context["categories"]
+        .as_array()
+        .is_some_and(|c| c.is_empty() || c.iter().any(|c| c == ""))
+    {
+        faults.add(None, "context.empty:categories");
+    }
+}
+
 fn run(input: &EvalInput, context: Value, mut faults: Faults, meta: &EngineMeta) -> Trace {
     let context = safe(context);
-
-    let non_empty = context["variants"]
-        .as_array()
-        .is_some_and(|v| !v.is_empty());
-    let categories = context["categories"].as_array();
-    if non_empty && categories.is_some_and(|c| c.is_empty() || c.iter().any(|c| c == "")) {
-        faults.add(
-            Some("category"),
-            "context.categories: empty set or id for a non-empty cart".to_owned(),
-        );
-    }
+    let before = faults.errors.len();
+    check_context(&context, &mut faults);
+    let context_ok = faults.errors.len() == before;
 
     let entity = mandate_entity(&input.mandate, input.budget_left_minor)
-        .map_err(|e| faults.add(None, format!("mandate: {e}")))
+        .map_err(|e| {
+            faults.add(
+                None,
+                match e {
+                    PolicyError::Mandate { field, .. } => format!("entity.invalid:{field}"),
+                    PolicyError::Cedar(_) => "entity.invalid:cedar".to_owned(),
+                },
+            )
+        })
         .ok();
     let bounds = entity
         .as_ref()
         .and_then(|e| e.to_json_value().ok())
         .map(|e| safe(e["attrs"].clone()));
-    let response = entity.and_then(|e| {
+    let response = entity.filter(|_| context_ok).and_then(|e| {
         authorize(&input.agent, &context, e)
-            .map_err(|e| faults.add(None, e))
+            .map_err(|code| faults.add(None, code))
             .ok()
     });
 
@@ -227,12 +316,14 @@ fn run(input: &EvalInput, context: Value, mut faults: Faults, meta: &EngineMeta)
             }
         }
         for e in r.diagnostics().errors() {
-            let AuthorizationError::PolicyEvaluationError(pe) = e;
-            faults.add(Some(pe.policy_id().as_ref()), e.to_string());
+            let AuthorizationError::PolicyEvaluationError(e) = e;
+            let id = e.policy_id().as_ref();
+            faults.add(Some(id), format!("policy.error:{id}"));
         }
     }
     fired.sort();
     faults.errors.sort();
+    faults.errors.dedup();
     let decision = if allowed && fired.is_empty() && faults.errors.is_empty() {
         Decision::Allow
     } else {
@@ -244,11 +335,13 @@ fn run(input: &EvalInput, context: Value, mut faults: Faults, meta: &EngineMeta)
         .keys()
         .filter(|id| *id != "base")
         .map(|id| {
-            let policy = policies().policy(&PolicyId::new(id));
+            let policy = policies()
+                .policy(&PolicyId::new(id))
+                .expect("policy_texts and policies hold the same ids");
             let annotation = |key| {
                 policy
-                    .and_then(|p| p.annotation(key))
-                    .unwrap_or_default()
+                    .annotation(key)
+                    .expect("every bundled policy has @field and @color")
                     .to_owned()
             };
             let field = annotation("field");
@@ -316,16 +409,16 @@ fn run(input: &EvalInput, context: Value, mut faults: Faults, meta: &EngineMeta)
 }
 
 /// Builds the request against the schema and runs the authorizer.
-fn authorize(agent: &str, context: &Value, entity: Entity) -> Result<Response, String> {
-    let action = EntityUid::from_str(ACTION).map_err(|e| format!("action: {e}"))?;
-    let principal = agent_uid(agent).map_err(|e| format!("agent: {e}"))?;
+fn authorize(agent: &str, context: &Value, entity: Entity) -> Result<Response, &'static str> {
+    let action = EntityUid::from_str(ACTION).map_err(|_| "request.invalid")?;
+    let principal = agent_uid(agent).map_err(|_| "request.invalid")?;
     let resource = entity.uid();
     let context = Context::from_json_value(context.clone(), Some((schema(), &action)))
-        .map_err(|e| format!("context: {e}"))?;
+        .map_err(|_| "context.invalid")?;
     let request = Request::new(principal, action, resource, context, Some(schema()))
-        .map_err(|e| format!("request: {e}"))?;
+        .map_err(|_| "request.invalid")?;
     let entities =
-        Entities::from_entities([entity], Some(schema())).map_err(|e| format!("entities: {e}"))?;
+        Entities::from_entities([entity], Some(schema())).map_err(|_| "entity.invalid:cedar")?;
     Ok(Authorizer::new().is_authorized(&request, policies(), &entities))
 }
 
@@ -352,5 +445,45 @@ fn safe(value: Value) -> Value {
         Value::Array(items) => Value::Array(items.into_iter().map(safe).collect()),
         Value::Object(map) => Value::Object(map.into_iter().map(|(k, v)| (k, safe(v))).collect()),
         other => other,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeSet;
+
+    use super::BINDINGS;
+    use crate::{mandate_entity, policy_texts};
+
+    #[test]
+    fn every_policy_has_bindings() {
+        let ids: BTreeSet<_> = policy_texts()
+            .keys()
+            .map(String::as_str)
+            .filter(|id| *id != "base")
+            .collect();
+        let bound: BTreeSet<_> = BINDINGS.iter().map(|(id, ..)| *id).collect();
+        assert_eq!(ids, bound);
+        assert_eq!(BINDINGS.len(), bound.len());
+    }
+
+    #[test]
+    fn bounds_cover_the_mandate_entity() {
+        let m = serde_json::from_str(include_str!(
+            "../../../packages/mandate/test/fixtures/demo-mandate.json"
+        ))
+        .unwrap();
+        let entity = mandate_entity(&m, 10_000).unwrap().to_json_value().unwrap();
+        let attrs: BTreeSet<_> = entity["attrs"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        let bound: BTreeSet<_> = BINDINGS
+            .iter()
+            .flat_map(|(_, _, a)| a.iter().copied())
+            .collect();
+        assert_eq!(attrs, bound);
     }
 }
