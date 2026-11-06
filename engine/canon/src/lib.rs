@@ -5,9 +5,9 @@
 mod money;
 mod types;
 
-pub use types::{Breakdown, Cart, CartLine, Context, Deny, PayPalUnit, Variant};
+pub use types::{Amount, Breakdown, Cart, CartLine, Context, Deny, PayPalUnit, Variant};
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 const MAX_LINES: usize = 16;
 
@@ -40,23 +40,51 @@ pub fn canonicalize(cart: &Cart, unit: &PayPalUnit) -> Result<Context, Deny> {
     }
 
     let b = &unit.breakdown;
-    let part = |v: &Option<String>| match v {
-        Some(v) => money::parse(currency, v),
+    let entries = [
+        &b.item_total,
+        &b.tax_total,
+        &b.shipping,
+        &b.handling,
+        &b.insurance,
+        &b.discount,
+        &b.shipping_discount,
+    ];
+    if entries
+        .into_iter()
+        .flatten()
+        .any(|a| a.currency_code != *currency)
+    {
+        return Err(Deny::CurrencyMismatch);
+    }
+    let part = |a: &Option<Amount>| match a {
+        Some(a) => money::parse(currency, &a.value),
         None => Ok(0),
     };
-    let item_total = part(&b.item_total)?;
+    let item_total = match &b.item_total {
+        Some(_) => part(&b.item_total)?,
+        None => return Err(Deny::InvalidAmount),
+    };
     let total = money::parse(currency, &unit.value)?;
-    let charges = [&b.tax_total, &b.shipping, &b.handling, &b.insurance];
-    let credits = [&b.discount, &b.shipping_discount];
     let mut expected = item_total;
-    for v in charges {
+    for v in [&b.tax_total, &b.shipping, &b.handling, &b.insurance] {
         expected = expected.checked_add(part(v)?).ok_or(Deny::AmountOverflow)?;
     }
-    for v in credits {
+    for v in [&b.discount, &b.shipping_discount] {
         expected = expected.checked_sub(part(v)?).ok_or(Deny::AmountOverflow)?;
     }
     if items != item_total || expected != total {
         return Err(Deny::AmountBreakdownMismatch);
+    }
+
+    let mut per_variant: BTreeMap<Variant, i64> = BTreeMap::new();
+    for line in &cart.lines {
+        let variant = Variant {
+            sku: line.sku.clone(),
+            size: line.size.clone(),
+            color: line.color.clone(),
+        };
+        let qty = per_variant.entry(variant).or_insert(0);
+        *qty = qty.checked_add(line.qty).ok_or(Deny::AmountOverflow)?;
     }
 
     Ok(Context {
@@ -68,16 +96,8 @@ pub fn canonicalize(cart: &Cart, unit: &PayPalUnit) -> Result<Context, Deny> {
             .iter()
             .map(|l| l.category.clone())
             .collect::<BTreeSet<_>>(),
-        variants: cart
-            .lines
-            .iter()
-            .map(|l| Variant {
-                sku: l.sku.clone(),
-                size: l.size.clone(),
-                color: l.color.clone(),
-            })
-            .collect(),
-        max_line_qty: cart.lines.iter().map(|l| l.qty).max().unwrap_or(0),
+        max_line_qty: per_variant.values().copied().max().unwrap_or(0),
+        variants: per_variant.into_keys().collect(),
         return_days: cart.return_days,
     })
 }

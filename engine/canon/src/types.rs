@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// One line of the proposed cart.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CartLine {
     pub sku: String,
     pub size: Option<String>,
@@ -15,6 +16,7 @@ pub struct CartLine {
 
 /// The proposed cart.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Cart {
     pub merchant: String,
     pub currency: String,
@@ -22,23 +24,32 @@ pub struct Cart {
     pub return_days: i64,
 }
 
-/// The amount breakdown of a PayPal purchase unit, as decimal strings.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// A PayPal amount: `{currency_code, value}`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Amount {
+    pub currency_code: String,
+    pub value: String,
+}
+
+/// The amount breakdown of a PayPal purchase unit.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Breakdown {
-    pub item_total: Option<String>,
-    pub tax_total: Option<String>,
-    pub shipping: Option<String>,
-    pub handling: Option<String>,
-    pub insurance: Option<String>,
-    pub discount: Option<String>,
-    pub shipping_discount: Option<String>,
+    pub item_total: Option<Amount>,
+    pub tax_total: Option<Amount>,
+    pub shipping: Option<Amount>,
+    pub handling: Option<Amount>,
+    pub insurance: Option<Amount>,
+    pub discount: Option<Amount>,
+    pub shipping_discount: Option<Amount>,
 }
 
 /// The `amount` of a PayPal Orders v2 `purchase_units[]` entry.
 ///
-/// Deserializes from the Orders v2 wire shape, where every amount is `{currency_code, value}`.
+/// Deserializes from the Orders v2 wire shape, `{"amount": {currency_code, value, breakdown}}`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(try_from = "wire::PurchaseUnit")]
+#[serde(from = "wire::PurchaseUnit")]
 pub struct PayPalUnit {
     pub currency: String,
     pub value: String,
@@ -50,28 +61,12 @@ mod wire {
     use serde::Deserialize;
 
     #[derive(Deserialize)]
-    pub struct Money {
-        currency_code: String,
-        value: String,
-    }
-
-    #[derive(Deserialize)]
-    struct Parts {
-        item_total: Option<Money>,
-        tax_total: Option<Money>,
-        shipping: Option<Money>,
-        handling: Option<Money>,
-        insurance: Option<Money>,
-        discount: Option<Money>,
-        shipping_discount: Option<Money>,
-    }
-
-    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
     struct Amount {
         currency_code: String,
         value: String,
         #[serde(default)]
-        breakdown: Option<Parts>,
+        breakdown: Breakdown,
     }
 
     #[derive(Deserialize)]
@@ -79,53 +74,35 @@ mod wire {
         amount: Amount,
     }
 
-    impl TryFrom<PurchaseUnit> for PayPalUnit {
-        type Error = String;
-
-        fn try_from(unit: PurchaseUnit) -> Result<Self, String> {
+    impl From<PurchaseUnit> for PayPalUnit {
+        fn from(unit: PurchaseUnit) -> Self {
             let Amount {
                 currency_code,
                 value,
                 breakdown,
             } = unit.amount;
-            let take = |m: Option<Money>| match m {
-                Some(m) if m.currency_code != currency_code => Err(format!(
-                    "breakdown currency {} differs from {currency_code}",
-                    m.currency_code
-                )),
-                Some(m) => Ok(Some(m.value)),
-                None => Ok(None),
-            };
-            let breakdown = match breakdown {
-                Some(p) => Breakdown {
-                    item_total: take(p.item_total)?,
-                    tax_total: take(p.tax_total)?,
-                    shipping: take(p.shipping)?,
-                    handling: take(p.handling)?,
-                    insurance: take(p.insurance)?,
-                    discount: take(p.discount)?,
-                    shipping_discount: take(p.shipping_discount)?,
-                },
-                None => Breakdown::default(),
-            };
-            Ok(Self {
+            Self {
                 currency: currency_code,
                 value,
                 breakdown,
-            })
+            }
         }
     }
 }
 
-/// A product variant in the cart.
+/// A product variant in the cart. Absent size and color are omitted from the JSON.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct Variant {
     pub sku: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub size: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
 }
 
 /// The Cedar request context derived from a cart.
+///
+/// `max_line_qty` is the largest total quantity of any single variant, summed across lines.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Context {
     pub currency: String,

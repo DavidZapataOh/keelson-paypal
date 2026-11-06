@@ -12,6 +12,13 @@ fn fixture(json: &str) -> Fixture {
     serde_json::from_str(json).expect("fixture is valid")
 }
 
+impl Fixture {
+    fn cart_json(&self) -> Value {
+        let raw: Value = serde_json::from_str(include_str!("fixtures/demo-shoes.json")).unwrap();
+        raw["cart"].clone()
+    }
+}
+
 fn demo() -> Fixture {
     fixture(include_str!("fixtures/demo-shoes.json"))
 }
@@ -116,15 +123,137 @@ fn currency_mismatch() {
 }
 
 #[test]
-fn breakdown_currency_mismatch_is_rejected_on_parse() {
-    let parsed = serde_json::from_value::<PayPalUnit>(json!({
-        "amount": {
-            "currency_code": "USD",
-            "value": "94.00",
-            "breakdown": { "item_total": { "currency_code": "EUR", "value": "94.00" } }
-        }
-    }));
-    assert!(parsed.is_err());
+fn breakdown_currency_mismatch_per_entry() {
+    let f = demo();
+    for kind in [
+        "item_total",
+        "tax_total",
+        "shipping",
+        "handling",
+        "insurance",
+        "discount",
+        "shipping_discount",
+    ] {
+        let mut breakdown = json!({ "item_total": { "currency_code": "USD", "value": "94.00" } });
+        breakdown[kind] = json!({ "currency_code": "EUR", "value": "94.00" });
+        let u = unit("94.00", breakdown);
+        assert_eq!(
+            canonicalize(&f.cart, &u),
+            Err(Deny::CurrencyMismatch),
+            "{kind}"
+        );
+    }
+}
+
+#[test]
+fn missing_item_total_is_invalid() {
+    let f = demo();
+    let u = unit(
+        "5.00",
+        json!({ "shipping": { "currency_code": "USD", "value": "5.00" } }),
+    );
+    assert_eq!(canonicalize(&f.cart, &u), Err(Deny::InvalidAmount));
+}
+
+#[test]
+fn discount_beyond_subtotal_is_a_mismatch() {
+    let f = demo();
+    let u = unit(
+        "0.00",
+        json!({
+            "item_total": { "currency_code": "USD", "value": "94.00" },
+            "discount": { "currency_code": "USD", "value": "100.00" }
+        }),
+    );
+    assert_eq!(
+        canonicalize(&f.cart, &u),
+        Err(Deny::AmountBreakdownMismatch)
+    );
+}
+
+#[test]
+fn breakdown_arithmetic_overflows_are_checked() {
+    let mut f = demo();
+    f.cart.lines[0].unit_minor = i64::MAX;
+    let max = "92233720368547758.07";
+    let add = unit(
+        max,
+        json!({
+            "item_total": { "currency_code": "USD", "value": max },
+            "tax_total": { "currency_code": "USD", "value": "0.01" }
+        }),
+    );
+    assert_eq!(canonicalize(&f.cart, &add), Err(Deny::AmountOverflow));
+    f.cart.lines[0].unit_minor = 0;
+    let sub = unit(
+        "0.00",
+        json!({
+            "item_total": { "currency_code": "USD", "value": "0.00" },
+            "discount": { "currency_code": "USD", "value": max },
+            "shipping_discount": { "currency_code": "USD", "value": max }
+        }),
+    );
+    assert_eq!(canonicalize(&f.cart, &sub), Err(Deny::AmountOverflow));
+}
+
+#[test]
+fn unknown_fields_are_parse_errors() {
+    let mut cart = demo().cart_json();
+    cart["lines"][0]["currency"] = json!("EUR");
+    assert!(serde_json::from_value::<Cart>(cart).is_err());
+    let mut cart = demo().cart_json();
+    cart["extra"] = json!(1);
+    assert!(serde_json::from_value::<Cart>(cart).is_err());
+    let bad_amount = json!({ "amount": { "currency_code": "USD", "value": "1.00", "extra": 1 } });
+    assert!(serde_json::from_value::<PayPalUnit>(bad_amount).is_err());
+    let bad_part = json!({ "amount": { "currency_code": "USD", "value": "1.00",
+        "breakdown": { "item_total": { "currency_code": "USD", "value": "1.00" }, "extra": 1 } } });
+    assert!(serde_json::from_value::<PayPalUnit>(bad_part).is_err());
+}
+
+#[test]
+fn context_json_has_no_nulls() {
+    let f = demo();
+    let ctx = canonicalize(&f.cart, &f.unit).unwrap();
+    assert_eq!(
+        serde_json::to_string(&ctx).unwrap(),
+        r#"{"currency":"USD","total_minor":9400,"merchant":"MERCHANT-SHOES-01","categories":["gpt:187"],"variants":[{"sku":"RUN-100","size":"10","color":"black"}],"max_line_qty":1,"return_days":30}"#
+    );
+    let f = fixture(include_str!("fixtures/bundle-340.json"));
+    let ctx = canonicalize(&f.cart, &f.unit).unwrap();
+    assert_eq!(
+        serde_json::to_string(&ctx).unwrap(),
+        r#"{"currency":"USD","total_minor":34000,"merchant":"MERCHANT-SHOES-01","categories":["gpt:100","gpt:1604","gpt:187"],"variants":[{"sku":"BAG-20"},{"sku":"RUN-100","size":"10","color":"black"},{"sku":"SOCK-6","color":"white"}],"max_line_qty":3,"return_days":14}"#
+    );
+}
+
+#[test]
+fn quantity_is_summed_per_variant() {
+    let mut f = demo();
+    let line = f.cart.lines[0].clone();
+    f.cart.lines = vec![line; 2];
+    let u = unit(
+        "188.00",
+        json!({ "item_total": { "currency_code": "USD", "value": "188.00" } }),
+    );
+    let ctx = canonicalize(&f.cart, &u).unwrap();
+    assert_eq!(ctx.variants.len(), 1);
+    assert_eq!(ctx.max_line_qty, 2);
+}
+
+#[test]
+fn variant_quantity_overflow_is_checked() {
+    let mut f = demo();
+    f.cart.lines[0].unit_minor = 0;
+    f.cart.lines[0].qty = i64::MAX;
+    let mut second = f.cart.lines[0].clone();
+    second.qty = 1;
+    f.cart.lines.push(second);
+    let u = unit(
+        "0.00",
+        json!({ "item_total": { "currency_code": "USD", "value": "0.00" } }),
+    );
+    assert_eq!(canonicalize(&f.cart, &u), Err(Deny::AmountOverflow));
 }
 
 #[test]
@@ -177,8 +306,20 @@ fn overflow_is_checked() {
 #[test]
 fn amount_beyond_i64_overflows() {
     let f = demo();
-    let u = unit("99999999999999999999999.00", json!({}));
-    assert_eq!(canonicalize(&f.cart, &u), Err(Deny::AmountOverflow));
+    for value in [
+        "99999999999999999999999.00",
+        "9999999999999999999999999999999999999999999999.00",
+    ] {
+        let u = unit(
+            value,
+            json!({ "item_total": { "currency_code": "USD", "value": value } }),
+        );
+        assert_eq!(
+            canonicalize(&f.cart, &u),
+            Err(Deny::AmountOverflow),
+            "{value}"
+        );
+    }
 }
 
 #[test]
@@ -187,7 +328,17 @@ fn deny_reasons_are_snake_case() {
         serde_json::to_value(Deny::AmountBreakdownMismatch).unwrap(),
         "amount_breakdown_mismatch"
     );
-    assert_eq!(serde_json::to_value(Deny::EmptyCart).unwrap(), "empty_cart");
+    for (deny, reason) in [
+        (Deny::AmountBreakdownMismatch, "amount_breakdown_mismatch"),
+        (Deny::CurrencyMismatch, "currency_mismatch"),
+        (Deny::AmountOverflow, "amount_overflow"),
+        (Deny::InvalidQuantity, "invalid_quantity"),
+        (Deny::InvalidAmount, "invalid_amount"),
+        (Deny::TooManyLines, "too_many_lines"),
+        (Deny::EmptyCart, "empty_cart"),
+    ] {
+        assert_eq!(serde_json::to_value(deny).unwrap(), reason);
+    }
 }
 
 #[derive(Deserialize)]
