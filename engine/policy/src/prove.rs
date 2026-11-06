@@ -1,9 +1,13 @@
-use std::path::PathBuf;
+use std::fmt::Display;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
-use std::{env, io};
+use std::{env, fs, io};
 
-use cedar_policy::{Effect, EntityUid, PolicySet};
+use cedar_policy::{
+    Authorizer, Context, Effect, Entities, EntityUid, Policy, PolicyId, PolicySet, Request,
+};
 use cedar_policy_symcc::err::Error;
 use cedar_policy_symcc::solver::{LocalSolver, SolverError};
 use cedar_policy_symcc::{CedarSymCompiler, CompiledPolicy, CompiledPolicySet, Env};
@@ -13,32 +17,38 @@ use sha2::{Digest, Sha256};
 
 use crate::extras::{Extra, compile};
 use crate::hashes::hex;
-use crate::{policies, policy_set_hash_tag, schema, schema_hash_tag};
+use crate::{
+    Decision, PolicyError, policies, policy_set_hash_tag, policy_texts, schema, schema_hash_tag,
+};
 
 /// The reference spec source, `policy/spec.cedar`: one `permit` stating every mandate rule.
 pub const SPEC_SRC: &str = include_str!("../policy/spec.cedar");
-/// The `cedar-policy-symcc` version the proofs run on.
-pub const SYMCC_VERSION: &str = "0.8.1";
+/// The `cedar-policy-symcc` version in `Cargo.lock`.
+pub const SYMCC_VERSION: &str = env!("KEELSON_SYMCC_VERSION");
+/// The `cedar-policy` version in `Cargo.lock`.
+pub const CEDAR_POLICY_VERSION: &str = env!("KEELSON_CEDAR_POLICY_VERSION");
 /// The cvc5 release `cedar-policy-symcc` [`SYMCC_VERSION`] is built and verified against.
 pub const CVC5_VERSION: &str = "1.3.1";
-const CEDAR_POLICY_VERSION: &str = "4.14.1";
 
 /// A cvc5 binary of version [`CVC5_VERSION`].
 #[derive(Debug, Clone)]
 pub struct Cvc5 {
     path: PathBuf,
     version: String,
+    sha256: String,
 }
 
 impl Cvc5 {
     /// The binary named by the `CVC5` environment variable, else `cvc5` on `PATH`: the lookup
     /// symcc's `LocalSolver::cvc5` uses. Fails unless it reports version [`CVC5_VERSION`].
     pub fn from_env() -> io::Result<Self> {
-        let path = env::var_os("CVC5").map_or_else(|| PathBuf::from("cvc5"), PathBuf::from);
+        let name = env::var_os("CVC5").map_or_else(|| PathBuf::from("cvc5"), PathBuf::from);
+        let path = resolve(&name)?;
+        let with_path = |e: io::Error| io::Error::new(e.kind(), format!("{}: {e}", path.display()));
         let out = std::process::Command::new(&path)
             .arg("--version")
             .output()
-            .map_err(|e| io::Error::new(e.kind(), format!("{}: {e}", path.display())))?;
+            .map_err(with_path)?;
         let stdout = String::from_utf8_lossy(&out.stdout);
         let version = stdout
             .lines()
@@ -53,12 +63,30 @@ impl Cvc5 {
                 path.display()
             )));
         }
-        Ok(Self { path, version })
+        let sha256 = hex(
+            "sha256:",
+            &Sha256::digest(fs::read(&path).map_err(with_path)?),
+        );
+        Ok(Self {
+            path,
+            version,
+            sha256,
+        })
+    }
+
+    /// The binary that is hashed and run.
+    pub fn path(&self) -> &Path {
+        &self.path
     }
 
     /// The version the binary reports.
     pub fn version(&self) -> &str {
         &self.version
+    }
+
+    /// `sha256:<hex>` of the binary.
+    pub fn sha256(&self) -> &str {
+        &self.sha256
     }
 
     /// An interactive solver process, with the arguments `LocalSolver::cvc5` passes.
@@ -69,6 +97,24 @@ impl Cvc5 {
             "--tlimit=60000",
         ]))
     }
+}
+
+/// `name` as given if it is a path, else its first match on `PATH`.
+fn resolve(name: &Path) -> io::Result<PathBuf> {
+    if name.components().count() > 1 {
+        return Ok(name.to_owned());
+    }
+    env::var_os("PATH")
+        .iter()
+        .flat_map(env::split_paths)
+        .map(|dir| dir.join(name))
+        .find(|p| p.is_file())
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("{}: not found on PATH", name.display()),
+            )
+        })
 }
 
 /// The outcome of one check.
@@ -91,6 +137,10 @@ pub struct ProofResult {
     /// solver produces one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub counterexample: Option<Value>,
+    /// A request the property is shown on, in the same form: an allowed one for `satisfiable`,
+    /// a denied one for `not_always_allows`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub witness: Option<Value>,
     /// Wall time of the check, symbolic compilation included. Not serialized, so the bundle is reproducible.
     #[serde(skip)]
     pub elapsed: Duration,
@@ -101,6 +151,7 @@ pub struct ProofResult {
 pub struct ProofBundle {
     pub symcc: String,
     pub cvc5: String,
+    pub cvc5_sha256: String,
     pub cedar_policy: String,
     pub policy_set_hash: String,
     pub schema_hash: String,
@@ -113,30 +164,41 @@ pub fn spec_hash_tag() -> String {
     hex("sha256:", &Sha256::digest(SPEC_SRC))
 }
 
-/// Runs every check on the policy set, over every request environment of the schema:
-///
-/// - `equivalent`: the policy set and the spec decide every request the same way;
-/// - `never_errors`: each `forbid`, and a policy of each [`Extra`] kind, never errors;
-/// - `satisfiable`: some request is allowed (the policy set does not always deny);
-/// - `not_always_allows`: some request is denied.
-///
-/// The last two keep the equivalence from holding vacuously.
+/// The parsed reference spec, [`SPEC_SRC`].
+pub fn spec() -> &'static PolicySet {
+    static SPEC: OnceLock<PolicySet> = OnceLock::new();
+    SPEC.get_or_init(|| PolicySet::from_str(SPEC_SRC).expect("the bundled spec parses"))
+}
+
+/// Runs every check of [`prove_set`] on the policy set and records the inputs and tools.
 pub fn prove_all(solver: &Cvc5) -> Result<ProofBundle, Box<Error>> {
-    let spec = PolicySet::from_str(SPEC_SRC).expect("the bundled spec parses");
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .map_err(|e| Error::from(SolverError::from(e)))?;
-    let results = runtime.block_on(check(solver, policies(), &spec))?;
     Ok(ProofBundle {
         symcc: SYMCC_VERSION.to_owned(),
         cvc5: solver.version().to_owned(),
+        cvc5_sha256: solver.sha256().to_owned(),
         cedar_policy: CEDAR_POLICY_VERSION.to_owned(),
         policy_set_hash: policy_set_hash_tag(),
         schema_hash: schema_hash_tag(),
         spec_hash: spec_hash_tag(),
-        results,
+        results: prove_set(solver, policies())?,
     })
+}
+
+/// Runs every check on `set`, over every request environment of the schema. Each subject is
+/// prefixed with the environment's action id.
+///
+/// - `equivalent`: `set` and the spec decide every request the same way;
+/// - `never_errors`: each `forbid` in `set`, and a policy of each [`Extra`] kind, never errors;
+/// - `satisfiable`: some request is allowed (`set` does not always deny);
+/// - `not_always_allows`: some request is denied.
+///
+/// The last two keep the equivalence from holding vacuously.
+pub fn prove_set(solver: &Cvc5, set: &PolicySet) -> Result<Vec<ProofResult>, Box<Error>> {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| Error::from(SolverError::from(e)))?
+        .block_on(check(solver, set, spec()))
 }
 
 /// A policy of each extra kind. Extras compare a context attribute with a literal and do no
@@ -174,13 +236,15 @@ async fn check(
     let mut symcc = CedarSymCompiler::new(solver.spawn().map_err(Error::from)?)?;
     let mut results = Vec::new();
     for env in schema.request_envs() {
+        let action = env.action().id().unescaped();
+        let subject = |name: &str| format!("{action}/{name}");
         let t = Instant::now();
         let compiled = CompiledPolicySet::compile(set, &env, schema)?;
         let compiled_spec = CompiledPolicySet::compile(spec, &env, schema)?;
         let cex = symcc
             .check_equivalent_with_counterexample_opt(&compiled, &compiled_spec)
             .await?;
-        results.push(result("equivalent", "policy_set=spec", cex, t));
+        results.push(result("equivalent", &subject("policy_set=spec"), cex, t));
 
         let forbids = set
             .policies()
@@ -190,22 +254,31 @@ async fn check(
             .iter()
             .zip(&extras)
             .map(|(name, (_, p, _))| ((*name).to_owned(), p));
-        for (subject, policy) in forbids.chain(extras) {
+        for (name, policy) in forbids.chain(extras) {
             let t = Instant::now();
             let compiled = CompiledPolicy::compile(policy, &env, schema)?;
             let cex = symcc
                 .check_never_errors_with_counterexample_opt(&compiled)
                 .await?;
-            results.push(result("never_errors", &subject, cex, t));
+            results.push(result("never_errors", &subject(&name), cex, t));
         }
 
         let t = Instant::now();
-        let holds = !symcc.check_always_denies_opt(&compiled).await?;
-        results.push(holds_result("satisfiable", "policy_set", holds, t));
+        let allowed = symcc
+            .check_always_denies_with_counterexample_opt(&compiled)
+            .await?;
+        results.push(witnessed("satisfiable", &subject("policy_set"), allowed, t));
 
         let t = Instant::now();
-        let holds = !symcc.check_always_allows_opt(&compiled).await?;
-        results.push(holds_result("not_always_allows", "policy_set", holds, t));
+        let denied = symcc
+            .check_always_allows_with_counterexample_opt(&compiled)
+            .await?;
+        results.push(witnessed(
+            "not_always_allows",
+            &subject("policy_set"),
+            denied,
+            t,
+        ));
     }
     symcc.solver_mut().clean_up().await.map_err(Error::from)?;
     Ok(results)
@@ -222,21 +295,25 @@ fn result(check: &str, subject: &str, cex: Option<Env>, started: Instant) -> Pro
             Verdict::Verified
         },
         counterexample: cex.as_ref().map(counterexample),
+        witness: None,
         elapsed,
     }
 }
 
-fn holds_result(check: &str, subject: &str, holds: bool, started: Instant) -> ProofResult {
+/// The result of a check that holds when the solver finds a witness request.
+fn witnessed(check: &str, subject: &str, witness: Option<Env>, started: Instant) -> ProofResult {
+    let elapsed = started.elapsed();
     ProofResult {
         check: check.to_owned(),
         subject: subject.to_owned(),
-        verdict: if holds {
+        verdict: if witness.is_some() {
             Verdict::Verified
         } else {
             Verdict::Counterexample
         },
         counterexample: None,
-        elapsed: started.elapsed(),
+        witness: witness.as_ref().map(counterexample),
+        elapsed,
     }
 }
 
@@ -266,21 +343,102 @@ fn counterexample(env: &Env) -> Value {
     })
 }
 
+/// A known policy bug, seeded into the policy set to show the checks catch it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SeedBug {
+    /// The `amount` forbid compares `total + 1` with `max + 1`. The addition can overflow, an
+    /// erroring `forbid` is skipped, and the `permit` lets a cart over the maximum through.
+    Overflow,
+    /// A blanket `permit` added to a set without the `agent` forbid: any agent can spend the
+    /// mandate.
+    ExtraPermit,
+}
+
+impl SeedBug {
+    /// `overflow` or `extra-permit`.
+    pub fn parse(name: &str) -> Option<Self> {
+        match name {
+            "overflow" => Some(Self::Overflow),
+            "extra-permit" => Some(Self::ExtraPermit),
+            _ => None,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Overflow => "overflow",
+            Self::ExtraPermit => "extra-permit",
+        }
+    }
+
+    /// The policy set with the bug seeded, built from [`policies`].
+    pub fn policy_set(self) -> PolicySet {
+        let parse = |id: &str, text: &str| {
+            Policy::parse(Some(PolicyId::new(id)), text).expect("the seeded policy parses")
+        };
+        let kept = |skip: &'static str| {
+            policies()
+                .policies()
+                .filter(move |p| p.id().to_string() != skip)
+                .cloned()
+        };
+        let seeded = match self {
+            Self::Overflow => {
+                let amount = &policy_texts()["amount"];
+                let rewritten = amount.replace(
+                    "context.total_minor <= resource.max_total_minor",
+                    "context.total_minor + 1 <= resource.max_total_minor + 1",
+                );
+                assert_ne!(
+                    &rewritten, amount,
+                    "the amount forbid has the expected form"
+                );
+                parse("amount", &rewritten)
+            }
+            Self::ExtraPermit => parse("extra_permit", "permit(principal, action, resource);"),
+        };
+        let skip = match self {
+            Self::Overflow => "amount",
+            Self::ExtraPermit => "agent",
+        };
+        PolicySet::from_policies(kept(skip).chain([seeded])).expect("policy ids are unique")
+    }
+}
+
+/// Cedar's decision for a counterexample or witness from a [`ProofResult`], replayed against
+/// `set`: the request and entities are validated against the schema and authorized by
+/// `cedar_policy::Authorizer`. Like Cedar, and unlike the engine's fail-closed evaluator, this
+/// skips policies that error.
+pub fn replay(request: &Value, set: &PolicySet) -> Result<Decision, PolicyError> {
+    fn cedar(e: impl Display) -> PolicyError {
+        PolicyError::Cedar(e.to_string())
+    }
+    let uid = |key: &str| EntityUid::from_json(request[key].clone()).map_err(cedar);
+    let (principal, action, resource) = (uid("principal")?, uid("action")?, uid("resource")?);
+    let context = Context::from_json_value(request["context"].clone(), Some((schema(), &action)))
+        .map_err(cedar)?;
+    let request_entities = request["entities"].clone();
+    let request =
+        Request::new(principal, action, resource, context, Some(schema())).map_err(cedar)?;
+    let entities = Entities::from_json_value(request_entities, Some(schema())).map_err(cedar)?;
+    Ok(
+        match Authorizer::new()
+            .is_authorized(&request, set, &entities)
+            .decision()
+        {
+            cedar_policy::Decision::Allow => Decision::Allow,
+            cedar_policy::Decision::Deny => Decision::Deny,
+        },
+    )
+}
+
 #[cfg(test)]
 mod tests {
-    use cedar_policy::{Policy, PolicyId};
-
     use super::*;
 
     fn run(set: &PolicySet) -> Vec<ProofResult> {
         let solver = Cvc5::from_env().expect("cvc5 1.3.1 is on PATH or named by CVC5");
-        let spec = PolicySet::from_str(SPEC_SRC).unwrap();
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(check(&solver, set, &spec))
-            .unwrap()
+        prove_set(&solver, set).unwrap()
     }
 
     fn verdict(results: &[ProofResult], check: &str, subject: &str) -> Verdict {
@@ -313,31 +471,11 @@ mod tests {
                 Verdict::Counterexample
             };
             assert_eq!(
-                verdict(&results, "equivalent", "policy_set=spec"),
+                verdict(&results, "equivalent", "checkout/policy_set=spec"),
                 expected,
                 "{}",
                 dropped.id()
             );
         }
-    }
-
-    #[test]
-    fn a_forbid_that_can_overflow_has_a_counterexample() {
-        let overflow = Policy::parse(
-            Some(PolicyId::new("overflow")),
-            r#"forbid(principal, action == Keelson::Action::"checkout", resource) unless { context.total_minor + 1 <= resource.max_total_minor };"#,
-        )
-        .unwrap();
-        let mut set = policies().clone();
-        set.add(overflow).unwrap();
-        let results = run(&set);
-        let r = results
-            .iter()
-            .find(|r| r.check == "never_errors" && r.subject == "overflow")
-            .unwrap();
-        assert_eq!(r.verdict, Verdict::Counterexample);
-        let cex = r.counterexample.as_ref().unwrap();
-        assert!(cex["context"]["total_minor"].is_i64(), "{cex}");
-        assert!(cex["entities"].is_array(), "{cex}");
     }
 }

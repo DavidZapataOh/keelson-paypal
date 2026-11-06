@@ -2,9 +2,25 @@ use std::collections::BTreeSet;
 
 use cedar_policy::Effect;
 use keelson_policy::{
-    CVC5_VERSION, Cvc5, POLICY_SET_SRC, SPEC_SRC, Verdict, policies, policy_set_hash_tag,
-    prove_all, schema_hash_tag,
+    CEDAR_POLICY_VERSION, CVC5_VERSION, Cvc5, Decision, POLICY_SET_SRC, SCHEMA_SRC, SPEC_SRC,
+    SYMCC_VERSION, Verdict, policies, prove_all, replay, spec,
 };
+use sha2::{Digest, Sha256};
+
+fn sha256_tag(bytes: impl AsRef<[u8]>) -> String {
+    let hex: String = Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    format!("sha256:{hex}")
+}
+
+#[test]
+fn tool_versions_are_the_pinned_ones() {
+    let manifest = include_str!("../Cargo.toml");
+    assert!(manifest.contains(&format!("cedar-policy-symcc = \"={SYMCC_VERSION}\"")));
+    assert!(manifest.contains(&format!("cedar-policy = \"={CEDAR_POLICY_VERSION}\"")));
+}
 
 #[test]
 fn every_check_is_verified() {
@@ -15,9 +31,14 @@ fn every_check_is_verified() {
     assert_eq!(bundle.symcc, "0.8.1");
     assert_eq!(bundle.cvc5, "1.3.1");
     assert_eq!(bundle.cedar_policy, "4.14.1");
-    assert_eq!(bundle.policy_set_hash, policy_set_hash_tag());
-    assert_eq!(bundle.schema_hash, schema_hash_tag());
-    assert!(bundle.spec_hash.starts_with("sha256:"));
+    assert_eq!(bundle.policy_set_hash, sha256_tag(POLICY_SET_SRC));
+    assert_eq!(bundle.schema_hash, sha256_tag(SCHEMA_SRC));
+    assert_eq!(bundle.spec_hash, sha256_tag(SPEC_SRC));
+    assert_eq!(bundle.cvc5_sha256, solver.sha256());
+    assert_eq!(
+        bundle.cvc5_sha256,
+        sha256_tag(std::fs::read(solver.path()).unwrap())
+    );
 
     for r in &bundle.results {
         assert_eq!(
@@ -36,9 +57,11 @@ fn every_check_is_verified() {
         .iter()
         .map(|r| (r.check.as_str(), r.subject.as_str()))
         .collect();
-    assert!(checks.contains(&("equivalent", "policy_set=spec")));
-    assert!(checks.contains(&("satisfiable", "policy_set")));
-    assert!(checks.contains(&("not_always_allows", "policy_set")));
+    assert_eq!(checks.len(), bundle.results.len(), "no check repeats");
+    assert_eq!(bundle.results.len(), 1 + 12 + 4 + 2);
+    assert!(checks.contains(&("equivalent", "checkout/policy_set=spec")));
+    assert!(checks.contains(&("satisfiable", "checkout/policy_set")));
+    assert!(checks.contains(&("not_always_allows", "checkout/policy_set")));
     let forbids: Vec<_> = policies()
         .policies()
         .filter(|p| p.effect() == Effect::Forbid)
@@ -46,20 +69,39 @@ fn every_check_is_verified() {
         .collect();
     assert_eq!(forbids.len(), 12);
     for id in &forbids {
-        assert!(checks.contains(&("never_errors", id.as_str())), "{id}");
+        let subject = format!("checkout/{id}");
+        assert!(checks.contains(&("never_errors", subject.as_str())), "{id}");
     }
     for kind in [
-        "extra:max_unit_price",
-        "extra:deny_merchant",
-        "extra:deny_category",
-        "extra:require_return_days",
+        "checkout/extra:max_unit_price",
+        "checkout/extra:deny_merchant",
+        "checkout/extra:deny_category",
+        "checkout/extra:require_return_days",
     ] {
         assert!(checks.contains(&("never_errors", kind)), "{kind}");
     }
 
+    let witness = |check: &str| {
+        let r = bundle.results.iter().find(|r| r.check == check).unwrap();
+        r.witness.as_ref().expect("the check stores its witness")
+    };
+    let allowed = witness("satisfiable");
+    assert_eq!(replay(allowed, policies()).unwrap(), Decision::Allow);
+    assert_eq!(replay(allowed, spec()).unwrap(), Decision::Allow);
+    let denied = witness("not_always_allows");
+    assert_eq!(replay(denied, policies()).unwrap(), Decision::Deny);
+    assert_eq!(replay(denied, spec()).unwrap(), Decision::Deny);
+
     let json = serde_json::to_value(&bundle).unwrap();
     assert!(json["results"][0].get("counterexample").is_none());
     assert_eq!(json["results"][0]["verdict"], "verified");
+
+    let again = prove_all(&solver).unwrap();
+    assert_eq!(
+        serde_json::to_string(&again).unwrap(),
+        serde_json::to_string(&bundle).unwrap(),
+        "the bundle is reproducible"
+    );
 }
 
 #[test]

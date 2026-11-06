@@ -22,8 +22,8 @@ pub use evaluate::{
 pub use extras::{Extra, ExtrasError, InvalidExtra, MAX_EXTRAS, compile_extras};
 pub use hashes::{policy_set_hash, policy_set_hash_tag, schema_hash, schema_hash_tag};
 pub use prove::{
-    CVC5_VERSION, Cvc5, ProofBundle, ProofResult, SPEC_SRC, SYMCC_VERSION, Verdict, prove_all,
-    spec_hash_tag,
+    CEDAR_POLICY_VERSION, CVC5_VERSION, Cvc5, ProofBundle, ProofResult, SPEC_SRC, SYMCC_VERSION,
+    SeedBug, Verdict, prove_all, prove_set, replay, spec, spec_hash_tag,
 };
 pub use trace::{Decision, Engine, FieldTrace, TRACE_VERSION, Trace, trace_jcs};
 
