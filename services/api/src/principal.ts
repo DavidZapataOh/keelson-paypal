@@ -23,6 +23,7 @@ export function principalKey(principal: Pick<Principal, "kind" | "subject">): st
 /**
  * The principal's event channel namespace, `<principalKey>`, or one of its sub-channels,
  * `<principalKey>:<suffix>`. Subscribers and publishers must both build channels with this.
+ * @internal
  */
 export function principalChannel(
   principal: Pick<Principal, "kind" | "subject">,

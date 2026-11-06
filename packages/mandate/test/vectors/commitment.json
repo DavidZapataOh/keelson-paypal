@@ -3136,6 +3136,167 @@
     "expected": false
   },
   {
+    "name": "verifyMembership/genuine",
+    "input": {
+      "op": "verifyMembership",
+      "root": "0x2ade6b1a4a81e3bf15aaff10cf911e8c56fc99c7556efbc971a39f91626d8ffe",
+      "id": "mrc_zeta",
+      "proof": {
+        "leaf": {
+          "value": "0x28409ccf0c3bdedc1cea5f3f8521ea28ed63e18d6e1a9c534ac131c15b3ee9f5",
+          "next": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "nextIndex": 0
+        },
+        "path": [
+          "0x1556c1b202004cfdf89aa1da2a8d5d2d3990232ea6ae58d0d306cf17bb789ad5",
+          "0x0b63a53787021a4a962a452c2921b3663aff1ffd8d5510540f8e659e782956f1",
+          "0x15afe68ff9c49c8ed1dc238286e0b357068ea3fa8f60c6cfc6b56c4e0d2a3c46",
+          "0x21f9172d72fdcdafc312eee05cf5092980dda821da5b760a9fb8dbdf607c8a20",
+          "0x2373ea368857ec7af97e7b470d705848e2bf93ed7bef142a490f2119bcf82d8e",
+          "0x120157cfaaa49ce3da30f8b47879114977c24b266d58b0ac18b325d878aafddf",
+          "0x01c28fe1059ae0237b72334700697bdf465e03df03986fe05200cadeda66bd76",
+          "0x2d78ed82f93b61ba718b17c2dfe5b52375b4d37cbbed6f1fc98b47614b0cf21b"
+        ],
+        "index": 5
+      }
+    },
+    "expected": true
+  },
+  {
+    "name": "verifyMembership/wrong-index",
+    "input": {
+      "op": "verifyMembership",
+      "root": "0x2ade6b1a4a81e3bf15aaff10cf911e8c56fc99c7556efbc971a39f91626d8ffe",
+      "id": "mrc_zeta",
+      "proof": {
+        "leaf": {
+          "value": "0x28409ccf0c3bdedc1cea5f3f8521ea28ed63e18d6e1a9c534ac131c15b3ee9f5",
+          "next": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "nextIndex": 0
+        },
+        "path": [
+          "0x1556c1b202004cfdf89aa1da2a8d5d2d3990232ea6ae58d0d306cf17bb789ad5",
+          "0x0b63a53787021a4a962a452c2921b3663aff1ffd8d5510540f8e659e782956f1",
+          "0x15afe68ff9c49c8ed1dc238286e0b357068ea3fa8f60c6cfc6b56c4e0d2a3c46",
+          "0x21f9172d72fdcdafc312eee05cf5092980dda821da5b760a9fb8dbdf607c8a20",
+          "0x2373ea368857ec7af97e7b470d705848e2bf93ed7bef142a490f2119bcf82d8e",
+          "0x120157cfaaa49ce3da30f8b47879114977c24b266d58b0ac18b325d878aafddf",
+          "0x01c28fe1059ae0237b72334700697bdf465e03df03986fe05200cadeda66bd76",
+          "0x2d78ed82f93b61ba718b17c2dfe5b52375b4d37cbbed6f1fc98b47614b0cf21b"
+        ],
+        "index": 4
+      }
+    },
+    "expected": false
+  },
+  {
+    "name": "verifyMembership/index-out-of-range",
+    "input": {
+      "op": "verifyMembership",
+      "root": "0x2ade6b1a4a81e3bf15aaff10cf911e8c56fc99c7556efbc971a39f91626d8ffe",
+      "id": "mrc_zeta",
+      "proof": {
+        "leaf": {
+          "value": "0x28409ccf0c3bdedc1cea5f3f8521ea28ed63e18d6e1a9c534ac131c15b3ee9f5",
+          "next": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "nextIndex": 0
+        },
+        "path": [
+          "0x1556c1b202004cfdf89aa1da2a8d5d2d3990232ea6ae58d0d306cf17bb789ad5",
+          "0x0b63a53787021a4a962a452c2921b3663aff1ffd8d5510540f8e659e782956f1",
+          "0x15afe68ff9c49c8ed1dc238286e0b357068ea3fa8f60c6cfc6b56c4e0d2a3c46",
+          "0x21f9172d72fdcdafc312eee05cf5092980dda821da5b760a9fb8dbdf607c8a20",
+          "0x2373ea368857ec7af97e7b470d705848e2bf93ed7bef142a490f2119bcf82d8e",
+          "0x120157cfaaa49ce3da30f8b47879114977c24b266d58b0ac18b325d878aafddf",
+          "0x01c28fe1059ae0237b72334700697bdf465e03df03986fe05200cadeda66bd76",
+          "0x2d78ed82f93b61ba718b17c2dfe5b52375b4d37cbbed6f1fc98b47614b0cf21b"
+        ],
+        "index": 261
+      }
+    },
+    "expected": false
+  },
+  {
+    "name": "verifyMembership/short-path",
+    "input": {
+      "op": "verifyMembership",
+      "root": "0x2ade6b1a4a81e3bf15aaff10cf911e8c56fc99c7556efbc971a39f91626d8ffe",
+      "id": "mrc_zeta",
+      "proof": {
+        "leaf": {
+          "value": "0x28409ccf0c3bdedc1cea5f3f8521ea28ed63e18d6e1a9c534ac131c15b3ee9f5",
+          "next": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "nextIndex": 0
+        },
+        "path": [
+          "0x0b63a53787021a4a962a452c2921b3663aff1ffd8d5510540f8e659e782956f1",
+          "0x15afe68ff9c49c8ed1dc238286e0b357068ea3fa8f60c6cfc6b56c4e0d2a3c46",
+          "0x21f9172d72fdcdafc312eee05cf5092980dda821da5b760a9fb8dbdf607c8a20",
+          "0x2373ea368857ec7af97e7b470d705848e2bf93ed7bef142a490f2119bcf82d8e",
+          "0x120157cfaaa49ce3da30f8b47879114977c24b266d58b0ac18b325d878aafddf",
+          "0x01c28fe1059ae0237b72334700697bdf465e03df03986fe05200cadeda66bd76",
+          "0x2d78ed82f93b61ba718b17c2dfe5b52375b4d37cbbed6f1fc98b47614b0cf21b"
+        ],
+        "index": 5
+      }
+    },
+    "expected": false
+  },
+  {
+    "name": "verifyMembership/wrong-id",
+    "input": {
+      "op": "verifyMembership",
+      "root": "0x2ade6b1a4a81e3bf15aaff10cf911e8c56fc99c7556efbc971a39f91626d8ffe",
+      "id": "mrc_alpha",
+      "proof": {
+        "leaf": {
+          "value": "0x28409ccf0c3bdedc1cea5f3f8521ea28ed63e18d6e1a9c534ac131c15b3ee9f5",
+          "next": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "nextIndex": 0
+        },
+        "path": [
+          "0x1556c1b202004cfdf89aa1da2a8d5d2d3990232ea6ae58d0d306cf17bb789ad5",
+          "0x0b63a53787021a4a962a452c2921b3663aff1ffd8d5510540f8e659e782956f1",
+          "0x15afe68ff9c49c8ed1dc238286e0b357068ea3fa8f60c6cfc6b56c4e0d2a3c46",
+          "0x21f9172d72fdcdafc312eee05cf5092980dda821da5b760a9fb8dbdf607c8a20",
+          "0x2373ea368857ec7af97e7b470d705848e2bf93ed7bef142a490f2119bcf82d8e",
+          "0x120157cfaaa49ce3da30f8b47879114977c24b266d58b0ac18b325d878aafddf",
+          "0x01c28fe1059ae0237b72334700697bdf465e03df03986fe05200cadeda66bd76",
+          "0x2d78ed82f93b61ba718b17c2dfe5b52375b4d37cbbed6f1fc98b47614b0cf21b"
+        ],
+        "index": 5
+      }
+    },
+    "expected": false
+  },
+  {
+    "name": "verifyMembership/empty-leaf",
+    "input": {
+      "op": "verifyMembership",
+      "root": "0x2ade6b1a4a81e3bf15aaff10cf911e8c56fc99c7556efbc971a39f91626d8ffe",
+      "id": "mrc_zeta",
+      "proof": {
+        "leaf": {
+          "value": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "next": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "nextIndex": 0
+        },
+        "path": [
+          "0x1556c1b202004cfdf89aa1da2a8d5d2d3990232ea6ae58d0d306cf17bb789ad5",
+          "0x0b63a53787021a4a962a452c2921b3663aff1ffd8d5510540f8e659e782956f1",
+          "0x15afe68ff9c49c8ed1dc238286e0b357068ea3fa8f60c6cfc6b56c4e0d2a3c46",
+          "0x21f9172d72fdcdafc312eee05cf5092980dda821da5b760a9fb8dbdf607c8a20",
+          "0x2373ea368857ec7af97e7b470d705848e2bf93ed7bef142a490f2119bcf82d8e",
+          "0x120157cfaaa49ce3da30f8b47879114977c24b266d58b0ac18b325d878aafddf",
+          "0x01c28fe1059ae0237b72334700697bdf465e03df03986fe05200cadeda66bd76",
+          "0x2d78ed82f93b61ba718b17c2dfe5b52375b4d37cbbed6f1fc98b47614b0cf21b"
+        ],
+        "index": 5
+      }
+    },
+    "expected": false
+  },
+  {
     "name": "userKeyHash/demo",
     "input": {
       "op": "userKeyHash",
@@ -4618,7 +4779,10 @@
       },
       "salt": "0xc0be50146bffa713d9f66ee9a3329b5b"
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.2.allow.0"
+    }
   },
   {
     "name": "mandateCommitment/jpy",
@@ -4934,7 +5098,10 @@
       },
       "salt": "0xc0be50146bffa713d9f66ee9a3329b5b"
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "payment.constraints.1.currency"
+    }
   },
   {
     "name": "mandateCommitment/error/amount-range-currency-mismatch",
@@ -5092,7 +5259,10 @@
       },
       "salt": "0xc0be50146bffa713d9f66ee9a3329b5b"
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "payment.constraints.0.currency"
+    }
   },
   {
     "name": "mandateCommitment/error/extra-key",
@@ -5251,7 +5421,10 @@
       },
       "salt": "0xc0be50146bffa713d9f66ee9a3329b5b"
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": ""
+    }
   },
   {
     "name": "mandateCommitment/error/missing-amount-range",
@@ -5404,7 +5577,10 @@
       },
       "salt": "0xc0be50146bffa713d9f66ee9a3329b5b"
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "payment.constraints"
+    }
   },
   {
     "name": "mandateCommitment/error/lifetime",
@@ -5562,7 +5738,10 @@
       },
       "salt": "0xc0be50146bffa713d9f66ee9a3329b5b"
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "exp"
+    }
   },
   {
     "name": "mandateCommitment/lifetime-max",
@@ -5878,7 +6057,10 @@
       },
       "salt": "0xc0be50146bffa713d9f66ee9a3329b5b"
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "nbf"
+    }
   },
   {
     "name": "mandateCommitment/error/amount-unsafe",
@@ -6036,7 +6218,10 @@
       },
       "salt": "0xc0be50146bffa713d9f66ee9a3329b5b"
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "payment.constraints.0.max"
+    }
   },
   {
     "name": "mandateCommitment/error/amount-fraction",
@@ -6194,7 +6379,10 @@
       },
       "salt": "0xc0be50146bffa713d9f66ee9a3329b5b"
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "payment.constraints.0.max"
+    }
   },
   {
     "name": "mandateCommitment/error/nonce-non-canonical",
@@ -6352,7 +6540,10 @@
       },
       "salt": "0xc0be50146bffa713d9f66ee9a3329b5b"
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "nonce"
+    }
   },
   {
     "name": "mandateCommitment/error/nonce-non-ascii",
@@ -6510,7 +6701,10 @@
       },
       "salt": "0xc0be50146bffa713d9f66ee9a3329b5b"
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "nonce"
+    }
   },
   {
     "name": "mandateCommitment/error/jwk-x-non-ascii",
@@ -6668,7 +6862,10 @@
       },
       "salt": "0xc0be50146bffa713d9f66ee9a3329b5b"
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "user.cred.jwk.x"
+    }
   },
   {
     "name": "mandateCommitment/datetime-long-fraction",
@@ -6984,7 +7181,10 @@
       },
       "salt": "0xc0be50146bffa713d9f66ee9a3329b5b"
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "mid"
+    }
   },
   {
     "name": "mandateCommitment/error/bad-website",
@@ -7142,7 +7342,10 @@
       },
       "salt": "0xc0be50146bffa713d9f66ee9a3329b5b"
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.0.allowed.0.website"
+    }
   },
   {
     "name": "mandateCommitment/error/bad-datetime",
@@ -7300,7 +7503,10 @@
       },
       "salt": "0xc0be50146bffa713d9f66ee9a3329b5b"
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "payment.constraints.3.not_after"
+    }
   },
   {
     "name": "mandateCommitment/error/bad-prompt-hash",
@@ -7458,7 +7664,10 @@
       },
       "salt": "0xc0be50146bffa713d9f66ee9a3329b5b"
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "intent.prompt_hash"
+    }
   },
   {
     "name": "mandateCommitment/error/duplicate-merchant",
@@ -7780,7 +7989,10 @@
       },
       "salt": "0xc0be50146bffa713d9f66ee9a3329b5b"
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.1.items.0.acceptable_items.0.title"
+    }
   },
   {
     "name": "mandateCommitment/no-title",
@@ -8098,6 +8310,285 @@
     "expected": "0x24a786c9e01c54ecea42239a898ccf411a74a828c3029bdeb35ab94aacd7cfd9"
   },
   {
+    "name": "parseWebsite/ok/website-punycode",
+    "input": {
+      "op": "parseWebsite",
+      "website": "https://xn--caf-dma.example"
+    },
+    "expected": true
+  },
+  {
+    "name": "parseWebsite/ok/website-invalid-punycode",
+    "input": {
+      "op": "parseWebsite",
+      "website": "https://xn--a.example"
+    },
+    "expected": true
+  },
+  {
+    "name": "parseWebsite/ok/website-path",
+    "input": {
+      "op": "parseWebsite",
+      "website": "https://a-b.c0.example/path/to?q=1&r=%20#top"
+    },
+    "expected": true
+  },
+  {
+    "name": "parseWebsite/ok/website-single-label",
+    "input": {
+      "op": "parseWebsite",
+      "website": "https://localhost"
+    },
+    "expected": true
+  },
+  {
+    "name": "parseWebsite/error/website-http",
+    "input": {
+      "op": "parseWebsite",
+      "website": "http://shop.example"
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.0.allowed.0.website"
+    }
+  },
+  {
+    "name": "parseWebsite/error/website-uppercase-scheme",
+    "input": {
+      "op": "parseWebsite",
+      "website": "HTTPS://shop.example"
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.0.allowed.0.website"
+    }
+  },
+  {
+    "name": "parseWebsite/error/website-uppercase-host",
+    "input": {
+      "op": "parseWebsite",
+      "website": "https://Shop.example"
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.0.allowed.0.website"
+    }
+  },
+  {
+    "name": "parseWebsite/error/website-port",
+    "input": {
+      "op": "parseWebsite",
+      "website": "https://shop.example:443"
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.0.allowed.0.website"
+    }
+  },
+  {
+    "name": "parseWebsite/error/website-userinfo",
+    "input": {
+      "op": "parseWebsite",
+      "website": "https://user@shop.example"
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.0.allowed.0.website"
+    }
+  },
+  {
+    "name": "parseWebsite/error/website-leading-space",
+    "input": {
+      "op": "parseWebsite",
+      "website": " https://shop.example"
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.0.allowed.0.website"
+    }
+  },
+  {
+    "name": "parseWebsite/error/website-trailing-space",
+    "input": {
+      "op": "parseWebsite",
+      "website": "https://shop.example "
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.0.allowed.0.website"
+    }
+  },
+  {
+    "name": "parseWebsite/error/website-leading-hyphen",
+    "input": {
+      "op": "parseWebsite",
+      "website": "https://-shop.example"
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.0.allowed.0.website"
+    }
+  },
+  {
+    "name": "parseWebsite/error/website-trailing-hyphen",
+    "input": {
+      "op": "parseWebsite",
+      "website": "https://shop-.example"
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.0.allowed.0.website"
+    }
+  },
+  {
+    "name": "parseWebsite/error/website-empty-label",
+    "input": {
+      "op": "parseWebsite",
+      "website": "https://shop..example"
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.0.allowed.0.website"
+    }
+  },
+  {
+    "name": "parseWebsite/error/website-trailing-dot",
+    "input": {
+      "op": "parseWebsite",
+      "website": "https://shop.example."
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.0.allowed.0.website"
+    }
+  },
+  {
+    "name": "parseWebsite/error/website-no-host",
+    "input": {
+      "op": "parseWebsite",
+      "website": "https://"
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.0.allowed.0.website"
+    }
+  },
+  {
+    "name": "parseWebsite/error/website-space-in-path",
+    "input": {
+      "op": "parseWebsite",
+      "website": "https://shop.example/a b"
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.0.allowed.0.website"
+    }
+  },
+  {
+    "name": "parseWebsite/error/website-backslash",
+    "input": {
+      "op": "parseWebsite",
+      "website": "https://shop.example/a\\b"
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.0.allowed.0.website"
+    }
+  },
+  {
+    "name": "parseWebsite/error/website-query-without-path",
+    "input": {
+      "op": "parseWebsite",
+      "website": "https://shop.example?q"
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.0.allowed.0.website"
+    }
+  },
+  {
+    "name": "parseWebsite/error/website-ipv4",
+    "input": {
+      "op": "parseWebsite",
+      "website": "https://192.168.0.1"
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.0.allowed.0.website"
+    }
+  },
+  {
+    "name": "parseWebsite/error/website-hex-label",
+    "input": {
+      "op": "parseWebsite",
+      "website": "https://shop.0x1f"
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.0.allowed.0.website"
+    }
+  },
+  {
+    "name": "parseWebsite/error/website-label-64",
+    "input": {
+      "op": "parseWebsite",
+      "website": "https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example"
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.0.allowed.0.website"
+    }
+  },
+  {
+    "name": "parseWebsite/ok/website-label-63",
+    "input": {
+      "op": "parseWebsite",
+      "website": "https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example"
+    },
+    "expected": true
+  },
+  {
+    "name": "parseWebsite/error/website-host-over-253",
+    "input": {
+      "op": "parseWebsite",
+      "website": "https://a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.example"
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.0.allowed.0.website"
+    }
+  },
+  {
+    "name": "parseWebsite/ok/website-host-253",
+    "input": {
+      "op": "parseWebsite",
+      "website": "https://a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.example"
+    },
+    "expected": true
+  },
+  {
+    "name": "parseWebsite/error/website-unicode-host",
+    "input": {
+      "op": "parseWebsite",
+      "website": "https://café.example"
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.0.allowed.0.website"
+    }
+  },
+  {
+    "name": "parseWebsite/error/website-not-a-url",
+    "input": {
+      "op": "parseWebsite",
+      "website": "not a url"
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.0.allowed.0.website"
+    }
+  },
+  {
     "name": "parseMandate/demo",
     "input": {
       "op": "parseMandate",
@@ -8255,6 +8746,961 @@
     "expected": true
   },
   {
+    "name": "parseMandate/error/order/extra-key-and-bad-mid",
+    "input": {
+      "op": "parseMandate",
+      "mandate": {
+        "v": "keelson.mandate.1",
+        "mid": "x",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "sub": "kls_usr_7f3a9c21",
+          "cred": {
+            "id": "Zk3p0xQmH8vN1sLwT5uYdA",
+            "rp_id": "keelson.finance",
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "f83OJ3D2xF1Bg8vnKwxo1Ao8jzV5TnQ1rM7bY0qk2cA",
+              "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+            }
+          },
+          "app_login_id": "andres@example.com"
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "agt-01",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "type": "payment.amount_range",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.budget",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "id": "mrc_runfast",
+                  "name": "RunFast",
+                  "website": "https://runfast.example",
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "id": "sku-trail-10",
+                      "title": "Trail running shoe"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "prompt_summary": "Running shoes, size 10, under $100, free returns, by Friday",
+          "prompt_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "subjective": [
+            "look good"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "risk_data": {
+          "device_fp": "fp_3c9a71",
+          "ip": "203.0.113.7"
+        },
+        "extra": 1
+      }
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "mid"
+    }
+  },
+  {
+    "name": "parseMandate/error/order/missing-v-and-bad-mid",
+    "input": {
+      "op": "parseMandate",
+      "mandate": {
+        "mid": 1,
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "sub": "kls_usr_7f3a9c21",
+          "cred": {
+            "id": "Zk3p0xQmH8vN1sLwT5uYdA",
+            "rp_id": "keelson.finance",
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "f83OJ3D2xF1Bg8vnKwxo1Ao8jzV5TnQ1rM7bY0qk2cA",
+              "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+            }
+          },
+          "app_login_id": "andres@example.com"
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "agt-01",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "type": "payment.amount_range",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.budget",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "id": "mrc_runfast",
+                  "name": "RunFast",
+                  "website": "https://runfast.example",
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "id": "sku-trail-10",
+                      "title": "Trail running shoe"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "prompt_summary": "Running shoes, size 10, under $100, free returns, by Friday",
+          "prompt_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "subjective": [
+            "look good"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "risk_data": {
+          "device_fp": "fp_3c9a71",
+          "ip": "203.0.113.7"
+        }
+      }
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "v"
+    }
+  },
+  {
+    "name": "parseMandate/error/order/missing-mode-and-bad-mid",
+    "input": {
+      "op": "parseMandate",
+      "mandate": {
+        "v": "keelson.mandate.1",
+        "mid": 1,
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "user": {
+          "sub": "kls_usr_7f3a9c21",
+          "cred": {
+            "id": "Zk3p0xQmH8vN1sLwT5uYdA",
+            "rp_id": "keelson.finance",
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "f83OJ3D2xF1Bg8vnKwxo1Ao8jzV5TnQ1rM7bY0qk2cA",
+              "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+            }
+          },
+          "app_login_id": "andres@example.com"
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "agt-01",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "type": "payment.amount_range",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.budget",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "id": "mrc_runfast",
+                  "name": "RunFast",
+                  "website": "https://runfast.example",
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "id": "sku-trail-10",
+                      "title": "Trail running shoe"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "prompt_summary": "Running shoes, size 10, under $100, free returns, by Friday",
+          "prompt_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "subjective": [
+            "look good"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "risk_data": {
+          "device_fp": "fp_3c9a71",
+          "ip": "203.0.113.7"
+        }
+      }
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "mid"
+    }
+  },
+  {
+    "name": "parseMandate/error/order/user-extra-key-and-bad-bond",
+    "input": {
+      "op": "parseMandate",
+      "mandate": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "sub": "kls_usr_7f3a9c21",
+          "cred": {
+            "id": "Zk3p0xQmH8vN1sLwT5uYdA",
+            "rp_id": "keelson.finance",
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "f83OJ3D2xF1Bg8vnKwxo1Ao8jzV5TnQ1rM7bY0qk2cA",
+              "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+            }
+          },
+          "app_login_id": "andres@example.com",
+          "extra": 1
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "agt-01",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": -1
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "type": "payment.amount_range",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.budget",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "id": "mrc_runfast",
+                  "name": "RunFast",
+                  "website": "https://runfast.example",
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "id": "sku-trail-10",
+                      "title": "Trail running shoe"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "prompt_summary": "Running shoes, size 10, under $100, free returns, by Friday",
+          "prompt_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "subjective": [
+            "look good"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "risk_data": {
+          "device_fp": "fp_3c9a71",
+          "ip": "203.0.113.7"
+        }
+      }
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "user"
+    }
+  },
+  {
+    "name": "parseMandate/error/order/jwk-extra-key-and-bad-x",
+    "input": {
+      "op": "parseMandate",
+      "mandate": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "sub": "kls_usr_7f3a9c21",
+          "cred": {
+            "id": "Zk3p0xQmH8vN1sLwT5uYdA",
+            "rp_id": "keelson.finance",
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "bad",
+              "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0",
+              "extra": 1
+            }
+          },
+          "app_login_id": "andres@example.com"
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "agt-01",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "type": "payment.amount_range",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.budget",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "id": "mrc_runfast",
+                  "name": "RunFast",
+                  "website": "https://runfast.example",
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "id": "sku-trail-10",
+                      "title": "Trail running shoe"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "prompt_summary": "Running shoes, size 10, under $100, free returns, by Friday",
+          "prompt_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "subjective": [
+            "look good"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "risk_data": {
+          "device_fp": "fp_3c9a71",
+          "ip": "203.0.113.7"
+        }
+      }
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "user.cred.jwk.x"
+    }
+  },
+  {
+    "name": "parseMandate/error/order/constraint-extra-key-and-no-merchants",
+    "input": {
+      "op": "parseMandate",
+      "mandate": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "sub": "kls_usr_7f3a9c21",
+          "cred": {
+            "id": "Zk3p0xQmH8vN1sLwT5uYdA",
+            "rp_id": "keelson.finance",
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "f83OJ3D2xF1Bg8vnKwxo1Ao8jzV5TnQ1rM7bY0qk2cA",
+              "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+            }
+          },
+          "app_login_id": "andres@example.com"
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "agt-01",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "type": "payment.amount_range",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.budget",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [],
+              "extra": 1
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "id": "sku-trail-10",
+                      "title": "Trail running shoe"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "prompt_summary": "Running shoes, size 10, under $100, free returns, by Friday",
+          "prompt_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "subjective": [
+            "look good"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "risk_data": {
+          "device_fp": "fp_3c9a71",
+          "ip": "203.0.113.7"
+        }
+      }
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.0.allowed"
+    }
+  },
+  {
     "name": "parseMandate/error/unknown-allow-category",
     "input": {
       "op": "parseMandate",
@@ -8410,7 +9856,10 @@
         }
       }
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.2.allow.1"
+    }
   },
   {
     "name": "parseMandate/error/unknown-deny-category",
@@ -8569,7 +10018,10 @@
         }
       }
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.2.deny.0"
+    }
   },
   {
     "name": "parseMandate/error/no-acceptable-items",
@@ -8721,7 +10173,10 @@
         }
       }
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.1.items.0.acceptable_items"
+    }
   },
   {
     "name": "parseMandate/error/bidi-override-in-merchant-name",
@@ -8878,7 +10333,10 @@
         }
       }
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.0.allowed.0.name"
+    }
   },
   {
     "name": "parseMandate/error/newline-in-merchant-name",
@@ -9035,7 +10493,10 @@
         }
       }
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.0.allowed.0.name"
+    }
   },
   {
     "name": "parseMandate/error/zero-width-in-merchant-id",
@@ -9192,7 +10653,10 @@
         }
       }
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.0.allowed.0.id"
+    }
   },
   {
     "name": "parseMandate/error/bom-in-subjective",
@@ -9349,7 +10813,10 @@
         }
       }
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "intent.subjective.0"
+    }
   },
   {
     "name": "parseMandate/error/c1-control-in-prompt-summary",
@@ -9506,7 +10973,10 @@
         }
       }
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "intent.prompt_summary"
+    }
   },
   {
     "name": "parseMandate/error/tag-character-in-attribute-value",
@@ -9662,7 +11132,10 @@
         }
       }
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.3.must.size_us"
+    }
   },
   {
     "name": "parseMandate/error/format-character-in-attribute-key",
@@ -9818,7 +11291,10 @@
         }
       }
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.3.must.size⁦_us"
+    }
   },
   {
     "name": "parseMandate/error/astral-format-character",
@@ -9975,7 +11451,10 @@
         }
       }
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.0.allowed.0.name"
+    }
   },
   {
     "name": "parseMandate/ok/non-format-space-and-astral-text",
@@ -10446,7 +11925,10 @@
         }
       }
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.0.allowed.0.name"
+    }
   },
   {
     "name": "parseMandate/error/website-over-limit",
@@ -10603,7 +12085,10 @@
         }
       }
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.0.allowed.0.website"
+    }
   },
   {
     "name": "parseMandate/error/summary-over-limit",
@@ -10760,7 +12245,10 @@
         }
       }
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "intent.prompt_summary"
+    }
   },
   {
     "name": "parseMandate/ok/summary-at-limit",
@@ -11074,7 +12562,10 @@
         }
       }
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "intent.subjective.0"
+    }
   },
   {
     "name": "parseMandate/ok/any-item",
@@ -11391,7 +12882,10 @@
         }
       }
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.1.items.0.acceptable_items"
+    }
   },
   {
     "name": "parseMandate/error/other-items-with-any-item",
@@ -11551,7 +13045,10 @@
         }
       }
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.1.items.0.acceptable_items"
+    }
   },
   {
     "name": "parseMandate/error/any-item-untitled",
@@ -11707,7 +13204,10 @@
         }
       }
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.1.items.0.acceptable_items.0.title"
+    }
   },
   {
     "name": "parseMandate/error/any-item-empty-title",
@@ -11864,7 +13364,10 @@
         }
       }
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.1.items.0.acceptable_items.0.title"
+    }
   },
   {
     "name": "parseMandate/error/any-item-blank-title",
@@ -12021,7 +13524,10 @@
         }
       }
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.1.items.0.acceptable_items.0.title"
+    }
   },
   {
     "name": "parseMandate/error/any-item-two-lines",
@@ -12188,7 +13694,10 @@
         }
       }
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.1.items"
+    }
   },
   {
     "name": "parseMandate/error/any-item-and-other-line",
@@ -12354,7 +13863,10 @@
         }
       }
     },
-    "expected": "error"
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints.1.items"
+    }
   },
   {
     "name": "parseMandate/error/any-item-without-category",
@@ -12504,6 +14016,1028 @@
         }
       }
     },
+    "expected": {
+      "error": "mandate",
+      "field": "checkout.constraints"
+    }
+  },
+  {
+    "name": "categoryMask/gpt:1",
+    "input": {
+      "op": "categoryMask",
+      "categories": [
+        "gpt:1"
+      ]
+    },
+    "expected": "1"
+  },
+  {
+    "name": "categoryMask/gpt:166",
+    "input": {
+      "op": "categoryMask",
+      "categories": [
+        "gpt:166"
+      ]
+    },
+    "expected": "2"
+  },
+  {
+    "name": "categoryMask/gpt:8",
+    "input": {
+      "op": "categoryMask",
+      "categories": [
+        "gpt:8"
+      ]
+    },
+    "expected": "4"
+  },
+  {
+    "name": "categoryMask/gpt:537",
+    "input": {
+      "op": "categoryMask",
+      "categories": [
+        "gpt:537"
+      ]
+    },
+    "expected": "8"
+  },
+  {
+    "name": "categoryMask/gpt:111",
+    "input": {
+      "op": "categoryMask",
+      "categories": [
+        "gpt:111"
+      ]
+    },
+    "expected": "16"
+  },
+  {
+    "name": "categoryMask/gpt:141",
+    "input": {
+      "op": "categoryMask",
+      "categories": [
+        "gpt:141"
+      ]
+    },
+    "expected": "32"
+  },
+  {
+    "name": "categoryMask/gpt:222",
+    "input": {
+      "op": "categoryMask",
+      "categories": [
+        "gpt:222"
+      ]
+    },
+    "expected": "64"
+  },
+  {
+    "name": "categoryMask/gpt:412",
+    "input": {
+      "op": "categoryMask",
+      "categories": [
+        "gpt:412"
+      ]
+    },
+    "expected": "128"
+  },
+  {
+    "name": "categoryMask/gpt:436",
+    "input": {
+      "op": "categoryMask",
+      "categories": [
+        "gpt:436"
+      ]
+    },
+    "expected": "256"
+  },
+  {
+    "name": "categoryMask/gpt:632",
+    "input": {
+      "op": "categoryMask",
+      "categories": [
+        "gpt:632"
+      ]
+    },
+    "expected": "512"
+  },
+  {
+    "name": "categoryMask/gpt:469",
+    "input": {
+      "op": "categoryMask",
+      "categories": [
+        "gpt:469"
+      ]
+    },
+    "expected": "1024"
+  },
+  {
+    "name": "categoryMask/gpt:536",
+    "input": {
+      "op": "categoryMask",
+      "categories": [
+        "gpt:536"
+      ]
+    },
+    "expected": "2048"
+  },
+  {
+    "name": "categoryMask/gpt:5181",
+    "input": {
+      "op": "categoryMask",
+      "categories": [
+        "gpt:5181"
+      ]
+    },
+    "expected": "4096"
+  },
+  {
+    "name": "categoryMask/gpt:772",
+    "input": {
+      "op": "categoryMask",
+      "categories": [
+        "gpt:772"
+      ]
+    },
+    "expected": "8192"
+  },
+  {
+    "name": "categoryMask/gpt:783",
+    "input": {
+      "op": "categoryMask",
+      "categories": [
+        "gpt:783"
+      ]
+    },
+    "expected": "16384"
+  },
+  {
+    "name": "categoryMask/gpt:922",
+    "input": {
+      "op": "categoryMask",
+      "categories": [
+        "gpt:922"
+      ]
+    },
+    "expected": "32768"
+  },
+  {
+    "name": "categoryMask/gpt:5605",
+    "input": {
+      "op": "categoryMask",
+      "categories": [
+        "gpt:5605"
+      ]
+    },
+    "expected": "65536"
+  },
+  {
+    "name": "categoryMask/gpt:2092",
+    "input": {
+      "op": "categoryMask",
+      "categories": [
+        "gpt:2092"
+      ]
+    },
+    "expected": "131072"
+  },
+  {
+    "name": "categoryMask/gpt:988",
+    "input": {
+      "op": "categoryMask",
+      "categories": [
+        "gpt:988"
+      ]
+    },
+    "expected": "262144"
+  },
+  {
+    "name": "categoryMask/gpt:1239",
+    "input": {
+      "op": "categoryMask",
+      "categories": [
+        "gpt:1239"
+      ]
+    },
+    "expected": "524288"
+  },
+  {
+    "name": "categoryMask/gpt:888",
+    "input": {
+      "op": "categoryMask",
+      "categories": [
+        "gpt:888"
+      ]
+    },
+    "expected": "1048576"
+  },
+  {
+    "name": "categoryMask/gpt:187",
+    "input": {
+      "op": "categoryMask",
+      "categories": [
+        "gpt:187"
+      ]
+    },
+    "expected": "2097152"
+  },
+  {
+    "name": "categoryMask/none",
+    "input": {
+      "op": "categoryMask",
+      "categories": []
+    },
+    "expected": "0"
+  },
+  {
+    "name": "categoryMask/all",
+    "input": {
+      "op": "categoryMask",
+      "categories": [
+        "gpt:1",
+        "gpt:166",
+        "gpt:8",
+        "gpt:537",
+        "gpt:111",
+        "gpt:141",
+        "gpt:222",
+        "gpt:412",
+        "gpt:436",
+        "gpt:632",
+        "gpt:469",
+        "gpt:536",
+        "gpt:5181",
+        "gpt:772",
+        "gpt:783",
+        "gpt:922",
+        "gpt:5605",
+        "gpt:2092",
+        "gpt:988",
+        "gpt:1239",
+        "gpt:888",
+        "gpt:187"
+      ]
+    },
+    "expected": "4194303"
+  },
+  {
+    "name": "categoryMask/gpt:187,gpt:1,gpt:187",
+    "input": {
+      "op": "categoryMask",
+      "categories": [
+        "gpt:187",
+        "gpt:1",
+        "gpt:187"
+      ]
+    },
+    "expected": "2097153"
+  },
+  {
+    "name": "categoryMask/gpt:999",
+    "input": {
+      "op": "categoryMask",
+      "categories": [
+        "gpt:999"
+      ]
+    },
     "expected": "error"
+  },
+  {
+    "name": "categoryMask/GPT:1",
+    "input": {
+      "op": "categoryMask",
+      "categories": [
+        "GPT:1"
+      ]
+    },
+    "expected": "error"
+  },
+  {
+    "name": "isMerchantId/\"mrc_runfast\"",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_runfast"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/\"東京の店\"",
+    "input": {
+      "op": "isMerchantId",
+      "id": "東京の店"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/\"😀\"",
+    "input": {
+      "op": "isMerchantId",
+      "id": "😀"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/\"aaaaaaaaaaaa\"-128",
+    "input": {
+      "op": "isMerchantId",
+      "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/\"aaaaaaaaaaaa\"-129",
+    "input": {
+      "op": "isMerchantId",
+      "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/\"👟👟👟👟👟👟👟👟👟👟👟👟\"-64",
+    "input": {
+      "op": "isMerchantId",
+      "id": "👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/\"👟👟👟👟👟👟👟👟👟👟👟👟\"-65",
+    "input": {
+      "op": "isMerchantId",
+      "id": "👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟👟a"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/\"\"",
+    "input": {
+      "op": "isMerchantId",
+      "id": ""
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/\" \"",
+    "input": {
+      "op": "isMerchantId",
+      "id": " "
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/\"a b\"",
+    "input": {
+      "op": "isMerchantId",
+      "id": "a b"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+0",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_\u0000"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+1f",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_\u001f"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+20",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_ "
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+7e",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_~"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+7f",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+9f",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+a0",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_ "
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+ac",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_¬"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+ad",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_­"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+ae",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_®"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+5ff",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_׿"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+600",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_؀"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+605",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_؅"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+606",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_؆"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+61b",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_؛"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+61c",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_؜"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+61d",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_؝"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+6dc",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_ۜ"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+6dd",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_۝"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+6de",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_۞"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+70e",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_܎"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+70f",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_܏"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+710",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_ܐ"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+88f",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_࢏"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+890",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_࢐"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+891",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_࢑"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+892",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_࢒"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+8e1",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_࣡"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+8e2",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_࣢"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+8e3",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_ࣣ"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+180d",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_᠍"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+180e",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_᠎"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+180f",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_᠏"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+200a",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_ "
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+200b",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_​"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+200f",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_‏"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+2010",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_‐"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+2029",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_ "
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+202a",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_‪"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+202e",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_‮"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+202f",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_ "
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+205f",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_ "
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+2060",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_⁠"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+2064",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_⁤"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+2065",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_⁥"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+2065",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_⁥"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+2066",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_⁦"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+206f",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_⁯"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+2070",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_⁰"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+fefe",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_﻾"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+feff",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_﻿"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+ff00",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_＀"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+fff8",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_￸"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+fff9",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_￹"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+fffb",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_￻"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+fffc",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_￼"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+110bc",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_𑂼"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+110bd",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_𑂽"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+110be",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_𑂾"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+110cc",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_𑃌"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+110cd",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_𑃍"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+110ce",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_𑃎"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+1342f",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_𓐯"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+13430",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_𓐰"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+1343f",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_𓐿"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+13440",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_𓑀"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+1bc9f",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_𛲟"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+1bca0",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_𛲠"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+1bca3",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_𛲣"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+1bca4",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_𛲤"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+1d172",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_𝅲"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+1d173",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_𝅳"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+1d17a",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_𝅺"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+1d17b",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_𝅻"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+e0000",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_󠀀"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+e0001",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_󠀁"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+e0002",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_󠀂"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+e001f",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_󠀟"
+    },
+    "expected": true
+  },
+  {
+    "name": "isMerchantId/u+e0020",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_󠀠"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+e007f",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_󠁿"
+    },
+    "expected": false
+  },
+  {
+    "name": "isMerchantId/u+e0080",
+    "input": {
+      "op": "isMerchantId",
+      "id": "mrc_󠂀"
+    },
+    "expected": true
   }
 ]

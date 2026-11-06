@@ -334,7 +334,7 @@ const daysIn = (y: number, month: number) =>
  * `time` crate does: any single byte separates date and time, `Z` matches either case, any number
  * of fractional digits is allowed, and a leap second stands for the last nanosecond of a month.
  */
-export function parseRfc3339Ms(text: string): bigint | undefined {
+function parseRfc3339Ms(text: string): bigint | undefined {
   const s = new TextEncoder().encode(text);
   let i = 0;
   const digits = (n: number): number | undefined => {

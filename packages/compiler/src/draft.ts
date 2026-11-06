@@ -33,13 +33,16 @@ export const DraftSchema = z.strictObject({
   summary: z.string(),
 });
 
+/** A mandate as a compiler model drafts it from a request. */
 export type Draft = z.infer<typeof DraftSchema>;
 
 /** A draft field. */
 export type DraftField = keyof Draft;
 
+/** The fields of a draft, in schema order. */
 export const DRAFT_FIELDS = Object.keys(DraftSchema.shape) as DraftField[];
 
+/** Why a request cannot become a mandate. */
 export type CompileErrorCode =
   | "both_failed"
   | "conflict"
@@ -57,6 +60,7 @@ export type CompileErrorCode =
  */
 export class CompileError extends Error {
   readonly code: CompileErrorCode;
+  /** What to ask the user about. */
   readonly fields: readonly string[];
 
   constructor(code: CompileErrorCode, fields: readonly string[] = []) {

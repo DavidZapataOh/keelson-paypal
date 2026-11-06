@@ -2,8 +2,8 @@ use acir::{AcirField, FieldElement};
 use alloy_primitives::{Address, B256, U256};
 use alloy_sol_types::SolStruct;
 use keelson_core::{
-    AlibiFields, Dst, Money, alibi_digest, domain, eip712, from_paypal_value, hash_object,
-    poseidon2, to_paypal_value,
+    AlibiFields, Dst, Money, alibi_digest, currency_numeric, domain, eip712, field_from_ascii,
+    from_paypal_value, hash_object, poseidon2, to_paypal_value,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -264,10 +264,27 @@ fn poseidon2_vectors() {
 }
 
 #[test]
+fn field_from_ascii_vectors() {
+    let vectors = load(include_str!(
+        "../../../packages/core/test/vectors/field-from-ascii.json"
+    ));
+    assert_eq!(vectors.len(), 11);
+    for v in vectors {
+        let actual = field_from_ascii(v.input.as_str().unwrap())
+            .map_or_else(|_| "error".into(), |f| format!("0x{}", f.to_hex()));
+        assert_eq!(actual, v.expected, "{}", v.name);
+    }
+}
+
+#[test]
 fn money_vectors() {
     let vectors = load(include_str!(
         "../../../packages/core/test/vectors/money.json"
     ));
+    let numeric = vectors
+        .iter()
+        .filter(|v| v.input["op"] == "currencyNumeric");
+    assert_eq!(numeric.count(), 27);
     for v in vectors {
         let currency = v.input["currency"].as_str().unwrap();
         let actual = match v.input["op"].as_str().unwrap() {
@@ -280,6 +297,7 @@ fn money_vectors() {
             }
             "fromPayPalValue" => from_paypal_value(currency, v.input["value"].as_str().unwrap())
                 .map(|m| m.minor.to_string()),
+            "currencyNumeric" => currency_numeric(currency).map(|n| n.to_string()),
             op => panic!("unknown op {op}"),
         };
         assert_eq!(

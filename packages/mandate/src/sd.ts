@@ -7,7 +7,7 @@ import {
   uint8ArrayToBase64Url,
 } from "@sd-jwt/core";
 import { type Mandate, parseMandate } from "./schema.ts";
-import { assertDigestsResolved, assertStrictJson, decodeStrictJson } from "./strict.ts";
+import { assertDigestsResolved, assertStrictJson, decodeStrictJson, MAX_DEPTH } from "./strict.ts";
 
 /** The SD-JWT `sha-256` hasher (RFC 9901 section 4.2.3); every other algorithm is refused. */
 export function sdHasher(data: string | ArrayBuffer, alg: string): Uint8Array {
@@ -105,6 +105,37 @@ export type Disclosed<T> = T extends readonly (infer U)[]
     : T;
 
 /**
+ * Rejects claims that would nest deeper than {@link MAX_DEPTH} once `disclosures` are applied,
+ * before any recursion through them. Depth counts the arrays and objects around a value in the
+ * result, and each digest is followed at most once.
+ */
+function assertDisclosedDepth(payload: object, disclosures: ReadonlyMap<string, unknown>): void {
+  const seen = new Set<unknown>();
+  const follow = (digest: unknown, depth: number) => {
+    if (seen.has(digest)) return;
+    seen.add(digest);
+    if (typeof digest === "string" && disclosures.has(digest)) walk(disclosures.get(digest), depth);
+  };
+  const walk = (v: unknown, depth: number): void => {
+    if (v === null || typeof v !== "object") return;
+    if (depth >= MAX_DEPTH) throw new RangeError("disclosed claims nested too deep");
+    if (Array.isArray(v)) {
+      for (const item of v) {
+        if (item !== null && typeof item === "object" && "..." in item) {
+          follow((item as Record<string, unknown>)["..."], depth + 1);
+        } else walk(item, depth + 1);
+      }
+      return;
+    }
+    for (const [k, item] of Object.entries(v)) {
+      if (k !== "_sd" || !Array.isArray(item)) walk(item, depth + 1);
+      else for (const d of item) follow(d, depth + 1);
+    }
+  };
+  walk(payload, 0);
+}
+
+/**
  * Applies `disclosures` to `payloadSd` (RFC 9901 section 7.1, step 3): every disclosure must match
  * exactly one digest, and duplicates are rejected. The payload, the disclosures and the result
  * must pass {@link assertStrictJson}. Fields and array elements whose disclosure is missing are
@@ -117,6 +148,7 @@ export function decodeDisclosed(payloadSd: object, disclosures: string[]): Discl
     decodeStrictJson(d);
     return Disclosure.fromEncodeSync(d, { hasher: sdHasher, alg: "sha-256" });
   });
+  assertDisclosedDepth(payloadSd, new Map(decoded.map((d) => [d._digest as string, d.value])));
   const claims = getClaimsSync<Mandate & { cnf?: unknown }>(
     payloadSd as Record<string, unknown>,
     decoded,
@@ -140,6 +172,7 @@ export function decodeMandate(payloadSd: object, disclosures: string[]): Mandate
   return parseMandate(m);
 }
 
+/** What a merchant is shown of a mandate, for {@link merchantDisclosures}. */
 export interface MerchantView {
   /** `id` of the merchant in `checkout.allowed_merchants`. */
   merchant: string;

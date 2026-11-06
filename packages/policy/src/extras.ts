@@ -1,5 +1,6 @@
 import { type PolicyJson, policyToJson, policyToText } from "@cedar-policy/cedar-wasm";
 import { type Json, jcs, sha256 } from "@keelson/core";
+import { isMerchantId } from "@keelson/mandate";
 import { hex, isObject, MAX_SAFE_INTEGER, safe } from "./value.ts";
 
 /** The most extras one evaluation accepts. */
@@ -77,43 +78,7 @@ export class ExtrasError extends Error {
   }
 }
 
-/** Unicode general category Cf (format) characters, as of Unicode 17. */
-const FORMAT: readonly (readonly [number, number])[] = [
-  [0xad, 0xad],
-  [0x600, 0x605],
-  [0x61c, 0x61c],
-  [0x6dd, 0x6dd],
-  [0x70f, 0x70f],
-  [0x890, 0x891],
-  [0x8e2, 0x8e2],
-  [0x180e, 0x180e],
-  [0x200b, 0x200f],
-  [0x202a, 0x202e],
-  [0x2060, 0x2064],
-  [0x2066, 0x206f],
-  [0xfeff, 0xfeff],
-  [0xfff9, 0xfffb],
-  [0x110bd, 0x110bd],
-  [0x110cd, 0x110cd],
-  [0x13430, 0x1343f],
-  [0x1bca0, 0x1bca3],
-  [0x1d173, 0x1d17a],
-  [0xe0001, 0xe0001],
-  [0xe0020, 0xe007f],
-];
-
 const utf8 = new TextEncoder();
-
-/** A mandate merchant `id`: 1 to 128 UTF-8 bytes with no control (Cc) or format (Cf) characters. */
-export function isMerchantId(s: string): boolean {
-  if (s.length === 0 || !s.isWellFormed() || utf8.encode(s).length > 128) return false;
-  for (const ch of s) {
-    const c = ch.codePointAt(0) as number;
-    if (c <= 0x1f || (c >= 0x7f && c <= 0x9f)) return false;
-    if (FORMAT.some(([lo, hi]) => c >= lo && c <= hi)) return false;
-  }
-  return true;
-}
 
 /** The `@field`, the context attribute read, the comparison and the literal. */
 function parts(e: Extra): [string, string, string, Json] {

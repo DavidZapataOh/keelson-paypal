@@ -42,10 +42,14 @@ const SOURCES = ["agent", "consent", "engine"] as const;
  * How long a compile may run. It stays below the 30 s handler timeout, which stays below the
  * idempotency lock, so a compile ends with its typed result before either and a retry never runs
  * while a first attempt is still paying for model calls.
+ * @internal
  */
 export const COMPILE_DEADLINE_MS = 25_000;
 
-/** Per-model limits whose worst case, the pair and then the check, fits the deadline. */
+/**
+ * Per-model limits whose worst case, the pair and then the check, fits the deadline.
+ * @internal
+ */
 export const COMPILE_LIMITS: Readonly<
   Record<Role, Required<Pick<Limits, "timeout" | "maxRetries">>>
 > = {

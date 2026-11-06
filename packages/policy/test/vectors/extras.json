@@ -1,0 +1,393 @@
+[
+  {
+    "name": "none",
+    "input": [],
+    "expected": []
+  },
+  {
+    "name": "all-four",
+    "input": [
+      {
+        "type": "max_unit_price",
+        "minor": 12500
+      },
+      {
+        "type": "deny_merchant",
+        "id": "mrc_a\" } permit(principal, action, resource); //"
+      },
+      {
+        "type": "deny_category",
+        "id": "gpt:187"
+      },
+      {
+        "type": "require_return_days",
+        "min": 0
+      }
+    ],
+    "expected": [
+      [
+        "extra.0",
+        "@color(\"green\")\n@field(\"total\")\n@id(\"extra.0\")\nforbid(principal, action == Keelson::Action::\"checkout\", resource) when { context.max_unit_minor > 12500 };"
+      ],
+      [
+        "extra.1",
+        "@color(\"green\")\n@field(\"merchant\")\n@id(\"extra.1\")\nforbid(principal, action == Keelson::Action::\"checkout\", resource) when { context.merchant == \"mrc_a\\\" } permit(principal, action, resource); //\" };"
+      ],
+      [
+        "extra.2",
+        "@color(\"green\")\n@field(\"category\")\n@id(\"extra.2\")\nforbid(principal, action == Keelson::Action::\"checkout\", resource) when { context.categories.contains(\"gpt:187\") };"
+      ],
+      [
+        "extra.3",
+        "@color(\"green\")\n@field(\"return_policy\")\n@id(\"extra.3\")\nforbid(principal, action == Keelson::Action::\"checkout\", resource) when { context.return_days < 0 };"
+      ]
+    ]
+  },
+  {
+    "name": "merchant-non-bmp",
+    "input": [
+      {
+        "type": "deny_merchant",
+        "id": "mrc_東京_😀"
+      }
+    ],
+    "expected": [
+      [
+        "extra.0",
+        "@color(\"green\")\n@field(\"merchant\")\n@id(\"extra.0\")\nforbid(principal, action == Keelson::Action::\"checkout\", resource) when { context.merchant == \"mrc_東京_😀\" };"
+      ]
+    ]
+  },
+  {
+    "name": "merchant-escapes",
+    "input": [
+      {
+        "type": "deny_merchant",
+        "id": "mrc_a\\\"b"
+      }
+    ],
+    "expected": [
+      [
+        "extra.0",
+        "@color(\"green\")\n@field(\"merchant\")\n@id(\"extra.0\")\nforbid(principal, action == Keelson::Action::\"checkout\", resource) when { context.merchant == \"mrc_a\\\\\\\"b\" };"
+      ]
+    ]
+  },
+  {
+    "name": "price-max-safe",
+    "input": [
+      {
+        "type": "max_unit_price",
+        "minor": 9007199254740991
+      }
+    ],
+    "expected": [
+      [
+        "extra.0",
+        "@color(\"green\")\n@field(\"total\")\n@id(\"extra.0\")\nforbid(principal, action == Keelson::Action::\"checkout\", resource) when { context.max_unit_minor > 9007199254740991 };"
+      ]
+    ]
+  },
+  {
+    "name": "error/price-zero",
+    "input": [
+      {
+        "type": "max_unit_price",
+        "minor": 0
+      }
+    ],
+    "expected": {
+      "error": "price",
+      "index": 0
+    }
+  },
+  {
+    "name": "error/price-unsafe",
+    "input": [
+      {
+        "type": "max_unit_price",
+        "minor": 9007199254740992
+      }
+    ],
+    "expected": {
+      "error": "price",
+      "index": 0
+    }
+  },
+  {
+    "name": "error/return-days-negative",
+    "input": [
+      {
+        "type": "require_return_days",
+        "min": -1
+      }
+    ],
+    "expected": {
+      "error": "return_days",
+      "index": 0
+    }
+  },
+  {
+    "name": "error/merchant-prefix-only",
+    "input": [
+      {
+        "type": "deny_merchant",
+        "id": "mrc_"
+      }
+    ],
+    "expected": {
+      "error": "merchant_id",
+      "index": 0
+    }
+  },
+  {
+    "name": "error/merchant-no-prefix",
+    "input": [
+      {
+        "type": "deny_merchant",
+        "id": "runfast"
+      }
+    ],
+    "expected": {
+      "error": "merchant_id",
+      "index": 0
+    }
+  },
+  {
+    "name": "error/merchant-format-char",
+    "input": [
+      {
+        "type": "deny_merchant",
+        "id": "mrc_a​b"
+      }
+    ],
+    "expected": {
+      "error": "merchant_id",
+      "index": 0
+    }
+  },
+  {
+    "name": "error/merchant-too-long",
+    "input": [
+      {
+        "type": "deny_merchant",
+        "id": "mrc_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    ],
+    "expected": {
+      "error": "merchant_id",
+      "index": 0
+    }
+  },
+  {
+    "name": "error/category-leading-zero",
+    "input": [
+      {
+        "type": "deny_category",
+        "id": "gpt:01"
+      }
+    ],
+    "expected": {
+      "error": "category_id",
+      "index": 0
+    }
+  },
+  {
+    "name": "error/category-eleven-digits",
+    "input": [
+      {
+        "type": "deny_category",
+        "id": "gpt:12345678901"
+      }
+    ],
+    "expected": {
+      "error": "category_id",
+      "index": 0
+    }
+  },
+  {
+    "name": "error/second-invalid",
+    "input": [
+      {
+        "type": "deny_category",
+        "id": "gpt:1"
+      },
+      {
+        "type": "deny_category",
+        "id": "x"
+      }
+    ],
+    "expected": {
+      "error": "category_id",
+      "index": 1
+    }
+  },
+  {
+    "name": "error/too-many",
+    "input": [
+      {
+        "type": "deny_category",
+        "id": "gpt:1"
+      },
+      {
+        "type": "deny_category",
+        "id": "gpt:1"
+      },
+      {
+        "type": "deny_category",
+        "id": "gpt:1"
+      },
+      {
+        "type": "deny_category",
+        "id": "gpt:1"
+      },
+      {
+        "type": "deny_category",
+        "id": "gpt:1"
+      },
+      {
+        "type": "deny_category",
+        "id": "gpt:1"
+      },
+      {
+        "type": "deny_category",
+        "id": "gpt:1"
+      },
+      {
+        "type": "deny_category",
+        "id": "gpt:1"
+      },
+      {
+        "type": "deny_category",
+        "id": "gpt:1"
+      },
+      {
+        "type": "deny_category",
+        "id": "gpt:1"
+      },
+      {
+        "type": "deny_category",
+        "id": "gpt:1"
+      },
+      {
+        "type": "deny_category",
+        "id": "gpt:1"
+      },
+      {
+        "type": "deny_category",
+        "id": "gpt:1"
+      },
+      {
+        "type": "deny_category",
+        "id": "gpt:1"
+      },
+      {
+        "type": "deny_category",
+        "id": "gpt:1"
+      },
+      {
+        "type": "deny_category",
+        "id": "gpt:1"
+      },
+      {
+        "type": "deny_category",
+        "id": "gpt:1"
+      }
+    ],
+    "expected": {
+      "error": "too_many",
+      "index": 16
+    }
+  },
+  {
+    "name": "error/grammar-permit",
+    "input": [
+      {
+        "type": "permit"
+      }
+    ],
+    "expected": {
+      "error": "grammar"
+    }
+  },
+  {
+    "name": "error/grammar-extra-member",
+    "input": [
+      {
+        "type": "deny_merchant",
+        "id": "mrc_a",
+        "effect": "permit"
+      }
+    ],
+    "expected": {
+      "error": "grammar"
+    }
+  },
+  {
+    "name": "error/grammar-string-price",
+    "input": [
+      {
+        "type": "max_unit_price",
+        "minor": "100"
+      }
+    ],
+    "expected": {
+      "error": "grammar"
+    }
+  },
+  {
+    "name": "error/grammar-fraction",
+    "input": [
+      {
+        "type": "max_unit_price",
+        "minor": 1.5
+      }
+    ],
+    "expected": {
+      "error": "grammar"
+    }
+  },
+  {
+    "name": "error/grammar-missing-member",
+    "input": [
+      {
+        "type": "deny_category"
+      }
+    ],
+    "expected": {
+      "error": "grammar"
+    }
+  },
+  {
+    "name": "error/grammar-no-type",
+    "input": [
+      {
+        "minor": 100
+      }
+    ],
+    "expected": {
+      "error": "grammar"
+    }
+  },
+  {
+    "name": "error/grammar-prototype-name",
+    "input": [
+      {
+        "type": "toString",
+        "id": "x"
+      }
+    ],
+    "expected": {
+      "error": "grammar"
+    }
+  },
+  {
+    "name": "error/grammar-text",
+    "input": [
+      "permit(principal, action, resource);"
+    ],
+    "expected": {
+      "error": "grammar"
+    }
+  }
+]

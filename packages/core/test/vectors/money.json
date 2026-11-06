@@ -513,6 +513,222 @@
     "expected": "-94.00"
   },
   {
+    "name": "numeric/AUD",
+    "input": {
+      "op": "currencyNumeric",
+      "currency": "AUD"
+    },
+    "expected": "36"
+  },
+  {
+    "name": "numeric/BRL",
+    "input": {
+      "op": "currencyNumeric",
+      "currency": "BRL"
+    },
+    "expected": "986"
+  },
+  {
+    "name": "numeric/CAD",
+    "input": {
+      "op": "currencyNumeric",
+      "currency": "CAD"
+    },
+    "expected": "124"
+  },
+  {
+    "name": "numeric/CNY",
+    "input": {
+      "op": "currencyNumeric",
+      "currency": "CNY"
+    },
+    "expected": "156"
+  },
+  {
+    "name": "numeric/CZK",
+    "input": {
+      "op": "currencyNumeric",
+      "currency": "CZK"
+    },
+    "expected": "203"
+  },
+  {
+    "name": "numeric/DKK",
+    "input": {
+      "op": "currencyNumeric",
+      "currency": "DKK"
+    },
+    "expected": "208"
+  },
+  {
+    "name": "numeric/EUR",
+    "input": {
+      "op": "currencyNumeric",
+      "currency": "EUR"
+    },
+    "expected": "978"
+  },
+  {
+    "name": "numeric/HKD",
+    "input": {
+      "op": "currencyNumeric",
+      "currency": "HKD"
+    },
+    "expected": "344"
+  },
+  {
+    "name": "numeric/HUF",
+    "input": {
+      "op": "currencyNumeric",
+      "currency": "HUF"
+    },
+    "expected": "348"
+  },
+  {
+    "name": "numeric/ILS",
+    "input": {
+      "op": "currencyNumeric",
+      "currency": "ILS"
+    },
+    "expected": "376"
+  },
+  {
+    "name": "numeric/JPY",
+    "input": {
+      "op": "currencyNumeric",
+      "currency": "JPY"
+    },
+    "expected": "392"
+  },
+  {
+    "name": "numeric/MYR",
+    "input": {
+      "op": "currencyNumeric",
+      "currency": "MYR"
+    },
+    "expected": "458"
+  },
+  {
+    "name": "numeric/MXN",
+    "input": {
+      "op": "currencyNumeric",
+      "currency": "MXN"
+    },
+    "expected": "484"
+  },
+  {
+    "name": "numeric/TWD",
+    "input": {
+      "op": "currencyNumeric",
+      "currency": "TWD"
+    },
+    "expected": "901"
+  },
+  {
+    "name": "numeric/NZD",
+    "input": {
+      "op": "currencyNumeric",
+      "currency": "NZD"
+    },
+    "expected": "554"
+  },
+  {
+    "name": "numeric/NOK",
+    "input": {
+      "op": "currencyNumeric",
+      "currency": "NOK"
+    },
+    "expected": "578"
+  },
+  {
+    "name": "numeric/PHP",
+    "input": {
+      "op": "currencyNumeric",
+      "currency": "PHP"
+    },
+    "expected": "608"
+  },
+  {
+    "name": "numeric/PLN",
+    "input": {
+      "op": "currencyNumeric",
+      "currency": "PLN"
+    },
+    "expected": "985"
+  },
+  {
+    "name": "numeric/GBP",
+    "input": {
+      "op": "currencyNumeric",
+      "currency": "GBP"
+    },
+    "expected": "826"
+  },
+  {
+    "name": "numeric/SGD",
+    "input": {
+      "op": "currencyNumeric",
+      "currency": "SGD"
+    },
+    "expected": "702"
+  },
+  {
+    "name": "numeric/SEK",
+    "input": {
+      "op": "currencyNumeric",
+      "currency": "SEK"
+    },
+    "expected": "752"
+  },
+  {
+    "name": "numeric/CHF",
+    "input": {
+      "op": "currencyNumeric",
+      "currency": "CHF"
+    },
+    "expected": "756"
+  },
+  {
+    "name": "numeric/THB",
+    "input": {
+      "op": "currencyNumeric",
+      "currency": "THB"
+    },
+    "expected": "764"
+  },
+  {
+    "name": "numeric/USD",
+    "input": {
+      "op": "currencyNumeric",
+      "currency": "USD"
+    },
+    "expected": "840"
+  },
+  {
+    "name": "numeric/XXX",
+    "input": {
+      "op": "currencyNumeric",
+      "currency": "XXX"
+    },
+    "expected": "error"
+  },
+  {
+    "name": "numeric/usd",
+    "input": {
+      "op": "currencyNumeric",
+      "currency": "usd"
+    },
+    "expected": "error"
+  },
+  {
+    "name": "numeric/",
+    "input": {
+      "op": "currencyNumeric",
+      "currency": ""
+    },
+    "expected": "error"
+  },
+  {
     "name": "from/USD/94.00",
     "input": {
       "op": "fromPayPalValue",

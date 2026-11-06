@@ -14,17 +14,20 @@ import { CompileError, type Draft, DraftSchema } from "./draft.ts";
 import { checkMessage, draftMessage, HAIKU_SYSTEM, OPUS_SYSTEM, SONNET_SYSTEM } from "./prompts.ts";
 import { CheckSchema, cardText, type Discrepancy } from "./verify.ts";
 
-export const MODELS = {
+/** The model each role of the compiler runs on. */
+const MODELS = {
   opus: "claude-opus-5-5",
   sonnet: "claude-sonnet-5-5",
   haiku: "claude-haiku-5-5",
 } as const;
 
+/** A role in the compiler: two independent drafters and a checker. */
 export type Role = keyof typeof MODELS;
 
 /** The longest request, in UTF-16 code units, that a compile spends model calls on. */
 export const MAX_PROMPT_CHARS = 2000;
 
+/** Why a model call produced no usable answer. */
 export type FailReason = "timeout" | "aborted" | "api_error" | "max_tokens" | "invalid_output";
 
 /** How one model call ended. A refused or failed compiler model counts as missing. */
@@ -42,15 +45,24 @@ export type Check =
   | { status: "ok"; discrepancies: Discrepancy[] }
   | { status: "refused" | "failed" | "aborted" | "skipped"; discrepancies: null };
 
+/** The tokens and wall time one model call used. */
 export interface Usage {
   model: string;
+  /** Uncached input tokens. */
   input: number;
   output: number;
+  /** Input tokens read from the prompt cache. */
   cacheRead: number;
+  /** Input tokens written to the prompt cache. */
   cacheWrite: number;
+  /** Wall time of the call, retries included, in milliseconds. */
   ms: number;
 }
 
+/**
+ * What {@link compileMandate} returns: each model's outcome and draft, the card check and the
+ * usage, with either the mandate and its card or the reason it cannot be built.
+ */
 export type CompileResult = {
   sources: Record<Role, Source>;
   /** Each compiler model's draft as it answered, before the merge; null when it did not. */
@@ -81,9 +93,13 @@ export interface Limits {
   maxTokens?: number;
 }
 
+/** Options for {@link compileMandate}. */
 export interface CompileOptions {
+  /** The Anthropic client; by default one configured from the environment. */
   client?: Anthropic;
+  /** Aborts every model call in flight. */
   signal?: AbortSignal;
+  /** Per-role overrides of the request limits. */
   limits?: Partial<Record<Role, Limits>>;
 }
 
@@ -92,7 +108,7 @@ const TIMEOUT_MS = 20_000;
 const MAX_RETRIES = 1;
 const FALLBACK_BETA = "server-side-fallback-2026-07-01";
 
-export type Reply = Anthropic.Message | Anthropic.Beta.BetaMessage;
+type Reply = Anthropic.Message | Anthropic.Beta.BetaMessage;
 
 type Outcome<T> = { source: Source; value: T | null };
 
@@ -110,6 +126,7 @@ function finalText(content: Reply["content"]): string | undefined {
 /**
  * Classifies a reply. `stop_reason` is checked before the structured output is parsed, since a
  * refused or cut-off reply need not match the schema; any parse failure is `invalid_output`.
+ * @internal
  */
 export function outcome<T>(reply: Reply, parse: (content: string) => T): Outcome<T> {
   if (reply.stop_reason === "refusal") {
@@ -129,7 +146,10 @@ export function outcome<T>(reply: Reply, parse: (content: string) => T): Outcome
   }
 }
 
-/** The usage of one reply, cache reads and writes included. */
+/**
+ * The usage of one reply, cache reads and writes included.
+ * @internal
+ */
 export function usageOf(reply: Reply, ms: number): Usage {
   return {
     model: reply.model,

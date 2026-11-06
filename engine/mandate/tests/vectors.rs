@@ -1,10 +1,10 @@
 use keelson_core::AcirField;
 use keelson_mandate::{
-    Fr, Jwk, LeafPreimage, MembershipProof, NonMembershipProof, OpenMandateOptions,
-    VerifiedCredential, decode_disclosed, decode_mandate, h_sd, mandate_challenge,
-    mandate_commitment, merchant_leaf, merchant_membership, merchant_non_membership, merchant_root,
-    merchant_tree, parse_mandate, user_key_hash, verify_credential, verify_merchant_membership,
-    verify_merchant_non_membership,
+    Error, Fr, Jwk, LeafPreimage, MembershipProof, NonMembershipProof, OpenMandateVerifyOptions,
+    VerifiedCredential, category_mask, decode_disclosed, decode_mandate, h_sd, is_merchant_id,
+    mandate_challenge, mandate_commitment, merchant_leaf, merchant_membership,
+    merchant_non_membership, merchant_root, merchant_tree, parse_mandate, user_key_hash,
+    verify_credential, verify_merchant_membership, verify_merchant_non_membership,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -49,15 +49,19 @@ fn strings(v: &Value) -> Vec<String> {
     serde_json::from_value(v.clone()).unwrap()
 }
 
+/// Checks `result` against a vector's `expected`: the output, `"error"`, or
+/// `{ "error": "mandate", "field": … }` for a mandate rejected on that field.
 fn assert_outcome<T>(
     name: &str,
-    result: Result<T, keelson_mandate::Error>,
+    result: Result<T, Error>,
     expected: &Value,
     to_json: impl Fn(T) -> Value,
 ) {
-    match result {
-        Ok(v) => assert_eq!(&to_json(v), expected, "{name}"),
-        Err(e) => assert!(is_error(expected), "{name}: unexpected error {e}"),
+    match (result, expected.get("field")) {
+        (Ok(v), _) => assert_eq!(&to_json(v), expected, "{name}"),
+        (Err(Error::Mandate { field, .. }), Some(f)) => assert_eq!(field, *f, "{name}"),
+        (Err(e), Some(_)) => panic!("{name}: expected a mandate error, got {e}"),
+        (Err(e), None) => assert!(is_error(expected), "{name}: unexpected error {e}"),
     }
 }
 
@@ -101,6 +105,13 @@ fn challenge_vectors() {
     }
 }
 
+fn demo() -> Value {
+    serde_json::from_str(include_str!(
+        "../../../packages/mandate/test/fixtures/demo-mandate.json"
+    ))
+    .unwrap()
+}
+
 fn leaf_json(l: &LeafPreimage) -> Value {
     json!({ "value": field_hex(&l.value), "next": field_hex(&l.next), "nextIndex": l.next_index })
 }
@@ -126,7 +137,7 @@ fn commitment_vectors() {
     let vectors = load(include_str!(
         "../../../packages/mandate/test/vectors/commitment.json"
     ));
-    assert_eq!(vectors.len(), 115);
+    assert_eq!(vectors.len(), 272);
     for v in vectors {
         let (i, name, expected) = (&v.input, v.name.as_str(), &v.expected);
         match i["op"].as_str().unwrap() {
@@ -203,6 +214,42 @@ fn commitment_vectors() {
                 );
                 assert_eq!(json!(ok.unwrap()), *expected, "{name}");
             }
+            "verifyMembership" => {
+                let p = &i["proof"];
+                let proof = MembershipProof {
+                    leaf: leaf_from(&p["leaf"]),
+                    path: path_from(&p["path"]),
+                    index: p["index"].as_u64().unwrap() as usize,
+                };
+                let ok = verify_merchant_membership(
+                    &field(&i["root"]),
+                    i["id"].as_str().unwrap(),
+                    &proof,
+                );
+                assert_eq!(json!(ok.unwrap()), *expected, "{name}");
+            }
+            "categoryMask" => {
+                let result = category_mask(&strings(&i["categories"]));
+                assert_outcome(name, result, expected, |m| json!(m.to_string()));
+            }
+            "isMerchantId" => {
+                assert_eq!(
+                    json!(is_merchant_id(i["id"].as_str().unwrap())),
+                    *expected,
+                    "{name}"
+                );
+            }
+            "parseWebsite" => {
+                let mut m = demo();
+                for c in m["checkout"]["constraints"].as_array_mut().unwrap() {
+                    if c["type"] == "checkout.allowed_merchants" {
+                        for x in c["allowed"].as_array_mut().unwrap() {
+                            x["website"] = i["website"].clone();
+                        }
+                    }
+                }
+                assert_outcome(name, parse_mandate(&m), expected, |()| json!(true));
+            }
             "userKeyHash" => {
                 let jwk = &i["jwk"];
                 let result = user_key_hash(jwk["x"].as_str().unwrap(), jwk["y"].as_str().unwrap());
@@ -222,8 +269,8 @@ fn commitment_vectors() {
     }
 }
 
-fn options(v: &Value) -> Option<OpenMandateOptions> {
-    v.as_object().map(|o| OpenMandateOptions {
+fn options(v: &Value) -> Option<OpenMandateVerifyOptions> {
+    v.as_object().map(|o| OpenMandateVerifyOptions {
         expected_aud: o["expectedAud"].as_str().unwrap().into(),
         expected_nonce: o["expectedNonce"].as_str().unwrap().into(),
         now: o["now"].as_i64().unwrap(),
@@ -256,7 +303,7 @@ fn credential_vectors() {
     let vectors = load(include_str!(
         "../../../packages/mandate/test/vectors/credentials.json"
     ));
-    assert_eq!(vectors.len(), 99);
+    assert_eq!(vectors.len(), 107);
     for v in vectors {
         assert_outcome(&v.name, verify(&v.input), &v.expected, |c| {
             credential_json(&c)

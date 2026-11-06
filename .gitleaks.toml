@@ -1,0 +1,11 @@
+title = "Keelson gitleaks config"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Published test vectors: hashes, public keys and signed credentials generated for the golden-vector suite"
+paths = [
+  '''packages/mandate/test/vectors/.*\.json''',
+  '''packages/mandate/test/commitment\.test\.ts''',
+]

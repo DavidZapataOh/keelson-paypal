@@ -1,0 +1,50 @@
+name: nightly
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  kani:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install
+      - uses: actions/cache@v6
+        with:
+          path: ~/.kani
+          key: ${{ runner.os }}-kani-0.68.0
+      - run: cargo install --locked kani-verifier --version 0.68.0 && cargo kani setup
+      - run: cargo kani -p keelson-canon
+
+  policy-parity:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Generate 10,000 cases with a random seed
+        run: |
+          seed=$(od -An -N8 -tu8 /dev/urandom | tr -d ' ')
+          echo "Parity seed: $seed (replay with \`parity --seed $seed --n 10000\`)" | tee -a "$GITHUB_STEP_SUMMARY"
+          cargo run -p keelson-policy --bin parity -- --seed "$seed" --n 10000 > "$RUNNER_TEMP/parity.jsonl"
+      - run: pnpm turbo run build --filter=@keelson/policy^...
+      - run: pnpm --filter @keelson/policy test
+        env:
+          PARITY_FILE: ${{ runner.temp }}/parity.jsonl

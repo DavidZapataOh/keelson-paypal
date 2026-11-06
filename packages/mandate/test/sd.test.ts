@@ -328,6 +328,17 @@ describe("decodeDisclosed input limits", () => {
     expect(await withRaw(`["s","n",${nest(32)}]`)).toThrow(/deep/);
   });
 
+  it("rejects a chain of 5,000 nested disclosures with the depth check", () => {
+    let payload: object = {};
+    const disclosures: string[] = [];
+    for (let i = 0; i < 5000; i++) {
+      const d = b64(JSON.stringify([`salt${i}`, "c", payload]));
+      payload = { _sd: [digestOf(d)] };
+      disclosures.push(d);
+    }
+    expect(() => decodeDisclosed(payload, disclosures)).toThrow(/disclosed claims nested too deep/);
+  });
+
   it("rejects an Object.prototype name as an array placeholder digest", async () => {
     const { payloadSd, disclosures } = await buildSdPayload(mandate(), randomSalt);
     const p = structuredClone(payloadSd) as { intent: { subjective: unknown[] } };

@@ -30,6 +30,10 @@ export interface SystemFields {
   merchants: readonly Merchant[];
 }
 
+/**
+ * A field on which two drafts differ, with each draft's value.
+ * @internal
+ */
 export interface DraftDiff {
   field: DraftField;
   a: unknown;
@@ -48,6 +52,7 @@ function canonical(field: DraftField, value: unknown): string {
 /**
  * The fields on which two drafts differ, compared by their JCS encoding. Merchants, categories
  * and subjective fragments are compared as sets.
+ * @internal
  */
 export function diffDrafts(a: Draft, b: Draft): DraftDiff[] {
   return DRAFT_FIELDS.filter((f) => canonical(f, a[f]) !== canonical(f, b[f])).map((field) => ({
@@ -184,7 +189,10 @@ export function mergeDrafts(
   };
 }
 
-/** The card row each draft field becomes; the summary has none. */
+/**
+ * The card row each draft field becomes; the summary has none.
+ * @internal
+ */
 export const CARD_FIELD: Readonly<Record<DraftField, FieldId | undefined>> = {
   currency: "currency",
   maxTotalMinor: "total",

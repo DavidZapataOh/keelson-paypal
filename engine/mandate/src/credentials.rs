@@ -57,7 +57,7 @@ impl Jwk {
 
 /// What an open mandate must be bound to (RFC 9901 section 7.3, step 5).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OpenMandateOptions {
+pub struct OpenMandateVerifyOptions {
     pub expected_aud: String,
     pub expected_nonce: String,
     /// Current time, in seconds since the epoch.
@@ -204,12 +204,21 @@ fn verify_sd_jwt(
     Ok(claims)
 }
 
-/// The `cnf.jwk` member, which must name a P-256 key with canonical coordinates.
+/// The `cnf.jwk` member: a P-256 key with canonical coordinates and no members but `kty`, `crv`,
+/// `x`, `y` and a string `kid`.
 fn cnf_jwk(cnf: Option<&Value>) -> Result<&Value, Error> {
     let jwk = cnf
         .and_then(|c| c.get("jwk"))
         .filter(|j| j.get("kty") == Some(&json!("EC")) && j.get("crv") == Some(&json!("P-256")))
         .ok_or_else(|| invalid("missing cnf.jwk"))?;
+    let members = jwk.as_object().into_iter().flatten();
+    if members.into_iter().any(|(k, v)| {
+        !matches!(k.as_str(), "kty" | "crv" | "x" | "y") && !(k == "kid" && v.is_string())
+    }) {
+        return Err(invalid(
+            "cnf.jwk has members other than kty, crv, x, y and kid",
+        ));
+    }
     for c in ["x", "y"] {
         coordinate(jwk.get(c).and_then(Value::as_str).unwrap_or_default())?;
     }
@@ -290,7 +299,7 @@ fn safe_integer(n: i64) -> bool {
 fn verify_open_mandate(
     token: &str,
     key: &VerifyingKey,
-    opts: &OpenMandateOptions,
+    opts: &OpenMandateVerifyOptions,
 ) -> Result<VerifiedCredential, Error> {
     if !safe_integer(opts.now) || !safe_integer(opts.max_skew_sec) || opts.max_skew_sec < 0 {
         return Err(invalid("now and max_skew_sec must be whole seconds"));
@@ -381,7 +390,7 @@ pub fn verify_credential(
     token: &str,
     expected_typ: &str,
     jwk: &Jwk,
-    opts: Option<&OpenMandateOptions>,
+    opts: Option<&OpenMandateVerifyOptions>,
 ) -> Result<VerifiedCredential, Error> {
     let key = jwk.verifying_key()?;
     if expected_typ == USER_CREDENTIAL_TYP {

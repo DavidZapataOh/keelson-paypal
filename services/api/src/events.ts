@@ -11,6 +11,7 @@ export const eventsChannel = (channel: string): string => `events:${channel}`;
  * Stores the event, then notifies subscribers with its id once the transaction has committed.
  * A per-channel advisory lock held through commit makes ids on a channel commit in id order,
  * so a subscriber's cursor never skips a row.
+ * @internal
  */
 export async function publishEvent(
   deps: { db: Db; kv: RedisClientType },

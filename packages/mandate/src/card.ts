@@ -13,8 +13,10 @@ import { ANY_ITEM, CATEGORY_TABLE, type Mandate } from "./schema.ts";
 import { buildSdPayload, decodeMandate } from "./sd.ts";
 import { type SpcDetails, spcDetails } from "./spc.ts";
 
+/** Who answers for a field of the mandate if it turns out wrong. */
 export type Answerer = "Keelson" | "Agent operator" | "You";
 
+/** One row of the mandate card: a field, what it says and who answers for it. */
 export interface CardRow {
   field: FieldId;
   label: string;
@@ -25,8 +27,10 @@ export interface CardRow {
   answers: Answerer;
 }
 
+/** The mandate card the user reviews before signing. */
 export interface Card {
   rows: CardRow[];
+  /** Plain-language notes about what the mandate leaves open. */
   warnings: string[];
 }
 
@@ -169,6 +173,7 @@ export function renderCard(payloadSd: object, disclosures: string[], evidence: E
   return { rows, warnings };
 }
 
+/** Everything {@link prepareSigning} derives from a mandate for the user to sign it. */
 export interface Signing {
   /** The payload as signed: the mandate with `zk.commitment` set to `C_m`. */
   payloadSd: object;

@@ -2,25 +2,28 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  type AlibiFields,
-  alibiDigest,
   CHAIN_IDS,
-  CURRENCIES,
-  type CurrencyCode,
-  DST,
-  type Dst,
-  fromPayPalValue,
   hashKeelson,
-  hashObject,
-  type Json,
-  jcs,
   KEELSON_TYPES,
   type KeelsonPrimaryType,
   keelsonDomain,
+} from "../src/eip712.ts";
+import {
+  type AlibiFields,
+  alibiDigest,
+  CURRENCIES,
+  type CurrencyCode,
+  currencyNumeric,
+  DST,
+  type Dst,
+  fromPayPalValue,
+  hashObject,
+  type Json,
+  jcs,
   toHex,
   toPayPalValue,
 } from "../src/index.ts";
-import { KEELSON_MANDATE, poseidon2 } from "../src/poseidon2.ts";
+import { fieldFromAscii, KEELSON_MANDATE, poseidon2 } from "../src/poseidon2.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const vectorsDir = resolve(root, "test/vectors");
@@ -227,6 +230,13 @@ function moneyVectors() {
     ["TWD", "300"],
     ["EUR", "12345678901234567890.12"],
   ];
+  for (const currency of [...Object.keys(CURRENCIES), "XXX", "usd", ""]) {
+    vectors.push({
+      name: `numeric/${currency}`,
+      input: { op: "currencyNumeric", currency },
+      expected: attempt(() => currencyNumeric(currency as CurrencyCode).toString()),
+    });
+  }
   for (const [currency, value] of parses) {
     vectors.push({
       name: `from/${currency}/${value}`,
@@ -235,6 +245,31 @@ function moneyVectors() {
     });
   }
   return vectors;
+}
+
+function fieldFromAsciiVectors() {
+  const tags = [
+    "KEELSON_MANDATE",
+    "KEELSON_MERCHANT",
+    "A",
+    "\u0000A",
+    "ab\u0000",
+    "\u007f",
+    "x".repeat(31),
+    "x".repeat(32),
+    "",
+    "é",
+    "😀",
+  ];
+  return tags.map((tag) => {
+    let expected: string;
+    try {
+      expected = field(fieldFromAscii(tag));
+    } catch {
+      expected = "error";
+    }
+    return { name: `fieldFromAscii/${JSON.stringify(tag)}`, input: tag, expected };
+  });
 }
 
 function alibiVectors() {
@@ -295,4 +330,5 @@ writeJson("eip712", eip712Vectors());
 writeJson("poseidon2", poseidon);
 writeJson("money", moneyVectors());
 writeJson("alibi", alibiVectors());
+writeJson("field-from-ascii", fieldFromAsciiVectors());
 write(noirFile, noirSource(poseidon));

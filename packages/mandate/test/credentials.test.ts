@@ -243,6 +243,29 @@ describe("strict input", () => {
       );
     }
   });
+  it("rejects holder keys with members other than kty, crv, x, y and kid", async () => {
+    const jwk = await publicJwk(holder);
+    const kid = await issueWith({ cnf: { jwk: { ...jwk, kid: "holder-1" } } });
+    await expect(
+      verifyCredential(kid, USER_CREDENTIAL_TYP, issuer.publicKey),
+    ).resolves.toBeDefined();
+    for (const extra of [
+      { key_ops: ["verify"] },
+      { key_ops: ["sign"] },
+      { ext: true },
+      { ext: false },
+      { alg: "ES256" },
+      { use: "sig" },
+      { d: jwk.x },
+      { kid: 1 },
+    ]) {
+      const token = await issueWith({ cnf: { jwk: { ...jwk, ...extra } } });
+      await expect(
+        verifyCredential(token, USER_CREDENTIAL_TYP, issuer.publicKey),
+        JSON.stringify(extra),
+      ).rejects.toThrow(/cnf/);
+    }
+  });
 });
 
 describe("open mandate (L2)", () => {
