@@ -55,7 +55,8 @@ describe("compileMandate", { timeout: 300_000 }, () => {
     expect(r.sources.sonnet).toEqual({ status: "ok" });
     expect(r.sources.haiku.status).toBe("ok");
     if (!r.ok) throw r.error;
-    console.log("ambiguous:", r.ambiguous, "discrepancies:", r.discrepancies);
+    console.log("ambiguous:", r.ambiguous, "check:", r.check);
+    expect(r.check.status).toBe("ok");
     const m = r.mandate;
     expect(m.payment.currency).toBe("USD");
     expect(constraint(m.payment.constraints, "payment.amount_range").max).toBe(10000);

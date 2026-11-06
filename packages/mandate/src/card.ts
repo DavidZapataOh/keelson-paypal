@@ -125,7 +125,11 @@ function values(m: Mandate): Partial<Record<FieldId, string[]>> {
     } else if (c.type === "keelson.attributes") {
       out.variant = Object.entries(c.must).map(([k, v]) => `${k}: ${v}`);
     } else if (c.type === "keelson.returns") {
-      out.return_policy = [`${c.min_days} days or more${c.free ? ", free" : ""}`];
+      out.return_policy = [
+        c.min_days > 0
+          ? `${c.min_days} days or more${c.free ? ", free" : ""}`
+          : `${c.free ? "Free returns" : "Returns accepted"}, no minimum window`,
+      ];
     }
   }
   if (m.intent.subjective.length > 0) out.subjective = m.intent.subjective;

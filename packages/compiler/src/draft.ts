@@ -39,7 +39,9 @@ export type CompileErrorCode =
   | "invalid_draft"
   | "no_merchant"
   | "no_category"
-  | "deadline_passed";
+  | "deadline_passed"
+  | "prompt_too_long"
+  | "aborted";
 
 /**
  * A request that cannot become a mandate. `fields` names what to ask the user about: draft field

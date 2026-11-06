@@ -96,6 +96,20 @@ describe("card contents", () => {
     expect(row("recurrence")?.values).toEqual(["Not acknowledged"]);
   });
 
+  it("words the return policy with and without a window", async () => {
+    const returns = async (min_days: number, free: boolean) => {
+      const m = mandate();
+      for (const c of m.checkout.constraints) {
+        if (c.type === "keelson.returns") Object.assign(c, { min_days, free });
+      }
+      return (await card(m))("return_policy")?.values;
+    };
+    expect(await returns(30, true)).toEqual(["30 days or more, free"]);
+    expect(await returns(30, false)).toEqual(["30 days or more"]);
+    expect(await returns(0, true)).toEqual(["Free returns, no minimum window"]);
+    expect(await returns(0, false)).toEqual(["Returns accepted, no minimum window"]);
+  });
+
   it("shows any item with its title", async () => {
     const m = mandate();
     for (const c of m.checkout.constraints) {
