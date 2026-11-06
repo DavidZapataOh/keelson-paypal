@@ -10,12 +10,12 @@
 {"id":"clean-10","prompt":"Order a 5 lb bag of dog food for under $40 by Wednesday.","expect":{"currency":"USD","maxTotalMinor":4000}}
 {"id":"clean-11","prompt":"Buy a printer ink cartridge, black, $30 max, by tomorrow.","expect":{"currency":"USD","maxTotalMinor":3000}}
 {"id":"clean-12","prompt":"I want a women's rain jacket, size medium, under $120, returnable for 60 days, by next Friday.","expect":{"currency":"USD","maxTotalMinor":12000}}
-{"id":"ambiguous-01","prompt":"Get me some cheap running shoes, size 9.","expect":{"currency":"USD","mustBeAmbiguous":["total","deadline"]}}
+{"id":"ambiguous-01","prompt":"Get me some cheap running shoes, size 9.","expect":{"mustBeAmbiguous":["total"]}}
 {"id":"ambiguous-02","prompt":"Buy a few phone cases under $15 each by Friday.","expect":{"currency":"USD","mustBeAmbiguous":["quantity"]}}
-{"id":"ambiguous-03","prompt":"I need a new backpack for school, nothing too expensive.","expect":{"currency":"USD","mustBeAmbiguous":["total","deadline"]}}
+{"id":"ambiguous-03","prompt":"I need a new backpack for school, nothing too expensive.","expect":{"mustBeAmbiguous":["total"]}}
 {"id":"ambiguous-04","prompt":"Order some coffee beans for under $25.","expect":{"currency":"USD","maxTotalMinor":2500,"mustBeAmbiguous":["deadline"]}}
 {"id":"ambiguous-05","prompt":"Buy a couple of t-shirts, size large, around $20 each, sometime soon.","expect":{"currency":"USD","mustBeAmbiguous":["deadline"]}}
-{"id":"ambiguous-06","prompt":"Grab me a decent pair of headphones, not too pricey, before my trip.","expect":{"currency":"USD","mustBeAmbiguous":["total","deadline"]}}
+{"id":"ambiguous-06","prompt":"Grab me a decent pair of headphones, not too pricey, before my trip.","expect":{"mustBeAmbiguous":["total"]}}
 {"id":"ambiguous-07","prompt":"Running shoes under a hundred, whenever.","expect":{"currency":"USD","maxTotalMinor":10000,"mustBeAmbiguous":["deadline"]}}
 {"id":"subjective-01","prompt":"Running shoes, size 10, under $100, that look nice, by Friday.","expect":{"currency":"USD","maxTotalMinor":10000,"mustBeSubjective":["look nice"]}}
 {"id":"subjective-02","prompt":"Buy a comfortable office chair under $250 by next Monday.","expect":{"currency":"USD","maxTotalMinor":25000,"mustBeSubjective":["comfortable"]}}

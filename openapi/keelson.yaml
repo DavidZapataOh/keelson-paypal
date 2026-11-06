@@ -216,6 +216,19 @@ components:
           description: The shopping request in natural language, at most 2000 UTF-16 code
             units.
           example: Running shoes, size 10, under $100, free returns, by Friday
+        credentialId:
+          type: string
+          minLength: 1
+          description: The passkey that will sign the mandate; defaults to the most recent
+            one.
+        mode:
+          type: string
+          enum:
+            - immediate
+            - autonomous
+          default: autonomous
+          description: Whether the user is present at checkout (`immediate`) or not
+            (`autonomous`).
       required:
         - prompt
     Passkeys:
@@ -445,8 +458,9 @@ paths:
         - mandates
       summary: Compile a mandate from a shopping request
       description: Two models compile the request independently; fields they disagree
-        on come back ambiguous, and a third model checks the rendered card
-        against the request. Limited to 10 requests a minute per user.
+        on or the request leaves unstated come back ambiguous, and a third model
+        checks the rendered card against the request. Limited to 10 requests a
+        minute per user.
       parameters:
         - schema:
             type: string
@@ -454,6 +468,16 @@ paths:
             maxLength: 255
           required: true
           name: idempotency-key
+          in: header
+        - schema:
+            type: string
+            maxLength: 128
+            description: The app's opaque device id, recorded as `risk_data.device_fp`.
+              Required.
+          required: false
+          description: The app's opaque device id, recorded as `risk_data.device_fp`.
+            Required.
+          name: keelson-device
           in: header
       requestBody:
         required: true
@@ -474,10 +498,24 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+        "403":
+          description: The passkey is not the user's
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: The user has no passkey to sign with
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "422":
-          description: The prompt is too long (`prompt-too-long`), the compilations
-            conflict (`compile-conflict`) or the request lacks what a mandate
-            needs (`compile-unresolved`); `fields` names what to ask the user
+          description: The prompt is too long (`prompt-too-long`), the device id is
+            missing (`device-required`), the compilations conflict
+            (`compile-conflict`), the request leaves out a value a mandate needs
+            (`compile-needs-input`) or cannot become a mandate
+            (`compile-unresolved`); `fields` names what to ask the user
           content:
             application/problem+json:
               schema:
@@ -495,7 +533,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
         "503":
-          description: Compiling is not configured
+          description: Inputs a mandate needs are not available yet; `missing` names them
           content:
             application/problem+json:
               schema:

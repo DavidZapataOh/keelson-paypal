@@ -143,6 +143,28 @@ function failure(f: () => unknown): { code: string; fields: readonly string[] } 
 }
 
 describe("mergeDrafts", () => {
+  it("keeps the stated cap, deadline and quantity and marks them ambiguous when one is unstated", () => {
+    const unstated = { ...draft(), maxTotalMinor: null, notAfter: null, quantityPerLine: null };
+    for (const [a, b] of [
+      [unstated, draft()],
+      [draft(), unstated],
+    ] as const) {
+      const r = mergeDrafts(a, b, dir);
+      expect(r.draft.maxTotalMinor).toBe(10000);
+      expect(r.draft.notAfter).toBe("2026-11-13T23:59:59Z");
+      expect(r.draft.quantityPerLine).toBe(1);
+      expect(r.ambiguous).toEqual(["maxTotalMinor", "notAfter", "quantityPerLine"]);
+    }
+  });
+
+  it("keeps an unstated field unstated and ambiguous when neither draft states it", () => {
+    const unstated = { ...draft(), notAfter: null, quantityPerLine: null };
+    const r = mergeDrafts(unstated, unstated, dir);
+    expect(r.draft.notAfter).toBeNull();
+    expect(r.draft.quantityPerLine).toBeNull();
+    expect(r.ambiguous).toEqual(["notAfter", "quantityPerLine"]);
+  });
+
   it("takes the lower amount and marks it ambiguous", () => {
     const r = mergeDrafts(draft(), { ...draft(), maxTotalMinor: 9000 }, dir);
     expect(r.draft.maxTotalMinor).toBe(9000);
@@ -409,6 +431,25 @@ describe("toMandate", () => {
     expect(parseMandate(mandate)).toEqual(mandate);
   });
 
+  it("asks for the cap when the request states none, never defaulting money", () => {
+    expect(
+      failure(() => toMandate({ ...draft(), maxTotalMinor: null }, system, { promptHash })),
+    ).toEqual({ code: "needs_input", fields: ["maxTotalMinor"] });
+  });
+
+  it("gives an unstated deadline seven days and an unstated quantity one, both ambiguous", () => {
+    const { mandate, ambiguous } = toMandate(
+      { ...draft(), notAfter: null, quantityPerLine: null },
+      system,
+      { promptHash },
+    );
+    expect(mandate.exp).toBe(system.iat + 7 * 86400);
+    const line = mandate.checkout.constraints.find((c) => c.type === "checkout.line_items");
+    expect(line?.type === "checkout.line_items" && line.items[0]?.quantity).toBe(1);
+    expect(ambiguous).toEqual(["deadline", "quantity"]);
+    expect(parseMandate(mandate)).toEqual(mandate);
+  });
+
   it("refuses a deadline that is not after iat", () => {
     expect(() =>
       toMandate({ ...draft(), notAfter: "2026-11-01T00:00:00Z" }, system, { promptHash }),
@@ -437,7 +478,7 @@ describe("merging two drafts", () => {
   const categories = ["gpt:187", "gpt:166", "gpt:988"];
   const arbDraft: fc.Arbitrary<Draft> = fc.record({
     currency: fc.constantFrom<Draft["currency"]>("USD", "USD", "USD", "EUR"),
-    maxTotalMinor: fc.integer({ min: 1000, max: 20000 }),
+    maxTotalMinor: fc.option(fc.integer({ min: 1000, max: 20000 }), { nil: null, freq: 10 }),
     budgetMinor: fc.integer({ min: 1000, max: 30000 }),
     merchants: fc.uniqueArray(fc.constantFrom(...names), { maxLength: 3 }),
     category: fc.uniqueArray(fc.constantFrom(...categories), { maxLength: 2 }),
@@ -449,12 +490,13 @@ describe("merging two drafts", () => {
       nil: null,
     }),
     notAfter: fc.constantFrom(
+      null,
       "2026-11-08T00:00:00Z",
       "2026-11-13T23:59:59Z",
       "2026-11-13T18:59:59-05:00",
       "2026-11-20T09:00:00+01:00",
     ),
-    quantityPerLine: fc.integer({ min: 1, max: 3 }),
+    quantityPerLine: fc.option(fc.integer({ min: 1, max: 3 }), { nil: null, freq: 4 }),
     item: fc.constantFrom("Running shoes", "Trail shoes"),
     subjective: fc.uniqueArray(fc.constantFrom("look good", "comfy"), { maxLength: 2 }),
     summary: fc.constantFrom("Running shoes", "Shoes by Friday"),
@@ -543,14 +585,21 @@ describe("merging two drafts", () => {
     return c;
   };
 
-  /** A lone draft's mandate, reading no categories as every category. */
-  const alone = (d: Draft): Mandate =>
+  /**
+   * A lone draft's mandate, reading no categories as every category and an unstated cap,
+   * deadline or quantity as the other draft's: what a draft leaves unstated constrains nothing.
+   */
+  const alone = (d: Draft, other: Draft): Mandate =>
     toMandate(
-      { ...d, category: d.category.length ? d.category : [...CATEGORY_TABLE.ids] },
-      system,
       {
-        promptHash,
+        ...d,
+        category: d.category.length ? d.category : [...CATEGORY_TABLE.ids],
+        maxTotalMinor: d.maxTotalMinor ?? other.maxTotalMinor,
+        notAfter: d.notAfter ?? other.notAfter,
+        quantityPerLine: d.quantityPerLine ?? other.quantityPerLine,
       },
+      system,
+      { promptHash },
     ).mandate;
 
   it("is symmetric", () => {
@@ -586,8 +635,8 @@ describe("merging two drafts", () => {
             if (!(e instanceof CompileError)) throw e;
             return;
           }
-          const ma = alone(a);
-          const mb = alone(b);
+          const ma = alone(a, b);
+          const mb = alone(b, a);
           for (const random of carts) {
             const cart = fitTo(merged, random);
             if (!allows(merged, cart)) continue;

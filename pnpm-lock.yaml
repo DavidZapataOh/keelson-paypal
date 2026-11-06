@@ -434,6 +434,9 @@ importers:
       '@keelson/mandate':
         specifier: workspace:*
         version: link:../../packages/mandate
+      '@keelson/policy':
+        specifier: workspace:*
+        version: link:../../packages/policy
       '@opentelemetry/api':
         specifier: 1.10.0
         version: 1.10.0

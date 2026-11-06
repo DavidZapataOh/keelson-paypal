@@ -20,7 +20,8 @@ export interface RateLimitOptions {
   trustProxy?: boolean;
 }
 
-function clientIp(c: Context, trustProxy: boolean): string {
+/** The caller's IP address, read as {@link RateLimitOptions.trustProxy} describes. */
+export function clientIp(c: Context, trustProxy: boolean): string {
   if (trustProxy) {
     const cf = c.req.header("cf-connecting-ip")?.trim();
     if (cf) return cf;

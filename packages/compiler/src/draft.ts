@@ -8,7 +8,11 @@ import { z } from "zod";
  */
 export const DraftSchema = z.strictObject({
   currency: z.enum(Object.keys(CURRENCIES) as [CurrencyCode, ...CurrencyCode[]]),
-  maxTotalMinor: z.int().positive().describe("Cap on one checkout, in minor units"),
+  maxTotalMinor: z
+    .int()
+    .positive()
+    .nullable()
+    .describe("Cap on one checkout, in minor units; null when the request states none"),
   budgetMinor: z.int().positive().describe("Cap on all checkouts together, in minor units"),
   merchants: z.array(z.string()).describe("Merchant names or domains the request names"),
   category: z.array(z.enum(CATEGORY_TABLE.ids as [string, ...string[]])),
@@ -17,8 +21,11 @@ export const DraftSchema = z.strictObject({
     color: z.string().optional().describe('"any" when the request leaves it open'),
   }),
   returns: z.strictObject({ minDays: z.int().nonnegative(), free: z.boolean() }).nullable(),
-  notAfter: z.iso.datetime({ offset: true }),
-  quantityPerLine: z.int().positive(),
+  notAfter: z.iso
+    .datetime({ offset: true })
+    .nullable()
+    .describe("Deadline; null when the request states none"),
+  quantityPerLine: z.int().positive().nullable().describe("null when the request states none"),
   item: z.string().min(1).describe("Short description of the item wanted"),
   subjective: z
     .array(z.string())
@@ -36,6 +43,7 @@ export const DRAFT_FIELDS = Object.keys(DraftSchema.shape) as DraftField[];
 export type CompileErrorCode =
   | "both_failed"
   | "conflict"
+  | "needs_input"
   | "invalid_draft"
   | "no_merchant"
   | "no_category"

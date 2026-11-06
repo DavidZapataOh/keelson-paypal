@@ -16,7 +16,7 @@ import { requestLogger } from "./logger.ts";
 import { idempotency } from "./middleware/idempotency.ts";
 import { type RateLimitOptions, rateLimit } from "./middleware/rate-limit.ts";
 import { ProblemSchema, problem } from "./problem.ts";
-import { type CompileContext, registerCompile } from "./routes/compile.ts";
+import { type CompileSources, registerCompile } from "./routes/compile.ts";
 import { registerEvents } from "./routes/events.ts";
 import { registerHealth } from "./routes/health.ts";
 import { registerMandates } from "./routes/mandates.ts";
@@ -38,8 +38,8 @@ export interface Deps {
   /** Handler deadline in milliseconds; must stay below the idempotency lock lifetime. */
   requestTimeoutMs?: number;
   rateLimit?: RateLimitOptions;
-  /** The mandate fields Keelson fills for a user; without it, compiling answers 503. */
-  compileContext?: (userId: string) => Promise<CompileContext>;
+  /** The operator and TEE inputs of a compiled mandate; compiling answers 503 without them. */
+  compileSources?: CompileSources;
   /** Aborting it ends every open event stream so the server can close. */
   shutdown?: AbortSignal;
 }
@@ -78,7 +78,7 @@ export function createApp(deps: Deps): OpenAPIHono {
       cors({
         origin: deps.appOrigin,
         credentials: true,
-        allowHeaders: ["content-type", "idempotency-key"],
+        allowHeaders: ["content-type", "idempotency-key", "keelson-device"],
         exposeHeaders: ["location", "idempotent-replayed"],
       }),
     );

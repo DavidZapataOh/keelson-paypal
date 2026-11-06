@@ -75,7 +75,7 @@ function normalize(d: Draft): Draft {
   const { color, ...rest } = d.attributes;
   return {
     ...d,
-    notAfter: new Date(d.notAfter).toISOString(),
+    notAfter: d.notAfter === null ? null : new Date(d.notAfter).toISOString(),
     merchants: [...new Set(d.merchants.map(merchant))],
     attributes: color === undefined || color === "any" ? rest : { ...rest, color },
   };
@@ -158,7 +158,7 @@ async function evaluate(c: Case): Promise<Row> {
   const asked = (field: string) =>
     r.ok
       ? ambiguous.includes(field)
-      : r.error.code === "conflict" &&
+      : (r.error.code === "conflict" || r.error.code === "needs_input") &&
         r.error.fields.some(
           (f) => CARD_FIELD[f.split(".")[0] as keyof typeof CARD_FIELD] === field,
         );

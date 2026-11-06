@@ -77,6 +77,8 @@ const sameSet = (x: readonly string[], y: readonly string[]) =>
 
 /**
  * Merges the drafts of two independent compilations into one that is never wider than either.
+ * A cap, deadline or quantity that a draft leaves unstated (null) constrains nothing: the merge
+ * keeps the other draft's value, or null, and lists the field as ambiguous.
  * A field the drafts differ on takes the narrower value and is listed as ambiguous: the lower
  * amounts and quantity, the earlier deadline, the stricter returns, the concrete attribute, and
  * the intersection of merchants (by directory id) and categories, where a draft with none
@@ -132,9 +134,11 @@ export function mergeDrafts(
   if (!category) conflicts.push("category");
   if (conflicts.length) throw new CompileError("conflict", conflicts);
 
-  const least = (f: "maxTotalMinor" | "budgetMinor" | "quantityPerLine") => {
-    if (x[f] !== y[f]) ambiguous.add(f);
-    return Math.min(x[f], y[f]);
+  const least = (f: "maxTotalMinor" | "budgetMinor" | "quantityPerLine"): number | null => {
+    const [u, v] = [x[f], y[f]];
+    if (u !== v || u === null) ambiguous.add(f);
+    if (u === null || v === null) return u ?? v;
+    return Math.min(u, v);
   };
   const text = (f: "item" | "summary") => {
     if (x[f] !== y[f]) ambiguous.add(f);
@@ -148,15 +152,21 @@ export function mergeDrafts(
         }
       : (x.returns ?? y.returns);
   if (JSON.stringify(x.returns) !== JSON.stringify(y.returns)) ambiguous.add("returns");
-  const [tx, ty] = [Date.parse(x.notAfter), Date.parse(y.notAfter)];
-  if (tx !== ty) ambiguous.add("notAfter");
-  const notAfter = tx < ty ? x.notAfter : ty < tx ? y.notAfter : smaller(x.notAfter, y.notAfter);
+  let notAfter: string | null;
+  if (x.notAfter === null || y.notAfter === null) {
+    ambiguous.add("notAfter");
+    notAfter = x.notAfter ?? y.notAfter;
+  } else {
+    const [tx, ty] = [Date.parse(x.notAfter), Date.parse(y.notAfter)];
+    if (tx !== ty) ambiguous.add("notAfter");
+    notAfter = tx < ty ? x.notAfter : ty < tx ? y.notAfter : smaller(x.notAfter, y.notAfter);
+  }
   if (!sameSet(x.subjective, y.subjective)) ambiguous.add("subjective");
 
   const draft: Draft = {
     currency: x.currency,
     maxTotalMinor: least("maxTotalMinor"),
-    budgetMinor: least("budgetMinor"),
+    budgetMinor: least("budgetMinor") as number,
     merchants: merchants as string[],
     category: category as Draft["category"],
     attributes,
@@ -232,6 +242,9 @@ function resolveAll(
   return { ids, unresolved };
 }
 
+/** The deadline of a request that states none, shown ambiguous for the user to settle. */
+const UNSTATED_DEADLINE_SECONDS = 7 * 86_400;
+
 /** Seconds since the epoch as an RFC 3339 UTC date-time without a fraction. */
 const rfc3339 = (s: number) => new Date(s * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
 
@@ -253,9 +266,12 @@ function build(m: unknown): Mandate {
  * `ambiguous` fields, a merchant set that is open or lost a name, and a deadline cut to the
  * maximum lifetime.
  *
- * @throws {@link CompileError} `invalid_draft`, `no_merchant` when names are given and none
- * resolves, `no_category` without a category and `deadline_passed` when `notAfter` is not after
- * `iat`.
+ * An unstated deadline is seven days after `iat` and an unstated quantity is one, both
+ * ambiguous; an unstated cap is never defaulted.
+ *
+ * @throws {@link CompileError} `invalid_draft`, `needs_input` without a cap, `no_merchant` when
+ * names are given and none resolves, `no_category` without a category and `deadline_passed` when
+ * `notAfter` is not after `iat`.
  */
 export function toMandate(
   input: Draft,
@@ -272,7 +288,13 @@ export function toMandate(
   if (merchants.length === 0) throw new CompileError("no_merchant", ["merchants"]);
   if (draft.category.length === 0) throw new CompileError("no_category", ["category"]);
 
-  const deadline = Math.floor(Date.parse(draft.notAfter) / 1000);
+  if (draft.maxTotalMinor === null) throw new CompileError("needs_input", ["maxTotalMinor"]);
+  if (draft.notAfter === null) ambiguous.add("deadline");
+  if (draft.quantityPerLine === null) ambiguous.add("quantity");
+  const deadline =
+    draft.notAfter === null
+      ? system.iat + UNSTATED_DEADLINE_SECONDS
+      : Math.floor(Date.parse(draft.notAfter) / 1000);
   if (deadline <= system.iat) throw new CompileError("deadline_passed", ["notAfter"]);
   const exp = Math.min(deadline, system.iat + MAX_LIFETIME_SECONDS);
   if (exp < deadline) ambiguous.add("deadline");
@@ -286,7 +308,7 @@ export function toMandate(
         {
           id: "l1",
           acceptable_items: [{ id: ANY_ITEM, title: draft.item }],
-          quantity: draft.quantityPerLine,
+          quantity: draft.quantityPerLine ?? 1,
         },
       ],
     },

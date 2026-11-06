@@ -24,6 +24,7 @@
     "@keelson/core": "workspace:*",
     "@keelson/db": "workspace:*",
     "@keelson/mandate": "workspace:*",
+    "@keelson/policy": "workspace:*",
     "@opentelemetry/api": "1.10.0",
     "@opentelemetry/sdk-node": "0.300.0",
     "@simplewebauthn/server": "13.3.3",

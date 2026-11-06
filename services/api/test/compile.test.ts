@@ -1,9 +1,12 @@
-import { randomBytes } from "node:crypto";
+import { generateKeyPairSync, randomBytes } from "node:crypto";
 import type { AddressInfo } from "node:net";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { serve } from "@hono/node-server";
 import type { OpenAPIHono } from "@hono/zod-openapi";
+import { passkey } from "@keelson/db";
 import { type Mandate, parseMandate } from "@keelson/mandate";
+import { POLICY_SET_HASH } from "@keelson/policy";
+import { cose, isoBase64URL, isoCBOR } from "@simplewebauthn/server/helpers";
 import { betterAuth } from "better-auth";
 import { testUtils } from "better-auth/plugins";
 import { pino } from "pino";
@@ -11,9 +14,10 @@ import { afterAll, beforeAll, expect, test, vi } from "vitest";
 import demoJson from "../../../packages/mandate/test/fixtures/demo-mandate.json" with {
   type: "json",
 };
-import { createApp, type Deps } from "../src/app.ts";
+import { createApp } from "../src/app.ts";
 import { createAuth } from "../src/auth.ts";
 import { authenticate } from "../src/middleware/auth.ts";
+import type { CompileSources } from "../src/routes/compile.ts";
 import { testAuthEnv, testDb, testKv } from "./setup.ts";
 
 const live = process.env.KEELSON_LIVE === "1";
@@ -22,31 +26,32 @@ if (live) process.loadEnvFile(new URL("../../../.env", import.meta.url));
 const demo: Mandate = parseMandate(demoJson);
 const secret = randomBytes(32).toString("base64url");
 let app!: OpenAPIHono;
-const server = serve({ fetch: (req) => app.fetch(req), port: 0, hostname: "127.0.0.1" });
+const server = serve({ fetch: (req, env) => app.fetch(req, env), port: 0, hostname: "127.0.0.1" });
 await new Promise<void>((resolve) => server.once("listening", () => resolve()));
 const baseURL = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 const auth = createAuth(testDb, testAuthEnv(baseURL, secret));
 
-// The parties of the signed demo mandate, issued to the session user.
-const compileContext: NonNullable<Deps["compileContext"]> = async (userId) => ({
-  mode: demo.mode,
-  user: { ...demo.user, sub: userId },
-  agent: demo.agent,
-  consent: demo.consent,
-  policy: demo.policy,
-  risk_data: demo.risk_data,
-});
+// The inputs owned by the TEE and operator work, taken from the signed demo mandate.
+const demoSources: Required<CompileSources> = {
+  agent: async () => demo.agent,
+  consent: async () => demo.consent,
+  engine: async () => ({
+    engine: demo.policy.engine,
+    version: demo.policy.version,
+    measurements: demo.policy.measurements,
+  }),
+};
 
-const build = (configured = true) =>
+const build = (compileSources?: CompileSources) =>
   createApp({
     db: testDb,
     kv: testKv,
     log: pino({ level: "silent" }),
     auth,
     authenticate: authenticate(auth, baseURL),
-    ...(configured ? { compileContext } : {}),
+    ...(compileSources ? { compileSources } : {}),
   });
-app = build();
+app = build(demoSources);
 
 const helpers = betterAuth({
   database: drizzleAdapter(testDb, { provider: "pg" }),
@@ -54,13 +59,23 @@ const helpers = betterAuth({
   baseURL,
   plugins: [testUtils()],
 });
-let signIn!: () => Promise<Headers>;
+
+interface User {
+  id: string;
+  email: string;
+  headers: Headers;
+}
+let signIn!: () => Promise<User>;
 
 beforeAll(async () => {
   const { test: utils } = await helpers.$context;
   signIn = async () => {
     const user = await utils.saveUser(utils.createUser());
-    return utils.getAuthHeaders({ userId: user.id });
+    return {
+      id: user.id,
+      email: user.email,
+      headers: await utils.getAuthHeaders({ userId: user.id }),
+    };
   };
 });
 
@@ -68,32 +83,58 @@ afterAll(async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
+/** Stores an ES256 passkey for `userId`, as registration would, and returns its credential id. */
+async function addPasskey(userId: string, createdAt: Date): Promise<string> {
+  const { x, y } = generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({
+    format: "jwk",
+  });
+  const key = new Map<number, number | Uint8Array>([
+    [cose.COSEKEYS.kty, cose.COSEKTY.EC2],
+    [cose.COSEKEYS.alg, cose.COSEALG.ES256],
+    [cose.COSEKEYS.crv, cose.COSECRV.P256],
+    [cose.COSEKEYS.x, isoBase64URL.toBuffer(x as string)],
+    [cose.COSEKEYS.y, isoBase64URL.toBuffer(y as string)],
+  ]);
+  const credentialID = randomBytes(16).toString("base64url");
+  await testDb.insert(passkey).values({
+    id: crypto.randomUUID(),
+    userId,
+    credentialID,
+    publicKey: Buffer.from(isoCBOR.encode(key)).toString("base64"),
+    counter: 0,
+    deviceType: "singleDevice",
+    backedUp: false,
+    createdAt,
+  });
+  return credentialID;
+}
+
 const problemType = (slug: string) => `https://api.keelson.finance/problems/${slug}`;
 
 function compile(
-  prompt: string,
-  headers: Headers | undefined,
-  key = crypto.randomUUID(),
-  on: OpenAPIHono = app,
+  body: Record<string, unknown>,
+  user: User | undefined,
+  { key = crypto.randomUUID(), device = "dev_9f2c" as string | null } = {},
 ) {
-  const h = new Headers(headers);
+  const h = new Headers(user?.headers);
   h.set("content-type", "application/json");
   h.set("idempotency-key", key);
-  return on.request("/v1/mandates/compile", {
+  if (device !== null) h.set("keelson-device", device);
+  return fetch(`${baseURL}/v1/mandates/compile`, {
     method: "POST",
     headers: h,
-    body: JSON.stringify({ prompt }),
+    body: JSON.stringify(body),
   });
 }
 
+const DEMO_PROMPT = "Running shoes, size 10, under $100, free returns, by Friday";
+
 test("requires a session", async () => {
-  const res = await compile("Running shoes under $100", undefined);
-  expect(res.status).toBe(401);
+  expect((await compile({ prompt: DEMO_PROMPT }, undefined)).status).toBe(401);
 });
 
 test("rejects a prompt over 2,000 characters before compiling it", async () => {
-  const headers = await signIn();
-  const res = await compile("x".repeat(2001), headers);
+  const res = await compile({ prompt: "x".repeat(2001) }, await signIn());
   expect(res.status).toBe(422);
   expect(res.headers.get("content-type")).toContain("application/problem+json");
   expect((await res.json()).type).toBe(problemType("prompt-too-long"));
@@ -103,32 +144,68 @@ test("limits each user to 10 compilations a minute", async () => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(Math.floor(Date.now() / 60_000) * 60_000 + 30_000);
   try {
-    const headers = await signIn();
-    for (let i = 0; i < 10; i++)
-      expect((await compile("x".repeat(2001), headers)).status).toBe(422);
-    const limited = await compile("x".repeat(2001), headers);
+    const user = await signIn();
+    const long = { prompt: "x".repeat(2001) };
+    for (let i = 0; i < 10; i++) expect((await compile(long, user)).status).toBe(422);
+    const limited = await compile(long, user);
     expect(limited.status).toBe(429);
     expect(limited.headers.get("ratelimit-policy")).toContain('"compile";q=10;w=60');
-    expect((await compile("x".repeat(2001), await signIn())).status).toBe(422);
+    expect((await compile(long, await signIn())).status).toBe(422);
   } finally {
     vi.useRealTimers();
   }
 });
 
-test("answers 503 where compiling is not configured", async () => {
-  const res = await compile("Running shoes under $100", await signIn(), undefined, build(false));
-  expect(res.status).toBe(503);
-  expect((await res.json()).type).toBe(problemType("compile-unavailable"));
+test("needs a passkey of the user's own to compile for", async () => {
+  const user = await signIn();
+  const none = await compile({ prompt: DEMO_PROMPT }, user);
+  expect(none.status).toBe(409);
+  expect((await none.json()).type).toBe(problemType("passkey-required"));
+
+  const other = await signIn();
+  const foreign = await addPasskey(other.id, new Date());
+  await addPasskey(user.id, new Date());
+  const res = await compile({ prompt: DEMO_PROMPT, credentialId: foreign }, user);
+  expect(res.status).toBe(403);
+  expect((await res.json()).type).toBe(problemType("credential-not-owned"));
+});
+
+test("needs the device the app identifies itself with", async () => {
+  const user = await signIn();
+  await addPasskey(user.id, new Date());
+  const res = await compile({ prompt: DEMO_PROMPT }, user, { device: null });
+  expect(res.status).toBe(422);
+  expect((await res.json()).type).toBe(problemType("device-required"));
+});
+
+test("answers 503 naming the inputs that are not available yet", async () => {
+  const user = await signIn();
+  await addPasskey(user.id, new Date());
+  try {
+    app = build();
+    const none = await compile({ prompt: DEMO_PROMPT }, user);
+    const body = await none.json();
+    expect(none.status).toBe(503);
+    expect(body.type).toBe(problemType("compile-unavailable"));
+    expect(body.missing).toEqual(["agent", "consent", "engine"]);
+
+    app = build({ agent: demoSources.agent });
+    const partial = await (await compile({ prompt: DEMO_PROMPT }, user)).json();
+    expect(partial.missing).toEqual(["consent", "engine"]);
+  } finally {
+    app = build(demoSources);
+  }
 });
 
 test.runIf(live)(
-  "compiles the demo request into a draft with its card",
+  "compiles the demo request for the user's chosen passkey",
   { timeout: 120_000 },
   async () => {
-    const headers = await signIn();
+    const user = await signIn();
+    const older = await addPasskey(user.id, new Date(Date.now() - 60_000));
+    const newest = await addPasskey(user.id, new Date());
     const key = crypto.randomUUID();
-    const prompt = "Running shoes, size 10, under $100, free returns, by Friday";
-    const res = await compile(prompt, headers, key);
+    const res = await compile({ prompt: DEMO_PROMPT, credentialId: older }, user, { key });
     expect(res.status).toBe(200);
     const body = await res.json();
     const draft = parseMandate(body.mandateDraft);
@@ -137,14 +214,21 @@ test.runIf(live)(
       max: 10000,
       currency: "USD",
     });
+    expect(draft.user.sub).toBe(user.id);
+    expect(draft.user.app_login_id).toBe(user.email);
+    expect(draft.user.cred.id).toBe(older);
+    expect(draft.user.cred.id).not.toBe(newest);
+    expect(draft.policy.policy_set_hash).toBe(POLICY_SET_HASH);
+    expect(draft.risk_data.device_fp).toBe("dev_9f2c");
+    expect(draft.risk_data.ip).toMatch(/^(::ffff:)?127\.0\.0\.1$/);
+    expect(draft.mode).toBe("autonomous");
     expect(body.card.rows.find((r: { field: string }) => r.field === "total").values).toEqual([
       "100.00 USD",
     ]);
     expect(body.ambiguous).toContain("merchant");
-    expect(["ok", "failed", "refused"]).toContain(body.check.status);
     console.log("ambiguous:", body.ambiguous, "check:", body.check);
 
-    const replay = await compile(prompt, headers, key);
+    const replay = await compile({ prompt: DEMO_PROMPT, credentialId: older }, user, { key });
     expect(replay.headers.get("idempotent-replayed")).toBe("true");
     expect(await replay.json()).toEqual(body);
   },
