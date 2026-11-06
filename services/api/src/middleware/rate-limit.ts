@@ -5,6 +5,8 @@ import { principalKey } from "../principal.ts";
 import { problem } from "../problem.ts";
 
 export interface RateLimitOptions {
+  /** The policy name; limiters with different names count separately. */
+  name?: string;
   /** Requests per window for an authenticated principal. */
   limit?: number;
   /** Requests per window for an anonymous caller, keyed by client IP. */
@@ -39,7 +41,13 @@ function clientIp(c: Context, trustProxy: boolean): string {
  * It fails open when the store is unreachable; the idempotency middleware guards writes.
  */
 export function rateLimit(kv: RedisClientType, options: RateLimitOptions = {}): MiddlewareHandler {
-  const { limit = 600, anonymousLimit = 120, windowSec = 60, trustProxy = false } = options;
+  const {
+    name = "default",
+    limit = 600,
+    anonymousLimit = 120,
+    windowSec = 60,
+    trustProxy = false,
+  } = options;
   return async (c, next) => {
     const principal = c.get("principal");
     const owner =
@@ -51,11 +59,8 @@ export function rateLimit(kv: RedisClientType, options: RateLimitOptions = {}): 
 
     let count: number;
     try {
-      const [incr] = await kv
-        .multi()
-        .incr(`rl:${owner}:${window}`)
-        .expire(`rl:${owner}:${window}`, windowSec, "NX")
-        .exec();
+      const key = `rl:${name}:${owner}:${window}`;
+      const [incr] = await kv.multi().incr(key).expire(key, windowSec, "NX").exec();
       count = Number(incr);
       if (!Number.isFinite(count)) return next();
     } catch {
@@ -63,8 +68,9 @@ export function rateLimit(kv: RedisClientType, options: RateLimitOptions = {}): 
     }
 
     const remaining = Math.max(quota - count, 0);
-    c.header("RateLimit-Policy", `"default";q=${quota};w=${windowSec}`);
-    c.header("RateLimit", `"default";r=${remaining};t=${reset}`);
+    // Each limiter on the path adds its own item to the `RateLimit-Policy` and `RateLimit` lists.
+    c.header("RateLimit-Policy", `"${name}";q=${quota};w=${windowSec}`, { append: true });
+    c.header("RateLimit", `"${name}";r=${remaining};t=${reset}`, { append: true });
     if (count > quota) {
       c.header("Retry-After", String(reset));
       return problem(c, 429, "rate-limited", "Too many requests", `Retry after ${reset} seconds.`);

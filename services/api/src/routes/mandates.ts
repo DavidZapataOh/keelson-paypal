@@ -59,7 +59,7 @@ const CreatedMandate = z
   .object({ id: z.string(), mandateHash: Hex32, state: z.literal("SIGNED") })
   .openapi("CreatedMandate");
 
-const Card = z
+export const Card = z
   .object({
     rows: z.array(
       z.object({
@@ -79,7 +79,7 @@ const MandateView = z
     id: z.string(),
     state: MandateState,
     mandateHash: Hex32.nullable(),
-    card: Card.nullable().openapi({
+    card: z.union([Card, z.null()]).openapi({
       description: "The card rendered from the stored payload, before any checkout evidence.",
     }),
   })

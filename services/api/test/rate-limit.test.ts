@@ -3,6 +3,7 @@ import { pino } from "pino";
 import { afterAll, beforeAll, expect, test, vi } from "vitest";
 import { createApp } from "../src/app.ts";
 import { createKv } from "../src/kv.ts";
+import { rateLimit } from "../src/middleware/rate-limit.ts";
 import { testDb, testKv } from "./setup.ts";
 
 const log = pino({ level: "silent" });
@@ -116,4 +117,20 @@ test("lets reads through when the store is unreachable and leaves writes to idem
     "https://api.keelson.finance/problems/dependency-unavailable",
   );
   expect((await app.request("/health")).status).toBe(200);
+});
+
+test("a named limiter keeps its own quota and policy name", async () => {
+  const app = createApp({ db: testDb, kv: testKv, log, authenticate: asPrincipal });
+  app.get("/v1/test/strict", rateLimit(testKv, { name: "strict", limit: 1 }), (c) =>
+    c.json({ ok: true }),
+  );
+  const who = subject();
+  const call = () => app.request("/v1/test/strict", { headers: { "x-test-subject": who } });
+  const first = await call();
+  expect(first.status).toBe(200);
+  expect(first.headers.get("ratelimit-policy")).toBe('"default";q=600;w=60, "strict";q=1;w=60');
+  const second = await call();
+  expect(second.status).toBe(429);
+  expect(second.headers.get("ratelimit")).toMatch(/, "strict";r=0;t=\d+$/);
+  expect((await get(build(), who)).status).toBe(200);
 });

@@ -422,6 +422,9 @@ importers:
       '@hono/zod-openapi':
         specifier: 1.6.3
         version: 1.6.3(hono@4.13.16)(zod@4.6.7)
+      '@keelson/compiler':
+        specifier: workspace:*
+        version: link:../../packages/compiler
       '@keelson/core':
         specifier: workspace:*
         version: link:../../packages/core

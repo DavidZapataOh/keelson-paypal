@@ -105,16 +105,18 @@ components:
             - "null"
           pattern: ^0x[0-9a-f]{64}$
         card:
-          $ref: "#/components/schemas/MandateCard"
+          anyOf:
+            - $ref: "#/components/schemas/MandateCard"
+            - type: "null"
+          description: The card rendered from the stored payload, before any checkout
+            evidence.
       required:
         - id
         - state
         - mandateHash
         - card
     MandateCard:
-      type:
-        - object
-        - "null"
+      type: object
       properties:
         rows:
           type: array
@@ -154,7 +156,68 @@ components:
       required:
         - rows
         - warnings
-      description: The card rendered from the stored payload, before any checkout evidence.
+    CompiledMandate:
+      type: object
+      properties:
+        mandateDraft:
+          type: object
+          additionalProperties: {}
+          description: The compiled `keelson.mandate.1` payload, unsigned; its commitment
+            is zero.
+        card:
+          $ref: "#/components/schemas/MandateCard"
+        ambiguous:
+          type: array
+          items:
+            type: string
+          description: Card fields the compilations disagreed on, shown gray for the user
+            to settle.
+        check:
+          type: object
+          properties:
+            status:
+              type: string
+              enum:
+                - ok
+                - refused
+                - failed
+                - aborted
+                - skipped
+            discrepancies:
+              type:
+                - array
+                - "null"
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                  issue:
+                    type: string
+                required:
+                  - field
+                  - issue
+          required:
+            - status
+            - discrepancies
+          description: The round trip of the card against the request. Only `ok` means it
+            was checked.
+      required:
+        - mandateDraft
+        - card
+        - ambiguous
+        - check
+    CompileMandate:
+      type: object
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+          description: The shopping request in natural language, at most 2000 UTF-16 code
+            units.
+          example: Running shoes, size 10, under $100, free returns, by Friday
+      required:
+        - prompt
     Passkeys:
       type: object
       properties:
@@ -372,6 +435,67 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "404":
           description: No such mandate for this user
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/mandates/compile:
+    post:
+      tags:
+        - mandates
+      summary: Compile a mandate from a shopping request
+      description: Two models compile the request independently; fields they disagree
+        on come back ambiguous, and a third model checks the rendered card
+        against the request. Limited to 10 requests a minute per user.
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompileMandate"
+      responses:
+        "200":
+          description: The draft mandate and its card
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompiledMandate"
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: The prompt is too long (`prompt-too-long`), the compilations
+            conflict (`compile-conflict`) or the request lacks what a mandate
+            needs (`compile-unresolved`); `fields` names what to ask the user
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Too many compilations
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "502":
+          description: The models failed to compile the request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: Compiling is not configured
           content:
             application/problem+json:
               schema:
