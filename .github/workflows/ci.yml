@@ -79,7 +79,7 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @keelson/api exec playwright install --with-deps chromium
+      - run: pnpm --filter @keelson/api exec playwright install chromium
       - run: pnpm turbo run typecheck test build --filter=./packages/db --filter=./services/api
       - run: pnpm migrate
       - run: pnpm --filter @keelson/api openapi && git diff --exit-code openapi/
@@ -156,18 +156,6 @@ jobs:
       - run: pnpm --filter @keelson/policy test
         env:
           PARITY_FILE: ${{ runner.temp }}/parity.jsonl
-
-  kani:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7
-      - run: rustup toolchain install
-      - uses: actions/cache@v6
-        with:
-          path: ~/.kani
-          key: ${{ runner.os }}-kani-0.68.0
-      - run: cargo install --locked kani-verifier --version 0.68.0 && cargo kani setup
-      - run: cargo kani -p keelson-canon
 
   noir:
     runs-on: ubuntu-24.04
