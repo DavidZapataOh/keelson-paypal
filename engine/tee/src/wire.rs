@@ -121,14 +121,6 @@ impl From<&Assertion> for keelson_mandate::Assertion {
     }
 }
 
-/// Where the passkey assertion must have been made.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Expected {
-    pub origin: String,
-    pub rp_id: String,
-}
-
 /// A mandate the user signed with their passkey, to be issued as an open mandate.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -137,9 +129,8 @@ pub struct RegisterMandate {
     pub sub: String,
     pub payload_sd: Value,
     pub disclosures: Vec<String>,
-    /// The passkey assertion over `M`.
+    /// The passkey assertion over `M`, made on the engine's configured origin.
     pub assertion: Assertion,
-    pub expected: Expected,
     /// The salt that opens `zk.commitment`.
     #[serde(with = "hex_array")]
     pub salt: [u8; 16],

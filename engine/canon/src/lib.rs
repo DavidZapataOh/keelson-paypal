@@ -13,6 +13,13 @@ use std::collections::{BTreeMap, BTreeSet};
 
 const MAX_LINES: usize = 16;
 
+/// `H("keelson/cart/v1", cart)`, with an absent `size` or `color` as `null`; the hash the agent
+/// signs as `cart_hash`. Fails on a number JSON cannot carry exactly.
+pub fn cart_hash(cart: &Cart) -> Result<[u8; 32], keelson_core::Error> {
+    let value = serde_json::to_value(cart).expect("a cart serializes to JSON");
+    keelson_core::hash_object(keelson_core::Dst::Cart, &value)
+}
+
 /// Verifies that the cart reconciles with the purchase unit and derives the policy context.
 pub fn canonicalize(cart: &Cart, unit: &PayPalUnit) -> Result<Context, Deny> {
     if cart.lines.is_empty() {

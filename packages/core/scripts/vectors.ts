@@ -20,8 +20,10 @@ import {
 import {
   type AlibiFields,
   alibiDigest,
+  type Cart,
   CURRENCIES,
   type CurrencyCode,
+  cartHash,
   currencyNumeric,
   DST,
   type Dst,
@@ -279,6 +281,112 @@ function fieldFromAsciiVectors() {
     }
     return { name: `fieldFromAscii/${JSON.stringify(tag)}`, input: tag, expected };
   });
+}
+
+function cartHashVectors() {
+  const shoes: Cart = {
+    merchant: "mrc_runfast",
+    currency: "USD",
+    lines: [
+      {
+        sku: "sku-trail-10",
+        size: "10",
+        color: "black",
+        category: "gpt:187",
+        qty: 1,
+        unit_minor: 9400,
+      },
+    ],
+    return_days: 30,
+    returns_free: true,
+  };
+  const bundleLines = [
+    {
+      sku: "sku-trail-10",
+      size: "10",
+      color: "black",
+      category: "gpt:187",
+      qty: 2,
+      unit_minor: 9400,
+    },
+    { sku: "SOCK-6", size: null, color: "white", category: "gpt:1604", qty: 3, unit_minor: 1500 },
+    { sku: "BAG-20", size: null, color: null, category: "gpt:100", qty: 1, unit_minor: 10700 },
+  ];
+  const bundle: Cart = { ...shoes, return_days: 14, returns_free: false, lines: bundleLines };
+  const omitted: Cart = {
+    ...bundle,
+    lines: [
+      bundleLines[0] as Cart["lines"][number],
+      { sku: "SOCK-6", color: "white", category: "gpt:1604", qty: 3, unit_minor: 1500 },
+      { sku: "BAG-20", category: "gpt:100", qty: 1, unit_minor: 10700 },
+    ],
+  };
+  const cases: [string, Cart][] = [
+    ["demo-shoes", shoes],
+    ["bundle-nulls", bundle],
+    ["bundle-omitted", omitted],
+    [
+      "unicode",
+      {
+        ...shoes,
+        merchant: "mrc_zapatería",
+        lines: [
+          {
+            sku: "zapato-ñ-\u{1F45F}",
+            size: "42",
+            color: "rojo",
+            category: "gpt:187",
+            qty: 1,
+            unit_minor: 0,
+          },
+        ],
+      },
+    ],
+    [
+      "variants",
+      {
+        ...shoes,
+        lines: [
+          {
+            sku: "sku-trail-10",
+            size: "9",
+            color: "black",
+            category: "gpt:187",
+            qty: 1,
+            unit_minor: 9400,
+          },
+          {
+            sku: "sku-trail-10",
+            size: "10",
+            color: "black",
+            category: "gpt:187",
+            qty: 1,
+            unit_minor: 9400,
+          },
+        ],
+      },
+    ],
+    [
+      "jpy-large",
+      {
+        merchant: "mrc_tokyo",
+        currency: "JPY",
+        lines: [
+          {
+            sku: "k",
+            size: null,
+            color: null,
+            category: "gpt:1",
+            qty: 999,
+            unit_minor: 9_007_199_254,
+          },
+        ],
+        return_days: 0,
+        returns_free: false,
+      },
+    ],
+  ];
+  return cases.map(([name, cart]) => ({ name, input: cart, expected: toHex(cartHash(cart)) }));
 }
 
 function alibiVectors() {
@@ -579,6 +687,7 @@ writeJson("eip712", eip712Vectors());
 writeJson("poseidon2", poseidon);
 writeJson("money", moneyVectors());
 writeJson("alibi", alibiVectors());
+writeJson("cart-hash", cartHashVectors());
 writeJson("field-from-ascii", fieldFromAsciiVectors());
 writeJson("countersign", await countersignVectors());
 writeJson("report-data", reportDataVectors());
