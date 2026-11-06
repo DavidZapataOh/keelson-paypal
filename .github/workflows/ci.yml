@@ -92,6 +92,18 @@ jobs:
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
 
+  kani:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install
+      - uses: actions/cache@v6
+        with:
+          path: ~/.kani
+          key: ${{ runner.os }}-kani-0.68.0
+      - run: cargo install --locked kani-verifier --version 0.68.0 && cargo kani setup
+      - run: cargo kani -p keelson-canon
+
   noir:
     runs-on: ubuntu-24.04
     steps:

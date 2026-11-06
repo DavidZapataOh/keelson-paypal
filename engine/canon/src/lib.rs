@@ -3,6 +3,8 @@
 //! All arithmetic is checked `i64` in minor units.
 
 mod money;
+#[cfg(kani)]
+mod proofs;
 mod types;
 
 pub use types::{Amount, Breakdown, Cart, CartLine, Context, Deny, PayPalUnit, Variant};
@@ -24,20 +26,7 @@ pub fn canonicalize(cart: &Cart, unit: &PayPalUnit) -> Result<Context, Deny> {
     }
     let currency = &unit.currency;
 
-    let mut items = 0i64;
-    for line in &cart.lines {
-        if line.qty < 1 {
-            return Err(Deny::InvalidQuantity);
-        }
-        if line.unit_minor < 0 {
-            return Err(Deny::InvalidAmount);
-        }
-        let extended = line
-            .qty
-            .checked_mul(line.unit_minor)
-            .ok_or(Deny::AmountOverflow)?;
-        items = items.checked_add(extended).ok_or(Deny::AmountOverflow)?;
-    }
+    let items = sum_minor(cart.lines.iter().map(|l| (l.qty, l.unit_minor)))?;
 
     let b = &unit.breakdown;
     let entries = [
@@ -65,13 +54,14 @@ pub fn canonicalize(cart: &Cart, unit: &PayPalUnit) -> Result<Context, Deny> {
         None => return Err(Deny::InvalidAmount),
     };
     let total = money::parse(currency, &unit.value)?;
-    let mut expected = item_total;
-    for v in [&b.tax_total, &b.shipping, &b.handling, &b.insurance] {
-        expected = expected.checked_add(part(v)?).ok_or(Deny::AmountOverflow)?;
-    }
-    for v in [&b.discount, &b.shipping_discount] {
-        expected = expected.checked_sub(part(v)?).ok_or(Deny::AmountOverflow)?;
-    }
+    let additions = [
+        part(&b.tax_total)?,
+        part(&b.shipping)?,
+        part(&b.handling)?,
+        part(&b.insurance)?,
+    ];
+    let deductions = [part(&b.discount)?, part(&b.shipping_discount)?];
+    let expected = breakdown_total(item_total, additions, deductions)?;
     if items != item_total || expected != total {
         return Err(Deny::AmountBreakdownMismatch);
     }
@@ -100,4 +90,37 @@ pub fn canonicalize(cart: &Cart, unit: &PayPalUnit) -> Result<Context, Deny> {
         variants: per_variant.into_keys().collect(),
         return_days: cart.return_days,
     })
+}
+
+/// Sums `qty × unit_minor` over `(qty, unit_minor)` pairs, rejecting quantities below one and
+/// negative prices.
+fn sum_minor(lines: impl IntoIterator<Item = (i64, i64)>) -> Result<i64, Deny> {
+    let mut items = 0i64;
+    for (qty, unit_minor) in lines {
+        if qty < 1 {
+            return Err(Deny::InvalidQuantity);
+        }
+        if unit_minor < 0 {
+            return Err(Deny::InvalidAmount);
+        }
+        let extended = qty.checked_mul(unit_minor).ok_or(Deny::AmountOverflow)?;
+        items = items.checked_add(extended).ok_or(Deny::AmountOverflow)?;
+    }
+    Ok(items)
+}
+
+/// The amount a breakdown adds up to: the item total plus additions, minus deductions.
+fn breakdown_total(
+    item_total: i64,
+    additions: [i64; 4],
+    deductions: [i64; 2],
+) -> Result<i64, Deny> {
+    let mut total = item_total;
+    for a in additions {
+        total = total.checked_add(a).ok_or(Deny::AmountOverflow)?;
+    }
+    for d in deductions {
+        total = total.checked_sub(d).ok_or(Deny::AmountOverflow)?;
+    }
+    Ok(total)
 }
