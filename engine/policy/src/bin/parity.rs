@@ -643,7 +643,7 @@ fn raw_context(r: &mut Rng, mut c: Value) -> Value {
         "max_unit_minor",
         "return_days",
         "returns_free",
-        "now",
+        "now_ms",
     ];
     let o = c.as_object_mut().unwrap();
     match r.below(15) {
@@ -694,18 +694,16 @@ fn raw_context(r: &mut Rng, mut c: Value) -> Value {
         }
         6 => {
             let now = [
-                json!({ "__extn": { "fn": "datetime", "arg": "garbage" } }),
-                json!({ "__extn": { "fn": "datetime", "arg": "2026-11-05" } }),
-                json!({ "__extn": { "fn": "datetime", "arg": "2026-11-05T17:02:11Z" } }),
-                json!({ "__extn": { "fn": "datetime", "arg": "2026-11-05T17:02:11.250+0200" } }),
-                json!({ "__extn": { "fn": "datetime", "arg": "-0001-01-01T00:00:00.000Z" } }),
-                json!({ "__extn": { "fn": "decimal", "arg": "1.0" } }),
-                json!({ "__extn": { "fn": "datetime", "arg": "2026-11-05", "x": 1 } }),
-                json!({ "__extn": { "fn": "datetime" } }),
+                json!({ "__extn": { "fn": "datetime", "arg": "2026-11-05T17:02:11.250Z" } }),
+                json!("1793750400000"),
                 json!("2026-11-05T17:02:11.250Z"),
-                json!(1_793_750_400_000i64),
+                json!(1_793_750_400_000.5),
+                json!(1_793_750_400_000.0),
+                json!(-62_167_219_200_001i64),
+                json!(1_793_750_400i64),
+                json!(null),
             ];
-            o.insert("now".to_owned(), r.pick(&now).clone());
+            o.insert("now_ms".to_owned(), r.pick(&now).clone());
         }
         7 => {
             let variants = [
@@ -811,6 +809,10 @@ fn extra(r: &mut Rng, valid: bool) -> Extra {
     }
 }
 
+fn epoch_ms(t: OffsetDateTime) -> i64 {
+    i64::try_from(t.unix_timestamp_nanos().div_euclid(1_000_000)).expect("in range")
+}
+
 fn now(ms: i64) -> OffsetDateTime {
     OffsetDateTime::from_unix_timestamp_nanos(i128::from(ms) * 1_000_000).expect("in range")
 }
@@ -865,10 +867,7 @@ fn case(r: &mut Rng, scenario: Scenario) -> Case {
         Scenario::BadMandate => break_mandate(r, &mut m),
         Scenario::RawContext => {
             let mut c = serde_json::to_value(&input.context).unwrap();
-            c["now"] = json!({ "__extn": {
-                "fn": "datetime",
-                "arg": keelson_policy::cedar_datetime(input.now).unwrap(),
-            } });
+            c["now_ms"] = json!(epoch_ms(input.now));
             raw = Some(raw_context(r, c));
         }
         Scenario::Quantities => break_quantities(r, &mut input.context),

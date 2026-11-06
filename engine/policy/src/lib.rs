@@ -11,7 +11,7 @@ mod extras;
 mod hashes;
 mod trace;
 
-pub use entity::{agent_uid, cedar_datetime, mandate_agent, mandate_entity, variant_expr};
+pub use entity::{agent_uid, mandate_agent, mandate_entity, variant_expr};
 pub use evaluate::{
     EngineMeta, EvalInput, FieldId, evaluate, evaluate_context, evaluate_context_with_extras,
     evaluate_with_extras,

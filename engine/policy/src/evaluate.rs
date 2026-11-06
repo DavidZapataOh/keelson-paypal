@@ -14,13 +14,13 @@ use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
 use time::macros::format_description;
 
-use crate::entity::attributes;
+use crate::entity::{attributes, clock_ms};
 use crate::extras::{Extra, InvalidExtra, compile};
 use crate::hashes::hex;
 use crate::trace::{Decision, Engine, FieldTrace, TRACE_VERSION, Trace};
 use crate::{
-    MAX_SAFE_INTEGER, PolicyError, agent_uid, cedar_datetime, mandate_entity, policies,
-    policy_set_hash_tag, policy_texts, safe_int, schema, schema_hash_tag, variant_expr,
+    MAX_SAFE_INTEGER, PolicyError, agent_uid, mandate_entity, policies, policy_set_hash_tag,
+    policy_texts, safe_int, schema, schema_hash_tag, variant_expr,
 };
 
 /// A policy `@field` value.
@@ -96,7 +96,7 @@ const BINDINGS: [(&str, &[&str], &[&str]); 12] = [
     ("amount", &["total_minor"], &["max_total_minor"]),
     ("budget", &["total_minor"], &["budget_left_minor"]),
     ("merchant", &["merchant"], &["merchants"]),
-    ("window", &["now"], &["expires_at", "not_before"]),
+    ("window", &["now_ms"], &["expires_at_ms", "not_before_ms"]),
     ("quantity", &["max_line_qty"], &["max_qty_per_line"]),
     ("category", &["categories"], &["categories"]),
     ("variant", &["variants"], &["variants"]),
@@ -119,7 +119,7 @@ const CONTEXT: [(&str, Kind); 10] = [
     ("max_unit_minor", Kind::Long),
     ("return_days", Kind::Long),
     ("returns_free", Kind::Bool),
-    ("now", Kind::Datetime),
+    ("now_ms", Kind::Long),
 ];
 
 #[derive(Clone, Copy)]
@@ -129,7 +129,6 @@ enum Kind {
     Bool,
     Strings,
     Variants,
-    Datetime,
 }
 
 impl Kind {
@@ -149,14 +148,6 @@ impl Kind {
                             })
                     })
                 })
-            }),
-            Self::Datetime => v.as_object().is_some_and(|o| {
-                o.len() == 1
-                    && o.get("__extn").and_then(Value::as_object).is_some_and(|e| {
-                        e.len() == 2
-                            && e.get("fn").and_then(Value::as_str) == Some("datetime")
-                            && e.get("arg").is_some_and(Value::is_string)
-                    })
             }),
         }
     }
@@ -187,8 +178,8 @@ impl Faults {
 /// The trace `errors` are these codes, sorted and without repeats:
 /// - `context.invalid`: the context is not a record, or Cedar rejects it;
 /// - `context.missing:<attr>`, `context.type:<attr>`, `context.extra:<attr>`: an attribute is
-///   absent, has the wrong type (including a number that is not a safe integer, and a `now` that
-///   is not a `datetime` extension value), or is not in the schema;
+///   absent, has the wrong type (including a number that is not a safe integer, and a `now_ms`
+///   for a clock outside years 0000 to 9999), or is not in the schema;
 /// - `context.empty:variants`, `context.empty:categories`: the cart has no variant, or no
 ///   category or an empty category id;
 /// - `context.quantities`: a quantity is below 1, the quantities are not keyed by the variants,
@@ -434,7 +425,7 @@ fn extras_parts(extras: &[Extra]) -> Rc<ExtrasParts> {
 struct Projection {
     variants: BTreeSet<Variant>,
     max_line_qty: i64,
-    now: Option<String>,
+    now_ms: Option<i64>,
 }
 
 /// The projection of `input.context` in Cedar JSON form, and the values Cedar reads.
@@ -472,8 +463,8 @@ fn project(input: &EvalInput, mandate: &MandateParts, faults: &mut Faults) -> (V
         c.max_line_qty
     };
 
-    // A clock Cedar cannot represent is recorded as `context.type:now`.
-    let now = cedar_datetime(input.now).ok();
+    // A clock outside years 0000 to 9999 is recorded as `context.type:now_ms`.
+    let now_ms = clock_ms(input.now);
     let mut context = Map::with_capacity(CONTEXT.len());
     let mut put = |key: &str, value: Value| context.insert(key.to_owned(), value);
     put("currency", Value::from(c.currency.as_str()));
@@ -496,17 +487,11 @@ fn project(input: &EvalInput, mandate: &MandateParts, faults: &mut Faults) -> (V
     put("max_unit_minor", long(c.max_unit_minor));
     put("return_days", long(c.return_days));
     put("returns_free", Value::Bool(c.returns_free));
-    put(
-        "now",
-        now.as_ref().map_or(
-            Value::Null,
-            |now| json!({ "__extn": { "fn": "datetime", "arg": now } }),
-        ),
-    );
+    put("now_ms", now_ms.map_or(Value::Null, Value::from));
     let projection = Projection {
         variants,
         max_line_qty,
-        now,
+        now_ms,
     };
     (Value::Object(context), projection)
 }
@@ -563,27 +548,10 @@ impl Projection {
                 "returns_free",
                 RestrictedExpression::new_bool(c.returns_free),
             ),
-            ("now", datetime(self.now.as_deref()?)),
+            ("now_ms", RestrictedExpression::new_long(self.now_ms?)),
         ];
         Context::from_pairs(pairs.map(|(k, v)| (k.to_owned(), v))).ok()
     }
-}
-
-/// The `datetime` literal for `now`, kept for the next evaluation at the same instant: building
-/// one costs more than the rest of the context.
-fn datetime(now: &str) -> RestrictedExpression {
-    thread_local! {
-        static LAST: Cell<Option<Rc<(String, RestrictedExpression)>>> = const { Cell::new(None) };
-    }
-    LAST.with(|slot| {
-        let last = slot
-            .take()
-            .filter(|last| last.0 == now)
-            .unwrap_or_else(|| Rc::new((now.to_owned(), RestrictedExpression::new_datetime(now))));
-        let expr = last.1.clone();
-        slot.set(Some(last));
-        expr
-    })
 }
 
 /// Checks the context against the `checkout` context type and rejects empty carts.

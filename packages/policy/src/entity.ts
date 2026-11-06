@@ -1,4 +1,3 @@
-import type { Json } from "@keelson/core";
 import { CATEGORY_TABLE } from "@keelson/mandate";
 import { compareStrings, get, isObject, isSafeInt, type JsonObject, sortedSet } from "./value.ts";
 
@@ -93,32 +92,35 @@ function year(y: number): string {
   return y < 0 ? `-${pad(-y, 4)}` : pad(y, 4);
 }
 
-/**
- * A Cedar `datetime` literal at millisecond precision, `YYYY-MM-DDThh:mm:ss.SSSZ`, or
- * `undefined` outside years -9999 to 9999.
- */
-export function cedarDatetime(t: Date): string | undefined {
+/** `YYYY-MM-DDThh:mm:ssZ`, the trace's `t_tee`, or `""` outside years -9999 to 9999. */
+export function teeTime(t: Date): string {
   const ms = t.getTime();
-  if (!Number.isFinite(ms) || BigInt(ms) < MIN_MS || BigInt(ms) > MAX_MS) return undefined;
+  if (!Number.isFinite(ms) || BigInt(ms) < MIN_MS || BigInt(ms) > MAX_MS) return "";
   return (
     `${year(t.getUTCFullYear())}-${pad(t.getUTCMonth() + 1, 2)}-${pad(t.getUTCDate(), 2)}` +
-    `T${pad(t.getUTCHours(), 2)}:${pad(t.getUTCMinutes(), 2)}:${pad(t.getUTCSeconds(), 2)}` +
-    `.${pad(t.getUTCMilliseconds(), 3)}Z`
+    `T${pad(t.getUTCHours(), 2)}:${pad(t.getUTCMinutes(), 2)}:${pad(t.getUTCSeconds(), 2)}Z`
   );
 }
 
-/** `YYYY-MM-DDThh:mm:ssZ`, the trace's `t_tee`, or `""` outside years -9999 to 9999. */
-export function teeTime(t: Date): string {
-  const s = cedarDatetime(t);
-  return s === undefined ? "" : `${s.slice(0, -5)}Z`;
+/** The first and last instants of years 0000 to 9999 in Unix milliseconds. */
+const FIRST_MS = -62_167_219_200_000n;
+const LAST_MS = 253_402_300_799_999n;
+
+/** `ms` when it lies within years 0000 to 9999. */
+function epochMs(ms: bigint): number | undefined {
+  return ms < FIRST_MS || ms > LAST_MS ? undefined : Number(ms);
 }
 
-/** Cedar JSON for a `datetime` extension value. */
-export const datetimeJson = (arg: string): Json => ({ __extn: { fn: "datetime", arg } });
+/** The clock in Unix milliseconds when it lies within years 0000 to 9999. */
+export function clockMs(t: Date): number | undefined {
+  const ms = t.getTime();
+  return Number.isFinite(ms) ? epochMs(BigInt(ms)) : undefined;
+}
 
-function datetimeMs(ms: bigint): Json {
-  if (ms < MIN_MS || ms > MAX_MS) throw invalid("datetime", "out of range");
-  return datetimeJson(cedarDatetime(new Date(Number(ms))) as string);
+function windowMs(ms: bigint): number {
+  const v = epochMs(ms);
+  if (v === undefined) throw invalid("datetime", "outside years 0000 to 9999");
+  return v;
 }
 
 /**
@@ -254,8 +256,8 @@ export function mandateEntity(m: unknown, budgetLeftMinor: number): MandateEntit
   const currency = str(get(get(m, "payment"), "currency"), "payment.currency");
   const maxTotal = int(get(range, "max"), "payment.amount_range.max");
   const cats = categories(m);
-  const notBefore = datetimeMs(BigInt(int(get(m, "nbf"), "nbf")) * 1000n);
-  const expiresAt = datetimeMs(expiresAtMs(m));
+  const notBefore = windowMs(BigInt(int(get(m, "nbf"), "nbf")) * 1000n);
+  const expiresAt = windowMs(expiresAtMs(m));
   return {
     uid: { type: "Keelson::Mandate", id: mid },
     attrs: {
@@ -267,8 +269,8 @@ export function mandateEntity(m: unknown, budgetLeftMinor: number): MandateEntit
       categories: cats,
       variants: v.variants.map(variantJson).sort(compareRecords),
       max_qty_per_line: v.maxQty,
-      not_before: notBefore,
-      expires_at: expiresAt,
+      not_before_ms: notBefore,
+      expires_at_ms: expiresAt,
       min_return_days: minReturnDays,
       returns_free_required: returnsFree,
     },

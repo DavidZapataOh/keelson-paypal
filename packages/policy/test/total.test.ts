@@ -103,7 +103,46 @@ describe("evaluation is total", () => {
   it("denies a clock that is not a date", () => {
     const i = input();
     i.now = new Date(Number.NaN);
-    denied(evaluate(i, meta()), ["context.type:now"]);
+    denied(evaluate(i, meta()), ["context.type:now_ms"]);
+  });
+});
+
+describe("the purchase window", () => {
+  const window = (t: Trace) => t.fields.find((f) => f.id === "window");
+  const bounds = () => {
+    const b = window(evaluate(input(), meta()))?.bound as Record<string, number>;
+    return { notBefore: b.not_before_ms as number, expiresAt: b.expires_at_ms as number };
+  };
+
+  it("is compared as epoch milliseconds, start inclusive and end exclusive", () => {
+    const { notBefore, expiresAt } = bounds();
+    const at = (ms: number) => {
+      const i = input();
+      i.now = new Date(ms);
+      return evaluate(i, meta());
+    };
+    expect(at(notBefore).decision).toBe("allow");
+    expect(window(at(notBefore))?.observed).toBe(notBefore);
+    expect(at(notBefore - 1).fired).toEqual(["window"]);
+    expect(at(expiresAt - 1).decision).toBe("allow");
+    expect(at(expiresAt).fired).toEqual(["window"]);
+    expect(at(notBefore).context).toMatchObject({ now_ms: notBefore });
+  });
+
+  it("denies a clock outside years 0000 to 9999", () => {
+    const i = input();
+    i.now = new Date(-62_167_219_200_001);
+    const t = evaluate(i, meta());
+    denied(t, ["context.type:now_ms"]);
+    expect((t.context as Record<string, unknown>).now_ms).toBeNull();
+  });
+
+  it("rejects mandate bounds outside years 0000 to 9999", () => {
+    const i = input();
+    i.mandate = { ...(i.mandate as object), nbf: -62_167_219_201 };
+    denied(evaluate(i, meta()), ["entity.invalid:datetime"]);
+    i.mandate = { ...(i.mandate as object), nbf: -62_167_219_200 };
+    expect(evaluate(i, meta()).errors).not.toContain("entity.invalid:datetime");
   });
 });
 

@@ -6,8 +6,8 @@ use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid, RestrictedExpres
 use keelson_canon::Variant;
 use keelson_mandate::CATEGORY_IDS;
 use serde_json::Value;
+use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
-use time::{OffsetDateTime, macros::format_description};
 
 use crate::{PolicyError, safe_int};
 
@@ -88,19 +88,26 @@ pub fn mandate_agent(m: &Value) -> Result<String, PolicyError> {
     Ok(format!("{registry}/{id}"))
 }
 
-/// A Cedar `datetime` literal at millisecond precision, `YYYY-MM-DDThh:mm:ss.SSSZ`.
-pub fn cedar_datetime(t: OffsetDateTime) -> Result<String, PolicyError> {
-    t.to_offset(time::UtcOffset::UTC)
-        .format(format_description!(
-            "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:3]Z"
-        ))
-        .map_err(cedar)
+/// The first and last instants of years 0000 to 9999 in Unix milliseconds, the instants the
+/// window and the clock may take.
+const FIRST_MS: i64 = -62_167_219_200_000;
+const LAST_MS: i64 = 253_402_300_799_999;
+
+/// `ms` when it lies within years 0000 to 9999.
+pub(crate) fn epoch_ms(ms: i128) -> Option<i64> {
+    i64::try_from(ms)
+        .ok()
+        .filter(|ms| (FIRST_MS..=LAST_MS).contains(ms))
 }
 
-fn datetime_ms(ms: i128) -> Result<RestrictedExpression, PolicyError> {
-    let t = OffsetDateTime::from_unix_timestamp_nanos(ms * 1_000_000)
-        .map_err(|e| invalid("datetime", &e.to_string()))?;
-    Ok(RestrictedExpression::new_datetime(cedar_datetime(t)?))
+/// The clock in Unix milliseconds, rounded down, when it lies within years 0000 to 9999.
+pub(crate) fn clock_ms(t: OffsetDateTime) -> Option<i64> {
+    epoch_ms(t.unix_timestamp_nanos().div_euclid(1_000_000))
+}
+
+fn window_ms(ms: i128) -> Result<RestrictedExpression, PolicyError> {
+    let ms = epoch_ms(ms).ok_or_else(|| invalid("datetime", "outside years 0000 to 9999"))?;
+    Ok(RestrictedExpression::new_long(ms))
 }
 
 /// The Cedar record for a variant; absent size and color are omitted, never null.
@@ -269,10 +276,10 @@ pub fn mandate_entity(m: &Value, budget_left_minor: i64) -> Result<Entity, Polic
             RestrictedExpression::new_long(max_qty_per_line),
         ),
         (
-            "not_before".to_owned(),
-            datetime_ms(i128::from(int_at(&m["nbf"], "nbf")?) * 1000)?,
+            "not_before_ms".to_owned(),
+            window_ms(i128::from(int_at(&m["nbf"], "nbf")?) * 1000)?,
         ),
-        ("expires_at".to_owned(), datetime_ms(expires_at_ms(m)?)?),
+        ("expires_at_ms".to_owned(), window_ms(expires_at_ms(m)?)?),
         (
             "min_return_days".to_owned(),
             RestrictedExpression::new_long(min_return_days),

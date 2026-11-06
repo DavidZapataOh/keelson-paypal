@@ -2,8 +2,8 @@ use std::collections::BTreeSet;
 
 use cedar_policy::{Effect, Entities, Policy, PolicyId, ValidationMode, Validator};
 use keelson_policy::{
-    POLICY_SET_SRC, SCHEMA_SRC, mandate_agent, mandate_entity, policies, policy_set_hash,
-    policy_set_hash_tag, policy_texts, schema, schema_hash, schema_hash_tag,
+    POLICY_SET_SRC, PolicyError, SCHEMA_SRC, mandate_agent, mandate_entity, policies,
+    policy_set_hash, policy_set_hash_tag, policy_texts, schema, schema_hash, schema_hash_tag,
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -153,8 +153,8 @@ fn demo_mandate_entity_matches_the_schema() {
                 "categories": ["gpt:187"],
                 "variants": [{ "sku": "sku-trail-10", "size": "10" }],
                 "max_qty_per_line": 1,
-                "not_before": { "__extn": { "fn": "datetime", "arg": "2026-11-04T00:00:00.000Z" } },
-                "expires_at": { "__extn": { "fn": "datetime", "arg": "2026-11-11T00:00:00.000Z" } },
+                "not_before_ms": 1_793_750_400_000i64,
+                "expires_at_ms": 1_794_355_200_000i64,
                 "min_return_days": 30,
                 "returns_free_required": true
             },
@@ -171,9 +171,28 @@ fn deadline_is_the_earlier_of_expiry_and_execution_date() {
         .expect("entity builds")
         .to_json_value()
         .expect("entity serializes");
-    assert_eq!(
-        attrs["attrs"]["expires_at"]["__extn"]["arg"],
-        "2026-11-05T12:00:00.001Z"
+    assert_eq!(attrs["attrs"]["expires_at_ms"], 1_793_880_000_001i64);
+}
+
+#[test]
+fn window_bounds_are_epoch_milliseconds_within_years_0_to_9999() {
+    let first = -62_167_219_200i64;
+    let last = 253_402_300_799i64;
+    let mut m = demo();
+    m["nbf"] = json!(first);
+    assert_eq!(attrs(&m, 0)["not_before_ms"], first * 1000);
+    m["nbf"] = json!(first - 1);
+    assert!(
+        matches!(mandate_entity(&m, 0), Err(PolicyError::Mandate { field, .. }) if field == "datetime")
+    );
+    let mut m = demo();
+    m["exp"] = json!(last);
+    m["payment"]["constraints"][3]["not_after"] = json!("9999-12-31T23:59:59.999Z");
+    assert_eq!(attrs(&m, 0)["expires_at_ms"], last * 1000);
+    // The end is exclusive, but it must still be an instant within the range.
+    m["exp"] = json!(last + 1);
+    assert!(
+        matches!(mandate_entity(&m, 0), Err(PolicyError::Mandate { field, .. }) if field == "datetime")
     );
 }
 
@@ -313,10 +332,10 @@ fn hashes_are_sha256_of_the_file_bytes() {
     );
     assert_eq!(
         policy_set_hash_tag(),
-        "sha256:2dd99dc8274d5831bc43d13308df77263b583462cc9c333b96cca63969ba9d6a"
+        "sha256:76e3a5959eddc084b99b80a7376d85eeb86f005a7ce447420ac67c3e80902123"
     );
     assert_eq!(
         schema_hash_tag(),
-        "sha256:23cc9c5823da3feaa404e115245dbd8e37411c719256e0f47992bd35ae592eb6"
+        "sha256:3796252b1574d67485d2901c37027334b74bf30de98371b30c7e159558fbc7f9"
     );
 }

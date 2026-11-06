@@ -16,8 +16,8 @@ namespace Keelson {
     categories: Set<String>,
     variants: Set<Variant>,
     max_qty_per_line: Long,
-    not_before: __cedar::datetime,
-    expires_at: __cedar::datetime,
+    not_before_ms: Long,
+    expires_at_ms: Long,
     min_return_days: Long,
     returns_free_required: Bool,
   };
@@ -35,7 +35,7 @@ namespace Keelson {
       max_unit_minor: Long,
       return_days: Long,
       returns_free: Bool,
-      now: __cedar::datetime,
+      now_ms: Long,
     },
   };
 }

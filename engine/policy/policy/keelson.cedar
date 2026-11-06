@@ -13,7 +13,7 @@ forbid(principal, action == Keelson::Action::"checkout", resource) unless { cont
 @id("merchant") @field("merchant") @color("green")
 forbid(principal, action == Keelson::Action::"checkout", resource) unless { resource.merchants.contains(context.merchant) };
 @id("window") @field("deadline") @color("green")
-forbid(principal, action == Keelson::Action::"checkout", resource) unless { context.now >= resource.not_before && context.now < resource.expires_at };
+forbid(principal, action == Keelson::Action::"checkout", resource) unless { context.now_ms >= resource.not_before_ms && context.now_ms < resource.expires_at_ms };
 @id("quantity") @field("quantity") @color("green")
 forbid(principal, action == Keelson::Action::"checkout", resource) unless { context.max_line_qty <= resource.max_qty_per_line };
 @id("category") @field("category") @color("amber")

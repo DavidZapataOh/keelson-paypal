@@ -12,7 +12,7 @@
  *
  * @packageDocumentation
  */
-export { cedarDatetime, EntityError, mandateAgent, mandateEntity } from "./entity.ts";
+export { EntityError, mandateAgent, mandateEntity } from "./entity.ts";
 export {
   type Context,
   type EngineMeta,

@@ -134,6 +134,38 @@ fn window_end_is_exclusive() {
     assert_eq!(evaluate(&i, &meta()).decision, Decision::Allow);
 }
 
+#[test]
+fn window_start_is_inclusive() {
+    let mut i = input(demo_cart());
+    i.now = OffsetDateTime::from_unix_timestamp(1_793_750_400).unwrap();
+    let t = evaluate(&i, &meta());
+    assert_eq!(t.decision, Decision::Allow, "{:?}", t.errors);
+    let window = field(&t, "window");
+    assert_eq!(window.observed, Some(json!(1_793_750_400_000i64)));
+    assert_eq!(
+        window.bound,
+        Some(
+            json!({ "expires_at_ms": 1_794_355_200_000i64, "not_before_ms": 1_793_750_400_000i64 })
+        )
+    );
+    i.now = OffsetDateTime::from_unix_timestamp_nanos(1_793_750_399_999_999_999).unwrap();
+    let t = evaluate(&i, &meta());
+    assert_eq!(t.fired, ["window"]);
+    assert_eq!(
+        field(&t, "window").observed,
+        Some(json!(1_793_750_399_999i64))
+    );
+}
+
+#[test]
+fn a_clock_outside_years_0_to_9999_denies() {
+    let mut i = input(demo_cart());
+    i.now = OffsetDateTime::from_unix_timestamp(-62_167_219_201).unwrap();
+    let t = evaluate(&i, &meta());
+    denied_with(&t, &["context.type:now_ms"]);
+    assert_eq!(t.context["now_ms"], Value::Null);
+}
+
 fn raw_context() -> (EvalInput, Value) {
     let i = input(demo_cart());
     let raw = evaluate(&i, &meta()).context;
@@ -175,8 +207,8 @@ fn raw_context_shape_is_checked() {
     };
     denied_with(&with("extra", json!(1)), &["context.extra:extra"]);
     denied_with(
-        &with("now", json!("2026-11-05T17:02:11.250Z")),
-        &["context.type:now"],
+        &with("now_ms", json!("1793898131250")),
+        &["context.type:now_ms"],
     );
     denied_with(
         &with(
@@ -382,10 +414,8 @@ fn trace_has_the_eval_layout() {
     assert_eq!(v["mandate_hash"], format!("0x{}", "11".repeat(32)));
     assert_eq!(v["cart_hash"], format!("sha256:{}", "22".repeat(32)));
     assert_eq!(v["t_tee"], "2026-11-05T17:02:11Z");
-    assert_eq!(
-        v["context"]["now"],
-        json!({ "__extn": { "fn": "datetime", "arg": "2026-11-05T17:02:11.250Z" } })
-    );
+    assert_eq!(v["context"]["now_ms"], 1_793_898_131_250i64);
+    assert!(v["context"].get("now").is_none());
     let amount = v["fields"]
         .as_array()
         .unwrap()

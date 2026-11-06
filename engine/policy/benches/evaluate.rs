@@ -57,22 +57,32 @@ fn extras() -> Vec<Extra> {
     ]
 }
 
+fn tick(i: &mut EvalInput) -> &EvalInput {
+    i.now += Duration::milliseconds(1);
+    i
+}
+
 fn bench(c: &mut Criterion) {
     let (i, m, e) = (input(), meta(), extras());
     let trace = evaluate(&i, &m);
+    let mut clock = i.clone();
     c.bench_function("evaluate demo", |b| {
-        b.iter_with_large_drop(|| evaluate(black_box(&i), black_box(&m)))
+        b.iter(|| evaluate(black_box(tick(&mut clock)), black_box(&m)))
     });
     c.bench_function("trace_jcs demo", |b| {
-        b.iter_with_large_drop(|| trace_jcs(black_box(&trace)))
+        b.iter(|| trace_jcs(black_box(&trace)))
     });
     c.bench_function("evaluate demo with 3 extras", |b| {
-        b.iter_with_large_drop(|| evaluate_with_extras(black_box(&i), black_box(&e), black_box(&m)))
+        b.iter(|| evaluate_with_extras(black_box(tick(&mut clock)), black_box(&e), black_box(&m)))
     });
+    assert!(
+        evaluate(&clock, &m).decision == Decision::Allow,
+        "the clock stays within the window"
+    );
 }
 
-/// Prints the p50 and p99 of `f` in microseconds and returns the p99. Each sample ends when `f`
-/// returns: its output is dropped outside the measurement, as `iter_with_large_drop` does.
+/// Prints the p50 and p99 of `f` in microseconds, dropping its output included, and returns the
+/// p99.
 fn percentiles<T>(label: &str, mut f: impl FnMut() -> T) -> f64 {
     for _ in 0..RUNS / 10 {
         black_box(f());
@@ -80,10 +90,8 @@ fn percentiles<T>(label: &str, mut f: impl FnMut() -> T) -> f64 {
     let mut samples: Vec<f64> = (0..RUNS)
         .map(|_| {
             let start = Instant::now();
-            let out = black_box(f());
-            let elapsed = start.elapsed();
-            drop(out);
-            elapsed.as_secs_f64() * 1e6
+            black_box(f());
+            start.elapsed().as_secs_f64() * 1e6
         })
         .collect();
     samples.sort_by(f64::total_cmp);
@@ -96,6 +104,7 @@ fn percentiles<T>(label: &str, mut f: impl FnMut() -> T) -> f64 {
     at(0.99)
 }
 
+/// Every evaluation sees the clock a millisecond later than the one before, as in production.
 fn main() {
     let (i, m, e) = (input(), meta(), extras());
     assert!(
@@ -106,16 +115,18 @@ fn main() {
     bench(&mut c);
     c.final_summary();
     let trace = evaluate(&i, &m);
-    let evaluate_p99 = percentiles("evaluate demo", || evaluate(black_box(&i), black_box(&m)));
+    let mut clock = i.clone();
+    let evaluate_p99 = percentiles("evaluate demo", || {
+        evaluate(black_box(tick(&mut clock)), black_box(&m))
+    });
     let trace_jcs_p99 = percentiles("trace_jcs demo", || trace_jcs(black_box(&trace)));
     percentiles("evaluate demo with 3 extras", || {
-        evaluate_with_extras(black_box(&i), black_box(&e), black_box(&m))
+        evaluate_with_extras(black_box(tick(&mut clock)), black_box(&e), black_box(&m))
     });
-    let mut later = i.clone();
-    percentiles("evaluate demo at a new instant each call", || {
-        later.now += Duration::milliseconds(1);
-        evaluate(black_box(&later), black_box(&m))
-    });
+    assert!(
+        evaluate(&clock, &m).decision == Decision::Allow,
+        "the clock stays within the window"
+    );
     assert!(
         evaluate_p99 < EVALUATE_BUDGET_US,
         "evaluate p99 over the {EVALUATE_BUDGET_US}us budget"

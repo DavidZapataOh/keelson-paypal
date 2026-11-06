@@ -10,9 +10,8 @@ import {
 import type { Json } from "@keelson/core";
 import {
   attributes,
-  cedarDatetime,
+  clockMs,
   compareVariants,
-  datetimeJson,
   EntityError,
   type MandateEntity,
   mandateEntity,
@@ -112,7 +111,7 @@ const BINDINGS: Readonly<Record<string, readonly [readonly string[], readonly st
   amount: [["total_minor"], ["max_total_minor"]],
   budget: [["total_minor"], ["budget_left_minor"]],
   merchant: [["merchant"], ["merchants"]],
-  window: [["now"], ["expires_at", "not_before"]],
+  window: [["now_ms"], ["expires_at_ms", "not_before_ms"]],
   quantity: [["max_line_qty"], ["max_qty_per_line"]],
   category: [["categories"], ["categories"]],
   variant: [["variants"], ["variants"]],
@@ -120,7 +119,7 @@ const BINDINGS: Readonly<Record<string, readonly [readonly string[], readonly st
   returns_free: [["returns_free"], ["returns_free_required"]],
 };
 
-type Kind = "string" | "long" | "bool" | "strings" | "variants" | "datetime";
+type Kind = "string" | "long" | "bool" | "strings" | "variants";
 
 /** The context attributes of the `checkout` action and their types. */
 const CONTEXT: readonly (readonly [string, Kind])[] = [
@@ -133,14 +132,9 @@ const CONTEXT: readonly (readonly [string, Kind])[] = [
   ["max_unit_minor", "long"],
   ["return_days", "long"],
   ["returns_free", "bool"],
-  ["now", "datetime"],
+  ["now_ms", "long"],
 ];
 const CONTEXT_ATTRS = new Set(CONTEXT.map(([attr]) => attr));
-
-const sameKeys = (o: Record<string, unknown>, keys: readonly string[]) => {
-  const own = Object.keys(o);
-  return own.length === keys.length && keys.every((k) => Object.hasOwn(o, k));
-};
 
 function accepts(kind: Kind, v: unknown): boolean {
   const strings = (x: unknown) => Array.isArray(x) && x.every((s) => typeof s === "string");
@@ -165,17 +159,6 @@ function accepts(kind: Kind, v: unknown): boolean {
             ),
         )
       );
-    case "datetime": {
-      const e = get(v, "__extn");
-      return (
-        isObject(v) &&
-        sameKeys(v, ["__extn"]) &&
-        isObject(e) &&
-        sameKeys(e, ["fn", "arg"]) &&
-        e.fn === "datetime" &&
-        typeof e.arg === "string"
-      );
-    }
   }
 }
 
@@ -302,7 +285,8 @@ function project(input: EvalInput, faults: Faults): JsonObject {
     faults.add("quantity", "context.quantities");
   }
 
-  const now = cedarDatetime(input.now);
+  // A clock outside years 0000 to 9999 is recorded as `context.type:now_ms`.
+  const nowMs = clockMs(input.now);
   return {
     currency: c.currency,
     total_minor: c.total_minor,
@@ -313,7 +297,7 @@ function project(input: EvalInput, faults: Faults): JsonObject {
     max_unit_minor: c.max_unit_minor,
     return_days: c.return_days,
     returns_free: c.returns_free,
-    now: now === undefined ? null : datetimeJson(now),
+    now_ms: nowMs ?? null,
   };
 }
 
