@@ -1,0 +1,38 @@
+namespace Keelson {
+  type Variant = {
+    sku: String,
+    size?: String,
+    color?: String,
+  };
+
+  entity Agent;
+
+  entity Mandate = {
+    agent: Agent,
+    currency: String,
+    max_total_minor: Long,
+    budget_left_minor: Long,
+    merchants: Set<String>,
+    categories: Set<String>,
+    variants: Set<Variant>,
+    max_qty_per_line: Long,
+    not_before: __cedar::datetime,
+    expires_at: __cedar::datetime,
+    min_return_days: Long,
+  };
+
+  action "checkout" appliesTo {
+    principal: Agent,
+    resource: Mandate,
+    context: {
+      currency: String,
+      total_minor: Long,
+      merchant: String,
+      categories: Set<String>,
+      variants: Set<Variant>,
+      max_line_qty: Long,
+      return_days: Long,
+      now: __cedar::datetime,
+    },
+  };
+}

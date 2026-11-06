@@ -7,6 +7,7 @@ import { p256 } from "@noble/curves/nist.js";
 import { pack } from "@sd-jwt/core";
 import { SDJwtVcInstance } from "@sd-jwt/sd-jwt-vc";
 import { hSd, mandateChallenge } from "../src/challenge.ts";
+import { fieldColors } from "../src/colors.ts";
 import {
   MERCHANT_TREE_CAPACITY,
   mandateCommitment,
@@ -1374,3 +1375,7 @@ writeJson("sd", await sdVectors());
 writeJson("challenge", await challengeVectors());
 writeJson("commitment", await commitmentVectors());
 writeJson("credentials", await credentialVectors());
+writeJson(
+  "colors",
+  fieldColors(mandate(), { merchantSignedCheckout: false, zkTlsFields: new Set() }),
+);

@@ -1,0 +1,17 @@
+{
+  "mode": "green",
+  "recurrence": "green",
+  "total": "green",
+  "currency": "green",
+  "budget": "green",
+  "merchant": "green",
+  "deadline": "green",
+  "quantity": "green",
+  "agent": "green",
+  "bond": "green",
+  "items": "amber",
+  "category": "amber",
+  "variant": "amber",
+  "return_policy": "amber",
+  "subjective": "gray"
+}
