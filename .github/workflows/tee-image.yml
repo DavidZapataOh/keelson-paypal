@@ -83,7 +83,7 @@ jobs:
           status=0
           usage="$("$binary" 2>&1)" || status=$?
           test "$status" -eq 1
-          test "$usage" = "keelson-engine: usage: keelson-engine --listen tcp:<addr>"
+          test "$usage" = "keelson-engine: usage: keelson-engine [--platform tdx] --listen tcp:<addr>"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: oci-${{ matrix.builder }}

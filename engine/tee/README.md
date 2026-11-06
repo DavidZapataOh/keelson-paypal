@@ -51,17 +51,17 @@ Refusals carry no signature and one of these stable codes: `auth.closed_*`, `aut
 
 `keelson-engine --listen tcp:<addr>` serves `POST /v1/countersign`, `POST /v1/mandates/register` and `GET /v1/health` (`{ tee, signer, boot_epoch, oci_digest, version }`). With `--platform tdx` it also serves `GET /v1/attestation` and `POST /v1/attestation/refresh` (see below). Every route except health and `GET /v1/attestation` needs `Authorization: Bearer <token>`; the engine holds only the token's SHA-256, from `KEELSON_TEE_TOKEN_SHA256`, and compares it in constant time. Refusals are `application/problem+json` (RFC 9457) with `type` `https://keelson.finance/problems/<code>` and the stable code, and never echo the request. Bodies are JSON with unknown fields rejected.
 
-| Status | Codes |
-| --- | --- |
-| 401 | `unauthorized` |
-| 403 | `auth.*` |
-| 409 | `replay`, `clock_skew` |
-| 413 | `payload_too_large` |
-| 422 | `bad_request`, `commitment_mismatch`, `mandate_expired`, `mandate_not_yet_valid` |
-| 501 | `no_root` |
-| 503 | `not_ready`, `attestation_stale` |
-| 500 | `signer`, `internal` |
-| 502 | `attestation` |
+| Status | Codes                                                                            |
+| ------ | -------------------------------------------------------------------------------- |
+| 401    | `unauthorized`                                                                   |
+| 403    | `auth.*`                                                                         |
+| 409    | `replay`, `clock_skew`                                                           |
+| 413    | `payload_too_large`                                                              |
+| 422    | `bad_request`, `commitment_mismatch`, `mandate_expired`, `mandate_not_yet_valid` |
+| 501    | `no_root`                                                                        |
+| 503    | `not_ready`, `attestation_stale`                                                 |
+| 500    | `signer`, `internal`                                                             |
+| 502    | `attestation`                                                                    |
 
 The binary reads its configuration from `KEELSON_*` environment variables (see `src/main.rs`). Without `--platform` it holds no KMS root.
 
@@ -80,8 +80,24 @@ Built with the cargo feature `tdx`, `keelson-engine --platform tdx --listen tcp:
   "tee": "tdx",
   "attestation": "<hex: the v1 Attest attestation, MessagePack, as dstack-verifier takes it>",
   "quote": "<hex: the TDX quote inside it>",
-  "event_log": [{ "imr": 3, "event_type": 134217729, "digest": "<hex>", "event": "compose-hash", "event_payload": "<hex>" }],
-  "binding": { "chainId": "421614", "bondVault": "0x…", "teeKind": 1, "signer": "0x…", "policySetHash": "0x…", "engineBuildId": "0x…", "bootEpoch": "…" },
+  "event_log": [
+    {
+      "imr": 3,
+      "event_type": 134217729,
+      "digest": "<hex>",
+      "event": "compose-hash",
+      "event_payload": "<hex>"
+    }
+  ],
+  "binding": {
+    "chainId": "421614",
+    "bondVault": "0x…",
+    "teeKind": 1,
+    "signer": "0x…",
+    "policySetHash": "0x…",
+    "engineBuildId": "0x…",
+    "bootEpoch": "…"
+  },
   "block": { "number": 0, "hash": "0x…" },
   "app_id": "<hex>",
   "compose_hash": "<hex>",
