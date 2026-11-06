@@ -12,7 +12,10 @@ use serde_json::Value;
 use time::Duration;
 use time::macros::datetime;
 
+/// `evaluate` against the mandate the thread evaluated last.
 const EVALUATE_BUDGET_US: f64 = 20.0;
+/// `evaluate` against a mandate the thread has not just evaluated, which builds its entity.
+const COLD_MANDATE_BUDGET_US: f64 = 80.0;
 const TRACE_JCS_BUDGET_US: f64 = 15.0;
 const RUNS: usize = 20_000;
 
@@ -105,6 +108,10 @@ fn percentiles<T>(label: &str, mut f: impl FnMut() -> T) -> f64 {
 }
 
 /// Every evaluation sees the clock a millisecond later than the one before, as in production.
+///
+/// Budgets (p99, output drop included): `evaluate demo, same mandate` < [`EVALUATE_BUDGET_US`],
+/// `evaluate demo, two mandates in turn` < [`COLD_MANDATE_BUDGET_US`], `trace_jcs demo` <
+/// [`TRACE_JCS_BUDGET_US`]. The 3-extras row is recorded without a budget.
 fn main() {
     let (i, m, e) = (input(), meta(), extras());
     assert!(
@@ -116,10 +123,25 @@ fn main() {
     c.final_summary();
     let trace = evaluate(&i, &m);
     let mut clock = i.clone();
-    let evaluate_p99 = percentiles("evaluate demo", || {
+    let evaluate_p99 = percentiles("evaluate demo, same mandate", || {
         evaluate(black_box(tick(&mut clock)), black_box(&m))
     });
     let trace_jcs_p99 = percentiles("trace_jcs demo", || trace_jcs(black_box(&trace)));
+    // Two mandates in turn, so every call misses the per-thread mandate parts.
+    let mut other = i.clone();
+    other.mandate["mid"] = Value::from("01JBXG3K5N7Q9R2T4V6W8Y0Z1B");
+    other.mandate_hash = [0x33; 32];
+    let mut pair = [clock.clone(), other];
+    let mut turn = 0;
+    let cold_p99 = percentiles("evaluate demo, two mandates in turn", || {
+        turn ^= 1;
+        evaluate(black_box(tick(&mut pair[turn])), black_box(&m))
+    });
+    assert!(
+        pair.iter()
+            .all(|i| evaluate(i, &m).decision == Decision::Allow),
+        "both mandates allow"
+    );
     percentiles("evaluate demo with 3 extras", || {
         evaluate_with_extras(black_box(tick(&mut clock)), black_box(&e), black_box(&m))
     });
@@ -130,6 +152,10 @@ fn main() {
     assert!(
         evaluate_p99 < EVALUATE_BUDGET_US,
         "evaluate p99 over the {EVALUATE_BUDGET_US}us budget"
+    );
+    assert!(
+        cold_p99 < COLD_MANDATE_BUDGET_US,
+        "evaluate p99 with a cold mandate over the {COLD_MANDATE_BUDGET_US}us budget"
     );
     assert!(
         trace_jcs_p99 < TRACE_JCS_BUDGET_US,

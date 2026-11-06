@@ -191,6 +191,9 @@ impl Faults {
 /// - `extras.invalid:<n>`: extra `n` does not compile, `extras.invalid:too_many` when there are
 ///   more than [`crate::MAX_EXTRAS`], and `extras.invalid:cedar` when Cedar rejects the policy set
 ///   (see [`evaluate_with_extras`]).
+///
+/// Each thread keeps the parts built from the last mandate and the last extras list it
+/// evaluated, until it evaluates another one or exits.
 pub fn evaluate(input: &EvalInput, meta: &EngineMeta) -> Trace {
     evaluate_with_extras(input, &[], meta)
 }
@@ -337,6 +340,10 @@ fn read(m: &Value) -> [&Value; 7] {
 
 /// Whether two values are written the same, keys in the same order and numbers in the same
 /// representation, so `0.0` and `-0.0` differ. Stricter than `==`, and cheaper.
+///
+/// It must stay order-sensitive: objects keep their key order, and the entity builder reports
+/// the first invalid key it meets (in `keelson.attributes.must`, say), so two mandates that are
+/// `==` with keys in another order can give different error codes.
 fn same(a: &Value, b: &Value) -> bool {
     match (a, b) {
         (Value::Object(a), Value::Object(b)) => {
