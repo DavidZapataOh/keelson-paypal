@@ -50,6 +50,9 @@ pub struct Trace {
     pub policy_set_hash: String,
     pub schema_hash: String,
     pub proof_bundle_hash: String,
+    /// `sha256:<hex>` of the JCS form of the extras, in the order given; absent without extras.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extras_hash: Option<String>,
     pub mandate_hash: String,
     pub cart_hash: String,
     /// The context passed to Cedar, in Cedar JSON form.

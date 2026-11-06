@@ -5,9 +5,11 @@ use cedar_policy::{Effect, Policy, PolicyId, PolicySet, ValidationMode, Validato
 use keelson_canon::{Cart, Context, PayPalUnit, canonicalize};
 use keelson_policy::{
     Decision, EngineMeta, EvalInput, Extra, ExtrasError, InvalidExtra, Trace, compile_extras,
-    evaluate, evaluate_context, evaluate_with_extras, mandate_agent, policies, schema, trace_jcs,
+    evaluate, evaluate_context, evaluate_context_with_extras, evaluate_with_extras, mandate_agent,
+    policies, schema, trace_jcs,
 };
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use time::macros::datetime;
 
 fn context(fixture: &str) -> Context {
@@ -348,5 +350,124 @@ fn has_arithmetic(v: &Value) -> bool {
             .any(|(k, v)| matches!(k.as_str(), "+" | "-" | "*" | "neg") || has_arithmetic(v)),
         Value::Array(a) => a.iter().any(has_arithmetic),
         _ => false,
+    }
+}
+
+fn extras_hash(extras: &[Extra]) -> String {
+    let jcs = keelson_core::jcs(&serde_json::to_value(extras).unwrap()).unwrap();
+    let digest = Sha256::digest(jcs.as_bytes());
+    format!(
+        "sha256:{}",
+        digest
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
+    )
+}
+
+#[test]
+fn the_trace_binds_the_extras_in_order() {
+    let a = [merchant("mrc_other"), Extra::MaxUnitPrice { minor: 9400 }];
+    let b = [Extra::MaxUnitPrice { minor: 9400 }, merchant("mrc_other")];
+    let ta = run(&a);
+    assert_eq!(ta.extras_hash.as_deref(), Some(extras_hash(&a).as_str()));
+    assert_eq!(run(&a).extras_hash, ta.extras_hash);
+    assert_ne!(run(&b).extras_hash, ta.extras_hash);
+    assert_eq!(evaluate(&input(), &meta()).extras_hash, None);
+
+    let text = serde_json::to_string(&ta).unwrap();
+    let at = |k: &str| text.find(&format!("\"{k}\":")).unwrap();
+    assert!(at("proof_bundle_hash") < at("extras_hash"));
+    assert!(at("extras_hash") < at("mandate_hash"));
+    let none = serde_json::to_value(run(&[])).unwrap();
+    assert!(none.get("extras_hash").is_none());
+
+    // Invalid extras are bound too, unsafe integers included.
+    let bad = run(&[Extra::MaxUnitPrice { minor: i64::MAX }]);
+    assert_eq!(bad.decision, Decision::Deny);
+    assert!(bad.extras_hash.is_some());
+    assert!(!trace_jcs(&bad).is_empty());
+}
+
+#[test]
+fn replay_with_extras_matches_the_evaluation() {
+    let extras = [Extra::RequireReturnDays { min: 31 }, category("gpt:166")];
+    let i = input();
+    let t = evaluate_with_extras(&i, &extras, &meta());
+    let replay = evaluate_context_with_extras(&i, t.context.clone(), &extras, &meta());
+    assert_eq!(trace_jcs(&replay), trace_jcs(&t));
+    assert_eq!(replay.fired, ["extra.0"]);
+
+    let mut raw = t.context.clone();
+    raw["max_unit_minor"] = json!("9400");
+    let bad = evaluate_context_with_extras(&i, raw, &extras, &meta());
+    assert_eq!(bad.decision, Decision::Deny);
+    assert_eq!(bad.errors, ["context.type:max_unit_minor"]);
+}
+
+#[test]
+fn at_most_sixteen_extras() {
+    let extras: Vec<Extra> = (0..17)
+        .map(|n| Extra::RequireReturnDays { min: n })
+        .collect();
+    assert_eq!(
+        compile_extras(&extras),
+        Err(ExtrasError {
+            index: 16,
+            reason: InvalidExtra::TooMany
+        })
+    );
+    assert!(compile_extras(&extras[..16]).is_ok());
+    let t = run(&extras);
+    assert_eq!(t.decision, Decision::Deny);
+    assert_eq!(t.errors, ["extras.invalid:too_many"]);
+    assert!(t.fields.iter().all(|f| !f.id.starts_with("extra.")));
+    assert_eq!(run(&extras[..16]).decision, Decision::Allow);
+}
+
+#[test]
+fn deserialization_rejects_ambiguous_input() {
+    for bad in [
+        r#"{"type":"deny_merchant","type":"permit","id":"mrc_a"}"#,
+        r#"{"type":"permit","type":"deny_merchant","id":"mrc_a"}"#,
+        r#"{"type":"max_unit_price","minor":1,"minor":2}"#,
+        r#"{"type":"max_unit_price","minor":1e2}"#,
+        r#"{"type":"max_unit_price","minor":100.0}"#,
+        r#"{"type":"require_return_days","min":-0}"#,
+        r#"{"type":"max_unit_price","minor":18446744073709551615}"#,
+        r#"{"type":"max_unit_price","minor":9223372036854775808}"#,
+    ] {
+        assert!(serde_json::from_str::<Extra>(bad).is_err(), "{bad}");
+    }
+    for id in ["mrc_a\u{85}", "mrc_\u{feff}a", "mrc_a\u{7f}"] {
+        assert_eq!(
+            compile_extras(&[merchant(id)]),
+            Err(ExtrasError {
+                index: 0,
+                reason: InvalidExtra::MerchantId
+            }),
+            "{id:?}"
+        );
+    }
+}
+
+#[test]
+fn evidence_never_changes_the_color_of_an_extra() {
+    let mut i = input();
+    i.evidence = BTreeMap::from([
+        (
+            "total".to_owned(),
+            vec!["ucp:merchant-signature".to_owned()],
+        ),
+        ("merchant".to_owned(), vec!["operator_attest#1".to_owned()]),
+    ]);
+    let t = evaluate_with_extras(
+        &i,
+        &[Extra::MaxUnitPrice { minor: 9400 }, merchant("mrc_a")],
+        &meta(),
+    );
+    for f in t.fields.iter().filter(|f| f.id.starts_with("extra.")) {
+        assert_eq!(f.color, "green");
+        assert!(f.evidence.is_empty(), "{f:?}");
     }
 }

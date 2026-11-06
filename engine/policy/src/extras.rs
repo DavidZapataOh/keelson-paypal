@@ -4,11 +4,17 @@ use cedar_policy::{Policy, PolicyId};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-const MAX_SAFE_INTEGER: i64 = (1 << 53) - 1;
+use crate::MAX_SAFE_INTEGER;
+
+/// The most extras one evaluation accepts.
+pub const MAX_EXTRAS: usize = 16;
 
 /// A constraint a user or operator adds on top of the mandate. Each one only ever denies.
 ///
 /// This is a closed set: anything else, including a `permit`, fails to deserialize.
+///
+/// Every extra is shown green, with no evidence: evidence for its `@field` (such as `total` for
+/// [`Extra::MaxUnitPrice`], which has no field of its own) never changes it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Extra {
@@ -35,6 +41,8 @@ pub enum InvalidExtra {
     CategoryId,
     /// Cedar rejected the policy built from the extra.
     Cedar,
+    /// There are more than [`MAX_EXTRAS`] extras; `index` is the first one past the limit.
+    TooMany,
 }
 
 /// The first extra that cannot be compiled.
@@ -42,6 +50,7 @@ pub enum InvalidExtra {
 pub struct ExtrasError {
     /// The position of the extra in its list.
     pub index: usize,
+    /// Why it is rejected.
     pub reason: InvalidExtra,
 }
 
@@ -116,6 +125,12 @@ impl Extra {
 /// Each policy is rendered to text and parsed back, and kept only if the parse matches the policy
 /// built from its JSON form, so the text is exactly what is evaluated.
 pub(crate) fn compile(dsl: &[Extra]) -> Result<Vec<(String, Policy, String)>, ExtrasError> {
+    if dsl.len() > MAX_EXTRAS {
+        return Err(ExtrasError {
+            index: MAX_EXTRAS,
+            reason: InvalidExtra::TooMany,
+        });
+    }
     dsl.iter()
         .enumerate()
         .map(|(index, extra)| {
@@ -135,8 +150,8 @@ pub(crate) fn compile(dsl: &[Extra]) -> Result<Vec<(String, Policy, String)>, Ex
         .collect()
 }
 
-/// Compiles extras to `(id, text)` pairs of Cedar `forbid` policies, with ids `extra.<n>`, `n`
-/// being the extra's position.
+/// Compiles at most [`MAX_EXTRAS`] extras to `(id, text)` pairs of Cedar `forbid` policies, with
+/// ids `extra.<n>`, `n` being the extra's position.
 ///
 /// Each policy carries `@id`, `@field` and `@color("green")`, and compares one context attribute
 /// with a constant.

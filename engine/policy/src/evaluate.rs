@@ -8,16 +8,17 @@ use cedar_policy::{
 };
 use keelson_canon::Variant;
 use serde_json::{Map, Value, json};
+use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
 use time::macros::format_description;
 
 use crate::entity::attributes;
-use crate::extras::{Extra, compile};
+use crate::extras::{Extra, InvalidExtra, compile};
 use crate::hashes::hex;
 use crate::trace::{Decision, Engine, FieldTrace, TRACE_VERSION, Trace};
 use crate::{
-    PolicyError, agent_uid, cedar_datetime, mandate_entity, policies, policy_set_hash_tag,
-    policy_texts, schema, schema_hash_tag,
+    MAX_SAFE_INTEGER, PolicyError, agent_uid, cedar_datetime, mandate_entity, policies,
+    policy_set_hash_tag, policy_texts, schema, schema_hash_tag,
 };
 
 /// A policy `@field` value.
@@ -79,7 +80,6 @@ impl EngineMeta {
 
 const AGENT_TYPE: &str = "Keelson::Agent";
 const ACTION: &str = r#"Keelson::Action::"checkout""#;
-const MAX_SAFE_INTEGER: i64 = (1 << 53) - 1;
 
 /// The context and entity attributes each policy reads, shown as `observed` and `bound`. One key
 /// is shown as its value, several as a record of them.
@@ -192,15 +192,20 @@ impl Faults {
 ///   `entity.invalid:cedar` when Cedar rejects the entity;
 /// - `request.invalid`: Cedar rejects the request;
 /// - `policy.error:<id>`: Cedar could not evaluate policy `<id>`;
-/// - `extras.invalid:<n>`: extra `n` does not compile (see [`evaluate_with_extras`]).
+/// - `extras.invalid:<n>`: extra `n` does not compile, `extras.invalid:too_many` when there are
+///   more than [`crate::MAX_EXTRAS`], and `extras.invalid:cedar` when Cedar rejects the policy set
+///   (see [`evaluate_with_extras`]).
 pub fn evaluate(input: &EvalInput, meta: &EngineMeta) -> Trace {
     evaluate_with_extras(input, &[], meta)
 }
 
 /// Evaluates like [`evaluate`] with the policies [`crate::compile_extras`] builds from `extras`
 /// added to the policy set. Each extra adds a field `extra.<n>` after the mandate fields, whose
-/// `bound` is the extra's constant. An extra that does not compile denies with
-/// `extras.invalid:<n>`, and no extra is then evaluated.
+/// `bound` is the extra's constant. An extra that does not compile denies with an
+/// `extras.invalid` error, and no extra is then evaluated.
+///
+/// With any extras, the trace's `extras_hash` is the SHA-256 of the JCS form of `extras` in the
+/// order given: the order is part of the input, since it sets the `extra.<n>` ids.
 pub fn evaluate_with_extras(input: &EvalInput, extras: &[Extra], meta: &EngineMeta) -> Trace {
     let mut faults = Faults::default();
     let context = project(input, &mut faults);
@@ -213,7 +218,17 @@ pub fn evaluate_with_extras(input: &EvalInput, extras: &[Extra], meta: &EngineMe
 /// It applies the same fail-closed checks as [`evaluate`] to the context it is given, except
 /// those on `input.context.quantities`, which a recorded context does not carry.
 pub fn evaluate_context(input: &EvalInput, context: Value, meta: &EngineMeta) -> Trace {
-    run(input, context, Faults::default(), &[], meta)
+    evaluate_context_with_extras(input, context, &[], meta)
+}
+
+/// Replays like [`evaluate_context`] with `extras` evaluated as [`evaluate_with_extras`] does.
+pub fn evaluate_context_with_extras(
+    input: &EvalInput,
+    context: Value,
+    extras: &[Extra],
+    meta: &EngineMeta,
+) -> Trace {
+    run(input, context, Faults::default(), extras, meta)
 }
 
 fn project(input: &EvalInput, faults: &mut Faults) -> Value {
@@ -303,21 +318,31 @@ fn run(
     extras: &[Extra],
     meta: &EngineMeta,
 ) -> Trace {
-    let compiled = compile(extras).unwrap_or_else(|e| {
-        faults.add(None, format!("extras.invalid:{}", e.index));
+    let extras_hash = (!extras.is_empty()).then(|| {
+        let list = safe(serde_json::to_value(extras).unwrap_or_default());
+        let jcs = keelson_core::jcs(&list).unwrap_or_default();
+        format!("sha256:{}", hex(&Sha256::digest(jcs.as_bytes())))
+    });
+    let mut compiled = compile(extras).unwrap_or_else(|e| {
+        faults.add(
+            None,
+            match e.reason {
+                InvalidExtra::TooMany => "extras.invalid:too_many".to_owned(),
+                _ => format!("extras.invalid:{}", e.index),
+            },
+        );
         Vec::new()
     });
-    let set = if compiled.is_empty() {
-        Cow::Borrowed(policies())
-    } else {
-        let mut set = policies().clone();
-        for (_, policy, _) in &compiled {
-            if set.add(policy.clone()).is_err() {
-                faults.add(None, "extras.invalid:cedar");
-            }
+    let mut set = Cow::Borrowed(policies());
+    if !compiled.is_empty() {
+        let mut with = policies().clone();
+        if compiled.iter().all(|(_, p, _)| with.add(p.clone()).is_ok()) {
+            set = Cow::Owned(with);
+        } else {
+            faults.add(None, "extras.invalid:cedar");
+            compiled.clear();
         }
-        Cow::Owned(set)
-    };
+    }
 
     let context = safe(context);
     let before = faults.errors.len();
@@ -383,30 +408,28 @@ fn run(
                     };
                     (observed, bounds.as_ref().and_then(|b| pick(b, attrs)))
                 });
-        (id.clone(), observed, bound)
+        (id.clone(), observed, bound, false)
     });
     let added = compiled.iter().zip(extras).map(|((id, ..), extra)| {
         let (attr, literal) = extra.binding();
-        (id.clone(), pick(&context, &[attr]), Some(literal))
+        (id.clone(), pick(&context, &[attr]), Some(literal), true)
     });
     let fields = base
         .chain(added)
-        .map(|(id, observed, bound)| {
-            let policy = set
-                .policy(&PolicyId::new(&id))
-                .expect("every field is a policy of the set");
-            let annotation = |key| {
-                policy
-                    .annotation(key)
-                    .expect("every policy has @field and @color")
-                    .to_owned()
-            };
+        .filter_map(|(id, observed, bound, extra)| {
+            let policy = set.policy(&PolicyId::new(&id))?;
+            let annotation = |key| policy.annotation(key).unwrap_or_default().to_owned();
             let field = annotation("field");
-            let evidence = input.evidence.get(&field).cloned().unwrap_or_default();
+            // Extras are always green, so evidence is not shown for them.
+            let evidence = if extra {
+                Vec::new()
+            } else {
+                input.evidence.get(&field).cloned().unwrap_or_default()
+            };
             let proven = evidence
                 .iter()
                 .any(|e| e.starts_with("ucp:") || e.starts_with("zktls:"));
-            FieldTrace {
+            Some(FieldTrace {
                 color: if proven {
                     "green".to_owned()
                 } else {
@@ -418,7 +441,7 @@ fn run(
                 bound,
                 evidence,
                 id,
-            }
+            })
         })
         .collect();
 
@@ -442,6 +465,7 @@ fn run(
         policy_set_hash: policy_set_hash_tag(),
         schema_hash: schema_hash_tag(),
         proof_bundle_hash: meta.proof_bundle_hash.clone(),
+        extras_hash,
         mandate_hash: format!("0x{}", hex(&input.mandate_hash)),
         cart_hash: format!("sha256:{}", hex(&input.cart_hash)),
         context,

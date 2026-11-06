@@ -13,9 +13,10 @@ mod trace;
 
 pub use entity::{agent_uid, cedar_datetime, mandate_agent, mandate_entity, variant_expr};
 pub use evaluate::{
-    EngineMeta, EvalInput, FieldId, evaluate, evaluate_context, evaluate_with_extras,
+    EngineMeta, EvalInput, FieldId, evaluate, evaluate_context, evaluate_context_with_extras,
+    evaluate_with_extras,
 };
-pub use extras::{Extra, ExtrasError, InvalidExtra, compile_extras};
+pub use extras::{Extra, ExtrasError, InvalidExtra, MAX_EXTRAS, compile_extras};
 pub use hashes::{policy_set_hash, policy_set_hash_tag, schema_hash, schema_hash_tag};
 pub use trace::{Decision, Engine, FieldTrace, TRACE_VERSION, Trace, trace_jcs};
 
@@ -25,6 +26,9 @@ use std::str::FromStr;
 use std::sync::OnceLock;
 
 use cedar_policy::{Policy, PolicyId, PolicySet, Schema};
+
+/// The largest integer JSON numbers carry exactly, `2^53 - 1`.
+pub(crate) const MAX_SAFE_INTEGER: i64 = (1 << 53) - 1;
 
 /// The policy set source, `policy/keelson.cedar`.
 pub const POLICY_SET_SRC: &str = include_str!("../policy/keelson.cedar");
