@@ -9,12 +9,13 @@ use cedar_policy::{
     Request, Response, RestrictedExpression,
 };
 use keelson_canon::Variant;
+use keelson_mandate::ANY_ITEM;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
 use time::macros::format_description;
 
-use crate::entity::{attributes, clock_ms};
+use crate::entity::{accepts_any_item, attributes, clock_ms};
 use crate::extras::{Extra, InvalidExtra, compile};
 use crate::hashes::hex;
 use crate::trace::{Decision, Engine, FieldTrace, TRACE_VERSION, Trace};
@@ -195,9 +196,10 @@ impl Faults {
 ///
 /// The context passed to Cedar is `input.context` projected onto the attributes the mandate
 /// constrains: each variant keeps its `size` only when `keelson.attributes` requires a `size_us`,
-/// and its `color` only when it requires a `color` (a value of `any` requires nothing). The
-/// quantities of variants that become equal are added with overflow checks, and `max_line_qty` is
-/// the largest of those sums.
+/// and its `color` only when it requires a `color` (a value of `any` requires nothing), and its
+/// `sku` becomes `*` when every line of the mandate accepts any item. The quantities of variants
+/// that become equal are added with overflow checks, and `max_line_qty` is the largest of those
+/// sums.
 ///
 /// The trace `errors` are these codes, sorted and without repeats:
 /// - `context.invalid`: the context is not a record, or Cedar rejects it;
@@ -208,8 +210,9 @@ impl Faults {
 ///   category or an empty category id;
 /// - `context.quantities`: a quantity is below 1, the quantities are not keyed by the variants,
 ///   their largest is not `max_line_qty`, or a projected sum overflows;
-/// - `entity.invalid:<field>`: the mandate field is missing or ill-typed, and
-///   `entity.invalid:cedar` when Cedar rejects the entity;
+/// - `entity.invalid:<field>`: the mandate field is missing or ill-typed (and
+///   `entity.invalid:checkout.line_items` when a line accepts any item along with other items, or
+///   only some lines accept any item), and `entity.invalid:cedar` when Cedar rejects the entity;
 /// - `request.invalid`: Cedar rejects the request;
 /// - `policy.error:<id>`: Cedar could not evaluate policy `<id>`;
 /// - `extras.invalid:<n>`: extra `n` does not compile, `extras.invalid:too_many` when there are
@@ -280,8 +283,8 @@ struct MandateParts {
     budget_left_minor: i64,
     /// The [`read`] members of the mandate, the only ones the parts are built from.
     mandate: Value,
-    /// Whether the projection keeps each variant's `size` and `color`.
-    keep: (bool, bool),
+    /// Whether the projection keeps each variant's `sku`, `size` and `color`.
+    keep: (bool, bool, bool),
     /// The `Mandate` entity, or the error that keeps it from being built.
     resource: Result<Resource, String>,
 }
@@ -307,9 +310,10 @@ impl MandateParts {
             "checkout": { "constraints": checkout },
         });
         // An unreadable mandate denies anyway; its error is recorded when the entity is built.
-        let keep = attributes(&mandate).map_or((true, true), |(size, color)| {
+        let (size, color) = attributes(&mandate).map_or((true, true), |(size, color)| {
             (size.is_some(), color.is_some())
         });
+        let keep = (!accepts_any_item(&mandate), size, color);
         let resource = mandate_entity(&mandate, input.budget_left_minor)
             .map(|entity| {
                 let attrs = entity
@@ -463,9 +467,13 @@ struct Projection {
 /// The projection of `input.context` in Cedar JSON form, and the values Cedar reads.
 fn project(input: &EvalInput, mandate: &MandateParts, faults: &mut Faults) -> (Value, Projection) {
     let c = &input.context;
-    let (size, color) = mandate.keep;
+    let (sku, size, color) = mandate.keep;
     let projected = |v: &Variant| Variant {
-        sku: v.sku.clone(),
+        sku: if sku {
+            v.sku.clone()
+        } else {
+            ANY_ITEM.to_owned()
+        },
         size: v.size.clone().filter(|_| size),
         color: v.color.clone().filter(|_| color),
     };
@@ -478,7 +486,7 @@ fn project(input: &EvalInput, mandate: &MandateParts, faults: &mut Faults) -> (V
     let mut overflow = false;
     for (v, &qty) in &c.quantities {
         let key = (
-            v.sku.as_str(),
+            if sku { v.sku.as_str() } else { ANY_ITEM },
             v.size.as_deref().filter(|_| size),
             v.color.as_deref().filter(|_| color),
         );

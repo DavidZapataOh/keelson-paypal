@@ -2,6 +2,10 @@ use serde_json::{Map, Value};
 
 use crate::{CATEGORY_IDS, Error};
 
+/// The `acceptable_items` id that stands for any SKU. It must be the only acceptable item of its
+/// line and carry a non-empty `title` describing what the user wants.
+pub const ANY_ITEM: &str = "*";
+
 /// Maximum lifetime of a mandate, in seconds.
 pub const MAX_LIFETIME_SECONDS: i64 = 30 * 86400;
 
@@ -399,6 +403,22 @@ fn line_item(v: &Value, path: &str) -> Result {
     integer(get(item, "quantity"), &join(path, "quantity"), 1.0).map(drop)
 }
 
+/// A line with [`ANY_ITEM`] accepts nothing else, and its title says what the user wants.
+fn any_item(line: &Value, path: &str) -> Result {
+    let path = join(path, "acceptable_items");
+    let items = array(&line["acceptable_items"], &path, 1)?;
+    if !items.iter().any(|a| a["id"] == ANY_ITEM) {
+        return Ok(());
+    }
+    if items.len() > 1 {
+        return Err(invalid(&path, "any item must be the only item"));
+    }
+    if items[0]["title"].as_str().is_none_or(str::is_empty) {
+        return Err(invalid(&join(&path, "0.title"), "required for any item"));
+    }
+    Ok(())
+}
+
 fn checkout_constraint(c: &Value, path: &str) -> Result {
     let p = |k: &str| join(path, k);
     match constraint_type(c, path)? {
@@ -640,9 +660,10 @@ pub fn parse_mandate(m: &Value) -> Result {
         &PAYMENT_REQUIRED,
         &[],
     )?;
+    let checkout_constraints = array(get(checkout, "constraints"), "checkout.constraints", 0)?;
     require_counts(
         "checkout.constraints",
-        array(get(checkout, "constraints"), "checkout.constraints", 0)?,
+        checkout_constraints,
         &["checkout.allowed_merchants"],
         &CHECKOUT_OPTIONAL,
     )?;
@@ -654,6 +675,16 @@ pub fn parse_mandate(m: &Value) -> Result {
                 &format!("payment.constraints.{i}.currency"),
                 "differs from payment.currency",
             ));
+        }
+    }
+    for (i, c) in checkout_constraints.iter().enumerate() {
+        if c["type"] == "checkout.line_items" {
+            each(
+                &c["items"],
+                &format!("checkout.constraints.{i}.items"),
+                0,
+                any_item,
+            )?;
         }
     }
     Ok(())

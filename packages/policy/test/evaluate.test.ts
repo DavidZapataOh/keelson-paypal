@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { agentUid, mandateAgent } from "../src/entity.ts";
-import { type EvalInput, evaluate } from "../src/evaluate.ts";
+import { type EvalInput, evaluate, type Variant } from "../src/evaluate.ts";
 import { traceJcs } from "../src/trace.ts";
 
 const allowed = readFileSync(new URL("./vectors/parity.jsonl", import.meta.url), "utf8")
@@ -67,6 +67,48 @@ describe("attribute errors", () => {
       const t = withMust(a);
       expect(t.errors).toEqual([`entity.invalid:keelson.attributes.must.${field}`]);
       expect(traceJcs(t)).toEqual(traceJcs(withMust(b)));
+    }
+  });
+});
+
+describe("a mandate that accepts any item", () => {
+  const withLines = (lines: string[][]) => {
+    const i = input();
+    const checkout = (i.mandate as { checkout: { constraints: { type: string }[] } }).checkout;
+    checkout.constraints = [
+      ...checkout.constraints.filter((c) => c.type !== "checkout.line_items"),
+      {
+        type: "checkout.line_items",
+        items: lines.map((ids, n) => ({
+          id: `l${n}`,
+          acceptable_items: ids.map((id) => ({ id, title: "Shoe" })),
+          quantity: 100,
+        })),
+      } as { type: string },
+    ];
+    const rename = (v: Variant) => ({ ...v, sku: `sku-unlisted-${v.sku}` });
+    i.context = {
+      ...i.context,
+      variants: i.context.variants.map(rename),
+      quantities: i.context.quantities.map(([v, q]) => [rename(v), q] as const),
+    };
+    return i;
+  };
+
+  it("allows every SKU, projected to *", () => {
+    const t = evaluate(withLines([["*"], ["*"]]), meta());
+    expect(t.decision).toBe("allow");
+    const variants = (t.context as { variants: { sku: string }[] }).variants;
+    expect(variants.length).toBeGreaterThan(0);
+    expect(variants.every((v) => v.sku === "*")).toBe(true);
+    expect(evaluate(withLines([["sku-a"]]), meta()).fired).toEqual(["variant"]);
+  });
+
+  it("denies when mixed with other items", () => {
+    for (const lines of [[["*"], ["sku-a"]], [["sku-a"], ["*"]], [["*", "sku-a"]]]) {
+      expect(evaluate(withLines(lines), meta()).errors).toEqual([
+        "entity.invalid:checkout.line_items",
+      ]);
     }
   });
 });

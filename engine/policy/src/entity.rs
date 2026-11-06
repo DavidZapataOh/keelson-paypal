@@ -4,7 +4,7 @@ use std::sync::OnceLock;
 
 use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid, RestrictedExpression};
 use keelson_canon::Variant;
-use keelson_mandate::CATEGORY_IDS;
+use keelson_mandate::{ANY_ITEM, CATEGORY_IDS};
 use serde_json::Value;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
@@ -159,6 +159,24 @@ pub(crate) fn attributes(m: &Value) -> Result<(Option<String>, Option<String>), 
     Ok((size, color))
 }
 
+/// Whether a line accepts any item: one of its acceptable items is [`ANY_ITEM`].
+fn line_accepts_any(line: &Value) -> bool {
+    line["acceptable_items"]
+        .as_array()
+        .is_some_and(|items| items.iter().any(|item| item["id"] == ANY_ITEM))
+}
+
+/// Whether the mandate has lines and every one accepts any item, in which case every SKU is
+/// projected to [`ANY_ITEM`]. A mandate that cannot be read accepts none; its error is reported
+/// when the entity is built.
+pub(crate) fn accepts_any_item(m: &Value) -> bool {
+    constraint(m, "checkout", "checkout.line_items")
+        .ok()
+        .flatten()
+        .and_then(|lines| lines["items"].as_array())
+        .is_some_and(|lines| !lines.is_empty() && lines.iter().all(line_accepts_any))
+}
+
 /// The allowed variants and the quantity bound.
 ///
 /// Variants are each acceptable item of each line, with the `keelson.attributes` size (`size_us`)
@@ -166,10 +184,14 @@ pub(crate) fn attributes(m: &Value) -> Result<(Option<String>, Option<String>), 
 /// set has no arithmetic and the entity holds a single bound, so Cedar cannot tie a quantity to
 /// a variant, and the smallest quantity is the bound that never allows more than any line does.
 /// It is 0, which denies every cart, when the mandate has no lines.
+///
+/// A line accepts any item when its only acceptable item is [`ANY_ITEM`]. Either every line does
+/// or none does, so that the projection of the cart's SKUs is the same for every line.
 fn variants(m: &Value) -> Result<(BTreeSet<Variant>, i64), PolicyError> {
     let (size, color) = attributes(m)?;
     let mut out = BTreeSet::new();
     let mut max_qty: Option<i64> = None;
+    let mut any: Option<bool> = None;
     if let Some(lines) = constraint(m, "checkout", "checkout.line_items")? {
         for line in array_at(&lines["items"], "checkout.line_items.items")? {
             let qty = int_at(&line["quantity"], "checkout.line_items.quantity")?;
@@ -185,6 +207,14 @@ fn variants(m: &Value) -> Result<(BTreeSet<Variant>, i64), PolicyError> {
                     color: color.clone(),
                 });
             }
+            let line_any = line_accepts_any(line);
+            if (line_any && items.len() > 1) || any.is_some_and(|a| a != line_any) {
+                return Err(invalid(
+                    "checkout.line_items",
+                    "any item mixed with other items",
+                ));
+            }
+            any = Some(line_any);
         }
     }
     Ok((out, max_qty.unwrap_or(0)))

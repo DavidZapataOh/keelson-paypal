@@ -82,6 +82,21 @@ describe("card contents", () => {
     expect(row("recurrence")?.values).toEqual(["Not acknowledged"]);
   });
 
+  it("shows any item with its title", async () => {
+    const m = mandate();
+    for (const c of m.checkout.constraints) {
+      if (c.type === "checkout.line_items") {
+        c.items.push({
+          id: "l2",
+          acceptable_items: [{ id: "*", title: "Trail shoes" }],
+          quantity: 1,
+        });
+        c.items.splice(0, 1);
+      }
+    }
+    expect((await card(m))("items")?.values).toEqual(["Any item: Trail shoes"]);
+  });
+
   it("labels every category in the table", () => {
     expect(Object.keys(CATEGORY_LABELS).sort()).toEqual([...CATEGORY_TABLE.ids].sort());
   });

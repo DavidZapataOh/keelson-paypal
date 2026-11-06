@@ -194,6 +194,12 @@ export const MandateSchema = z.strictObject({
 
 export type Mandate = z.infer<typeof MandateSchema>;
 
+/**
+ * The `acceptable_items` id that stands for any SKU. It must be the only acceptable item of its
+ * line and carry a non-empty `title` describing what the user wants.
+ */
+export const ANY_ITEM = "*";
+
 /** Maximum lifetime of a mandate, in seconds. */
 export const MAX_LIFETIME_SECONDS = 30 * 86400;
 
@@ -264,6 +270,16 @@ export function parseMandate(input: unknown): Mandate {
     if ("currency" in c && c.currency !== m.payment.currency) {
       throw new MandateError(`payment.constraints.${i}.currency`, "differs from payment.currency");
     }
+  });
+  m.checkout.constraints.forEach((c, i) => {
+    if (c.type !== "checkout.line_items") return;
+    c.items.forEach((line, j) => {
+      const path = `checkout.constraints.${i}.items.${j}.acceptable_items`;
+      const items = line.acceptable_items;
+      if (!items.some((a) => a.id === ANY_ITEM)) return;
+      if (items.length > 1) throw new MandateError(path, "any item must be the only item");
+      if (!items[0]?.title) throw new MandateError(`${path}.0.title`, "required for any item");
+    });
   });
   return m;
 }

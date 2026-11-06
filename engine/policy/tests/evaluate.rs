@@ -582,3 +582,90 @@ fn a_signed_open_mandate_allows_its_cart() {
     };
     assert!(verify(std::str::from_utf8(&tampered).unwrap()).is_err());
 }
+
+/// The demo mandate with each line's acceptable items replaced by `items`.
+fn with_items(items: &[&[&str]]) -> Value {
+    let mut m = mandate();
+    let lines = m["checkout"]["constraints"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|c| c["type"] == "checkout.line_items")
+        .unwrap();
+    lines["items"] = items
+        .iter()
+        .enumerate()
+        .map(|(n, ids)| {
+            json!({
+                "id": format!("l{n}"),
+                "acceptable_items": ids.iter().map(|id| json!({ "id": id, "title": "Trail shoe" })).collect::<Vec<_>>(),
+                "quantity": 1,
+            })
+        })
+        .collect();
+    m
+}
+
+/// The demo cart with its single variant under each of `skus`, one of each.
+fn cart_of(skus: &[&str]) -> Context {
+    let mut c = demo_cart();
+    let v = c.variants.first().unwrap().clone();
+    c.quantities = skus
+        .iter()
+        .map(|sku| {
+            let mut v = v.clone();
+            v.sku = (*sku).to_owned();
+            (v, 1)
+        })
+        .collect();
+    c.variants = c.quantities.keys().cloned().collect();
+    c.max_line_qty = 1;
+    c
+}
+
+#[test]
+fn any_item_allows_every_sku_within_the_other_bounds() {
+    let mut i = input(cart_of(&["sku-road-9"]));
+    i.mandate = with_items(&[&["*"]]);
+    let t = evaluate(&i, &meta());
+    assert_eq!(t.decision, Decision::Allow, "{:?} {:?}", t.fired, t.errors);
+    assert_eq!(t.context["variants"], json!([{ "sku": "*", "size": "10" }]));
+    assert_eq!(
+        field(&t, "variant").bound,
+        Some(json!([{ "sku": "*", "size": "10" }]))
+    );
+
+    // The size the mandate requires still binds.
+    let mut v = i.context.variants.pop_first().unwrap();
+    i.context.quantities.clear();
+    v.size = Some("11".to_owned());
+    i.context.variants.insert(v.clone());
+    i.context.quantities.insert(v, 1);
+    assert_eq!(evaluate(&i, &meta()).fired, ["variant"]);
+}
+
+#[test]
+fn any_item_adds_the_quantities_of_every_sku() {
+    let mut i = input(cart_of(&["sku-road-9", "sku-trail-10"]));
+    i.mandate = with_items(&[&["*"]]);
+    let t = evaluate(&i, &meta());
+    assert_eq!(t.context["variants"], json!([{ "sku": "*", "size": "10" }]));
+    assert_eq!(t.context["max_line_qty"], json!(2));
+    assert_eq!(t.fired, ["quantity"]);
+}
+
+#[test]
+fn any_item_mixed_with_concrete_items_denies() {
+    for items in [
+        &[&["*"][..], &["sku-trail-10"][..]][..],
+        &[&["sku-trail-10"][..], &["*"][..]][..],
+        &[&["*", "sku-trail-10"][..]][..],
+    ] {
+        let mut i = input(demo_cart());
+        i.mandate = with_items(items);
+        denied_with(
+            &evaluate(&i, &meta()),
+            &["entity.invalid:checkout.line_items"],
+        );
+    }
+}

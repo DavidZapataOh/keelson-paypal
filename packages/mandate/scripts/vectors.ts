@@ -30,7 +30,7 @@ import {
   type VerifiedOpenMandate,
   verifyCredential,
 } from "../src/credentials.ts";
-import { type Mandate, parseMandate } from "../src/schema.ts";
+import { ANY_ITEM, type Mandate, parseMandate } from "../src/schema.ts";
 import {
   buildSdPayload,
   decodeDisclosed,
@@ -49,6 +49,13 @@ const b64uJson = (v: unknown): string => b64u(utf8(JSON.stringify(v)));
 const field = (n: bigint): string => `0x${n.toString(16).padStart(64, "0")}`;
 const hex = (b: Uint8Array): string => `0x${Buffer.from(b).toString("hex")}`;
 const clone = <T>(v: T): T => structuredClone(v);
+
+/** Sets the acceptable items of the first line. */
+function anyItem(m: Mandate, items: { id: string; title?: string }[]): void {
+  for (const c of m.checkout.constraints) {
+    if (c.type === "checkout.line_items" && c.items[0]) c.items[0].acceptable_items = items;
+  }
+}
 
 /** Deterministic bytes for the vectors only; the product draws salts and keys from a CSPRNG. */
 const seed = (label: string): Uint8Array => sha256(utf8(`keelson/vectors/${label}`));
@@ -707,6 +714,7 @@ async function commitmentVectors() {
         }
       },
     ],
+    ["any-item", (m) => anyItem(m, [{ id: ANY_ITEM, title: "Trail running shoes" }])],
   ];
   for (const [name, edit] of variants) {
     const m = name === "edge" ? edgeMandate() : (clone(demo) as unknown as Mandate);
@@ -776,6 +784,17 @@ async function commitmentVectors() {
     ["error/summary-over-limit", (m) => (m.intent.prompt_summary = "a".repeat(1025))],
     ["ok/summary-at-limit", (m) => (m.intent.prompt_summary = "a".repeat(1024))],
     ["error/subjective-over-limit", (m) => (m.intent.subjective = ["a".repeat(257)])],
+    ["ok/any-item", (m) => anyItem(m, [{ id: ANY_ITEM, title: "Trail running shoes" }])],
+    [
+      "error/any-item-with-other-items",
+      (m) => anyItem(m, [{ id: ANY_ITEM, title: "Trail running shoes" }, { id: "sku-road-9" }]),
+    ],
+    [
+      "error/other-items-with-any-item",
+      (m) => anyItem(m, [{ id: "sku-road-9" }, { id: ANY_ITEM, title: "Trail running shoes" }]),
+    ],
+    ["error/any-item-untitled", (m) => anyItem(m, [{ id: ANY_ITEM }])],
+    ["error/any-item-empty-title", (m) => anyItem(m, [{ id: ANY_ITEM, title: "" }])],
   ];
   for (const [name, edit] of parseCases) {
     const m = clone(demo) as unknown as Mandate;

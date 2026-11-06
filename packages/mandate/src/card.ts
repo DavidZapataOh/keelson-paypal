@@ -2,7 +2,7 @@ import { toPayPalValue } from "@keelson/core";
 import { hSd as hashSd, mandateChallenge } from "./challenge.ts";
 import { type Color, type Evidence, type FieldId, fieldColors } from "./colors.ts";
 import { mandateCommitment } from "./commitment.ts";
-import { CATEGORY_TABLE, type Mandate } from "./schema.ts";
+import { ANY_ITEM, CATEGORY_TABLE, type Mandate } from "./schema.ts";
 import { buildSdPayload, decodeMandate } from "./sd.ts";
 import { type SpcDetails, spcDetails } from "./spc.ts";
 
@@ -114,7 +114,11 @@ function values(m: Mandate): Partial<Record<FieldId, string[]>> {
       );
     } else if (c.type === "checkout.line_items") {
       out.quantity = [String(c.items.reduce((n, i) => n + i.quantity, 0))];
-      out.items = c.items.map((i) => i.acceptable_items.map((a) => a.title ?? a.id).join(" or "));
+      out.items = c.items.map((i) =>
+        i.acceptable_items
+          .map((a) => (a.id === ANY_ITEM ? `Any item: ${a.title}` : (a.title ?? a.id)))
+          .join(" or "),
+      );
     } else if (c.type === "keelson.category") {
       const name = (id: string) => CATEGORY_LABELS[id] ?? id;
       out.category = [...c.allow.map(name), ...c.deny.map((id) => `Not ${name(id)}`)];
