@@ -94,7 +94,17 @@ describe("card contents", () => {
         c.items.splice(0, 1);
       }
     }
-    expect((await card(m))("items")?.values).toEqual(["Any item: Trail shoes"]);
+    const { payloadSd, disclosures } = await buildSdPayload(m, randomSalt);
+    const c = renderCard(payloadSd, disclosures, evidence);
+    expect(c.rows.find((r) => r.field === "items")).toMatchObject({
+      values: ['Any item ("Trail shoes")'],
+      color: "gray",
+      answers: "You",
+    });
+    expect(c.rows.find((r) => r.field === "quantity")?.values).toEqual(["1"]);
+    expect(c.warnings).toContain(
+      "The item title is a description; any item in the allowed categories matches.",
+    );
   });
 
   it("labels every category in the table", () => {

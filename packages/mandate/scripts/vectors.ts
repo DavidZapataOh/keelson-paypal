@@ -50,6 +50,19 @@ const field = (n: bigint): string => `0x${n.toString(16).padStart(64, "0")}`;
 const hex = (b: Uint8Array): string => `0x${Buffer.from(b).toString("hex")}`;
 const clone = <T>(v: T): T => structuredClone(v);
 
+/** Replaces the lines with one line per list of acceptable items. */
+function anyLines(m: Mandate, ...lines: { id: string; title?: string }[][]): void {
+  for (const c of m.checkout.constraints) {
+    if (c.type === "checkout.line_items") {
+      c.items = lines.map((acceptable_items, n) => ({
+        id: `l${n}`,
+        acceptable_items,
+        quantity: 1,
+      }));
+    }
+  }
+}
+
 /** Sets the acceptable items of the first line. */
 function anyItem(m: Mandate, items: { id: string; title?: string }[]): void {
   for (const c of m.checkout.constraints) {
@@ -795,6 +808,24 @@ async function commitmentVectors() {
     ],
     ["error/any-item-untitled", (m) => anyItem(m, [{ id: ANY_ITEM }])],
     ["error/any-item-empty-title", (m) => anyItem(m, [{ id: ANY_ITEM, title: "" }])],
+    ["error/any-item-blank-title", (m) => anyItem(m, [{ id: ANY_ITEM, title: " \u3000" }])],
+    [
+      "error/any-item-two-lines",
+      (m) => anyLines(m, [{ id: ANY_ITEM, title: "Shoes" }], [{ id: ANY_ITEM, title: "Socks" }]),
+    ],
+    [
+      "error/any-item-and-other-line",
+      (m) => anyLines(m, [{ id: "sku-road-9" }], [{ id: ANY_ITEM, title: "Shoes" }]),
+    ],
+    [
+      "error/any-item-without-category",
+      (m) => {
+        anyItem(m, [{ id: ANY_ITEM, title: "Trail running shoes" }]);
+        m.checkout.constraints = m.checkout.constraints.filter(
+          (c) => c.type !== "keelson.category",
+        );
+      },
+    ],
   ];
   for (const [name, edit] of parseCases) {
     const m = clone(demo) as unknown as Mandate;

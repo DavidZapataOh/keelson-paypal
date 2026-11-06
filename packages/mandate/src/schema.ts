@@ -195,8 +195,9 @@ export const MandateSchema = z.strictObject({
 export type Mandate = z.infer<typeof MandateSchema>;
 
 /**
- * The `acceptable_items` id that stands for any SKU. It must be the only acceptable item of its
- * line and carry a non-empty `title` describing what the user wants.
+ * The `acceptable_items` id that stands for any SKU. A mandate that uses it has a single line, whose
+ * only acceptable item it is, and a `keelson.category` constraint; its `title` describes what the
+ * user wants and is not blank.
  */
 export const ANY_ITEM = "*";
 
@@ -273,13 +274,24 @@ export function parseMandate(input: unknown): Mandate {
   });
   m.checkout.constraints.forEach((c, i) => {
     if (c.type !== "checkout.line_items") return;
+    let any = false;
     c.items.forEach((line, j) => {
       const path = `checkout.constraints.${i}.items.${j}.acceptable_items`;
       const items = line.acceptable_items;
       if (!items.some((a) => a.id === ANY_ITEM)) return;
       if (items.length > 1) throw new MandateError(path, "any item must be the only item");
-      if (!items[0]?.title) throw new MandateError(`${path}.0.title`, "required for any item");
+      if (!items[0]?.title?.trim()) {
+        throw new MandateError(`${path}.0.title`, "required for any item");
+      }
+      any = true;
     });
+    if (!any) return;
+    if (c.items.length > 1) {
+      throw new MandateError(`checkout.constraints.${i}.items`, "any item must be the only line");
+    }
+    if (!m.checkout.constraints.some((k) => k.type === "keelson.category")) {
+      throw new MandateError("checkout.constraints", "any item requires keelson.category");
+    }
   });
   return m;
 }

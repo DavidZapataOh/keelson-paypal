@@ -1,6 +1,6 @@
 import { toPayPalValue } from "@keelson/core";
 import { hSd as hashSd, mandateChallenge } from "./challenge.ts";
-import { type Color, type Evidence, type FieldId, fieldColors } from "./colors.ts";
+import { anyItem, type Color, type Evidence, type FieldId, fieldColors } from "./colors.ts";
 import { mandateCommitment } from "./commitment.ts";
 import { ANY_ITEM, CATEGORY_TABLE, type Mandate } from "./schema.ts";
 import { buildSdPayload, decodeMandate } from "./sd.ts";
@@ -116,7 +116,7 @@ function values(m: Mandate): Partial<Record<FieldId, string[]>> {
       out.quantity = [String(c.items.reduce((n, i) => n + i.quantity, 0))];
       out.items = c.items.map((i) =>
         i.acceptable_items
-          .map((a) => (a.id === ANY_ITEM ? `Any item: ${a.title}` : (a.title ?? a.id)))
+          .map((a) => (a.id === ANY_ITEM ? `Any item ("${a.title}")` : (a.title ?? a.id)))
           .join(" or "),
       );
     } else if (c.type === "keelson.category") {
@@ -168,6 +168,9 @@ export function renderCard(payloadSd: object, disclosures: string[], evidence: E
   const warnings = m.intent.subjective.map(
     (s) => `"${s}" is a matter of taste: Keelson cannot check it, so you answer for it.`,
   );
+  if (anyItem(m)) {
+    warnings.push("The item title is a description; any item in the allowed categories matches.");
+  }
   return { rows, warnings };
 }
 

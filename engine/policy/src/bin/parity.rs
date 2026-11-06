@@ -256,8 +256,10 @@ fn mandate(r: &mut Rng) -> (Value, Shape) {
     let mut lines = Vec::new();
     let mut skus = Vec::new();
     let mut max_qty = i64::MAX;
+    // A mandate for any item has a single line and a category constraint, as the parser requires.
     let any_item = r.chance(20);
-    for n in 0..r.range(1, 3) {
+    let line_count = if any_item { 1 } else { r.range(1, 3) };
+    for n in 0..line_count {
         let items: Vec<&str> = if any_item {
             skus.extend(SKUS.iter().map(|s| s.to_string()));
             vec![ANY_ITEM]
@@ -288,7 +290,7 @@ fn mandate(r: &mut Rng) -> (Value, Shape) {
     ];
 
     let mut categories: Vec<String> = CATEGORY_IDS.iter().map(|c| c.to_string()).collect();
-    if r.chance(75) {
+    if any_item || r.chance(75) {
         let allow = r.subset(&CATEGORY_IDS, 1, 4);
         let deny: Vec<&str> = if r.chance(30) {
             vec![*r.pick(&allow)]
