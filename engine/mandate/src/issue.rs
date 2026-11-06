@@ -7,8 +7,8 @@ use p256::ecdsa::signature::Signer;
 use p256::ecdsa::{Signature, SigningKey};
 use serde_json::{Value, json};
 
-use crate::credentials::{assert_user_auth, cnf_jwk, safe_integer};
-use crate::sd::digest;
+use crate::credentials::{assert_user_auth, cnf_jwk, holder_jwk, safe_integer};
+use crate::sd::{Disclosure, digest};
 use crate::{Error, Jwk, OPEN_MANDATE_TYP, USER_CREDENTIAL_TYP, USER_CREDENTIAL_VCT, b64};
 
 /// The user's passkey, as bound into the user credential.
@@ -65,8 +65,9 @@ fn sign_jwt(header: &Value, payload: &Value, key: &SigningKey) -> String {
     format!("{input}.{}", b64::encode(&signature.to_bytes()))
 }
 
+/// Whole seconds since the epoch, as the mandate schema and the verifiers accept them.
 fn check_iat(iat: i64) -> Result<(), Error> {
-    if safe_integer(iat) {
+    if iat >= 0 && safe_integer(iat) {
         Ok(())
     } else {
         Err(invalid("iat must be whole seconds"))
@@ -91,7 +92,8 @@ impl Salts<'_> {
 
 /// Issues the user credential: an SD-JWT VC (draft-ietf-oauth-sd-jwt-vc) whose `cnf.jwk` is the
 /// holder key that signs the user's open mandates, and whose selectively disclosable `sub` and
-/// `cred` are the user and their passkey.
+/// `cred` are the user and their passkey. Both keys must be P-256 points with canonical
+/// coordinates.
 pub fn issue_user_credential(
     p: &UserCredentialParams,
     key: &SigningKey,
@@ -99,6 +101,8 @@ pub fn issue_user_credential(
     iat: i64,
 ) -> Result<String, Error> {
     check_iat(iat)?;
+    p.holder_jwk.verifying_key()?;
+    p.cred.jwk.verifying_key()?;
     let mut salts = Salts {
         next: salts,
         seen: HashSet::new(),
@@ -130,8 +134,12 @@ pub fn issue_user_credential(
 /// `payload_sd` as its only delegate payload and the passkey assertion as `user_auth`. The user
 /// credential is embedded without its disclosures, so `sub` and `cred` reach no verifier.
 ///
-/// The WebAuthn assertion in `user_auth` is NOT verified here; callers must verify it against
-/// `M` and the user's passkey before calling this.
+/// `key` must be the holder key in the user credential's `cnf.jwk`, and every disclosure must
+/// decode as one.
+///
+/// Neither the WebAuthn assertion in `user_auth` nor the mandate in `payload_sd` is checked here;
+/// callers must parse the mandate, compute `M` from it and verify the assertion against `M` and
+/// the user's passkey before calling this.
 pub fn issue_open_mandate(
     p: &OpenMandateParams,
     key: &SigningKey,
@@ -145,7 +153,15 @@ pub fn issue_open_mandate(
         ));
     }
     let user_credential = &p.user_credential[..=p.user_credential.find('~').expect("ends with ~")];
+    let holder = holder_jwk(&user_credential[..user_credential.len() - 1])?;
+    let signer = Jwk::from_verifying_key(key.verifying_key());
+    if (signer.x, signer.y) != (holder.x, holder.y) {
+        return Err(invalid("signing key is not the cnf.jwk"));
+    }
     cnf_jwk(p.payload_sd.get("cnf"))?;
+    for d in &p.disclosures {
+        Disclosure::decode(d)?;
+    }
     let user_auth = json!({
         "authenticatorData": p.user_auth.authenticator_data,
         "clientDataJSON": p.user_auth.client_data_json,

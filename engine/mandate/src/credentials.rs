@@ -71,7 +71,7 @@ impl Jwk {
         json!({ "kty": "EC", "crv": "P-256", "x": self.x, "y": self.y })
     }
 
-    fn verifying_key(&self) -> Result<VerifyingKey, Error> {
+    pub(crate) fn verifying_key(&self) -> Result<VerifyingKey, Error> {
         let (x, y) = (coordinate(&self.x)?, coordinate(&self.y)?);
         let point = [&[0x04][..], &x, &y].concat();
         VerifyingKey::from_sec1_bytes(&point).map_err(|_| invalid("JWK is not a P-256 point"))
@@ -142,6 +142,12 @@ struct Jwt<'a> {
     payload: Map<String, Value>,
     signing_input: &'a str,
     signature: &'a str,
+}
+
+/// The holder key a user credential's `cnf.jwk` names. The credential's signature is not checked.
+pub(crate) fn holder_jwk(user_credential_jwt: &str) -> Result<Jwk, Error> {
+    let jwt = decode_jwt(user_credential_jwt)?;
+    Jwk::from_value(cnf_jwk(jwt.payload.get("cnf"))?)
 }
 
 fn decode_jwt(jwt: &str) -> Result<Jwt<'_>, Error> {

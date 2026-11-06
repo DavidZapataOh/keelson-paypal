@@ -163,12 +163,32 @@ const publicJwk = ({ kty, crv, x, y }: P256PublicJwk): P256PublicJwk => ({ kty, 
 
 const randomSalt: SaltGenerator = () => crypto.getRandomValues(new Uint8Array(16));
 
-const saltString = (salts: SaltGenerator) => (): string => uint8ArrayToBase64Url(salts());
+const saltString = (salts: SaltGenerator) => (): string => {
+  const salt = salts();
+  if (salt.length !== 16) throw new RangeError("a salt must be 16 bytes");
+  return uint8ArrayToBase64Url(salt);
+};
 
+/** Whole seconds since the epoch, as the mandate schema and the verifiers accept them. */
 function issuedAt(iat: number | undefined): number {
   const t = iat ?? Math.floor(Date.now() / 1000);
-  if (!Number.isSafeInteger(t)) throw new RangeError("iat must be whole seconds");
+  if (!Number.isSafeInteger(t) || t < 0) throw new RangeError("iat must be whole seconds");
   return t;
+}
+
+/** A P-256 point with canonical coordinates, as {@link jwkOf} and WebCrypto accept it. */
+async function assertP256Point(jwk: P256PublicJwk): Promise<void> {
+  try {
+    await importJWK(jwkOf({ jwk: publicJwk(jwk) }), "ES256");
+  } catch {
+    throw new RangeError("not a P-256 public key");
+  }
+}
+
+/** A disclosure as the verifiers decode it: strict JSON, `[salt, value]` or `[salt, name, value]`. */
+function assertDisclosure(d: string): void {
+  if (!B64URL.test(d)) throw new RangeError("disclosure is not base64url");
+  Disclosure.fromArray(decodeStrictJson(d) as [string, unknown]);
 }
 
 /** ES256 (RFC 7518 section 3.4): the IEEE P1363 `r || s` signature that WebCrypto returns. */
@@ -230,7 +250,8 @@ function sdHash(sdJwt: string): string {
 /**
  * Issues the user credential: an SD-JWT VC (draft-ietf-oauth-sd-jwt-vc) whose `cnf.jwk` is the
  * holder key that signs the user's open mandates, and whose selectively disclosable `sub` and
- * `cred` are the user and their passkey.
+ * `cred` are the user and their passkey. Both keys must be P-256 points with canonical
+ * coordinates.
  */
 export async function issueUserCredential(
   params: UserCredentialParams,
@@ -238,6 +259,8 @@ export async function issueUserCredential(
   salts: SaltGenerator = randomSalt,
 ): Promise<string> {
   const iat = issuedAt(params.iat);
+  await assertP256Point(params.holderJwk);
+  await assertP256Point(params.cred.jwk);
   const sdJwt = new SDJwtVcInstance({
     signer: es256Signer(signer),
     signAlg: "ES256",
@@ -263,8 +286,12 @@ export async function issueUserCredential(
  * `payloadSd` as its only delegate payload and the passkey assertion as `user_auth`. The user
  * credential is embedded without its disclosures, so `sub` and `cred` reach no verifier.
  *
- * The WebAuthn assertion in `userAuth` is NOT verified here; callers must verify it against `M`
- * and the user's passkey before calling this.
+ * `signer` must be the holder key in the user credential's `cnf.jwk`, and every disclosure must
+ * decode as one.
+ *
+ * Neither the WebAuthn assertion in `userAuth` nor the mandate in `payloadSd` is checked here;
+ * callers must parse the mandate, compute `M` from it and verify the assertion against `M` and
+ * the user's passkey before calling this.
  * @see https://datatracker.ietf.org/doc/html/draft-ietf-oauth-delegate-sd-jwt-00
  */
 export async function issueOpenMandate(
@@ -278,8 +305,10 @@ export async function issueOpenMandate(
     throw new RangeError("userCredential must be an SD-JWT without key binding");
   }
   const userCredential = `${params.userCredential.slice(0, params.userCredential.indexOf("~"))}~`;
+  const holderJwk = jwkOf(Jwt.decodeJWT(userCredential.slice(0, -1)).payload.cnf);
   jwkOf((payloadSd as { cnf?: unknown }).cnf);
   assertUserAuth(userAuth);
+  disclosures.forEach(assertDisclosure);
   const delegate = await pack(
     { delegate_payload: [payloadSd] },
     { delegate_payload: { _sd: [0] } },
@@ -298,6 +327,11 @@ export async function issueOpenMandate(
       user_auth: userAuth,
     },
   }).sign(es256Signer(signer));
+  const holderKey = (await importJWK(holderJwk, "ES256")) as CryptoKey;
+  const dot = kbSdJwt.lastIndexOf(".");
+  if (!(await es256Verifier(holderKey)(kbSdJwt.slice(0, dot), kbSdJwt.slice(dot + 1)))) {
+    throw new RangeError("signer is not the user credential's cnf.jwk");
+  }
   const all = [...delegate.disclosures.map((d) => d.encode()), ...disclosures];
   return `${userCredential}~${kbSdJwt}~${all.map((d) => `${d}~`).join("")}`;
 }

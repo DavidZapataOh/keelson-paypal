@@ -95,4 +95,27 @@ describe("credentials issued from derived keys", () => {
       RangeError,
     );
   });
+
+  it.each(vectors.errors)("refuses $name", async (c) => {
+    expect(c.expected).toBe("error");
+    const key = await privateKey(c.signer === "issuer" ? issuer : holder);
+    const salts = () => crypto.getRandomValues(new Uint8Array(16));
+    const issued =
+      c.credential === "user"
+        ? issueUserCredential({ ...l1Params, ...c.params } as UserCredentialParams, key, salts)
+        : issueOpenMandate({ ...l2Params, ...c.params } as OpenMandateParams, key, salts);
+    await expect(issued).rejects.toThrow();
+  });
+
+  it("refuses salts that are not 16 bytes", async () => {
+    const key = await privateKey(issuer);
+    for (const n of [0, 15, 17]) {
+      await expect(issueUserCredential(l1Params, key, () => new Uint8Array(n))).rejects.toThrow(
+        RangeError,
+      );
+      await expect(
+        issueOpenMandate(l2Params, await privateKey(holder), () => new Uint8Array(n)),
+      ).rejects.toThrow(RangeError);
+    }
+  });
 });

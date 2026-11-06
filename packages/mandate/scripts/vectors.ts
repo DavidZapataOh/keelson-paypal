@@ -1880,6 +1880,8 @@ async function issuedVectors() {
   };
   await verifyCredential(l2, OPEN_MANDATE_TYP, issuer.publicKey, verify);
 
+  const errors = await issuanceErrors({ issuer, holder, l1Params, l2Params });
+
   const derived = (k: Key) => ({ secret: hex(k.secret), jwk: k.jwk });
   return {
     root: hex(ROOT),
@@ -1887,7 +1889,126 @@ async function issuedVectors() {
     users: users.map(({ sub, key }) => ({ sub, ...derived(key) })),
     userCredential: { params: l1Params, salts: l1Salts.drawn, expected: l1 },
     openMandate: { params: l2Params, salts: l2Salts.drawn, verify, expected: l2 },
+    errors,
   };
+}
+
+interface IssuanceBase {
+  issuer: Key;
+  holder: Key;
+  l1Params: UserCredentialParams;
+  l2Params: OpenMandateParams;
+}
+
+/**
+ * Inputs both issuers must refuse. Each case overrides members of the vector's params and names
+ * the signing key; the salts are fresh per case.
+ */
+async function issuanceErrors({ issuer, holder, l1Params, l2Params }: IssuanceBase) {
+  const offCurve = { ...holder.jwk, y: b64u(seed("off-curve")) };
+  const disclosures = (d: string) => ({ disclosures: [...l2Params.disclosures, d] });
+  const cases: {
+    name: string;
+    credential: "user" | "open";
+    signer: "issuer" | "holder";
+    params: Record<string, unknown>;
+  }[] = [
+    {
+      name: "user/holder-jwk-not-canonical",
+      credential: "user",
+      signer: "issuer",
+      params: { holderJwk: { ...holder.jwk, x: `${holder.jwk.x}=` } },
+    },
+    {
+      name: "user/holder-jwk-short",
+      credential: "user",
+      signer: "issuer",
+      params: { holderJwk: { ...holder.jwk, x: holder.jwk.x.slice(1) } },
+    },
+    {
+      name: "user/holder-jwk-off-curve",
+      credential: "user",
+      signer: "issuer",
+      params: { holderJwk: offCurve },
+    },
+    {
+      name: "user/cred-jwk-not-canonical",
+      credential: "user",
+      signer: "issuer",
+      params: { cred: { ...l1Params.cred, jwk: { ...l1Params.cred.jwk, y: "!!" } } },
+    },
+    {
+      name: "user/cred-jwk-off-curve",
+      credential: "user",
+      signer: "issuer",
+      params: { cred: { ...l1Params.cred, jwk: offCurve } },
+    },
+    { name: "user/iat-negative", credential: "user", signer: "issuer", params: { iat: -1 } },
+    { name: "user/iat-unsafe", credential: "user", signer: "issuer", params: { iat: 2 ** 53 } },
+    { name: "open/signer-not-holder", credential: "open", signer: "issuer", params: {} },
+    {
+      name: "open/disclosure-empty",
+      credential: "open",
+      signer: "holder",
+      params: disclosures(""),
+    },
+    {
+      name: "open/disclosure-with-separator",
+      credential: "open",
+      signer: "holder",
+      params: disclosures(`${l2Params.disclosures[0]}~${l2Params.disclosures[1]}`),
+    },
+    {
+      name: "open/disclosure-not-base64url",
+      credential: "open",
+      signer: "holder",
+      params: disclosures("WyJh!"),
+    },
+    {
+      name: "open/disclosure-not-array",
+      credential: "open",
+      signer: "holder",
+      params: disclosures(b64uJson({ salt: "a" })),
+    },
+    {
+      name: "open/disclosure-one-element",
+      credential: "open",
+      signer: "holder",
+      params: disclosures(b64uJson(["a"])),
+    },
+    {
+      name: "open/disclosure-reserved-name",
+      credential: "open",
+      signer: "holder",
+      params: disclosures(b64uJson(["a", "_sd", 1])),
+    },
+    {
+      name: "open/disclosure-unsafe-number",
+      credential: "open",
+      signer: "holder",
+      params: disclosures(b64u(utf8('["a","n",9007199254740993]'))),
+    },
+    {
+      name: "open/user-credential-with-key-binding",
+      credential: "open",
+      signer: "holder",
+      params: { userCredential: `${l2Params.userCredential}~` },
+    },
+    { name: "open/iat-negative", credential: "open", signer: "holder", params: { iat: -1 } },
+  ];
+  return Promise.all(
+    cases.map(async (c) => {
+      const key = await signingKey(c.signer === "issuer" ? issuer : holder);
+      const expected = await (c.credential === "user"
+        ? issueUserCredential({ ...l1Params, ...c.params }, key, salts(`issued/${c.name}`))
+        : issueOpenMandate({ ...l2Params, ...c.params }, key, salts(`issued/${c.name}`))
+      ).then(
+        () => "issued",
+        () => "error",
+      );
+      return { ...c, expected };
+    }),
+  );
 }
 
 writeJson("sd", await sdVectors());

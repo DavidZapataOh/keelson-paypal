@@ -189,3 +189,42 @@ fn rejects_an_iat_beyond_the_safe_integer_range() {
     );
     assert!(matches!(result, Err(Error::Credential(_))));
 }
+
+/// The vector's params with the members of `overrides` replaced.
+fn merged(base: &Value, overrides: &Value) -> Value {
+    let mut params = base.clone();
+    for (k, v) in overrides.as_object().unwrap() {
+        params[k] = v.clone();
+    }
+    params
+}
+
+#[test]
+fn refuses_what_the_verifiers_would_reject() {
+    let v = vectors();
+    let errors = v["errors"].as_array().unwrap();
+    assert_eq!(errors.len(), 17);
+    for c in errors {
+        assert_eq!(c["expected"], "error", "{}", c["name"]);
+        let key = signing_key(if c["signer"] == "issuer" {
+            &v["issuer"]
+        } else {
+            &v["users"][0]
+        });
+        let mut salt = 0u8;
+        let mut salts = || {
+            salt += 1;
+            [salt; 16]
+        };
+        let result = if c["credential"] == "user" {
+            let p = merged(&v["userCredential"]["params"], &c["params"]);
+            let iat = p["iat"].as_i64().unwrap();
+            issue_user_credential(&user_credential_params(&p), &key, &mut salts, iat)
+        } else {
+            let p = merged(&v["openMandate"]["params"], &c["params"]);
+            let iat = p["iat"].as_i64().unwrap();
+            issue_open_mandate(&open_mandate_params(&p), &key, &mut salts, iat)
+        };
+        assert!(result.is_err(), "{} was issued", c["name"]);
+    }
+}
