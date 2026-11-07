@@ -60,6 +60,39 @@ func TestLiveFollowerVerifiesTheLogs(t *testing.T) {
 	}
 }
 
+// TestLiveMonitorReport requires the deployed monitor to have verified both
+// origins within the last three seconds, with the witness quorum.
+func TestLiveMonitorReport(t *testing.T) {
+	base := strings.TrimSuffix(os.Getenv("MONITOR_URL"), "/")
+	if base == "" {
+		t.Fatal("MONITOR_URL is required")
+	}
+	// A deploy that just finished may still be starting.
+	deadline := time.Now().Add(3 * time.Minute)
+	for {
+		var r FullReport
+		res, err := http.Get(base + "/report")
+		if err == nil {
+			err = json.NewDecoder(res.Body).Decode(&r)
+			res.Body.Close()
+		}
+		fresh := err == nil && len(r.Origins) == 2
+		for _, o := range r.Origins {
+			fresh = fresh && time.Since(o.VerifiedAt) < 3*time.Second && len(o.Cosigners) >= 2 && o.LeavesAudited == o.Size && o.Error == ""
+		}
+		if fresh {
+			for _, o := range r.Origins {
+				t.Logf("%s: size %d verified %v ago, cosigned by %v, co-logged %+v", o.Origin, o.Size, time.Since(o.VerifiedAt), o.Cosigners, o.CoLogged)
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("report: %+v %v", r, err)
+		}
+		time.Sleep(time.Second)
+	}
+}
+
 // TestLiveDrill gossips two conflicting conformance checkpoints of one size
 // to the deployed monitor and requires it to publish the equivocation within
 // one second.

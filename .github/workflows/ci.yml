@@ -36,7 +36,7 @@ jobs:
           grep -rEn "paypalMockResponse|PayPal-Mock-Response" packages services apps --exclude-dir=node_modules --exclude-dir=dist || status=$?
           test "$status" -eq 1
       - run: pnpm --filter @keelson/timestamp exec playwright install chromium
-      - run: pnpm turbo run typecheck test build --filter='!./packages/db' --filter='!./packages/attest' --filter='!./packages/evidence' --filter='!./services/api' --cache-dir=.turbo
+      - run: pnpm turbo run typecheck test build --filter='!./packages/db' --filter='!./packages/attest' --filter='!./packages/evidence' --filter='!./services/api' --filter='!./services/monitor' --cache-dir=.turbo
       - name: The captured timestamp tokens verify with OpenSSL
         working-directory: packages/timestamp
         run: node scripts/openssl-verify.ts
@@ -166,6 +166,52 @@ jobs:
       - run: go vet ./...
       - run: go test -race ./...
       - run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
+  monitor-page:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter @keelson/monitor
+      - run: pnpm --filter @keelson/monitor exec playwright install chromium
+      - run: pnpm --filter @keelson/monitor test
+      - name: Verifier size
+        working-directory: services/monitor/web
+        run: |
+          {
+            echo "| verifier.wasm | bytes |"
+            echo "|---|---|"
+            echo "| raw | $(wc -c < verifier.wasm) |"
+            echo "| gzip -9 | $(gzip -9 -c verifier.wasm | wc -c) |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  monitor-selfhost:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build and run the monitor as its README says
+        run: |
+          docker build -f services/monitor/Dockerfile -t keelson-monitor .
+          start=$(date +%s)
+          docker run -d --name monitor -p 8080:8080 -v keelson-monitor:/data keelson-monitor
+          for _ in $(seq 60); do
+            if curl -fsS http://localhost:8080/report |
+              jq -e '[.origins[] | select((.cosigners | length) >= 2 and .error == null and .leavesAudited == .size)] | length == 2'; then
+              echo "Both origins verified $(( $(date +%s) - start )) s after docker run" | tee -a "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs monitor
+          exit 1
 
   log-live:
     needs: go

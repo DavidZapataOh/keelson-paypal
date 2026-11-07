@@ -51,6 +51,10 @@
     "services/api": {
       "entry": ["src/server.ts!", "scripts/*.ts", "bench/*.bench.ts"],
       "project": ["src/**/*.ts!", "scripts/**/*.ts", "bench/**/*.ts", "test/**/*.ts"]
+    },
+    "services/monitor": {
+      "entry": [".railway/railway.ts", "scripts/*.ts", "test/**/*.test.ts", "web/app.js"],
+      "project": ["scripts/**/*.ts", "test/**/*.ts", "web/**/*.js"]
     }
   }
 }

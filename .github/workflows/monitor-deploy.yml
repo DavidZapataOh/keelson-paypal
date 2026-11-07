@@ -1,0 +1,50 @@
+name: monitor-deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - services/monitor/**
+      - internal/**
+      - go.mod
+      - go.sum
+      - .github/workflows/monitor-deploy.yml
+  workflow_dispatch:
+
+concurrency:
+  group: monitor-deploy
+
+permissions:
+  contents: read
+
+env:
+  RAILWAY_CLI: "@railway/cli@5.71.0"
+  MONITOR_URL: https://keelson-monitor-production.up.railway.app
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+      - name: Deploy from the repository root
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_MONITOR }}
+        run: npx --yes "$RAILWAY_CLI" up --ci --service keelson-monitor
+
+  monitor-live:
+    needs: deploy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: The deployed monitor reports both origins and catches a drill
+        run: go test -tags live -run '^TestLiveMonitor|^TestLiveDrill$' -v ./services/monitor/
+        env:
+          LOG_SIGNER_KEY_CONFORMANCE: ${{ secrets.LOG_SIGNER_KEY_CONFORMANCE }}
