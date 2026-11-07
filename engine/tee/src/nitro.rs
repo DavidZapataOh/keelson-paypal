@@ -2,6 +2,7 @@
 //! configuration once in `POST /v1/boot`, and attests its signer through the Nitro Secure Module.
 
 use std::fmt;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 
@@ -33,12 +34,19 @@ use crate::{Engine, EngineConfig, SignerBinding, TeeKind, report_data};
 const RNG_CURRENT: &str = "/sys/class/misc/hw_random/rng_current";
 /// The Nitro Secure Module's hardware random number generator.
 const HWRNG: &str = "nsm-hwrng";
+/// Where the kernel lists its PTP hardware clocks.
+#[cfg(target_os = "linux")]
+const PTP_CLASS: &str = "/sys/class/ptp";
+/// The clock `ptp_kvm` registers: the parent instance's wall clock, read from the hypervisor.
+const KVM_PTP: &str = "KVM virtual PTP";
 
 /// Why the enclave could not boot or attest.
 #[derive(Debug)]
 pub enum NitroError {
     /// The kernel does not draw its entropy from the NSM.
     Entropy(String),
+    /// The hypervisor's PTP clock cannot be read.
+    Clock(String),
     /// `/dev/nsm` could not be opened or refused the request.
     Nsm(String),
     /// The attestation document is not one for the report data it was asked for.
@@ -51,6 +59,7 @@ impl fmt::Display for NitroError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Entropy(current) => write!(f, "the hardware rng is {current:?}, not {HWRNG:?}"),
+            Self::Clock(e) => write!(f, "host clock: {e}"),
             Self::Nsm(e) => write!(f, "nsm: {e}"),
             Self::Evidence(what) => write!(f, "the attestation document has the wrong {what}"),
             Self::Binding(e) => write!(f, "binding: {e}"),
@@ -68,6 +77,63 @@ pub fn check_entropy() -> Result<(), NitroError> {
         HWRNG => Ok(()),
         other => Err(NitroError::Entropy(other.into())),
     }
+}
+
+/// The hypervisor's PTP clock, opened by [`open_host_clock`].
+#[cfg(target_os = "linux")]
+static HOST_CLOCK: std::sync::OnceLock<std::fs::File> = std::sync::OnceLock::new();
+
+/// The device of the `ptp_kvm` clock among the PTP clocks listed under `class`.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn kvm_ptp_device(class: &Path) -> Option<PathBuf> {
+    std::fs::read_dir(class).ok()?.flatten().find_map(|entry| {
+        let name = std::fs::read_to_string(entry.path().join("clock_name")).ok()?;
+        (name.trim() == KVM_PTP).then(|| Path::new("/dev").join(entry.file_name()))
+    })
+}
+
+/// Opens the hypervisor's PTP clock, which [`host_now`] reads.
+///
+/// An enclave's clock is set when it starts and is not synchronized afterwards, so it drifts from
+/// the parent's. The `ptp_kvm` clock reads the parent's wall clock through the hypervisor each
+/// time, which is how AWS recommends an enclave keeps its time.
+#[cfg(target_os = "linux")]
+pub fn open_host_clock() -> Result<PathBuf, NitroError> {
+    let device = kvm_ptp_device(Path::new(PTP_CLASS))
+        .ok_or_else(|| NitroError::Clock(format!("no {KVM_PTP:?} clock in {PTP_CLASS}")))?;
+    let clock = std::fs::File::open(&device)
+        .map_err(|e| NitroError::Clock(format!("{}: {e}", device.display())))?;
+    read_ptp(&clock).map_err(|e| NitroError::Clock(format!("{}: {e}", device.display())))?;
+    let _ = HOST_CLOCK.set(clock);
+    Ok(device)
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn open_host_clock() -> Result<PathBuf, NitroError> {
+    Err(NitroError::Clock(
+        "PTP clocks are read on Linux only".into(),
+    ))
+}
+
+#[cfg(target_os = "linux")]
+fn read_ptp(clock: &std::fs::File) -> std::io::Result<OffsetDateTime> {
+    use rustix::time::{DynamicClockId, clock_gettime_dynamic};
+    use std::os::fd::AsFd;
+    let t = clock_gettime_dynamic(DynamicClockId::Dynamic(clock.as_fd()))?;
+    OffsetDateTime::from_unix_timestamp_nanos(
+        i128::from(t.tv_sec) * 1_000_000_000 + i128::from(t.tv_nsec),
+    )
+    .map_err(std::io::Error::other)
+}
+
+/// The parent's wall clock, from the clock [`open_host_clock`] opened; the enclave's own clock
+/// when none is open or a read fails.
+pub fn host_now() -> OffsetDateTime {
+    #[cfg(target_os = "linux")]
+    if let Some(now) = HOST_CLOCK.get().and_then(|clock| read_ptp(clock).ok()) {
+        return now;
+    }
+    OffsetDateTime::now_utc()
 }
 
 /// A session with the Nitro Secure Module on `/dev/nsm`.
@@ -281,7 +347,7 @@ async fn boot(
         .get_or_try_init(|| async {
             first.store(true, Ordering::Relaxed);
             let engine = request.config.engine()?;
-            let state = AppState::new(engine, request.token_sha256.0);
+            let state = AppState::new(engine, request.token_sha256.0).with_clock(host_now);
             let nsm = enclave.nsm.clone();
             let block = request.block;
             let state = tokio::task::spawn_blocking(move || {
@@ -369,10 +435,37 @@ pub(crate) async fn refresh(
 pub async fn serve(port: u32) -> Result<(), String> {
     check_entropy().map_err(|e| e.to_string())?;
     eprintln!("keelson-engine: entropy from {HWRNG}");
+    let clock = open_host_clock().map_err(|e| e.to_string())?;
+    eprintln!("keelson-engine: time from {KVM_PTP} at {}", clock.display());
     let nsm = Arc::new(Nsm::open().map_err(|e| e.to_string())?);
     let listener = VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, port))
         .map_err(|e| format!("cannot listen on vsock port {port}: {e}"))?;
     axum::serve(listener, app(nsm))
         .await
         .map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::kvm_ptp_device;
+
+    #[test]
+    fn finds_the_hypervisor_ptp_clock_by_name() {
+        let class = std::env::temp_dir().join(format!("keelson-ptp-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&class);
+        for (device, name) in [("ptp0", "ENA PTP\n"), ("ptp1", "KVM virtual PTP\n")] {
+            std::fs::create_dir_all(class.join(device)).unwrap();
+            std::fs::write(class.join(device).join("clock_name"), name).unwrap();
+        }
+        assert_eq!(
+            kvm_ptp_device(&class).as_deref(),
+            Some(Path::new("/dev/ptp1"))
+        );
+        std::fs::remove_dir_all(class.join("ptp1")).unwrap();
+        assert_eq!(kvm_ptp_device(&class), None);
+        assert_eq!(kvm_ptp_device(&class.join("missing")), None);
+        std::fs::remove_dir_all(&class).unwrap();
+    }
 }

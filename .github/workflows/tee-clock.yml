@@ -1,0 +1,22 @@
+name: tee-clock
+
+# Fails when leg B's clock is more than a second from the runner's, which GitHub keeps synced.
+# Leg B refuses an observation more than 2 s ahead of its clock, so this fires first.
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+      - run: node engine/tee/scripts/clock-drift.ts --b https://tee-b.keelson.finance --check 1000
