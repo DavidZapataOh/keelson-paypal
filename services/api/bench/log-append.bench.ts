@@ -14,7 +14,6 @@ import { createTee } from "../src/tee/config.ts";
 import { refreshLeg } from "../src/tee/signers.ts";
 import { startLocalLog } from "../test/log-live.ts";
 import {
-  asAgent,
   asUser,
   carts,
   headerPrincipal,
@@ -96,28 +95,33 @@ try {
       body: JSON.stringify(body),
     });
 
-  // The route allows 60 countersigns per mandate a minute, so each 50 purchases get a new one.
-  const newMandate = async () => {
-    const passkey = await SoftwarePasskey.create();
-    const first = await signedMandate(passkey);
-    await seedUser(db, passkey, first.sub);
-    const stored = await post("/v1/mandates", first.body, asUser(first.sub));
-    if (stored.status !== 201) throw new Error(`mandate not stored: ${stored.status}`);
-    const { id: mandateId } = (await stored.json()) as { id: string };
-    const fresh = await registerMandate(tee.client.a, passkey);
-    await db
-      .insert(user)
-      .values({ id: fresh.sub, name: "Bench", email: `${fresh.sub}@example.test` });
-    await db
-      .update(mandates)
-      .set({
-        userId: fresh.sub,
-        openMandate: fresh.issued.open_mandate,
-        mandateHash: Buffer.from(hexToBytes(fresh.issued.mandate_hash)),
-      })
-      .where(eq(mandates.id, mandateId));
-    return fresh;
-  };
+  // The sandbox authorization names one mandate, so there is one mandate row. The route allows
+  // a caller 60 countersigns of a mandate a minute, so each 50 purchases come from another agent.
+  const passkey = await SoftwarePasskey.create();
+  const first = await signedMandate(passkey);
+  await seedUser(db, passkey, first.sub);
+  const stored = await post("/v1/mandates", first.body, asUser(first.sub));
+  if (stored.status !== 201) throw new Error(`mandate not stored: ${stored.status}`);
+  const { id: mandateId } = (await stored.json()) as { id: string };
+  const agent = await registerMandate(tee.client.a, passkey);
+  await db
+    .insert(user)
+    .values({ id: agent.sub, name: "Bench", email: `${agent.sub}@example.test` });
+  await db
+    .update(mandates)
+    .set({
+      userId: agent.sub,
+      openMandate: agent.issued.open_mandate,
+      mandateHash: Buffer.from(hexToBytes(agent.issued.mandate_hash)),
+    })
+    .where(eq(mandates.id, mandateId));
+  const asBenchAgent = (k: number) => ({
+    "x-test-principal": JSON.stringify({
+      kind: "client",
+      subject: `bench-agent-${k}`,
+      scopes: ["countersign:write"],
+    }),
+  });
 
   // $0.30 carts keep the $100 budget from running out within 300 purchases.
   const cheap = structuredClone(carts.demo);
@@ -135,9 +139,7 @@ try {
   };
   const salt = randomBytes(32);
   const purchases: { id: string; leaf: Uint8Array; countersign: Record<string, string> }[] = [];
-  let agent = await newMandate();
   for (let i = 0; i < SAMPLES; i++) {
-    if (i > 0 && i % 50 === 0) agent = await newMandate();
     const r = await request(agent, cheap, ulid());
     const res = await post(
       "/v1/countersign",
@@ -148,7 +150,7 @@ try {
         unit: r.unit,
         evidenceRoot: r.evidence_root,
       },
-      asAgent,
+      asBenchAgent(Math.floor(i / 50)),
     );
     const out = (await res.json()) as {
       purchaseId: string;
