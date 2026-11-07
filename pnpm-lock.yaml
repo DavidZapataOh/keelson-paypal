@@ -687,6 +687,21 @@ importers:
         specifier: 2.9.1
         version: 2.9.1
 
+  services/monitor:
+    devDependencies:
+      '@types/node':
+        specifier: 26.6.6
+        version: 26.6.6
+      playwright:
+        specifier: 1.64.1
+        version: 1.64.1
+      railway:
+        specifier: 3.16.0
+        version: 3.16.0
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+
   services/witness:
     devDependencies:
       railway:

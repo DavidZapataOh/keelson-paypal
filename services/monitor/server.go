@@ -26,6 +26,8 @@ type monitor struct {
 	hc      *http.Client
 	limiter *rateLimiter
 	log     *slog.Logger
+	// page is the public page, if served.
+	page *page
 	// gossipMu serializes the checks of gossiped checkpoints.
 	gossipMu sync.Mutex
 }
@@ -62,6 +64,7 @@ func (m *monitor) report() FullReport {
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
 }
@@ -99,6 +102,7 @@ func (m *monitor) handler() http.Handler {
 		}
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
 		_, _ = w.Write(s.Checkpoint)
 	})
 	mux.HandleFunc("GET /equivocations", func(w http.ResponseWriter, r *http.Request) {
@@ -136,5 +140,8 @@ func (m *monitor) handler() http.Handler {
 			writeJSON(w, http.StatusOK, map[string]string{"status": status})
 		}
 	})
+	if m.page != nil {
+		m.page.register(mux, m.cfg)
+	}
 	return mux
 }

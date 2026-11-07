@@ -42,6 +42,9 @@ func run(logger *slog.Logger) error {
 	}
 	hc := &http.Client{Timeout: 10 * time.Second}
 	m := newMonitor(cfg, st, eqs, hc, logger)
+	if m.page, err = newPage(cfg); err != nil {
+		return err
+	}
 
 	events := make(chan Event, 64)
 	for _, o := range cfg.Origins {
