@@ -3,9 +3,10 @@ import { getCollateral } from "@keelson/attest/server";
 import { type Hex, hexToBytes } from "viem";
 import { z } from "zod";
 
-const Hex32 = z.string().regex(/^0x[0-9a-f]{64}$/);
-const Hex65 = z.string().regex(/^0x[0-9a-f]{130}$/);
-const Address = z.string().regex(/^0x[0-9a-fA-F]{40}$/);
+const hex = (pattern: RegExp) => z.custom<Hex>((v) => typeof v === "string" && pattern.test(v));
+const Hex32 = hex(/^0x[0-9a-f]{64}$/);
+const Hex65 = hex(/^0x[0-9a-f]{130}$/);
+const Address = hex(/^0x[0-9a-fA-F]{40}$/);
 
 /** What leg A observed and leg B signs over; forwarded to leg B exactly as received. */
 export const ObservationSchema = z.looseObject({ now_ms: z.number() });
