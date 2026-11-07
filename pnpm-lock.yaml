@@ -246,6 +246,9 @@ importers:
       '@keelson/core':
         specifier: workspace:*
         version: link:../core
+      '@noble/hashes':
+        specifier: 'catalog:'
+        version: 2.4.0
       '@peculiar/asn1-schema':
         specifier: 3.0.0
         version: 3.0.0(asn1js@4.0.0)

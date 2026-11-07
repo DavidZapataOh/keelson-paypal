@@ -25,6 +25,7 @@
   "dependencies": {
     "@abraham/reflection": "0.13.0",
     "@keelson/core": "workspace:*",
+    "@noble/hashes": "catalog:",
     "@peculiar/asn1-schema": "3.0.0",
     "@peculiar/x509": "3.1.0",
     "@phala/dcap-qvl": "0.7.1",
