@@ -15,6 +15,7 @@
       "!**/rfc8785",
       "!**/test/vectors",
       "!**/test/evidence",
+      "!engine/tee/measurements.json",
       "!**/src/generated",
       "!engine/policy/proofs"
     ]
