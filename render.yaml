@@ -56,6 +56,10 @@ services:
         sync: false
       - key: KEELSON_ISSUER_THUMBPRINT
         sync: false
+      - key: LOG_URL
+        value: http://keelson-log:8081
+      - key: LOG_WRITE_TOKEN
+        sync: false
       - fromGroup: keelson-secrets
 
   - type: web

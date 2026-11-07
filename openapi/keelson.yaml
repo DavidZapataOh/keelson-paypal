@@ -1095,6 +1095,32 @@ paths:
                         enum:
                           - up
                           - down
+                      log:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                            enum:
+                              - up
+                              - down
+                          origins:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                origin:
+                                  type: string
+                                size:
+                                  type: integer
+                                checkpointAgeMs:
+                                  type: integer
+                              required:
+                                - origin
+                                - size
+                                - checkpointAgeMs
+                        required:
+                          - status
+                          - origins
                     required:
                       - db
                       - kv

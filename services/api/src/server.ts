@@ -46,6 +46,9 @@ const app = createApp({
   shutdown: shutdown.signal,
   ...(tee ? { tee, compileSources: { engine: engineSource } } : {}),
   ...(env.ANTHROPIC_API_KEY ? { anthropic: new Anthropic({ apiKey: env.ANTHROPIC_API_KEY }) } : {}),
+  ...(env.LOG_URL && env.LOG_WRITE_TOKEN
+    ? { tlog: { url: env.LOG_URL, token: env.LOG_WRITE_TOKEN } }
+    : {}),
 });
 
 const stopRefresh = tee ? startSignerRefresh({ db, log, tee }) : undefined;

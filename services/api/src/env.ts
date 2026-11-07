@@ -19,6 +19,8 @@ const schema = z
       .custom<`0x${string}`>((v) => typeof v === "string" && /^0x[0-9a-f]{64}$/.test(v))
       .optional(),
     ARBITRUM_SEPOLIA_RPC_URL: z.url().optional(),
+    LOG_URL: z.url().optional(),
+    LOG_WRITE_TOKEN: z.string().min(32).optional(),
     PORT: z.coerce.number().int().positive().default(10000),
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   })
@@ -36,6 +38,10 @@ const schema = z
       [env.TEE_A_URL, env.TEE_B_URL, env.KEELSON_TEE_TOKEN].every((v) => v !== undefined),
     { message: "TEE_A_URL, TEE_B_URL and KEELSON_TEE_TOKEN are set together", path: ["TEE_A_URL"] },
   )
+  .refine((env) => (env.LOG_URL === undefined) === (env.LOG_WRITE_TOKEN === undefined), {
+    message: "LOG_URL and LOG_WRITE_TOKEN are set together",
+    path: ["LOG_URL"],
+  })
   .refine((env) => env.NODE_ENV !== "production" || env.TEE_A_URL !== undefined, {
     message: "the TEE legs are required in production",
     path: ["TEE_A_URL"],

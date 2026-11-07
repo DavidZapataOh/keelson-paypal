@@ -145,9 +145,11 @@ type addRequest struct {
 	Countersign alibilog.Countersign `json:"countersign"`
 }
 
-// private serves POST /<origin path>/add, reached only over the private network.
+// private serves POST /<origin path>/add, reached only over the private network,
+// and the public resources for the API's health checks.
 func (s *server) private() http.Handler {
 	mux := http.NewServeMux()
+	mux.Handle("GET /", s.public())
 	for _, o := range s.origins {
 		mux.HandleFunc("POST /"+o.path+"/add", func(w http.ResponseWriter, r *http.Request) {
 			token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")

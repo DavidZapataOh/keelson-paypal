@@ -66,3 +66,13 @@ test("production pins the credential issuer", () => {
   expect(() => parseEnv({ ...production, KEELSON_ISSUER_THUMBPRINT: "0x12" })).toThrow();
   expect(parseEnv(production).KEELSON_ISSUER_THUMBPRINT).toBe(`0x${"ab".repeat(32)}`);
 });
+
+test("the log's address and write token come together", () => {
+  const dev = { ...base, BETTER_AUTH_URL: "http://localhost:10000" };
+  expect(() => parseEnv({ ...dev, LOG_URL: "http://keelson-log:8081" })).toThrow();
+  expect(() => parseEnv({ ...dev, LOG_WRITE_TOKEN: "w".repeat(48) })).toThrow();
+  expect(
+    parseEnv({ ...dev, LOG_URL: "http://keelson-log:8081", LOG_WRITE_TOKEN: "w".repeat(48) })
+      .LOG_URL,
+  ).toBe("http://keelson-log:8081");
+});

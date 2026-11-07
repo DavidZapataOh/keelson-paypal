@@ -80,6 +80,7 @@ func TestAppendsCountersignedLeaves(t *testing.T) {
 	purchase(t, db, alibiID(t, degraded.Leaf), ptr("degraded"))
 
 	var first []byte
+	captured := map[string]any{"vkeys": keys.vkeys[host+"/"+sandbox]}
 	for _, v := range []vector{allow, deny} {
 		status, res := l.add(t, sandbox, testToken, v.Leaf, v.Countersign)
 		if status != http.StatusOK {
@@ -89,6 +90,7 @@ func TestAppendsCountersignedLeaves(t *testing.T) {
 		if first == nil {
 			first = []byte(res["checkpoint"])
 		}
+		captured[v.Name] = res
 	}
 
 	// Leg B is down: leg A's signer alone countersigned the next purchase.
@@ -98,6 +100,14 @@ func TestAppendsCountersignedLeaves(t *testing.T) {
 		t.Fatalf("degraded: %d %v", status, res)
 	}
 	index := checkAppended(t, keys, l, degraded.Leaf, res)
+	captured["degraded"] = res
+	// The appends above, for the TypeScript proof verifier. Set LOG_WRITE_VECTORS=1 to refresh.
+	if os.Getenv("LOG_WRITE_VECTORS") == "1" {
+		out, _ := json.MarshalIndent(captured, "", "  ")
+		if err := os.WriteFile("../../packages/log/test/vectors/proofs.json", append(out, '\n'), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	bundle, err := client.GetEntryBundle(context.Background(), publicFetcher(t, l, sandbox).ReadEntryBundle, 0, index+1)
 	if err != nil {
 		t.Fatal(err)
@@ -226,6 +236,9 @@ func TestTheWritePathIsPrivate(t *testing.T) {
 		if res.StatusCode != http.StatusNotFound {
 			t.Fatalf("POST %s on the public listener: %d", path, res.StatusCode)
 		}
+	}
+	if res, err := http.Get(l.private.URL + "/" + sandbox + "/checkpoint"); err != nil || res.StatusCode != http.StatusOK {
+		t.Fatalf("GET checkpoint on the private listener: %v %v", err, res)
 	}
 	for _, token := range []string{"", "wrong-token", testToken + "x"} {
 		if status, _ := l.add(t, sandbox, token, allow.Leaf, allow.Countersign); status != http.StatusUnauthorized {
