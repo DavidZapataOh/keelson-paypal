@@ -1,0 +1,33 @@
+{
+  "name": "@keelson/log",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "vectors": "node scripts/vectors.ts"
+  },
+  "dependencies": {
+    "@keelson/core": "workspace:*",
+    "@noble/curves": "2.4.0",
+    "@noble/hashes": "catalog:",
+    "@noble/post-quantum": "0.7.1",
+    "viem": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

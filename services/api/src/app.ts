@@ -13,6 +13,7 @@ import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
 import { ulid } from "ulid";
 import type { Auth } from "./auth.ts";
+import type { LogConfig } from "./log/append.ts";
 import { requestLogger } from "./logger.ts";
 import { requireClient } from "./middleware/auth.ts";
 import { idempotency } from "./middleware/idempotency.ts";
@@ -50,6 +51,8 @@ export interface Deps {
   anthropic?: Anthropic;
   /** The two TEE legs; mandates are issued and carts countersigned through them. */
   tee?: TeeConfig;
+  /** The Alibi log's private write listener; purchases are logged through it. */
+  tlog?: LogConfig;
   /** The age identity that opens `.original` evidence items for an arbiter. */
   evidenceIdentity?: string;
   /** Aborting it ends every open event stream so the server can close. */

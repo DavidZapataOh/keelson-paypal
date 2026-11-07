@@ -12,7 +12,8 @@
     "bench": "pnpm run build && node bench/health.bench.ts",
     "budgets": "KEELSON_BUDGETS=1 vitest run test/mandates.test.ts -t \"latency budget\"",
     "test:live": "KEELSON_LIVE=1 vitest run test/compile.test.ts",
-    "bench:countersign": "node bench/countersign.bench.ts"
+    "bench:countersign": "node bench/countersign.bench.ts",
+    "bench:log-append": "node bench/log-append.bench.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.5.0",
@@ -27,6 +28,7 @@
     "@keelson/core": "workspace:*",
     "@keelson/db": "workspace:*",
     "@keelson/evidence": "workspace:*",
+    "@keelson/log": "workspace:*",
     "@keelson/mandate": "workspace:*",
     "@keelson/policy": "workspace:*",
     "@opentelemetry/api": "1.10.0",

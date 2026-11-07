@@ -56,11 +56,62 @@ services:
         sync: false
       - key: KEELSON_ISSUER_THUMBPRINT
         sync: false
+      - key: LOG_URL
+        value: http://keelson-log:8081
+      - key: LOG_WRITE_TOKEN
+        sync: false
       - key: KEELSON_EVIDENCE_AGE_IDENTITY
         sync: false
       - key: KEELSON_EVIDENCE_AGE_RECIPIENT
         sync: false
       - fromGroup: keelson-secrets
+
+  - type: web
+    runtime: docker
+    name: keelson-log
+    plan: 0.5c-512mb
+    region: oregon
+    dockerfilePath: ./services/log/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeployTrigger: checksPass
+    buildFilter:
+      paths:
+        - services/log/**
+        - internal/**
+        - go.mod
+        - go.sum
+        - render.yaml
+    # Tessera's POSIX storage; a disk keeps the service on one instance.
+    disk:
+      name: keelson-log
+      mountPath: /var/lib/keelson-log
+      sizeGB: 10
+    domains:
+      - log.keelson.finance
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: LOG_DATA_DIR
+        value: /var/lib/keelson-log
+      - key: LOG_PRIVATE_ADDR
+        value: ":8081"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: keelson-db
+          property: connectionString
+      - key: KEELSON_VERIFYING_CONTRACT
+        value: "0x0000000000000000000000000000000000000000"
+      - key: LOG_SIGNER_KEY_SANDBOX
+        sync: false
+      - key: LOG_MLDSA_SEED_SANDBOX
+        sync: false
+      - key: LOG_SIGNER_KEY_LIVE
+        sync: false
+      - key: LOG_MLDSA_SEED_LIVE
+        sync: false
+      - key: LOG_WRITE_TOKEN_SHA256
+        sync: false
 
   - type: web
     runtime: static

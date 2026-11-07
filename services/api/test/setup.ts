@@ -44,6 +44,8 @@ afterAll(async () => {
 await migrate(url);
 
 export const testDb: Db = handle.db;
+/** The connection string of this run's database. */
+export const testDbUrl: string = url;
 
 /** Auth settings for a server at `baseURL` that also serves the app. */
 export function testAuthEnv(baseURL: string, secret: string): AuthEnv {

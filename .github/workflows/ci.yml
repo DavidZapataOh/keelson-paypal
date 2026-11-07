@@ -40,6 +40,7 @@ jobs:
           pnpm --filter @keelson/core vectors
           pnpm --filter @keelson/mandate vectors
           pnpm --filter @keelson/policy vectors
+          pnpm --filter @keelson/log vectors
           test -z "$(git status --porcelain)"
 
   attest:
@@ -131,6 +132,46 @@ jobs:
       - run: pnpm turbo run typecheck test build --filter=./packages/db --filter=./services/api
       - run: pnpm migrate
       - run: pnpm --filter @keelson/api openapi && git diff --exit-code openapi/
+
+  go:
+    runs-on: ubuntu-24.04
+    env:
+      DATABASE_URL: postgres://postgres:keelson@localhost:5432/keelson
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: keelson
+          POSTGRES_DB: keelson
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d keelson"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: test -z "$(gofmt -l $(go list -f '{{.Dir}}' ./...))"
+      - run: go vet ./...
+      - run: go test -race ./...
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
+  log-live:
+    needs: go
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: go test -tags live -run Live -v ./services/log/
+        env:
+          LOG_URL: https://log.keelson.finance
 
   secrets:
     runs-on: ubuntu-24.04

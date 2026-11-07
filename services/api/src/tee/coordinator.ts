@@ -24,6 +24,7 @@ const TEE_EVENTS = "public:tee";
 
 type CoordinatorSlug =
   | "tee-unavailable"
+  | "paypal-unavailable"
   | "tee-divergence"
   | "tee-unregistered-signer"
   | "tee-contradiction";
@@ -279,6 +280,16 @@ export async function countersign2of2(
   try {
     a = await deps.tee.client.a.countersign(req);
   } catch (err) {
+    if (err instanceof LegError) {
+      deps.log.warn(
+        { leg: "a", requestId: req.request_id, kind: err.kind, code: err.code, status: err.status },
+        "leg a did not countersign",
+      );
+      // Leg A could not read PayPal; the request itself may succeed when retried.
+      if (err.code === "paypal") {
+        throw new CoordinatorError("paypal-unavailable", "PayPal could not be read.", 503);
+      }
+    }
     if (down(err)) throw unavailable();
     if (err instanceof LegError && err.code === "malformed_response") throw divergence();
     throw err;

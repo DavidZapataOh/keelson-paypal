@@ -118,6 +118,7 @@ describe.skipIf(!live)("coordinator (live legs)", { timeout: 120_000 }, () => {
     expect(out.signatures.nitro).toBeNull();
     expect(out.signers.nitro).toBeNull();
     await expect.poll(() => alarms("tee.degraded", req.request_id)).toHaveLength(1);
+    vectors.degraded = out;
 
     const again = await drive(deps(), await prepare());
     expect(again.mode).toBe("2of2");
@@ -297,6 +298,15 @@ describe.skipIf(!live)("coordinator (live legs)", { timeout: 120_000 }, () => {
     }
   });
 
+  test("leg a failing to read PayPal is a retryable refusal of its own, with no signature", async () => {
+    const { req, want } = await prepare();
+    const paypal = a2(() => Promise.reject(new LegError("a", "problem", "paypal", 502)));
+    const err = await failure(countersign2of2(deps({ a: paypal }), req, want));
+    expect((err as CoordinatorError).slug).toBe("paypal-unavailable");
+    expect((err as CoordinatorError).status).toBe(503);
+    await unsigned(req.request_id);
+  });
+
   test("a malformed answer from leg a is a divergence", async () => {
     const { req, want } = await prepare();
     const malformed = a2(() => Promise.reject(new LegError("a", "problem", "malformed_response")));
@@ -396,6 +406,33 @@ describe.skipIf(!live)("coordinator (live legs)", { timeout: 120_000 }, () => {
           allow,
           deny,
           attestations: { tdx: a.attestation, nitro: b.attestation },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  });
+
+  // Leg A's signature alone, from the run with leg B unreachable above.
+  test.skipIf(process.env.KEELSON_WRITE_VECTORS !== "1")("writes the degraded vector", async () => {
+    const a = await signerRow(1);
+    const file = fileURLToPath(
+      new URL("../../../packages/core/test/vectors/countersign-degraded.json", import.meta.url),
+    );
+    const { observation: _o, ...degraded } = vectors.degraded as Record<string, unknown>;
+    writeFileSync(
+      file,
+      `${JSON.stringify(
+        {
+          domain: {
+            name: "Keelson",
+            version: "1",
+            chainId: 421614,
+            verifyingContract: zeroAddress,
+          },
+          capturedAt: new Date().toISOString(),
+          degraded,
+          attestations: { tdx: a.attestation },
         },
         null,
         2,

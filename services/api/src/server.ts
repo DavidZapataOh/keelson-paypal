@@ -57,6 +57,9 @@ const app = createApp({
     ? { evidenceIdentity: env.KEELSON_EVIDENCE_AGE_IDENTITY }
     : {}),
   ...(env.ANTHROPIC_API_KEY ? { anthropic: new Anthropic({ apiKey: env.ANTHROPIC_API_KEY }) } : {}),
+  ...(env.LOG_URL && env.LOG_WRITE_TOKEN
+    ? { tlog: { url: env.LOG_URL, token: env.LOG_WRITE_TOKEN } }
+    : {}),
 });
 
 const stopRefresh = tee ? startSignerRefresh({ db, log, tee }) : undefined;
