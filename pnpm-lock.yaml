@@ -539,6 +539,9 @@ importers:
       '@keelson/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@keelson/evidence':
+        specifier: workspace:*
+        version: link:../../packages/evidence
       '@keelson/mandate':
         specifier: workspace:*
         version: link:../../packages/mandate
@@ -554,6 +557,9 @@ importers:
       '@simplewebauthn/server':
         specifier: 13.3.3
         version: 13.3.3
+      age-encryption:
+        specifier: 0.3.1
+        version: 0.3.1
       better-auth:
         specifier: 1.7.17
         version: 1.7.17(@opentelemetry/api@1.10.0)(drizzle-kit@0.31.11)(drizzle-orm@0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.8)(pg@8.23.1))(pg@8.23.1)(vitest@5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1)))

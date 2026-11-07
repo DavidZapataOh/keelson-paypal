@@ -1,6 +1,6 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { type Cart, CURRENCIES, type CurrencyCode, cartHash, isUlid } from "@keelson/core";
-import { type Db, eq, purchases, transition } from "@keelson/db";
+import { and, type Db, eq, evidenceBundles, purchases, transition } from "@keelson/db";
 import { merchantLeaf } from "@keelson/mandate";
 import { hexToBytes } from "viem";
 import type { Deps } from "../app.ts";
@@ -71,7 +71,9 @@ const Body = z
       .refine((e) => Object.keys(e).length <= MAX_EVIDENCE_FIELDS, "Too many evidence fields.")
       .refine((e) => bytes(e) <= MAX_EVIDENCE_BYTES, "The evidence is too large.")
       .default({}),
-    evidenceRoot: Hex32,
+    evidenceRoot: Hex32.openapi({
+      description: "The root of the evidence stored with `POST /v1/evidence` for this mandate.",
+    }),
   })
   .openapi("CountersignRequest");
 
@@ -122,7 +124,8 @@ const route = createRoute({
     },
     401: { description: "A leg refused the agent's authority", content: problemContent },
     409: {
-      description: "The mandate is not active, or the request was already used",
+      description:
+        "The mandate is not active, the evidence root is not stored for it, or the request was already used",
       content: problemContent,
     },
     404: { description: "No such mandate", content: problemContent },
@@ -264,6 +267,25 @@ export function registerCountersign(
         "mandate-not-active",
         "Mandate not active",
         "The mandate cannot countersign now.",
+      );
+    }
+
+    const [evidence] = await db
+      .select({ root: evidenceBundles.root })
+      .from(evidenceBundles)
+      .where(
+        and(
+          eq(evidenceBundles.root, Buffer.from(hexToBytes(body.evidenceRoot as `0x${string}`))),
+          eq(evidenceBundles.mandateId, mandate.id),
+        ),
+      );
+    if (!evidence) {
+      return problem(
+        c,
+        409,
+        "evidence-unknown",
+        "Evidence unknown",
+        "The evidence root is not stored for this mandate; upload it to /v1/evidence first.",
       );
     }
 

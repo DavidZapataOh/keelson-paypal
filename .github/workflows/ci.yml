@@ -35,7 +35,7 @@ jobs:
           status=0
           grep -rEn "paypalMockResponse|PayPal-Mock-Response" packages services apps --exclude-dir=node_modules --exclude-dir=dist || status=$?
           test "$status" -eq 1
-      - run: pnpm turbo run typecheck test build --filter='!./packages/db' --filter='!./packages/attest' --filter='!./services/api' --cache-dir=.turbo
+      - run: pnpm turbo run typecheck test build --filter='!./packages/db' --filter='!./packages/attest' --filter='!./packages/evidence' --filter='!./services/api' --cache-dir=.turbo
       - run: |
           pnpm --filter @keelson/core vectors
           pnpm --filter @keelson/mandate vectors
@@ -69,6 +69,23 @@ jobs:
         working-directory: packages/attest
         run: pnpm bench | tee -a "$GITHUB_STEP_SUMMARY"
 
+  evidence:
+    runs-on: ubuntu-24.04
+    env:
+      PAYPAL_SANDBOX_BUYER_EMAIL: ${{ secrets.PAYPAL_SANDBOX_BUYER_EMAIL }}
+      PAYPAL_SANDBOX_BUYER_NAME: ${{ secrets.PAYPAL_SANDBOX_BUYER_NAME }}
+      PAYPAL_SANDBOX_BUYER_ADDRESS: ${{ secrets.PAYPAL_SANDBOX_BUYER_ADDRESS }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @keelson/evidence exec playwright install chromium
+      - run: pnpm turbo run typecheck test build --filter=@keelson/evidence
+
   services:
     runs-on: ubuntu-24.04
     env:
@@ -76,6 +93,7 @@ jobs:
       REDIS_URL: redis://localhost:6379
       PAYPAL_CLIENT_ID: ${{ secrets.PAYPAL_CLIENT_ID }}
       PAYPAL_CLIENT_SECRET: ${{ secrets.PAYPAL_CLIENT_SECRET }}
+      PAYPAL_SANDBOX_BUYER_EMAIL: ${{ secrets.PAYPAL_SANDBOX_BUYER_EMAIL }}
     services:
       postgres:
         image: postgres:18

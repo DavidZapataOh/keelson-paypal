@@ -921,6 +921,8 @@ components:
         evidenceRoot:
           type: string
           pattern: ^0x[0-9a-f]{64}$
+          description: The root of the evidence stored with `POST /v1/evidence` for this
+            mandate.
       required:
         - authorizationId
         - closedMandate
@@ -983,6 +985,118 @@ components:
         - lines
         - return_days
         - returns_free
+    EvidenceUpload:
+      type: object
+      properties:
+        mandateId:
+          type: string
+          minLength: 26
+          maxLength: 26
+        manifest:
+          $ref: "#/components/schemas/EvidenceManifest"
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                maxLength: 64
+              mediaType:
+                type: string
+                maxLength: 128
+              salt:
+                type: string
+                description: 32 random bytes, base64.
+              bytes:
+                type: string
+                description: The item bytes, base64.
+            required:
+              - type
+              - mediaType
+              - salt
+              - bytes
+          minItems: 1
+          maxItems: 18
+      required:
+        - mandateId
+        - manifest
+        - items
+    EvidenceManifest:
+      type: object
+      properties:
+        v:
+          type: string
+          enum:
+            - keelson.manifest/1
+        root:
+          type: string
+          pattern: ^0x[0-9a-f]{64}$
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+              media_type:
+                type: string
+              content_hash:
+                type: string
+                pattern: ^0x[0-9a-f]{64}$
+            required:
+              - type
+              - media_type
+              - content_hash
+          minItems: 1
+          maxItems: 18
+      required:
+        - v
+        - root
+        - items
+      description: Type, media type and content hash of every item; `root` is the
+        `evidenceRoot`.
+    DisclosedEvidence:
+      type: object
+      properties:
+        disclosure:
+          $ref: "#/components/schemas/EvidenceDisclosure"
+        bytes:
+          type: string
+      required:
+        - disclosure
+        - bytes
+    EvidenceDisclosure:
+      type: object
+      properties:
+        index:
+          type: integer
+        type:
+          type: string
+        media_type:
+          type: string
+        content_hash:
+          type: string
+          pattern: ^0x[0-9a-f]{64}$
+        salt:
+          type: string
+          pattern: ^0x[0-9a-f]{64}$
+        path:
+          type: array
+          items:
+            type: string
+            pattern: ^0x[0-9a-f]{64}$
+          description: The RFC 9162 inclusion proof, leaf first.
+        size:
+          type: integer
+      required:
+        - index
+        - type
+        - media_type
+        - content_hash
+        - salt
+        - path
+        - size
     TeeLeg:
       type: object
       properties:
@@ -1396,7 +1510,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
         "409":
-          description: The mandate is not active, or the request was already used
+          description: The mandate is not active, the evidence root is not stored for it,
+            or the request was already used
           content:
             application/problem+json:
               schema:
@@ -1427,6 +1542,154 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "503":
           description: A leg needed to sign is unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/evidence:
+    post:
+      tags:
+        - evidence
+      summary: Store sealed evidence
+      description: Stores what the agent saw at decision time. The manifest is rebuilt
+        from the items and must match, and no public item may still hold an
+        email address or phone number. A countersign may only bind a stored
+        root.
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EvidenceUpload"
+      responses:
+        "201":
+          description: Stored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  evidenceRoot:
+                    type: string
+                    pattern: ^0x[0-9a-f]{64}$
+                required:
+                  - evidenceRoot
+        "404":
+          description: No such mandate
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: The root is stored for another mandate
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "413":
+          description: The bundle is larger than 16 MiB
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: The items do not build the manifest, or a public item holds PII
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/evidence/{root}:
+    get:
+      tags:
+        - evidence
+      summary: Read an evidence manifest
+      description: The public manifest of a stored bundle. Salts and bytes are not included.
+      parameters:
+        - schema:
+            type: string
+            pattern: ^0x[0-9a-f]{64}$
+          required: true
+          name: root
+          in: path
+      responses:
+        "200":
+          description: The manifest
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvidenceManifest"
+        "404":
+          description: No such bundle
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/evidence/{root}/items/{index}:
+    get:
+      tags:
+        - evidence
+      summary: Disclose one evidence item
+      description: One item with its salt and inclusion proof, for an arbiter. An
+        `.original` item stays age ciphertext unless `decrypt=1` is sent with
+        the `evidence:decrypt` scope.
+      parameters:
+        - schema:
+            type: string
+            pattern: ^0x[0-9a-f]{64}$
+          required: true
+          name: root
+          in: path
+        - schema:
+            type:
+              - integer
+              - "null"
+            minimum: 0
+            maximum: 17
+          required: true
+          name: index
+          in: path
+        - schema:
+            type: string
+            enum:
+              - "1"
+          required: false
+          name: decrypt
+          in: query
+      responses:
+        "200":
+          description: The item and its disclosure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DisclosedEvidence"
+        "403":
+          description: Decrypting needs the `evidence:decrypt` scope
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: No such bundle or item
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: Only an `.original` item can be decrypted
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: The evidence identity is not configured
           content:
             application/problem+json:
               schema:

@@ -19,6 +19,8 @@ const schema = z
       .custom<`0x${string}`>((v) => typeof v === "string" && /^0x[0-9a-f]{64}$/.test(v))
       .optional(),
     ARBITRUM_SEPOLIA_RPC_URL: z.url().optional(),
+    KEELSON_EVIDENCE_AGE_IDENTITY: z.string().startsWith("AGE-SECRET-KEY-").optional(),
+    KEELSON_EVIDENCE_AGE_RECIPIENT: z.string().startsWith("age1").optional(),
     PORT: z.coerce.number().int().positive().default(10000),
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   })

@@ -10,6 +10,7 @@ import { failStalePurchases } from "../src/sweeper.ts";
 import { LegClient } from "../src/tee/client.ts";
 import { createTee } from "../src/tee/config.ts";
 import { refreshLeg } from "../src/tee/signers.ts";
+import { uploadEvidence } from "./evidence.ts";
 import { testDb, testKv } from "./setup.ts";
 import {
   asAgent,
@@ -45,6 +46,7 @@ describe.skipIf(!live)("POST /v1/countersign (live legs)", { timeout: 180_000 },
   let agentKey: CryptoKey;
   let openMandate: string;
   let mandateId: string;
+  let evidenceRoot: `0x${string}`;
 
   const post = (path: string, body: unknown, headers: Record<string, string>, key = ulid()) =>
     app.request(path, {
@@ -68,7 +70,7 @@ describe.skipIf(!live)("POST /v1/countersign (live legs)", { timeout: 180_000 },
       ),
       cart: cart.cart,
       unit: cart.unit,
-      evidenceRoot: `0x${"55".repeat(32)}`,
+      evidenceRoot,
     };
   };
 
@@ -85,6 +87,7 @@ describe.skipIf(!live)("POST /v1/countersign (live legs)", { timeout: 180_000 },
     expect(created.status, JSON.stringify(json)).toBe(201);
     openMandate = json.openMandate;
     mandateId = json.id;
+    evidenceRoot = await uploadEvidence(app, mandateId, asAgent);
   }, 120_000);
   afterAll(async () => {
     await passkey.close();
@@ -114,6 +117,36 @@ describe.skipIf(!live)("POST /v1/countersign (live legs)", { timeout: 180_000 },
       },
     );
     expect(verified.mandate.mid).toBe(mandateId);
+  });
+
+  test("an evidence root not stored for the mandate is refused before any leg is called", async () => {
+    const calls: string[] = [];
+    const counting = (leg: LegClient) =>
+      new Proxy(leg, {
+        get(target, prop, receiver) {
+          const value = Reflect.get(target, prop, receiver);
+          if (typeof value !== "function") return value;
+          return (...args: unknown[]) => {
+            calls.push(String(prop));
+            return value.apply(target, args);
+          };
+        },
+      });
+    const watched = appWith({ a: counting(tee.client.a), b: counting(tee.client.b) });
+    const requestId = ulid();
+    const body = {
+      ...(await countersignBody(carts.demo, requestId)),
+      evidenceRoot: `0x${"55".repeat(32)}`,
+    };
+    const res = await watched.request("/v1/countersign", {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": ulid(), ...asAgent },
+      body: JSON.stringify(body),
+    });
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { type: string }).type).toMatch(/evidence-unknown$/);
+    expect(calls).toEqual([]);
+    expect(await testDb.select().from(purchases).where(eq(purchases.id, requestId))).toEqual([]);
   });
 
   test("the demo cart is allowed, countersigned by both legs, and the retry returns the stored result", async () => {

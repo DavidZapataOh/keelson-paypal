@@ -10,6 +10,7 @@ import { LegClient } from "../src/tee/client.ts";
 import { createTee } from "../src/tee/config.ts";
 import { countersign2of2 } from "../src/tee/coordinator.ts";
 import { refreshLeg } from "../src/tee/signers.ts";
+import { uploadEvidence } from "../test/evidence.ts";
 import {
   asAgent,
   asUser,
@@ -178,6 +179,7 @@ try {
   const created = await post("/v1/mandates", first.body, asUser(first.sub));
   if (created.status !== 201) throw new Error(`mandate not stored: ${created.status}`);
   const { id: mandateId } = (await created.json()) as { id: string };
+  const evidenceRoot = await uploadEvidence(app, mandateId, asAgent);
   const issue = async () => {
     const fresh = await registerMandate(tee.client.a, passkey);
     await db
@@ -200,7 +202,7 @@ try {
       closedMandate: r.closed_mandate,
       cart: r.cart,
       unit: r.unit,
-      evidenceRoot: r.evidence_root,
+      evidenceRoot,
     };
   };
 

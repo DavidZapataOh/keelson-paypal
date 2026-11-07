@@ -12,7 +12,15 @@
     "test": {
       "dependsOn": ["^build"],
       "outputs": [],
-      "passThroughEnv": ["DATABASE_URL", "REDIS_URL", "PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET"]
+      "passThroughEnv": [
+        "DATABASE_URL",
+        "REDIS_URL",
+        "PAYPAL_CLIENT_ID",
+        "PAYPAL_CLIENT_SECRET",
+        "PAYPAL_SANDBOX_BUYER_EMAIL",
+        "PAYPAL_SANDBOX_BUYER_NAME",
+        "PAYPAL_SANDBOX_BUYER_ADDRESS"
+      ]
     },
     "bench": {
       "cache": false,
