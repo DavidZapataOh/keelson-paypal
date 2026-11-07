@@ -35,6 +35,8 @@ pub struct AppState {
     attestation: Option<std::sync::RwLock<Attested>>,
     #[cfg(feature = "tdx")]
     paypal: Option<crate::paypal::PayPalClient>,
+    #[cfg(feature = "nitro")]
+    nitro: Option<crate::nitro::Nitro>,
 }
 
 impl AppState {
@@ -48,6 +50,8 @@ impl AppState {
             attestation: None,
             #[cfg(feature = "tdx")]
             paypal: None,
+            #[cfg(feature = "nitro")]
+            nitro: None,
         }
     }
 
@@ -69,6 +73,31 @@ impl AppState {
     ) -> Self {
         self.attestation = Some(std::sync::RwLock::new(Attested { attestation, at }));
         self
+    }
+
+    /// Serves the enclave's attestation on `GET /v1/attestation` and renews it on
+    /// `POST /v1/attestation/refresh`.
+    #[cfg(feature = "nitro")]
+    pub(crate) fn with_nitro(mut self, nitro: crate::nitro::Nitro) -> Self {
+        self.nitro = Some(nitro);
+        self
+    }
+
+    #[cfg(feature = "nitro")]
+    pub(crate) fn engine(&self) -> &Engine {
+        &self.engine
+    }
+
+    #[cfg(feature = "nitro")]
+    pub(crate) fn nitro(&self) -> &crate::nitro::Nitro {
+        self.nitro
+            .as_ref()
+            .expect("routed only with an attestation")
+    }
+
+    #[cfg(feature = "nitro")]
+    pub(crate) fn now(&self) -> OffsetDateTime {
+        (self.clock)()
     }
 
     /// Reads the time from `clock` instead of the system clock.
@@ -95,6 +124,18 @@ pub fn router(state: Arc<AppState>) -> Router {
     } else {
         (open, protected)
     };
+    #[cfg(feature = "nitro")]
+    let (open, protected) = if state.nitro.is_some() {
+        (
+            open.route("/v1/attestation", get(crate::nitro::attestation)),
+            protected.route(
+                "/v1/attestation/refresh",
+                post(crate::nitro::refresh).layer(DefaultBodyLimit::max(BODY_LIMIT)),
+            ),
+        )
+    } else {
+        (open, protected)
+    };
     let protected = protected.route_layer(middleware::from_fn_with_state(state.clone(), bearer));
     open.merge(protected)
         .fallback(|| async { Problem::new(StatusCode::NOT_FOUND, "not_found") })
@@ -105,14 +146,14 @@ pub fn router(state: Arc<AppState>) -> Router {
 }
 
 /// A refusal on the wire. It carries a stable code and never the request.
-struct Problem {
+pub(crate) struct Problem {
     status: StatusCode,
     code: String,
     detail: Option<&'static str>,
 }
 
 impl Problem {
-    fn new(status: StatusCode, code: &str) -> Self {
+    pub(crate) fn new(status: StatusCode, code: &str) -> Self {
         Self {
             status,
             code: code.into(),
@@ -212,7 +253,9 @@ async fn health(State(state): State<Arc<AppState>>) -> Json<Health> {
     })
 }
 
-fn parse<T: for<'de> Deserialize<'de>>(body: Result<Bytes, BytesRejection>) -> Result<T, Problem> {
+pub(crate) fn parse<T: for<'de> Deserialize<'de>>(
+    body: Result<Bytes, BytesRejection>,
+) -> Result<T, Problem> {
     let body = body.map_err(|rejection| {
         let status = rejection.status();
         let code = if status == StatusCode::PAYLOAD_TOO_LARGE {
@@ -295,7 +338,7 @@ async fn register(
 
 /// How long an attestation is served after its block was read; past it `GET /v1/attestation`
 /// answers `attestation_stale`.
-#[cfg(feature = "tdx")]
+#[cfg(any(feature = "tdx", feature = "nitro"))]
 pub const ATTESTATION_MAX_AGE: time::Duration = time::Duration::hours(1);
 
 /// How often [`spawn_reattest`] attests over a new block, inside [`ATTESTATION_MAX_AGE`] so one

@@ -8,6 +8,8 @@ mod countersign;
 mod engine;
 mod error;
 mod keys;
+#[cfg(feature = "nitro")]
+pub mod nitro;
 pub mod paypal;
 mod records;
 mod report_data;

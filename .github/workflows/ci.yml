@@ -93,9 +93,9 @@ jobs:
       - uses: ./.github/actions/setup-cvc5
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo clippy -p keelson-tee --all-targets --features tdx -- -D warnings
+      - run: cargo clippy -p keelson-tee --all-targets --features tdx,nitro -- -D warnings
       - run: cargo test
-      - run: cargo test -p keelson-tee --features tdx
+      - run: cargo test -p keelson-tee --features tdx,nitro
         env:
           PAYPAL_CLIENT_ID: ${{ secrets.PAYPAL_CLIENT_ID }}
           PAYPAL_CLIENT_SECRET: ${{ secrets.PAYPAL_CLIENT_SECRET }}
