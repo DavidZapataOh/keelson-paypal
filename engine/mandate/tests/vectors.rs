@@ -355,3 +355,19 @@ fn deep_disclosure_chain_is_rejected() {
     }
     assert!(decode_disclosed(&value, &disclosures).is_err());
 }
+
+#[test]
+fn jwk_thumbprint_is_rfc_7638() {
+    let jwk = Jwk {
+        x: "uczbfm_5YyCrEoef1kpWdV_V-xQ9HArkKCXRghPX6uQ".into(),
+        y: "ambpuuW6F-X2H1Zn4EcxTnkOs3lBk0-VNojK7Fm__5k".into(),
+        kid: Some("ignored".into()),
+    };
+    let expected = "65d9df25e449486770f779293a8cffa583540a09c088d2e2ee818a0dd1721420";
+    let hex: String = jwk
+        .thumbprint()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    assert_eq!(hex, expected);
+}

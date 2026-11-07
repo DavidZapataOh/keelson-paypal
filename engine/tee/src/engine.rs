@@ -276,6 +276,11 @@ impl Engine {
         self.signer.public_key_sec1()
     }
 
+    /// The credential issuer's public key: derived from the root on leg A, configured on leg B.
+    pub fn issuer(&self) -> Option<&Jwk> {
+        self.issuer.as_ref()
+    }
+
     /// What the attestation binds this engine's signer to; the engine build id is the image
     /// digest.
     pub fn binding(&self) -> Result<SignerBinding, Error> {
@@ -293,6 +298,7 @@ impl Engine {
             policy_set_hash: policy_set_hash(),
             engine_build_id,
             boot_epoch: self.boot_epoch(),
+            issuer_jwk_thumbprint: self.issuer.as_ref().ok_or(Error::NoIssuer)?.thumbprint(),
         })
     }
 

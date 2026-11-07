@@ -27,7 +27,8 @@ client --TLS--> Caddy :443 --> 127.0.0.1:8000 --socat--> vsock 16:5000 --> keels
     "signer": "0x…",
     "policySetHash": "0x…",
     "engineBuildId": "0x…",
-    "bootEpoch": "…"
+    "bootEpoch": "…",
+    "issuerJwkThumbprint": "0x…"
   },
   "block": { "number": 0, "hash": "0x…" }
 }
@@ -39,12 +40,13 @@ In the document, `user_data` is `report_data(binding, block.hash)`, `public_key`
 
 They read `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_REGION` from the environment, and `launch.sh` also `CLOUDFLARE_API_TOKEN`.
 
-| Script                      |                                                                                                                                                                                                                                                                   |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `launch.sh`                 | Creates the security group (inbound 80 and 443), the SSM-only instance role, the instance (`--enclave-options Enabled=true`, IMDSv2 required), an Elastic IP and the `tee-b` `A` record (DNS only, so Caddy gets its own certificate). There is no SSH. Run once. |
-| `update.sh sha256:<digest>` | Pulls the image by digest, builds the EIF on the parent, restarts the enclave, boots it and writes `eif.json`. Needs `KEELSON_TEE_TOKEN_SHA256` and `KEELSON_ISSUER_JWK`; `--hold` leaves the enclave unbooted.                                                   |
-| `start.sh`, `stop.sh`       | Start or stop the parent. A stopped parent kills its enclave, so `start.sh` runs `update.sh` and every start is a new signer.                                                                                                                                     |
-| `check.sh`                  | Asserts one `RUNNING` enclave outside debug mode with the PCRs of `eif.json`, and that `https://tee-b.keelson.finance/v1/health` answers `tee: 2` (`TeeKind::Nitro`) for the same image digest.                                                                   |
+| Script                       |                                                                                                                                                                                                                                                                                                                    |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `launch.sh`                  | Creates the security group (inbound 80 and 443), the SSM-only instance role, the instance (`--enclave-options Enabled=true`, IMDSv2 required), an Elastic IP and the `tee-b` `A` record (DNS only, so Caddy gets its own certificate). There is no SSH. Run once.                                                  |
+| `update.sh sha256:<digest>`  | Pulls the image by digest, builds the EIF on the parent, restarts the enclave, boots it and writes `eif.json`. Needs `KEELSON_TEE_TOKEN_SHA256` and `KEELSON_ISSUER_JWK`; `--hold` leaves the enclave unbooted.                                                                                                    |
+| `start.sh`, `stop.sh`        | Start or stop the parent. A stopped parent kills its enclave, so `start.sh` runs `update.sh` and every start is a new signer.                                                                                                                                                                                      |
+| `drift.sh start <leg A url>` | Starts a 24 h clock-drift job on the parent as a systemd unit (`keelson-clock-drift`): every 5 minutes it compares the engine clock in `/v1/health` of both legs with the parent's chrony-synced clock and logs one JSON line to `/var/log/keelson-clock-drift.jsonl`. `summary`, `log` and `stop` read or end it. |
+| `check.sh`                   | Asserts one `RUNNING` enclave outside debug mode with the PCRs of `eif.json`, and that `https://tee-b.keelson.finance/v1/health` answers `tee: 2` (`TeeKind::Nitro`) for the same image digest.                                                                                                                    |
 
 `parent/` holds what runs on the instance: `user-data.sh` (packages, pinned Caddy and Node, units), `allocator.yaml` (2 vCPUs, 1024 MiB), `Caddyfile`, the three units and `boot.ts`.
 
@@ -60,3 +62,7 @@ KEELSON_LIVE=1 TEE_B_URL=https://tee-b.keelson.finance KEELSON_BOOT_REQUEST=boot
 ```
 
 The first test needs the unbooted enclave `--hold` leaves; the others run against any booted one. Enclaves in debug mode have all-zero PCRs and are never used for anything the tests assert on. The test environment is a real enclave on AWS and the Arbitrum Sepolia testnet.
+
+The cross-leg tests also need `TEE_A_URL`, `PAYPAL_AUTHORIZATION_CREATED` and the same bearer token on both legs. `leg_b_signs_the_digest_leg_a_signed` takes a real countersign from leg A and replays it with A's observation to leg B. `a_restart_changes_the_signer_and_not_the_measurements` reruns `update.sh` for the digest in `eif.json`; it needs `update.sh`'s environment, with `KEELSON_ISSUER_JWK` taken from `TEE_A_URL/v1/health`.
+
+`scripts/rtt.ts --leg b` measures the round trip of `GET /v1/health` from where it runs.
