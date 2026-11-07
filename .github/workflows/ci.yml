@@ -85,6 +85,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @keelson/evidence exec playwright install chromium
       - run: pnpm turbo run typecheck test build --filter=@keelson/evidence
+      - name: Capture time and bundle size
+        working-directory: packages/evidence
+        run: pnpm bench | tee -a "$GITHUB_STEP_SUMMARY"
 
   services:
     runs-on: ubuntu-24.04

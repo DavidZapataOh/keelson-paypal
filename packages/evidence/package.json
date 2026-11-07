@@ -19,22 +19,24 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "bench": "node bench/capture.bench.ts"
   },
   "dependencies": {
     "@keelson/core": "workspace:*",
     "@noble/hashes": "catalog:",
+    "@types/pngjs": "6.0.5",
     "age-encryption": "0.3.1",
-    "canonicalize": "5.1.0"
+    "canonicalize": "5.1.0",
+    "pngjs": "7.0.0"
   },
   "peerDependencies": {
     "playwright": "1.64.1"
   },
   "devDependencies": {
+    "@onkernel/sdk": "0.142.0",
     "@types/node": "26.6.6",
-    "@types/pngjs": "6.0.5",
     "playwright": "1.64.1",
-    "pngjs": "7.0.0",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

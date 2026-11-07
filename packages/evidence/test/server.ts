@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { extname, join, normalize } from "node:path";
+import type { BrowserContext } from "playwright";
 
 const root = new URL("./pages/", import.meta.url).pathname;
 const TYPES: Record<string, string> = {
@@ -33,4 +34,24 @@ export async function serve(): Promise<{ url: string; close: () => Promise<void>
     url: `http://127.0.0.1:${port}`,
     close: () => new Promise((resolve) => server.close(() => resolve())),
   };
+}
+
+/**
+ * Serves `test/pages` to a remote browser under `origin` by fulfilling its requests from this
+ * process; the remote browser cannot reach a local port.
+ */
+export async function routePages(context: BrowserContext, origin: string): Promise<void> {
+  await context.route(`${origin}/**`, async (route) => {
+    const path = normalize(new URL(route.request().url()).pathname).replace(/^\/+/, "");
+    try {
+      await route.fulfill({
+        status: 200,
+        headers: { "cache-control": "no-store" },
+        contentType: TYPES[extname(path)] ?? "application/octet-stream",
+        body: await readFile(join(root, path)),
+      });
+    } catch {
+      await route.fulfill({ status: 404, contentType: "text/plain", body: "not found" });
+    }
+  });
 }

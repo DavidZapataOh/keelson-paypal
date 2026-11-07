@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
 import { Encrypter } from "age-encryption";
+import { PNG } from "pngjs";
 import { axBytes, normalizeAx } from "../ax.ts";
 import { canonicalBytes } from "../canonical.ts";
 import { COMPUTED_STYLES, type DomSnapshot, domBytes, normalizeDom } from "../dom.ts";
@@ -70,50 +71,62 @@ async function timed<T>(
   }
 }
 
+type Rect = [x: number, y: number, w: number, h: number];
+
 /**
- * The PNG a person may see: the PII form fields and every element whose text holds a known value
- * are painted over in black. `null` when the page shows no PII.
+ * The device-pixel rectangles a person must not see: the filled PII form fields and every element
+ * whose text holds a known value. One round trip, so it costs the same on a remote browser.
  */
-async function maskedScreenshot(
-  recorder: Recorder,
-  known: readonly PiiEntry[],
-): Promise<Uint8Array | null> {
-  const { page } = recorder;
+function piiRects(recorder: Recorder, known: readonly PiiEntry[]): Promise<Rect[]> {
   const values = known.filter((e) => e.value.length >= MIN_SUBSTRING_PII).map((e) => e.value);
-  const shown = await page.evaluate(
+  return recorder.page.evaluate(
     ([selector, wanted, min]) => {
-      const { document } = globalThis as unknown as {
-        document: {
-          querySelectorAll(s: string): Iterable<{ value: string }>;
-          body: { innerText: string };
-        };
+      const dpr = window.devicePixelRatio || 1;
+      const rects: [number, number, number, number][] = [];
+      const push = (r: DOMRect) => {
+        if (r.width > 0 && r.height > 0)
+          rects.push([r.left * dpr, r.top * dpr, r.width * dpr, r.height * dpr]);
       };
-      const fields = [...document.querySelectorAll(selector)]
-        .map((f) => f.value)
-        .filter((v) => v.trim().length > 0);
-      // biome-ignore lint/performance/useDomNodeTextContent: only rendered text needs a mask
-      const text = document.body.innerText.toLowerCase();
-      return {
-        fields,
-        texts: [...wanted, ...fields].filter(
-          (v) => v.trim().length >= min && text.includes(v.toLowerCase()),
-        ),
-      };
+      const needles = wanted.map((v) => v.toLowerCase());
+      for (const field of document.querySelectorAll<HTMLInputElement>(selector)) {
+        if (field.value.trim() === "") continue;
+        push(field.getBoundingClientRect());
+        if (field.value.trim().length >= min) needles.push(field.value.trim().toLowerCase());
+      }
+      if (needles.length > 0) {
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+          const text = (n.nodeValue ?? "").toLowerCase();
+          if (n.parentElement && needles.some((v) => text.includes(v))) {
+            push(n.parentElement.getBoundingClientRect());
+          }
+        }
+      }
+      return rects;
     },
     [PII_FIELDS_SELECTOR, values, MIN_SUBSTRING_PII] as const,
   );
-  if (shown.fields.length === 0 && shown.texts.length === 0) return null;
-  const mask = [
-    page.locator(PII_FIELDS_SELECTOR),
-    ...[...new Set(shown.texts)].map((v) => page.getByText(v)),
-  ];
-  const png = await page.screenshot({
-    mask,
-    maskColor: "#000000",
-    animations: "disabled",
-    caret: "hide",
-  });
-  return Uint8Array.from(png);
+}
+
+/** Paints the rectangles solid `#000000` over a PNG. */
+function maskPng(png: Uint8Array, rects: readonly Rect[]): Uint8Array {
+  const image = PNG.sync.read(Buffer.from(png));
+  for (const [x, y, w, h] of rects) {
+    const x0 = Math.max(0, Math.floor(x));
+    const y0 = Math.max(0, Math.floor(y));
+    const x1 = Math.min(image.width, Math.ceil(x + w));
+    const y1 = Math.min(image.height, Math.ceil(y + h));
+    for (let py = y0; py < y1; py++) {
+      for (let px = x0; px < x1; px++) {
+        const o = (py * image.width + px) * 4;
+        image.data[o] = 0;
+        image.data[o + 1] = 0;
+        image.data[o + 2] = 0;
+        image.data[o + 3] = 255;
+      }
+    }
+  }
+  return Uint8Array.from(PNG.sync.write(image));
 }
 
 /**
@@ -127,9 +140,9 @@ export async function captureEvidence(recorder: Recorder, input: CaptureInput): 
   const { session } = recorder;
   const known = piiEntries(input.pii);
 
-  const [screenshot, masked, snapshot, ax, mhtml] = await Promise.all([
+  const [screenshot, rects, snapshot, ax, mhtml] = await Promise.all([
     timed(timings, "screenshot", () => session.send("Page.captureScreenshot", { format: "png" })),
-    timed(timings, "maskedScreenshot", () => maskedScreenshot(recorder, known)),
+    timed(timings, "piiRects", () => piiRects(recorder, known)),
     timed(timings, "domSnapshot", () =>
       session.send("DOMSnapshot.captureSnapshot", {
         computedStyles: [...COMPUTED_STYLES],
@@ -167,6 +180,9 @@ export async function captureEvidence(recorder: Recorder, input: CaptureInput): 
   timings.detector = performance.now() - mark;
 
   const png = Uint8Array.from(Buffer.from(screenshot.data, "base64"));
+  mark = performance.now();
+  const masked = rects.length > 0 ? maskPng(png, rects) : null;
+  timings.mask = performance.now() - mark;
   const rows: [ItemType, Uint8Array, Uint8Array | null][] = [
     [
       "api.product",

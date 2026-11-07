@@ -129,8 +129,9 @@ name, email, phone and address from the PayPal order); and any email address or 
 in text. Each is replaced by `[redacted:<kind>]` in the product and cart JSON, the observation,
 the DOM (text, attributes and field values), the accessibility tree, the text parts of the MHTML
 and the HAR URLs, headers and bodies. Values shorter than four characters, such as a state or
-country code, are only redacted where they are a whole value. The public screenshot is taken with
-the PII fields and every element showing a known value masked in `#000000`.
+country code, are only redacted where they are a whole value. The public screenshot is the same
+viewport PNG with the filled PII fields and every element showing a known value painted `#000000`;
+their boxes are read in one round trip, so masking costs the same on a remote browser.
 
 Each item that had PII gets a `<type>.original` item: the unredacted bytes encrypted with
 [age](https://age-encryption.org) to `KEELSON_EVIDENCE_AGE_RECIPIENT`, a hybrid ML-KEM-768 +

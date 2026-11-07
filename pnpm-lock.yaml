@@ -385,25 +385,28 @@ importers:
       '@noble/hashes':
         specifier: 'catalog:'
         version: 2.4.0
+      '@types/pngjs':
+        specifier: 6.0.5
+        version: 6.0.5
       age-encryption:
         specifier: 0.3.1
         version: 0.3.1
       canonicalize:
         specifier: 5.1.0
         version: 5.1.0
-    devDependencies:
-      '@types/node':
-        specifier: 26.6.6
-        version: 26.6.6
-      '@types/pngjs':
-        specifier: 6.0.5
-        version: 6.0.5
-      playwright:
-        specifier: 1.64.1
-        version: 1.64.1
       pngjs:
         specifier: 7.0.0
         version: 7.0.0
+    devDependencies:
+      '@onkernel/sdk':
+        specifier: 0.142.0
+        version: 0.142.0
+      '@types/node':
+        specifier: 26.6.6
+        version: 26.6.6
+      playwright:
+        specifier: 1.64.1
+        version: 1.64.1
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -1831,6 +1834,9 @@ packages:
   '@noble/post-quantum@0.5.4':
     resolution: {integrity: sha512-leww0zzIirrvwaYMPI9fj6aRIlA/c6Y0/lifQQ1YOOyHEr0MNH3yYpjXeiVG+tWdPps4XxGclFWX2INPO3Yo5w==}
     engines: {node: '>= 20.19.0'}
+
+  '@onkernel/sdk@0.142.0':
+    resolution: {integrity: sha512-sb0hMY/Zc6blEDHbN5fyGENiBUficfnF26a99XWXp8INA+3nZ5fGJRNmn2ab6lSMHPUSKNDcFpabtrrtkPC9MQ==}
 
   '@opentelemetry/api@1.10.0':
     resolution: {integrity: sha512-lMkyes8iHrG+mk6WH7X70MdCLI2RS0FwNBY1PyQ8UemaijE2m5mv5A0Niy3HtbYTFrgkUEQjFMXmSAk2hQDuPQ==}
@@ -5205,6 +5211,8 @@ snapshots:
     dependencies:
       '@noble/curves': 2.0.1
       '@noble/hashes': 2.0.1
+
+  '@onkernel/sdk@0.142.0': {}
 
   '@opentelemetry/api@1.10.0': {}
 
