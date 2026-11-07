@@ -13,6 +13,7 @@ import {
   type SealedItem,
   treeRoot,
   verifyDisclosure,
+  verifyManifest,
 } from "../src/index.ts";
 
 interface Vectors {
@@ -121,17 +122,43 @@ function twelveItems(salts?: Uint8Array[]): SealedItem[] {
 }
 
 describe("manifest", () => {
-  test("lists type, media type and content hash, and no salts", () => {
+  test("lists type, media type and the salted leaf, never a content hash or a salt", () => {
     const items = twelveItems();
     const m = buildManifest(items);
     expect(m.v).toBe("keelson.manifest/1");
     expect(m.items).toHaveLength(12);
+    const first = items[0] as SealedItem;
     expect(m.items[0]).toEqual({
       type: "api.product",
       media_type: "application/json",
-      content_hash: toHex(sha256(items[0]?.bytes as Uint8Array)),
+      leaf: toHex(
+        itemLeaf({
+          type: first.type,
+          mediaType: first.mediaType,
+          contentHash: sha256(first.bytes),
+          salt: first.salt,
+        }),
+      ),
     });
-    expect(JSON.stringify(m)).not.toContain("salt");
+    const json = JSON.stringify(m);
+    expect(json).not.toContain("salt");
+    expect(json).not.toContain("content_hash");
+    for (const item of items) expect(json).not.toContain(hex(sha256(item.bytes)));
+  });
+
+  test("anyone can rebuild the root from the public leaves", () => {
+    const m = buildManifest(twelveItems());
+    expect(verifyManifest(m)).toBe(true);
+    const tampered = structuredClone(m);
+    (tampered.items[2] as { leaf: string }).leaf = m.items[3]?.leaf as string;
+    expect(verifyManifest(tampered)).toBe(false);
+    expect(verifyManifest({ ...m, items: [...m.items].reverse() })).toBe(false);
+  });
+
+  test("refuses two items with the same salt", () => {
+    const s = salt();
+    const items = twelveItems().map((i) => ({ ...i, salt: s }));
+    expect(() => buildManifest(items)).toThrow(/salt/);
   });
 
   test("refuses an empty list, a duplicate type and a broken order", () => {
@@ -154,7 +181,10 @@ describe("manifest", () => {
     const fresh = twelveItems();
     const c = buildManifest(fresh);
     expect(c.root).not.toBe(a.root);
-    expect(c.items.map((i) => i.content_hash)).toEqual(a.items.map((i) => i.content_hash));
+    expect(fresh.map((i) => hex(sha256(i.bytes)))).toEqual(
+      twelveItems(salts).map((i) => hex(sha256(i.bytes))),
+    );
+    expect(c.items.map((i) => i.leaf)).not.toEqual(a.items.map((i) => i.leaf));
     const pinned = twelveItems(salts);
     for (const [i, item] of fresh.entries()) {
       const p = pinned[i] as SealedItem;

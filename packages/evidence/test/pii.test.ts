@@ -53,6 +53,9 @@ const pii: PiiValues = {
   ],
 };
 const values = [buyer.name, buyer.email, ...(pii.address ?? [])];
+/** Typed by the test; neither is PII, and neither may be published. */
+const password = Buffer.from(crypto.getRandomValues(new Uint8Array(12))).toString("hex");
+const COUPON = "SPRING-TRAIL";
 
 let browser: Browser;
 let context: BrowserContext;
@@ -74,7 +77,7 @@ afterAll(async () => {
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 
 describe("redaction", () => {
-  test("known values become [redacted:<kind>], short ones only as whole values", () => {
+  test("known values become [redacted:<kind>]; short ones are never cut out of text or JSON", () => {
     const entries = [
       { kind: "name" as const, value: "Ada Lovelace" },
       { kind: "address" as const, value: "CA" },
@@ -83,10 +86,9 @@ describe("redaction", () => {
       text: "Shipping to [redacted:name], CA",
       hits: 1,
     });
-    expect(redactText("CA", entries).text).toBe("[redacted:address]");
-    expect(redactText('<input value="CA">', entries).text).toBe(
-      '<input value="[redacted:address]">',
-    );
+    expect(redactText("CA", entries).hits).toBe(0);
+    expect(redactText('<input value="CA">', entries).hits).toBe(0);
+    expect(redactJson({ state: "CA" }, entries).hits).toBe(0);
     expect(redactText("CAD and USD", entries).hits).toBe(0);
     expect(redactText("write to a.b@example.org or +14155550100", []).text).toBe(
       "write to [redacted:email] or [redacted:phone]",
@@ -96,6 +98,53 @@ describe("redaction", () => {
       to: { email: "[redacted:email]" },
       qty: 2,
     });
+  });
+
+  test("a known phone is found by its digits in any formatting", () => {
+    const entries = [{ kind: "phone" as const, value: "+1 415 555 0100" }];
+    for (const written of [
+      "(415) 555-0100",
+      "415.555.0100",
+      "4155550100",
+      "+1-415-555-0100",
+      "555 0100",
+    ]) {
+      expect(redactText(`call ${written} today`, entries).text, written).toBe(
+        "call [redacted:phone] today",
+      );
+    }
+    expect(redactText("order 12900 of 2 items", entries).hits).toBe(0);
+  });
+
+  test("formatted phones, encoded emails and entity-encoded names are found", () => {
+    const entries = [{ kind: "name" as const, value: "Ada Lovelace" }];
+    expect(redactText("call (415) 555-0100", []).text).toBe("call [redacted:phone]");
+    expect(redactText("/track?email=ada%40example.org&x=1", []).text).toBe(
+      "/track?email=[redacted:email]&x=1",
+    );
+    expect(redactText("/track?to=ada.lovelace%2Bshop%40example.org", []).hits).toBe(1);
+    expect(redactText("<b>Ada&#32;Lovelace</b>", entries).text).toBe("<b>[redacted:name]</b>");
+    expect(redactText("&#65;da&nbsp;Lovelace", entries).text).toBe("[redacted:name]");
+    expect(redactText("?n=Ada+Lovelace", entries).text).toBe("?n=[redacted:name]");
+    expect(redactText("mail ada&#64;example.org", []).text).toBe("mail [redacted:email]");
+  });
+
+  test("the server-side scan sees encoded and formatted PII", () => {
+    const enc = (s: string) => new TextEncoder().encode(s);
+    expect(containsPii("application/json", enc('{"u":"/t?e=ada%40example.org"}'))).toBe(true);
+    expect(containsPii("text/plain; charset=utf-8", enc("call (415) 555-0100"))).toBe(true);
+    expect(containsPii("application/json", enc('"ada&#64;example.org"'))).toBe(true);
+    expect(containsPii("application/json", enc('{"sku":"TR2-BLU-10","minor":12900}'))).toBe(false);
+    const part = (type: string, body: string) =>
+      `--B\r\nContent-Type: ${type}\r\nContent-Transfer-Encoding: base64\r\n\r\n${btoa(body)}\r\n`;
+    const mhtml = (type: string, body: string) =>
+      enc(
+        `MIME-Version: 1.0\r\nContent-Type: multipart/related; boundary="B"\r\n\r\n${part(type, body)}--B--\r\n`,
+      );
+    expect(containsPii("multipart/related", mhtml("text/html", "<p>ada@example.org</p>"))).toBe(
+      true,
+    );
+    expect(containsPii("multipart/related", mhtml("image/png", "ada@example.org"))).toBe(false);
   });
 });
 
@@ -114,6 +163,8 @@ describe.skipIf(!sandbox)("checkout capture with the PayPal sandbox buyer", () =
     await page.locator("#state").fill(buyer.address.state);
     await page.locator("#zip").fill(buyer.address.postal);
     await page.locator("#country").fill(buyer.address.country);
+    await page.locator("#password").fill(password);
+    await page.locator("#coupon").fill(COUPON);
     await page.locator("#pay").focus();
     const cart = await (await fetch(`${site.url}/api/cart.json`)).json();
     const llmObservation = await page.locator("body").ariaSnapshot();
@@ -154,7 +205,17 @@ describe.skipIf(!sandbox)("checkout capture with the PayPal sandbox buyer", () =
       "[redacted:address]",
       "[redacted:address]",
       "[redacted:address]",
+      "[redacted:password]",
+      "[redacted:field]",
     ]);
+  });
+
+  test("typed values that are not PII are not published either", () => {
+    for (const item of publicItems()) {
+      const raw = Buffer.from(item.bytes).toString("latin1");
+      expect(raw.includes(password), `${item.type} holds the password`).toBe(false);
+      expect(raw.includes(COUPON), `${item.type} holds the coupon`).toBe(false);
+    }
   });
 
   test("the redacted MHTML still opens in Chromium", async () => {
@@ -173,9 +234,18 @@ describe.skipIf(!sandbox)("checkout capture with the PayPal sandbox buyer", () =
       Buffer.from(publicItems().find((i) => i.type === "screenshot")?.bytes ?? []),
     );
     const boxes = await Promise.all(
-      ["#name", "#email", "#address1", "#city", "#state", "#zip", "#country", "#ship-name"].map(
-        (s) => page.locator(s).boundingBox(),
-      ),
+      [
+        "#name",
+        "#email",
+        "#address1",
+        "#city",
+        "#state",
+        "#zip",
+        "#country",
+        "#password",
+        "#coupon",
+        "#ship-name",
+      ].map((s) => page.locator(s).boundingBox()),
     );
     for (const box of boxes) {
       expect(box).not.toBeNull();

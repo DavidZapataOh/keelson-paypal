@@ -18,19 +18,11 @@ import {
 import { buildHar } from "./har.ts";
 import { normalizeMhtml } from "./mhtml.ts";
 import type { Recorder } from "./recorder.ts";
-import {
-  fieldEntries,
-  PII_FIELDS_SELECTOR,
-  redactAx,
-  redactDom,
-  redactHar,
-  redactMhtml,
-} from "./redact.ts";
+import { fieldEntries, redactAx, redactDom, redactHar, redactMhtml } from "./redact.ts";
 
 export { buildHar, type Har, type HarEntry, MAX_HAR_BODY } from "./har.ts";
 export { normalizeMhtml } from "./mhtml.ts";
 export { type RecordedRequest, type Recorder, startRecorder } from "./recorder.ts";
-export { PII_FIELDS_SELECTOR } from "./redact.ts";
 
 export interface CaptureInput {
   /** The product API response the agent read. */
@@ -74,13 +66,14 @@ async function timed<T>(
 type Rect = [x: number, y: number, w: number, h: number];
 
 /**
- * The device-pixel rectangles a person must not see: the filled PII form fields and every element
- * whose text holds a known value. One round trip, so it costs the same on a remote browser.
+ * The device-pixel rectangles a person must not see: every password field, every filled form
+ * field, and every element whose text holds a known or typed value. One round trip, so it costs
+ * the same on a remote browser.
  */
 function piiRects(recorder: Recorder, known: readonly PiiEntry[]): Promise<Rect[]> {
   const values = known.filter((e) => e.value.length >= MIN_SUBSTRING_PII).map((e) => e.value);
   return recorder.page.evaluate(
-    ([selector, wanted, min]) => {
+    ([wanted, min]) => {
       const dpr = window.devicePixelRatio || 1;
       const rects: [number, number, number, number][] = [];
       const push = (r: DOMRect) => {
@@ -88,10 +81,14 @@ function piiRects(recorder: Recorder, known: readonly PiiEntry[]): Promise<Rect[
           rects.push([r.left * dpr, r.top * dpr, r.width * dpr, r.height * dpr]);
       };
       const needles = wanted.map((v) => v.toLowerCase());
-      for (const field of document.querySelectorAll<HTMLInputElement>(selector)) {
-        if (field.value.trim() === "") continue;
+      const fields = document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
+        "input:not([type=submit i]):not([type=button i]):not([type=reset i]):not([type=image i]):not([type=hidden i]), textarea",
+      );
+      for (const field of fields) {
+        const value = field.value.trim();
+        if (value === "" && field.type !== "password") continue;
         push(field.getBoundingClientRect());
-        if (field.value.trim().length >= min) needles.push(field.value.trim().toLowerCase());
+        if (value.length >= min) needles.push(value.toLowerCase());
       }
       if (needles.length > 0) {
         const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
@@ -104,7 +101,7 @@ function piiRects(recorder: Recorder, known: readonly PiiEntry[]): Promise<Rect[
       }
       return rects;
     },
-    [PII_FIELDS_SELECTOR, values, MIN_SUBSTRING_PII] as const,
+    [values, MIN_SUBSTRING_PII] as const,
   );
 }
 
@@ -126,7 +123,7 @@ function maskPng(png: Uint8Array, rects: readonly Rect[]): Uint8Array {
       }
     }
   }
-  return Uint8Array.from(PNG.sync.write(image));
+  return Uint8Array.from(PNG.sync.write(image, { deflateLevel: 1 }));
 }
 
 /**
@@ -140,9 +137,16 @@ export async function captureEvidence(recorder: Recorder, input: CaptureInput): 
   const { session } = recorder;
   const known = piiEntries(input.pii);
 
-  const [screenshot, rects, snapshot, ax, mhtml] = await Promise.all([
-    timed(timings, "screenshot", () => session.send("Page.captureScreenshot", { format: "png" })),
-    timed(timings, "piiRects", () => piiRects(recorder, known)),
+  // The boxes to mask are read before the screenshot, so both describe the same layout.
+  const masked = async () => {
+    const rects = await timed(timings, "piiRects", () => piiRects(recorder, known));
+    const shot = await timed(timings, "screenshot", () =>
+      session.send("Page.captureScreenshot", { format: "png" }),
+    );
+    return { rects, shot };
+  };
+  const [{ rects, shot: screenshot }, snapshot, ax, mhtml] = await Promise.all([
+    masked(),
     timed(timings, "domSnapshot", () =>
       session.send("DOMSnapshot.captureSnapshot", {
         computedStyles: [...COMPUTED_STYLES],
@@ -181,7 +185,7 @@ export async function captureEvidence(recorder: Recorder, input: CaptureInput): 
 
   const png = Uint8Array.from(Buffer.from(screenshot.data, "base64"));
   mark = performance.now();
-  const masked = rects.length > 0 ? maskPng(png, rects) : null;
+  const covered = rects.length > 0 ? maskPng(png, rects) : null;
   timings.mask = performance.now() - mark;
   const rows: [ItemType, Uint8Array, Uint8Array | null][] = [
     [
@@ -198,7 +202,7 @@ export async function captureEvidence(recorder: Recorder, input: CaptureInput): 
     ["dom.snapshot", domBytes(publicDom.dom), publicDom.hits ? domBytes(dom) : null],
     ["ax.tree", axBytes(publicAx.ax), publicAx.hits ? axBytes(axTree) : null],
     ["hidden.text", canonicalBytes(findings), null],
-    ["screenshot", masked ?? png, masked ? png : null],
+    ["screenshot", covered ?? png, covered ? png : null],
     [
       "mhtml",
       encoder.encode(publicMhtml.hits ? normalizeMhtml(publicMhtml.mhtml) : page),

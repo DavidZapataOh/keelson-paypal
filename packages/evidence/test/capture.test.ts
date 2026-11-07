@@ -2,6 +2,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { sha256 } from "@keelson/core";
 import { generateHybridIdentity, identityToRecipient } from "age-encryption";
 import { type Browser, type BrowserContext, chromium } from "playwright";
 import { PNG } from "pngjs";
@@ -122,7 +123,8 @@ describe("capture", () => {
     const salts = Array.from({ length: 9 }, () => crypto.getRandomValues(new Uint8Array(32)));
     const a = await captureProduct(salts);
     const b = await captureProduct(salts);
-    const hashes = (c: Capture) => c.manifest.items.map((i) => `${i.type}:${i.content_hash}`);
+    const hashes = (c: Capture) =>
+      c.items.map((i) => `${i.type}:${Buffer.from(sha256(i.bytes)).toString("hex")}`);
     expect(hashes(b)).toEqual(hashes(a));
     expect(b.manifest.root).toBe(a.manifest.root);
 

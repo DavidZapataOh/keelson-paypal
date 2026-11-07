@@ -4,10 +4,14 @@ import { type Hex32, type ItemKind, itemLeaf, itemRank, type SealedItem } from "
 export interface ManifestEntry {
   type: ItemKind;
   media_type: string;
-  content_hash: Hex32;
+  /** The salted item leaf. The unsalted content hash is only given in a disclosure. */
+  leaf: Hex32;
 }
 
-/** The public manifest: what each item is and its content hash; salts stay with the holder. */
+/**
+ * The public manifest: what each item is and its salted leaf, from which anyone can recompute
+ * `root`. Content hashes and salts stay with the holder until an item is disclosed.
+ */
 export interface Manifest {
   v: "keelson.manifest/1";
   root: Hex32;
@@ -24,6 +28,8 @@ export interface Disclosure {
   path: Hex32[];
   size: number;
 }
+
+const HEX32 = /^0x[0-9a-f]{64}$/;
 
 function node(left: Uint8Array, right: Uint8Array): Uint8Array {
   const input = new Uint8Array(65);
@@ -99,6 +105,8 @@ function leafOf(item: SealedItem): Uint8Array {
 
 function checkOrder(items: readonly SealedItem[]): void {
   if (items.length === 0) throw new RangeError("a manifest needs at least one item");
+  const salts = new Set(items.map((i) => toHex(i.salt)));
+  if (salts.size !== items.length) throw new TypeError("every item needs its own salt");
   let last = -1;
   for (const item of items) {
     const rank = itemRank(item.type);
@@ -111,15 +119,28 @@ function checkOrder(items: readonly SealedItem[]): void {
 /** Builds the manifest and its `evidenceRoot` over the sealed items. */
 export function buildManifest(items: readonly SealedItem[]): Manifest {
   checkOrder(items);
+  const leaves = items.map(leafOf);
   return {
     v: "keelson.manifest/1",
-    root: toHex(treeRoot(items.map(leafOf))),
-    items: items.map((item) => ({
+    root: toHex(treeRoot(leaves)),
+    items: items.map((item, k) => ({
       type: item.type,
       media_type: item.mediaType,
-      content_hash: toHex(sha256(item.bytes)),
+      leaf: toHex(leaves[k] as Uint8Array),
     })),
   };
+}
+
+/** Whether a public manifest's leaves build its root and its items are in manifest order. */
+export function verifyManifest(m: Manifest): boolean {
+  if (m.v !== "keelson.manifest/1" || !HEX32.test(m.root) || m.items.length === 0) return false;
+  let last = -1;
+  for (const item of m.items) {
+    const rank = itemRank(item.type);
+    if (rank <= last || !HEX32.test(item.leaf)) return false;
+    last = rank;
+  }
+  return toHex(treeRoot(m.items.map((i) => fromHex(i.leaf)))) === m.root;
 }
 
 /** Opens one item: its salt and inclusion path, enough to check it against the root alone. */
@@ -137,8 +158,6 @@ export function disclose(items: readonly SealedItem[], index: number): Disclosur
     size: items.length,
   };
 }
-
-const HEX32 = /^0x[0-9a-f]{64}$/;
 
 /**
  * Checks a disclosure against an `evidenceRoot`. With `bytes`, also checks that they are the

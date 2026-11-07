@@ -35,6 +35,11 @@ guessed from its hash. Items appear in this order, and an item that does not app
 | 9   | `har`             | `application/json`                    | RFC 8785 JSON of the normalized HAR, PII redacted                                     |
 | 10+ | `<type>.original` | `application/octet-stream`            | age ciphertext of the unredacted bytes, for each item that had PII, in the same order |
 
+The public manifest is `{ v: "keelson.manifest/1", root, items: [{ type, media_type, leaf }] }`.
+Anyone can rebuild `root` from the leaves (`verifyManifest`), but nothing public is an unsalted
+hash of an item, so an unrevealed item cannot be confirmed by guessing its content. Every item
+has its own salt; a manifest with a repeated salt is refused.
+
 A disclosure is `{ index, type, media_type, content_hash, salt, path, size }`, where `path` is the
 RFC 9162 §2.1.3 inclusion proof. `verifyDisclosure(root, disclosure, bytes)` checks it.
 
@@ -124,14 +129,24 @@ NFC, whitespace collapsing and case folding).
 
 PII never reaches a public item. Its sources are the values of form fields whose `autocomplete` is
 `name`, `given-name`, `family-name`, `email`, `tel`, `street-address`, `address-line1..3`,
-`address-level1..4`, `postal-code`, `country` or `cc-*`; the values passed in `pii` (the user's
-name, email, phone and address from the PayPal order); and any email address or E.164 phone number
-in text. Each is replaced by `[redacted:<kind>]` in the product and cart JSON, the observation,
-the DOM (text, attributes and field values), the accessibility tree, the text parts of the MHTML
-and the HAR URLs, headers and bodies. Values shorter than four characters, such as a state or
-country code, are only redacted where they are a whole value. The public screenshot is the same
-viewport PNG with the filled PII fields and every element showing a known value painted `#000000`;
-their boxes are read in one round trip, so masking costs the same on a remote browser.
+`address-level1..4`, `postal-code`, `country`, `cc-*` or a password token; the values passed in
+`pii` (the user's name, email, phone and address from the PayPal order); and any email address or
+phone number (E.164 or written with separators) in text. Each is replaced by `[redacted:<kind>]`
+in the product and cart JSON, the observation, the DOM, the accessibility tree, the text parts of
+the MHTML and the HAR URLs, headers and bodies. Matching also runs on the text with
+percent-escapes (and `+` as a space) and HTML character references decoded, and a known phone
+number is found by its last seven digits in any formatting.
+
+Every non-empty `input` and `textarea` value is redacted in the DOM and the accessibility tree,
+whatever it holds (`[redacted:password]`, `[redacted:field]`, or its `autocomplete` kind), and
+values of four characters or more are redacted wherever else they appear. Shorter values, such as
+a state or country code, identify no one on their own and are only redacted as whole field
+values. A `<select>` value is one of its own options, which the page lists anyway, so it stays.
+
+The public screenshot is the viewport PNG with every password field, every filled field and every
+element showing a known or typed value painted `#000000`. Their boxes are read in one round trip
+just before the screenshot, so both describe the same layout and masking costs the same on a
+remote browser.
 
 Each item that had PII gets a `<type>.original` item: the unredacted bytes encrypted with
 [age](https://age-encryption.org) to `KEELSON_EVIDENCE_AGE_RECIPIENT`, a hybrid ML-KEM-768 +

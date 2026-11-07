@@ -1,19 +1,35 @@
 import type { AxV1 } from "../ax.ts";
 import type { DomV1 } from "../dom.ts";
-import { autocompleteKind, type PiiEntry, redactText } from "../pii.ts";
+import {
+  autocompleteKind,
+  decodeQuotedPrintable,
+  type PiiEntry,
+  type PiiKind,
+  redactText,
+} from "../pii.ts";
 import type { Har } from "./har.ts";
 
 const mark = (kind: string) => `[redacted:${kind}]`;
-const FORM_FIELDS = new Set(["input", "textarea", "select"]);
+/** A `<select>` is left out: its value is one of its own options, which the page lists anyway. */
+const FORM_FIELDS = new Set(["input", "textarea"]);
+/** Inputs whose `value` is their visible label, not something typed. */
+const LABEL_INPUTS = new Set(["submit", "button", "reset", "image"]);
 
-/** The kind of PII a form field holds, from its `autocomplete` attribute. */
-function fieldKind(node: DomV1["nodes"][number]): ReturnType<typeof autocompleteKind> {
+/**
+ * What a form field's value is, or `null` when the node holds no typed value: its `autocomplete`
+ * kind, `password`, or `field` for any other input.
+ */
+function fieldKind(node: DomV1["nodes"][number]): PiiKind | null {
   if (!node.tag || !FORM_FIELDS.has(node.tag)) return null;
-  const autocomplete = node.attrs?.find(([k]) => k === "autocomplete")?.[1];
-  return autocomplete ? autocompleteKind(autocomplete) : null;
+  const attr = (name: string) => node.attrs?.find(([k]) => k === name)?.[1];
+  const type = (attr("type") ?? "").toLowerCase();
+  if (node.tag === "input" && LABEL_INPUTS.has(type)) return null;
+  if (type === "password") return "password";
+  const autocomplete = attr("autocomplete");
+  return (autocomplete ? autocompleteKind(autocomplete) : null) ?? "field";
 }
 
-/** The values of the form fields whose `autocomplete` names PII. */
+/** The non-empty values of the form fields: they are redacted wherever they appear. */
 export function fieldEntries(dom: DomV1): PiiEntry[] {
   const out: PiiEntry[] = [];
   for (const node of dom.nodes) {
@@ -25,6 +41,7 @@ export function fieldEntries(dom: DomV1): PiiEntry[] {
   return out;
 }
 
+/** Redacts the DOM; every non-empty form-field value is replaced, whatever it holds. */
 export function redactDom(dom: DomV1, entries: readonly PiiEntry[]): { dom: DomV1; hits: number } {
   let hits = 0;
   const text = (s: string) => {
@@ -58,6 +75,9 @@ export function redactDom(dom: DomV1, entries: readonly PiiEntry[]): { dom: DomV
   return { dom: { ...dom, url: text(dom.url), nodes }, hits };
 }
 
+/** Accessibility roles whose `value` is what was typed into a field. */
+const FIELD_ROLES = new Set(["textbox", "searchbox", "spinbutton"]);
+
 export function redactAx(ax: AxV1, entries: readonly PiiEntry[]): { ax: AxV1; hits: number } {
   let hits = 0;
   const text = (s: string) => {
@@ -69,7 +89,16 @@ export function redactAx(ax: AxV1, entries: readonly PiiEntry[]): { ax: AxV1; hi
     const out = { ...node };
     if (out.name !== undefined) out.name = text(out.name);
     if (out.description !== undefined) out.description = text(out.description);
-    if (typeof out.value === "string") out.value = text(out.value);
+    if (
+      FIELD_ROLES.has(out.role ?? "") &&
+      out.value !== undefined &&
+      String(out.value).trim() !== ""
+    ) {
+      out.value = mark("field");
+      hits++;
+    } else if (typeof out.value === "string") {
+      out.value = text(out.value);
+    }
     if (out.props) {
       out.props = out.props.map(([k, v]) => [k, typeof v === "string" ? text(v) : v]);
     }
@@ -103,21 +132,6 @@ export function redactHar(har: Har, entries: readonly PiiEntry[]): { har: Har; h
     },
   };
   return { har: out, hits };
-}
-
-function decodeQuotedPrintable(body: string): string {
-  const bytes: number[] = [];
-  for (let k = 0; k < body.length; k++) {
-    const c = body.charCodeAt(k);
-    const hex = c === 0x3d ? body.slice(k + 1, k + 3) : "";
-    if (/^[0-9A-Fa-f]{2}$/.test(hex)) {
-      bytes.push(Number.parseInt(hex, 16));
-      k += 2;
-    } else {
-      bytes.push(c & 0xff);
-    }
-  }
-  return new TextDecoder().decode(Uint8Array.from(bytes));
 }
 
 /** RFC 2045 §6.7 quoted-printable, keeping CRLF line breaks and without soft line breaks. */
@@ -169,26 +183,3 @@ export function redactMhtml(
   });
   return { mhtml: parts.join(delimiter), hits };
 }
-
-/** Selects the form fields whose `autocomplete` names PII. */
-export const PII_FIELDS_SELECTOR: string = [
-  "name",
-  "given-name",
-  "family-name",
-  "email",
-  "tel",
-  "street-address",
-  "address-line1",
-  "address-line2",
-  "address-line3",
-  "address-level1",
-  "address-level2",
-  "address-level3",
-  "address-level4",
-  "postal-code",
-  "country",
-]
-  .map((token) => `[autocomplete~="${token}" i]`)
-  .concat(['[autocomplete*="cc-" i]'])
-  .flatMap((attr) => ["input", "textarea", "select"].map((tag) => `${tag}${attr}`))
-  .join(", ");
