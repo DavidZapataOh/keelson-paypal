@@ -17,6 +17,15 @@ Each origin is served at `https://<origin>/`: `checkpoint`, `tile/<L>/<N>[.p/<W>
 carries two log signatures: Ed25519 (`0x01`) and ML-DSA-44 (`0x06`, [c2sp.org/tlog-cosignature](https://c2sp.org/tlog-cosignature)).
 A new checkpoint is published every 500 ms while the log grows, and every minute otherwise.
 
+## Hosting
+
+The service runs on Render with its log on a persistent disk, behind Cloudflare. The write
+listener is reachable only over Render's private network. Full and partial tiles never change,
+so the log serves them with `Cache-Control: public, max-age=31536000, immutable`; `checkpoint` is
+`no-cache`. A Cloudflare Cache Rule on `(http.host eq "log.keelson.finance" and
+http.request.uri.path contains "/tile/")` makes tiles eligible for the edge cache, and both edge
+and browser TTLs follow the origin's `Cache-Control`. SSL/TLS mode is Full.
+
 ## Leaf
 
 ```
