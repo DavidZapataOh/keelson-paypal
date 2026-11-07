@@ -19,6 +19,8 @@ const schema = z
       .custom<`0x${string}`>((v) => typeof v === "string" && /^0x[0-9a-f]{64}$/.test(v))
       .optional(),
     ARBITRUM_SEPOLIA_RPC_URL: z.url().optional(),
+    KEELSON_EVIDENCE_AGE_IDENTITY: z.string().startsWith("AGE-SECRET-KEY-").optional(),
+    KEELSON_EVIDENCE_AGE_RECIPIENT: z.string().startsWith("age1").optional(),
     PORT: z.coerce.number().int().positive().default(10000),
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   })
@@ -35,6 +37,15 @@ const schema = z
       [env.TEE_A_URL, env.TEE_B_URL, env.KEELSON_TEE_TOKEN].every((v) => v === undefined) ||
       [env.TEE_A_URL, env.TEE_B_URL, env.KEELSON_TEE_TOKEN].every((v) => v !== undefined),
     { message: "TEE_A_URL, TEE_B_URL and KEELSON_TEE_TOKEN are set together", path: ["TEE_A_URL"] },
+  )
+  .refine(
+    (env) =>
+      (env.KEELSON_EVIDENCE_AGE_IDENTITY === undefined) ===
+      (env.KEELSON_EVIDENCE_AGE_RECIPIENT === undefined),
+    {
+      message: "KEELSON_EVIDENCE_AGE_IDENTITY and KEELSON_EVIDENCE_AGE_RECIPIENT are set together",
+      path: ["KEELSON_EVIDENCE_AGE_IDENTITY"],
+    },
   )
   .refine((env) => env.NODE_ENV !== "production" || env.TEE_A_URL !== undefined, {
     message: "the TEE legs are required in production",

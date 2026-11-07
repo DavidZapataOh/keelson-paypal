@@ -85,6 +85,13 @@
       "when": 1794026245564,
       "tag": "0011_countersign_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1794073990345,
+      "tag": "0012_evidence",
+      "breakpoints": true
     }
   ]
 }

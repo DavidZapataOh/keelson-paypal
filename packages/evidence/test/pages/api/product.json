@@ -1,0 +1,8 @@
+{
+  "sku": "TR2-BLU-10",
+  "title": "Trail Runner 2",
+  "price": { "currency": "USD", "minor": 12900, "display": "$129.00" },
+  "category": "shoes",
+  "return_days": 30,
+  "returns_free": true
+}

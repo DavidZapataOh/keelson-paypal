@@ -21,6 +21,10 @@
       "entry": ["src/index.ts!", "src/migrate.ts!", "bench/*.bench.ts"],
       "project": ["src/**/*.ts!", "bench/**/*.ts", "test/**/*.ts"]
     },
+    "packages/evidence": {
+      "entry": ["src/index.ts!", "src/capture/index.ts!", "scripts/*.ts", "bench/*.bench.ts"],
+      "project": ["src/**/*.ts!", "scripts/**/*.ts", "bench/**/*.ts", "test/**/*.ts"]
+    },
     "packages/mandate": {
       "entry": ["src/index.ts!", "src/browser.ts!", "scripts/*.ts", "bench/*.bench.ts"],
       "project": ["src/**/*.ts!", "scripts/**/*.ts", "bench/**/*.ts", "test/**/*.ts"]

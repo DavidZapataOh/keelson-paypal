@@ -1,7 +1,16 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { type Cart, CURRENCIES, type CurrencyCode, cartHash, isUlid } from "@keelson/core";
-import { type Db, eq, purchases, transition } from "@keelson/db";
+import {
+  and,
+  type Db,
+  eq,
+  evidenceBundles,
+  evidenceItems,
+  purchases,
+  transition,
+} from "@keelson/db";
 import { merchantLeaf } from "@keelson/mandate";
+import type { Context } from "hono";
 import { hexToBytes } from "viem";
 import type { Deps } from "../app.ts";
 import { requireClient } from "../middleware/auth.ts";
@@ -71,7 +80,9 @@ const Body = z
       .refine((e) => Object.keys(e).length <= MAX_EVIDENCE_FIELDS, "Too many evidence fields.")
       .refine((e) => bytes(e) <= MAX_EVIDENCE_BYTES, "The evidence is too large.")
       .default({}),
-    evidenceRoot: Hex32,
+    evidenceRoot: Hex32.openapi({
+      description: "The root of the evidence stored with `POST /v1/evidence` for this mandate.",
+    }),
   })
   .openapi("CountersignRequest");
 
@@ -122,12 +133,16 @@ const route = createRoute({
     },
     401: { description: "A leg refused the agent's authority", content: problemContent },
     409: {
-      description: "The mandate is not active, or the request was already used",
+      description:
+        "The mandate is not active, the evidence root is not stored for it or already binds another purchase, or the request was already used",
       content: problemContent,
     },
     404: { description: "No such mandate", content: problemContent },
     413: { description: "A leg refused the request as too large", content: problemContent },
-    422: { description: "The request is invalid", content: problemContent },
+    422: {
+      description: "The request is invalid, or the evidence holds another cart",
+      content: problemContent,
+    },
     429: { description: "Too many countersigns for this mandate", content: problemContent },
     502: {
       description: "The legs disagree, or a signer is not registered",
@@ -194,11 +209,13 @@ async function redrive(
   mandateId: string,
   want: CountersignExpectation,
   cart: { merchant: string; currency: string },
+  evidenceRoot: Buffer,
 ): Promise<boolean> {
   const [row] = await db.select().from(purchases).where(eq(purchases.id, id));
   if (!row) return false;
   if (
     row.state !== "FAILED" ||
+    !row.evidenceRoot?.equals(evidenceRoot) ||
     !RETRYABLE.has(row.failureReason ?? "") ||
     row.mandateId !== mandateId ||
     row.amountMinor !== want.amount ||
@@ -209,6 +226,26 @@ async function redrive(
     return false;
   }
   return transition(db, "purchases", id, "FAILED", "EVALUATING", { failureReason: null });
+}
+
+/** The cart hash of the `api.cart` item stored with the evidence, or `null` if it has none. */
+function evidenceCartHash(bytes: Buffer | null): string | null {
+  if (!bytes) return null;
+  try {
+    return `0x${Buffer.from(cartHash(JSON.parse(bytes.toString("utf8")) as Cart)).toString("hex")}`;
+  } catch {
+    return null;
+  }
+}
+
+function evidenceUsed(c: Context) {
+  return problem(
+    c,
+    409,
+    "evidence-used",
+    "Evidence used",
+    "The evidence root already binds another purchase.",
+  );
 }
 
 async function failPurchase(db: Db, id: string, reason: string): Promise<void> {
@@ -267,6 +304,27 @@ export function registerCountersign(
       );
     }
 
+    const evidenceRoot = Buffer.from(hexToBytes(body.evidenceRoot as `0x${string}`));
+    const [evidence] = await db
+      .select({ cart: evidenceItems.bytes })
+      .from(evidenceBundles)
+      .leftJoin(
+        evidenceItems,
+        and(eq(evidenceItems.root, evidenceBundles.root), eq(evidenceItems.type, "api.cart")),
+      )
+      .where(
+        and(eq(evidenceBundles.root, evidenceRoot), eq(evidenceBundles.mandateId, mandate.id)),
+      );
+    if (!evidence) {
+      return problem(
+        c,
+        409,
+        "evidence-unknown",
+        "Evidence unknown",
+        "The evidence root is not stored for this mandate; upload it to /v1/evidence first.",
+      );
+    }
+
     const total = body.cart.lines.reduce(
       (sum, l) => sum + BigInt(l.qty) * BigInt(l.unit_minor),
       0n,
@@ -291,7 +349,22 @@ export function registerCountersign(
       mandateHash: `0x${Buffer.from(mandate.mandateHash).toString("hex")}`,
     };
 
+    if (evidenceCartHash(evidence.cart) !== want.cartHash) {
+      return problem(
+        c,
+        422,
+        "evidence-cart-mismatch",
+        "Evidence cart mismatch",
+        "The cart the agent saw, as stored with the evidence, is not the cart to countersign.",
+      );
+    }
+
     const purchaseId = ids.requestId;
+    const [bound] = await db
+      .select({ id: purchases.id })
+      .from(purchases)
+      .where(eq(purchases.evidenceRoot, evidenceRoot));
+    if (bound && bound.id !== purchaseId) return evidenceUsed(c);
     const inserted = await db
       .insert(purchases)
       .values({
@@ -301,13 +374,21 @@ export function registerCountersign(
         currency: body.cart.currency,
         amountMinor: total,
         cartHash: Buffer.from(want.cartHash.slice(2), "hex"),
+        evidenceRoot,
       })
-      .onConflictDoNothing()
-      .returning({ id: purchases.id });
+      .onConflictDoNothing({ target: purchases.id })
+      .returning({ id: purchases.id })
+      .catch((err: unknown) => {
+        // A unique violation here is the evidence root: the id conflict is already ignored.
+        const e = err as { code?: string; cause?: { code?: string } };
+        if ((e.cause?.code ?? e.code) === "23505") return null;
+        throw err;
+      });
+    if (inserted === null) return evidenceUsed(c);
     const driven =
       inserted.length > 0
         ? await transition(db, "purchases", purchaseId, "PROPOSED", "EVALUATING")
-        : await redrive(db, purchaseId, mandate.id, want, body.cart);
+        : await redrive(db, purchaseId, mandate.id, want, body.cart, evidenceRoot);
     if (!driven) {
       return problem(
         c,

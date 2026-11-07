@@ -2,6 +2,7 @@ import "./telemetry.ts";
 import Anthropic from "@anthropic-ai/sdk";
 import { serve } from "@hono/node-server";
 import { createDb } from "@keelson/db";
+import { identityToRecipient } from "age-encryption";
 import { pino } from "pino";
 import { createApp } from "./app.ts";
 import { createAuth } from "./auth.ts";
@@ -34,6 +35,13 @@ const tee =
         KEELSON_ISSUER_THUMBPRINT: env.KEELSON_ISSUER_THUMBPRINT,
       })
     : undefined;
+// The environment sets both or neither; the identity must open what agents seal to the recipient.
+if (env.KEELSON_EVIDENCE_AGE_IDENTITY && env.KEELSON_EVIDENCE_AGE_RECIPIENT) {
+  const recipient = await identityToRecipient(env.KEELSON_EVIDENCE_AGE_IDENTITY);
+  if (recipient !== env.KEELSON_EVIDENCE_AGE_RECIPIENT) {
+    throw new Error("KEELSON_EVIDENCE_AGE_IDENTITY does not open KEELSON_EVIDENCE_AGE_RECIPIENT");
+  }
+}
 const app = createApp({
   db,
   kv,
@@ -45,6 +53,9 @@ const app = createApp({
   rateLimit: { trustProxy: process.env.RENDER === "true" },
   shutdown: shutdown.signal,
   ...(tee ? { tee, compileSources: { engine: engineSource } } : {}),
+  ...(env.KEELSON_EVIDENCE_AGE_IDENTITY
+    ? { evidenceIdentity: env.KEELSON_EVIDENCE_AGE_IDENTITY }
+    : {}),
   ...(env.ANTHROPIC_API_KEY ? { anthropic: new Anthropic({ apiKey: env.ANTHROPIC_API_KEY }) } : {}),
 });
 

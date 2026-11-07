@@ -31,6 +31,8 @@ export const purchases = pgTable(
     currency: char({ length: 3 }).notNull(),
     amountMinor: bigint({ mode: "bigint" }).notNull(),
     cartHash: bytea().notNull(),
+    /** The evidence root the countersign bound; a root binds one purchase only. */
+    evidenceRoot: bytea().unique("purchases_evidence_root_unique"),
     countersignDigest: bytea().unique("purchases_countersign_digest_unique"),
     decision: smallint(),
     /** `degraded` when only the TDX leg signed. Set with the countersign. */

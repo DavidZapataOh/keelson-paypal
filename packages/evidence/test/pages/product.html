@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Trail Runner 2, a lightweight trail running shoe." />
+    <title>Trail Runner 2 | Northfield Outfitters</title>
+    <style>
+      body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: #1b1b1b; background: #ffffff; }
+      header, main { padding: 16px 32px; }
+      header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #ddd; }
+      .product { display: grid; grid-template-columns: 320px 1fr; gap: 32px; }
+      .photo { width: 320px; height: 240px; background: #c9d6df; }
+      .price { font-size: 24px; font-weight: 600; }
+      button { font: inherit; padding: 8px 16px; background: #1b1b1b; color: #ffffff; border: 0; }
+      .icon { font-size: 20px; background: none; color: #1b1b1b; padding: 0 8px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <strong>Northfield Outfitters</strong>
+      <nav>
+        <a href="/product.html">Shoes</a>
+        <a href="/checkout.html">Cart</a>
+        <button type="button" class="icon" aria-label="Close">&times;</button>
+      </nav>
+    </header>
+    <main class="product">
+      <img class="photo" alt="Trail Runner 2, side view, in blue" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" />
+      <section>
+        <h1 id="title">Trail Runner 2</h1>
+        <p class="price" id="price">Loading price</p>
+        <p id="description">A lightweight trail shoe with a grippy outsole and a breathable mesh upper.</p>
+        <label for="size">Size</label>
+        <select id="size">
+          <option>9</option>
+          <option selected>10</option>
+          <option>11</option>
+        </select>
+        <button type="button" id="add">Add to cart</button>
+      </section>
+    </main>
+    <script>
+      fetch("/api/product.json")
+        .then((r) => r.json())
+        .then((p) => {
+          document.getElementById("price").textContent = p.price.display;
+          document.body.dataset.ready = "1";
+        });
+    </script>
+  </body>
+</html>

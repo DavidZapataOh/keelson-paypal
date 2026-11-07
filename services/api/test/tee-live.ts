@@ -420,6 +420,6 @@ export const asAgent = {
   "x-test-principal": JSON.stringify({
     kind: "client",
     subject: "demo-agent",
-    scopes: ["countersign:write"],
+    scopes: ["countersign:write", "evidence:write"],
   }),
 };

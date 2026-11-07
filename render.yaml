@@ -56,6 +56,10 @@ services:
         sync: false
       - key: KEELSON_ISSUER_THUMBPRINT
         sync: false
+      - key: KEELSON_EVIDENCE_AGE_IDENTITY
+        sync: false
+      - key: KEELSON_EVIDENCE_AGE_RECIPIENT
+        sync: false
       - fromGroup: keelson-secrets
 
   - type: web

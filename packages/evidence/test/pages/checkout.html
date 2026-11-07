@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Checkout | Northfield Outfitters</title>
+    <style>
+      body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: #1b1b1b; background: #ffffff; }
+      main { display: grid; grid-template-columns: 1fr 280px; gap: 32px; padding: 16px 32px; }
+      form { display: grid; grid-template-columns: 160px 1fr; gap: 8px 16px; align-items: center; }
+      input { font: inherit; padding: 4px 8px; border: 1px solid #999; }
+      .summary { border: 1px solid #ddd; padding: 16px; }
+      .total { font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section>
+        <h1>Shipping</h1>
+        <p id="greeting">Shipping to <span id="ship-name">a new address</span></p>
+        <form id="shipping">
+          <label for="name">Full name</label>
+          <input id="name" name="name" autocomplete="name" />
+          <label for="email">Email</label>
+          <input id="email" name="email" type="email" autocomplete="email" />
+          <label for="tel">Phone</label>
+          <input id="tel" name="tel" type="tel" autocomplete="tel" />
+          <label for="address1">Address</label>
+          <input id="address1" name="address1" autocomplete="address-line1" />
+          <label for="city">City</label>
+          <input id="city" name="city" autocomplete="address-level2" />
+          <label for="state">State</label>
+          <input id="state" name="state" autocomplete="address-level1" />
+          <label for="zip">ZIP code</label>
+          <input id="zip" name="zip" autocomplete="postal-code" />
+          <label for="country">Country</label>
+          <input id="country" name="country" autocomplete="country" />
+          <label for="password">Account password</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" />
+          <label for="coupon">Coupon</label>
+          <input id="coupon" name="coupon" />
+        </form>
+      </section>
+      <aside class="summary">
+        <h2>Order summary</h2>
+        <p id="line">Trail Runner 2, size 10, blue</p>
+        <p class="total" id="total">Loading total</p>
+        <button type="button" id="pay">Pay with PayPal</button>
+      </aside>
+    </main>
+    <script>
+      document.getElementById("name").addEventListener("input", (e) => {
+        document.getElementById("ship-name").textContent = e.target.value || "a new address";
+      });
+      fetch("/api/cart.json")
+        .then((r) => r.json())
+        .then((cart) => {
+          const minor = cart.lines.reduce((sum, l) => sum + l.qty * l.unit_minor, 0);
+          document.getElementById("total").textContent = `Total $${(minor / 100).toFixed(2)}`;
+          document.body.dataset.ready = "1";
+        });
+    </script>
+  </body>
+</html>

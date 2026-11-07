@@ -36,7 +36,15 @@ interface PayPalEmail {
   confirmed: boolean;
 }
 
-const scopes = ["countersign:write", "alibis:read", "disputes:read", "operators:write"] as const;
+const scopes = [
+  "countersign:write",
+  "evidence:write",
+  "evidence:disclose",
+  "evidence:decrypt",
+  "alibis:read",
+  "disputes:read",
+  "operators:write",
+] as const;
 
 export interface AuthEnv {
   BETTER_AUTH_SECRET: string;

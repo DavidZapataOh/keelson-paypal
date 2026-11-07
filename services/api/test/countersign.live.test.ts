@@ -10,6 +10,7 @@ import { failStalePurchases } from "../src/sweeper.ts";
 import { LegClient } from "../src/tee/client.ts";
 import { createTee } from "../src/tee/config.ts";
 import { refreshLeg } from "../src/tee/signers.ts";
+import { EvidenceUploader } from "./evidence.ts";
 import { testDb, testKv } from "./setup.ts";
 import {
   asAgent,
@@ -45,6 +46,7 @@ describe.skipIf(!live)("POST /v1/countersign (live legs)", { timeout: 180_000 },
   let agentKey: CryptoKey;
   let openMandate: string;
   let mandateId: string;
+  const evidence = new EvidenceUploader();
 
   const post = (path: string, body: unknown, headers: Record<string, string>, key = ulid()) =>
     app.request(path, {
@@ -57,6 +59,8 @@ describe.skipIf(!live)("POST /v1/countersign (live legs)", { timeout: 180_000 },
     cart: (typeof carts)[keyof typeof carts],
     requestId = ulid(),
     m: { openMandate: string; agentKey: CryptoKey } = { openMandate, agentKey },
+    /** Stored evidence for this cart unless given; a revoked mandate takes no evidence. */
+    root?: `0x${string}`,
   ) => {
     const hash = bytesToHex(cartHash(cart.cart)).slice(2);
     return {
@@ -68,7 +72,7 @@ describe.skipIf(!live)("POST /v1/countersign (live legs)", { timeout: 180_000 },
       ),
       cart: cart.cart,
       unit: cart.unit,
-      evidenceRoot: `0x${"55".repeat(32)}`,
+      evidenceRoot: root ?? (await evidence.upload(app, mandateId, cart.cart, asAgent)),
     };
   };
 
@@ -88,6 +92,7 @@ describe.skipIf(!live)("POST /v1/countersign (live legs)", { timeout: 180_000 },
   }, 120_000);
   afterAll(async () => {
     await passkey.close();
+    await evidence.close();
   });
 
   test("the mandate route stores the open mandate the TEE issued", async () => {
@@ -114,6 +119,58 @@ describe.skipIf(!live)("POST /v1/countersign (live legs)", { timeout: 180_000 },
       },
     );
     expect(verified.mandate.mid).toBe(mandateId);
+  });
+
+  /** The app with both real legs behind a proxy that records every call made to them. */
+  const counted = (calls: string[]) => {
+    const counting = (leg: LegClient) =>
+      new Proxy(leg, {
+        get(target, prop, receiver) {
+          const value = Reflect.get(target, prop, receiver);
+          if (typeof value !== "function") return value;
+          return (...args: unknown[]) => {
+            calls.push(String(prop));
+            return value.apply(target, args);
+          };
+        },
+      });
+    return appWith({ a: counting(tee.client.a), b: counting(tee.client.b) });
+  };
+  const send = (target: ReturnType<typeof appWith>, body: unknown) =>
+    target.request("/v1/countersign", {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": ulid(), ...asAgent },
+      body: JSON.stringify(body),
+    });
+
+  test("an evidence root not stored for the mandate is refused before any leg is called", async () => {
+    const calls: string[] = [];
+    const watched = counted(calls);
+    const requestId = ulid();
+    const body = {
+      ...(await countersignBody(carts.demo, requestId)),
+      evidenceRoot: `0x${"55".repeat(32)}`,
+    };
+    const res = await watched.request("/v1/countersign", {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": ulid(), ...asAgent },
+      body: JSON.stringify(body),
+    });
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { type: string }).type).toMatch(/evidence-unknown$/);
+    expect(calls).toEqual([]);
+    expect(await testDb.select().from(purchases).where(eq(purchases.id, requestId))).toEqual([]);
+  });
+
+  test("evidence whose cart is not the countersigned cart is refused before any leg is called", async () => {
+    const calls: string[] = [];
+    const requestId = ulid();
+    const body = await countersignBody(carts.bundle, requestId);
+    const demoEvidence = await evidence.upload(app, mandateId, carts.demo.cart, asAgent);
+    const res = await send(counted(calls), { ...body, evidenceRoot: demoEvidence });
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { type: string }).type).toMatch(/evidence-cart-mismatch$/);
+    expect(calls).toEqual([]);
   });
 
   test("the demo cart is allowed, countersigned by both legs, and the retry returns the stored result", async () => {
@@ -303,6 +360,7 @@ describe.skipIf(!live)("POST /v1/countersign (live legs)", { timeout: 180_000 },
       currency: carts.demo.cart.currency,
       amountMinor: 9_400n,
       cartHash: Buffer.from(cartHash(carts.demo.cart)),
+      evidenceRoot: Buffer.from(body.evidenceRoot.slice(2), "hex"),
       state: "EVALUATING",
       updatedAt: new Date(Date.now() - 5 * 60_000),
     });
@@ -415,9 +473,29 @@ describe.skipIf(!live)("POST /v1/countersign (live legs)", { timeout: 180_000 },
     expect(await testDb.select().from(mandates)).toHaveLength(before.length);
   });
 
+  test("an evidence root binds one purchase only", async () => {
+    const m = await issue();
+    const first = await countersignBody(carts.demo, ulid(), m);
+    expect((await send(app, first)).status).toBe(200);
+    const calls: string[] = [];
+    const again = {
+      ...(await countersignBody(carts.demo, ulid(), m)),
+      evidenceRoot: first.evidenceRoot,
+    };
+    const res = await send(counted(calls), again);
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { type: string }).type).toMatch(/evidence-used$/);
+    expect(calls).toEqual([]);
+  });
+
   test("a mandate that is not usable cannot countersign", async () => {
     await testDb.update(mandates).set({ state: "REVOKED" }).where(eq(mandates.id, mandateId));
-    const res = await post("/v1/countersign", await countersignBody(carts.demo), asAgent);
+    const unused = `0x${"55".repeat(32)}` as const;
+    const res = await post(
+      "/v1/countersign",
+      await countersignBody(carts.demo, ulid(), { openMandate, agentKey }, unused),
+      asAgent,
+    );
     expect(res.status).toBe(409);
     expect(((await res.json()) as { type: string }).type).toMatch(/mandate-not-active$/);
   });
@@ -430,7 +508,7 @@ describe.skipIf(!live)("POST /v1/countersign (live legs)", { timeout: 180_000 },
       for (let i = 0; i < n; i++) {
         const res = await post(
           "/v1/countersign",
-          await countersignBody(carts.demo, ulid(), m),
+          await countersignBody(carts.demo, ulid(), m, `0x${"55".repeat(32)}`),
           principal,
         );
         statuses.push(res.status);
