@@ -56,8 +56,9 @@ const OPEN_MANDATE_AUD: &str = "keelson.finance";
 const COUNTERSIGN_TTL: i64 = 900;
 /// Clock skew tolerated on credential and key-binding times.
 const MAX_SKEW_SEC: i64 = 60;
-/// How far leg A's clock may be from this leg's.
-const MAX_OBSERVATION_SKEW_MS: u64 = 2_000;
+/// How far ahead of this leg's clock leg A's observation may be. It may be older by up to
+/// `MAX_SKEW_SEC`: leg A answers a retry with the observation it recorded on the first try.
+const MAX_OBSERVATION_AHEAD_MS: i64 = 2_000;
 /// `category` of a cart with no single category in `CATEGORY_IDS`.
 const NO_CATEGORY: u8 = 255;
 
@@ -449,7 +450,10 @@ impl Engine {
             .or(r.observation.as_ref().map(|o| &o.paypal));
         let clock_ms = unix_ms(clock_now).ok_or(bad("clock"))?;
         let now_ms = match &r.observation {
-            Some(o) if o.now_ms.abs_diff(clock_ms) > MAX_OBSERVATION_SKEW_MS => {
+            Some(o)
+                if o.now_ms > clock_ms + MAX_OBSERVATION_AHEAD_MS
+                    || o.now_ms < clock_ms - MAX_SKEW_SEC * 1000 =>
+            {
                 return Err(EngineError::Clock);
             }
             Some(o) => o.now_ms,

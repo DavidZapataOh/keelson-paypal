@@ -258,13 +258,43 @@ describe.skipIf(!live)("coordinator (live legs)", { timeout: 120_000 }, () => {
     await unsigned(req.request_id);
   });
 
-  test("a 5xx problem body from leg b is a divergence too", async () => {
-    const { req, want } = await prepare();
-    const broken = Object.create(tee.client.b) as LegClient;
-    broken.countersign = () => Promise.reject(new LegError("b", "problem", "internal", 503));
-    const err = await failure(countersign2of2(deps({ b: broken }), req, want));
-    expect((err as CoordinatorError).slug).toBe("tee-divergence");
-    await unsigned(req.request_id);
+  test("leg b refusing to judge is a retryable refusal; refusing the request is a divergence", async () => {
+    const cases: [code: string | undefined, answered: number, slug: string, status: number][] = [
+      ["clock_skew", 409, "tee-unavailable", 503],
+      ["busy", 503, "tee-unavailable", 503],
+      ["not_ready", 503, "tee-unavailable", 503],
+      [undefined, 502, "tee-unavailable", 503],
+      ["internal", 503, "tee-divergence", 502],
+      ["replay", 409, "tee-divergence", 502],
+      ["commitment_mismatch", 409, "tee-divergence", 502],
+      ["bad_request", 422, "tee-divergence", 502],
+      ["auth.closed_signature", 401, "tee-divergence", 502],
+      [undefined, 400, "tee-divergence", 502],
+    ];
+    for (const [code, answered, slug, status] of cases) {
+      const { req, want } = await prepare();
+      const refusing = Object.create(tee.client.b) as LegClient;
+      refusing.countersign = () => Promise.reject(new LegError("b", "problem", code, answered));
+      const err = await failure(countersign2of2(deps({ b: refusing }), req, want));
+      expect(err, `${code} ${answered}`).toBeInstanceOf(CoordinatorError);
+      expect((err as CoordinatorError).slug, `${code} ${answered}`).toBe(slug);
+      expect((err as CoordinatorError).status, `${code} ${answered}`).toBe(status);
+      await unsigned(req.request_id);
+      expect(await alarms("tee.degraded", req.request_id)).toHaveLength(0);
+    }
+  });
+
+  // Needs leg B to accept an observation older than 2 s, which engines built before that change
+  // refuse with `clock_skew`.
+  test("a retry served from leg a's record seconds later is countersigned by both legs", async () => {
+    const p = await prepare();
+    const first = await drive(deps(), p);
+    expect(first.mode).toBe("2of2");
+    await new Promise((resolve) => setTimeout(resolve, 2_500));
+    const again = await drive(deps(), p);
+    expect(again.mode).toBe("2of2");
+    expect(again.digest).toBe(first.digest);
+    expect(again.observation).toEqual(first.observation);
   });
 
   test("a leg b whose signer went stale is skipped and the countersign is degraded", async () => {

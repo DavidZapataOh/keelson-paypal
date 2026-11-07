@@ -104,6 +104,15 @@ const down = (err: unknown): boolean =>
 
 const divergence = () => new CoordinatorError("tee-divergence", "The signers disagree.", 502);
 
+/** Leg B's refusals that say nothing about the request: its clock, its load or its boot. */
+const NOT_JUDGED = new Set(["clock_skew", "busy", "not_ready"]);
+
+/** Leg B answered without judging the request, so a retry may be countersigned by both legs. */
+const notJudged = (err: unknown): boolean =>
+  err instanceof LegError &&
+  err.kind === "problem" &&
+  (err.code === undefined ? (err.status ?? 0) >= 500 : NOT_JUDGED.has(err.code));
+
 const readmitting = new Set<Leg>();
 
 /** Admits the leg's new signer after a restart without holding the request that noticed it. */
@@ -262,7 +271,8 @@ async function record(
 /**
  * Sends the request to leg A, forwards leg A's observation with the identical request to leg B,
  * and returns the countersignature only when both digests are byte-equal. With leg B down it
- * answers `degraded` with leg A's signature alone; with leg A down it signs nothing.
+ * answers `degraded` with leg A's signature alone; with leg A down, or leg B answering that it
+ * could not judge the request, it signs nothing and the request may be retried.
  */
 export async function countersign2of2(
   deps: CoordinatorDeps,
@@ -303,10 +313,18 @@ export async function countersign2of2(
       b = await deps.tee.client.b.countersign({ ...forB, observation: a.observation });
     } catch (err) {
       if (!unreachable(err)) {
-        emit(deps, "tee.divergence", req.request_id, {
-          digests: [first.digest, null],
-          code: err instanceof LegError ? (err.code ?? null) : null,
-        });
+        const code = err instanceof LegError ? (err.code ?? null) : null;
+        deps.log.warn(
+          {
+            leg: "b",
+            requestId: req.request_id,
+            code,
+            status: err instanceof LegError ? (err.status ?? null) : null,
+          },
+          "leg b did not countersign",
+        );
+        if (notJudged(err)) throw unavailable();
+        emit(deps, "tee.divergence", req.request_id, { digests: [first.digest, null], code });
         throw divergence();
       }
     }
