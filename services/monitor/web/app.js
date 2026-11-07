@@ -118,9 +118,9 @@ async function verify(origin, index) {
   let note;
   let cp;
   try {
-    if (!policies.has(origin.name)) policies.set(origin.name, await fetchText(`/${origin.policy}`));
-    note = await fetchText(`${origin.url}checkpoint`);
-    cp = await v.verifyCheckpoint(note, policies.get(origin.name));
+    if (!policies.has(origin.name)) policies.set(origin.name, fetchText(`/${origin.policy}`));
+    [note] = await Promise.all([fetchText(`${origin.url}checkpoint`), policies.get(origin.name)]);
+    cp = await v.verifyCheckpoint(note, await policies.get(origin.name));
     mark(
       "checkpoint",
       "ok",

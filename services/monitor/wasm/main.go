@@ -185,6 +185,21 @@ func prove(args []js.Value) (any, error) {
 	tr := tileReader{base: base}
 	hr := torchwood.TileHashReaderWithContext(context.Background(), tree, tr)
 	out := map[string]any{}
+	// The entry is fetched while the proofs are built.
+	type fetched struct {
+		entry []byte
+		err   error
+	}
+	entry := make(chan fetched, 1)
+	if index >= 0 {
+		if index >= size {
+			return nil, fmt.Errorf("index %d is not below the tree size %d", index, size)
+		}
+		go func() {
+			e, err := tr.entry(size, index)
+			entry <- fetched{e, err}
+		}()
+	}
 	if oldSize > 0 && oldSize < size {
 		p, err := tlog.ProveTree(size, oldSize, hr)
 		if err != nil {
@@ -193,19 +208,16 @@ func prove(args []js.Value) (any, error) {
 		out["consistency"] = strs(p)
 	}
 	if index >= 0 {
-		if index >= size {
-			return nil, fmt.Errorf("index %d is not below the tree size %d", index, size)
-		}
 		p, err := tlog.ProveRecord(size, index, hr)
 		if err != nil {
 			return nil, fmt.Errorf("tiles: %w", err)
 		}
 		out["inclusion"] = strs(p)
-		entry, err := tr.entry(size, index)
-		if err != nil {
-			return nil, fmt.Errorf("entry: %w", err)
+		e := <-entry
+		if e.err != nil {
+			return nil, fmt.Errorf("entry: %w", e.err)
 		}
-		out["entry"] = b64(entry)
+		out["entry"] = b64(e.entry)
 	}
 	return out, nil
 }
