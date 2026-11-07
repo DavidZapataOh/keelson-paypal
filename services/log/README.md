@@ -81,6 +81,9 @@ go test -tags live -run Live -v ./services/log/
 | `LOG_SIGNER_KEY_SANDBOX`, `LOG_SIGNER_KEY_LIVE` | Ed25519 note signer keys                                         |
 | `LOG_MLDSA_SEED_SANDBOX`, `LOG_MLDSA_SEED_LIVE` | Base64 32-byte ML-DSA-44 seeds                                   |
 
+`KEELSON_VERIFYING_CONTRACT` must equal the API's `verifyingContract`; when the contract is
+deployed, both change together, or every leaf is refused with `countersign.digest`.
+
 `go run ./services/log/cmd/keygen -origin <origin> -env SANDBOX -dir services/log/keys -name <name>`
 writes a new pair of verifier keys and prints the matching secrets.
 

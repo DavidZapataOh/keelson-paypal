@@ -86,6 +86,8 @@ services:
     domains:
       - log.keelson.finance
     envVars:
+      - key: PORT
+        value: "10000"
       - key: LOG_DATA_DIR
         value: /var/lib/keelson-log
       - key: LOG_PRIVATE_ADDR
