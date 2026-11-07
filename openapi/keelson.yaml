@@ -1464,10 +1464,15 @@ paths:
                         type: array
                         items:
                           type: string
+                      provenance:
+                        type: string
+                        description: Where the Sigstore build provenance attested measurements.json is
+                          published; `gh attestation verify` checks it.
                     required:
                       - engineBuildId
                       - tdx
                       - nitro
+                      - provenance
                 required:
                   - legs
                   - measurements

@@ -4,8 +4,6 @@ import "@simplewebauthn/server/helpers";
 
 export {
   type Expectations,
-  type NitroPcrs,
-  nitroMeasurement,
   type SignerAttestation,
   verifySigner,
 } from "@keelson/attest";

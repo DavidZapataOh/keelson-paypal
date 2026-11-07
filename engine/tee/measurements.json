@@ -1,0 +1,28 @@
+{
+  "engine": "keelson-engine",
+  "nitro": {
+    "id": "nitro:7e8dafdd6da7db2709a134e245088d13c8aad4b38900c048c2f8a12f8b213f53",
+    "nitro_cli": "1.5.0",
+    "pcr0": "bdb8d2b0dc2b6ecb06f28cf61b6bf6f0ac6e0d45313208bd61cfaf1e03c4c121277ef64221be1fb159b310080b9b0b2e",
+    "pcr1": "4b4d5b3661b3efc12920900c80e126e4ce783c522de6c02a2a5bf7af3a2b9327b86776f188e4be1c1c404a129dbda493",
+    "pcr2": "34a8e33f3196f8b07093a3392dcc3aba9024f142ff777e6e80c2026ef77869195437ed31b56f6995e7c01a2a1af9947f"
+  },
+  "oci_digest": "sha256:fb81b34c3c24894cd5f8d3f7fbd571c1339193bcc6a7213346edd96034ebb0ef",
+  "policy_set_hash": "sha256:76e3a5959eddc084b99b80a7376d85eeb86f005a7ce447420ac67c3e80902123",
+  "tdx": {
+    "app_id": "58955baac3072bac57064089176bed1c2379f86d",
+    "compose_hash": "ed95250c2073934af8f46028541b89b25b695859b7ce4c8c806962d7941dc2e7",
+    "id": "tdx:855bde51f8ebabd512a23a1d741a223c53c6eb0c4a15676533631180e832b2e1",
+    "instance_type": "tdx.small",
+    "mrtd": "2a674327c50218dba880066b349b8d559d749ed68dce33fd651c184a877d084b07a9e583767a7ad5da13ed91deec2b70",
+    "os_image": "dstack-0.6.1",
+    "os_image_hash": "ec43cb8c5e04b6bb6c53b33b16076a01d83d01f7f4b703f2f78a0d947d6247e6",
+    "rtmr": [
+      "68102e7b524af310f7b7d426ce75481e36c40f5d513a9009c046e9d37e31551f0134d954b496a3357fd61d03f07ffe96",
+      "89ef86c5125b986c325f0a94acfa87718a4ef3a4d4f237dbb72dda3cf777fd2c054555fb4407eb53338d7d67329a7333",
+      "e9000e338f33233e8f51b7fd031e1c158bdcf8572eab041c0bc8eb7fef48b23259a6a556e6c8e2af99999fc39c793179"
+    ]
+  },
+  "v": "keelson.measurements/1",
+  "version": "0.0.0"
+}

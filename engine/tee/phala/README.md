@@ -49,4 +49,4 @@ A CVM behind the gateway cannot run with `no_instance_id`, so the log carries an
 
 ## Allowed measurement
 
-`measurement.json` holds the `tdx:` measurement id (the SHA-256 of MRTD and RTMR0 to RTMR3, as `@keelson/attest` computes it) of the deployed CVM. The API admits a leg A signer only when its verified quote has this id; update it with `app.json` whenever the deployment changes.
+`../measurements.json` holds the `tdx:` measurement id of the deployed CVM: the SHA-256 of MRTD, RTMR0 to RTMR2, the app id, the compose hash and the OS image hash, as `@keelson/attest` computes it. RTMR3 is not part of it, since it extends the instance id; the quote's RTMR3 is replayed from the event log instead. The API admits a leg A signer only when its verified quote has this id. `app-compose.json` is the compose file Phala holds for the CVM (`phala api /cvms/<app_id>/compose_file`), `vm-config.json` the host settings the CVM is measured under and `os-images.json` the pinned OS image releases; `make measure` rebuilds the file from them.
