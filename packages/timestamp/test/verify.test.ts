@@ -1,8 +1,10 @@
+import { readFileSync } from "node:fs";
 import * as asn1js from "asn1js";
 import * as pkijs from "pkijs";
 import { describe, expect, test } from "vitest";
 import { TimestampError, type TsaId, verifyTimestamp } from "../src/index.ts";
 import { pemToDer } from "../src/pem.ts";
+import { TSA_ROOTS } from "../src/roots/index.ts";
 import { SIGSTORE_TSA_ROOT_PEM } from "../src/roots/sigstore-tsa.ts";
 import { expected, imprint, tokens } from "./tokens.ts";
 
@@ -99,4 +101,31 @@ describe("rejections", () => {
       );
     });
   }
+});
+
+describe("hostile tokens", () => {
+  test("a certificate cycle (S <- A <- B <- A) fails fast as tsa-chain", async () => {
+    const token = new Uint8Array(readFileSync(new URL("./forged/cycle.tst", import.meta.url)));
+    const cycleImprint = Uint8Array.from(
+      Buffer.from("2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881", "hex"),
+    );
+    const started = performance.now();
+    expect(await code(verifyTimestamp(token, cycleImprint))).toBe("tsa-chain");
+    expect(performance.now() - started).toBeLessThan(500);
+  });
+
+  test("a token is accepted only from the TSA the caller expects", async () => {
+    const result = await verifyTimestamp(tokens.sigstore, imprint, { expectedTsa: "sigstore" });
+    expect(result.tsa).toBe("sigstore");
+    expect(await code(verifyTimestamp(tokens.sigstore, imprint, { expectedTsa: "digicert" }))).toBe(
+      "tsa-chain",
+    );
+  });
+
+  test("a signer outside the TSA's pinned issuing CA or key is refused", async () => {
+    // The DigiCert root is pinned for Sectigo here: the chain would end at a pinned root, but
+    // neither the issuing CA nor the signer is DigiCert's timestamping one.
+    const roots = { digicert: [pemToDer(TSA_ROOTS.sectigo)] };
+    expect(await code(verifyTimestamp(tokens.sectigo, imprint, { roots }))).toBe("tsa-chain");
+  });
 });

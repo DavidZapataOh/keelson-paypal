@@ -1,4 +1,4 @@
-import type * as asn1js from "asn1js";
+import * as asn1js from "asn1js";
 import * as pkijs from "pkijs";
 import { TimestampError } from "./errors.ts";
 
@@ -15,6 +15,9 @@ export interface ParsedToken {
   accuracyMs: number | null;
 }
 
+/** More certificates than any TSA sends is refused before any path is built. */
+const MAX_CERTIFICATES = 8;
+
 /** Parses a DER `TimeStampToken` (a CMS `ContentInfo` holding `SignedData` over a `TSTInfo`). */
 export function parseToken(token: Uint8Array): ParsedToken {
   try {
@@ -27,7 +30,18 @@ export function parseToken(token: Uint8Array): ParsedToken {
     if (signedData.encapContentInfo.eContentType !== pkijs.id_eContentType_TSTInfo || !eContent) {
       throw new Error("the token does not hold a TSTInfo");
     }
-    const tstInfo = pkijs.TSTInfo.fromBER(eContent.getValue());
+    if ((signedData.certificates?.length ?? 0) > MAX_CERTIFICATES) {
+      throw new Error("too many certificates");
+    }
+    const tstInfoDer = eContent.getValue();
+    // RFC 3161 §2.4.2: genTime is a GeneralizedTime in UTC, ending in Z.
+    const raw = asn1js.fromBER(tstInfoDer).result as asn1js.Sequence;
+    const genTimeField = raw.valueBlock.value[4];
+    const encoded = genTimeField?.valueBeforeDecodeView;
+    if (!(genTimeField instanceof asn1js.GeneralizedTime) || encoded?.at(-1) !== 0x5a) {
+      throw new Error("genTime is not a UTC GeneralizedTime");
+    }
+    const tstInfo = pkijs.TSTInfo.fromBER(tstInfoDer);
     return {
       signedData,
       tstInfo,

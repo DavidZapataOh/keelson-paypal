@@ -21,6 +21,8 @@ export interface Stamp {
 
 const DEFAULT_TIMEOUT_MS = 2_000;
 const MAX_CLOCK_SKEW_MS = 5 * 60_000;
+/** A reply with a full certificate chain is under 8 KiB; anything near this is not a TSA's. */
+const MAX_REPLY_BYTES = 64 * 1024;
 
 /**
  * Asks a TSA for an RFC 3161 token over a SHA-256 hash. `imprint` is the hash itself: it is sent as
@@ -68,7 +70,7 @@ export async function requestTimestamp(
       await response.body?.cancel();
       throw new TimestampError("tsa-content-type", `${id} answered ${contentType ?? "no type"}`);
     }
-    body = await response.bytes();
+    body = await readCapped(response, id);
   } catch (error) {
     if (error instanceof TimestampError) throw error;
     if (timeout.aborted) {
@@ -116,4 +118,29 @@ export async function requestTimestamp(
     nonce: echoed,
     latencyMs,
   };
+}
+
+async function readCapped(response: Response, id: string): Promise<Uint8Array> {
+  const tooLarge = () => new TimestampError("tsa-http", `${id} sent a reply over 64 KiB`);
+  if (Number(response.headers.get("content-length") ?? 0) > MAX_REPLY_BYTES) {
+    await response.body?.cancel();
+    throw tooLarge();
+  }
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for await (const chunk of response.body ?? []) {
+    size += chunk.length;
+    if (size > MAX_REPLY_BYTES) {
+      await response.body?.cancel().catch(() => {});
+      throw tooLarge();
+    }
+    chunks.push(chunk);
+  }
+  const body = new Uint8Array(size);
+  let at = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, at);
+    at += chunk.length;
+  }
+  return body;
 }
