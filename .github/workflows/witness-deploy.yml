@@ -74,7 +74,8 @@ jobs:
           for w in 1 2 3; do
             for _ in $(seq 60); do curl -fsS -o /dev/null "https://witness-$w.keelson.finance/" && break; sleep 5; done
           done
-          go test -tags live -run '^TestLiveWitness' -v ./services/log/
+          go test -tags live -run '^TestLiveWitnessesRemember$' -v ./services/log/
+          go test -tags live -run '^TestLiveWitnesses(RefuseForks|KnowTheLogs)$' -v ./services/log/
         env:
           WITNESS_SIZES_IN: ${{ runner.temp }}/sizes.json
       - name: Files to commit
