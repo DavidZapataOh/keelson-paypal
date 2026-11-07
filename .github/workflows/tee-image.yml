@@ -26,6 +26,7 @@ env:
   SKOPEO_IMAGE: quay.io/skopeo/stable:v1.22.3@sha256:2681eccb8b02c495b013c2669cbf7f41d5c0b0b0e644e7c69bd3ea9bcb20641f
   # 25 MB, compressed layers and config.
   MAX_IMAGE_BYTES: 25000000
+  DIVE_IMAGE: wagoodman/dive:v0.13.1@sha256:f1886e6c32c094fc41a623c1989f5cb3e48aa766da5f0be233f911fc1d85ce10
 
 jobs:
   build:
@@ -87,6 +88,17 @@ jobs:
           usage="$("$binary" 2>&1)" || status=$?
           test "$status" -eq 1
           test "$usage" = "keelson-engine: usage: keelson-engine [--platform tdx|nitro] --listen tcp:<addr>|vsock:<port>"
+      - name: Check the layers
+        shell: bash
+        run: |
+          # dive 0.13 reads docker archives, so skopeo converts the amd64 image first.
+          mkdir "$RUNNER_TEMP/dive"
+          docker run --rm -v "$RUNNER_TEMP/out:/oci:ro" -v "$RUNNER_TEMP/dive:/work" "$SKOPEO_IMAGE" \
+            copy oci-archive:/oci/keelson-engine.tar docker-archive:/work/keelson-engine.tar:keelson-engine:dive
+          docker run --rm -e CI=true \
+            -v "$RUNNER_TEMP/dive:/work:ro" -v "$PWD/engine/tee/.dive-ci:/.dive-ci:ro" \
+            "$DIVE_IMAGE" /work/keelson-engine.tar --source docker-archive --ci-config /.dive-ci \
+            | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: oci-${{ matrix.builder }}

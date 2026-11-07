@@ -1,0 +1,11 @@
+[advisories]
+ignore = [
+    # crypto-bigint 0.5 is reached only through alloy-primitives' `k256` feature, which the
+    # engine's test dependencies enable. The engine binary links crypto-bigint 0.7, past the fix.
+    "RUSTSEC-2026-0387",
+    # Unmaintained, no vulnerability: `derivative` and `paste` are proc-macros of arkworks and
+    # alloy; `serde_cbor` is what aws-nitro-enclaves-nsm-api encodes attestation requests with.
+    "RUSTSEC-2024-0388",
+    "RUSTSEC-2024-0436",
+    "RUSTSEC-2021-0127",
+]

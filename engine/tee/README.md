@@ -31,11 +31,36 @@ Both legs verify every signature in the closed mandate and the passkey assertion
 - **The user ↔ holder-key binding.** The user credential's `sub` is never presented, so the holder key is what ties a credential to a user. Leg A derives `user_key(sub)` from the root; leg B has no root and uses the holder key leg A observed.
 - **The PayPal read** and the budget left on the mandate (see below).
 
+## Security
+
+**What only leg A observes.** The PayPal read and the budget left on the mandate, and the binding of a user to their passkey and of a mandate to its authorization. Leg B signs over leg A's observation, so a DENY from leg A's checks is a DENY on both legs, and leg B contributes the independent verification of every signature, the Cedar evaluation and a second vendor's attestation.
+
+**What 1-of-2 (degraded) means.** When leg B is unreachable or its signer is not admitted, the API still countersigns with leg A alone and says so: `mode: "degraded"` in the body and `Keelson-Countersign-Mode: degraded` in the header, and `/status` reports `teeB: "down"`. In that mode a purchase rests on one TEE vendor. An integrator that requires two should refuse a `degraded` countersign.
+
+**Why both vendors must agree.** TDX attestation can be forged by an attacker with physical access to the host (TEE.fail, 2025), and Nitro attestation is only as strong as AWS. A forged quote on one leg cannot produce a valid countersign by itself, because the other leg's signer is a different key under a different vendor's root of trust.
+
+**Key handling.**
+
+- The countersign key is generated in RAM at boot and never leaves the process. The KMS root (leg A) and the keys derived from it are held only while a request needs them. `Signer`, `Root` and `Engine` implement none of `Debug`, `Display`, `Serialize`, `Clone` or `Copy`, which `tests/key_material.rs` checks at compile time, and `Signer` and `Root` overwrite their key on drop, which their unit tests read back through a raw pointer. The keys derived from the root are `p256` `SigningKey`s, which zeroize on drop and whose `Debug` prints no key material; they live for one request.
+- HKDF over the root wipes its pseudorandom key as soon as the expand state exists, and the HMAC states it keeps are SHA-256 cores built with `sha2`'s `zeroize` feature, which wipe themselves on drop. The intermediate blocks `hkdf` and `hmac` keep on the stack while they run are not wiped.
+- Release builds abort on panic, and the process disables core dumps and `ptrace` of its memory (`PR_SET_DUMPABLE` 0) before it reads any secret. A panic on leg A restarts its container with a new signer and the 900-second warm-up; on leg B the engine stops serving until `nitro/update.sh` boots the enclave again.
+- The HTTP layer logs no request or response bodies. Errors carry a stable code and never echo input.
+- PayPal credentials and the bearer token's hash reach the CVM only as encrypted environment variables. `phala/docker-compose.yml` holds variable names, no values. Leg B's boot message carries the token's hash and public configuration only; the enclave has no network and no environment.
+- Leg A and leg B run the same binary. The enclave never builds a KMS root or a PayPal client, since `--platform nitro` constructs neither. The image carries no proof tooling: `keelson-policy` is built without its `prove` feature, so neither `cedar-policy-symcc` nor cvc5 is linked.
+
+**Accepted risks.**
+
+- Both legs accept the same bearer token. Its holder can call the authenticated routes of either leg (register a mandate on leg A, countersign, refresh an attestation); it cannot sign anything a leg would not, since no route takes a key and every route verifies the mandate, the passkey and the cart itself. The token lives only in the API's environment and CI secrets, the legs store its SHA-256, and it is rotated as described below. Separate tokens per leg are not implemented.
+- The CVM's host can wipe or roll back the whole encrypted data volume, not a single record. A wiped store lets a `sub` be bound again and a mandate be bound to a second authorization.
+- When the canonicalizer refuses a cart, the trace records the refusal, and re-running `evaluate_context` over the same input does not reproduce that trace byte for byte.
+
 ## Budget
 
 Leg A computes the budget left on a mandate as `max − captured − live reservations`. The captured amount comes only from the engine's own PayPal read (a `CapturedSource`); leg A refuses to countersign until it has one (`not_ready`). Reservations are keyed by `M`, which commits to the whole mandate, so mandates never share a budget. Reserving is the last step of a countersign, after signing, so a failed request never holds a reservation.
 
 A countersign is valid through its `expiresAt` second, so its reservation is held until that second is over. A request id is accepted only while its ULID time is within the last 840 s and at most 60 s ahead, so an id can never be signed again once its record has expired. While warming up, a cart is allowed only if it costs nothing and the budget is not overspent; a zero total reserves nothing.
+
+Each leg holds at most 4,096 live requests, with their answers, across all mandates; a new request beyond that is refused with `busy` until some expire, which bounds the ledger at a few tens of MiB whatever the request rate. Expired requests are dropped on every countersign.
 
 Reservations live only in RAM. An engine allows nothing for the first 900 seconds after boot, the lifetime of a countersign, so a reservation lost in a restart can never be spent twice.
 
@@ -66,11 +91,11 @@ Registering refuses a mandate whose `exp` has passed (`mandate_expired`) or whos
 
 ## Errors
 
-Refusals carry no signature and one of these stable codes: `auth.closed_*`, `auth.open_*`, `auth.webauthn_*`, `auth.sub_bound`, `clock_skew`, `no_root`, `not_ready`, `commitment_mismatch`, `replay`, `bad_request`, `payload_too_large`, `mandate_expired`, `mandate_not_yet_valid`, `paypal` and `signer`.
+Refusals carry no signature and one of these stable codes: `auth.closed_*`, `auth.open_*`, `auth.webauthn_*`, `auth.sub_bound`, `clock_skew`, `no_root`, `not_ready`, `commitment_mismatch`, `replay`, `busy`, `bad_request`, `payload_too_large`, `mandate_expired`, `mandate_not_yet_valid`, `paypal` and `signer`.
 
 ## HTTP
 
-`keelson-engine --listen tcp:<addr>` serves `POST /v1/countersign`, `POST /v1/mandates/register` and `GET /v1/health` (`{ tee, signer, boot_epoch, oci_digest, version, now_ms, issuer }`, `now_ms` being the engine's clock and `issuer` being the credential issuer's public JWK). With `--platform tdx` it also serves `GET /v1/attestation` and `POST /v1/attestation/refresh` (see below). Every route except health and `GET /v1/attestation` needs `Authorization: Bearer <token>`; the engine holds only the token's SHA-256, from `KEELSON_TEE_TOKEN_SHA256`, and compares it in constant time. Refusals are `application/problem+json` (RFC 9457) with `type` `https://keelson.finance/problems/<code>` and the stable code, and never echo the request. Bodies are JSON with unknown fields rejected.
+`keelson-engine --listen tcp:<addr>` serves `POST /v1/countersign`, `POST /v1/mandates/register` and `GET /v1/health` (`{ tee, signer, boot_epoch, oci_digest, version, now_ms, issuer, rss_kib }`, `now_ms` being the engine's clock, `issuer` the credential issuer's public JWK and `rss_kib` the process's resident memory on Linux). With `--platform tdx` it also serves `GET /v1/attestation` and `POST /v1/attestation/refresh` (see below). Every route except health and `GET /v1/attestation` needs `Authorization: Bearer <token>`; the engine holds only the token's SHA-256, from `KEELSON_TEE_TOKEN_SHA256`, and compares it in constant time. Refusals are `application/problem+json` (RFC 9457) with `type` `https://keelson.finance/problems/<code>` and the stable code, and never echo the request. Bodies are JSON with unknown fields rejected.
 
 | Status | Codes                                                                            |
 | ------ | -------------------------------------------------------------------------------- |
@@ -80,7 +105,7 @@ Refusals carry no signature and one of these stable codes: `auth.closed_*`, `aut
 | 413    | `payload_too_large`                                                              |
 | 422    | `bad_request`, `commitment_mismatch`, `mandate_expired`, `mandate_not_yet_valid` |
 | 501    | `no_root`                                                                        |
-| 503    | `not_ready`, `attestation_stale`                                                 |
+| 503    | `not_ready`, `busy`, `attestation_stale`                                         |
 | 500    | `signer`, `internal`                                                             |
 | 502    | `attestation`, `paypal`                                                          |
 
@@ -174,6 +199,88 @@ The id is `tdx:` plus the SHA-256 of MRTD, RTMR0 to RTMR2, the app id, the compo
 
 `scripts/measure-check.ts <measurements.json>` compares the file with the attestations the two legs serve now (`TEE_A_URL`, `TEE_B_URL`) and exits 1 on any difference. The `tee-image` workflow runs `make measure` on two runners, requires byte-identical output, and checks it against the live legs.
 
+## Environments
+
+| Part                | Where                                                                       |
+| ------------------- | --------------------------------------------------------------------------- |
+| Leg A               | Phala Cloud, Intel TDX, `tdx.small` (1 vCPU, 2 GB), dstack 0.6.1, US-West-1 |
+| Leg B               | AWS EC2 `c6a.xlarge` in `us-west-2`, Nitro Enclave with 2 vCPUs and 1 GiB   |
+| Payments            | PayPal sandbox                                                              |
+| Chain               | Arbitrum Sepolia                                                            |
+| API and its callers | Render, Oregon                                                              |
+
+Nothing here is simulated: the quotes are real TDX and Nitro attestations, and PayPal and the chain are the providers' own test environments.
+
+## Operations
+
+**Who holds which secret.**
+
+| Secret                      | Held by                                                                                  |
+| --------------------------- | ---------------------------------------------------------------------------------------- |
+| KMS root and signer keys    | Each leg's process only. Leg A's root comes from the dstack KMS; no key is ever exported |
+| Bearer token                | The API's environment and the repository's CI secrets. The legs hold its SHA-256 only    |
+| PayPal client id and secret | The API's environment, the CI secrets and leg A's encrypted environment                  |
+| Phala Cloud API key         | The CI secrets and the operator                                                          |
+| AWS access keys             | The operator only. The parent instance has an SSM-only role and no SSH                   |
+
+**Attestation refresh.** Each leg's attestation binds its signer to a recent Arbitrum Sepolia block, and a leg answers `503 attestation_stale` once that block is an hour old. The API refreshes both legs when it starts and every 50 minutes, verifies what they return, and admits a signer only while its last verification is under two hours old. Leg A also refreshes itself on the same timer. Leg B cannot read the chain, so the caller sends the block. By hand:
+
+```sh
+curl -X POST -H "authorization: Bearer $KEELSON_TEE_TOKEN" "$TEE_A_URL/v1/attestation/refresh"
+curl -X POST -H "authorization: Bearer $KEELSON_TEE_TOKEN" -H 'content-type: application/json' \
+  -d '{"block":{"number":<n>,"hash":"0x…"}}' "$TEE_B_URL/v1/attestation/refresh"
+```
+
+**Degraded mode.** With leg B down, or its signer not admitted, the API countersigns with leg A alone: `mode: "degraded"` in the body, `Keelson-Countersign-Mode: degraded` in the header, and `GET /status` answers `status: "degraded"` with `teeB: "down"` while leg B does not answer its health check. Every purchase then rests on one TEE vendor, so degraded mode is restored as soon as it is seen:
+
+1. If the parent instance is stopped, `nitro/start.sh` starts it, rebuilds and boots the enclave for the digest in `nitro/eif.json` (about two minutes), and `nitro/check.sh` asserts one running enclave with the recorded PCRs. If the parent runs but leg B does not answer, `nitro/update.sh sha256:<digest>` with the same digest restarts and boots the enclave.
+2. The new enclave has a new signer. The first countersign that meets it makes the API verify and admit it in the background, and the 50-minute refresh does too.
+3. `GET /status` shows `teeB: "up"`, and countersigns return `mode: "2of2"`.
+
+A stopped parent is the only state in which the second vendor is missing for more than a request, so it is left running.
+
+**Restart a leg.** Leg A: `phala cvms restart --cvm-id <app id>`; its signer changes, its sealed records stay, and it allows nothing for 900 seconds. Leg B: `nitro/update.sh sha256:<digest>` with the digest in `nitro/eif.json`, which needs `KEELSON_TEE_TOKEN_SHA256` and `KEELSON_ISSUER_JWK` (the `issuer` in leg A's `/v1/health`).
+
+**Rotate the bearer token.** Generate a token, set it as `KEELSON_TEE_TOKEN` in the API's environment and the CI secrets, and its SHA-256 as `KEELSON_TEE_TOKEN_SHA256` in the CI secrets. Run `tee-deploy` with the deployed digest (an update replaces leg A's encrypted environment and restarts the engine) and `nitro/update.sh` with the same digest, since the enclave takes the hash only in its boot message. Both legs restart, so countersigns wait for leg A's warm-up.
+
+**Redeploy a new image.** `tee-image` builds the image twice and publishes its digest from `main`. Run `tee-deploy` with that digest, then `nitro/update.sh sha256:<digest>`. Commit the files of the `deployment` artifact (`phala/app.json`, `phala/app-compose.json` and `phala/docker-compose.yml`) and the new `nitro/eif.json`, so that `make measure` rebuilds the deployment, then commit the `measurements.json` it produces. The API reads that file at build time and admits only signers whose attestation matches it. Until then `make measure` fails on any change to the engine, by design: the source no longer builds the deployed digest.
+
+**Cost.** Both legs run around the clock. Rates read on 2026-11-06:
+
+| Item              | Per hour   | Per day   | To 2026-12-15 (936 h) |
+| ----------------- | ---------- | --------- | --------------------- |
+| Phala `tdx.small` | $0.0608    | $1.46     | $57                   |
+| AWS `c6a.xlarge`  | $0.153     | $3.67     | $143                  |
+| AWS public IPv4   | $0.005     | $0.12     | $5                    |
+| AWS 30 GiB `gp3`  | $0.0033    | $0.08     | $3                    |
+| **Both legs**     | **$0.222** | **$5.33** | **$208**              |
+
+Stopping the parent outside working hours saves $3.67 a day and leaves every purchase 1-of-2 while it is stopped. A stopped CVM still bills its disk. The billing resources are one CVM, one EC2 instance, one Elastic IP and one EBS volume; anything else, on the Phala account or in any AWS region (instances, volumes, addresses, snapshots, AMIs), is an orphan and is deleted. To list them:
+
+```sh
+npx phala@1.2.1 cvms list
+for r in $(aws ec2 describe-regions --query 'Regions[].RegionName' --output text); do
+  aws ec2 describe-instances --region "$r" --query 'Reservations[].Instances[].[InstanceId,State.Name]' --output text
+  aws ec2 describe-volumes --region "$r" --query 'Volumes[].[VolumeId,State]' --output text
+  aws ec2 describe-addresses --region "$r" --query 'Addresses[].[PublicIp,InstanceId]' --output text
+  aws ec2 describe-snapshots --region "$r" --owner-ids self --query 'Snapshots[].SnapshotId' --output text
+done
+```
+
 ## Benchmarks
 
 `cargo bench -p keelson-tee` measures the demo countersign on both legs (closed-mandate and passkey verification through signing) and `register_mandate`, and fails if a p99 is over budget: 2 ms per countersign, 5 ms per registration.
+
+`services/api/bench/countersign.bench.ts` measures the live legs from where the API runs. Measured on 2026-11-07 from a Render one-off job of the API service (Oregon, AMD EPYC 7R13), against the legs above and a PayPal sandbox authorization, with sequential requests:
+
+| Path                                                                          | p50    | p95    | Budget   |
+| ----------------------------------------------------------------------------- | ------ | ------ | -------- |
+| Leg A round trip, `/v1/health`                                                | 24 ms  | 25 ms  | < 150 ms |
+| Leg B round trip, `/v1/health`                                                | 2 ms   | 3 ms   | < 150 ms |
+| Leg B countersign                                                             | 6 ms   | 7 ms   |          |
+| Both legs, leg A's PayPal read excluded                                       |        | 31 ms  | < 200 ms |
+| Leg A countersign, with its PayPal read                                       | 364 ms | 422 ms |          |
+| `POST /v1/countersign` in the API process, through both legs and the database | 393 ms | 452 ms |          |
+| First countersign with leg B unreachable (`degraded`)                         | 408 ms | 435 ms | < 1 s    |
+
+Leg A always reads PayPal on a countersign, so its own share is taken from its health round trip; the engine's work inside a countersign is under 2 ms. The PayPal sandbox read is most of every countersign.

@@ -1,4 +1,4 @@
-import { createPublicKey, randomBytes } from "node:crypto";
+import { createHash, createPublicKey, generateKeyPairSync, randomBytes, sign } from "node:crypto";
 import { type Cart, CURRENCIES, type CurrencyCode, cartHash, toHex } from "@keelson/core";
 import { type Db, operators, passkey as passkeyTable, user } from "@keelson/db";
 import {
@@ -40,8 +40,70 @@ export interface Assertion {
   signature: string;
 }
 
+/** What mandate signing needs of a passkey. */
+export interface Passkey {
+  readonly credentialId: string;
+  readonly jwk: { kty: string; crv: string; x: string; y: string };
+  assert(challenge: Uint8Array): Promise<Assertion>;
+  close(): Promise<void>;
+}
+
+/**
+ * A software authenticator: it signs WebAuthn assertions (`authenticatorData`, `clientDataJSON`
+ * and an ES256 signature) for the origin the legs expect, with no browser.
+ */
+export class SoftwarePasskey implements Passkey {
+  readonly credentialId = randomBytes(16).toString("base64url");
+  readonly jwk: { kty: string; crv: string; x: string; y: string };
+  private readonly privateKey;
+  private counter = 0;
+
+  private constructor() {
+    const pair = generateKeyPairSync("ec", { namedCurve: "P-256" });
+    this.privateKey = pair.privateKey;
+    this.jwk = pair.publicKey.export({ format: "jwk" }) as typeof this.jwk;
+  }
+
+  static create(): Promise<SoftwarePasskey> {
+    return Promise.resolve(new SoftwarePasskey());
+  }
+
+  assert(challenge: Uint8Array): Promise<Assertion> {
+    const flags = Buffer.from([0x05]);
+    const counter = Buffer.alloc(4);
+    counter.writeUInt32BE(++this.counter);
+    const authenticatorData = Buffer.concat([
+      createHash("sha256").update(RP_ID).digest(),
+      flags,
+      counter,
+    ]);
+    const clientDataJSON = Buffer.from(
+      JSON.stringify({
+        type: "webauthn.get",
+        challenge: Buffer.from(challenge).toString("base64url"),
+        origin: ORIGIN,
+        crossOrigin: false,
+      }),
+    );
+    const signature = sign(
+      "sha256",
+      Buffer.concat([authenticatorData, createHash("sha256").update(clientDataJSON).digest()]),
+      { key: this.privateKey, dsaEncoding: "der" },
+    );
+    return Promise.resolve({
+      authenticatorData: authenticatorData.toString("base64url"),
+      clientDataJSON: clientDataJSON.toString("base64url"),
+      signature: signature.toString("base64url"),
+    });
+  }
+
+  close(): Promise<void> {
+    return Promise.resolve();
+  }
+}
+
 /** A passkey held by Chrome's virtual authenticator, on the origin the legs expect. */
-export class VirtualPasskey {
+export class VirtualPasskey implements Passkey {
   private readonly browser: Browser;
   private readonly page: Page;
   readonly credentialId: string;
@@ -205,7 +267,7 @@ export interface SignedMandate {
 
 /** The demo mandate for `sub` and a new agent key, signed with `passkey`. */
 export async function signedMandate(
-  passkey: VirtualPasskey,
+  passkey: Passkey,
   sub = `kls_usr_${randomBytes(8).toString("hex")}`,
 ): Promise<SignedMandate> {
   const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, [
@@ -261,7 +323,7 @@ export async function signedMandate(
 }
 
 /** Registers the demo mandate for a new user and a new agent key on leg A. */
-export async function registerMandate(leg: LegClient, passkey: VirtualPasskey): Promise<Agent> {
+export async function registerMandate(leg: LegClient, passkey: Passkey): Promise<Agent> {
   const signed = await signedMandate(passkey);
   const issued = await leg.registerMandate({
     sub: signed.sub,
@@ -316,7 +378,7 @@ export async function expectation(
 export { toHex };
 
 /** A signed-in user whose passkey is the virtual one, and the operator the demo mandate names. */
-export async function seedUser(db: Db, passkey: VirtualPasskey, sub: string): Promise<void> {
+export async function seedUser(db: Db, passkey: Passkey, sub: string): Promise<void> {
   const x = Buffer.from(passkey.jwk.x, "base64url");
   const y = Buffer.from(passkey.jwk.y, "base64url");
   const cose = isoCBOR.encode(

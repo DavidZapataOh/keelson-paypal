@@ -1,14 +1,27 @@
 import { randomBytes } from "node:crypto";
-import { createDb, migrate } from "@keelson/db";
+import { createDb, eq, mandates, migrate, user } from "@keelson/db";
 import pg from "pg";
 import { pino } from "pino";
 import { ulid } from "ulid";
+import { hexToBytes } from "viem";
+import { createApp } from "../src/app.ts";
 import { createKv } from "../src/kv.ts";
-import type { LegClient } from "../src/tee/client.ts";
+import { LegClient } from "../src/tee/client.ts";
 import { createTee } from "../src/tee/config.ts";
 import { countersign2of2 } from "../src/tee/coordinator.ts";
 import { refreshLeg } from "../src/tee/signers.ts";
-import { carts, expectation, registerMandate, request, VirtualPasskey } from "../test/tee-live.ts";
+import {
+  asAgent,
+  asUser,
+  carts,
+  expectation,
+  headerPrincipal,
+  registerMandate,
+  request,
+  SoftwarePasskey,
+  seedUser,
+  signedMandate,
+} from "../test/tee-live.ts";
 
 // Sequential countersigns of the demo cart against the live legs and a real sandbox authorization.
 // The legs are timed one by one; leg A's time includes its PayPal read, so its own time is
@@ -99,9 +112,8 @@ try {
     verifyingContract: "0x0000000000000000000000000000000000000000" as const,
   };
 
-  const passkey = await VirtualPasskey.create();
+  const passkey = await SoftwarePasskey.create();
   const agent = await registerMandate(tee.client.a, passkey);
-  await passkey.close();
 
   // $0.50 carts keep the $100 budget from running out within 200 requests.
   const cheap = structuredClone(carts.demo);
@@ -142,6 +154,112 @@ try {
   console.log(
     `both legs, PayPal read excluded (p95 A health + p95 B countersign): ${legs.toFixed(0)} ms, budget ${BUDGETS.legs} ms`,
   );
+
+  // The whole route: POST /v1/countersign of the demo cart, through the app's middleware, the
+  // database, the coordinator and both legs. Each sample is a new open mandate, which has a
+  // budget of its own.
+  const app = createApp({
+    db,
+    kv,
+    log: pino({ level: "silent" }),
+    appOrigin: "https://app.keelson.finance",
+    authenticate: headerPrincipal,
+    tee,
+    requestTimeoutMs: 60_000,
+  });
+  const post = (path: string, body: unknown, headers: Record<string, string>, target = app) =>
+    target.request(path, {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": ulid(), ...headers },
+      body: JSON.stringify(body),
+    });
+  const first = await signedMandate(passkey);
+  await seedUser(db, passkey, first.sub);
+  const created = await post("/v1/mandates", first.body, asUser(first.sub));
+  if (created.status !== 201) throw new Error(`mandate not stored: ${created.status}`);
+  const { id: mandateId } = (await created.json()) as { id: string };
+  const issue = async () => {
+    const fresh = await registerMandate(tee.client.a, passkey);
+    await db
+      .insert(user)
+      .values({ id: fresh.sub, name: "Bench", email: `${fresh.sub}@example.test` });
+    await db
+      .update(mandates)
+      .set({
+        userId: fresh.sub,
+        openMandate: fresh.issued.open_mandate,
+        mandateHash: Buffer.from(hexToBytes(fresh.issued.mandate_hash)),
+      })
+      .where(eq(mandates.id, mandateId));
+    return fresh;
+  };
+  const routeBody = async (agent: Awaited<ReturnType<typeof issue>>) => {
+    const r = await request(agent, carts.demo);
+    return {
+      authorizationId: r.authorization_id,
+      closedMandate: r.closed_mandate,
+      cart: r.cart,
+      unit: r.unit,
+      evidenceRoot: r.evidence_root,
+    };
+  };
+
+  const route: number[] = [];
+  const modes: Record<string, number> = {};
+  for (let i = 0; i < Number(process.env.ROUTE_SAMPLES ?? 40); i++) {
+    const body = await routeBody(await issue());
+    const started = performance.now();
+    const res = await post("/v1/countersign", body, asAgent);
+    route.push(performance.now() - started);
+    const out = (await res.json()) as { decision?: string; mode?: string };
+    const key = `${res.status} ${out.decision ?? "-"} ${out.mode ?? "-"}`;
+    modes[key] = (modes[key] ?? 0) + 1;
+  }
+  console.log(
+    `POST /v1/countersign, demo cart, in process (${route.length} samples): ${summary(route)}`,
+  );
+  console.log(`outcomes: ${JSON.stringify(modes)}`);
+
+  const edge: number[] = [];
+  if (process.env.API_URL) {
+    for (let i = 0; i < 110; i++) {
+      const started = performance.now();
+      await (await fetch(new URL("/health", process.env.API_URL))).arrayBuffer();
+      if (i >= 10) edge.push(performance.now() - started);
+    }
+    console.log(
+      `GET ${process.env.API_URL}/health from the same machine (100 samples): ${summary(edge)}`,
+    );
+  }
+
+  // Leg B is a black hole: the first degraded answer takes the leg B timeout.
+  const dead = new LegClient(
+    "b",
+    "http://10.255.255.1:9",
+    process.env.KEELSON_TEE_TOKEN as string,
+    500,
+  );
+  const degradedApp = createApp({
+    db,
+    kv,
+    log: pino({ level: "silent" }),
+    appOrigin: "https://app.keelson.finance",
+    authenticate: headerPrincipal,
+    tee: { ...tee, client: { a: tee.client.a, b: dead } },
+    requestTimeoutMs: 60_000,
+  });
+  const degraded: number[] = [];
+  for (let i = 0; i < 5; i++) {
+    const body = await routeBody(await issue());
+    const started = performance.now();
+    const res = await post("/v1/countersign", body, asAgent, degradedApp);
+    degraded.push(performance.now() - started);
+    if (res.headers.get("keelson-countersign-mode") !== "degraded") {
+      throw new Error(`expected a degraded countersign, got ${res.status}`);
+    }
+  }
+  console.log(`first degraded answer, leg B unreachable (5 samples): ${summary(degraded)}`);
+  await passkey.close();
 } finally {
   await pool.end();
   await kv.close();

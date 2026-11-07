@@ -70,10 +70,25 @@ jobs:
             compose_hash: $attestation[0].compose_hash
           }' | tee app.json
           echo "app_id=$app_id" >> "$GITHUB_OUTPUT"
+      - name: Fetch the compose file the CVM booted with
+        working-directory: engine/tee/phala
+        run: npx --yes "$PHALA_CLI" api "/cvms/${{ steps.deploy.outputs.app_id }}/compose_file" > app-compose.json
+      - name: Files to commit so that make measure keeps matching the CVM
+        run: |
+          {
+            echo "Commit these files from the \`deployment\` artifact:"
+            echo
+            echo '- `engine/tee/phala/app.json`'
+            echo '- `engine/tee/phala/app-compose.json`'
+            echo '- `engine/tee/phala/docker-compose.yml`'
+          } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
         with:
-          name: app
-          path: engine/tee/phala/app.json
+          name: deployment
+          path: |
+            engine/tee/phala/app.json
+            engine/tee/phala/app-compose.json
+            engine/tee/phala/docker-compose.yml
 
   verify:
     needs: deploy

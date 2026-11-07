@@ -9,10 +9,10 @@ use std::fmt;
 
 use aes_gcm::Aes256Gcm;
 use aes_gcm::aead::{Aead, Generate, KeyInit, Nonce, Payload};
-use hkdf::Hkdf;
+use hkdf::{Hkdf, HkdfExtract};
 use p256::ecdsa::SigningKey;
 use sha2::Sha256;
-use zeroize::{ZeroizeOnDrop, Zeroizing};
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 const KDF_SALT: &[u8] = b"keelson/kdf/v1";
 const SEAL_VERSION: u8 = 1;
@@ -133,7 +133,12 @@ impl Root {
     }
 
     fn hkdf(&self) -> Hkdf<Sha256> {
-        Hkdf::new(Some(KDF_SALT), &self.0[..])
+        // `Hkdf::new` drops the pseudorandom key unwiped, and every derived key follows from it.
+        let mut extract = HkdfExtract::<Sha256>::new(Some(KDF_SALT));
+        extract.input_ikm(&self.0[..]);
+        let (mut prk, hkdf) = extract.finalize();
+        prk.zeroize();
+        hkdf
     }
 
     fn cipher(&self) -> Aes256Gcm {
@@ -197,5 +202,31 @@ mod tests {
     fn root_is_zeroized_on_drop() {
         fn assert_zeroize_on_drop<T: ZeroizeOnDrop>() {}
         assert_zeroize_on_drop::<Root>();
+    }
+
+    #[test]
+    fn hkdf_hmac_states_are_zeroized_on_drop() {
+        fn assert_zeroize_on_drop<T: ZeroizeOnDrop>() {}
+        // HMAC keeps its keyed inner and outer states as `<Sha256 as EagerHash>::Core`.
+        assert_zeroize_on_drop::<<sha2::Sha256 as sha2::digest::block_api::EagerHash>::Core>();
+    }
+
+    #[test]
+    fn the_root_bytes_are_zero_after_drop() {
+        let Root(inner) = Root::new(&[0xa5; 32]);
+        let raw = Box::into_raw(inner);
+        // SAFETY: `raw` comes from `Box::into_raw`, so it is valid and aligned. `drop_in_place`
+        // runs the destructor once; the allocation stays live until `dealloc`, which does not
+        // run the destructor again.
+        let after = unsafe {
+            std::ptr::drop_in_place(raw);
+            let after: [u8; 32] = **raw;
+            std::alloc::dealloc(
+                raw.cast(),
+                std::alloc::Layout::new::<zeroize::Zeroizing<[u8; 32]>>(),
+            );
+            after
+        };
+        assert_eq!(after, [0; 32]);
     }
 }

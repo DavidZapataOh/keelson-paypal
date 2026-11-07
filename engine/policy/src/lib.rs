@@ -10,6 +10,7 @@ mod entity;
 mod evaluate;
 mod extras;
 mod hashes;
+#[cfg(feature = "prove")]
 mod prove;
 mod trace;
 
@@ -21,9 +22,10 @@ pub use evaluate::{
 };
 pub use extras::{Extra, ExtrasError, InvalidExtra, MAX_EXTRAS, compile_extras};
 pub use hashes::{policy_set_hash, policy_set_hash_tag, schema_hash, schema_hash_tag};
+#[cfg(feature = "prove")]
 pub use prove::{
-    CEDAR_POLICY_VERSION, CVC5_VERSION, Cvc5, ProofBundle, ProofResult, SPEC_SRC, SYMCC_VERSION,
-    SeedBug, Verdict, prove_all, prove_set, replay, spec, spec_hash_tag,
+    Cvc5, ProofBundle, ProofResult, SPEC_SRC, SeedBug, Verdict, prove_all, prove_set, replay, spec,
+    spec_hash_tag,
 };
 pub use trace::{Decision, Engine, FieldTrace, TRACE_VERSION, Trace, trace_jcs};
 
@@ -52,6 +54,13 @@ pub(crate) fn safe_int(v: &serde_json::Value) -> Option<i64> {
     #[allow(clippy::cast_possible_truncation)]
     (integral && !(f == 0.0 && f.is_sign_negative())).then_some(f as i64)
 }
+
+/// The `cedar-policy-symcc` version in `Cargo.lock`.
+pub const SYMCC_VERSION: &str = env!("KEELSON_SYMCC_VERSION");
+/// The `cedar-policy` version in `Cargo.lock`.
+pub const CEDAR_POLICY_VERSION: &str = env!("KEELSON_CEDAR_POLICY_VERSION");
+/// The cvc5 release `cedar-policy-symcc` [`SYMCC_VERSION`] is built and verified against.
+pub const CVC5_VERSION: &str = "1.3.1";
 
 /// The policy set source, `policy/keelson.cedar`.
 pub const POLICY_SET_SRC: &str = include_str!("../policy/keelson.cedar");
