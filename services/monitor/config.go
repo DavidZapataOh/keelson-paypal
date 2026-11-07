@@ -47,6 +47,9 @@ type config struct {
 	DataDir string
 	Addr    string
 	Poll    time.Duration
+	// ClientIPHeader is the header the proxy in front sets to the client's
+	// address, such as X-Real-IP on Railway. Empty means no proxy.
+	ClientIPHeader string
 	// Origins are followed; Conformance is known only through gossip.
 	Origins     []*origin
 	Conformance *origin
@@ -65,6 +68,8 @@ func loadConfig(getenv func(string) string) (*config, error) {
 		DataDir: getenv("MONITOR_DATA_DIR"),
 		Addr:    ":" + cmp.Or(getenv("PORT"), "8080"),
 		Poll:    pollInterval,
+
+		ClientIPHeader: getenv("MONITOR_CLIENT_IP_HEADER"),
 	}
 	if c.DataDir == "" {
 		return nil, errors.New("MONITOR_DATA_DIR is required")
