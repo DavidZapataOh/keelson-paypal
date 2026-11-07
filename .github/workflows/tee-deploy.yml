@@ -1,0 +1,86 @@
+name: tee-deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      digest:
+        description: Engine image digest published by tee-image, sha256:<hex>
+        required: true
+
+concurrency:
+  group: tee-deploy
+
+permissions:
+  contents: read
+
+env:
+  PHALA_CLI: phala@1.2.1
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      app_id: ${{ steps.deploy.outputs.app_id }}
+      url: ${{ steps.deploy.outputs.url }}
+    env:
+      DIGEST: ${{ inputs.digest }}
+      PHALA_CLOUD_API_KEY: ${{ secrets.PHALA_CLOUD_API_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+      - name: Pin the image digest in the compose file
+        run: |
+          grep -Eq '^sha256:[0-9a-f]{64}$' <<< "$DIGEST"
+          sed -E -i "s/sha256:[0-9a-f]{64}/$DIGEST/g" engine/tee/phala/docker-compose.yml
+          git diff --stat
+      - name: Deploy, or update the CVM named in app.json
+        id: deploy
+        env:
+          PAYPAL_CLIENT_ID: ${{ secrets.PAYPAL_CLIENT_ID }}
+          PAYPAL_CLIENT_SECRET: ${{ secrets.PAYPAL_CLIENT_SECRET }}
+          KEELSON_TEE_TOKEN_SHA256: ${{ secrets.KEELSON_TEE_TOKEN_SHA256 }}
+        working-directory: engine/tee/phala
+        run: |
+          umask 077
+          printf 'PAYPAL_CLIENT_ID=%s\nPAYPAL_CLIENT_SECRET=%s\nKEELSON_TEE_TOKEN_SHA256=%s\n' \
+            "$PAYPAL_CLIENT_ID" "$PAYPAL_CLIENT_SECRET" "$KEELSON_TEE_TOKEN_SHA256" > "$RUNNER_TEMP/engine.env"
+          phala() { npx --yes "$PHALA_CLI" "$@"; }
+          app_id="$(jq -r '.app_id // empty' app.json 2>/dev/null || true)"
+          if [ -n "$app_id" ]; then
+            phala deploy --cvm-id "$app_id" -c docker-compose.yml -e "$RUNNER_TEMP/engine.env" --no-public-logs --wait
+          else
+            app_id="$(phala deploy -n keelson-engine -c docker-compose.yml -t tdx.small --kms phala \
+              --image dstack-0.6.1 --no-public-logs -e "$RUNNER_TEMP/engine.env" -j | jq -r .app_id)"
+          fi
+          phala cvms get "$app_id" -j > "$RUNNER_TEMP/cvm.json"
+          url="$(jq -r .endpoints[0].app "$RUNNER_TEMP/cvm.json")"
+          for _ in $(seq 60); do
+            curl -fsS --max-time 5 "$url/v1/attestation" > "$RUNNER_TEMP/attestation.json" && break
+            sleep 5
+          done
+          jq -e .dstack_version "$RUNNER_TEMP/attestation.json"
+          jq -n --slurpfile cvm "$RUNNER_TEMP/cvm.json" --slurpfile attestation "$RUNNER_TEMP/attestation.json" '{
+            app_id: $cvm[0].app_id,
+            instance_type: $cvm[0].resource.instance_type,
+            os_image: $cvm[0].os.name,
+            dstack_version: $attestation[0].dstack_version,
+            node: $cvm[0].node_info.name,
+            compose_hash: $attestation[0].compose_hash
+          }' | tee app.json
+          echo "app_id=$app_id" >> "$GITHUB_OUTPUT"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: app
+          path: engine/tee/phala/app.json
+
+  verify:
+    needs: deploy
+    uses: ./.github/workflows/tee-verify.yml
+    with:
+      app_id: ${{ needs.deploy.outputs.app_id }}
+      url: ${{ needs.deploy.outputs.url }}
+    secrets: inherit

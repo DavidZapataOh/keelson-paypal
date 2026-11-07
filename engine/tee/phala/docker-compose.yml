@@ -1,0 +1,20 @@
+services:
+  engine:
+    image: ghcr.io/davidzapataoh/keelson-engine@sha256:63ca13302aee04c7206f93617a4b0b92d7c05e9b53862139c6519cb795eaa490
+    command: ["--platform", "tdx", "--listen", "tcp:0.0.0.0:8080"]
+    ports:
+      - "8080:8080"
+    volumes:
+      - /var/run/dstack.sock:/var/run/dstack.sock
+      - data:/data
+    environment:
+      - KEELSON_OCI_DIGEST=sha256:63ca13302aee04c7206f93617a4b0b92d7c05e9b53862139c6519cb795eaa490
+      - KEELSON_CANONICALIZER=keelson-canon/0.0.0
+      - KEELSON_ORIGIN=https://app.keelson.finance
+      - KEELSON_TEE_TOKEN_SHA256=${KEELSON_TEE_TOKEN_SHA256}
+      - PAYPAL_CLIENT_ID=${PAYPAL_CLIENT_ID}
+      - PAYPAL_CLIENT_SECRET=${PAYPAL_CLIENT_SECRET}
+    restart: unless-stopped
+
+volumes:
+  data:

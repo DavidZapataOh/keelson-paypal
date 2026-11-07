@@ -1,6 +1,10 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "workspaces": {
+    "engine/tee": {
+      "entry": ["scripts/*.ts!"],
+      "project": ["scripts/**/*.ts!"]
+    },
     "packages/compiler": {
       "entry": ["src/index.ts!", "eval/run.ts"],
       "project": ["src/**/*.ts!", "eval/**/*.ts", "test/**/*.ts"]

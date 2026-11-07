@@ -1,0 +1,17 @@
+{
+  "name": "@keelson/tee",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@phala/cloud": "0.4.0",
+    "@phala/dcap-qvl": "0.7.1"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "typescript": "catalog:"
+  }
+}
