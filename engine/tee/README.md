@@ -76,7 +76,7 @@ Refusals carry no signature and one of these stable codes: `auth.closed_*`, `aut
 | ------ | -------------------------------------------------------------------------------- |
 | 401    | `unauthorized`                                                                   |
 | 403    | `auth.*`                                                                         |
-| 409    | `replay`, `clock_skew`                                                           |
+| 409    | `replay`, `clock_skew`, `already_booted`                                         |
 | 413    | `payload_too_large`                                                              |
 | 422    | `bad_request`, `commitment_mismatch`, `mandate_expired`, `mandate_not_yet_valid` |
 | 501    | `no_root`                                                                        |
@@ -130,6 +130,12 @@ A relying party checks that `dstack-verifier` accepts `attestation`, that its re
 
 `tests/tdx_simulator.rs` runs the boot against the dstack guest agent simulator, whose quote is a captured one with the report data written in, so it checks what the engine asks for and binds, not the quote. `tests/tdx_live.rs` checks a deployed CVM end to end, including `dstack-verifier`.
 
+## Leg B on AWS Nitro Enclaves
+
+Built with the cargo feature `nitro`, `keelson-engine --platform nitro --listen vsock:5000` runs as leg B inside an enclave that has no network and no environment. Until `POST /v1/boot` every route answers `503 not_ready`. The boot message carries the chain, the bond vault and verifying contract, the image digest, the issuer's public JWK, the passkey origin, the SHA-256 of the bearer token and a recent Arbitrum Sepolia block; it is accepted once, and any other answers `409 already_booted`. The engine refuses to start unless the kernel's entropy source is `nsm-hwrng`, then generates the signer and asks the Nitro Secure Module for an attestation document whose `user_data` is `report_data(binding, block.hash)`, `public_key` the signer's SEC1 key and `nonce` the block hash.
+
+`GET /v1/attestation` is public and returns `{ tee: "nitro", document, binding, block }`, with `document` the COSE_Sign1 in base64. `POST /v1/attestation/refresh` (bearer) takes `{ block }` and attests the same signer over that newer block. The enclave cannot read the chain, so the caller supplies the block and a verifier checks it. A served document older than an hour answers `503 attestation_stale`. Leg B keeps no records. `nitro/README.md` describes the parent instance, the proxy and the scripts, and `tests/nitro_live.rs` checks a deployed enclave.
+
 ## Records
 
 On `--platform tdx` the user records (each `sub`'s passkey binding and each mandate's hold) are kept by `FileRecords`, one sealed file per record, in `KEELSON_DATA_DIR` (`/data` by default). The image ships `/data` owned by the engine's user, and the compose file mounts a named volume there, which lives on the CVM's encrypted disk. A restart or redeploy of the same app keeps the records. A file that was altered or moved does not open under its `sub` or mandate, and the request that depends on it fails with `auth.sub_bound` or a `paypal.hold_mismatch` denial.
@@ -140,7 +146,7 @@ One sealing key covers every purpose. Each sealed blob is bound to a purpose lab
 
 ## Image
 
-`Containerfile` builds `keelson-engine` with the `tdx` feature as a static musl binary with the StageX Rust pallet, network off, and ships it alone in a `scratch` image with the CA roots, running as user 65534. Every base image is pinned by digest. Build it from the repository root:
+`Containerfile` builds `keelson-engine` with the `tdx` and `nitro` features as a static musl binary with the StageX Rust pallet, network off, and ships it alone in a `scratch` image with the CA roots, running as user 65534. Every base image is pinned by digest. Build it from the repository root:
 
 ```sh
 SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)" docker buildx build -f engine/tee/Containerfile . \

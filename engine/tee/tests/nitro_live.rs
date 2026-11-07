@@ -83,7 +83,7 @@ async fn an_unbooted_enclave_takes_one_boot_message() {
 
     let (status, health) = get("/v1/health").await;
     assert_eq!(status, 200, "{health}");
-    assert_eq!(health["tee"], "nitro");
+    assert_eq!(health["tee"], 2);
     assert_eq!(health["signer"], booted["signer"]);
 }
 
