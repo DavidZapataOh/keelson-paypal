@@ -1,0 +1,16 @@
+{
+  "merchant": "northfield-outfitters",
+  "currency": "USD",
+  "lines": [
+    {
+      "sku": "TR2-BLU-10",
+      "size": "10",
+      "color": "blue",
+      "category": "shoes",
+      "qty": 1,
+      "unit_minor": 12900
+    }
+  ],
+  "return_days": 30,
+  "returns_free": true
+}
