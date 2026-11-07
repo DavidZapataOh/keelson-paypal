@@ -10,6 +10,7 @@ import { createKv } from "./kv.ts";
 import { createLogger } from "./logger.ts";
 import { authenticate } from "./middleware/auth.ts";
 import { closeServer } from "./shutdown.ts";
+import { startPurchaseSweeper } from "./sweeper.ts";
 import { createTee } from "./tee/config.ts";
 import { engineSource } from "./tee/engine-source.ts";
 import { startSignerRefresh } from "./tee/signers.ts";
@@ -48,6 +49,7 @@ const app = createApp({
 });
 
 const stopRefresh = tee ? startSignerRefresh({ db, log, tee }) : undefined;
+const stopSweeper = tee ? startPurchaseSweeper({ db, log }) : undefined;
 
 const server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
   log.info({ port: info.port }, "listening");
@@ -60,6 +62,7 @@ process.once("SIGTERM", () => {
     process.exit(1);
   }, FORCE_EXIT_MS).unref();
   stopRefresh?.();
+  stopSweeper?.();
   void closeServer(server, shutdown)
     .then(() => Promise.all([pool.end(), kv.close()]))
     .then(

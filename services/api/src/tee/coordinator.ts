@@ -1,4 +1,4 @@
-import { type Json, toHex } from "@keelson/core";
+import { DST, type Json, sha256, toHex, ulidToBytes32 } from "@keelson/core";
 import {
   CHAIN_IDS,
   type Countersign,
@@ -41,6 +41,16 @@ export class CoordinatorError extends Error {
   }
 }
 
+/** What a countersign must say about the purchase it was requested for. */
+export interface CountersignExpectation {
+  cartHash: Hex;
+  amount: bigint;
+  merchantId: Hex;
+  /** ISO 4217 numeric code. */
+  currency: number;
+  mandateHash: Hex;
+}
+
 export interface CoordinatorDeps {
   db: Db;
   kv: RedisClientType;
@@ -48,6 +58,7 @@ export interface CoordinatorDeps {
   tee: TeeConfig;
   /** The `verifyingContract` of the EIP-712 domain both legs were booted with. */
   verifyingContract: Address;
+  now?: () => Date;
 }
 
 interface CoordinatedCountersign {
@@ -83,9 +94,14 @@ function message(c: CountersignJson): Countersign {
   };
 }
 
+const unreachable = (err: unknown): boolean =>
+  err instanceof LegError && (err.kind === "timeout" || err.kind === "unreachable");
+
+/** Leg A is down on a timeout, a refused connection or a server error. */
 const down = (err: unknown): boolean =>
-  err instanceof LegError &&
-  (err.kind === "timeout" || err.kind === "unreachable" || (err.status ?? 0) >= 500);
+  unreachable(err) || (err instanceof LegError && (err.status ?? 0) >= 500);
+
+const divergence = () => new CoordinatorError("tee-divergence", "The signers disagree.", 502);
 
 const readmitting = new Set<Leg>();
 
@@ -104,20 +120,63 @@ function emit(deps: CoordinatorDeps, type: string, requestId: string, extra: Jso
   );
 }
 
+const evalHash = (jcs: Uint8Array): Hex => {
+  const prefix = new TextEncoder().encode(DST.eval);
+  const input = new Uint8Array(prefix.length + 1 + jcs.length);
+  input.set(prefix, 0);
+  input.set(jcs, prefix.length + 1);
+  return toHex(sha256(input));
+};
+
+const sameHex = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+
 /**
- * Checks that a leg's answer is the digest of its own countersign, signed by the signer
- * registered for that leg.
+ * Checks that a leg's answer is for this request and purchase, that its trace is the one it
+ * hashed, that it has not expired, and that its digest is the one its registered signer signed.
  */
 async function checked(
   deps: CoordinatorDeps,
   leg: Leg,
   answer: Countersigned,
-  requestId: string,
-): Promise<{ signer: Address; digest: Hex; signature: Hex }> {
-  const digest = countersignDigest(
-    message(answer.countersign),
-    keelsonDomain(DOMAIN_CHAIN, deps.verifyingContract),
-  );
+  req: CountersignRequest,
+  want: CountersignExpectation,
+): Promise<{ signer: Address; digest: Hex; signature: Hex; trace: Json }> {
+  const requestId = req.request_id;
+  const refuse = (what: string) => {
+    deps.log.warn({ leg, requestId, what }, "tee answer refused");
+    emit(deps, "tee.divergence", requestId, { leg, what });
+    return divergence();
+  };
+  const c = answer.countersign;
+  let typed: Countersign;
+  try {
+    typed = message(c);
+  } catch {
+    throw refuse("the countersign has a malformed number");
+  }
+  if (!sameHex(c.requestId, ulidToBytes32(requestId))) throw refuse("another request");
+  if (
+    !sameHex(c.cartHash, want.cartHash) ||
+    typed.amount !== want.amount ||
+    !sameHex(c.merchantId, want.merchantId) ||
+    typed.currency !== want.currency ||
+    !sameHex(c.mandateHash, want.mandateHash)
+  ) {
+    throw refuse("another purchase");
+  }
+  if (typed.expiresAt <= Math.floor((deps.now?.() ?? new Date()).getTime() / 1000)) {
+    throw refuse("expired");
+  }
+  const jcs = Buffer.from(answer.trace_jcs, "base64");
+  let trace: Json;
+  try {
+    trace = JSON.parse(jcs.toString("utf8")) as Json;
+  } catch {
+    throw refuse("the trace is not JSON");
+  }
+  if (!sameHex(evalHash(jcs), c.evalHash)) throw refuse("the trace is not the one hashed");
+
+  const digest = countersignDigest(typed, keelsonDomain(DOMAIN_CHAIN, deps.verifyingContract));
   const unregistered = async (why: string) => {
     // A restarted leg has a new signer the registry has not seen; one it knows is merely misfiled.
     const known = await deps.db.query.teeSigners.findFirst({
@@ -125,8 +184,13 @@ async function checked(
       where: (t, { eq }) => eq(t.address, Buffer.from(hexToBytes(answer.signer as Hex))),
     });
     if (!known) readmit(deps, leg);
+    deps.log.warn({ leg, requestId, why }, "tee signer refused");
     emit(deps, "tee.unregistered", requestId, { leg });
-    return new CoordinatorError("tee-unregistered-signer", `leg ${leg}: ${why}`, 502);
+    return new CoordinatorError(
+      "tee-unregistered-signer",
+      "A countersignature is not from a registered signer.",
+      502,
+    );
   };
   if (digest.toLowerCase() !== answer.digest) {
     throw await unregistered("the digest is not that of the countersign");
@@ -137,7 +201,7 @@ async function checked(
   if (recovered !== registered?.address || recovered !== getAddress(answer.signer)) {
     throw await unregistered("the signer is not the registered one");
   }
-  return { signer: recovered, digest, signature };
+  return { signer: recovered, digest, signature, trace };
 }
 
 function isUniqueViolation(err: unknown): boolean {
@@ -194,9 +258,6 @@ async function record(
   }
 }
 
-const parseTrace = (answer: Countersigned): Json =>
-  JSON.parse(Buffer.from(answer.trace_jcs, "base64").toString("utf8")) as Json;
-
 /**
  * Sends the request to leg A, forwards leg A's observation with the identical request to leg B,
  * and returns the countersignature only when both digests are byte-equal. With leg B down it
@@ -205,22 +266,24 @@ const parseTrace = (answer: Countersigned): Json =>
 export async function countersign2of2(
   deps: CoordinatorDeps,
   req: CountersignRequest,
+  want: CountersignExpectation,
 ): Promise<CoordinatedCountersign> {
-  const unavailable = (leg: Leg) =>
-    new CoordinatorError("tee-unavailable", `Leg ${leg} cannot countersign right now.`, 503);
+  const unavailable = () =>
+    new CoordinatorError("tee-unavailable", "A TEE signer is not available.", 503);
 
   if (!(await activeSigner(deps.db, 1))) {
     readmit(deps, "a");
-    throw unavailable("a");
+    throw unavailable();
   }
   let a: Countersigned;
   try {
     a = await deps.tee.client.a.countersign(req);
   } catch (err) {
-    if (down(err)) throw unavailable("a");
+    if (down(err)) throw unavailable();
+    if (err instanceof LegError && err.code === "malformed_response") throw divergence();
     throw err;
   }
-  const first = await checked(deps, "a", a, req.request_id);
+  const first = await checked(deps, "a", a, req, want);
 
   const { authorization_id: _read, ...forB } = req;
   let b: Countersigned | undefined;
@@ -228,17 +291,17 @@ export async function countersign2of2(
     try {
       b = await deps.tee.client.b.countersign({ ...forB, observation: a.observation });
     } catch (err) {
-      if (!down(err)) {
+      if (!unreachable(err)) {
         emit(deps, "tee.divergence", req.request_id, {
           digests: [first.digest, null],
           code: err instanceof LegError ? (err.code ?? null) : null,
         });
-        throw new CoordinatorError("tee-divergence", "The legs disagree.", 502);
+        throw divergence();
       }
     }
   }
 
-  const trace = parseTrace(a);
+  const { trace } = first;
   if (!b) {
     await record(deps, req.request_id, [first]);
     deps.log.warn({ requestId: req.request_id }, "leg b is down, countersigned by leg a alone");
@@ -254,10 +317,10 @@ export async function countersign2of2(
     };
   }
 
-  const second = await checked(deps, "b", b, req.request_id);
+  const second = await checked(deps, "b", b, req, want);
   if (first.digest !== second.digest) {
     emit(deps, "tee.divergence", req.request_id, { digests: [first.digest, second.digest] });
-    throw new CoordinatorError("tee-divergence", "The legs disagree.", 502);
+    throw divergence();
   }
   await record(deps, req.request_id, [first, second]);
   return {

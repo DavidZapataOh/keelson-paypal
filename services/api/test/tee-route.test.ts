@@ -15,6 +15,7 @@ describe("without TEE legs", () => {
     const res = await bare.request("/v1/tee/attestations");
     const body = (await res.json()) as { legs: unknown[]; measurements: { tdx: string[] } };
     expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("public, max-age=30");
     expect(body.legs).toEqual([]);
     expect(body.measurements.tdx).toEqual(loadMeasurements().tdx);
   });
@@ -56,8 +57,11 @@ describe.skipIf(!live)("with the live legs", { timeout: 60_000 }, () => {
     await refreshLeg(testDb, "a", tee);
     await refreshLeg(testDb, "b", tee);
     const body = (await (await app.request("/v1/tee/attestations")).json()) as {
-      legs: { tee: string; signer: string; attestation: { tee: string } }[];
+      legs: { tee: string; signer: string; verifiedAt: string; attestation: { tee: string } }[];
     };
+    for (const leg of body.legs) {
+      expect(Date.now() - Date.parse(leg.verifiedAt)).toBeLessThan(60_000);
+    }
     expect(body.legs.map((l) => l.tee)).toEqual(["tdx", "nitro"]);
     const [healthA, healthB] = await Promise.all([tee.client.a.health(), tee.client.b.health()]);
     expect(body.legs[0]?.signer.toLowerCase()).toBe(healthA.signer.toLowerCase());

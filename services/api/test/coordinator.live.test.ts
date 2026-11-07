@@ -4,12 +4,31 @@ import { and, desc, eq, events, teeSignatures, teeSigners } from "@keelson/db";
 import { pino } from "pino";
 import { recoverAddress, zeroAddress } from "viem";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { LegClient, LegError } from "../src/tee/client.ts";
+import {
+  type Countersigned,
+  type CountersignRequest,
+  LegClient,
+  LegError,
+  ObservationSchema,
+} from "../src/tee/client.ts";
 import { createTee } from "../src/tee/config.ts";
-import { type CoordinatorDeps, CoordinatorError, countersign2of2 } from "../src/tee/coordinator.ts";
+import {
+  type CoordinatorDeps,
+  CoordinatorError,
+  type CountersignExpectation,
+  countersign2of2,
+} from "../src/tee/coordinator.ts";
 import { activeSigner, refreshLeg, type TeeConfig } from "../src/tee/signers.ts";
 import { testDb, testKv } from "./setup.ts";
-import { carts, live, liveEnv, registerMandate, request, VirtualPasskey } from "./tee-live.ts";
+import {
+  carts,
+  expectation,
+  live,
+  liveEnv,
+  registerMandate,
+  request,
+  VirtualPasskey,
+} from "./tee-live.ts";
 
 // The legs are reached from a laptop here, not from the API's region.
 const SLOW = { a: 10_000, b: 10_000 };
@@ -25,12 +44,19 @@ describe.skipIf(!live)("coordinator (live legs)", { timeout: 120_000 }, () => {
   });
   let passkey: VirtualPasskey;
   const fresh = () => registerMandate(tee.client.a, passkey);
+  const prepare = async (cart: (typeof carts)[keyof typeof carts] = carts.demo) => {
+    const agent = await fresh();
+    const req = await request(agent, cart);
+    return { req, want: await expectation(agent, req) };
+  };
+  const drive = (d: CoordinatorDeps, p: Awaited<ReturnType<typeof prepare>>) =>
+    countersign2of2(d, p.req, p.want);
 
   beforeAll(async () => {
     passkey = await VirtualPasskey.create();
     await refreshLeg(testDb, "a", tee);
     await refreshLeg(testDb, "b", tee);
-  });
+  }, 120_000);
   afterAll(async () => {
     await passkey.close();
   });
@@ -46,10 +72,9 @@ describe.skipIf(!live)("coordinator (live legs)", { timeout: 120_000 }, () => {
   const vectors: Record<string, unknown> = {};
 
   test("the demo cart is allowed by both legs", async () => {
-    const agent = await fresh();
-    const req = await request(agent, carts.demo);
+    const { req, want } = await prepare();
     const started = performance.now();
-    const out = await countersign2of2(deps(), req);
+    const out = await countersign2of2(deps(), req, want);
     console.log(
       `2of2 countersign from the test host: ${Math.round(performance.now() - started)} ms`,
     );
@@ -73,7 +98,7 @@ describe.skipIf(!live)("coordinator (live legs)", { timeout: 120_000 }, () => {
   });
 
   test("a $340 bundle is a countersigned deny on both legs", async () => {
-    const out = await countersign2of2(deps(), await request(await fresh(), carts.bundle));
+    const out = await drive(deps(), await prepare(carts.bundle));
     expect(out.mode).toBe("2of2");
     expect(out.countersign.decision).toBe("2");
     expect(out.signatures.nitro).not.toBeNull();
@@ -87,14 +112,14 @@ describe.skipIf(!live)("coordinator (live legs)", { timeout: 120_000 }, () => {
       process.env.KEELSON_TEE_TOKEN as string,
       500,
     );
-    const req = await request(await fresh(), carts.demo);
-    const out = await countersign2of2(deps({ b: down }), req);
+    const { req, want } = await prepare();
+    const out = await countersign2of2(deps({ b: down }), req, want);
     expect(out.mode).toBe("degraded");
     expect(out.signatures.nitro).toBeNull();
     expect(out.signers.nitro).toBeNull();
     await expect.poll(() => alarms("tee.degraded", req.request_id)).toHaveLength(1);
 
-    const again = await countersign2of2(deps(), await request(await fresh(), carts.demo));
+    const again = await drive(deps(), await prepare());
     expect(again.mode).toBe("2of2");
   });
 
@@ -106,7 +131,7 @@ describe.skipIf(!live)("coordinator (live legs)", { timeout: 120_000 }, () => {
       1,
     );
     const started = performance.now();
-    const out = await countersign2of2(deps({ b: slow }), await request(await fresh(), carts.demo));
+    const out = await drive(deps({ b: slow }), await prepare());
     expect(out.mode).toBe("degraded");
     console.log(
       `degraded after a 1 ms leg b timeout: ${Math.round(performance.now() - started)} ms in total`,
@@ -123,7 +148,7 @@ describe.skipIf(!live)("coordinator (live legs)", { timeout: 120_000 }, () => {
     const agent = await fresh();
     const first = await request(agent, carts.demo);
     const second = await request(agent, carts.demo);
-    const out = await countersign2of2(deps({ b: hole }), first);
+    const out = await countersign2of2(deps({ b: hole }), first, await expectation(agent, first));
     expect(out.mode).toBe("degraded");
 
     const started = performance.now();
@@ -134,14 +159,14 @@ describe.skipIf(!live)("coordinator (live legs)", { timeout: 120_000 }, () => {
   });
 
   test("a cart that differs by one unit price on leg b is a divergence with no signature", async () => {
-    const req = await request(await fresh(), carts.demo);
+    const { req, want } = await prepare();
     const tampered = Object.create(tee.client.b) as LegClient;
     tampered.countersign = (r) => {
       const cart = structuredClone(r.cart) as { lines: { unit_minor: number }[] };
       for (const line of cart.lines) line.unit_minor += 1;
       return tee.client.b.countersign({ ...r, cart });
     };
-    const err = await countersign2of2(deps({ b: tampered }), req).then(
+    const err = await countersign2of2(deps({ b: tampered }), req, want).then(
       () => null,
       (e: unknown) => e,
     );
@@ -155,14 +180,14 @@ describe.skipIf(!live)("coordinator (live legs)", { timeout: 120_000 }, () => {
   });
 
   test("an observation altered on its way to leg b makes the digests differ", async () => {
-    const req = await request(await fresh(), carts.demo);
+    const { req, want } = await prepare();
     const tampered = Object.create(tee.client.b) as LegClient;
     tampered.countersign = (r) =>
       tee.client.b.countersign({
         ...r,
         observation: { ...(r.observation as object), budget_left_minor: 0 } as never,
       });
-    const err = await countersign2of2(deps({ b: tampered }), req).then(
+    const err = await countersign2of2(deps({ b: tampered }), req, want).then(
       () => null,
       (e: unknown) => e,
     );
@@ -185,14 +210,167 @@ describe.skipIf(!live)("coordinator (live legs)", { timeout: 120_000 }, () => {
       called = true;
       return tee.client.b.countersign(r);
     };
-    const req = await request(await fresh(), carts.demo);
-    const err = await countersign2of2(deps({ a: slow, b: spy }), req).then(
+    const { req, want } = await prepare();
+    const err = await countersign2of2(deps({ a: slow, b: spy }), req, want).then(
       () => null,
       (e: unknown) => e,
     );
     expect((err as CoordinatorError).slug).toBe("tee-unavailable");
     expect((err as CoordinatorError).status).toBe(503);
     expect(called).toBe(false);
+  });
+
+  const failure = (p: Promise<unknown>) =>
+    p.then(
+      () => null,
+      (e: unknown) => e,
+    );
+  const unsigned = async (requestId: string) =>
+    expect(
+      await testDb.select().from(teeSignatures).where(eq(teeSignatures.requestId, requestId)),
+    ).toHaveLength(0);
+  const b4xx = (): LegClient => {
+    const bad = Object.create(tee.client.b) as LegClient;
+    bad.countersign = (r) => tee.client.b.countersign({ ...r, closed_mandate: "x" });
+    return bad;
+  };
+  const a2 = (answer: (r: CountersignRequest) => Promise<Countersigned>): LegClient => {
+    const wrapped = Object.create(tee.client.a) as LegClient;
+    wrapped.countersign = answer;
+    return wrapped;
+  };
+  const hole = () =>
+    new LegClient("b", "http://127.0.0.1:9", process.env.KEELSON_TEE_TOKEN as string, 500);
+
+  test("a problem answer from leg b is a divergence, never a downgrade", async () => {
+    const { req, want } = await prepare();
+    const answered = await tee.client.b.countersign({ ...req, closed_mandate: "x" }).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect((answered as LegError).kind).toBe("problem");
+    expect((answered as LegError).status).toBeGreaterThanOrEqual(400);
+
+    const err = await failure(countersign2of2(deps({ b: b4xx() }), req, want));
+    expect((err as CoordinatorError).slug).toBe("tee-divergence");
+    expect((err as CoordinatorError).status).toBe(502);
+    await unsigned(req.request_id);
+  });
+
+  test("a 5xx problem body from leg b is a divergence too", async () => {
+    const { req, want } = await prepare();
+    const broken = Object.create(tee.client.b) as LegClient;
+    broken.countersign = () => Promise.reject(new LegError("b", "problem", "internal", 503));
+    const err = await failure(countersign2of2(deps({ b: broken }), req, want));
+    expect((err as CoordinatorError).slug).toBe("tee-divergence");
+    await unsigned(req.request_id);
+  });
+
+  test("a leg b whose signer went stale is skipped and the countersign is degraded", async () => {
+    const b = await signerRow(2);
+    await testDb
+      .update(teeSigners)
+      .set({ verifiedAt: new Date(Date.now() - 3 * 3_600_000) })
+      .where(eq(teeSigners.address, b.address));
+    try {
+      const out = await drive(deps(), await prepare());
+      expect(out.mode).toBe("degraded");
+    } finally {
+      await testDb
+        .update(teeSigners)
+        .set({ verifiedAt: b.verifiedAt })
+        .where(eq(teeSigners.address, b.address));
+    }
+  });
+
+  test("the observation is exactly the engine's, at every level", async () => {
+    const out = await drive(deps(), await prepare());
+    const seen = ObservationSchema.safeParse(out.observation);
+    expect(seen.success, JSON.stringify(seen.error)).toBe(true);
+    const o = out.observation as unknown as Record<string, Record<string, unknown>>;
+    for (const extra of [
+      { ...o, extra: 1 },
+      { ...o, paypal: { ...o.paypal, extra: 1 } },
+      { ...o, user_key: { ...o.user_key, extra: 1 } },
+    ]) {
+      expect(ObservationSchema.safeParse(extra).success).toBe(false);
+    }
+  });
+
+  test("a malformed answer from leg a is a divergence", async () => {
+    const { req, want } = await prepare();
+    const malformed = a2(() => Promise.reject(new LegError("a", "problem", "malformed_response")));
+    const err = await failure(countersign2of2(deps({ a: malformed }), req, want));
+    expect((err as CoordinatorError).slug).toBe("tee-divergence");
+  });
+
+  test("an answer to another request is refused even with leg b down", async () => {
+    const earlier = await prepare();
+    const first = await tee.client.a.countersign(earlier.req);
+    const { req, want } = await prepare();
+    const replay = a2(() => Promise.resolve(first));
+    const err = await failure(countersign2of2(deps({ a: replay, b: hole() }), req, want));
+    expect((err as CoordinatorError).slug).toBe("tee-divergence");
+    await unsigned(req.request_id);
+  });
+
+  test("a countersign field that is not a number is a divergence, not a crash", async () => {
+    const { req, want } = await prepare();
+    const bad = a2(async (r) => {
+      const answer = await tee.client.a.countersign(r);
+      return { ...answer, countersign: { ...answer.countersign, agentId: "abc" } };
+    });
+    const err = await failure(countersign2of2(deps({ a: bad, b: hole() }), req, want));
+    expect(err).toBeInstanceOf(CoordinatorError);
+    expect((err as CoordinatorError).slug).toBe("tee-divergence");
+  });
+
+  test("a trace that does not hash to the evalHash is refused", async () => {
+    const { req, want } = await prepare();
+    const forged = a2(async (r) => ({
+      ...(await tee.client.a.countersign(r)),
+      trace_jcs: Buffer.from('{"decision":"allow"}').toString("base64"),
+    }));
+    const err = await failure(countersign2of2(deps({ a: forged, b: hole() }), req, want));
+    expect((err as CoordinatorError).slug).toBe("tee-divergence");
+    await unsigned(req.request_id);
+  });
+
+  test("a countersign that already expired is refused", async () => {
+    const { req, want } = await prepare();
+    const err = await failure(
+      countersign2of2({ ...deps(), now: () => new Date(Date.now() + 3_600_000) }, req, want),
+    );
+    expect((err as CoordinatorError).slug).toBe("tee-divergence");
+    await unsigned(req.request_id);
+  });
+
+  test("a countersign that disagrees with the stored purchase is a divergence", async () => {
+    const { req, want } = await prepare();
+    const wrong: CountersignExpectation[] = [
+      { ...want, amount: want.amount + 1n },
+      { ...want, cartHash: `0x${"11".repeat(32)}` },
+      { ...want, merchantId: `0x${"22".repeat(32)}` },
+      { ...want, currency: want.currency + 1 },
+      { ...want, mandateHash: `0x${"33".repeat(32)}` },
+    ];
+    for (const w of wrong) {
+      const err = await failure(countersign2of2(deps({ b: hole() }), req, w));
+      expect((err as CoordinatorError).slug).toBe("tee-divergence");
+    }
+    await unsigned(req.request_id);
+  });
+
+  test("a refusal never names the leg", async () => {
+    const down = new LegClient(
+      "a",
+      "http://127.0.0.1:9",
+      process.env.KEELSON_TEE_TOKEN as string,
+      500,
+    );
+    const { req, want } = await prepare();
+    const err = await failure(countersign2of2(deps({ a: down }), req, want));
+    expect((err as CoordinatorError).message).not.toMatch(/\bleg\b/i);
   });
 
   // The signatures of the two runs above, for tests of the on-chain verifier. Set
@@ -234,31 +412,31 @@ describe.skipIf(!live)("coordinator (live legs)", { timeout: 120_000 }, () => {
     return row;
   };
 
-  test("a signer registered for the other leg is rejected", async () => {
+  test("a signature from a signer other than the registered one is rejected", async () => {
     const a = await signerRow(1);
-    const b = await signerRow(2);
-    await testDb.transaction(async (tx) => {
-      await tx.update(teeSigners).set({ teeKind: 2 }).where(eq(teeSigners.address, a.address));
-      await tx.update(teeSigners).set({ teeKind: 1 }).where(eq(teeSigners.address, b.address));
-    });
+    const other = Buffer.alloc(20, 7);
+    await testDb
+      .update(teeSigners)
+      .set({ address: other })
+      .where(eq(teeSigners.address, a.address));
     try {
-      const err = await countersign2of2(deps(), await request(await fresh(), carts.demo)).then(
+      const err = await drive(deps(), await prepare()).then(
         () => null,
         (e: unknown) => e,
       );
       expect((err as CoordinatorError).slug).toBe("tee-unregistered-signer");
     } finally {
-      await testDb.transaction(async (tx) => {
-        await tx.update(teeSigners).set({ teeKind: 1 }).where(eq(teeSigners.address, a.address));
-        await tx.update(teeSigners).set({ teeKind: 2 }).where(eq(teeSigners.address, b.address));
-      });
+      await testDb
+        .update(teeSigners)
+        .set({ address: a.address })
+        .where(eq(teeSigners.address, other));
     }
     expect((await activeSigner(testDb, 1))?.address).toBeDefined();
   });
 
   // Last: the revoked signer is the live leg's own and cannot be admitted again.
   test("a signer that signed another digest for the request is revoked", async () => {
-    const req = await request(await fresh(), carts.demo);
+    const { req, want } = await prepare();
     const a = await signerRow(1);
     await testDb.insert(teeSignatures).values({
       requestId: req.request_id,
@@ -266,7 +444,7 @@ describe.skipIf(!live)("coordinator (live legs)", { timeout: 120_000 }, () => {
       digest: Buffer.alloc(32, 7),
       signature: Buffer.alloc(65, 7),
     });
-    const err = await countersign2of2(deps(), req).then(
+    const err = await countersign2of2(deps(), req, want).then(
       () => null,
       (e: unknown) => e,
     );

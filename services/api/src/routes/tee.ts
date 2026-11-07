@@ -11,6 +11,7 @@ const Leg = z
     signer: z.string(),
     measurement: z.string(),
     registeredAt: z.string(),
+    verifiedAt: z.string().openapi({ description: "When the attestation last verified." }),
     expiresAt: z.string(),
     attestation: z.record(z.string(), z.unknown()).openapi({
       description:
@@ -67,9 +68,11 @@ export function registerTee(app: OpenAPIHono, deps: Pick<Deps, "db">): void {
         signer: getAddress(`0x${r.address.toString("hex")}`),
         measurement: r.measurement,
         registeredAt: r.registeredAt.toISOString(),
+        verifiedAt: r.verifiedAt.toISOString(),
         expiresAt: r.expiresAt.toISOString(),
         attestation: r.attestation as Record<string, unknown>,
       }));
+    c.header("Cache-Control", "public, max-age=30");
     return c.json(
       { legs, measurements: { engineBuildId: m.engineBuildId, tdx: m.tdx, nitro: m.nitro } },
       200,

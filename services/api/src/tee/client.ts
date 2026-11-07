@@ -7,8 +7,36 @@ const Hex32 = hex(/^0x[0-9a-f]{64}$/);
 const Hex65 = hex(/^0x[0-9a-f]{130}$/);
 const Address = hex(/^0x[0-9a-fA-F]{40}$/);
 
-/** What leg A observed and leg B signs over; forwarded to leg B exactly as received. */
-const ObservationSchema = z.looseObject({ now_ms: z.number() });
+const PayPalObservationSchema = z.strictObject({
+  authorization_id: z.string(),
+  status: z.string(),
+  currency: z.string(),
+  authorized_minor: z.number().int(),
+  captured_minor: z.number().int(),
+  payee_merchant_id: z.string(),
+  expires_at_ms: z.number().int(),
+  custom_id: z.string(),
+  raw_authorization: z.string(),
+  raw_order: z.string(),
+  read_at_ms: z.number().int(),
+});
+
+/**
+ * What leg A observed and leg B signs over, forwarded to leg B as received. It has exactly the
+ * engine's fields: nothing leg A did not read may ride along.
+ */
+export const ObservationSchema = z.strictObject({
+  now_ms: z.number().int(),
+  budget_left_minor: z.number().int(),
+  user_key: z.strictObject({
+    kty: z.literal("EC"),
+    crv: z.literal("P-256"),
+    x: z.string(),
+    y: z.string(),
+    kid: z.string().optional(),
+  }),
+  paypal: PayPalObservationSchema,
+});
 export type Observation = z.infer<typeof ObservationSchema>;
 
 const CountersignJsonSchema = z.strictObject({

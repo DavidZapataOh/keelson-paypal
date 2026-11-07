@@ -915,6 +915,8 @@ components:
             type: array
             items:
               type: string
+              maxLength: 256
+            maxItems: 8
           default: {}
         evidenceRoot:
           type: string
@@ -930,6 +932,8 @@ components:
       properties:
         merchant:
           type: string
+          minLength: 1
+          maxLength: 256
         currency:
           type: string
           minLength: 3
@@ -941,16 +945,20 @@ components:
             properties:
               sku:
                 type: string
+                maxLength: 256
               size:
                 type:
                   - string
                   - "null"
+                maxLength: 256
               color:
                 type:
                   - string
                   - "null"
+                maxLength: 256
               category:
                 type: string
+                maxLength: 256
               qty:
                 type: integer
                 exclusiveMinimum: 0
@@ -963,7 +971,7 @@ components:
               - qty
               - unit_minor
           minItems: 1
-          maxItems: 64
+          maxItems: 32
         return_days:
           type: integer
           minimum: 0
@@ -989,6 +997,9 @@ components:
           type: string
         registeredAt:
           type: string
+        verifiedAt:
+          type: string
+          description: When the attestation last verified.
         expiresAt:
           type: string
         attestation:
@@ -1001,6 +1012,7 @@ components:
         - signer
         - measurement
         - registeredAt
+        - verifiedAt
         - expiresAt
         - attestation
     Passkeys:
@@ -1355,6 +1367,18 @@ paths:
       responses:
         "200":
           description: The decision and its countersignatures
+          headers:
+            Keelson-Countersign-Mode:
+              schema:
+                type: string
+                enum:
+                  - 2of2
+                  - degraded
+                description: "`degraded` when only one TEE signed; the same as `mode` in the
+                  body."
+              required: true
+              description: "`degraded` when only one TEE signed; the same as `mode` in the
+                body."
           content:
             application/json:
               schema:

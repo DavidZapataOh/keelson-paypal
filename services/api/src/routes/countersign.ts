@@ -1,34 +1,53 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { type Cart, cartHash, isUlid } from "@keelson/core";
-import { type Db, purchases, transition } from "@keelson/db";
+import { type Cart, CURRENCIES, type CurrencyCode, cartHash, isUlid } from "@keelson/core";
+import { type Db, eq, purchases, transition } from "@keelson/db";
+import { merchantLeaf } from "@keelson/mandate";
 import { hexToBytes } from "viem";
 import type { Deps } from "../app.ts";
 import { requireClient } from "../middleware/auth.ts";
+import { principalKey } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 import { LegError } from "../tee/client.ts";
 import { VERIFYING_CONTRACT } from "../tee/config.ts";
-import { CoordinatorError, countersign2of2 } from "../tee/coordinator.ts";
+import {
+  CoordinatorError,
+  type CountersignExpectation,
+  countersign2of2,
+} from "../tee/coordinator.ts";
 
 const Hex32 = z.string().regex(/^0x[0-9a-f]{64}$/);
 const Hex = (bytes: number) => z.string().regex(new RegExp(`^0x[0-9a-f]{${bytes * 2}}$`));
 
+/**
+ * Leg B evaluates inside a timeout of half a second and a leg that misses it is skipped, so the
+ * size of what it evaluates is bounded here.
+ */
+const MAX_LINES = 32;
+const MAX_STRING = 256;
+const MAX_EVIDENCE_FIELDS = 16;
+const MAX_SOURCES = 8;
+const MAX_EVIDENCE_BYTES = 8_192;
+const MAX_UNIT_BYTES = 8_192;
+
+const bytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value));
+
 const CartSchema = z
   .object({
-    merchant: z.string(),
+    merchant: z.string().min(1).max(MAX_STRING),
     currency: z.string().length(3),
     lines: z
       .array(
         z.object({
-          sku: z.string(),
-          size: z.string().nullable().optional(),
-          color: z.string().nullable().optional(),
-          category: z.string(),
+          sku: z.string().max(MAX_STRING),
+          size: z.string().max(MAX_STRING).nullable().optional(),
+          color: z.string().max(MAX_STRING).nullable().optional(),
+          category: z.string().max(MAX_STRING),
           qty: z.number().int().positive(),
           unit_minor: z.number().int().nonnegative(),
         }),
       )
       .min(1)
-      .max(64),
+      .max(MAX_LINES),
     return_days: z.number().int().nonnegative(),
     returns_free: z.boolean(),
   })
@@ -43,10 +62,15 @@ const Body = z
       description: "The open mandate closed by the agent's key binding over the request and cart.",
     }),
     cart: CartSchema,
-    unit: z.record(z.string(), z.unknown()).openapi({
-      description: "The PayPal purchase unit the cart is checked against.",
-    }),
-    evidence: z.record(z.string(), z.array(z.string())).default({}),
+    unit: z
+      .record(z.string(), z.unknown())
+      .refine((unit) => bytes(unit) <= MAX_UNIT_BYTES, "The purchase unit is too large.")
+      .openapi({ description: "The PayPal purchase unit the cart is checked against." }),
+    evidence: z
+      .record(z.string(), z.array(z.string().max(MAX_STRING)).max(MAX_SOURCES))
+      .refine((e) => Object.keys(e).length <= MAX_EVIDENCE_FIELDS, "Too many evidence fields.")
+      .refine((e) => bytes(e) <= MAX_EVIDENCE_BYTES, "The evidence is too large.")
+      .default({}),
     evidenceRoot: Hex32,
   })
   .openapi("CountersignRequest");
@@ -89,6 +113,11 @@ const route = createRoute({
   responses: {
     200: {
       description: "The decision and its countersignatures",
+      headers: z.object({
+        "Keelson-Countersign-Mode": z.enum(["2of2", "degraded"]).openapi({
+          description: "`degraded` when only one TEE signed; the same as `mode` in the body.",
+        }),
+      }),
       content: { "application/json": { schema: Result } },
     },
     401: { description: "A leg refused the agent's authority", content: problemContent },
@@ -111,6 +140,8 @@ const route = createRoute({
 const RATE_PER_MANDATE = 60;
 const RATE_WINDOW_SEC = 60;
 const USABLE = new Set(["SIGNED", "HOLD_PENDING", "ACTIVE"]);
+/** Failures that say nothing about the request, so the same request id may be driven again. */
+const RETRYABLE = new Set(["tee-unavailable", "stale"]);
 
 const b64json = (segment: string | undefined): unknown => {
   if (!segment) throw new Error("empty segment");
@@ -152,6 +183,34 @@ function legStatus(
   return 502;
 }
 
+/**
+ * Takes a purchase that failed for a transient reason back into evaluation, if it is the same
+ * request. Leg A holds one reservation per mandate and request id, so driving it again does not
+ * reserve twice. Only one of several concurrent retries wins.
+ */
+async function redrive(
+  db: Db,
+  id: string,
+  mandateId: string,
+  want: CountersignExpectation,
+  cart: { merchant: string; currency: string },
+): Promise<boolean> {
+  const [row] = await db.select().from(purchases).where(eq(purchases.id, id));
+  if (!row) return false;
+  if (
+    row.state !== "FAILED" ||
+    !RETRYABLE.has(row.failureReason ?? "") ||
+    row.mandateId !== mandateId ||
+    row.amountMinor !== want.amount ||
+    row.merchantId !== cart.merchant ||
+    row.currency !== cart.currency ||
+    `0x${row.cartHash.toString("hex")}` !== want.cartHash
+  ) {
+    return false;
+  }
+  return transition(db, "purchases", id, "FAILED", "EVALUATING", { failureReason: null });
+}
+
 async function failPurchase(db: Db, id: string, reason: string): Promise<void> {
   await transition(db, "purchases", id, "EVALUATING", "FAILED", { failureReason: reason });
 }
@@ -176,7 +235,8 @@ export function registerCountersign(
     }
 
     const window = Math.floor(Date.now() / 1000 / RATE_WINDOW_SEC);
-    const key = `rl:countersign:${ids.mid}:${window}`;
+    const caller = principalKey(c.var.principal as NonNullable<typeof c.var.principal>);
+    const key = `rl:countersign:${caller}:${ids.mid}:${window}`;
     try {
       const [count] = await kv.multi().incr(key).expire(key, RATE_WINDOW_SEC, "NX").exec();
       if (Number(count) > RATE_PER_MANDATE) {
@@ -213,6 +273,24 @@ export function registerCountersign(
     );
     if (total <= 0n)
       return problem(c, 422, "invalid-cart", "Invalid cart", "The cart total must be positive.");
+    const currency = CURRENCIES[body.cart.currency as CurrencyCode];
+    let merchantId: bigint;
+    try {
+      merchantId = await merchantLeaf(body.cart.merchant);
+    } catch {
+      return problem(c, 422, "invalid-cart", "Invalid cart", "The merchant id is not valid.");
+    }
+    if (!currency) {
+      return problem(c, 422, "invalid-cart", "Invalid cart", "The currency is not supported.");
+    }
+    const want: CountersignExpectation = {
+      cartHash: `0x${Buffer.from(cartHash(body.cart as Cart)).toString("hex")}`,
+      amount: total,
+      merchantId: `0x${merchantId.toString(16).padStart(64, "0")}`,
+      currency: currency.numeric,
+      mandateHash: `0x${Buffer.from(mandate.mandateHash).toString("hex")}`,
+    };
+
     const purchaseId = ids.requestId;
     const inserted = await db
       .insert(purchases)
@@ -222,11 +300,15 @@ export function registerCountersign(
         merchantId: body.cart.merchant,
         currency: body.cart.currency,
         amountMinor: total,
-        cartHash: Buffer.from(cartHash(body.cart as Cart)),
+        cartHash: Buffer.from(want.cartHash.slice(2), "hex"),
       })
       .onConflictDoNothing()
       .returning({ id: purchases.id });
-    if (inserted.length === 0) {
+    const driven =
+      inserted.length > 0
+        ? await transition(db, "purchases", purchaseId, "PROPOSED", "EVALUATING")
+        : await redrive(db, purchaseId, mandate.id, want, body.cart);
+    if (!driven) {
       return problem(
         c,
         409,
@@ -235,7 +317,6 @@ export function registerCountersign(
         "This request id was already used.",
       );
     }
-    await transition(db, "purchases", purchaseId, "PROPOSED", "EVALUATING");
 
     try {
       const out = await countersign2of2(
@@ -250,22 +331,15 @@ export function registerCountersign(
           evidence_root: body.evidenceRoot as `0x${string}`,
           authorization_id: body.authorizationId,
         },
+        want,
       );
-      if (out.countersign.mandateHash !== `0x${Buffer.from(mandate.mandateHash).toString("hex")}`) {
-        await failPurchase(db, purchaseId, "mandate-mismatch");
-        return problem(
-          c,
-          409,
-          "mandate-not-active",
-          "Mandate not active",
-          "The countersign is for another mandate.",
-        );
-      }
       const allow = out.countersign.decision === "1";
       const patch = {
         countersignDigest: Buffer.from(hexToBytes(out.digest)),
         decision: Number(out.countersign.decision),
         failedFieldsMask: Number(out.countersign.failedFieldsMask),
+        countersignMode: out.mode,
+        failureReason: null,
       };
       await transition(
         db,
@@ -275,6 +349,7 @@ export function registerCountersign(
         allow ? "COUNTERSIGNED" : "DENIED",
         patch,
       );
+      c.header("Keelson-Countersign-Mode", out.mode);
       return c.json(
         {
           purchaseId,

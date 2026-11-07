@@ -8,7 +8,7 @@ import type { LegClient } from "../src/tee/client.ts";
 import { createTee } from "../src/tee/config.ts";
 import { countersign2of2 } from "../src/tee/coordinator.ts";
 import { refreshLeg } from "../src/tee/signers.ts";
-import { carts, registerMandate, request, VirtualPasskey } from "../test/tee-live.ts";
+import { carts, expectation, registerMandate, request, VirtualPasskey } from "../test/tee-live.ts";
 
 // Sequential countersigns of the demo cart against the live legs and a real sandbox authorization.
 // The legs are timed one by one; leg A's time includes its PayPal read, so its own time is
@@ -113,7 +113,7 @@ try {
   for (let i = 0; i < SAMPLES; i++) {
     const req = await request(agent, cheap, ulid());
     const started = performance.now();
-    const out = await countersign2of2(deps, req);
+    const out = await countersign2of2(deps, req, await expectation(agent, req));
     timed.total.push(performance.now() - started);
     if (out.countersign.decision !== "1") denied++;
   }

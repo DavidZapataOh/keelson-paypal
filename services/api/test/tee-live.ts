@@ -1,7 +1,13 @@
 import { createPublicKey, randomBytes } from "node:crypto";
-import { cartHash, toHex } from "@keelson/core";
+import { type Cart, CURRENCIES, type CurrencyCode, cartHash, toHex } from "@keelson/core";
 import { type Db, operators, passkey as passkeyTable, user } from "@keelson/db";
-import { closeMandate, type Mandate, parseMandate, prepareSigning } from "@keelson/mandate";
+import {
+  closeMandate,
+  type Mandate,
+  merchantLeaf,
+  parseMandate,
+  prepareSigning,
+} from "@keelson/mandate";
 import { isoCBOR } from "@simplewebauthn/server/helpers";
 import type { MiddlewareHandler } from "hono";
 import { type Browser, type CDPSession, chromium, type Page } from "playwright";
@@ -12,6 +18,7 @@ import cartDemo from "../../../engine/canon/tests/fixtures/demo-shoes.json" with
 import demo from "../../../packages/mandate/test/fixtures/demo-mandate.json" with { type: "json" };
 import type { Principal } from "../src/principal.ts";
 import type { CountersignRequest, LegClient, MandateIssued } from "../src/tee/client.ts";
+import type { CountersignExpectation } from "../src/tee/coordinator.ts";
 
 export const live = process.env.KEELSON_LIVE === "1";
 
@@ -288,6 +295,21 @@ export async function request(
     evidence: {},
     evidence_root: `0x${"55".repeat(32)}`,
     authorization_id: process.env.PAYPAL_AUTHORIZATION_CREATED as string,
+  };
+}
+
+/** What the countersign for `req` has to say, from the request alone. */
+export async function expectation(
+  agent: Agent,
+  req: CountersignRequest,
+): Promise<CountersignExpectation> {
+  const cart = req.cart as Cart;
+  return {
+    cartHash: toHex(cartHash(cart)),
+    amount: cart.lines.reduce((sum, l) => sum + BigInt(l.qty) * BigInt(l.unit_minor), 0n),
+    merchantId: `0x${(await merchantLeaf(cart.merchant)).toString(16).padStart(64, "0")}`,
+    currency: CURRENCIES[cart.currency as CurrencyCode].numeric,
+    mandateHash: agent.issued.mandate_hash,
   };
 }
 
