@@ -11,6 +11,7 @@ mod keys;
 #[cfg(feature = "nitro")]
 pub mod nitro;
 pub mod paypal;
+pub mod process;
 mod records;
 mod report_data;
 pub mod server;

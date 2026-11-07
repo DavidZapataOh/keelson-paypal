@@ -48,7 +48,7 @@ k256 = { version = "0.14.0", default-features = false, features = ["ecdsa", "get
 keelson-canon = { path = "../canon" }
 keelson-core = { path = "../core" }
 keelson-mandate = { path = "../mandate" }
-keelson-policy = { path = "../policy" }
+keelson-policy = { path = "../policy", default-features = false }
 p256 = { version = "0.14.0", default-features = false, features = ["ecdsa", "std"] }
 # TLS on rustls with the ring provider: no aws-lc-sys and no cmake in the image build.
 reqwest = { version = "0.13.5", optional = true, default-features = false, features = ["form", "json", "rustls-no-provider"] }

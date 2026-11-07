@@ -246,6 +246,9 @@ struct Health {
     /// The credential issuer's public JWK, which `issuer_jwk_thumbprint` in the attestation covers.
     #[serde(skip_serializing_if = "Option::is_none")]
     issuer: Option<serde_json::Value>,
+    /// Resident memory of the process in KiB, where the platform reports it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    rss_kib: Option<u64>,
 }
 
 async fn health(State(state): State<Arc<AppState>>) -> Json<Health> {
@@ -260,6 +263,7 @@ async fn health(State(state): State<Arc<AppState>>) -> Json<Health> {
         issuer: engine
             .issuer()
             .map(|k| json!({ "kty": "EC", "crv": "P-256", "x": k.x, "y": k.y })),
+        rss_kib: crate::process::rss_kib(),
     })
 }
 

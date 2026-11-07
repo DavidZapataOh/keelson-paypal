@@ -1,0 +1,5 @@
+# dive --ci rules for the engine image: one layer holds the binary, and nothing is written twice.
+rules:
+  lowestEfficiency: 0.99
+  highestWastedBytes: 1MB
+  highestUserWastedPercent: 0.01

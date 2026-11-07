@@ -18,7 +18,9 @@ fn sha256_tag(bytes: impl AsRef<[u8]>) -> String {
 #[test]
 fn tool_versions_are_the_pinned_ones() {
     let manifest = include_str!("../Cargo.toml");
-    assert!(manifest.contains(&format!("cedar-policy-symcc = \"={SYMCC_VERSION}\"")));
+    assert!(manifest.contains(&format!(
+        "cedar-policy-symcc = {{ version = \"={SYMCC_VERSION}\""
+    )));
     assert!(manifest.contains(&format!("cedar-policy = \"={CEDAR_POLICY_VERSION}\"")));
 }
 

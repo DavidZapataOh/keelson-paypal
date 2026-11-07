@@ -18,17 +18,12 @@ use sha2::{Digest, Sha256};
 use crate::extras::{Extra, compile};
 use crate::hashes::hex;
 use crate::{
-    Decision, PolicyError, policies, policy_set_hash_tag, policy_texts, schema, schema_hash_tag,
+    CEDAR_POLICY_VERSION, CVC5_VERSION, Decision, PolicyError, SYMCC_VERSION, policies,
+    policy_set_hash_tag, policy_texts, schema, schema_hash_tag,
 };
 
 /// The reference spec source, `policy/spec.cedar`: one `permit` stating every mandate rule.
 pub const SPEC_SRC: &str = include_str!("../policy/spec.cedar");
-/// The `cedar-policy-symcc` version in `Cargo.lock`.
-pub const SYMCC_VERSION: &str = env!("KEELSON_SYMCC_VERSION");
-/// The `cedar-policy` version in `Cargo.lock`.
-pub const CEDAR_POLICY_VERSION: &str = env!("KEELSON_CEDAR_POLICY_VERSION");
-/// The cvc5 release `cedar-policy-symcc` [`SYMCC_VERSION`] is built and verified against.
-pub const CVC5_VERSION: &str = "1.3.1";
 
 /// A cvc5 binary of version [`CVC5_VERSION`].
 #[derive(Debug, Clone)]
