@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { LegClient, LegError } from "../src/tee/client.ts";
 import { createTee } from "../src/tee/config.ts";
 import { type CoordinatorDeps, CoordinatorError, countersign2of2 } from "../src/tee/coordinator.ts";
-import { activeSigner, registerLeg, type TeeConfig } from "../src/tee/signers.ts";
+import { activeSigner, refreshLeg, type TeeConfig } from "../src/tee/signers.ts";
 import { testDb, testKv } from "./setup.ts";
 import { carts, live, liveEnv, registerMandate, request, VirtualPasskey } from "./tee-live.ts";
 
@@ -28,8 +28,8 @@ describe.skipIf(!live)("coordinator (live legs)", { timeout: 120_000 }, () => {
 
   beforeAll(async () => {
     passkey = await VirtualPasskey.create();
-    await registerLeg(testDb, "a", tee.client.a, tee.expect.a);
-    await registerLeg(testDb, "b", tee.client.b, tee.expect.b);
+    await refreshLeg(testDb, "a", tee);
+    await refreshLeg(testDb, "b", tee);
   });
   afterAll(async () => {
     await passkey.close();
@@ -111,6 +111,26 @@ describe.skipIf(!live)("coordinator (live legs)", { timeout: 120_000 }, () => {
     console.log(
       `degraded after a 1 ms leg b timeout: ${Math.round(performance.now() - started)} ms in total`,
     );
+  });
+
+  test("a black-holed leg b is given up on within its timeout", async () => {
+    const hole = new LegClient(
+      "b",
+      "https://10.255.255.1",
+      process.env.KEELSON_TEE_TOKEN as string,
+      500,
+    );
+    const agent = await fresh();
+    const first = await request(agent, carts.demo);
+    const second = await request(agent, carts.demo);
+    const out = await countersign2of2(deps({ b: hole }), first);
+    expect(out.mode).toBe("degraded");
+
+    const started = performance.now();
+    await hole.countersign(second).catch(() => undefined);
+    const spent = performance.now() - started;
+    console.log(`leg b given up on after ${Math.round(spent)} ms`);
+    expect(spent).toBeLessThan(1_000);
   });
 
   test("a cart that differs by one unit price on leg b is a divergence with no signature", async () => {

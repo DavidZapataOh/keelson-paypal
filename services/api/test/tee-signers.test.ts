@@ -3,12 +3,12 @@ import { fileURLToPath } from "node:url";
 import { teeSigners } from "@keelson/db";
 import { describe, expect, test } from "vitest";
 import { createTee } from "../src/tee/config.ts";
-import { activeSigner, registerLeg, revokeSigner } from "../src/tee/signers.ts";
+import { activeSigner, refreshLeg, registerLeg, revokeSigner } from "../src/tee/signers.ts";
 import { testDb } from "./setup.ts";
 
 const live = process.env.KEELSON_LIVE === "1";
 
-describe.skipIf(!live)("tee signers (live legs)", () => {
+describe.skipIf(!live)("tee signers (live legs)", { timeout: 60_000 }, () => {
   const env = {
     TEE_A_URL: process.env.TEE_A_URL as string,
     TEE_B_URL: process.env.TEE_B_URL as string,
@@ -20,8 +20,8 @@ describe.skipIf(!live)("tee signers (live legs)", () => {
 
   test("a verified attestation admits each leg's signer", async () => {
     const [healthA, healthB] = await Promise.all([tee.client.a.health(), tee.client.b.health()]);
-    const a = await registerLeg(testDb, "a", tee.client.a, tee.expect.a);
-    const b = await registerLeg(testDb, "b", tee.client.b, tee.expect.b);
+    const a = await refreshLeg(testDb, "a", tee);
+    const b = await refreshLeg(testDb, "b", tee);
 
     expect(a.teeKind).toBe(1);
     expect(b.teeKind).toBe(2);

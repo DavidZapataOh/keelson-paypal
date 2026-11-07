@@ -20,9 +20,9 @@ import {
 import { activeSigner, type Leg, refreshLeg, revokeSigner, type TeeConfig } from "./signers.ts";
 
 /** The channel the coordinator raises its alarms on. */
-export const TEE_EVENTS = "public:tee";
+const TEE_EVENTS = "public:tee";
 
-export type CoordinatorSlug =
+type CoordinatorSlug =
   | "tee-unavailable"
   | "tee-divergence"
   | "tee-unregistered-signer"
@@ -30,13 +30,14 @@ export type CoordinatorSlug =
 
 /** A refusal to countersign; it never carries a signature. */
 export class CoordinatorError extends Error {
-  constructor(
-    readonly slug: CoordinatorSlug,
-    message: string,
-    readonly status: 502 | 503,
-  ) {
+  readonly slug: CoordinatorSlug;
+  readonly status: 502 | 503;
+
+  constructor(slug: CoordinatorSlug, message: string, status: 502 | 503) {
     super(message);
     this.name = "CoordinatorError";
+    this.slug = slug;
+    this.status = status;
   }
 }
 
@@ -49,7 +50,7 @@ export interface CoordinatorDeps {
   verifyingContract: Address;
 }
 
-export interface CoordinatedCountersign {
+interface CoordinatedCountersign {
   mode: "2of2" | "degraded";
   countersign: CountersignJson;
   digest: Hex;

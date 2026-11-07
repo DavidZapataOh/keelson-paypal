@@ -39,6 +39,10 @@ export const mandates = pgTable(
     /** The WebAuthn assertion over `mandate_hash`. */
     userAuth: jsonb(),
     credentialId: text(),
+    /** The open mandate (L2) the TEE issued for the agent to close. */
+    openMandate: text(),
+    /** The commitment salt, sealed by the TEE to the user and this mandate. */
+    sealedSalt: bytea(),
     paypalOrderId: text().unique("mandates_paypal_order_id_unique"),
     paypalAuthorizationId: text().unique("mandates_paypal_authorization_id_unique"),
     createdAt: createdAt(),

@@ -12,6 +12,9 @@ const base = {
 };
 const production = {
   ...base,
+  TEE_A_URL: "https://tee-a.example",
+  TEE_B_URL: "https://tee-b.example",
+  KEELSON_TEE_TOKEN: "t".repeat(64),
   NODE_ENV: "production",
   BETTER_AUTH_URL: "https://api.keelson.finance",
   APP_ORIGIN: "https://app.keelson.finance",
@@ -46,4 +49,12 @@ test("PayPal sign-in needs credentials and a known environment", () => {
   const env = { ...base, BETTER_AUTH_URL: "http://localhost:10000" };
   expect(() => parseEnv({ ...env, PAYPAL_CLIENT_ID: undefined })).toThrow();
   expect(() => parseEnv({ ...env, PAYPAL_ENV: "production" })).toThrow();
+});
+
+test("the TEE settings come together and are required in production", () => {
+  const dev = { ...base, BETTER_AUTH_URL: "http://localhost:10000" };
+  expect(parseEnv(dev).TEE_A_URL).toBeUndefined();
+  expect(() => parseEnv({ ...dev, TEE_A_URL: "https://tee-a.example" })).toThrow();
+  const { TEE_A_URL: _a, ...withoutLegs } = production;
+  expect(() => parseEnv(withoutLegs)).toThrow();
 });

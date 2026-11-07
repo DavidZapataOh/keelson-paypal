@@ -5,10 +5,13 @@ import { LegClient } from "./client.ts";
 import { loadMeasurements } from "./measurements.ts";
 import type { LegExpectations, TeeConfig } from "./signers.ts";
 
-/** Leg A reads PayPal, so it gets longer than leg B, which only evaluates. */
-export const LEG_TIMEOUT_MS = { a: 1_500, b: 500 } as const;
+/** The `verifyingContract` of the EIP-712 domain both legs were booted with. */
+export const VERIFYING_CONTRACT = zeroAddress;
 
-export interface TeeEnv {
+/** Leg A reads PayPal, so it gets longer than leg B, which only evaluates. */
+const LEG_TIMEOUT_MS = { a: 1_500, b: 500 } as const;
+
+interface TeeEnv {
   TEE_A_URL: string;
   TEE_B_URL: string;
   KEELSON_TEE_TOKEN: string;

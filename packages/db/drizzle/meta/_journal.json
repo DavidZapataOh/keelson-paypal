@@ -71,6 +71,13 @@
       "when": 1794023537817,
       "tag": "0009_tee_signers",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794024325459,
+      "tag": "0010_mandate_credentials",
+      "breakpoints": true
     }
   ]
 }

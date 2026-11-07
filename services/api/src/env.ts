@@ -33,6 +33,10 @@ const schema = z
       [env.TEE_A_URL, env.TEE_B_URL, env.KEELSON_TEE_TOKEN].every((v) => v !== undefined),
     { message: "TEE_A_URL, TEE_B_URL and KEELSON_TEE_TOKEN are set together", path: ["TEE_A_URL"] },
   )
+  .refine((env) => env.NODE_ENV !== "production" || env.TEE_A_URL !== undefined, {
+    message: "the TEE legs are required in production",
+    path: ["TEE_A_URL"],
+  })
   .refine((env) => env.PASSKEY_RP_ID === undefined || env.NODE_ENV === "test", {
     message: "PASSKEY_RP_ID may only be set in tests",
     path: ["PASSKEY_RP_ID"],

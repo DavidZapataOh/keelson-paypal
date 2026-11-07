@@ -17,6 +17,8 @@ export const user = pgTable("user", {
   email: text("email").notNull().unique(),
   emailVerified: boolean("email_verified").default(false).notNull(),
   image: text("image"),
+  /** The credential (L1) the TEE issued for this user; presented again with later mandates. */
+  userCredential: text("user_credential"),
   role: text("role", { enum: ["user", "admin"] })
     .default("user")
     .notNull(),

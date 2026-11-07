@@ -1,7 +1,6 @@
-import type { SignerAttestation } from "@keelson/attest";
-import { getCollateral } from "@keelson/attest/server";
 import { type Hex, hexToBytes } from "viem";
 import { z } from "zod";
+import { getCollateral, type SignerAttestation } from "./attest.ts";
 
 const hex = (pattern: RegExp) => z.custom<Hex>((v) => typeof v === "string" && pattern.test(v));
 const Hex32 = hex(/^0x[0-9a-f]{64}$/);
@@ -9,10 +8,10 @@ const Hex65 = hex(/^0x[0-9a-f]{130}$/);
 const Address = hex(/^0x[0-9a-fA-F]{40}$/);
 
 /** What leg A observed and leg B signs over; forwarded to leg B exactly as received. */
-export const ObservationSchema = z.looseObject({ now_ms: z.number() });
+const ObservationSchema = z.looseObject({ now_ms: z.number() });
 export type Observation = z.infer<typeof ObservationSchema>;
 
-export const CountersignJsonSchema = z.strictObject({
+const CountersignJsonSchema = z.strictObject({
   requestId: Hex32,
   mandateHash: Hex32,
   mandateCommitment: Hex32,
@@ -58,7 +57,7 @@ const HealthSchema = z.looseObject({
   oci_digest: z.string(),
   now_ms: z.number(),
 });
-export type Health = z.infer<typeof HealthSchema>;
+type Health = z.infer<typeof HealthSchema>;
 
 const BindingSchema = z.object({
   chainId: z.string(),
@@ -111,7 +110,7 @@ export interface CountersignRequest {
 }
 
 /** The body of `POST /v1/mandates/register` on leg A. */
-export interface RegisterMandate {
+interface RegisterMandate {
   sub: string;
   payload_sd: unknown;
   disclosures: string[];
@@ -121,7 +120,7 @@ export interface RegisterMandate {
   user_credential?: string;
 }
 
-export interface ChainBlock {
+interface ChainBlock {
   number: number | bigint;
   hash: Hex;
 }
@@ -130,25 +129,39 @@ export interface ChainBlock {
 const ADMIN_TIMEOUT_MS = 15_000;
 
 export class LegError extends Error {
+  readonly leg: "a" | "b";
+  readonly kind: "timeout" | "unreachable" | "problem";
+  readonly code: string | undefined;
+  readonly status: number | undefined;
+
   constructor(
-    readonly leg: "a" | "b",
-    readonly kind: "timeout" | "unreachable" | "problem",
-    readonly code?: string,
-    readonly status?: number,
+    leg: "a" | "b",
+    kind: "timeout" | "unreachable" | "problem",
+    code?: string,
+    status?: number,
   ) {
     super(`leg ${leg}: ${kind}${code ? ` (${code})` : ""}`);
     this.name = "LegError";
+    this.leg = leg;
+    this.kind = kind;
+    this.code = code;
+    this.status = status;
   }
 }
 
 /** A client for one TEE leg. Requests are never retried. */
 export class LegClient {
-  constructor(
-    readonly leg: "a" | "b",
-    private readonly url: string,
-    private readonly token: string,
-    private readonly timeoutMs: number,
-  ) {}
+  readonly leg: "a" | "b";
+  private readonly url: string;
+  private readonly token: string;
+  private readonly timeoutMs: number;
+
+  constructor(leg: "a" | "b", url: string, token: string, timeoutMs: number) {
+    this.leg = leg;
+    this.url = url;
+    this.token = token;
+    this.timeoutMs = timeoutMs;
+  }
 
   private async call(
     method: "GET" | "POST",

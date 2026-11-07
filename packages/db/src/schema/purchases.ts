@@ -33,7 +33,8 @@ export const purchases = pgTable(
     cartHash: bytea().notNull(),
     countersignDigest: bytea().unique("purchases_countersign_digest_unique"),
     decision: smallint(),
-    failedFieldsMask: integer(),
+    /** Bit 31 is set when the PayPal check failed, beyond `integer`. */
+    failedFieldsMask: bigint({ mode: "number" }),
     invoiceId: varchar({ length: 60 }).unique("purchases_invoice_id_unique"),
     paypalCaptureId: text().unique("purchases_paypal_capture_id_unique"),
     logIndex: bigint({ mode: "bigint" }).unique("purchases_log_index_unique"),

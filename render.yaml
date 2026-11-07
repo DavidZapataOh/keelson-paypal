@@ -20,6 +20,8 @@ services:
         - tsconfig.base.json
         - .node-version
         - render.yaml
+        - engine/tee/nitro/eif.json
+        - engine/tee/phala/measurement.json
     domains:
       - api.keelson.finance
     envVars:
@@ -46,6 +48,12 @@ services:
       - key: PAYPAL_CLIENT_SECRET
         sync: false
       - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: TEE_A_URL
+        sync: false
+      - key: TEE_B_URL
+        sync: false
+      - key: KEELSON_TEE_TOKEN
         sync: false
       - fromGroup: keelson-secrets
 

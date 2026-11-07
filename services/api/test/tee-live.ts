@@ -1,12 +1,16 @@
 import { createPublicKey, randomBytes } from "node:crypto";
 import { cartHash, toHex } from "@keelson/core";
+import { type Db, operators, passkey as passkeyTable, user } from "@keelson/db";
 import { closeMandate, type Mandate, parseMandate, prepareSigning } from "@keelson/mandate";
+import { isoCBOR } from "@simplewebauthn/server/helpers";
+import type { MiddlewareHandler } from "hono";
 import { type Browser, type CDPSession, chromium, type Page } from "playwright";
 import { ulid } from "ulid";
 import { bytesToHex } from "viem";
 import cartBundle from "../../../engine/canon/tests/fixtures/bundle-340.json" with { type: "json" };
 import cartDemo from "../../../engine/canon/tests/fixtures/demo-shoes.json" with { type: "json" };
 import demo from "../../../packages/mandate/test/fixtures/demo-mandate.json" with { type: "json" };
+import type { Principal } from "../src/principal.ts";
 import type { CountersignRequest, LegClient, MandateIssued } from "../src/tee/client.ts";
 
 export const live = process.env.KEELSON_LIVE === "1";
@@ -30,12 +34,22 @@ export interface Assertion {
 
 /** A passkey held by Chrome's virtual authenticator, on the origin the legs expect. */
 export class VirtualPasskey {
+  private readonly browser: Browser;
+  private readonly page: Page;
+  readonly credentialId: string;
+  readonly jwk: { kty: string; crv: string; x: string; y: string };
+
   private constructor(
-    private readonly browser: Browser,
-    private readonly page: Page,
-    readonly credentialId: string,
-    readonly jwk: { kty: string; crv: string; x: string; y: string },
-  ) {}
+    browser: Browser,
+    page: Page,
+    credentialId: string,
+    jwk: { kty: string; crv: string; x: string; y: string },
+  ) {
+    this.browser = browser;
+    this.page = page;
+    this.credentialId = credentialId;
+    this.jwk = jwk;
+  }
 
   static async create(): Promise<VirtualPasskey> {
     const browser = await chromium.launch();
@@ -166,15 +180,32 @@ export interface Agent {
   key: CryptoKey;
 }
 
-/** Registers the demo mandate for a new user and a new agent key on leg A. */
-export async function registerMandate(leg: LegClient, passkey: VirtualPasskey): Promise<Agent> {
+export interface SignedMandate {
+  sub: string;
+  key: CryptoKey;
+  salt: Buffer;
+  assertion: Assertion;
+  /** The body of `POST /v1/mandates`. */
+  body: {
+    payloadSd: object;
+    disclosures: string[];
+    commitment: string;
+    salt: string;
+    assertion: Assertion & { credentialId: string };
+  };
+}
+
+/** The demo mandate for `sub` and a new agent key, signed with `passkey`. */
+export async function signedMandate(
+  passkey: VirtualPasskey,
+  sub = `kls_usr_${randomBytes(8).toString("hex")}`,
+): Promise<SignedMandate> {
   const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, [
     "sign",
     "verify",
   ]);
   const agentJwk = await crypto.subtle.exportKey("jwk", pair.publicKey);
   const merchant = await authorizationPayee();
-  const sub = `kls_usr_${randomBytes(8).toString("hex")}`;
   const now = Math.floor(Date.now() / 1000);
   const m: Mandate = parseMandate({
     ...demo,
@@ -206,14 +237,32 @@ export async function registerMandate(leg: LegClient, passkey: VirtualPasskey): 
     [],
   );
   const assertion = await passkey.assert(signing.challenge);
-  const issued = await leg.registerMandate({
+  return {
     sub,
-    payload_sd: signing.payloadSd,
-    disclosures: signing.disclosures,
+    key: pair.privateKey,
+    salt,
     assertion,
-    salt: `0x${salt.toString("hex")}`,
+    body: {
+      payloadSd: signing.payloadSd,
+      disclosures: signing.disclosures,
+      commitment: signing.commitment,
+      salt: signing.salt,
+      assertion: { ...assertion, credentialId: passkey.credentialId },
+    },
+  };
+}
+
+/** Registers the demo mandate for a new user and a new agent key on leg A. */
+export async function registerMandate(leg: LegClient, passkey: VirtualPasskey): Promise<Agent> {
+  const signed = await signedMandate(passkey);
+  const issued = await leg.registerMandate({
+    sub: signed.sub,
+    payload_sd: signed.body.payloadSd,
+    disclosures: signed.body.disclosures,
+    assertion: signed.assertion,
+    salt: `0x${signed.salt.toString("hex")}`,
   });
-  return { sub, issued, key: pair.privateKey };
+  return { sub: signed.sub, issued, key: signed.key };
 }
 
 export const carts = { demo: cartDemo, bundle: cartBundle } as const;
@@ -242,3 +291,50 @@ export async function request(
 }
 
 export { toHex };
+
+/** A signed-in user whose passkey is the virtual one, and the operator the demo mandate names. */
+export async function seedUser(db: Db, passkey: VirtualPasskey, sub: string): Promise<void> {
+  const x = Buffer.from(passkey.jwk.x, "base64url");
+  const y = Buffer.from(passkey.jwk.y, "base64url");
+  const cose = isoCBOR.encode(
+    new Map<number, number | Uint8Array>([
+      [1, 2],
+      [3, -7],
+      [-1, 1],
+      [-2, x],
+      [-3, y],
+    ]),
+  );
+  await db.insert(user).values({ id: sub, name: "Tester", email: `${sub}@example.test` });
+  await db.insert(passkeyTable).values({
+    id: randomBytes(8).toString("hex"),
+    publicKey: Buffer.from(cose).toString("base64"),
+    userId: sub,
+    credentialID: passkey.credentialId,
+    counter: 0,
+    deviceType: "multiDevice",
+    backedUp: true,
+  });
+  await db
+    .insert(operators)
+    .values({ agentId: 42n, chainId: 421614, name: "Demo operator", cnfJwk: {} })
+    .onConflictDoNothing();
+}
+
+/** Resolves the principal from a header, in place of the OAuth and session lookups. */
+export const headerPrincipal: MiddlewareHandler = async (c, next) => {
+  const who = c.req.header("x-test-principal");
+  if (who) c.set("principal", JSON.parse(who) as Principal);
+  await next();
+};
+
+export const asUser = (sub: string) => ({
+  "x-test-principal": JSON.stringify({ kind: "user", subject: sub }),
+});
+export const asAgent = {
+  "x-test-principal": JSON.stringify({
+    kind: "client",
+    subject: "demo-agent",
+    scopes: ["countersign:write"],
+  }),
+};

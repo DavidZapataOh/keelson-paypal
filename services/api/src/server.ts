@@ -10,6 +10,9 @@ import { createKv } from "./kv.ts";
 import { createLogger } from "./logger.ts";
 import { authenticate } from "./middleware/auth.ts";
 import { closeServer } from "./shutdown.ts";
+import { createTee } from "./tee/config.ts";
+import { engineSource } from "./tee/engine-source.ts";
+import { startSignerRefresh } from "./tee/signers.ts";
 
 const FORCE_EXIT_MS = 10_000;
 
@@ -20,6 +23,15 @@ const { db, pool } = createDb(env.DATABASE_URL);
 const kv = await createKv(env.REDIS_URL, log);
 const auth = createAuth(db, env);
 const shutdown = new AbortController();
+const tee =
+  env.TEE_A_URL && env.TEE_B_URL && env.KEELSON_TEE_TOKEN
+    ? createTee({
+        TEE_A_URL: env.TEE_A_URL,
+        TEE_B_URL: env.TEE_B_URL,
+        KEELSON_TEE_TOKEN: env.KEELSON_TEE_TOKEN,
+        ARBITRUM_SEPOLIA_RPC_URL: env.ARBITRUM_SEPOLIA_RPC_URL,
+      })
+    : undefined;
 const app = createApp({
   db,
   kv,
@@ -30,8 +42,11 @@ const app = createApp({
   authenticate: authenticate(auth, env.BETTER_AUTH_URL),
   rateLimit: { trustProxy: process.env.RENDER === "true" },
   shutdown: shutdown.signal,
+  ...(tee ? { tee, compileSources: { engine: engineSource } } : {}),
   ...(env.ANTHROPIC_API_KEY ? { anthropic: new Anthropic({ apiKey: env.ANTHROPIC_API_KEY }) } : {}),
 });
+
+const stopRefresh = tee ? startSignerRefresh({ db, log, tee }) : undefined;
 
 const server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
   log.info({ port: info.port }, "listening");
@@ -43,6 +58,7 @@ process.once("SIGTERM", () => {
     destination.flushSync();
     process.exit(1);
   }, FORCE_EXIT_MS).unref();
+  stopRefresh?.();
   void closeServer(server, shutdown)
     .then(() => Promise.all([pool.end(), kv.close()]))
     .then(

@@ -1,12 +1,12 @@
 import { readFileSync } from "node:fs";
-import { type NitroPcrs, nitroMeasurement } from "@keelson/attest";
 import type { Hex } from "viem";
+import { type NitroPcrs, nitroMeasurement } from "./attest.ts";
 
 const tee = new URL("../../../../engine/tee/", import.meta.url);
 const read = (path: string): Record<string, string> =>
   JSON.parse(readFileSync(new URL(path, tee), "utf8")) as Record<string, string>;
 
-export interface Measurements {
+interface Measurements {
   /** The image digest both legs run, as the 32 bytes `engineBuildId` carries. */
   engineBuildId: Hex;
   /** The image digest, `sha256:<hex>`. */

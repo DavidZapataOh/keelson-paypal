@@ -1,18 +1,18 @@
-import { type Expectations, type SignerAttestation, verifySigner } from "@keelson/attest";
 import { and, type Db, desc, eq, gt, isNull, ne, teeSigners } from "@keelson/db";
 import type { Logger } from "pino";
 import { type Address, getAddress, type Hex, hexToBytes, type PublicClient } from "viem";
+import { type Expectations, type SignerAttestation, verifySigner } from "./attest.ts";
 import type { LegClient } from "./client.ts";
 
 export type Leg = "a" | "b";
 
 /** The `tee_kind` of each leg: 1 is TDX, 2 is Nitro. */
-export const TEE_KIND = { a: 1, b: 2 } as const;
+const TEE_KIND = { a: 1, b: 2 } as const;
 
 /** How long a registered signer stays valid. */
-export const SIGNER_TTL_MS = 72 * 3_600_000;
+const SIGNER_TTL_MS = 72 * 3_600_000;
 /** How often each leg is made to re-attest. Nitro documents stop verifying about 3 h after issue. */
-export const REFRESH_INTERVAL_MS = 50 * 60_000;
+const REFRESH_INTERVAL_MS = 50 * 60_000;
 /** A signer whose attestation last verified longer ago than this is treated as down. */
 export const ATTESTATION_MAX_AGE_MS = 2 * 3_600_000;
 
@@ -26,7 +26,7 @@ export interface TeeConfig {
   rpc: PublicClient;
 }
 
-export interface RegisteredSigner {
+interface RegisteredSigner {
   address: Address;
   teeKind: 1 | 2;
   measurement: string;
@@ -53,7 +53,7 @@ function fromRow(row: typeof teeSigners.$inferSelect): RegisteredSigner {
   };
 }
 
-export class RegistrationError extends Error {}
+class RegistrationError extends Error {}
 
 /**
  * Fetches the leg's attestation, verifies it, and admits its signer. The previous signer of the
