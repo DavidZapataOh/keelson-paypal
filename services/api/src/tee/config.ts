@@ -8,8 +8,13 @@ import type { LegExpectations, TeeConfig } from "./signers.ts";
 /** The `verifyingContract` of the EIP-712 domain both legs were booted with. */
 export const VERIFYING_CONTRACT = zeroAddress;
 
-/** Leg A reads PayPal, so it gets longer than leg B, which only evaluates. */
-const LEG_TIMEOUT_MS = { a: 1_500, b: 500 } as const;
+/**
+ * Leg A reads PayPal, so it gets longer than leg B, which only evaluates: more than the engine's
+ * 5 s PayPal timeout, so a slow read ends as leg A's own answer.
+ *
+ * @internal
+ */
+export const LEG_TIMEOUT_MS = { a: 6_500, b: 500 } as const;
 
 interface TeeEnv {
   TEE_A_URL: string;

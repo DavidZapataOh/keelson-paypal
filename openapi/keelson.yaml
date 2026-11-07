@@ -1452,7 +1452,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
         "503":
-          description: A leg needed to sign is unavailable
+          description: A leg needed to sign, or PayPal, is unavailable
           content:
             application/problem+json:
               schema:

@@ -133,7 +133,10 @@ const route = createRoute({
       description: "The legs disagree, or a signer is not registered",
       content: problemContent,
     },
-    503: { description: "A leg needed to sign is unavailable", content: problemContent },
+    503: {
+      description: "A leg needed to sign, or PayPal, is unavailable",
+      content: problemContent,
+    },
   },
 });
 
@@ -141,7 +144,7 @@ const RATE_PER_MANDATE = 60;
 const RATE_WINDOW_SEC = 60;
 const USABLE = new Set(["SIGNED", "HOLD_PENDING", "ACTIVE"]);
 /** Failures that say nothing about the request, so the same request id may be driven again. */
-const RETRYABLE = new Set(["tee-unavailable", "stale"]);
+const RETRYABLE = new Set(["tee-unavailable", "paypal-unavailable", "stale"]);
 
 const b64json = (segment: string | undefined): unknown => {
   if (!segment) throw new Error("empty segment");

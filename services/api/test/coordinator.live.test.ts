@@ -298,6 +298,15 @@ describe.skipIf(!live)("coordinator (live legs)", { timeout: 120_000 }, () => {
     }
   });
 
+  test("leg a failing to read PayPal is a retryable refusal of its own, with no signature", async () => {
+    const { req, want } = await prepare();
+    const paypal = a2(() => Promise.reject(new LegError("a", "problem", "paypal", 502)));
+    const err = await failure(countersign2of2(deps({ a: paypal }), req, want));
+    expect((err as CoordinatorError).slug).toBe("paypal-unavailable");
+    expect((err as CoordinatorError).status).toBe(503);
+    await unsigned(req.request_id);
+  });
+
   test("a malformed answer from leg a is a divergence", async () => {
     const { req, want } = await prepare();
     const malformed = a2(() => Promise.reject(new LegError("a", "problem", "malformed_response")));
