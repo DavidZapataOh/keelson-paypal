@@ -5,7 +5,11 @@ import type { Logger } from "pino";
 const STALE_AFTER_MS = 120_000;
 const SWEEP_INTERVAL_MS = 30_000;
 
-/** Fails the purchases left in `EVALUATING`, which can then be driven again. Returns how many. */
+/**
+ * Fails the purchases left in `EVALUATING`, which can then be driven again. Returns how many.
+ *
+ * @internal
+ */
 export async function failStalePurchases(db: Db, now: Date = new Date()): Promise<number> {
   const result = await db
     .update(purchases)
