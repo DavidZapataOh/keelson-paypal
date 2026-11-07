@@ -1,0 +1,142 @@
+[
+  {
+    "name": "none",
+    "input": {
+      "fired": [],
+      "errors": false,
+      "canon": false,
+      "paypal": false
+    },
+    "expected": 0
+  },
+  {
+    "name": "base-only",
+    "input": {
+      "fired": [
+        "base"
+      ],
+      "errors": false,
+      "canon": false,
+      "paypal": false
+    },
+    "expected": 0
+  },
+  {
+    "name": "amount-variant",
+    "input": {
+      "fired": [
+        "amount",
+        "variant"
+      ],
+      "errors": false,
+      "canon": false,
+      "paypal": false
+    },
+    "expected": 520
+  },
+  {
+    "name": "all-fields",
+    "input": {
+      "fired": [
+        "agent",
+        "sanity",
+        "currency",
+        "amount",
+        "budget",
+        "merchant",
+        "window",
+        "quantity",
+        "category",
+        "variant",
+        "returns",
+        "returns_free"
+      ],
+      "errors": false,
+      "canon": false,
+      "paypal": false
+    },
+    "expected": 4095
+  },
+  {
+    "name": "extra",
+    "input": {
+      "fired": [
+        "extra.0"
+      ],
+      "errors": false,
+      "canon": false,
+      "paypal": false
+    },
+    "expected": 268435456
+  },
+  {
+    "name": "extras-and-field",
+    "input": {
+      "fired": [
+        "extra.0",
+        "extra.3",
+        "window"
+      ],
+      "errors": false,
+      "canon": false,
+      "paypal": false
+    },
+    "expected": 268435520
+  },
+  {
+    "name": "canon",
+    "input": {
+      "fired": [],
+      "errors": false,
+      "canon": true,
+      "paypal": false
+    },
+    "expected": 536870912
+  },
+  {
+    "name": "cedar-error",
+    "input": {
+      "fired": [
+        "agent"
+      ],
+      "errors": true,
+      "canon": false,
+      "paypal": false
+    },
+    "expected": 1073741825
+  },
+  {
+    "name": "paypal",
+    "input": {
+      "fired": [],
+      "errors": false,
+      "canon": false,
+      "paypal": true
+    },
+    "expected": 2147483648
+  },
+  {
+    "name": "everything",
+    "input": {
+      "fired": [
+        "agent",
+        "sanity",
+        "currency",
+        "amount",
+        "budget",
+        "merchant",
+        "window",
+        "quantity",
+        "category",
+        "variant",
+        "returns",
+        "returns_free",
+        "extra.1"
+      ],
+      "errors": true,
+      "canon": true,
+      "paypal": true
+    },
+    "expected": 4026535935
+  }
+]

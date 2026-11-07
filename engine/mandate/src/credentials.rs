@@ -12,6 +12,10 @@ use crate::{Error, b64, parse_mandate};
 pub const USER_CREDENTIAL_TYP: &str = "dc+sd-jwt";
 /// `typ` of the open mandate, a KB-SD-JWT+KB.
 pub const OPEN_MANDATE_TYP: &str = "kb-sd-jwt+kb";
+/// `typ` of the closed mandate's Key Binding JWT (RFC 9901 section 4.3).
+pub const CLOSED_MANDATE_TYP: &str = "kb+jwt";
+/// `aud` of the closed mandate's Key Binding JWT.
+pub const CLOSED_MANDATE_AUD: &str = "keelson.finance/countersign";
 /// `vct` of the user credential.
 pub const USER_CREDENTIAL_VCT: &str = "https://keelson.finance/credentials/user/v1";
 
@@ -30,10 +34,12 @@ fn invalid(reason: impl Into<String>) -> Error {
 pub struct Jwk {
     pub x: String,
     pub y: String,
+    pub kid: Option<String>,
 }
 
 impl Jwk {
-    /// Reads `{ "kty": "EC", "crv": "P-256", "x", "y" }`. Private keys are rejected.
+    /// Reads `{ "kty": "EC", "crv": "P-256", "x", "y" }` and a string `kid`. Private keys are
+    /// rejected.
     pub fn from_value(v: &Value) -> Result<Self, Error> {
         let field = |k: &str| v.get(k).and_then(Value::as_str);
         if field("kty") != Some("EC") || field("crv") != Some("P-256") || v.get("d").is_some() {
@@ -43,12 +49,29 @@ impl Jwk {
             (Some(x), Some(y)) => Ok(Self {
                 x: x.to_owned(),
                 y: y.to_owned(),
+                kid: field("kid").map(str::to_owned),
             }),
             _ => Err(invalid("not a P-256 public JWK")),
         }
     }
 
-    fn verifying_key(&self) -> Result<VerifyingKey, Error> {
+    /// The public key of `key`, without a `kid`.
+    pub fn from_verifying_key(key: &VerifyingKey) -> Self {
+        let point = key.to_sec1_point(false);
+        let xy = &point.as_bytes()[1..];
+        Self {
+            x: b64::encode(&xy[..32]),
+            y: b64::encode(&xy[32..]),
+            kid: None,
+        }
+    }
+
+    /// `{ "kty", "crv", "x", "y" }`, without the `kid`.
+    pub(crate) fn public_value(&self) -> Value {
+        json!({ "kty": "EC", "crv": "P-256", "x": self.x, "y": self.y })
+    }
+
+    pub(crate) fn verifying_key(&self) -> Result<VerifyingKey, Error> {
         let (x, y) = (coordinate(&self.x)?, coordinate(&self.y)?);
         let point = [&[0x04][..], &x, &y].concat();
         VerifyingKey::from_sec1_bytes(&point).map_err(|_| invalid("JWK is not a P-256 point"))
@@ -64,6 +87,25 @@ pub struct OpenMandateVerifyOptions {
     pub now: i64,
     /// Clock skew tolerated on `iat`, `nbf` and `exp`, in seconds.
     pub max_skew_sec: i64,
+}
+
+/// What a closed mandate must be bound to, on top of its open mandate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClosedMandateVerifyOptions {
+    pub open: OpenMandateVerifyOptions,
+    /// The request ULID, signed as `nonce`.
+    pub request_id: String,
+    /// `sha256:<hex>` of the cart.
+    pub cart_hash: String,
+}
+
+/// A verified closed mandate.
+#[derive(Debug, Clone, PartialEq)]
+pub struct VerifiedClosedMandate {
+    pub open: VerifiedCredential,
+    /// The delegate payload's `cnf.jwk`, which signed the key binding.
+    pub agent_jwk: Jwk,
+    pub iat: i64,
 }
 
 /// A verified credential.
@@ -100,6 +142,12 @@ struct Jwt<'a> {
     payload: Map<String, Value>,
     signing_input: &'a str,
     signature: &'a str,
+}
+
+/// The holder key a user credential's `cnf.jwk` names. The credential's signature is not checked.
+pub(crate) fn holder_jwk(user_credential_jwt: &str) -> Result<Jwk, Error> {
+    let jwt = decode_jwt(user_credential_jwt)?;
+    Jwk::from_value(cnf_jwk(jwt.payload.get("cnf"))?)
 }
 
 fn decode_jwt(jwt: &str) -> Result<Jwt<'_>, Error> {
@@ -206,7 +254,7 @@ fn verify_sd_jwt(
 
 /// The `cnf.jwk` member: a P-256 key with canonical coordinates and no members but `kty`, `crv`,
 /// `x`, `y` and a string `kid`.
-fn cnf_jwk(cnf: Option<&Value>) -> Result<&Value, Error> {
+pub(crate) fn cnf_jwk(cnf: Option<&Value>) -> Result<&Value, Error> {
     let jwk = cnf
         .and_then(|c| c.get("jwk"))
         .filter(|j| j.get("kty") == Some(&json!("EC")) && j.get("crv") == Some(&json!("P-256")))
@@ -276,7 +324,7 @@ fn verify_user_credential(
     })
 }
 
-fn assert_user_auth(u: Option<&Value>) -> Result<(), Error> {
+pub(crate) fn assert_user_auth(u: Option<&Value>) -> Result<(), Error> {
     for k in ["authenticatorData", "clientDataJSON", "signature"] {
         if !u
             .and_then(|u| u.get(k))
@@ -289,7 +337,7 @@ fn assert_user_auth(u: Option<&Value>) -> Result<(), Error> {
     Ok(())
 }
 
-fn safe_integer(n: i64) -> bool {
+pub(crate) fn safe_integer(n: i64) -> bool {
     (-MAX_SAFE_INTEGER..=MAX_SAFE_INTEGER).contains(&n)
 }
 
@@ -412,4 +460,81 @@ pub fn verify_credential(
     }
     let opts = opts.ok_or_else(|| invalid("open mandate verification needs options"))?;
     verify_open_mandate(token, &key, opts)
+}
+
+/// A ULID in its canonical Crockford base32 form.
+fn is_ulid(s: &str) -> bool {
+    s.len() == 26
+        && s.starts_with(|c: char| ('0'..='7').contains(&c))
+        && s
+            .bytes()
+            .all(|b| matches!(b, b'0'..=b'9' | b'A'..=b'H' | b'J' | b'K' | b'M' | b'N' | b'P'..=b'T' | b'V'..=b'Z'))
+}
+
+/// `sha256:` and 64 lowercase hex digits.
+fn is_cart_hash(s: &str) -> bool {
+    s.strip_prefix("sha256:")
+        .is_some_and(|h| h.len() == 64 && h.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')))
+}
+
+/// Verifies a closed mandate: the open mandate against the issuer's public key and `opts.open`,
+/// then the agent's KB-JWT against the delegate payload's `cnf.jwk` (RFC 9901 section 7.3,
+/// step 5), bound to `opts.request_id` and `opts.cart_hash` and issued within the skew of `now`.
+/// Its `sd_hash` covers the final KB-SD-JWT and its disclosures
+/// (draft-ietf-oauth-delegate-sd-jwt-00, section 6).
+///
+/// A rejected key binding fails with [`Error::Credential`] carrying one of `closed_signature`,
+/// `closed_sd_hash`, `closed_aud`, `closed_nonce`, `closed_cart_hash` or `closed_iat`.
+///
+/// The WebAuthn assertion in the open mandate's `user_auth` is NOT verified here.
+pub fn verify_closed_mandate(
+    token: &str,
+    issuer: &Jwk,
+    opts: &ClosedMandateVerifyOptions,
+) -> Result<VerifiedClosedMandate, Error> {
+    if !is_ulid(&opts.request_id) {
+        return Err(invalid("request_id is not a ULID"));
+    }
+    if !is_cart_hash(&opts.cart_hash) {
+        return Err(invalid("cart_hash is not sha256:<hex>"));
+    }
+    let split = token.rfind('~').map_or(0, |i| i + 1);
+    let (open_mandate, kb_jwt) = token.split_at(split);
+    let open = verify_open_mandate(open_mandate, &issuer.verifying_key()?, &opts.open)?;
+    let agent_jwk = Jwk::from_value(cnf_jwk(open.claims.get("cnf"))?)?;
+    let agent = agent_jwk.verifying_key()?;
+
+    let kb = decode_jwt(kb_jwt)
+        .ok()
+        .filter(|kb| kb.header.get("typ").and_then(Value::as_str) == Some(CLOSED_MANDATE_TYP))
+        .filter(|kb| kb.verify(&agent).is_ok())
+        .ok_or_else(|| invalid("closed_signature"))?;
+    let claim = |k: &str| kb.payload.get(k).and_then(Value::as_str);
+    let final_kb_sd_jwt = open_mandate
+        .split_once("~~")
+        .map_or(open_mandate, |(_, rest)| rest);
+    if claim("sd_hash") != Some(&digest(final_kb_sd_jwt)) {
+        return Err(invalid("closed_sd_hash"));
+    }
+    if claim("aud") != Some(CLOSED_MANDATE_AUD) {
+        return Err(invalid("closed_aud"));
+    }
+    if claim("nonce") != Some(&opts.request_id) {
+        return Err(invalid("closed_nonce"));
+    }
+    if claim("cart_hash") != Some(&opts.cart_hash) {
+        return Err(invalid("closed_cart_hash"));
+    }
+    let skew = opts.open.max_skew_sec;
+    let iat = kb
+        .payload
+        .get("iat")
+        .and_then(Value::as_i64)
+        .filter(|iat| (opts.open.now - skew..=opts.open.now + skew).contains(iat))
+        .ok_or_else(|| invalid("closed_iat"))?;
+    Ok(VerifiedClosedMandate {
+        open,
+        agent_jwk,
+        iat,
+    })
 }

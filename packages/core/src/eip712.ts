@@ -1,4 +1,15 @@
-import { hashTypedData, isAddress, type TypedDataDefinition, type TypedDataDomain } from "viem";
+import {
+  type Address,
+  concat,
+  encodeAbiParameters,
+  type Hex,
+  hashTypedData,
+  isAddress,
+  keccak256,
+  stringToHex,
+  type TypedDataDefinition,
+  type TypedDataDomain,
+} from "viem";
 
 export const KEELSON_TYPES = {
   Countersign: [
@@ -130,4 +141,122 @@ export function hashKeelson<T extends KeelsonPrimaryType>(
 ): `0x${string}` {
   assertMessage(primaryType, message as Record<string, unknown>);
   return hashTypedData({ domain, types: KEELSON_TYPES, primaryType, message } as never);
+}
+
+export type Countersign = TypedDataDefinition<typeof KEELSON_TYPES, "Countersign">["message"];
+
+function assertChain(chainId: unknown): void {
+  if (chainId !== undefined && typeof chainId !== "bigint" && typeof chainId !== "number") {
+    throw new RangeError("unsupported chain id");
+  }
+  const id = chainId === undefined ? undefined : Number(chainId);
+  if (id !== CHAIN_IDS.arbitrumSepolia && id !== CHAIN_IDS.arbitrumOne) {
+    throw new RangeError(`unsupported chain id: ${String(chainId)}`);
+  }
+}
+
+/** The EIP-712 signing hash of a `Countersign`; only Arbitrum Sepolia and Arbitrum One domains. */
+export function countersignDigest(c: Countersign, domain: TypedDataDomain): Hex {
+  assertChain(domain.chainId);
+  return hashKeelson("Countersign", c, domain);
+}
+
+/** The `failedFieldsMask` bit of each policy `@id`. Append-only. */
+export const FIELD_BITS = {
+  agent: 0,
+  sanity: 1,
+  currency: 2,
+  amount: 3,
+  budget: 4,
+  merchant: 5,
+  window: 6,
+  quantity: 7,
+  category: 8,
+  variant: 9,
+  returns: 10,
+  returns_free: 11,
+} as const;
+
+/** Set when any fired policy is outside the base table (a user extra such as `extra.0`). */
+export const BIT_EXTRA = 28;
+/** Set when the canonicalizer denied the cart. */
+export const BIT_CANON = 29;
+/** Set when Cedar reported diagnostics errors. */
+export const BIT_CEDAR_ERROR = 30;
+/** Set when the PayPal order check failed. */
+export const BIT_PAYPAL = 31;
+
+/** Builds `failedFieldsMask` from the fired policy ids and the fault flags. */
+export function failedFieldsMask(
+  fired: readonly string[],
+  faults: { errors?: boolean; canon?: boolean; paypal?: boolean },
+): number {
+  let mask = 0;
+  for (const id of fired) {
+    const bit = Object.hasOwn(FIELD_BITS, id)
+      ? FIELD_BITS[id as keyof typeof FIELD_BITS]
+      : id === "base"
+        ? undefined
+        : BIT_EXTRA;
+    if (bit !== undefined) mask |= 1 << bit;
+  }
+  if (faults.canon) mask |= 1 << BIT_CANON;
+  if (faults.errors) mask |= 1 << BIT_CEDAR_ERROR;
+  if (faults.paypal) mask |= 1 << BIT_PAYPAL;
+  return mask >>> 0;
+}
+
+export const TeeKind = { TDX: 1, NITRO: 2 } as const;
+
+/** Everything a TEE attestation binds the countersign signer to. */
+export interface SignerBinding {
+  chainId: bigint;
+  bondVault: Address;
+  teeKind: (typeof TeeKind)[keyof typeof TeeKind];
+  signer: Address;
+  policySetHash: Hex;
+  engineBuildId: Hex;
+  bootEpoch: bigint;
+}
+
+const SIGNER_TAG = keccak256(stringToHex("KEELSON_TEE_SIGNER_V1"));
+
+/**
+ * The 64-byte `report_data` of a TEE attestation: the keccak256 of the ABI-encoded binding,
+ * followed by a recent L2 block hash.
+ */
+export function reportData(b: SignerBinding, blockHash: Hex): Hex {
+  assertChain(b.chainId);
+  if (b.teeKind !== TeeKind.TDX && b.teeKind !== TeeKind.NITRO) {
+    throw new RangeError(`unknown tee kind: ${String(b.teeKind)}`);
+  }
+  if (b.bootEpoch < 0n || b.bootEpoch >= 1n << 64n) {
+    throw new RangeError("bootEpoch is out of range for uint64");
+  }
+  const binding = keccak256(
+    encodeAbiParameters(
+      [
+        { type: "bytes32" },
+        { type: "uint256" },
+        { type: "address" },
+        { type: "uint8" },
+        { type: "address" },
+        { type: "bytes32" },
+        { type: "bytes32" },
+        { type: "uint64" },
+      ],
+      [
+        SIGNER_TAG,
+        b.chainId,
+        b.bondVault,
+        b.teeKind,
+        b.signer,
+        b.policySetHash,
+        b.engineBuildId,
+        b.bootEpoch,
+      ],
+    ),
+  );
+  if (!/^0x[0-9a-fA-F]{64}$/.test(blockHash)) throw new TypeError("blockHash must be 32 bytes");
+  return concat([binding, blockHash]).toLowerCase() as Hex;
 }

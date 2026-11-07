@@ -1,0 +1,172 @@
+name: tee-image
+
+on:
+  push:
+    paths:
+      - engine/**
+      - Cargo.toml
+      - Cargo.lock
+      - .github/workflows/tee-image.yml
+  workflow_dispatch:
+
+concurrency:
+  group: tee-image-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/davidzapataoh/keelson-engine
+  BUILDKIT_IMAGE: moby/buildkit:v0.34.2@sha256:c5f8862f52499773af85bc07695b2379ef08e8002352b0df2c4864c91d78dabe
+  BUILDX_VERSION: v0.38.2
+  SKOPEO_IMAGE: quay.io/skopeo/stable:v1.22.3@sha256:2681eccb8b02c495b013c2669cbf7f41d5c0b0b0e644e7c69bd3ea9bcb20641f
+  # 25 MB, compressed layers and config.
+  MAX_IMAGE_BYTES: 25000000
+
+jobs:
+  build:
+    name: build-${{ matrix.builder }}
+    strategy:
+      matrix:
+        builder: [a, b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          version: ${{ env.BUILDX_VERSION }}
+          driver: docker-container
+          driver-opts: image=${{ env.BUILDKIT_IMAGE }}
+      - name: Build the OCI archive
+        run: |
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          export SOURCE_DATE_EPOCH
+          docker buildx build -f engine/tee/Containerfile . \
+            --no-cache \
+            --platform linux/amd64 \
+            --build-arg BUILDKIT_MULTI_PLATFORM=1 \
+            --build-arg SOURCE_DATE_EPOCH \
+            --provenance=false \
+            --sbom=false \
+            --output "type=oci,rewrite-timestamp=true,force-compression=true,dest=$RUNNER_TEMP/out/keelson-engine.tar,name=$IMAGE:$GITHUB_SHA"
+      - name: Check the digest, size and binary
+        run: |
+          out="$RUNNER_TEMP/out"
+          layout="$RUNNER_TEMP/layout"
+          mkdir "$layout"
+          tar -xf "$out/keelson-engine.tar" -C "$layout"
+          blob() { echo "$layout/blobs/${1/://}"; }
+          digest="$(jq -r '.manifests[0].digest' "$layout/index.json")"
+          index="$(blob "$digest")"
+          jq -e '.mediaType == "application/vnd.oci.image.index.v1+json"' "$index"
+          manifest="$(blob "$(jq -r '.manifests[] | select(.platform.architecture == "amd64") | .digest' "$index")")"
+          size="$(jq '.config.size + ([.layers[].size] | add)' "$manifest")"
+          tar -xzf "$(blob "$(jq -r '.layers[-1].digest' "$manifest")")" -C "$layout" keelson-engine
+          binary="$layout/keelson-engine"
+          kind="$(file -b "$binary")"
+          {
+            echo "| | |"
+            echo "| --- | --- |"
+            echo "| digest | \`$digest\` |"
+            echo "| archive sha256 | \`$(sha256sum "$out/keelson-engine.tar" | cut -d' ' -f1)\` |"
+            echo "| compressed size | $size B |"
+            echo "| binary size | $(stat -c %s "$binary") B |"
+            echo "| binary | $kind |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "$digest" > "$out/digest"
+          test "$size" -lt "$MAX_IMAGE_BYTES"
+          grep -Eq 'static(-pie)? linked' <<< "$kind"
+          status=0
+          usage="$("$binary" 2>&1)" || status=$?
+          test "$status" -eq 1
+          test "$usage" = "keelson-engine: usage: keelson-engine [--platform tdx] --listen tcp:<addr>"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: oci-${{ matrix.builder }}
+          path: ${{ runner.temp }}/out
+          if-no-files-found: error
+          retention-days: 7
+
+  compare:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: oci-*
+          path: ${{ runner.temp }}/oci
+      - name: Both builds have the same digest
+        id: compare
+        working-directory: ${{ runner.temp }}/oci
+        run: |
+          a="$(cat oci-a/digest)"
+          b="$(cat oci-b/digest)"
+          echo "build-a: $a"
+          echo "build-b: $b"
+          echo "engine_build_id: \`$a\`" >> "$GITHUB_STEP_SUMMARY"
+          test "$a" = "$b"
+      - name: Diff the two images
+        if: failure() && steps.compare.outcome == 'failure'
+        working-directory: ${{ runner.temp }}/oci
+        env:
+          DIFFOCI_URL: https://github.com/reproducible-containers/diffoci/releases/download/v0.1.8/diffoci-v0.1.8.linux-amd64
+          DIFFOCI_SHA256: 01e6b50c1568c9d61c758ef6da81869f2c26c852698d73dca961b3617effe949
+        run: |
+          curl -fsSL -o diffoci "$DIFFOCI_URL"
+          echo "$DIFFOCI_SHA256  diffoci" | sha256sum --check --strict
+          chmod +x diffoci
+          # Docker cannot load an OCI archive holding an image index, so skopeo copies each image in.
+          for builder in a b; do
+            docker run --rm -v "$PWD:/work" -v /var/run/docker.sock:/var/run/docker.sock "$SKOPEO_IMAGE" \
+              copy "oci-archive:/work/oci-$builder/keelson-engine.tar" "docker-daemon:keelson-engine:$builder"
+          done
+          ./diffoci diff --semantic --report-dir=report docker://keelson-engine:a docker://keelson-engine:b
+      - if: failure() && steps.compare.outcome == 'failure'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: diffoci-report
+          path: ${{ runner.temp }}/oci/report
+          if-no-files-found: ignore
+
+  push:
+    needs: compare
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: oci-a
+          path: ${{ runner.temp }}/oci
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push the compared archive unchanged
+        id: push
+        env:
+          ACTOR: ${{ github.actor }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          docker run --rm -e ACTOR -e TOKEN -v "$RUNNER_TEMP/oci:/work" "$SKOPEO_IMAGE" \
+            sh -c 'skopeo copy --all --preserve-digests --dest-creds "$ACTOR:$TOKEN" --digestfile /work/pushed \
+              oci-archive:/work/keelson-engine.tar "docker://$0"' "$IMAGE:$GITHUB_SHA"
+          built="$(cat "$RUNNER_TEMP/oci/digest")"
+          test "$(cat "$RUNNER_TEMP/oci/pushed")" = "$built"
+          echo "digest=$built" >> "$GITHUB_OUTPUT"
+          echo "\`$IMAGE@$built\`" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true

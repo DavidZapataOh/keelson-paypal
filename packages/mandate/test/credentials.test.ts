@@ -452,11 +452,12 @@ describe("open mandate (L2)", () => {
       verifyCredential(token, OPEN_MANDATE_TYP, other.publicKey, opts),
     ).rejects.toThrow();
     await expect(verifyCredential(token, USER_CREDENTIAL_TYP, issuer.publicKey)).rejects.toThrow();
-    const notHolder = await issueOpenMandate(
-      { userCredential: l1, payloadSd, disclosures, userAuth, aud: AUD, nonce: m.nonce },
-      other.privateKey,
-    );
-    await rejects(notHolder, opts).toThrow();
+    await expect(
+      issueOpenMandate(
+        { userCredential: l1, payloadSd, disclosures, userAuth, aud: AUD, nonce: m.nonce },
+        other.privateKey,
+      ),
+    ).rejects.toThrow(/cnf.jwk/);
   });
 
   it("requires a delegate cnf", async () => {

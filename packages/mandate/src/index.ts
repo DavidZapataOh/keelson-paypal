@@ -42,18 +42,28 @@ export {
   verifyMerchantNonMembership,
 } from "./commitment.ts";
 export {
+  CLOSED_MANDATE_AUD,
+  CLOSED_MANDATE_TYP,
+  ClosedMandateError,
+  type ClosedMandateErrorCode,
+  type ClosedMandateParams,
+  type ClosedMandateVerifyOptions,
+  closeMandate,
   issueOpenMandate,
   issueUserCredential,
   OPEN_MANDATE_TYP,
   type OpenMandateParams,
   type OpenMandateVerifyOptions,
   type P256PublicJwk,
+  type SaltGenerator,
   USER_CREDENTIAL_TYP,
   USER_CREDENTIAL_VCT,
   type UserAuth,
   type UserCredentialParams,
+  type VerifiedClosedMandate,
   type VerifiedCredential,
   type VerifiedOpenMandate,
+  verifyClosedMandate,
   verifyCredential,
 } from "./credentials.ts";
 export {

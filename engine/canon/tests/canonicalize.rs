@@ -406,3 +406,17 @@ fn money_vectors_parse_like_typescript() {
     }
     assert!(checked > 0);
 }
+
+#[test]
+fn cart_and_unit_serialize_back_to_their_wire_form() {
+    for json in [
+        include_str!("fixtures/demo-shoes.json"),
+        include_str!("fixtures/bundle-340.json"),
+        include_str!("fixtures/breakdown-mismatch.json"),
+    ] {
+        let raw: Value = serde_json::from_str(json).unwrap();
+        let f = fixture(json);
+        assert_eq!(serde_json::to_value(&f.cart).unwrap(), raw["cart"]);
+        assert_eq!(serde_json::to_value(&f.unit).unwrap(), raw["unit"]);
+    }
+}

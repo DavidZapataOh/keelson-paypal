@@ -9,7 +9,7 @@ import {
   validateJwtPayload,
 } from "@sd-jwt/core";
 import { SDJwtVcInstance } from "@sd-jwt/sd-jwt-vc";
-import { compactVerify, importJWK } from "jose";
+import { compactVerify, decodeJwt, decodeProtectedHeader, importJWK } from "jose";
 import { type Mandate, parseMandate } from "./schema.ts";
 import { assertSdAlg, sdHasher } from "./sd.ts";
 import {
@@ -23,6 +23,10 @@ import {
 export const USER_CREDENTIAL_TYP = "dc+sd-jwt";
 /** `typ` of the open mandate, a KB-SD-JWT+KB. */
 export const OPEN_MANDATE_TYP = "kb-sd-jwt+kb";
+/** `typ` of the closed mandate's Key Binding JWT (RFC 9901 section 4.3). */
+export const CLOSED_MANDATE_TYP = "kb+jwt";
+/** `aud` of the closed mandate's Key Binding JWT. */
+export const CLOSED_MANDATE_AUD = "keelson.finance/countersign";
 /** `vct` of the user credential. */
 export const USER_CREDENTIAL_VCT = "https://keelson.finance/credentials/user/v1";
 
@@ -32,6 +36,7 @@ export interface P256PublicJwk {
   crv: "P-256";
   x: string;
   y: string;
+  kid?: string;
 }
 
 /** What {@link issueUserCredential} binds into the user credential. */
@@ -42,6 +47,8 @@ export interface UserCredentialParams {
   cred: { id: string; rp_id: string; jwk: P256PublicJwk };
   /** Public key of the per-user signing key that issues the user's open mandates. */
   holderJwk: P256PublicJwk;
+  /** Defaults to now, in seconds since the epoch. */
+  iat?: number;
 }
 
 /** The parts of the WebAuthn assertion over `M`, each base64url. */
@@ -60,7 +67,12 @@ export interface OpenMandateParams {
   userAuth: UserAuth;
   aud: string;
   nonce: string;
+  /** Defaults to now, in seconds since the epoch. */
+  iat?: number;
 }
+
+/** Draws the 16 bytes of a disclosure salt. */
+export type SaltGenerator = () => Uint8Array;
 
 /** A credential that {@link verifyCredential} accepted. */
 export interface VerifiedCredential {
@@ -90,19 +102,94 @@ export interface OpenMandateVerifyOptions {
   maxSkewSec: number;
 }
 
+/** What {@link closeMandate} binds the open mandate to. */
+export interface ClosedMandateParams {
+  /** The request ULID, signed as `nonce`. */
+  requestId: string;
+  /** `sha256:<hex>` of the cart. */
+  cartHash: string;
+  /** Defaults to now, in seconds since the epoch. */
+  iat?: number;
+}
+
+/** What a closed mandate must be bound to, on top of its open mandate. */
+export interface ClosedMandateVerifyOptions {
+  open: OpenMandateVerifyOptions;
+  requestId: string;
+  cartHash: string;
+}
+
+/** A closed mandate that {@link verifyClosedMandate} accepted. */
+export interface VerifiedClosedMandate {
+  open: VerifiedOpenMandate;
+  /** The delegate payload's `cnf.jwk`, which signed the key binding. */
+  agentJwk: P256PublicJwk;
+  iat: number;
+}
+
+/** Why {@link verifyClosedMandate} rejected the agent's key binding. */
+export type ClosedMandateErrorCode =
+  | "closed_signature"
+  | "closed_aud"
+  | "closed_nonce"
+  | "closed_cart_hash"
+  | "closed_sd_hash"
+  | "closed_iat";
+
+/** A closed mandate whose open mandate verified but whose key binding did not. */
+export class ClosedMandateError extends RangeError {
+  readonly code: ClosedMandateErrorCode;
+
+  constructor(code: ClosedMandateErrorCode) {
+    super(code);
+    this.name = "ClosedMandateError";
+    this.code = code;
+  }
+}
+
 interface TimeOptions {
   currentDate?: number;
   skewSeconds?: number;
 }
 
 const B64URL = /^[A-Za-z0-9_-]+$/;
+const ULID = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/;
+const CART_HASH = /^sha256:[0-9a-f]{64}$/;
 // Canonical unpadded base64url of 32 bytes: 42 characters, then one with zero pad bits.
 const B64URL32 = /^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/;
 const encoder = new TextEncoder();
 
 const publicJwk = ({ kty, crv, x, y }: P256PublicJwk): P256PublicJwk => ({ kty, crv, x, y });
 
-const salt = (): string => uint8ArrayToBase64Url(crypto.getRandomValues(new Uint8Array(16)));
+const randomSalt: SaltGenerator = () => crypto.getRandomValues(new Uint8Array(16));
+
+const saltString = (salts: SaltGenerator) => (): string => {
+  const salt = salts();
+  if (salt.length !== 16) throw new RangeError("a salt must be 16 bytes");
+  return uint8ArrayToBase64Url(salt);
+};
+
+/** Whole seconds since the epoch, as the mandate schema and the verifiers accept them. */
+function issuedAt(iat: number | undefined): number {
+  const t = iat ?? Math.floor(Date.now() / 1000);
+  if (!Number.isSafeInteger(t) || t < 0) throw new RangeError("iat must be whole seconds");
+  return t;
+}
+
+/** A P-256 point with canonical coordinates, as {@link jwkOf} and WebCrypto accept it. */
+async function assertP256Point(jwk: P256PublicJwk): Promise<void> {
+  try {
+    await importJWK(jwkOf({ jwk: publicJwk(jwk) }), "ES256");
+  } catch {
+    throw new RangeError("not a P-256 public key");
+  }
+}
+
+/** A disclosure as the verifiers decode it: strict JSON, `[salt, value]` or `[salt, name, value]`. */
+function assertDisclosure(d: string): void {
+  if (!B64URL.test(d)) throw new RangeError("disclosure is not base64url");
+  Disclosure.fromArray(decodeStrictJson(d) as [string, unknown]);
+}
 
 /** ES256 (RFC 7518 section 3.4): the IEEE P1363 `r || s` signature that WebCrypto returns. */
 const es256Signer = (key: CryptoKey) => async (data: string) =>
@@ -116,6 +203,8 @@ const es256Verifier = (key: CryptoKey) => async (data: string, signature: string
   try {
     // RFC 4648 section 3.5: non-zero pad bits would give the same signature a second encoding.
     if (uint8ArrayToBase64Url(base64UrlToUint8Array(signature)) !== signature) return false;
+    // No critical header extension is supported, including the `b64` that jose understands.
+    if ("crit" in decodeProtectedHeader(`${data}.${signature}`)) return false;
     await compactVerify(`${data}.${signature}`, key, { algorithms: ["ES256"] });
     return true;
   } catch {
@@ -161,23 +250,28 @@ function sdHash(sdJwt: string): string {
 /**
  * Issues the user credential: an SD-JWT VC (draft-ietf-oauth-sd-jwt-vc) whose `cnf.jwk` is the
  * holder key that signs the user's open mandates, and whose selectively disclosable `sub` and
- * `cred` are the user and their passkey.
+ * `cred` are the user and their passkey. Both keys must be P-256 points with canonical
+ * coordinates.
  */
-export function issueUserCredential(
+export async function issueUserCredential(
   params: UserCredentialParams,
   signer: CryptoKey,
+  salts: SaltGenerator = randomSalt,
 ): Promise<string> {
+  const iat = issuedAt(params.iat);
+  await assertP256Point(params.holderJwk);
+  await assertP256Point(params.cred.jwk);
   const sdJwt = new SDJwtVcInstance({
     signer: es256Signer(signer),
     signAlg: "ES256",
     hasher: sdHasher,
     hashAlg: "sha-256",
-    saltGenerator: salt,
+    saltGenerator: saltString(salts),
   });
   return sdJwt.issue(
     {
       iss: params.iss,
-      iat: Math.floor(Date.now() / 1000),
+      iat,
       vct: USER_CREDENTIAL_VCT,
       sub: params.sub,
       cnf: { jwk: publicJwk(params.holderJwk) },
@@ -192,39 +286,52 @@ export function issueUserCredential(
  * `payloadSd` as its only delegate payload and the passkey assertion as `user_auth`. The user
  * credential is embedded without its disclosures, so `sub` and `cred` reach no verifier.
  *
- * The WebAuthn assertion in `userAuth` is NOT verified here; callers must verify it against `M`
- * and the user's passkey before calling this.
+ * `signer` must be the holder key in the user credential's `cnf.jwk`, and every disclosure must
+ * decode as one.
+ *
+ * Neither the WebAuthn assertion in `userAuth` nor the mandate in `payloadSd` is checked here;
+ * callers must parse the mandate, compute `M` from it and verify the assertion against `M` and
+ * the user's passkey before calling this.
  * @see https://datatracker.ietf.org/doc/html/draft-ietf-oauth-delegate-sd-jwt-00
  */
 export async function issueOpenMandate(
   params: OpenMandateParams,
   signer: CryptoKey,
+  salts: SaltGenerator = randomSalt,
 ): Promise<string> {
   const { payloadSd, disclosures, userAuth, aud, nonce } = params;
+  const iat = issuedAt(params.iat);
   if (!params.userCredential.endsWith("~") || params.userCredential.endsWith("~~")) {
     throw new RangeError("userCredential must be an SD-JWT without key binding");
   }
   const userCredential = `${params.userCredential.slice(0, params.userCredential.indexOf("~"))}~`;
+  const holderJwk = jwkOf(Jwt.decodeJWT(userCredential.slice(0, -1)).payload.cnf);
   jwkOf((payloadSd as { cnf?: unknown }).cnf);
   assertUserAuth(userAuth);
+  disclosures.forEach(assertDisclosure);
   const delegate = await pack(
     { delegate_payload: [payloadSd] },
     { delegate_payload: { _sd: [0] } },
     { hasher: sdHasher, alg: "sha-256" },
-    salt,
+    saltString(salts),
   );
   const kbSdJwt = await new Jwt({
     header: { typ: OPEN_MANDATE_TYP, alg: "ES256" },
     payload: {
       ...delegate.packedClaims,
       _sd_alg: "sha-256",
-      iat: Math.floor(Date.now() / 1000),
+      iat,
       aud,
       nonce,
       sd_hash: sdHash(userCredential),
       user_auth: userAuth,
     },
   }).sign(es256Signer(signer));
+  const holderKey = (await importJWK(holderJwk, "ES256")) as CryptoKey;
+  const dot = kbSdJwt.lastIndexOf(".");
+  if (!(await es256Verifier(holderKey)(kbSdJwt.slice(0, dot), kbSdJwt.slice(dot + 1)))) {
+    throw new RangeError("signer is not the user credential's cnf.jwk");
+  }
   const all = [...delegate.disclosures.map((d) => d.encode()), ...disclosures];
   return `${userCredential}~${kbSdJwt}~${all.map((d) => `${d}~`).join("")}`;
 }
@@ -332,6 +439,90 @@ async function verifyOpenMandate(
     userAuth: claims.user_auth,
     userCredential,
   };
+}
+
+/** The final KB-SD-JWT of a dSD-JWT and its disclosures, which the closing KB-JWT's `sd_hash` covers. */
+function finalKbSdJwt(openMandate: string): string {
+  return openMandate.slice(openMandate.indexOf("~~") + 2);
+}
+
+/**
+ * Closes an open mandate for one request: appends a KB-JWT signed by the agent key (the delegate
+ * payload's `cnf.jwk`) that binds the request ULID as `nonce` and the cart as `cart_hash`, which
+ * makes the dSD-JWT a dSD-JWT+KB (draft-ietf-oauth-delegate-sd-jwt-00, section 5).
+ * @see https://www.rfc-editor.org/rfc/rfc9901#section-4.3
+ */
+export async function closeMandate(
+  openMandate: string,
+  params: ClosedMandateParams,
+  agentKey: CryptoKey,
+): Promise<string> {
+  const { requestId, cartHash, iat = Math.floor(Date.now() / 1000) } = params;
+  if (!openMandate.endsWith("~") || !openMandate.includes("~~") || openMandate.endsWith("~~")) {
+    throw new RangeError("not an open mandate");
+  }
+  if (!ULID.test(requestId)) throw new RangeError("requestId is not a ULID");
+  if (!CART_HASH.test(cartHash)) throw new RangeError("cartHash is not sha256:<hex>");
+  if (!Number.isSafeInteger(iat)) throw new RangeError("iat must be whole seconds");
+  const kbJwt = await new Jwt({
+    header: { typ: CLOSED_MANDATE_TYP, alg: "ES256" },
+    payload: {
+      iat,
+      aud: CLOSED_MANDATE_AUD,
+      nonce: requestId,
+      sd_hash: sdHash(finalKbSdJwt(openMandate)),
+      cart_hash: cartHash,
+    },
+  }).sign(es256Signer(agentKey));
+  return `${openMandate}${kbJwt}`;
+}
+
+/**
+ * Verifies a closed mandate: the open mandate against the issuer's public key and `opts.open`,
+ * then the agent's KB-JWT against the delegate payload's `cnf.jwk` (RFC 9901 section 7.3,
+ * step 5), bound to `opts.requestId` and `opts.cartHash` and issued within the skew of `now`.
+ * A rejected key binding throws a {@link ClosedMandateError}.
+ *
+ * The WebAuthn assertion in the open mandate's `user_auth` is NOT verified here.
+ */
+export async function verifyClosedMandate(
+  token: string,
+  issuerKey: CryptoKey,
+  opts: ClosedMandateVerifyOptions,
+): Promise<VerifiedClosedMandate> {
+  const split = token.lastIndexOf("~") + 1;
+  const openMandate = token.slice(0, split);
+  const kbJwt = token.slice(split);
+  if (!ULID.test(opts.requestId)) throw new RangeError("requestId is not a ULID");
+  if (!CART_HASH.test(opts.cartHash)) throw new RangeError("cartHash is not sha256:<hex>");
+  const open = await verifyOpenMandate(openMandate, issuerKey, opts.open);
+  const { kid, ...key } = jwkOf(open.claims.cnf);
+  const agentJwk = kid === undefined ? publicJwk(key) : { ...publicJwk(key), kid };
+  let payload: Record<string, unknown>;
+  try {
+    assertStrictJwt(kbJwt);
+    if (decodeProtectedHeader(kbJwt).typ !== CLOSED_MANDATE_TYP) throw new RangeError("typ");
+    const agentKey = (await importJWK(agentJwk, "ES256")) as CryptoKey;
+    const dot = kbJwt.lastIndexOf(".");
+    if (!(await es256Verifier(agentKey)(kbJwt.slice(0, dot), kbJwt.slice(dot + 1)))) {
+      throw new RangeError("signature");
+    }
+    payload = decodeJwt(kbJwt);
+  } catch {
+    throw new ClosedMandateError("closed_signature");
+  }
+  if (payload.sd_hash !== sdHash(finalKbSdJwt(openMandate))) {
+    throw new ClosedMandateError("closed_sd_hash");
+  }
+  if (payload.aud !== CLOSED_MANDATE_AUD) throw new ClosedMandateError("closed_aud");
+  if (payload.nonce !== opts.requestId) throw new ClosedMandateError("closed_nonce");
+  if (payload.cart_hash !== opts.cartHash) throw new ClosedMandateError("closed_cart_hash");
+  const { iat } = payload;
+  const { now, maxSkewSec } = opts.open;
+  if (typeof iat !== "number" || Math.abs(iat - now) > maxSkewSec) {
+    throw new ClosedMandateError("closed_iat");
+  }
+  return { open, agentJwk, iat };
 }
 
 /**

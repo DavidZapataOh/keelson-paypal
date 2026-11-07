@@ -1,13 +1,25 @@
+import { type Hex, hashTypedData, type TypedDataDomain } from "viem";
+import { signTypedData } from "viem/accounts";
 import { describe, expect, test } from "vitest";
 import {
+  BIT_EXTRA,
   CHAIN_IDS,
+  type Countersign,
+  countersignDigest,
+  failedFieldsMask,
   hashKeelson,
   KEELSON_TYPES,
   type KeelsonChainId,
   type KeelsonPrimaryType,
   keelsonDomain,
+  reportData,
+  type SignerBinding,
+  TeeKind,
 } from "../src/eip712.ts";
+import countersignVectors from "./vectors/countersign.json" with { type: "json" };
 import vectors from "./vectors/eip712.json" with { type: "json" };
+import maskVectors from "./vectors/failed-fields-mask.json" with { type: "json" };
+import reportDataVectors from "./vectors/report-data.json" with { type: "json" };
 
 const verifyingContract = "0x0000000000000000000000000000000000000001" as const;
 const word = (n: number) => `0x${n.toString(16).padStart(64, "0")}` as const;
@@ -119,3 +131,92 @@ describe("eip712", () => {
     ).toMatch(/^0x[0-9a-f]{64}$/);
   });
 });
+
+describe("countersign", () => {
+  test.each(countersignVectors)("matches the golden vector $name", async ({ input, expected }) => {
+    const message = parseCountersign(input.message);
+    const domain = { ...input.domain, chainId: BigInt(input.domain.chainId) } as TypedDataDomain;
+    expect(countersignDigest(message, domain)).toBe(expected.digest);
+    expect(
+      await signTypedData({
+        privateKey: input.privateKey as Hex,
+        domain,
+        types: KEELSON_TYPES,
+        primaryType: "Countersign",
+        message,
+      }),
+    ).toBe(expected.signature);
+  });
+
+  test("matches hashTypedData", () => {
+    const domain = keelsonDomain(CHAIN_IDS.arbitrumSepolia, verifyingContract);
+    const message = parseCountersign(countersignVectors[0]?.input.message ?? {});
+    expect(countersignDigest(message, domain)).toBe(
+      hashTypedData({ domain, types: KEELSON_TYPES, primaryType: "Countersign", message }),
+    );
+  });
+
+  test("rejects a domain on an unsupported chain", () => {
+    const message = parseCountersign(countersignVectors[0]?.input.message ?? {});
+    const domain = { name: "Keelson", version: "1", chainId: 1, verifyingContract };
+    expect(() => countersignDigest(message, domain)).toThrow(RangeError);
+  });
+
+  test("rejects an out-of-range uint40", () => {
+    const domain = keelsonDomain(CHAIN_IDS.arbitrumSepolia, verifyingContract);
+    const message = parseCountersign(countersignVectors[0]?.input.message ?? {});
+    expect(() => countersignDigest({ ...message, issuedAt: 2 ** 40 }, domain)).toThrow(RangeError);
+  });
+});
+
+describe("reportData", () => {
+  test.each(reportDataVectors)("matches the golden vector $name", ({ input, expected }) => {
+    const binding = {
+      ...input.binding,
+      chainId: BigInt(input.binding.chainId),
+      bootEpoch: BigInt(input.binding.bootEpoch),
+    } as SignerBinding;
+    if (expected === "error") {
+      expect(() => reportData(binding, input.blockHash as Hex)).toThrow(RangeError);
+    } else {
+      expect(reportData(binding, input.blockHash as Hex)).toBe(expected);
+    }
+  });
+
+  test("is 64 bytes ending in the block hash", () => {
+    const blockHash = word(0xabcdef);
+    const binding: SignerBinding = {
+      chainId: 421614n,
+      bondVault: verifyingContract,
+      teeKind: TeeKind.TDX,
+      signer: verifyingContract,
+      policySetHash: word(1),
+      engineBuildId: word(2),
+      bootEpoch: 1n,
+    };
+    const data = reportData(binding, blockHash);
+    expect(data).toHaveLength(2 + 128);
+    expect(data.slice(66)).toBe(blockHash.slice(2));
+  });
+});
+
+describe("failedFieldsMask", () => {
+  test.each(maskVectors)("matches the golden vector $name", ({ input, expected }) => {
+    expect(failedFieldsMask(input.fired, input)).toBe(expected);
+  });
+
+  test("sets the extra bit for any fired policy outside the base table", () => {
+    expect(failedFieldsMask(["amount", "extra.0"], {})).toBe((1 << 3) | (1 << BIT_EXTRA));
+    expect(failedFieldsMask(["base"], {})).toBe(0);
+  });
+});
+
+function parseCountersign(raw: Record<string, string>): Countersign {
+  return Object.fromEntries(
+    KEELSON_TYPES.Countersign.map(({ name, type }) => {
+      const value = raw[name] as string;
+      if (type === "uint256" || type === "uint64") return [name, BigInt(value)];
+      return [name, type.startsWith("uint") ? Number(value) : value];
+    }),
+  ) as unknown as Countersign;
+}

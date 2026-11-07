@@ -1,0 +1,159 @@
+[
+  {
+    "name": "demo-shoes",
+    "input": {
+      "merchant": "mrc_runfast",
+      "currency": "USD",
+      "lines": [
+        {
+          "sku": "sku-trail-10",
+          "size": "10",
+          "color": "black",
+          "category": "gpt:187",
+          "qty": 1,
+          "unit_minor": 9400
+        }
+      ],
+      "return_days": 30,
+      "returns_free": true
+    },
+    "expected": "0xc74c44e1b852d5134056bae404a00880cc39512ba4e0d93cdf700d03222f03a1"
+  },
+  {
+    "name": "bundle-nulls",
+    "input": {
+      "merchant": "mrc_runfast",
+      "currency": "USD",
+      "lines": [
+        {
+          "sku": "sku-trail-10",
+          "size": "10",
+          "color": "black",
+          "category": "gpt:187",
+          "qty": 2,
+          "unit_minor": 9400
+        },
+        {
+          "sku": "SOCK-6",
+          "size": null,
+          "color": "white",
+          "category": "gpt:1604",
+          "qty": 3,
+          "unit_minor": 1500
+        },
+        {
+          "sku": "BAG-20",
+          "size": null,
+          "color": null,
+          "category": "gpt:100",
+          "qty": 1,
+          "unit_minor": 10700
+        }
+      ],
+      "return_days": 14,
+      "returns_free": false
+    },
+    "expected": "0x8d0abc21ccbd7817e90708e418c24e8853beed5b4d05c744b38ee0af77911a78"
+  },
+  {
+    "name": "bundle-omitted",
+    "input": {
+      "merchant": "mrc_runfast",
+      "currency": "USD",
+      "lines": [
+        {
+          "sku": "sku-trail-10",
+          "size": "10",
+          "color": "black",
+          "category": "gpt:187",
+          "qty": 2,
+          "unit_minor": 9400
+        },
+        {
+          "sku": "SOCK-6",
+          "color": "white",
+          "category": "gpt:1604",
+          "qty": 3,
+          "unit_minor": 1500
+        },
+        {
+          "sku": "BAG-20",
+          "category": "gpt:100",
+          "qty": 1,
+          "unit_minor": 10700
+        }
+      ],
+      "return_days": 14,
+      "returns_free": false
+    },
+    "expected": "0x8d0abc21ccbd7817e90708e418c24e8853beed5b4d05c744b38ee0af77911a78"
+  },
+  {
+    "name": "unicode",
+    "input": {
+      "merchant": "mrc_zapatería",
+      "currency": "USD",
+      "lines": [
+        {
+          "sku": "zapato-ñ-👟",
+          "size": "42",
+          "color": "rojo",
+          "category": "gpt:187",
+          "qty": 1,
+          "unit_minor": 0
+        }
+      ],
+      "return_days": 30,
+      "returns_free": true
+    },
+    "expected": "0x507be3de8f0c1cc90e1f10df7eb7bc0a949c48440a74a5997ebd5cdbe18024d6"
+  },
+  {
+    "name": "variants",
+    "input": {
+      "merchant": "mrc_runfast",
+      "currency": "USD",
+      "lines": [
+        {
+          "sku": "sku-trail-10",
+          "size": "9",
+          "color": "black",
+          "category": "gpt:187",
+          "qty": 1,
+          "unit_minor": 9400
+        },
+        {
+          "sku": "sku-trail-10",
+          "size": "10",
+          "color": "black",
+          "category": "gpt:187",
+          "qty": 1,
+          "unit_minor": 9400
+        }
+      ],
+      "return_days": 30,
+      "returns_free": true
+    },
+    "expected": "0x8618272135a44ded0a6c6afac199b4c3bf734547f4c49462e882f887d3147839"
+  },
+  {
+    "name": "jpy-large",
+    "input": {
+      "merchant": "mrc_tokyo",
+      "currency": "JPY",
+      "lines": [
+        {
+          "sku": "k",
+          "size": null,
+          "color": null,
+          "category": "gpt:1",
+          "qty": 999,
+          "unit_minor": 9007199254
+        }
+      ],
+      "return_days": 0,
+      "returns_free": false
+    },
+    "expected": "0xbb45d1edd7a75968142559965f27ba1dce82232110a08a93a1e8a6bdcc2a6bfc"
+  }
+]

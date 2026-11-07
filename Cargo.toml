@@ -19,3 +19,7 @@ opt-level = 3
 
 [profile.dev.package.crypto-bigint]
 opt-level = 3
+
+# The signer tests produce and recover thousands of secp256k1 signatures.
+[profile.dev.package.k256]
+opt-level = 3

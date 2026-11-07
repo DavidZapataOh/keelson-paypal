@@ -23,14 +23,23 @@ import {
   verifyMerchantNonMembership,
 } from "../src/commitment.ts";
 import {
+  CLOSED_MANDATE_AUD,
+  CLOSED_MANDATE_TYP,
+  ClosedMandateError,
+  type ClosedMandateVerifyOptions,
+  issueOpenMandate,
+  issueUserCredential,
   OPEN_MANDATE_TYP,
+  type OpenMandateParams,
   type OpenMandateVerifyOptions,
   type P256PublicJwk,
   USER_CREDENTIAL_TYP,
   USER_CREDENTIAL_VCT,
   type UserAuth,
+  type UserCredentialParams,
   type VerifiedCredential,
   type VerifiedOpenMandate,
+  verifyClosedMandate,
   verifyCredential,
 } from "../src/credentials.ts";
 import { CONTROL_OR_FORMAT } from "../src/generated/unicode.ts";
@@ -118,8 +127,9 @@ interface Key {
   publicKey: CryptoKey;
 }
 
-async function key(label: string): Promise<Key> {
-  const secret = seed(`key/${label}`);
+const key = (label: string): Promise<Key> => keyOf(seed(`key/${label}`));
+
+async function keyOf(secret: Uint8Array): Promise<Key> {
   const point = p256.getPublicKey(secret, false);
   const jwk: P256PublicJwk = {
     kty: "EC",
@@ -1126,14 +1136,43 @@ const pickL1 = (v: VerifiedCredential) => ({
   claims: v.claims,
 });
 
-async function credentialVectors() {
-  const keys: Keys = {
-    issuer: await key("issuer"),
-    holder: await key("holder"),
-    passkey: await key("passkey"),
-    agent: await key("agent"),
-    other: await key("other"),
+const credentialKeys = async (): Promise<Keys> => ({
+  issuer: await key("issuer"),
+  holder: await key("holder"),
+  passkey: await key("passkey"),
+  agent: await key("agent"),
+  other: await key("other"),
+});
+
+/** The open mandate every L2 and closed-mandate vector derives from. */
+async function openMandateFixture(keys: Keys, l1: string) {
+  const live = mandate();
+  live.user.cred.jwk = keys.passkey.jwk;
+  live.agent.cnf.jwk = { ...keys.agent.jwk, kid: "agt-01" };
+  const cmSalt = seed("salt/l2/commitment").subarray(0, 16);
+  const cm = await mandateCommitment(live, cmSalt);
+  live.zk.commitment = field(cm);
+  const { payloadSd, disclosures } = await buildSdPayload(live, salts("l2/sd"));
+  const userAuth = assertion(keys.passkey, mandateChallenge(hSd(payloadSd), cm));
+  const base: L2Params = {
+    keys,
+    userCredential: l1,
+    payloadSd,
+    disclosures,
+    userAuth,
+    nonce: live.nonce,
   };
+  const opts: OpenMandateVerifyOptions = {
+    expectedAud: AUD,
+    expectedNonce: live.nonce,
+    now: NOW,
+    maxSkewSec: 60,
+  };
+  return { live, payloadSd, disclosures, userAuth, base, opts };
+}
+
+async function credentialVectors() {
+  const keys = await credentialKeys();
   const vectors: { name: string; input: unknown; expected: unknown }[] = [];
 
   const l1Case = async (name: string, token: string, k: Key = keys.issuer) =>
@@ -1225,6 +1264,10 @@ async function credentialVectors() {
     `${resignL1({ ...l1Header, kid: "issuer" }, () => {}, keys.other)}${rest}`,
   );
   await l1Case("error/crit", `${resignL1({ ...l1Header, crit: ["exp"] }, () => {})}${rest}`);
+  await l1Case(
+    "error/crit-b64",
+    `${resignL1({ ...l1Header, crit: ["b64"], b64: true }, () => {})}${rest}`,
+  );
   await l1Case("error/typ", `${resignL1({ ...l1Header, typ: "vc+sd-jwt" }, () => {})}${rest}`);
   await l1Case("error/typ-missing", `${resignL1({ alg: "ES256" }, () => {})}${rest}`);
   await l1Case(
@@ -1360,28 +1403,7 @@ async function credentialVectors() {
   });
 
   // Open mandates.
-  const live = mandate();
-  live.user.cred.jwk = keys.passkey.jwk;
-  live.agent.cnf.jwk = { ...keys.agent.jwk, kid: "agt-01" };
-  const cmSalt = seed("salt/l2/commitment").subarray(0, 16);
-  const cm = await mandateCommitment(live, cmSalt);
-  live.zk.commitment = field(cm);
-  const { payloadSd, disclosures } = await buildSdPayload(live, salts("l2/sd"));
-  const userAuth = assertion(keys.passkey, mandateChallenge(hSd(payloadSd), cm));
-  const base: L2Params = {
-    keys,
-    userCredential: l1,
-    payloadSd,
-    disclosures,
-    userAuth,
-    nonce: live.nonce,
-  };
-  const opts: OpenMandateVerifyOptions = {
-    expectedAud: AUD,
-    expectedNonce: live.nonce,
-    now: NOW,
-    maxSkewSec: 60,
-  };
+  const { live, payloadSd, disclosures, userAuth, base, opts } = await openMandateFixture(keys, l1);
 
   const l2Case = async (
     name: string,
@@ -1473,6 +1495,13 @@ async function credentialVectors() {
         .with(2, `${header}${kb.slice(kb.indexOf("."), kb.lastIndexOf(".") + 1)}`)
         .join("~");
     })(),
+  );
+  await l2Case(
+    "error/kb-crit-b64",
+    await issueL2({
+      ...base,
+      header: { typ: OPEN_MANDATE_TYP, alg: "ES256", crit: ["b64"], b64: true },
+    }),
   );
   await l2Case(
     "error/kb-header-jwk-injection",
@@ -1598,10 +1627,396 @@ async function credentialVectors() {
   return vectors;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Closed mandates
+
+const REQUEST_ID = "01JC3XQ7ZK8M4N6P9R2T5V7W0Y";
+const CART_HASH = `sha256:${Buffer.from(seed("cart")).toString("hex")}`;
+
+async function closedMandateVectors() {
+  const keys = await credentialKeys();
+  const l1 = await issueL1(keys, l1Payload(keys));
+  const { base, opts: open } = await openMandateFixture(keys, l1);
+  const l2 = await issueL2(base);
+  const opts: ClosedMandateVerifyOptions = {
+    open,
+    requestId: REQUEST_ID,
+    cartHash: CART_HASH,
+  };
+  const kbPayload = (sdHashOver = l2.slice(l2.indexOf("~~") + 2)) => ({
+    iat: NOW,
+    aud: CLOSED_MANDATE_AUD,
+    nonce: REQUEST_ID,
+    sd_hash: b64u(sdHasher(sdHashOver, "sha-256")),
+    cart_hash: CART_HASH,
+  });
+  /** The closed mandate as `closeMandate` closes it, with a deterministic signature. */
+  const close = (
+    edit: (kb: Record<string, unknown>) => void = () => {},
+    signer = keys.agent,
+    header: object = { typ: CLOSED_MANDATE_TYP, alg: "ES256" },
+  ) => {
+    const kb: Record<string, unknown> = kbPayload();
+    edit(kb);
+    return `${l2}${jws(header, kb, signer)}`;
+  };
+
+  const vectors: { name: string; input: unknown; expected: unknown }[] = [];
+  const closedCase = async (
+    name: string,
+    token: string,
+    o: ClosedMandateVerifyOptions = opts,
+    k: Key = keys.issuer,
+  ) =>
+    vectors.push({
+      name,
+      input: { token, jwk: k.jwk, opts: o },
+      expected: await verifyClosedMandate(token, k.publicKey, o).then(
+        (v) => ({ agentJwk: v.agentJwk, iat: v.iat, claims: v.open.claims }),
+        (e) => (e instanceof ClosedMandateError ? { error: e.code } : "error"),
+      ),
+    });
+
+  const valid = close();
+  await closedCase("valid", valid);
+  await closedCase("valid-high-s", highS(valid));
+  await closedCase(
+    "valid-iat-at-skew",
+    close((kb) => (kb.iat = NOW - open.maxSkewSec)),
+  );
+  await closedCase("error/holder-signed", close(undefined, keys.holder));
+  await closedCase("error/no-key-binding", l2);
+  await closedCase(
+    "error/typ",
+    close(undefined, keys.agent, { typ: OPEN_MANDATE_TYP, alg: "ES256" }),
+  );
+  await closedCase(
+    "error/sd-hash-over-whole-presentation",
+    close((kb) => (kb.sd_hash = kbPayload(l2).sd_hash)),
+  );
+  await closedCase(
+    "error/aud",
+    close((kb) => (kb.aud = open.expectedAud)),
+  );
+  await closedCase("error/nonce", valid, { ...opts, requestId: "01JC3XQ7ZK8M4N6P9R2T5V7W0Z" });
+  await closedCase("error/cart-hash", valid, {
+    ...opts,
+    cartHash: `sha256:${Buffer.from(seed("other-cart")).toString("hex")}`,
+  });
+  await closedCase(
+    "error/iat-beyond-skew",
+    close((kb) => (kb.iat = NOW + open.maxSkewSec + 1)),
+  );
+  await closedCase(
+    "error/iat-stale",
+    close((kb) => (kb.iat = NOW - open.maxSkewSec - 1)),
+  );
+  await closedCase(
+    "error/iat-missing",
+    close((kb) => delete kb.iat),
+  );
+  await closedCase("error/open-mandate-wrong-issuer", valid, opts, keys.other);
+  await closedCase("error/open-mandate-nonce", valid, {
+    ...opts,
+    open: { ...open, expectedNonce: "AAAAAAAAAAAAAAAAAAAAAA" },
+  });
+  await closedCase("error/trailing-separator", `${valid}~`);
+  await closedCase(
+    "error/crit-b64",
+    close(undefined, keys.agent, {
+      typ: CLOSED_MANDATE_TYP,
+      alg: "ES256",
+      crit: ["b64"],
+      b64: true,
+    }),
+  );
+  {
+    const kb = valid.slice(l2.length);
+    const header = b64uJson({ typ: CLOSED_MANDATE_TYP, alg: "none" });
+    await closedCase(
+      "error/alg-none",
+      `${l2}${header}${kb.slice(kb.indexOf("."), kb.lastIndexOf(".") + 1)}`,
+    );
+  }
+  await closedCase("error/other-agent", close(undefined, keys.other));
+  {
+    const other = await issueL2({ ...base, edit: (kb) => (kb.iat = KB_IAT + 1) });
+    await closedCase("error/replay-from-other-mandate", `${other}${valid.slice(l2.length)}`);
+  }
+  {
+    const parts = l2.split("~");
+    const swapped = parts
+      .with(3, parts[4] as string)
+      .with(4, parts[3] as string)
+      .join("~");
+    await closedCase("error/swapped-disclosures", `${swapped}${valid.slice(l2.length)}`);
+  }
+  await closedCase("error/request-id-lowercase", valid, {
+    ...opts,
+    requestId: REQUEST_ID.toLowerCase(),
+  });
+  await closedCase("error/request-id-empty", valid, { ...opts, requestId: "" });
+  await closedCase("error/cart-hash-uppercase", valid, {
+    ...opts,
+    cartHash: CART_HASH.toUpperCase(),
+  });
+  return vectors;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Issuance with keys derived from a root
+
+const KDF_SALT = utf8("keelson/kdf/v1");
+
+/**
+ * A P-256 scalar from HKDF-SHA256 (RFC 5869) over the root: the first 32-byte output for
+ * `info ‖ counter`, counter from 0, that lies in `[1, n)`.
+ */
+async function derivedSecret(root: Uint8Array<ArrayBuffer>, info: string): Promise<Uint8Array> {
+  const ikm = await crypto.subtle.importKey("raw", root, "HKDF", false, ["deriveBits"]);
+  for (let counter = 0; counter < 256; counter++) {
+    const okm = new Uint8Array(
+      await crypto.subtle.deriveBits(
+        {
+          name: "HKDF",
+          hash: "SHA-256",
+          salt: KDF_SALT,
+          info: Buffer.concat([utf8(info), Uint8Array.of(counter)]),
+        },
+        ikm,
+        256,
+      ),
+    );
+    const k = BigInt(hex(okm));
+    if (k > 0n && k < P256_N) return okm;
+  }
+  throw new Error("no scalar in 256 candidates");
+}
+
+const signingKey = (k: Key): Promise<CryptoKey> =>
+  crypto.subtle.importKey(
+    "jwk",
+    { ...k.jwk, d: b64u(k.secret) },
+    { name: "ECDSA", namedCurve: "P-256" },
+    false,
+    ["sign"],
+  );
+
+/** Salts that are recorded as they are drawn, so the vectors can replay them. */
+function recordedSalts(label: string): { next: () => Uint8Array; drawn: string[] } {
+  const next = salts(label);
+  const drawn: string[] = [];
+  return {
+    next: () => {
+      const s = next();
+      drawn.push(hex(s));
+      return s;
+    },
+    drawn,
+  };
+}
+
+/**
+ * The token with the JWS in part `i` re-signed with plain RFC 6979 ECDSA, without low-S
+ * normalization (ES256 has none): WebCrypto ECDSA is randomized, and only the signature changes.
+ */
+function deterministic(token: string, i: number, k: Key): string {
+  const parts = token.split("~");
+  const jwt = parts[i] as string;
+  const input = jwt.slice(0, jwt.lastIndexOf("."));
+  parts[i] = `${input}.${b64u(p256.sign(utf8(input), k.secret, { lowS: false }))}`;
+  return parts.join("~");
+}
+
+const ROOT = seed("root") as Uint8Array<ArrayBuffer>;
+const SUB = "kls_usr_7f3a9c21";
+const ISSUED_AUD = "keelson.finance";
+
+async function issuedVectors() {
+  const issuer = await keyOf(await derivedSecret(ROOT, "issuer"));
+  const subs = [SUB, "a", "b", "", "kls_usr_ñ/1"];
+  const users = await Promise.all(
+    subs.map(async (sub) => ({ sub, key: await keyOf(await derivedSecret(ROOT, `user/${sub}`)) })),
+  );
+  const holder = (users[0] as { key: Key }).key;
+  const keys: Keys = { ...(await credentialKeys()), issuer, holder };
+
+  const l1Params: UserCredentialParams = {
+    iss: ISS,
+    sub: SUB,
+    cred: { id: "Zk3p0xQmH8vN1sLwT5uYdA", rp_id: "keelson.finance", jwk: keys.passkey.jwk },
+    holderJwk: holder.jwk,
+    iat: L1_IAT,
+  };
+  const l1Salts = recordedSalts("issued/l1");
+  const l1 = deterministic(
+    await issueUserCredential(l1Params, await signingKey(issuer), l1Salts.next),
+    0,
+    issuer,
+  );
+  await verifyCredential(l1, USER_CREDENTIAL_TYP, issuer.publicKey);
+
+  const { live, payloadSd, disclosures, userAuth } = await openMandateFixture(keys, l1);
+  const l2Params: OpenMandateParams = {
+    userCredential: l1,
+    payloadSd,
+    disclosures,
+    userAuth,
+    aud: ISSUED_AUD,
+    nonce: live.mid,
+    iat: KB_IAT,
+  };
+  const l2Salts = recordedSalts("issued/l2");
+  const l2 = deterministic(
+    await issueOpenMandate(l2Params, await signingKey(holder), l2Salts.next),
+    2,
+    holder,
+  );
+  const verify: OpenMandateVerifyOptions = {
+    expectedAud: ISSUED_AUD,
+    expectedNonce: live.mid,
+    now: NOW,
+    maxSkewSec: 60,
+  };
+  await verifyCredential(l2, OPEN_MANDATE_TYP, issuer.publicKey, verify);
+
+  const errors = await issuanceErrors({ issuer, holder, l1Params, l2Params });
+
+  const derived = (k: Key) => ({ secret: hex(k.secret), jwk: k.jwk });
+  return {
+    root: hex(ROOT),
+    issuer: derived(issuer),
+    users: users.map(({ sub, key }) => ({ sub, ...derived(key) })),
+    userCredential: { params: l1Params, salts: l1Salts.drawn, expected: l1 },
+    openMandate: { params: l2Params, salts: l2Salts.drawn, verify, expected: l2 },
+    errors,
+  };
+}
+
+interface IssuanceBase {
+  issuer: Key;
+  holder: Key;
+  l1Params: UserCredentialParams;
+  l2Params: OpenMandateParams;
+}
+
+/**
+ * Inputs both issuers must refuse. Each case overrides members of the vector's params and names
+ * the signing key; the salts are fresh per case.
+ */
+async function issuanceErrors({ issuer, holder, l1Params, l2Params }: IssuanceBase) {
+  const offCurve = { ...holder.jwk, y: b64u(seed("off-curve")) };
+  const disclosures = (d: string) => ({ disclosures: [...l2Params.disclosures, d] });
+  const cases: {
+    name: string;
+    credential: "user" | "open";
+    signer: "issuer" | "holder";
+    params: Record<string, unknown>;
+  }[] = [
+    {
+      name: "user/holder-jwk-not-canonical",
+      credential: "user",
+      signer: "issuer",
+      params: { holderJwk: { ...holder.jwk, x: `${holder.jwk.x}=` } },
+    },
+    {
+      name: "user/holder-jwk-short",
+      credential: "user",
+      signer: "issuer",
+      params: { holderJwk: { ...holder.jwk, x: holder.jwk.x.slice(1) } },
+    },
+    {
+      name: "user/holder-jwk-off-curve",
+      credential: "user",
+      signer: "issuer",
+      params: { holderJwk: offCurve },
+    },
+    {
+      name: "user/cred-jwk-not-canonical",
+      credential: "user",
+      signer: "issuer",
+      params: { cred: { ...l1Params.cred, jwk: { ...l1Params.cred.jwk, y: "!!" } } },
+    },
+    {
+      name: "user/cred-jwk-off-curve",
+      credential: "user",
+      signer: "issuer",
+      params: { cred: { ...l1Params.cred, jwk: offCurve } },
+    },
+    { name: "user/iat-negative", credential: "user", signer: "issuer", params: { iat: -1 } },
+    { name: "user/iat-unsafe", credential: "user", signer: "issuer", params: { iat: 2 ** 53 } },
+    { name: "open/signer-not-holder", credential: "open", signer: "issuer", params: {} },
+    {
+      name: "open/disclosure-empty",
+      credential: "open",
+      signer: "holder",
+      params: disclosures(""),
+    },
+    {
+      name: "open/disclosure-with-separator",
+      credential: "open",
+      signer: "holder",
+      params: disclosures(`${l2Params.disclosures[0]}~${l2Params.disclosures[1]}`),
+    },
+    {
+      name: "open/disclosure-not-base64url",
+      credential: "open",
+      signer: "holder",
+      params: disclosures("WyJh!"),
+    },
+    {
+      name: "open/disclosure-not-array",
+      credential: "open",
+      signer: "holder",
+      params: disclosures(b64uJson({ salt: "a" })),
+    },
+    {
+      name: "open/disclosure-one-element",
+      credential: "open",
+      signer: "holder",
+      params: disclosures(b64uJson(["a"])),
+    },
+    {
+      name: "open/disclosure-reserved-name",
+      credential: "open",
+      signer: "holder",
+      params: disclosures(b64uJson(["a", "_sd", 1])),
+    },
+    {
+      name: "open/disclosure-unsafe-number",
+      credential: "open",
+      signer: "holder",
+      params: disclosures(b64u(utf8('["a","n",9007199254740993]'))),
+    },
+    {
+      name: "open/user-credential-with-key-binding",
+      credential: "open",
+      signer: "holder",
+      params: { userCredential: `${l2Params.userCredential}~` },
+    },
+    { name: "open/iat-negative", credential: "open", signer: "holder", params: { iat: -1 } },
+  ];
+  return Promise.all(
+    cases.map(async (c) => {
+      const key = await signingKey(c.signer === "issuer" ? issuer : holder);
+      const expected = await (c.credential === "user"
+        ? issueUserCredential({ ...l1Params, ...c.params }, key, salts(`issued/${c.name}`))
+        : issueOpenMandate({ ...l2Params, ...c.params }, key, salts(`issued/${c.name}`))
+      ).then(
+        () => "issued",
+        () => "error",
+      );
+      return { ...c, expected };
+    }),
+  );
+}
+
 writeJson("sd", await sdVectors());
 writeJson("challenge", await challengeVectors());
 writeJson("commitment", await commitmentVectors());
 writeJson("credentials", await credentialVectors());
+writeJson("closed-mandate", await closedMandateVectors());
+writeJson("issued", await issuedVectors());
 writeJson(
   "colors",
   fieldColors(mandate(), { merchantSignedCheckout: false, zkTlsFields: new Set() }),
