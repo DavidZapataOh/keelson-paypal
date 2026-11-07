@@ -69,7 +69,7 @@ ulid = { version = "3.0.0", features = ["serde"] }
 zeroize = "1.9.1"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-rustix = { version = "1.1.5", default-features = false, features = ["process"] }
+rustix = { version = "1.1.5", default-features = false, features = ["process", "std"] }
 
 [dev-dependencies]
 alloy-primitives = { version = "1.7.3", features = ["k256", "serde"] }
