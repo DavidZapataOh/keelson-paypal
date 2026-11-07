@@ -9,7 +9,7 @@ use alloy_primitives::{Address, B256, U256};
 use alloy_sol_types::Eip712Domain;
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use keelson_canon::{Cart, Deny, canonicalize, cart_hash};
+use keelson_canon::{Cart, canonicalize, cart_hash};
 use keelson_core::eip712::Countersign;
 use keelson_core::{AcirField, Dst, currency_numeric};
 use keelson_mandate::{
@@ -30,9 +30,10 @@ use time::macros::format_description;
 use time::{Duration, OffsetDateTime, UtcOffset};
 
 use crate::budget::{Budget, Claimed, Replay};
+use crate::paypal::{PayPalDeny, paypal_check};
 use crate::wire::{
     self, Base64, CountersignRequest, Countersigned, Hex, MandateIssued, Observation,
-    RegisterMandate,
+    PayPalObservation, RegisterMandate,
 };
 use crate::{
     Error, Root, SealAad, Signer, SignerBinding, TeeKind, countersign_digest, failed_fields_mask,
@@ -133,6 +134,8 @@ pub enum EngineError {
     NotReady,
     /// The request id was already countersigned for another cart.
     Replay,
+    /// PayPal could not be read, so nothing can be countersigned.
+    PayPal,
     /// The signer could not sign; see [`Error`].
     Signer(Error),
 }
@@ -151,6 +154,7 @@ impl EngineError {
             Self::NotYetValid => "mandate_not_yet_valid".into(),
             Self::NotReady => "not_ready".into(),
             Self::Replay => "replay".into(),
+            Self::PayPal => "paypal".into(),
             Self::Signer(_) => "signer".into(),
         }
     }
@@ -399,12 +403,33 @@ impl Engine {
         r: &CountersignRequest,
         clock_now: OffsetDateTime,
     ) -> Result<Countersigned, EngineError> {
+        self.countersign_with(r, clock_now, None)
+    }
+
+    /// [`Engine::countersign`] on leg A over a PayPal reading made for this request.
+    ///
+    /// With `paypal`, the amount captured is the one it reports, and the cart is denied unless
+    /// the authorization can back it (see [`PayPalDeny`]). Without it, the amount comes from the
+    /// [`CapturedSource`]. Leg B takes the reading from the request's observation and refuses
+    /// one passed here.
+    pub fn countersign_with(
+        &self,
+        r: &CountersignRequest,
+        clock_now: OffsetDateTime,
+        paypal: Option<PayPalObservation>,
+    ) -> Result<Countersigned, EngineError> {
         check_countersign(r)?;
-        let captured = match (&self.root, &r.observation) {
-            (Some(_), Some(_)) | (None, None) => return Err(bad("observation")),
-            (Some(_), None) => Some(self.captured.as_ref().ok_or(EngineError::NotReady)?),
-            (None, Some(_)) => None,
+        let captured = match (&self.root, &r.observation, &paypal) {
+            (Some(_), Some(_), _) | (None, None, _) | (None, _, Some(_)) => {
+                return Err(bad("observation"));
+            }
+            (Some(_), None, Some(_)) => None,
+            (Some(_), None, None) => Some(self.captured.as_ref().ok_or(EngineError::NotReady)?),
+            (None, Some(_), None) => None,
         };
+        let observed = paypal
+            .as_ref()
+            .or(r.observation.as_ref().map(|o| &o.paypal));
         let clock_ms = unix_ms(clock_now).ok_or(bad("clock"))?;
         let now_ms = match &r.observation {
             Some(o) if o.now_ms.abs_diff(clock_ms) > MAX_OBSERVATION_SKEW_MS => {
@@ -464,13 +489,19 @@ impl Engine {
         let context = canonicalize(&r.cart, &r.unit);
         let total = context.as_ref().map_or(0, |c| c.total_minor);
         let amount = u64::try_from(total).map_err(|_| bad("cart"))?;
-        let captured = match captured {
+        let captured = match (captured, &paypal) {
             // A negative capture would raise the budget past its max.
-            Some(source) => source
+            (Some(source), _) => source
                 .captured_minor(&a.mandate_hash)
                 .ok_or(EngineError::NotReady)?
                 .max(0),
-            None => 0,
+            (None, Some(read)) => read.captured_minor.max(0),
+            (None, None) => 0,
+        };
+        // An empty reading is leg A's without a PayPal read, which checks nothing.
+        let denied = match (&context, observed) {
+            (Ok(c), Some(o)) if !o.authorization_id.is_empty() => paypal_check(m, o, c).err(),
+            _ => None,
         };
         let warming_up = clock_now < self.boot + Duration::seconds(COUNTERSIGN_TTL);
 
@@ -482,6 +513,13 @@ impl Engine {
                 None => claim.left(budget_max, captured, now),
             };
             let (trace, canon) = match &context {
+                Ok(_) if denied.is_some() => {
+                    let reason = denied.map_or("", PayPalDeny::as_str);
+                    (
+                        self.deny_trace(reason, now, &a.mandate_hash, &cart_hash),
+                        None,
+                    )
+                }
                 Ok(context) => {
                     let input = EvalInput {
                         mandate: m.clone(),
@@ -497,10 +535,14 @@ impl Engine {
                     };
                     (evaluate(&input, &self.meta), None)
                 }
-                Err(deny) => (
-                    self.canon_trace(*deny, now, &a.mandate_hash, &cart_hash),
-                    Some(*deny),
-                ),
+                Err(deny) => {
+                    let reason = serde_json::to_value(deny).expect("Deny serializes to a string");
+                    let reason = format!("canon.{}", reason.as_str().unwrap_or_default());
+                    (
+                        self.deny_trace(&reason, now, &a.mandate_hash, &cart_hash),
+                        Some(*deny),
+                    )
+                }
             };
             let jcs = trace_jcs(&trace);
             let eval_hash: [u8; 32] = Sha256::new()
@@ -510,7 +552,7 @@ impl Engine {
                 .finalize()
                 .into();
             let allow = trace.decision == Decision::Allow;
-            let cedar_errors = canon.is_none() && !trace.errors.is_empty();
+            let cedar_errors = canon.is_none() && denied.is_none() && !trace.errors.is_empty();
             let c = Countersign {
                 requestId: B256::left_padding_from(&r.request_id.to_bytes()),
                 mandateHash: B256::new(a.mandate_hash),
@@ -531,7 +573,7 @@ impl Engine {
                     &trace.fired,
                     cedar_errors,
                     canon.is_some(),
-                    false,
+                    denied.is_some(),
                 ),
                 issuedAt: issued_at,
                 expiresAt: expires,
@@ -562,11 +604,7 @@ impl Engine {
                     now_ms,
                     budget_left_minor: budget_left,
                     user_key: a.user_key.clone(),
-                    paypal: r
-                        .observation
-                        .as_ref()
-                        .map(|o| o.paypal.clone())
-                        .unwrap_or_default(),
+                    paypal: observed.cloned().unwrap_or_default(),
                 },
             };
         };
@@ -668,15 +706,14 @@ impl Engine {
         bound.then_some(()).ok_or_else(rejected)
     }
 
-    /// The trace of a cart the canonicalizer denied: no context and no policy ran.
-    fn canon_trace(
+    /// The trace of a cart denied before any policy ran, for `reason`.
+    fn deny_trace(
         &self,
-        deny: Deny,
+        reason: &str,
         now: OffsetDateTime,
         mandate_hash: &[u8; 32],
         cart_hash: &[u8; 32],
     ) -> Trace {
-        let reason = serde_json::to_value(deny).expect("Deny serializes to a string");
         let meta = &self.meta;
         Trace {
             v: TRACE_VERSION.into(),
@@ -698,7 +735,7 @@ impl Engine {
             decision: Decision::Deny,
             fired: Vec::new(),
             fields: Vec::new(),
-            errors: vec![format!("canon.{}", reason.as_str().unwrap_or_default())],
+            errors: vec![reason.to_owned()],
             t_tee: now
                 .to_offset(UtcOffset::UTC)
                 .format(format_description!(
@@ -740,6 +777,9 @@ fn check_register(r: &RegisterMandate) -> Result<(), EngineError> {
 fn check_countersign(r: &CountersignRequest) -> Result<(), EngineError> {
     within(&r.closed_mandate, MAX_TOKEN, "closed_mandate")?;
     within(&r.sub, MAX_SUB, "sub")?;
+    if let Some(id) = &r.authorization_id {
+        within(id, MAX_STRING, "authorization_id")?;
+    }
     let cart = &r.cart;
     if cart.lines.len() > MAX_CART_LINES {
         return Err(EngineError::TooLarge("cart.lines"));
@@ -788,7 +828,18 @@ fn check_countersign(r: &CountersignRequest) -> Result<(), EngineError> {
         {
             within(s, MAX_STRING, "observation")?;
         }
-        if o.paypal.raw.0.len() > MAX_TOKEN {
+        let p = &o.paypal;
+        let strings = [
+            &p.authorization_id,
+            &p.status,
+            &p.currency,
+            &p.payee_merchant_id,
+            &p.custom_id,
+        ];
+        if strings.iter().any(|s| s.len() > MAX_STRING)
+            || p.raw_authorization.0.len() > MAX_TOKEN
+            || p.raw_order.0.len() > MAX_TOKEN
+        {
             return Err(EngineError::TooLarge("observation"));
         }
     }
@@ -935,7 +986,7 @@ fn same_key(a: &Jwk, b: &Jwk) -> bool {
     (&a.x, &a.y) == (&b.x, &b.y)
 }
 
-fn unix_ms(t: OffsetDateTime) -> Option<i64> {
+pub(crate) fn unix_ms(t: OffsetDateTime) -> Option<i64> {
     i64::try_from(t.unix_timestamp_nanos().div_euclid(1_000_000)).ok()
 }
 

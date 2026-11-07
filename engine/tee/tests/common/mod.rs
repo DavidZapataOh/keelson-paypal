@@ -208,8 +208,18 @@ pub fn assertion(passkey: &SigningKey, challenge: &[u8; 32]) -> Assertion {
 
 /// The demo mandate for `sub`, confirmed with `passkey`, with every claim disclosed in place.
 pub fn mandate_for(sub: &str, passkey: &SigningKey) -> RegisterMandate {
+    mandate_with(sub, passkey, |_| {})
+}
+
+/// [`mandate_for`] with `edit` applied to the mandate before it is committed to and confirmed.
+pub fn mandate_with(
+    sub: &str,
+    passkey: &SigningKey,
+    edit: impl FnOnce(&mut Value),
+) -> RegisterMandate {
     let base = register_request();
     let mut m = decode_mandate(&base.payload_sd, &base.disclosures).unwrap();
+    edit(&mut m);
     let key = jwk_of(passkey);
     m["user"]["sub"] = json!(sub);
     m["user"]["cred"]["jwk"] = json!({ "kty": "EC", "crv": "P-256", "x": key.x, "y": key.y });
@@ -336,6 +346,7 @@ pub fn countersign_request(
         unit: f.unit(),
         evidence: BTreeMap::new(),
         evidence_root: Hex([0x55; 32]),
+        authorization_id: None,
         observation,
     }
 }

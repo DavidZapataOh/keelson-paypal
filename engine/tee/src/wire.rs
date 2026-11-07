@@ -164,11 +164,26 @@ pub struct MandateIssued {
     pub sealed_salt: Base64,
 }
 
-/// What PayPal reported about the order.
+/// What PayPal reported about an authorization and its order, read by the engine itself.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PayPalObservation {
-    pub raw: Base64,
+    pub authorization_id: String,
+    /// The authorization status, e.g. `CREATED` or `PARTIALLY_CAPTURED`.
+    pub status: String,
+    pub currency: String,
+    pub authorized_minor: i64,
+    /// The sum of the order's `COMPLETED` and `PENDING` captures of this authorization.
+    pub captured_minor: i64,
+    pub payee_merchant_id: String,
+    /// The authorization's `custom_id`, which names the mandate it holds funds for.
+    pub custom_id: String,
+    /// The authorization response body as PayPal sent it.
+    pub raw_authorization: Base64,
+    /// The order response body as PayPal sent it.
+    pub raw_order: Base64,
+    /// The engine's clock when the reads finished, in Unix milliseconds.
+    pub read_at_ms: i64,
 }
 
 /// The facts the leg holding the KMS root (leg A) observed, which the other leg (leg B) signs
@@ -199,6 +214,10 @@ pub struct CountersignRequest {
     /// engine's own verifiers may supply them.
     pub evidence: BTreeMap<FieldId, Vec<String>>,
     pub evidence_root: Hex32,
+    /// The PayPal authorization holding the mandate's funds. Leg A reads it; leg B takes the
+    /// reading from `observation`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authorization_id: Option<String>,
     /// Present on leg B, from leg A.
     pub observation: Option<Observation>,
 }

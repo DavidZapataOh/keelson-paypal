@@ -33,6 +33,8 @@ pub struct AppState {
     clock: fn() -> OffsetDateTime,
     #[cfg(feature = "tdx")]
     attestation: Option<std::sync::RwLock<Attested>>,
+    #[cfg(feature = "tdx")]
+    paypal: Option<crate::paypal::PayPalClient>,
 }
 
 impl AppState {
@@ -44,7 +46,17 @@ impl AppState {
             clock: OffsetDateTime::now_utc,
             #[cfg(feature = "tdx")]
             attestation: None,
+            #[cfg(feature = "tdx")]
+            paypal: None,
         }
+    }
+
+    /// Makes leg A read the request's PayPal authorization through `client` before every
+    /// countersign.
+    #[cfg(feature = "tdx")]
+    pub fn with_paypal(mut self, client: crate::paypal::PayPalClient) -> Self {
+        self.paypal = Some(client);
+        self
     }
 
     /// Serves `attestation`, whose block was read at `at`, on `GET /v1/attestation` and renews
@@ -122,6 +134,7 @@ impl From<EngineError> for Problem {
             EngineError::TooLarge(_) => StatusCode::PAYLOAD_TOO_LARGE,
             EngineError::NotReady => StatusCode::SERVICE_UNAVAILABLE,
             EngineError::Signer(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            EngineError::PayPal => StatusCode::BAD_GATEWAY,
         };
         let detail = match e {
             EngineError::BadRequest(what) | EngineError::TooLarge(what) => Some(what),
@@ -238,7 +251,38 @@ async fn countersign(
     body: Result<Bytes, BytesRejection>,
 ) -> Result<Json<Countersigned>, Problem> {
     let request: CountersignRequest = parse(body)?;
-    blocking(move || state.engine.countersign(&request, (state.clock)())).await
+    #[cfg(feature = "tdx")]
+    let paypal = read_paypal(&state, &request).await?;
+    #[cfg(not(feature = "tdx"))]
+    let paypal = None;
+    blocking(move || {
+        state
+            .engine
+            .countersign_with(&request, (state.clock)(), paypal)
+    })
+    .await
+}
+
+/// Leg A's own reading of the request's authorization, made now and not retried.
+#[cfg(feature = "tdx")]
+async fn read_paypal(
+    state: &AppState,
+    request: &CountersignRequest,
+) -> Result<Option<crate::wire::PayPalObservation>, Problem> {
+    let (Some(client), None) = (&state.paypal, &request.observation) else {
+        return Ok(None);
+    };
+    let id = request
+        .authorization_id
+        .as_deref()
+        .ok_or(EngineError::BadRequest("authorization_id"))?;
+    match crate::paypal::observe(client, id).await {
+        Ok(read) => Ok(Some(read)),
+        Err(e) => {
+            eprintln!("keelson-engine: {e}");
+            Err(EngineError::PayPal.into())
+        }
+    }
 }
 
 async fn register(

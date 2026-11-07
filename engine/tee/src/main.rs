@@ -22,7 +22,9 @@
 //! | `KEELSON_CHAIN_ID` | optional, `421614` by default |
 //! | `KEELSON_BOND_VAULT`, `KEELSON_VERIFYING_CONTRACT` | optional, the zero address by default |
 //!
-//! With `--platform tdx`, `ARBITRUM_SEPOLIA_RPC_URL` optionally replaces the public Arbitrum
+//! With `--platform tdx`, `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` are required: the engine
+//! reads the authorization of each cart it countersigns (`PAYPAL_ENV=live` selects the live API
+//! over the sandbox). `ARBITRUM_SEPOLIA_RPC_URL` optionally replaces the public Arbitrum
 //! Sepolia RPC, and `DSTACK_SIMULATOR_ENDPOINT` the dstack socket.
 
 use std::sync::Arc;
@@ -124,7 +126,10 @@ async fn tdx_state(config: EngineConfig, token_hash: [u8; 32]) -> Result<AppStat
         attestation.block.number,
         started.elapsed().as_millis()
     );
-    Ok(AppState::new(engine, token_hash).with_attestation(attestation, at))
+    let paypal = keelson_tee::paypal::PayPalClient::from_env()?;
+    Ok(AppState::new(engine, token_hash)
+        .with_attestation(attestation, at)
+        .with_paypal(paypal))
 }
 
 #[cfg(not(feature = "tdx"))]

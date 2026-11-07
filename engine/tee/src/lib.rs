@@ -8,6 +8,7 @@ mod countersign;
 mod engine;
 mod error;
 mod keys;
+pub mod paypal;
 mod report_data;
 pub mod server;
 mod signer;

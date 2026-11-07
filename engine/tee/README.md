@@ -11,7 +11,7 @@ Two legs run the same engine:
 
 `Engine::register_mandate` takes the mandate the user signed with their passkey and the salt of its commitment. It recomputes `C_m` and requires it to equal `zk.commitment`, computes the challenge `M`, and verifies the passkey assertion over `M` on the engine's configured origin and the RP ID `keelson.finance`. It then issues the user credential (when the request has none) and the open mandate, and returns the salt sealed to the user and `M`.
 
-The first registration of a `sub` binds it to its passkey in a sealed user record. Later registrations for that `sub` must use the same passkey, or present a user credential issued for that `sub` and the new passkey; otherwise they fail with `auth.sub_bound`. Which `sub` the first registration belongs to is taken from the caller: binding `sub` to the user's PayPal login inside the TEE comes with the PayPal read. The record store must be one the caller cannot delete from, since a lost record lets the `sub` be bound again.
+The first registration of a `sub` binds it to its passkey in a sealed user record. Later registrations for that `sub` must use the same passkey, or present a user credential issued for that `sub` and the new passkey; otherwise they fail with `auth.sub_bound`. Which `sub` the first registration belongs to is taken from the caller. The record store must be one the caller cannot delete from, since a lost record lets the `sub` be bound again.
 
 ## Countersign a cart
 
@@ -29,7 +29,7 @@ A request id is answered once per mandate. Right after authentication it is boun
 Both legs verify every signature in the closed mandate and the passkey assertion. Two checks run on leg A only, and leg B takes their result from leg A's `Observation`:
 
 - **The user ↔ holder-key binding.** The user credential's `sub` is never presented, so the holder key is what ties a credential to a user. Leg A derives `user_key(sub)` from the root; leg B has no root and uses the holder key leg A observed.
-- **The PayPal order read** and the budget left on the mandate.
+- **The PayPal read** and the budget left on the mandate (see below).
 
 ## Budget
 
@@ -39,13 +39,29 @@ A countersign is valid through its `expiresAt` second, so its reservation is hel
 
 Reservations live only in RAM. An engine allows nothing for the first 900 seconds after boot, the lifetime of a countersign, so a reservation lost in a restart can never be spent twice.
 
+## PayPal read
+
+On leg A, `CountersignRequest.authorization_id` names the PayPal authorization that holds the mandate's funds. Before each countersign the engine reads it fresh, with its own OAuth 2.0 client credentials (`PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`; sandbox unless `PAYPAL_ENV=live`): `GET /v2/payments/authorizations/{id}` and then `GET /v2/checkout/orders/{id}` for the captures, 2 s per call and no retries. A failed read is `paypal` (502) and signs nothing.
+
+The reading is the `PayPalObservation` leg B signs over. `captured_minor` is the sum of the order's `COMPLETED` and `PENDING` captures of that authorization, and replaces the `CapturedSource` amount in the budget. The cart is denied (bit 31 of `failedFieldsMask`, the reason in the trace `errors`) when:
+
+| Reason                | When                                                                                  |
+| --------------------- | ------------------------------------------------------------------------------------- |
+| `paypal.status`       | the authorization is neither `CREATED` nor `PARTIALLY_CAPTURED`                       |
+| `paypal.payee`        | the payee is not in the mandate's `payment.allowed_payees`                            |
+| `paypal.currency`     | the authorization is not in the cart's currency                                       |
+| `paypal.mandate`      | the authorization's `custom_id` does not name the mandate's `mid`                     |
+| `paypal.insufficient` | the authorization's amount less what was captured is below the cart's total           |
+
+The authorization is the hold: one per mandate, so what is authorized but not yet captured is what remains available, and a capture is spent.
+
 ## Limits
 
 Registering refuses a mandate whose `exp` has passed (`mandate_expired`) or whose `nbf` has not been reached (`mandate_not_yet_valid`). Every request is bounded before anything is parsed further: bodies at 256 KiB at the HTTP boundary, and in the engine `sub` at 128 bytes, tokens at 128 KiB, `payload_sd` at 128 KiB, 512 disclosures of at most 4 KiB, 64 cart lines, 16 evidence fields of 16 sources, and 256 bytes for any other string. Anything over a limit fails with `payload_too_large`.
 
 ## Errors
 
-Refusals carry no signature and one of these stable codes: `auth.closed_*`, `auth.open_*`, `auth.webauthn_*`, `auth.sub_bound`, `clock_skew`, `no_root`, `not_ready`, `commitment_mismatch`, `replay`, `bad_request`, `payload_too_large`, `mandate_expired`, `mandate_not_yet_valid` and `signer`.
+Refusals carry no signature and one of these stable codes: `auth.closed_*`, `auth.open_*`, `auth.webauthn_*`, `auth.sub_bound`, `clock_skew`, `no_root`, `not_ready`, `commitment_mismatch`, `replay`, `bad_request`, `payload_too_large`, `mandate_expired`, `mandate_not_yet_valid`, `paypal` and `signer`.
 
 ## HTTP
 
@@ -61,7 +77,7 @@ Refusals carry no signature and one of these stable codes: `auth.closed_*`, `aut
 | 501    | `no_root`                                                                        |
 | 503    | `not_ready`, `attestation_stale`                                                 |
 | 500    | `signer`, `internal`                                                             |
-| 502    | `attestation`                                                                    |
+| 502    | `attestation`, `paypal`                                                          |
 
 The binary reads its configuration from `KEELSON_*` environment variables (see `src/main.rs`). Without `--platform` it holds no KMS root.
 
