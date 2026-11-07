@@ -15,7 +15,7 @@ const live = process.env.KEELSON_LIVE === "1" && !!process.env.KERNEL_API_KEY;
 const ORIGIN = "https://store.keelson.test";
 
 describe.skipIf(!live)("capture on a KERNEL browser over CDP", { timeout: 120_000 }, () => {
-  const kernel = new Kernel();
+  let kernel: Kernel;
   let session: string | undefined;
   let browser: Browser;
   let page: Page;
@@ -23,6 +23,7 @@ describe.skipIf(!live)("capture on a KERNEL browser over CDP", { timeout: 120_00
   let capture: Capture;
 
   beforeAll(async () => {
+    kernel = new Kernel();
     const created = await kernel.browsers.create({
       headless: true,
       timeout_seconds: 300,
