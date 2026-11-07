@@ -12,6 +12,10 @@ const schema = z
     PAYPAL_ENV: z.enum(["sandbox", "live"]),
     PASSKEY_RP_ID: z.string().min(1).optional(),
     ANTHROPIC_API_KEY: z.string().min(1).optional(),
+    TEE_A_URL: z.url().optional(),
+    TEE_B_URL: z.url().optional(),
+    KEELSON_TEE_TOKEN: z.string().min(32).optional(),
+    ARBITRUM_SEPOLIA_RPC_URL: z.url().optional(),
     PORT: z.coerce.number().int().positive().default(10000),
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   })
@@ -23,6 +27,12 @@ const schema = z
     message: "APP_ORIGIN must use https in production",
     path: ["APP_ORIGIN"],
   })
+  .refine(
+    (env) =>
+      [env.TEE_A_URL, env.TEE_B_URL, env.KEELSON_TEE_TOKEN].every((v) => v === undefined) ||
+      [env.TEE_A_URL, env.TEE_B_URL, env.KEELSON_TEE_TOKEN].every((v) => v !== undefined),
+    { message: "TEE_A_URL, TEE_B_URL and KEELSON_TEE_TOKEN are set together", path: ["TEE_A_URL"] },
+  )
   .refine((env) => env.PASSKEY_RP_ID === undefined || env.NODE_ENV === "test", {
     message: "PASSKEY_RP_ID may only be set in tests",
     path: ["PASSKEY_RP_ID"],

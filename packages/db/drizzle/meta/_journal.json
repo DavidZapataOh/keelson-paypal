@@ -64,6 +64,13 @@
       "when": 1793919691407,
       "tag": "0008_passkey_counter_bigint",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794023537817,
+      "tag": "0009_tee_signers",
+      "breakpoints": true
     }
   ]
 }
