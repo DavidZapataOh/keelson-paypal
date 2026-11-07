@@ -114,7 +114,7 @@ describe("the tdx measurement", () => {
     const tdx = await measured();
     const other = {
       ...tdx,
-      rtmr: [tdx.rtmr[0], tdx.rtmr[1], tdx.rtmr[2], `0x${"11".repeat(48)}`] as const,
+      rtmr: [tdx.rtmr[0], tdx.rtmr[1], tdx.rtmr[2], `0x${"11".repeat(48)}`] satisfies Hex[] as typeof tdx.rtmr,
     };
     expect(tdxMeasurement(other)).toBe(tdxMeasurement(tdx));
   });
