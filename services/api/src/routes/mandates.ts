@@ -1,6 +1,6 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { fromHex, toHex } from "@keelson/core";
-import { createQueries, mandates, passkey, sql, transition } from "@keelson/db";
+import { createQueries, eq, mandates, passkey, sql, transition, user } from "@keelson/db";
 import {
   decodeMandate,
   hSd,
@@ -16,6 +16,7 @@ import { passkeyJwk, SignatureError, verifyMandateSignature } from "../mandate-s
 import { requireSession } from "../middleware/auth.ts";
 import type { Principal } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
+import { LegError, type MandateIssued } from "../tee/client.ts";
 
 const Hex32 = z.string().regex(/^0x[0-9a-f]{64}$/);
 
@@ -40,6 +41,13 @@ const CreateMandate = z
       description: "Every disclosure of the payload; each digest must resolve.",
     }),
     commitment: Hex32.openapi({ description: "`C_m`; must equal the payload's `zk.commitment`." }),
+    salt: z
+      .string()
+      .regex(/^0x[0-9a-f]{32}$/)
+      .optional()
+      .openapi({
+        description: "The salt that opens `C_m`; the TEE needs it to issue the mandate.",
+      }),
     assertion: Assertion,
   })
   .openapi("CreateMandate");
@@ -56,7 +64,14 @@ const MandateState = z.enum([
 ]);
 
 const CreatedMandate = z
-  .object({ id: z.string(), mandateHash: Hex32, state: z.literal("SIGNED") })
+  .object({
+    id: z.string(),
+    mandateHash: Hex32,
+    state: z.literal("SIGNED"),
+    openMandate: z.string().nullable().openapi({
+      description: "The open mandate (L2) the TEE issued; the agent closes it per purchase.",
+    }),
+  })
   .openapi("CreatedMandate");
 
 export const Card = z
@@ -109,6 +124,7 @@ const create = createRoute({
     403: { description: "The passkey is not the signer's", content: problemContent },
     409: { description: "The mandate is already stored", content: problemContent },
     422: { description: "The mandate is invalid", content: problemContent },
+    503: { description: "The TEE could not issue the mandate", content: problemContent },
   },
 });
 
@@ -142,7 +158,7 @@ function isUniqueViolation(err: unknown): boolean {
 
 export function registerMandates(
   app: OpenAPIHono,
-  deps: Pick<Deps, "db" | "appOrigin" | "passkeyRpId">,
+  deps: Pick<Deps, "db" | "appOrigin" | "passkeyRpId" | "tee">,
 ): void {
   const { db } = deps;
   const queries = createQueries(db);
@@ -256,6 +272,42 @@ export function registerMandates(
       throw err;
     }
 
+    let issued: MandateIssued | undefined;
+    if (deps.tee) {
+      if (!body.salt) return invalid("salt is required");
+      const holder = await db.query.user.findFirst({
+        columns: { userCredential: true },
+        where: (row, { eq: is }) => is(row.id, userId),
+      });
+      try {
+        issued = await deps.tee.client.a.registerMandate({
+          sub: userId,
+          payload_sd: body.payloadSd,
+          disclosures: body.disclosures,
+          assertion: {
+            authenticatorData: assertion.authenticatorData,
+            clientDataJSON: assertion.clientDataJSON,
+            signature: assertion.signature,
+          },
+          salt: body.salt as `0x${string}`,
+          ...(holder?.userCredential ? { user_credential: holder.userCredential } : {}),
+        });
+      } catch (err) {
+        if (!(err instanceof LegError)) throw err;
+        if (err.kind !== "problem" || (err.status ?? 0) >= 500) {
+          return problem(
+            c,
+            503,
+            "tee-unavailable",
+            "TEE unavailable",
+            "Leg A cannot issue the mandate now.",
+          );
+        }
+        if (err.code?.startsWith("auth.")) return notOwned();
+        return invalid(`the TEE refused the mandate: ${err.code ?? "unknown"}`);
+      }
+    }
+
     try {
       await db.transaction(async (tx) => {
         const counted = await tx
@@ -280,7 +332,19 @@ export function registerMandates(
           disclosures: body.disclosures,
           userAuth: assertion,
           credentialId: key.credentialID,
+          ...(issued
+            ? {
+                openMandate: issued.open_mandate,
+                sealedSalt: Buffer.from(issued.sealed_salt, "base64"),
+              }
+            : {}),
         });
+        if (issued) {
+          await tx
+            .update(user)
+            .set({ userCredential: issued.user_credential })
+            .where(eq(user.id, userId));
+        }
         if (!(await transition(tx, "mandates", m.mid, "DRAFT", "COMPILED"))) {
           throw new Error("mandate left DRAFT concurrently");
         }
@@ -296,7 +360,15 @@ export function registerMandates(
     }
 
     c.header("location", `/v1/mandates/${m.mid}`);
-    return c.json({ id: m.mid, mandateHash: toHex(M), state: "SIGNED" as const }, 201);
+    return c.json(
+      {
+        id: m.mid,
+        mandateHash: toHex(M),
+        state: "SIGNED" as const,
+        openMandate: issued?.open_mandate ?? null,
+      },
+      201,
+    );
   });
 
   app.openapi(read, async (c) => {

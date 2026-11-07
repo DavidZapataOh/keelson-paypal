@@ -36,10 +36,17 @@ components:
           type: string
           enum:
             - SIGNED
+        openMandate:
+          type:
+            - string
+            - "null"
+          description: The open mandate (L2) the TEE issued; the agent closes it per
+            purchase.
       required:
         - id
         - mandateHash
         - state
+        - openMandate
     CreateMandate:
       type: object
       properties:
@@ -57,6 +64,10 @@ components:
           type: string
           pattern: ^0x[0-9a-f]{64}$
           description: "`C_m`; must equal the payload's `zk.commitment`."
+        salt:
+          type: string
+          pattern: ^0x[0-9a-f]{32}$
+          description: The salt that opens `C_m`; the TEE needs it to issue the mandate.
         assertion:
           $ref: "#/components/schemas/PasskeyAssertion"
       required:
@@ -817,6 +828,193 @@ components:
             (`autonomous`).
       required:
         - prompt
+    Countersigned:
+      type: object
+      properties:
+        purchaseId:
+          type: string
+        mode:
+          type: string
+          enum:
+            - 2of2
+            - degraded
+          description: "`degraded` when leg B was unreachable and only leg A signed."
+        decision:
+          type: string
+          enum:
+            - allow
+            - deny
+        countersign:
+          type: object
+          additionalProperties:
+            type: string
+          description: The EIP-712 `Countersign` message, as decimal strings.
+        digest:
+          type: string
+          pattern: ^0x[0-9a-f]{64}$
+        signatures:
+          type: object
+          properties:
+            tdx:
+              type: string
+              pattern: ^0x[0-9a-f]{130}$
+            nitro:
+              type:
+                - string
+                - "null"
+              pattern: ^0x[0-9a-f]{130}$
+          required:
+            - tdx
+            - nitro
+        signers:
+          type: object
+          properties:
+            tdx:
+              type: string
+            nitro:
+              type:
+                - string
+                - "null"
+          required:
+            - tdx
+            - nitro
+        trace:
+          description: The `keelson.eval/1` trace both legs signed over.
+      required:
+        - purchaseId
+        - mode
+        - decision
+        - countersign
+        - digest
+        - signatures
+        - signers
+    CountersignRequest:
+      type: object
+      properties:
+        authorizationId:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: The PayPal authorization that holds the mandate's funds; leg A
+            reads it.
+        closedMandate:
+          type: string
+          minLength: 1
+          maxLength: 131072
+          description: The open mandate closed by the agent's key binding over the request
+            and cart.
+        cart:
+          $ref: "#/components/schemas/Cart"
+        unit:
+          type: object
+          additionalProperties: {}
+          description: The PayPal purchase unit the cart is checked against.
+        evidence:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+              maxLength: 256
+            maxItems: 8
+          default: {}
+        evidenceRoot:
+          type: string
+          pattern: ^0x[0-9a-f]{64}$
+      required:
+        - authorizationId
+        - closedMandate
+        - cart
+        - unit
+        - evidenceRoot
+    Cart:
+      type: object
+      properties:
+        merchant:
+          type: string
+          minLength: 1
+          maxLength: 256
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              sku:
+                type: string
+                maxLength: 256
+              size:
+                type:
+                  - string
+                  - "null"
+                maxLength: 256
+              color:
+                type:
+                  - string
+                  - "null"
+                maxLength: 256
+              category:
+                type: string
+                maxLength: 256
+              qty:
+                type: integer
+                exclusiveMinimum: 0
+              unit_minor:
+                type: integer
+                minimum: 0
+            required:
+              - sku
+              - category
+              - qty
+              - unit_minor
+          minItems: 1
+          maxItems: 32
+        return_days:
+          type: integer
+          minimum: 0
+        returns_free:
+          type: boolean
+      required:
+        - merchant
+        - currency
+        - lines
+        - return_days
+        - returns_free
+    TeeLeg:
+      type: object
+      properties:
+        tee:
+          type: string
+          enum:
+            - tdx
+            - nitro
+        signer:
+          type: string
+        measurement:
+          type: string
+        registeredAt:
+          type: string
+        verifiedAt:
+          type: string
+          description: When the attestation last verified.
+        expiresAt:
+          type: string
+        attestation:
+          type: object
+          additionalProperties: {}
+          description: "The attestation the signer was admitted from: the platform
+            evidence, its binding and the block it was made over."
+      required:
+        - tee
+        - signer
+        - measurement
+        - registeredAt
+        - verifiedAt
+        - expiresAt
+        - attestation
     Passkeys:
       type: object
       properties:
@@ -883,6 +1081,16 @@ paths:
                           - up
                           - down
                       kv:
+                        type: string
+                        enum:
+                          - up
+                          - down
+                      teeA:
+                        type: string
+                        enum:
+                          - up
+                          - down
+                      teeB:
                         type: string
                         enum:
                           - up
@@ -1008,6 +1216,12 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+        "503":
+          description: The TEE could not issue the mandate
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
   /v1/mandates/{id}:
     get:
       tags:
@@ -1129,6 +1343,134 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+  /v1/countersign:
+    post:
+      tags:
+        - tee
+      summary: Countersign a cart
+      description: Sends the cart to the TEE legs in order and returns the
+        countersignatures only when both agree. A DENY is countersigned too.
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CountersignRequest"
+      responses:
+        "200":
+          description: The decision and its countersignatures
+          headers:
+            Keelson-Countersign-Mode:
+              schema:
+                type: string
+                enum:
+                  - 2of2
+                  - degraded
+                description: "`degraded` when only one TEE signed; the same as `mode` in the
+                  body."
+              required: true
+              description: "`degraded` when only one TEE signed; the same as `mode` in the
+                body."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Countersigned"
+        "401":
+          description: A leg refused the agent's authority
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: No such mandate
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: The mandate is not active, or the request was already used
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "413":
+          description: A leg refused the request as too large
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: The request is invalid
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Too many countersigns for this mandate
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "502":
+          description: The legs disagree, or a signer is not registered
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: A leg needed to sign is unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/tee/attestations:
+    get:
+      tags:
+        - tee
+      summary: Attested TEE signers
+      description: The signers whose countersignatures are accepted, each with the
+        attestation it was admitted from, and the measurements the deployment
+        publishes. A verifier checks the attestations itself.
+      responses:
+        "200":
+          description: The admitted signers and the published measurements
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  legs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TeeLeg"
+                  measurements:
+                    type: object
+                    properties:
+                      engineBuildId:
+                        type: string
+                      tdx:
+                        type: array
+                        items:
+                          type: string
+                      nitro:
+                        type: array
+                        items:
+                          type: string
+                    required:
+                      - engineBuildId
+                      - tdx
+                      - nitro
+                required:
+                  - legs
+                  - measurements
   /v1/passkeys:
     get:
       tags:

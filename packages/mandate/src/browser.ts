@@ -10,7 +10,7 @@
  * 3. Fetch the user's `passkeys` from `GET /v1/passkeys` (with credentials).
  * 4. `const assertion = await signMandate(s.challenge, passkeys, { spc: s.spc })`.
  * 5. `POST /v1/mandates` (with credentials) with an `Idempotency-Key` header and the body
- *    `{ payloadSd: s.payloadSd, disclosures: s.disclosures, commitment: s.commitment, assertion }`.
+ *    `{ payloadSd: s.payloadSd, disclosures: s.disclosures, commitment: s.commitment, salt: s.salt, assertion }`.
  *
  * The mandate code and Poseidon2 (bb.js and its wasm) load on the first `prepareSigning`, not with
  * this module.

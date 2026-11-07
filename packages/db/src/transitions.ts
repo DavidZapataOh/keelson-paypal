@@ -13,7 +13,8 @@ export const transitions = {
   },
   purchases: {
     PROPOSED: ["EVALUATING"],
-    EVALUATING: ["DENIED", "COUNTERSIGNED"],
+    EVALUATING: ["DENIED", "COUNTERSIGNED", "FAILED"],
+    FAILED: ["EVALUATING"],
     COUNTERSIGNED: ["LOGGED", "FAILED"],
     LOGGED: ["COVERED", "FAILED"],
     COVERED: ["CAPTURED", "FAILED"],

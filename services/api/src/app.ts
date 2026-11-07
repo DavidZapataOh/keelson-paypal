@@ -18,11 +18,14 @@ import { idempotency } from "./middleware/idempotency.ts";
 import { type RateLimitOptions, rateLimit } from "./middleware/rate-limit.ts";
 import { ProblemSchema, problem } from "./problem.ts";
 import { type CompileSources, registerCompile } from "./routes/compile.ts";
+import { registerCountersign } from "./routes/countersign.ts";
 import { registerEvents } from "./routes/events.ts";
 import { registerHealth } from "./routes/health.ts";
 import { registerMandates } from "./routes/mandates.ts";
 import { registerPasskeys } from "./routes/passkeys.ts";
 import { registerStatus } from "./routes/status.ts";
+import { registerTee } from "./routes/tee.ts";
+import type { TeeConfig } from "./tee/signers.ts";
 
 export interface Deps {
   db: Db;
@@ -43,6 +46,8 @@ export interface Deps {
   compileSources?: CompileSources;
   /** The Anthropic client compiles use; compiling answers 503 without it. */
   anthropic?: Anthropic;
+  /** The two TEE legs; mandates are issued and carts countersigned through them. */
+  tee?: TeeConfig;
   /** Aborting it ends every open event stream so the server can close. */
   shutdown?: AbortSignal;
 }
@@ -141,6 +146,8 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerEvents(app, deps);
   registerMandates(app, deps);
   registerCompile(app, deps);
+  registerCountersign(app, deps);
+  registerTee(app, deps);
   registerPasskeys(app, deps);
   app.get("/openapi.json", (c) =>
     c.json(app.getOpenAPI31Document({ openapi: "3.1.0", info: apiInfo })),

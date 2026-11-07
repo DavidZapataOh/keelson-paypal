@@ -175,6 +175,7 @@ describe("prepareSigning", () => {
     expect(decoded.zk.commitment).toBe(`0x${cm.toString(16).padStart(64, "0")}`);
     expect(decoded.zk.commitment).not.toBe(m.zk.commitment);
     expect(s.commitment).toBe(decoded.zk.commitment);
+    expect(s.salt).toBe(`0x${Buffer.from(salt).toString("hex")}`);
     expect(s.hSd).toEqual(hSd(s.payloadSd));
     expect(s.challenge).toEqual(mandateChallenge(hSd(s.payloadSd), s.cm));
     expect(s.card.rows.length).toBeGreaterThan(0);

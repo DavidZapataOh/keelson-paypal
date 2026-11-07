@@ -182,6 +182,8 @@ export interface Signing {
   cm: bigint;
   /** `C_m` as `0x`-prefixed hex: the `commitment` of `POST /v1/mandates`. */
   commitment: string;
+  /** The commitment salt as `0x`-prefixed hex: the `salt` of `POST /v1/mandates`. */
+  salt: string;
   /** The passkey challenge `M`. */
   challenge: Uint8Array;
   card: Card;
@@ -216,6 +218,7 @@ export async function prepareSigning(
     hSd: h,
     cm,
     commitment,
+    salt: `0x${Array.from(salt, (b) => b.toString(16).padStart(2, "0")).join("")}`,
     challenge: mandateChallenge(h, cm),
     card: renderCard(payloadSd, disclosures, { ...evidence, ambiguous: new Set(ambiguous) }),
     spc: spcDetails(bound),

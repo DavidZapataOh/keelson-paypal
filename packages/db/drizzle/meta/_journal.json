@@ -64,6 +64,27 @@
       "when": 1793919691407,
       "tag": "0008_passkey_counter_bigint",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794023537817,
+      "tag": "0009_tee_signers",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794024325459,
+      "tag": "0010_mandate_credentials",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1794026245564,
+      "tag": "0011_countersign_hardening",
+      "breakpoints": true
     }
   ]
 }

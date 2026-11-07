@@ -46,3 +46,7 @@ A CVM behind the gateway cannot run with `no_instance_id`, so the log carries an
 ## Measure
 
 `scripts/rtt.ts <url>` prints the round-trip percentiles of `GET /v1/health`, which has no PayPal read. Run it from the region of the caller.
+
+## Allowed measurement
+
+`measurement.json` holds the `tdx:` measurement id (the SHA-256 of MRTD and RTMR0 to RTMR3, as `@keelson/attest` computes it) of the deployed CVM. The API admits a leg A signer only when its verified quote has this id; update it with `app.json` whenever the deployment changes.

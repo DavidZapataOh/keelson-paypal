@@ -7,4 +7,5 @@ export * from "./events.ts";
 export * from "./mandates.ts";
 export * from "./operators.ts";
 export * from "./purchases.ts";
+export * from "./tee.ts";
 export * from "./verdicts.ts";
