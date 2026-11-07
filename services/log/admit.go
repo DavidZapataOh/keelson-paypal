@@ -43,7 +43,7 @@ func (o *origin) admit(ctx context.Context, reg registry, leaf []byte, c alibilo
 			return refuse("countersign.signer")
 		}
 		seen[addr] = true
-		m, ok, err := reg.Active(ctx, kinds[i], addr)
+		m, ok, err := reg.Active(ctx, kinds[i], addr, l.IssuedAt)
 		if err != nil {
 			return err
 		}

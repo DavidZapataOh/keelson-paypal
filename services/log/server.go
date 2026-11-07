@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -117,24 +118,25 @@ func (o *origin) append(ctx context.Context, leaf []byte) (*appendResult, error)
 	}, nil
 }
 
-// appendOnce appends the leaf unless its purchase is already in the log with
-// another leaf. The same leaf again gets its index and a fresh proof.
+// appendOnce appends the leaf unless its purchase is already claimed by
+// another leaf. The claim is written before the append and kept even if the
+// append fails, so a retry can only send the same bytes, which get the same
+// index. The append outlives the caller's request.
 func (o *origin) appendOnce(ctx context.Context, leaf []byte) (*appendResult, error) {
 	l, err := alibilog.Parse(leaf)
 	if err != nil {
 		return nil, err
 	}
 	h := alibilog.LeafHash(leaf)
-	m := o.claims.lock(l.AlibiID)
-	defer m.Unlock()
+	unlock := o.claims.lock(l.AlibiID)
+	defer unlock()
 	if err := o.claims.check(l.AlibiID, h); err != nil {
 		return nil, err
 	}
-	res, err := o.append(ctx, leaf)
-	if err != nil {
+	if err := o.claims.record(l.AlibiID, h); err != nil {
 		return nil, err
 	}
-	return res, o.claims.record(l.AlibiID, h)
+	return o.append(context.WithoutCancel(ctx), leaf)
 }
 
 // checkpointBody is the signed note's text, up to the blank line.
@@ -253,7 +255,16 @@ func (s *server) public() http.Handler {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 			w.Header().Set("Content-Type", "application/octet-stream")
 			if rel == "checkpoint" {
+				body, err := io.ReadAll(f)
+				if err != nil {
+					http.Error(w, "", http.StatusServiceUnavailable)
+					return
+				}
+				sum := sha256.Sum256(body)
 				w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+				w.Header().Set("ETag", `"`+hex.EncodeToString(sum[:])+`"`)
+				http.ServeContent(w, r, "", st.ModTime(), bytes.NewReader(body))
+				return
 			}
 			http.ServeContent(w, r, "", st.ModTime(), f)
 		})

@@ -299,6 +299,21 @@ func TestPublicCacheHeaders(t *testing.T) {
 			t.Errorf("%s: no CORS header", path)
 		}
 	}
+	cp, err := http.Get(l.public.URL + "/" + sandbox + "/checkpoint")
+	if err != nil {
+		t.Fatal(err)
+	}
+	io.Copy(io.Discard, cp.Body)
+	cp.Body.Close()
+	etag := cp.Header.Get("ETag")
+	if len(etag) != 66 {
+		t.Fatalf("checkpoint ETag %q", etag)
+	}
+	req, _ := http.NewRequest(http.MethodGet, l.public.URL+"/"+sandbox+"/checkpoint", nil)
+	req.Header.Set("If-None-Match", etag)
+	if again, err := http.DefaultClient.Do(req); err != nil || again.StatusCode != http.StatusNotModified {
+		t.Fatalf("If-None-Match: %v %v", err, again)
+	}
 	res, err := http.Get(l.public.URL + "/health")
 	if err != nil {
 		t.Fatal(err)
@@ -350,4 +365,40 @@ func TestOneLeafPerPurchase(t *testing.T) {
 		t.Fatalf("the same leaf again: %d %v", status, again)
 	}
 	checkAppended(t, keys, l, allow.Leaf, again)
+}
+
+// A caller that gives up while its append waits for a checkpoint has still
+// claimed the purchase: another leaf for it is refused and the log does not grow.
+func TestAnAbandonedAppendKeepsItsClaim(t *testing.T) {
+	vectors, _ := loadVectors(t)
+	allow := vectors["allow"]
+	db, dbURL := testDB(t)
+	keys := newTestKeys(t)
+	l := startLog(t, keys, t.TempDir(), db, dbURL)
+	activate(t, db, teeTDX, *allow.Signers["tdx"], *allow.Measurements["tdx"])
+	activate(t, db, teeNitro, *allow.Signers["nitro"], *allow.Measurements["nitro"])
+	purchase(t, db, alibiID(t, allow.Leaf), ptr("2of2"))
+
+	body, _ := json.Marshal(map[string]any{"leaf": allow.Leaf, "countersign": allow.Countersign})
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, l.private.URL+"/"+sandbox+"/add", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	if res, err := http.DefaultClient.Do(req); err == nil {
+		res.Body.Close()
+		t.Fatalf("the append answered before the client gave up: %d", res.StatusCode)
+	}
+
+	status, res := l.add(t, sandbox, testToken, variant(t, allow.Leaf), allow.Countersign)
+	if status != http.StatusConflict || res["code"] != "leaf.duplicate" {
+		t.Fatalf("another leaf after an abandoned append: %d %v", status, res)
+	}
+	status, first := l.add(t, sandbox, testToken, allow.Leaf, allow.Countersign)
+	if status != http.StatusOK {
+		t.Fatalf("the abandoned leaf again: %d %v", status, first)
+	}
+	if n := nextIndex(t, l, sandbox); n != 1 {
+		t.Fatalf("the log has %d entries, want 1", n)
+	}
+	checkAppended(t, keys, l, allow.Leaf, first)
 }

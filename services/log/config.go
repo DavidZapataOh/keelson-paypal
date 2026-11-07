@@ -3,6 +3,7 @@ package main
 import (
 	"cmp"
 	"crypto/mldsa"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -62,6 +63,9 @@ func loadConfig(getenv func(string) string) (*config, error) {
 	th, err := hex.DecodeString(getenv("LOG_WRITE_TOKEN_SHA256"))
 	if err != nil || len(th) != 32 {
 		return nil, errors.New("LOG_WRITE_TOKEN_SHA256 is not a SHA-256 hex digest")
+	}
+	if [32]byte(th) == sha256.Sum256(nil) {
+		return nil, errors.New("LOG_WRITE_TOKEN_SHA256 is the hash of an empty token")
 	}
 	copy(c.TokenHash[:], th)
 	for _, o := range originSpecs {

@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"filippo.io/torchwood"
 	"github.com/DavidZapataOh/keelson-paypal/internal/alibilog"
@@ -156,10 +157,12 @@ func activate(t testing.TB, db *pgxpool.Pool, kind int, address, measurement str
 		where tee_kind = $1 and revoked_at is null and address <> $2`, kind, a); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(ctx, `insert into tee_signers (address, tee_kind, measurement, binding, attestation, expires_at)
-		values ($1, $2, $3, '{}', '{}', now() + interval '1 hour')
+	// Registered before any captured countersign was issued.
+	if _, err := db.Exec(ctx, `insert into tee_signers (address, tee_kind, measurement, binding, attestation, registered_at, expires_at)
+		values ($1, $2, $3, '{}', '{}', '2026-01-01T00:00:00Z', now() + interval '1 hour')
 		on conflict (address) do update set tee_kind = excluded.tee_kind, measurement = excluded.measurement,
-		verified_at = now(), expires_at = excluded.expires_at, revoked_at = null, revoked_reason = null`,
+		registered_at = excluded.registered_at, verified_at = now(), expires_at = excluded.expires_at,
+		revoked_at = null, revoked_reason = null`,
 		a, kind, measurement); err != nil {
 		t.Fatal(err)
 	}
@@ -167,8 +170,13 @@ func activate(t testing.TB, db *pgxpool.Pool, kind int, address, measurement str
 
 func revoke(t testing.TB, db *pgxpool.Pool, address string) {
 	t.Helper()
+	revokeAs(t, db, address, "contradiction")
+}
+
+func revokeAs(t testing.TB, db *pgxpool.Pool, address, reason string) {
+	t.Helper()
 	if _, err := db.Exec(context.Background(),
-		`update tee_signers set revoked_at = now(), revoked_reason = 'test' where address = $1`, addr(t, address)); err != nil {
+		`update tee_signers set revoked_at = now(), revoked_reason = $2 where address = $1`, addr(t, address), reason); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -197,6 +205,15 @@ func purchase(t testing.TB, db *pgxpool.Pool, id string, mode *string) {
 }
 
 func ptr(s string) *string { return &s }
+
+// issuedAt is the leaf's issued_at, as Postgres reads it.
+func issuedAt(t testing.TB, leaf []byte) string {
+	l, err := alibilog.Parse(leaf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return l.IssuedAt.Format(time.RFC3339)
+}
 
 func alibiID(t testing.TB, leaf []byte) string {
 	l, err := alibilog.Parse(leaf)
