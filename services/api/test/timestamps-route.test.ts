@@ -51,7 +51,14 @@ test("a half-stamped hash names what is pending and is not cached; a stamped one
 
   await testDb
     .update(timestamps)
-    .set(stamped("sigstore"))
+    .set({ status: "inflight", leaseUntil: new Date(Date.now() + 30_000) })
+    .where(and(eq(timestamps.hash, hash), eq(timestamps.tsa, "sigstore")));
+  const asking = await app.request(`/v1/timestamps/${captured.imprint}`);
+  expect(((await asking.json()) as { pending: string[] }).pending).toEqual(["sigstore"]);
+
+  await testDb
+    .update(timestamps)
+    .set({ ...stamped("sigstore"), leaseUntil: null })
     .where(and(eq(timestamps.hash, hash), eq(timestamps.tsa, "sigstore")));
   const full = await app.request(`/v1/timestamps/${captured.imprint}`);
   expect(full.status).toBe(200);

@@ -1,5 +1,5 @@
 {
-  "id": "8fbe8945-f1a6-4089-92ef-181d0d9ab0a8",
+  "id": "1e83d3cf-fe03-45d1-8f7c-b59812caca3d",
   "prevId": "b2da9a9d-d88d-420a-86d5-4c65d4ec2f7c",
   "version": "7",
   "dialect": "postgresql",
@@ -2937,6 +2937,19 @@
           "notNull": true,
           "default": 0
         },
+        "next_attempt_at": {
+          "name": "next_attempt_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "lease_until": {
+          "name": "lease_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "last_error": {
           "name": "last_error",
           "type": "text",
@@ -2964,11 +2977,11 @@
         }
       },
       "indexes": {
-        "timestamps_pending_created_at_idx": {
-          "name": "timestamps_pending_created_at_idx",
+        "timestamps_pending_next_attempt_at_idx": {
+          "name": "timestamps_pending_next_attempt_at_idx",
           "columns": [
             {
-              "expression": "created_at",
+              "expression": "next_attempt_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -2976,6 +2989,22 @@
           ],
           "isUnique": false,
           "where": "\"timestamps\".\"status\" = 'pending'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "timestamps_inflight_lease_until_idx": {
+          "name": "timestamps_inflight_lease_until_idx",
+          "columns": [
+            {
+              "expression": "lease_until",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"timestamps\".\"status\" = 'inflight'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -3005,7 +3034,11 @@
         },
         "timestamps_status_valid": {
           "name": "timestamps_status_valid",
-          "value": "\"timestamps\".\"status\" in ('pending', 'stamped', 'failed')"
+          "value": "\"timestamps\".\"status\" in ('pending', 'inflight', 'stamped', 'failed')"
+        },
+        "timestamps_lease_iff_inflight": {
+          "name": "timestamps_lease_iff_inflight",
+          "value": "(\"timestamps\".\"status\" = 'inflight') = (\"timestamps\".\"lease_until\" is not null)"
         },
         "timestamps_token_iff_stamped": {
           "name": "timestamps_token_iff_stamped",

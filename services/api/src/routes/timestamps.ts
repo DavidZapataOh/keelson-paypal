@@ -1,9 +1,8 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { eq, timestamps } from "@keelson/db";
 import type { TsaId } from "@keelson/timestamp";
 import type { Deps } from "../app.ts";
 import { ProblemSchema, problem } from "../problem.ts";
-import { stampsFor } from "../timestamps/queue.ts";
+import { rowsFor, storedStamps } from "../timestamps/queue.ts";
 
 const TsaSchema = z.enum(["digicert", "sigstore", "freetsa", "sectigo"]);
 
@@ -62,16 +61,13 @@ export function registerTimestamps(app: OpenAPIHono, deps: Pick<Deps, "db">): vo
   app.openapi(route, async (c) => {
     const { hash } = c.req.valid("param");
     const key = Buffer.from(hash, "hex");
-    const rows = await deps.db
-      .select({ tsa: timestamps.tsa, status: timestamps.status })
-      .from(timestamps)
-      .where(eq(timestamps.hash, key));
+    const rows = await rowsFor(deps.db, key);
     if (rows.length === 0) {
       return problem(c, 404, "timestamps-not-found", "Not found", "No timestamp for this hash.");
     }
-    const stamps = await stampsFor(deps.db, key);
+    const stamps = storedStamps(rows);
     const pending = rows
-      .filter((r) => r.status === "pending")
+      .filter((r) => r.status === "pending" || r.status === "inflight")
       .map((r) => r.tsa as TsaId)
       .sort();
     const stampedBy = new Set(stamps.map((s) => s.tsa));

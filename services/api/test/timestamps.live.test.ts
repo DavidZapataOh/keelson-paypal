@@ -5,7 +5,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { eq, timestamps } from "@keelson/db";
+import { eq, sql, timestamps } from "@keelson/db";
 import { TSA_INTERMEDIATES, TSA_ROOTS, type TsaId, verifyTimestamp } from "@keelson/timestamp";
 import { pino } from "pino";
 import { afterEach, describe, expect, onTestFinished, test } from "vitest";
@@ -44,6 +44,17 @@ async function until<T>(read: () => Promise<T>, done: (v: T) => boolean, ms: num
     if (done(value) || Date.now() > deadline) return value;
     await new Promise((r) => setTimeout(r, 50));
   }
+}
+
+/** An HTTP server that accepts requests and never answers them. */
+async function silentTsa(): Promise<string> {
+  const silent = createServer(() => {});
+  await new Promise<void>((done) => silent.listen(0, "127.0.0.1", done));
+  onTestFinished(() => {
+    silent.closeAllConnections();
+    silent.close();
+  });
+  return `http://127.0.0.1:${(silent.address() as AddressInfo).port}/`;
 }
 
 function openssl(tsa: TsaId, token: Uint8Array, hash: Uint8Array): string {
@@ -98,7 +109,11 @@ describe.skipIf(!live)("stamping with the live TSAs", { timeout: 90_000 }, () =>
       silent.close();
     });
     const { port } = silent.address() as AddressInfo;
-    const w = worker({ urls: { sigstore: `http://127.0.0.1:${port}/` }, sweepIntervalMs: 1_000 });
+    const w = worker({
+      urls: { sigstore: `http://127.0.0.1:${port}/` },
+      sweepIntervalMs: 1_000,
+      retryAfterMs: 1_000,
+    });
     const hash = randomBytes(32);
     enqueueStamp({ db: testDb, log, stamps: w }, hash, "leaf");
 
@@ -159,5 +174,84 @@ describe.skipIf(!live)("stamping with the live TSAs", { timeout: 90_000 }, () =>
     const done = await until(all, (r) => r.every((x) => x.status === "stamped"), 5_000);
     expect(done.map((r) => r.status)).toEqual(Array(6).fill("stamped"));
     expect(done.every((r) => r.kind === "channel3")).toBe(true);
+  });
+
+  test("no row lock or transaction is held while a TSA is asked", async () => {
+    const w = worker({ urls: { digicert: await silentTsa() } });
+    const hash = randomBytes(32);
+    enqueueStamp({ db: testDb, log, stamps: w }, hash, "leaf");
+    await until(
+      () => rows(hash),
+      (r) => r.some((x) => x.tsa === "digicert" && x.status === "inflight"),
+      2_000,
+    );
+    const locked = await testDb
+      .transaction((tx) =>
+        tx.execute(
+          sql`select 1 from timestamps where hash = ${Buffer.from(hash)} for update nowait`,
+        ),
+      )
+      .then(
+        () => false,
+        () => true,
+      );
+    expect(locked).toBe(false);
+  });
+
+  test("an expired lease is claimed again by the sweeper", async () => {
+    const hash = randomBytes(32);
+    await testDb.insert(timestamps).values(
+      (["digicert", "sigstore"] as const).map((tsa) => ({
+        hash,
+        kind: "leaf",
+        tsa,
+        role: "primary",
+        status: "inflight",
+        leaseUntil: new Date(Date.now() - 1_000),
+      })),
+    );
+    worker({ sweepIntervalMs: 500 });
+    const done = await until(
+      () => rows(hash),
+      (r) => r.every((x) => x.status === "stamped"),
+      5_000,
+    );
+    expect(done.map((r) => r.status)).toEqual(["stamped", "stamped"]);
+  });
+
+  test("a token from another TSA than the one asked is not stored", async () => {
+    const w = worker({ urls: { digicert: "https://timestamp.sigstore.dev/api/v1/timestamp" } });
+    const hash = randomBytes(32);
+    enqueueStamp({ db: testDb, log, stamps: w }, hash, "leaf");
+    const done = await until(
+      () => rows(hash),
+      (r) => r.some((x) => x.tsa === "digicert" && x.lastError !== null),
+      5_000,
+    );
+    expect(done.find((r) => r.tsa === "digicert")).toMatchObject({
+      status: "pending",
+      lastError: "tsa-chain",
+    });
+  });
+
+  test("rows waiting for Sectigo's spacing do not hold back new hashes", async () => {
+    await testDb.insert(timestamps).values(
+      Array.from({ length: 40 }, () => ({
+        hash: randomBytes(32),
+        kind: "leaf",
+        tsa: "sectigo",
+        role: "fallback",
+        createdAt: new Date(Date.now() - 60_000),
+      })),
+    );
+    const w = worker({ sweepIntervalMs: 500 });
+    const hash = randomBytes(32);
+    enqueueStamp({ db: testDb, log, stamps: w }, hash, "leaf");
+    const done = await until(
+      () => rows(hash),
+      (r) => r.filter((x) => x.status === "stamped").length === 2,
+      4_000,
+    );
+    expect(done.map((r) => r.status)).toEqual(["stamped", "stamped"]);
   });
 });

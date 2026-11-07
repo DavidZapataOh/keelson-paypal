@@ -1,4 +1,4 @@
-import { and, asc, type Db, desc, eq, timestamps } from "@keelson/db";
+import { asc, type Db, desc, eq, timestamps } from "@keelson/db";
 import type { TsaId } from "@keelson/timestamp";
 import type { Logger } from "pino";
 import type { StampWorker } from "./worker.ts";
@@ -39,18 +39,33 @@ export function enqueueStamp(
     );
 }
 
-/** The stamped tokens over `hash`, primaries first. */
-export async function stampsFor(db: Db, hash: Uint8Array): Promise<StoredStamp[]> {
-  const rows = await db
+/** Every row over `hash`, primaries first, in one query. */
+export function rowsFor(db: Db, hash: Uint8Array): Promise<(typeof timestamps.$inferSelect)[]> {
+  return db
     .select()
     .from(timestamps)
-    .where(and(eq(timestamps.hash, Buffer.from(hash)), eq(timestamps.status, "stamped")))
+    .where(eq(timestamps.hash, Buffer.from(hash)))
     .orderBy(desc(timestamps.role), asc(timestamps.tsa));
-  return rows.map((row) => ({
-    tsa: row.tsa as TsaId,
-    role: row.role as StoredStamp["role"],
-    token: (row.token as Buffer).toString("base64"),
-    genTime: (row.genTime as Date).toISOString(),
-    serial: row.serial as string,
-  }));
+}
+
+/** The stamped tokens among `rows`, in their order. */
+export function storedStamps(rows: (typeof timestamps.$inferSelect)[]): StoredStamp[] {
+  return rows
+    .filter((row) => row.status === "stamped")
+    .map((row) => ({
+      tsa: row.tsa as TsaId,
+      role: row.role as StoredStamp["role"],
+      token: (row.token as Buffer).toString("base64"),
+      genTime: (row.genTime as Date).toISOString(),
+      serial: row.serial as string,
+    }));
+}
+
+/**
+ * The stamped tokens over `hash`, primaries first: an Alibi's `timestamps` field.
+ *
+ * @public
+ */
+export async function stampsFor(db: Db, hash: Uint8Array): Promise<StoredStamp[]> {
+  return storedStamps(await rowsFor(db, hash));
 }

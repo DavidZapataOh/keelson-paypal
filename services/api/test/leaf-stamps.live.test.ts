@@ -328,13 +328,16 @@ describe.skipIf(!live)(
       const pending = await stampedRows(without.hashes);
       expect(pending.filter((r) => r.status === "stamped")).toHaveLength(0);
 
-      const restored = startStampWorker({ db: testDb, kv: testKv, log });
+      const restored = startStampWorker(
+        { db: testDb, kv: testKv, log },
+        { sweepIntervalMs: 1_000 },
+      );
       try {
         const all = [...up.hashes, ...without.hashes];
         const rows = await until(
           () => stampedRows(all),
           (r) => r.filter((x) => x.status === "stamped").length === 120,
-          60_000,
+          90_000,
         );
         expect(rows.filter((r) => r.status === "stamped")).toHaveLength(120);
       } finally {
