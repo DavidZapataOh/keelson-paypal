@@ -2,11 +2,14 @@
  * Samples how far the enclave's clock is from this machine's, and from leg A's.
  *
  *   node clock-drift.ts --b <url> [--a <url>] [--every 300] [--for 86400] [--log drift.jsonl]
+ *   node clock-drift.ts --b <url> [--a <url>] --check <max ms>
  *   node clock-drift.ts --summary <drift.jsonl>
  *
  * Every `--every` seconds it reads `now_ms` from `/v1/health` of each leg and compares it with the
  * midpoint of this machine's clock around the request, so run it on a chrony-synced host. A line of
- * JSON per sample goes to the log; `--summary` prints the largest absolute drifts.
+ * JSON per sample goes to the log; `--summary` prints the largest absolute drifts. `--check` takes
+ * one sample, prints it and exits with 1 when leg B is unreachable or further than `max ms` from this
+ * machine's clock.
  */
 import { appendFile, readFile } from "node:fs/promises";
 
@@ -78,11 +81,20 @@ if (summaryPath) {
 const b = flag("b");
 if (!b) {
   console.error(
-    "usage: clock-drift.ts --b <url> [--a <url>] [--every 300] [--for 86400] [--log drift.jsonl]",
+    "usage: clock-drift.ts --b <url> [--a <url>] [--every 300] [--for 86400] [--log drift.jsonl] | [--check <max ms>]",
   );
   process.exit(1);
 }
 const a = flag("a");
+
+const checkMs = flag("check");
+if (checkMs) {
+  const s = await sample(a, b);
+  console.log(JSON.stringify(s));
+  const ok = s.b !== undefined && "drift_ms" in s.b && Math.abs(s.b.drift_ms) <= Number(checkMs);
+  process.exit(ok ? 0 : 1);
+}
+
 const everyMs = Number(flag("every") ?? 300) * 1000;
 const untilMs = Date.now() + Number(flag("for") ?? 86_400) * 1000;
 const log = flag("log") ?? "drift.jsonl";

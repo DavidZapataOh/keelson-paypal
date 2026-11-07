@@ -35,7 +35,14 @@ jobs:
           status=0
           grep -rEn "paypalMockResponse|PayPal-Mock-Response" packages services apps --exclude-dir=node_modules --exclude-dir=dist || status=$?
           test "$status" -eq 1
+      - run: pnpm --filter @keelson/timestamp exec playwright install chromium
       - run: pnpm turbo run typecheck test build --filter='!./packages/db' --filter='!./packages/attest' --filter='!./packages/evidence' --filter='!./services/api' --cache-dir=.turbo
+      - name: The captured timestamp tokens verify with OpenSSL
+        working-directory: packages/timestamp
+        run: node scripts/openssl-verify.ts
+      - name: Timestamp verification time and bundle size
+        working-directory: packages/timestamp
+        run: pnpm bench | tee -a "$GITHUB_STEP_SUMMARY"
       - run: |
           pnpm --filter @keelson/core vectors
           pnpm --filter @keelson/mandate vectors

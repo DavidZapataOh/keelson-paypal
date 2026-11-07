@@ -236,6 +236,8 @@ fn refuses_a_credential_held_by_another_user() {
     assert_eq!(err.code(), "auth.open_holder");
 }
 
+/// An observation may be as old as the skew tolerated on the mandate's times, so a retry served
+/// from leg A's record still verifies, but never more than two seconds ahead of this leg.
 #[test]
 fn refuses_an_observation_off_the_clock() {
     let issued = register();
@@ -243,9 +245,10 @@ fn refuses_an_observation_off_the_clock() {
     let clock = NOW + 10;
     for (skew, ok) in [
         (2_000, true),
-        (-2_000, true),
         (2_001, false),
-        (-2_001, false),
+        (-2_000, true),
+        (-60_000, true),
+        (-60_001, false),
     ] {
         let r = countersign_request(
             &issued,

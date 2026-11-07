@@ -5,7 +5,7 @@ The Keelson engine as it runs inside a TEE. It registers mandates and countersig
 Two legs run the same engine:
 
 - **Leg A** (Intel TDX on Phala Cloud) holds the KMS root. It derives the credential issuer key, each user's holder key and the sealing key from it, issues the user credential and the open mandate, keeps the budget ledger, and produces the `Observation` of each countersign. It refuses any request that carries an observation.
-- **Leg B** (AWS Nitro Enclave) has no root. It is configured with the issuer's public key, refuses to register mandates, and countersigns only over the `Observation` leg A produced.
+- **Leg B** (AWS Nitro Enclave) has no root. It is configured with the issuer's public key, refuses to register mandates, and countersigns only over the `Observation` leg A produced. It refuses with `clock_skew` an observation whose `now_ms` is more than 2 s ahead of its own clock or more than 60 s behind it; leg A answers a retried request id with the observation of the first attempt, so an older one is expected.
 
 ## Register a mandate
 

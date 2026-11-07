@@ -10,7 +10,16 @@ client --TLS--> Caddy :443 --> 127.0.0.1:8000 --socat--> vsock 16:5000 --> keels
 - The enclave image is the engine image with the command `--platform nitro --listen vsock:5000`, built on the parent by `nitro-cli build-enclave` from the image digest. Its PCR0–2 are recorded in `eif.json`.
 - The enclave gets its configuration once, in `POST /v1/boot`: the chain, the bond vault and verifying contract, the image digest, the issuer's public key, the passkey origin, the SHA-256 of the bearer token and a recent Arbitrum Sepolia block. Until then every route answers `503 not_ready`; after it, `POST /v1/boot` answers `409 already_booted`. The parent cannot change what a running signer is configured with.
 - Before it serves anything the enclave checks that the kernel's entropy source is `nsm-hwrng`, the Nitro Secure Module's generator, and exits otherwise. The signer key is generated afterwards, in RAM.
+- The engine reads the time from the hypervisor's PTP clock, not from the enclave's own clock (see [Time](#time)). It exits at start when there is none.
 - Caddy is started only after the boot message was accepted, so `/v1/boot` is never reachable from the internet before the enclave is configured.
+
+## Time
+
+An enclave's clock is set from the parent when the enclave starts and is never synchronized afterwards, so it drifts: on the `c6a.xlarge` parent it ran about 16 ppm slow, roughly 57 ms an hour, and every restart reset it. The Nitro Enclaves maintainers' guidance ([aws-nitro-enclaves-cli#500](https://github.com/aws/aws-nitro-enclaves-cli/issues/500)) is to take the time from the PTP device that `ptp_kvm` exposes (the enclave kernel is built with `CONFIG_PTP_1588_CLOCK_KVM=y`), which reads the parent's wall clock through the hypervisor. The parent's clock is chrony-synced to the Amazon Time Sync Service.
+
+The image is a single static binary, so instead of running chrony against `/dev/ptp0` the engine reads that clock itself. At start it looks in `/sys/class/ptp` for the clock named `KVM virtual PTP`, opens its device and reads it once; it exits if it cannot. From then on every time the engine uses, including `now_ms` in `/v1/health`, is a `clock_gettime` on that clock.
+
+Leg B refuses an observation from leg A that is more than 2 s ahead of its clock, or more than 60 s behind it. `drift.sh check` and `check.sh` fail when leg B is more than a second from the parent's clock, and the `tee-clock` workflow runs the same check hourly against the public endpoint from a GitHub runner.
 
 ## Attestation
 
@@ -46,7 +55,8 @@ They read `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_REGION` from the
 | `update.sh sha256:<digest>`  | Pulls the image by digest, builds the EIF on the parent, restarts the enclave, boots it and writes `eif.json`. Needs `KEELSON_TEE_TOKEN_SHA256` and `KEELSON_ISSUER_JWK`; `--hold` leaves the enclave unbooted.                                                                                                    |
 | `start.sh`, `stop.sh`        | Start or stop the parent. A stopped parent kills its enclave, so `start.sh` runs `update.sh` and every start is a new signer.                                                                                                                                                                                      |
 | `drift.sh start <leg A url>` | Starts a 24 h clock-drift job on the parent as a systemd unit (`keelson-clock-drift`): every 5 minutes it compares the engine clock in `/v1/health` of both legs with the parent's chrony-synced clock and logs one JSON line to `/var/log/keelson-clock-drift.jsonl`. `summary`, `log` and `stop` read or end it. |
-| `check.sh`                   | Asserts one `RUNNING` enclave outside debug mode with the PCRs of `eif.json`, and that `https://tee-b.keelson.finance/v1/health` answers `tee: 2` (`TeeKind::Nitro`) for the same image digest.                                                                                                                    |
+| `drift.sh check [max ms]`    | Samples once on the parent and fails when leg B's clock is more than `max ms` (1000 by default) from the parent's.                                                                                                                                                                                                 |
+| `check.sh`                   | Asserts one `RUNNING` enclave outside debug mode with the PCRs of `eif.json`, that `https://tee-b.keelson.finance/v1/health` answers `tee: 2` (`TeeKind::Nitro`) for the same image digest, and `drift.sh check`.                                                                                                  |
 
 The parent also runs witness 3 of the Alibi log in its own container, outside the enclave; see [`services/witness`](../../../services/witness).
 

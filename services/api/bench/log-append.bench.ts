@@ -120,7 +120,7 @@ try {
     "x-test-principal": JSON.stringify({
       kind: "client",
       subject: `bench-agent-${k}`,
-      scopes: ["countersign:write"],
+      scopes: ["countersign:write", "evidence:write"],
     }),
   });
 
@@ -204,7 +204,7 @@ try {
     purchases.push({ id: out.purchaseId, leaf, countersign: c });
   }
 
-  const deps = { db, tlog };
+  const deps = { db, tlog, log: pino({ level: "silent" }) };
   const append = async (p: (typeof purchases)[number]) => {
     const started = performance.now();
     await appendLeaf(deps, p.id, p.leaf, p.countersign);
