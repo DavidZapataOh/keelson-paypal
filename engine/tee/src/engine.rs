@@ -137,6 +137,8 @@ pub enum EngineError {
     NotReady,
     /// The request id was already countersigned for another cart.
     Replay,
+    /// The engine already holds as many live requests as it keeps.
+    Busy,
     /// PayPal could not be read, so nothing can be countersigned.
     PayPal,
     /// The signer could not sign; see [`Error`].
@@ -157,6 +159,7 @@ impl EngineError {
             Self::NotYetValid => "mandate_not_yet_valid".into(),
             Self::NotReady => "not_ready".into(),
             Self::Replay => "replay".into(),
+            Self::Busy => "busy".into(),
             Self::PayPal => "paypal".into(),
             Self::Signer(_) => "signer".into(),
         }
@@ -481,6 +484,7 @@ impl Engine {
         {
             Err(Replay) => return Err(EngineError::Replay),
             Ok(Claimed::Answered(out)) => return Ok(*out),
+            Ok(Claimed::Full) => return Err(EngineError::Busy),
             Ok(Claimed::Working(claim)) => claim,
         };
         let expires_at = claim.expires_at().unix_timestamp();

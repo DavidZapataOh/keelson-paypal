@@ -31,6 +31,10 @@ struct Record {
 
 type Ledger = BTreeMap<[u8; 32], BTreeMap<Ulid, Record>>;
 
+/// The most requests the ledger holds at once, across all mandates. Each holds its answer, a few
+/// KiB, until it expires, so this bounds the ledger's memory whatever the request rate.
+pub const MAX_LIVE_REQUESTS: usize = 4096;
+
 /// Requests and their reservations per mandate, keyed by the mandate challenge `M`. `M` commits
 /// to the whole mandate, so two mandates never share a budget even if they reuse a `mid`.
 ///
@@ -49,6 +53,8 @@ pub enum Claimed<'a> {
     Answered(Box<Countersigned>),
     /// The request is bound to this input; work on it holds the claim.
     Working(ClaimGuard<'a>),
+    /// The request is new and the ledger already holds [`MAX_LIVE_REQUESTS`].
+    Full,
 }
 
 /// The id is bound to another input, or its reservation is for another amount.
@@ -67,8 +73,8 @@ pub struct ClaimGuard<'a> {
 
 impl Budget {
     /// Binds `request` on `mandate` to `digest` until `expires_at`, unless a live record binds
-    /// it to another digest. A live record keeps its own expiry. Records expired at `now` are
-    /// dropped whole.
+    /// it to another digest. A live record keeps its own expiry. Records of any mandate expired
+    /// at `now` are dropped whole.
     pub fn claim(
         &self,
         mandate: &[u8; 32],
@@ -78,8 +84,17 @@ impl Budget {
         now: OffsetDateTime,
     ) -> Result<Claimed<'_>, Replay> {
         let mut ledger = self.lock();
+        ledger.retain(|_, records| {
+            records.retain(|_, r| r.running > 0 || live(r.expires_at, now));
+            !records.is_empty()
+        });
+        let known = ledger
+            .get(mandate)
+            .is_some_and(|records| records.contains_key(&request));
+        if !known && ledger.values().map(BTreeMap::len).sum::<usize>() >= MAX_LIVE_REQUESTS {
+            return Ok(Claimed::Full);
+        }
         let records = ledger.entry(*mandate).or_default();
-        records.retain(|_, r| r.running > 0 || live(r.expires_at, now));
         let record = records.entry(request).or_insert(Record {
             digest,
             reserved_minor: None,
@@ -100,6 +115,11 @@ impl Budget {
             request,
             expires_at: record.expires_at,
         }))
+    }
+
+    #[cfg(test)]
+    fn requests(&self) -> usize {
+        self.lock().values().map(BTreeMap::len).sum()
     }
 
     fn lock(&self) -> MutexGuard<'_, Ledger> {
@@ -215,10 +235,12 @@ fn left(
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
     use time::OffsetDateTime;
     use ulid::Ulid;
 
-    use super::{Budget, ClaimGuard, Claimed, Replay};
+    use super::{Budget, ClaimGuard, Claimed, MAX_LIVE_REQUESTS, Replay};
+    use crate::wire::Countersigned;
 
     fn at(s: i64) -> OffsetDateTime {
         OffsetDateTime::from_unix_timestamp(s).unwrap()
@@ -234,7 +256,7 @@ mod tests {
             .unwrap()
         {
             Claimed::Working(g) => g,
-            Claimed::Answered(_) => panic!("unanswered"),
+            Claimed::Answered(_) | Claimed::Full => panic!("unanswered"),
         }
     }
 
@@ -304,5 +326,76 @@ mod tests {
         assert_eq!(fresh.left(10_000, 0, at(0)), 10_000);
         // And the id is free for another input.
         assert!(b.claim(&[1; 32], id(1), [3; 32], at(900), at(0)).is_ok());
+    }
+
+    /// A signed DENY, which holds no reservation.
+    fn deny() -> Countersigned {
+        let z = |n: usize| format!("0x{}", "0".repeat(n));
+        serde_json::from_value(json!({
+            "countersign": {
+                "requestId": z(64), "mandateHash": z(64), "mandateCommitment": z(64),
+                "cartHash": z(64), "agentId": "0", "merchantId": z(64), "amount": "0",
+                "currency": "840", "category": "0", "evidenceRoot": z(64), "evalHash": z(64),
+                "policySetHash": z(64), "decision": "2", "failedFieldsMask": "1",
+                "issuedAt": "0", "expiresAt": "0"
+            },
+            "digest": z(64), "signature": z(130), "signer": z(40), "tee": 1, "trace_jcs": "",
+            "observation": {
+                "now_ms": 0, "budget_left_minor": 0,
+                "user_key": {
+                    "kty": "EC", "crv": "P-256",
+                    "x": "rG2YAN80tmhPdXxOOH_ZsBqdI97Cf4yJL3H8ZToyX-M",
+                    "y": "uIq1dTwXYVvt26u9ehj7Itc4yr0f0N89hi4tBE2PVdk"
+                },
+                "paypal": {
+                    "authorization_id": "", "status": "", "currency": "", "authorized_minor": 0,
+                    "captured_minor": 0, "payee_merchant_id": "", "expires_at_ms": 0,
+                    "custom_id": "", "raw_authorization": "", "raw_order": "", "read_at_ms": 0
+                }
+            }
+        }))
+        .unwrap()
+    }
+
+    fn answered(b: &Budget, mandate: u8, request: Ulid, expires: i64, now: i64) {
+        let Ok(Claimed::Working(g)) =
+            b.claim(&[mandate; 32], request, [1; 32], at(expires), at(now))
+        else {
+            panic!("not claimed");
+        };
+        g.answer(deny()).unwrap();
+    }
+
+    #[test]
+    fn expired_requests_of_every_mandate_are_dropped() {
+        let b = Budget::default();
+        answered(&b, 1, id(1), 900, 0);
+        answered(&b, 2, id(1), 1_800, 0);
+        assert_eq!(b.requests(), 2);
+        // A claim on any mandate drops what expired on every other one.
+        answered(&b, 3, id(1), 2_700, 901);
+        assert_eq!(b.requests(), 2);
+    }
+
+    #[test]
+    fn a_full_ledger_refuses_new_requests_until_some_expire() {
+        let b = Budget::default();
+        let held: Vec<_> = (0..MAX_LIVE_REQUESTS as u128)
+            .map(|n| work(&b, id(n), 1, 900, 0))
+            .collect();
+        assert!(matches!(
+            b.claim(&[2; 32], id(0), [1; 32], at(900), at(0)),
+            Ok(Claimed::Full)
+        ));
+        // A request already in the ledger is still answered.
+        assert!(matches!(
+            b.claim(&[1; 32], id(0), [1; 32], at(900), at(0)),
+            Ok(Claimed::Working(_))
+        ));
+        drop(held);
+        assert!(matches!(
+            b.claim(&[2; 32], id(0), [1; 32], at(900), at(0)),
+            Ok(Claimed::Working(_))
+        ));
     }
 }

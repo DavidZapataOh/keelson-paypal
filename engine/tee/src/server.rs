@@ -174,7 +174,7 @@ impl From<EngineError> for Problem {
             | EngineError::Expired
             | EngineError::NotYetValid => StatusCode::UNPROCESSABLE_ENTITY,
             EngineError::TooLarge(_) => StatusCode::PAYLOAD_TOO_LARGE,
-            EngineError::NotReady => StatusCode::SERVICE_UNAVAILABLE,
+            EngineError::NotReady | EngineError::Busy => StatusCode::SERVICE_UNAVAILABLE,
             EngineError::Signer(_) => StatusCode::INTERNAL_SERVER_ERROR,
             EngineError::PayPal => StatusCode::BAD_GATEWAY,
         };
