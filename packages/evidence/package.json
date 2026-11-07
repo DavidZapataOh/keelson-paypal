@@ -7,6 +7,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./capture": {
+      "types": "./dist/capture/index.d.ts",
+      "default": "./dist/capture/index.js"
     }
   },
   "files": [
@@ -22,9 +26,14 @@
     "@noble/hashes": "catalog:",
     "canonicalize": "5.1.0"
   },
+  "peerDependencies": {
+    "playwright": "1.64.1"
+  },
   "devDependencies": {
     "@types/node": "26.6.6",
+    "@types/pngjs": "6.0.5",
     "playwright": "1.64.1",
+    "pngjs": "7.0.0",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }
