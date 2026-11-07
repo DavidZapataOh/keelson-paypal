@@ -1,0 +1,104 @@
+package main
+
+import (
+	"cmp"
+	"crypto/mldsa"
+	"encoding/base64"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"path/filepath"
+	"strings"
+
+	"filippo.io/torchwood"
+	"golang.org/x/mod/sumdb/note"
+)
+
+// host is the public name every origin is served under.
+const host = "log.keelson.finance"
+
+// originSpec is one log. Each flow has its own origin, chain and keys.
+type originSpec struct {
+	Name    string
+	ChainID uint64
+	// Env is the suffix of the origin's key variables.
+	Env string
+}
+
+var originSpecs = []originSpec{
+	{Name: host + "/alibi/2026-1", ChainID: 421614, Env: "SANDBOX"},
+	{Name: host + "/alibi-live/2026-1", ChainID: 42161, Env: "LIVE"},
+}
+
+// path is the origin without the host: the URL prefix its tiles are served under.
+func (o originSpec) path() string { return strings.TrimPrefix(o.Name, host+"/") }
+
+type config struct {
+	DataDir           string
+	PublicAddr        string
+	PrivateAddr       string
+	DatabaseURL       string
+	VerifyingContract [20]byte
+	TokenHash         [32]byte
+	Signers           map[string][]note.Signer
+}
+
+func loadConfig(getenv func(string) string) (*config, error) {
+	c := &config{
+		DataDir:     getenv("LOG_DATA_DIR"),
+		PublicAddr:  ":" + cmp.Or(getenv("PORT"), "10000"),
+		PrivateAddr: cmp.Or(getenv("LOG_PRIVATE_ADDR"), ":8081"),
+		DatabaseURL: getenv("DATABASE_URL"),
+		Signers:     map[string][]note.Signer{},
+	}
+	if c.DataDir == "" || c.DatabaseURL == "" {
+		return nil, errors.New("LOG_DATA_DIR and DATABASE_URL are required")
+	}
+	vc, err := hex.DecodeString(strings.TrimPrefix(getenv("KEELSON_VERIFYING_CONTRACT"), "0x"))
+	if err != nil || len(vc) != 20 {
+		return nil, errors.New("KEELSON_VERIFYING_CONTRACT is not an address")
+	}
+	copy(c.VerifyingContract[:], vc)
+	th, err := hex.DecodeString(getenv("LOG_WRITE_TOKEN_SHA256"))
+	if err != nil || len(th) != 32 {
+		return nil, errors.New("LOG_WRITE_TOKEN_SHA256 is not a SHA-256 hex digest")
+	}
+	copy(c.TokenHash[:], th)
+	for _, o := range originSpecs {
+		s, err := originSigners(o.Name, getenv("LOG_SIGNER_KEY_"+o.Env), getenv("LOG_MLDSA_SEED_"+o.Env))
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", o.Name, err)
+		}
+		c.Signers[o.Name] = s
+	}
+	return c, nil
+}
+
+// originSigners returns the Ed25519 note signer and the ML-DSA-44 signer of an
+// origin. Both are named after the origin, as checkpoint signers must be.
+func originSigners(origin, skey, seed64 string) ([]note.Signer, error) {
+	ed, err := note.NewSigner(skey)
+	if err != nil {
+		return nil, fmt.Errorf("signer key: %w", err)
+	}
+	if ed.Name() != origin {
+		return nil, fmt.Errorf("signer key is for %q", ed.Name())
+	}
+	seed, err := base64.StdEncoding.DecodeString(seed64)
+	if err != nil || len(seed) != 32 {
+		return nil, errors.New("ML-DSA seed is not 32 bytes of base64")
+	}
+	k, err := mldsa.NewPrivateKey(mldsa.MLDSA44(), seed)
+	if err != nil {
+		return nil, err
+	}
+	ml, err := torchwood.NewCosignatureSigner(origin, k)
+	if err != nil {
+		return nil, err
+	}
+	return []note.Signer{ed, ml}, nil
+}
+
+func (c *config) originDir(o originSpec) string {
+	return filepath.Join(c.DataDir, filepath.FromSlash(o.path()))
+}
