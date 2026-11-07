@@ -9,6 +9,7 @@ mod engine;
 mod error;
 mod keys;
 pub mod paypal;
+mod records;
 mod report_data;
 pub mod server;
 mod signer;
@@ -27,5 +28,6 @@ pub use engine::{
 };
 pub use error::Error;
 pub use keys::{Root, SealAad, SealError};
+pub use records::FileRecords;
 pub use report_data::{SignerBinding, TeeKind, report_data};
 pub use signer::Signer;

@@ -1,0 +1,78 @@
+name: tee-verify
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - engine/tee/phala/app.json
+      - .github/workflows/tee-verify.yml
+  workflow_dispatch:
+    inputs:
+      app_id:
+        description: App id of the CVM; app.json names it when empty
+        required: false
+  workflow_call:
+    inputs:
+      app_id:
+        type: string
+        required: false
+    secrets:
+      PHALA_CLOUD_API_KEY:
+        required: true
+      KEELSON_TEE_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+
+env:
+  PHALA_CLI: phala@1.2.1
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      # dstack-verifier 0.6.3; it downloads the OS image the quote names.
+      verifier:
+        image: ghcr.io/dstack-tee/dstack-verifier:0.6.3@sha256:22aeb6808e38a56115f843d4d66f4852407e72f6080d5f8781fd82d9f819db41
+        ports:
+          - 8080:8080
+    env:
+      PHALA_CLOUD_API_KEY: ${{ secrets.PHALA_CLOUD_API_KEY }}
+      KEELSON_TEE_TOKEN: ${{ secrets.KEELSON_TEE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter @keelson/tee
+      - name: Find the CVM and fetch the compose file it booted with
+        env:
+          INPUT_APP_ID: ${{ inputs.app_id }}
+        run: |
+          app_id="${INPUT_APP_ID:-$(jq -r .app_id engine/tee/phala/app.json)}"
+          npx --yes "$PHALA_CLI" api "/cvms/$app_id/compose_file" > "$RUNNER_TEMP/app-compose.json"
+          echo "TEE_A_URL=$(npx --yes "$PHALA_CLI" cvms get "$app_id" -j | jq -r .endpoints[0].app)" >> "$GITHUB_ENV"
+      - name: Verify the quote, RTMR3 and compose hash
+        run: node engine/tee/scripts/verify-tdx.ts "$TEE_A_URL" "$RUNNER_TEMP/app-compose.json" | tee -a "$GITHUB_STEP_SUMMARY"
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: Verify the attestation with dstack-verifier
+        env:
+          KEELSON_LIVE: "1"
+          DSTACK_VERIFIER_URL: http://localhost:8080
+        run: >
+          cargo test -p keelson-tee --features tdx --test tdx_live -- --ignored --nocapture
+          the_attestation_binds_the_signer_to_a_recent_block
+      - name: Refresh the attestation
+        if: env.KEELSON_TEE_TOKEN != ''
+        env:
+          KEELSON_LIVE: "1"
+          DSTACK_VERIFIER_URL: http://localhost:8080
+          KEELSON_TEE_TOKEN: ${{ secrets.KEELSON_TEE_TOKEN }}
+        run: >
+          cargo test -p keelson-tee --features tdx --test tdx_live -- --ignored --nocapture
+          refresh_reattests_the_same_signer_over_a_new_block

@@ -188,12 +188,17 @@ pub fn expected_mandate_hash(r: &RegisterMandate) -> [u8; 32] {
 
 /// The passkey assertion a browser returns over `challenge` (WebAuthn section 7.2).
 pub fn assertion(passkey: &SigningKey, challenge: &[u8; 32]) -> Assertion {
+    assertion_on(ORIGIN, passkey, challenge)
+}
+
+/// [`assertion`] made on `origin`.
+pub fn assertion_on(origin: &str, passkey: &SigningKey, challenge: &[u8; 32]) -> Assertion {
     let mut authenticator_data = Sha256::digest("keelson.finance").to_vec();
     authenticator_data.extend_from_slice(&[0x05, 0, 0, 0, 1]);
     let client_data_json = json!({
         "type": "webauthn.get",
         "challenge": b64u(challenge),
-        "origin": ORIGIN,
+        "origin": origin,
         "crossOrigin": false,
     })
     .to_string();
@@ -217,6 +222,16 @@ pub fn mandate_with(
     passkey: &SigningKey,
     edit: impl FnOnce(&mut Value),
 ) -> RegisterMandate {
+    mandate_on(ORIGIN, sub, passkey, edit)
+}
+
+/// [`mandate_with`] confirmed on `origin`.
+pub fn mandate_on(
+    origin: &str,
+    sub: &str,
+    passkey: &SigningKey,
+    edit: impl FnOnce(&mut Value),
+) -> RegisterMandate {
     let base = register_request();
     let mut m = decode_mandate(&base.payload_sd, &base.disclosures).unwrap();
     edit(&mut m);
@@ -232,7 +247,7 @@ pub fn mandate_with(
         sub: sub.into(),
         payload_sd,
         disclosures: Vec::new(),
-        assertion: assertion(passkey, &challenge),
+        assertion: assertion_on(origin, passkey, &challenge),
         salt: base.salt,
         user_credential: None,
     }

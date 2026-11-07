@@ -1,5 +1,6 @@
 packages:
   - apps/*
+  - engine/tee
   - services/*
   - packages/*
 

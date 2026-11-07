@@ -1,0 +1,8 @@
+{
+  "app_id": "58955baac3072bac57064089176bed1c2379f86d",
+  "instance_type": "tdx.small",
+  "os_image": "dstack-0.6.1",
+  "dstack_version": "0.6.1",
+  "node": "prod5",
+  "compose_hash": "1660c9d8f3335d8c2208733ccbcf81175c4715d3206d2b28a4f4e0a2fed1fd22"
+}
