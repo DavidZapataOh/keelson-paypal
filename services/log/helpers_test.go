@@ -225,14 +225,15 @@ func alibiID(t testing.TB, leaf []byte) string {
 
 // testKeys are fresh keys for both origins, as cmd/keygen makes them.
 type testKeys struct {
-	env    map[string]string
-	vkeys  map[string][2]string
-	policy map[string]torchwood.Policy
+	env       map[string]string
+	policyDir string
+	vkeys     map[string][2]string
+	policy    map[string]torchwood.Policy
 }
 
 func newTestKeys(t testing.TB) testKeys {
 	t.Helper()
-	k := testKeys{env: map[string]string{}, vkeys: map[string][2]string{}, policy: map[string]torchwood.Policy{}}
+	k := testKeys{env: map[string]string{}, policyDir: t.TempDir(), vkeys: map[string][2]string{}, policy: map[string]torchwood.Policy{}}
 	for _, o := range originSpecs {
 		skey, vkey, err := note.GenerateKey(rand.Reader, o.Name)
 		if err != nil {
@@ -255,14 +256,24 @@ func newTestKeys(t testing.TB) testKeys {
 			t.Fatal(err)
 		}
 		k.policy[o.Name] = p
+		k.writePolicy(t, o, "log "+vkey+"\nlog "+s.Verifier().String()+"\nquorum none\n")
 	}
 	return k
+}
+
+// writePolicy sets the witness policy the log loads for o.
+func (k testKeys) writePolicy(t testing.TB, o originSpec, policy string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(k.policyDir, o.policyFile()), []byte(policy), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func (k testKeys) getenv(dataDir, dbURL string) func(string) string {
 	sum := sha256.Sum256([]byte(testToken))
 	env := map[string]string{
 		"LOG_DATA_DIR":               dataDir,
+		"LOG_POLICY_DIR":             k.policyDir,
 		"DATABASE_URL":               dbURL,
 		"KEELSON_VERIFYING_CONTRACT": "0x0000000000000000000000000000000000000000",
 		"LOG_WRITE_TOKEN_SHA256":     hex.EncodeToString(sum[:]),
@@ -290,11 +301,16 @@ func startLog(t testing.TB, keys testKeys, dataDir string, db *pgxpool.Pool, dbU
 	t.Cleanup(cancel)
 	s := &server{registry: registry{db}, tokenHash: cfg.TokenHash, log: slog.New(slog.DiscardHandler)}
 	for _, spec := range originSpecs {
-		o, err := openOrigin(ctx, spec, cfg.originDir(spec), cfg.VerifyingContract, cfg.Signers[spec.Name])
+		o, err := openOrigin(ctx, spec, cfg.originDir(spec), cfg.VerifyingContract, cfg.Signers[spec.Name], cfg.Policies[spec.Name])
 		if err != nil {
 			t.Fatal(err)
 		}
 		s.origins = append(s.origins, o)
+	}
+	if cfg.Sigsum != nil {
+		if s.colog, err = newCoLogger(cfg.Sigsum, cfg.SigsumSigner, cfg.DataDir, s.log); err != nil {
+			t.Fatal(err)
+		}
 	}
 	l := &testLog{s: s, public: httptest.NewServer(s.public()), private: httptest.NewServer(s.private())}
 	t.Cleanup(l.public.Close)

@@ -151,7 +151,7 @@ func TestTheSameLeafGetsOneIndex(t *testing.T) {
 	// Each run is a separate process on the same directory, as a restart is.
 	run := func(n int, variant bool) []string {
 		cmd := exec.Command(os.Args[0], "-test.run=^TestHelperAppend$")
-		cmd.Env = append(os.Environ(), "LOG_HELPER=1", fmt.Sprintf("LOG_HELPER_N=%d", n), "LOG_HELPER_DIR="+dir, "LOG_HELPER_DB="+dbURL, fmt.Sprintf("LOG_HELPER_VARIANT=%t", variant))
+		cmd.Env = append(os.Environ(), "LOG_HELPER=1", fmt.Sprintf("LOG_HELPER_N=%d", n), "LOG_HELPER_DIR="+dir, "LOG_HELPER_DB="+dbURL, "LOG_HELPER_POLICY_DIR="+keys.policyDir, fmt.Sprintf("LOG_HELPER_VARIANT=%t", variant))
 		for k, v := range keys.env {
 			cmd.Env = append(cmd.Env, k+"="+v)
 		}
@@ -187,7 +187,7 @@ func TestHelperAppend(t *testing.T) {
 	}
 	vectors, _ := loadVectors(t)
 	allow := vectors["allow"]
-	keys := testKeys{env: map[string]string{}}
+	keys := testKeys{env: map[string]string{}, policyDir: os.Getenv("LOG_HELPER_POLICY_DIR")}
 	for _, o := range originSpecs {
 		for _, k := range []string{"LOG_SIGNER_KEY_", "LOG_MLDSA_SEED_"} {
 			keys.env[k+o.Env] = os.Getenv(k + o.Env)

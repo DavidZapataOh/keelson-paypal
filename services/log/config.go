@@ -8,11 +8,17 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
 	"filippo.io/torchwood"
+	"github.com/transparency-dev/tessera"
 	"golang.org/x/mod/sumdb/note"
+	sigsumcrypto "sigsum.org/sigsum-go/pkg/crypto"
+	"sigsum.org/sigsum-go/pkg/key"
+	"sigsum.org/sigsum-go/pkg/policy"
+	"sigsum.org/sigsum-go/pkg/submit"
 )
 
 // host is the public name every origin is served under.
@@ -34,6 +40,9 @@ var originSpecs = []originSpec{
 // path is the origin without the host: the URL prefix its tiles are served under.
 func (o originSpec) path() string { return strings.TrimPrefix(o.Name, host+"/") }
 
+// policyFile is the name of the origin's witness policy file.
+func (o originSpec) policyFile() string { return strings.ReplaceAll(o.path(), "/", "-") + ".policy" }
+
 type config struct {
 	DataDir           string
 	PublicAddr        string
@@ -42,6 +51,12 @@ type config struct {
 	VerifyingContract [20]byte
 	TokenHash         [32]byte
 	Signers           map[string][]note.Signer
+	// Policies are the witness policies of each origin, in the Sigsum policy
+	// format: the log keys, the witnesses and the quorum every checkpoint needs.
+	Policies map[string][]byte
+	// Sigsum co-logs checkpoints when SIGSUM_SUBMIT_KEY is set.
+	Sigsum       *submit.Config
+	SigsumSigner sigsumcrypto.Signer
 }
 
 func loadConfig(getenv func(string) string) (*config, error) {
@@ -51,9 +66,11 @@ func loadConfig(getenv func(string) string) (*config, error) {
 		PrivateAddr: cmp.Or(getenv("LOG_PRIVATE_ADDR"), ":8081"),
 		DatabaseURL: getenv("DATABASE_URL"),
 		Signers:     map[string][]note.Signer{},
+		Policies:    map[string][]byte{},
 	}
-	if c.DataDir == "" || c.DatabaseURL == "" {
-		return nil, errors.New("LOG_DATA_DIR and DATABASE_URL are required")
+	policyDir := getenv("LOG_POLICY_DIR")
+	if c.DataDir == "" || c.DatabaseURL == "" || policyDir == "" {
+		return nil, errors.New("LOG_DATA_DIR, LOG_POLICY_DIR and DATABASE_URL are required")
 	}
 	vc, err := hex.DecodeString(strings.TrimPrefix(getenv("KEELSON_VERIFYING_CONTRACT"), "0x"))
 	if err != nil || len(vc) != 20 {
@@ -74,6 +91,29 @@ func loadConfig(getenv func(string) string) (*config, error) {
 			return nil, fmt.Errorf("%s: %w", o.Name, err)
 		}
 		c.Signers[o.Name] = s
+		p, err := os.ReadFile(filepath.Join(policyDir, o.policyFile()))
+		if err != nil {
+			return nil, err
+		}
+		if _, err := tessera.NewWitnessGroupFromPolicy(p); err != nil {
+			return nil, fmt.Errorf("%s: witness policy: %w", o.Name, err)
+		}
+		if _, err := torchwood.ParsePolicy(p); err != nil {
+			return nil, fmt.Errorf("%s: witness policy: %w", o.Name, err)
+		}
+		c.Policies[o.Name] = p
+	}
+	if k := getenv("SIGSUM_SUBMIT_KEY"); k != "" {
+		signer, _, err := key.ParsePrivateKey(k)
+		if err != nil {
+			return nil, fmt.Errorf("SIGSUM_SUBMIT_KEY: %w", err)
+		}
+		p, err := policy.ReadPolicyFile(filepath.Join(policyDir, "sigsum-seasalp.policy"))
+		if err != nil {
+			return nil, err
+		}
+		c.SigsumSigner = signer
+		c.Sigsum = &submit.Config{Domain: sigsumDomain, RateLimitSigner: signer, Policy: p, UserAgent: "keelson-log"}
 	}
 	return c, nil
 }

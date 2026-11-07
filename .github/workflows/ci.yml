@@ -171,6 +171,21 @@ jobs:
     needs: go
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
+    env:
+      DATABASE_URL: postgres://postgres:keelson@localhost:5432/keelson
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: keelson
+          POSTGRES_DB: keelson
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d keelson"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -179,6 +194,8 @@ jobs:
       - run: go test -tags live -run Live -v ./services/log/
         env:
           LOG_URL: https://log.keelson.finance
+          LOG_SIGNER_KEY_CONFORMANCE: ${{ secrets.LOG_SIGNER_KEY_CONFORMANCE }}
+          SIGSUM_SUBMIT_KEY: ${{ secrets.SIGSUM_SUBMIT_KEY }}
 
   secrets:
     runs-on: ubuntu-24.04

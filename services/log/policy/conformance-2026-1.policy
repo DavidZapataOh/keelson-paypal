@@ -1,0 +1,7 @@
+# Witness policy (c2sp.org/tlog-witness, Sigsum policy format).
+log log.keelson.finance/conformance/2026-1+88ff219b+Ac7nwLU+DHM6Go1EhwEz+nzxcYelAsfPN+Qp7qWo1WXV
+witness w1 witness-1.keelson.finance+f179740d+BA2CNkIvGf1TnnZNrT8I4QEE3VFdcK71m1HOqlHv6INc https://witness-1.keelson.finance
+witness w2 witness-2.keelson.finance+25bcde99+BG9zFgsma2ggzGNea4Nm1oG1/011LGpfypKDmR5Qi2ox https://witness-2.keelson.finance
+witness w3 witness-3.keelson.finance+9d46cab2+BHzNOrCnXA/4RzT9dabueqKXrTRswymwxybNZrcNkmX4 https://witness-3.keelson.finance
+group own 2 w1 w2 w3
+quorum own

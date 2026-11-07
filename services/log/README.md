@@ -17,6 +17,58 @@ Each origin is served at `https://<origin>/`: `checkpoint`, `tile/<L>/<N>[.p/<W>
 carries two log signatures: Ed25519 (`0x01`) and ML-DSA-44 (`0x06`, [c2sp.org/tlog-cosignature](https://c2sp.org/tlog-cosignature)).
 A new checkpoint is published every 500 ms while the log grows, and every minute otherwise.
 
+## Witnesses
+
+Every checkpoint carries the cosignatures ([c2sp.org/tlog-cosignature](https://c2sp.org/tlog-cosignature),
+`cosignature/v1`) of at least two of the three witnesses operated by Keelson, each on a different
+provider. A checkpoint without that quorum is not published: the log waits at most one second for the
+witnesses, and an append that no witnessed checkpoint covers answers `503`. The witnesses run
+[litewitness](../witness) and refuse any checkpoint that is not consistent with the last one they
+cosigned.
+
+| Witness                     | Provider              |
+| --------------------------- | --------------------- |
+| `witness-1.keelson.finance` | Render (Oregon)       |
+| `witness-2.keelson.finance` | Railway (US West)     |
+| `witness-3.keelson.finance` | AWS EC2 (`us-west-2`) |
+
+Each origin publishes its policy at `https://<origin>/policy`, in the
+[Sigsum policy format](https://git.glasklar.is/sigsum/core/sigsum-go/-/blob/main/doc/policy.md) that
+Tessera and torchwood read: the log keys, the witnesses' `cosignature/v1` keys and URLs, and
+`quorum own` (two of three). The same files are in [`policy/`](policy). With torchwood:
+
+```go
+policy, _ := torchwood.ParsePolicy(policyFile)
+checkpoint, _, err := torchwood.VerifyCheckpoint(signedCheckpoint, policy)
+```
+
+`log.keelson.finance/conformance/2026-1` is a test-only log the witnesses also cosign. Entry _i_ is
+`keelson conformance <i>` ([`internal/conformance`](../../internal/conformance)), so a client holding
+its key can rebuild the tree at any size and check that every witness refuses forks and rollbacks.
+Its key is [`keys/conformance-2026-1.vkey`](keys/conformance-2026-1.vkey); it holds no Alibis.
+
+## Sigsum
+
+Checkpoints are co-logged in the [Sigsum](https://www.sigsum.org) log
+[seasalp](https://git.glasklar.is/glasklar/services/sigsum-logs/-/blob/main/instances/seasalp.md),
+cosigned by Glasklar, Mullvad and Tillitis witnesses (two of three, [`policy/sigsum-seasalp.policy`](policy/sigsum-seasalp.policy)).
+The Sigsum message is the SHA-256 of the checkpoint body (the origin, size and root lines), signed
+with [`keys/sigsum-submit.pub`](keys/sigsum-submit.pub); the same key, published in the
+`_sigsum_v1.keelson.finance` TXT record, is the rate-limit key.
+
+The log co-logs an origin every hour when it grew, and on `POST /<origin path>/sigsum` (private,
+bearer): `202 {"size"}` when a submission starts, `200 {"size", "proof"}` when that checkpoint is
+already co-logged, `429 {"size", "retryAfter"}` otherwise. Submissions are at least five minutes
+apart across origins and restarts, so the log stays under seasalp's 288 entries a day.
+
+Each co-logged checkpoint is public at `https://<origin>/sigsum/<size>.msg` with its proof at
+`<size>.proof`. With the official [`sigsum-verify`](https://git.glasklar.is/sigsum/core/sigsum-go/-/blob/main/doc/tools.md):
+
+```sh
+curl -s https://log.keelson.finance/alibi/2026-1/sigsum/<size>.msg |
+  sigsum-verify -k keys/sigsum-submit.pub -p policy/sigsum-seasalp.policy <size>.proof
+```
+
 ## Hosting
 
 The service runs on Render with its log on a persistent disk, behind Cloudflare. The write
@@ -68,18 +120,23 @@ of the deployed log with both clients:
 go test -tags live -run Live -v ./services/log/
 ```
 
+The witness and Sigsum tests among them need `LOG_SIGNER_KEY_CONFORMANCE`, `SIGSUM_SUBMIT_KEY` and
+Postgres (`DATABASE_URL`).
+
 ## Run
 
-| Variable                                        |                                                                  |
-| ----------------------------------------------- | ---------------------------------------------------------------- |
-| `LOG_DATA_DIR`                                  | Directory of the logs; each origin uses `<dir>/<origin path>`    |
-| `PORT`                                          | Public listener, read-only (default `10000`)                     |
-| `LOG_PRIVATE_ADDR`                              | Write listener, `POST /<origin path>/add` (default `:8081`)      |
-| `DATABASE_URL`                                  | Postgres with the API's `tee_signers` and `purchases`, read only |
-| `KEELSON_VERIFYING_CONTRACT`                    | `verifyingContract` of the `Countersign` EIP-712 domain          |
-| `LOG_WRITE_TOKEN_SHA256`                        | Hex SHA-256 of the bearer token the API writes with              |
-| `LOG_SIGNER_KEY_SANDBOX`, `LOG_SIGNER_KEY_LIVE` | Ed25519 note signer keys                                         |
-| `LOG_MLDSA_SEED_SANDBOX`, `LOG_MLDSA_SEED_LIVE` | Base64 32-byte ML-DSA-44 seeds                                   |
+| Variable                                        |                                                                                                  |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `LOG_DATA_DIR`                                  | Directory of the logs; each origin uses `<dir>/<origin path>`                                    |
+| `LOG_POLICY_DIR`                                | Witness policies, `<origin path, / as ->.policy`, and `sigsum-seasalp.policy` (image: `policy/`) |
+| `PORT`                                          | Public listener, read-only (default `10000`)                                                     |
+| `LOG_PRIVATE_ADDR`                              | Write listener, `POST /<origin path>/add` (default `:8081`)                                      |
+| `DATABASE_URL`                                  | Postgres with the API's `tee_signers` and `purchases`, read only                                 |
+| `KEELSON_VERIFYING_CONTRACT`                    | `verifyingContract` of the `Countersign` EIP-712 domain                                          |
+| `LOG_WRITE_TOKEN_SHA256`                        | Hex SHA-256 of the bearer token the API writes with                                              |
+| `LOG_SIGNER_KEY_SANDBOX`, `LOG_SIGNER_KEY_LIVE` | Ed25519 note signer keys                                                                         |
+| `LOG_MLDSA_SEED_SANDBOX`, `LOG_MLDSA_SEED_LIVE` | Base64 32-byte ML-DSA-44 seeds                                                                   |
+| `SIGSUM_SUBMIT_KEY`                             | OpenSSH Ed25519 key that co-logs checkpoints in Sigsum; unset, co-logging is off                 |
 
 `KEELSON_VERIFYING_CONTRACT` must equal the API's `verifyingContract`; when the contract is
 deployed, both change together, or every leaf is refused with `countersign.digest`.

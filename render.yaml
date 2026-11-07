@@ -112,6 +112,33 @@ services:
         sync: false
       - key: LOG_WRITE_TOKEN_SHA256
         sync: false
+      - key: SIGSUM_SUBMIT_KEY
+        sync: false
+
+  - type: web
+    runtime: image
+    name: keelson-witness-1
+    plan: 0.5c-512mb
+    region: oregon
+    image:
+      url: ghcr.io/davidzapataoh/keelson-witness@sha256:bb2569fe652c17ab91a7216336d4b7c5e1d8670ddee3bc59069df7efeb7bb28c
+    healthCheckPath: /
+    # The witness's SQLite state; a witness that lost it would cosign a rolled-back tree.
+    disk:
+      name: keelson-witness-1
+      mountPath: /data
+      sizeGB: 1
+    domains:
+      - witness-1.keelson.finance
+    envVars:
+      - key: PORT
+        value: "7380"
+      - key: DB
+        value: /data/litewitness.db
+      - key: WITNESS_NAME
+        value: witness-1.keelson.finance
+      - key: WITNESS_KEY
+        sync: false
 
   - type: web
     runtime: static

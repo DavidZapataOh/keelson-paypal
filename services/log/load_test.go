@@ -17,7 +17,8 @@ func percentile(d []time.Duration, p float64) time.Duration {
 }
 
 // TestLoad appends 1,000 distinct leaves at 100 per second straight to the
-// Tessera appender and reports add → covering checkpoint → proof. A purchase has
+// Tessera appender, with three local witnesses, and reports add → covering
+// witnessed checkpoint → proof. A purchase has
 // one leaf in the log, so these variants of the ALLOW leaf (other PayPal reference
 // commitments) skip the HTTP handler; admission is timed on its own below.
 func TestLoad(t *testing.T) {
@@ -27,7 +28,9 @@ func TestLoad(t *testing.T) {
 	vectors, _ := loadVectors(t)
 	allow := vectors["allow"]
 	db, dbURL := testDB(t)
-	l := startLog(t, newTestKeys(t), t.TempDir(), db, dbURL)
+	keys := newTestKeys(t)
+	startWitnesses(t, keys)
+	l := startLog(t, keys, t.TempDir(), db, dbURL)
 	activate(t, db, teeTDX, *allow.Signers["tdx"], *allow.Measurements["tdx"])
 	activate(t, db, teeNitro, *allow.Signers["nitro"], *allow.Measurements["nitro"])
 	purchase(t, db, alibiID(t, allow.Leaf), ptr("2of2"))

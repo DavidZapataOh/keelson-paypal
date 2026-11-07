@@ -1,3 +1,7 @@
 tee-b.keelson.finance {
 	reverse_proxy 127.0.0.1:8000
 }
+
+witness-3.keelson.finance {
+	reverse_proxy 127.0.0.1:7380
+}

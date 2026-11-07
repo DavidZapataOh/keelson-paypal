@@ -1,0 +1,18 @@
+[Unit]
+Description=Keelson witness 3
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+# IMAGE=ghcr.io/davidzapataoh/keelson-witness@sha256:<digest>, written by deploy.sh.
+EnvironmentFile=/etc/keelson-witness-3.env
+Environment=WITNESS_NAME=witness-3.keelson.finance DB=/data/litewitness.db PORT=7380
+ExecStartPre=-/usr/bin/docker rm -f keelson-witness-3
+ExecStart=/bin/sh -c 'WITNESS_KEY="$(aws ssm get-parameter --region us-west-2 --name /keelson/witness-3/key --with-decryption --query Parameter.Value --output text)" exec /usr/bin/docker run --rm --name keelson-witness-3 -p 127.0.0.1:7380:7380 -v /var/lib/keelson-witness-3:/data -e WITNESS_KEY -e WITNESS_NAME -e DB -e PORT "$IMAGE"'
+ExecStop=/usr/bin/docker stop keelson-witness-3
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -41,11 +41,17 @@ func run(log *slog.Logger) error {
 
 	s := &server{registry: registry{db}, tokenHash: cfg.TokenHash, log: log}
 	for _, spec := range originSpecs {
-		o, err := openOrigin(appendCtx, spec, cfg.originDir(spec), cfg.VerifyingContract, cfg.Signers[spec.Name])
+		o, err := openOrigin(appendCtx, spec, cfg.originDir(spec), cfg.VerifyingContract, cfg.Signers[spec.Name], cfg.Policies[spec.Name])
 		if err != nil {
 			return err
 		}
 		s.origins = append(s.origins, o)
+	}
+	if cfg.Sigsum != nil {
+		if s.colog, err = newCoLogger(cfg.Sigsum, cfg.SigsumSigner, cfg.DataDir, log); err != nil {
+			return err
+		}
+		go s.colog.run(ctx, s.origins)
 	}
 
 	servers := newServers(cfg, s)

@@ -58,6 +58,8 @@ They read `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_REGION` from the
 | `drift.sh check [max ms]`    | Samples once on the parent and fails when leg B's clock is more than `max ms` (1000 by default) from the parent's.                                                                                                                                                                                                 |
 | `check.sh`                   | Asserts one `RUNNING` enclave outside debug mode with the PCRs of `eif.json`, that `https://tee-b.keelson.finance/v1/health` answers `tee: 2` (`TeeKind::Nitro`) for the same image digest, and `drift.sh check`.                                                                                                  |
 
+The parent also runs witness 3 of the Alibi log in its own container, outside the enclave; see [`services/witness`](../../../services/witness).
+
 `parent/` holds what runs on the instance: `user-data.sh` (packages, pinned Caddy and Node, units), `allocator.yaml` (2 vCPUs, 1024 MiB), `Caddyfile`, the three units and `boot.ts`.
 
 ## Tests

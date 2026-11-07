@@ -32,6 +32,10 @@ import (
 // awaitTimeout bounds how long an append waits for a checkpoint that covers it.
 const awaitTimeout = 5 * time.Second
 
+// witnessTimeout bounds how long a checkpoint waits for its witness quorum.
+// Without the quorum the checkpoint is not published.
+const witnessTimeout = time.Second
+
 // origin is one Tessera log on its own directory.
 type origin struct {
 	name              string
@@ -44,9 +48,14 @@ type origin struct {
 	awaiter           *tessera.PublicationAwaiter
 	shutdown          func(context.Context) error
 	claims            *claims
+	policy            []byte
 }
 
-func openOrigin(ctx context.Context, spec originSpec, dir string, verifyingContract [20]byte, signers []note.Signer) (*origin, error) {
+func openOrigin(ctx context.Context, spec originSpec, dir string, verifyingContract [20]byte, signers []note.Signer, policy []byte) (*origin, error) {
+	witnesses, err := tessera.NewWitnessGroupFromPolicy(policy)
+	if err != nil {
+		return nil, err
+	}
 	driver, err := posix.New(ctx, posix.Config{Path: dir})
 	if err != nil {
 		return nil, err
@@ -61,7 +70,8 @@ func openOrigin(ctx context.Context, spec originSpec, dir string, verifyingContr
 		WithCheckpointRepublishInterval(time.Minute).
 		WithBatching(256, 250*time.Millisecond).
 		WithPushback(4096).
-		WithAntispam(tessera.DefaultAntispamInMemorySize, as))
+		WithAntispam(tessera.DefaultAntispamInMemorySize, as).
+		WithWitnesses(witnesses, &tessera.WitnessOptions{Timeout: witnessTimeout}))
 	if err != nil {
 		return nil, err
 	}
@@ -71,6 +81,7 @@ func openOrigin(ctx context.Context, spec originSpec, dir string, verifyingContr
 	}
 	return &origin{
 		claims:            cl,
+		policy:            policy,
 		name:              spec.Name,
 		path:              spec.path(),
 		dir:               dir,
@@ -160,6 +171,15 @@ type server struct {
 	registry  registry
 	tokenHash [32]byte
 	log       *slog.Logger
+	// colog is nil when co-logging in Sigsum is off.
+	colog *coLogger
+}
+
+// authorized reports whether r carries the write token.
+func (s *server) authorized(r *http.Request) bool {
+	token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	sum := sha256.Sum256([]byte(token))
+	return ok && subtle.ConstantTimeCompare(sum[:], s.tokenHash[:]) == 1
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -173,16 +193,36 @@ type addRequest struct {
 	Countersign alibilog.Countersign `json:"countersign"`
 }
 
-// private serves POST /<origin path>/add, reached only over the private network,
-// and the public resources for the API's health checks.
+// private serves POST /<origin path>/add and POST /<origin path>/sigsum, reached
+// only over the private network, and the public resources for the API's health
+// checks.
 func (s *server) private() http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("GET /", s.public())
 	for _, o := range s.origins {
+		if s.colog != nil {
+			mux.HandleFunc("POST /"+o.path+"/sigsum", func(w http.ResponseWriter, r *http.Request) {
+				if !s.authorized(r) {
+					writeJSON(w, http.StatusUnauthorized, map[string]string{"code": "unauthorized"})
+					return
+				}
+				res, done, err := s.colog.now(r.Context(), o)
+				switch {
+				case errors.Is(err, errTooSoon):
+					w.Header().Set("Retry-After", strconv.Itoa(res.RetryAfter))
+					writeJSON(w, http.StatusTooManyRequests, res)
+				case err != nil:
+					s.log.Error("sigsum", "origin", o.name, "err", err)
+					writeJSON(w, http.StatusServiceUnavailable, map[string]string{"code": "unavailable"})
+				case done:
+					writeJSON(w, http.StatusOK, res)
+				default:
+					writeJSON(w, http.StatusAccepted, res)
+				}
+			})
+		}
 		mux.HandleFunc("POST /"+o.path+"/add", func(w http.ResponseWriter, r *http.Request) {
-			token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-			sum := sha256.Sum256([]byte(token))
-			if !ok || subtle.ConstantTimeCompare(sum[:], s.tokenHash[:]) != 1 {
+			if !s.authorized(r) {
 				writeJSON(w, http.StatusUnauthorized, map[string]string{"code": "unauthorized"})
 				return
 			}
@@ -220,11 +260,13 @@ func (s *server) private() http.Handler {
 	return mux
 }
 
-// tilePath matches the c2sp.org/tlog-tiles resources under an origin.
-var tilePath = regexp.MustCompile(`^tile/(\d{1,2}|entries)(/x\d{3})*/\d{3}(\.p/\d{1,3})?$`)
+// tilePath matches the c2sp.org/tlog-tiles resources under an origin, and the
+// co-logged checkpoint bodies and their Sigsum proofs, which never change either.
+var tilePath = regexp.MustCompile(`^(tile/(\d{1,2}|entries)(/x\d{3})*/\d{3}(\.p/\d{1,3})?|sigsum/\d{1,20}\.(msg|proof))$`)
 
 // public serves the tlog-tiles resources of every origin read-only, with the
-// cache headers of Tessera's POSIX server, and each origin's size at /health.
+// cache headers of Tessera's POSIX server, each origin's witness policy, and
+// each origin's size at /health.
 func (s *server) public() http.Handler {
 	mux := http.NewServeMux()
 	for _, o := range s.origins {
@@ -232,6 +274,12 @@ func (s *server) public() http.Handler {
 			rel := strings.TrimPrefix(r.URL.Path, "/"+o.path+"/")
 			cache := "public, max-age=31536000, immutable"
 			switch {
+			case rel == "policy":
+				w.Header().Set("Cache-Control", "no-cache")
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+				w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+				_, _ = w.Write(o.policy)
+				return
 			case rel == "checkpoint":
 				cache = "no-cache"
 			case !tilePath.MatchString(rel):
