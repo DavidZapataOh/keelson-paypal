@@ -13,6 +13,8 @@ pub enum Error {
     UnusableSignature,
     /// The engine's OCI digest is not `sha256:` and 64 lowercase hex digits.
     OciDigest,
+    /// The engine has neither a root nor a configured issuer key to bind.
+    NoIssuer,
 }
 
 impl fmt::Display for Error {
@@ -23,6 +25,7 @@ impl fmt::Display for Error {
             Self::UnknownTeeKind(kind) => write!(f, "unknown tee kind: {kind}"),
             Self::UnusableSignature => f.write_str("the signature has an unusable recovery id"),
             Self::OciDigest => f.write_str("the oci digest is not sha256:<64 lowercase hex>"),
+            Self::NoIssuer => f.write_str("the engine has no issuer key to bind"),
         }
     }
 }

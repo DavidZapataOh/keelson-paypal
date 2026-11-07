@@ -17,6 +17,7 @@ type Binding = (
     sol_data::FixedBytes<32>,
     sol_data::FixedBytes<32>,
     sol_data::Uint<64>,
+    sol_data::FixedBytes<32>,
 );
 
 /// The TEE technology that produced the attestation; serialized as its number.
@@ -60,6 +61,8 @@ pub struct SignerBinding {
     /// The OCI image digest of the engine.
     pub engine_build_id: [u8; 32],
     pub boot_epoch: u64,
+    /// The RFC 7638 SHA-256 thumbprint of the credential issuer's public JWK.
+    pub issuer_jwk_thumbprint: [u8; 32],
 }
 
 #[derive(Serialize, Deserialize)]
@@ -72,6 +75,7 @@ struct BindingJson {
     policy_set_hash: Hex32,
     engine_build_id: Hex32,
     boot_epoch: String,
+    issuer_jwk_thumbprint: Hex32,
 }
 
 impl From<SignerBinding> for BindingJson {
@@ -84,6 +88,7 @@ impl From<SignerBinding> for BindingJson {
             policy_set_hash: Hex(b.policy_set_hash),
             engine_build_id: Hex(b.engine_build_id),
             boot_epoch: b.boot_epoch.to_string(),
+            issuer_jwk_thumbprint: Hex(b.issuer_jwk_thumbprint),
         }
     }
 }
@@ -102,12 +107,13 @@ impl TryFrom<BindingJson> for SignerBinding {
             policy_set_hash: b.policy_set_hash.0,
             engine_build_id: b.engine_build_id.0,
             boot_epoch: number(&b.boot_epoch)?,
+            issuer_jwk_thumbprint: b.issuer_jwk_thumbprint.0,
         })
     }
 }
 
 /// `keccak256(abi.encode(keccak256("KEELSON_TEE_SIGNER_V1"), chainId, bondVault, teeKind,
-/// signer, policySetHash, engineBuildId, bootEpoch)) ‖ blockHash`.
+/// signer, policySetHash, engineBuildId, bootEpoch, issuerJwkThumbprint)) ‖ blockHash`.
 ///
 /// Fails on chains other than Arbitrum Sepolia and Arbitrum One.
 pub fn report_data(b: &SignerBinding, block_hash: [u8; 32]) -> Result<[u8; 64], Error> {
@@ -121,6 +127,7 @@ pub fn report_data(b: &SignerBinding, block_hash: [u8; 32]) -> Result<[u8; 64], 
         B256::new(b.policy_set_hash),
         B256::new(b.engine_build_id),
         b.boot_epoch,
+        B256::new(b.issuer_jwk_thumbprint),
     )));
     let mut out = [0; 64];
     out[..32].copy_from_slice(binding.as_slice());

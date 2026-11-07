@@ -217,6 +217,8 @@ export interface SignerBinding {
   policySetHash: Hex;
   engineBuildId: Hex;
   bootEpoch: bigint;
+  /** RFC 7638 SHA-256 thumbprint of the credential issuer's public JWK. */
+  issuerJwkThumbprint: Hex;
 }
 
 const SIGNER_TAG = keccak256(stringToHex("KEELSON_TEE_SIGNER_V1"));
@@ -244,6 +246,7 @@ export function reportData(b: SignerBinding, blockHash: Hex): Hex {
         { type: "bytes32" },
         { type: "bytes32" },
         { type: "uint64" },
+        { type: "bytes32" },
       ],
       [
         SIGNER_TAG,
@@ -254,6 +257,7 @@ export function reportData(b: SignerBinding, blockHash: Hex): Hex {
         b.policySetHash,
         b.engineBuildId,
         b.bootEpoch,
+        b.issuerJwkThumbprint,
       ],
     ),
   );

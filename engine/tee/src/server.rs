@@ -240,6 +240,9 @@ struct Health {
     boot_epoch: u64,
     oci_digest: String,
     version: &'static str,
+    /// The credential issuer's public JWK, which `issuer_jwk_thumbprint` in the attestation covers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    issuer: Option<serde_json::Value>,
 }
 
 async fn health(State(state): State<Arc<AppState>>) -> Json<Health> {
@@ -250,6 +253,9 @@ async fn health(State(state): State<Arc<AppState>>) -> Json<Health> {
         boot_epoch: engine.boot_epoch(),
         oci_digest: engine.config().oci_digest.clone(),
         version: env!("CARGO_PKG_VERSION"),
+        issuer: engine
+            .issuer()
+            .map(|k| json!({ "kty": "EC", "crv": "P-256", "x": k.x, "y": k.y })),
     })
 }
 

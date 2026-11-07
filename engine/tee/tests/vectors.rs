@@ -68,7 +68,7 @@ fn report_data_vectors() {
     let vectors = load(include_str!(
         "../../../packages/core/test/vectors/report-data.json"
     ));
-    assert_eq!(vectors.len(), 9);
+    assert_eq!(vectors.len(), 10);
     for v in vectors {
         let b = &v["input"]["binding"];
         let data = TeeKind::try_from(b["teeKind"].as_u64().unwrap() as u8).and_then(|tee_kind| {
@@ -80,6 +80,7 @@ fn report_data_vectors() {
                 policy_set_hash: b32(&b["policySetHash"]).0,
                 engine_build_id: b32(&b["engineBuildId"]).0,
                 boot_epoch: b["bootEpoch"].as_str().unwrap().parse().unwrap(),
+                issuer_jwk_thumbprint: b32(&b["issuerJwkThumbprint"]).0,
             };
             let parsed: SignerBinding = serde_json::from_value(b.clone()).unwrap();
             assert_eq!(parsed, binding, "{}", v["name"]);

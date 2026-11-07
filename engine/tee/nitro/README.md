@@ -27,7 +27,8 @@ client --TLS--> Caddy :443 --> 127.0.0.1:8000 --socat--> vsock 16:5000 --> keels
     "signer": "0x…",
     "policySetHash": "0x…",
     "engineBuildId": "0x…",
-    "bootEpoch": "…"
+    "bootEpoch": "…",
+    "issuerJwkThumbprint": "0x…"
   },
   "block": { "number": 0, "hash": "0x…" }
 }

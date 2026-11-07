@@ -9,11 +9,12 @@
         "signer": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
         "policySetHash": "0x0000000000000000000000000000000000000000000000000000000000000077",
         "engineBuildId": "0x98badd9f4daab7445e29671123fdbe7589b5546a499d3cab26a275ded063141f",
-        "bootEpoch": "1762400000"
+        "bootEpoch": "1762400000",
+        "issuerJwkThumbprint": "0x8941079ab29ad15fbad5c3330ed78f8d18eb84f0880b090e8cb558a1b7c9778b"
       },
       "blockHash": "0x000000000000000000000000000000000000000000000000000000000000b10c"
     },
-    "expected": "0xb3bf7e43c6abfc1dbc5d1106fa2bcc2314f26ca0f2e69afd0911b14d099bfffb000000000000000000000000000000000000000000000000000000000000b10c"
+    "expected": "0xa8d6a881e1ad0dd0cf7bfc7efe76bfe0f4792c576f506947b10769cbacbe75f6000000000000000000000000000000000000000000000000000000000000b10c"
   },
   {
     "name": "nitro/zero-vault",
@@ -25,11 +26,12 @@
         "signer": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
         "policySetHash": "0x0000000000000000000000000000000000000000000000000000000000000077",
         "engineBuildId": "0x98badd9f4daab7445e29671123fdbe7589b5546a499d3cab26a275ded063141f",
-        "bootEpoch": "1762400000"
+        "bootEpoch": "1762400000",
+        "issuerJwkThumbprint": "0x8941079ab29ad15fbad5c3330ed78f8d18eb84f0880b090e8cb558a1b7c9778b"
       },
       "blockHash": "0x000000000000000000000000000000000000000000000000000000000000b10c"
     },
-    "expected": "0x25b58ad04b689b8348b04f1014922de8c7dc0c5874015b71f3ffe0a3d3a5c908000000000000000000000000000000000000000000000000000000000000b10c"
+    "expected": "0xcdf425688b368fef06fff87341d78c74dcb37ea231d8aaa4f02e45f07e0e7729000000000000000000000000000000000000000000000000000000000000b10c"
   },
   {
     "name": "tdx/deployed-vault",
@@ -41,11 +43,29 @@
         "signer": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
         "policySetHash": "0x0000000000000000000000000000000000000000000000000000000000000077",
         "engineBuildId": "0x98badd9f4daab7445e29671123fdbe7589b5546a499d3cab26a275ded063141f",
-        "bootEpoch": "1762400000"
+        "bootEpoch": "1762400000",
+        "issuerJwkThumbprint": "0x8941079ab29ad15fbad5c3330ed78f8d18eb84f0880b090e8cb558a1b7c9778b"
       },
       "blockHash": "0x20b53acf0daefc8c6ad68c861fb3b543ca541abd101abc1edfcbf6606b838ef4"
     },
-    "expected": "0xb1dcd3d1c3d08af2121a7aefdd6cd6716f88f950b26e06a58873c91869a1a38520b53acf0daefc8c6ad68c861fb3b543ca541abd101abc1edfcbf6606b838ef4"
+    "expected": "0x5fdcdf594fb152dfc61e8f77f91c8aea6f7507491ec2977645dbd50648c3851820b53acf0daefc8c6ad68c861fb3b543ca541abd101abc1edfcbf6606b838ef4"
+  },
+  {
+    "name": "tdx/other-issuer",
+    "input": {
+      "binding": {
+        "chainId": "421614",
+        "bondVault": "0x0000000000000000000000000000000000000000",
+        "teeKind": 1,
+        "signer": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+        "policySetHash": "0x0000000000000000000000000000000000000000000000000000000000000077",
+        "engineBuildId": "0x98badd9f4daab7445e29671123fdbe7589b5546a499d3cab26a275ded063141f",
+        "bootEpoch": "1762400000",
+        "issuerJwkThumbprint": "0x0000000000000000000000000000000000000000000000000000000000000155"
+      },
+      "blockHash": "0x000000000000000000000000000000000000000000000000000000000000b10c"
+    },
+    "expected": "0x55b9848f8fb42ab9bd30b9cb28f4f5c40e941927303f128e3548646c722975f2000000000000000000000000000000000000000000000000000000000000b10c"
   },
   {
     "name": "nitro/arbitrum-one",
@@ -57,11 +77,12 @@
         "signer": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
         "policySetHash": "0x0000000000000000000000000000000000000000000000000000000000000077",
         "engineBuildId": "0x98badd9f4daab7445e29671123fdbe7589b5546a499d3cab26a275ded063141f",
-        "bootEpoch": "1762400000"
+        "bootEpoch": "1762400000",
+        "issuerJwkThumbprint": "0x8941079ab29ad15fbad5c3330ed78f8d18eb84f0880b090e8cb558a1b7c9778b"
       },
       "blockHash": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
     },
-    "expected": "0x42b25776f746f0564955ce7a1dd32774c654b9c88eb8d8f2bb709faa1f399ce1ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    "expected": "0x58c8b44a0bdf3f96f045a2a6e03195f009138282e1ef6f3511ea0e78a9120136ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
   },
   {
     "name": "max",
@@ -73,11 +94,12 @@
         "signer": "0xffffffffffffffffffffffffffffffffffffffff",
         "policySetHash": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
         "engineBuildId": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-        "bootEpoch": "18446744073709551615"
+        "bootEpoch": "18446744073709551615",
+        "issuerJwkThumbprint": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
       },
       "blockHash": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
     },
-    "expected": "0xfa4c84b1fb9a6bf88b98382220b56fd169f8ecb69f12c2ac0587bebcbecfcfe8ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    "expected": "0x0f674afc79ec9a9d89b56d7bb4e6f4218b3c040926932762974cbd6907616049ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
   },
   {
     "name": "error/chain-1",
@@ -89,7 +111,8 @@
         "signer": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
         "policySetHash": "0x0000000000000000000000000000000000000000000000000000000000000077",
         "engineBuildId": "0x98badd9f4daab7445e29671123fdbe7589b5546a499d3cab26a275ded063141f",
-        "bootEpoch": "1762400000"
+        "bootEpoch": "1762400000",
+        "issuerJwkThumbprint": "0x8941079ab29ad15fbad5c3330ed78f8d18eb84f0880b090e8cb558a1b7c9778b"
       },
       "blockHash": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
     },
@@ -105,7 +128,8 @@
         "signer": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
         "policySetHash": "0x0000000000000000000000000000000000000000000000000000000000000077",
         "engineBuildId": "0x98badd9f4daab7445e29671123fdbe7589b5546a499d3cab26a275ded063141f",
-        "bootEpoch": "1762400000"
+        "bootEpoch": "1762400000",
+        "issuerJwkThumbprint": "0x8941079ab29ad15fbad5c3330ed78f8d18eb84f0880b090e8cb558a1b7c9778b"
       },
       "blockHash": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
     },
@@ -121,7 +145,8 @@
         "signer": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
         "policySetHash": "0x0000000000000000000000000000000000000000000000000000000000000077",
         "engineBuildId": "0x98badd9f4daab7445e29671123fdbe7589b5546a499d3cab26a275ded063141f",
-        "bootEpoch": "1762400000"
+        "bootEpoch": "1762400000",
+        "issuerJwkThumbprint": "0x8941079ab29ad15fbad5c3330ed78f8d18eb84f0880b090e8cb558a1b7c9778b"
       },
       "blockHash": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
     },
@@ -137,7 +162,8 @@
         "signer": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
         "policySetHash": "0x0000000000000000000000000000000000000000000000000000000000000077",
         "engineBuildId": "0x98badd9f4daab7445e29671123fdbe7589b5546a499d3cab26a275ded063141f",
-        "bootEpoch": "1762400000"
+        "bootEpoch": "1762400000",
+        "issuerJwkThumbprint": "0x8941079ab29ad15fbad5c3330ed78f8d18eb84f0880b090e8cb558a1b7c9778b"
       },
       "blockHash": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
     },

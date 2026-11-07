@@ -569,6 +569,7 @@ function reportDataVectors() {
     policySetHash: field(0x77n),
     engineBuildId: keccak256(stringToHex("oci-digest")),
     bootEpoch: 1_762_400_000n,
+    issuerJwkThumbprint: keccak256(stringToHex("issuer-jwk")),
   };
   const cases: { name: string; binding: SignerBinding; blockHash: Hex }[] = [
     { name: "tdx/zero-vault", binding: base, blockHash: field(0xb10cn) },
@@ -581,6 +582,11 @@ function reportDataVectors() {
       name: "tdx/deployed-vault",
       binding: { ...base, bondVault: ADDRESSES[0] as Hex },
       blockHash: keccak256(stringToHex("block")),
+    },
+    {
+      name: "tdx/other-issuer",
+      binding: { ...base, issuerJwkThumbprint: field(0x155n) },
+      blockHash: field(0xb10cn),
     },
     {
       name: "nitro/arbitrum-one",
@@ -597,6 +603,7 @@ function reportDataVectors() {
         policySetHash: ONES,
         engineBuildId: ONES,
         bootEpoch: UINT64_MAX,
+        issuerJwkThumbprint: ONES,
       },
       blockHash: ONES,
     },

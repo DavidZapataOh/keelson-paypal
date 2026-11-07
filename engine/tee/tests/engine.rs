@@ -891,6 +891,30 @@ fn binding_carries_the_boot_configuration() {
     assert_eq!(b.policy_set_hash, keelson_policy::policy_set_hash());
     assert_eq!(b.engine_build_id, [0xab; 32]);
     assert_eq!(b.boot_epoch, engine.boot_epoch());
+    assert_eq!(
+        b.issuer_jwk_thumbprint,
+        jwk_of(&root().issuer_key()).thumbprint()
+    );
+}
+
+#[test]
+fn both_legs_bind_the_issuer_key() {
+    assert_eq!(
+        leg_a().binding().unwrap().issuer_jwk_thumbprint,
+        leg_b().binding().unwrap().issuer_jwk_thumbprint
+    );
+    let other = jwk_of(&Root::new(&[9; 32]).issuer_key());
+    let engine = Engine::booted_at(config(Some(other.clone())), None, at(NOW));
+    assert_eq!(
+        engine.binding().unwrap().issuer_jwk_thumbprint,
+        other.thumbprint()
+    );
+}
+
+#[test]
+fn binding_needs_an_issuer_key() {
+    let engine = Engine::booted_at(config(None), None, at(NOW));
+    assert_eq!(engine.binding(), Err(keelson_tee::Error::NoIssuer));
 }
 
 #[test]

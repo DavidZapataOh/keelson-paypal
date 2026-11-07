@@ -193,10 +193,12 @@ describe("reportData", () => {
       policySetHash: word(1),
       engineBuildId: word(2),
       bootEpoch: 1n,
+      issuerJwkThumbprint: word(3),
     };
     const data = reportData(binding, blockHash);
     expect(data).toHaveLength(2 + 128);
     expect(data.slice(66)).toBe(blockHash.slice(2));
+    expect(reportData({ ...binding, issuerJwkThumbprint: word(4) }, blockHash)).not.toBe(data);
   });
 });
 

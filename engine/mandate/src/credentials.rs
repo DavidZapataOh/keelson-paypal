@@ -4,6 +4,7 @@ use keelson_core::jcs;
 use p256::ecdsa::signature::Verifier;
 use p256::ecdsa::{Signature, VerifyingKey};
 use serde_json::{Map, Value, json};
+use sha2::{Digest, Sha256};
 
 use crate::sd::{Disclosure, assert_digests_resolved, assert_sd_alg, digest, unpack};
 use crate::{Error, b64, parse_mandate};
@@ -64,6 +65,12 @@ impl Jwk {
             y: b64::encode(&xy[32..]),
             kid: None,
         }
+    }
+
+    /// The RFC 7638 thumbprint: SHA-256 of the required members in lexicographic order.
+    pub fn thumbprint(&self) -> [u8; 32] {
+        let members = json!({ "crv": "P-256", "kty": "EC", "x": self.x, "y": self.y });
+        Sha256::digest(members.to_string()).into()
     }
 
     /// `{ "kty", "crv", "x", "y" }`, without the `kid`.

@@ -70,7 +70,7 @@ Refusals carry no signature and one of these stable codes: `auth.closed_*`, `aut
 
 ## HTTP
 
-`keelson-engine --listen tcp:<addr>` serves `POST /v1/countersign`, `POST /v1/mandates/register` and `GET /v1/health` (`{ tee, signer, boot_epoch, oci_digest, version }`). With `--platform tdx` it also serves `GET /v1/attestation` and `POST /v1/attestation/refresh` (see below). Every route except health and `GET /v1/attestation` needs `Authorization: Bearer <token>`; the engine holds only the token's SHA-256, from `KEELSON_TEE_TOKEN_SHA256`, and compares it in constant time. Refusals are `application/problem+json` (RFC 9457) with `type` `https://keelson.finance/problems/<code>` and the stable code, and never echo the request. Bodies are JSON with unknown fields rejected.
+`keelson-engine --listen tcp:<addr>` serves `POST /v1/countersign`, `POST /v1/mandates/register` and `GET /v1/health` (`{ tee, signer, boot_epoch, oci_digest, version, issuer }`, `issuer` being the credential issuer's public JWK). With `--platform tdx` it also serves `GET /v1/attestation` and `POST /v1/attestation/refresh` (see below). Every route except health and `GET /v1/attestation` needs `Authorization: Bearer <token>`; the engine holds only the token's SHA-256, from `KEELSON_TEE_TOKEN_SHA256`, and compares it in constant time. Refusals are `application/problem+json` (RFC 9457) with `type` `https://keelson.finance/problems/<code>` and the stable code, and never echo the request. Bodies are JSON with unknown fields rejected.
 
 | Status | Codes                                                                            |
 | ------ | -------------------------------------------------------------------------------- |
@@ -117,7 +117,8 @@ Built with the cargo feature `tdx`, `keelson-engine --platform tdx --listen tcp:
     "signer": "0x…",
     "policySetHash": "0x…",
     "engineBuildId": "0x…",
-    "bootEpoch": "…"
+    "bootEpoch": "…",
+    "issuerJwkThumbprint": "0x…"
   },
   "block": { "number": 0, "hash": "0x…" },
   "app_id": "<hex>",
