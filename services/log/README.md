@@ -7,10 +7,10 @@ countersigned the purchase it describes.
 
 ## Origins
 
-| Origin | Chain | Verifier keys |
-|---|---|---|
-| `log.keelson.finance/alibi/2026-1` | Arbitrum Sepolia (421614) | [`alibi-2026-1.vkey`](keys/alibi-2026-1.vkey), [`alibi-2026-1.mldsa.vkey`](keys/alibi-2026-1.mldsa.vkey) |
-| `log.keelson.finance/alibi-live/2026-1` | Arbitrum One (42161) | [`alibi-live-2026-1.vkey`](keys/alibi-live-2026-1.vkey), [`alibi-live-2026-1.mldsa.vkey`](keys/alibi-live-2026-1.mldsa.vkey) |
+| Origin                                  | Chain                     | Verifier keys                                                                                                                |
+| --------------------------------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `log.keelson.finance/alibi/2026-1`      | Arbitrum Sepolia (421614) | [`alibi-2026-1.vkey`](keys/alibi-2026-1.vkey), [`alibi-2026-1.mldsa.vkey`](keys/alibi-2026-1.mldsa.vkey)                     |
+| `log.keelson.finance/alibi-live/2026-1` | Arbitrum One (42161)      | [`alibi-live-2026-1.vkey`](keys/alibi-live-2026-1.vkey), [`alibi-live-2026-1.mldsa.vkey`](keys/alibi-live-2026-1.mldsa.vkey) |
 
 Each origin is served at `https://<origin>/`: `checkpoint`, `tile/<L>/<N>[.p/<W>]` and
 `tile/entries/<N>[.p/<W>]`. Every checkpoint ([c2sp.org/tlog-checkpoint](https://c2sp.org/tlog-checkpoint))
@@ -27,16 +27,16 @@ leaf_hash = SHA-256(0x00 || leaf)
 The object has exactly these keys, in this order, with no whitespace. Binary values are base64url
 without padding.
 
-| Key | Value |
-|---|---|
-| `agent_id` | decimal uint256 |
-| `alibi_id` | ULID of the purchase |
-| `cart_hash`, `countersign_digest`, `eval_hash`, `evidence_root`, `mandate_commitment`, `mandate_hash`, `paypal_ref_commit`, `policy_set_hash` | 32 bytes |
-| `issued_at` | RFC 3339 UTC, seconds |
-| `measurements` | 32-byte measurement ids, `[tdx, nitro]` or `[tdx]` |
-| `mode` | `2of2` or `degraded` |
-| `prev_alibi_by_user` | optional, the leaf hash of the user's previous Alibi |
-| `tee_sigs` | 65-byte `r‖s‖v` signatures over `countersign_digest`, `[tdx, nitro]` or `[tdx]` |
+| Key                                                                                                                                           | Value                                                                           |
+| --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `agent_id`                                                                                                                                    | decimal uint256                                                                 |
+| `alibi_id`                                                                                                                                    | ULID of the purchase                                                            |
+| `cart_hash`, `countersign_digest`, `eval_hash`, `evidence_root`, `mandate_commitment`, `mandate_hash`, `paypal_ref_commit`, `policy_set_hash` | 32 bytes                                                                        |
+| `issued_at`                                                                                                                                   | RFC 3339 UTC, seconds                                                           |
+| `measurements`                                                                                                                                | 32-byte measurement ids, `[tdx, nitro]` or `[tdx]`                              |
+| `mode`                                                                                                                                        | `2of2` or `degraded`                                                            |
+| `prev_alibi_by_user`                                                                                                                          | optional, the leaf hash of the user's previous Alibi                            |
+| `tee_sigs`                                                                                                                                    | 65-byte `r‖s‖v` signatures over `countersign_digest`, `[tdx, nitro]` or `[tdx]` |
 
 Leaves are at most 1,024 bytes. The Go parser is [`internal/alibilog`](../../internal/alibilog) and the
 TypeScript builder is [`@keelson/log`](../../packages/log).
@@ -61,16 +61,16 @@ go test -tags live -run Live -v ./services/log/
 
 ## Run
 
-| Variable | |
-|---|---|
-| `LOG_DATA_DIR` | Directory of the logs; each origin uses `<dir>/<origin path>` |
-| `PORT` | Public listener, read-only (default `10000`) |
-| `LOG_PRIVATE_ADDR` | Write listener, `POST /<origin path>/add` (default `:8081`) |
-| `DATABASE_URL` | Postgres with the API's `tee_signers` and `purchases`, read only |
-| `KEELSON_VERIFYING_CONTRACT` | `verifyingContract` of the `Countersign` EIP-712 domain |
-| `LOG_WRITE_TOKEN_SHA256` | Hex SHA-256 of the bearer token the API writes with |
-| `LOG_SIGNER_KEY_SANDBOX`, `LOG_SIGNER_KEY_LIVE` | Ed25519 note signer keys |
-| `LOG_MLDSA_SEED_SANDBOX`, `LOG_MLDSA_SEED_LIVE` | Base64 32-byte ML-DSA-44 seeds |
+| Variable                                        |                                                                  |
+| ----------------------------------------------- | ---------------------------------------------------------------- |
+| `LOG_DATA_DIR`                                  | Directory of the logs; each origin uses `<dir>/<origin path>`    |
+| `PORT`                                          | Public listener, read-only (default `10000`)                     |
+| `LOG_PRIVATE_ADDR`                              | Write listener, `POST /<origin path>/add` (default `:8081`)      |
+| `DATABASE_URL`                                  | Postgres with the API's `tee_signers` and `purchases`, read only |
+| `KEELSON_VERIFYING_CONTRACT`                    | `verifyingContract` of the `Countersign` EIP-712 domain          |
+| `LOG_WRITE_TOKEN_SHA256`                        | Hex SHA-256 of the bearer token the API writes with              |
+| `LOG_SIGNER_KEY_SANDBOX`, `LOG_SIGNER_KEY_LIVE` | Ed25519 note signer keys                                         |
+| `LOG_MLDSA_SEED_SANDBOX`, `LOG_MLDSA_SEED_LIVE` | Base64 32-byte ML-DSA-44 seeds                                   |
 
 `go run ./services/log/cmd/keygen -origin <origin> -env SANDBOX -dir services/log/keys -name <name>`
 writes a new pair of verifier keys and prints the matching secrets.
