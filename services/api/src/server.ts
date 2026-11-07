@@ -15,6 +15,7 @@ import { startPurchaseSweeper } from "./sweeper.ts";
 import { createTee } from "./tee/config.ts";
 import { engineSource } from "./tee/engine-source.ts";
 import { startSignerRefresh } from "./tee/signers.ts";
+import { startStampWorker } from "./timestamps/worker.ts";
 
 const FORCE_EXIT_MS = 10_000;
 
@@ -42,6 +43,17 @@ if (env.KEELSON_EVIDENCE_AGE_IDENTITY && env.KEELSON_EVIDENCE_AGE_RECIPIENT) {
     throw new Error("KEELSON_EVIDENCE_AGE_IDENTITY does not open KEELSON_EVIDENCE_AGE_RECIPIENT");
   }
 }
+const stamps = startStampWorker(
+  { db, kv, log },
+  {
+    urls: {
+      ...(env.TSA_DIGICERT_URL ? { digicert: env.TSA_DIGICERT_URL } : {}),
+      ...(env.TSA_SIGSTORE_URL ? { sigstore: env.TSA_SIGSTORE_URL } : {}),
+      ...(env.TSA_FREETSA_URL ? { freetsa: env.TSA_FREETSA_URL } : {}),
+      ...(env.TSA_SECTIGO_URL ? { sectigo: env.TSA_SECTIGO_URL } : {}),
+    },
+  },
+);
 const app = createApp({
   db,
   kv,
@@ -52,6 +64,7 @@ const app = createApp({
   authenticate: authenticate(auth, env.BETTER_AUTH_URL),
   rateLimit: { trustProxy: process.env.RENDER === "true" },
   shutdown: shutdown.signal,
+  stamps,
   ...(tee ? { tee, compileSources: { engine: engineSource } } : {}),
   ...(env.KEELSON_EVIDENCE_AGE_IDENTITY
     ? { evidenceIdentity: env.KEELSON_EVIDENCE_AGE_IDENTITY }
@@ -78,6 +91,7 @@ process.once("SIGTERM", () => {
   stopRefresh?.();
   stopSweeper?.();
   void closeServer(server, shutdown)
+    .then(() => stamps.stop())
     .then(() => Promise.all([pool.end(), kv.close()]))
     .then(
       () => 0,

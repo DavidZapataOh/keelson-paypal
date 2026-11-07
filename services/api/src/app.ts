@@ -29,6 +29,7 @@ import { registerPasskeys } from "./routes/passkeys.ts";
 import { registerStatus } from "./routes/status.ts";
 import { registerTee } from "./routes/tee.ts";
 import type { TeeConfig } from "./tee/signers.ts";
+import type { StampWorker } from "./timestamps/worker.ts";
 
 export interface Deps {
   db: Db;
@@ -55,6 +56,8 @@ export interface Deps {
   tlog?: LogConfig;
   /** The age identity that opens `.original` evidence items for an arbiter. */
   evidenceIdentity?: string;
+  /** Stamps queued hashes with RFC 3161 tokens; queued rows wait for the sweeper without it. */
+  stamps?: StampWorker;
   /** Aborting it ends every open event stream so the server can close. */
   shutdown?: AbortSignal;
 }
