@@ -60,6 +60,10 @@ services:
         value: http://keelson-log:8081
       - key: LOG_WRITE_TOKEN
         sync: false
+      - key: KEELSON_EVIDENCE_AGE_IDENTITY
+        sync: false
+      - key: KEELSON_EVIDENCE_AGE_RECIPIENT
+        sync: false
       - fromGroup: keelson-secrets
 
   - type: web

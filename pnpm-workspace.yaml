@@ -17,3 +17,6 @@ allowBuilds:
   esbuild: false
   msgpackr-extract: false
   protobufjs: false
+
+minimumReleaseAgeExclude:
+  - "@onkernel/sdk@0.142.0"

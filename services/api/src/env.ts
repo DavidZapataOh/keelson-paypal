@@ -21,6 +21,8 @@ const schema = z
     ARBITRUM_SEPOLIA_RPC_URL: z.url().optional(),
     LOG_URL: z.url().optional(),
     LOG_WRITE_TOKEN: z.string().min(32).optional(),
+    KEELSON_EVIDENCE_AGE_IDENTITY: z.string().startsWith("AGE-SECRET-KEY-").optional(),
+    KEELSON_EVIDENCE_AGE_RECIPIENT: z.string().startsWith("age1").optional(),
     PORT: z.coerce.number().int().positive().default(10000),
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   })
@@ -42,6 +44,15 @@ const schema = z
     message: "LOG_URL and LOG_WRITE_TOKEN are set together",
     path: ["LOG_URL"],
   })
+  .refine(
+    (env) =>
+      (env.KEELSON_EVIDENCE_AGE_IDENTITY === undefined) ===
+      (env.KEELSON_EVIDENCE_AGE_RECIPIENT === undefined),
+    {
+      message: "KEELSON_EVIDENCE_AGE_IDENTITY and KEELSON_EVIDENCE_AGE_RECIPIENT are set together",
+      path: ["KEELSON_EVIDENCE_AGE_IDENTITY"],
+    },
+  )
   .refine((env) => env.NODE_ENV !== "production" || env.TEE_A_URL !== undefined, {
     message: "the TEE legs are required in production",
     path: ["TEE_A_URL"],

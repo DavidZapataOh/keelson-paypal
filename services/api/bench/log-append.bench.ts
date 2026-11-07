@@ -12,6 +12,7 @@ import { createKv } from "../src/kv.ts";
 import { appendLeaf, type LogConfig } from "../src/log/append.ts";
 import { createTee } from "../src/tee/config.ts";
 import { refreshLeg } from "../src/tee/signers.ts";
+import { EvidenceUploader } from "../test/evidence.ts";
 import { startLocalLog } from "../test/log-live.ts";
 import {
   asUser,
@@ -138,6 +139,7 @@ try {
     return row?.m ?? null;
   };
   const salt = randomBytes(32);
+  const evidence = new EvidenceUploader();
   const purchases: { id: string; leaf: Uint8Array; countersign: Record<string, string> }[] = [];
   for (let i = 0; i < SAMPLES; i++) {
     const r = await request(agent, cheap, ulid());
@@ -148,7 +150,12 @@ try {
         closedMandate: r.closed_mandate,
         cart: r.cart,
         unit: r.unit,
-        evidenceRoot: r.evidence_root,
+        evidenceRoot: await evidence.upload(
+          app,
+          mandateId,
+          r.cart,
+          asBenchAgent(Math.floor(i / 50)),
+        ),
       },
       asBenchAgent(Math.floor(i / 50)),
     );
@@ -219,6 +226,7 @@ try {
   console.log(`append, sequential (${sequential.length}): ${summary(sequential)}`);
   console.log(`append, ${RATE}/s (${paced.length}): ${summary(paced)}`);
   const p95 = percentile([...sequential, ...paced], 0.95);
+  await evidence.close();
   console.log(`append p95 over all: ${p95.toFixed(0)} ms, budget ${BUDGET_P95_MS} ms`);
 } finally {
   await pool.end();

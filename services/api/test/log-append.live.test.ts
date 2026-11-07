@@ -21,6 +21,7 @@ import { appendLeaf } from "../src/log/append.ts";
 import { LegClient } from "../src/tee/client.ts";
 import { createTee } from "../src/tee/config.ts";
 import { refreshLeg } from "../src/tee/signers.ts";
+import { EvidenceUploader } from "./evidence.ts";
 import { type LocalLog, startLocalLog } from "./log-live.ts";
 import { testDb, testDbUrl, testKv } from "./setup.ts";
 import {
@@ -110,6 +111,7 @@ describe.skipIf(!live)(
     let passkey: SoftwarePasskey;
     let mandateId: string;
     const salt = new Uint8Array(32).fill(7);
+    const evidence = new EvidenceUploader();
 
     const issue = async () => {
       const agent = await registerMandate(tee.client.a, passkey);
@@ -146,7 +148,7 @@ describe.skipIf(!live)(
           ),
           cart: cart.cart,
           unit: cart.unit,
-          evidenceRoot: `0x${"55".repeat(32)}`,
+          evidenceRoot: await evidence.upload(appWith(), mandateId, cart.cart, asAgent),
         }),
       });
       const out = (await res.json()) as Countersigned;
@@ -227,6 +229,7 @@ describe.skipIf(!live)(
     }, 300_000);
     afterAll(async () => {
       await tlog?.stop();
+      await evidence.close();
     });
 
     test("the demo allow is appended and its proof verifies against both log keys", async () => {

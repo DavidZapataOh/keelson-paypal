@@ -2,7 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { httpInstrumentationMiddleware } from "@hono/otel";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import type { Db } from "@keelson/db";
-import type { MiddlewareHandler } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
@@ -15,12 +15,14 @@ import { ulid } from "ulid";
 import type { Auth } from "./auth.ts";
 import type { LogConfig } from "./log/append.ts";
 import { requestLogger } from "./logger.ts";
+import { requireClient } from "./middleware/auth.ts";
 import { idempotency } from "./middleware/idempotency.ts";
 import { type RateLimitOptions, rateLimit } from "./middleware/rate-limit.ts";
 import { ProblemSchema, problem } from "./problem.ts";
 import { type CompileSources, registerCompile } from "./routes/compile.ts";
 import { registerCountersign } from "./routes/countersign.ts";
 import { registerEvents } from "./routes/events.ts";
+import { registerEvidence } from "./routes/evidence.ts";
 import { registerHealth } from "./routes/health.ts";
 import { registerMandates } from "./routes/mandates.ts";
 import { registerPasskeys } from "./routes/passkeys.ts";
@@ -51,6 +53,8 @@ export interface Deps {
   tee?: TeeConfig;
   /** The Alibi log's private write listener; purchases are logged through it. */
   tlog?: LogConfig;
+  /** The age identity that opens `.original` evidence items for an arbiter. */
+  evidenceIdentity?: string;
   /** Aborting it ends every open event stream so the server can close. */
   shutdown?: AbortSignal;
 }
@@ -98,14 +102,16 @@ export function createApp(deps: Deps): OpenAPIHono {
       }),
     );
   }
-  app.use(
-    "/v1/*",
-    bodyLimit({
-      maxSize: 1024 * 1024,
-      onError: (c) => problem(c, 413, "payload-too-large", "Payload too large"),
-    }),
+  const tooLarge = (c: Context) => problem(c, 413, "payload-too-large", "Payload too large");
+  const smallBody = bodyLimit({ maxSize: 1024 * 1024, onError: tooLarge });
+  // A sealed evidence bundle carries the screenshot, MHTML and HAR with their originals.
+  const evidenceBody = bodyLimit({ maxSize: 16 * 1024 * 1024, onError: tooLarge });
+  app.use("/v1/*", (c, next) =>
+    c.req.path === "/v1/evidence" ? evidenceBody(c, next) : smallBody(c, next),
   );
   if (deps.authenticate) app.use("/v1/*", deps.authenticate);
+  // An upload is refused before its body is read or fingerprinted.
+  app.on("POST", "/v1/evidence", requireClient(["evidence:write"]));
   app.use("/v1/*", rateLimit(deps.kv, deps.rateLimit));
   app.use("/v1/*", idempotency(deps.kv, deps.log));
   app.use(
@@ -150,6 +156,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerMandates(app, deps);
   registerCompile(app, deps);
   registerCountersign(app, deps);
+  registerEvidence(app, deps);
   registerTee(app, deps);
   registerPasskeys(app, deps);
   app.get("/openapi.json", (c) =>

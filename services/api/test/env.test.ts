@@ -76,3 +76,18 @@ test("the log's address and write token come together", () => {
       .LOG_URL,
   ).toBe("http://keelson-log:8081");
 });
+
+test("the evidence identity and recipient are set together", () => {
+  const dev = { ...base, BETTER_AUTH_URL: "http://localhost:10000" };
+  const identity = "AGE-SECRET-KEY-PQ-1QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ";
+  const recipient = "age1pq1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq";
+  expect(() => parseEnv({ ...dev, KEELSON_EVIDENCE_AGE_IDENTITY: identity })).toThrow();
+  expect(() => parseEnv({ ...dev, KEELSON_EVIDENCE_AGE_RECIPIENT: recipient })).toThrow();
+  expect(
+    parseEnv({
+      ...dev,
+      KEELSON_EVIDENCE_AGE_IDENTITY: identity,
+      KEELSON_EVIDENCE_AGE_RECIPIENT: recipient,
+    }).KEELSON_EVIDENCE_AGE_RECIPIENT,
+  ).toBe(recipient);
+});
