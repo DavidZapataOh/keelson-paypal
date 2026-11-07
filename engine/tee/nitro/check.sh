@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Checks the running leg B: one enclave, not in debug mode, with the PCRs of eif.json, behind
-# https://tee-b.keelson.finance. Needs AWS_* in the environment.
+# https://tee-b.keelson.finance, whose clock is within a second of the parent's. Needs AWS_* in the
+# environment.
 . "$(dirname "$0")/common.sh"
 
 id="$(instance_id)"
@@ -21,4 +22,5 @@ health="$(curl -fsS --max-time 10 "https://$HOST/v1/health")"
 jq -e '.tee == 2' <<< "$health" >/dev/null || { echo "FAIL /v1/health is not tee 2: $health" >&2; exit 1; }
 jq -e --arg digest "$(jq -r .digest "$HERE/eif.json")" '.oci_digest == $digest' <<< "$health" >/dev/null \
   || { echo "FAIL oci_digest differs from eif.json" >&2; exit 1; }
+"$HERE/drift.sh" check 1000 >/dev/null
 echo "ok $(jq -c '{signer, boot_epoch, oci_digest}' <<< "$health")"
