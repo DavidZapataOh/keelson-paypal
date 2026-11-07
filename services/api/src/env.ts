@@ -23,6 +23,10 @@ const schema = z
     LOG_WRITE_TOKEN: z.string().min(32).optional(),
     KEELSON_EVIDENCE_AGE_IDENTITY: z.string().startsWith("AGE-SECRET-KEY-").optional(),
     KEELSON_EVIDENCE_AGE_RECIPIENT: z.string().startsWith("age1").optional(),
+    TSA_DIGICERT_URL: z.url().optional(),
+    TSA_SIGSTORE_URL: z.url().optional(),
+    TSA_FREETSA_URL: z.url().optional(),
+    TSA_SECTIGO_URL: z.url().optional(),
     PORT: z.coerce.number().int().positive().default(10000),
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   })

@@ -1132,6 +1132,36 @@ components:
         - verifiedAt
         - expiresAt
         - attestation
+    Timestamp:
+      type: object
+      properties:
+        tsa:
+          type: string
+          enum:
+            - digicert
+            - sigstore
+            - freetsa
+            - sectigo
+        role:
+          type: string
+          enum:
+            - primary
+            - fallback
+        token:
+          type: string
+          description: The DER `TimeStampToken`, base64.
+        genTime:
+          type: string
+          description: The token's `genTime`, RFC 3339 UTC.
+        serial:
+          type: string
+          description: The token's serial number, hex.
+      required:
+        - tsa
+        - role
+        - token
+        - genTime
+        - serial
     Passkeys:
       type: object
       properties:
@@ -1788,6 +1818,56 @@ paths:
                 required:
                   - legs
                   - measurements
+  /v1/timestamps/{hash}:
+    get:
+      tags:
+        - timestamps
+      summary: RFC 3161 timestamps of a hash
+      description: The RFC 3161 tokens two independent TSAs issued over a log leaf
+        hash (or another stamped hash). Each token's message imprint is the hash
+        itself, so `openssl ts -verify -digest <hash>` checks it.
+      parameters:
+        - schema:
+            type: string
+            pattern: ^[0-9a-f]{64}$
+            description: The SHA-256 hash, 64 lowercase hex digits.
+          required: true
+          description: The SHA-256 hash, 64 lowercase hex digits.
+          name: hash
+          in: path
+      responses:
+        "200":
+          description: The tokens issued so far and the TSAs still pending
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hash:
+                    type: string
+                  stamps:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Timestamp"
+                  pending:
+                    type: array
+                    items:
+                      type: string
+                      enum:
+                        - digicert
+                        - sigstore
+                        - freetsa
+                        - sectigo
+                required:
+                  - hash
+                  - stamps
+                  - pending
+        "404":
+          description: The hash was never queued
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
   /v1/passkeys:
     get:
       tags:

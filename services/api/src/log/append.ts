@@ -10,6 +10,9 @@ import {
   leafHash,
   verifyProof,
 } from "@keelson/log";
+import type { Logger } from "pino";
+import { enqueueStamp } from "../timestamps/queue.ts";
+import type { StampWorker } from "../timestamps/worker.ts";
 
 /** Where the Alibi log's private write listener is and the token it takes. */
 export interface LogConfig {
@@ -42,12 +45,13 @@ function stated(leaf: Uint8Array): { alibiId: string; mode: string } {
  * another purchase, or whose mode is not the one the purchase was countersigned in, is refused
  * before the log is called. The index is recorded only once the log's leaf hash is the leaf's and
  * its proof verifies against a checkpoint both origin keys signed. Appending the same leaf again
- * returns the same index.
+ * returns the same index. The leaf hash is then queued for its RFC 3161 timestamps, which the
+ * append never waits for.
  *
  * @internal
  */
 export async function appendLeaf(
-  deps: { db: Db; tlog: LogConfig },
+  deps: { db: Db; tlog: LogConfig; log: Logger; stamps?: StampWorker | undefined },
   purchaseId: string,
   leaf: Uint8Array,
   countersign: Record<string, string>,
@@ -91,5 +95,6 @@ export async function appendLeaf(
     )
     .returning({ id: purchases.id });
   if (updated.length === 0) throw new LogError("rejected", "purchase.logged");
+  enqueueStamp(deps, result.leafHash, "leaf");
   return result;
 }

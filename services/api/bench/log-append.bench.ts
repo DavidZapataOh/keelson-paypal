@@ -204,7 +204,7 @@ try {
     purchases.push({ id: out.purchaseId, leaf, countersign: c });
   }
 
-  const deps = { db, tlog };
+  const deps = { db, tlog, log: pino({ level: "silent" }) };
   const append = async (p: (typeof purchases)[number]) => {
     const started = performance.now();
     await appendLeaf(deps, p.id, p.leaf, p.countersign);
