@@ -22,7 +22,6 @@ jobs:
     timeout-minutes: 30
     outputs:
       app_id: ${{ steps.deploy.outputs.app_id }}
-      url: ${{ steps.deploy.outputs.url }}
     env:
       DIGEST: ${{ inputs.digest }}
       PHALA_CLOUD_API_KEY: ${{ secrets.PHALA_CLOUD_API_KEY }}
@@ -71,7 +70,6 @@ jobs:
             compose_hash: $attestation[0].compose_hash
           }' | tee app.json
           echo "app_id=$app_id" >> "$GITHUB_OUTPUT"
-          echo "url=$url" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7
         with:
           name: app
@@ -82,5 +80,4 @@ jobs:
     uses: ./.github/workflows/tee-verify.yml
     with:
       app_id: ${{ needs.deploy.outputs.app_id }}
-      url: ${{ needs.deploy.outputs.url }}
     secrets: inherit

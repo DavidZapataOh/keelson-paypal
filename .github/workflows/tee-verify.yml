@@ -1,27 +1,26 @@
 name: tee-verify
 
 on:
+  push:
+    branches: [feat/tdx-deploy]
+    paths:
+      - engine/tee/phala/app.json
+      - .github/workflows/tee-verify.yml
   workflow_dispatch:
     inputs:
       app_id:
-        description: App id of the CVM
-        required: true
-      url:
-        description: Base URL of the engine
-        required: true
+        description: App id of the CVM; app.json names it when empty
+        required: false
   workflow_call:
     inputs:
       app_id:
         type: string
-        required: true
-      url:
-        type: string
-        required: true
+        required: false
     secrets:
       PHALA_CLOUD_API_KEY:
         required: true
       KEELSON_TEE_TOKEN:
-        required: true
+        required: false
 
 permissions:
   contents: read
@@ -40,8 +39,8 @@ jobs:
         ports:
           - 8080:8080
     env:
-      APP_ID: ${{ inputs.app_id }}
-      TEE_A_URL: ${{ inputs.url }}
+      PHALA_CLOUD_API_KEY: ${{ secrets.PHALA_CLOUD_API_KEY }}
+      KEELSON_TEE_TOKEN: ${{ secrets.KEELSON_TEE_TOKEN }}
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -50,10 +49,13 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile --filter @keelson/tee
-      - name: Fetch the compose file the CVM booted with
+      - name: Find the CVM and fetch the compose file it booted with
         env:
-          PHALA_CLOUD_API_KEY: ${{ secrets.PHALA_CLOUD_API_KEY }}
-        run: npx --yes "$PHALA_CLI" api "/cvms/$APP_ID/compose_file" > "$RUNNER_TEMP/app-compose.json"
+          INPUT_APP_ID: ${{ inputs.app_id }}
+        run: |
+          app_id="${INPUT_APP_ID:-$(jq -r .app_id engine/tee/phala/app.json)}"
+          npx --yes "$PHALA_CLI" api "/cvms/$app_id/compose_file" > "$RUNNER_TEMP/app-compose.json"
+          echo "TEE_A_URL=$(npx --yes "$PHALA_CLI" cvms get "$app_id" -j | jq -r .endpoints[0].app)" >> "$GITHUB_ENV"
       - name: Verify the quote, RTMR3 and compose hash
         run: node engine/tee/scripts/verify-tdx.ts "$TEE_A_URL" "$RUNNER_TEMP/app-compose.json" | tee -a "$GITHUB_STEP_SUMMARY"
       - run: rustup toolchain install
@@ -62,8 +64,15 @@ jobs:
         env:
           KEELSON_LIVE: "1"
           DSTACK_VERIFIER_URL: http://localhost:8080
-          KEELSON_TEE_TOKEN: ${{ secrets.KEELSON_TEE_TOKEN }}
         run: >
           cargo test -p keelson-tee --features tdx --test tdx_live -- --ignored --nocapture
           the_attestation_binds_the_signer_to_a_recent_block
+      - name: Refresh the attestation
+        if: env.KEELSON_TEE_TOKEN != ''
+        env:
+          KEELSON_LIVE: "1"
+          DSTACK_VERIFIER_URL: http://localhost:8080
+          KEELSON_TEE_TOKEN: ${{ secrets.KEELSON_TEE_TOKEN }}
+        run: >
+          cargo test -p keelson-tee --features tdx --test tdx_live -- --ignored --nocapture
           refresh_reattests_the_same_signer_over_a_new_block
