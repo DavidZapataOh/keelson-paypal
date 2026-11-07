@@ -18,6 +18,7 @@ use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 use time::OffsetDateTime;
 
+use crate::engine::unix_ms;
 use crate::wire::{CountersignRequest, Countersigned, MandateIssued, RegisterMandate};
 use crate::{Engine, EngineError, TeeKind};
 
@@ -240,6 +241,8 @@ struct Health {
     boot_epoch: u64,
     oci_digest: String,
     version: &'static str,
+    /// The engine's clock, in Unix milliseconds.
+    now_ms: i64,
     /// The credential issuer's public JWK, which `issuer_jwk_thumbprint` in the attestation covers.
     #[serde(skip_serializing_if = "Option::is_none")]
     issuer: Option<serde_json::Value>,
@@ -253,6 +256,7 @@ async fn health(State(state): State<Arc<AppState>>) -> Json<Health> {
         boot_epoch: engine.boot_epoch(),
         oci_digest: engine.config().oci_digest.clone(),
         version: env!("CARGO_PKG_VERSION"),
+        now_ms: unix_ms((state.clock)()).unwrap_or_default(),
         issuer: engine
             .issuer()
             .map(|k| json!({ "kty": "EC", "crv": "P-256", "x": k.x, "y": k.y })),

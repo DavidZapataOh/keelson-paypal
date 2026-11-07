@@ -69,6 +69,7 @@ async fn health_is_open() {
     assert_eq!(health["boot_epoch"], NOW - 1_000);
     assert_eq!(health["oci_digest"], format!("sha256:{}", "ab".repeat(32)));
     assert_eq!(health["version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(health["now_ms"], (NOW + 10) * 1000);
     assert!(health["signer"].as_str().unwrap().starts_with("0x"));
     let issuer = jwk_of(&root().issuer_key());
     assert_eq!(
