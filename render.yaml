@@ -20,8 +20,7 @@ services:
         - tsconfig.base.json
         - .node-version
         - render.yaml
-        - engine/tee/nitro/eif.json
-        - engine/tee/phala/measurement.json
+        - engine/tee/measurements.json
     domains:
       - api.keelson.finance
     envVars:

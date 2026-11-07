@@ -4,6 +4,9 @@ on:
   push:
     paths:
       - engine/**
+      - packages/attest/**
+      - packages/core/**
+      - packages/policy/**
       - Cargo.toml
       - Cargo.lock
       - .github/workflows/tee-image.yml
@@ -131,6 +134,115 @@ jobs:
           name: diffoci-report
           path: ${{ runner.temp }}/oci/report
           if-no-files-found: ignore
+
+  measure:
+    name: measure-${{ matrix.runner }}
+    strategy:
+      matrix:
+        runner: [a, b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter @keelson/tee...
+      - run: pnpm turbo run build --filter='@keelson/tee^...'
+      - name: Measure both legs from source
+        run: |
+          start="$(date +%s)"
+          make -C engine/tee measure
+          echo "make measure: $(( $(date +%s) - start )) s" >> "$GITHUB_STEP_SUMMARY"
+          cat engine/tee/out/measurements.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: measurements-${{ matrix.runner }}
+          path: engine/tee/out/measurements.json
+          if-no-files-found: error
+          retention-days: 7
+
+  measure-compare:
+    needs: measure
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: measurements-*
+          path: ${{ runner.temp }}/measurements
+      - name: Both runners produced the same bytes
+        working-directory: ${{ runner.temp }}/measurements
+        run: |
+          sha256sum measurements-a/measurements.json measurements-b/measurements.json
+          cmp measurements-a/measurements.json measurements-b/measurements.json
+          jq . measurements-a/measurements.json >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: measurements
+          path: ${{ runner.temp }}/measurements/measurements-a/measurements.json
+          if-no-files-found: error
+
+  measure-live:
+    needs: measure-compare
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: measurements
+          path: ${{ runner.temp }}/measurements
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter @keelson/tee...
+      - run: pnpm turbo run build --filter='@keelson/tee^...'
+      - name: The live legs attest the measured values
+        env:
+          PHALA_CLOUD_API_KEY: ${{ secrets.PHALA_CLOUD_API_KEY }}
+          TEE_B_URL: https://tee-b.keelson.finance
+        run: |
+          app_id="$(jq -r .app_id engine/tee/phala/app.json)"
+          export TEE_A_URL="$(npx --yes phala@1.2.1 cvms get "$app_id" -j | jq -r .endpoints[0].app)"
+          node engine/tee/scripts/measure-check.ts "$RUNNER_TEMP/measurements/measurements.json" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    needs: measure-compare
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: measurements
+          path: ${{ runner.temp }}/measurements
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ runner.temp }}/measurements/measurements.json
+      - name: Attach the file to the release named after the image digest
+        working-directory: ${{ runner.temp }}/measurements
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          digest="$(jq -r .oci_digest measurements.json)"
+          tag="${digest/:/-}"
+          gh release view "$tag" >/dev/null 2>&1 \
+            || gh release create "$tag" --target "$GITHUB_SHA" --title "$digest" \
+              --notes "Measurements of $IMAGE@$digest."
+          gh release upload "$tag" measurements.json --clobber
 
   push:
     needs: compare

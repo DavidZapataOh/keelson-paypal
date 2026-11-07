@@ -13,11 +13,17 @@ const bare = createApp({ db: testDb, kv: testKv, log, authenticate: headerPrinci
 describe("without TEE legs", () => {
   test("the attestations list is empty and the measurements are published", async () => {
     const res = await bare.request("/v1/tee/attestations");
-    const body = (await res.json()) as { legs: unknown[]; measurements: { tdx: string[] } };
+    const body = (await res.json()) as {
+      legs: unknown[];
+      measurements: { tdx: string[]; provenance: string };
+    };
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toBe("public, max-age=30");
     expect(body.legs).toEqual([]);
     expect(body.measurements.tdx).toEqual(loadMeasurements().tdx);
+    expect(body.measurements.provenance).toMatch(
+      /^https:\/\/github\.com\/DavidZapataOh\/keelson-paypal\/releases\/download\/sha256-[0-9a-f]{64}\/measurements\.json$/,
+    );
   });
 
   test("status names no legs", async () => {

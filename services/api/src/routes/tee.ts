@@ -38,6 +38,10 @@ const route = createRoute({
               engineBuildId: z.string(),
               tdx: z.array(z.string()),
               nitro: z.array(z.string()),
+              provenance: z.string().openapi({
+                description:
+                  "Where the Sigstore build provenance attested measurements.json is published; `gh attestation verify` checks it.",
+              }),
             }),
           }),
         },
@@ -74,7 +78,15 @@ export function registerTee(app: OpenAPIHono, deps: Pick<Deps, "db">): void {
       }));
     c.header("Cache-Control", "public, max-age=30");
     return c.json(
-      { legs, measurements: { engineBuildId: m.engineBuildId, tdx: m.tdx, nitro: m.nitro } },
+      {
+        legs,
+        measurements: {
+          engineBuildId: m.engineBuildId,
+          tdx: m.tdx,
+          nitro: m.nitro,
+          provenance: m.provenance,
+        },
+      },
       200,
     );
   });

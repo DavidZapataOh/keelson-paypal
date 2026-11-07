@@ -158,6 +158,22 @@ SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)" docker buildx build -f engine/tee
 
 The `tee-image` workflow builds the image twice on separate runners from fresh checkouts and fails unless both digests are equal. On `main` it pushes that archive unchanged to `ghcr.io/davidzapataoh/keelson-engine` with a build provenance attestation. The image index digest is the `engine_build_id` bound into `report_data`; the engine receives it as `KEELSON_OCI_DIGEST`.
 
+## Reproduce the measurements
+
+`make measure` produces `out/measurements.json` from source: the OCI digest, the TDX measurement and the Nitro measurement of the deployment. It needs Linux, Docker with buildx, `curl`, `jq`, Node (`.node-version`) with `pnpm install` and `pnpm turbo run build --filter='@keelson/tee^...'` run first, and about 20 GB free.
+
+```sh
+make -C engine/tee measure [OCI_DIGEST=sha256:…] [INSTANCE_TYPE=tdx.small] [APP_ID=…] [OS_IMAGE=dstack-0.6.1]
+```
+
+1. **Image.** `OCI_DIGEST` defaults to the digest `phala/docker-compose.yml` pins. The `Containerfile` is built as above, with the `SOURCE_DATE_EPOCH` recorded in that image, and the command fails if the digest differs.
+2. **TDX.** `dstack-mr` (built from the pinned dstack revision in a pinned Rust image) computes MRTD and RTMR0 to RTMR2 from the dstack OS image release (checked against its published SHA-256) and the CVM's size, `INSTANCE_TYPE`, with the host settings in `phala/vm-config.json`. The compose hash is the SHA-256 of `phala/app-compose.json` with `docker-compose.yml` inside it. `APP_ID` is fixed by the deployment. A different instance type, app id, OS image or compose file changes the id.
+3. **Nitro.** `nitro-cli` 1.5.0 builds the EIF from the same image in a pinned Amazon Linux 2023 container, and its PCR0 to PCR2 are read with `describe-eif`.
+
+The id is `tdx:` plus the SHA-256 of MRTD, RTMR0 to RTMR2, the app id, the compose hash and the OS image hash. RTMR3 is not in it: it extends the per-CVM instance id, so it is replayed from the event log and its events are checked instead. The Nitro id is `nitro:` plus the SHA-256 of PCR0 to PCR2.
+
+`scripts/measure-check.ts <measurements.json>` compares the file with the attestations the two legs serve now (`TEE_A_URL`, `TEE_B_URL`) and exits 1 on any difference. The `tee-image` workflow runs `make measure` on two runners, requires byte-identical output, and checks it against the live legs.
+
 ## Benchmarks
 
 `cargo bench -p keelson-tee` measures the demo countersign on both legs (closed-mandate and passkey verification through signing) and `register_mandate`, and fails if a p99 is over budget: 2 ms per countersign, 5 ms per registration.
