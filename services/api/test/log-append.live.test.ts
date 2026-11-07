@@ -186,7 +186,7 @@ describe.skipIf(!live)(
     /** Appends, then checks the proof, the stored index and the public entry. */
     const appended = async (out: Countersigned) => {
       const leaf = await leafOf(out);
-      const deps = { db: testDb, tlog: { url: tlog.url, token: tlog.token } };
+      const deps = { db: testDb, tlog: { url: tlog.url, token: tlog.token, vkeys: tlog.vkeys } };
       const result = await appendLeaf(deps, out.purchaseId, leaf, out.countersign);
       expect(bytesToHex(result.leafHash)).toBe(bytesToHex(leafHash(leaf)));
       const { index, checkpoint } = verifyProof(
@@ -286,6 +286,21 @@ describe.skipIf(!live)(
       expect((err as LogError).code).toBe("countersign.mode");
     });
 
+    test("an answer that does not verify against the origin's keys is not recorded", async () => {
+      const out = await countersign(carts.demo);
+      const leaf = await leafOf(out);
+      const other = tlog.vkeys[LOG_ORIGINS[42161] as string] as [string, string];
+      const err = await appendLeaf(
+        { db: testDb, tlog: { url: tlog.url, token: tlog.token, vkeys: { [sandbox]: other } } },
+        out.purchaseId,
+        leaf,
+        out.countersign,
+      ).catch((e: unknown) => e);
+      expect((err as LogError).kind).toBe("invalid");
+      const [row] = await testDb.select().from(purchases).where(eq(purchases.id, out.purchaseId));
+      expect(row?.logIndex).toBeNull();
+    });
+
     test("the log is up in the status", async () => {
       const app = createApp({
         db: testDb,
@@ -305,7 +320,7 @@ describe.skipIf(!live)(
       };
       expect(body.dependencies.log.status).toBe("up");
       const sandboxState = body.dependencies.log.origins.find((o) => o.origin === sandbox);
-      expect(sandboxState?.size).toBeGreaterThanOrEqual(4);
+      expect(sandboxState?.size).toBeGreaterThanOrEqual(5);
       expect(sandboxState?.checkpointAgeMs).toBeLessThan(120_000);
     });
   },

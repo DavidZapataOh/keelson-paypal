@@ -58,7 +58,7 @@ if (process.env.RENDER && process.env.LOG_URL) {
   created = name;
   await migrate(url);
   const local = await startLocalLog(url);
-  tlog = { url: local.url, token: local.token };
+  tlog = { url: local.url, token: local.token, vkeys: local.vkeys };
   stopLog = local.stop;
 }
 const { db, pool } = createDb(url);
