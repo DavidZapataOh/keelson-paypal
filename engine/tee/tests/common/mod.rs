@@ -280,6 +280,15 @@ impl CartFixture {
         f
     }
 
+    /// The demo shoes at $30.
+    pub fn thirty() -> Self {
+        let mut f = Self::demo();
+        f.raw["cart"]["lines"][0]["unit_minor"] = json!(3000);
+        f.raw["unit"]["amount"]["value"] = json!("30.00");
+        f.raw["unit"]["amount"]["breakdown"]["item_total"]["value"] = json!("30.00");
+        f
+    }
+
     pub fn cart(&self) -> Cart {
         serde_json::from_value(self.raw["cart"].clone()).unwrap()
     }

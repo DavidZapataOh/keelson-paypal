@@ -96,6 +96,12 @@ jobs:
       - run: cargo clippy -p keelson-tee --all-targets --features tdx -- -D warnings
       - run: cargo test
       - run: cargo test -p keelson-tee --features tdx
+        env:
+          PAYPAL_CLIENT_ID: ${{ secrets.PAYPAL_CLIENT_ID }}
+          PAYPAL_CLIENT_SECRET: ${{ secrets.PAYPAL_CLIENT_SECRET }}
+          PAYPAL_AUTHORIZATION_CREATED: ${{ vars.PAYPAL_AUTHORIZATION_CREATED }}
+          PAYPAL_AUTHORIZATION_PARTIALLY_CAPTURED: ${{ vars.PAYPAL_AUTHORIZATION_PARTIALLY_CAPTURED }}
+          PAYPAL_AUTHORIZATION_VOIDED: ${{ vars.PAYPAL_AUTHORIZATION_VOIDED }}
 
   tee-simulator:
     runs-on: ubuntu-24.04

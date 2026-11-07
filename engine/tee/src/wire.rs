@@ -176,6 +176,8 @@ pub struct PayPalObservation {
     /// The sum of the order's `COMPLETED` and `PENDING` captures of this authorization.
     pub captured_minor: i64,
     pub payee_merchant_id: String,
+    /// The authorization's `expiration_time`, in Unix milliseconds.
+    pub expires_at_ms: i64,
     /// The authorization's `custom_id`, which names the mandate it holds funds for.
     pub custom_id: String,
     /// The authorization response body as PayPal sent it.

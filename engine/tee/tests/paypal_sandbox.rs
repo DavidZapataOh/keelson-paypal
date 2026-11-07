@@ -13,35 +13,36 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
 use common::*;
 use http_body_util::BodyExt;
-use keelson_tee::paypal::{PayPalClient, observe};
+use keelson_tee::Engine;
+use keelson_tee::paypal::{PayPalClient, observe, parse};
 use keelson_tee::server::{AppState, router};
-use keelson_tee::wire::{Countersigned, PayPalObservation};
+use keelson_tee::wire::{Countersigned, MandateIssued, PayPalObservation};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tower::ServiceExt;
 
 const BIT_PAYPAL: u32 = 1 << 31;
 
+/// A variable that is set and not empty, as an unset repository variable reaches CI.
+fn var(name: &str) -> Option<String> {
+    std::env::var(name).ok().filter(|v| !v.is_empty())
+}
+
 fn client() -> Option<PayPalClient> {
     let set = ["PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET"]
         .iter()
-        .all(|v| std::env::var(v).is_ok());
+        .all(|v| var(v).is_some());
     set.then(|| PayPalClient::from_env().unwrap())
 }
 
 /// The authorization id in `name` and a client, or `None` to skip.
 fn sandbox(name: &str) -> Option<(PayPalClient, String)> {
-    let id = std::env::var(name).ok()?;
+    let id = var(name)?;
     Some((client()?, id))
 }
 
-/// Registers the demo mandate with `payees` and countersigns `f` on leg A over `read`.
-fn countersign(
-    f: &CartFixture,
-    payees: &[&str],
-    read: PayPalObservation,
-    n: u128,
-) -> (Countersigned, Countersigned) {
+/// Leg A with the demo mandate registered for `payees`.
+fn setup(payees: &[&str]) -> (Engine, MandateIssued) {
     let leg_a = leg_a();
     let allowed: Vec<Value> = payees
         .iter()
@@ -57,14 +58,66 @@ fn countersign(
         payees["allowed"] = json!(allowed);
     });
     let issued = leg_a.register_mandate(&register, at(NOW)).unwrap();
-    let r = countersign_request(&issued, f, request_id(n), None);
+    (leg_a, issued)
+}
+
+/// Countersigns `f` on `leg_a` over `read`, and on leg B over leg A's observation.
+fn run(
+    leg_a: &Engine,
+    issued: &MandateIssued,
+    f: &CartFixture,
+    read: PayPalObservation,
+    n: u128,
+) -> (Countersigned, Countersigned) {
+    let r = countersign_request(issued, f, request_id(n), None);
     let a = leg_a
         .countersign_with(&r, at(NOW + 10), Some(read))
         .unwrap();
     // Leg B signs the same decision over leg A's observation, PayPal included.
-    let r = countersign_request(&issued, f, request_id(n), Some(a.observation.clone()));
+    let r = countersign_request(issued, f, request_id(n), Some(a.observation.clone()));
     let b = leg_b().countersign(&r, at(NOW + 10)).unwrap();
     (a, b)
+}
+
+fn countersign(
+    f: &CartFixture,
+    payees: &[&str],
+    read: PayPalObservation,
+    n: u128,
+) -> (Countersigned, Countersigned) {
+    let (leg_a, issued) = setup(payees);
+    run(&leg_a, &issued, f, read, n)
+}
+
+/// `raw` with `edit` applied, as the body PayPal would have sent.
+fn edited(raw: &[u8], edit: impl FnOnce(&mut Value)) -> Vec<u8> {
+    let mut v: Value = serde_json::from_slice(raw).unwrap();
+    edit(&mut v);
+    serde_json::to_vec(&v).unwrap()
+}
+
+/// The sandbox read of the partially captured fixture and the id it was read for.
+async fn captured_read() -> Option<(PayPalObservation, String)> {
+    let (client, id) = sandbox("PAYPAL_AUTHORIZATION_PARTIALLY_CAPTURED")?;
+    Some((observe(&client, &id).await.unwrap(), id))
+}
+
+fn capture(o: &mut Value) -> &mut Value {
+    &mut o["purchase_units"][0]["payments"]["captures"][0]
+}
+
+fn reparse(
+    id: &str,
+    read: &PayPalObservation,
+    auth: impl FnOnce(&mut Value),
+    order: impl FnOnce(&mut Value),
+) -> Result<PayPalObservation, keelson_tee::paypal::PayPalError> {
+    parse(
+        id,
+        edited(&read.raw_authorization.0, auth),
+        edited(&read.raw_order.0, order),
+        read.read_at_ms,
+    )
 }
 
 fn errors(c: &Countersigned) -> Vec<String> {
@@ -205,4 +258,152 @@ async fn paypal_read_latency() {
         "paypal read (two GETs, warm token): p50 {:.0} ms, p95 {:.0} ms",
         ms[24], ms[47]
     );
+}
+
+#[tokio::test]
+async fn every_capture_but_a_failed_one_is_spent() {
+    let Some((read, id)) = captured_read().await else {
+        return;
+    };
+    for (status, spent) in [
+        ("REFUNDED", 6_000),
+        ("PARTIALLY_REFUNDED", 6_000),
+        ("PENDING", 6_000),
+        ("COMPLETED", 6_000),
+        ("SOMETHING_NEW", 6_000),
+        ("DECLINED", 0),
+        ("FAILED", 0),
+    ] {
+        let set = |o: &mut Value| {
+            o["purchase_units"][0]["payments"]["captures"][0]["status"] = json!(status);
+        };
+        let r = reparse(&id, &read, |_| {}, set).unwrap();
+        assert_eq!(r.captured_minor, spent, "{status}");
+    }
+}
+
+#[tokio::test]
+async fn data_that_does_not_add_up_is_refused() {
+    let Some((read, id)) = captured_read().await else {
+        return;
+    };
+    let payee = read.payee_merchant_id.clone();
+    // A capture PayPal does not link to an authorization cannot be attributed.
+    let unlinked = reparse(&id, &read, |_| {}, |o| capture(o)["links"] = json!([]));
+    assert!(unlinked.is_err());
+    // No amount is negative.
+    let negative = reparse(
+        &id,
+        &read,
+        |_| {},
+        |o| {
+            capture(o)["amount"]["value"] = json!("-60.00");
+        },
+    );
+    assert!(negative.is_err());
+    let negative = reparse(
+        &id,
+        &read,
+        |a| a["amount"]["value"] = json!("-100.00"),
+        |_| {},
+    );
+    assert!(negative.is_err());
+
+    // Partially captured with nothing captured, and more captured than authorized.
+    let none = reparse(
+        &id,
+        &read,
+        |_| {},
+        |o| capture(o)["status"] = json!("DECLINED"),
+    )
+    .unwrap();
+    let over = reparse(
+        &id,
+        &read,
+        |_| {},
+        |o| {
+            capture(o)["amount"]["value"] = json!("120.00");
+        },
+    )
+    .unwrap();
+    for (read, n) in [(none, 10), (over, 11)] {
+        let (a, b) = countersign(&CartFixture::sixty(), &[&payee], read, n);
+        for c in [&a, &b] {
+            assert_eq!(c.countersign.decision, "2");
+            assert_eq!(errors(c), ["paypal.inconsistent"]);
+        }
+    }
+}
+
+#[tokio::test]
+async fn an_expired_authorization_is_refused() {
+    let Some((read, id)) = captured_read().await else {
+        return;
+    };
+    let payee = read.payee_merchant_id.clone();
+    // The status can lag behind the expiry.
+    let expired = reparse(
+        &id,
+        &read,
+        |a| {
+            a["status"] = json!("CREATED");
+            a["expiration_time"] = json!("2026-01-01T00:00:00Z");
+        },
+        |o| {
+            o["purchase_units"][0]["payments"]["captures"] = json!([]);
+        },
+    )
+    .unwrap();
+    let (a, b) = countersign(&CartFixture::sixty(), &[&payee], expired, 12);
+    for c in [&a, &b] {
+        assert_eq!(errors(c), ["paypal.expired"]);
+    }
+}
+
+#[tokio::test]
+async fn one_authorization_holds_a_mandate() {
+    let (Some((client, created)), Some(captured)) = (
+        sandbox("PAYPAL_AUTHORIZATION_CREATED"),
+        var("PAYPAL_AUTHORIZATION_PARTIALLY_CAPTURED"),
+    ) else {
+        return;
+    };
+    let first = observe(&client, &created).await.unwrap();
+    let second = observe(&client, &captured).await.unwrap();
+    let payee = first.payee_merchant_id.clone();
+    let (leg_a, issued) = setup(&[&payee]);
+    let f = CartFixture::thirty();
+    let (a, _) = run(&leg_a, &issued, &f, first.clone(), 13);
+    assert_eq!(a.countersign.decision, "1");
+    // The same hold again is fine; another authorization of the same mandate is not.
+    let (a, _) = run(&leg_a, &issued, &f, first, 14);
+    assert_eq!(a.countersign.decision, "1");
+    let (a, _) = run(&leg_a, &issued, &f, second, 15);
+    assert_eq!(errors(&a), ["paypal.hold_mismatch"]);
+}
+
+#[tokio::test]
+async fn the_custom_id_must_be_a_sandbox_mandate_hold() {
+    let Some((client, id)) = sandbox("PAYPAL_AUTHORIZATION_CREATED") else {
+        return;
+    };
+    let read = observe(&client, &id).await.unwrap();
+    let payee = read.payee_merchant_id.clone();
+    let mid = "01JBXG3K5N7Q9R2T4V6W8Y0Z1A";
+    let digest = "x".repeat(43);
+    for (n, custom_id) in [
+        format!("ks1.sa.{mid}.{digest}"),
+        format!("ks1.pm.{mid}.{digest}"),
+        format!("ks1.sm.{mid}.{}", "x".repeat(42)),
+        format!("ks2.sm.{mid}.{digest}"),
+        format!("ks1.sm.{mid}.{digest}.extra"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut forged = read.clone();
+        forged.custom_id = custom_id;
+        let (a, _) = countersign(&CartFixture::sixty(), &[&payee], forged, 20 + n as u128);
+        assert_eq!(errors(&a), ["paypal.mandate"]);
+    }
 }

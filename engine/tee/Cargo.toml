@@ -47,7 +47,7 @@ serde_json = "1"
 # `zeroize` wipes the HKDF and HMAC hash states on drop.
 sha2 = { version = "0.11.1", features = ["zeroize"] }
 subtle = "2.6.1"
-time = { version = "0.3.55", features = ["formatting", "macros"] }
+time = { version = "0.3.55", features = ["formatting", "macros", "parsing"] }
 tokio = { version = "1.54.1", features = ["macros", "net", "rt-multi-thread"] }
 ulid = { version = "3.0.0", features = ["serde"] }
 zeroize = "1.9.1"

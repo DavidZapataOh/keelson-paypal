@@ -43,17 +43,22 @@ Reservations live only in RAM. An engine allows nothing for the first 900 second
 
 On leg A, `CountersignRequest.authorization_id` names the PayPal authorization that holds the mandate's funds. Before each countersign the engine reads it fresh, with its own OAuth 2.0 client credentials (`PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`; sandbox unless `PAYPAL_ENV=live`): `GET /v2/payments/authorizations/{id}` and then `GET /v2/checkout/orders/{id}` for the captures, 2 s per call and no retries. A failed read is `paypal` (502) and signs nothing.
 
-The reading is the `PayPalObservation` leg B signs over. `captured_minor` is the sum of the order's `COMPLETED` and `PENDING` captures of that authorization, and replaces the `CapturedSource` amount in the budget. The cart is denied (bit 31 of `failedFieldsMask`, the reason in the trace `errors`) when:
+The reading is the `PayPalObservation` leg B signs over. `captured_minor` is the sum of the order's captures of that authorization (below), and replaces the `CapturedSource` amount in the budget. The cart is denied (bit 31 of `failedFieldsMask`, the reason in the trace `errors`) when:
 
-| Reason                | When                                                                                  |
-| --------------------- | ------------------------------------------------------------------------------------- |
-| `paypal.status`       | the authorization is neither `CREATED` nor `PARTIALLY_CAPTURED`                       |
-| `paypal.payee`        | the payee is not in the mandate's `payment.allowed_payees`                            |
-| `paypal.currency`     | the authorization is not in the cart's currency                                       |
-| `paypal.mandate`      | the authorization's `custom_id` does not name the mandate's `mid`                     |
-| `paypal.insufficient` | the authorization's amount less what was captured is below the cart's total           |
+| Reason                 | When                                                                                |
+| ---------------------- | ----------------------------------------------------------------------------------- |
+| `paypal.status`        | the authorization is neither `CREATED` nor `PARTIALLY_CAPTURED`                     |
+| `paypal.payee`         | the payee is not in the mandate's `payment.allowed_payees`                          |
+| `paypal.currency`      | the authorization is not in the cart's currency                                     |
+| `paypal.expired`       | the authorization's `expiration_time` has passed, whatever its status says          |
+| `paypal.mandate`       | the `custom_id` is not `ks1.<env>m.<mid>.<digest>` for this mandate and environment |
+| `paypal.inconsistent`  | `PARTIALLY_CAPTURED` with nothing captured, or more captured than authorized        |
+| `paypal.hold_mismatch` | another authorization already holds this mandate                                    |
+| `paypal.insufficient`  | the authorization's amount less what was captured is below the cart's total         |
 
-The authorization is the hold: one per mandate, so what is authorized but not yet captured is what remains available, and a capture is spent.
+Every capture of the authorization counts at its full amount unless it is `DECLINED` or `FAILED`: a refund does not restore the hold. A capture PayPal does not link to an authorization, or a negative amount, fails the read.
+
+The authorization is the hold, one per mandate: leg A binds the first authorization it sees for a mandate in a sealed record (kept with the user records) and denies any other. The limit: the binding lives in that store, so a lost record lets a second authorization of the same mandate id be bound, and leg B cannot see it. The environment is Arbitrum Sepolia for `s` and Arbitrum One for `p`.
 
 ## Limits
 

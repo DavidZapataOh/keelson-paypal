@@ -23,6 +23,13 @@ pub enum PayPalDeny {
     Insufficient,
     /// The authorization does not hold funds for this mandate.
     Mandate,
+    /// The authorization expired, whatever its status says.
+    Expired,
+    /// The amounts cannot all be true: a capture with nothing captured, or more captured than
+    /// authorized.
+    Inconsistent,
+    /// The mandate is already held by another authorization.
+    HoldMismatch,
 }
 
 impl PayPalDeny {
@@ -34,21 +41,29 @@ impl PayPalDeny {
             Self::Currency => "paypal.currency",
             Self::Insufficient => "paypal.insufficient",
             Self::Mandate => "paypal.mandate",
+            Self::Expired => "paypal.expired",
+            Self::Inconsistent => "paypal.inconsistent",
+            Self::HoldMismatch => "paypal.hold_mismatch",
         }
     }
 }
 
 /// Checks the observation against the mandate `m` and the cart's `ctx`.
 ///
-/// The `custom_id` of an authorization is `ks1.<env><kind>.<mandate id>.<digest>`; its mandate id
-/// must be the mandate's `mid`, so a request cannot borrow another mandate's hold.
+/// The `custom_id` of an authorization is `ks1.<env><kind>.<mandate id>.<digest>`: `env` is
+/// `live` for a mandate hold (`m`) of this engine's environment, and the mandate id must be the
+/// mandate's `mid`, so a request cannot borrow another mandate's hold.
 pub(crate) fn paypal_check(
     m: &Value,
     obs: &PayPalObservation,
     ctx: &Context,
+    live: bool,
 ) -> Result<(), PayPalDeny> {
     if !matches!(obs.status.as_str(), "CREATED" | "PARTIALLY_CAPTURED") {
         return Err(PayPalDeny::Status);
+    }
+    if obs.expires_at_ms <= obs.read_at_ms {
+        return Err(PayPalDeny::Expired);
     }
     let payee = m["payment"]["constraints"]
         .as_array()
@@ -65,11 +80,12 @@ pub(crate) fn paypal_check(
     if obs.currency != ctx.currency {
         return Err(PayPalDeny::Currency);
     }
-    let held = m["mid"]
-        .as_str()
-        .is_some_and(|mid| obs.custom_id.split('.').nth(2) == Some(mid));
-    if !held {
+    if !holds(&obs.custom_id, m["mid"].as_str().unwrap_or_default(), live) {
         return Err(PayPalDeny::Mandate);
+    }
+    let nothing_captured = obs.status == "PARTIALLY_CAPTURED" && obs.captured_minor == 0;
+    if nothing_captured || obs.captured_minor > obs.authorized_minor {
+        return Err(PayPalDeny::Inconsistent);
     }
     if obs.authorized_minor.saturating_sub(obs.captured_minor) < ctx.total_minor {
         return Err(PayPalDeny::Insufficient);
@@ -77,11 +93,29 @@ pub(crate) fn paypal_check(
     Ok(())
 }
 
+/// Whether `custom_id` is the mandate hold `ks1.<env>m.<mid>.<digest>` for `mid` in this
+/// environment, with a 43-character base64url digest.
+fn holds(custom_id: &str, mid: &str, live: bool) -> bool {
+    let env = if live { "pm" } else { "sm" };
+    let parts: Vec<&str> = custom_id.split('.').collect();
+    let [version, kind, id, digest] = parts[..] else {
+        return false;
+    };
+    let base64url = |c: u8| c.is_ascii_alphanumeric() || c == b'-' || c == b'_';
+    version == "ks1"
+        && kind == env
+        && id.len() == 26
+        && id == mid
+        && digest.len() == 43
+        && digest.bytes().all(base64url)
+}
+
 #[cfg(feature = "tdx")]
-pub use client::{PayPalClient, PayPalError, observe};
+pub use client::{PayPalClient, PayPalError, observe, parse};
 
 #[cfg(feature = "tdx")]
 mod client {
+    use std::collections::HashMap;
     use std::fmt;
     use std::sync::Mutex;
     use std::time::{Duration, Instant};
@@ -95,7 +129,7 @@ mod client {
     const SANDBOX: &str = "https://api-m.sandbox.paypal.com";
     const LIVE: &str = "https://api-m.paypal.com";
     /// The longest any one PayPal call may take; a countersign never retries.
-    const TIMEOUT: Duration = Duration::from_secs(2);
+    const TIMEOUT: Duration = Duration::from_secs(5);
     /// A cached token is dropped this long before PayPal says it expires.
     const TOKEN_MARGIN: Duration = Duration::from_secs(60);
     const MAX_BODY: usize = 64 * 1024;
@@ -139,6 +173,8 @@ mod client {
         client_secret: String,
         http: reqwest::Client,
         token: Mutex<Option<Token>>,
+        /// The order each authorization belongs to, which never changes once PayPal has said it.
+        orders: Mutex<HashMap<String, String>>,
     }
 
     impl PayPalClient {
@@ -150,6 +186,7 @@ mod client {
                 client_secret: client_secret.to_owned(),
                 http: chain::http_client(),
                 token: Mutex::new(None),
+                orders: Mutex::new(HashMap::new()),
             }
         }
 
@@ -248,6 +285,7 @@ mod client {
         #[serde(default)]
         custom_id: String,
         payee: Payee,
+        expiration_time: String,
         supplementary_data: Supplementary,
     }
 
@@ -309,13 +347,17 @@ mod client {
         keelson_core::from_paypal_value(&a.currency_code, &a.value)
             .ok()
             .and_then(|m| i64::try_from(m.minor).ok())
+            .filter(|minor| *minor >= 0)
             .ok_or(PayPalError::Malformed("amount"))
     }
 
+    /// The most authorizations whose order is remembered.
+    const MAX_ORDERS: usize = 4096;
+
     /// Reads the authorization and its order, fresh, with no retries.
     ///
-    /// `captured_minor` sums the order's `COMPLETED` and `PENDING` captures made against this
-    /// authorization; voided, declined and refunded ones do not count.
+    /// The order is read at the same time as the authorization once the authorization's order is
+    /// known from an earlier read; the authorization must then name that same order.
     pub async fn observe(
         client: &PayPalClient,
         authorization_id: &str,
@@ -323,33 +365,84 @@ mod client {
         if !valid_id(authorization_id) {
             return Err(PayPalError::Malformed("authorization id"));
         }
-        let raw_authorization = client
-            .get(&format!("/v2/payments/authorizations/{authorization_id}"))
-            .await?;
+        let authorization = format!("/v2/payments/authorizations/{authorization_id}");
+        let known = client
+            .orders
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(authorization_id)
+            .cloned();
+        let (raw_authorization, raw_order) = match known {
+            Some(order_id) => {
+                let order = format!("/v2/checkout/orders/{order_id}");
+                let (raw_authorization, raw_order) =
+                    tokio::try_join!(client.get(&authorization), client.get(&order))?;
+                if order_id_of(&raw_authorization)? != order_id {
+                    return Err(PayPalError::Malformed("authorization"));
+                }
+                (raw_authorization, raw_order)
+            }
+            None => {
+                let raw_authorization = client.get(&authorization).await?;
+                let order_id = order_id_of(&raw_authorization)?;
+                let raw_order = client
+                    .get(&format!("/v2/checkout/orders/{order_id}"))
+                    .await?;
+                let mut orders = client.orders.lock().unwrap_or_else(|e| e.into_inner());
+                if orders.len() >= MAX_ORDERS {
+                    orders.clear();
+                }
+                orders.insert(authorization_id.to_owned(), order_id);
+                (raw_authorization, raw_order)
+            }
+        };
+        let read_at_ms = unix_ms(OffsetDateTime::now_utc()).unwrap_or_default();
+        parse(authorization_id, raw_authorization, raw_order, read_at_ms)
+    }
+
+    fn order_id_of(raw_authorization: &[u8]) -> Result<String, PayPalError> {
+        let authorization: Authorization = serde_json::from_slice(raw_authorization)
+            .map_err(|_| PayPalError::Malformed("authorization"))?;
+        let id = authorization.supplementary_data.related_ids.order_id;
+        valid_id(&id)
+            .then_some(id)
+            .ok_or(PayPalError::Malformed("authorization"))
+    }
+
+    /// The observation PayPal's two response bodies make, read at `read_at_ms`.
+    ///
+    /// `captured_minor` sums every capture of this authorization except `DECLINED` and `FAILED`
+    /// ones, at its full amount: a refund does not restore the hold.
+    pub fn parse(
+        authorization_id: &str,
+        raw_authorization: Vec<u8>,
+        raw_order: Vec<u8>,
+        read_at_ms: i64,
+    ) -> Result<PayPalObservation, PayPalError> {
         let authorization: Authorization = serde_json::from_slice(&raw_authorization)
             .map_err(|_| PayPalError::Malformed("authorization"))?;
         let order_id = &authorization.supplementary_data.related_ids.order_id;
         if authorization.id != authorization_id || !valid_id(order_id) {
             return Err(PayPalError::Malformed("authorization"));
         }
-        let raw_order = client
-            .get(&format!("/v2/checkout/orders/{order_id}"))
-            .await?;
         let order: Order =
             serde_json::from_slice(&raw_order).map_err(|_| PayPalError::Malformed("order"))?;
 
-        let up = format!("/authorizations/{authorization_id}");
         let mut captured: i64 = 0;
         let captures = order
             .purchase_units
             .iter()
             .flat_map(|u| &u.payments.captures);
         for capture in captures {
-            let ours = capture
+            // Every capture of the order must name the authorization it drew on.
+            let origin = capture
                 .links
                 .iter()
-                .any(|l| l.rel == "up" && l.href.ends_with(&up));
-            if ours && matches!(capture.status.as_str(), "COMPLETED" | "PENDING") {
+                .find(|l| l.rel == "up")
+                .and_then(|l| l.href.rsplit_once("/authorizations/"))
+                .ok_or(PayPalError::Malformed("capture"))?;
+            let ours = origin.1 == authorization_id;
+            if ours && !matches!(capture.status.as_str(), "DECLINED" | "FAILED") {
                 if capture.amount.currency_code != authorization.amount.currency_code {
                     return Err(PayPalError::Malformed("capture"));
                 }
@@ -358,6 +451,11 @@ mod client {
                     .ok_or(PayPalError::Malformed("capture"))?;
             }
         }
+        let expires_at = OffsetDateTime::parse(
+            &authorization.expiration_time,
+            &time::format_description::well_known::Rfc3339,
+        )
+        .map_err(|_| PayPalError::Malformed("authorization"))?;
         Ok(PayPalObservation {
             authorization_id: authorization.id,
             status: authorization.status,
@@ -365,10 +463,11 @@ mod client {
             currency: authorization.amount.currency_code,
             captured_minor: captured,
             payee_merchant_id: authorization.payee.merchant_id,
+            expires_at_ms: unix_ms(expires_at).ok_or(PayPalError::Malformed("authorization"))?,
             custom_id: authorization.custom_id,
             raw_authorization: Base64(raw_authorization),
             raw_order: Base64(raw_order),
-            read_at_ms: unix_ms(OffsetDateTime::now_utc()).unwrap_or_default(),
+            read_at_ms,
         })
     }
 }

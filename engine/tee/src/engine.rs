@@ -43,6 +43,9 @@ use crate::{
 pub const MANDATE_SALT_PURPOSE: &str = "keelson/seal/mandate-salt/v1";
 /// The seal purpose of a user's record, which binds their `sub` to their passkey.
 pub const USER_PASSKEY_PURPOSE: &str = "keelson/seal/user-passkey/v1";
+/// The sealing purpose of the record that binds a mandate to its PayPal authorization.
+const MANDATE_HOLD_PURPOSE: &str = "keelson/seal/mandate-hold/v1";
+const ARBITRUM_ONE: u64 = 42_161;
 const USER_PASSKEY_RECORD: &[u8] = b"passkey";
 
 /// `iss` of the user credential.
@@ -499,8 +502,22 @@ impl Engine {
             (None, None) => 0,
         };
         // An empty reading is leg A's without a PayPal read, which checks nothing.
+        let live = self.config.chain_id == ARBITRUM_ONE;
         let denied = match (&context, observed) {
-            (Ok(c), Some(o)) if !o.authorization_id.is_empty() => paypal_check(m, o, c).err(),
+            (Ok(c), Some(o)) if !o.authorization_id.is_empty() => {
+                match paypal_check(m, o, c, live) {
+                    Err(deny) => Some(deny),
+                    // Only leg A keeps the record of which authorization holds a mandate.
+                    Ok(()) => match (&self.root, &self.users) {
+                        (Some(root), Some(users)) => {
+                            let mid = m["mid"].as_str().unwrap_or_default();
+                            bind_hold(root, users.as_ref(), mid, &o.authorization_id).err()
+                        }
+                        (Some(_), None) => return Err(EngineError::NotReady),
+                        (None, _) => None,
+                    },
+                }
+            }
             _ => None,
         };
         let warming_up = clock_now < self.boot + Duration::seconds(COUNTERSIGN_TTL);
@@ -754,6 +771,10 @@ fn within(s: &str, max: usize, what: &'static str) -> Result<(), EngineError> {
 
 fn check_register(r: &RegisterMandate) -> Result<(), EngineError> {
     within(&r.sub, MAX_SUB, "sub")?;
+    // The user records also hold mandate bindings under keys that contain a NUL.
+    if r.sub.contains('\0') {
+        return Err(bad("sub"));
+    }
     if r.disclosures.len() > MAX_DISCLOSURES {
         return Err(EngineError::TooLarge("disclosures"));
     }
@@ -844,6 +865,34 @@ fn check_countersign(r: &CountersignRequest) -> Result<(), EngineError> {
         }
     }
     Ok(())
+}
+
+/// Binds the mandate `mid` to the first authorization that holds its funds, in a sealed record.
+/// Any other authorization for the same mandate is a [`PayPalDeny::HoldMismatch`].
+fn bind_hold(
+    root: &Root,
+    users: &dyn UserRecords,
+    mid: &str,
+    authorization_id: &str,
+) -> Result<(), PayPalDeny> {
+    let aad = SealAad {
+        purpose: MANDATE_HOLD_PURPOSE,
+        sub: None,
+        record: mid.as_bytes(),
+    };
+    let key = format!("hold\0{mid}");
+    let holds = |blob: Vec<u8>| {
+        root.unseal(&aad, &blob)
+            .is_ok_and(|bound| bound == authorization_id.as_bytes())
+    };
+    let bound = match users.get(&key) {
+        Some(blob) => holds(blob),
+        None => {
+            users.insert_new(&key, root.seal(&aad, authorization_id.as_bytes()))
+                || users.get(&key).is_some_and(holds)
+        }
+    };
+    bound.then_some(()).ok_or(PayPalDeny::HoldMismatch)
 }
 
 /// Binds `sub` to `passkey` on its first registration, in a record sealed to `sub`. Later
