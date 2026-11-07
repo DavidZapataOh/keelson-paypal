@@ -271,6 +271,11 @@ impl Engine {
         self.signer.address()
     }
 
+    /// The signer's uncompressed SEC1 public key.
+    pub fn signer_public_key(&self) -> [u8; 65] {
+        self.signer.public_key_sec1()
+    }
+
     /// What the attestation binds this engine's signer to; the engine build id is the image
     /// digest.
     pub fn binding(&self) -> Result<SignerBinding, Error> {

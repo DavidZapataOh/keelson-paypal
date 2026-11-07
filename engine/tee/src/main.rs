@@ -2,12 +2,17 @@
 //!
 //! ```text
 //! keelson-engine [--platform tdx] --listen tcp:<addr>
+//! keelson-engine --platform nitro --listen vsock:<port>
 //! ```
 //!
 //! With `--platform tdx` (cargo feature `tdx`) the engine runs as leg A in a dstack CVM: it takes
 //! its root from the dstack KMS, attests its signer over the latest Arbitrum block and serves
 //! `GET /v1/attestation`. Without it the engine holds no root and runs as a leg that countersigns
 //! over an observation.
+//!
+//! With `--platform nitro` (cargo feature `nitro`) the engine runs as leg B in an AWS Nitro
+//! Enclave. It has no network and reads no environment: it is served over vsock, takes its
+//! configuration once in `POST /v1/boot` and attests its signer through the Nitro Secure Module.
 //!
 //! Configuration comes from `KEELSON_*` environment variables:
 //!
@@ -59,6 +64,14 @@ enum Platform {
     Plain,
     /// Leg A in a dstack CVM on Intel TDX.
     Tdx,
+    /// Leg B in an AWS Nitro Enclave.
+    Nitro,
+}
+
+/// Where the engine listens.
+enum Listen {
+    Tcp(String),
+    Vsock(u32),
 }
 
 fn issuer() -> Result<Jwk, String> {
@@ -70,6 +83,7 @@ fn issuer() -> Result<Jwk, String> {
 fn config(platform: Platform) -> Result<(EngineConfig, [u8; 32]), String> {
     let (tee_kind, issuer) = match platform {
         Platform::Tdx => (TeeKind::Tdx, None),
+        Platform::Nitro => unreachable!("an enclave is configured by its boot message"),
         Platform::Plain => match var("KEELSON_TEE_KIND")?.as_str() {
             "tdx" => (TeeKind::Tdx, Some(issuer()?)),
             "nitro" => (TeeKind::Nitro, Some(issuer()?)),
@@ -95,22 +109,33 @@ fn config(platform: Platform) -> Result<(EngineConfig, [u8; 32]), String> {
     Ok((config, token_hash.0))
 }
 
-const USAGE: &str = "usage: keelson-engine [--platform tdx] --listen tcp:<addr>";
+const USAGE: &str = "usage: keelson-engine [--platform tdx|nitro] --listen tcp:<addr>|vsock:<port>";
 
-fn args() -> Result<(Platform, String), String> {
+fn args() -> Result<(Platform, Listen), String> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let (platform, rest) = match args.as_slice() {
         [flag, platform, rest @ ..] if flag == "--platform" => match platform.as_str() {
             "tdx" => (Platform::Tdx, rest),
+            "nitro" => (Platform::Nitro, rest),
             _ => return Err(USAGE.into()),
         },
         rest => (Platform::Plain, rest),
     };
     match rest {
-        [flag, addr] if flag == "--listen" => addr
-            .strip_prefix("tcp:")
-            .map(|addr| (platform, addr.to_owned()))
-            .ok_or_else(|| "--listen takes tcp:<addr>".into()),
+        [flag, addr] if flag == "--listen" => {
+            let listen = match addr.split_once(':') {
+                Some(("tcp", addr)) if platform != Platform::Nitro => Listen::Tcp(addr.to_owned()),
+                Some(("vsock", port)) if platform == Platform::Nitro => {
+                    Listen::Vsock(port.parse().map_err(|_| "--listen vsock takes a port")?)
+                }
+                _ => {
+                    return Err(
+                        "--listen takes tcp:<addr>, or vsock:<port> with --platform nitro".into(),
+                    );
+                }
+            };
+            Ok((platform, listen))
+        }
         _ => Err(USAGE.into()),
     }
 }
@@ -144,12 +169,27 @@ async fn tdx_state(_: EngineConfig, _: [u8; 32]) -> Result<AppState, String> {
     Err("--platform tdx needs a build with the tdx feature".into())
 }
 
+#[cfg(feature = "nitro")]
+async fn serve_enclave(port: u32) -> Result<(), String> {
+    keelson_tee::nitro::serve(port).await
+}
+
+#[cfg(not(feature = "nitro"))]
+async fn serve_enclave(_: u32) -> Result<(), String> {
+    Err("--platform nitro needs a build with the nitro feature".into())
+}
+
 async fn run() -> Result<(), String> {
-    let (platform, address) = args()?;
+    let (platform, listen) = args()?;
+    let address = match listen {
+        Listen::Vsock(port) => return serve_enclave(port).await,
+        Listen::Tcp(address) => address,
+    };
     let (config, token_hash) = config(platform)?;
     let state = match platform {
         Platform::Plain => AppState::new(Engine::new(config, None), token_hash),
         Platform::Tdx => tdx_state(config, token_hash).await?,
+        Platform::Nitro => unreachable!("an enclave listens on vsock"),
     };
     let state = Arc::new(state);
     #[cfg(feature = "tdx")]

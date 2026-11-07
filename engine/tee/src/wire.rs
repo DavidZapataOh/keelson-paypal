@@ -49,6 +49,14 @@ impl<'de, const N: usize> Deserialize<'de> for Hex<N> {
     }
 }
 
+/// An Arbitrum block.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Block {
+    pub number: u64,
+    pub hash: Hex32,
+}
+
 pub(crate) fn parse_hex<const N: usize>(s: &str) -> Option<[u8; N]> {
     let digits = s.strip_prefix("0x")?.as_bytes();
     if digits.len() != 2 * N {

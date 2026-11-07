@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 use tokio::net::UnixStream;
 use zeroize::Zeroizing;
 
-use crate::wire::Hex32;
+pub use crate::wire::Block;
 use crate::{Engine, EngineConfig, Error, Root, SignerBinding, chain, report_data};
 
 /// The guest agent's socket inside the CVM.
@@ -297,14 +297,6 @@ pub struct Attestation {
     pub app_id: String,
     pub compose_hash: String,
     pub dstack_version: String,
-}
-
-/// An Arbitrum block.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Block {
-    pub number: u64,
-    pub hash: Hex32,
 }
 
 /// Why the engine could not boot or attest.
