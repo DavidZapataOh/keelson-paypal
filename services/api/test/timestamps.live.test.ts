@@ -1,18 +1,19 @@
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdtempSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq, timestamps } from "@keelson/db";
 import { TSA_INTERMEDIATES, TSA_ROOTS, type TsaId, verifyTimestamp } from "@keelson/timestamp";
 import { pino } from "pino";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, onTestFinished, test } from "vitest";
 import { enqueueStamp, stampsFor } from "../src/timestamps/queue.ts";
 import { type StampWorker, startStampWorker } from "../src/timestamps/worker.ts";
 import { testDb, testKv } from "./setup.ts";
 
 const live = process.env.KEELSON_LIVE === "1";
-const UNREACHABLE = "http://10.255.255.1/";
 
 const errors: unknown[] = [];
 const log = pino(
@@ -88,8 +89,16 @@ describe.skipIf(!live)("stamping with the live TSAs", { timeout: 90_000 }, () =>
     );
   });
 
-  test("an unreachable primary is retried by the sweeper, then replaced by its fallback", async () => {
-    const w = worker({ urls: { sigstore: UNREACHABLE }, sweepIntervalMs: 1_000 });
+  test("a primary that never answers is retried by the sweeper, then replaced by its fallback", async () => {
+    // A server that never replies; a non-routable address may fail fast instead.
+    const silent = createServer(() => {});
+    await new Promise<void>((done) => silent.listen(0, "127.0.0.1", done));
+    onTestFinished(() => {
+      silent.closeAllConnections();
+      silent.close();
+    });
+    const { port } = silent.address() as AddressInfo;
+    const w = worker({ urls: { sigstore: `http://127.0.0.1:${port}/` }, sweepIntervalMs: 1_000 });
     const hash = randomBytes(32);
     enqueueStamp({ db: testDb, log, stamps: w }, hash, "leaf");
 

@@ -28,6 +28,7 @@ import { registerMandates } from "./routes/mandates.ts";
 import { registerPasskeys } from "./routes/passkeys.ts";
 import { registerStatus } from "./routes/status.ts";
 import { registerTee } from "./routes/tee.ts";
+import { registerTimestamps } from "./routes/timestamps.ts";
 import type { TeeConfig } from "./tee/signers.ts";
 import type { StampWorker } from "./timestamps/worker.ts";
 
@@ -161,6 +162,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerCountersign(app, deps);
   registerEvidence(app, deps);
   registerTee(app, deps);
+  registerTimestamps(app, deps);
   registerPasskeys(app, deps);
   app.get("/openapi.json", (c) =>
     c.json(app.getOpenAPI31Document({ openapi: "3.1.0", info: apiInfo })),

@@ -188,7 +188,11 @@ describe.skipIf(!live)(
     /** Appends, then checks the proof, the stored index and the public entry. */
     const appended = async (out: Countersigned) => {
       const leaf = await leafOf(out);
-      const deps = { db: testDb, tlog: { url: tlog.url, token: tlog.token, vkeys: tlog.vkeys } };
+      const deps = {
+        db: testDb,
+        log,
+        tlog: { url: tlog.url, token: tlog.token, vkeys: tlog.vkeys },
+      };
       const result = await appendLeaf(deps, out.purchaseId, leaf, out.countersign);
       expect(bytesToHex(result.leafHash)).toBe(bytesToHex(leafHash(leaf)));
       const { index, checkpoint } = verifyProof(
@@ -279,7 +283,7 @@ describe.skipIf(!live)(
         .set({ countersignMode: "degraded" })
         .where(eq(purchases.id, out.purchaseId));
       const err = await appendLeaf(
-        { db: testDb, tlog: { url: "http://127.0.0.1:9", token: tlog.token } },
+        { db: testDb, log, tlog: { url: "http://127.0.0.1:9", token: tlog.token } },
         out.purchaseId,
         leaf,
         out.countersign,
@@ -294,7 +298,11 @@ describe.skipIf(!live)(
       const leaf = await leafOf(out);
       const other = tlog.vkeys[LOG_ORIGINS[42161] as string] as [string, string];
       const err = await appendLeaf(
-        { db: testDb, tlog: { url: tlog.url, token: tlog.token, vkeys: { [sandbox]: other } } },
+        {
+          db: testDb,
+          log,
+          tlog: { url: tlog.url, token: tlog.token, vkeys: { [sandbox]: other } },
+        },
         out.purchaseId,
         leaf,
         out.countersign,

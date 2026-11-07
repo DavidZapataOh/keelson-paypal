@@ -1,3 +1,5 @@
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { utf8ToBytes } from "@noble/hashes/utils.js";
 import { describe, expect, test } from "vitest";
@@ -21,16 +23,22 @@ describe.skipIf(!live)("live TSAs", () => {
     });
   }
 
-  test("an unreachable TSA times out", async () => {
+  test("a TSA that never answers times out", async () => {
+    // A server that never replies; a non-routable address may fail fast instead.
+    const silent = createServer(() => {});
+    await new Promise<void>((done) => silent.listen(0, "127.0.0.1", done));
+    const { port } = silent.address() as AddressInfo;
     const started = performance.now();
     const error = await requestTimestamp(
-      { id: "digicert", url: "http://10.255.255.1/" },
+      { id: "digicert", url: `http://127.0.0.1:${port}/` },
       new Uint8Array(32),
       { timeoutMs: 500 },
     ).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(TimestampError);
     expect((error as TimestampError).code).toBe("tsa-timeout");
     expect(performance.now() - started).toBeLessThan(700);
+    silent.closeAllConnections();
+    silent.close();
   });
 
   test("an HTTP error is reported as such", async () => {

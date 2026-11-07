@@ -49,23 +49,29 @@ export function startStampWorker(
   options: StampWorkerOptions = {},
 ): StampWorker {
   const inFlight = new Set<Promise<void>>();
-  let rerun = false;
+  /** The round to run once one finishes: a wake (new rows only) or a sweep (all pending). */
+  let queued: "wake" | "sweep" | null = null;
   let stopped = false;
 
   const run = (fresh: boolean): void => {
     if (stopped) return;
     if (inFlight.size >= MAX_ROUNDS_IN_FLIGHT) {
-      rerun = true;
+      if (queued !== "sweep") queued = fresh ? "wake" : "sweep";
       return;
     }
     const round: Promise<void> = claimAndStamp(deps, options, fresh)
-      .catch((err: unknown) => deps.log.error({ err }, "timestamp round failed"))
+      .then(
+        // A full batch worked means more rows are waiting: keep draining.
+        (claimed) => {
+          if (claimed === BATCH && queued !== "sweep") queued = fresh ? "wake" : "sweep";
+        },
+        (err: unknown) => deps.log.error({ err }, "timestamp round failed"),
+      )
       .finally(() => {
         inFlight.delete(round);
-        if (rerun) {
-          rerun = false;
-          run(true);
-        }
+        const next = queued;
+        queued = null;
+        if (next) run(next === "wake");
       });
     inFlight.add(round);
   };
@@ -88,9 +94,9 @@ async function claimAndStamp(
   deps: { db: Db; kv: RedisClientType; log: Logger },
   options: StampWorkerOptions,
   fresh: boolean,
-): Promise<void> {
+): Promise<number> {
   const failed: Row[] = [];
-  await deps.db.transaction(async (tx) => {
+  const claimed = await deps.db.transaction(async (tx) => {
     const pending = eq(timestamps.status, "pending");
     const rows = await tx
       .select()
@@ -101,6 +107,7 @@ async function claimAndStamp(
       .limit(BATCH)
       .for("update", { skipLocked: true });
 
+    let deferred = 0;
     await Promise.all(
       rows.map(async (row) => {
         const key = and(eq(timestamps.hash, row.hash), eq(timestamps.tsa, row.tsa));
@@ -111,7 +118,10 @@ async function claimAndStamp(
         }
         const tsa = row.tsa as TsaId;
         const result = await stamp(tsa, row.hash, options);
-        if (result === "deferred") return;
+        if (result === "deferred") {
+          deferred++;
+          return;
+        }
         if ("token" in result) {
           await tx
             .update(timestamps)
@@ -144,6 +154,7 @@ async function claimAndStamp(
         }
       }),
     );
+    return rows.length - deferred;
   });
 
   for (const row of failed) {
@@ -156,6 +167,7 @@ async function claimAndStamp(
       kind: row.kind,
     }).catch((err: unknown) => deps.log.error({ err }, "timestamp event could not be published"));
   }
+  return claimed;
 }
 
 type Outcome =
