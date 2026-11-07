@@ -120,7 +120,7 @@ try {
     "x-test-principal": JSON.stringify({
       kind: "client",
       subject: `bench-agent-${k}`,
-      scopes: ["countersign:write"],
+      scopes: ["countersign:write", "evidence:write"],
     }),
   });
 
