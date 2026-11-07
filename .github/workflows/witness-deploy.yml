@@ -1,0 +1,87 @@
+name: witness-deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      digest:
+        description: Witness image digest published by witness-image, sha256:<hex>
+        required: true
+
+concurrency:
+  group: witness-deploy
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/davidzapataoh/keelson-witness
+  RAILWAY_CLI: "@railway/cli@5.71.0"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      DIGEST: ${{ inputs.digest }}
+      LOG_SIGNER_KEY_CONFORMANCE: ${{ secrets.LOG_SIGNER_KEY_CONFORMANCE }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter @keelson/witness
+      - name: Pin the digest
+        run: |
+          grep -Eq '^sha256:[0-9a-f]{64}$' <<< "$DIGEST"
+          sed -E -i "s/keelson-witness@sha256:[0-9a-f]{64}/keelson-witness@$DIGEST/" \
+            render.yaml services/witness/.railway/railway.ts
+          git diff --stat
+      - name: Record what each witness knows
+        run: go test -tags live -run '^TestLiveWitnessesRemember$' -v ./services/log/
+        env:
+          WITNESS_SIZES_OUT: ${{ runner.temp }}/sizes.json
+      - name: Witness 1 (Render)
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: |
+          api() { curl -fsS -H "Authorization: Bearer $RENDER_API_KEY" -H "Content-Type: application/json" "$@"; }
+          id="$(api 'https://api.render.com/v1/services?name=keelson-witness-1&limit=1' | jq -r '.[0].service.id')"
+          deploy="$(api -X POST "https://api.render.com/v1/services/$id/deploys" -d "{\"imageUrl\": \"$IMAGE@$DIGEST\"}" | jq -r .id)"
+          for _ in $(seq 120); do
+            status="$(api "https://api.render.com/v1/services/$id/deploys/$deploy" | jq -r .status)"
+            case "$status" in live) break ;; build_failed | update_failed | canceled | deactivated) exit 1 ;; esac
+            sleep 5
+          done
+          test "$status" = live
+      - name: Witness 2 (Railway)
+        working-directory: services/witness
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_WITNESS }}
+        run: npx --yes "$RAILWAY_CLI" config apply --yes
+      - name: Witness 3 (AWS)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+        run: services/witness/aws/deploy.sh "$DIGEST"
+      - name: Every witness kept its state and refuses forks
+        run: |
+          for w in 1 2 3; do
+            for _ in $(seq 60); do curl -fsS -o /dev/null "https://witness-$w.keelson.finance/" && break; sleep 5; done
+          done
+          go test -tags live -run '^TestLiveWitness' -v ./services/log/
+        env:
+          WITNESS_SIZES_IN: ${{ runner.temp }}/sizes.json
+      - name: Files to commit
+        run: |
+          {
+            echo "Commit the digest \`$DIGEST\` in:"
+            echo
+            echo '- `render.yaml`'
+            echo '- `services/witness/.railway/railway.ts`'
+          } >> "$GITHUB_STEP_SUMMARY"

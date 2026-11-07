@@ -48,6 +48,8 @@ They read `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_REGION` from the
 | `drift.sh start <leg A url>` | Starts a 24 h clock-drift job on the parent as a systemd unit (`keelson-clock-drift`): every 5 minutes it compares the engine clock in `/v1/health` of both legs with the parent's chrony-synced clock and logs one JSON line to `/var/log/keelson-clock-drift.jsonl`. `summary`, `log` and `stop` read or end it. |
 | `check.sh`                   | Asserts one `RUNNING` enclave outside debug mode with the PCRs of `eif.json`, and that `https://tee-b.keelson.finance/v1/health` answers `tee: 2` (`TeeKind::Nitro`) for the same image digest.                                                                                                                    |
 
+The parent also runs witness 3 of the Alibi log in its own container, outside the enclave; see [`services/witness`](../../../services/witness).
+
 `parent/` holds what runs on the instance: `user-data.sh` (packages, pinned Caddy and Node, units), `allocator.yaml` (2 vCPUs, 1024 MiB), `Caddyfile`, the three units and `boot.ts`.
 
 ## Tests

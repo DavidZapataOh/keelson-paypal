@@ -172,6 +172,7 @@ jobs:
       - run: go test -tags live -run Live -v ./services/log/
         env:
           LOG_URL: https://log.keelson.finance
+          LOG_SIGNER_KEY_CONFORMANCE: ${{ secrets.LOG_SIGNER_KEY_CONFORMANCE }}
 
   secrets:
     runs-on: ubuntu-24.04

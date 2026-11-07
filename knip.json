@@ -41,6 +41,9 @@
       "entry": ["src/index.ts!", "src/generated/hashes.ts!", "scripts/*.ts", "bench/*.bench.ts"],
       "project": ["src/**/*.ts!", "scripts/**/*.ts", "bench/**/*.ts", "test/**/*.ts"]
     },
+    "services/witness": {
+      "entry": [".railway/railway.ts"]
+    },
     "services/api": {
       "entry": ["src/server.ts!", "scripts/*.ts", "bench/*.bench.ts"],
       "project": ["src/**/*.ts!", "scripts/**/*.ts", "bench/**/*.ts", "test/**/*.ts"]

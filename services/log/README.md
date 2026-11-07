@@ -26,11 +26,11 @@ witnesses, and an append that no witnessed checkpoint covers answers `503`. The 
 [litewitness](../witness) and refuse any checkpoint that is not consistent with the last one they
 cosigned.
 
-| Witness                     | Provider                 |
-| --------------------------- | ------------------------ |
-| `witness-1.keelson.finance` | Render (Oregon)          |
-| `witness-2.keelson.finance` | Railway (US West)        |
-| `witness-3.keelson.finance` | AWS EC2 (`us-west-2`)    |
+| Witness                     | Provider              |
+| --------------------------- | --------------------- |
+| `witness-1.keelson.finance` | Render (Oregon)       |
+| `witness-2.keelson.finance` | Railway (US West)     |
+| `witness-3.keelson.finance` | AWS EC2 (`us-west-2`) |
 
 Each origin publishes its policy at `https://<origin>/policy`, in the
 [Sigsum policy format](https://git.glasklar.is/sigsum/core/sigsum-go/-/blob/main/doc/policy.md) that
@@ -42,7 +42,7 @@ policy, _ := torchwood.ParsePolicy(policyFile)
 checkpoint, _, err := torchwood.VerifyCheckpoint(signedCheckpoint, policy)
 ```
 
-`log.keelson.finance/conformance/2026-1` is a test-only log the witnesses also cosign. Entry *i* is
+`log.keelson.finance/conformance/2026-1` is a test-only log the witnesses also cosign. Entry _i_ is
 `keelson conformance <i>` ([`internal/conformance`](../../internal/conformance)), so a client holding
 its key can rebuild the tree at any size and check that every witness refuses forks and rollbacks.
 Its key is [`keys/conformance-2026-1.vkey`](keys/conformance-2026-1.vkey); it holds no Alibis.
@@ -100,17 +100,17 @@ go test -tags live -run Live -v ./services/log/
 
 ## Run
 
-| Variable                                        |                                                                  |
-| ----------------------------------------------- | ---------------------------------------------------------------- |
-| `LOG_DATA_DIR`                                  | Directory of the logs; each origin uses `<dir>/<origin path>`    |
+| Variable                                        |                                                                          |
+| ----------------------------------------------- | ------------------------------------------------------------------------ |
+| `LOG_DATA_DIR`                                  | Directory of the logs; each origin uses `<dir>/<origin path>`            |
 | `LOG_POLICY_DIR`                                | Witness policies, `<origin path with - for />.policy` (image: `policy/`) |
-| `PORT`                                          | Public listener, read-only (default `10000`)                     |
-| `LOG_PRIVATE_ADDR`                              | Write listener, `POST /<origin path>/add` (default `:8081`)      |
-| `DATABASE_URL`                                  | Postgres with the API's `tee_signers` and `purchases`, read only |
-| `KEELSON_VERIFYING_CONTRACT`                    | `verifyingContract` of the `Countersign` EIP-712 domain          |
-| `LOG_WRITE_TOKEN_SHA256`                        | Hex SHA-256 of the bearer token the API writes with              |
-| `LOG_SIGNER_KEY_SANDBOX`, `LOG_SIGNER_KEY_LIVE` | Ed25519 note signer keys                                         |
-| `LOG_MLDSA_SEED_SANDBOX`, `LOG_MLDSA_SEED_LIVE` | Base64 32-byte ML-DSA-44 seeds                                   |
+| `PORT`                                          | Public listener, read-only (default `10000`)                             |
+| `LOG_PRIVATE_ADDR`                              | Write listener, `POST /<origin path>/add` (default `:8081`)              |
+| `DATABASE_URL`                                  | Postgres with the API's `tee_signers` and `purchases`, read only         |
+| `KEELSON_VERIFYING_CONTRACT`                    | `verifyingContract` of the `Countersign` EIP-712 domain                  |
+| `LOG_WRITE_TOKEN_SHA256`                        | Hex SHA-256 of the bearer token the API writes with                      |
+| `LOG_SIGNER_KEY_SANDBOX`, `LOG_SIGNER_KEY_LIVE` | Ed25519 note signer keys                                                 |
+| `LOG_MLDSA_SEED_SANDBOX`, `LOG_MLDSA_SEED_LIVE` | Base64 32-byte ML-DSA-44 seeds                                           |
 
 `KEELSON_VERIFYING_CONTRACT` must equal the API's `verifyingContract`; when the contract is
 deployed, both change together, or every leaf is refused with `countersign.digest`.
