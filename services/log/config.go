@@ -15,6 +15,10 @@ import (
 	"filippo.io/torchwood"
 	"github.com/transparency-dev/tessera"
 	"golang.org/x/mod/sumdb/note"
+	sigsumcrypto "sigsum.org/sigsum-go/pkg/crypto"
+	"sigsum.org/sigsum-go/pkg/key"
+	"sigsum.org/sigsum-go/pkg/policy"
+	"sigsum.org/sigsum-go/pkg/submit"
 )
 
 // host is the public name every origin is served under.
@@ -50,6 +54,9 @@ type config struct {
 	// Policies are the witness policies of each origin, in the Sigsum policy
 	// format: the log keys, the witnesses and the quorum every checkpoint needs.
 	Policies map[string][]byte
+	// Sigsum co-logs checkpoints when SIGSUM_SUBMIT_KEY is set.
+	Sigsum       *submit.Config
+	SigsumSigner sigsumcrypto.Signer
 }
 
 func loadConfig(getenv func(string) string) (*config, error) {
@@ -95,6 +102,18 @@ func loadConfig(getenv func(string) string) (*config, error) {
 			return nil, fmt.Errorf("%s: witness policy: %w", o.Name, err)
 		}
 		c.Policies[o.Name] = p
+	}
+	if k := getenv("SIGSUM_SUBMIT_KEY"); k != "" {
+		signer, _, err := key.ParsePrivateKey(k)
+		if err != nil {
+			return nil, fmt.Errorf("SIGSUM_SUBMIT_KEY: %w", err)
+		}
+		p, err := policy.ReadPolicyFile(filepath.Join(policyDir, "sigsum-seasalp.policy"))
+		if err != nil {
+			return nil, err
+		}
+		c.SigsumSigner = signer
+		c.Sigsum = &submit.Config{Domain: sigsumDomain, RateLimitSigner: signer, Policy: p, UserAgent: "keelson-log"}
 	}
 	return c, nil
 }

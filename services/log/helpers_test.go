@@ -307,6 +307,11 @@ func startLog(t testing.TB, keys testKeys, dataDir string, db *pgxpool.Pool, dbU
 		}
 		s.origins = append(s.origins, o)
 	}
+	if cfg.Sigsum != nil {
+		if s.colog, err = newCoLogger(cfg.Sigsum, cfg.SigsumSigner, cfg.DataDir, s.log); err != nil {
+			t.Fatal(err)
+		}
+	}
 	l := &testLog{s: s, public: httptest.NewServer(s.public()), private: httptest.NewServer(s.private())}
 	t.Cleanup(l.public.Close)
 	t.Cleanup(l.private.Close)

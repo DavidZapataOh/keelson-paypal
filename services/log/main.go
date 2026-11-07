@@ -47,6 +47,12 @@ func run(log *slog.Logger) error {
 		}
 		s.origins = append(s.origins, o)
 	}
+	if cfg.Sigsum != nil {
+		if s.colog, err = newCoLogger(cfg.Sigsum, cfg.SigsumSigner, cfg.DataDir, log); err != nil {
+			return err
+		}
+		go s.colog.run(ctx, s.origins)
+	}
 
 	servers := newServers(cfg, s)
 	errc := make(chan error, len(servers))
