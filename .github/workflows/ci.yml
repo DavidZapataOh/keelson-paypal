@@ -35,12 +35,39 @@ jobs:
           status=0
           grep -rEn "paypalMockResponse|PayPal-Mock-Response" packages services apps --exclude-dir=node_modules --exclude-dir=dist || status=$?
           test "$status" -eq 1
-      - run: pnpm turbo run typecheck test build --filter='!./packages/db' --filter='!./services/api' --cache-dir=.turbo
+      - run: pnpm turbo run typecheck test build --filter='!./packages/db' --filter='!./packages/attest' --filter='!./services/api' --cache-dir=.turbo
       - run: |
           pnpm --filter @keelson/core vectors
           pnpm --filter @keelson/mandate vectors
           pnpm --filter @keelson/policy vectors
           test -z "$(git status --porcelain)"
+
+  attest:
+    runs-on: ubuntu-24.04
+    services:
+      # dstack-verifier 0.6.3; it downloads the OS image the quote names.
+      verifier:
+        image: ghcr.io/dstack-tee/dstack-verifier:0.6.3@sha256:22aeb6808e38a56115f843d4d66f4852407e72f6080d5f8781fd82d9f819db41
+        ports:
+          - 8080:8080
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @keelson/attest exec playwright install chromium
+      - run: pnpm turbo run typecheck test build --filter=@keelson/attest
+      - name: The captured evidence verifies the same way with dstack-verifier
+        working-directory: packages/attest
+        run: >
+          node scripts/dstack-verify.ts http://localhost:8080
+          test/evidence/tdx-leg-a.json test/evidence/nitro-leg-b.json
+      - name: Verification time and bundle size
+        working-directory: packages/attest
+        run: pnpm bench | tee -a "$GITHUB_STEP_SUMMARY"
 
   services:
     runs-on: ubuntu-24.04
