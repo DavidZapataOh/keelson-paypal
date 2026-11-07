@@ -75,7 +75,17 @@ describe("measurements", () => {
       },
       { now: tdxNow },
     );
-    const concat = [tdx.mrtd, ...tdx.rtmr].map((h) => h.slice(2)).join("");
+    const concat = [
+      tdx.mrtd,
+      tdx.rtmr[0],
+      tdx.rtmr[1],
+      tdx.rtmr[2],
+      tdx.appId,
+      tdx.composeHash,
+      tdx.osImageHash,
+    ]
+      .map((h) => h?.slice(2))
+      .join("");
     expect(tdxMeasurement(tdx)).toBe(
       `tdx:${createHash("sha256").update(Buffer.from(concat, "hex")).digest("hex")}`,
     );
@@ -86,6 +96,51 @@ describe("measurements", () => {
     expect(nitroMeasurement(nitro)).toBe(
       `nitro:${createHash("sha256").update(Buffer.from(pcrs, "hex")).digest("hex")}`,
     );
+  });
+});
+
+describe("the tdx measurement", () => {
+  const measured = () =>
+    verifyTdx(
+      {
+        quote: Buffer.from(tdxEvidence.attestation.quote, "hex"),
+        eventLog: tdxEvidence.attestation.event_log,
+        collateral: tdxEvidence.collateral,
+      },
+      { now: tdxNow },
+    );
+
+  test("does not depend on RTMR3, which holds the instance id", async () => {
+    const tdx = await measured();
+    const other = {
+      ...tdx,
+      rtmr: [tdx.rtmr[0], tdx.rtmr[1], tdx.rtmr[2], `0x${"11".repeat(48)}`] as const,
+    };
+    expect(tdxMeasurement(other)).toBe(tdxMeasurement(tdx));
+  });
+
+  test.each([
+    ["mrtd", () => `0x${"22".repeat(48)}`],
+    ["appId", () => `0x${"33".repeat(20)}`],
+    ["composeHash", () => `0x${"44".repeat(32)}`],
+    ["osImageHash", () => `0x${"55".repeat(32)}`],
+  ] as const)("changes with %s", async (field, value) => {
+    const tdx = await measured();
+    expect(tdxMeasurement({ ...tdx, [field]: value() })).not.toBe(tdxMeasurement(tdx));
+  });
+
+  test("changes with each of RTMR0 to RTMR2", async () => {
+    const tdx = await measured();
+    for (const i of [0, 1, 2]) {
+      const rtmr = [...tdx.rtmr] as typeof tdx.rtmr;
+      rtmr[i] = `0x${"66".repeat(48)}`;
+      expect(tdxMeasurement({ ...tdx, rtmr })).not.toBe(tdxMeasurement(tdx));
+    }
+  });
+
+  test("is refused when the log has no OS image hash", async () => {
+    const tdx = await measured();
+    expect(() => tdxMeasurement({ ...tdx, osImageHash: null })).toThrow(AttestError);
   });
 });
 

@@ -224,6 +224,15 @@ importers:
 
   engine/tee:
     dependencies:
+      '@keelson/attest':
+        specifier: workspace:*
+        version: link:../../packages/attest
+      '@keelson/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@keelson/policy':
+        specifier: workspace:*
+        version: link:../../packages/policy
       '@phala/cloud':
         specifier: 0.4.0
         version: 0.4.0(@noble/curves@1.9.1)(@noble/hashes@1.8.0)(supports-color@7.2.0)(typescript@7.0.2)

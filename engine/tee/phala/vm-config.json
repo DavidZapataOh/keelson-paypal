@@ -1,0 +1,14 @@
+{
+  "qemu_single_pass_add_pages": true,
+  "pic": true,
+  "qemu_version": "8.2.2",
+  "pci_hole64_size": 0,
+  "hugepages": false,
+  "num_gpus": 0,
+  "num_nvswitches": 0,
+  "hotplug_off": false,
+  "host_share_mode": "9p",
+  "ovmf_variant": "pre202505",
+  "tdx_attestation_variant": "lite",
+  "spec_version": 1
+}

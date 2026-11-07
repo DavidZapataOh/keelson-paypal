@@ -7,6 +7,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@keelson/attest": "workspace:*",
+    "@keelson/core": "workspace:*",
+    "@keelson/policy": "workspace:*",
     "@phala/cloud": "0.4.0",
     "@phala/dcap-qvl": "0.7.1"
   },

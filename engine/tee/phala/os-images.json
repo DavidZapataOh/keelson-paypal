@@ -1,0 +1,8 @@
+{
+  "dstack-0.6.1": {
+    "release": "mkosi-os-v0.6.1",
+    "sha256": "7583f51c717011b8086c2dd4d1e73fbbe7bf2d6d2420b90858d538c26efcca41",
+    "os_image_hash": "ec43cb8c5e04b6bb6c53b33b16076a01d83d01f7f4b703f2f78a0d947d6247e6",
+    "revision": "7f143148cc49f4a09799958835d310e050137cb3"
+  }
+}
