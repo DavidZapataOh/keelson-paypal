@@ -158,8 +158,8 @@ jobs:
           ACTOR: ${{ github.actor }}
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          docker run --rm -e ACTOR -e TOKEN -v "$RUNNER_TEMP/oci:/work" "$SKOPEO_IMAGE" \
-            sh -c 'skopeo copy --all --preserve-digests --dest-creds "$ACTOR:$TOKEN" --digestfile /work/pushed \
+          docker run --rm -e ACTOR -e TOKEN -v "$RUNNER_TEMP/oci:/work" --entrypoint sh "$SKOPEO_IMAGE" \
+            -c 'skopeo copy --all --preserve-digests --dest-creds "$ACTOR:$TOKEN" --digestfile /work/pushed \
               oci-archive:/work/keelson-engine.tar "docker://$0"' "$IMAGE:$GITHUB_SHA"
           built="$(cat "$RUNNER_TEMP/oci/digest")"
           test "$(cat "$RUNNER_TEMP/oci/pushed")" = "$built"
