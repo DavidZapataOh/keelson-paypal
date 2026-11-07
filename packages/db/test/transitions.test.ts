@@ -57,6 +57,15 @@ test("every allowed purchase transition succeeds", async () => {
   }
 });
 
+test("a failed purchase can be driven again, and no other terminal one", async () => {
+  const failed = await newPurchase("FAILED");
+  expect(await transition(db, "purchases", failed.id, "FAILED", "EVALUATING")).toBe(true);
+  const denied = await newPurchase("DENIED");
+  await expect(
+    pool.query("update purchases set state = 'EVALUATING' where id = $1", [denied.id]),
+  ).rejects.toMatchObject({ code: "P0001" });
+});
+
 test("a mandate and a dispute walk their paths", async () => {
   const purchase = await newPurchase();
   const mandateId = purchase.mandateId;

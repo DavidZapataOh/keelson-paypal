@@ -8,6 +8,7 @@ import {
   smallint,
   text,
   timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { bytea, createdAt } from "./types.ts";
 
@@ -31,6 +32,9 @@ export const teeSigners = pgTable(
   (t) => [
     check("tee_signers_address_len", sql`octet_length(${t.address}) = 20`),
     check("tee_signers_tee_kind_valid", sql`${t.teeKind} in (1, 2)`),
+    uniqueIndex("tee_signers_active_tee_kind_uidx")
+      .on(t.teeKind)
+      .where(sql`${t.revokedAt} is null`),
   ],
 );
 

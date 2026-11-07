@@ -9,12 +9,13 @@ import {
   operators,
   passkey,
   purchases,
+  teeSigners,
   user,
   verdicts,
 } from "../src/index.ts";
 import { testDb } from "./setup.ts";
 
-const { db } = testDb;
+const { db, pool } = testDb;
 const ulid = (): string =>
   Array.from(randomBytes(26), (b) => "0123456789ABCDEFGHJKMNPQRSTVWXYZ"[b % 32]).join("");
 const hash = (): Buffer => randomBytes(32);
@@ -216,4 +217,37 @@ test("a passkey counter holds any WebAuthn signCount (uint32)", async () => {
     })
     .returning();
   expect(row?.counter).toBe(2 ** 32 - 1);
+});
+
+const signer = (teeKind: number, revokedAt: Date | null = null) => ({
+  address: randomBytes(20),
+  teeKind,
+  measurement: "tdx:00",
+  binding: {},
+  attestation: {},
+  expiresAt: new Date(Date.now() + 3_600_000),
+  revokedAt,
+});
+
+test("a TEE kind has at most one active signer", async () => {
+  await db.insert(teeSigners).values(signer(1));
+  expect(await sqlState(db.insert(teeSigners).values(signer(1)))).toBe("23505");
+  await db.insert(teeSigners).values(signer(2));
+  await db.insert(teeSigners).values(signer(1, new Date()));
+  await db.insert(teeSigners).values(signer(1, new Date()));
+});
+
+test("a purchase records only a known countersign mode", async () => {
+  const purchase = await db.query.purchases.findFirst();
+  const row = async (mode: string) =>
+    sqlState(
+      pool.query(
+        "update purchases set countersign_mode = $1 where id = (select id from purchases limit 1)",
+        [mode],
+      ),
+    );
+  expect(purchase === undefined || purchase.countersignMode === null).toBe(true);
+  expect(await row("2of2")).toBeUndefined();
+  expect(await row("degraded")).toBeUndefined();
+  expect(await row("solo")).toBe("23514");
 });
