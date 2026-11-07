@@ -59,6 +59,8 @@ class RegistrationError extends Error {}
  * Fetches the leg's attestation, verifies it, and admits its signer. The previous signer of the
  * leg is marked superseded. Both legs must attest the pinned issuer; without a pin, leg B takes
  * the one leg A's registered signer attests and is refused when there is none.
+ *
+ * @internal
  */
 export async function registerLeg(
   db: Db,

@@ -24,6 +24,8 @@ const PayPalObservationSchema = z.strictObject({
 /**
  * What leg A observed and leg B signs over, forwarded to leg B as received. It has exactly the
  * engine's fields: nothing leg A did not read may ride along.
+ *
+ * @internal
  */
 export const ObservationSchema = z.strictObject({
   now_ms: z.number().int(),
