@@ -1041,21 +1041,24 @@ components:
                 type: string
               media_type:
                 type: string
-              content_hash:
+              leaf:
                 type: string
                 pattern: ^0x[0-9a-f]{64}$
+                description: '`SHA-256(0x00 ‖ "keelson/evidence-item/v1" ‖ salt ‖ type ‖ 0x00 ‖
+                  media_type ‖ 0x00 ‖ content_hash)`.'
             required:
               - type
               - media_type
-              - content_hash
+              - leaf
           minItems: 1
           maxItems: 18
       required:
         - v
         - root
         - items
-      description: Type, media type and content hash of every item; `root` is the
-        `evidenceRoot`.
+      description: Type, media type and salted leaf of every item, in order; `root` is
+        the RFC 6962 tree hash of the leaves and the `evidenceRoot`. Content
+        hashes and salts are only given in a disclosure.
     DisclosedEvidence:
       type: object
       properties:
@@ -1510,8 +1513,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
         "409":
-          description: The mandate is not active, the evidence root is not stored for it,
-            or the request was already used
+          description: The mandate is not active, the evidence root is not stored for it
+            or already binds another purchase, or the request was already used
           content:
             application/problem+json:
               schema:
@@ -1523,7 +1526,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
         "422":
-          description: The request is invalid
+          description: The request is invalid, or the evidence holds another cart
           content:
             application/problem+json:
               schema:
@@ -1551,10 +1554,11 @@ paths:
       tags:
         - evidence
       summary: Store sealed evidence
-      description: Stores what the agent saw at decision time. The manifest is rebuilt
-        from the items and must match, and no public item may still hold an
-        email address or phone number. A countersign may only bind a stored
-        root.
+      description: Stores what the agent saw at decision time for an active mandate.
+        The manifest is rebuilt from the items and must match, every item has
+        its own salt, no public item may still hold an email address or phone
+        number, and every `.original` must open with the evidence identity. A
+        countersign may only bind a stored root, once.
       parameters:
         - schema:
             type: string
@@ -1589,7 +1593,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
         "409":
-          description: The root is stored for another mandate
+          description: The mandate is not active, holds the most bundles it may, or the
+            root is stored for another mandate
           content:
             application/problem+json:
               schema:
@@ -1601,7 +1606,14 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
         "422":
-          description: The items do not build the manifest, or a public item holds PII
+          description: The items do not build the manifest, a public item holds PII, or an
+            original does not open
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Too many uploads for this mandate
           content:
             application/problem+json:
               schema:
@@ -1611,7 +1623,7 @@ paths:
       tags:
         - evidence
       summary: Read an evidence manifest
-      description: The public manifest of a stored bundle. Salts and bytes are not included.
+      description: "The public manifest of a stored bundle: salted leaves only."
       parameters:
         - schema:
             type: string
@@ -1637,9 +1649,10 @@ paths:
       tags:
         - evidence
       summary: Disclose one evidence item
-      description: One item with its salt and inclusion proof, for an arbiter. An
-        `.original` item stays age ciphertext unless `decrypt=1` is sent with
-        the `evidence:decrypt` scope.
+      description: One item with its content hash, salt and inclusion proof, for an
+        arbiter. Every disclosure is recorded with its `reason`. An `.original`
+        item stays age ciphertext unless `decrypt=1` is sent with the
+        `evidence:decrypt` scope.
       parameters:
         - schema:
             type: string
@@ -1656,6 +1669,15 @@ paths:
           required: true
           name: index
           in: path
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 256
+            description: Why the item is opened, such as the dispute it serves.
+          required: true
+          description: Why the item is opened, such as the dispute it serves.
+          name: reason
+          in: query
         - schema:
             type: string
             enum:
@@ -1683,7 +1705,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
         "422":
-          description: Only an `.original` item can be decrypted
+          description: The item is not an `.original`, or it does not open with the
+            evidence identity
           content:
             application/problem+json:
               schema:

@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   char,
   check,
   index,
@@ -20,8 +21,10 @@ export const evidenceBundles = pgTable(
     mandateId: char({ length: 26 })
       .notNull()
       .references(() => mandates.id),
-    /** The public manifest: type, media type and content hash of every item, no salts. */
+    /** The public manifest: type, media type and salted leaf of every item. */
     manifest: jsonb().notNull(),
+    /** The OAuth client that stored the bundle. */
+    uploadedBy: text().notNull(),
     createdAt: createdAt(),
   },
   (t) => [
@@ -48,5 +51,25 @@ export const evidenceItems = pgTable(
     primaryKey({ name: "evidence_items_root_index_pk", columns: [t.root, t.index] }),
     check("evidence_items_content_hash_len", sql`octet_length(${t.contentHash}) = 32`),
     check("evidence_items_salt_len", sql`octet_length(${t.salt}) = 32`),
+  ],
+);
+
+/** Every disclosure and decryption of an item, and why it was asked for. */
+export const evidenceAccess = pgTable(
+  "evidence_access",
+  {
+    id: bigint({ mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+    root: bytea()
+      .notNull()
+      .references(() => evidenceBundles.root, { onDelete: "cascade" }),
+    index: smallint().notNull(),
+    client: text().notNull(),
+    action: text().notNull(),
+    reason: text().notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check("evidence_access_action_valid", sql`${t.action} in ('disclose', 'decrypt')`),
+    index("evidence_access_root_idx").on(t.root),
   ],
 );

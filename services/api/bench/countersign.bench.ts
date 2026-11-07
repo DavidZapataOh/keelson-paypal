@@ -10,7 +10,7 @@ import { LegClient } from "../src/tee/client.ts";
 import { createTee } from "../src/tee/config.ts";
 import { countersign2of2 } from "../src/tee/coordinator.ts";
 import { refreshLeg } from "../src/tee/signers.ts";
-import { uploadEvidence } from "../test/evidence.ts";
+import { EvidenceUploader } from "../test/evidence.ts";
 import {
   asAgent,
   asUser,
@@ -179,7 +179,8 @@ try {
   const created = await post("/v1/mandates", first.body, asUser(first.sub));
   if (created.status !== 201) throw new Error(`mandate not stored: ${created.status}`);
   const { id: mandateId } = (await created.json()) as { id: string };
-  const evidenceRoot = await uploadEvidence(app, mandateId, asAgent);
+  // Each countersign binds a root of its own, stored before the timed request.
+  const evidence = new EvidenceUploader();
   const issue = async () => {
     const fresh = await registerMandate(tee.client.a, passkey);
     await db
@@ -202,7 +203,7 @@ try {
       closedMandate: r.closed_mandate,
       cart: r.cart,
       unit: r.unit,
-      evidenceRoot,
+      evidenceRoot: await evidence.upload(app, mandateId, r.cart, asAgent),
     };
   };
 
@@ -221,6 +222,7 @@ try {
     `POST /v1/countersign, demo cart, in process (${route.length} samples): ${summary(route)}`,
   );
   console.log(`outcomes: ${JSON.stringify(modes)}`);
+  await evidence.close();
 
   const edge: number[] = [];
   if (process.env.API_URL) {

@@ -2,7 +2,7 @@ import type { OpenAPIHono } from "@hono/zod-openapi";
 import type { PiiValues } from "@keelson/evidence";
 import { type Capture, captureEvidence, startRecorder } from "@keelson/evidence/capture";
 import { generateHybridIdentity, identityToRecipient } from "age-encryption";
-import { chromium } from "playwright";
+import { type Browser, chromium } from "playwright";
 import { ulid } from "ulid";
 import { serve } from "../../../packages/evidence/test/server.ts";
 
@@ -12,37 +12,51 @@ export async function ageKeys(): Promise<{ identity: string; recipient: string }
   return { identity, recipient: await identityToRecipient(identity) };
 }
 
-/**
- * Captures a store page in Chromium the way the agent's driver does. `fill` types into the
- * page's fields before the capture.
- */
-export async function capturePage(
-  path: "product.html" | "checkout.html",
-  opts: { recipient: string; pii?: PiiValues; fill?: Record<string, string> },
-): Promise<Capture> {
-  const [browser, site] = await Promise.all([chromium.launch(), serve()]);
-  try {
-    const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
-    const page = await context.newPage();
-    const recorder = await startRecorder(page);
-    await page.goto(`${site.url}/${path}`);
-    await page.locator("body[data-ready]").waitFor({ state: "attached" });
-    for (const [selector, value] of Object.entries(opts.fill ?? {})) {
-      await page.locator(selector).fill(value);
+interface CaptureOptions {
+  recipient: string;
+  pii?: PiiValues;
+  /** Typed into the page's fields before the capture. */
+  fill?: Record<string, string>;
+  /** The cart the agent read; the store's own cart response when absent. */
+  cart?: unknown;
+}
+
+/** Captures the store pages in one Chromium the way the agent's driver does. */
+export class StoreCapture {
+  private browser?: Browser;
+  private site?: Awaited<ReturnType<typeof serve>>;
+
+  async capture(path: "product.html" | "checkout.html", opts: CaptureOptions): Promise<Capture> {
+    this.browser ??= await chromium.launch();
+    this.site ??= await serve();
+    const site = this.site;
+    const context = await this.browser.newContext({ viewport: { width: 1280, height: 720 } });
+    try {
+      const page = await context.newPage();
+      const recorder = await startRecorder(page);
+      await page.goto(`${site.url}/${path}`);
+      await page.locator("body[data-ready]").waitFor({ state: "attached" });
+      for (const [selector, value] of Object.entries(opts.fill ?? {})) {
+        await page.locator(selector).fill(value);
+      }
+      const product = await (await fetch(`${site.url}/api/product.json`)).json();
+      const cart = opts.cart ?? (await (await fetch(`${site.url}/api/cart.json`)).json());
+      const llmObservation = await page.locator("body").ariaSnapshot();
+      return await captureEvidence(recorder, {
+        product,
+        cart,
+        llmObservation,
+        recipient: opts.recipient,
+        ...(opts.pii ? { pii: opts.pii } : {}),
+      });
+    } finally {
+      await context.close();
     }
-    const product = await (await fetch(`${site.url}/api/product.json`)).json();
-    const cart = await (await fetch(`${site.url}/api/cart.json`)).json();
-    const llmObservation = await page.locator("body").ariaSnapshot();
-    return await captureEvidence(recorder, {
-      product,
-      cart,
-      llmObservation,
-      recipient: opts.recipient,
-      ...(opts.pii ? { pii: opts.pii } : {}),
-    });
-  } finally {
-    await browser.close();
-    await site.close();
+  }
+
+  async close(): Promise<void> {
+    await this.browser?.close();
+    await this.site?.close();
   }
 }
 
@@ -60,18 +74,36 @@ export function uploadBody(mandateId: string, capture: Pick<Capture, "manifest" 
   };
 }
 
-/** Captures the store's product page and stores it for `mandateId`; returns its root. */
-export async function uploadEvidence(
-  app: Pick<OpenAPIHono, "request">,
-  mandateId: string,
-  headers: Record<string, string>,
-): Promise<`0x${string}`> {
-  const capture = await capturePage("product.html", await ageKeys());
-  const res = await app.request("/v1/evidence", {
-    method: "POST",
-    headers: { "content-type": "application/json", "idempotency-key": ulid(), ...headers },
-    body: JSON.stringify(uploadBody(mandateId, capture)),
-  });
-  if (res.status !== 201) throw new Error(`evidence not stored: ${res.status} ${await res.text()}`);
-  return ((await res.json()) as { evidenceRoot: `0x${string}` }).evidenceRoot;
+/**
+ * Stores evidence for the countersign of `cart`: each call captures the product page with that
+ * cart and fresh salts, so each countersign binds a root of its own.
+ */
+export class EvidenceUploader {
+  private readonly store = new StoreCapture();
+  private keys?: { recipient: string };
+
+  async upload(
+    app: Pick<OpenAPIHono, "request">,
+    mandateId: string,
+    cart: unknown,
+    headers: Record<string, string>,
+  ): Promise<`0x${string}`> {
+    this.keys ??= await ageKeys();
+    const capture = await this.store.capture("product.html", {
+      recipient: this.keys.recipient,
+      cart,
+    });
+    const res = await app.request("/v1/evidence", {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": ulid(), ...headers },
+      body: JSON.stringify(uploadBody(mandateId, capture)),
+    });
+    if (res.status !== 201)
+      throw new Error(`evidence not stored: ${res.status} ${await res.text()}`);
+    return ((await res.json()) as { evidenceRoot: `0x${string}` }).evidenceRoot;
+  }
+
+  close(): Promise<void> {
+    return this.store.close();
+  }
 }

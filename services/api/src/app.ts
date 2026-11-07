@@ -14,6 +14,7 @@ import type { RedisClientType } from "redis";
 import { ulid } from "ulid";
 import type { Auth } from "./auth.ts";
 import { requestLogger } from "./logger.ts";
+import { requireClient } from "./middleware/auth.ts";
 import { idempotency } from "./middleware/idempotency.ts";
 import { type RateLimitOptions, rateLimit } from "./middleware/rate-limit.ts";
 import { ProblemSchema, problem } from "./problem.ts";
@@ -106,6 +107,8 @@ export function createApp(deps: Deps): OpenAPIHono {
     c.req.path === "/v1/evidence" ? evidenceBody(c, next) : smallBody(c, next),
   );
   if (deps.authenticate) app.use("/v1/*", deps.authenticate);
+  // An upload is refused before its body is read or fingerprinted.
+  app.on("POST", "/v1/evidence", requireClient(["evidence:write"]));
   app.use("/v1/*", rateLimit(deps.kv, deps.rateLimit));
   app.use("/v1/*", idempotency(deps.kv, deps.log));
   app.use(

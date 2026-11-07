@@ -35,6 +35,7 @@ const tee =
         KEELSON_ISSUER_THUMBPRINT: env.KEELSON_ISSUER_THUMBPRINT,
       })
     : undefined;
+// The environment sets both or neither; the identity must open what agents seal to the recipient.
 if (env.KEELSON_EVIDENCE_AGE_IDENTITY && env.KEELSON_EVIDENCE_AGE_RECIPIENT) {
   const recipient = await identityToRecipient(env.KEELSON_EVIDENCE_AGE_IDENTITY);
   if (recipient !== env.KEELSON_EVIDENCE_AGE_RECIPIENT) {

@@ -1,5 +1,5 @@
 {
-  "id": "1b038927-b086-49a2-b2d5-56185cf4c6b1",
+  "id": "b2da9a9d-d88d-420a-86d5-4c65d4ec2f7c",
   "prevId": "cb861dd0-2099-49fc-ad22-ef828c904fd1",
   "version": "7",
   "dialect": "postgresql",
@@ -1938,6 +1938,104 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.evidence_access": {
+      "name": "evidence_access",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "evidence_access_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "root": {
+          "name": "root",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "index": {
+          "name": "index",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "client": {
+          "name": "client",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "evidence_access_root_idx": {
+          "name": "evidence_access_root_idx",
+          "columns": [
+            {
+              "expression": "root",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "evidence_access_root_evidence_bundles_root_fk": {
+          "name": "evidence_access_root_evidence_bundles_root_fk",
+          "tableFrom": "evidence_access",
+          "tableTo": "evidence_bundles",
+          "columnsFrom": ["root"],
+          "columnsTo": ["root"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "evidence_access_action_valid": {
+          "name": "evidence_access_action_valid",
+          "value": "\"evidence_access\".\"action\" in ('disclose', 'decrypt')"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.evidence_bundles": {
       "name": "evidence_bundles",
       "schema": "",
@@ -1957,6 +2055,12 @@
         "manifest": {
           "name": "manifest",
           "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "uploaded_by": {
+          "name": "uploaded_by",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
@@ -2403,6 +2507,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "evidence_root": {
+          "name": "evidence_root",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
         "countersign_digest": {
           "name": "countersign_digest",
           "type": "bytea",
@@ -2557,6 +2667,11 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
+        "purchases_evidence_root_unique": {
+          "name": "purchases_evidence_root_unique",
+          "nullsNotDistinct": false,
+          "columns": ["evidence_root"]
+        },
         "purchases_countersign_digest_unique": {
           "name": "purchases_countersign_digest_unique",
           "nullsNotDistinct": false,

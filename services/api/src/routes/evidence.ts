@@ -1,6 +1,6 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { fromHex, toHex } from "@keelson/core";
-import { and, asc, eq, evidenceBundles, evidenceItems } from "@keelson/db";
+import { fromHex, sha256, toHex } from "@keelson/core";
+import { and, asc, eq, evidenceAccess, evidenceBundles, evidenceItems, sql } from "@keelson/db";
 import {
   buildManifest,
   containsPii,
@@ -18,22 +18,41 @@ import {
 import { Decrypter } from "age-encryption";
 import type { Deps } from "../app.ts";
 import { requireClient } from "../middleware/auth.ts";
+import { principalKey } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 
 const Hex32 = z.string().regex(/^0x[0-9a-f]{64}$/);
 const MAX_ITEMS = 2 * ITEM_TYPES.length;
+/**
+ * A mandate countersigns a bounded number of purchases, so it needs a bounded number of bundles.
+ * @internal
+ */
+export const EVIDENCE_BUNDLES_PER_MANDATE = 64;
+const RATE_PER_MANDATE = 120;
+const RATE_WINDOW_SEC = 60;
+const USABLE = new Set(["SIGNED", "HOLD_PENDING", "ACTIVE"]);
 
 const ManifestSchema = z
   .object({
     v: z.literal("keelson.manifest/1"),
     root: Hex32,
     items: z
-      .array(z.object({ type: z.string(), media_type: z.string(), content_hash: Hex32 }))
+      .array(
+        z.object({
+          type: z.string(),
+          media_type: z.string(),
+          leaf: Hex32.openapi({
+            description:
+              '`SHA-256(0x00 ‖ "keelson/evidence-item/v1" ‖ salt ‖ type ‖ 0x00 ‖ media_type ‖ 0x00 ‖ content_hash)`.',
+          }),
+        }),
+      )
       .min(1)
       .max(MAX_ITEMS),
   })
   .openapi("EvidenceManifest", {
-    description: "Type, media type and content hash of every item; `root` is the `evidenceRoot`.",
+    description:
+      "Type, media type and salted leaf of every item, in order; `root` is the RFC 6962 tree hash of the leaves and the `evidenceRoot`. Content hashes and salts are only given in a disclosure.",
   });
 
 const Upload = z
@@ -75,7 +94,7 @@ const upload = createRoute({
   tags: ["evidence"],
   summary: "Store sealed evidence",
   description:
-    "Stores what the agent saw at decision time. The manifest is rebuilt from the items and must match, and no public item may still hold an email address or phone number. A countersign may only bind a stored root.",
+    "Stores what the agent saw at decision time for an active mandate. The manifest is rebuilt from the items and must match, every item has its own salt, no public item may still hold an email address or phone number, and every `.original` must open with the evidence identity. A countersign may only bind a stored root, once.",
   middleware: [requireClient(["evidence:write"])],
   request: {
     headers: z.object({ "idempotency-key": z.string().min(1).max(255) }),
@@ -87,12 +106,18 @@ const upload = createRoute({
       content: { "application/json": { schema: z.object({ evidenceRoot: Hex32 }) } },
     },
     404: { description: "No such mandate", content: problemContent },
-    409: { description: "The root is stored for another mandate", content: problemContent },
-    413: { description: "The bundle is larger than 16 MiB", content: problemContent },
-    422: {
-      description: "The items do not build the manifest, or a public item holds PII",
+    409: {
+      description:
+        "The mandate is not active, holds the most bundles it may, or the root is stored for another mandate",
       content: problemContent,
     },
+    413: { description: "The bundle is larger than 16 MiB", content: problemContent },
+    422: {
+      description:
+        "The items do not build the manifest, a public item holds PII, or an original does not open",
+      content: problemContent,
+    },
+    429: { description: "Too many uploads for this mandate", content: problemContent },
   },
 });
 
@@ -101,7 +126,7 @@ const manifestRoute = createRoute({
   path: "/v1/evidence/{root}",
   tags: ["evidence"],
   summary: "Read an evidence manifest",
-  description: "The public manifest of a stored bundle. Salts and bytes are not included.",
+  description: "The public manifest of a stored bundle: salted leaves only.",
   request: { params: RootParam },
   responses: {
     200: {
@@ -118,7 +143,7 @@ const itemRoute = createRoute({
   tags: ["evidence"],
   summary: "Disclose one evidence item",
   description:
-    "One item with its salt and inclusion proof, for an arbiter. An `.original` item stays age ciphertext unless `decrypt=1` is sent with the `evidence:decrypt` scope.",
+    "One item with its content hash, salt and inclusion proof, for an arbiter. Every disclosure is recorded with its `reason`. An `.original` item stays age ciphertext unless `decrypt=1` is sent with the `evidence:decrypt` scope.",
   middleware: [requireClient(["evidence:disclose"])],
   request: {
     params: RootParam.extend({
@@ -129,7 +154,14 @@ const itemRoute = createRoute({
         .max(MAX_ITEMS - 1)
         .openapi({ param: { name: "index", in: "path", required: true } }),
     }),
-    query: z.object({ decrypt: z.enum(["1"]).optional() }),
+    query: z.object({
+      reason: z
+        .string()
+        .min(1)
+        .max(256)
+        .openapi({ description: "Why the item is opened, such as the dispute it serves." }),
+      decrypt: z.enum(["1"]).optional(),
+    }),
   },
   responses: {
     200: {
@@ -144,7 +176,10 @@ const itemRoute = createRoute({
     },
     403: { description: "Decrypting needs the `evidence:decrypt` scope", content: problemContent },
     404: { description: "No such bundle or item", content: problemContent },
-    422: { description: "Only an `.original` item can be decrypted", content: problemContent },
+    422: {
+      description: "The item is not an `.original`, or it does not open with the evidence identity",
+      content: problemContent,
+    },
     503: { description: "The evidence identity is not configured", content: problemContent },
   },
 });
@@ -157,7 +192,7 @@ function sameManifest(a: Manifest, b: z.infer<typeof ManifestSchema>): boolean {
       (x, k) =>
         x.type === b.items[k]?.type &&
         x.media_type === b.items[k]?.media_type &&
-        x.content_hash === b.items[k]?.content_hash,
+        x.leaf === b.items[k]?.leaf,
     )
   );
 }
@@ -167,14 +202,59 @@ function expectedMediaType(type: string): string | undefined {
   return MEDIA_TYPES[type as keyof typeof MEDIA_TYPES];
 }
 
+async function opens(identity: string, ciphertext: Uint8Array): Promise<Uint8Array | null> {
+  const d = new Decrypter();
+  d.addIdentity(identity);
+  try {
+    return await d.decrypt(ciphertext);
+  } catch {
+    return null;
+  }
+}
+
 export function registerEvidence(
   app: OpenAPIHono,
-  deps: Pick<Deps, "db" | "evidenceIdentity">,
+  deps: Pick<Deps, "db" | "kv" | "log" | "evidenceIdentity">,
 ): void {
-  const { db } = deps;
+  const { db, kv, log } = deps;
 
   app.openapi(upload, async (c) => {
     const body = c.req.valid("json");
+    const client = c.var.principal?.subject as string;
+
+    const mandate = await db.query.mandates.findFirst({
+      columns: { id: true, state: true },
+      where: (row, { eq }) => eq(row.id, body.mandateId),
+    });
+    if (!mandate) return problem(c, 404, "not-found", "Not found");
+    if (!USABLE.has(mandate.state)) {
+      return problem(
+        c,
+        409,
+        "mandate-not-active",
+        "Mandate not active",
+        "Evidence is only stored for a mandate that can countersign.",
+      );
+    }
+
+    const window = Math.floor(Date.now() / 1000 / RATE_WINDOW_SEC);
+    const key = `rl:evidence:${principalKey({ kind: "client", subject: client })}:${mandate.id}:${window}`;
+    try {
+      const [count] = await kv.multi().incr(key).expire(key, RATE_WINDOW_SEC, "NX").exec();
+      if (Number(count) > RATE_PER_MANDATE) {
+        c.header("Retry-After", String(RATE_WINDOW_SEC));
+        return problem(
+          c,
+          429,
+          "rate-limited",
+          "Too many requests",
+          "Too many uploads for this mandate.",
+        );
+      }
+    } catch {
+      // The bundle cap below still bounds what a mandate can hold.
+    }
+
     const items: SealedItem[] = [];
     for (const item of body.items) {
       const salt = Uint8Array.from(Buffer.from(item.salt, "base64"));
@@ -226,41 +306,51 @@ export function registerEvidence(
         `The public item ${leaking.type} holds an email address or phone number.`,
       );
     }
-
-    const mandate = await db.query.mandates.findFirst({
-      columns: { id: true },
-      where: (row, { eq }) => eq(row.id, body.mandateId),
-    });
-    if (!mandate) return problem(c, 404, "not-found", "Not found");
+    if (deps.evidenceIdentity) {
+      for (const item of items.filter((i) => i.type.endsWith(".original"))) {
+        if (!(await opens(deps.evidenceIdentity, item.bytes))) {
+          return problem(
+            c,
+            422,
+            "evidence-undecryptable",
+            "Evidence does not open",
+            `The item ${item.type} is not sealed to the evidence recipient.`,
+          );
+        }
+      }
+    }
 
     const root = Buffer.from(fromHex(rebuilt.root));
-    const stored = await db.transaction(async (tx) => {
-      const [inserted] = await tx
+    const outcome = await db.transaction(async (tx) => {
+      // Serializes uploads for one mandate so the cap holds under concurrency.
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${mandate.id}))`);
+      const [existing] = await tx
+        .select({ mandateId: evidenceBundles.mandateId })
+        .from(evidenceBundles)
+        .where(eq(evidenceBundles.root, root));
+      if (existing) return existing.mandateId === mandate.id ? "stored" : "other-mandate";
+      const [held] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(evidenceBundles)
+        .where(eq(evidenceBundles.mandateId, mandate.id));
+      if ((held?.n ?? 0) >= EVIDENCE_BUNDLES_PER_MANDATE) return "full";
+      await tx
         .insert(evidenceBundles)
-        .values({ root, mandateId: mandate.id, manifest: rebuilt })
-        .onConflictDoNothing()
-        .returning({ root: evidenceBundles.root });
-      if (!inserted) {
-        const [existing] = await tx
-          .select({ mandateId: evidenceBundles.mandateId })
-          .from(evidenceBundles)
-          .where(eq(evidenceBundles.root, root));
-        return existing?.mandateId === mandate.id;
-      }
+        .values({ root, mandateId: mandate.id, manifest: rebuilt, uploadedBy: client });
       await tx.insert(evidenceItems).values(
         items.map((item, index) => ({
           root,
           index,
           type: item.type,
           mediaType: item.mediaType,
-          contentHash: Buffer.from(fromHex(rebuilt.items[index]?.content_hash as string)),
+          contentHash: Buffer.from(sha256(item.bytes)),
           salt: Buffer.from(item.salt),
           bytes: Buffer.from(item.bytes),
         })),
       );
-      return true;
+      return "stored";
     });
-    if (!stored) {
+    if (outcome === "other-mandate") {
       return problem(
         c,
         409,
@@ -269,6 +359,16 @@ export function registerEvidence(
         "The root is stored for another mandate.",
       );
     }
+    if (outcome === "full") {
+      return problem(
+        c,
+        409,
+        "evidence-limit",
+        "Evidence limit reached",
+        `A mandate holds at most ${EVIDENCE_BUNDLES_PER_MANDATE} evidence bundles.`,
+      );
+    }
+    log.info({ root: rebuilt.root, mandateId: mandate.id, client }, "evidence stored");
     return c.json({ evidenceRoot: rebuilt.root }, 201);
   });
 
@@ -284,7 +384,8 @@ export function registerEvidence(
 
   app.openapi(itemRoute, async (c) => {
     const { root, index } = c.req.valid("param");
-    const { decrypt } = c.req.valid("query");
+    const { decrypt, reason } = c.req.valid("query");
+    const client = c.var.principal?.subject as string;
     if (decrypt && !c.var.principal?.scopes?.includes("evidence:decrypt")) {
       return problem(
         c,
@@ -308,22 +409,35 @@ export function registerEvidence(
       .orderBy(asc(evidenceItems.index));
     const row = rows[index];
     if (!row) return problem(c, 404, "not-found", "Not found");
+    if (decrypt && !row.type.endsWith(".original")) {
+      return problem(c, 422, "not-sealed", "Not sealed", "Only an .original item is encrypted.");
+    }
+    if (decrypt && !deps.evidenceIdentity) {
+      return problem(c, 503, "evidence-identity-unavailable", "Evidence identity unavailable");
+    }
     const [item] = await db
       .select({ bytes: evidenceItems.bytes })
       .from(evidenceItems)
       .where(and(eq(evidenceItems.root, key), eq(evidenceItems.index, index)));
     let bytes: Uint8Array = new Uint8Array(item?.bytes ?? []);
     if (decrypt) {
-      if (!row.type.endsWith(".original")) {
-        return problem(c, 422, "not-sealed", "Not sealed", "Only an .original item is encrypted.");
+      const plain = await opens(deps.evidenceIdentity as string, bytes);
+      if (!plain) {
+        return problem(
+          c,
+          422,
+          "evidence-undecryptable",
+          "Evidence does not open",
+          "The item does not open with the evidence identity.",
+        );
       }
-      if (!deps.evidenceIdentity) {
-        return problem(c, 503, "evidence-identity-unavailable", "Evidence identity unavailable");
-      }
-      const d = new Decrypter();
-      d.addIdentity(deps.evidenceIdentity);
-      bytes = await d.decrypt(bytes);
+      bytes = plain;
     }
+
+    const action = decrypt ? "decrypt" : "disclose";
+    await db.insert(evidenceAccess).values({ root: key, index, client, action, reason });
+    log.info({ root, index, client, action, reason }, "evidence opened");
+
     const leaves = rows.map((r) =>
       itemLeaf({
         type: r.type as ItemKind,
