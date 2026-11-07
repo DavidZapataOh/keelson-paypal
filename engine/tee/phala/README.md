@@ -25,16 +25,18 @@ The `tee-deploy` workflow does this from a digest published by `tee-image`:
 By hand, with `PHALA_CLOUD_API_KEY` set and the three variables in `engine.env`:
 
 ```sh
-npx phala@1.2.1 deploy -n keelson-engine -c docker-compose.yml -t tdx.small -r us-west \
-  --kms phala --no-public-logs -e engine.env
+npx phala@1.2.1 deploy -n keelson-engine -c docker-compose.yml -t tdx.small --kms phala \
+  --image dstack-0.6.1 --no-public-logs -e engine.env
 npx phala@1.2.1 deploy --cvm-id <app_id> -c docker-compose.yml -e engine.env --wait   # update
 ```
+
+`--image dstack-0.6.1` matters: without it Phala picks a dev OS image of dstack 0.5, which has no v1 guest API. Phala assigns the node (a US West node today).
 
 An update keeps the app id, so the KMS gives it the same root: credentials issued before it still verify, and the sealed records on the `data` volume are still there.
 
 ## Verify
 
-`tee-verify` takes the app id and the engine's URL (`https://<app_id>-8080.<gateway domain>`):
+`tee-verify` runs after a deploy and whenever `app.json` changes on `main`. It takes the app id (from `app.json` unless given) and finds the engine's URL, `https://<app_id>-8080.<gateway domain>`, from Phala:
 
 - `scripts/verify-tdx.ts` checks the quote against Intel's collateral with `@phala/dcap-qvl` (TCB status `UpToDate`; `SWHardeningNeeded` is accepted and printed with its advisories), replays the event log into RTMR3 and compares it with the quote, and compares the `compose-hash` event with the hash of the compose file Phala holds for the CVM.
 - `tests/tdx_live.rs`, against a `dstack-verifier` service container, checks that the attestation is valid and binds the signer to a recent Arbitrum Sepolia block.

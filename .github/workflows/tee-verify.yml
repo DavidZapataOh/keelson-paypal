@@ -2,7 +2,7 @@ name: tee-verify
 
 on:
   push:
-    branches: [feat/tdx-deploy]
+    branches: [main]
     paths:
       - engine/tee/phala/app.json
       - .github/workflows/tee-verify.yml
