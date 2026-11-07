@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 import { axBytes, normalizeAx } from "../ax.ts";
 import { canonicalBytes } from "../canonical.ts";
 import { COMPUTED_STYLES, type DomSnapshot, domBytes, normalizeDom } from "../dom.ts";
+import { detectHiddenText, type HiddenTextFinding } from "../hidden.ts";
 import { type ItemType, MEDIA_TYPES, type SealedItem } from "../items.ts";
 import { buildManifest, type Manifest } from "../manifest.ts";
 import { buildHar } from "./har.ts";
@@ -26,6 +27,8 @@ export interface CaptureInput {
 export interface Capture {
   manifest: Manifest;
   items: SealedItem[];
+  /** Text the agent could read and a person could not. */
+  findings: HiddenTextFinding[];
   /** Milliseconds per step. */
   timings: Record<string, number>;
 }
@@ -74,17 +77,23 @@ export async function captureEvidence(recorder: Recorder, input: CaptureInput): 
   const dom = normalizeDom(snapshot as DomSnapshot, { baseUrl: recorder.page.url() });
   const axTree = normalizeAx(ax.nodes);
   const har = buildHar(recorder.requests);
+  timings.normalize = performance.now() - normalizeStart;
+
+  const detectorStart = performance.now();
+  const findings = detectHiddenText(dom, axTree, input.llmObservation);
+  timings.detector = performance.now() - detectorStart;
+
   const publicBytes: [ItemType, Uint8Array][] = [
     ["api.product", canonicalBytes(input.product)],
     ["api.cart", canonicalBytes(input.cart)],
     ["llm.observation", encoder.encode(input.llmObservation)],
     ["dom.snapshot", domBytes(dom)],
     ["ax.tree", axBytes(axTree)],
+    ["hidden.text", canonicalBytes(findings)],
     ["screenshot", Uint8Array.from(Buffer.from(screenshot.data, "base64"))],
     ["mhtml", encoder.encode(normalizeMhtml(mhtml.data))],
     ["har", canonicalBytes(har)],
   ];
-  timings.normalize = performance.now() - normalizeStart;
 
   const manifestStart = performance.now();
   const items: SealedItem[] = publicBytes.map(([type, bytes], k) => ({
@@ -96,5 +105,5 @@ export async function captureEvidence(recorder: Recorder, input: CaptureInput): 
   const manifest = buildManifest(items);
   timings.manifest = performance.now() - manifestStart;
   timings.total = performance.now() - start;
-  return { manifest, items, timings };
+  return { manifest, items, findings, timings };
 }

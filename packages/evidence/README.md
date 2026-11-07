@@ -99,6 +99,27 @@ The bytes are the UTF-8 RFC 8785 serialization. Example (two nodes of a page):
 }
 ```
 
+## Hidden-text detector
+
+`detectHiddenText(dom, ax, llmObservation)` runs over the normalized DOM and accessibility tree, so
+anyone can re-run it on disclosed items. A text node is flagged when a person could not read it:
+
+| Reason        | Rule                                                                   |
+| ------------- | ---------------------------------------------------------------------- |
+| `opacity`     | computed text color opacity < 0.1                                      |
+| `offscreen`   | its box lies entirely outside the scrollable document area             |
+| `same-color`  | WCAG contrast ratio < 1.2 between its color and the blended background |
+| `tiny`        | `font-size` < 2 px                                                     |
+| `clipped`     | an ancestor's `clip`, `clip-path` or `overflow` leaves less than 4 px² |
+| `behind`      | an element painted later, with an opaque background, covers its box    |
+| `aria-hidden` | added when flagged text is also inside an `aria-hidden` subtree        |
+
+Attribute text (`alt`, `title`, `aria-label`, `aria-description`, `data-*`, `<meta content>`) of
+three or more words is flagged as `attribute` when the accessibility tree exposes it and the page
+never renders it; the `alt` of an image a person can see is not. Each finding says whether it is in
+the accessibility tree and whether it reached the model (`reachedAgent`: a substring match after
+NFC, whitespace collapsing and case folding).
+
 ## Normalized HAR
 
 A HAR 1.2 `log` built from the CDP `Network` events recorded since the tab opened, with only what

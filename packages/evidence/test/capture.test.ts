@@ -63,6 +63,7 @@ describe("capture", () => {
       "llm.observation",
       "dom.snapshot",
       "ax.tree",
+      "hidden.text",
       "screenshot",
       "mhtml",
       "har",
@@ -114,7 +115,7 @@ describe("capture", () => {
   });
 
   test("pinned salts give the same root on a second load; fresh salts only change the leaves", async () => {
-    const salts = Array.from({ length: 8 }, () => crypto.getRandomValues(new Uint8Array(32)));
+    const salts = Array.from({ length: 9 }, () => crypto.getRandomValues(new Uint8Array(32)));
     const a = await captureProduct(salts);
     const b = await captureProduct(salts);
     const hashes = (c: Capture) => c.manifest.items.map((i) => `${i.type}:${i.content_hash}`);
