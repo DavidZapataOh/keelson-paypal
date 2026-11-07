@@ -130,6 +130,10 @@ A relying party checks that `dstack-verifier` accepts `attestation`, that its re
 
 `tests/tdx_simulator.rs` runs the boot against the dstack guest agent simulator, whose quote is a captured one with the report data written in, so it checks what the engine asks for and binds, not the quote. `tests/tdx_live.rs` checks a deployed CVM end to end, including `dstack-verifier`.
 
+## Records
+
+On `--platform tdx` the user records (each `sub`'s passkey binding and each mandate's hold) are kept by `FileRecords`, one sealed file per record, in `KEELSON_DATA_DIR` (`/data` by default). The image ships `/data` owned by the engine's user, and the compose file mounts a named volume there, which lives on the CVM's encrypted disk. A restart or redeploy of the same app keeps the records. A file that was altered or moved does not open under its `sub` or mandate, and the request that depends on it fails with `auth.sub_bound` or a `paypal.hold_mismatch` denial.
+
 ## Sealing
 
 One sealing key covers every purpose. Each sealed blob is bound to a purpose label, the user it belongs to and the record id, and opens for nothing else.

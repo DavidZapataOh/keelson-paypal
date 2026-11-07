@@ -20,6 +20,7 @@
 //! | `KEELSON_ISSUER_JWK` | the credential issuer's public JWK; not read with `--platform tdx` |
 //! | `KEELSON_TEE_TOKEN_SHA256` | the hex SHA-256 of the bearer token |
 //! | `KEELSON_CHAIN_ID` | optional, `421614` by default |
+//! | `KEELSON_DATA_DIR` | with `--platform tdx`, where the sealed user records are kept; `/data` by default |
 //! | `KEELSON_BOND_VAULT`, `KEELSON_VERIFYING_CONTRACT` | optional, the zero address by default |
 //!
 //! With `--platform tdx`, `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` are required: the engine
@@ -37,6 +38,8 @@ use keelson_tee::{Engine, EngineConfig, TeeKind};
 use serde_json::Value;
 
 const DEFAULT_CHAIN_ID: u64 = 421_614;
+#[cfg(feature = "tdx")]
+const DEFAULT_DATA_DIR: &str = "/data";
 
 fn var(name: &str) -> Result<String, String> {
     std::env::var(name).map_err(|_| format!("{name} is not set"))
@@ -127,6 +130,10 @@ async fn tdx_state(config: EngineConfig, token_hash: [u8; 32]) -> Result<AppStat
         started.elapsed().as_millis()
     );
     let paypal = keelson_tee::paypal::PayPalClient::from_env()?;
+    let dir = std::env::var("KEELSON_DATA_DIR").unwrap_or_else(|_| DEFAULT_DATA_DIR.into());
+    let records = keelson_tee::FileRecords::open(&dir)
+        .map_err(|e| format!("cannot open the record store {dir}: {e}"))?;
+    let engine = engine.with_user_records(Arc::new(records));
     Ok(AppState::new(engine, token_hash)
         .with_attestation(attestation, at)
         .with_paypal(paypal))

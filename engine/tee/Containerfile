@@ -26,12 +26,14 @@ RUN --network=none <<EOF
         --features tdx \
         --bin keelson-engine
     cp target/x86_64-unknown-linux-musl/release/keelson-engine /keelson-engine
+    mkdir /data
 EOF
 
 FROM scratch
 LABEL org.opencontainers.image.source="https://github.com/DavidZapataOh/keelson-paypal"
 COPY --from=ca /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build /keelson-engine /keelson-engine
+COPY --from=build --chown=65534:65534 /data /data
 USER 65534:65534
 EXPOSE 8080
 ENTRYPOINT ["/keelson-engine"]
