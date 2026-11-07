@@ -15,7 +15,7 @@ countersigned the purchase it describes.
 Each origin is served at `https://<origin>/`: `checkpoint`, `tile/<L>/<N>[.p/<W>]` and
 `tile/entries/<N>[.p/<W>]`. Every checkpoint ([c2sp.org/tlog-checkpoint](https://c2sp.org/tlog-checkpoint))
 carries two log signatures: Ed25519 (`0x01`) and ML-DSA-44 (`0x06`, [c2sp.org/tlog-cosignature](https://c2sp.org/tlog-cosignature)).
-A new checkpoint is published every second while the log grows, and every minute otherwise.
+A new checkpoint is published every 500 ms while the log grows, and every minute otherwise.
 
 ## Leaf
 
@@ -79,4 +79,5 @@ writes a new pair of verifier keys and prints the matching secrets.
 strings>}` and answers, once a checkpoint covers the leaf, `{"index", "leafHash", "proof",
 "checkpoint"}`. Refusals are `422 {"code"}`: `leaf.*`, `countersign.digest`, `countersign.fields`,
 `countersign.signature`, `countersign.signer`, `countersign.measurement` or `countersign.mode`.
-The same leaf always gets the same index.
+A purchase has one leaf in the log: the same leaf again gets the same index and a fresh proof,
+and another leaf with the same `alibi_id` is refused with `409 {"code": "leaf.duplicate"}`.

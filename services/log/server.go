@@ -42,6 +42,7 @@ type origin struct {
 	reader            tessera.LogReader
 	awaiter           *tessera.PublicationAwaiter
 	shutdown          func(context.Context) error
+	claims            *claims
 }
 
 func openOrigin(ctx context.Context, spec originSpec, dir string, verifyingContract [20]byte, signers []note.Signer) (*origin, error) {
@@ -55,7 +56,7 @@ func openOrigin(ctx context.Context, spec originSpec, dir string, verifyingContr
 	}
 	appender, shutdown, reader, err := tessera.NewAppender(ctx, driver, tessera.NewAppendOptions().
 		WithCheckpointSigner(signers[0], signers[1:]...).
-		WithCheckpointInterval(time.Second).
+		WithCheckpointInterval(500*time.Millisecond).
 		WithCheckpointRepublishInterval(time.Minute).
 		WithBatching(256, 250*time.Millisecond).
 		WithPushback(4096).
@@ -63,7 +64,12 @@ func openOrigin(ctx context.Context, spec originSpec, dir string, verifyingContr
 	if err != nil {
 		return nil, err
 	}
+	cl, err := newClaims(dir)
+	if err != nil {
+		return nil, err
+	}
 	return &origin{
+		claims:            cl,
 		name:              spec.Name,
 		path:              spec.path(),
 		dir:               dir,
@@ -109,6 +115,26 @@ func (o *origin) append(ctx context.Context, leaf []byte) (*appendResult, error)
 		Proof:      string(torchwood.FormatProof(i, p, cp)),
 		Checkpoint: string(cp),
 	}, nil
+}
+
+// appendOnce appends the leaf unless its purchase is already in the log with
+// another leaf. The same leaf again gets its index and a fresh proof.
+func (o *origin) appendOnce(ctx context.Context, leaf []byte) (*appendResult, error) {
+	l, err := alibilog.Parse(leaf)
+	if err != nil {
+		return nil, err
+	}
+	h := alibilog.LeafHash(leaf)
+	m := o.claims.lock(l.AlibiID)
+	defer m.Unlock()
+	if err := o.claims.check(l.AlibiID, h); err != nil {
+		return nil, err
+	}
+	res, err := o.append(ctx, leaf)
+	if err != nil {
+		return nil, err
+	}
+	return res, o.claims.record(l.AlibiID, h)
 }
 
 // checkpointBody is the signed note's text, up to the blank line.
@@ -174,8 +200,10 @@ func (s *server) private() http.Handler {
 				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"code": "unavailable"})
 				return
 			}
-			res, err := o.append(r.Context(), req.Leaf)
+			res, err := o.appendOnce(r.Context(), req.Leaf)
 			switch {
+			case errors.Is(err, errClaimed):
+				writeJSON(w, http.StatusConflict, map[string]string{"code": "leaf.duplicate"})
 			case errors.Is(err, tessera.ErrPushback):
 				w.Header().Set("Retry-After", "1")
 				writeJSON(w, http.StatusTooManyRequests, map[string]string{"code": "pushback"})

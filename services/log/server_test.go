@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -148,9 +149,9 @@ func TestTheSameLeafGetsOneIndex(t *testing.T) {
 	purchase(t, db, alibiID(t, allow.Leaf), ptr("2of2"))
 
 	// Each run is a separate process on the same directory, as a restart is.
-	run := func(n int) []string {
+	run := func(n int, variant bool) []string {
 		cmd := exec.Command(os.Args[0], "-test.run=^TestHelperAppend$")
-		cmd.Env = append(os.Environ(), "LOG_HELPER=1", fmt.Sprintf("LOG_HELPER_N=%d", n), "LOG_HELPER_DIR="+dir, "LOG_HELPER_DB="+dbURL)
+		cmd.Env = append(os.Environ(), "LOG_HELPER=1", fmt.Sprintf("LOG_HELPER_N=%d", n), "LOG_HELPER_DIR="+dir, "LOG_HELPER_DB="+dbURL, fmt.Sprintf("LOG_HELPER_VARIANT=%t", variant))
 		for k, v := range keys.env {
 			cmd.Env = append(cmd.Env, k+"="+v)
 		}
@@ -166,13 +167,16 @@ func TestTheSameLeafGetsOneIndex(t *testing.T) {
 		}
 		return indexes
 	}
-	concurrent := run(20)
+	concurrent := run(20, false)
 	if len(concurrent) != 20 || len(slices.Compact(slices.Clone(concurrent))) != 1 {
 		t.Fatalf("20 concurrent appends gave %v", concurrent)
 	}
-	again := run(1)
+	again := run(1, false)
 	if len(again) != 1 || again[0] != concurrent[0] {
 		t.Fatalf("after a restart the leaf got %v, before %s", again, concurrent[0])
+	}
+	if other := run(1, true); len(other) != 1 || other[0] != "409 leaf.duplicate" {
+		t.Fatalf("after a restart another leaf for the purchase got %v", other)
 	}
 }
 
@@ -198,11 +202,19 @@ func TestHelperAppend(t *testing.T) {
 	fmt.Sscan(os.Getenv("LOG_HELPER_N"), &n)
 	var wg sync.WaitGroup
 	var mu sync.Mutex
+	leaf := allow.Leaf
+	if os.Getenv("LOG_HELPER_VARIANT") == "true" {
+		leaf = variant(t, leaf)
+	}
 	for range n {
 		wg.Go(func() {
-			status, res := l.add(t, sandbox, testToken, allow.Leaf, allow.Countersign)
+			status, res := l.add(t, sandbox, testToken, leaf, allow.Countersign)
 			mu.Lock()
 			defer mu.Unlock()
+			if status == http.StatusConflict {
+				fmt.Printf("index=%d %s\n", status, res["code"])
+				return
+			}
 			if status != http.StatusOK {
 				t.Errorf("%d %v", status, res)
 				return
@@ -301,4 +313,41 @@ func TestPublicCacheHeaders(t *testing.T) {
 	if err := json.NewDecoder(res.Body).Decode(&h); err != nil || len(h.Origins) != 2 || h.Origins[0].Size != 1 {
 		t.Fatalf("health: %v %+v", err, h)
 	}
+}
+
+// variant is the same countersigned purchase with another PayPal reference commitment, which
+// the countersign does not bind.
+func variant(t testing.TB, leaf []byte) []byte {
+	return rewrite(t, leaf, func(m map[string]any) {
+		m["paypal_ref_commit"] = base64.RawURLEncoding.EncodeToString(randBytes(32))
+	})
+}
+
+func TestOneLeafPerPurchase(t *testing.T) {
+	vectors, _ := loadVectors(t)
+	allow := vectors["allow"]
+	db, dbURL := testDB(t)
+	keys := newTestKeys(t)
+	l := startLog(t, keys, t.TempDir(), db, dbURL)
+	activate(t, db, teeTDX, *allow.Signers["tdx"], *allow.Measurements["tdx"])
+	activate(t, db, teeNitro, *allow.Signers["nitro"], *allow.Measurements["nitro"])
+	purchase(t, db, alibiID(t, allow.Leaf), ptr("2of2"))
+
+	status, first := l.add(t, sandbox, testToken, allow.Leaf, allow.Countersign)
+	if status != http.StatusOK {
+		t.Fatalf("%d %v", status, first)
+	}
+	before := nextIndex(t, l, sandbox)
+	status, res := l.add(t, sandbox, testToken, variant(t, allow.Leaf), allow.Countersign)
+	if status != http.StatusConflict || res["code"] != "leaf.duplicate" {
+		t.Fatalf("another leaf for the purchase: %d %v", status, res)
+	}
+	if after := nextIndex(t, l, sandbox); after != before {
+		t.Fatalf("the log grew from %d to %d", before, after)
+	}
+	status, again := l.add(t, sandbox, testToken, allow.Leaf, allow.Countersign)
+	if status != http.StatusOK || again["index"] != first["index"] || again["leafHash"] != first["leafHash"] {
+		t.Fatalf("the same leaf again: %d %v", status, again)
+	}
+	checkAppended(t, keys, l, allow.Leaf, again)
 }
