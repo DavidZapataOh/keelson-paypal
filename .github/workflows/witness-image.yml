@@ -1,0 +1,63 @@
+name: witness-image
+
+on:
+  push:
+    paths:
+      - services/witness/**
+      - .github/workflows/witness-image.yml
+  workflow_dispatch:
+
+concurrency:
+  group: witness-image-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/davidzapataoh/keelson-witness
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build
+        run: |
+          docker buildx build -f services/witness/Dockerfile . \
+            --platform linux/amd64 \
+            --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
+            --provenance=false --sbom=false \
+            --load -t keelson-witness:test
+      - name: The image starts a witness that cosigns the baked-in logs
+        run: |
+          ssh-keygen -q -t ed25519 -N "" -f "$RUNNER_TEMP/key"
+          docker run -d --name witness -p 127.0.0.1:7380:7380 \
+            -e WITNESS_NAME=witness.test -e WITNESS_KEY="$(cat "$RUNNER_TEMP/key")" keelson-witness:test
+          for _ in $(seq 30); do curl -fsS -o "$RUNNER_TEMP/index.html" http://127.0.0.1:7380/ && break; sleep 1; done
+          docker logs witness
+          while IFS='=' read -r origin _; do grep -qF "$origin" "$RUNNER_TEMP/index.html"; done < services/witness/logs
+          docker image inspect keelson-witness:test --format 'size: {{.Size}} B' >> "$GITHUB_STEP_SUMMARY"
+      - name: Push
+        id: push
+        run: |
+          docker buildx build -f services/witness/Dockerfile . \
+            --platform linux/amd64 \
+            --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
+            --provenance=false --sbom=false \
+            --push -t "$IMAGE:$GITHUB_SHA" --metadata-file "$RUNNER_TEMP/metadata.json"
+          digest="$(jq -r '."containerimage.digest"' "$RUNNER_TEMP/metadata.json")"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "\`$IMAGE@$digest\`" >> "$GITHUB_STEP_SUMMARY"

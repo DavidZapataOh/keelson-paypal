@@ -11,6 +11,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/litewitness /out/witnessctl /usr/local/bin/
 COPY services/witness/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY services/witness/logs /etc/litewitness/logs
 ENV DB=/data/litewitness.db PORT=7380
 EXPOSE 7380
 VOLUME /data
