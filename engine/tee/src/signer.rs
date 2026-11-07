@@ -1,7 +1,5 @@
 //! The countersign key: generated in RAM at boot, never serialized, zeroized on drop.
 
-use std::fmt;
-
 use alloy_primitives::Address;
 use alloy_sol_types::Eip712Domain;
 use k256::ecdsa::{RecoveryId, SigningKey};
@@ -85,14 +83,6 @@ fn v_byte(recovery_id: RecoveryId) -> Result<u8, Error> {
     }
 }
 
-impl fmt::Debug for Signer {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Signer")
-            .field("address", &self.address())
-            .finish_non_exhaustive()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use k256::ecdsa::RecoveryId;
@@ -151,12 +141,25 @@ mod tests {
     }
 
     #[test]
-    fn debug_shows_only_the_address() {
-        let signer = Signer::generate();
-        let debug = format!("{signer:?}");
-        assert_eq!(
-            debug,
-            format!("Signer {{ address: {:?}, .. }}", signer.address())
-        );
+    fn the_scalar_is_overwritten_on_drop() {
+        let secret = [0x5a; 32];
+        let Signer { key } = Signer::from_test_key(&secret);
+        let raw = Box::into_raw(key);
+        // SAFETY: `raw` comes from `Box::into_raw`, so it is valid and aligned. `drop_in_place`
+        // runs the destructor once; the allocation stays live until `dealloc`, which does not
+        // run the destructor again.
+        let after = unsafe {
+            std::ptr::drop_in_place(raw);
+            let after = (*raw).to_bytes();
+            std::alloc::dealloc(
+                raw.cast(),
+                std::alloc::Layout::new::<k256::ecdsa::SigningKey>(),
+            );
+            after
+        };
+        // A zeroized NonZeroScalar holds one, to keep its non-zero invariant.
+        let mut one = [0; 32];
+        one[31] = 1;
+        assert_eq!(after.as_slice(), one);
     }
 }

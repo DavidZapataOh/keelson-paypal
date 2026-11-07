@@ -23,3 +23,7 @@ opt-level = 3
 # The signer tests produce and recover thousands of secp256k1 signatures.
 [profile.dev.package.k256]
 opt-level = 3
+
+# A panic ends the process: a leg that panicked is never trusted with a key again.
+[profile.release]
+panic = "abort"

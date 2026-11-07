@@ -31,6 +31,29 @@ Both legs verify every signature in the closed mandate and the passkey assertion
 - **The user ↔ holder-key binding.** The user credential's `sub` is never presented, so the holder key is what ties a credential to a user. Leg A derives `user_key(sub)` from the root; leg B has no root and uses the holder key leg A observed.
 - **The PayPal read** and the budget left on the mandate (see below).
 
+## Security
+
+**What only leg A observes.** The PayPal read and the budget left on the mandate, and the binding of a user to their passkey and of a mandate to its authorization. Leg B signs over leg A's observation, so a DENY from leg A's checks is a DENY on both legs, and leg B contributes the independent verification of every signature, the Cedar evaluation and a second vendor's attestation.
+
+**What 1-of-2 (degraded) means.** When leg B is unreachable or its signer is not admitted, the API still countersigns with leg A alone and says so: `mode: "degraded"` in the body and `Keelson-Countersign-Mode: degraded` in the header, and `/status` reports `teeB: "down"`. In that mode a purchase rests on one TEE vendor. An integrator that requires two should refuse a `degraded` countersign.
+
+**Why both vendors must agree.** TDX attestation can be forged by an attacker with physical access to the host (TEE.fail, 2025), and Nitro attestation is only as strong as AWS. A forged quote on one leg cannot produce a valid countersign by itself, because the other leg's signer is a different key under a different vendor's root of trust.
+
+**Key handling.**
+
+- The countersign key is generated in RAM at boot and never leaves the process. The KMS root (leg A) and the keys derived from it are held only while a request needs them. `Signer`, `Root` and `Engine` implement none of `Debug`, `Display`, `Serialize`, `Clone` or `Copy`, which `tests/key_material.rs` checks at compile time, and `Signer` and `Root` overwrite their key on drop, which their unit tests read back through a raw pointer. The keys derived from the root are `p256` `SigningKey`s, which zeroize on drop and whose `Debug` prints no key material; they live for one request.
+- HKDF over the root wipes its pseudorandom key as soon as the expand state exists, and the HMAC states it keeps are SHA-256 cores built with `sha2`'s `zeroize` feature, which wipe themselves on drop. The intermediate blocks `hkdf` and `hmac` keep on the stack while they run are not wiped.
+- Release builds abort on panic, and the process disables core dumps and `ptrace` of its memory (`PR_SET_DUMPABLE` 0) before it reads any secret. A panic on leg A restarts its container with a new signer and the 900-second warm-up; on leg B it ends the enclave until `nitro/update.sh` boots it again.
+- The HTTP layer logs no request or response bodies. Errors carry a stable code and never echo input.
+- PayPal credentials and the bearer token's hash reach the CVM only as encrypted environment variables. `phala/docker-compose.yml` holds variable names, no values. Leg B's boot message carries the token's hash and public configuration only; the enclave has no network and no environment.
+- Leg A and leg B run the same binary. The enclave never builds a KMS root or a PayPal client, since `--platform nitro` constructs neither. The image carries no proof tooling: `keelson-policy` is built without its `prove` feature, so neither `cedar-policy-symcc` nor cvc5 is linked.
+
+**Accepted risks.**
+
+- Both legs accept the same bearer token. Its holder can call the authenticated routes of either leg (register a mandate on leg A, countersign, refresh an attestation); it cannot sign anything a leg would not, since no route takes a key and every route verifies the mandate, the passkey and the cart itself. The token lives only in the API's environment and CI secrets, the legs store its SHA-256, and it is rotated as described below. Separate tokens per leg are not implemented.
+- The CVM's host can wipe or roll back the whole encrypted data volume, not a single record. A wiped store lets a `sub` be bound again and a mandate be bound to a second authorization.
+- When the canonicalizer refuses a cart, the trace records the refusal, and re-running `evaluate_context` over the same input does not reproduce that trace byte for byte.
+
 ## Budget
 
 Leg A computes the budget left on a mandate as `max − captured − live reservations`. The captured amount comes only from the engine's own PayPal read (a `CapturedSource`); leg A refuses to countersign until it has one (`not_ready`). Reservations are keyed by `M`, which commits to the whole mandate, so mandates never share a budget. Reserving is the last step of a countersign, after signing, so a failed request never holds a reservation.

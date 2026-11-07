@@ -206,6 +206,10 @@ async fn run() -> Result<(), String> {
 
 #[tokio::main]
 async fn main() {
+    if let Err(e) = keelson_tee::process::forbid_dumps() {
+        eprintln!("keelson-engine: cannot disable core dumps: {e}");
+        std::process::exit(1);
+    }
     if let Err(e) = run().await {
         eprintln!("keelson-engine: {e}");
         std::process::exit(1);

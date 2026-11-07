@@ -111,6 +111,14 @@ jobs:
       - run: pnpm migrate
       - run: pnpm --filter @keelson/api openapi && git diff --exit-code openapi/
 
+  secrets:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - run: docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f detect --source /repo --log-opts="--all" --redact --no-banner
+
   rust:
     runs-on: ubuntu-24.04
     steps:
@@ -119,6 +127,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: ./.github/actions/setup-cvc5
       - run: cargo fmt --check
+      - run: cargo install cargo-audit --locked --version 0.22.2
+      - run: cargo audit
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo clippy -p keelson-tee --all-targets --features tdx,nitro -- -D warnings
       - run: cargo test

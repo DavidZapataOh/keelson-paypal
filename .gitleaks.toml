@@ -9,3 +9,10 @@ paths = [
   '''packages/mandate/test/vectors/.*\.json''',
   '''packages/mandate/test/commitment\.test\.ts''',
 ]
+
+[[allowlists]]
+description = "Throwaway keys of the countersign golden vectors, and the public key provider id in the CVM's compose file"
+paths = [
+  '''packages/core/test/vectors/countersign\.json''',
+  '''engine/tee/phala/app-compose\.json''',
+]
