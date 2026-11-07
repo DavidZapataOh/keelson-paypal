@@ -41,7 +41,7 @@ func run(log *slog.Logger) error {
 
 	s := &server{registry: registry{db}, tokenHash: cfg.TokenHash, log: log}
 	for _, spec := range originSpecs {
-		o, err := openOrigin(appendCtx, spec, cfg.originDir(spec), cfg.VerifyingContract, cfg.Signers[spec.Name])
+		o, err := openOrigin(appendCtx, spec, cfg.originDir(spec), cfg.VerifyingContract, cfg.Signers[spec.Name], cfg.Policies[spec.Name])
 		if err != nil {
 			return err
 		}

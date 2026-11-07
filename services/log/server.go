@@ -32,6 +32,10 @@ import (
 // awaitTimeout bounds how long an append waits for a checkpoint that covers it.
 const awaitTimeout = 5 * time.Second
 
+// witnessTimeout bounds how long a checkpoint waits for its witness quorum.
+// Without the quorum the checkpoint is not published.
+const witnessTimeout = time.Second
+
 // origin is one Tessera log on its own directory.
 type origin struct {
 	name              string
@@ -44,9 +48,14 @@ type origin struct {
 	awaiter           *tessera.PublicationAwaiter
 	shutdown          func(context.Context) error
 	claims            *claims
+	policy            []byte
 }
 
-func openOrigin(ctx context.Context, spec originSpec, dir string, verifyingContract [20]byte, signers []note.Signer) (*origin, error) {
+func openOrigin(ctx context.Context, spec originSpec, dir string, verifyingContract [20]byte, signers []note.Signer, policy []byte) (*origin, error) {
+	witnesses, err := tessera.NewWitnessGroupFromPolicy(policy)
+	if err != nil {
+		return nil, err
+	}
 	driver, err := posix.New(ctx, posix.Config{Path: dir})
 	if err != nil {
 		return nil, err
@@ -61,7 +70,8 @@ func openOrigin(ctx context.Context, spec originSpec, dir string, verifyingContr
 		WithCheckpointRepublishInterval(time.Minute).
 		WithBatching(256, 250*time.Millisecond).
 		WithPushback(4096).
-		WithAntispam(tessera.DefaultAntispamInMemorySize, as))
+		WithAntispam(tessera.DefaultAntispamInMemorySize, as).
+		WithWitnesses(witnesses, &tessera.WitnessOptions{Timeout: witnessTimeout}))
 	if err != nil {
 		return nil, err
 	}
@@ -71,6 +81,7 @@ func openOrigin(ctx context.Context, spec originSpec, dir string, verifyingContr
 	}
 	return &origin{
 		claims:            cl,
+		policy:            policy,
 		name:              spec.Name,
 		path:              spec.path(),
 		dir:               dir,
@@ -224,7 +235,8 @@ func (s *server) private() http.Handler {
 var tilePath = regexp.MustCompile(`^tile/(\d{1,2}|entries)(/x\d{3})*/\d{3}(\.p/\d{1,3})?$`)
 
 // public serves the tlog-tiles resources of every origin read-only, with the
-// cache headers of Tessera's POSIX server, and each origin's size at /health.
+// cache headers of Tessera's POSIX server, each origin's witness policy, and
+// each origin's size at /health.
 func (s *server) public() http.Handler {
 	mux := http.NewServeMux()
 	for _, o := range s.origins {
@@ -232,6 +244,12 @@ func (s *server) public() http.Handler {
 			rel := strings.TrimPrefix(r.URL.Path, "/"+o.path+"/")
 			cache := "public, max-age=31536000, immutable"
 			switch {
+			case rel == "policy":
+				w.Header().Set("Cache-Control", "no-cache")
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+				w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+				_, _ = w.Write(o.policy)
+				return
 			case rel == "checkpoint":
 				cache = "no-cache"
 			case !tilePath.MatchString(rel):
