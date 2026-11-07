@@ -15,6 +15,9 @@ const schema = z
     TEE_A_URL: z.url().optional(),
     TEE_B_URL: z.url().optional(),
     KEELSON_TEE_TOKEN: z.string().min(32).optional(),
+    KEELSON_ISSUER_THUMBPRINT: z
+      .custom<`0x${string}`>((v) => typeof v === "string" && /^0x[0-9a-f]{64}$/.test(v))
+      .optional(),
     ARBITRUM_SEPOLIA_RPC_URL: z.url().optional(),
     PORT: z.coerce.number().int().positive().default(10000),
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -36,6 +39,10 @@ const schema = z
   .refine((env) => env.NODE_ENV !== "production" || env.TEE_A_URL !== undefined, {
     message: "the TEE legs are required in production",
     path: ["TEE_A_URL"],
+  })
+  .refine((env) => env.NODE_ENV !== "production" || env.KEELSON_ISSUER_THUMBPRINT !== undefined, {
+    message: "KEELSON_ISSUER_THUMBPRINT is required in production",
+    path: ["KEELSON_ISSUER_THUMBPRINT"],
   })
   .refine((env) => env.PASSKEY_RP_ID === undefined || env.NODE_ENV === "test", {
     message: "PASSKEY_RP_ID may only be set in tests",

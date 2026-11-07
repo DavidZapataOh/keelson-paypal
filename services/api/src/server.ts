@@ -30,6 +30,7 @@ const tee =
         TEE_B_URL: env.TEE_B_URL,
         KEELSON_TEE_TOKEN: env.KEELSON_TEE_TOKEN,
         ARBITRUM_SEPOLIA_RPC_URL: env.ARBITRUM_SEPOLIA_RPC_URL,
+        KEELSON_ISSUER_THUMBPRINT: env.KEELSON_ISSUER_THUMBPRINT,
       })
     : undefined;
 const app = createApp({

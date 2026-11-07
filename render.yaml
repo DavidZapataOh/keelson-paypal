@@ -55,6 +55,8 @@ services:
         sync: false
       - key: KEELSON_TEE_TOKEN
         sync: false
+      - key: KEELSON_ISSUER_THUMBPRINT
+        sync: false
       - fromGroup: keelson-secrets
 
   - type: web

@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { teeSigners } from "@keelson/db";
+import { eq, teeSigners } from "@keelson/db";
 import { describe, expect, test } from "vitest";
 import { createTee } from "../src/tee/config.ts";
 import { activeSigner, refreshLeg, registerLeg, revokeSigner } from "../src/tee/signers.ts";
@@ -14,6 +14,7 @@ describe.skipIf(!live)("tee signers (live legs)", { timeout: 60_000 }, () => {
     TEE_B_URL: process.env.TEE_B_URL as string,
     KEELSON_TEE_TOKEN: process.env.KEELSON_TEE_TOKEN as string,
     ARBITRUM_SEPOLIA_RPC_URL: process.env.ARBITRUM_SEPOLIA_RPC_URL,
+    KEELSON_ISSUER_THUMBPRINT: process.env.KEELSON_ISSUER_THUMBPRINT as `0x${string}`,
   };
   // The legs are reached from a laptop here, not from the API's region.
   const tee = createTee(env, { a: 10_000, b: 10_000 });
@@ -53,11 +54,54 @@ describe.skipIf(!live)("tee signers (live legs)", { timeout: 60_000 }, () => {
     });
   });
 
+  test("leg b is not admitted when no issuer pin is available", async () => {
+    const { issuerJwkThumbprint: _pin, ...unpinned } = tee.expect.b;
+    const [a] = await testDb.select().from(teeSigners).where(eq(teeSigners.teeKind, 1));
+    if (!a) throw new Error("leg a has no signer");
+    const before = (await testDb.select().from(teeSigners)).length;
+    await testDb
+      .update(teeSigners)
+      .set({ expiresAt: new Date(Date.now() - 1_000) })
+      .where(eq(teeSigners.address, a.address));
+    try {
+      await expect(registerLeg(testDb, "b", tee.client.b, unpinned)).rejects.toThrow(/issuer/);
+    } finally {
+      await testDb
+        .update(teeSigners)
+        .set({ expiresAt: a.expiresAt })
+        .where(eq(teeSigners.address, a.address));
+    }
+    expect((await testDb.select().from(teeSigners)).length).toBe(before);
+  });
+
+  test("the configured issuer pin is checked on both legs", async () => {
+    const pin = tee.expect.a.issuerJwkThumbprint;
+    expect(pin).toBe(process.env.KEELSON_ISSUER_THUMBPRINT);
+    const other = { ...tee.expect.a, issuerJwkThumbprint: `0x${"00".repeat(32)}` } as const;
+    await expect(registerLeg(testDb, "a", tee.client.a, other)).rejects.toMatchObject({
+      code: "binding_mismatch",
+    });
+    const wrongB = { ...tee.expect.b, issuerJwkThumbprint: `0x${"00".repeat(32)}` } as const;
+    await expect(registerLeg(testDb, "b", tee.client.b, wrongB)).rejects.toMatchObject({
+      code: "binding_mismatch",
+    });
+  });
+
   test("a revoked signer is not active and cannot be admitted again", async () => {
     const a = await registerLeg(testDb, "a", tee.client.a, tee.expect.a);
     await revokeSigner(testDb, a.address, "test");
     expect(await activeSigner(testDb, 1)).toBeNull();
     await expect(registerLeg(testDb, "a", tee.client.a, tee.expect.a)).rejects.toThrow(/revoked/);
+  });
+
+  test("admitting a revoked signer leaves the active one in place", async () => {
+    const [revoked] = await testDb.select().from(teeSigners).where(eq(teeSigners.teeKind, 1));
+    if (!revoked?.revokedAt) throw new Error("leg a's signer should be revoked here");
+    const other = Buffer.alloc(20, 9);
+    await testDb.insert(teeSigners).values({ ...revoked, address: other, revokedAt: null });
+    await expect(registerLeg(testDb, "a", tee.client.a, tee.expect.a)).rejects.toThrow(/revoked/);
+    const [still] = await testDb.select().from(teeSigners).where(eq(teeSigners.address, other));
+    expect(still?.revokedAt).toBeNull();
   });
 
   test("a signer whose attestation is no longer fresh is not active", async () => {

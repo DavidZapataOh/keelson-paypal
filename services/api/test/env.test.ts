@@ -15,6 +15,7 @@ const production = {
   TEE_A_URL: "https://tee-a.example",
   TEE_B_URL: "https://tee-b.example",
   KEELSON_TEE_TOKEN: "t".repeat(64),
+  KEELSON_ISSUER_THUMBPRINT: `0x${"ab".repeat(32)}`,
   NODE_ENV: "production",
   BETTER_AUTH_URL: "https://api.keelson.finance",
   APP_ORIGIN: "https://app.keelson.finance",
@@ -57,4 +58,11 @@ test("the TEE settings come together and are required in production", () => {
   expect(() => parseEnv({ ...dev, TEE_A_URL: "https://tee-a.example" })).toThrow();
   const { TEE_A_URL: _a, ...withoutLegs } = production;
   expect(() => parseEnv(withoutLegs)).toThrow();
+});
+
+test("production pins the credential issuer", () => {
+  const { KEELSON_ISSUER_THUMBPRINT: _pin, ...unpinned } = production;
+  expect(() => parseEnv(unpinned)).toThrow(/KEELSON_ISSUER_THUMBPRINT/);
+  expect(() => parseEnv({ ...production, KEELSON_ISSUER_THUMBPRINT: "0x12" })).toThrow();
+  expect(parseEnv(production).KEELSON_ISSUER_THUMBPRINT).toBe(`0x${"ab".repeat(32)}`);
 });

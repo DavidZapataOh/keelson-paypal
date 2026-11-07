@@ -57,7 +57,8 @@ class RegistrationError extends Error {}
 
 /**
  * Fetches the leg's attestation, verifies it, and admits its signer. The previous signer of the
- * leg is marked superseded. Leg B must attest the issuer leg A's registered signer attests.
+ * leg is marked superseded. Both legs must attest the pinned issuer; without a pin, leg B takes
+ * the one leg A's registered signer attests and is refused when there is none.
  */
 export async function registerLeg(
   db: Db,
@@ -70,7 +71,8 @@ export async function registerLeg(
   let pinned = expect;
   if (leg === "b" && !expect.issuerJwkThumbprint) {
     const a = await activeSigner(db, TEE_KIND.a, now);
-    if (a) pinned = { ...expect, issuerJwkThumbprint: a.binding.issuerJwkThumbprint };
+    if (!a) throw new RegistrationError("leg b has no issuer to attest: leg a has no signer");
+    pinned = { ...expect, issuerJwkThumbprint: a.binding.issuerJwkThumbprint };
   }
   const verified = await verifySigner(attestation, { ...pinned, now });
   if (verified.teeKind !== TEE_KIND[leg]) {
@@ -88,6 +90,11 @@ export async function registerLeg(
     expiresAt: new Date(now.getTime() + SIGNER_TTL_MS),
   };
   const row = await db.transaction(async (tx) => {
+    const [known] = await tx
+      .select({ revokedAt: teeSigners.revokedAt })
+      .from(teeSigners)
+      .where(eq(teeSigners.address, address));
+    if (known?.revokedAt) throw new RegistrationError("the signer is revoked");
     await tx
       .update(teeSigners)
       .set({ revokedAt: now, revokedReason: "superseded" })
