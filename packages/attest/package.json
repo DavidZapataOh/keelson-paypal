@@ -1,0 +1,41 @@
+{
+  "name": "@keelson/attest",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/server/collateral.d.ts",
+      "default": "./dist/server/collateral.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "bench": "node bench/browser.bench.ts"
+  },
+  "dependencies": {
+    "@abraham/reflection": "0.13.0",
+    "@keelson/core": "workspace:*",
+    "@peculiar/asn1-schema": "3.0.0",
+    "@peculiar/x509": "3.1.0",
+    "@phala/dcap-qvl": "0.7.1",
+    "cbor-x": "1.6.9",
+    "viem": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "esbuild": "0.28.2",
+    "playwright": "1.64.1",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
