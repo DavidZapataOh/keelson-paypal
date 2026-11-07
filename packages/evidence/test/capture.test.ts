@@ -2,6 +2,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { generateHybridIdentity, identityToRecipient } from "age-encryption";
 import { type Browser, type BrowserContext, chromium } from "playwright";
 import { PNG } from "pngjs";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
@@ -13,11 +14,13 @@ import { serve } from "./server.ts";
 let browser: Browser;
 let context: BrowserContext;
 let site: Awaited<ReturnType<typeof serve>>;
+let recipient: string;
 let cart: unknown;
 
 beforeAll(async () => {
   [browser, site] = await Promise.all([chromium.launch(), serve()]);
   context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+  recipient = await identityToRecipient(await generateHybridIdentity());
   cart = await (await fetch(`${site.url}/api/cart.json`)).json();
 });
 afterAll(async () => {
@@ -42,6 +45,7 @@ async function captureProduct(salts?: Uint8Array[]): Promise<Capture> {
       product,
       cart,
       llmObservation,
+      recipient,
       ...(salts ? { salts } : {}),
     });
   } finally {

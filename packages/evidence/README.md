@@ -120,6 +120,23 @@ never renders it; the `alt` of an image a person can see is not. Each finding sa
 the accessibility tree and whether it reached the model (`reachedAgent`: a substring match after
 NFC, whitespace collapsing and case folding).
 
+## PII
+
+PII never reaches a public item. Its sources are the values of form fields whose `autocomplete` is
+`name`, `given-name`, `family-name`, `email`, `tel`, `street-address`, `address-line1..3`,
+`address-level1..4`, `postal-code`, `country` or `cc-*`; the values passed in `pii` (the user's
+name, email, phone and address from the PayPal order); and any email address or E.164 phone number
+in text. Each is replaced by `[redacted:<kind>]` in the product and cart JSON, the observation,
+the DOM (text, attributes and field values), the accessibility tree, the text parts of the MHTML
+and the HAR URLs, headers and bodies. Values shorter than four characters, such as a state or
+country code, are only redacted where they are a whole value. The public screenshot is taken with
+the PII fields and every element showing a known value masked in `#000000`.
+
+Each item that had PII gets a `<type>.original` item: the unredacted bytes encrypted with
+[age](https://age-encryption.org) to `KEELSON_EVIDENCE_AGE_RECIPIENT`, a hybrid ML-KEM-768 +
+X25519 recipient, with its own salt. `node scripts/age-keygen.ts` prints a new identity and its
+recipient.
+
 ## Normalized HAR
 
 A HAR 1.2 `log` built from the CDP `Network` events recorded since the tab opened, with only what

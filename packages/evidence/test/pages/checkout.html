@@ -45,6 +45,9 @@
       </aside>
     </main>
     <script>
+      document.getElementById("name").addEventListener("input", (e) => {
+        document.getElementById("ship-name").textContent = e.target.value || "a new address";
+      });
       fetch("/api/cart.json")
         .then((r) => r.json())
         .then((cart) => {
