@@ -20,6 +20,7 @@ export interface Stamp {
 }
 
 const DEFAULT_TIMEOUT_MS = 2_000;
+const MAX_CLOCK_SKEW_MS = 5 * 60_000;
 
 /**
  * Asks a TSA for an RFC 3161 token over a SHA-256 hash. `imprint` is the hash itself: it is sent as
@@ -97,6 +98,9 @@ export async function requestTimestamp(
   const parsed = parseToken(token);
   if (!imprintMatches(parsed.tstInfo, imprint)) {
     throw new TimestampError("tsa-imprint", `${id} stamped a different imprint`);
+  }
+  if (Math.abs(parsed.genTime.getTime() - Date.now()) > MAX_CLOCK_SKEW_MS) {
+    throw new TimestampError("tsa-time", `${id} genTime is more than 5 min off the local clock`);
   }
   const echoed = parsed.tstInfo.nonce?.toBigInt();
   if (echoed !== nonce.toBigInt()) {

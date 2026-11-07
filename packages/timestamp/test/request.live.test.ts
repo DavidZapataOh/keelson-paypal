@@ -1,8 +1,8 @@
 import { sha256 } from "@noble/hashes/sha2.js";
 import { utf8ToBytes } from "@noble/hashes/utils.js";
 import { describe, expect, test } from "vitest";
+import { opensslVerify } from "../scripts/openssl-verify.ts";
 import { requestTimestamp, TimestampError } from "../src/index.ts";
-import { opensslVerify } from "./openssl.ts";
 
 const live = process.env.KEELSON_LIVE === "1";
 

@@ -547,6 +547,9 @@ importers:
         specifier: 4.0.1
         version: 4.0.1(asn1js@4.0.0)
     devDependencies:
+      '@keelson/core':
+        specifier: workspace:*
+        version: link:../core
       '@types/node':
         specifier: 26.6.6
         version: 26.6.6

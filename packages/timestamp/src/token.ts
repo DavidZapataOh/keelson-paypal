@@ -1,4 +1,3 @@
-import { bytesToHex } from "@noble/hashes/utils.js";
 import type * as asn1js from "asn1js";
 import * as pkijs from "pkijs";
 import { TimestampError } from "./errors.ts";
@@ -33,7 +32,7 @@ export function parseToken(token: Uint8Array): ParsedToken {
       signedData,
       tstInfo,
       genTime: tstInfo.genTime,
-      serial: bytesToHex(tstInfo.serialNumber.valueBlock.valueHexView),
+      serial: evenHex(tstInfo.serialNumber.toBigInt()),
       policy: tstInfo.policy,
       accuracyMs: accuracyMs(tstInfo.accuracy),
     };
@@ -52,6 +51,11 @@ export function imprintMatches(tstInfo: pkijs.TSTInfo, imprint: Uint8Array): boo
     hashed.length === imprint.length &&
     hashed.every((byte, i) => byte === imprint[i])
   );
+}
+
+function evenHex(value: bigint): string {
+  const hex = value.toString(16);
+  return hex.length % 2 ? `0${hex}` : hex;
 }
 
 function accuracyMs(accuracy: pkijs.Accuracy | undefined): number | null {

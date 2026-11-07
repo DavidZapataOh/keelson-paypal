@@ -5,7 +5,13 @@ export type TimestampCode =
   | "tsa-status"
   | "tsa-imprint"
   | "tsa-nonce"
-  | "tsa-parse";
+  | "tsa-parse"
+  | "tsa-time"
+  | "tsa-signature"
+  | "tsa-chain"
+  | "tsa-eku"
+  | "tsa-ess-cert"
+  | "tsa-validity";
 
 /** Why a timestamp request or token was rejected. */
 export class TimestampError extends Error {
