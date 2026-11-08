@@ -4,8 +4,9 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { paypalConfig } from "../../src/config.ts";
 import { fromSdkError } from "../../src/errors.ts";
 import { createPayPal, type PayPal } from "../../src/sdk.ts";
+import { approveOrder, payerActionUrl } from "../../src/testing.ts";
 import { TokenCache } from "../../src/token.ts";
-import { approveOrder, experienceContext, payerActionUrl, usd } from "./approve.ts";
+import { experienceContext, usd } from "./approve.ts";
 
 const ORDER = 100n;
 

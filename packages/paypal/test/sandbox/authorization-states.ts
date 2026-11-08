@@ -1,13 +1,14 @@
 import { DST, hashObject, newId, toPayPalValue } from "@keelson/core";
-import { CheckoutPaymentIntent } from "@paypal/paypal-server-sdk";
-import { createPayPal, fromSdkError, ids, paypalConfig, TokenCache } from "../../src/index.ts";
 import {
-  approveOrder,
-  experienceContext,
-  operationRequestId,
-  payerActionUrl,
-  usd,
-} from "./approve.ts";
+  createPayPal,
+  fromSdkError,
+  holdOrderRequest,
+  ids,
+  paypalConfig,
+  TokenCache,
+} from "../../src/index.ts";
+import { approveOrder, CANCEL_URL, payerActionUrl, RETURN_URL } from "../../src/testing.ts";
+import { usd } from "./approve.ts";
 
 /** The `mid` of the demo mandate the engine's sandbox tests use. */
 const MANDATE_ID = "01JBXG3K5N7Q9R2T4V6W8Y0Z1A";
@@ -23,30 +24,27 @@ const digest = hashObject(DST.mandate, {
   max: toPayPalValue({ currency: "USD", minor: HOLD }),
   currency: "USD",
 });
-const customId = ids.encodeCustomId({ env: "s", kind: "m", id: MANDATE_ID, digest });
+const { body } = holdOrderRequest({
+  env: "s",
+  mid: MANDATE_ID,
+  mandateHash: digest,
+  amount: { currency: "USD", minor: HOLD },
+  returnUrl: RETURN_URL,
+  cancelUrl: CANCEL_URL,
+});
 
 /** A $100 hold on the demo mandate, approved by the sandbox buyer. */
 async function authorize(): Promise<string> {
+  // Each run creates new orders for the same mandate, so the request id is fresh, not `hex(M)`.
   const { result: order } = await paypal.orders.createOrder({
     paypalRequestId: ids.requestIdFromDigest(hashObject(DST.mandate, { nonce: newId() })),
-    body: {
-      intent: CheckoutPaymentIntent.Authorize,
-      purchaseUnits: [
-        {
-          referenceId: MANDATE_ID,
-          customId,
-          description: `Agent purchase under Keelson mandate ${MANDATE_ID}`,
-          amount: usd(HOLD),
-        },
-      ],
-      paymentSource: { paypal: { experienceContext } },
-    },
+    body,
   });
   const orderId = order.id as string;
   await approveOrder(payerActionUrl(order));
   const { result } = await paypal.orders.authorizeOrder({
     id: orderId,
-    paypalRequestId: operationRequestId(orderId, "authorize"),
+    paypalRequestId: ids.operationRequestId(orderId, "authorize"),
   });
   const id = result.purchaseUnits?.[0]?.payments?.authorizations?.[0]?.id;
   if (!id) throw new Error(`order ${orderId} returned no authorization`);
@@ -64,7 +62,7 @@ try {
   const voided = await authorize();
   await paypal.payments.voidPayment({
     authorizationId: voided,
-    paypalRequestId: operationRequestId(voided, "void"),
+    paypalRequestId: ids.operationRequestId(voided, "void"),
   });
   console.log(
     [

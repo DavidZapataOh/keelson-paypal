@@ -7,6 +7,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
     }
   },
   "files": [
@@ -23,6 +27,9 @@
     "@keelson/core": "workspace:*",
     "@paypal/paypal-server-sdk": "2.5.0",
     "zod": "catalog:"
+  },
+  "peerDependencies": {
+    "playwright": "1.64.1"
   },
   "devDependencies": {
     "@types/node": "26.6.6",
