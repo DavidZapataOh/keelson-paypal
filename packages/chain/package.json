@@ -16,13 +16,16 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "generate": "node scripts/generate.ts"
+    "generate": "node scripts/generate.ts",
+    "vectors": "node scripts/passkey-vectors.ts"
   },
   "dependencies": {
+    "@noble/curves": "2.4.0",
     "viem": "catalog:"
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",
+    "@keelson/mandate": "workspace:*",
     "@types/node": "26.6.6",
     "typescript": "catalog:",
     "vitest": "catalog:"
