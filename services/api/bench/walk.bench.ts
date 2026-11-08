@@ -229,7 +229,7 @@ try {
     const recorder = await startRecorder(page);
     await page.goto(`${STORE}/product.html`);
     await page.locator("body[data-ready]").waitFor({ state: "attached" });
-    const product = await (await page.request.get(`${STORE}/api/product.json`)).json();
+    const product = await page.evaluate(async () => (await fetch("/api/product.json")).json());
     const llmObservation = await page.locator("body").ariaSnapshot();
     const tc = performance.now();
     const capture: Capture = await captureEvidence(recorder, {
