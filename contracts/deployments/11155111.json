@@ -1,0 +1,34 @@
+{
+  "chainId": 11155111,
+  "rpcEnv": "ETHEREUM_SEPOLIA_RPC_URL",
+  "forkBlock": 12088338,
+  "external": {
+    "pyusd": "0xCaC524BcA292aaade2DF8A05cC58F0a65B1B3bB9",
+    "pyusdAssetProtector": "0xC7Aa9798bE85aD3B628eE71519B38D7057f8Cd7E",
+    "erc8004Identity": "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+    "erc8004Reputation": "0x8004B663056A597Dffe9eCcC1965A193B7388713",
+    "safeL2": "0xEdd160fEBBD92E350D4D398fb636302fccd67C7e",
+    "safeProxyFactory": "0x14F2982D601c9458F93bd70B218933A6f8165e7b",
+    "safeFallbackHandler": "0x3EfCBb83A4A7AfcB4F68D501E2c2203a38be77f4"
+  },
+  "params": {
+    "disputeWindow": 600,
+    "vetoWindow": 120,
+    "grace": 60,
+    "withdrawalDelay": 900,
+    "instantSlashCap": 100000000,
+    "signersDelay": 900,
+    "timelockMinDelay": 300
+  },
+  "governance": {
+    "proposer": "0x9c0215b66F6a64c34CCb0126Cb8d027689Fa68b9",
+    "guardianOwners": [
+      "0xA5393a3a866afF571958432cB3CbC6a21400c69e",
+      "0x6397f0a3Ac0701BDFEbe16ae45365CE3ba80beBB",
+      "0x3f2164Bda9BD980f070bC3a693d192ac23EE9a9A"
+    ],
+    "guardianThreshold": 2
+  },
+  "contracts": {},
+  "constructorArgs": {}
+}

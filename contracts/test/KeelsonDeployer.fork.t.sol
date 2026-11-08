@@ -2,28 +2,37 @@
 pragma solidity 0.8.38;
 
 import {KeelsonDeployer} from "../src/deploy/KeelsonDeployer.sol";
-import {Test} from "forge-std/Test.sol";
+import {ForkTest} from "./utils/Fork.sol";
+import {stdJson} from "forge-std/StdJson.sol";
 
-contract KeelsonDeployerForkTest is Test {
-    address internal constant DEPLOYER = address(0xA11CE);
+contract KeelsonDeployerForkTest is ForkTest {
+    using stdJson for string;
 
-    function _deployOn(string memory rpc, uint256 blockNumber) internal returns (address deployer, address predicted) {
-        vm.createSelectFork(rpc, blockNumber);
-        bytes memory initCode = abi.encodePacked(type(KeelsonDeployer).creationCode, abi.encode(DEPLOYER));
-        (bool ok, bytes memory ret) = CREATE2_FACTORY.call(abi.encodePacked(bytes32(0), initCode));
-        assertTrue(ok, rpc);
-        deployer = address(bytes20(ret));
-        assertEq(KeelsonDeployer(deployer).owner(), DEPLOYER);
+    function setUp() public {
+        _forkAll();
+    }
+
+    /// @dev Exactly what `new KeelsonDeployer{salt: bytes32(0)}(owner)` does in a broadcast script.
+    function _deployOn(uint256 chainId) internal returns (address deployer, address predicted) {
+        _select(chainId);
+        address owner = _json().readAddress(".governance.proposer");
+        bytes memory initCode = abi.encodePacked(type(KeelsonDeployer).creationCode, abi.encode(owner));
+        deployer = vm.computeCreate2Address(bytes32(0), keccak256(initCode));
+        if (deployer.code.length == 0) {
+            (bool ok, bytes memory ret) = CREATE2_FACTORY.call(abi.encodePacked(bytes32(0), initCode));
+            assertTrue(ok, vm.toString(chainId));
+            assertEq(address(bytes20(ret)), deployer);
+        }
+        assertEq(KeelsonDeployer(deployer).owner(), owner);
         predicted = KeelsonDeployer(deployer).predict(keccak256(abi.encodePacked("keelson/v1", "/", "AccessManager")));
     }
 
     function test_SameDeployerAndPredictionsOnEveryChain() public {
-        (address d1, address p1) = _deployOn("arbitrum_sepolia", 327137000);
-        (address d2, address p2) = _deployOn("arbitrum", 522273000);
-        (address d3, address p3) = _deployOn("sepolia", 12088200);
-        assertEq(d1, d2);
-        assertEq(d1, d3);
-        assertEq(p1, p2);
-        assertEq(p1, p3);
+        (address d1, address p1) = _deployOn(CHAIN_IDS[0]);
+        for (uint256 i = 1; i < CHAIN_IDS.length; ++i) {
+            (address d, address p) = _deployOn(CHAIN_IDS[i]);
+            assertEq(d, d1);
+            assertEq(p, p1);
+        }
     }
 }
