@@ -204,10 +204,7 @@ try {
     return row?.m ?? null;
   };
   const recipient = await identityToRecipient(await generateHybridIdentity());
-  const sku = skus.find((s) => s.catalog) as {
-    url: string;
-    selection: { name: string; label: string }[];
-  };
+  const sku = skus.find((s) => s.catalog) as { url: string };
 
   let t = performance.now();
   const created = (await (
@@ -247,6 +244,7 @@ try {
 
     t = performance.now();
     const productItem = capture.items.find((i) => i.type === "api.product");
+    const line = cart.cart.lines[0] as (typeof cart.cart.lines)[number];
     if (!productItem) throw new Error("no api.product item");
     const observed = await post(
       app,
@@ -256,10 +254,14 @@ try {
         url: sku.url,
         agentView: {
           contentHash: toHex(sha256(productItem.bytes)),
-          priceMinor: String(product.price.minor),
-          currency: product.price.currency,
+          // The view is of the cart's line; Channel3's own reading of the page may differ.
+          priceMinor: String(line.unit_minor),
+          currency: cart.cart.currency,
           available: true,
-          selected: sku.selection,
+          selected: [
+            { name: "Size", label: line.size },
+            { name: "Color", label: line.color },
+          ],
         },
       },
       asAgent,
