@@ -166,6 +166,10 @@ abstract contract SymbolicSetup is SymTest, Test {
         _storeCoverage(COVERAGE, releaseAfter, false);
         _storeCoverage(DEGRADED_COVERAGE, start + 72 hours, true);
         assertTrue(token.transfer(address(vault), FREE + 2 * COVERAGE_AMOUNT));
+        assertEq(vault.bonds(AGENT).locked, 2 * COVERAGE_AMOUNT);
+        assertEq(vault.coverages(COVERAGE).amount, COVERAGE_AMOUNT);
+        assertTrue(vault.coverages(DEGRADED_COVERAGE).degraded);
+        assertEq(vault.coverages(COVERAGE).releaseAfter, releaseAfter);
         assertTrue(token.transfer(address(reserve), RESERVE_ASSETS));
     }
 

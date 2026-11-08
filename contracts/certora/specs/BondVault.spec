@@ -5,7 +5,7 @@ use rule conservationReachable;
 
 // ---------------------------------------------------------------- I1
 
-/// A slash succeeds only with both legs' signatures by active signers, or a lone active TDX signature, over the
+/// A slash succeeds only with both TEE signatures by active signers, or a lone active TDX signature, over the
 /// verdict's digest; before its deadline; naming a checkpoint anchored for the vault's log.
 rule slashRequiresValidVerdict(env e, method f, KeelsonTypes.Verdict v, uint64 treeSize, bytes sigs)
     filtered { f -> isSlash(f) }

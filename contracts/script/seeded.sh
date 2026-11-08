@@ -40,10 +40,13 @@ case "$tool" in
   halmos)
     [[ -n "$check" ]] || { echo "no Halmos check for $bug" >&2; exit 2; }
     FOUNDRY_PROFILE=halmos halmos --root . --function "$check" --early-exit | tee "$tmp" || true
-    grep -q "Counterexample" "$tmp" && caught=1
+    grep -Eq "\[FAIL\].*$check\(" "$tmp" && grep -q "Counterexample: *$" "$tmp" && caught=1
     ;;
   certora)
-    certoraRun "certora/conf/$conf.conf" --rule "$rule" --msg "seeded $bug" --wait_for_results all || caught=1
+    # Caught only when the named rule itself is violated, not when the run fails for another reason.
+    certoraRun "certora/conf/$conf.conf" --rule "$rule" --msg "seeded $bug" --wait_for_results all || true
+    script/certora-results.sh "$tmp"
+    [[ $(jq -r --arg r "$rule" '.rules[$r]' "$tmp") == FAIL ]] && caught=1
     ;;
   forge)
     [[ -n "$test" ]] || { echo "no Forge test for $bug" >&2; exit 2; }

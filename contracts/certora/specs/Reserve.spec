@@ -19,7 +19,7 @@ methods {
 
 // ---------------------------------------------------------------- RSV1
 
-/// A warranty pays only on both legs' signatures and settles its dispute, which neither the reserve nor the vault had
+/// A warranty pays only on both TEE signatures and settles its dispute, which neither the reserve nor the vault had
 /// settled; so it pays at most once per dispute.
 rule warrantySingleUse(env e, KeelsonTypes.Verdict v, uint64 treeSize, bytes sigs) {
     bool alreadySettled = settled(v.disputeId) || vault.settled(v.disputeId);

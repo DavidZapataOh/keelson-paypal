@@ -13,7 +13,10 @@ readme=${2:-README.md}
 
 shopt -s nullglob
 # The latest Prover results are pinned in verification/certora/; a run's own results replace them.
-certora=$(jq -s 'map(.rules) | add // {}' verification/certora/certora-*.json "$dir"/certora-*.json /dev/null)
+# `rule@Conf` names one conf's result; a bare rule takes the first conf, in file order, that has it.
+certora=$(for f in verification/certora/certora-*.json "$dir"/certora-*.json; do
+  jq --arg conf "$(basename "$f" .json | sed 's/^certora-//')" '.rules | . + with_entries(.key += "@" + $conf)' "$f"
+done | jq -s 'reduce .[] as $r ({}; . + ($r | with_entries(select(.key | contains("@")))) | ($r | with_entries(select(.key | contains("@") | not))) + .)')
 halmos=$(jq '[.test_results[][] | {(.name | sub("\\(.*"; "")): (.exitcode == 0)}] | add // {}' "$dir/halmos.json" 2>/dev/null || echo '{}')
 forge_symbolic=$(jq '[.[].test_results | to_entries[] | {(.key | sub("\\(.*"; "")): (.value.status == "Success")}] | add // {}' \
   "$dir/forge-symbolic.json" 2>/dev/null || echo '{}')
@@ -26,9 +29,9 @@ cell() {
   [[ "$names" == "-" ]] && { echo "—"; return; }
   jq -rn --arg names "$names" --argjson r "$results" --arg suffix "$suffix" '
     ($names | split(",")) as $n
-    | ($n | map(sub("@.*"; "")) | map(., . + "Reachable") | map(select(. as $k | $r | has($k) or ($k | endswith("Reachable") | not)))
-       | map($r[.])) as $s
-    | (if all($s[]; . == true or . == "VERIFIED") then "✅"
+    | ($n | map(., (sub("@"; "Reachable@") | if contains("Reachable") then . else . + "Reachable" end))
+       | map(select(. as $k | $r | has($k) or ($k | contains("Reachable") | not))) | map($r[.])) as $s
+    | (if all($s[]; . == true or . == "VERIFIED" or . == "CAUGHT") then "✅"
        elif any($s[]; . == null) then "⏳" else "❌" end)
       + " " + ($n | map("`" + . + "`") | join(", ")) + $suffix'
 }
@@ -41,10 +44,13 @@ cell() {
     [[ "$id" == \#* || -z "$id" ]] && continue
     bounded="—"
     if [[ "$checks" != "-" ]]; then
+      # A check run by both engines passes only if both pass.
       bounded=$(cell "$checks" "$(jq -n --argjson h "$halmos" --argjson f "$forge_symbolic" \
-        '$h * ($f | with_entries(select(.value)))')")
+        '[($h | keys) + ($f | keys) | unique[] as $k
+          | {($k): (if ($h | has($k)) and ($f | has($k)) then $h[$k] and $f[$k] elif ($h | has($k)) then $h[$k] else $f[$k] end)}]
+          | add // {}')")
     fi
-    fuzzed=$(cell "$fuzz" "$invariant" "$([[ $fuzz != - ]] && echo " (256 × 100; Medusa)")")
+    fuzzed=$(cell "$fuzz" "$invariant" "$([[ $fuzz != - ]] && echo " (256 × 100)")")
     echo "| $id | $property | $(cell "$rules" "$certora") | $bounded | $fuzzed |"
   done < verification/properties.tsv
   echo

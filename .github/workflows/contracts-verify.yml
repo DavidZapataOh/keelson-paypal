@@ -14,6 +14,11 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    # bash -eo pipefail: a piped tool's failure fails the step.
+    shell: bash
+
 concurrency:
   group: contracts-verify-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -35,7 +40,7 @@ jobs:
       - uses: foundry-rs/foundry-toolchain@v1.9.2
         with:
           version: ${{ env.FOUNDRY_VERSION }}
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.3.3
       - uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
@@ -115,7 +120,7 @@ jobs:
       - uses: foundry-rs/foundry-toolchain@v1.9.2
         with:
           version: ${{ env.FOUNDRY_VERSION }}
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.3.3
       - run: uv tool install halmos==0.3.3
       - name: Install z3
         run: |
@@ -125,7 +130,10 @@ jobs:
       # Halmos 0.3.3 cannot execute the SHA-256 precompile, so the RFC 6962 check runs under forge only.
       - run: FOUNDRY_PROFILE=halmos halmos --root . --match-contract '^(BondVault|VerdictVerifier|Reserve)SymbolicTest$' --json-output halmos.json
       # Forge's engine does not sign symbolic digests: it runs the checks whose signatures are concrete.
-      - run: forge test --symbolic --match-path 'test/symbolic/*' --match-test '^check_(verify2of2|slashRequiresSignatures|completeWithdrawalGuards|reserveCooldown|rfc6962Consistency)\(' --json > forge-symbolic.json
+      - run: |
+          forge test --symbolic --match-path 'test/symbolic/*' --json \
+            --match-test '^check_(verify2of2|slashRequiresSignatures|completeWithdrawalGuards|reserveCooldown|rfc6962Consistency)\(' \
+            | jq '[.[] | {test_results: (.test_results | map_values({status}))}]' > forge-symbolic.json
       - uses: actions/upload-artifact@v6
         if: always()
         with:
@@ -148,7 +156,7 @@ jobs:
       - uses: foundry-rs/foundry-toolchain@v1.9.2
         with:
           version: ${{ env.FOUNDRY_VERSION }}
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.3.3
       - run: uv tool install halmos==0.3.3
       - name: Each removed guard yields a Halmos counterexample
         run: |
@@ -182,7 +190,10 @@ jobs:
           cache-restore-keys: contracts-verify-
       - run: forge build --root lib/nitro-validator
       # -vv: traces of failing calls would print the funder keys parsed from the secret.
-      - run: forge test --match-path 'test/invariant/*' -vv --json > invariant.json
+      # Only the statuses are kept: traces and logs could carry the funder keys.
+      - run: |
+          forge test --match-path 'test/invariant/*' -vv --json \
+            | jq '[.[] | {test_results: (.test_results | map_values({status}))}]' > invariant.json
       - uses: actions/upload-artifact@v6
         if: always()
         with:
@@ -204,7 +215,7 @@ jobs:
       - uses: foundry-rs/foundry-toolchain@v1.9.2
         with:
           version: ${{ env.FOUNDRY_VERSION }}
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.3.3
       - run: uv tool install crytic-compile==0.4.2
       - name: Install Medusa, verifying its Sigstore bundle
         working-directory: ${{ runner.temp }}

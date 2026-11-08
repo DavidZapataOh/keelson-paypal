@@ -15,6 +15,12 @@ for file in certora/harness/*.sol; do
   if grep -nw 'override' "$file" >/dev/null; then
     fail "$file: declares an override"
   fi
+  if grep -nE '^[[:space:]]*(modifier|receive|fallback)\b' "$file" >/dev/null; then
+    fail "$file: declares a modifier, receive or fallback"
+  fi
+  if perl -0ne 'exit((/constructor\s*\([^{]*\{\s*[^}\s]/s) ? 0 : 1)' "$file"; then
+    fail "$file: constructor has a body; it may only pass arguments to its parent"
+  fi
   # In the contract body every declaration ending in ';' is a state variable, and every function must be a view or
   # pure getter or a one-line call to an internal function of the parent.
   awk -v file="$file" '

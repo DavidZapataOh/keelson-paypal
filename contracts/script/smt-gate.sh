@@ -11,10 +11,12 @@ accepted=${2:?accepted list}
 grep -q "Compiler run successful" "$log" || { echo "The model checker build failed." >&2; exit 1; }
 
 open=$(awk '
-  /^Warning \([0-9]+\): (CHC|BMC|SMTChecker)/ { code = $2; gsub(/[():]/, "", code); pending = 1
-    if (code == "5724") { print "5724"; pending = 0 }
-    next }
+  # A warning without a source location (no solver, CHC not run, a global summary) is reported by its code alone.
+  function flush() { if (pending) print code; pending = 0 }
+  /^Warning \([0-9]+\): (CHC|BMC|SMTChecker)/ { flush(); code = $2; gsub(/[():]/, "", code); pending = 1; next }
+  /^Warning/ { flush(); next }
   pending && /-->/ { loc = $2; sub(/:$/, "", loc); print loc " " code; pending = 0 }
+  END { flush() }
 ' "$log" | sort -u | while IFS= read -r target; do
   grep -qE "^${target//./\\.}( |$)" "$accepted" || echo "$target"
 done)

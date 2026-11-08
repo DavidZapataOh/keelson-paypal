@@ -31,7 +31,7 @@ definition DENY() returns uint8 = 2;
 
 // ---------------------------------------------------------------- VAL1
 
-/// A countersign is recorded only for the digest both legs (or the TDX leg alone) signed, as checked by the
+/// A countersign is recorded only for the digest both TEE signers (or the TDX signer alone) signed, as checked by the
 /// VerdictVerifier, which is recorded as its validator.
 rule recordRequiresVerifier(env e, KeelsonTypes.Countersign c, bytes sigs, bytes operatorSig) {
     bytes32 digest = verifier.hashTypedData(e, countersignStructHash(c));

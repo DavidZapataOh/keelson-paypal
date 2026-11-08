@@ -173,23 +173,23 @@ Deviation from the ERC: the request is not sent by the agent's owner and the res
 
 `.github/workflows/contracts-verify.yml` checks every property below three ways, and keeps the three apart. **Proven** means the Certora Prover verified the rule for every input and every reachable state, with `rule_sanity: basic` passing and each rule's `satisfy` twin reachable. Only these rows are formally verified. **Bounded** means Halmos 0.3.3 (`--loop 3`, signatures of 65 and 130 bytes) or `forge test --symbolic` found no counterexample within those bounds. That is evidence, not a proof. **Fuzzed** means the Foundry invariant handler (256 runs × 100 calls) and Medusa (200,000 calls per pull request, 2,000,000 nightly) found no violation on an Arbitrum Sepolia fork with real PYUSD, real Paxos `freeze` and `pause`, and coverages locked from real passkey and countersign vectors.
 
-`script/verification-report.sh <results>` regenerates the table from a run's results.
+`script/verification-report.sh <results>` regenerates the table from a run's results. A Certora cell is ✅ only when each rule and its `satisfy` twin are verified; `seeded:<bug>` means the Prover reports that rule violated once the guard is removed. A check run by both symbolic engines must pass in both.
 
 <!-- verification:start -->
 <!-- verification:end -->
 
 ### What runs where
 
-| Job | Tool | When |
-| --- | --- | --- |
-| `static` | Slither 0.11.6 (fails on high or medium), Aderyn 0.6.8 (fails on high) | every pull request and push |
-| `symbolic` | Halmos 0.3.3 and `forge test --symbolic` (z3 5.3.3) over `test/symbolic/` | every pull request and push |
-| `invariant` | `test/invariant/`: the Keelson handler and `Properties`, and a16z's `ERC4626Test` on `KeelsonReserve` | every pull request and push |
-| `medusa` | Medusa 1.5.1 on `MedusaKeelson`, which calls the same `Properties` | every pull request and push; 2,000,000 calls nightly |
-| `certora` | Certora Prover, one job per `certora/conf/*.conf`, after `script/check-harness.sh`; the latest results are pinned in `verification/certora/` | on dispatch (the free plan allows 2,120 Prover minutes a month) |
-| `seeded-bugs` | `script/seeded.sh`: each removed guard must produce a counterexample | every pull request and push |
-| `smtchecker` | solc's model checker (CHC, z3), one contract per job | nightly |
-| `mutation` | `forge test --mutate`, one contract per job, gated at 90% by `script/mutation-gate.sh` | nightly |
+| Job           | Tool                                                                                                                                         | When                                                            |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `static`      | Slither 0.11.6 (fails on high or medium), Aderyn 0.6.8 (fails on high)                                                                       | every pull request and push                                     |
+| `symbolic`    | Halmos 0.3.3 and `forge test --symbolic` (z3 5.3.3) over `test/symbolic/`                                                                    | every pull request and push                                     |
+| `invariant`   | `test/invariant/`: the Keelson handler and `Properties`, and a16z's `ERC4626Test` on `KeelsonReserve`                                        | every pull request and push                                     |
+| `medusa`      | Medusa 1.5.1 on `MedusaKeelson`, which calls the same `Properties`                                                                           | every pull request and push; 2,000,000 calls nightly            |
+| `certora`     | Certora Prover, one job per `certora/conf/*.conf`, after `script/check-harness.sh`; the latest results are pinned in `verification/certora/` | on dispatch (the free plan allows 2,120 Prover minutes a month) |
+| `seeded-bugs` | `script/seeded.sh`: each removed guard must produce a counterexample                                                                         | every pull request and push                                     |
+| `smtchecker`  | solc's model checker (CHC, z3), one contract per job                                                                                         | nightly                                                         |
+| `mutation`    | `forge test --mutate`, one contract per job, gated at 90% by `script/mutation-gate.sh`                                                       | nightly                                                         |
 
 ### Try it
 
@@ -201,13 +201,13 @@ script/seeded.sh anchor-rewrite forge      # anchors a rewritten history once th
 script/seeded.sh reentrancy certora        # drops nonReentrant from completeWithdrawal and pays before updating state
 ```
 
-Each patch in `certora/seeded/` deletes exactly one guard from `src/`. The script refuses to run on a modified `src/` and always reverts the patch.
+Each patch in `certora/seeded/` removes one guard from `src/`: it deletes a check, or for `reentrancy` drops `nonReentrant` and moves the transfer ahead of the state update. The script refuses to run on a modified `src/` and always reverts the patch.
 
 ### Assumptions and what is not covered
 
 - Certora, Halmos and `forge --symbolic` cannot fork a chain. They use OpenZeppelin's `ERC20` as the token. For I11, the Prover uses a token whose `transfer` and `transferFrom` may revert or return false, which is how a Paxos freeze or pause looks to the vault.
 - No TEE signs a `Verdict` yet. On the forks, verdicts are signed by two keys written into the `VerdictVerifier`'s signer records with `vm.store` (`test/utils/VerdictSigners.sol`). The Prover and Halmos model them through `ecrecover`.
-- `lockCoverage` verifies a P-256 passkey assertion, which symbolic engines do not execute. The symbolic checks therefore start from coverages, bonds and an anchored root written at their storage slots exactly as `lockCoverage` and `anchor` leave them. The fork suites lock coverages through `lockCoverage` itself.
+- `lockCoverage` verifies a P-256 passkey assertion, which symbolic engines do not execute. The symbolic checks therefore start from coverages, bonds and an anchored root written at their storage slots as `lockCoverage` and `anchor` leave them (the checks read neither `coverageHash` nor the anchor's latest size). The fork suites lock coverages through `lockCoverage` itself.
 - Medusa's EVM has no P256VERIFY precompile at `0x100`. `MedusaKeelson` etches one there that computes EIP-7951 with OpenZeppelin's `P256.verifySolidity`, and only when the address does not answer. Medusa has no log cheatcodes, so it checks I12 through the stored digests of queued slashes; Foundry checks every `Slashed` event.
 - The fuzzers fork Arbitrum Sepolia at block 327,231,200, where the `VerdictVerifier` and `CheckpointAnchor` already exist, and deploy the vault and reserve at their real CREATE3 addresses.
 - Halmos 0.3.3 models the SHA-256 precompile with an argument width in bytes rather than bits, so it cannot execute RFC 6962 hashing. The consistency check is bounded with `forge --symbolic` (trees of up to 16 leaves), and the Prover treats `RFC6962.verifyConsistency` as a function it does not open.
@@ -219,7 +219,7 @@ Each patch in `certora/seeded/` deletes exactly one guard from `src/`. The scrip
 - Each Certora summary and `require` is justified in its spec:
   - `PasskeyAssertion.verify` and `MerkleProof.verifyCalldata` may return anything: no vault property depends on WebAuthn or on the batch leaf proof.
   - The Identity registry, ERC-1271 wallets and the AccessManager (`ownerOf`, `getAgentWallet`, `isValidSignature`, `canCall`, `consumeScheduledOp`) return arbitrary values, so any owner is possible, the vault included.
-  - `receiveWithAuthorization` is a transfer from `from` to the caller; `permit` may do anything, since the vault ignores its outcome.
+  - `receiveWithAuthorization` is a transfer from `from` to the caller. `permit` may do anything, since the vault ignores its outcome; the deposit that follows holds for any allowance.
   - Two balances of the token never exceed its total supply (OpenZeppelin `ERC20`), and the vault's allowance to itself is zero: it never approves and has no ERC-1271.
   - A payout's recipient is not the vault itself.
   - At `lockCoverage`, `slashed` and `warranted` of the new coverage id are zero. `warranted` is backed by `warrantyOnlyForHeldCoverage`; `slashed` is the accepted batch-leaf finding below.
@@ -227,9 +227,11 @@ Each patch in `certora/seeded/` deletes exactly one guard from `src/`. The scrip
   - `VerdictVerifier`: Automata's DCAP (on-chain and RISC Zero), the `NitroValidator` and `ArbSys` return arbitrary values, and so do `DstackEvents.replay`, `TdxOutput.parse`, `NitroDocument.read` and `tdxMeasurement`. The rules prove what registration requires of their outputs, not that the attestation verifiers are correct. `AccessManaged._checkCanCall` approves or reverts nondeterministically. Attestation fields are assumed to hash within 224 bytes (`optimistic_hashing`); real ones are 32 to 64.
   - `CheckpointAnchor`: `_noteStates` returns any result, and `RFC6962.verifyConsistency` is an uninterpreted predicate of its sizes and roots. The rule proves that the stored root passed the check, and the check itself is bounded with `forge --symbolic`. `keccak256(signedNote)`, which only feeds the event, is hashed optimistically.
   - `KeelsonValidationRegistry`: `_hex` returns any 66-character string. Loops are unrolled optimistically, because the only ones are copies of four literal tags of at most 8 bytes.
-  - `KeelsonReputationReporter`: `feedbackURI` returns any 106-character string, and `giveFeedback` always reverts.
+  - `KeelsonReputationReporter`: `feedbackURI` returns any 106-character string, and `giveFeedback` always reverts. `unratedSlashes` stays below `2^256 - 1`, since it grows by at most one per coverage.
 - Rules the Prover has not closed yet are marked ❌ in the table, and the free plan's monthly quota is spent until 2026-12-01:
-  - `failedPayoutIsClaimable` is verified, but its `satisfy` twin is not shown reachable.
+  - I11 is not proven. `failedPayoutIsClaimable` passes, but its `satisfy` twin is unreachable, so with the reverting-token summary no failed transfer may ever reach the vault's claimable branch: the rule may hold vacuously. The fork suites exercise that branch with real `freeze` and `pause`.
+  - I3: the Prover checks `slashed + warranted <= amount` across the vault's functions. The reserve's `payWarranty` step (`warrantyWithinCoverage`) is still to write, and Halmos bounds the combined case.
+  - I10 and VAL3 rest on a `CALL` hook. The reentrancy seed, which shows that hook catches the token call, has not yet run on the Prover.
   - `rootWrittenOnce` fails from a pre-state in which a root exists above the latest anchored size, a state no call creates. It needs a supporting invariant.
   - `verify2of2Sound` fails because `address(0)` could be admitted as a signer (finding below).
   - `revocationPermanent` and `registryChangesNeedAuthority` hold for every function except `registerSignerWithNitro`, where a loop is not yet summarized.
