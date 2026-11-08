@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && cp -R src/chain/vendor dist/chain/",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "start": "node dist/server.js",
