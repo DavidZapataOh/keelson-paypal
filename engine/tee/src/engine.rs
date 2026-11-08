@@ -29,10 +29,11 @@ use time::macros::format_description;
 use time::{Duration, OffsetDateTime, UtcOffset};
 
 use crate::budget::{Budget, Claimed, Replay};
+use crate::checkpoint::{CheckpointError, verify_checkpoint};
 use crate::paypal::{PayPalDeny, paypal_check};
 use crate::wire::{
-    self, Base64, CountersignRequest, Countersigned, Hex, MandateIssued, Observation,
-    PayPalObservation, RegisterMandate,
+    self, Base64, CheckpointRequest, CheckpointSigned, CountersignRequest, Countersigned, Hex,
+    MandateIssued, Observation, PayPalObservation, RegisterMandate,
 };
 use crate::{
     Error, Root, SealAad, Signer, SignerBinding, TeeKind, countersign_digest, failed_fields_mask,
@@ -147,6 +148,8 @@ pub enum EngineError {
     PayPal,
     /// The signer could not sign; see [`Error`].
     Signer(Error),
+    /// The checkpoint is not one the engine signs.
+    Checkpoint(CheckpointError),
 }
 
 impl EngineError {
@@ -166,6 +169,7 @@ impl EngineError {
             Self::Busy => "busy".into(),
             Self::PayPal => "paypal".into(),
             Self::Signer(_) => "signer".into(),
+            Self::Checkpoint(e) => e.code().into(),
         }
     }
 }
@@ -429,6 +433,34 @@ impl Engine {
         clock_now: OffsetDateTime,
     ) -> Result<Countersigned, EngineError> {
         self.countersign_with(r, clock_now, None)
+    }
+
+    /// Signs the `Checkpoint` of a witnessed log checkpoint: the note must verify against its
+    /// origin's log key and witness quorum, and the origin must anchor on the request's chain.
+    /// The signature means the log signed and its witnesses cosigned that tree.
+    pub fn sign_checkpoint(
+        &self,
+        r: &CheckpointRequest,
+        now: OffsetDateTime,
+    ) -> Result<CheckpointSigned, EngineError> {
+        let chain_id = r.chain_id.unwrap_or(self.config.chain_id);
+        let c = verify_checkpoint(r.signed_note.as_bytes(), chain_id, now)
+            .map_err(EngineError::Checkpoint)?;
+        let domain = keelson_core::domain(chain_id, self.config.verifying_contract)
+            .map_err(|_| bad("chain_id"))?;
+        let signature = self
+            .signer
+            .sign_checkpoint(&c, &domain)
+            .map_err(EngineError::Signer)?;
+        Ok(CheckpointSigned {
+            origin: Hex(c.origin.0),
+            tree_size: c.treeSize.to_string(),
+            root_hash: Hex(c.rootHash.0),
+            chain_id,
+            digest: Hex(alloy_sol_types::SolStruct::eip712_signing_hash(&c, &domain).0),
+            signature: Hex(signature),
+            signer: self.signer.address(),
+        })
     }
 
     /// [`Engine::countersign`] on leg A over a PayPal reading made for this request.

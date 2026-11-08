@@ -24,6 +24,17 @@ The first registration of a `sub` binds it to its passkey in a sealed user recor
 
 A request id is answered once per mandate. Right after authentication it is bound to the digest of the whole request (closed mandate, cart, PayPal unit, evidence, evidence root and observation), in one record that also holds its reservation and its answer and expires with the countersign. The same input gets the same countersign and reserves nothing more; any other input under the id fails with `replay` before anything is evaluated. A countersign that fails removes the record and its reservation.
 
+## Sign a checkpoint
+
+`Engine::sign_checkpoint` signs the EIP-712 `Checkpoint(bytes32 origin, uint64 treeSize, bytes32 rootHash)` that `CheckpointAnchor` accepts, for a c2sp.org/tlog-checkpoint signed note of one of the logs in `src/checkpoint.rs` (keys copied from `services/log/policy`):
+
+1. the body is exactly the origin, the decimal size and the canonical base64 root, with no extension lines;
+2. the origin's Ed25519 log key signed it (c2sp.org/signed-note; signatures of unknown keys, such as the log's ML-DSA-44 one, are ignored);
+3. for the Alibi origins, at least 2 of the 3 witnesses cosigned it (c2sp.org/tlog-cosignature `cosignature/v1`, each witness counted once, timestamps at most 10 minutes ahead); the conformance origin needs the log key only, so drills can be anchored;
+4. the origin anchors on the request's chain (`chain_id`, the engine's own chain when absent): the sandbox and conformance origins on Arbitrum Sepolia, the live origin on Arbitrum One.
+
+`origin` is `keccak256` of the origin string, and the domain is the engine's (`verifyingContract` = the `VerdictVerifier`). Because both legs sign only witnessed checkpoints, the log key alone cannot get a checkpoint anchored.
+
 ## What each leg checks
 
 Both legs verify every signature in the closed mandate and the passkey assertion. Two checks run on leg A only, and leg B takes their result from leg A's `Observation`:
@@ -91,23 +102,23 @@ Registering refuses a mandate whose `exp` has passed (`mandate_expired`) or whos
 
 ## Errors
 
-Refusals carry no signature and one of these stable codes: `auth.closed_*`, `auth.open_*`, `auth.webauthn_*`, `auth.sub_bound`, `clock_skew`, `no_root`, `not_ready`, `commitment_mismatch`, `replay`, `busy`, `bad_request`, `payload_too_large`, `mandate_expired`, `mandate_not_yet_valid`, `paypal` and `signer`.
+Refusals carry no signature and one of these stable codes: `auth.closed_*`, `auth.open_*`, `auth.webauthn_*`, `auth.sub_bound`, `clock_skew`, `no_root`, `not_ready`, `commitment_mismatch`, `replay`, `busy`, `bad_request`, `payload_too_large`, `mandate_expired`, `mandate_not_yet_valid`, `paypal`, `signer`, and for checkpoints `checkpoint_format`, `checkpoint_origin`, `checkpoint_chain`, `checkpoint_log_signature` and `checkpoint_quorum`.
 
 ## HTTP
 
-`keelson-engine --listen tcp:<addr>` serves `POST /v1/countersign`, `POST /v1/mandates/register` and `GET /v1/health` (`{ tee, signer, boot_epoch, oci_digest, version, now_ms, issuer, rss_kib }`, `now_ms` being the engine's clock, `issuer` the credential issuer's public JWK and `rss_kib` the process's resident memory on Linux). With `--platform tdx` it also serves `GET /v1/attestation` and `POST /v1/attestation/refresh` (see below). Every route except health and `GET /v1/attestation` needs `Authorization: Bearer <token>`; the engine holds only the token's SHA-256, from `KEELSON_TEE_TOKEN_SHA256`, and compares it in constant time. Refusals are `application/problem+json` (RFC 9457) with `type` `https://keelson.finance/problems/<code>` and the stable code, and never echo the request. Bodies are JSON with unknown fields rejected.
+`keelson-engine --listen tcp:<addr>` serves `POST /v1/countersign`, `POST /v1/mandates/register`, `POST /v1/checkpoint` (`{ signed_note, chain_id? }`, at most 16 KiB, answered with `{ origin, tree_size, root_hash, chain_id, digest, signature, signer }`) and `GET /v1/health` (`{ tee, signer, boot_epoch, oci_digest, version, now_ms, issuer, rss_kib }`, `now_ms` being the engine's clock, `issuer` the credential issuer's public JWK and `rss_kib` the process's resident memory on Linux). With `--platform tdx` it also serves `GET /v1/attestation` and `POST /v1/attestation/refresh` (see below). Every route except health and `GET /v1/attestation` needs `Authorization: Bearer <token>`; the engine holds only the token's SHA-256, from `KEELSON_TEE_TOKEN_SHA256`, and compares it in constant time. Refusals are `application/problem+json` (RFC 9457) with `type` `https://keelson.finance/problems/<code>` and the stable code, and never echo the request. Bodies are JSON with unknown fields rejected.
 
-| Status | Codes                                                                            |
-| ------ | -------------------------------------------------------------------------------- |
-| 401    | `unauthorized`                                                                   |
-| 403    | `auth.*`                                                                         |
-| 409    | `replay`, `clock_skew`, `already_booted`                                         |
-| 413    | `payload_too_large`                                                              |
-| 422    | `bad_request`, `commitment_mismatch`, `mandate_expired`, `mandate_not_yet_valid` |
-| 501    | `no_root`                                                                        |
-| 503    | `not_ready`, `busy`, `attestation_stale`                                         |
-| 500    | `signer`, `internal`                                                             |
-| 502    | `attestation`, `paypal`                                                          |
+| Status | Codes                                                                                            |
+| ------ | ------------------------------------------------------------------------------------------------ |
+| 401    | `unauthorized`                                                                                   |
+| 403    | `auth.*`                                                                                         |
+| 409    | `replay`, `clock_skew`, `already_booted`                                                         |
+| 413    | `payload_too_large`                                                                              |
+| 422    | `bad_request`, `commitment_mismatch`, `mandate_expired`, `mandate_not_yet_valid`, `checkpoint_*` |
+| 501    | `no_root`                                                                                        |
+| 503    | `not_ready`, `busy`, `attestation_stale`                                                         |
+| 500    | `signer`, `internal`                                                                             |
+| 502    | `attestation`, `paypal`                                                                          |
 
 The binary reads its configuration from `KEELSON_*` environment variables (see `src/main.rs`). Without `--platform` it holds no KMS root.
 
@@ -271,7 +282,7 @@ done
 
 ## Benchmarks
 
-`cargo bench -p keelson-tee` measures the demo countersign on both legs (closed-mandate and passkey verification through signing) and `register_mandate`, and fails if a p99 is over budget: 2 ms per countersign, 5 ms per registration.
+`cargo bench -p keelson-tee` measures the demo countersign on both legs (closed-mandate and passkey verification through signing) and `register_mandate`, and fails if a p99 is over budget: 2 ms per countersign, 5 ms per registration. `cargo bench -p keelson-tee --bench checkpoint` measures `sign_checkpoint` over a witnessed sandbox checkpoint: p50 98 µs, p99 116 µs on an Apple M-series host (budget 1 ms).
 
 `services/api/bench/countersign.bench.ts` measures the live legs from where the API runs. Measured on 2026-11-07 from a Render one-off job of the API service (Oregon, AMD EPYC 7R13), against the legs above and a PayPal sandbox authorization, with sequential requests:
 

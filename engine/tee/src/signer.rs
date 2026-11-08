@@ -2,10 +2,11 @@
 
 use alloy_primitives::Address;
 use alloy_sol_types::Eip712Domain;
+use alloy_sol_types::SolStruct;
 use k256::ecdsa::{RecoveryId, SigningKey};
 use k256::elliptic_curve::Generate;
 use k256::elliptic_curve::zeroize::ZeroizeOnDrop;
-use keelson_core::eip712::Countersign;
+use keelson_core::eip712::{Checkpoint, Countersign};
 
 use crate::countersign_digest;
 use crate::error::{Error, check_chain};
@@ -13,7 +14,8 @@ use crate::error::{Error, check_chain};
 /// A secp256k1 key that exists only in this process.
 ///
 /// The key is boxed so moving a `Signer` never copies the scalar; `SigningKey` zeroizes it on
-/// drop. There is no `Clone` and no way to export it, and it only signs `Countersign` payloads.
+/// drop. There is no `Clone` and no way to export it, and it only signs `Countersign` and
+/// `Checkpoint` payloads.
 pub struct Signer {
     key: Box<SigningKey>,
 }
@@ -63,6 +65,22 @@ impl Signer {
             .ok_or(Error::MissingChain)?;
         check_chain(chain_id)?;
         self.sign_digest(&countersign_digest(c, domain))
+    }
+
+    /// Signs the EIP-712 digest of `c`, as [`Signer::sign_countersign`] does.
+    ///
+    /// Fails on domains outside Arbitrum Sepolia and Arbitrum One.
+    pub fn sign_checkpoint(
+        &self,
+        c: &Checkpoint,
+        domain: &Eip712Domain,
+    ) -> Result<[u8; 65], Error> {
+        let chain_id = domain
+            .chain_id
+            .and_then(|id| u64::try_from(id).ok())
+            .ok_or(Error::MissingChain)?;
+        check_chain(chain_id)?;
+        self.sign_digest(&c.eip712_signing_hash(domain).0)
     }
 
     fn sign_digest(&self, digest: &[u8; 32]) -> Result<[u8; 65], Error> {

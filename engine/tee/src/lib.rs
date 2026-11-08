@@ -4,6 +4,7 @@
 mod budget;
 #[cfg(feature = "tdx")]
 pub mod chain;
+pub mod checkpoint;
 mod countersign;
 mod engine;
 mod error;

@@ -4,5 +4,5 @@
   "os_image": "dstack-0.6.1",
   "dstack_version": "0.6.1",
   "node": "prod5",
-  "compose_hash": "3b7a8ce513f015f0778e92af04e3dd1731705ef8b5a94264e276fe1193fd9a45"
+  "compose_hash": "f6b500d7c2049a0206df944f2531e470218d8ba6d1b929cace270c9474cf019f"
 }

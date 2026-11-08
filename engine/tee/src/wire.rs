@@ -297,3 +297,31 @@ pub struct Countersigned {
     /// The facts the decision used, for leg B.
     pub observation: Observation,
 }
+
+/// A checkpoint to sign as the EIP-712 `Checkpoint`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CheckpointRequest {
+    /// The c2sp.org/tlog-checkpoint signed note, with its log and witness signatures.
+    pub signed_note: String,
+    /// The chain of the anchor; the engine's own chain when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chain_id: Option<u64>,
+}
+
+/// A signed `Checkpoint`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CheckpointSigned {
+    /// `keccak256` of the origin string.
+    pub origin: Hex32,
+    /// The tree size, as a decimal string.
+    pub tree_size: String,
+    pub root_hash: Hex32,
+    pub chain_id: u64,
+    /// The EIP-712 signing hash.
+    pub digest: Hex32,
+    /// `r ‖ s ‖ v`.
+    pub signature: Hex65,
+    pub signer: Address,
+}
