@@ -370,7 +370,11 @@ contract KeelsonBondVault is IKeelsonBondVault, AccessManaged, EIP712, Nonces, R
         return _domainSeparatorV4();
     }
 
+    /// @dev The agent must exist: ERC-8004 ids are minted in sequence to anyone, so a bond for an id not yet minted
+    /// would belong to whoever registers it next.
     function _credit(uint256 agentId, address from, uint256 amount) internal {
+        if (identity.ownerOf(agentId) == address(0)) revert NotAgentAuthority();
+        agentId.toUint64();
         _bonds[agentId].free += amount.toUint128();
         // forge-lint: disable-next-line(reentrancy-events)
         emit BondDeposited(agentId, from, amount);

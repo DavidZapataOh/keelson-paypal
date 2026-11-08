@@ -55,8 +55,19 @@ contract BondVaultDepositForkTest is VaultBase {
     function test_depositWithAuthorization_revertsForOtherAgent() public {
         (address from, bytes memory sig) = _authorization(0, type(uint256).max, "a");
         vm.expectRevert(IPyusd.InvalidSignature.selector);
-        vault.depositWithAuthorization(agentId + 1, from, AMOUNT, 0, type(uint256).max, "a", sig);
-        assertEq(vault.bonds(agentId + 1).free, 0);
+        vault.depositWithAuthorization(agentId - 1, from, AMOUNT, 0, type(uint256).max, "a", sig);
+        assertEq(vault.bonds(agentId - 1).free, 0);
+    }
+
+    /// @dev The registry reverts `ownerOf` for an id it has not minted.
+    function test_depositWithAuthorization_unmintedAgentReverts() public {
+        uint256 unminted = agentId + 1_000_000;
+        (address from, uint256 pk) = _funder(0);
+        bytes memory sig = _signReceiveWithAuthorization(
+            pk, address(vault), AMOUNT, 0, type(uint256).max, keccak256(abi.encode(unminted, bytes32("a")))
+        );
+        vm.expectRevert();
+        vault.depositWithAuthorization(unminted, from, AMOUNT, 0, type(uint256).max, "a", sig);
     }
 
     function test_depositWithAuthorization_replayReverts() public {

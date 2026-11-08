@@ -151,6 +151,24 @@ contract BondVaultLockForkTest is LockBase {
         _expectLockRevert(v, IKeelsonBondVault.CountersignMismatch.selector);
     }
 
+    function test_lock_requestMismatchReverts() public {
+        Vector memory v = _at(WEBAUTHN);
+        v.coverage.coverageId = keccak256("another purchase");
+        _expectLockRevert(v, IKeelsonBondVault.CountersignMismatch.selector);
+    }
+
+    function test_lock_currencyMismatchReverts() public {
+        Vector memory v = _at(WEBAUTHN);
+        v.countersign.currency = 978;
+        _expectLockRevert(v, IKeelsonBondVault.CountersignMismatch.selector);
+    }
+
+    function test_lock_mandateMismatchReverts() public {
+        Vector memory v = _at(WEBAUTHN);
+        v.coverage.mandateHash = _vector(PAYMENT).coverage.mandateHash;
+        _expectLockRevert(v, IKeelsonBondVault.CountersignMismatch.selector);
+    }
+
     function test_lock_premiumOverAmountReverts() public {
         Vector memory v = _at(WEBAUTHN);
         v.coverage.premium = v.coverage.amount + 1;

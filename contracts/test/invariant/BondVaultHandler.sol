@@ -53,7 +53,7 @@ contract BondVaultHandler is CommonBase, StdUtils {
             locked.push(false);
         }
         agents.push(agentId_);
-        agents.push(agentId_ + 1);
+        agents.push(agentId_ - 1);
     }
 
     function agentCount() external view returns (uint256) {
