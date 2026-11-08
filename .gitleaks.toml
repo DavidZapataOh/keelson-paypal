@@ -16,3 +16,10 @@ paths = [
   '''packages/core/test/vectors/countersign\.json''',
   '''engine/tee/phala/app-compose\.json''',
 ]
+
+[[allowlists]]
+description = "Public contract addresses in the per-chain deployment registries and the bindings generated from them"
+paths = [
+  '''contracts/deployments/.*\.json''',
+  '''packages/chain/src/addresses\.ts''',
+]

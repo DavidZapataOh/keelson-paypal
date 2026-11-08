@@ -95,7 +95,8 @@ contract Deploy is KeelsonDeploy {
         );
     }
 
-    /// @dev Later releases map each `restricted` function here with `setTargetFunctionRole`.
+    /// @dev Later releases map each `restricted` function here with `setTargetFunctionRole`. A target with
+    /// SIGNERS_ROLE functions also needs `setTargetAdminDelay(target, signersDelay)`, or the admin could re-map them.
     function _wireRoles(Release memory release) internal {
         AccessManager manager = release.manager;
         (bool isAdmin,) = manager.hasRole(KeelsonRoles.ADMIN_ROLE, _owner());
@@ -109,6 +110,11 @@ contract Deploy is KeelsonDeploy {
         _grant(manager, KeelsonRoles.GUARDIAN_ROLE, address(release.guardian), 0);
         _grant(manager, KeelsonRoles.PARAMETERS_ROLE, address(release.timelock), 0);
         _grant(manager, KeelsonRoles.SIGNERS_ROLE, address(release.timelock), signersDelay);
+        // Without a grant delay the admin could revoke and re-grant SIGNERS_ROLE with no execution delay in one
+        // timelock batch. In force after `minSetback`.
+        if (manager.getRoleGrantDelay(KeelsonRoles.SIGNERS_ROLE) != signersDelay) {
+            manager.setGrantDelay(KeelsonRoles.SIGNERS_ROLE, signersDelay);
+        }
     }
 
     function _grant(AccessManager manager, uint64 role, address account, uint32 executionDelay) internal {

@@ -22,7 +22,7 @@ forge test --match-path 'test/**/*.live.t.sol'      # live chains
 forge snapshot --check --no-match-path 'test/**/*.{fork,live}.t.sol'
 ```
 
-Fork and live tests read `ARBITRUM_SEPOLIA_RPC_URL`, `ARBITRUM_ONE_RPC_URL` and `ETHEREUM_SEPOLIA_RPC_URL`. The public endpoints work: `https://sepolia-rollup.arbitrum.io/rpc`, `https://arb1.arbitrum.io/rpc`, `https://ethereum-sepolia-rpc.publicnode.com`.
+Fork and live tests read `ARBITRUM_SEPOLIA_RPC_URL`, `ARBITRUM_ONE_RPC_URL` and `ETHEREUM_SEPOLIA_RPC_URL`. The public endpoints work: `https://sepolia-rollup.arbitrum.io/rpc`, `https://arbitrum-one.public.blastapi.io` (archive state, which the pinned Arbitrum One fork needs), `https://ethereum-sepolia-rpc.publicnode.com`.
 
 ## Deterministic addresses
 

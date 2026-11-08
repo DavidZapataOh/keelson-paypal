@@ -83,6 +83,18 @@ contract KeelsonDeployerTest is Test {
         assertEq(KeelsonDeployer(mine).owner(), OWNER);
     }
 
+    /// @dev The deployed KeelsonDeployer (and so every CREATE3 address) moves if a compiler setting, the
+    /// source or OpenZeppelin's `Create3` changes the init code. Chains not yet reached must get this one.
+    function test_DeployerInitCodeIsPinned() public pure {
+        bytes memory initCode = abi.encodePacked(
+            type(KeelsonDeployer).creationCode, abi.encode(0x9c0215b66F6a64c34CCb0126Cb8d027689Fa68b9)
+        );
+        assertEq(
+            Create2.computeAddress(bytes32(0), keccak256(initCode), CREATE2_FACTORY),
+            0x539638ee1C4021730f9fA63b725c7E9bA02b714A
+        );
+    }
+
     function _viaFactory(bytes memory initCode) internal returns (address deployed) {
         (bool ok, bytes memory ret) = CREATE2_FACTORY.call(abi.encodePacked(bytes32(0), initCode));
         assertTrue(ok);

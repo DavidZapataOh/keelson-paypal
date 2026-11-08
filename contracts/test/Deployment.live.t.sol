@@ -47,8 +47,12 @@ contract DeploymentLiveTest is ForkTest {
         TimelockController timelock = TimelockController(payable(json.readAddress(".contracts.TimelockController")));
         ISafe guardian = ISafe(json.readAddress(".contracts.GuardianSafe"));
 
+        Deploy script = new Deploy();
         assertEq(KeelsonDeployer(json.readAddress(".contracts.KeelsonDeployer")).owner(), owner, chain);
-        assertEq(address(guardian), new Deploy().predictGuardian(json), chain);
+        assertEq(json.readAddress(".contracts.KeelsonDeployer"), script.deployerAddress(), chain);
+        assertEq(address(manager), script.predict("AccessManager"), chain);
+        assertEq(address(timelock), script.predict("TimelockController"), chain);
+        assertEq(address(guardian), script.predictGuardian(json), chain);
         assertEq(timelock.getMinDelay(), json.readUint(".params.timelockMinDelay"), chain);
         assertEq(guardian.getThreshold(), json.readUint(".governance.guardianThreshold"), chain);
         assertEq(guardian.getOwners().length, json.readAddressArray(".governance.guardianOwners").length, chain);

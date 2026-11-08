@@ -6,6 +6,7 @@ import {ISafe} from "../script/interfaces/ISafe.sol";
 import {KeelsonRoles} from "../src/access/KeelsonRoles.sol";
 import {ManagedTarget} from "./utils/ManagedTarget.sol";
 import {AccessManager} from "@openzeppelin/contracts/access/manager/AccessManager.sol";
+import {IAccessManaged} from "@openzeppelin/contracts/access/manager/IAccessManaged.sol";
 import {IAccessManager} from "@openzeppelin/contracts/access/manager/IAccessManager.sol";
 import {TimelockController} from "@openzeppelin/contracts/governance/TimelockController.sol";
 import {stdJson} from "forge-std/StdJson.sol";
@@ -224,6 +225,29 @@ contract GovernanceTest is Test {
         vm.prank(address(timelock));
         vm.expectRevert(abi.encodeWithSelector(IAccessManager.AccessManagerNotReady.selector, id));
         target.setSigner(makeAddr("signer"));
+    }
+
+    /// @dev Once the grant delay is in force, the timelock cannot revoke and re-grant itself SIGNERS_ROLE without
+    /// the execution delay to skip it.
+    function test_RevertWhen_TimelockResetsSignersDelay() public {
+        vm.warp(vm.getBlockTimestamp() + manager.minSetback());
+        assertEq(manager.getRoleGrantDelay(KeelsonRoles.SIGNERS_ROLE), signersDelay);
+
+        address[] memory targets = new address[](3);
+        bytes[] memory payloads = new bytes[](3);
+        targets[0] = address(manager);
+        payloads[0] = abi.encodeCall(manager.revokeRole, (KeelsonRoles.SIGNERS_ROLE, address(timelock)));
+        targets[1] = address(manager);
+        payloads[1] = abi.encodeCall(manager.grantRole, (KeelsonRoles.SIGNERS_ROLE, address(timelock), 0));
+        targets[2] = address(target);
+        payloads[2] = abi.encodeCall(target.setSigner, (makeAddr("signer")));
+        uint256[] memory values = new uint256[](3);
+
+        vm.prank(owner);
+        timelock.scheduleBatch(targets, values, payloads, bytes32(0), bytes32("reset"), minDelay);
+        vm.warp(vm.getBlockTimestamp() + minDelay);
+        vm.expectRevert(abi.encodeWithSelector(IAccessManaged.AccessManagedUnauthorized.selector, address(timelock)));
+        timelock.executeBatch(targets, values, payloads, bytes32(0), bytes32("reset"));
     }
 
     function test_GuardianCancelsTimelockOperation() public {
