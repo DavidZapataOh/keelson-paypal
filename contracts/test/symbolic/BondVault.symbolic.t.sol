@@ -32,13 +32,23 @@ contract BondVaultSymbolicTest is SymbolicSetup {
         assert(!_payWarranty(warranty, _sign2of2(_digest(warranty))));
     }
 
-    /// @notice I3: two slashes of one coverage never take more than its amount.
+    /// @notice I3: two slashes of one coverage never take more than its amount, and neither does a slash with a warranty,
+    /// in either order.
     function check_slashWithinCoverage(uint96 a, uint96 b) public {
         KeelsonTypes.Verdict memory first = _verdict(keccak256("dispute a"), COVERAGE, a, OPERATOR);
         KeelsonTypes.Verdict memory second = _verdict(keccak256("dispute b"), COVERAGE, b, OPERATOR);
         _slash(first, _sign2of2(_digest(first)));
         _slash(second, _sign2of2(_digest(second)));
         assert(vault.slashed(COVERAGE) <= COVERAGE_AMOUNT);
+    }
+
+    function check_slashAndWarrantyWithinCoverage(uint96 a, uint96 w, bool warrantyFirst) public {
+        KeelsonTypes.Verdict memory slash = _verdict(keccak256("dispute a"), COVERAGE, a, OPERATOR);
+        KeelsonTypes.Verdict memory warranty = _verdict(keccak256("dispute w"), COVERAGE, w, KEELSON);
+        if (warrantyFirst) _payWarranty(warranty, _sign2of2(_digest(warranty)));
+        _slash(slash, _sign2of2(_digest(slash)));
+        if (!warrantyFirst) _payWarranty(warranty, _sign2of2(_digest(warranty)));
+        assert(uint256(vault.slashed(COVERAGE)) + reserve.warranted(COVERAGE) <= COVERAGE_AMOUNT);
     }
 
     /// @notice I7: an instant slash pays the payee exactly the verdict's amount, or credits it exactly to its claimable.

@@ -1,7 +1,7 @@
 # id	property	certora rules (`rule@Conf` for one conf; `seeded:<bug>`: the Prover reports the rule violated once that guard is removed)	bounded checks	fuzz properties (- for none)
 I1	A slash succeeds only with a valid, unexpired verdict signed 2-of-2 by active signers, or by the active TDX signer alone (then queued)	slashRequiresValidVerdict	check_slashRequiresSignatures	invariant_noUnsignedSlash
 I2	A dispute settles at most once across slash, slashBatched, executeSlash and payWarranty	settledIsPermanent,noDoubleSettle,queuedImpliesSettled,seeded:double-settle	check_noDoubleSettle	invariant_settledUnique
-I3	slashed[c] + warranted[c] never exceeds the coverage amount	slashedWithinCoverage,warrantyWithinCoverage	check_slashWithinCoverage	invariant_slashWithinCoverage
+I3	slashed[c] + warranted[c] never exceeds the coverage amount	slashedWithinCoverage,warrantyWithinCoverage	check_slashWithinCoverage,check_slashAndWarrantyWithinCoverage	invariant_slashWithinCoverage
 I4	Σ(free + locked + queued) + Σclaimable ≤ PYUSD.balanceOf(vault)	conservation	-	invariant_conservation
 I5	No withdrawal completes before readyAt or while a slash of its agent is pending	noEarlyWithdrawal	check_completeWithdrawalGuards	invariant_noEarlyWithdrawal
 I6	Withdrawals are requested only by the agent's owner or wallet and pay only the signed `to`	withdrawalPaysSignedTo	-	invariant_withdrawalRecipient
