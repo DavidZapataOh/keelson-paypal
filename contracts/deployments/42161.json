@@ -19,6 +19,9 @@
     "grace": 60,
     "withdrawalDelay": 900,
     "instantSlashCap": 100000000,
+    "slashRateWindow": 3600,
+    "slashRateCapacity": 1000000000,
+    "reserveUnstakeWindow": 86400,
     "signersDelay": 900,
     "timelockMinDelay": 172800,
     "logOrigin": "log.keelson.finance/alibi-live/2026-1"

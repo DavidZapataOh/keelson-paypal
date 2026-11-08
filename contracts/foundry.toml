@@ -12,6 +12,8 @@ optimizer_runs = 200
 bytecode_hash = "none"
 cbor_metadata = false
 deny = "warnings"
+# OpenZeppelin's `Checkpoints` names a function `at`, which solc 0.8.38 warns will become a keyword.
+ignored_warnings_from = ["lib"]
 fs_permissions = [
   { access = "read-write", path = "./deployments" },
   { access = "read", path = "./test/vectors" },

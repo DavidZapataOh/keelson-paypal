@@ -4,6 +4,7 @@ pragma solidity 0.8.38;
 import {ICheckpointAnchor} from "./interfaces/ICheckpointAnchor.sol";
 import {IERC8004Identity} from "./interfaces/IERC8004Identity.sol";
 import {IKeelsonBondVault} from "./interfaces/IKeelsonBondVault.sol";
+import {IKeelsonReserve} from "./interfaces/IKeelsonReserve.sol";
 import {IPYUSD} from "./interfaces/IPYUSD.sol";
 import {IVerdictVerifier} from "./interfaces/IVerdictVerifier.sol";
 import {KeelsonTypes} from "./libraries/KeelsonTypes.sol";
@@ -12,8 +13,10 @@ import {AccessManaged} from "@openzeppelin/contracts/access/manager/AccessManage
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Nonces} from "@openzeppelin/contracts/utils/Nonces.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
+import {RateLimiter} from "@openzeppelin/contracts/utils/RateLimiter.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
@@ -21,12 +24,13 @@ import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 /// @notice Each operator's PYUSD bond, indexed by its ERC-8004 `agentId`, and the coverage it backs. Deposits are gasless
 /// for the depositor (EIP-3009 or ERC-2612, submitted by anyone). Coverage is locked only for a purchase the user approved
 /// with a passkey, the operator signed and both TEE legs countersigned. Funds leave only after every window in which a
-/// claim may still arrive. Not upgradeable.
+/// claim may still arrive, or to the payee of a verdict the TEE legs signed against the operator. Not upgradeable.
 /// @dev Operators, owners and merchants sign under this contract's EIP-712 domain `{Keelson, 1, chainId, this}`; the
 /// TEE legs sign under the `VerdictVerifier`'s.
 contract KeelsonBondVault is IKeelsonBondVault, AccessManaged, EIP712, Nonces, ReentrancyGuardTransient, Pausable {
     using SafeERC20 for IPYUSD;
     using SafeCast for uint256;
+    using RateLimiter for RateLimiter.RefillingBucket;
 
     /// @notice PYUSD base units (6 decimals) per US cent, the unit of `Countersign.amount`.
     uint256 public constant PYUSD_PER_MINOR = 10_000;
@@ -35,6 +39,7 @@ contract KeelsonBondVault is IKeelsonBondVault, AccessManaged, EIP712, Nonces, R
     /// @notice Minimum time a coverage countersigned by the TDX leg alone stays locked.
     uint40 public constant DEGRADED_WINDOW = 72 hours;
     uint8 internal constant ALLOW = 1;
+    uint8 internal constant LIABLE_OPERATOR = 1;
     uint256 internal constant SIGNATURE_LENGTH = 65;
 
     IPYUSD public immutable pyusd;
@@ -63,6 +68,13 @@ contract KeelsonBondVault is IKeelsonBondVault, AccessManaged, EIP712, Nonces, R
     mapping(uint256 id => Withdrawal) internal _withdrawals;
     uint256 public withdrawalCount;
     mapping(address merchant => address) public payoutAddress;
+    /// @inheritdoc IKeelsonBondVault
+    mapping(bytes32 disputeId => bool) public settled;
+    /// @inheritdoc IKeelsonBondVault
+    mapping(address account => uint256) public claimable;
+    mapping(bytes32 disputeId => QueuedSlash) internal _queuedSlashes;
+    /// @dev One global bucket (key 0) of PYUSD that slashes may pay out per window.
+    RateLimiter.RefillingBucket internal _slashLimit;
 
     constructor(
         IPYUSD pyusd_,
@@ -74,7 +86,9 @@ contract KeelsonBondVault is IKeelsonBondVault, AccessManaged, EIP712, Nonces, R
         bytes32 logOrigin_,
         bytes32 rpIdHash_,
         address authority,
-        Params memory params_
+        Params memory params_,
+        uint48 rateLimitWindow,
+        uint208 rateLimitCapacity
     ) AccessManaged(authority) EIP712("Keelson", "1") {
         pyusd = pyusd_;
         verifier = verifier_;
@@ -84,6 +98,8 @@ contract KeelsonBondVault is IKeelsonBondVault, AccessManaged, EIP712, Nonces, R
         logOrigin = logOrigin_;
         rpIdHash = rpIdHash_;
         _setParams(params_);
+        _slashLimit.updateSettings(rateLimitWindow, rateLimitCapacity);
+        emit RateLimitSet(rateLimitWindow, rateLimitCapacity);
     }
 
     /// @inheritdoc IKeelsonBondVault
@@ -328,6 +344,99 @@ contract KeelsonBondVault is IKeelsonBondVault, AccessManaged, EIP712, Nonces, R
         emit CoverageBatchReleased(batchId, batch.agentId, amount);
     }
 
+    /// @inheritdoc IKeelsonBondVault
+    /// @dev Open while paused: a pause never stops a merchant being paid.
+    function slash(KeelsonTypes.Verdict calldata v, uint64 treeSize, bytes calldata sigs) external nonReentrant {
+        (bytes32 digest, bool degraded) = _checkVerdict(v, treeSize, sigs);
+        CoverageState storage cov = _coverages[v.coverageId];
+        if (cov.status != Status.Active || block.timestamp > cov.releaseAfter || cov.agentId != v.agentId) {
+            revert CoverageNotActive();
+        }
+        if (v.amount > cov.amount - slashed[v.coverageId]) revert ExceedsCoverage();
+        if (_slash(v, digest, degraded || cov.degraded, bytes32(0))) ++cov.pendingSlashes;
+    }
+
+    /// @inheritdoc IKeelsonBondVault
+    function slashBatched(
+        KeelsonTypes.Verdict calldata v,
+        uint64 treeSize,
+        bytes calldata sigs,
+        bytes32 batchId,
+        KeelsonTypes.Coverage calldata c,
+        bytes32[] calldata proof
+    ) external nonReentrant {
+        (bytes32 digest, bool degraded) = _checkVerdict(v, treeSize, sigs);
+        if (
+            c.coverageId != v.coverageId || c.agentId != v.agentId
+                || !MerkleProof.verifyCalldata(
+                    proof, batchRoot[batchId], keccak256(bytes.concat(keccak256(abi.encode(KeelsonTypes.hash(c)))))
+                )
+        ) revert NotInBatch();
+        BatchState storage batch = _batches[batchId];
+        if (batch.status != Status.Active || block.timestamp > batch.releaseAfter || batch.agentId != v.agentId) {
+            revert CoverageNotActive();
+        }
+        if (v.amount > c.amount - slashed[c.coverageId] || batchSlashed[batchId] + v.amount > batch.locked) {
+            revert ExceedsCoverage();
+        }
+        batchSlashed[batchId] += v.amount;
+        _slash(v, digest, degraded, batchId);
+    }
+
+    /// @inheritdoc IKeelsonBondVault
+    function executeSlash(bytes32 disputeId) external nonReentrant {
+        QueuedSlash storage q = _queuedSlashes[disputeId];
+        if (q.status != SlashStatus.Queued) revert NotQueued();
+        if (block.timestamp < q.readyAt) revert NotReady();
+        _slashLimit.consume(bytes32(0), q.amount);
+        q.status = SlashStatus.Executed;
+        _unqueue(q);
+        _pay(disputeId, q.agentId, q.payee, q.amount);
+        // forge-lint: disable-next-line(reentrancy-events)
+        emit Slashed(disputeId, q.coverageId, q.agentId, q.payee, q.amount, q.fieldId, q.evidenceHash, q.verdictDigest);
+    }
+
+    /// @inheritdoc IKeelsonBondVault
+    function vetoSlash(bytes32 disputeId, string calldata reason) external restricted {
+        QueuedSlash storage q = _queuedSlashes[disputeId];
+        if (q.status != SlashStatus.Queued) revert NotQueued();
+        if (block.timestamp >= q.readyAt) revert VetoClosed();
+        q.status = SlashStatus.Vetoed;
+        slashed[q.coverageId] -= q.amount;
+        if (q.batchId != 0) batchSlashed[q.batchId] -= q.amount;
+        _unqueue(q);
+        // forge-lint: disable-next-line(reentrancy-events)
+        emit SlashVetoed(disputeId, reason);
+    }
+
+    /// @inheritdoc IKeelsonBondVault
+    function claim(address account, address to, uint256 nonce, uint256 deadline, bytes calldata sig)
+        external
+        nonReentrant
+    {
+        if (msg.sender != account) {
+            if (block.timestamp > deadline) revert Expired();
+            bytes32 digest = _hashTypedDataV4(KeelsonTypes.hashClaim(account, to, nonce, deadline));
+            if (!SignatureChecker.isValidSignatureNowCalldata(account, digest, sig)) revert InvalidSignature();
+            _useCheckedNonce(account, nonce);
+        }
+        uint256 amount = claimable[account];
+        if (amount == 0) revert ZeroAmount();
+        claimable[account] = 0;
+        pyusd.safeTransfer(to, amount);
+        // forge-lint: disable-next-line(reentrancy-events)
+        emit Claimed(account, to, amount);
+    }
+
+    /// @inheritdoc IKeelsonBondVault
+    /// @dev The bucket is synced first, so the new rate applies from now on.
+    function setRateLimit(uint48 window, uint208 capacity) external restricted {
+        _slashLimit.sync(bytes32(0));
+        _slashLimit.updateSettings(window, capacity);
+        // forge-lint: disable-next-line(reentrancy-events)
+        emit RateLimitSet(window, capacity);
+    }
+
     function setParams(Params calldata p) external restricted {
         _setParams(p);
     }
@@ -367,6 +476,16 @@ contract KeelsonBondVault is IKeelsonBondVault, AccessManaged, EIP712, Nonces, R
     }
 
     /// @inheritdoc IKeelsonBondVault
+    function queuedSlashes(bytes32 disputeId) external view returns (QueuedSlash memory) {
+        return _queuedSlashes[disputeId];
+    }
+
+    /// @inheritdoc IKeelsonBondVault
+    function rateLimitAvailable() external view returns (uint256) {
+        return _slashLimit.available(bytes32(0));
+    }
+
+    /// @inheritdoc IKeelsonBondVault
     function domainSeparator() external view returns (bytes32) {
         return _domainSeparatorV4();
     }
@@ -388,6 +507,86 @@ contract KeelsonBondVault is IKeelsonBondVault, AccessManaged, EIP712, Nonces, R
         _params = p;
         // forge-lint: disable-next-line(reentrancy-events)
         emit ParamsSet(p);
+    }
+
+    /// @dev The checks every verdict passes before the coverage it names: both legs' signatures (or the TDX leg's alone,
+    /// which makes the slash degraded), operator liability, single settlement across this vault and the reserve, the
+    /// deadline, and a checkpoint anchored for this vault's log.
+    function _checkVerdict(KeelsonTypes.Verdict calldata v, uint64 treeSize, bytes calldata sigs)
+        internal
+        view
+        returns (bytes32 digest, bool degraded)
+    {
+        digest = verifier.hashTypedData(KeelsonTypes.hash(v));
+        degraded = sigs.length == SIGNATURE_LENGTH;
+        if (!(sigs.length == 2 * SIGNATURE_LENGTH
+                    ? verifier.verify2of2(digest, sigs)
+                    : degraded && verifier.verifyDegraded(digest, sigs))) revert InvalidVerdictSignature();
+        if (v.liable != LIABLE_OPERATOR) revert NotOperatorLiable();
+        if (settled[v.disputeId] || IKeelsonReserve(reserve).settled(v.disputeId)) revert AlreadySettled();
+        if (block.timestamp > v.deadline) revert Expired();
+        if (v.checkpointRoot == 0 || anchor.rootAt(logOrigin, treeSize) != v.checkpointRoot) revert NotAnchored();
+    }
+
+    /// @dev Settles the dispute against the coverage the caller checked, then pays at once or queues the slash behind
+    /// the veto window: when degraded (72 h), above `instantSlashCap`, or beyond the rate limit. Returns whether it
+    /// queued.
+    function _slash(KeelsonTypes.Verdict calldata v, bytes32 digest, bool degraded, bytes32 batchId)
+        internal
+        returns (bool queued)
+    {
+        settled[v.disputeId] = true;
+        slashed[v.coverageId] += v.amount;
+        if (!degraded && v.amount <= _params.instantSlashCap && _slashLimit.tryConsume(bytes32(0), v.amount)) {
+            _pay(v.disputeId, v.agentId, v.payee, v.amount);
+            // forge-lint: disable-start(reentrancy-events)
+            emit Slashed(v.disputeId, v.coverageId, v.agentId, v.payee, v.amount, v.fieldId, v.evidenceHash, digest);
+            // forge-lint: disable-end(reentrancy-events)
+            return false;
+        }
+        uint40 readyAt = (block.timestamp + (degraded ? DEGRADED_WINDOW : _params.vetoWindow)).toUint40();
+        _queuedSlashes[v.disputeId] = QueuedSlash({
+            coverageId: v.coverageId,
+            batchId: batchId,
+            payee: v.payee,
+            amount: v.amount,
+            agentId: v.agentId.toUint64(),
+            readyAt: readyAt,
+            fieldId: v.fieldId,
+            status: SlashStatus.Queued,
+            evidenceHash: v.evidenceHash,
+            verdictDigest: digest
+        });
+        ++pendingSlashes[v.agentId];
+        // forge-lint: disable-next-line(reentrancy-events)
+        emit SlashQueued(v.disputeId, v.coverageId, v.agentId, v.amount, readyAt, degraded, digest);
+        return true;
+    }
+
+    function _unqueue(QueuedSlash storage q) internal {
+        --pendingSlashes[q.agentId];
+        if (q.batchId == 0) --_coverages[q.coverageId].pendingSlashes;
+    }
+
+    /// @dev Debits the bond (`locked`, then `queued`, then `free`) and pays the payee's payout address, or the payee.
+    /// A failed transfer (a frozen recipient, a paused or frozen vault) leaves the amount claimable, never reverts.
+    function _pay(bytes32 disputeId, uint256 agentId, address payee, uint96 amount) internal {
+        Bond storage bond = _bonds[agentId];
+        uint128 left = amount;
+        uint128 part = left < bond.locked ? left : bond.locked;
+        bond.locked -= part;
+        left -= part;
+        part = left < bond.queued ? left : bond.queued;
+        bond.queued -= part;
+        bond.free -= left - part;
+        ++bond.slashCount;
+        address recipient = payoutAddress[payee];
+        if (recipient == address(0)) recipient = payee;
+        if (!pyusd.trySafeTransfer(recipient, amount)) {
+            claimable[recipient] += amount;
+            // forge-lint: disable-next-line(reentrancy-events)
+            emit PayoutFailed(disputeId, recipient, amount);
+        }
     }
 
     /// @dev Whether the agent's ERC-8004 owner, or its agent wallet, signed `digest`; returns that signer.
