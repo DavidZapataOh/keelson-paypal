@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Keelson log monitor</title>
+    <meta
+      name="description"
+      content="Live state of the Keelson Alibi logs, checked by a public monitor, with a verifier that runs in your browser."
+    />
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/wasm_exec.js"></script>
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <header class="wrap">
+      <p class="eyebrow">Keelson transparency log</p>
+      <h1>Log monitor</h1>
+      <p class="lede">
+        A public monitor operated by Keelson. It follows the Alibi logs and checks every checkpoint's
+        signatures and witness quorum, consistency between every pair of checkpoints it sees, and
+        the format and inclusion of every leaf, against keys pinned in its own build.
+        <a href="https://github.com/DavidZapataOh/keelson-paypal/tree/main/services/monitor">Run your own</a>.
+      </p>
+    </header>
+
+    <main class="wrap">
+      <section class="panel" aria-labelledby="verify-title">
+        <div class="panel-head">
+          <h2 id="verify-title">Verify in your browser</h2>
+          <p class="note">
+            These checks run in WebAssembly in this tab, over data fetched directly from the log.
+            They do not use the monitor's report.
+          </p>
+        </div>
+        <form id="verify-form" class="controls">
+          <label>
+            <span>Origin</span>
+            <select id="origin"></select>
+          </label>
+          <label>
+            <span>Leaf index</span>
+            <input id="index" type="number" min="0" step="1" value="0" inputmode="numeric" />
+          </label>
+          <button type="submit">Verify</button>
+        </form>
+        <ol id="checks" class="checks" aria-live="polite"></ol>
+        <p id="verdict" class="verdict" data-state="pending">Loading the verifier…</p>
+      </section>
+
+      <section aria-labelledby="state-title">
+        <h2 id="state-title">What the monitor sees</h2>
+        <p class="note">
+          Three witnesses operated by Keelson; co-logged in Sigsum (Glasklar, Mullvad, Tillitis).
+        </p>
+        <div id="origins" class="origins"></div>
+      </section>
+
+      <section aria-labelledby="eq-title">
+        <h2 id="eq-title">Equivocations</h2>
+        <div class="eq-grid">
+          <div>
+            <h3>Production logs</h3>
+            <ul id="eq-production" class="eq-list"></ul>
+          </div>
+          <div>
+            <h3>Conformance drills</h3>
+            <p class="note">
+              Conflicting checkpoints of the test origin, gossiped on purpose to prove detection
+              works.
+            </p>
+            <ul id="eq-drills" class="eq-list"></ul>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

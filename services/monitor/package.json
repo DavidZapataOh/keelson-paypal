@@ -1,0 +1,17 @@
+{
+  "name": "@keelson/monitor",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:wasm": "GOOS=js GOARCH=wasm go build -trimpath -ldflags=\"-s -w\" -o web/verifier.wasm ./wasm && cp -f \"$(go env GOROOT)/lib/wasm/wasm_exec.js\" web/",
+    "test": "pnpm build:wasm && vitest run",
+    "bench": "node scripts/bench.ts"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "playwright": "1.64.1",
+    "railway": "3.16.0",
+    "vitest": "catalog:"
+  }
+}
