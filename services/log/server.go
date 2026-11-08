@@ -173,6 +173,8 @@ type server struct {
 	log       *slog.Logger
 	// colog is nil when co-logging in Sigsum is off.
 	colog *coLogger
+	// anchor is nil when on-chain anchoring is off.
+	anchor *anchorer
 }
 
 // authorized reports whether r carries the write token.
@@ -193,13 +195,38 @@ type addRequest struct {
 	Countersign alibilog.Countersign `json:"countersign"`
 }
 
-// private serves POST /<origin path>/add and POST /<origin path>/sigsum, reached
-// only over the private network, and the public resources for the API's health
-// checks.
+// private serves POST /<origin path>/add, POST /<origin path>/sigsum and
+// POST /<origin path>/anchor, reached only over the private network, and the
+// public resources for the API's health checks.
 func (s *server) private() http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("GET /", s.public())
 	for _, o := range s.origins {
+		if t := s.anchorTarget(o); t != nil {
+			mux.HandleFunc("POST /"+o.path+"/anchor", func(w http.ResponseWriter, r *http.Request) {
+				if !s.authorized(r) {
+					writeJSON(w, http.StatusUnauthorized, map[string]string{"code": "unauthorized"})
+					return
+				}
+				res, err := s.anchor.now(r.Context(), t)
+				switch {
+				case errors.Is(err, errTEEUnavailable):
+					s.log.Error("anchor", "origin", o.name, "err", err)
+					writeJSON(w, http.StatusServiceUnavailable, map[string]string{"code": "tee_unavailable"})
+				case errors.Is(err, errFork):
+					s.log.Error("anchor: the log contradicts its anchors", "origin", o.name, "err", err)
+					writeJSON(w, http.StatusConflict, map[string]string{"code": "fork"})
+				case errors.Is(err, errChain):
+					s.log.Error("anchor", "origin", o.name, "err", err)
+					writeJSON(w, http.StatusBadGateway, map[string]string{"code": "chain"})
+				case err != nil:
+					s.log.Error("anchor", "origin", o.name, "err", err)
+					writeJSON(w, http.StatusServiceUnavailable, map[string]string{"code": "unavailable"})
+				default:
+					writeJSON(w, http.StatusOK, res)
+				}
+			})
+		}
 		if s.colog != nil {
 			mux.HandleFunc("POST /"+o.path+"/sigsum", func(w http.ResponseWriter, r *http.Request) {
 				if !s.authorized(r) {
@@ -258,6 +285,14 @@ func (s *server) private() http.Handler {
 		})
 	}
 	return mux
+}
+
+// anchorTarget is the anchor target of o, or nil when o does not anchor.
+func (s *server) anchorTarget(o *origin) *anchorTarget {
+	if s.anchor == nil {
+		return nil
+	}
+	return s.anchor.targets[o.name]
 }
 
 // tilePath matches the c2sp.org/tlog-tiles resources under an origin, and the
@@ -321,6 +356,8 @@ func (s *server) public() http.Handler {
 		type health struct {
 			Origin string `json:"origin"`
 			Size   int64  `json:"size"`
+			// AnchoredSize is the latest anchored size, for an origin that anchors.
+			AnchoredSize *uint64 `json:"anchoredSize,omitempty"`
 		}
 		out := []health{}
 		for _, o := range s.origins {
@@ -329,7 +366,12 @@ func (s *server) public() http.Handler {
 				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"code": "unavailable"})
 				return
 			}
-			out = append(out, health{o.name, n})
+			h := health{Origin: o.name, Size: n}
+			if t := s.anchorTarget(o); t != nil {
+				a := t.anchored.Load()
+				h.AnchoredSize = &a
+			}
+			out = append(out, h)
 		}
 		w.Header().Set("Cache-Control", "no-store")
 		writeJSON(w, http.StatusOK, map[string]any{"origins": out})

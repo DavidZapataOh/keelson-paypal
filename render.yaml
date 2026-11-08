@@ -118,6 +118,19 @@ services:
         sync: false
       - key: SIGSUM_SUBMIT_KEY
         sync: false
+      # On-chain anchoring of the sandbox origin; the live origin anchors once ARBITRUM_ONE_RPC_URL is set.
+      - key: CHECKPOINT_ANCHOR_ADDRESS
+        value: "0x049621749722D0660d5026456F25192fBD9A57ab"
+      - key: ARBITRUM_SEPOLIA_RPC_URL
+        sync: false
+      - key: ANCHOR_SUBMITTER_KEY
+        sync: false
+      - key: TEE_A_URL
+        sync: false
+      - key: TEE_B_URL
+        sync: false
+      - key: KEELSON_TEE_TOKEN
+        sync: false
 
   - type: web
     runtime: image

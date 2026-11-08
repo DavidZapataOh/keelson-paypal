@@ -2,6 +2,7 @@ package main
 
 import (
 	"cmp"
+	"crypto/ecdsa"
 	"crypto/mldsa"
 	"crypto/sha256"
 	"encoding/base64"
@@ -13,6 +14,8 @@ import (
 	"strings"
 
 	"filippo.io/torchwood"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/transparency-dev/tessera"
 	"golang.org/x/mod/sumdb/note"
 	sigsumcrypto "sigsum.org/sigsum-go/pkg/crypto"
@@ -57,6 +60,52 @@ type config struct {
 	// Sigsum co-logs checkpoints when SIGSUM_SUBMIT_KEY is set.
 	Sigsum       *submit.Config
 	SigsumSigner sigsumcrypto.Signer
+	// Anchor anchors checkpoints on-chain when ANCHOR_SUBMITTER_KEY is set.
+	Anchor *anchorConfig
+}
+
+// anchorConfig is where and with what checkpoints are anchored: the
+// CheckpointAnchor address (the same on every chain), the RPC of each chain
+// anchors go to, the submitter key and the legs that sign them.
+type anchorConfig struct {
+	Address common.Address
+	RPC     map[uint64]string
+	Key     *ecdsa.PrivateKey
+	TEEA    string
+	TEEB    string
+	Token   string
+}
+
+func loadAnchorConfig(getenv func(string) string) (*anchorConfig, error) {
+	k := getenv("ANCHOR_SUBMITTER_KEY")
+	if k == "" {
+		return nil, nil
+	}
+	key, err := crypto.HexToECDSA(strings.TrimPrefix(k, "0x"))
+	if err != nil {
+		return nil, errors.New("ANCHOR_SUBMITTER_KEY is not a secp256k1 private key")
+	}
+	addr := getenv("CHECKPOINT_ANCHOR_ADDRESS")
+	if !common.IsHexAddress(addr) {
+		return nil, errors.New("CHECKPOINT_ANCHOR_ADDRESS is not an address")
+	}
+	c := &anchorConfig{
+		Address: common.HexToAddress(addr),
+		RPC:     map[uint64]string{},
+		Key:     key,
+		TEEA:    getenv("TEE_A_URL"),
+		TEEB:    getenv("TEE_B_URL"),
+		Token:   getenv("KEELSON_TEE_TOKEN"),
+	}
+	if c.TEEA == "" || c.TEEB == "" || c.Token == "" {
+		return nil, errors.New("TEE_A_URL, TEE_B_URL and KEELSON_TEE_TOKEN are required with ANCHOR_SUBMITTER_KEY")
+	}
+	for chainID, name := range map[uint64]string{421614: "ARBITRUM_SEPOLIA_RPC_URL", 42161: "ARBITRUM_ONE_RPC_URL"} {
+		if u := getenv(name); u != "" {
+			c.RPC[chainID] = u
+		}
+	}
+	return c, nil
 }
 
 func loadConfig(getenv func(string) string) (*config, error) {
@@ -102,6 +151,9 @@ func loadConfig(getenv func(string) string) (*config, error) {
 			return nil, fmt.Errorf("%s: witness policy: %w", o.Name, err)
 		}
 		c.Policies[o.Name] = p
+	}
+	if c.Anchor, err = loadAnchorConfig(getenv); err != nil {
+		return nil, err
 	}
 	if k := getenv("SIGSUM_SUBMIT_KEY"); k != "" {
 		signer, _, err := key.ParsePrivateKey(k)

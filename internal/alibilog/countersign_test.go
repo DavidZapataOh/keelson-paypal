@@ -2,8 +2,11 @@ package alibilog
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"math/big"
+	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -152,5 +155,44 @@ func BenchmarkAdmissionCrypto(b *testing.B) {
 				b.Fatal(err)
 			}
 		}
+	}
+}
+
+func TestCheckpointDigestEqualsTheVectors(t *testing.T) {
+	raw, err := os.ReadFile("../../packages/core/test/vectors/eip712.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vectors []struct {
+		Name  string `json:"name"`
+		Input struct {
+			ChainID           uint64            `json:"chainId"`
+			VerifyingContract string            `json:"verifyingContract"`
+			PrimaryType       string            `json:"primaryType"`
+			Message           map[string]string `json:"message"`
+		} `json:"input"`
+		Expected string `json:"expected"`
+	}
+	if err := json.Unmarshal(raw, &vectors); err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, v := range vectors {
+		if v.Input.PrimaryType != "Checkpoint" {
+			continue
+		}
+		size, err := strconv.ParseUint(v.Input.Message["treeSize"], 10, 64)
+		if err != nil {
+			t.Fatal(err)
+		}
+		d := CheckpointDigest([32]byte(hexBytes(t, v.Input.Message["origin"])), size,
+			[32]byte(hexBytes(t, v.Input.Message["rootHash"])), v.Input.ChainID, contract(t, v.Input.VerifyingContract))
+		if "0x"+hex.EncodeToString(d[:]) != v.Expected {
+			t.Fatalf("%s: digest %x, want %s", v.Name, d, v.Expected)
+		}
+		n++
+	}
+	if n != 2 {
+		t.Fatalf("%d Checkpoint vectors, want 2", n)
 	}
 }

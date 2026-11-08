@@ -9,6 +9,7 @@ export const addresses: Record<ChainId, Readonly<Record<string, Address>>> = {
   421614: {
     AccessManager: "0x57c30a4a175978673bAD2B2B2D3667966cd58314",
     CertManager: "0x5FE55991F66f8bA97f005Ae46017FAf4FF802600",
+    CheckpointAnchor: "0x049621749722D0660d5026456F25192fBD9A57ab",
     GuardianSafe: "0x1cd0152d2d954Fc8c9436986C9F4B2C15903eF5C",
     KeelsonDeployer: "0x539638ee1C4021730f9fA63b725c7E9bA02b714A",
     NitroValidator: "0x3F09DAc4C09620329a0b292AF54B6f03378Fd74B",
