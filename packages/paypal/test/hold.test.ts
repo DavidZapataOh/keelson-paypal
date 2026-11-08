@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { DST, hashObject, newId, toHex } from "@keelson/core";
+import { DST, hashObject, newId, sha256, toHex } from "@keelson/core";
 import {
   AuthorizationStatus,
   CheckoutPaymentIntent,
@@ -129,7 +129,19 @@ describe("purchaseHoldOrderRequest", () => {
       returnUrl: RETURN_URL,
       cancelUrl: CANCEL_URL,
     });
-    expect(paypalRequestId).toBe(toHex(d).slice(2, 38));
+    const customId = purchaseHoldCustomId("s", requestId, d);
+    expect(paypalRequestId).toBe(toHex(sha256(new TextEncoder().encode(customId))).slice(2, 38));
+    const other = purchaseHoldOrderRequest({
+      env: "s",
+      requestId: newId(),
+      digest: d,
+      amount: { currency: "USD", minor: 4_250n },
+      mid,
+      merchantName: "Keelson Demo Store",
+      returnUrl: RETURN_URL,
+      cancelUrl: CANCEL_URL,
+    });
+    expect(other.paypalRequestId).not.toBe(paypalRequestId);
     const unit = body.purchaseUnits[0];
     expect(body.intent).toBe(CheckoutPaymentIntent.Authorize);
     expect(unit?.referenceId).toBe(requestId);

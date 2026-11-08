@@ -36,6 +36,9 @@ components:
           type: string
           enum:
             - SIGNED
+            - ACTIVE
+          description: "`ACTIVE` at once when the mandate allows several merchants: each
+            cart is then held on its own."
         openMandate:
           type:
             - string
@@ -275,6 +278,79 @@ components:
       description: PayPal holds the authorization for review; Keelson activates it
         once created.
     AuthorizeHold:
+      type: object
+      properties:
+        orderId:
+          type: string
+          minLength: 1
+          maxLength: 64
+      required:
+        - orderId
+      description: The order the buyer approved.
+    PurchaseHoldOrder:
+      type: object
+      properties:
+        requestId:
+          type: string
+        orderId:
+          type: string
+      required:
+        - requestId
+        - orderId
+    CreatePurchaseHold:
+      type: object
+      properties:
+        requestId:
+          type: string
+          pattern: ^[0-9A-HJKMNP-TV-Z]{26}$
+          description: The request id the purchase is countersigned under.
+        merchant:
+          type: string
+          minLength: 1
+          maxLength: 256
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        amountMinor:
+          type: string
+          pattern: ^[1-9]\d{0,17}$
+          description: The cart total, in minor units.
+        cartHash:
+          type: string
+          pattern: ^0x[0-9a-f]{64}$
+        closedMandate:
+          type: string
+          minLength: 1
+          maxLength: 32768
+          description: The mandate's open mandate closed by the agent key over `requestId`
+            and `cartHash`; it proves the caller is the mandate's agent.
+      required:
+        - requestId
+        - merchant
+        - currency
+        - amountMinor
+        - cartHash
+        - closedMandate
+    AuthorizedPurchaseHold:
+      type: object
+      properties:
+        requestId:
+          type: string
+        state:
+          type: string
+          enum:
+            - AUTHORIZED
+            - PENDING
+        authorizationId:
+          type: string
+      required:
+        - requestId
+        - state
+        - authorizationId
+      description: "`PENDING` while PayPal reviews the authorization; asking again
+        once it is created authorizes the hold."
+    AuthorizePurchaseHold:
       type: object
       properties:
         orderId:
@@ -1032,8 +1108,9 @@ components:
           type: string
           minLength: 1
           maxLength: 64
-          description: The PayPal authorization that holds the mandate's funds; leg A
-            reads it.
+          description: The PayPal authorization that holds the mandate's funds, or this
+            request's own hold when the mandate holds each purchase separately;
+            leg A reads it.
         closedMandate:
           type: string
           minLength: 1
@@ -2204,7 +2281,8 @@ paths:
       summary: Store a passkey-signed mandate
       description: Verifies the passkey assertion over `M =
         SHA-256("keelson/mandate-challenge/v1" || 0x00 || H_sd || C_m)` and
-        stores the mandate as `SIGNED`.
+        stores the mandate as `SIGNED`, or `ACTIVE` when it allows several
+        merchants.
       parameters:
         - schema:
             type: string
@@ -2445,6 +2523,154 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+  /v1/mandates/{id}/holds:
+    post:
+      tags:
+        - mandates
+      summary: Hold one cart of a multi-merchant mandate
+      description: For a mandate that allows several merchants, creates the PayPal
+        `AUTHORIZE` order for exactly one cart, keyed by the request id it will
+        be countersigned under. The user approves it like a mandate hold.
+      parameters:
+        - schema:
+            type: string
+          required: true
+          name: id
+          in: path
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePurchaseHold"
+      responses:
+        "201":
+          description: The order the buyer approves
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PurchaseHoldOrder"
+        "401":
+          description: No valid access token
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The caller is not the mandate's agent
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: No such mandate
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: The mandate holds its whole budget, is not active, or the request
+            id is already used
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: The cart is outside the mandate, Keelson cannot capture for it, or
+            PayPal refused
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: PayPal is unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/mandates/{id}/holds/{requestId}/authorize:
+    post:
+      tags:
+        - mandates
+      summary: Authorize an approved cart hold
+      description: Authorizes the order stored for the request and checks the
+        authorization against it (amount, currency, `custom_id`, payee). An
+        authorization that does not match is voided.
+      parameters:
+        - schema:
+            type: string
+          required: true
+          name: id
+          in: path
+        - schema:
+            type: string
+          required: true
+          name: requestId
+          in: path
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthorizePurchaseHold"
+      responses:
+        "200":
+          description: The cart is held
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthorizedPurchaseHold"
+        "202":
+          description: PayPal holds the authorization as pending
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthorizedPurchaseHold"
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: No such hold for this user
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: The mandate is not active, the hold is not pending, or the order is
+            not its order
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: The authorization does not match the hold, or PayPal refused
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: PayPal is unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
   /v1/mandates/{id}/revoke:
     post:
       tags:
@@ -2664,8 +2890,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
         "422":
-          description: The request is invalid, the evidence holds another cart, or its
-            Channel3 observation is not usable
+          description: The request is invalid, the authorization is not this purchase's
+            hold, the evidence holds another cart, or its Channel3 observation
+            is not usable
           content:
             application/problem+json:
               schema:

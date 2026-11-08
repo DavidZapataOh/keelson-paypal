@@ -1,4 +1,4 @@
-import { type Db, eq, mandates, transition } from "@keelson/db";
+import { type Db, eq, mandates, purchaseHolds, transition } from "@keelson/db";
 import { decodeMandate } from "@keelson/mandate";
 import { type CheckedAuthorization, type ExpectedHold, holdCustomId } from "@keelson/paypal";
 import type { RedisClientType } from "redis";
@@ -39,8 +39,38 @@ export async function holdOf(db: Db, mandateId: string): Promise<Hold | undefine
   return row;
 }
 
+interface PurchaseHold {
+  mandateId: string;
+  orderId: string;
+  authorizationId: string | null;
+  amountMinor: bigint;
+  merchantId: string;
+  state: "PENDING" | "AUTHORIZED" | "CAPTURED" | "VOIDED";
+}
+
+/**
+ * The per-purchase hold countersigned under `requestId`, or `undefined` when there is none.
+ * Captures of the purchase use its `authorizationId` with `final_capture: true`.
+ *
+ * @public
+ */
+export async function purchaseHoldOf(db: Db, requestId: string): Promise<PurchaseHold | undefined> {
+  const [row] = await db
+    .select({
+      mandateId: purchaseHolds.mandateId,
+      orderId: purchaseHolds.paypalOrderId,
+      authorizationId: purchaseHolds.paypalAuthorizationId,
+      amountMinor: purchaseHolds.amountMinor,
+      merchantId: purchaseHolds.merchantId,
+      state: purchaseHolds.state,
+    })
+    .from(purchaseHolds)
+    .where(eq(purchaseHolds.requestId, requestId));
+  return row;
+}
+
 /** The payee ids the signed mandate allows. */
-function allowedPayees(row: MandateRow): string[] {
+export function allowedPayees(row: MandateRow): string[] {
   if (!row.payloadSd || !row.disclosures) return [];
   const m = decodeMandate(row.payloadSd as Record<string, unknown>, row.disclosures);
   const payees = m.payment.constraints.find((c) => c.type === "payment.allowed_payees");

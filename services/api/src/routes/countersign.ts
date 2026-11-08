@@ -20,6 +20,7 @@ import {
   inArray,
   isNull,
   or,
+  purchaseHolds,
   purchases,
   sql,
   transition,
@@ -83,7 +84,8 @@ const CartSchema = z
 const Body = z
   .object({
     authorizationId: z.string().min(1).max(64).openapi({
-      description: "The PayPal authorization that holds the mandate's funds; leg A reads it.",
+      description:
+        "The PayPal authorization that holds the mandate's funds, or this request's own hold when the mandate holds each purchase separately; leg A reads it.",
     }),
     closedMandate: z.string().min(1).max(131_072).openapi({
       description: "The open mandate closed by the agent's key binding over the request and cart.",
@@ -163,7 +165,7 @@ const route = createRoute({
     413: { description: "A leg refused the request as too large", content: problemContent },
     422: {
       description:
-        "The request is invalid, the evidence holds another cart, or its Channel3 observation is not usable",
+        "The request is invalid, the authorization is not this purchase's hold, the evidence holds another cart, or its Channel3 observation is not usable",
       content: problemContent,
     },
     429: { description: "Too many countersigns for this mandate", content: problemContent },
@@ -397,6 +399,26 @@ export function registerCountersign(
         "mandate-not-active",
         "Mandate not active",
         "The mandate cannot countersign now.",
+      );
+    }
+
+    // Leg A accepts a per-purchase hold for whatever mandate its request id is countersigned
+    // under, so the hold must be this mandate's and this request's.
+    const [held] = await db
+      .select({ mandateId: purchaseHolds.mandateId, requestId: purchaseHolds.requestId })
+      .from(purchaseHolds)
+      .where(eq(purchaseHolds.paypalAuthorizationId, body.authorizationId));
+    if (
+      held
+        ? held.mandateId !== mandate.id || held.requestId !== ids.requestId
+        : mandate.holdMode === "per_purchase"
+    ) {
+      return problem(
+        c,
+        422,
+        "authorization-not-held",
+        "Authorization not held",
+        "The authorization is not the hold of this mandate for this request.",
       );
     }
 

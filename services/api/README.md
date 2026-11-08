@@ -67,3 +67,26 @@ node scripts/channel3-subscribe.ts       # its subscription, free; one credit if
 Channel3 gives 1,000 credits a month; each lookup costs one and subscriptions are free. The nightly
 workflow spends one credit on a live lookup. `bench/channel3.bench.ts` measures lookup latency
 (`LOOKUPS`, default 60 credits), the handler's own time and the stored sizes.
+
+## Per-purchase holds
+
+A mandate that allows more than one merchant is stored with `hold_mode = 'per_purchase'` and is
+`ACTIVE` as soon as it is signed. Instead of one hold for the budget, the agent asks
+`POST /v1/mandates/{id}/holds` for each cart, with the request id it will countersign under and
+the mandate closed by its key over that request and cart (which proves it is the mandate's agent).
+Keelson creates an `AUTHORIZE` order for exactly the cart total with
+`custom_id = ks1.<env>a.<request_id>.<digest>` and `reference_id = request_id`; the user approves
+it and `POST /v1/mandates/{id}/holds/{requestId}/authorize` authorizes it. The `PayPal-Request-Id`
+of the order derives from the whole `custom_id`, so the same cart under two request ids is two
+orders and a retry of one request is the same order.
+
+`digest` is `SHA-256(dst || 0x00 || JCS(...))` (the Alibi domain) over `mandate_hash`, `cart_hash`,
+`merchant_id`, the amount and the currency. It does not include the countersign digest and the order is not patched after
+the countersign: leg A must read an authorized order to countersign, so the countersign cannot
+exist when the order is created. The link to the countersign travels in the capture's
+`invoice_id`, as it does for a mandate hold.
+
+Leg A accepts a per-purchase hold whenever its request id is the countersign's, whatever the
+mandate, so `POST /v1/countersign` refuses an authorization that is the hold of another mandate
+or another request, and, for a per-purchase mandate, one that is not a hold Keelson created
+(`422 authorization-not-held`).

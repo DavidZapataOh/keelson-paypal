@@ -4,6 +4,7 @@ import {
   fromPayPalValue,
   hashObject,
   type Money,
+  sha256,
   toHex,
   toPayPalValue,
 } from "@keelson/core";
@@ -129,7 +130,11 @@ export function holdOrderRequest({
   };
 }
 
-/** The `AUTHORIZE` order for exactly one cart, keyed by the request id it is countersigned under. */
+/**
+ * The `AUTHORIZE` order for exactly one cart, keyed by the request id it is countersigned under.
+ * Its `PayPal-Request-Id` derives from the whole `custom_id`, so the same cart under two request
+ * ids is two orders while a retry of one request is the same order.
+ */
 export function purchaseHoldOrderRequest({
   env,
   requestId,
@@ -140,12 +145,13 @@ export function purchaseHoldOrderRequest({
   returnUrl,
   cancelUrl,
 }: PurchaseHoldOrderParams): HoldOrder {
+  const customId = purchaseHoldCustomId(env, requestId, digest);
   return {
-    paypalRequestId: requestIdFromDigest(digest),
+    paypalRequestId: requestIdFromDigest(sha256(new TextEncoder().encode(customId))),
     body: authorizeOrder(
       {
         referenceId: requestId,
-        customId: purchaseHoldCustomId(env, requestId, digest),
+        customId,
         description: `Agent purchase under Keelson mandate ${mid}; verify: verify.keelson.finance/a/${requestId}`,
         amount,
       },
