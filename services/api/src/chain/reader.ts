@@ -22,3 +22,10 @@ export function chainUnavailable(c: Context, chainId: number) {
     `This server does not read chain ${chainId}.`,
   );
 }
+
+/** The block Keelson's ERC-8004 contracts were deployed at; Arbitrum One's registry fork block until they are. */
+export const ERC8004_DEPLOY_BLOCK: Record<Erc8004ChainId, bigint> = {
+  421614: 327_279_949n,
+  42161: 522_274_000n,
+  11155111: 12_091_354n,
+};

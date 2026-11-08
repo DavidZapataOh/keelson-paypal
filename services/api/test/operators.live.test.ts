@@ -169,8 +169,19 @@ describe.skipIf(!live)(
       expect(body.type).toBe("https://api.keelson.finance/problems/expired");
     });
 
+    test("a link whose deadline is more than 15 minutes ahead is refused", async () => {
+      const owner = await fork.account();
+      const agentId = await fork.register(owner);
+      const { status, body } = await link(owner, agentId, {
+        deadline: Math.floor(Date.now() / 1000) + 3600,
+      });
+      expect(status).toBe(422);
+      expect(body.type).toBe("https://api.keelson.finance/problems/deadline-too-far");
+      expect(await row(agentId)).toBeUndefined();
+    });
+
     test("an unminted agent id is not found", async () => {
-      const { status, body } = await link(await fork.account(), 2n ** 64n);
+      const { status, body } = await link(await fork.account(), 2n ** 64n - 1n);
       expect(status).toBe(404);
       expect(body.type).toBe("https://api.keelson.finance/problems/no-agent");
     });

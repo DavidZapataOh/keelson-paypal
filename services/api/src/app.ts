@@ -12,6 +12,7 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
 import { ulid } from "ulid";
+import { BaseError, HttpRequestError, TimeoutError } from "viem";
 import type { Auth } from "./auth.ts";
 import type { ChainReaders } from "./chain/reader.ts";
 import type { Channel3Lookup } from "./channel3/client.ts";
@@ -155,6 +156,19 @@ export function createApp(deps: Deps): OpenAPIHono {
         "http-error",
         "Request failed",
         err.message,
+      );
+    }
+    if (
+      err instanceof BaseError &&
+      err.walk((e) => e instanceof HttpRequestError || e instanceof TimeoutError) !== null
+    ) {
+      deps.log.warn({ err, requestId: c.get("requestId") }, "chain rpc unavailable");
+      return problem(
+        c,
+        503,
+        "chain-unavailable",
+        "Chain unavailable",
+        "The chain RPC did not answer.",
       );
     }
     deps.log.error({ err, requestId: c.get("requestId") }, "unhandled error");

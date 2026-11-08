@@ -32,7 +32,11 @@ const IMAGE = "https://keelson.finance/icon-512.png";
 const DESCRIPTION =
   "An agent operator bonded with Keelson: purchases its agents make under a Keelson mandate are covered by its PYUSD bond, which a TEE-countersigned verdict slashes when an agent breaks the mandate.";
 
-const AGENT_ID = /^(0|[1-9]\d{0,77})$/;
+const AGENT_ID = /^(0|[1-9]\d{0,19})$/;
+/** The vault keys bonds by a `uint64` agent id. */
+const MAX_AGENT_ID = 2n ** 64n - 1n;
+/** A link signature is short-lived, so a superseded one cannot be replayed to undo a key rotation. */
+const MAX_DEADLINE_SECONDS = 15 * 60;
 const b64url32 = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 const ChainId = z
   .enum(["421614", "42161", "11155111"])
@@ -40,6 +44,7 @@ const ChainId = z
 const AgentId = z
   .string()
   .regex(AGENT_ID)
+  .refine((v) => BigInt(v) <= MAX_AGENT_ID, "agent ids are at most 2^64 - 1")
   .openapi({ description: "The ERC-8004 agent id, a decimal integer." });
 
 const LinkOperator = z
@@ -56,10 +61,15 @@ const LinkOperator = z
         kid: z.string().max(64).optional(),
       })
       .openapi({ description: "The agent's P-256 `cnf` key, a public JWK." }),
-    deadline: z.number().int().positive().openapi({ description: "Unix seconds." }),
+    deadline: z
+      .number()
+      .int()
+      .positive()
+      .openapi({ description: "Unix seconds, at most 15 minutes ahead." }),
     signature: z
       .string()
       .regex(/^0x([0-9a-fA-F]{2})+$/)
+      .max(2 + 2 * 4096)
       .openapi({
         description:
           'The EIP-712 `OperatorLink(uint256 agentId,bytes32 cnfThumbprint,uint256 deadline)` signature under the domain `{ name: "Keelson", version: "1", chainId }`, by the agent\'s owner or `agentWallet` (EOA, ERC-1271 or ERC-6492). `cnfThumbprint` is the RFC 7638 SHA-256 thumbprint of `cnfJwk`.',
@@ -259,6 +269,15 @@ export function registerOperators(app: OpenAPIHono, deps: Pick<Deps, "db" | "cha
     const reader = deps.chains?.[chainId];
     if (!reader) return chainUnavailable(c, chainId);
     const agentId = BigInt(body.agentId);
+    if (body.deadline > Date.now() / 1000 + MAX_DEADLINE_SECONDS) {
+      return problem(
+        c,
+        422,
+        "deadline-too-far",
+        "Deadline too far",
+        "A link's deadline is at most 15 minutes ahead.",
+      );
+    }
     const thumbprint = Buffer.from(
       await calculateJwkThumbprint(
         { kty: body.cnfJwk.kty, crv: body.cnfJwk.crv, x: body.cnfJwk.x, y: body.cnfJwk.y },
@@ -419,6 +438,7 @@ export function registerOperators(app: OpenAPIHono, deps: Pick<Deps, "db" | "cha
         },
       ],
     });
+    c.header("Cache-Control", "public, max-age=15");
     return c.json(
       {
         bond: {

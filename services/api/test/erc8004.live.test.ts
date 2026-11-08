@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
 import {
   addresses,
   keelsonBondVaultAbi,
@@ -7,7 +8,7 @@ import {
 } from "@keelson/chain";
 import { agentRegistry, ERC8004, reputationRegistryAbi } from "@keelson/erc8004";
 import { pino } from "pino";
-import { createPublicClient, http } from "viem";
+import { createPublicClient, http, keccak256 } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { describe, expect, test } from "vitest";
 import { createApp } from "../src/app.ts";
@@ -123,6 +124,25 @@ describe.skipIf(!live)("ERC-8004 reads on Arbitrum Sepolia", { timeout: 60_000 }
       keelson: { coverageId, txHash: rated.transactionHash },
     });
     console.info(`GET feedback: ${ms.toFixed(0)} ms`);
+  });
+
+  test("a validation recorded on-chain serves its countersign from the recording calldata", async () => {
+    const coverage = JSON.parse(
+      readFileSync(
+        new URL("../../../contracts/test/vectors/coverage-live.json", import.meta.url),
+        "utf8",
+      ),
+    );
+    const res = await app.request(`/v1/validations/${coverage.digest}`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(keccak256(body.payload)).toBe(coverage.digest);
+    expect(body.countersign.requestId).toBe(coverage.countersign.requestId);
+  });
+
+  test("an agent id beyond uint64 is refused before any chain read", async () => {
+    const res = await app.request(`/v1/operators/421614/${2n ** 64n}/bond`);
+    expect(res.status).toBe(422);
   });
 
   test("an unrated coverage has no feedback file", async () => {

@@ -9,14 +9,8 @@ import {
 } from "@keelson/erc8004";
 import { type Hex, isAddressEqual, parseEventLogs } from "viem";
 import type { Deps } from "../app.ts";
+import { ERC8004_DEPLOY_BLOCK } from "../chain/reader.ts";
 import { ProblemSchema, problem } from "../problem.ts";
-
-/** The block `KeelsonReputationReporter` was deployed at; Arbitrum One's registry fork block until it is. */
-const SCAN_FROM: Record<Erc8004ChainId, bigint> = {
-  421614: 327_279_949n,
-  42161: 522_274_000n,
-  11155111: 12_091_354n,
-};
 
 const Feedback = z
   .object({
@@ -72,7 +66,7 @@ export function registerFeedback(app: OpenAPIHono, deps: Pick<Deps, "chains">): 
         abi: keelsonReputationReporterAbi,
         eventName: "CoverageRated",
         args: { coverageId },
-        fromBlock: SCAN_FROM[chainId],
+        fromBlock: ERC8004_DEPLOY_BLOCK[chainId],
         toBlock: "latest",
       });
       if (!rated) continue;
