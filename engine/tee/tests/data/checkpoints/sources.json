@@ -1,5 +1,14 @@
 {
-  "alibi-2026-1-54.note": { "fetched": "2026-11-08T07:54:01Z", "from": "https://log.keelson.finance/alibi/2026-1/checkpoint" },
-  "alibi-live-2026-1-0.note": { "fetched": "2026-11-08T08:00:02Z", "from": "https://log.keelson.finance/alibi-live/2026-1/checkpoint" },
-  "conformance-2026-1-16.note": { "generated": "2026-11-08T08:00:02Z", "by": "go run ./contracts/test/vectors/gen note 16" }
+  "alibi-2026-1-54.note": {
+    "fetched": "2026-11-08T07:54:01Z",
+    "from": "https://log.keelson.finance/alibi/2026-1/checkpoint"
+  },
+  "alibi-live-2026-1-0.note": {
+    "fetched": "2026-11-08T08:00:02Z",
+    "from": "https://log.keelson.finance/alibi-live/2026-1/checkpoint"
+  },
+  "conformance-2026-1-16.note": {
+    "generated": "2026-11-08T08:00:02Z",
+    "by": "go run ./contracts/test/vectors/gen note 16"
+  }
 }
