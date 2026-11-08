@@ -226,6 +226,7 @@ jobs:
       ARBITRUM_SEPOLIA_RPC_URL: https://sepolia-rollup.arbitrum.io/rpc
       ARBITRUM_ONE_RPC_URL: https://arb1.arbitrum.io/rpc
       ETHEREUM_SEPOLIA_RPC_URL: https://ethereum-sepolia-rpc.publicnode.com
+      KEELSON_FUNDER_KEYS: ${{ secrets.KEELSON_FUNDER_KEYS }}
     defaults:
       run:
         working-directory: contracts
@@ -243,6 +244,40 @@ jobs:
       - run: forge build --sizes
       - run: forge test --no-match-path 'test/**/*.live.t.sol' -vvv
       - run: forge snapshot --check --no-match-path 'test/**/*.{fork,live}.t.sol'
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        working-directory: .
+      - name: The typed addresses and abis match the registry and the build
+        working-directory: .
+        run: |
+          pnpm --filter @keelson/chain generate
+          git diff --exit-code packages/chain/src
+
+  contracts-live:
+    needs: contracts
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    env:
+      ARBITRUM_SEPOLIA_RPC_URL: https://sepolia-rollup.arbitrum.io/rpc
+      ARBITRUM_ONE_RPC_URL: https://arb1.arbitrum.io/rpc
+      ETHEREUM_SEPOLIA_RPC_URL: https://ethereum-sepolia-rpc.publicnode.com
+      ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1.9.2
+        with:
+          version: v1.9.0
+      - run: forge test --match-path 'test/**/*.live.t.sol' -vvv
+      - run: script/verify.sh --check-only 421614 11155111 42161
 
   log-live:
     needs: go

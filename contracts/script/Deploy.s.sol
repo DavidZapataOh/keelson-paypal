@@ -57,21 +57,26 @@ contract Deploy is KeelsonDeploy {
     function _deployGuardian(string memory json) internal returns (ISafe guardian) {
         ISafeProxyFactory factory = ISafeProxyFactory(json.readAddress(".external.safeProxyFactory"));
         address singleton = json.readAddress(".external.safeL2");
-        bytes memory initializer = guardianInitializer(json);
-        guardian = ISafe(
-            vm.computeCreate2Address(
-                keccak256(abi.encodePacked(keccak256(initializer), GUARDIAN_SALT_NONCE)),
-                keccak256(abi.encodePacked(factory.proxyCreationCode(), uint256(uint160(singleton)))),
-                address(factory)
-            )
-        );
+        guardian = ISafe(predictGuardian(json));
         if (address(guardian).code.length == 0) {
             require(
-                factory.createProxyWithNonce(singleton, initializer, GUARDIAN_SALT_NONCE) == address(guardian),
+                factory.createProxyWithNonce(singleton, guardianInitializer(json), GUARDIAN_SALT_NONCE)
+                    == address(guardian),
                 "Guardian Safe address"
             );
         }
         _record("GuardianSafe", address(guardian), abi.encode(singleton));
+    }
+
+    /// @notice The Guardian Safe's address: CREATE2 by the Safe factory over the owners, threshold and salt nonce.
+    function predictGuardian(string memory json) public pure returns (address) {
+        ISafeProxyFactory factory = ISafeProxyFactory(json.readAddress(".external.safeProxyFactory"));
+        address singleton = json.readAddress(".external.safeL2");
+        return vm.computeCreate2Address(
+            keccak256(abi.encodePacked(keccak256(guardianInitializer(json)), GUARDIAN_SALT_NONCE)),
+            keccak256(abi.encodePacked(factory.proxyCreationCode(), uint256(uint160(singleton)))),
+            address(factory)
+        );
     }
 
     function guardianInitializer(string memory json) public pure returns (bytes memory) {

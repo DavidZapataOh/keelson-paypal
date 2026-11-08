@@ -1,6 +1,6 @@
 GovernanceTest:test_GuardianCancelsTimelockOperation() (gas: 379202)
 GovernanceTest:test_GuardianPausesImmediately() (gas: 264854)
-GovernanceTest:test_RedeployIsIdempotent() (gas: 147729)
+GovernanceTest:test_RedeployIsIdempotent() (gas: 162127)
 GovernanceTest:test_RevertWhen_AdminActionSkipsTimelock() (gas: 170852)
 GovernanceTest:test_RevertWhen_GuardianGrantsRole() (gas: 40309)
 GovernanceTest:test_SignersActionRevertsNotReady() (gas: 216954)
