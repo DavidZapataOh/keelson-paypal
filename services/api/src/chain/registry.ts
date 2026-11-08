@@ -106,7 +106,27 @@ export async function ensureRegisteredOnChain(
   if (active && expiresAt * 1000 - now.getTime() >= RENEW_BEFORE_MS) {
     return { txs: [], expiresAt: new Date(expiresAt * 1000) };
   }
+  const txs = await registerOnChain(chain, att, now);
+  const [, , renewed] = await chain.public.readContract({
+    ...verifier,
+    functionName: "signers",
+    args: [verified.signer],
+  });
+  return { txs, expiresAt: new Date(renewed * 1000) };
+}
 
+/**
+ * Sends the registration of the attested signer, whatever its current record, and returns the
+ * mined transactions.
+ *
+ * @internal
+ */
+export async function registerOnChain(
+  chain: ChainDeps,
+  att: SignerAttestation,
+  now: Date,
+): Promise<Hex[]> {
+  const verifier = { address: chain.verdictVerifier, abi: verdictVerifierAbi } as const;
   const b = att.binding;
   const binding = {
     teeKind: b.teeKind,
@@ -131,7 +151,7 @@ export async function ensureRegisteredOnChain(
       });
       txs.push(await mined(chain, await chain.wallet.writeContract(request)));
     } else {
-      const document = Uint8Array.from(Buffer.from(att.document, "base64"));
+      const document = Buffer.from(att.document, "base64");
       const plan = prepareHintedAttestationCalls(document, { certManager: chain.certManager });
       for (const call of plan.cold) {
         if (call.kind === "validate_attestation" || !call.certHash) continue;
@@ -168,10 +188,5 @@ export async function ensureRegisteredOnChain(
     if (err instanceof OnChainRegistrationError) throw err;
     throw new OnChainRegistrationError(reasonOf(err));
   }
-  const [, , renewed] = await chain.public.readContract({
-    ...verifier,
-    functionName: "signers",
-    args: [verified.signer],
-  });
-  return { txs, expiresAt: new Date(renewed * 1000) };
+  return txs;
 }

@@ -617,6 +617,13 @@ export const iVerdictVerifierAbi = [
   },
   {
     type: "function",
+    name: "disallowMeasurement",
+    inputs: [{ name: "measurement", type: "bytes32", internalType: "bytes32" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
     name: "hashTypedData",
     inputs: [{ name: "structHash", type: "bytes32", internalType: "bytes32" }],
     outputs: [{ name: "", type: "bytes32", internalType: "bytes32" }],
@@ -1306,11 +1313,6 @@ export const verdictVerifierAbi = [
         type: "address",
         internalType: "contract IAutomataDcapAttestation",
       },
-      {
-        name: "zkDcapAttestation",
-        type: "address",
-        internalType: "contract IAutomataDcapAttestation",
-      },
       { name: "nitroValidator", type: "address", internalType: "contract INitroValidator" },
     ],
     stateMutability: "nonpayable",
@@ -1373,13 +1375,6 @@ export const verdictVerifierAbi = [
   },
   {
     type: "function",
-    name: "ZK_DCAP_ATTESTATION",
-    inputs: [],
-    outputs: [{ name: "", type: "address", internalType: "contract IAutomataDcapAttestation" }],
-    stateMutability: "view",
-  },
-  {
-    type: "function",
     name: "allowedMeasurement",
     inputs: [{ name: "measurement", type: "bytes32", internalType: "bytes32" }],
     outputs: [{ name: "", type: "bool", internalType: "bool" }],
@@ -1391,6 +1386,13 @@ export const verdictVerifierAbi = [
     inputs: [],
     outputs: [{ name: "", type: "address", internalType: "address" }],
     stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "disallowMeasurement",
+    inputs: [{ name: "measurement", type: "bytes32", internalType: "bytes32" }],
+    outputs: [],
+    stateMutability: "nonpayable",
   },
   {
     type: "function",

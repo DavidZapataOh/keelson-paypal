@@ -1,8 +1,12 @@
 import { readFileSync } from "node:fs";
 import { verdictVerifierAbi } from "@keelson/chain";
-import { type Address, getAddress, type Hex, parseEventLogs } from "viem";
+import { type Address, type Hex, parseEventLogs } from "viem";
 import { describe, expect, test } from "vitest";
-import { ensureRegisteredOnChain, OnChainRegistrationError } from "../src/chain/registry.ts";
+import {
+  ensureRegisteredOnChain,
+  OnChainRegistrationError,
+  registerOnChain,
+} from "../src/chain/registry.ts";
 import { type SignerAttestation, verifySigner } from "../src/tee/attest.ts";
 import { createTee } from "../src/tee/config.ts";
 import { live, liveEnv } from "./tee-live.ts";
@@ -46,14 +50,13 @@ async function signer(address: Address) {
 async function refused(att: SignerAttestation, binding: Partial<SignerAttestation["binding"]>) {
   const { chain } = deps();
   const changed = { ...att, binding: { ...att.binding, ...binding } } as SignerAttestation;
-  const verified = { signer: getAddress(changed.binding.signer), teeKind: changed.binding.teeKind };
-  return ensureRegisteredOnChain(chain, changed, verified as never).then(
+  return registerOnChain(chain, changed, new Date()).then(
     () => "registered",
     (err: unknown) => (err instanceof OnChainRegistrationError ? err.reason : String(err)),
   );
 }
 
-describe.skipIf(!run)("on-chain signer registration", () => {
+describe.skipIf(!run)("on-chain signer registration", { timeout: 300_000 }, () => {
   test("registers leg B's live Nitro signer with its measurement and a 72 h validity", async () => {
     const { chain } = deps();
     const { attestation, verified } = await fresh("b");
