@@ -1,9 +1,15 @@
 import { Channel3, Channel3Error, Channel3TimeoutError } from "@channel3/sdk";
 
-/** The exact lookup request Keelson sends: one hour of staleness at most, fetched live if older. */
+/**
+ * The exact lookup request Keelson sends: one hour of staleness at most, fetched live if older.
+ * @internal
+ */
 export const LOOKUP_REQUEST = { max_staleness_hours: 1, realtime_fetch: true } as const;
 
-/** One lookup, with the exact bytes Channel3 answered and when they arrived. */
+/**
+ * One lookup, with the exact bytes Channel3 answered and when they arrived.
+ * @internal
+ */
 export interface LookupResult {
   /** The HTTP status, or 0 when no response arrived. */
   status: number;

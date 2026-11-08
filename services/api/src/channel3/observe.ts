@@ -53,8 +53,9 @@ export async function observe(
 ): Promise<Observation> {
   const id = ulid();
   const requestedAtMs = Date.now();
+  const started = performance.now();
   const res = await deps.channel3.lookup(input.url);
-  const lookupMs = res.receivedAtMs - requestedAtMs;
+  const lookupMs = performance.now() - started;
 
   let product: Channel3Product | null = null;
   let error = res.error;
