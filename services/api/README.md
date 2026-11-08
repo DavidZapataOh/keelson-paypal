@@ -25,11 +25,14 @@ JCS bytes (`GET /v1/timestamps/{hash}`). A lookup that fails or times out is sto
 sealed `channel3.observation` evidence item, which it adds after `har` before building its
 manifest.
 
-`POST /v1/countersign` finds that item in the evidence stored under `evidenceRoot`, checks that the
-API issued it (same hash and salt), that it belongs to the mandate, is less than 900 seconds old,
-compares the view read from the evidence's own `api.product` item and serves no other purchase,
-and then adds `channel3:<match|mismatch|unknown>:<attribute>:<observation id>` sources to the
-`variant`, `total` and `merchant` fields. An agent cannot write a `channel3:` source itself.
+`POST /v1/countersign` finds that item in the evidence stored under `evidenceRoot` and uses it only
+if the API issued it (same hash and salt), it belongs to the mandate, it is less than 900 seconds
+old, it is the newest observation of that page for the mandate, it serves no other purchase, and
+the view it compares was read from the evidence's own `api.product` item and describes a line of
+the cart being countersigned (price, currency, and size and color where named). It then adds
+`channel3:<match|mismatch|unknown>:<attribute>:<observation id>` sources to the `variant`, `total`
+and `merchant` fields. An agent cannot write a `channel3:` source itself. Each client may make 100
+observations a day.
 
 Channel3 is third-party testimony, not proof. Its responses carry no signature of their own:
 Keelson attests only when it received them, through the RFC 3161 tokens over their hash. The
