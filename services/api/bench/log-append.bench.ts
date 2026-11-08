@@ -97,8 +97,9 @@ try {
       body: JSON.stringify(body),
     });
 
-  // The sandbox authorization names one mandate, so there is one mandate row, reused once stored. The route allows
-  // a caller 60 countersigns of a mandate a minute, so each 50 purchases come from another agent.
+  // The sandbox authorization names one mandate, so there is one mandate row, reused once stored.
+  // The route allows a caller 60 countersigns of a mandate a minute, so each 50 purchases come
+  // from another agent.
   const passkey = await SoftwarePasskey.create();
   const first = await signedMandate(passkey);
   await seedUser(db, passkey, first.sub);
