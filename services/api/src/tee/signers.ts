@@ -17,7 +17,13 @@ const REFRESH_INTERVAL_MS = 50 * 60_000;
 /** A signer whose attestation last verified longer ago than this is treated as down. */
 export const ATTESTATION_MAX_AGE_MS = 2 * 3_600_000;
 
-export type LegExpectations = Omit<Expectations, "now">;
+export type LegExpectations = Omit<Expectations, "now"> & {
+  /**
+   * Earlier builds still admitted during a rotation: a signer attesting one of them, with its
+   * own image digest and measurement, is admitted like one of the current build.
+   */
+  previous?: readonly Pick<Expectations, "engineBuildId" | "measurements">[];
+};
 
 /** What the coordinator needs to reach and admit the two legs. */
 export interface TeeConfig {
@@ -58,6 +64,25 @@ function fromRow(row: typeof teeSigners.$inferSelect): RegisteredSigner {
 
 class RegistrationError extends Error {}
 
+/** Verifies against the current build, then each earlier one; the current build's error wins. */
+async function verifyAgainstBuilds(
+  attestation: SignerAttestation,
+  expect: LegExpectations,
+  now: Date,
+): ReturnType<typeof verifySigner> {
+  const { previous = [], ...current } = expect;
+  try {
+    return await verifySigner(attestation, { ...current, now });
+  } catch (err) {
+    for (const build of previous) {
+      try {
+        return await verifySigner(attestation, { ...current, ...build, now });
+      } catch {}
+    }
+    throw err;
+  }
+}
+
 /**
  * Fetches the leg's attestation, verifies it, and admits its signer, after registering it in the
  * VerdictVerifier and waiting for the receipt when `chain` is set, so no countersign precedes its
@@ -81,7 +106,7 @@ export async function registerLeg(
     if (!a) throw new RegistrationError("leg b has no issuer to attest: leg a has no signer");
     pinned = { ...expect, issuerJwkThumbprint: a.binding.issuerJwkThumbprint };
   }
-  const verified = await verifySigner(attestation, { ...pinned, now });
+  const verified = await verifyAgainstBuilds(attestation, pinned, now);
   if (verified.teeKind !== TEE_KIND[leg]) {
     throw new RegistrationError(`leg ${leg} attests a signer of another TEE kind`);
   }

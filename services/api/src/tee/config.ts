@@ -77,8 +77,16 @@ export function createTee(
       : {}),
   };
   const expect: Record<"a" | "b", LegExpectations> = {
-    a: { ...common, measurements: m.tdx },
-    b: { ...common, measurements: m.nitro },
+    a: {
+      ...common,
+      measurements: m.tdx,
+      previous: m.previous.map((p) => ({ engineBuildId: p.engineBuildId, measurements: p.tdx })),
+    },
+    b: {
+      ...common,
+      measurements: m.nitro,
+      previous: m.previous.map((p) => ({ engineBuildId: p.engineBuildId, measurements: p.nitro })),
+    },
   };
   return {
     client: {
