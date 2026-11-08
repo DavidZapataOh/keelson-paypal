@@ -1,0 +1,13 @@
+diff --git a/contracts/src/KeelsonBondVault.sol b/contracts/src/KeelsonBondVault.sol
+index e55419d..d67d5fa 100644
+--- a/contracts/src/KeelsonBondVault.sol
++++ b/contracts/src/KeelsonBondVault.sol
+@@ -543,7 +543,7 @@ contract KeelsonBondVault is IKeelsonBondVault, AccessManaged, EIP712, Nonces, R
+     {
+         settled[v.disputeId] = true;
+         slashed[v.coverageId] += v.amount;
+-        if (!degraded && v.amount <= _params.instantSlashCap && _slashLimit.tryConsume(bytes32(0), v.amount)) {
++        if (v.amount <= _params.instantSlashCap && _slashLimit.tryConsume(bytes32(0), v.amount)) {
+             _pay(v.disputeId, v.agentId, v.payee, v.amount);
+             // forge-lint: disable-start(reentrancy-events)
+             emit Slashed(v.disputeId, v.coverageId, v.agentId, v.payee, v.amount, v.fieldId, v.evidenceHash, digest);
