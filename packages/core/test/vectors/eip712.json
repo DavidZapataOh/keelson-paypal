@@ -76,12 +76,31 @@
         "agentId": "2000000",
         "merchant": "0xffffffffffffffffffffffffffffffffffffffff",
         "amount": "4000000",
-        "expiresAt": "5000000",
-        "mandateHash": "0x0000000000000000000000000000000000000000000000000606060606060606",
-        "amberCommitment": "0x0000000000000000000000000000000000000000000000000707070707070707"
+        "premium": "5000000",
+        "expiresAt": "6000000",
+        "mandateHash": "0x0000000000000000000000000000000000000000000000000707070707070707",
+        "amberCommitment": "0x0000000000000000000000000000000000000000000000000808080808080808"
       }
     },
-    "expected": "0xcb53cec2656f3172b146a09910fb5d1068a4e4824137a71a08c23704a18e192e"
+    "expected": "0xa43ae083ca5caaca6738a008730a7957caff263ae07bf3522f7e75a86325f3c3"
+  },
+  {
+    "name": "CoverageBatch/421614",
+    "input": {
+      "chainId": 421614,
+      "verifyingContract": "0x0000000000000000000000000000000000000001",
+      "primaryType": "CoverageBatch",
+      "message": {
+        "agentId": "1000000",
+        "root": "0x0000000000000000000000000000000000000000000000000202020202020202",
+        "total": "3000000",
+        "premium": "4000000",
+        "expiresAt": "5000000",
+        "checkpointRoot": "0x0000000000000000000000000000000000000000000000000606060606060606",
+        "treeSize": "7000000"
+      }
+    },
+    "expected": "0xc358dc6175bbd4941a20aebe3d350a381f73db425dc0766d75424eee1fede20b"
   },
   {
     "name": "AmberAttestation/421614",
@@ -127,6 +146,21 @@
       }
     },
     "expected": "0x7a378c7059aadf55634546660952e0cbb9f22bad04dbbb06b0aaa062f0fd6899"
+  },
+  {
+    "name": "Claim/421614",
+    "input": {
+      "chainId": 421614,
+      "verifyingContract": "0x0000000000000000000000000000000000000001",
+      "primaryType": "Claim",
+      "message": {
+        "account": "0x0000000000000000000000000000000000000001",
+        "to": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+        "nonce": "3000000",
+        "deadline": "4000000"
+      }
+    },
+    "expected": "0x6e0bc31651ab6bac3fb6597d543051597ee5a8ca7914c5878dede93a9de15bfc"
   },
   {
     "name": "WebFact/421614",
@@ -221,12 +255,31 @@
         "agentId": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
         "merchant": "0x0000000000000000000000000000000000000001",
         "amount": "79228162514264337593543950335",
+        "premium": "79228162514264337593543950335",
         "expiresAt": "1099511627775",
-        "mandateHash": "0x0000000000000000000000000000000000000000000000000606060606060606",
-        "amberCommitment": "0x0000000000000000000000000000000000000000000000000707070707070707"
+        "mandateHash": "0x0000000000000000000000000000000000000000000000000707070707070707",
+        "amberCommitment": "0x0000000000000000000000000000000000000000000000000808080808080808"
       }
     },
-    "expected": "0x1393dd578e66f11ffc080d485b5eebc69f50c849bc3a3b9eb938303b64a8d805"
+    "expected": "0x93ae27728cf2264c346dc4a6b6dec972bf26df58d4cebc7233bdd904dab7f4f0"
+  },
+  {
+    "name": "CoverageBatch/42161",
+    "input": {
+      "chainId": 42161,
+      "verifyingContract": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+      "primaryType": "CoverageBatch",
+      "message": {
+        "agentId": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+        "root": "0x0000000000000000000000000000000000000000000000000202020202020202",
+        "total": "340282366920938463463374607431768211455",
+        "premium": "79228162514264337593543950335",
+        "expiresAt": "1099511627775",
+        "checkpointRoot": "0x0000000000000000000000000000000000000000000000000606060606060606",
+        "treeSize": "18446744073709551615"
+      }
+    },
+    "expected": "0x147424e3c6598f23ffd80dfbdb64c6c06e87a7b15785e52bf7123e57c1dc43a1"
   },
   {
     "name": "AmberAttestation/42161",
@@ -272,6 +325,21 @@
       }
     },
     "expected": "0xa28acf5baefce0e8dd0cb76504a6b15a705dcb86765658b9547b985573d30165"
+  },
+  {
+    "name": "Claim/42161",
+    "input": {
+      "chainId": 42161,
+      "verifyingContract": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+      "primaryType": "Claim",
+      "message": {
+        "account": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+        "to": "0xffffffffffffffffffffffffffffffffffffffff",
+        "nonce": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+        "deadline": "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+      }
+    },
+    "expected": "0xddb1c45e50996428abb3a50490af46de9793a80068a6bd94ae2329d9c90c8e24"
   },
   {
     "name": "WebFact/42161",

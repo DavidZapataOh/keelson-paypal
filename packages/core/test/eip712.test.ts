@@ -54,6 +54,24 @@ describe("eip712", () => {
     expect(hashKeelson(primaryType, message as never, domain)).toBe(expected);
   });
 
+  test.each([
+    [
+      "Coverage",
+      "Coverage(bytes32 coverageId,uint256 agentId,address merchant,uint96 amount,uint96 premium,uint40 expiresAt,bytes32 mandateHash,bytes32 amberCommitment)",
+    ],
+    [
+      "CoverageBatch",
+      "CoverageBatch(uint256 agentId,bytes32 root,uint128 total,uint96 premium,uint40 expiresAt,bytes32 checkpointRoot,uint64 treeSize)",
+    ],
+    ["Claim", "Claim(address account,address to,uint256 nonce,uint256 deadline)"],
+  ] as const)("encodes %s as the vault expects", (primaryType, typeString) => {
+    const fields = KEELSON_TYPES[primaryType].map(({ name, type }) => `${type} ${name}`);
+    expect(`${primaryType}(${fields.join(",")})`).toBe(typeString);
+    for (const chainId of [CHAIN_IDS.arbitrumSepolia, CHAIN_IDS.arbitrumOne]) {
+      expect(vectors.some((v) => v.name === `${primaryType}/${chainId}`)).toBe(true);
+    }
+  });
+
   test("rejects an unsupported chain id", () => {
     expect(() => keelsonDomain(1 as never, verifyingContract)).toThrow();
   });
