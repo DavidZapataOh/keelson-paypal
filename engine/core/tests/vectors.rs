@@ -118,7 +118,7 @@ fn eip712_vectors() {
     let vectors = load(include_str!(
         "../../../packages/core/test/vectors/eip712.json"
     ));
-    assert_eq!(vectors.len(), 16);
+    assert_eq!(vectors.len(), 20);
     for v in vectors {
         let chain_id = v.input["chainId"].as_u64().unwrap();
         let contract: Address = v.input["verifyingContract"]
@@ -186,6 +186,7 @@ fn eip712_vectors() {
                     agentId: u,
                     merchant: addr,
                     amount: u,
+                    premium: u,
                     expiresAt: u,
                     mandateHash: b32,
                     amberCommitment: b32,
@@ -217,6 +218,29 @@ fn eip712_vectors() {
                 PayoutAddress {
                     merchant: addr,
                     payout: addr,
+                    nonce: u,
+                    deadline: u,
+                },
+                m,
+                &d
+            ),
+            "CoverageBatch" => typed_hash!(
+                CoverageBatch {
+                    agentId: u,
+                    root: b32,
+                    total: u,
+                    premium: u,
+                    expiresAt: u,
+                    checkpointRoot: b32,
+                    treeSize: u,
+                },
+                m,
+                &d
+            ),
+            "Claim" => typed_hash!(
+                Claim {
+                    account: addr,
+                    to: addr,
                     nonce: u,
                     deadline: u,
                 },

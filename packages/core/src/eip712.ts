@@ -56,9 +56,19 @@ export const KEELSON_TYPES = {
     { name: "agentId", type: "uint256" },
     { name: "merchant", type: "address" },
     { name: "amount", type: "uint96" },
+    { name: "premium", type: "uint96" },
     { name: "expiresAt", type: "uint40" },
     { name: "mandateHash", type: "bytes32" },
     { name: "amberCommitment", type: "bytes32" },
+  ],
+  CoverageBatch: [
+    { name: "agentId", type: "uint256" },
+    { name: "root", type: "bytes32" },
+    { name: "total", type: "uint128" },
+    { name: "premium", type: "uint96" },
+    { name: "expiresAt", type: "uint40" },
+    { name: "checkpointRoot", type: "bytes32" },
+    { name: "treeSize", type: "uint64" },
   ],
   AmberAttestation: [
     { name: "coverageId", type: "bytes32" },
@@ -75,6 +85,12 @@ export const KEELSON_TYPES = {
   PayoutAddress: [
     { name: "merchant", type: "address" },
     { name: "payout", type: "address" },
+    { name: "nonce", type: "uint256" },
+    { name: "deadline", type: "uint256" },
+  ],
+  Claim: [
+    { name: "account", type: "address" },
+    { name: "to", type: "address" },
     { name: "nonce", type: "uint256" },
     { name: "deadline", type: "uint256" },
   ],

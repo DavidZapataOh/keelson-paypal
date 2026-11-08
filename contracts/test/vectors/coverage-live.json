@@ -1,0 +1,49 @@
+{
+  "chainId": 421614,
+  "verifier": "0xe16E8767EC1DA59Ef0D9Bc7851637E4D22352d96",
+  "vault": "0x69ccD2fB3a85f590F2A8f431cca3ecc2e9Bf3c14",
+  "coverageId": "0x0000000000000000000000000000000001a1bb15e56a7eea2bde2f5780f87fca",
+  "countersign": {
+    "requestId": "0x0000000000000000000000000000000001a1bb15e56a7eea2bde2f5780f87fca",
+    "mandateHash": "0xd9e49db9479cf9e8ca3afe74a3f46ecdec0c47e2df787f09c4e9ddd1c695502a",
+    "mandateCommitment": "0x18c093aa691968a2a34489eb07c6f9286750777875d54f524188dcaf32a7c19b",
+    "cartHash": "0xc74c44e1b852d5134056bae404a00880cc39512ba4e0d93cdf700d03222f03a1",
+    "agentId": "351",
+    "merchantId": "0x1f0a71f468ae72a38151f84f8077b9209dfd331a519173426d07258de56c366c",
+    "amount": "9400",
+    "currency": "840",
+    "category": "21",
+    "evidenceRoot": "0x56454db40c28b2ef0ba9bbb62aedff9d628ebafdd13a1f81f01dbc66290a2796",
+    "evalHash": "0x90d6bfc4bbb5396cee60f9caa910d53f505263d9a0757237512913fc688b6de7",
+    "policySetHash": "0x76e3a5959eddc084b99b80a7376d85eeb86f005a7ce447420ac67c3e80902123",
+    "decision": "1",
+    "failedFieldsMask": "0",
+    "issuedAt": "1794140138",
+    "expiresAt": "1794141038"
+  },
+  "digest": "0xf1aba9b77546477d201f465fe5cc6e78eda8e654799c878efbdcd27c55a74120",
+  "mode": "2of2",
+  "signatures": {
+    "tdx": "0xb540270d9f61e772aebc018960b324b13c6fd82c6009ea4423b08d670287eddd5b58a5178058890ed011ade8c0146ad5237fea2a0638f33367e87e3dcd0cd8ac1b",
+    "nitro": "0x2558cd945d0aec71426e277b1443e47a0fafe2492bfbb787784e4763035a28343e1b6e1204f84efa1cc33a3ee7510b74e74dc041b14a43920207f26bcc94258e1b"
+  },
+  "hSd": "0x9d5a9f77da257205a5fd2e2fed587735ff87e678e848299f36d101a9f5436f06",
+  "cm": "0x18c093aa691968a2a34489eb07c6f9286750777875d54f524188dcaf32a7c19b",
+  "assertion": {
+    "authenticatorData": "EHHKqDnsJdN7IzwdSzf9Op0bCgmDDhN-RSEFwH1vxPcFAAAAAg",
+    "clientDataJSON": "eyJ0eXBlIjoicGF5bWVudC5nZXQiLCJjaGFsbGVuZ2UiOiIyZVNkdVVlYy1laktPdjUwb19SdXpld01SLUxmZUg4SnhPbmQwY2FWVUNvIiwib3JpZ2luIjoiaHR0cHM6Ly9hcHAua2VlbHNvbi5maW5hbmNlIiwiY3Jvc3NPcmlnaW4iOmZhbHNlLCJwYXltZW50Ijp7InJwSWQiOiJrZWVsc29uLmZpbmFuY2UiLCJ0b3BPcmlnaW4iOiJodHRwczovL2FwcC5rZWVsc29uLmZpbmFuY2UiLCJwYXllZU5hbWUiOiJLZWVsc29uIiwicGF5ZWVPcmlnaW4iOiJodHRwczovL2tlZWxzb24uZmluYW5jZSIsInBheW1lbnRFbnRpdGllc0xvZ29zIjpbXSwidG90YWwiOnsidmFsdWUiOiIxMDAuMDAiLCJjdXJyZW5jeSI6IlVTRCJ9LCJpbnN0cnVtZW50Ijp7Imljb24iOiJkYXRhOmltYWdlL3N2Zyt4bWwsJTNDc3ZnIHhtbG5zPSdodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2Zycgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyUzRSUzQ3JlY3Qgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyByeD0nNicgZmlsbD0nJTIzMTExJy8lM0UlM0Mvc3ZnJTNFIiwiZGlzcGxheU5hbWUiOiJLZWVsc29uIG1hbmRhdGUifX19",
+    "signature": "MEUCIQCnMGjbtS740Zl2bUELDx_MW4iFq-uSqg-glHnBmqVHPgIgLx_luv-lN5gyorlj7HuAdjNqAmKSiY3lr-CEd0SPjtc",
+    "credentialId": "cPnPd4spEP85OZI_w-g03w_jD2fndVK9H9fowckgfUI"
+  },
+  "encodedAssertion": {
+    "r": "0xa73068dbb52ef8d199766d410b0f1fcc5b8885abeb92aa0fa09479c19aa5473e",
+    "s": "0x2f1fe5baffa5379832a2b963ec7b8076336a026292898de5afe08477448f8ed7",
+    "challengeIndex": 22,
+    "typeIndex": 1,
+    "authenticatorData": "0x1071caa839ec25d37b233c1d4b37fd3a9d1b0a09830e137e452105c07d6fc4f70500000002",
+    "clientDataJSON": "{\"type\":\"payment.get\",\"challenge\":\"2eSduUec-ejKOv50o_RuzewMR-LfeH8JxOnd0caVUCo\",\"origin\":\"https://app.keelson.finance\",\"crossOrigin\":false,\"payment\":{\"rpId\":\"keelson.finance\",\"topOrigin\":\"https://app.keelson.finance\",\"payeeName\":\"Keelson\",\"payeeOrigin\":\"https://keelson.finance\",\"paymentEntitiesLogos\":[],\"total\":{\"value\":\"100.00\",\"currency\":\"USD\"},\"instrument\":{\"icon\":\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Crect width='32' height='32' rx='6' fill='%23111'/%3E%3C/svg%3E\",\"displayName\":\"Keelson mandate\"}}}"
+  },
+  "qx": "0x19962825b780a58cbfdc55dbd668aaa21e512a9b7b6f59fd1f4ef748fed5d32d",
+  "qy": "0xd9a43dfb411f8db345aec981518766a9e10a4fa90c5e2898386afc30f6e493cd",
+  "userKeyHash": "0xce535ec6bc0f5096b1eb799a391cbab87e086b6f18c514ea6c00ab0e1cd8f031"
+}

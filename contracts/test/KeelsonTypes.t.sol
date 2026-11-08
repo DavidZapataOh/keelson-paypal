@@ -75,27 +75,94 @@ contract KeelsonTypesTest is VerifierBase {
         c.rootHash = vectors.readBytes32(string.concat(m, ".rootHash"));
     }
 
-    function test_VectorsOfTeeSignedTypes() public view {
+    function _coverage(string memory m) internal view returns (KeelsonTypes.Coverage memory c) {
+        c.coverageId = vectors.readBytes32(string.concat(m, ".coverageId"));
+        c.agentId = vectors.readUint(string.concat(m, ".agentId"));
+        c.merchant = vectors.readAddress(string.concat(m, ".merchant"));
+        c.amount = uint96(vectors.readUint(string.concat(m, ".amount")));
+        c.premium = uint96(vectors.readUint(string.concat(m, ".premium")));
+        c.expiresAt = uint40(vectors.readUint(string.concat(m, ".expiresAt")));
+        c.mandateHash = vectors.readBytes32(string.concat(m, ".mandateHash"));
+        c.amberCommitment = vectors.readBytes32(string.concat(m, ".amberCommitment"));
+    }
+
+    function _coverageBatch(string memory m) internal view returns (KeelsonTypes.CoverageBatch memory b) {
+        b.agentId = vectors.readUint(string.concat(m, ".agentId"));
+        b.root = vectors.readBytes32(string.concat(m, ".root"));
+        b.total = uint128(vectors.readUint(string.concat(m, ".total")));
+        b.premium = uint96(vectors.readUint(string.concat(m, ".premium")));
+        b.expiresAt = uint40(vectors.readUint(string.concat(m, ".expiresAt")));
+        b.checkpointRoot = vectors.readBytes32(string.concat(m, ".checkpointRoot"));
+        b.treeSize = uint64(vectors.readUint(string.concat(m, ".treeSize")));
+    }
+
+    function _structHash(string memory primary, string memory m) internal view returns (bytes32) {
+        bytes32 p = keccak256(bytes(primary));
+        if (p == keccak256("Countersign")) return KeelsonTypes.hash(_countersign(m));
+        if (p == keccak256("Verdict")) return KeelsonTypes.hash(_verdict(m));
+        if (p == keccak256("Checkpoint")) return KeelsonTypes.hash(_checkpoint(m));
+        if (p == keccak256("Coverage")) return KeelsonTypes.hash(_coverage(m));
+        if (p == keccak256("CoverageBatch")) return KeelsonTypes.hash(_coverageBatch(m));
+        if (p == keccak256("WithdrawalRequest")) {
+            return KeelsonTypes.hashWithdrawal(
+                vectors.readUint(string.concat(m, ".agentId")),
+                uint128(vectors.readUint(string.concat(m, ".amount"))),
+                vectors.readAddress(string.concat(m, ".to")),
+                vectors.readUint(string.concat(m, ".nonce")),
+                vectors.readUint(string.concat(m, ".deadline"))
+            );
+        }
+        if (p == keccak256("PayoutAddress")) {
+            return KeelsonTypes.hashPayoutAddress(
+                vectors.readAddress(string.concat(m, ".merchant")),
+                vectors.readAddress(string.concat(m, ".payout")),
+                vectors.readUint(string.concat(m, ".nonce")),
+                vectors.readUint(string.concat(m, ".deadline"))
+            );
+        }
+        if (p == keccak256("Claim")) {
+            return KeelsonTypes.hashClaim(
+                vectors.readAddress(string.concat(m, ".account")),
+                vectors.readAddress(string.concat(m, ".to")),
+                vectors.readUint(string.concat(m, ".nonce")),
+                vectors.readUint(string.concat(m, ".deadline"))
+            );
+        }
+        return bytes32(0);
+    }
+
+    function test_VectorsOfEveryOnChainType() public view {
         uint256 checked;
         for (uint256 i;; ++i) {
             string memory item = string.concat("[", vm.toString(i), "]");
             if (!vm.keyExistsJson(vectors, item)) break;
             string memory primary = vectors.readString(string.concat(item, ".input.primaryType"));
-            string memory m = string.concat(item, ".input.message");
-            bytes32 structHash;
-            if (keccak256(bytes(primary)) == keccak256("Countersign")) {
-                structHash = KeelsonTypes.hash(_countersign(m));
-            } else if (keccak256(bytes(primary)) == keccak256("Verdict")) {
-                structHash = KeelsonTypes.hash(_verdict(m));
-            } else if (keccak256(bytes(primary)) == keccak256("Checkpoint")) {
-                structHash = KeelsonTypes.hash(_checkpoint(m));
-            } else {
-                continue;
-            }
+            bytes32 structHash = _structHash(primary, string.concat(item, ".input.message"));
+            if (structHash == bytes32(0)) continue;
             assertEq(_digest(item, structHash), vectors.readBytes32(string.concat(item, ".expected")), item);
             ++checked;
         }
-        assertEq(checked, 6);
+        assertEq(checked, 16);
+    }
+
+    function test_TypeHashes() public pure {
+        assertEq(
+            KeelsonTypes.COVERAGE_TYPEHASH,
+            keccak256(
+                "Coverage(bytes32 coverageId,uint256 agentId,address merchant,uint96 amount,uint96 premium,"
+                "uint40 expiresAt,bytes32 mandateHash,bytes32 amberCommitment)"
+            )
+        );
+        assertEq(
+            KeelsonTypes.COVERAGE_BATCH_TYPEHASH,
+            keccak256(
+                "CoverageBatch(uint256 agentId,bytes32 root,uint128 total,uint96 premium,uint40 expiresAt,"
+                "bytes32 checkpointRoot,uint64 treeSize)"
+            )
+        );
+        assertEq(
+            KeelsonTypes.CLAIM_TYPEHASH, keccak256("Claim(address account,address to,uint256 nonce,uint256 deadline)")
+        );
     }
 
     function test_HashTypedDataUsesVerifierDomain() public view {

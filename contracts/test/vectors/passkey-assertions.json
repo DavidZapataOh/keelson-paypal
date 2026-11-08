@@ -1,0 +1,238 @@
+{
+  "cases": [
+    {
+      "name": "ok/webauthn.get",
+      "challenge": "0xca5f884d98ac213e60c01530f24c2beb4ceaae4663e2f84636d49563e0e044bd",
+      "hSd": "0xaf3636e7083817840f3bd4a1c97ca1e54013ebf5aba5a066ee5b4619d2e58324",
+      "cm": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9",
+      "assertion": {
+        "r": "0x5dcecfab1480e7159120ea6777e4eef80379de42da172f90d1141994b41a3f82",
+        "s": "0x3d6dd23f53a61585990784a1a4c3acbd52ac30a243c533d26a68ca3de32769da",
+        "challengeIndex": 23,
+        "typeIndex": 1,
+        "authenticatorData": "0x1071caa839ec25d37b233c1d4b37fd3a9d1b0a09830e137e452105c07d6fc4f70500000003",
+        "clientDataJSON": "{\"type\":\"webauthn.get\",\"challenge\":\"yl-ITZisIT5gwBUw8kwr60zqrkZj4vhGNtSVY-DgRL0\",\"origin\":\"http://app.keelson.finance:56358\",\"crossOrigin\":false}"
+      },
+      "qx": "0xc8bd44f5f4e0d62f2029430b2398803de02078d056460238efe348abf971156d",
+      "qy": "0xedd0c80929574f8e7ee7e611d882b8ccfe39a680fcc23026c571583f8d5efcd4",
+      "rpIdHash": "0x1071caa839ec25d37b233c1d4b37fd3a9d1b0a09830e137e452105c07d6fc4f7",
+      "expected": true
+    },
+    {
+      "name": "ok/payment.get",
+      "challenge": "0x2af790ad5cc585acb6288434205729f777d7510414ededb9a6bdec779182fd1d",
+      "hSd": "0x09ffd37b8030295d55fcecc7c23378c364c03f42302ef6a3eed5f8037df89329",
+      "cm": "0x2de747f619285557a70720004d2929d50785f2c37fe7360f5fea932eb22a598d",
+      "assertion": {
+        "r": "0x5f40d0defe8781f3971764da547e2002cefe96af82421504bd427789e4cd09cd",
+        "s": "0x17b98f947bc0dc06810a0bc8efe030357eeb6497e2e5d687da4720e87b8ddf31",
+        "challengeIndex": 22,
+        "typeIndex": 1,
+        "authenticatorData": "0x1071caa839ec25d37b233c1d4b37fd3a9d1b0a09830e137e452105c07d6fc4f70500000002",
+        "clientDataJSON": "{\"type\":\"payment.get\",\"challenge\":\"KveQrVzFhay2KIQ0IFcp93fXUQQU7e25pr3sd5GC_R0\",\"origin\":\"http://app.keelson.finance:56358\",\"crossOrigin\":false,\"payment\":{\"rpId\":\"keelson.finance\",\"topOrigin\":\"http://app.keelson.finance:56358\",\"payeeName\":\"Keelson\",\"payeeOrigin\":\"https://keelson.finance\",\"paymentEntitiesLogos\":[],\"total\":{\"value\":\"100.00\",\"currency\":\"USD\"},\"instrument\":{\"icon\":\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Crect width='32' height='32' rx='6' fill='%23111'/%3E%3C/svg%3E\",\"displayName\":\"Keelson mandate\"}}}"
+      },
+      "qx": "0xc8bd44f5f4e0d62f2029430b2398803de02078d056460238efe348abf971156d",
+      "qy": "0xedd0c80929574f8e7ee7e611d882b8ccfe39a680fcc23026c571583f8d5efcd4",
+      "rpIdHash": "0x1071caa839ec25d37b233c1d4b37fd3a9d1b0a09830e137e452105c07d6fc4f7",
+      "expected": true
+    },
+    {
+      "name": "ok/high-s",
+      "challenge": "0xca5f884d98ac213e60c01530f24c2beb4ceaae4663e2f84636d49563e0e044bd",
+      "hSd": "0xaf3636e7083817840f3bd4a1c97ca1e54013ebf5aba5a066ee5b4619d2e58324",
+      "cm": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9",
+      "assertion": {
+        "r": "0x5dcecfab1480e7159120ea6777e4eef80379de42da172f90d1141994b41a3f82",
+        "s": "0x3d6dd23f53a61585990784a1a4c3acbd52ac30a243c533d26a68ca3de32769da",
+        "challengeIndex": 23,
+        "typeIndex": 1,
+        "authenticatorData": "0x1071caa839ec25d37b233c1d4b37fd3a9d1b0a09830e137e452105c07d6fc4f70500000003",
+        "clientDataJSON": "{\"type\":\"webauthn.get\",\"challenge\":\"yl-ITZisIT5gwBUw8kwr60zqrkZj4vhGNtSVY-DgRL0\",\"origin\":\"http://app.keelson.finance:56358\",\"crossOrigin\":false}"
+      },
+      "qx": "0xc8bd44f5f4e0d62f2029430b2398803de02078d056460238efe348abf971156d",
+      "qy": "0xedd0c80929574f8e7ee7e611d882b8ccfe39a680fcc23026c571583f8d5efcd4",
+      "rpIdHash": "0x1071caa839ec25d37b233c1d4b37fd3a9d1b0a09830e137e452105c07d6fc4f7",
+      "expected": true
+    },
+    {
+      "name": "error/other-mandate",
+      "challenge": "0xca5f884d98ac213e60c01530f24c2beb4ceaae4663e2f84636d49563e0e044bd",
+      "hSd": "0xaf3636e7083817840f3bd4a1c97ca1e54013ebf5aba5a066ee5b4619d2e58324",
+      "cm": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9",
+      "assertion": {
+        "r": "0x5f40d0defe8781f3971764da547e2002cefe96af82421504bd427789e4cd09cd",
+        "s": "0x17b98f947bc0dc06810a0bc8efe030357eeb6497e2e5d687da4720e87b8ddf31",
+        "challengeIndex": 22,
+        "typeIndex": 1,
+        "authenticatorData": "0x1071caa839ec25d37b233c1d4b37fd3a9d1b0a09830e137e452105c07d6fc4f70500000002",
+        "clientDataJSON": "{\"type\":\"payment.get\",\"challenge\":\"KveQrVzFhay2KIQ0IFcp93fXUQQU7e25pr3sd5GC_R0\",\"origin\":\"http://app.keelson.finance:56358\",\"crossOrigin\":false,\"payment\":{\"rpId\":\"keelson.finance\",\"topOrigin\":\"http://app.keelson.finance:56358\",\"payeeName\":\"Keelson\",\"payeeOrigin\":\"https://keelson.finance\",\"paymentEntitiesLogos\":[],\"total\":{\"value\":\"100.00\",\"currency\":\"USD\"},\"instrument\":{\"icon\":\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Crect width='32' height='32' rx='6' fill='%23111'/%3E%3C/svg%3E\",\"displayName\":\"Keelson mandate\"}}}"
+      },
+      "qx": "0xc8bd44f5f4e0d62f2029430b2398803de02078d056460238efe348abf971156d",
+      "qy": "0xedd0c80929574f8e7ee7e611d882b8ccfe39a680fcc23026c571583f8d5efcd4",
+      "rpIdHash": "0x1071caa839ec25d37b233c1d4b37fd3a9d1b0a09830e137e452105c07d6fc4f7",
+      "expected": false
+    },
+    {
+      "name": "error/rp-id",
+      "challenge": "0xca5f884d98ac213e60c01530f24c2beb4ceaae4663e2f84636d49563e0e044bd",
+      "hSd": "0xaf3636e7083817840f3bd4a1c97ca1e54013ebf5aba5a066ee5b4619d2e58324",
+      "cm": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9",
+      "assertion": {
+        "r": "0x5dcecfab1480e7159120ea6777e4eef80379de42da172f90d1141994b41a3f82",
+        "s": "0x3d6dd23f53a61585990784a1a4c3acbd52ac30a243c533d26a68ca3de32769da",
+        "challengeIndex": 23,
+        "typeIndex": 1,
+        "authenticatorData": "0x1071caa839ec25d37b233c1d4b37fd3a9d1b0a09830e137e452105c07d6fc4f70500000003",
+        "clientDataJSON": "{\"type\":\"webauthn.get\",\"challenge\":\"yl-ITZisIT5gwBUw8kwr60zqrkZj4vhGNtSVY-DgRL0\",\"origin\":\"http://app.keelson.finance:56358\",\"crossOrigin\":false}"
+      },
+      "qx": "0xc8bd44f5f4e0d62f2029430b2398803de02078d056460238efe348abf971156d",
+      "qy": "0xedd0c80929574f8e7ee7e611d882b8ccfe39a680fcc23026c571583f8d5efcd4",
+      "rpIdHash": "0x9c180de0cd699ee78897c47cfdb3e7ee1d75906e31b7746a4747dea536909837",
+      "expected": false
+    },
+    {
+      "name": "error/user-not-verified",
+      "challenge": "0xca5f884d98ac213e60c01530f24c2beb4ceaae4663e2f84636d49563e0e044bd",
+      "hSd": "0xaf3636e7083817840f3bd4a1c97ca1e54013ebf5aba5a066ee5b4619d2e58324",
+      "cm": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9",
+      "assertion": {
+        "r": "0x2364004a3040effdf7ee1d9ca92c7551ab63b150d829eb97c62fdf82622e89ce",
+        "s": "0x26e092d1c5953e78e2a0255034a36d219500f844def53162899b3d80d9bb14a4",
+        "challengeIndex": 23,
+        "typeIndex": 1,
+        "authenticatorData": "0x1071caa839ec25d37b233c1d4b37fd3a9d1b0a09830e137e452105c07d6fc4f70100000006",
+        "clientDataJSON": "{\"type\":\"webauthn.get\",\"challenge\":\"yl-ITZisIT5gwBUw8kwr60zqrkZj4vhGNtSVY-DgRL0\",\"origin\":\"http://app.keelson.finance:56358\",\"crossOrigin\":false,\"other_keys_can_be_added_here\":\"do not compare clientDataJSON against a template. See https://goo.gl/yabPex\"}"
+      },
+      "qx": "0xc8bd44f5f4e0d62f2029430b2398803de02078d056460238efe348abf971156d",
+      "qy": "0xedd0c80929574f8e7ee7e611d882b8ccfe39a680fcc23026c571583f8d5efcd4",
+      "rpIdHash": "0x1071caa839ec25d37b233c1d4b37fd3a9d1b0a09830e137e452105c07d6fc4f7",
+      "expected": false
+    },
+    {
+      "name": "error/user-not-present",
+      "challenge": "0xca5f884d98ac213e60c01530f24c2beb4ceaae4663e2f84636d49563e0e044bd",
+      "hSd": "0xaf3636e7083817840f3bd4a1c97ca1e54013ebf5aba5a066ee5b4619d2e58324",
+      "cm": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9",
+      "assertion": {
+        "r": "0x5dcecfab1480e7159120ea6777e4eef80379de42da172f90d1141994b41a3f82",
+        "s": "0x3d6dd23f53a61585990784a1a4c3acbd52ac30a243c533d26a68ca3de32769da",
+        "challengeIndex": 23,
+        "typeIndex": 1,
+        "authenticatorData": "0x1071caa839ec25d37b233c1d4b37fd3a9d1b0a09830e137e452105c07d6fc4f70400000003",
+        "clientDataJSON": "{\"type\":\"webauthn.get\",\"challenge\":\"yl-ITZisIT5gwBUw8kwr60zqrkZj4vhGNtSVY-DgRL0\",\"origin\":\"http://app.keelson.finance:56358\",\"crossOrigin\":false}"
+      },
+      "qx": "0xc8bd44f5f4e0d62f2029430b2398803de02078d056460238efe348abf971156d",
+      "qy": "0xedd0c80929574f8e7ee7e611d882b8ccfe39a680fcc23026c571583f8d5efcd4",
+      "rpIdHash": "0x1071caa839ec25d37b233c1d4b37fd3a9d1b0a09830e137e452105c07d6fc4f7",
+      "expected": false
+    },
+    {
+      "name": "error/backup-state",
+      "challenge": "0xca5f884d98ac213e60c01530f24c2beb4ceaae4663e2f84636d49563e0e044bd",
+      "hSd": "0xaf3636e7083817840f3bd4a1c97ca1e54013ebf5aba5a066ee5b4619d2e58324",
+      "cm": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9",
+      "assertion": {
+        "r": "0x5dcecfab1480e7159120ea6777e4eef80379de42da172f90d1141994b41a3f82",
+        "s": "0x3d6dd23f53a61585990784a1a4c3acbd52ac30a243c533d26a68ca3de32769da",
+        "challengeIndex": 23,
+        "typeIndex": 1,
+        "authenticatorData": "0x1071caa839ec25d37b233c1d4b37fd3a9d1b0a09830e137e452105c07d6fc4f71500000003",
+        "clientDataJSON": "{\"type\":\"webauthn.get\",\"challenge\":\"yl-ITZisIT5gwBUw8kwr60zqrkZj4vhGNtSVY-DgRL0\",\"origin\":\"http://app.keelson.finance:56358\",\"crossOrigin\":false}"
+      },
+      "qx": "0xc8bd44f5f4e0d62f2029430b2398803de02078d056460238efe348abf971156d",
+      "qy": "0xedd0c80929574f8e7ee7e611d882b8ccfe39a680fcc23026c571583f8d5efcd4",
+      "rpIdHash": "0x1071caa839ec25d37b233c1d4b37fd3a9d1b0a09830e137e452105c07d6fc4f7",
+      "expected": false
+    },
+    {
+      "name": "error/bad-signature",
+      "challenge": "0xca5f884d98ac213e60c01530f24c2beb4ceaae4663e2f84636d49563e0e044bd",
+      "hSd": "0xaf3636e7083817840f3bd4a1c97ca1e54013ebf5aba5a066ee5b4619d2e58324",
+      "cm": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9",
+      "assertion": {
+        "r": "0x5dcecfab1480e7159120ea6777e4eef80379de42da172f90d1141994b41a3f82",
+        "s": "0x3d6dd23f53a61585990784a1a4c3acbd52ac30a243c533d26a68ca3de32769db",
+        "challengeIndex": 23,
+        "typeIndex": 1,
+        "authenticatorData": "0x1071caa839ec25d37b233c1d4b37fd3a9d1b0a09830e137e452105c07d6fc4f70500000003",
+        "clientDataJSON": "{\"type\":\"webauthn.get\",\"challenge\":\"yl-ITZisIT5gwBUw8kwr60zqrkZj4vhGNtSVY-DgRL0\",\"origin\":\"http://app.keelson.finance:56358\",\"crossOrigin\":false}"
+      },
+      "qx": "0xc8bd44f5f4e0d62f2029430b2398803de02078d056460238efe348abf971156d",
+      "qy": "0xedd0c80929574f8e7ee7e611d882b8ccfe39a680fcc23026c571583f8d5efcd4",
+      "rpIdHash": "0x1071caa839ec25d37b233c1d4b37fd3a9d1b0a09830e137e452105c07d6fc4f7",
+      "expected": false
+    },
+    {
+      "name": "error/type",
+      "challenge": "0xca5f884d98ac213e60c01530f24c2beb4ceaae4663e2f84636d49563e0e044bd",
+      "hSd": "0xaf3636e7083817840f3bd4a1c97ca1e54013ebf5aba5a066ee5b4619d2e58324",
+      "cm": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9",
+      "assertion": {
+        "r": "0x5dcecfab1480e7159120ea6777e4eef80379de42da172f90d1141994b41a3f82",
+        "s": "0x3d6dd23f53a61585990784a1a4c3acbd52ac30a243c533d26a68ca3de32769da",
+        "challengeIndex": 26,
+        "typeIndex": 1,
+        "authenticatorData": "0x1071caa839ec25d37b233c1d4b37fd3a9d1b0a09830e137e452105c07d6fc4f70500000003",
+        "clientDataJSON": "{\"type\":\"webauthn.create\",\"challenge\":\"yl-ITZisIT5gwBUw8kwr60zqrkZj4vhGNtSVY-DgRL0\",\"origin\":\"http://app.keelson.finance:56358\",\"crossOrigin\":false}"
+      },
+      "qx": "0xc8bd44f5f4e0d62f2029430b2398803de02078d056460238efe348abf971156d",
+      "qy": "0xedd0c80929574f8e7ee7e611d882b8ccfe39a680fcc23026c571583f8d5efcd4",
+      "rpIdHash": "0x1071caa839ec25d37b233c1d4b37fd3a9d1b0a09830e137e452105c07d6fc4f7",
+      "expected": false
+    },
+    {
+      "name": "error/authenticator-data-short",
+      "challenge": "0xca5f884d98ac213e60c01530f24c2beb4ceaae4663e2f84636d49563e0e044bd",
+      "hSd": "0xaf3636e7083817840f3bd4a1c97ca1e54013ebf5aba5a066ee5b4619d2e58324",
+      "cm": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9",
+      "assertion": {
+        "r": "0x5dcecfab1480e7159120ea6777e4eef80379de42da172f90d1141994b41a3f82",
+        "s": "0x3d6dd23f53a61585990784a1a4c3acbd52ac30a243c533d26a68ca3de32769da",
+        "challengeIndex": 23,
+        "typeIndex": 1,
+        "authenticatorData": "0x1071caa839ec25d37b233c1d4b37fd3a9d1b0a09830e137e452105c07d6fc4f705000000",
+        "clientDataJSON": "{\"type\":\"webauthn.get\",\"challenge\":\"yl-ITZisIT5gwBUw8kwr60zqrkZj4vhGNtSVY-DgRL0\",\"origin\":\"http://app.keelson.finance:56358\",\"crossOrigin\":false}"
+      },
+      "qx": "0xc8bd44f5f4e0d62f2029430b2398803de02078d056460238efe348abf971156d",
+      "qy": "0xedd0c80929574f8e7ee7e611d882b8ccfe39a680fcc23026c571583f8d5efcd4",
+      "rpIdHash": "0x1071caa839ec25d37b233c1d4b37fd3a9d1b0a09830e137e452105c07d6fc4f7",
+      "expected": false
+    },
+    {
+      "name": "error/other-public-key",
+      "challenge": "0xca5f884d98ac213e60c01530f24c2beb4ceaae4663e2f84636d49563e0e044bd",
+      "hSd": "0xaf3636e7083817840f3bd4a1c97ca1e54013ebf5aba5a066ee5b4619d2e58324",
+      "cm": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9",
+      "assertion": {
+        "r": "0x5dcecfab1480e7159120ea6777e4eef80379de42da172f90d1141994b41a3f82",
+        "s": "0x3d6dd23f53a61585990784a1a4c3acbd52ac30a243c533d26a68ca3de32769da",
+        "challengeIndex": 23,
+        "typeIndex": 1,
+        "authenticatorData": "0x1071caa839ec25d37b233c1d4b37fd3a9d1b0a09830e137e452105c07d6fc4f70500000003",
+        "clientDataJSON": "{\"type\":\"webauthn.get\",\"challenge\":\"yl-ITZisIT5gwBUw8kwr60zqrkZj4vhGNtSVY-DgRL0\",\"origin\":\"http://app.keelson.finance:56358\",\"crossOrigin\":false}"
+      },
+      "qx": "0xef9b02bdc9ec17dddc5360daf25d45ca65bb8961b6d70d10e797b83eb0e6dd50",
+      "qy": "0x20a71d6d979f7703b024230445d7ae31e95e0c1d62a6983a3deb76c3bf6d43bb",
+      "rpIdHash": "0x1071caa839ec25d37b233c1d4b37fd3a9d1b0a09830e137e452105c07d6fc4f7",
+      "expected": false
+    },
+    {
+      "name": "error/high-s-unnormalized",
+      "challenge": "0xca5f884d98ac213e60c01530f24c2beb4ceaae4663e2f84636d49563e0e044bd",
+      "hSd": "0xaf3636e7083817840f3bd4a1c97ca1e54013ebf5aba5a066ee5b4619d2e58324",
+      "cm": "0x29675a1a31838d2831a94510ee98febf8fcf41570d113a274638cfba3f97d1d9",
+      "assertion": {
+        "r": "0x5dcecfab1480e7159120ea6777e4eef80379de42da172f90d1141994b41a3f82",
+        "s": "0xc2922dbfac59ea7b66f87b5e5b3c53426a3aca0b63526ab289510085193bbb77",
+        "challengeIndex": 23,
+        "typeIndex": 1,
+        "authenticatorData": "0x1071caa839ec25d37b233c1d4b37fd3a9d1b0a09830e137e452105c07d6fc4f70500000003",
+        "clientDataJSON": "{\"type\":\"webauthn.get\",\"challenge\":\"yl-ITZisIT5gwBUw8kwr60zqrkZj4vhGNtSVY-DgRL0\",\"origin\":\"http://app.keelson.finance:56358\",\"crossOrigin\":false}"
+      },
+      "qx": "0xc8bd44f5f4e0d62f2029430b2398803de02078d056460238efe348abf971156d",
+      "qy": "0xedd0c80929574f8e7ee7e611d882b8ccfe39a680fcc23026c571583f8d5efcd4",
+      "rpIdHash": "0x1071caa839ec25d37b233c1d4b37fd3a9d1b0a09830e137e452105c07d6fc4f7",
+      "expected": false
+    }
+  ]
+}

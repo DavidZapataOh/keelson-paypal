@@ -1,0 +1,134 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.38;
+
+import {CoverageVector, Vector} from "../../script/CoverageVector.sol";
+import {DeployBondVault} from "../../script/DeployBondVault.s.sol";
+import {KeelsonBondVault} from "../../src/KeelsonBondVault.sol";
+import {IKeelsonBondVault} from "../../src/interfaces/IKeelsonBondVault.sol";
+import {KeelsonTypes} from "../../src/libraries/KeelsonTypes.sol";
+import {ForkTest} from "./Fork.sol";
+import {IPyusd} from "./IPyusd.sol";
+import {TimelockController} from "@openzeppelin/contracts/governance/TimelockController.sol";
+import {stdJson} from "forge-std/StdJson.sol";
+
+/// @notice The vault deployed by its script on a fork of Arbitrum Sepolia, after the demo operator was registered in the
+/// ERC-8004 Identity registry, with the real `VerdictVerifier` (both legs' signers registered), `CheckpointAnchor`,
+/// PYUSD and the funders' faucet balances.
+abstract contract VaultBase is ForkTest {
+    using stdJson for string;
+
+    uint256 internal constant FORK_BLOCK = 327_231_200;
+    string internal constant VAULT = "KeelsonBondVaultPreview";
+
+    DeployBondVault internal deployScript;
+    KeelsonBondVault internal vault;
+    IPyusd internal pyusd;
+    uint256 internal agentId;
+    address internal operator;
+    uint256 internal operatorKey;
+    uint256 internal saltCounter;
+
+    function setUp() public virtual {
+        vm.createSelectFork(vm.envString("ARBITRUM_SEPOLIA_RPC_URL"), FORK_BLOCK);
+        pyusd = _pyusd();
+        agentId = _demoAgentId();
+        // The demo operator transfers its agent to a key this test holds, so the operator's signatures are real ones.
+        address demoOperator = _json().readAddress(".demo.operator");
+        assertEq(_identity().ownerOf(agentId), demoOperator, "demo agent owner");
+        (operator, operatorKey) = makeAddrAndKey("agent owner");
+        vm.prank(demoOperator);
+        _identity().transferFrom(demoOperator, operator, agentId);
+
+        deployScript = new DeployBondVault();
+        vault = deployScript.run(VAULT);
+        vm.warp(vm.getBlockTimestamp() + _timelock().getMinDelay());
+        deployScript.wire(VAULT);
+    }
+
+    function _timelock() internal view returns (TimelockController) {
+        return TimelockController(payable(_json().readAddress(".contracts.TimelockController")));
+    }
+
+    /// @dev Scheduled by the proposer (the deployer EOA) and executed once the delay passed.
+    function _viaTimelock(address to, bytes memory data) internal {
+        TimelockController timelock = _timelock();
+        bytes32 salt = bytes32(++saltCounter);
+        uint256 delay = timelock.getMinDelay();
+        vm.prank(_json().readAddress(".governance.proposer"));
+        timelock.schedule(to, 0, data, bytes32(0), salt, delay);
+        vm.warp(vm.getBlockTimestamp() + delay);
+        timelock.execute(to, 0, data, bytes32(0), salt);
+    }
+
+    /// @dev A funder's real faucet PYUSD, deposited for `agentId` through EIP-3009.
+    function _deposit(uint256 funder, uint256 amount, bytes32 salt) internal {
+        (address from, uint256 pk) = _funder(funder);
+        bytes32 nonce = keccak256(abi.encode(agentId, salt));
+        bytes memory sig = _signReceiveWithAuthorization(pk, address(vault), amount, 0, type(uint256).max, nonce);
+        vault.depositWithAuthorization(agentId, from, amount, 0, type(uint256).max, salt, sig);
+    }
+
+    function _signVault(uint256 pk, bytes32 structHash) internal view returns (bytes memory) {
+        (uint8 v, bytes32 r, bytes32 s) =
+            vm.sign(pk, keccak256(abi.encodePacked("\x19\x01", vault.domainSeparator(), structHash)));
+        return abi.encodePacked(r, s, v);
+    }
+
+    /// @dev Tests run each call as its own transaction (`isolate`), so the last call's gas is the transaction's;
+    /// execution is that less the 21,000 base and the EIP-2028 calldata cost.
+    function _executionGas(bytes memory callData) internal view returns (uint256) {
+        uint256 calldataGas;
+        for (uint256 i; i < callData.length; ++i) {
+            calldataGas += callData[i] == 0 ? 4 : 16;
+        }
+        return vm.lastCallGas().gasTotalUsed - 21_000 - calldataGas;
+    }
+
+    function _bond() internal view returns (IKeelsonBondVault.Bond memory) {
+        return vault.bonds(agentId);
+    }
+
+    /// @dev Every faucet PYUSD the three funders hold, deposited for the demo agent.
+    function _depositAll() internal returns (uint256 total) {
+        for (uint256 i; i < 3; ++i) {
+            (address from,) = _funder(i);
+            uint256 balance = pyusd.balanceOf(from);
+            _deposit(i, balance, bytes32(i));
+            total += balance;
+        }
+    }
+}
+
+abstract contract LockBase is VaultBase {
+    using stdJson for string;
+
+    string internal constant WEBAUTHN = "coverage-2of2-webauthn";
+    string internal constant PAYMENT = "coverage-2of2-payment";
+    string internal constant DEGRADED = "coverage-degraded";
+
+    function _vector(string memory name) internal view returns (Vector memory v) {
+        string memory json = vm.readFile(string.concat(vm.projectRoot(), "/test/vectors/", name, ".json"));
+        assertEq(json.readUint(".chainId"), 421614);
+        v = CoverageVector.read(json, _json().readAddress(".demo.merchant"), vault.params().disputeWindow);
+        assertEq(v.vault, address(vault), "vector vault");
+    }
+
+    function _operatorSig(KeelsonTypes.Coverage memory c) internal view returns (bytes memory) {
+        return _signVault(operatorKey, KeelsonTypes.hash(c));
+    }
+
+    /// @dev At the countersign's issue time, as the relayer submits it.
+    function _lock(Vector memory v) internal {
+        _lock(v, _operatorSig(v.coverage));
+    }
+
+    function _lock(Vector memory v, bytes memory operatorSig) internal {
+        vault.lockCoverage(v.coverage, v.countersign, v.hSd, v.assertion, v.qx, v.qy, operatorSig, v.countersigs);
+    }
+
+    function _lockCalldata(Vector memory v, bytes memory operatorSig) internal view returns (bytes memory) {
+        return abi.encodeCall(
+            vault.lockCoverage, (v.coverage, v.countersign, v.hSd, v.assertion, v.qx, v.qy, operatorSig, v.countersigs)
+        );
+    }
+}

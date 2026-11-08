@@ -16,6 +16,9 @@ if [[ "${1:-}" == "--check-only" ]]; then
 fi
 [[ $# -gt 0 ]] || { echo "usage: $0 [--check-only] <chainId>..." >&2; exit 2; }
 
+# A registry name with the `Preview` suffix is the same contract deployed at another salt.
+contract_of() { echo "${1%Preview}"; }
+
 # out/<File>.sol/<Name>.json names its source in the compilation target. Contracts built with their own
 # settings (Base's nitro-validator) are verified from their own project root.
 EXTERNAL_ROOTS=(lib/nitro-validator)
@@ -56,11 +59,11 @@ for chain in "$@"; do
         status=1
       fi
     else
-      target=$(source_of "$name")
+      target=$(source_of "$(contract_of "$name")")
       args=$(jq -r --arg n "$name" '.constructorArgs[$n]' "$registry")
       # Foundry submits the same sources to Sourcify after Etherscan.
       forge verify-contract "$address" "$target" --chain "$chain" --verifier etherscan \
-        --constructor-args "$args" --root "$(root_of "$name")" --watch
+        --constructor-args "$args" --root "$(root_of "$(contract_of "$name")")" --watch
     fi
   done
 done

@@ -19,6 +19,8 @@ interface IPyusd is IERC20Metadata {
     function isFrozen(address addr) external view returns (bool);
     function hasRole(bytes32 role, address account) external view returns (bool);
     function freeze(address addr) external;
+    function pause() external;
+    function paused() external view returns (bool);
 
     function permit(address owner, address spender, uint256 value, uint256 deadline, bytes memory signature) external;
 

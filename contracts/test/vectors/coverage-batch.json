@@ -1,0 +1,34 @@
+{
+  "count": 100,
+  "batch": {
+    "agentId": "351",
+    "root": "0x9533fca60b0d2b1395a6f69b7e632e4d8a101e09733a977a2a5c23fa1111752b",
+    "total": "50000000",
+    "premium": "500000",
+    "expiresAt": 1794138198,
+    "checkpointRoot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "treeSize": "0"
+  },
+  "proven": {
+    "index": 37,
+    "coverage": {
+      "coverageId": "0xed08c31880b50d2d92fcea4d4bb64fd5569fb0d1d4b2539d6c8eee99621bc34e",
+      "agentId": "351",
+      "merchant": "0x467D2beBb479D9B80Ab1c461243E05A2b82387d8",
+      "amount": "500000",
+      "premium": "5000",
+      "expiresAt": 1794138198,
+      "mandateHash": "0x356b01946c12be3e639119fbb2b4b9a4ec256f6af8b2671c05048d3010fe9775",
+      "amberCommitment": "0x10b6cca42ff838f0e6abc4ff02d50a70bd96abed03d9d6edc813d190e0841a27"
+    },
+    "proof": [
+      "0x265cdd75d0bc89495bd3a072c213f18404210e407e3d038afd151b2d89f493b0",
+      "0xe305e3a0a6bf114e73b881a243f06b3927778cf77e58a5bd808e3d9c44b9bc31",
+      "0x86cb2d87c5e55be4cbabbdd1492a5b7150f6c5e51b98caf6ea97b29aaa3731e3",
+      "0xbb1d9ed7ecaf631e4f865f01ecb438a356803cad914bc40c4d9fc09337a7f574",
+      "0x518db750c79dadc09c8966c719445dc37033f57f60aa7df49d1a799bca4374bf",
+      "0xff2c86d51e0d761e2a89105d77b1a897ff476fe94d2b05318dfaabeeea46e54e",
+      "0xc453a09e7f6d3a57afbe96216152667d63e6965dd2d387d7b52316d4d91c0327"
+    ]
+  }
+}

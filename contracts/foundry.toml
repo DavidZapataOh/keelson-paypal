@@ -16,6 +16,7 @@ fs_permissions = [
   { access = "read-write", path = "./deployments" },
   { access = "read", path = "./test/vectors" },
   { access = "read", path = "../packages/core/test/vectors" },
+  { access = "read", path = "../packages/mandate/test/vectors" },
   { access = "read", path = "../engine/tee/measurements.json" },
   { access = "read", path = "./lib/nitro-validator/out" },
 ]

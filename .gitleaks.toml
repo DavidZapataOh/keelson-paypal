@@ -18,6 +18,12 @@ paths = [
 ]
 
 [[allowlists]]
+description = "Coverage vectors captured from the live TEE legs: public passkey assertions, key hashes and countersignatures"
+paths = [
+  '''contracts/test/vectors/coverage-.*\.json''',
+]
+
+[[allowlists]]
 description = "Public contract addresses in the per-chain deployment registries and the bindings generated from them"
 paths = [
   '''contracts/deployments/.*\.json''',
