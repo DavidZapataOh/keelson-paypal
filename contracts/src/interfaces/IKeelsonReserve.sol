@@ -15,6 +15,7 @@ interface IKeelsonReserve {
     event Claimed(address indexed account, address to, uint256 amount);
     event CooldownRequested(address indexed owner, uint40 start);
     event CooldownSet(uint40 cooldown, uint40 unstakeWindow);
+    event RateLimitSet(uint48 window, uint208 capacity);
 
     error InvalidVerdictSignature();
     error NotKeelsonLiable();
@@ -27,8 +28,10 @@ interface IKeelsonReserve {
     error InsufficientReserve();
     error InvalidSignature();
     error ZeroAmount();
-    /// @notice Shares cannot move to an owner whose cooldown is running or whose withdrawal window is open.
+    /// @notice Shares cannot move to, or be minted for, an owner whose cooldown runs or whose window is open.
     error CooldownActive();
+    /// @notice The coverage's dispute window closed before the warranty arrived.
+    error WarrantyWindowClosed();
 
     /// @notice Pays `v.payee` from the reserve on a verdict that names Keelson liable, signed by both TEE legs against a
     /// checkpoint anchored at `treeSize`.
@@ -43,9 +46,17 @@ interface IKeelsonReserve {
 
     function setCooldown(uint40 cooldown, uint40 unstakeWindow) external;
 
+    function setRateLimit(uint48 window, uint208 capacity) external;
+
+    /// @notice PYUSD that warranties may still pay out now.
+    function rateLimitAvailable() external view returns (uint256);
+
     function settled(bytes32 disputeId) external view returns (bool);
 
     function claimable(address account) external view returns (uint256);
+
+    /// @notice Warranties paid for a coverage; a slash of the same coverage can take only what they left.
+    function warranted(bytes32 coverageId) external view returns (uint256);
 
     /// @notice PYUSD owed to payees whose transfers failed; not part of `totalAssets`.
     function totalClaimable() external view returns (uint256);

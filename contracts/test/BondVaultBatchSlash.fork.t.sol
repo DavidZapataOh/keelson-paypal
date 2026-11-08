@@ -160,4 +160,16 @@ contract BondVaultBatchSlashForkTest is SlashBase {
         assertEq(vault.slashed(entry.coverageId), 0);
         assertEq(vault.pendingSlashes(agentId), 0);
     }
+
+    /// @dev A batch leaf whose id is also a coverage locked on its own cannot be slashed through the batch: the two
+    /// would share one `slashed` entry.
+    function test_slashBatched_leafLockedOnItsOwnReverts() public {
+        uint256 slot = uint256(keccak256(abi.encode(entry.coverageId, uint256(7))));
+        vm.store(address(vault), bytes32(slot), bytes32(uint256(1) << 200));
+        assertEq(uint8(vault.coverages(entry.coverageId).status), uint8(IKeelsonBondVault.Status.Active));
+        KeelsonTypes.Verdict memory verdict = _batchVerdict(entry, entry.amount, "PP-D-batch-37");
+        bytes memory sigs = _sign2of2(verdict);
+        vm.expectRevert(IKeelsonBondVault.NotInBatch.selector);
+        vault.slashBatched(verdict, treeSize, sigs, batchId, entry, proof);
+    }
 }

@@ -60,13 +60,14 @@ contract KeelsonBondVault is IKeelsonBondVault, AccessManaged, EIP712, Nonces, R
     mapping(bytes32 coverageId => bytes32) public coverageHash;
     /// @notice Slashes queued and not yet executed or vetoed, per agent; written by slashing.
     mapping(uint256 agentId => uint256) public pendingSlashes;
-    /// @notice Amount slashed from each coverage; written by slashing.
+    /// @inheritdoc IKeelsonBondVault
     mapping(bytes32 coverageId => uint96) public slashed;
     mapping(bytes32 batchId => BatchState) internal _batches;
     mapping(bytes32 batchId => bytes32) public batchRoot;
     mapping(bytes32 batchId => uint128) public batchSlashed;
     mapping(uint256 id => Withdrawal) internal _withdrawals;
     uint256 public withdrawalCount;
+    /// @inheritdoc IKeelsonBondVault
     mapping(address merchant => address) public payoutAddress;
     /// @inheritdoc IKeelsonBondVault
     mapping(bytes32 disputeId => bool) public settled;
@@ -352,7 +353,9 @@ contract KeelsonBondVault is IKeelsonBondVault, AccessManaged, EIP712, Nonces, R
         if (cov.status != Status.Active || block.timestamp > cov.releaseAfter || cov.agentId != v.agentId) {
             revert CoverageNotActive();
         }
-        if (v.amount > cov.amount - slashed[v.coverageId]) revert ExceedsCoverage();
+        if (v.amount > cov.amount - slashed[v.coverageId] - IKeelsonReserve(reserve).warranted(v.coverageId)) {
+            revert ExceedsCoverage();
+        }
         if (_slash(v, digest, degraded || cov.degraded, bytes32(0))) ++cov.pendingSlashes;
     }
 
@@ -367,7 +370,7 @@ contract KeelsonBondVault is IKeelsonBondVault, AccessManaged, EIP712, Nonces, R
     ) external nonReentrant {
         (bytes32 digest, bool degraded) = _checkVerdict(v, treeSize, sigs);
         if (
-            c.coverageId != v.coverageId || c.agentId != v.agentId
+            c.coverageId != v.coverageId || c.agentId != v.agentId || _coverages[c.coverageId].status != Status.None
                 || !MerkleProof.verifyCalldata(
                     proof, batchRoot[batchId], keccak256(bytes.concat(keccak256(abi.encode(KeelsonTypes.hash(c)))))
                 )
@@ -388,7 +391,9 @@ contract KeelsonBondVault is IKeelsonBondVault, AccessManaged, EIP712, Nonces, R
         QueuedSlash storage q = _queuedSlashes[disputeId];
         if (q.status != SlashStatus.Queued) revert NotQueued();
         if (block.timestamp < q.readyAt) revert NotReady();
-        _slashLimit.consume(bytes32(0), q.amount);
+        // A slash larger than the whole bucket would never fit: it takes the full bucket instead.
+        uint256 capacity = _slashLimit._capacity;
+        _slashLimit.consume(bytes32(0), q.amount < capacity ? q.amount : capacity);
         q.status = SlashStatus.Executed;
         _unqueue(q);
         _pay(disputeId, q.agentId, q.payee, q.amount);
@@ -523,6 +528,7 @@ contract KeelsonBondVault is IKeelsonBondVault, AccessManaged, EIP712, Nonces, R
                     ? verifier.verify2of2(digest, sigs)
                     : degraded && verifier.verifyDegraded(digest, sigs))) revert InvalidVerdictSignature();
         if (v.liable != LIABLE_OPERATOR) revert NotOperatorLiable();
+        if (v.amount == 0 || v.payee == address(0)) revert ZeroAmount();
         if (settled[v.disputeId] || IKeelsonReserve(reserve).settled(v.disputeId)) revert AlreadySettled();
         if (block.timestamp > v.deadline) revert Expired();
         if (v.checkpointRoot == 0 || anchor.rootAt(logOrigin, treeSize) != v.checkpointRoot) revert NotAnchored();
@@ -568,17 +574,11 @@ contract KeelsonBondVault is IKeelsonBondVault, AccessManaged, EIP712, Nonces, R
         if (q.batchId == 0) --_coverages[q.coverageId].pendingSlashes;
     }
 
-    /// @dev Debits the bond (`locked`, then `queued`, then `free`) and pays the payee's payout address, or the payee.
-    /// A failed transfer (a frozen recipient, a paused or frozen vault) leaves the amount claimable, never reverts.
+    /// @dev Debits the coverage's locked funds and pays the payee's payout address, or the payee. A failed transfer (a
+    /// frozen recipient, a paused or frozen vault) leaves the amount claimable, never reverts.
     function _pay(bytes32 disputeId, uint256 agentId, address payee, uint96 amount) internal {
         Bond storage bond = _bonds[agentId];
-        uint128 left = amount;
-        uint128 part = left < bond.locked ? left : bond.locked;
-        bond.locked -= part;
-        left -= part;
-        part = left < bond.queued ? left : bond.queued;
-        bond.queued -= part;
-        bond.free -= left - part;
+        bond.locked -= amount;
         ++bond.slashCount;
         address recipient = payoutAddress[payee];
         if (recipient == address(0)) recipient = payee;

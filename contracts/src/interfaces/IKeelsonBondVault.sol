@@ -258,6 +258,12 @@ interface IKeelsonBondVault {
 
     function settled(bytes32 disputeId) external view returns (bool);
 
+    /// @notice Amount slashed from a coverage, queued slashes included.
+    function slashed(bytes32 coverageId) external view returns (uint96);
+
+    /// @notice Where a merchant's payouts go instead of its own address, if set.
+    function payoutAddress(address merchant) external view returns (address);
+
     function claimable(address account) external view returns (uint256);
 
     function queuedSlashes(bytes32 disputeId) external view returns (QueuedSlash memory);

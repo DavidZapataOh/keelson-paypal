@@ -12,19 +12,22 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Nonces} from "@openzeppelin/contracts/utils/Nonces.sol";
+import {RateLimiter} from "@openzeppelin/contracts/utils/RateLimiter.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 /// @title KeelsonReserve
 /// @notice Keelson's warranty pool: an ERC-4626 vault over PYUSD whose shares (`kwPYUSD`) earn every coverage premium
-/// and pay the merchant when both TEE legs name Keelson liable. Withdrawals open only after a cooldown, so stakers cannot
-/// leave ahead of a warranty they see coming. Not upgradeable.
+/// and pay the merchant when both TEE legs name Keelson liable, within the coverage's dispute window and a rate limit.
+/// Withdrawals open only after a cooldown, so stakers cannot leave ahead of a warranty they see coming. Not upgradeable.
 /// @dev The virtual offset of 6 decimals is OpenZeppelin's mitigation of the first-depositor inflation attack. PYUSD
 /// owed to payees whose transfers failed is excluded from `totalAssets`.
 contract KeelsonReserve is IKeelsonReserve, ERC4626, AccessManaged, EIP712, Nonces, ReentrancyGuardTransient {
     using SafeERC20 for IERC20;
+    using RateLimiter for RateLimiter.RefillingBucket;
 
     uint8 internal constant LIABLE_KEELSON = 2;
     uint256 internal constant TWO_SIGNATURES = 130;
@@ -46,6 +49,8 @@ contract KeelsonReserve is IKeelsonReserve, ERC4626, AccessManaged, EIP712, Nonc
     mapping(address account => uint256) public claimable;
     /// @inheritdoc IKeelsonReserve
     uint256 public totalClaimable;
+    /// @dev One global bucket (key 0) of PYUSD that warranties may pay out per window.
+    RateLimiter.RefillingBucket internal _warrantyLimit;
 
     constructor(
         IERC20 pyusd,
@@ -55,38 +60,47 @@ contract KeelsonReserve is IKeelsonReserve, ERC4626, AccessManaged, EIP712, Nonc
         bytes32 logOrigin_,
         address authority,
         uint40 cooldown_,
-        uint40 unstakeWindow_
+        uint40 unstakeWindow_,
+        uint48 rateLimitWindow,
+        uint208 rateLimitCapacity
     ) ERC20("Keelson Warranty Reserve", "kwPYUSD") ERC4626(pyusd) AccessManaged(authority) EIP712("Keelson", "1") {
         verifier = verifier_;
         anchor = anchor_;
         vault = vault_;
         logOrigin = logOrigin_;
         _setCooldown(cooldown_, unstakeWindow_);
+        _warrantyLimit.updateSettings(rateLimitWindow, rateLimitCapacity);
+        emit RateLimitSet(rateLimitWindow, rateLimitCapacity);
     }
 
     /// @inheritdoc IKeelsonReserve
-    /// @dev Only 2-of-2: a warranty is Keelson paying from its own pool and can wait for both legs. A warranty may come
-    /// after the coverage was released: Keelson's guarantee runs for the dispute window, which the release already
-    /// waited for.
+    /// @dev Only 2-of-2: a warranty is Keelson paying from its own pool and can wait for both legs. It may come after the
+    /// coverage was released, until one more dispute window has passed. Beyond the rate limit it reverts and can be
+    /// retried once the bucket refills. One coverage pays at most its amount across slashes and warranties.
     function payWarranty(KeelsonTypes.Verdict calldata v, uint64 treeSize, bytes calldata sigs) external nonReentrant {
         bytes32 digest = verifier.hashTypedData(KeelsonTypes.hash(v));
         if (sigs.length != TWO_SIGNATURES || !verifier.verify2of2(digest, sigs)) revert InvalidVerdictSignature();
         if (v.liable != LIABLE_KEELSON) revert NotKeelsonLiable();
+        if (v.amount == 0 || v.payee == address(0)) revert ZeroAmount();
         if (settled[v.disputeId] || vault.settled(v.disputeId)) revert AlreadySettled();
         if (block.timestamp > v.deadline) revert Expired();
         if (v.checkpointRoot == 0 || anchor.rootAt(logOrigin, treeSize) != v.checkpointRoot) revert NotAnchored();
         IKeelsonBondVault.CoverageState memory c = vault.coverages(v.coverageId);
         if (c.status == IKeelsonBondVault.Status.None || c.agentId != v.agentId) revert UnknownCoverage();
-        if (v.amount > c.amount - warranted[v.coverageId]) revert ExceedsCoverage();
+        if (block.timestamp > uint256(c.releaseAfter) + vault.params().disputeWindow) revert WarrantyWindowClosed();
+        if (v.amount > c.amount - warranted[v.coverageId] - vault.slashed(v.coverageId)) revert ExceedsCoverage();
         if (v.amount > totalAssets()) revert InsufficientReserve();
+        _warrantyLimit.consume(bytes32(0), v.amount);
 
         settled[v.disputeId] = true;
         warranted[v.coverageId] += v.amount;
-        if (!IERC20(asset()).trySafeTransfer(v.payee, v.amount)) {
-            claimable[v.payee] += v.amount;
+        address recipient = vault.payoutAddress(v.payee);
+        if (recipient == address(0)) recipient = v.payee;
+        if (!IERC20(asset()).trySafeTransfer(recipient, v.amount)) {
+            claimable[recipient] += v.amount;
             totalClaimable += v.amount;
             // forge-lint: disable-next-line(reentrancy-events)
-            emit PayoutFailed(v.disputeId, v.payee, v.amount);
+            emit PayoutFailed(v.disputeId, recipient, v.amount);
         }
         // forge-lint: disable-next-line(reentrancy-events)
         emit WarrantyPaid(v.disputeId, v.coverageId, v.payee, v.amount, digest);
@@ -124,9 +138,23 @@ contract KeelsonReserve is IKeelsonReserve, ERC4626, AccessManaged, EIP712, Nonc
         _setCooldown(cooldown_, unstakeWindow_);
     }
 
+    /// @inheritdoc IKeelsonReserve
+    /// @dev The bucket is synced first, so the new rate applies from now on.
+    function setRateLimit(uint48 window, uint208 capacity) external restricted {
+        _warrantyLimit.sync(bytes32(0));
+        _warrantyLimit.updateSettings(window, capacity);
+        // forge-lint: disable-next-line(reentrancy-events)
+        emit RateLimitSet(window, capacity);
+    }
+
+    /// @inheritdoc IKeelsonReserve
+    function rateLimitAvailable() external view returns (uint256) {
+        return _warrantyLimit.available(bytes32(0));
+    }
+
     /// @notice PYUSD held for the stakers: the balance less what failed payouts wait to claim.
     function totalAssets() public view override returns (uint256) {
-        return IERC20(asset()).balanceOf(address(this)) - totalClaimable;
+        return Math.saturatingSub(IERC20(asset()).balanceOf(address(this)), totalClaimable);
     }
 
     /// @notice Zero outside the owner's withdrawal window `[start + cooldown, start + cooldown + unstakeWindow]`.
@@ -144,9 +172,9 @@ contract KeelsonReserve is IKeelsonReserve, ERC4626, AccessManaged, EIP712, Nonc
         return 6;
     }
 
-    /// @dev Shares cannot be moved into an owner whose cooldown runs, which would let them leave without waiting.
+    /// @dev Shares cannot be moved or minted into an owner whose cooldown runs, which would let them leave without waiting.
     function _update(address from, address to, uint256 value) internal override {
-        if (from != address(0) && to != address(0) && _cooling(to)) revert CooldownActive();
+        if (to != address(0) && _cooling(to)) revert CooldownActive();
         super._update(from, to, value);
     }
 

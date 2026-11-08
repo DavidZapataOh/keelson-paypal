@@ -71,7 +71,9 @@ contract SlashArbOneForkTest is ForkTest, VerdictSigners {
             keccak256(bytes(ORIGIN)),
             address(manager),
             10 minutes,
-            1 days
+            1 days,
+            1 hours,
+            1_000e6
         );
         (uint48 window, uint208 capacity) = script.rateLimit();
         vault = new KeelsonBondVault(
@@ -174,7 +176,12 @@ contract SlashArbOneForkTest is ForkTest, VerdictSigners {
         emit log_named_uint("slash instant on Arbitrum One, transaction", vm.lastCallGas().gasTotalUsed);
         assertEq(pyusd.balanceOf(merchant), 50e6);
 
-        amber = _verdict("one/a", 40e6, 1, "one/amber-degraded");
+        KeelsonTypes.Verdict memory green = _verdict("one/a", 30e6, 2, "one/green");
+        sigs = _sign2of2(green);
+        reserve.payWarranty(green, SIZE, sigs);
+        emit log_named_uint("payWarranty on Arbitrum One, transaction", vm.lastCallGas().gasTotalUsed);
+        assertEq(pyusd.balanceOf(merchant), 80e6);
+        amber = _verdict("one/a", 10e6, 1, "one/amber-degraded");
         sigs = _signDegraded(amber);
         vault.slash(amber, SIZE, sigs);
         emit log_named_uint("slash queued on Arbitrum One, transaction", vm.lastCallGas().gasTotalUsed);
@@ -182,11 +189,5 @@ contract SlashArbOneForkTest is ForkTest, VerdictSigners {
         vault.executeSlash(amber.disputeId);
         emit log_named_uint("executeSlash on Arbitrum One, transaction", vm.lastCallGas().gasTotalUsed);
         assertEq(pyusd.balanceOf(merchant), 90e6);
-
-        KeelsonTypes.Verdict memory green = _verdict("one/a", 30e6, 2, "one/green");
-        sigs = _sign2of2(green);
-        reserve.payWarranty(green, SIZE, sigs);
-        emit log_named_uint("payWarranty on Arbitrum One, transaction", vm.lastCallGas().gasTotalUsed);
-        assertEq(pyusd.balanceOf(merchant), 120e6);
     }
 }

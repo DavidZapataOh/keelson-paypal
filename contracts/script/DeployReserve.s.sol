@@ -9,7 +9,7 @@ import {TimelockController} from "@openzeppelin/contracts/governance/TimelockCon
 import {stdJson} from "forge-std/StdJson.sol";
 
 /// @notice Deploys the `KeelsonReserve` at its CREATE3 address, the one the vault has sent premiums to from its first
-/// coverage, and wires `setCooldown` to `PARAMETERS_ROLE` through the timelock.
+/// coverage, and wires `setCooldown` and `setRateLimit` to `PARAMETERS_ROLE` through the timelock.
 /// @dev `run()` deploys and schedules the wiring; `wire()` executes it once the timelock delay has passed. Both are
 /// idempotent.
 contract DeployReserve is KeelsonDeploy {
@@ -38,9 +38,9 @@ contract DeployReserve is KeelsonDeploy {
         _timelock().execute(address(_manager()), 0, _wiring(), bytes32(0), _wiringSalt());
     }
 
-    /// @notice `(pyusd, verifier, anchor, vault, logOrigin, authority, cooldown, unstakeWindow)`: the chain's PYUSD,
-    /// the `VerdictVerifier`, `CheckpointAnchor` and `KeelsonBondVault` CREATE3 addresses, the registry's log origin,
-    /// and a cooldown of one dispute window.
+    /// @notice `(pyusd, verifier, anchor, vault, logOrigin, authority, cooldown, unstakeWindow, rateLimitWindow,
+    /// rateLimitCapacity)`: the chain's PYUSD, the `VerdictVerifier`, `CheckpointAnchor` and `KeelsonBondVault`
+    /// CREATE3 addresses, and the registry's log origin, cooldown and warranty rate limit.
     function constructorArgs() public view returns (bytes memory) {
         string memory json = _registry();
         return abi.encode(
@@ -50,19 +50,25 @@ contract DeployReserve is KeelsonDeploy {
             predict("KeelsonBondVault"),
             keccak256(bytes(json.readString(".params.logOrigin"))),
             json.readAddress(".contracts.AccessManager"),
-            uint40(json.readUint(".params.disputeWindow")),
-            uint40(json.readUint(".params.reserveUnstakeWindow"))
+            uint40(json.readUint(".params.reserveCooldown")),
+            uint40(json.readUint(".params.reserveUnstakeWindow")),
+            uint48(json.readUint(".params.warrantyRateWindow")),
+            uint208(json.readUint(".params.warrantyRateCapacity"))
         );
     }
 
     function wired() public view returns (bool) {
-        return _manager().getTargetFunctionRole(predict(NAME), KeelsonReserve.setCooldown.selector)
-            == KeelsonRoles.PARAMETERS_ROLE;
+        AccessManager manager = _manager();
+        return manager.getTargetFunctionRole(predict(NAME), KeelsonReserve.setCooldown.selector)
+                == KeelsonRoles.PARAMETERS_ROLE
+            && manager.getTargetFunctionRole(predict(NAME), KeelsonReserve.setRateLimit.selector)
+                == KeelsonRoles.PARAMETERS_ROLE;
     }
 
     function _wiring() internal view returns (bytes memory) {
-        bytes4[] memory parameters = new bytes4[](1);
+        bytes4[] memory parameters = new bytes4[](2);
         parameters[0] = KeelsonReserve.setCooldown.selector;
+        parameters[1] = KeelsonReserve.setRateLimit.selector;
         return
             abi.encodeCall(
                 AccessManager.setTargetFunctionRole, (predict(NAME), parameters, KeelsonRoles.PARAMETERS_ROLE)

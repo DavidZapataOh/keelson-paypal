@@ -1006,6 +1006,13 @@ export const iKeelsonBondVaultAbi = [
   },
   {
     type: "function",
+    name: "payoutAddress",
+    inputs: [{ name: "merchant", type: "address", internalType: "address" }],
+    outputs: [{ name: "", type: "address", internalType: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
     name: "queuedSlashes",
     inputs: [{ name: "disputeId", type: "bytes32", internalType: "bytes32" }],
     outputs: [
@@ -1173,6 +1180,13 @@ export const iKeelsonBondVaultAbi = [
     ],
     outputs: [],
     stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "slashed",
+    inputs: [{ name: "coverageId", type: "bytes32", internalType: "bytes32" }],
+    outputs: [{ name: "", type: "uint96", internalType: "uint96" }],
+    stateMutability: "view",
   },
   {
     type: "function",
@@ -1482,6 +1496,13 @@ export const iKeelsonReserveAbi = [
   },
   {
     type: "function",
+    name: "rateLimitAvailable",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
     name: "requestCooldown",
     inputs: [],
     outputs: [],
@@ -1499,6 +1520,16 @@ export const iKeelsonReserveAbi = [
   },
   {
     type: "function",
+    name: "setRateLimit",
+    inputs: [
+      { name: "window", type: "uint48", internalType: "uint48" },
+      { name: "capacity", type: "uint208", internalType: "uint208" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
     name: "settled",
     inputs: [{ name: "disputeId", type: "bytes32", internalType: "bytes32" }],
     outputs: [{ name: "", type: "bool", internalType: "bool" }],
@@ -1508,6 +1539,13 @@ export const iKeelsonReserveAbi = [
     type: "function",
     name: "totalClaimable",
     inputs: [],
+    outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "warranted",
+    inputs: [{ name: "coverageId", type: "bytes32", internalType: "bytes32" }],
     outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
     stateMutability: "view",
   },
@@ -1551,6 +1589,15 @@ export const iKeelsonReserveAbi = [
   },
   {
     type: "event",
+    name: "RateLimitSet",
+    inputs: [
+      { name: "window", type: "uint48", indexed: false, internalType: "uint48" },
+      { name: "capacity", type: "uint208", indexed: false, internalType: "uint208" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
     name: "WarrantyPaid",
     inputs: [
       { name: "disputeId", type: "bytes32", indexed: true, internalType: "bytes32" },
@@ -1571,6 +1618,7 @@ export const iKeelsonReserveAbi = [
   { type: "error", name: "NotAnchored", inputs: [] },
   { type: "error", name: "NotKeelsonLiable", inputs: [] },
   { type: "error", name: "UnknownCoverage", inputs: [] },
+  { type: "error", name: "WarrantyWindowClosed", inputs: [] },
   { type: "error", name: "ZeroAmount", inputs: [] },
 ] as const;
 
@@ -2967,6 +3015,8 @@ export const keelsonReserveAbi = [
       { name: "authority", type: "address", internalType: "address" },
       { name: "cooldown_", type: "uint40", internalType: "uint40" },
       { name: "unstakeWindow_", type: "uint40", internalType: "uint40" },
+      { name: "rateLimitWindow", type: "uint48", internalType: "uint48" },
+      { name: "rateLimitCapacity", type: "uint208", internalType: "uint208" },
     ],
     stateMutability: "nonpayable",
   },
@@ -3232,6 +3282,13 @@ export const keelsonReserveAbi = [
   },
   {
     type: "function",
+    name: "rateLimitAvailable",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
     name: "redeem",
     inputs: [
       { name: "shares", type: "uint256", internalType: "uint256" },
@@ -3261,6 +3318,16 @@ export const keelsonReserveAbi = [
     inputs: [
       { name: "cooldown_", type: "uint40", internalType: "uint40" },
       { name: "unstakeWindow_", type: "uint40", internalType: "uint40" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "setRateLimit",
+    inputs: [
+      { name: "window", type: "uint48", internalType: "uint48" },
+      { name: "capacity", type: "uint208", internalType: "uint208" },
     ],
     outputs: [],
     stateMutability: "nonpayable",
@@ -3428,6 +3495,15 @@ export const keelsonReserveAbi = [
   },
   {
     type: "event",
+    name: "RateLimitSet",
+    inputs: [
+      { name: "window", type: "uint48", indexed: false, internalType: "uint48" },
+      { name: "capacity", type: "uint208", indexed: false, internalType: "uint208" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
     name: "Transfer",
     inputs: [
       { name: "from", type: "address", indexed: true, internalType: "address" },
@@ -3570,6 +3646,7 @@ export const keelsonReserveAbi = [
   { type: "error", name: "InvalidVerdictSignature", inputs: [] },
   { type: "error", name: "NotAnchored", inputs: [] },
   { type: "error", name: "NotKeelsonLiable", inputs: [] },
+  { type: "error", name: "RateLimitExceeded", inputs: [] },
   { type: "error", name: "ReentrancyGuardReentrantCall", inputs: [] },
   {
     type: "error",
@@ -3590,6 +3667,7 @@ export const keelsonReserveAbi = [
     inputs: [{ name: "str", type: "string", internalType: "string" }],
   },
   { type: "error", name: "UnknownCoverage", inputs: [] },
+  { type: "error", name: "WarrantyWindowClosed", inputs: [] },
   { type: "error", name: "ZeroAmount", inputs: [] },
 ] as const;
 

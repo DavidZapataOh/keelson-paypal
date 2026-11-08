@@ -272,4 +272,29 @@ contract BondVaultVetoForkTest is SlashBase {
         vault.claim(merchant, fresh, 0, deadline, sig);
         assertEq(pyusd.balanceOf(fresh), 5e6 + AMOUNT);
     }
+
+    /// @dev A queued slash larger than the whole bucket still executes: it takes the full bucket.
+    function test_execute_slashLargerThanTheBucket() public {
+        (, KeelsonTypes.Verdict memory verdict) = _queued();
+        _viaTimelock(address(vault), abi.encodeCall(vault.setRateLimit, (1 hours, 20e6)));
+        vm.warp(vault.queuedSlashes(verdict.disputeId).readyAt + 1 hours);
+        vault.executeSlash(verdict.disputeId);
+        assertEq(pyusd.balanceOf(merchant), AMOUNT);
+        assertEq(vault.rateLimitAvailable(), 0);
+    }
+
+    /// @dev A zero-amount verdict would queue for 72 h and hold back withdrawals at no cost to the coverage.
+    function test_slash_zeroAmountOrPayeeReverts() public {
+        Vector memory v = _locked(WEBAUTHN);
+        KeelsonTypes.Verdict memory verdict = _amber(v, 0);
+        bytes memory sig = _signDegraded(verdict);
+        vm.expectRevert(IKeelsonBondVault.ZeroAmount.selector);
+        vault.slash(verdict, treeSize, sig);
+
+        verdict = _amber(v, 1e6);
+        verdict.payee = address(0);
+        sig = _sign2of2(verdict);
+        vm.expectRevert(IKeelsonBondVault.ZeroAmount.selector);
+        vault.slash(verdict, treeSize, sig);
+    }
 }

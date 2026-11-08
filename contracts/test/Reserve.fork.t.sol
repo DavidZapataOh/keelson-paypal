@@ -3,12 +3,14 @@ pragma solidity 0.8.38;
 
 import {Vector} from "../script/CoverageVector.sol";
 import {KeelsonReserve} from "../src/KeelsonReserve.sol";
+import {IKeelsonBondVault} from "../src/interfaces/IKeelsonBondVault.sol";
 import {IKeelsonReserve} from "../src/interfaces/IKeelsonReserve.sol";
 import {KeelsonTypes} from "../src/libraries/KeelsonTypes.sol";
 import {SlashBase} from "./utils/SlashBase.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
+import {RateLimiter} from "@openzeppelin/contracts/utils/RateLimiter.sol";
 
 /// @notice The warranty reserve on a fork of Arbitrum Sepolia: real PYUSD, premiums from coverages locked with the live
 /// vectors, warranties on verdicts that name Keelson liable.
@@ -227,7 +229,9 @@ contract ReserveForkTest is SlashBase {
             vault.logOrigin(),
             address(this),
             10 minutes,
-            1 days
+            1 days,
+            1 hours,
+            1_000e6
         );
         address attacker = makeAddr("attacker");
         address victim = makeAddr("victim");
@@ -247,5 +251,79 @@ contract ReserveForkTest is SlashBase {
         assertGt(shares, 0);
         assertGe(empty.convertToAssets(shares), 1_000e6 * 999 / 1000, "victim keeps its deposit");
         assertLt(empty.convertToAssets(empty.balanceOf(attacker)), 10_000e6, "attacker loses its donation");
+    }
+
+    /// @dev One coverage pays at most its amount, whether the operator's bond or the reserve pays it.
+    function test_slashAndWarrantyShareTheCoverage() public {
+        Vector memory v = _locked(WEBAUTHN);
+        _slash(_verdict(v, 60e6, OPERATOR, "PP-D-amber"));
+        KeelsonTypes.Verdict memory green = _verdict(v, 40e6, KEELSON, "PP-D-green");
+        bytes memory sigs = _sign2of2(green);
+        vm.expectRevert(IKeelsonReserve.ExceedsCoverage.selector);
+        reserve.payWarranty(green, treeSize, sigs);
+        green.amount = v.coverage.amount - 60e6;
+        _pay(green);
+
+        KeelsonTypes.Verdict memory amber = _verdict(v, 1, OPERATOR, "PP-D-amber-2");
+        sigs = _sign2of2(amber);
+        vm.expectRevert(IKeelsonBondVault.ExceedsCoverage.selector);
+        vault.slash(amber, treeSize, sigs);
+    }
+
+    /// @dev A burst of warranties stops at the reserve's rate limit.
+    function test_payWarranty_rateLimited() public {
+        Vector memory v = _locked(WEBAUTHN);
+        _viaTimelock(address(reserve), abi.encodeCall(reserve.setRateLimit, (10 minutes, 20e6)));
+        _pay(_verdict(v, 20e6, KEELSON, "PP-D-1"));
+        KeelsonTypes.Verdict memory next = _verdict(v, 1e6, KEELSON, "PP-D-2");
+        bytes memory sigs = _sign2of2(next);
+        vm.expectRevert(RateLimiter.RateLimitExceeded.selector);
+        reserve.payWarranty(next, treeSize, sigs);
+        vm.warp(vm.getBlockTimestamp() + 10 minutes);
+        next = _verdict(v, 1e6, KEELSON, "PP-D-2");
+        _pay(next);
+    }
+
+    /// @dev Keelson's guarantee runs one dispute window past the release, no longer.
+    function test_payWarranty_afterTheWindowReverts() public {
+        Vector memory v = _locked(WEBAUTHN);
+        uint256 closes = uint256(vault.coverages(v.coverage.coverageId).releaseAfter) + vault.params().disputeWindow;
+        vm.warp(closes + 1);
+        KeelsonTypes.Verdict memory green = _green(v, AMOUNT);
+        bytes memory sigs = _sign2of2(green);
+        vm.expectRevert(IKeelsonReserve.WarrantyWindowClosed.selector);
+        reserve.payWarranty(green, treeSize, sigs);
+        vm.warp(closes);
+        green = _green(v, AMOUNT);
+        _pay(green);
+    }
+
+    /// @dev Fresh deposits into an owner whose window is open would skip the cooldown too.
+    function test_depositToCoolingOwnerReverts() public {
+        address other = makeAddr("pre-cooled");
+        vm.prank(other);
+        reserve.requestCooldown();
+        _fundFromHolder(other, 1e6);
+        vm.startPrank(other);
+        pyusd.approve(address(reserve), 1e6);
+        vm.expectRevert(IKeelsonReserve.CooldownActive.selector);
+        reserve.deposit(1e6, other);
+        vm.stopPrank();
+    }
+
+    function test_payWarranty_paysThePayoutAddress() public {
+        address payout = makeAddr("merchant payout");
+        uint256 deadline = vm.getBlockTimestamp() + 1 hours;
+        bytes32 digest = keccak256(
+            abi.encodePacked(
+                "\x19\x01", vault.domainSeparator(), KeelsonTypes.hashPayoutAddress(merchant, payout, 0, deadline)
+            )
+        );
+        (uint8 sv, bytes32 r, bytes32 s) = vm.sign(merchantKey, digest);
+        vault.setPayoutAddress(merchant, payout, 0, deadline, abi.encodePacked(r, s, sv));
+        Vector memory v = _locked(WEBAUTHN);
+        _pay(_green(v, AMOUNT));
+        assertEq(pyusd.balanceOf(payout), AMOUNT);
+        assertEq(pyusd.balanceOf(merchant), 0);
     }
 }
