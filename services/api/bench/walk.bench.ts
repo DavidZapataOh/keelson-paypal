@@ -204,7 +204,10 @@ try {
     return row?.m ?? null;
   };
   const recipient = await identityToRecipient(await generateHybridIdentity());
-  const sku = skus.find((s) => s.catalog) as { url: string };
+  const sku = skus.find((s) => s.catalog) as {
+    url: string;
+    selection: { name: string; label: string }[];
+  };
 
   let t = performance.now();
   const created = (await (
@@ -248,7 +251,17 @@ try {
     const observed = await post(
       app,
       "/v1/observations/channel3",
-      { mandateId, url: sku.url, agentView: { contentHash: toHex(sha256(productItem.bytes)) } },
+      {
+        mandateId,
+        url: sku.url,
+        agentView: {
+          contentHash: toHex(sha256(productItem.bytes)),
+          priceMinor: String(product.price.minor),
+          currency: product.price.currency,
+          available: true,
+          selected: sku.selection,
+        },
+      },
       asAgent,
     );
     if (observed.status !== 201) throw new Error(`observation: ${observed.status}`);
