@@ -181,7 +181,7 @@ jobs:
         with:
           node-version-file: .node-version
           cache: pnpm
-      - uses: acifani/setup-tinygo@v2
+      - uses: acifani/setup-tinygo@db56321a62b9a67922bb9ac8f9d085e218807bb3 # v2
         with:
           tinygo-version: 0.44.0
           binaryen-version: "133"

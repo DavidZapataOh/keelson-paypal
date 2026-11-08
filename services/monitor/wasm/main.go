@@ -264,11 +264,14 @@ func (r tileReader) ReadEndpoint(_ context.Context, path string) ([]byte, error)
 	}
 	switch status := res.Get("status").Int(); status {
 	case 200:
+		// A tile or entry bundle is at most a few hundred KiB.
+		if n := res.Get("headers").Call("get", "content-length"); !n.IsNull() && js.Global().Call("Number", n).Float() > 1<<20 {
+			return nil, fmt.Errorf("%s: %s bytes is too large", path, n.String())
+		}
 		buf, err := await(res.Call("arrayBuffer"))
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", path, err)
 		}
-		// A tile or entry bundle is at most a few hundred KiB.
 		if n := buf.Get("byteLength").Int(); n > 1<<20 {
 			return nil, fmt.Errorf("%s: %d bytes is too large", path, n)
 		}
@@ -294,7 +297,7 @@ func await(p js.Value) (js.Value, error) {
 		return nil
 	})
 	onErr := js.FuncOf(func(_ js.Value, a []js.Value) any {
-		ch <- settled{err: errors.New(a[0].Call("toString").String())}
+		ch <- settled{err: errors.New(js.Global().Get("String").Invoke(a[0]).String())}
 		return nil
 	})
 	defer onOK.Release()

@@ -11,10 +11,13 @@ const live = process.env.KEELSON_LIVE === "1" && process.env.KEELSON_PRIVACY_SCA
 
 /** The sandbox buyer's values; the address is a JSON object of its lines. */
 function knownValues(): string[] {
-  const address = JSON.parse(process.env.PAYPAL_SANDBOX_BUYER_ADDRESS ?? "{}") as Record<
-    string,
-    string
-  >;
+  let address: Record<string, string>;
+  try {
+    address = JSON.parse(process.env.PAYPAL_SANDBOX_BUYER_ADDRESS ?? "{}");
+  } catch {
+    // The parser's message would quote the value.
+    throw new Error("PAYPAL_SANDBOX_BUYER_ADDRESS is not a JSON object");
+  }
   const values = [
     process.env.PAYPAL_SANDBOX_BUYER_EMAIL,
     process.env.PAYPAL_SANDBOX_BUYER_NAME,
