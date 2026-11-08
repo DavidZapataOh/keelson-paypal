@@ -56,11 +56,14 @@ describe.skipIf(!live || !kms)(
         key: `KeelsonBondVault.deposit:${nonce}`,
       });
       const elapsed = performance.now() - started;
-      console.info(`gap recovered in ${Math.round(elapsed)} ms, tx ${record.hash}`);
+      console.info(
+        `gap recovered: submit ${Math.round(elapsed)} ms, nonce to receipt ${record.latencyMs} ms, tx ${record.hash}`,
+      );
       expect(record.status).toBe("confirmed");
       expect(record.nonce).toBe(gap);
       expect(lines.filter((l) => l.failure === "nonce-too-high")).toHaveLength(1);
-      expect(elapsed).toBeLessThan(2_500);
+      // The sequencer parks the gapped nonce for its 1 s expiry; then one re-signed send.
+      expect(record.latencyMs).toBeLessThan(4_000);
       expect(await nextNonce(testDb, 421614, address)).toBe(await count());
     });
   },

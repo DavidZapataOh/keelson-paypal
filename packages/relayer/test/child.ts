@@ -35,11 +35,12 @@ if (config.kms) {
 }
 const relayer = createRelayer({
   db,
-  log: pino({ level: "silent" }),
+  log: pino({ level: process.env.RELAYER_CHILD_LOG ?? "silent" }, pino.destination(2)),
   chains: {
     421614: {
       rpcUrl: config.rpcUrl,
       account,
+      ...(config.kms ? { fallbackRpcUrls: ["https://sepolia-rollup.arbitrum.io/rpc"] } : {}),
       ...(config.sequencerUrl ? { sequencerUrl: config.sequencerUrl } : {}),
     },
   },

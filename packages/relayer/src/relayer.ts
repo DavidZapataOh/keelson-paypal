@@ -8,6 +8,7 @@ import {
   createPublicClient,
   decodeErrorResult,
   encodeFunctionData,
+  fallback,
   type Hex,
   hexToBytes,
   http,
@@ -29,6 +30,8 @@ const MAX_RESIGNS = 3;
 const BASE_FEE_TTL_MS = 250;
 const BALANCE_TTL_MS = 10_000;
 const DUPLICATE_WAIT_MS = 5_000;
+/** How long a send refused as `nonce too high` waits for predecessors still in flight before resynchronizing. */
+const PREDECESSOR_WAIT_MS = 5_000;
 /** A `simulating` row older than this lost its process before signing anything. */
 const STALE_SIMULATION_S = 60;
 const SIGNATURE_BYTES = { "2of2": 130, degraded: 65 } as const;
@@ -82,6 +85,8 @@ export interface RelayerStatus {
 export interface RelayerChainConfig {
   /** Reads: estimates, counts, blocks and receipts. */
   rpcUrl: string;
+  /** Tried in order when `rpcUrl` fails, a provider's rate limit for one. */
+  fallbackRpcUrls?: string[];
   account: LocalAccount;
   /** Writes; the chain's public sequencer endpoint by default. */
   sequencerUrl?: string;
@@ -110,8 +115,8 @@ export interface ChainContext {
   account: LocalAccount;
   read: PublicClient;
   seq: PublicClient;
-  baseFee?: { value: bigint; at: number } | undefined;
-  balance?: { value: bigint; at: number } | undefined;
+  baseFee?: { value: Promise<bigint>; at: number } | undefined;
+  balance?: { value: Promise<bigint>; at: number } | undefined;
 }
 
 type Row = typeof chainTxs.$inferSelect;
@@ -231,7 +236,10 @@ export function createRelayer(opts: {
       id,
       settings,
       account: cfg.account,
-      read: createPublicClient({ chain: settings.chain, transport: http(cfg.rpcUrl) }),
+      read: createPublicClient({
+        chain: settings.chain,
+        transport: fallback([cfg.rpcUrl, ...(cfg.fallbackRpcUrls ?? [])].map((url) => http(url))),
+      }),
       seq: createPublicClient({
         chain: settings.chain,
         transport: http(cfg.sequencerUrl ?? settings.sequencerUrl, {
@@ -249,19 +257,33 @@ export function createRelayer(opts: {
     return ctx;
   }
 
-  async function baseFee(ctx: ChainContext): Promise<bigint> {
-    if (ctx.baseFee && Date.now() - ctx.baseFee.at <= BASE_FEE_TTL_MS) return ctx.baseFee.value;
-    const block = await ctx.read.getBlock({ blockTag: "latest" });
-    ctx.baseFee = { value: block.baseFeePerGas ?? 0n, at: Date.now() };
-    return ctx.baseFee.value;
-  }
-
-  async function balance(ctx: ChainContext): Promise<bigint> {
-    if (ctx.balance && Date.now() - ctx.balance.at <= BALANCE_TTL_MS) return ctx.balance.value;
-    const value = await ctx.read.getBalance({ address: ctx.account.address });
-    ctx.balance = { value, at: Date.now() };
+  /** One read in flight per value: concurrent submissions share it instead of each asking the RPC. */
+  function cached(
+    ctx: ChainContext,
+    slot: "baseFee" | "balance",
+    ttlMs: number,
+    read: () => Promise<bigint>,
+  ): Promise<bigint> {
+    const hit = ctx[slot];
+    if (hit && Date.now() - hit.at <= ttlMs) return hit.value;
+    const value = read();
+    ctx[slot] = { value, at: Date.now() };
+    value.catch(() => {
+      if (ctx[slot]?.value === value) ctx[slot] = undefined;
+    });
     return value;
   }
+
+  const baseFee = (ctx: ChainContext) =>
+    cached(ctx, "baseFee", BASE_FEE_TTL_MS, async () => {
+      const block = await ctx.read.getBlock({ blockTag: "latest" });
+      return block.baseFeePerGas ?? 0n;
+    });
+
+  const balance = (ctx: ChainContext) =>
+    cached(ctx, "balance", BALANCE_TTL_MS, () =>
+      ctx.read.getBalance({ address: ctx.account.address }),
+    );
 
   async function rowById(id: string): Promise<Row | undefined> {
     const [row] = await db.select().from(chainTxs).where(eq(chainTxs.id, id));
@@ -390,6 +412,13 @@ export function createRelayer(opts: {
               ctx.read.getTransactionCount({ address: sender, blockTag: "pending" }).then(BigInt),
             );
       keepNonce = false;
+      if (!current) {
+        // Visible as in flight from now on, so a successor that arrives first waits for it.
+        await db
+          .update(chainTxs)
+          .set({ nonce })
+          .where(and(eq(chainTxs.id, row.id), eq(chainTxs.status, "simulating")));
+      }
       const fee = await baseFee(ctx);
       let raw: Hex;
       try {
@@ -438,47 +467,62 @@ export function createRelayer(opts: {
       if (!stored) return toRecord((await rowById(row.id)) as Row);
       current = { nonce, hash, raw };
 
-      try {
-        const receipt = await sendRawTransactionSync(ctx.seq, {
-          serializedTransaction: raw,
-          timeout: SEND_TIMEOUT_MS,
-          throwOnReceiptRevert: false,
-        });
-        ctx.balance = undefined;
-        return finish(stored, receipt, startedAt);
-      } catch (err) {
-        const failure = classify(err);
-        log.warn(
-          { id: row.id, nonce, failure, err: (err as Error).message },
-          "relayer send failed",
-        );
-        if (failure === "funds") {
-          return reject(stored, "relayer-low-balance", "The relayer cannot pay for gas.");
-        }
-        if (failure === "ambiguous") return settle(ctx, stored, raw, hash, startedAt);
-        if (failure === "nonce-too-low") {
-          const receipt = await ctx.read.getTransactionReceipt({ hash }).catch(() => undefined);
-          if (receipt) return finish(stored, receipt, startedAt);
-        }
-        if (++attempts > MAX_RESIGNS) {
-          return reject(
-            stored,
-            "chain-unavailable",
-            "The sequencer kept refusing the transaction.",
+      let failure: SendFailure;
+      let waitedMs = 0;
+      for (;;) {
+        try {
+          // No `timeout` parameter: the sequencer's nodes disagree on its JSON type; the transport times out instead.
+          const receipt = await sendRawTransactionSync(ctx.seq, {
+            serializedTransaction: raw,
+            throwOnReceiptRevert: false,
+          });
+          ctx.balance = undefined;
+          return finish(stored, receipt, startedAt);
+        } catch (err) {
+          failure = classify(err);
+          log.warn(
+            { id: row.id, nonce, failure, err: (err as Error).message },
+            "relayer send failed",
           );
         }
-        if (failure === "fee") {
-          ctx.baseFee = undefined;
-          keepNonce = true;
-          continue;
-        }
-        const count = BigInt(
-          await ctx.read.getTransactionCount({ address: sender, blockTag: "pending" }),
-        );
-        if (failure === "nonce-too-low") await advanceNonce(db, ctx.id, sender, count);
-        else await resyncNonce(db, ctx.id, sender, count);
+        // Under load a predecessor may still be signing or on its way: the same bytes go again once it lands.
+        if (failure !== "nonce-too-high" || waitedMs >= PREDECESSOR_WAIT_MS) break;
+        if (!(await predecessorsInFlight(ctx, nonce))) break;
+        await sleep(250);
+        waitedMs += 250;
       }
+      if (failure === "funds") {
+        return reject(stored, "relayer-low-balance", "The relayer cannot pay for gas.");
+      }
+      if (failure === "ambiguous") return settle(ctx, stored, raw, hash, startedAt);
+      if (failure === "nonce-too-low") {
+        const receipt = await ctx.read.getTransactionReceipt({ hash }).catch(() => undefined);
+        if (receipt) return finish(stored, receipt, startedAt);
+      }
+      if (++attempts > MAX_RESIGNS) {
+        return reject(stored, "chain-unavailable", "The sequencer kept refusing the transaction.");
+      }
+      if (failure === "fee") {
+        ctx.baseFee = undefined;
+        keepNonce = true;
+        continue;
+      }
+      const count = BigInt(
+        await ctx.read.getTransactionCount({ address: sender, blockTag: "pending" }),
+      );
+      if (failure === "nonce-too-low") await advanceNonce(db, ctx.id, sender, count);
+      else await resyncNonce(db, ctx.id, sender, count);
     }
+  }
+
+  /** Whether a lower nonce of the sender was handed out moments ago and is still being signed or sent. */
+  async function predecessorsInFlight(ctx: ChainContext, nonce: bigint): Promise<boolean> {
+    const { rows } = await db.execute(sql`
+      select 1 from chain_txs
+      where chain_id = ${ctx.id} and sender = ${buf(ctx.account.address)} and nonce < ${nonce}
+        and status in ('simulating', 'pending') and updated_at > now() - interval '10 seconds'
+      limit 1`);
+    return rows.length > 0;
   }
 
   /** After a lost answer: look for the receipt, broadcast the same bytes once more, and leave it to the reconciler. */
