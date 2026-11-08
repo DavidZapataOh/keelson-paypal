@@ -53,6 +53,31 @@ script/verify.sh <chainId>
 
 On Sepolia, pass `--gas-estimate-multiplier 200`: its node underestimates the hand-over transactions. `script/Predict.s.sol` prints where any contract name lands before it is deployed.
 
+## VerdictVerifier
+
+`src/VerdictVerifier.sol` is the registry of the TEE signers and the `verifyingContract` of every EIP-712 message they sign (`Countersign`, `Verdict`, `Checkpoint`). It is not upgradeable.
+
+A signer is registered by anyone, from a fresh attestation only:
+
+| Path | Checks |
+| --- | --- |
+| `registerSignerWithQuote` | Automata's DCAP attestation verifies the v4 TDX quote on-chain; TCB status UpToDate, or SWHardeningNeeded with advisories; not a debug TD; the dstack RTMR3 event log replays (SHA-384, `src/libraries/Sha384.sol`) to the quote's RTMR3; measurement `sha256(MRTD ‖ RTMR0 ‖ RTMR1 ‖ RTMR2 ‖ app-id ‖ compose-hash ‖ os-image-hash)` allowed |
+| `registerSignerWithZkQuote` | The same, with Automata's verification proven in RISC Zero and checked by the same Automata entrypoint |
+| `registerSignerWithNitro` | Base's `nitro-validator` checks the document and its cached certificate chain; PCR0–2 present and not zero; `public_key` is the signer; `nonce` is the bound block hash; issued at most 1 h ago and at most 10 min ahead; measurement `sha256(PCR0 ‖ PCR1 ‖ PCR2)` allowed |
+
+Every path requires `report_data = keccak256(abi.encode(keccak256("KEELSON_TEE_SIGNER_V1"), chainid, bondVault, teeKind, signer, policySetHash, engineBuildId, bootEpoch, issuerJwkThumbprint)) ‖ blockHash`, with the chain's own id, the `KeelsonBondVault` address, the configured issuer, and the hash of an Arbitrum block at most 14,400 blocks old read from the EIP-2935 history. One signer serves several chains, but each chain's attestation names that chain, so a signer is registered on each chain separately.
+
+A signer is active for 72 h after its last registration, unless revoked by the Guardian (`revokeSigner`), by equivocation (`reportEquivocation`, two different `Countersign`s under one request id), or deactivated with its measurement (`disallowMeasurement`, Guardian, no delay). Allowing a measurement or changing the issuer waits for the timelock and the signers delay. `verify2of2(digest, tdx ‖ nitro)` and `verifyDegraded(digest, tdx)` answer for the bond vault, the anchor and the relayer.
+
+Check a signer yourself:
+
+```sh
+cast call <VerdictVerifier> "signers(address)(uint8,uint40,uint40,uint40,bytes32)" <signer> --rpc-url "$ARBITRUM_SEPOLIA_RPC_URL"
+cast call <VerdictVerifier> "isActive(address,uint8)(bool)" <signer> 1 --rpc-url "$ARBITRUM_SEPOLIA_RPC_URL"
+```
+
+Automata's on-chain PCCS must hold current Intel collateral for the leg's platform; `tools/dcap-collateral` checks it, weekly in CI. Deploy the Nitro validator first (`forge build --root lib/nitro-validator`, then `script/DeployNitroValidator.s.sol`), then `script/DeployVerdictVerifier.s.sol` (its `wire()` entrypoint executes the timelocked role wiring once the delay has passed).
+
 ## Pause
 
 The Guardian can pause new coverage. Pausing never enables withdrawing funds: there is no admin path that moves bonded PYUSD.
