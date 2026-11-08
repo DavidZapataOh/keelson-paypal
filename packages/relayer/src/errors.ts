@@ -3,6 +3,7 @@ export type RelayerErrorCode =
   | "key-conflict"
   | "simulation-reverted"
   | "gas-price-cap"
+  | "gas-limit"
   | "relayer-low-balance"
   | "countersign-mode"
   | "chain-unavailable";
@@ -13,6 +14,7 @@ const STATUS: Record<RelayerErrorCode, 403 | 409 | 422 | 503> = {
   "simulation-reverted": 422,
   "countersign-mode": 422,
   "gas-price-cap": 503,
+  "gas-limit": 422,
   "relayer-low-balance": 503,
   "chain-unavailable": 503,
 };

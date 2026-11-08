@@ -16,7 +16,9 @@ import {
   type LocalAccount,
   type PublicClient,
   TimeoutError,
+  TransactionNotFoundError,
   type TransactionReceipt,
+  TransactionReceiptNotFoundError,
   toHex,
 } from "viem";
 import { sendRawTransactionSync } from "viem/actions";
@@ -35,6 +37,8 @@ const PREDECESSOR_WAIT_MS = 5_000;
 /** A `simulating` row older than this lost its process before signing anything. */
 const STALE_SIMULATION_S = 60;
 const SIGNATURE_BYTES = { "2of2": 130, degraded: 65 } as const;
+/** Every relayable call costs well under this; a call that needs more is refused, not paid for. */
+const MAX_GAS_LIMIT = 3_000_000n;
 
 export type CountersignMode = keyof typeof SIGNATURE_BYTES;
 
@@ -170,7 +174,7 @@ function bytes32ToUlid(id: Hex): string | undefined {
   return out;
 }
 
-type SendFailure = "nonce-too-low" | "nonce-too-high" | "funds" | "fee" | "ambiguous";
+type SendFailure = "nonce-too-low" | "nonce-too-high" | "funds" | "fee" | "refused" | "ambiguous";
 
 /** What a failed broadcast means; anything not known to be a pre-check rejection may have been accepted. */
 function classify(err: unknown): SendFailure {
@@ -184,6 +188,14 @@ function classify(err: unknown): SendFailure {
   if (text.includes("insufficient funds")) return "funds";
   if (/max fee per gas less than block base fee|fee cap less than block base fee/.test(text)) {
     return "fee";
+  }
+  // Pre-checks the transaction can never pass as signed.
+  if (
+    /intrinsic gas too low|exceeds block gas limit|gas limit reached|max fee per gas higher than|oversized data/.test(
+      text,
+    )
+  ) {
+    return "refused";
   }
   return "ambiguous";
 }
@@ -209,6 +221,24 @@ function revertOf(err: unknown): { name: string; args: unknown[] } | undefined {
     return { name: "Reverted", args: [] };
   }
   return undefined;
+}
+
+/** The receipt, `null` when the node does not know the transaction, or `undefined` when it could not be asked. */
+async function receiptOf(
+  read: PublicClient,
+  hash: Hex,
+): Promise<TransactionReceipt | null | undefined> {
+  try {
+    return await read.getTransactionReceipt({ hash });
+  } catch (err) {
+    return err instanceof TransactionReceiptNotFoundError ? null : undefined;
+  }
+}
+
+/** Only viem's short message: the full one carries the request URL, which embeds the provider's key. */
+function brief(err: unknown): string {
+  if (err instanceof BaseError) return err.shortMessage;
+  return err instanceof Error ? err.message : String(err);
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -298,6 +328,10 @@ export function createRelayer(opts: {
     return row;
   }
 
+  /**
+   * Marks the row refused. Only the submission that owns it may: a row still simulating, or pending with the
+   * bytes this submission signed, so a slow process never overwrites a row another one took over and sent.
+   */
   async function reject(
     row: Row,
     code: RelayerErrorCode,
@@ -307,7 +341,14 @@ export function createRelayer(opts: {
     await db
       .update(chainTxs)
       .set({ status: "rejected", errorCode: code, error: detail ?? null })
-      .where(eq(chainTxs.id, row.id));
+      .where(
+        and(
+          eq(chainTxs.id, row.id),
+          row.status === "pending" && row.hash
+            ? and(eq(chainTxs.status, "pending"), eq(chainTxs.hash, row.hash))
+            : eq(chainTxs.status, "simulating"),
+        ),
+      );
     throw new RelayerError(code, message, { id: row.id, ...(detail ? { error: detail } : {}) });
   }
 
@@ -381,7 +422,13 @@ export function createRelayer(opts: {
       // Rejected and dropped calls were never executed and hold no nonce; a stale simulation never signed.
       const [taken] = await db
         .update(chainTxs)
-        .set({ status: "simulating", errorCode: null, error: null, updatedAt: new Date() })
+        .set({
+          status: "simulating",
+          nonce: null,
+          errorCode: null,
+          error: null,
+          updatedAt: new Date(),
+        })
         .where(
           and(
             eq(chainTxs.id, existing.id),
@@ -480,10 +527,7 @@ export function createRelayer(opts: {
           return finish(stored, receipt, startedAt);
         } catch (err) {
           failure = classify(err);
-          log.warn(
-            { id: row.id, nonce, failure, err: (err as Error).message },
-            "relayer send failed",
-          );
+          log.warn({ id: row.id, nonce, failure, err: brief(err) }, "relayer send failed");
         }
         // Under load a predecessor may still be signing or on its way: the same bytes go again once it lands.
         if (failure !== "nonce-too-high" || waitedMs >= PREDECESSOR_WAIT_MS) break;
@@ -495,8 +539,11 @@ export function createRelayer(opts: {
         return reject(stored, "relayer-low-balance", "The relayer cannot pay for gas.");
       }
       if (failure === "ambiguous") return settle(ctx, stored, raw, hash, startedAt);
+      if (failure === "refused") {
+        return reject(stored, "chain-unavailable", "The sequencer refused the transaction.");
+      }
       if (failure === "nonce-too-low") {
-        const receipt = await ctx.read.getTransactionReceipt({ hash }).catch(() => undefined);
+        const receipt = await receiptOf(ctx.read, hash);
         if (receipt) return finish(stored, receipt, startedAt);
       }
       if (++attempts > MAX_RESIGNS) {
@@ -536,15 +583,13 @@ export function createRelayer(opts: {
     const deadline = Date.now() + SEND_TIMEOUT_MS;
     let rebroadcast = false;
     while (Date.now() < deadline) {
-      const receipt = await ctx.read.getTransactionReceipt({ hash }).catch(() => undefined);
+      const receipt = await receiptOf(ctx.read, hash);
       if (receipt) return finish(row, receipt, startedAt);
       if (!rebroadcast) {
         rebroadcast = true;
         await ctx.seq
           .request({ method: "eth_sendRawTransaction", params: [raw] })
-          .catch((err: unknown) =>
-            log.warn({ id: row.id, err: (err as Error).message }, "rebroadcast failed"),
-          );
+          .catch((err: unknown) => log.warn({ id: row.id, err: brief(err) }, "rebroadcast failed"));
       }
       await sleep(250);
     }
@@ -566,6 +611,13 @@ export function createRelayer(opts: {
           "not-allowed",
           `${req.contract} is not deployed on chain ${req.chainId}.`,
         );
+      // `claim` skips its signature when the caller is the account: the relayer never claims as itself.
+      if (
+        req.functionName === "claim" &&
+        String(req.args[0]).toLowerCase() === ctx.account.address.toLowerCase()
+      ) {
+        throw new RelayerError("not-allowed", "The relayer does not claim for its own address.");
+      }
       if (req.contract === "KeelsonBondVault" && req.functionName === "lockCoverage") {
         await checkCountersign(req as SubmitRequest);
       }
@@ -594,7 +646,7 @@ export function createRelayer(opts: {
       try {
         [fee, funds] = await Promise.all([baseFee(ctx), balance(ctx)]);
       } catch (err) {
-        log.warn({ err: (err as Error).message, id: row.id }, "relayer chain read failed");
+        log.warn({ err: brief(err), id: row.id }, "relayer chain read failed");
         return reject(row, "chain-unavailable", "The chain did not answer.");
       }
       if (fee > ctx.settings.maxBaseFeeWei) {
@@ -616,11 +668,19 @@ export function createRelayer(opts: {
             reverted,
           );
         }
-        log.warn({ err: (err as Error).message, id: row.id }, "relayer estimate failed");
+        log.warn({ err: brief(err), id: row.id }, "relayer estimate failed");
         return reject(row, "chain-unavailable", "The chain did not answer.");
       }
       // Arbitrum's gas includes an L1 component that moves with the L1 price.
-      return send(ctx, row, (estimate * 12n + 9n) / 10n);
+      const gasLimit = (estimate * 12n + 9n) / 10n;
+      if (gasLimit > MAX_GAS_LIMIT) {
+        return reject(
+          row,
+          "gas-limit",
+          `The call needs ${gasLimit} gas, above the relayer's limit.`,
+        );
+      }
+      return send(ctx, row, gasLimit);
     },
 
     async get(chainId, key) {
@@ -662,7 +722,7 @@ export function createRelayer(opts: {
           baseFeeWei,
         };
       } catch (err) {
-        log.warn({ err: (err as Error).message, chainId }, "relayer status read failed");
+        log.warn({ err: brief(err), chainId }, "relayer status read failed");
         return { chainId, status: "down", address, pending: count };
       }
     },
@@ -682,7 +742,7 @@ export function createRelayer(opts: {
         running = true;
         relayer
           .reconcile()
-          .catch((err: unknown) => log.error({ err }, "relayer reconcile failed"))
+          .catch((err: unknown) => log.error({ err: brief(err) }, "relayer reconcile failed"))
           .finally(() => {
             running = false;
           });
@@ -692,7 +752,10 @@ export function createRelayer(opts: {
     },
   };
 
-  /** Settles pending rows, re-broadcasts lost ones, and replaces receipts that were not canonical yet. */
+  /**
+   * Settles pending rows, re-broadcasts lost ones, and replaces receipts with their canonical copy. A row is only
+   * judged by what the node says it knows: a failed read decides nothing.
+   */
   async function reconcileChain(ctx: ChainContext): Promise<void> {
     const pending = await db
       .select()
@@ -708,32 +771,42 @@ export function createRelayer(opts: {
     let count: bigint | undefined;
     for (const row of pending) {
       const hash = hex(row.hash) as Hex;
-      const receipt = await ctx.read.getTransactionReceipt({ hash }).catch(() => undefined);
+      const receipt = await receiptOf(ctx.read, hash);
       if (receipt) {
         await finish(row, receipt);
         continue;
       }
+      if (receipt === undefined) continue;
       count ??= BigInt(
         await ctx.read.getTransactionCount({ address: ctx.account.address, blockTag: "latest" }),
       );
       const ageS = (Date.now() - (row.submittedAt as Date).getTime()) / 1000;
-      if ((row.nonce as bigint) < count && ageS > 60) {
-        // Another transaction took the nonce: this one can never execute.
+      const known = await ctx.read.getTransaction({ hash }).then(
+        () => true,
+        (err: unknown) => (err instanceof TransactionNotFoundError ? false : undefined),
+      );
+      // Another transaction took the nonce, or the sequencer never kept the bytes: this one cannot execute now.
+      const consumed = (row.nonce as bigint) < count && ageS > 60;
+      const neverAccepted = known === false && ageS > 120;
+      if ((consumed || neverAccepted) && known !== true) {
         await db
           .update(chainTxs)
           .set({ status: "dropped" })
-          .where(and(eq(chainTxs.id, row.id), eq(chainTxs.status, "pending")));
-        log.error({ id: row.id, key: row.key }, "relayer transaction dropped");
+          .where(
+            and(
+              eq(chainTxs.id, row.id),
+              eq(chainTxs.status, "pending"),
+              eq(chainTxs.hash, row.hash as Buffer),
+            ),
+          );
+        log.error({ id: row.id, key: row.key, consumed }, "relayer transaction dropped");
       } else if (ageS > 30) {
         await ctx.seq
           .request({ method: "eth_sendRawTransaction", params: [hex(row.raw) as Hex] })
-          .catch((err: unknown) =>
-            log.warn({ id: row.id, err: (err as Error).message }, "rebroadcast failed"),
-          );
+          .catch((err: unknown) => log.warn({ id: row.id, err: brief(err) }, "rebroadcast failed"));
       }
     }
 
-    // Receipts can come back before their block is final: re-read the canonical one for a while.
     const recent = await db
       .select()
       .from(chainTxs)
@@ -746,10 +819,10 @@ export function createRelayer(opts: {
       )
       .limit(200);
     for (const row of recent) {
-      const receipt = await ctx.read
-        .getTransactionReceipt({ hash: hex(row.hash) as Hex })
-        .catch(() => undefined);
-      if (!receipt) {
+      const receipt = await receiptOf(ctx.read, hex(row.hash) as Hex);
+      if (receipt === undefined) continue;
+      if (receipt === null) {
+        // The fast receipt was retracted: the transaction is pending again, and the same bytes go again.
         await db
           .update(chainTxs)
           .set({

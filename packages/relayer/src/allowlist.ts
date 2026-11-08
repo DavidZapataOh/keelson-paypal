@@ -29,12 +29,7 @@ export const ALLOWLIST = {
     "claim",
   ],
   KeelsonReserve: ["payWarranty", "claim"],
-  VerdictVerifier: [
-    "registerSignerWithQuote",
-    "registerSignerWithNitro",
-    "registerSignerWithZkQuote",
-    "reportEquivocation",
-  ],
+  VerdictVerifier: ["reportEquivocation"],
   KeelsonValidationRegistry: ["recordCountersign", "recordOutcome"],
   KeelsonReputationReporter: ["rateCoverage"],
 } as const;

@@ -94,6 +94,19 @@ describe.skipIf(!rpc)("submit on an anvil fork of Arbitrum Sepolia", () => {
     expect(await testDb.select().from(chainTxs)).toHaveLength(0);
   });
 
+  test("the relayer never claims for its own address", async () => {
+    const err = await refusal(
+      relayer().submit({
+        chainId: 421614,
+        contract: "KeelsonReserve",
+        functionName: "claim",
+        args: [account.address, account.address, 0n, 0n, "0x"],
+        key: "KeelsonReserve.claim:self",
+      }),
+    );
+    expect(err.code).toBe("not-allowed");
+  });
+
   test("a reverting call returns the contract's error and spends no nonce", async () => {
     const before = await nextNonce();
     const coverageId = pad("0xdead");

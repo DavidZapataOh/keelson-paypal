@@ -3,6 +3,7 @@ import {
   and,
   chainTxs,
   type Db,
+  desc,
   eq,
   isNull,
   purchases,
@@ -13,7 +14,7 @@ import {
 import { type Relayer, RelayerError, type TxRecord } from "@keelson/relayer";
 import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
-import { concat, type Hex, type PublicClient, toHex } from "viem";
+import { BaseError, concat, type Hex, type PublicClient, toHex } from "viem";
 import { ERC8004_DEPLOY_BLOCK } from "../chain/reader.ts";
 import type { CountersignJson } from "../tee/client.ts";
 import { countersignMessage } from "../tee/coordinator.ts";
@@ -51,6 +52,10 @@ async function countersigs(db: Db, purchaseId: string, digest: Buffer): Promise<
   return rows.map((r) => toHex(r.signature));
 }
 
+/** Only viem's short message: the full one carries the request URL, which embeds the provider's key. */
+const brief = (err: unknown) =>
+  err instanceof BaseError ? err.shortMessage : err instanceof Error ? err.message : String(err);
+
 const isDone = (err: unknown, name: string) =>
   err instanceof RelayerError &&
   err.code === "simulation-reverted" &&
@@ -82,6 +87,7 @@ export async function recordValidations(deps: SweeperDeps): Promise<number> {
         sql`${purchases.createdAt} > now() - ${COVERABLE_FOR}::interval`,
       ),
     )
+    .orderBy(desc(purchases.createdAt))
     .limit(100);
   if (candidates.length === 0) return 0;
   const coverages = await chain.client.multicall({
@@ -95,8 +101,15 @@ export async function recordValidations(deps: SweeperDeps): Promise<number> {
   let recorded = 0;
   for (const [i, p] of candidates.entries()) {
     const coverage = coverages[i];
-    if (coverage?.status !== "success" || coverage.result.status === 0) continue;
+    if (coverage?.status !== "success") continue;
     const countersign = p.countersign as unknown as CountersignJson;
+    const skip = () =>
+      db.update(purchases).set({ validationSkippedAt: new Date() }).where(eq(purchases.id, p.id));
+    if (coverage.result.status === 0) {
+      // A countersign past its expiry can no longer be locked, so its purchase is never covered.
+      if (Number(countersign.expiresAt) < Date.now() / 1000) await skip();
+      continue;
+    }
     const digest = p.digest as Buffer;
     const sigs = await countersigs(db, p.id, digest);
     if (sigs.length !== (p.mode === "degraded" ? 1 : 2)) {
@@ -104,6 +117,7 @@ export async function recordValidations(deps: SweeperDeps): Promise<number> {
         { purchaseId: p.id, signatures: sigs.length },
         "validation: countersignatures missing",
       );
+      await skip();
       continue;
     }
     let record: TxRecord | undefined;
@@ -117,7 +131,8 @@ export async function recordValidations(deps: SweeperDeps): Promise<number> {
       });
     } catch (err) {
       if (!isDone(err, "ValidationExists")) {
-        log.warn({ purchaseId: p.id, err }, "validation not recorded");
+        if (isDone(err, "NotCovered") || isDone(err, "InvalidCountersign")) await skip();
+        log.warn({ purchaseId: p.id, err: brief(err) }, "validation not recorded");
         continue;
       }
       record = await relayer.get(
@@ -183,6 +198,7 @@ export async function recordOutcomes(deps: SweeperDeps): Promise<number> {
   ]);
   const ended = new Set([...released, ...slashed].map((e) => e.args.coverageId as Hex));
   let sent = 0;
+  let failed = false;
   for (const coverageId of ended) {
     for (const [contract, functionName, done] of [
       ["KeelsonReputationReporter", "rateCoverage", "AlreadyRated"],
@@ -206,14 +222,16 @@ export async function recordOutcomes(deps: SweeperDeps): Promise<number> {
       } catch (err) {
         // Already done by someone else, no validation to update, or a slash still pending: nothing to send now.
         if (!(err instanceof RelayerError) || err.code !== "simulation-reverted") {
-          log.warn({ coverageId, functionName, err }, "coverage outcome not recorded");
+          failed = true;
+          log.warn({ coverageId, functionName, err: brief(err) }, "coverage outcome not recorded");
         } else if (isDone(err, done)) {
           log.debug({ coverageId, functionName }, "coverage outcome already recorded");
         }
       }
     }
   }
-  await kv.set(CURSOR_KEY, latest.toString());
+  // After a failure the same range is read again, however long the outage.
+  if (!failed) await kv.set(CURSOR_KEY, latest.toString());
   return sent;
 }
 
@@ -224,9 +242,11 @@ export function startValidationSweeper(deps: SweeperDeps): () => void {
     running = true;
     void Promise.all([
       recordValidations(deps).catch((err: unknown) =>
-        deps.log.error({ err }, "validation sweep failed"),
+        deps.log.error({ err: brief(err) }, "validation sweep failed"),
       ),
-      recordOutcomes(deps).catch((err: unknown) => deps.log.error({ err }, "outcome sweep failed")),
+      recordOutcomes(deps).catch((err: unknown) =>
+        deps.log.error({ err: brief(err) }, "outcome sweep failed"),
+      ),
     ]).finally(() => {
       running = false;
     });
