@@ -218,7 +218,7 @@ contract KeelsonInvariantForkTest is SlashBase, Properties {
         assertEq(MedusaFork.ASSET_PROTECTOR, json.readAddress(".external.pyusdAssetProtector"), "asset protector");
         assertEq(MedusaFork.IDENTITY, json.readAddress(".external.erc8004Identity"), "identity");
         assertEq(MedusaFork.PROPOSER, json.readAddress(".governance.proposer"), "proposer");
-        assertEq(MedusaFork.ACCESS_MANAGER, json.readAddress(".contracts.AccessManager"), "access manager");
+        assertEq(MedusaFork.AUTHORITY, json.readAddress(".contracts.AccessManager"), "access manager");
         assertEq(MedusaFork.TIMELOCK, json.readAddress(".contracts.TimelockController"), "timelock");
         assertEq(MedusaFork.GUARDIAN, json.readAddress(".contracts.GuardianSafe"), "guardian");
         assertEq(MedusaFork.DEPLOYER, json.readAddress(".contracts.KeelsonDeployer"), "deployer");

@@ -35,7 +35,7 @@ library MedusaFork {
     address internal constant ASSET_PROTECTOR = 0xC7Aa9798bE85aD3B628eE71519B38D7057f8Cd7E;
     address internal constant IDENTITY = 0x8004A818BFB912233c491871b3d84c89A494BD9e;
     address internal constant PROPOSER = 0x9c0215b66F6a64c34CCb0126Cb8d027689Fa68b9;
-    address internal constant ACCESS_MANAGER = 0x57c30a4a175978673bAD2B2B2D3667966cd58314;
+    address internal constant AUTHORITY = 0x57c30a4a175978673bAD2B2B2D3667966cd58314;
     address internal constant TIMELOCK = 0xEDD241A9B8cf55765eDA7182483351555cf3E07e;
     address internal constant GUARDIAN = 0x1cd0152d2d954Fc8c9436986C9F4B2C15903eF5C;
     address internal constant DEPLOYER = 0x539638ee1C4021730f9fA63b725c7E9bA02b714A;
@@ -114,7 +114,7 @@ library MedusaFork {
         v.nitro =
             hex"7084ab89cf52054acdf6e4d59892f15984b110e664d3e2a070fb97d6e0cd9f9e53dbf3942c4f173c3462f2cf23c20bfb8241bd87c0fe5069ae0905432278bc211b";
         v.digest = 0xe41716a89fbfbae3aa7e267755509ae6d88728efe10a70be358134fe4ef93f35;
-        v.userKeyHash = 0xcb05e7996a07642e49b5b9083a59454a12a7ff96ddaa4bb05650f1853a0f5ef4;
+        v.userKeyHash = keccak256(abi.encodePacked(v.qx, v.qy));
         v.degraded = false;
         v.vault = 0x69ccD2fB3a85f590F2A8f431cca3ecc2e9Bf3c14;
     }
@@ -157,7 +157,7 @@ library MedusaFork {
         v.nitro =
             hex"d3cc318d896febb54c8a52230a05482dba586a5d7e1feaeb7cda14c2a1448d66287e3fa3f986e87a493cbe0e5e4b37e336f9058f5c695dee469453837d597e301c";
         v.digest = 0x9eaeba59102306e4b884407aa79f1288980283fd3397455f81604b7cd976a580;
-        v.userKeyHash = 0xa48e2e2191ccf93b58317b2f0501de8ce0e1334f06580275492813132d527f89;
+        v.userKeyHash = keccak256(abi.encodePacked(v.qx, v.qy));
         v.degraded = false;
         v.vault = 0x69ccD2fB3a85f590F2A8f431cca3ecc2e9Bf3c14;
     }
@@ -199,7 +199,7 @@ library MedusaFork {
             hex"7ae5d0b292933a4a8e6c57e82d9e2bfcb8f2632542068112f9d0e9e7f15b3d65139768e75f9fdfc629b5a86d023965a7288ee0f0532441c9b03ab4ac622172991b";
         v.nitro = hex"";
         v.digest = 0x278eeff8d9cc290880f4a5f7858345d623d4ab5450795c73be71cd7b965e0c44;
-        v.userKeyHash = 0xd74a2eaba9b27836518ffe74ee5bdc3d823f58849b52cfef2d3c472ab1323645;
+        v.userKeyHash = keccak256(abi.encodePacked(v.qx, v.qy));
         v.degraded = true;
         v.vault = 0x69ccD2fB3a85f590F2A8f431cca3ecc2e9Bf3c14;
     }
@@ -465,7 +465,7 @@ contract MedusaKeelson is Properties {
         );
         require(address(vault) == MedusaFork.VAULT && address(reserve) == MedusaFork.RESERVE, "release addresses");
 
-        AccessManager manager = AccessManager(MedusaFork.ACCESS_MANAGER);
+        AccessManager manager = AccessManager(MedusaFork.AUTHORITY);
         bytes4[] memory parameters = new bytes4[](2);
         parameters[0] = KeelsonBondVault.setParams.selector;
         parameters[1] = KeelsonBondVault.setRateLimit.selector;
