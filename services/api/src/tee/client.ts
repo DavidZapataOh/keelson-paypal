@@ -9,6 +9,8 @@ const Address = hex(/^0x[0-9a-fA-F]{40}$/);
 
 const PayPalObservationSchema = z.strictObject({
   authorization_id: z.string(),
+  /** Absent from legs that predate binding a hold to its order. */
+  order_id: z.string().optional(),
   status: z.string(),
   currency: z.string(),
   authorized_minor: z.number().int(),
