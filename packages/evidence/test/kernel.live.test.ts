@@ -48,7 +48,10 @@ describe.skipIf(!live)("capture on a KERNEL browser over CDP", { timeout: 120_00
   });
 
   test("the attack page captures with every item and a root that verifies", () => {
-    expect(capture.manifest.items.map((i) => i.type)).toEqual([...ITEM_TYPES]);
+    // The Channel3 observation is issued by the API and added by the driver, not captured.
+    expect(capture.manifest.items.map((i) => i.type)).toEqual(
+      ITEM_TYPES.filter((t) => t !== "channel3.observation"),
+    );
     for (let k = 0; k < capture.items.length; k++) {
       expect(verifyDisclosure(capture.manifest.root, disclose(capture.items, k))).toBe(true);
     }
