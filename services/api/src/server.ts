@@ -15,6 +15,7 @@ import { createLogger } from "./logger.ts";
 import { authenticate } from "./middleware/auth.ts";
 import { relayerFromEnv } from "./onchain/relayer.ts";
 import { startValidationSweeper } from "./onchain/validations.ts";
+import { createPayPalDeps } from "./paypal.ts";
 import { closeServer } from "./shutdown.ts";
 import { startPurchaseSweeper } from "./sweeper.ts";
 import { createTee } from "./tee/config.ts";
@@ -71,6 +72,7 @@ const chains = {
   },
 };
 const relayer = await relayerFromEnv(env, db, log);
+const paypal = createPayPalDeps(env);
 const app = createApp({
   db,
   kv,
@@ -83,6 +85,7 @@ const app = createApp({
   shutdown: shutdown.signal,
   stamps,
   chains,
+  paypal,
   ...(relayer ? { relayer } : {}),
   ...(env.CHANNEL3_API_KEY ? { channel3: createChannel3(env.CHANNEL3_API_KEY) } : {}),
   ...(env.CHANNEL3_WEBHOOK_SECRET ? { channel3WebhookSecret: env.CHANNEL3_WEBHOOK_SECRET } : {}),

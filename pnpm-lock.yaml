@@ -718,6 +718,9 @@ importers:
       '@keelson/mandate':
         specifier: workspace:*
         version: link:../../packages/mandate
+      '@keelson/paypal':
+        specifier: workspace:*
+        version: link:../../packages/paypal
       '@keelson/policy':
         specifier: workspace:*
         version: link:../../packages/policy

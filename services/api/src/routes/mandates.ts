@@ -89,11 +89,31 @@ export const Card = z
   })
   .openapi("MandateCard");
 
+const HoldView = z
+  .object({
+    mode: z.enum(["mandate", "per_purchase"]),
+    orderId: z.string(),
+    authorizationId: z.string().nullable().openapi({
+      description: "The authorization captures use: the original, or its reauthorization.",
+    }),
+    authorizedAt: z.iso.datetime().nullable(),
+    reauthorizedAt: z.iso.datetime().nullable(),
+    remainingMinor: z.string().regex(/^\d+$/),
+    state: z.enum(["PENDING", "AUTHORIZED", "RELEASED"]).openapi({
+      description:
+        "`PENDING` until authorized; `RELEASED` once the mandate ended and the hold was voided or captured.",
+    }),
+  })
+  .openapi("MandateHold");
+
 const MandateView = z
   .object({
     id: z.string(),
     state: MandateState,
     mandateHash: Hex32.nullable(),
+    hold: z.union([HoldView, z.null()]).openapi({
+      description: "The PayPal hold of the mandate's budget, once its order exists.",
+    }),
     card: z.union([Card, z.null()]).openapi({
       description: "The card rendered from the stored payload, before any checkout evidence.",
     }),
@@ -143,6 +163,25 @@ const read = createRoute({
     404: { description: "No such mandate for this user", content: problemContent },
   },
 });
+
+const TERMINAL = new Set(["EXHAUSTED", "EXPIRED", "REVOKED"]);
+
+function holdView(row: typeof mandates.$inferSelect): z.infer<typeof HoldView> | null {
+  if (!row.paypalOrderId) return null;
+  return {
+    mode: row.holdMode,
+    orderId: row.paypalOrderId,
+    authorizationId: row.paypalAuthorizationId,
+    authorizedAt: row.authorizedAt?.toISOString() ?? null,
+    reauthorizedAt: row.reauthorizedAt?.toISOString() ?? null,
+    remainingMinor: row.remainingMinor.toString(),
+    state: TERMINAL.has(row.state)
+      ? "RELEASED"
+      : row.paypalAuthorizationId
+        ? "AUTHORIZED"
+        : "PENDING",
+  };
+}
 
 const NO_EVIDENCE = { merchantSignedCheckout: false, zkTlsFields: new Set<never>() };
 const AGENT_ID = /^(0|[1-9]\d{0,77})$/;
@@ -387,6 +426,7 @@ export function registerMandates(
         id: row.id,
         state: row.state,
         mandateHash: row.mandateHash ? toHex(row.mandateHash) : null,
+        hold: holdView(row),
         card,
       },
       200,

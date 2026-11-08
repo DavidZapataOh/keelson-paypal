@@ -9,7 +9,9 @@ const schema = z
     APP_ORIGIN: z.url(),
     PAYPAL_CLIENT_ID: z.string().min(1),
     PAYPAL_CLIENT_SECRET: z.string().min(1),
-    PAYPAL_ENV: z.enum(["sandbox", "live"]),
+    PAYPAL_ENV: z.enum(["sandbox", "production"]),
+    /** The payer id of the account the PayPal credentials belong to; holds are payable only to it. */
+    PAYPAL_MERCHANT_ID: z.string().min(1),
     PASSKEY_RP_ID: z.string().min(1).optional(),
     ANTHROPIC_API_KEY: z.string().min(1).optional(),
     TEE_A_URL: z.url().optional(),

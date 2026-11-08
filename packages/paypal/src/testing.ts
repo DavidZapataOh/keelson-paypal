@@ -45,14 +45,20 @@ export async function approveOnPage(page: Page): Promise<void> {
   }
 }
 
-/** Logs in as the sandbox buyer, approves the order and waits for the return URL. */
-export async function approveOrder(approveUrl: string): Promise<void> {
+/**
+ * Logs in as the sandbox buyer, approves the order and waits for its return URL, which must be
+ * the order's `return_url` or start with it.
+ */
+export async function approveOrder(
+  approveUrl: string,
+  returnUrl: string = RETURN_URL,
+): Promise<void> {
   buyer();
   const browser = await chromium.launch({ headless: process.env.PLAYWRIGHT_HEADED !== "1" });
   try {
     const context = await browser.newContext({ locale: "en-US" });
     // The return page is ours; only the redirect to it matters.
-    await context.route(`${new URL(RETURN_URL).origin}/**`, (route) =>
+    await context.route(`${new URL(returnUrl).origin}/**`, (route) =>
       route.fulfill({ status: 200, contentType: "text/plain", body: "" }),
     );
     const page = await context.newPage();
@@ -64,7 +70,7 @@ export async function approveOrder(approveUrl: string): Promise<void> {
     }
     await approveOnPage(page);
     try {
-      await page.waitForURL((url) => url.href.startsWith(RETURN_URL));
+      await page.waitForURL((url) => url.href.startsWith(returnUrl));
     } catch (cause) {
       throw await approvalError(page, "return", cause);
     }

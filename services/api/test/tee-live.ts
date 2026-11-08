@@ -482,11 +482,12 @@ export interface MandateAgent {
   vault: string;
 }
 
-/** The demo mandate for `sub` and a new agent key, signed with `passkey`. */
+/** The demo mandate for `sub` and a new agent key, signed with `passkey` after `edit`. */
 export async function signedMandate(
   passkey: Passkey,
   sub = `kls_usr_${randomBytes(8).toString("hex")}`,
   operator?: MandateAgent,
+  edit: (m: Mandate) => void = () => {},
 ): Promise<SignedMandate> {
   const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, [
     "sign",
@@ -521,6 +522,7 @@ export async function signedMandate(
       }),
     },
   });
+  edit(m);
   const salt = randomBytes(16);
   const signing = await prepareSigning(
     m,
