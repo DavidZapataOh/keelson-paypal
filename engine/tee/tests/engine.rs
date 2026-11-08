@@ -986,3 +986,166 @@ fn binding_for_another_chain_names_it() {
         Err(keelson_tee::Error::UnsupportedChain(1))
     );
 }
+
+#[test]
+fn rejects_an_oversized_order_id_in_the_observation() {
+    let issued = register();
+    let mut o = observation((NOW + 10) * 1000);
+    o.paypal.order_id = "O".repeat(257);
+    let r = countersign_request(&issued, &CartFixture::demo(), request_id(1), Some(o));
+    assert_eq!(
+        leg_b().countersign(&r, at(NOW + 10)).err(),
+        Some(EngineError::TooLarge("observation"))
+    );
+}
+
+/// Countersigns over PayPal sandbox bodies recorded by `tests/paypal_sandbox.rs`.
+#[cfg(feature = "tdx")]
+mod holds {
+    use super::*;
+    use keelson_tee::UserRecords;
+    use keelson_tee::wire::MandateIssued;
+
+    const MID: &str = "01JBXG3K5N7Q9R2T4V6W8Y0Z1A";
+    /// The request id the recorded per-purchase hold was created for.
+    const PURCHASE: u128 = 40;
+    const ALLOW: &str = "1";
+    const DENY: &str = "2";
+
+    fn hold_order(records: &Records) -> Option<Vec<u8>> {
+        records.get(&format!("hold-order\0{MID}"))
+    }
+
+    fn setup() -> (Engine, MandateIssued, Arc<Records>) {
+        let records = Arc::new(Records::default());
+        let payee = paypal_vector("mandate-hold").payee_merchant_id;
+        let (leg_a, issued) = leg_a_paying(&[&payee], records.clone());
+        (leg_a, issued, records)
+    }
+
+    #[test]
+    fn a_mandate_hold_is_bound_to_its_order() {
+        let (leg_a, issued, records) = setup();
+        let fresh = paypal_vector("mandate-hold");
+        assert_eq!(fresh.order_id, "6XX99734C4618040C");
+        let (a, b) = countersign_both(
+            &leg_a,
+            &issued,
+            &CartFixture::thirty(),
+            fresh,
+            request_id(1),
+        );
+        for c in [&a, &b] {
+            assert_eq!(c.countersign.decision, ALLOW, "{:?}", errors(c));
+        }
+        assert_eq!(a.digest.0, b.digest.0);
+        assert_eq!(b.observation.paypal.order_id, "6XX99734C4618040C");
+        assert!(hold_order(&records).is_some());
+
+        // The same order after a capture is still the mandate's hold.
+        let captured = paypal_vector("mandate-hold-captured");
+        assert_eq!(captured.captured_minor, 3_000);
+        assert_eq!(captured.order_captured_minor, 3_000);
+        let (a, _) = countersign_both(
+            &leg_a,
+            &issued,
+            &CartFixture::thirty(),
+            captured,
+            request_id(2),
+        );
+        assert_eq!(a.countersign.decision, ALLOW, "{:?}", errors(&a));
+
+        let other = paypal_vector("mandate-hold-other-order");
+        assert_ne!(other.order_id, "6XX99734C4618040C");
+        let (a, _) = countersign_both(
+            &leg_a,
+            &issued,
+            &CartFixture::thirty(),
+            other,
+            request_id(3),
+        );
+        assert_eq!(a.countersign.decision, DENY);
+        assert_eq!(errors(&a), ["paypal.hold_mismatch"]);
+    }
+
+    #[test]
+    #[ignore = "PayPal reauthorizes from day 4 of an authorization; needs the recorded mandate-hold-reauthorized vector"]
+    fn a_reauthorization_of_the_bound_order_is_the_same_hold() {
+        let (leg_a, issued, _) = setup();
+        let f = CartFixture::thirty();
+        let original = paypal_vector("mandate-hold");
+        let reauthorized = paypal_vector("mandate-hold-reauthorized");
+        assert_ne!(reauthorized.authorization_id, original.authorization_id);
+        assert_eq!(reauthorized.order_id, original.order_id);
+        // The parent's captures stay spent after the reauthorization.
+        assert!(reauthorized.order_captured_minor > reauthorized.captured_minor);
+        let (a, _) = countersign_both(&leg_a, &issued, &f, original, request_id(1));
+        assert_eq!(a.countersign.decision, ALLOW, "{:?}", errors(&a));
+        let (a, b) = countersign_both(&leg_a, &issued, &f, reauthorized, request_id(2));
+        for c in [&a, &b] {
+            assert_eq!(c.countersign.decision, ALLOW, "{:?}", errors(c));
+        }
+    }
+
+    #[test]
+    fn a_purchase_hold_backs_only_its_own_request() {
+        let (leg_a, issued, records) = setup();
+        let read = paypal_vector("purchase-hold");
+        let f = CartFixture::sixty();
+        let (a, b) = countersign_both(&leg_a, &issued, &f, read.clone(), request_id(PURCHASE));
+        for c in [&a, &b] {
+            assert_eq!(c.countersign.decision, ALLOW, "{:?}", errors(c));
+        }
+        assert_eq!(hold_order(&records), None);
+
+        let (a, b) = countersign_both(&leg_a, &issued, &f, read, request_id(PURCHASE + 1));
+        for c in [&a, &b] {
+            assert_eq!(c.countersign.decision, DENY);
+            assert_eq!(errors(c), ["paypal.mandate"]);
+        }
+    }
+
+    #[test]
+    fn a_purchase_hold_does_not_bind_the_mandate() {
+        let (leg_a, issued, records) = setup();
+        let f = CartFixture::sixty();
+        let purchase = paypal_vector("purchase-hold");
+        let (a, _) = countersign_both(&leg_a, &issued, &f, purchase, request_id(PURCHASE));
+        assert_eq!(a.countersign.decision, ALLOW, "{:?}", errors(&a));
+        let f = CartFixture::thirty();
+        let (a, _) = countersign_both(
+            &leg_a,
+            &issued,
+            &f,
+            paypal_vector("mandate-hold"),
+            request_id(1),
+        );
+        assert_eq!(a.countersign.decision, ALLOW, "{:?}", errors(&a));
+        assert!(hold_order(&records).is_some());
+    }
+
+    #[test]
+    fn only_a_sandbox_hold_of_this_mandate_or_request_is_accepted() {
+        let rid = request_id(PURCHASE).to_string();
+        let digest = "SC4lPIQQS_7hUI1WoHbFiKBE6nmxEfU5sBAD1IV3YDI";
+        for custom_id in [
+            format!("ks1.pm.{MID}.{digest}"),
+            format!("ks1.pa.{rid}.{digest}"),
+            format!("ks1.sa.{MID}.{digest}"),
+            format!("ks1.sm.{rid}.{digest}"),
+            format!("ks1.sx.{MID}.{digest}"),
+            format!("ks1.s.{MID}.{digest}"),
+            format!("ks1.sa.{rid}.{}", &digest[1..]),
+        ] {
+            let (leg_a, issued, records) = setup();
+            let mut read = paypal_vector("purchase-hold");
+            read.custom_id = custom_id.clone();
+            let f = CartFixture::sixty();
+            let (a, b) = countersign_both(&leg_a, &issued, &f, read, request_id(PURCHASE));
+            for c in [&a, &b] {
+                assert_eq!(errors(c), ["paypal.mandate"], "{custom_id}");
+            }
+            assert_eq!(hold_order(&records), None);
+        }
+    }
+}

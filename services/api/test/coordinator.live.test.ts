@@ -1,6 +1,6 @@
 import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { and, desc, eq, events, teeSignatures, teeSigners } from "@keelson/db";
+import { and, desc, eq, events, isNull, teeSignatures, teeSigners } from "@keelson/db";
 import { pino } from "pino";
 import { recoverAddress } from "viem";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
@@ -474,18 +474,40 @@ describe.skipIf(!live)("coordinator (live legs)", { timeout: 120_000 }, () => {
     const [row] = await testDb
       .select()
       .from(teeSigners)
-      .where(and(eq(teeSigners.teeKind, kind)));
+      .where(and(eq(teeSigners.teeKind, kind), isNull(teeSigners.revokedAt)))
+      .orderBy(desc(teeSigners.registeredAt))
+      .limit(1);
     if (!row) throw new Error(`no signer of kind ${kind}`);
     return row;
   };
 
-  test("a signature from a signer other than the registered one is rejected", async () => {
+  test("a restarted leg's unknown signer is admitted from its attestation before its answer counts", async () => {
     const a = await signerRow(1);
     const other = Buffer.alloc(20, 7);
     await testDb
       .update(teeSigners)
       .set({ address: other })
       .where(eq(teeSigners.address, a.address));
+    const out = await drive(deps(), await prepare());
+    expect(out.mode).toBe("2of2");
+    const admitted = await activeSigner(testDb, 1);
+    expect(admitted?.address.toLowerCase()).toBe(`0x${a.address.toString("hex")}`);
+    const [stale] = await testDb.select().from(teeSigners).where(eq(teeSigners.address, other));
+    expect(stale?.revokedReason).toBe("superseded");
+  });
+
+  test("a signature from a known signer other than the registered one is rejected", async () => {
+    const a = await signerRow(1);
+    const other = Buffer.alloc(20, 8);
+    await testDb
+      .update(teeSigners)
+      .set({ address: other })
+      .where(eq(teeSigners.address, a.address));
+    await testDb.insert(teeSigners).values({
+      ...a,
+      revokedAt: new Date(),
+      revokedReason: "superseded",
+    });
     try {
       const err = await drive(deps(), await prepare()).then(
         () => null,
@@ -493,6 +515,7 @@ describe.skipIf(!live)("coordinator (live legs)", { timeout: 120_000 }, () => {
       );
       expect((err as CoordinatorError).slug).toBe("tee-unregistered-signer");
     } finally {
+      await testDb.delete(teeSigners).where(eq(teeSigners.address, a.address));
       await testDb
         .update(teeSigners)
         .set({ address: a.address })

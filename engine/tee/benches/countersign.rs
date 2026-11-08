@@ -45,15 +45,15 @@ fn bench(c: &mut Criterion, issued: &MandateIssued, f: &CartFixture) {
             BatchSize::SmallInput,
         )
     });
-    let engine = leg_b();
+    // Each run gets a fresh leg B too, so its request ledger never reaches the live-request cap.
     let mut n = 1_000_000;
     c.bench_function("countersign demo ALLOW, leg B", |b| {
         b.iter_batched_ref(
             || {
                 n += 1;
-                leg_b_request(issued, f, n)
+                (leg_b(), leg_b_request(issued, f, n))
             },
-            |r| engine.countersign(black_box(r), at(CLOCK)),
+            |(engine, r)| engine.countersign(black_box(r), at(CLOCK)),
             BatchSize::SmallInput,
         )
     });
@@ -107,17 +107,16 @@ fn main() {
     let leg_a_p99 = percentiles("countersign demo ALLOW, leg A", leg_a, |engine| {
         engine.countersign(black_box(&a), at(CLOCK))
     });
-    let engine = leg_b();
     let mut n = 2_000_000;
     let leg_b_p99 = percentiles(
         "countersign demo ALLOW, leg B",
         || {
             n += 1;
-            leg_b_request(&issued, &f, n)
+            (leg_b(), leg_b_request(&issued, &f, n))
         },
-        |r| engine.countersign(black_box(r), at(CLOCK)),
+        |(engine, r)| engine.countersign(black_box(r), at(CLOCK)),
     );
-    assert!(allows(&engine, &leg_b_request(&issued, &f, n + 1)));
+    assert!(allows(&leg_b(), &leg_b_request(&issued, &f, n + 1)));
     let engine = leg_a();
     let r = register_request();
     let register_p99 = percentiles(

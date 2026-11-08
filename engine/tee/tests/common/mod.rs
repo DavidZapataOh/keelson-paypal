@@ -399,3 +399,73 @@ pub fn recover(c: &Countersigned) -> Address {
         .recover_address_from_prehash(&c.digest.0.into())
         .unwrap()
 }
+
+/// Leg A keeping its user records in `records`, with the demo mandate registered to pay
+/// `payees`.
+pub fn leg_a_paying(payees: &[&str], records: Arc<Records>) -> (Engine, MandateIssued) {
+    let leg_a = Engine::booted_at(config(None), Some(root()), at(NOW - 1_000))
+        .with_captured(Arc::new(Captured {
+            mandate_hash: demo_mandate_hash(),
+            minor: 0,
+        }))
+        .with_user_records(records);
+    let allowed: Vec<Value> = payees
+        .iter()
+        .map(|p| json!({ "paypal_merchant_id": p }))
+        .collect();
+    let register = mandate_with(&sub(), &other_passkey(), |m| {
+        let payees = m["payment"]["constraints"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|c| c["type"] == "payment.allowed_payees")
+            .unwrap();
+        payees["allowed"] = json!(allowed);
+    });
+    let issued = leg_a.register_mandate(&register, at(NOW)).unwrap();
+    (leg_a, issued)
+}
+
+/// Countersigns `f` under `id` on `leg_a` over `read`, and on leg B over leg A's observation.
+pub fn countersign_both(
+    leg_a: &Engine,
+    issued: &MandateIssued,
+    f: &CartFixture,
+    read: PayPalObservation,
+    id: Ulid,
+) -> (Countersigned, Countersigned) {
+    let r = countersign_request(issued, f, id, None);
+    let a = leg_a
+        .countersign_with(&r, at(NOW + 10), Some(read))
+        .unwrap();
+    let r = countersign_request(issued, f, id, Some(a.observation.clone()));
+    let b = leg_b().countersign(&r, at(NOW + 10)).unwrap();
+    (a, b)
+}
+
+/// The deny reasons in the countersign's trace.
+pub fn errors(c: &Countersigned) -> Vec<String> {
+    trace(c)["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e.as_str().unwrap().to_owned())
+        .collect()
+}
+
+/// Leg A's observation of the PayPal sandbox bodies recorded in `tests/vectors/paypal/<name>.json`.
+#[cfg(feature = "tdx")]
+pub fn paypal_vector(name: &str) -> PayPalObservation {
+    let path = format!(
+        "{}/tests/vectors/paypal/{name}.json",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let v: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    keelson_tee::paypal::parse(
+        v["authorization_id"].as_str().unwrap(),
+        serde_json::to_vec(&v["authorization"]).unwrap(),
+        serde_json::to_vec(&v["order"]).unwrap(),
+        v["read_at_ms"].as_i64().unwrap(),
+    )
+    .unwrap()
+}
