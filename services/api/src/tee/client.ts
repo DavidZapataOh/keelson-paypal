@@ -15,6 +15,8 @@ const PayPalObservationSchema = z.strictObject({
   currency: z.string(),
   authorized_minor: z.number().int(),
   captured_minor: z.number().int(),
+  /** Absent from legs that predate counting every capture of the order. */
+  order_captured_minor: z.number().int().optional(),
   payee_merchant_id: z.string(),
   expires_at_ms: z.number().int(),
   custom_id: z.string(),

@@ -560,7 +560,8 @@ impl Engine {
                 .captured_minor(&a.mandate_hash)
                 .ok_or(EngineError::NotReady)?
                 .max(0),
-            (None, Some(read)) => read.captured_minor.max(0),
+            // Every capture of the order spends the mandate, a reauthorized parent's included.
+            (None, Some(read)) => read.captured_minor.max(read.order_captured_minor).max(0),
             (None, None) => 0,
         };
         // An empty reading is leg A's without a PayPal read, which checks nothing.

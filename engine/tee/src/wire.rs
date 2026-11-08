@@ -187,6 +187,10 @@ pub struct PayPalObservation {
     pub authorized_minor: i64,
     /// The sum of the order's `COMPLETED` and `PENDING` captures of this authorization.
     pub captured_minor: i64,
+    /// The sum of the order's `COMPLETED` and `PENDING` captures of every authorization, a
+    /// reauthorization's parent included: what a mandate hold has spent.
+    #[serde(default)]
+    pub order_captured_minor: i64,
     pub payee_merchant_id: String,
     /// The authorization's `expiration_time`, in Unix milliseconds.
     pub expires_at_ms: i64,

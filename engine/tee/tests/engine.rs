@@ -1045,6 +1045,7 @@ mod holds {
         // The same order after a capture is still the mandate's hold.
         let captured = paypal_vector("mandate-hold-captured");
         assert_eq!(captured.captured_minor, 3_000);
+        assert_eq!(captured.order_captured_minor, 3_000);
         let (a, _) = countersign_both(
             &leg_a,
             &issued,
@@ -1076,6 +1077,8 @@ mod holds {
         let reauthorized = paypal_vector("mandate-hold-reauthorized");
         assert_ne!(reauthorized.authorization_id, original.authorization_id);
         assert_eq!(reauthorized.order_id, original.order_id);
+        // The parent's captures stay spent after the reauthorization.
+        assert!(reauthorized.order_captured_minor > reauthorized.captured_minor);
         let (a, _) = countersign_both(&leg_a, &issued, &f, original, request_id(1));
         assert_eq!(a.countersign.decision, ALLOW, "{:?}", errors(&a));
         let (a, b) = countersign_both(&leg_a, &issued, &f, reauthorized, request_id(2));

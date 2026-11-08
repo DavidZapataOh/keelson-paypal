@@ -245,6 +245,7 @@ fn observation_json_names_the_order() {
             "currency": "USD",
             "authorized_minor": 10_000,
             "captured_minor": 0,
+            "order_captured_minor": 0,
             "payee_merchant_id": "A4WCRYD5EYDF2",
             "expires_at_ms": 1_796_665_574_000_i64,
             "custom_id": "ks1.sm.01JBXG3K5N7Q9R2T4V6W8Y0Z1A.SC4lPIQQS_7hUI1WoHbFiKBE6nmxEfU5sBAD1IV3YDI",

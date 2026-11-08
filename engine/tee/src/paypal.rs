@@ -446,6 +446,7 @@ mod client {
             serde_json::from_slice(&raw_order).map_err(|_| PayPalError::Malformed("order"))?;
 
         let mut captured: i64 = 0;
+        let mut order_captured: i64 = 0;
         let captures = order
             .purchase_units
             .iter()
@@ -458,14 +459,19 @@ mod client {
                 .find(|l| l.rel == "up")
                 .and_then(|l| l.href.rsplit_once("/authorizations/"))
                 .ok_or(PayPalError::Malformed("capture"))?;
-            let ours = origin.1 == authorization_id;
-            if ours && !matches!(capture.status.as_str(), "DECLINED" | "FAILED") {
+            if !matches!(capture.status.as_str(), "DECLINED" | "FAILED") {
                 if capture.amount.currency_code != authorization.amount.currency_code {
                     return Err(PayPalError::Malformed("capture"));
                 }
-                captured = captured
-                    .checked_add(minor(&capture.amount)?)
+                let amount = minor(&capture.amount)?;
+                order_captured = order_captured
+                    .checked_add(amount)
                     .ok_or(PayPalError::Malformed("capture"))?;
+                if origin.1 == authorization_id {
+                    captured = captured
+                        .checked_add(amount)
+                        .ok_or(PayPalError::Malformed("capture"))?;
+                }
             }
         }
         let expires_at = OffsetDateTime::parse(
@@ -480,6 +486,7 @@ mod client {
             authorized_minor: minor(&authorization.amount)?,
             currency: authorization.amount.currency_code,
             captured_minor: captured,
+            order_captured_minor: order_captured,
             payee_merchant_id: authorization.payee.merchant_id,
             expires_at_ms: unix_ms(expires_at).ok_or(PayPalError::Malformed("authorization"))?,
             custom_id: authorization.custom_id,
