@@ -59,11 +59,11 @@ On Sepolia, pass `--gas-estimate-multiplier 200`: its node underestimates the ha
 
 A signer is registered by anyone, from a fresh attestation only:
 
-| Path | Checks |
-| --- | --- |
-| `registerSignerWithQuote` | Automata's DCAP attestation verifies the v4 TDX quote on-chain; TCB status UpToDate, or SWHardeningNeeded with advisories; not a debug TD; the dstack RTMR3 event log replays (SHA-384, `src/libraries/Sha384.sol`) to the quote's RTMR3; measurement `sha256(MRTD ‖ RTMR0 ‖ RTMR1 ‖ RTMR2 ‖ app-id ‖ compose-hash ‖ os-image-hash)` allowed |
-| `registerSignerWithZkQuote` | The same, with Automata's verification proven in RISC Zero and checked by the same Automata entrypoint |
-| `registerSignerWithNitro` | Base's `nitro-validator` checks the document and its cached certificate chain; PCR0–2 present and not zero; `public_key` is the signer; `nonce` is the bound block hash; issued at most 1 h ago and at most 10 min ahead; measurement `sha256(PCR0 ‖ PCR1 ‖ PCR2)` allowed |
+| Path                        | Checks                                                                                                                                                                                                                                                                                                                                       |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `registerSignerWithQuote`   | Automata's DCAP attestation verifies the v4 TDX quote on-chain; TCB status UpToDate, or SWHardeningNeeded with advisories; not a debug TD; the dstack RTMR3 event log replays (SHA-384, `src/libraries/Sha384.sol`) to the quote's RTMR3; measurement `sha256(MRTD ‖ RTMR0 ‖ RTMR1 ‖ RTMR2 ‖ app-id ‖ compose-hash ‖ os-image-hash)` allowed |
+| `registerSignerWithZkQuote` | The same, with Automata's verification proven in RISC Zero and checked by the same Automata entrypoint                                                                                                                                                                                                                                       |
+| `registerSignerWithNitro`   | Base's `nitro-validator` checks the document and its cached certificate chain; PCR0–2 present and not zero; `public_key` is the signer; `nonce` is the bound block hash; issued at most 1 h ago and at most 10 min ahead; measurement `sha256(PCR0 ‖ PCR1 ‖ PCR2)` allowed                                                                   |
 
 Every path requires `report_data = keccak256(abi.encode(keccak256("KEELSON_TEE_SIGNER_V1"), chainid, bondVault, teeKind, signer, policySetHash, engineBuildId, bootEpoch, issuerJwkThumbprint)) ‖ blockHash`, with the chain's own id, the `KeelsonBondVault` address, the configured issuer, and the hash of an Arbitrum block at most 14,400 blocks old read from the EIP-2935 history. One signer serves several chains, but each chain's attestation names that chain, so a signer is registered on each chain separately.
 
