@@ -1,12 +1,18 @@
 import { POLICY_SET_HASH } from "@keelson/policy/hashes";
-import { createPublicClient, type Hex, http, zeroAddress } from "viem";
+import { type Address, createPublicClient, type Hex, http } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { LegClient } from "./client.ts";
 import { loadMeasurements } from "./measurements.ts";
 import type { LegExpectations, TeeConfig } from "./signers.ts";
 
-/** The `verifyingContract` of the EIP-712 domain both legs were booted with. */
-export const VERIFYING_CONTRACT = zeroAddress;
+/**
+ * The `verifyingContract` of the EIP-712 domain both legs were booted with: the `VerdictVerifier`,
+ * at the same CREATE3 address on every chain.
+ */
+export const VERIFYING_CONTRACT: Address = "0xe16E8767EC1DA59Ef0D9Bc7851637E4D22352d96";
+
+/** The `KeelsonBondVault` both legs' attestations bind, at the same CREATE3 address on every chain. */
+export const BOND_VAULT: Address = "0xb39898Ef4333f3CB32d1B420E744f5a1Aa2ae2Bf";
 
 /**
  * Leg A reads PayPal, so it gets longer than leg B, which only evaluates: more than the engine's
@@ -27,7 +33,7 @@ interface TeeEnv {
 
 /**
  * The legs and what their attestations must say. Both legs are booted with chain 421614 and the
- * zero bond vault, on the image whose digest is published with the deployment files.
+ * bond vault, on the image whose digest is published with the deployment files.
  */
 export function createTee(
   env: TeeEnv,
@@ -40,7 +46,7 @@ export function createTee(
   const m = loadMeasurements();
   const common = {
     chainId: arbitrumSepolia.id,
-    bondVault: zeroAddress,
+    bondVault: BOND_VAULT,
     policySetHash: POLICY_SET_HASH.replace("sha256:", "0x") as Hex,
     engineBuildId: m.engineBuildId,
     rpc,

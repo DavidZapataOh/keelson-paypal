@@ -7,7 +7,8 @@
 # --hold leaves the enclave unbooted, with the proxy up, so it can be booted from outside.
 # Reads KEELSON_TEE_TOKEN_SHA256 and KEELSON_ISSUER_JWK (the issuer's public key) from the
 # environment, and optionally KEELSON_ORIGIN, KEELSON_CANONICALIZER, KEELSON_CHAIN_ID,
-# KEELSON_BOND_VAULT and KEELSON_VERIFYING_CONTRACT, which default to leg A's values.
+# KEELSON_BOND_VAULT and KEELSON_VERIFYING_CONTRACT, which default to leg A's values (the
+# CREATE3 addresses of KeelsonBondVault and VerdictVerifier).
 . "$(dirname "$0")/common.sh"
 
 digest="${1:-}"
@@ -25,8 +26,8 @@ boot="$(jq -n \
   --arg origin "${KEELSON_ORIGIN:-https://app.keelson.finance}" \
   --arg canonicalizer "${KEELSON_CANONICALIZER:-keelson-canon/0.0.0}" \
   --argjson chain "${KEELSON_CHAIN_ID:-421614}" \
-  --arg vault "${KEELSON_BOND_VAULT:-0x0000000000000000000000000000000000000000}" \
-  --arg verifying "${KEELSON_VERIFYING_CONTRACT:-0x0000000000000000000000000000000000000000}" \
+  --arg vault "${KEELSON_BOND_VAULT:-0xb39898Ef4333f3CB32d1B420E744f5a1Aa2ae2Bf}" \
+  --arg verifying "${KEELSON_VERIFYING_CONTRACT:-0xe16E8767EC1DA59Ef0D9Bc7851637E4D22352d96}" \
   '{token_sha256: $token, config: {chain_id: $chain, bond_vault: $vault, verifying_contract: $verifying,
     oci_digest: $digest, canonicalizer: $canonicalizer, issuer: $issuer, origin: $origin}}')"
 

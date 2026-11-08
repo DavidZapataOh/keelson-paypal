@@ -105,7 +105,7 @@ services:
           name: keelson-db
           property: connectionString
       - key: KEELSON_VERIFYING_CONTRACT
-        value: "0x0000000000000000000000000000000000000000"
+        value: "0xe16E8767EC1DA59Ef0D9Bc7851637E4D22352d96"
       - key: LOG_SIGNER_KEY_SANDBOX
         sync: false
       - key: LOG_MLDSA_SEED_SANDBOX
