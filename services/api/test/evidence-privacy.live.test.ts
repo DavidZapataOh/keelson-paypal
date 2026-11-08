@@ -9,13 +9,17 @@ import { afterAll, describe, expect, test } from "vitest";
 // authorization header or form body.
 const live = process.env.KEELSON_LIVE === "1" && process.env.KEELSON_PRIVACY_SCAN === "1";
 
-/** The values of PAYPAL_SANDBOX_* fields, and each comma-separated part of the address. */
+/** The sandbox buyer's values; the address is a JSON object of its lines. */
 function knownValues(): string[] {
+  const address = JSON.parse(process.env.PAYPAL_SANDBOX_BUYER_ADDRESS ?? "{}") as Record<
+    string,
+    string
+  >;
   const values = [
     process.env.PAYPAL_SANDBOX_BUYER_EMAIL,
     process.env.PAYPAL_SANDBOX_BUYER_NAME,
     process.env.PAYPAL_SANDBOX_PERSONAL_EMAIL,
-    ...(process.env.PAYPAL_SANDBOX_BUYER_ADDRESS ?? "").split(","),
+    ...Object.values(address),
   ];
   return values.map((v) => v?.trim().toLowerCase() ?? "").filter((v) => v.length >= 4);
 }
