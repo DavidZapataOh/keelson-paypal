@@ -43,22 +43,7 @@ fn sandbox(name: &str) -> Option<(PayPalClient, String)> {
 
 /// Leg A with the demo mandate registered for `payees`.
 fn setup(payees: &[&str]) -> (Engine, MandateIssued) {
-    let leg_a = leg_a();
-    let allowed: Vec<Value> = payees
-        .iter()
-        .map(|p| json!({ "paypal_merchant_id": p }))
-        .collect();
-    let register = mandate_with(&sub(), &other_passkey(), |m| {
-        let payees = m["payment"]["constraints"]
-            .as_array_mut()
-            .unwrap()
-            .iter_mut()
-            .find(|c| c["type"] == "payment.allowed_payees")
-            .unwrap();
-        payees["allowed"] = json!(allowed);
-    });
-    let issued = leg_a.register_mandate(&register, at(NOW)).unwrap();
-    (leg_a, issued)
+    leg_a_paying(payees, Arc::default())
 }
 
 /// Countersigns `f` on `leg_a` over `read`, and on leg B over leg A's observation.
@@ -69,14 +54,7 @@ fn run(
     read: PayPalObservation,
     n: u128,
 ) -> (Countersigned, Countersigned) {
-    let r = countersign_request(issued, f, request_id(n), None);
-    let a = leg_a
-        .countersign_with(&r, at(NOW + 10), Some(read))
-        .unwrap();
-    // Leg B signs the same decision over leg A's observation, PayPal included.
-    let r = countersign_request(issued, f, request_id(n), Some(a.observation.clone()));
-    let b = leg_b().countersign(&r, at(NOW + 10)).unwrap();
-    (a, b)
+    countersign_both(leg_a, issued, f, read, request_id(n))
 }
 
 fn countersign(
@@ -118,15 +96,6 @@ fn reparse(
         edited(&read.raw_order.0, order),
         read.read_at_ms,
     )
-}
-
-fn errors(c: &Countersigned) -> Vec<String> {
-    trace(c)["errors"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|e| e.as_str().unwrap().to_owned())
-        .collect()
 }
 
 #[tokio::test]
@@ -406,4 +375,66 @@ async fn the_custom_id_must_be_a_sandbox_mandate_hold() {
         let (a, _) = countersign(&CartFixture::sixty(), &[&payee], forged, 20 + n as u128);
         assert_eq!(errors(&a), ["paypal.mandate"]);
     }
+}
+
+/// Records the sandbox read of the authorization in `env` as `tests/vectors/paypal/<name>.json`
+/// when `KEELSON_WRITE_VECTORS=1` and `env` is set. The payer's identity is dropped from the
+/// order body; the engine reads none of it.
+async fn write_vector(name: &str, env: &str) {
+    if var("KEELSON_WRITE_VECTORS").as_deref() != Some("1") {
+        return;
+    }
+    let Some((client, id)) = sandbox(env) else {
+        return;
+    };
+    let read = observe(&client, &id).await.unwrap();
+    let mut order: Value = serde_json::from_slice(&read.raw_order.0).unwrap();
+    let order_fields = order.as_object_mut().unwrap();
+    order_fields.remove("payer");
+    order_fields.remove("payment_source");
+    let vector = json!({
+        "authorization_id": id,
+        "read_at_ms": read.read_at_ms,
+        "authorization": serde_json::from_slice::<Value>(&read.raw_authorization.0).unwrap(),
+        "order": order,
+    });
+    let path = format!(
+        "{}/tests/vectors/paypal/{name}.json",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    std::fs::write(path, serde_json::to_string_pretty(&vector).unwrap() + "\n").unwrap();
+}
+
+#[tokio::test]
+async fn write_mandate_hold_vector() {
+    write_vector("mandate-hold", "PAYPAL_MANDATE_HOLD").await;
+}
+
+#[tokio::test]
+async fn write_partially_captured_mandate_hold_vector() {
+    write_vector("mandate-hold-captured", "PAYPAL_MANDATE_HOLD_CAPTURED").await;
+}
+
+#[tokio::test]
+async fn write_other_order_vector() {
+    write_vector(
+        "mandate-hold-other-order",
+        "PAYPAL_MANDATE_HOLD_OTHER_ORDER",
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn write_purchase_hold_vector() {
+    write_vector("purchase-hold", "PAYPAL_PURCHASE_HOLD").await;
+}
+
+#[tokio::test]
+#[ignore = "PayPal reauthorizes from day 4 of an authorization: recorded once the mandate-hold authorization has been reauthorized"]
+async fn write_reauthorized_mandate_hold_vector() {
+    write_vector(
+        "mandate-hold-reauthorized",
+        "PAYPAL_MANDATE_HOLD_REAUTHORIZED",
+    )
+    .await;
 }

@@ -81,20 +81,20 @@ On leg A, `CountersignRequest.authorization_id` names the PayPal authorization t
 
 The reading is the `PayPalObservation` leg B signs over. `captured_minor` is the sum of the order's captures of that authorization (below), and replaces the `CapturedSource` amount in the budget. The cart is denied (bit 31 of `failedFieldsMask`, the reason in the trace `errors`) when:
 
-| Reason                 | When                                                                                |
-| ---------------------- | ----------------------------------------------------------------------------------- |
-| `paypal.status`        | the authorization is neither `CREATED` nor `PARTIALLY_CAPTURED`                     |
-| `paypal.payee`         | the payee is not in the mandate's `payment.allowed_payees`                          |
-| `paypal.currency`      | the authorization is not in the cart's currency                                     |
-| `paypal.expired`       | the authorization's `expiration_time` has passed, whatever its status says          |
-| `paypal.mandate`       | the `custom_id` is not `ks1.<env>m.<mid>.<digest>` for this mandate and environment |
-| `paypal.inconsistent`  | `PARTIALLY_CAPTURED` with nothing captured, or more captured than authorized        |
-| `paypal.hold_mismatch` | another authorization already holds this mandate                                    |
-| `paypal.insufficient`  | the authorization's amount less what was captured is below the cart's total         |
+| Reason                 | When                                                                                                                                                 |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `paypal.status`        | the authorization is neither `CREATED` nor `PARTIALLY_CAPTURED`                                                                                      |
+| `paypal.payee`         | the payee is not in the mandate's `payment.allowed_payees`                                                                                           |
+| `paypal.currency`      | the authorization is not in the cart's currency                                                                                                      |
+| `paypal.expired`       | the authorization's `expiration_time` has passed, whatever its status says                                                                           |
+| `paypal.mandate`       | the `custom_id` is neither `ks1.<env>m.<mid>.<digest>` for this mandate nor `ks1.<env>a.<request id>.<digest>` for this request, in this environment |
+| `paypal.inconsistent`  | `PARTIALLY_CAPTURED` with nothing captured, or more captured than authorized                                                                         |
+| `paypal.hold_mismatch` | another PayPal order already holds this mandate                                                                                                      |
+| `paypal.insufficient`  | the authorization's amount less what was captured is below the cart's total                                                                          |
 
 Every capture of the authorization counts at its full amount unless it is `DECLINED` or `FAILED`: a refund does not restore the hold. A capture PayPal does not link to an authorization, or a negative amount, fails the read.
 
-The authorization is the hold, one per mandate: leg A binds the first authorization it sees for a mandate in a sealed record (kept with the user records) and denies any other. The limit: the binding lives in that store, so a lost record lets a second authorization of the same mandate id be bound, and leg B cannot see it. The environment is Arbitrum Sepolia for `s` and Arbitrum One for `p`.
+A mandate hold (`m`) is one PayPal order per mandate: leg A binds the mandate to the order of the first mandate hold it sees (`supplementary_data.related_ids.order_id`), in a sealed record kept with the user records, and denies an authorization of any other order. A reauthorization gets a new authorization id on the same order, so it still holds the mandate. Records written by earlier images bound the authorization id under another key and are not read: a mandate held before the upgrade is held again. A per-purchase hold (`a`) names the countersign's request id instead and is not bound, since the ledger answers a request id once. The limit: the binding lives in that store, so a lost record lets a second order of the same mandate id be bound, and leg B cannot see it. The environment is Arbitrum Sepolia for `s` and Arbitrum One for `p`.
 
 ## Limits
 
@@ -175,7 +175,7 @@ Built with the cargo feature `nitro`, `keelson-engine --platform nitro --listen 
 
 ## Records
 
-On `--platform tdx` the user records (each `sub`'s passkey binding and each mandate's hold) are kept by `FileRecords`, one sealed file per record, in `KEELSON_DATA_DIR` (`/data` by default). The image ships `/data` owned by the engine's user, and the compose file mounts a named volume there, which lives on the CVM's encrypted disk. A restart or redeploy of the same app keeps the records. A file that was altered or moved does not open under its `sub` or mandate, and the request that depends on it fails with `auth.sub_bound` or a `paypal.hold_mismatch` denial.
+On `--platform tdx` the user records (each `sub`'s passkey binding and the PayPal order holding each mandate) are kept by `FileRecords`, one sealed file per record, in `KEELSON_DATA_DIR` (`/data` by default). The image ships `/data` owned by the engine's user, and the compose file mounts a named volume there, which lives on the CVM's encrypted disk. A restart or redeploy of the same app keeps the records. A file that was altered or moved does not open under its `sub` or mandate, and the request that depends on it fails with `auth.sub_bound` or a `paypal.hold_mismatch` denial.
 
 ## Sealing
 

@@ -28,7 +28,7 @@ pub enum PayPalDeny {
     /// The amounts cannot all be true: a capture with nothing captured, or more captured than
     /// authorized.
     Inconsistent,
-    /// The mandate is already held by another authorization.
+    /// The mandate is already held by another PayPal order.
     HoldMismatch,
 }
 
@@ -48,17 +48,27 @@ impl PayPalDeny {
     }
 }
 
-/// Checks the observation against the mandate `m` and the cart's `ctx`.
+/// What a PayPal authorization holds funds for, read from its `custom_id`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HoldKind {
+    /// The mandate's hold, `ks1.<env>m.<mid>.<digest>`, for every purchase under the mandate.
+    Mandate,
+    /// One purchase's hold, `ks1.<env>a.<request id>.<digest>`, for that request only.
+    Purchase,
+}
+
+/// Checks the observation against the mandate `m`, the cart's `ctx` and the countersign's
+/// `request_id`, and says which kind of hold the authorization is.
 ///
-/// The `custom_id` of an authorization is `ks1.<env><kind>.<mandate id>.<digest>`: `env` is
-/// `live` for a mandate hold (`m`) of this engine's environment, and the mandate id must be the
-/// mandate's `mid`, so a request cannot borrow another mandate's hold.
+/// `live` selects the environment the `custom_id` must name (`p`, else `s`), so a sandbox hold
+/// never backs a live countersign and the reverse.
 pub(crate) fn paypal_check(
     m: &Value,
     obs: &PayPalObservation,
     ctx: &Context,
+    request_id: &str,
     live: bool,
-) -> Result<(), PayPalDeny> {
+) -> Result<HoldKind, PayPalDeny> {
     if !matches!(obs.status.as_str(), "CREATED" | "PARTIALLY_CAPTURED") {
         return Err(PayPalDeny::Status);
     }
@@ -80,9 +90,8 @@ pub(crate) fn paypal_check(
     if obs.currency != ctx.currency {
         return Err(PayPalDeny::Currency);
     }
-    if !holds(&obs.custom_id, m["mid"].as_str().unwrap_or_default(), live) {
-        return Err(PayPalDeny::Mandate);
-    }
+    let mid = m["mid"].as_str().unwrap_or_default();
+    let kind = hold_kind(&obs.custom_id, mid, request_id, live).ok_or(PayPalDeny::Mandate)?;
     let nothing_captured = obs.status == "PARTIALLY_CAPTURED" && obs.captured_minor == 0;
     if nothing_captured || obs.captured_minor > obs.authorized_minor {
         return Err(PayPalDeny::Inconsistent);
@@ -90,24 +99,27 @@ pub(crate) fn paypal_check(
     if obs.authorized_minor.saturating_sub(obs.captured_minor) < ctx.total_minor {
         return Err(PayPalDeny::Insufficient);
     }
-    Ok(())
+    Ok(kind)
 }
 
-/// Whether `custom_id` is the mandate hold `ks1.<env>m.<mid>.<digest>` for `mid` in this
-/// environment, with a 43-character base64url digest.
-fn holds(custom_id: &str, mid: &str, live: bool) -> bool {
-    let env = if live { "pm" } else { "sm" };
+/// The kind of hold `custom_id` is in this environment: `ks1.<env>m.<mid>.<digest>` for the
+/// mandate `mid`, or `ks1.<env>a.<request_id>.<digest>` for the request `request_id`, with a
+/// 43-character base64url digest. `None` for anything else.
+fn hold_kind(custom_id: &str, mid: &str, request_id: &str, live: bool) -> Option<HoldKind> {
+    let env = if live { 'p' } else { 's' };
     let parts: Vec<&str> = custom_id.split('.').collect();
-    let [version, kind, id, digest] = parts[..] else {
-        return false;
+    let ["ks1", kind, id, digest] = parts[..] else {
+        return None;
     };
     let base64url = |c: u8| c.is_ascii_alphanumeric() || c == b'-' || c == b'_';
-    version == "ks1"
-        && kind == env
-        && id.len() == 26
-        && id == mid
-        && digest.len() == 43
-        && digest.bytes().all(base64url)
+    if id.len() != 26 || digest.len() != 43 || !digest.bytes().all(base64url) {
+        return None;
+    }
+    match kind.strip_prefix(env)? {
+        "m" if id == mid => Some(HoldKind::Mandate),
+        "a" if id == request_id => Some(HoldKind::Purchase),
+        _ => None,
+    }
 }
 
 #[cfg(feature = "tdx")]
@@ -434,6 +446,7 @@ mod client {
             serde_json::from_slice(&raw_order).map_err(|_| PayPalError::Malformed("order"))?;
 
         let mut captured: i64 = 0;
+        let mut order_captured: i64 = 0;
         let captures = order
             .purchase_units
             .iter()
@@ -446,14 +459,19 @@ mod client {
                 .find(|l| l.rel == "up")
                 .and_then(|l| l.href.rsplit_once("/authorizations/"))
                 .ok_or(PayPalError::Malformed("capture"))?;
-            let ours = origin.1 == authorization_id;
-            if ours && !matches!(capture.status.as_str(), "DECLINED" | "FAILED") {
+            if !matches!(capture.status.as_str(), "DECLINED" | "FAILED") {
                 if capture.amount.currency_code != authorization.amount.currency_code {
                     return Err(PayPalError::Malformed("capture"));
                 }
-                captured = captured
-                    .checked_add(minor(&capture.amount)?)
+                let amount = minor(&capture.amount)?;
+                order_captured = order_captured
+                    .checked_add(amount)
                     .ok_or(PayPalError::Malformed("capture"))?;
+                if origin.1 == authorization_id {
+                    captured = captured
+                        .checked_add(amount)
+                        .ok_or(PayPalError::Malformed("capture"))?;
+                }
             }
         }
         let expires_at = OffsetDateTime::parse(
@@ -462,11 +480,13 @@ mod client {
         )
         .map_err(|_| PayPalError::Malformed("authorization"))?;
         Ok(PayPalObservation {
+            order_id: order_id.clone(),
             authorization_id: authorization.id,
             status: authorization.status,
             authorized_minor: minor(&authorization.amount)?,
             currency: authorization.amount.currency_code,
             captured_minor: captured,
+            order_captured_minor: order_captured,
             payee_merchant_id: authorization.payee.merchant_id,
             expires_at_ms: unix_ms(expires_at).ok_or(PayPalError::Malformed("authorization"))?,
             custom_id: authorization.custom_id,

@@ -30,7 +30,7 @@ use time::{Duration, OffsetDateTime, UtcOffset};
 
 use crate::budget::{Budget, Claimed, Replay};
 use crate::checkpoint::{CheckpointError, verify_checkpoint};
-use crate::paypal::{PayPalDeny, paypal_check};
+use crate::paypal::{HoldKind, PayPalDeny, paypal_check};
 use crate::wire::{
     self, Base64, CheckpointRequest, CheckpointSigned, CountersignRequest, Countersigned, Hex,
     MandateIssued, Observation, PayPalObservation, RegisterMandate,
@@ -43,8 +43,8 @@ use crate::{
 pub const MANDATE_SALT_PURPOSE: &str = "keelson/seal/mandate-salt/v1";
 /// The seal purpose of a user's record, which binds their `sub` to their passkey.
 pub const USER_PASSKEY_PURPOSE: &str = "keelson/seal/user-passkey/v1";
-/// The sealing purpose of the record that binds a mandate to its PayPal authorization.
-const MANDATE_HOLD_PURPOSE: &str = "keelson/seal/mandate-hold/v1";
+/// The sealing purpose of the record that binds a mandate to the PayPal order holding its funds.
+const MANDATE_HOLD_PURPOSE: &str = "keelson/seal/mandate-hold-order/v1";
 const ARBITRUM_ONE: u64 = 42_161;
 const USER_PASSKEY_RECORD: &[u8] = b"passkey";
 
@@ -560,20 +560,23 @@ impl Engine {
                 .captured_minor(&a.mandate_hash)
                 .ok_or(EngineError::NotReady)?
                 .max(0),
-            (None, Some(read)) => read.captured_minor.max(0),
+            // Every capture of the order spends the mandate, a reauthorized parent's included.
+            (None, Some(read)) => read.captured_minor.max(read.order_captured_minor).max(0),
             (None, None) => 0,
         };
         // An empty reading is leg A's without a PayPal read, which checks nothing.
         let live = chain_id == ARBITRUM_ONE;
         let denied = match (&context, observed) {
             (Ok(c), Some(o)) if !o.authorization_id.is_empty() => {
-                match paypal_check(m, o, c, live) {
+                match paypal_check(m, o, c, &r.request_id.to_string(), live) {
                     Err(deny) => Some(deny),
-                    // Only leg A keeps the record of which authorization holds a mandate.
-                    Ok(()) => match (&self.root, &self.users) {
+                    // A purchase hold names its request id, which the ledger answers once.
+                    Ok(HoldKind::Purchase) => None,
+                    // Only leg A keeps the record of which order holds a mandate.
+                    Ok(HoldKind::Mandate) => match (&self.root, &self.users) {
                         (Some(root), Some(users)) => {
                             let mid = m["mid"].as_str().unwrap_or_default();
-                            bind_hold(root, users.as_ref(), mid, &o.authorization_id).err()
+                            bind_hold(root, users.as_ref(), mid, &o.order_id).err()
                         }
                         (Some(_), None) => return Err(EngineError::NotReady),
                         (None, _) => None,
@@ -914,6 +917,7 @@ fn check_countersign(r: &CountersignRequest) -> Result<(), EngineError> {
         let p = &o.paypal;
         let strings = [
             &p.authorization_id,
+            &p.order_id,
             &p.status,
             &p.currency,
             &p.payee_merchant_id,
@@ -929,28 +933,29 @@ fn check_countersign(r: &CountersignRequest) -> Result<(), EngineError> {
     Ok(())
 }
 
-/// Binds the mandate `mid` to the first authorization that holds its funds, in a sealed record.
-/// Any other authorization for the same mandate is a [`PayPalDeny::HoldMismatch`].
+/// Binds the mandate `mid` to the first PayPal order that holds its funds, in a sealed record.
+/// Every authorization of that order, a reauthorization included, holds the mandate; an
+/// authorization of any other order is a [`PayPalDeny::HoldMismatch`].
 fn bind_hold(
     root: &Root,
     users: &dyn UserRecords,
     mid: &str,
-    authorization_id: &str,
+    order_id: &str,
 ) -> Result<(), PayPalDeny> {
     let aad = SealAad {
         purpose: MANDATE_HOLD_PURPOSE,
         sub: None,
         record: mid.as_bytes(),
     };
-    let key = format!("hold\0{mid}");
+    let key = format!("hold-order\0{mid}");
     let holds = |blob: Vec<u8>| {
         root.unseal(&aad, &blob)
-            .is_ok_and(|bound| bound == authorization_id.as_bytes())
+            .is_ok_and(|bound| bound == order_id.as_bytes())
     };
     let bound = match users.get(&key) {
         Some(blob) => holds(blob),
         None => {
-            users.insert_new(&key, root.seal(&aad, authorization_id.as_bytes()))
+            users.insert_new(&key, root.seal(&aad, order_id.as_bytes()))
                 || users.get(&key).is_some_and(holds)
         }
     };

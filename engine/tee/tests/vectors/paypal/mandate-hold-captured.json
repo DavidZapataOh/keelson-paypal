@@ -1,0 +1,193 @@
+{
+  "authorization_id": "2YE949500W649811X",
+  "read_at_ms": 1794160256021,
+  "authorization": {
+    "id": "2YE949500W649811X",
+    "status": "PARTIALLY_CAPTURED",
+    "amount": {
+      "currency_code": "USD",
+      "value": "100.00"
+    },
+    "custom_id": "ks1.sm.01JBXG3K5N7Q9R2T4V6W8Y0Z1A.SC4lPIQQS_7hUI1WoHbFiKBE6nmxEfU5sBAD1IV3YDI",
+    "seller_protection": {
+      "status": "ELIGIBLE",
+      "dispute_categories": [
+        "ITEM_NOT_RECEIVED",
+        "UNAUTHORIZED_TRANSACTION"
+      ]
+    },
+    "supplementary_data": {
+      "related_ids": {
+        "order_id": "6XX99734C4618040C"
+      }
+    },
+    "payee": {
+      "email_address": "sb-e6j1d53656743@business.example.com",
+      "merchant_id": "A4WCRYD5EYDF2"
+    },
+    "expiration_time": "2026-12-07T17:46:14Z",
+    "create_time": "2026-11-08T17:46:14Z",
+    "update_time": "2026-11-08T17:50:40Z",
+    "links": [
+      {
+        "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/2YE949500W649811X",
+        "rel": "self",
+        "method": "GET"
+      },
+      {
+        "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/2YE949500W649811X/capture",
+        "rel": "capture",
+        "method": "POST"
+      },
+      {
+        "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/2YE949500W649811X/void",
+        "rel": "void",
+        "method": "POST"
+      },
+      {
+        "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/2YE949500W649811X/reauthorize",
+        "rel": "reauthorize",
+        "method": "POST"
+      },
+      {
+        "href": "https://api.sandbox.paypal.com/v2/checkout/orders/6XX99734C4618040C",
+        "rel": "up",
+        "method": "GET"
+      }
+    ]
+  },
+  "order": {
+    "id": "6XX99734C4618040C",
+    "intent": "AUTHORIZE",
+    "status": "COMPLETED",
+    "update_time": "2026-11-08T17:50:40Z",
+    "purchase_units": [
+      {
+        "reference_id": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "amount": {
+          "currency_code": "USD",
+          "value": "100.00",
+          "breakdown": {}
+        },
+        "payee": {
+          "email_address": "sb-e6j1d53656743@business.example.com",
+          "merchant_id": "A4WCRYD5EYDF2"
+        },
+        "description": "Agent purchases under Keelson mandate 01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "custom_id": "ks1.sm.01JBXG3K5N7Q9R2T4V6W8Y0Z1A.SC4lPIQQS_7hUI1WoHbFiKBE6nmxEfU5sBAD1IV3YDI",
+        "payments": {
+          "authorizations": [
+            {
+              "status": "PARTIALLY_CAPTURED",
+              "id": "2YE949500W649811X",
+              "amount": {
+                "currency_code": "USD",
+                "value": "100.00"
+              },
+              "custom_id": "ks1.sm.01JBXG3K5N7Q9R2T4V6W8Y0Z1A.SC4lPIQQS_7hUI1WoHbFiKBE6nmxEfU5sBAD1IV3YDI",
+              "seller_protection": {
+                "status": "ELIGIBLE",
+                "dispute_categories": [
+                  "ITEM_NOT_RECEIVED",
+                  "UNAUTHORIZED_TRANSACTION"
+                ]
+              },
+              "expiration_time": "2026-12-07T17:46:14Z",
+              "links": [
+                {
+                  "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/2YE949500W649811X",
+                  "rel": "self",
+                  "method": "GET"
+                },
+                {
+                  "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/2YE949500W649811X/capture",
+                  "rel": "capture",
+                  "method": "POST"
+                },
+                {
+                  "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/2YE949500W649811X/void",
+                  "rel": "void",
+                  "method": "POST"
+                },
+                {
+                  "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/2YE949500W649811X/reauthorize",
+                  "rel": "reauthorize",
+                  "method": "POST"
+                },
+                {
+                  "href": "https://api.sandbox.paypal.com/v2/checkout/orders/6XX99734C4618040C",
+                  "rel": "up",
+                  "method": "GET"
+                }
+              ],
+              "create_time": "2026-11-08T17:46:14Z",
+              "update_time": "2026-11-08T17:50:40Z"
+            }
+          ],
+          "captures": [
+            {
+              "id": "6WP42153C7399292K",
+              "status": "COMPLETED",
+              "amount": {
+                "currency_code": "USD",
+                "value": "30.00"
+              },
+              "final_capture": false,
+              "disbursement_mode": "INSTANT",
+              "seller_protection": {
+                "status": "ELIGIBLE",
+                "dispute_categories": [
+                  "ITEM_NOT_RECEIVED",
+                  "UNAUTHORIZED_TRANSACTION"
+                ]
+              },
+              "seller_receivable_breakdown": {
+                "gross_amount": {
+                  "currency_code": "USD",
+                  "value": "30.00"
+                },
+                "paypal_fee": {
+                  "currency_code": "USD",
+                  "value": "1.54"
+                },
+                "net_amount": {
+                  "currency_code": "USD",
+                  "value": "28.46"
+                }
+              },
+              "invoice_id": "KS1-01JBXG3K5N7Q9R2T4V6W8Y0Z1A-01-36HMAE7ZR2Q0SKZ0NY6ETM6N8X",
+              "custom_id": "ks1.sm.01JBXG3K5N7Q9R2T4V6W8Y0Z1A.SC4lPIQQS_7hUI1WoHbFiKBE6nmxEfU5sBAD1IV3YDI",
+              "links": [
+                {
+                  "href": "https://api.sandbox.paypal.com/v2/payments/captures/6WP42153C7399292K",
+                  "rel": "self",
+                  "method": "GET"
+                },
+                {
+                  "href": "https://api.sandbox.paypal.com/v2/payments/captures/6WP42153C7399292K/refund",
+                  "rel": "refund",
+                  "method": "POST"
+                },
+                {
+                  "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/2YE949500W649811X",
+                  "rel": "up",
+                  "method": "GET"
+                }
+              ],
+              "create_time": "2026-11-08T17:50:40Z",
+              "update_time": "2026-11-08T17:50:40Z"
+            }
+          ]
+        }
+      }
+    ],
+    "links": [
+      {
+        "href": "https://api.sandbox.paypal.com/v2/checkout/orders/6XX99734C4618040C",
+        "rel": "self",
+        "method": "GET"
+      }
+    ],
+    "create_time": "2026-11-08T17:46:14Z"
+  }
+}

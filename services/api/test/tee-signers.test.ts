@@ -54,6 +54,19 @@ describe.skipIf(!live)("tee signers (live legs)", { timeout: 60_000 }, () => {
     });
   });
 
+  test("a signer of another build listed for a rotation is admitted, any other is refused", async () => {
+    const elsewhere = { engineBuildId: `0x${"00".repeat(32)}`, measurements: ["tdx:00"] } as const;
+    const { engineBuildId, measurements } = tee.expect.a;
+    const rotating = { ...tee.expect.a, ...elsewhere, rotation: [{ engineBuildId, measurements }] };
+    const admitted = await registerLeg(testDb, "a", tee.client.a, rotating);
+    expect(measurements).toContain(admitted.measurement);
+
+    const unlisted = { ...tee.expect.a, ...elsewhere, rotation: [elsewhere] };
+    await expect(registerLeg(testDb, "a", tee.client.a, unlisted)).rejects.toMatchObject({
+      code: "binding_mismatch",
+    });
+  });
+
   test("leg b is not admitted when no issuer pin is available", async () => {
     const { issuerJwkThumbprint: _pin, ...unpinned } = tee.expect.b;
     const [a] = await testDb.select().from(teeSigners).where(eq(teeSigners.teeKind, 1));
