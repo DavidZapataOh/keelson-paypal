@@ -10,6 +10,7 @@ import { createApp } from "./app.ts";
 import { createAuth } from "./auth.ts";
 import { createChannel3 } from "./channel3/client.ts";
 import { parseEnv } from "./env.ts";
+import { startHoldMaintenance } from "./hold/maintenance.ts";
 import { createKv } from "./kv.ts";
 import { createLogger } from "./logger.ts";
 import { authenticate } from "./middleware/auth.ts";
@@ -101,6 +102,7 @@ const app = createApp({
 
 const stopRefresh = tee ? startSignerRefresh({ db, log, tee }) : undefined;
 const stopSweeper = tee ? startPurchaseSweeper({ db, log }) : undefined;
+const stopHolds = startHoldMaintenance({ db, kv, log, paypal });
 const stopReconciler = relayer?.startReconciler();
 const stopValidations = relayer
   ? startValidationSweeper({ db, kv, log, relayer, chain: chains[arbitrumSepolia.id] })
@@ -118,6 +120,7 @@ process.once("SIGTERM", () => {
   }, FORCE_EXIT_MS).unref();
   stopRefresh?.();
   stopSweeper?.();
+  stopHolds();
   stopReconciler?.();
   stopValidations?.();
   void closeServer(server, shutdown)

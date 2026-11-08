@@ -284,6 +284,26 @@ components:
       required:
         - orderId
       description: The order the buyer approved.
+    RevokedMandate:
+      type: object
+      properties:
+        state:
+          type: string
+          enum:
+            - REVOKED
+      required:
+        - state
+    RevokingMandate:
+      type: object
+      properties:
+        state:
+          type: string
+          enum:
+            - REVOKING
+      required:
+        - state
+      description: Purchases already countersigned may still be captured; the hold is
+        voided after them.
     CompiledMandate:
       type: object
       properties:
@@ -2415,6 +2435,71 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "422":
           description: The authorization does not match the mandate, or PayPal refused
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: PayPal is unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/mandates/{id}/revoke:
+    post:
+      tags:
+        - mandates
+      summary: Revoke a mandate
+      description: Stops new countersigns at once, voids the PayPal hold and moves the
+        mandate to `REVOKED`. While a countersigned purchase may still be
+        captured, the void waits for it and the revocation completes in the
+        background.
+      parameters:
+        - schema:
+            type: string
+          required: true
+          name: id
+          in: path
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      responses:
+        "200":
+          description: The mandate is revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevokedMandate"
+        "202":
+          description: The mandate is being revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevokingMandate"
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: No such mandate for this user
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: The mandate has already ended
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: PayPal refused the void
           content:
             application/problem+json:
               schema:

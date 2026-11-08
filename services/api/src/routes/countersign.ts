@@ -385,7 +385,12 @@ export function registerCountersign(
       where: (row, { eq }) => eq(row.id, ids.mid),
     });
     if (!mandate) return problem(c, 404, "not-found", "Not found");
-    if (!USABLE.has(mandate.state) || !mandate.openMandate || !mandate.mandateHash) {
+    if (
+      !USABLE.has(mandate.state) ||
+      mandate.revokeRequestedAt !== null ||
+      !mandate.openMandate ||
+      !mandate.mandateHash
+    ) {
       return problem(
         c,
         409,

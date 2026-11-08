@@ -1,27 +1,17 @@
 import { randomBytes } from "node:crypto";
 import { toPayPalValue } from "@keelson/core";
-import { eq, events, mandates } from "@keelson/db";
-import { holdCustomId, holdOrderRequest, ids, PayPalError } from "@keelson/paypal";
-import { approveOrder, CANCEL_URL, payerActionUrl, RETURN_URL } from "@keelson/paypal/testing";
+import { eq, events } from "@keelson/db";
+import { holdCustomId, holdOrderRequest } from "@keelson/paypal";
+import { CANCEL_URL, RETURN_URL } from "@keelson/paypal/testing";
 import { pino } from "pino";
-import { ulid } from "ulid";
-import { afterAll, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { createApp } from "../src/app.ts";
-import { call, createPayPalDeps } from "../src/paypal.ts";
+import { call } from "../src/paypal.ts";
 import { principalChannel } from "../src/principal.ts";
+import { APP_ORIGIN, holdHarness, row, STORE, sandbox } from "./hold-live.ts";
 import { testDb, testKv } from "./setup.ts";
-import {
-  asUser,
-  headerPrincipal,
-  live,
-  SoftwarePasskey,
-  seedUser,
-  signedMandate,
-} from "./tee-live.ts";
+import { asUser, headerPrincipal, live } from "./tee-live.ts";
 
-const APP_ORIGIN = "https://app.keelson.finance";
-/** The demo store: the account whose credentials create and capture holds. */
-const STORE = "A4WCRYD5EYDF2";
 const BUDGET = 10_000n;
 
 const percentile = (xs: number[], p: number) => {
@@ -72,15 +62,6 @@ class Sse {
   }
 }
 
-/** The sandbox client of the demo store; built only when the live suites run. */
-const sandbox = () =>
-  createPayPalDeps({
-    PAYPAL_CLIENT_ID: process.env.PAYPAL_CLIENT_ID as string,
-    PAYPAL_CLIENT_SECRET: process.env.PAYPAL_CLIENT_SECRET as string,
-    PAYPAL_ENV: "sandbox",
-    PAYPAL_MERCHANT_ID: STORE,
-  });
-
 describe.skipIf(!live)("mandate hold (live sandbox)", { timeout: 300_000 }, () => {
   const paypal = live ? sandbox() : (undefined as never);
   const app = createApp({
@@ -92,58 +73,7 @@ describe.skipIf(!live)("mandate hold (live sandbox)", { timeout: 300_000 }, () =
     paypal,
     requestTimeoutMs: 60_000,
   });
-  const passkeys: SoftwarePasskey[] = [];
-  afterAll(async () => {
-    await Promise.all(passkeys.map((p) => p.close()));
-  });
-
-  const post = (path: string, sub: string, body?: unknown, key = ulid()) =>
-    app.request(path, {
-      method: "POST",
-      headers: { "content-type": "application/json", "idempotency-key": key, ...asUser(sub) },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
-
-  /** A new user with a passkey, and the mandate they signed (after `edit`), stored as SIGNED. */
-  const signed = async (edit?: Parameters<typeof signedMandate>[3]) => {
-    const passkey = await SoftwarePasskey.create();
-    passkeys.push(passkey);
-    const sub = `kls_usr_${randomBytes(8).toString("hex")}`;
-    await seedUser(testDb, passkey, sub);
-    const mandate = await signedMandate(passkey, sub, undefined, (m) => {
-      m.mid = ulid();
-      edit?.(m);
-    });
-    const res = await post("/v1/mandates", sub, mandate.body);
-    const body = (await res.json()) as { id: string; mandateHash: string };
-    expect(res.status, JSON.stringify(body)).toBe(201);
-    return { sub, mid: body.id, mandateHash: Buffer.from(body.mandateHash.slice(2), "hex") };
-  };
-
-  const hold = async (sub: string, mid: string, key?: string) => {
-    const res = await post(`/v1/mandates/${mid}/hold`, sub, undefined, key);
-    return { status: res.status, body: (await res.json()) as Record<string, unknown> };
-  };
-  const authorize = async (sub: string, mid: string, orderId: string) => {
-    const res = await post(`/v1/mandates/${mid}/hold/authorize`, sub, { orderId });
-    return { status: res.status, body: (await res.json()) as Record<string, unknown> };
-  };
-  const row = async (mid: string) =>
-    (await testDb.select().from(mandates).where(eq(mandates.id, mid)))[0];
-
-  /** Voids an authorization left open; one already voided or captured is fine. */
-  const release = async (authorizationId: string | null | undefined) => {
-    if (!authorizationId) return;
-    await call(
-      paypal.paypal.payments.voidPayment({
-        authorizationId,
-        paypalRequestId: ids.operationRequestId(authorizationId, "void"),
-      }),
-    ).catch((e: unknown) => {
-      if (!(e instanceof PayPalError)) throw e;
-      console.info(`void ${authorizationId}: ${e.details[0]?.issue ?? e.name}`);
-    });
-  };
+  const { signed, hold, authorize, revoke, approve, release } = holdHarness(app, paypal);
 
   test("a signed mandate is held, approved by the buyer and authorized to ACTIVE", async () => {
     const { sub, mid, mandateHash } = await signed();
@@ -177,7 +107,7 @@ describe.skipIf(!live)("mandate hold (live sandbox)", { timeout: 300_000 }, () =
         orderId,
       });
 
-      await approveOrder(payerActionUrl(order), `${APP_ORIGIN}/mandates/${mid}`);
+      await approve(orderId, mid);
       const done = await authorize(sub, mid, orderId);
       expect(done.status, JSON.stringify(done.body)).toBe(200);
       expect(done.body.state).toBe("ACTIVE");
@@ -278,8 +208,7 @@ describe.skipIf(!live)("mandate hold (live sandbox)", { timeout: 300_000 }, () =
     const published = await testDb.select().from(events).where(eq(events.subjectId, mid));
     expect(published.map((e) => (e.payload as { state: string }).state)).toEqual(["HOLD_PENDING"]);
 
-    const order = await call(paypal.paypal.orders.getOrder({ id: orderId as string }));
-    await approveOrder(payerActionUrl(order), `${APP_ORIGIN}/mandates/${mid}`);
+    await approve(orderId as string, mid);
     const again = await hold(sub, mid);
     expect(again).toEqual({ status: 200, body: { orderId, state: "HOLD_PENDING" } });
   });
@@ -295,7 +224,7 @@ describe.skipIf(!live)("mandate hold (live sandbox)", { timeout: 300_000 }, () =
   });
 
   test.skipIf(process.env.KEELSON_BUDGETS !== "1")(
-    "latency: create, authorize and void over 10 holds",
+    "latency: create, authorize and revoke over 10 holds",
     { timeout: 900_000 },
     async () => {
       const create: number[] = [];
@@ -308,23 +237,23 @@ describe.skipIf(!live)("mandate hold (live sandbox)", { timeout: 300_000 }, () =
         create.push(performance.now() - t);
         expect(held.status).toBe(200);
         const orderId = held.body.orderId as string;
-        const order = await call(paypal.paypal.orders.getOrder({ id: orderId }));
-        await approveOrder(payerActionUrl(order), `${APP_ORIGIN}/mandates/${mid}`);
+        await approve(orderId, mid);
         t = performance.now();
         const done = await authorize(sub, mid, orderId);
         authorizeMs.push(performance.now() - t);
         expect(done.status).toBe(200);
         const authorizationId = done.body.authorizationId as string;
         t = performance.now();
-        await release(authorizationId);
+        const revoked = await revoke(sub, mid);
         voids.push(performance.now() - t);
+        expect(revoked).toEqual({ status: 200, body: { state: "REVOKED" } });
         console.info(`run ${i}: order ${orderId} authorization ${authorizationId}`);
       }
       const fmt = (xs: number[]) =>
         `p50 ${Math.round(percentile(xs, 50))} ms, p95 ${Math.round(percentile(xs, 95))} ms`;
       console.info(`POST /hold: ${fmt(create)}`);
       console.info(`POST /hold/authorize: ${fmt(authorizeMs)}`);
-      console.info(`void: ${fmt(voids)}`);
+      console.info(`POST /revoke (void of the parent): ${fmt(voids)}`);
     },
   );
 });

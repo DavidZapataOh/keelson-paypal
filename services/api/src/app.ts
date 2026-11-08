@@ -38,6 +38,7 @@ import { registerMerchantsPayout } from "./routes/merchants-payout.ts";
 import { registerObservations } from "./routes/observations.ts";
 import { registerOperators } from "./routes/operators.ts";
 import { registerPasskeys } from "./routes/passkeys.ts";
+import { registerRevoke } from "./routes/revoke.ts";
 import { registerStatus } from "./routes/status.ts";
 import { registerTee } from "./routes/tee.ts";
 import { registerTimestamps } from "./routes/timestamps.ts";
@@ -196,6 +197,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerEvents(app, deps);
   registerMandates(app, deps);
   registerHold(app, deps);
+  registerRevoke(app, deps);
   registerCompile(app, deps);
   registerCountersign(app, deps);
   registerEvidence(app, deps);
