@@ -735,9 +735,36 @@ export const iCheckpointAnchorAbi = [
 export const iERC8004IdentityAbi = [
   {
     type: "function",
+    name: "approve",
+    inputs: [
+      { name: "to", type: "address", internalType: "address" },
+      { name: "agentId", type: "uint256", internalType: "uint256" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
     name: "getAgentWallet",
     inputs: [{ name: "agentId", type: "uint256", internalType: "uint256" }],
     outputs: [{ name: "", type: "address", internalType: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getVersion",
+    inputs: [],
+    outputs: [{ name: "", type: "string", internalType: "string" }],
+    stateMutability: "pure",
+  },
+  {
+    type: "function",
+    name: "isAuthorizedOrOwner",
+    inputs: [
+      { name: "spender", type: "address", internalType: "address" },
+      { name: "agentId", type: "uint256", internalType: "uint256" },
+    ],
+    outputs: [{ name: "", type: "bool", internalType: "bool" }],
     stateMutability: "view",
   },
   {
@@ -756,6 +783,33 @@ export const iERC8004IdentityAbi = [
   },
   {
     type: "function",
+    name: "setAgentURI",
+    inputs: [
+      { name: "agentId", type: "uint256", internalType: "uint256" },
+      { name: "newURI", type: "string", internalType: "string" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "setApprovalForAll",
+    inputs: [
+      { name: "operator", type: "address", internalType: "address" },
+      { name: "approved", type: "bool", internalType: "bool" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "tokenURI",
+    inputs: [{ name: "agentId", type: "uint256", internalType: "uint256" }],
+    outputs: [{ name: "", type: "string", internalType: "string" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
     name: "transferFrom",
     inputs: [
       { name: "from", type: "address", internalType: "address" },
@@ -764,6 +818,177 @@ export const iERC8004IdentityAbi = [
     ],
     outputs: [],
     stateMutability: "nonpayable",
+  },
+] as const;
+
+export const iERC8004ReputationAbi = [
+  {
+    type: "function",
+    name: "getLastIndex",
+    inputs: [
+      { name: "agentId", type: "uint256", internalType: "uint256" },
+      { name: "clientAddress", type: "address", internalType: "address" },
+    ],
+    outputs: [{ name: "", type: "uint64", internalType: "uint64" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getSummary",
+    inputs: [
+      { name: "agentId", type: "uint256", internalType: "uint256" },
+      { name: "clientAddresses", type: "address[]", internalType: "address[]" },
+      { name: "tag1", type: "string", internalType: "string" },
+      { name: "tag2", type: "string", internalType: "string" },
+    ],
+    outputs: [
+      { name: "count", type: "uint64", internalType: "uint64" },
+      { name: "summaryValue", type: "int128", internalType: "int128" },
+      { name: "summaryValueDecimals", type: "uint8", internalType: "uint8" },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getVersion",
+    inputs: [],
+    outputs: [{ name: "", type: "string", internalType: "string" }],
+    stateMutability: "pure",
+  },
+  {
+    type: "function",
+    name: "giveFeedback",
+    inputs: [
+      { name: "agentId", type: "uint256", internalType: "uint256" },
+      { name: "value", type: "int128", internalType: "int128" },
+      { name: "valueDecimals", type: "uint8", internalType: "uint8" },
+      { name: "tag1", type: "string", internalType: "string" },
+      { name: "tag2", type: "string", internalType: "string" },
+      { name: "endpoint", type: "string", internalType: "string" },
+      { name: "feedbackURI", type: "string", internalType: "string" },
+      { name: "feedbackHash", type: "bytes32", internalType: "bytes32" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "readFeedback",
+    inputs: [
+      { name: "agentId", type: "uint256", internalType: "uint256" },
+      { name: "clientAddress", type: "address", internalType: "address" },
+      { name: "feedbackIndex", type: "uint64", internalType: "uint64" },
+    ],
+    outputs: [
+      { name: "value", type: "int128", internalType: "int128" },
+      { name: "valueDecimals", type: "uint8", internalType: "uint8" },
+      { name: "tag1", type: "string", internalType: "string" },
+      { name: "tag2", type: "string", internalType: "string" },
+      { name: "isRevoked", type: "bool", internalType: "bool" },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "event",
+    name: "NewFeedback",
+    inputs: [
+      { name: "agentId", type: "uint256", indexed: true, internalType: "uint256" },
+      { name: "clientAddress", type: "address", indexed: true, internalType: "address" },
+      { name: "feedbackIndex", type: "uint64", indexed: false, internalType: "uint64" },
+      { name: "value", type: "int128", indexed: false, internalType: "int128" },
+      { name: "valueDecimals", type: "uint8", indexed: false, internalType: "uint8" },
+      { name: "indexedTag1", type: "string", indexed: true, internalType: "string" },
+      { name: "tag1", type: "string", indexed: false, internalType: "string" },
+      { name: "tag2", type: "string", indexed: false, internalType: "string" },
+      { name: "endpoint", type: "string", indexed: false, internalType: "string" },
+      { name: "feedbackURI", type: "string", indexed: false, internalType: "string" },
+      { name: "feedbackHash", type: "bytes32", indexed: false, internalType: "bytes32" },
+    ],
+    anonymous: false,
+  },
+] as const;
+
+export const iERC8004ValidationAbi = [
+  {
+    type: "function",
+    name: "getAgentValidations",
+    inputs: [{ name: "agentId", type: "uint256", internalType: "uint256" }],
+    outputs: [{ name: "", type: "bytes32[]", internalType: "bytes32[]" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getIdentityRegistry",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getSummary",
+    inputs: [
+      { name: "agentId", type: "uint256", internalType: "uint256" },
+      { name: "validatorAddresses", type: "address[]", internalType: "address[]" },
+      { name: "tag", type: "string", internalType: "string" },
+    ],
+    outputs: [
+      { name: "count", type: "uint64", internalType: "uint64" },
+      { name: "avgResponse", type: "uint8", internalType: "uint8" },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getValidationStatus",
+    inputs: [{ name: "requestHash", type: "bytes32", internalType: "bytes32" }],
+    outputs: [
+      { name: "validatorAddress", type: "address", internalType: "address" },
+      { name: "agentId", type: "uint256", internalType: "uint256" },
+      { name: "response", type: "uint8", internalType: "uint8" },
+      { name: "responseHash", type: "bytes32", internalType: "bytes32" },
+      { name: "tag", type: "string", internalType: "string" },
+      { name: "lastUpdate", type: "uint256", internalType: "uint256" },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getValidatorRequests",
+    inputs: [{ name: "validatorAddress", type: "address", internalType: "address" }],
+    outputs: [{ name: "", type: "bytes32[]", internalType: "bytes32[]" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getVersion",
+    inputs: [],
+    outputs: [{ name: "", type: "string", internalType: "string" }],
+    stateMutability: "pure",
+  },
+  {
+    type: "event",
+    name: "ValidationRequest",
+    inputs: [
+      { name: "validatorAddress", type: "address", indexed: true, internalType: "address" },
+      { name: "agentId", type: "uint256", indexed: true, internalType: "uint256" },
+      { name: "requestURI", type: "string", indexed: false, internalType: "string" },
+      { name: "requestHash", type: "bytes32", indexed: true, internalType: "bytes32" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "ValidationResponse",
+    inputs: [
+      { name: "validatorAddress", type: "address", indexed: true, internalType: "address" },
+      { name: "agentId", type: "uint256", indexed: true, internalType: "uint256" },
+      { name: "requestHash", type: "bytes32", indexed: true, internalType: "bytes32" },
+      { name: "response", type: "uint8", indexed: false, internalType: "uint8" },
+      { name: "responseURI", type: "string", indexed: false, internalType: "string" },
+      { name: "responseHash", type: "bytes32", indexed: false, internalType: "bytes32" },
+      { name: "tag", type: "string", indexed: false, internalType: "string" },
+    ],
+    anonymous: false,
   },
 ] as const;
 
@@ -1622,6 +1847,142 @@ export const iKeelsonReserveAbi = [
   { type: "error", name: "ZeroAmount", inputs: [] },
 ] as const;
 
+export const iKeelsonValidationRegistryAbi = [
+  {
+    type: "function",
+    name: "getAgentValidations",
+    inputs: [{ name: "agentId", type: "uint256", internalType: "uint256" }],
+    outputs: [{ name: "", type: "bytes32[]", internalType: "bytes32[]" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getIdentityRegistry",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getSummary",
+    inputs: [
+      { name: "agentId", type: "uint256", internalType: "uint256" },
+      { name: "validatorAddresses", type: "address[]", internalType: "address[]" },
+      { name: "tag", type: "string", internalType: "string" },
+    ],
+    outputs: [
+      { name: "count", type: "uint64", internalType: "uint64" },
+      { name: "avgResponse", type: "uint8", internalType: "uint8" },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getValidationStatus",
+    inputs: [{ name: "requestHash", type: "bytes32", internalType: "bytes32" }],
+    outputs: [
+      { name: "validatorAddress", type: "address", internalType: "address" },
+      { name: "agentId", type: "uint256", internalType: "uint256" },
+      { name: "response", type: "uint8", internalType: "uint8" },
+      { name: "responseHash", type: "bytes32", internalType: "bytes32" },
+      { name: "tag", type: "string", internalType: "string" },
+      { name: "lastUpdate", type: "uint256", internalType: "uint256" },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getValidatorRequests",
+    inputs: [{ name: "validatorAddress", type: "address", internalType: "address" }],
+    outputs: [{ name: "", type: "bytes32[]", internalType: "bytes32[]" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getVersion",
+    inputs: [],
+    outputs: [{ name: "", type: "string", internalType: "string" }],
+    stateMutability: "pure",
+  },
+  {
+    type: "function",
+    name: "recordCountersign",
+    inputs: [
+      {
+        name: "c",
+        type: "tuple",
+        internalType: "struct KeelsonTypes.Countersign",
+        components: [
+          { name: "requestId", type: "bytes32", internalType: "bytes32" },
+          { name: "mandateHash", type: "bytes32", internalType: "bytes32" },
+          { name: "mandateCommitment", type: "bytes32", internalType: "bytes32" },
+          { name: "cartHash", type: "bytes32", internalType: "bytes32" },
+          { name: "agentId", type: "uint256", internalType: "uint256" },
+          { name: "merchantId", type: "bytes32", internalType: "bytes32" },
+          { name: "amount", type: "uint64", internalType: "uint64" },
+          { name: "currency", type: "uint16", internalType: "uint16" },
+          { name: "category", type: "uint8", internalType: "uint8" },
+          { name: "evidenceRoot", type: "bytes32", internalType: "bytes32" },
+          { name: "evalHash", type: "bytes32", internalType: "bytes32" },
+          { name: "policySetHash", type: "bytes32", internalType: "bytes32" },
+          { name: "decision", type: "uint8", internalType: "uint8" },
+          { name: "failedFieldsMask", type: "uint32", internalType: "uint32" },
+          { name: "issuedAt", type: "uint40", internalType: "uint40" },
+          { name: "expiresAt", type: "uint40", internalType: "uint40" },
+        ],
+      },
+      { name: "sigs", type: "bytes", internalType: "bytes" },
+    ],
+    outputs: [{ name: "requestHash", type: "bytes32", internalType: "bytes32" }],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "recordOutcome",
+    inputs: [{ name: "coverageId", type: "bytes32", internalType: "bytes32" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "requestOf",
+    inputs: [{ name: "coverageId", type: "bytes32", internalType: "bytes32" }],
+    outputs: [{ name: "", type: "bytes32", internalType: "bytes32" }],
+    stateMutability: "view",
+  },
+  {
+    type: "event",
+    name: "ValidationRequest",
+    inputs: [
+      { name: "validatorAddress", type: "address", indexed: true, internalType: "address" },
+      { name: "agentId", type: "uint256", indexed: true, internalType: "uint256" },
+      { name: "requestURI", type: "string", indexed: false, internalType: "string" },
+      { name: "requestHash", type: "bytes32", indexed: true, internalType: "bytes32" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "ValidationResponse",
+    inputs: [
+      { name: "validatorAddress", type: "address", indexed: true, internalType: "address" },
+      { name: "agentId", type: "uint256", indexed: true, internalType: "uint256" },
+      { name: "requestHash", type: "bytes32", indexed: true, internalType: "bytes32" },
+      { name: "response", type: "uint8", indexed: false, internalType: "uint8" },
+      { name: "responseURI", type: "string", indexed: false, internalType: "string" },
+      { name: "responseHash", type: "bytes32", indexed: false, internalType: "bytes32" },
+      { name: "tag", type: "string", indexed: false, internalType: "string" },
+    ],
+    anonymous: false,
+  },
+  { type: "error", name: "InvalidCountersign", inputs: [] },
+  { type: "error", name: "NotCovered", inputs: [] },
+  { type: "error", name: "OutcomeNotFinal", inputs: [] },
+  { type: "error", name: "OutcomeRecorded", inputs: [] },
+  { type: "error", name: "UnknownValidation", inputs: [] },
+  { type: "error", name: "ValidationExists", inputs: [] },
+] as const;
+
 export const iNitroValidatorAbi = [
   {
     type: "function",
@@ -1763,6 +2124,16 @@ export const iPYUSDAbi = [
       { name: "value", type: "uint256", indexed: false, internalType: "uint256" },
     ],
     anonymous: false,
+  },
+] as const;
+
+export const iPendingSlashesAbi = [
+  {
+    type: "function",
+    name: "pendingSlashes",
+    inputs: [{ name: "agentId", type: "uint256", internalType: "uint256" }],
+    outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
+    stateMutability: "view",
   },
 ] as const;
 
@@ -3003,6 +3374,110 @@ export const keelsonDeployerAbi = [
   { type: "error", name: "Unauthorized", inputs: [] },
 ] as const;
 
+export const keelsonReputationReporterAbi = [
+  {
+    type: "constructor",
+    inputs: [
+      { name: "vault_", type: "address", internalType: "contract IKeelsonBondVault" },
+      { name: "reputation_", type: "address", internalType: "contract IERC8004Reputation" },
+    ],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "FEEDBACK_BASE_URI",
+    inputs: [],
+    outputs: [{ name: "", type: "string", internalType: "string" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "REPUTATION_GAS",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "TAG",
+    inputs: [],
+    outputs: [{ name: "", type: "string", internalType: "string" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "VALUE_DECIMALS",
+    inputs: [],
+    outputs: [{ name: "", type: "uint8", internalType: "uint8" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "feedbackURI",
+    inputs: [{ name: "coverageId", type: "bytes32", internalType: "bytes32" }],
+    outputs: [{ name: "", type: "string", internalType: "string" }],
+    stateMutability: "pure",
+  },
+  {
+    type: "function",
+    name: "rateCoverage",
+    inputs: [{ name: "coverageId", type: "bytes32", internalType: "bytes32" }],
+    outputs: [{ name: "given", type: "bool", internalType: "bool" }],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "rated",
+    inputs: [{ name: "coverageId", type: "bytes32", internalType: "bytes32" }],
+    outputs: [{ name: "", type: "bool", internalType: "bool" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "reputation",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "contract IERC8004Reputation" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "vault",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "contract IKeelsonBondVault" }],
+    stateMutability: "view",
+  },
+  {
+    type: "event",
+    name: "CoverageRated",
+    inputs: [
+      { name: "coverageId", type: "bytes32", indexed: true, internalType: "bytes32" },
+      { name: "agentId", type: "uint256", indexed: true, internalType: "uint256" },
+      { name: "value", type: "int128", indexed: false, internalType: "int128" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "FeedbackSkipped",
+    inputs: [
+      { name: "agentId", type: "uint256", indexed: true, internalType: "uint256" },
+      { name: "coverageId", type: "bytes32", indexed: true, internalType: "bytes32" },
+    ],
+    anonymous: false,
+  },
+  { type: "error", name: "AlreadyRated", inputs: [] },
+  { type: "error", name: "InsufficientGas", inputs: [] },
+  { type: "error", name: "OutcomeNotFinal", inputs: [] },
+  {
+    type: "error",
+    name: "StringsInsufficientHexLength",
+    inputs: [
+      { name: "value", type: "uint256", internalType: "uint256" },
+      { name: "length", type: "uint256", internalType: "uint256" },
+    ],
+  },
+] as const;
+
 export const keelsonReserveAbi = [
   {
     type: "constructor",
@@ -3669,6 +4144,194 @@ export const keelsonReserveAbi = [
   { type: "error", name: "UnknownCoverage", inputs: [] },
   { type: "error", name: "WarrantyWindowClosed", inputs: [] },
   { type: "error", name: "ZeroAmount", inputs: [] },
+] as const;
+
+export const keelsonValidationRegistryAbi = [
+  {
+    type: "constructor",
+    inputs: [
+      { name: "identity_", type: "address", internalType: "contract IERC8004Identity" },
+      { name: "verifier_", type: "address", internalType: "contract IVerdictVerifier" },
+      { name: "vault_", type: "address", internalType: "contract IKeelsonBondVault" },
+    ],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "REQUEST_BASE_URI",
+    inputs: [],
+    outputs: [{ name: "", type: "string", internalType: "string" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getAgentValidations",
+    inputs: [{ name: "agentId", type: "uint256", internalType: "uint256" }],
+    outputs: [{ name: "", type: "bytes32[]", internalType: "bytes32[]" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getIdentityRegistry",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getSummary",
+    inputs: [
+      { name: "agentId", type: "uint256", internalType: "uint256" },
+      { name: "validatorAddresses", type: "address[]", internalType: "address[]" },
+      { name: "tag", type: "string", internalType: "string" },
+    ],
+    outputs: [
+      { name: "count", type: "uint64", internalType: "uint64" },
+      { name: "avgResponse", type: "uint8", internalType: "uint8" },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getValidationStatus",
+    inputs: [{ name: "requestHash", type: "bytes32", internalType: "bytes32" }],
+    outputs: [
+      { name: "validatorAddress", type: "address", internalType: "address" },
+      { name: "agentId", type: "uint256", internalType: "uint256" },
+      { name: "response", type: "uint8", internalType: "uint8" },
+      { name: "responseHash", type: "bytes32", internalType: "bytes32" },
+      { name: "tag", type: "string", internalType: "string" },
+      { name: "lastUpdate", type: "uint256", internalType: "uint256" },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getValidatorRequests",
+    inputs: [{ name: "validatorAddress", type: "address", internalType: "address" }],
+    outputs: [{ name: "", type: "bytes32[]", internalType: "bytes32[]" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getVersion",
+    inputs: [],
+    outputs: [{ name: "", type: "string", internalType: "string" }],
+    stateMutability: "pure",
+  },
+  {
+    type: "function",
+    name: "identity",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "contract IERC8004Identity" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "outcomeRecorded",
+    inputs: [{ name: "coverageId", type: "bytes32", internalType: "bytes32" }],
+    outputs: [{ name: "", type: "bool", internalType: "bool" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "recordCountersign",
+    inputs: [
+      {
+        name: "c",
+        type: "tuple",
+        internalType: "struct KeelsonTypes.Countersign",
+        components: [
+          { name: "requestId", type: "bytes32", internalType: "bytes32" },
+          { name: "mandateHash", type: "bytes32", internalType: "bytes32" },
+          { name: "mandateCommitment", type: "bytes32", internalType: "bytes32" },
+          { name: "cartHash", type: "bytes32", internalType: "bytes32" },
+          { name: "agentId", type: "uint256", internalType: "uint256" },
+          { name: "merchantId", type: "bytes32", internalType: "bytes32" },
+          { name: "amount", type: "uint64", internalType: "uint64" },
+          { name: "currency", type: "uint16", internalType: "uint16" },
+          { name: "category", type: "uint8", internalType: "uint8" },
+          { name: "evidenceRoot", type: "bytes32", internalType: "bytes32" },
+          { name: "evalHash", type: "bytes32", internalType: "bytes32" },
+          { name: "policySetHash", type: "bytes32", internalType: "bytes32" },
+          { name: "decision", type: "uint8", internalType: "uint8" },
+          { name: "failedFieldsMask", type: "uint32", internalType: "uint32" },
+          { name: "issuedAt", type: "uint40", internalType: "uint40" },
+          { name: "expiresAt", type: "uint40", internalType: "uint40" },
+        ],
+      },
+      { name: "sigs", type: "bytes", internalType: "bytes" },
+    ],
+    outputs: [{ name: "requestHash", type: "bytes32", internalType: "bytes32" }],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "recordOutcome",
+    inputs: [{ name: "coverageId", type: "bytes32", internalType: "bytes32" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "requestOf",
+    inputs: [{ name: "coverageId", type: "bytes32", internalType: "bytes32" }],
+    outputs: [{ name: "", type: "bytes32", internalType: "bytes32" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "vault",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "contract IKeelsonBondVault" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "verifier",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "contract IVerdictVerifier" }],
+    stateMutability: "view",
+  },
+  {
+    type: "event",
+    name: "ValidationRequest",
+    inputs: [
+      { name: "validatorAddress", type: "address", indexed: true, internalType: "address" },
+      { name: "agentId", type: "uint256", indexed: true, internalType: "uint256" },
+      { name: "requestURI", type: "string", indexed: false, internalType: "string" },
+      { name: "requestHash", type: "bytes32", indexed: true, internalType: "bytes32" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "ValidationResponse",
+    inputs: [
+      { name: "validatorAddress", type: "address", indexed: true, internalType: "address" },
+      { name: "agentId", type: "uint256", indexed: true, internalType: "uint256" },
+      { name: "requestHash", type: "bytes32", indexed: true, internalType: "bytes32" },
+      { name: "response", type: "uint8", indexed: false, internalType: "uint8" },
+      { name: "responseURI", type: "string", indexed: false, internalType: "string" },
+      { name: "responseHash", type: "bytes32", indexed: false, internalType: "bytes32" },
+      { name: "tag", type: "string", indexed: false, internalType: "string" },
+    ],
+    anonymous: false,
+  },
+  { type: "error", name: "InvalidCountersign", inputs: [] },
+  { type: "error", name: "NotCovered", inputs: [] },
+  { type: "error", name: "OutcomeNotFinal", inputs: [] },
+  { type: "error", name: "OutcomeRecorded", inputs: [] },
+  {
+    type: "error",
+    name: "StringsInsufficientHexLength",
+    inputs: [
+      { name: "value", type: "uint256", internalType: "uint256" },
+      { name: "length", type: "uint256", internalType: "uint256" },
+    ],
+  },
+  { type: "error", name: "UnknownValidation", inputs: [] },
+  { type: "error", name: "ValidationExists", inputs: [] },
 ] as const;
 
 export const nitroDocumentAbi = [
