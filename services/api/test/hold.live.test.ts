@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { toPayPalValue } from "@keelson/core";
-import { eq, events } from "@keelson/db";
+import { eq, events, transition } from "@keelson/db";
 import { holdCustomId, holdOrderRequest } from "@keelson/paypal";
 import { CANCEL_URL, RETURN_URL } from "@keelson/paypal/testing";
 import { pino } from "pino";
@@ -8,7 +8,7 @@ import { describe, expect, test } from "vitest";
 import { createApp } from "../src/app.ts";
 import { call } from "../src/paypal.ts";
 import { principalChannel } from "../src/principal.ts";
-import { APP_ORIGIN, holdHarness, row, STORE, sandbox } from "./hold-live.ts";
+import { APP_ORIGIN, afterAuthorize, holdHarness, row, STORE, sandbox } from "./hold-live.ts";
 import { testDb, testKv } from "./setup.ts";
 import { asUser, headerPrincipal, live } from "./tee-live.ts";
 
@@ -153,6 +153,43 @@ describe.skipIf(!live)("mandate hold (live sandbox)", { timeout: 300_000 }, () =
       expect((await hold(sub, mid)).status).toBe(409);
     } finally {
       await sse.close();
+      await release(authorizationId);
+    }
+  });
+
+  test("an authorization that lands after the mandate was revoked is voided", async () => {
+    const { sub, mid } = await signed();
+    const racing = createApp({
+      db: testDb,
+      kv: testKv,
+      log: pino({ level: "silent" }),
+      appOrigin: APP_ORIGIN,
+      authenticate: headerPrincipal,
+      paypal: afterAuthorize(paypal, async () => {
+        await transition(testDb, "mandates", mid, "HOLD_PENDING", "REVOKED");
+      }),
+      requestTimeoutMs: 60_000,
+    });
+    const held = await hold(sub, mid);
+    expect(held.status, JSON.stringify(held.body)).toBe(200);
+    const orderId = held.body.orderId as string;
+    await approve(orderId, mid);
+    const order = await call(paypal.paypal.orders.getOrder({ id: orderId }));
+    let authorizationId: string | undefined;
+    try {
+      const res = await holdHarness(racing, paypal).authorize(sub, mid, orderId);
+      authorizationId = (await call(paypal.paypal.orders.getOrder({ id: orderId })))
+        .purchaseUnits?.[0]?.payments?.authorizations?.[0]?.id;
+      console.info(`order ${order.id} authorization ${authorizationId}`);
+      expect(res.status, JSON.stringify(res.body)).toBe(409);
+      expect(res.body.type).toMatch(/hold-not-pending$/);
+      expect(authorizationId).toBeDefined();
+      const auth = await call(
+        paypal.paypal.payments.getAuthorizedPayment({ authorizationId: authorizationId as string }),
+      );
+      expect(auth.status).toBe("VOIDED");
+      expect((await row(mid))?.state).toBe("REVOKED");
+    } finally {
       await release(authorizationId);
     }
   });

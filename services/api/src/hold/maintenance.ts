@@ -1,4 +1,4 @@
-import { toPayPalValue } from "@keelson/core";
+import { type CurrencyCode, fromPayPalValue, toPayPalValue } from "@keelson/core";
 import {
   and,
   type Db,
@@ -36,9 +36,12 @@ const MAINTENANCE_INTERVAL_MS = 600_000;
 /** A countersigned purchase may be captured until its countersign expires. */
 const IN_FLIGHT_MS = 900_000;
 
-/** Purchase states in which a capture against the hold may still follow. */
-const IN_FLIGHT = ["COUNTERSIGNED", "LOGGED", "COVERED"] as const;
+/** Purchase states in which a countersign, and then a capture against the hold, may still follow. */
+const IN_FLIGHT = ["PROPOSED", "EVALUATING", "COUNTERSIGNED", "LOGGED", "COVERED"] as const;
 const LIVE = ["HOLD_PENDING", "ACTIVE"] as const;
+const ENDED = ["EXHAUSTED", "EXPIRED", "REVOKED"] as const;
+/** Captures that count against the budget. */
+const CAPTURED = new Set(["COMPLETED", "PENDING"]);
 /** Authorization states PayPal reaches when an authorization is voided or lapses. */
 const GONE = new Set<string>(["VOIDED", "EXPIRED"]);
 /** Authorization states in which nothing is held any more. */
@@ -72,7 +75,10 @@ async function inFlight(db: Db, mandateId: string, now: Date): Promise<boolean> 
 }
 
 /** Voids `authorizationId`; resolves to `false` when PayPal had already released it. */
-async function voidAuthorization(paypal: PayPalDeps, authorizationId: string): Promise<boolean> {
+export async function voidAuthorization(
+  paypal: PayPalDeps,
+  authorizationId: string,
+): Promise<boolean> {
   try {
     await call(
       paypal.paypal.payments.voidPayment({
@@ -87,11 +93,58 @@ async function voidAuthorization(paypal: PayPalDeps, authorizationId: string): P
   }
 }
 
+/** The authorizations PayPal created for `orderId`; none when the order is gone. */
+async function orderAuthorizations(paypal: PayPalDeps, orderId: string): Promise<string[]> {
+  const order = await call(paypal.paypal.orders.getOrder({ id: orderId })).catch((err: unknown) => {
+    if (err instanceof PayPalError && err.status === 404) return undefined;
+    throw err;
+  });
+  return (order?.purchaseUnits ?? []).flatMap((u) =>
+    (u.payments?.authorizations ?? []).flatMap((a) => (a.id ? [a.id] : [])),
+  );
+}
+
+/**
+ * Voids every per-purchase hold of a mandate that may hold funds: the authorized ones, and the
+ * pending ones whose order was authorized (the id may be stored, or only PayPal may know it).
+ * Each is marked `VOIDED`. Resolves to whether PayPal voided anything.
+ */
+async function releasePurchaseHolds(deps: HoldDeps, mandateId: string): Promise<boolean> {
+  const held = await deps.db
+    .select()
+    .from(purchaseHolds)
+    .where(
+      and(
+        eq(purchaseHolds.mandateId, mandateId),
+        inArray(purchaseHolds.state, ["PENDING", "AUTHORIZED"]),
+      ),
+    );
+  let voided = false;
+  for (const h of held) {
+    const authorizations = new Set(h.paypalAuthorizationId ? [h.paypalAuthorizationId] : []);
+    if (h.state === "PENDING") {
+      for (const id of await orderAuthorizations(deps.paypal, h.paypalOrderId)) {
+        authorizations.add(id);
+      }
+    }
+    for (const id of authorizations) {
+      if (await voidAuthorization(deps.paypal, id)) voided = true;
+    }
+    await deps.db
+      .update(purchaseHolds)
+      .set({ state: "VOIDED", updatedAt: sql`now()` })
+      .where(and(eq(purchaseHolds.requestId, h.requestId), eq(purchaseHolds.state, h.state)));
+  }
+  return voided;
+}
+
 /**
  * Releases a mandate's hold and ends the mandate as `to`. Waits while a purchase of the mandate
- * may still be captured. A void always targets the original authorization: PayPal refuses to
- * void a reauthorization (`CANNOT_BE_VOIDED`). A mandate exhausted by a final capture needs no
- * void. Resolves to `already` when the hold or the mandate was released by someone else.
+ * may still be countersigned or captured. A void always targets the original authorization:
+ * PayPal refuses to void a reauthorization (`CANNOT_BE_VOIDED`). A pending hold is read from its
+ * order, so an authorization Keelson never stored is voided too. A mandate exhausted by a final
+ * capture needs no void. Resolves to `already` when the hold or the mandate was released by
+ * someone else.
  */
 export async function voidHold(
   deps: HoldDeps,
@@ -108,22 +161,18 @@ export async function voidHold(
   let voided = false;
   try {
     if (row.holdMode === "per_purchase") {
-      const held = await deps.db
-        .select()
-        .from(purchaseHolds)
-        .where(and(eq(purchaseHolds.mandateId, mandateId), eq(purchaseHolds.state, "AUTHORIZED")));
-      for (const h of held) {
-        if (
-          h.paypalAuthorizationId &&
-          (await voidAuthorization(deps.paypal, h.paypalAuthorizationId))
-        )
-          voided = true;
-        await deps.db
-          .update(purchaseHolds)
-          .set({ state: "VOIDED", updatedAt: sql`now()` })
-          .where(
-            and(eq(purchaseHolds.requestId, h.requestId), eq(purchaseHolds.state, "AUTHORIZED")),
-          );
+      voided = await releasePurchaseHolds(deps, mandateId);
+    } else if (from === "HOLD_PENDING") {
+      const authorizations = new Set(
+        row.paypalParentAuthorizationId ? [row.paypalParentAuthorizationId] : [],
+      );
+      if (row.paypalOrderId) {
+        for (const id of await orderAuthorizations(deps.paypal, row.paypalOrderId)) {
+          authorizations.add(id);
+        }
+      }
+      for (const id of authorizations) {
+        if (await voidAuthorization(deps.paypal, id)) voided = true;
       }
     } else if (row.paypalParentAuthorizationId) {
       const current = await call(
@@ -136,12 +185,7 @@ export async function voidHold(
       }
     }
   } catch (err) {
-    if (err instanceof PayPalError) {
-      await deps.db
-        .update(mandates)
-        .set({ holdError: err.details[0]?.issue ?? err.name, updatedAt: sql`now()` })
-        .where(eq(mandates.id, mandateId));
-    }
+    await recordError(deps.db, mandateId, err);
     throw err;
   }
 
@@ -158,15 +202,34 @@ export async function voidHold(
           patch,
         );
   if (!moved) return "already";
+  // A cart authorized while the mandate was still live, after the first pass read its holds.
+  if (row.holdMode === "per_purchase" && (await releasePurchaseHolds(deps, mandateId))) {
+    voided = true;
+  }
   await publishHold(deps, row, { state: to });
   return voided || !row.paypalParentAuthorizationId ? "voided" : "already";
 }
 
+async function recordError(db: Db, mandateId: string, err: unknown): Promise<void> {
+  if (!(err instanceof PayPalError)) return;
+  await db
+    .update(mandates)
+    .set({ holdError: err.details[0]?.issue ?? err.name, updatedAt: sql`now()` })
+    .where(eq(mandates.id, mandateId));
+}
+
 /**
- * Reauthorizes a mandate hold once, from day 4 of its authorization, for what remains of the
- * budget. PayPal returns a new authorization id, which captures use from then on; the original
+ * Reauthorizes a mandate hold once, from day 4 of its authorization, for what is left of the
+ * budget: the remaining budget, bounded by the budget less what PayPal shows captured on the
+ * order. PayPal returns a new authorization id, which captures use from then on; the original
  * stays the one voids target. A refusal is recorded and not retried: the original authorization
  * stays capturable until it expires.
+ *
+ * The new authorization must hold exactly the amount asked, in the mandate's currency, under the
+ * original's `custom_id` and payee (the original was checked against the signed mandate). One
+ * that does not is recorded as `reauthorization-mismatch:<field>` and not used. It is not voided:
+ * PayPal voids a reauthorization only through its parent, which would release the hold the user
+ * approved; it ends with the parent's void when the mandate ends.
  *
  * @public
  */
@@ -180,6 +243,7 @@ export async function reauthorizeHold(
   if (
     !row?.paypalAuthorizationId ||
     !row.paypalParentAuthorizationId ||
+    !row.paypalOrderId ||
     row.state !== "ACTIVE" ||
     row.holdMode !== "mandate" ||
     row.reauthorizedAt !== null ||
@@ -191,42 +255,75 @@ export async function reauthorizeHold(
   ) {
     return "skipped";
   }
+  const { paypal } = deps.paypal;
   const current = row.paypalAuthorizationId;
+  const parent = row.paypalParentAuthorizationId;
+  const currency = row.currency as CurrencyCode;
+  /** Spends the one reauthorization without one, keeping the current authorization. */
+  const giveUp = async (holdError: string) => {
+    await deps.db
+      .update(mandates)
+      .set({ holdError, reauthorizedAt: now, updatedAt: sql`now()` })
+      .where(and(eq(mandates.id, mandateId), isNull(mandates.reauthorizedAt)));
+    deps.log.warn({ mandateId, authorizationId: current, holdError }, "hold not reauthorized");
+  };
+
+  const order = await call(paypal.orders.getOrder({ id: row.paypalOrderId }));
+  let captured = 0n;
+  for (const capture of (order.purchaseUnits ?? []).flatMap((u) => u.payments?.captures ?? [])) {
+    if (!CAPTURED.has(capture.status ?? "")) continue;
+    if (capture.amount?.currencyCode !== currency || !capture.amount.value) {
+      throw new Error(
+        `capture ${capture.id} of order ${row.paypalOrderId} has no ${currency} amount`,
+      );
+    }
+    captured += fromPayPalValue(currency, capture.amount.value).minor;
+  }
+  const left = row.maxMinor - captured;
+  let amount = row.remainingMinor;
+  if (left < amount) amount = left;
+  if (amount <= 0n) {
+    await giveUp("nothing-to-reauthorize");
+    return "skipped";
+  }
+
+  const original = await call(paypal.payments.getAuthorizedPayment({ authorizationId: parent }));
   try {
     const renewed = await call(
-      deps.paypal.paypal.payments.reauthorizePayment({
+      paypal.payments.reauthorizePayment({
         authorizationId: current,
-        paypalRequestId: ids.operationRequestId(row.paypalParentAuthorizationId, "reauthorize"),
+        paypalRequestId: ids.operationRequestId(parent, "reauthorize"),
         body: {
-          amount: {
-            currencyCode: row.currency,
-            value: toPayPalValue({
-              currency: row.currency as Parameters<typeof toPayPalValue>[0]["currency"],
-              minor: row.remainingMinor,
-            }),
-          },
+          amount: { currencyCode: currency, value: toPayPalValue({ currency, minor: amount }) },
         },
       }),
     );
     if (!renewed.id) throw new Error(`PayPal reauthorized ${current} without an id`);
+    const child = await call(paypal.payments.getAuthorizedPayment({ authorizationId: renewed.id }));
+    try {
+      checkAuthorization(child, {
+        customId: original.customId ?? "",
+        amount: { currency, minor: amount },
+        payees: original.payee?.merchantId ? [original.payee.merchantId] : [],
+      });
+    } catch (err) {
+      if (!(err instanceof HoldMismatchError)) throw err;
+      await giveUp(`reauthorization-mismatch:${err.field}`);
+      return "refused";
+    }
     await deps.db
       .update(mandates)
       .set({ paypalAuthorizationId: renewed.id, reauthorizedAt: now, updatedAt: sql`now()` })
       .where(and(eq(mandates.id, mandateId), eq(mandates.paypalAuthorizationId, current)));
-    deps.log.info({ mandateId, parent: current, authorizationId: renewed.id }, "hold reauthorized");
+    deps.log.info({ mandateId, parent, authorizationId: renewed.id }, "hold reauthorized");
     return "reauthorized";
   } catch (err) {
-    if (
-      !(err instanceof PayPalError) ||
-      !err.details.some((d) => d.issue.startsWith("REAUTHORIZATION_"))
-    )
-      throw err;
-    const issue = err.details.find((d) => d.issue.startsWith("REAUTHORIZATION_"))?.issue as string;
-    await deps.db
-      .update(mandates)
-      .set({ holdError: issue, reauthorizedAt: now, updatedAt: sql`now()` })
-      .where(and(eq(mandates.id, mandateId), isNull(mandates.reauthorizedAt)));
-    deps.log.warn({ mandateId, authorizationId: current, issue }, "hold reauthorization refused");
+    const issue =
+      err instanceof PayPalError
+        ? err.details.find((d) => d.issue.startsWith("REAUTHORIZATION_"))?.issue
+        : undefined;
+    if (issue === undefined) throw err;
+    await giveUp(issue);
     return "refused";
   }
 }
@@ -337,8 +434,8 @@ async function due(db: Db, where: ReturnType<typeof and>): Promise<string[]> {
 }
 
 /**
- * One pass of hold maintenance: reconciles pending holds, reauthorizes due ones and voids
- * expiring, exhausted and revoked ones. Every step is idempotent, so overlapping instances are
+ * One pass of hold maintenance: reconciles pending holds, reauthorizes due ones, voids
+ * expiring, exhausted and revoked ones, and voids cart holds an ended mandate still has. Every step is idempotent, so overlapping instances are
  * harmless. Resolves to how many steps failed.
  *
  * @internal
@@ -403,6 +500,18 @@ export async function maintainHolds(deps: HoldDeps, now: Date = new Date()): Pro
     ),
     "revoke",
     (id) => voidHold(deps, id, "REVOKED", now),
+  );
+  await each(
+    await due(
+      db,
+      and(
+        eq(mandates.holdMode, "per_purchase"),
+        inArray(mandates.state, [...ENDED]),
+        sql`exists (select 1 from ${purchaseHolds} where ${purchaseHolds.mandateId} = ${mandates.id} and ${purchaseHolds.state} in ('PENDING', 'AUTHORIZED'))`,
+      ),
+    ),
+    "release",
+    async (id) => ((await inFlight(db, id, now)) ? "waiting" : releasePurchaseHolds(deps, id)),
   );
   return failed;
 }

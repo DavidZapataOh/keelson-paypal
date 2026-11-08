@@ -1,6 +1,16 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { CurrencyCode, Money } from "@keelson/core";
-import { and, createQueries, eq, purchaseHolds, purchases, sql } from "@keelson/db";
+import {
+  and,
+  createQueries,
+  type Db,
+  eq,
+  inArray,
+  mandates,
+  purchaseHolds,
+  purchases,
+  sql,
+} from "@keelson/db";
 import { decodeMandate, verifyKeyBinding } from "@keelson/mandate";
 import {
   checkAuthorization,
@@ -13,10 +23,11 @@ import {
 import type { Context } from "hono";
 import type { Deps } from "../app.ts";
 import { publishEvent } from "../events.ts";
+import { voidAuthorization } from "../hold/maintenance.ts";
 import { allowedPayees, type MandateRow } from "../hold/state.ts";
 import { MERCHANTS } from "../merchants.ts";
 import { requireClient, requireSession } from "../middleware/auth.ts";
-import { call, hasIssue, type PayPalDeps, paypalProblem } from "../paypal.ts";
+import { call, type PayPalDeps, paypalProblem } from "../paypal.ts";
 import { type Principal, principalChannel } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 
@@ -90,7 +101,7 @@ const create = createRoute({
     },
     422: {
       description:
-        "The cart is outside the mandate, Keelson cannot capture for it, or PayPal refused",
+        "The cart is outside the mandate, its open cart holds with this one exceed the remaining budget, Keelson cannot capture for it, or PayPal refused",
       content: problemContent,
     },
     503: { description: "PayPal is unavailable", content: problemContent },
@@ -148,6 +159,20 @@ function notActive(c: Context) {
     "Mandate not active",
     "Only an active mandate holds carts.",
   );
+}
+
+/** What the mandate's pending and authorized cart holds hold, in minor units. */
+async function openHolds(db: Pick<Db, "select">, mandateId: string): Promise<bigint> {
+  const [row] = await db
+    .select({ total: sql<string>`coalesce(sum(${purchaseHolds.amountMinor}), 0)` })
+    .from(purchaseHolds)
+    .where(
+      and(
+        eq(purchaseHolds.mandateId, mandateId),
+        inArray(purchaseHolds.state, ["PENDING", "AUTHORIZED"]),
+      ),
+    );
+  return BigInt(row?.total ?? 0);
 }
 
 function holdDigest(
@@ -290,6 +315,18 @@ export function registerPurchaseHolds(
     if (existing) return same(existing) ? created(existing.paypalOrderId) : used();
     if (purchase) return used();
 
+    const overBudget = () =>
+      problem(
+        c,
+        422,
+        "holds-exceed-budget",
+        "Holds exceed the budget",
+        "The mandate's pending and authorized cart holds with this one exceed its remaining budget.",
+      );
+    if ((await openHolds(db, mandate.id)) + amount.minor > mandate.remainingMinor) {
+      return overBudget();
+    }
+
     const merchant = MERCHANTS.find((x) => x.id === hold.merchantId);
     if (deps.appOrigin === undefined) throw new Error("appOrigin is required to hold carts");
     const url = `${deps.appOrigin}/mandates/${mandate.id}`;
@@ -318,11 +355,31 @@ export function registerPurchaseHolds(
       if (answer) return answer;
       throw err;
     }
-    const inserted = await db
-      .insert(purchaseHolds)
-      .values({ ...hold, paypalOrderId: orderId, state: "PENDING" })
-      .onConflictDoNothing({ target: purchaseHolds.requestId })
-      .returning({ requestId: purchaseHolds.requestId });
+    // The budget is checked again under the mandate's row lock, so concurrent holds cannot
+    // together exceed it.
+    const inserted = await db.transaction(async (tx) => {
+      const [locked] = await tx
+        .select({ remainingMinor: mandates.remainingMinor })
+        .from(mandates)
+        .where(eq(mandates.id, mandate.id))
+        .for("update");
+      const [again] = await tx
+        .select({ requestId: purchaseHolds.requestId })
+        .from(purchaseHolds)
+        .where(eq(purchaseHolds.requestId, hold.requestId));
+      if (
+        again === undefined &&
+        (await openHolds(tx, mandate.id)) + amount.minor > (locked?.remainingMinor ?? 0n)
+      ) {
+        return null;
+      }
+      return tx
+        .insert(purchaseHolds)
+        .values({ ...hold, paypalOrderId: orderId, state: "PENDING" })
+        .onConflictDoNothing({ target: purchaseHolds.requestId })
+        .returning({ requestId: purchaseHolds.requestId });
+    });
+    if (inserted === null) return overBudget();
     if (inserted.length === 0) {
       // A concurrent request for the same request id created the same order first.
       const now = await stored();
@@ -389,8 +446,43 @@ export function registerPurchaseHolds(
       const authorizationId =
         authorized.purchaseUnits?.[0]?.payments?.authorizations?.[0]?.id ?? undefined;
       if (!authorizationId) throw new Error(`PayPal authorized order ${orderId} without an id`);
+      // Moves the hold only while the mandate still holds carts.
+      const pendingUnderLiveMandate = and(
+        eq(purchaseHolds.requestId, requestId),
+        eq(purchaseHolds.state, "PENDING"),
+        sql`exists (select 1 from ${mandates} where ${mandates.id} = ${id} and ${mandates.state} = 'ACTIVE' and ${mandates.revokeRequestedAt} is null)`,
+      );
+      // The mandate ended, or the hold moved on, while PayPal authorized: nothing may stay held.
+      const lost = async () => {
+        const [now] = await db
+          .select()
+          .from(purchaseHolds)
+          .where(eq(purchaseHolds.requestId, requestId));
+        if (now?.state === "AUTHORIZED" && now.paypalAuthorizationId === authorizationId)
+          return answer(authorizationId, "AUTHORIZED");
+        await voidAuthorization(paypal, authorizationId);
+        await db
+          .update(purchaseHolds)
+          .set({ state: "VOIDED", updatedAt: sql`now()` })
+          .where(and(eq(purchaseHolds.requestId, requestId), eq(purchaseHolds.state, "PENDING")));
+        return problem(
+          c,
+          409,
+          "hold-not-pending",
+          "Hold not pending",
+          "The mandate ended, or the hold left PENDING, while it was authorized; the authorization was voided.",
+        );
+      };
       const auth = await call(paypal.paypal.payments.getAuthorizedPayment({ authorizationId }));
-      if (auth.status === "PENDING") return answer(authorizationId, "PENDING");
+      if (auth.status === "PENDING") {
+        // Stored so that a void before the hold is authorized finds it.
+        const stored = await db
+          .update(purchaseHolds)
+          .set({ paypalAuthorizationId: authorizationId, updatedAt: sql`now()` })
+          .where(pendingUnderLiveMandate);
+        if (stored.rowCount !== 1) return await lost();
+        return answer(authorizationId, "PENDING");
+      }
       try {
         checkAuthorization(auth, {
           customId: purchaseHoldCustomId(paypal.env, requestId, holdDigest(mandate, hold)),
@@ -400,14 +492,7 @@ export function registerPurchaseHolds(
       } catch (err) {
         if (!(err instanceof HoldMismatchError)) throw err;
         deps.log.warn({ requestId, authorizationId, field: err.field }, "purchase hold mismatch");
-        await call(
-          paypal.paypal.payments.voidPayment({
-            authorizationId,
-            paypalRequestId: ids.operationRequestId(authorizationId, "void"),
-          }),
-        ).catch((e: unknown) => {
-          if (!hasIssue(e, "PREVIOUSLY_VOIDED", "AUTHORIZATION_VOIDED")) throw e;
-        });
+        await voidAuthorization(paypal, authorizationId);
         await db
           .update(purchaseHolds)
           .set({ state: "VOIDED", updatedAt: sql`now()` })
@@ -424,24 +509,10 @@ export function registerPurchaseHolds(
       const moved = await db
         .update(purchaseHolds)
         .set({ state: "AUTHORIZED", paypalAuthorizationId: authorizationId, updatedAt: sql`now()` })
-        .where(and(eq(purchaseHolds.requestId, requestId), eq(purchaseHolds.state, "PENDING")));
-      if (moved.rowCount === 1) {
-        await publish(mandate, { state: "AUTHORIZED", requestId, orderId, authorizationId });
-        return answer(authorizationId, "AUTHORIZED");
-      }
-      const [now] = await db
-        .select()
-        .from(purchaseHolds)
-        .where(eq(purchaseHolds.requestId, requestId));
-      if (now?.state === "AUTHORIZED" && now.paypalAuthorizationId === authorizationId)
-        return answer(authorizationId, "AUTHORIZED");
-      return problem(
-        c,
-        409,
-        "hold-not-pending",
-        "Hold not pending",
-        "The hold left PENDING while it was authorized.",
-      );
+        .where(pendingUnderLiveMandate);
+      if (moved.rowCount !== 1) return await lost();
+      await publish(mandate, { state: "AUTHORIZED", requestId, orderId, authorizationId });
+      return answer(authorizationId, "AUTHORIZED");
     } catch (err) {
       const answer = paypalProblem(c, err);
       if (answer) return answer;

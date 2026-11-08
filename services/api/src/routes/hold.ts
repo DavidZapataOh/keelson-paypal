@@ -10,6 +10,7 @@ import {
 } from "@keelson/paypal";
 import type { Context } from "hono";
 import type { Deps } from "../app.ts";
+import { voidAuthorization } from "../hold/maintenance.ts";
 import {
   activateHold,
   capturable,
@@ -18,7 +19,7 @@ import {
   publishHold,
 } from "../hold/state.ts";
 import { requireSession } from "../middleware/auth.ts";
-import { call, hasIssue, type PayPalDeps, paypalProblem } from "../paypal.ts";
+import { call, type PayPalDeps, paypalProblem } from "../paypal.ts";
 import type { Principal } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 
@@ -256,7 +257,7 @@ export function registerHold(
         );
         const replaced = await db
           .update(mandates)
-          .set({ paypalOrderId: orderId, updatedAt: sql`now()` })
+          .set({ paypalOrderId: orderId, paypalParentAuthorizationId: null, updatedAt: sql`now()` })
           .where(
             and(
               eq(mandates.id, row.id),
@@ -329,8 +330,34 @@ export function registerHold(
       const authorizationId =
         authorized.purchaseUnits?.[0]?.payments?.authorizations?.[0]?.id ?? undefined;
       if (!authorizationId) throw new Error(`PayPal authorized order ${orderId} without an id`);
+      // The mandate moved on while PayPal authorized (revoked or expired): nothing may stay held.
+      const lost = async () => {
+        const now = await queries.mandateById(row.id);
+        if (now?.state === "ACTIVE" && now.paypalParentAuthorizationId === authorizationId)
+          return active(now);
+        await voidAuthorization(paypal, authorizationId);
+        return problem(
+          c,
+          409,
+          "hold-not-pending",
+          "Hold not pending",
+          "The mandate left HOLD_PENDING while it was authorized; the authorization was voided.",
+        );
+      };
       const auth = await call(paypal.paypal.payments.getAuthorizedPayment({ authorizationId }));
       if (auth.status === "PENDING") {
+        // Stored so that a void before activation finds it.
+        const stored = await db
+          .update(mandates)
+          .set({ paypalParentAuthorizationId: authorizationId, updatedAt: sql`now()` })
+          .where(
+            and(
+              eq(mandates.id, row.id),
+              eq(mandates.state, "HOLD_PENDING"),
+              eq(mandates.paypalOrderId, orderId),
+            ),
+          );
+        if (stored.rowCount !== 1) return await lost();
         return c.json({ state: "HOLD_PENDING" as const, authorizationId }, 202);
       }
       let checked: ReturnType<typeof checkAuthorization>;
@@ -339,14 +366,7 @@ export function registerHold(
       } catch (err) {
         if (!(err instanceof HoldMismatchError)) throw err;
         deps.log.warn({ mandateId: row.id, authorizationId, field: err.field }, "hold mismatch");
-        await call(
-          paypal.paypal.payments.voidPayment({
-            authorizationId,
-            paypalRequestId: ids.operationRequestId(authorizationId, "void"),
-          }),
-        ).catch((e: unknown) => {
-          if (!hasIssue(e, "PREVIOUSLY_VOIDED", "AUTHORIZATION_VOIDED")) throw e;
-        });
+        await voidAuthorization(paypal, authorizationId);
         return problem(
           c,
           422,
@@ -356,18 +376,7 @@ export function registerHold(
           { field: err.field },
         );
       }
-      if (!(await activateHold(deps, row, checked))) {
-        const now = await queries.mandateById(row.id);
-        if (now?.state === "ACTIVE" && now.paypalParentAuthorizationId === checked.authorizationId)
-          return active(now);
-        return problem(
-          c,
-          409,
-          "hold-not-pending",
-          "Hold not pending",
-          "The mandate left HOLD_PENDING while it was authorized.",
-        );
-      }
+      if (!(await activateHold(deps, row, checked))) return await lost();
       return c.json(
         {
           state: "ACTIVE" as const,

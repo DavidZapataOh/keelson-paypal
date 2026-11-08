@@ -61,11 +61,6 @@ export async function call<T>(request: Promise<{ result: T }>): Promise<T> {
   }
 }
 
-/** Whether PayPal named `issue` among the details of its refusal. */
-export function hasIssue(err: unknown, ...issues: string[]): boolean {
-  return err instanceof PayPalError && err.details.some((d) => issues.includes(d.issue));
-}
-
 /** The problem for a failed PayPal call, or `undefined` when `err` is not one. */
 export function paypalProblem(c: Context, err: unknown) {
   if (err instanceof PayPalUnavailableError) {

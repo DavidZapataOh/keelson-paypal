@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { cartHash, fromPayPalValue } from "@keelson/core";
-import { eq, mandates, transition } from "@keelson/db";
+import { eq, mandates, purchases, transition } from "@keelson/db";
 import { closeMandate } from "@keelson/mandate";
 import { ids, type PayPal } from "@keelson/paypal";
 import { pino } from "pino";
@@ -126,6 +126,62 @@ describe.skipIf(!live)("hold maintenance (live sandbox)", { timeout: 600_000 }, 
     }
   });
 
+  test("revoking a pending hold voids the authorization PayPal created for its order", async () => {
+    const { sub, mid } = await h.signed();
+    const held = await h.hold(sub, mid);
+    const orderId = held.body.orderId as string;
+    await h.approve(orderId, mid);
+    const authorized = await call(
+      paypal.paypal.orders.authorizeOrder({
+        id: orderId,
+        paypalRequestId: ids.operationRequestId(orderId, "authorize"),
+      }),
+    );
+    const authorizationId = authorized.purchaseUnits?.[0]?.payments?.authorizations?.[0]
+      ?.id as string;
+    console.info(`pending hold ${orderId} authorized outside the route: ${authorizationId}`);
+    try {
+      expect(await row(mid)).toMatchObject({
+        state: "HOLD_PENDING",
+        paypalParentAuthorizationId: null,
+      });
+      expect(await h.revoke(sub, mid)).toEqual({ status: 200, body: { state: "REVOKED" } });
+      expect((await row(mid))?.voidedAt).not.toBeNull();
+      expect(await status(paypal, authorizationId)).toBe("VOIDED");
+      expect(voids(authorizationId)).toBe(1);
+    } finally {
+      await h.release(authorizationId);
+    }
+  });
+
+  test("a purchase still being evaluated holds the void back", async () => {
+    const { sub, mid } = await h.signed();
+    const { authorizationId } = await h.activate(sub, mid);
+    const requestId = ulid();
+    try {
+      await testDb.insert(purchases).values({
+        id: requestId,
+        mandateId: mid,
+        merchantId: "mrc_runfast",
+        currency: "USD",
+        amountMinor: 9_400n,
+        cartHash: randomBytes(32),
+      });
+      expect(await transition(testDb, "purchases", requestId, "PROPOSED", "EVALUATING")).toBe(true);
+      expect(await h.revoke(sub, mid)).toEqual({ status: 202, body: { state: "REVOKING" } });
+      await tick();
+      expect((await row(mid))?.state).toBe("ACTIVE");
+      expect(voids(authorizationId)).toBe(0);
+
+      expect(await transition(testDb, "purchases", requestId, "EVALUATING", "FAILED")).toBe(true);
+      await tick();
+      expect((await row(mid))?.state).toBe("REVOKED");
+      expect(await status(paypal, authorizationId)).toBe("VOIDED");
+    } finally {
+      await h.release(authorizationId);
+    }
+  });
+
   describe("with a purchase countersigned by the live legs", () => {
     const tee = live ? createTee(liveEnv(), { a: 10_000, b: 10_000 }) : (undefined as never);
     const teeApp = createApp({ ...base, tee });
@@ -161,6 +217,24 @@ describe.skipIf(!live)("hold maintenance (live sandbox)", { timeout: 600_000 }, 
         }),
       });
     };
+
+    test("a mandate with a hold countersigns only on that hold", async () => {
+      const m = await t.signed();
+      const { authorizationId } = await t.activate(m.sub, m.mid);
+      try {
+        const other = await countersign(
+          m,
+          process.env.PAYPAL_AUTHORIZATION_CREATED as string,
+          ulid(),
+          `0x${"66".repeat(32)}`,
+        );
+        const body = (await other.json()) as { type: string };
+        expect(other.status, JSON.stringify(body)).toBe(422);
+        expect(body.type).toMatch(/authorization-not-held$/);
+      } finally {
+        await t.release(authorizationId);
+      }
+    });
 
     test("revoking waits for a covered purchase, refuses new countersigns, and voids after it", async () => {
       const m = await t.signed();

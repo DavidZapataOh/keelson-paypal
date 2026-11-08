@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { eq, mandates } from "@keelson/db";
-import { ids, PayPalError } from "@keelson/paypal";
+import { ids, type PayPal, PayPalError } from "@keelson/paypal";
 import { approveOrder, payerActionUrl } from "@keelson/paypal/testing";
 import { ulid } from "ulid";
 import { expect } from "vitest";
@@ -21,6 +21,22 @@ export const sandbox = (): PayPalDeps =>
     PAYPAL_ENV: "sandbox",
     PAYPAL_MERCHANT_ID: STORE,
   });
+
+/** The real sandbox client, running `after` once PayPal answered each Authorize Order call. */
+export function afterAuthorize(paypal: PayPalDeps, after: () => Promise<void>): PayPalDeps {
+  const orders = new Proxy(paypal.paypal.orders, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (prop !== "authorizeOrder" || typeof value !== "function") return value;
+      return async (...args: unknown[]) => {
+        const res = await value.apply(target, args);
+        await after();
+        return res;
+      };
+    },
+  });
+  return { ...paypal, paypal: { ...paypal.paypal, orders } as PayPal };
+}
 
 export const row = async (mid: string) =>
   (await testDb.select().from(mandates).where(eq(mandates.id, mid)))[0];
