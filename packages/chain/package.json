@@ -17,11 +17,12 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "generate": "node scripts/generate.ts",
-    "vectors": "node scripts/passkey-vectors.ts"
+    "vectors": "node scripts/passkey-vectors.ts && node scripts/batch-vectors.ts"
   },
   "dependencies": {
     "@keelson/core": "workspace:*",
     "@noble/curves": "2.4.0",
+    "@openzeppelin/merkle-tree": "1.0.8",
     "viem": "catalog:"
   },
   "devDependencies": {

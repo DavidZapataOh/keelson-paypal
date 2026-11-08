@@ -95,7 +95,7 @@ describe.skipIf(!live)("lockCoverage on an anvil fork", { timeout: 120_000 }, ()
   const deployer = privateKeyToAccount(
     "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
   );
-  const operator = privateKeyToAccount(process.env.KEELSON_OPERATOR_KEY as Hex);
+  const operator = () => privateKeyToAccount(process.env.KEELSON_OPERATOR_KEY as Hex);
   const pyusd = registry.external.pyusd as Address;
   const agentId = BigInt(registry.demo.agentId);
 
@@ -235,7 +235,7 @@ describe.skipIf(!live)("lockCoverage on an anvil fork", { timeout: 120_000 }, ()
       mandateHash: cs.mandateHash,
       amberCommitment: keccak256(stringToHex(`amber/${cs.requestId}`)),
     };
-    const operatorSig = await operator.signTypedData(coverageTypedData(coverage, 421614, vault));
+    const operatorSig = await operator().signTypedData(coverageTypedData(coverage, 421614, vault));
     const data = encodeFunctionData({
       abi: keelsonBondVaultAbi,
       functionName: "lockCoverage",
