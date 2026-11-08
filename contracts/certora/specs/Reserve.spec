@@ -10,6 +10,7 @@ methods {
     function settled(bytes32) external returns (bool) envfree;
     function verdictStructHash(KeelsonTypes.Verdict) external returns (bytes32) envfree;
     function vault.settled(bytes32) external returns (bool) envfree;
+    function vault.coverages(bytes32) external returns (IKeelsonBondVault.CoverageState) envfree;
 
     // The AccessManager is not in the scene: any authorization decision, no effect on the reserve.
     function _.canCall(address, address, bytes4) external => NONDET;
@@ -43,6 +44,18 @@ rule warrantyOnlyKeelsonLiable(env e, KeelsonTypes.Verdict v, uint64 treeSize, b
 rule warrantyOnlyKeelsonLiableReachable(env e, KeelsonTypes.Verdict v, uint64 treeSize, bytes sigs) {
     payWarranty(e, v, treeSize, sigs);
     satisfy v.liable == 2;
+}
+
+/// A warranty is paid only against a coverage the vault holds for the verdict's agent.
+rule warrantyOnlyForHeldCoverage(env e, KeelsonTypes.Verdict v, uint64 treeSize, bytes sigs) {
+    IKeelsonBondVault.CoverageState cov = vault.coverages(v.coverageId);
+    payWarranty(e, v, treeSize, sigs);
+    assert cov.status != IKeelsonBondVault.Status.None && to_mathint(cov.agentId) == to_mathint(v.agentId);
+}
+
+rule warrantyOnlyForHeldCoverageReachable(env e, KeelsonTypes.Verdict v, uint64 treeSize, bytes sigs) {
+    payWarranty(e, v, treeSize, sigs);
+    satisfy true;
 }
 
 // ---------------------------------------------------------------- RSV2

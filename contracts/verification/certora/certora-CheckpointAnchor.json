@@ -1,0 +1,12 @@
+{
+  "rules": {
+    "anchorChecksConsistency": "VERIFIED",
+    "anchorChecksConsistencyReachable": "VERIFIED",
+    "anchorRequires2of2": "VERIFIED",
+    "anchorRequires2of2Reachable": "VERIFIED",
+    "rootWrittenOnce": "FAIL",
+    "rootWrittenOnceReachable": "VERIFIED",
+    "sizeStrictlyIncreases": "VERIFIED",
+    "sizeStrictlyIncreasesReachable": "VERIFIED"
+  }
+}

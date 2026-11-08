@@ -19,7 +19,7 @@ ghost consistent(uint64, uint64, bytes32, bytes32) returns bool;
 
 // ---------------------------------------------------------------- ANC1
 
-rule sizeStrictlyIncreases(env e, method f, calldataarg args, bytes32 origin) {
+rule sizeStrictlyIncreases(env e, method f, calldataarg args, bytes32 origin) filtered { f -> !f.isView } {
     uint64 before = latestSize(origin);
     if (f.selector == sig:anchor(bytes32, uint64, bytes32, bytes32[], bytes, bytes).selector) {
         uint64 size;
@@ -43,7 +43,7 @@ rule sizeStrictlyIncreasesReachable(env e, bytes32 origin, uint64 size, bytes32 
 
 // ---------------------------------------------------------------- ANC2
 
-rule rootWrittenOnce(env e, method f, calldataarg args, bytes32 origin, uint64 size) {
+rule rootWrittenOnce(env e, method f, calldataarg args, bytes32 origin, uint64 size) filtered { f -> !f.isView } {
     bytes32 before = rootAt(origin, size);
     f(e, args);
     assert before != to_bytes32(0) => rootAt(origin, size) == before;

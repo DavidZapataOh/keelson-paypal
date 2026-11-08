@@ -36,6 +36,9 @@ methods {
     // The ERC-8004 Identity registry is not in the scene: any owner and agent wallet, including the vault itself.
     function _.ownerOf(uint256) external => NONDET;
     function _.getAgentWallet(uint256) external => NONDET;
+    // EIP-2612 permit (PYUSD has it, OpenZeppelin's ERC20 does not). The vault ignores its outcome; its only effect is an
+    // allowance on the token, which the deposit's transferFrom then spends and the rules see.
+    function _.permit(address, address, uint256, uint256, bytes) external => NONDET;
     // ERC-1271 signers: any answer.
     function _.isValidSignature(bytes32, bytes) external => NONDET;
     // The AccessManager is not in the scene for the vault: any authorization decision, no effect on the vault.

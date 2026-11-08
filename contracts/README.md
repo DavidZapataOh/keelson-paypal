@@ -186,7 +186,7 @@ Deviation from the ERC: the request is not sent by the agent's owner and the res
 | `symbolic` | Halmos 0.3.3 and `forge test --symbolic` (z3 5.3.3) over `test/symbolic/` | every pull request and push |
 | `invariant` | `test/invariant/`: the Keelson handler and `Properties`, and a16z's `ERC4626Test` on `KeelsonReserve` | every pull request and push |
 | `medusa` | Medusa 1.5.1 on `MedusaKeelson`, which calls the same `Properties` | every pull request and push; 2,000,000 calls nightly |
-| `certora` | Certora Prover, one job per `certora/conf/*.conf`, after `script/check-harness.sh` | every pull request and push |
+| `certora` | Certora Prover, one job per `certora/conf/*.conf`, after `script/check-harness.sh`; the latest results are pinned in `verification/certora/` | on dispatch (the free plan allows 2,120 Prover minutes a month) |
 | `seeded-bugs` | `script/seeded.sh`: each removed guard must produce a counterexample | every pull request and push |
 | `smtchecker` | solc's model checker (CHC, z3), one contract per job | nightly |
 | `mutation` | `forge test --mutate`, one contract per job, gated at 90% by `script/mutation-gate.sh` | nightly |
@@ -215,8 +215,26 @@ Each patch in `certora/seeded/` deletes exactly one guard from `src/`. The scrip
 - Halmos computes `vm.addr` as an uninterpreted function, so `test/symbolic/SymbolicSetup.sol` pins the signers to their real addresses and uses constant addresses for the merchant and staker.
 - Slither and Aderyn do not see the token call OpenZeppelin's `SafeERC20` makes in assembly. Their reentrancy detectors are no evidence for I10; the Prover's `CALL` hook is.
 - The vault calls no reputation or validation registry. `KeelsonReputationReporter` and `KeelsonValidationRegistry` read it, permissionlessly. VAL3 is stated for that design.
-- Each Certora summary and `require` is justified in its spec, and listed here:
-<!-- certora-assumptions -->
+- The Prover compiles the production sources with solc 0.8.38, `via_ir`, 200 runs and `prague`, but with the Yul optimizer's default step sequence minus the inliner (certora-cli 8.20.3 needs an explicit sequence for 0.8.38) and with evmasm's `deduplicate` and `cse` passes off, so that it can locate the internal functions it summarizes. The source and compiler match production; the bytecode does not exactly. `script/check-harness.sh` keeps every other setting equal to `[profile.default]`.
+- Each Certora summary and `require` is justified in its spec:
+  - `PasskeyAssertion.verify` and `MerkleProof.verifyCalldata` may return anything: no vault property depends on WebAuthn or on the batch leaf proof.
+  - The Identity registry, ERC-1271 wallets and the AccessManager (`ownerOf`, `getAgentWallet`, `isValidSignature`, `canCall`, `consumeScheduledOp`) return arbitrary values, so any owner is possible, the vault included.
+  - `receiveWithAuthorization` is a transfer from `from` to the caller; `permit` may do anything, since the vault ignores its outcome.
+  - Two balances of the token never exceed its total supply (OpenZeppelin `ERC20`), and the vault's allowance to itself is zero: it never approves and has no ERC-1271.
+  - A payout's recipient is not the vault itself.
+  - At `lockCoverage`, `slashed` and `warranted` of the new coverage id are zero. `warranted` is backed by `warrantyOnlyForHeldCoverage`; `slashed` is the accepted batch-leaf finding below.
+  - The reverting-token conf lets every `transfer` and `transferFrom` revert; otherwise they run OpenZeppelin's `ERC20`.
+  - `VerdictVerifier`: Automata's DCAP (on-chain and RISC Zero), the `NitroValidator` and `ArbSys` return arbitrary values, and so do `DstackEvents.replay`, `TdxOutput.parse`, `NitroDocument.read` and `tdxMeasurement`. The rules prove what registration requires of their outputs, not that the attestation verifiers are correct. `AccessManaged._checkCanCall` approves or reverts nondeterministically. Attestation fields are assumed to hash within 224 bytes (`optimistic_hashing`); real ones are 32 to 64.
+  - `CheckpointAnchor`: `_noteStates` returns any result, and `RFC6962.verifyConsistency` is an uninterpreted predicate of its sizes and roots. The rule proves that the stored root passed the check, and the check itself is bounded with `forge --symbolic`. `keccak256(signedNote)`, which only feeds the event, is hashed optimistically.
+  - `KeelsonValidationRegistry`: `_hex` returns any 66-character string. Loops are unrolled optimistically, because the only ones are copies of four literal tags of at most 8 bytes.
+  - `KeelsonReputationReporter`: `feedbackURI` returns any 106-character string, and `giveFeedback` always reverts.
+- Rules the Prover has not closed yet are marked ❌ in the table, and the free plan's monthly quota is spent until 2026-12-01:
+  - `failedPayoutIsClaimable` is verified, but its `satisfy` twin is not shown reachable.
+  - `rootWrittenOnce` fails from a pre-state in which a root exists above the latest anchored size, a state no call creates. It needs a supporting invariant.
+  - `verify2of2Sound` fails because `address(0)` could be admitted as a signer (finding below).
+  - `revocationPermanent` and `registryChangesNeedAuthority` hold for every function except `registerSignerWithNitro`, where a loop is not yet summarized.
+  - `signerMeasurementConsistent` fails from a pre-state in which measurement id 0 is allowed, which no call creates (ids start at 1). The supporting invariant `noAllowedIdZero` is written but not yet run.
+  - `validationIsPermanent` and the twins of `requestOnce` and `validationIsPermanent` are open: a view loop (`getSummary`), and reachability.
 
 ### Accepted findings
 
@@ -229,6 +247,8 @@ The contracts are deployed and immutable, so accepted findings are recorded besi
   - `reentrancy-no-eth` in `rateCoverage`: `rated` is set before the call, and the call goes to the official registry with a fixed gas stipend.
 - Aderyn: `verification/aderyn-accepted.json`. It covers `contract-locks-ether` (all of `msg.value` goes to Automata) and `reentrancy-state-change` after view calls, which compile to `STATICCALL`.
 - Model checker: `verification/smt-accepted.txt`. Every unproved target is listed with the guard that excludes it.
+- Signer registry (Low): `_admit` does not reject `signer == address(0)`. If an attestation with an allowed measurement bound key zero, every malformed or high-s signature would recover to an active signer. This is not reachable without an allowed enclave binding that key.
+- Batch leaves (Low): `lockCoverage` accepts a coverage id that `slashBatched` already slashed as a batch leaf. That id's `slashed` then exceeds the new coverage, its release underflows, and its funds stay locked. This needs the operator and both TEE legs to sign a reused request id, which the legs are required to refuse.
 - ERC-4626 (Low): `KeelsonReserve` does not override `maxDeposit` and `maxMint`, so they return the maximum even for a receiver whose cooldown runs, whose deposit then reverts with `CooldownActive`. No funds are at risk.
 - Surviving mutants: `verification/survivors.md`.
 

@@ -291,7 +291,10 @@ jobs:
           name: mutation-${{ matrix.name }}
           path: contracts/mutation-${{ matrix.name }}.json
 
+  # The Prover's free plan allows 2,120 job-minutes a month, which seven confs on every change would exhaust: the
+  # results of the latest run are pinned in contracts/verification/certora/ and refreshed by dispatching this workflow.
   certora:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     strategy:

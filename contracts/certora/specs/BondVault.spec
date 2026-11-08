@@ -67,7 +67,16 @@ invariant queuedImpliesSettled(bytes32 disputeId)
 /// What slashes and warranties take from a coverage never exceeds it.
 invariant slashedWithinCoverage(bytes32 coverageId)
     coverages(coverageId).status != IKeelsonBondVault.Status.None
-        => slashed(coverageId) + reserve.warranted(coverageId) <= to_mathint(coverages(coverageId).amount);
+        => slashed(coverageId) + reserve.warranted(coverageId) <= to_mathint(coverages(coverageId).amount)
+    {
+        preserved lockCoverage(KeelsonTypes.Coverage c, KeelsonTypes.Countersign cs, bytes32 hSd, PasskeyAssertion.Assertion userAuth, bytes32 qx, bytes32 qy, bytes operatorSig, bytes countersigs) with (env e) {
+            // The reserve pays a warranty only for a coverage the vault holds (`warrantyOnlyForHeldCoverage`).
+            require reserve.warranted(c.coverageId) == 0, "no warranty before the coverage exists";
+            // A coverage id is never also a slashed batch leaf: ids are the TEE-assigned request ids, unique per
+            // purchase. The vault does not enforce it (see the finding on batch leaf reuse).
+            require slashed(c.coverageId) == 0, "a new coverage id was never slashed as a batch leaf";
+        }
+    }
 
 rule slashedWithinCoverageReachable(env e, KeelsonTypes.Verdict v, uint64 treeSize, bytes sigs) {
     slash(e, v, treeSize, sigs);

@@ -1,10 +1,11 @@
-// VerdictVerifier, with OpenZeppelin's AccessManager linked as its authority. The attestation verifiers (Automata DCAP,
-// on-chain or RISC Zero, and Base's NitroValidator) are external and summarized NONDET: the rules prove what the
-// registry does with any attestation result, not that those verifiers are correct, which their own audits cover. No
-// loop is unrolled optimistically: the RTMR3 replay and the measurement derivation (loops over the runtime events and
-// SHA-384) are summarized NONDET, so registration is checked for any parsed measurement.
-
-using AccessManager as manager;
+// VerdictVerifier. The attestation verifiers (Automata DCAP, on-chain or RISC Zero, and Base's NitroValidator) are
+// external and summarized NONDET: the rules prove what the registry does with any attestation result, not that those
+// verifiers are correct, which their own audits cover. No loop is unrolled optimistically: the attestation parsers, the
+// RTMR3 replay and the measurement derivation (loops over the runtime events and SHA-384) return arbitrary values, so
+// registration is checked for any parsed attestation. Hashes of attestation fields are assumed to fit the Prover's
+// hashing bound (`optimistic_hashing`); real fields are 32 to 64 bytes. The AccessManager's decision is abstracted at
+// OpenZeppelin's `AccessManaged._checkCanCall`: the rules prove that a governance change happens only once the authority
+// approved the caller; which role and delay the deployed authority requires is read from the live chains.
 
 methods {
     function issuer() external returns (bytes32) envfree;
@@ -23,11 +24,37 @@ methods {
     function _.arbBlockNumber() external => NONDET;
     function DstackEvents.replay(DstackEvents.RuntimeEvent[] calldata) internal returns (bytes memory) => anyBytes();
     function DstackEvents.tdxMeasurement(bytes memory, bytes memory, bytes memory, bytes memory, DstackEvents.RuntimeEvent[] calldata) internal returns (bytes32) => NONDET;
+    function TdxOutput.parse(bytes memory) internal returns (TdxOutput.Td10 memory) => anyTd10();
+    function NitroDocument.read(bytes memory, INitroValidator.Ptrs memory) internal returns (NitroDocument.Fields memory) => anyNitroFields();
+    // The authority approves or refuses the caller (at once, or by consuming an operation scheduled past its delay).
+    function AccessManaged._checkCanCall(address caller, bytes calldata) internal => checkCanCall(caller);
 }
 
 function anyBytes() returns bytes {
     bytes b;
     return b;
+}
+
+function anyTd10() returns TdxOutput.Td10 {
+    TdxOutput.Td10 td;
+    return td;
+}
+
+function anyNitroFields() returns NitroDocument.Fields {
+    NitroDocument.Fields f;
+    return f;
+}
+
+ghost bool authorityApproved;
+ghost address approvedCaller;
+
+function checkCanCall(address caller) {
+    bool approved;
+    if (!approved) {
+        revert("AccessManagedUnauthorized");
+    }
+    authorityApproved = true;
+    approvedCaller = caller;
 }
 
 definition TDX() returns uint8 = 1;
@@ -56,9 +83,18 @@ function measurementOf(address s) returns bytes32 {
     return measurement;
 }
 
+/// Measurement ids start at 1, so the id of a measurement never allowed is never allowed.
+invariant noAllowedIdZero()
+    !allowedId(0);
+
 /// An admitted signer's cached measurement id is the id of its measurement, which is never zero.
 invariant signerMeasurementConsistent(address s)
-    expiresAtOf(s) != 0 => signerMeasurementId(s) == measurementId(measurementOf(s)) && signerMeasurementId(s) != 0;
+    expiresAtOf(s) != 0 => signerMeasurementId(s) == measurementId(measurementOf(s)) && signerMeasurementId(s) != 0
+    {
+        preserved {
+            requireInvariant noAllowedIdZero();
+        }
+    }
 
 // ---------------------------------------------------------------- SIG1
 
@@ -109,7 +145,9 @@ rule activeOnlyViaRegistration(env e, method f, calldataarg args, address s, uin
         => f.selector == sig:setAllowedMeasurement(bytes32, bool).selector && expiresBefore != 0;
 }
 
-rule activeOnlyViaRegistrationReachable(env e, method f, calldataarg args, address s) filtered { f -> isRegistration(f) } {
+rule activeOnlyViaRegistrationReachable(env e, method f, calldataarg args, address s)
+    filtered { f -> f.selector == sig:registerSignerWithQuote(bytes, DstackEvents.RuntimeEvent[], IVerdictVerifier.SignerBinding, uint256).selector }
+{
     require !isActive(e, s, TDX()) && !isActive(e, s, NITRO());
     f(e, args);
     satisfy isActive(e, s, TDX()) || isActive(e, s, NITRO());
@@ -133,17 +171,15 @@ rule verifyDegradedTdxOnlyReachable(env e, bytes32 digest, bytes signature) {
 /// function's selector, at once or by consuming an operation scheduled past its delay; the one exception is the
 /// permissionless revocation of a signer proven to have equivocated.
 rule registryChangesNeedAuthority(env e, method f, calldataarg args, bytes32 measurement, address s) filtered { f -> !f.isView } {
+    require !authorityApproved;
     bytes32 issuerBefore = issuer();
     bool allowedBefore = allowedMeasurement(measurement);
     uint64 idBefore = measurementId(measurement);
     uint40 revokedBefore = revokedAtOf(s);
-    bool immediate;
-    uint32 delay;
-    immediate, delay = manager.canCall(e, e.msg.sender, currentContract, to_bytes4(f.selector));
 
     f(e, args);
 
-    bool authorized = immediate || delay > 0;
+    bool authorized = authorityApproved && approvedCaller == e.msg.sender;
     assert issuer() != issuerBefore || allowedMeasurement(measurement) != allowedBefore
         || measurementId(measurement) != idBefore => authorized;
     assert revokedAtOf(s) != revokedBefore

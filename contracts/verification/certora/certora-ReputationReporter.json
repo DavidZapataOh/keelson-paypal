@@ -1,0 +1,6 @@
+{
+  "rules": {
+    "reputationNeverBlocks": "VERIFIED",
+    "reputationNeverBlocksReachable": "VERIFIED"
+  }
+}

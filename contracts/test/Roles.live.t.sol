@@ -95,7 +95,7 @@ contract RolesLiveTest is ForkTest {
         if (current == expected) return;
         uint256 packed = uint256(vm.load(address(manager), bytes32(uint256(base) + 1))) >> shift;
         assertEq(uint32(packed), expected, chain);
-        assertGt(uint48(packed >> 64), block.timestamp, chain);
+        assertGt(uint48(packed >> 64), vm.getBlockTimestamp(), chain);
     }
 
     function _assertMember(AccessManager manager, uint64 role, address account, uint32 delay, string memory chain)
