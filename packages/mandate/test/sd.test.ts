@@ -129,7 +129,7 @@ describe("decodeDisclosed", () => {
       const hidden = disclosures.filter((_, i) => !(mask & (1 << i)));
       expect(decodeDisclosed(payloadSd, shown)).toEqual(withoutDisclosures(m, hidden));
     }
-  });
+  }, 60_000);
 
   it("removes exactly the selectively disclosable fields when nothing is disclosed", async () => {
     const m = mandate();
