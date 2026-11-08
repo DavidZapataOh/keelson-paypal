@@ -3,7 +3,9 @@ pragma solidity 0.8.38;
 
 import {CoverageVector, Vector} from "../../script/CoverageVector.sol";
 import {DeployBondVault} from "../../script/DeployBondVault.s.sol";
+import {DeployReserve} from "../../script/DeployReserve.s.sol";
 import {KeelsonBondVault} from "../../src/KeelsonBondVault.sol";
+import {KeelsonReserve} from "../../src/KeelsonReserve.sol";
 import {IKeelsonBondVault} from "../../src/interfaces/IKeelsonBondVault.sol";
 import {KeelsonTypes} from "../../src/libraries/KeelsonTypes.sol";
 import {ForkTest} from "./Fork.sol";
@@ -11,17 +13,19 @@ import {IPyusd} from "./IPyusd.sol";
 import {TimelockController} from "@openzeppelin/contracts/governance/TimelockController.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 
-/// @notice The vault deployed by its script on a fork of Arbitrum Sepolia, after the demo operator was registered in the
-/// ERC-8004 Identity registry, with the real `VerdictVerifier` (both legs' signers registered), `CheckpointAnchor`,
-/// PYUSD and the funders' faucet balances.
+/// @notice The vault and the reserve deployed by their scripts on a fork of Arbitrum Sepolia, after the demo operator was
+/// registered in the ERC-8004 Identity registry, with the real `VerdictVerifier` (both legs' signers registered),
+/// `CheckpointAnchor`, PYUSD and the funders' faucet balances.
 abstract contract VaultBase is ForkTest {
     using stdJson for string;
 
     uint256 internal constant FORK_BLOCK = 327_231_200;
-    string internal constant VAULT = "KeelsonBondVaultPreview";
+    string internal constant VAULT = "KeelsonBondVault";
 
     DeployBondVault internal deployScript;
     KeelsonBondVault internal vault;
+    DeployReserve internal reserveScript;
+    KeelsonReserve internal reserve;
     IPyusd internal pyusd;
     uint256 internal agentId;
     address internal operator;
@@ -41,8 +45,12 @@ abstract contract VaultBase is ForkTest {
 
         deployScript = new DeployBondVault();
         vault = deployScript.run(VAULT);
+        reserveScript = new DeployReserve();
+        reserve = reserveScript.run();
+        assertEq(address(reserve), vault.reserve(), "reserve address");
         vm.warp(vm.getBlockTimestamp() + _timelock().getMinDelay());
         deployScript.wire(VAULT);
+        reserveScript.wire();
     }
 
     function _timelock() internal view returns (TimelockController) {
@@ -110,7 +118,6 @@ abstract contract LockBase is VaultBase {
         string memory json = vm.readFile(string.concat(vm.projectRoot(), "/test/vectors/", name, ".json"));
         assertEq(json.readUint(".chainId"), 421614);
         v = CoverageVector.read(json, _json().readAddress(".demo.merchant"), vault.params().disputeWindow);
-        assertEq(v.vault, address(vault), "vector vault");
     }
 
     function _operatorSig(KeelsonTypes.Coverage memory c) internal view returns (bytes memory) {

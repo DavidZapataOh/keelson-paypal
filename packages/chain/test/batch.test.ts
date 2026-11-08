@@ -14,6 +14,7 @@ const coverage = (i: number, agentId = 351n): Coverage => ({
   expiresAt: 1_800_000_000 + i,
   mandateHash: keccak256(stringToHex(`mandate/${i}`)),
   amberCommitment: keccak256(stringToHex(`amber/${i}`)),
+  userKeyHash: keccak256(stringToHex(`user/${i}`)),
 });
 const checkpoint = { root: keccak256(stringToHex("checkpoint")), treeSize: 54n };
 

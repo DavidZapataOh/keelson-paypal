@@ -15,12 +15,6 @@ import {stdJson} from "forge-std/StdJson.sol";
 contract BondVaultLifecycleForkTest is LockBase {
     using stdJson for string;
 
-    /// @dev `forge inspect KeelsonBondVault storageLayout`.
-    uint256 internal constant COVERAGES_SLOT = 7;
-    uint256 internal constant PENDING_SLASHES_SLOT = 9;
-    /// @dev Bit offset of `CoverageState.pendingSlashes`: after amount, agentId, releaseAfter, status and degraded.
-    uint256 internal constant COVERAGE_PENDING_SHIFT = 96 + 64 + 40 + 8 + 8;
-
     uint256 internal deposited;
     address internal recipient = makeAddr("operator treasury");
 
@@ -78,16 +72,6 @@ contract BondVaultLifecycleForkTest is LockBase {
         vm.warp(uint256(vault.coverages(v.coverage.coverageId).releaseAfter) + 1);
         vault.releaseCoverage(v.coverage.coverageId);
         assertEq(_bond().locked, 0);
-    }
-
-    function test_release_withPendingSlashReverts() public {
-        Vector memory v = _locked(WEBAUTHN);
-        bytes32 slot = keccak256(abi.encode(v.coverage.coverageId, COVERAGES_SLOT));
-        vm.store(address(vault), slot, bytes32(uint256(vm.load(address(vault), slot)) | 1 << COVERAGE_PENDING_SHIFT));
-        assertEq(vault.coverages(v.coverage.coverageId).pendingSlashes, 1);
-        vm.warp(uint256(vault.coverages(v.coverage.coverageId).releaseAfter) + 1);
-        vm.expectRevert(IKeelsonBondVault.SlashPending.selector);
-        vault.releaseCoverage(v.coverage.coverageId);
     }
 
     function test_release_unknownReverts() public {
@@ -158,15 +142,6 @@ contract BondVaultLifecycleForkTest is LockBase {
         vm.warp(vm.getBlockTimestamp() + vault.params().withdrawalDelay);
         vault.completeWithdrawal(id);
         assertEq(pyusd.balanceOf(recipient), 1e6);
-    }
-
-    function test_withdrawal_withPendingSlashReverts() public {
-        uint256 id = _request(1e6);
-        vm.store(address(vault), keccak256(abi.encode(agentId, PENDING_SLASHES_SLOT)), bytes32(uint256(1)));
-        assertEq(vault.pendingSlashes(agentId), 1);
-        vm.warp(vm.getBlockTimestamp() + vault.params().withdrawalDelay);
-        vm.expectRevert(IKeelsonBondVault.SlashPending.selector);
-        vault.completeWithdrawal(id);
     }
 
     function test_withdrawal_fromNonAuthorityReverts() public {

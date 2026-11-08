@@ -57,7 +57,7 @@ describe("eip712", () => {
   test.each([
     [
       "Coverage",
-      "Coverage(bytes32 coverageId,uint256 agentId,address merchant,uint96 amount,uint96 premium,uint40 expiresAt,bytes32 mandateHash,bytes32 amberCommitment)",
+      "Coverage(bytes32 coverageId,uint256 agentId,address merchant,uint96 amount,uint96 premium,uint40 expiresAt,bytes32 mandateHash,bytes32 amberCommitment,bytes32 userKeyHash)",
     ],
     [
       "CoverageBatch",

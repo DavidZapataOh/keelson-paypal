@@ -60,6 +60,7 @@ export const KEELSON_TYPES = {
     { name: "expiresAt", type: "uint40" },
     { name: "mandateHash", type: "bytes32" },
     { name: "amberCommitment", type: "bytes32" },
+    { name: "userKeyHash", type: "bytes32" },
   ],
   CoverageBatch: [
     { name: "agentId", type: "uint256" },

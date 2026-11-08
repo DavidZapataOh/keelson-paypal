@@ -190,6 +190,7 @@ fn eip712_vectors() {
                     expiresAt: u,
                     mandateHash: b32,
                     amberCommitment: b32,
+                    userKeyHash: b32,
                 },
                 m,
                 &d

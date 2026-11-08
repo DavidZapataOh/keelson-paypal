@@ -76,7 +76,8 @@ contract BondVaultBatchForkTest is VaultBase {
             premium: uint96(json.readUint(string.concat(c, ".premium"))),
             expiresAt: uint40(json.readUint(string.concat(c, ".expiresAt"))),
             mandateHash: json.readBytes32(string.concat(c, ".mandateHash")),
-            amberCommitment: json.readBytes32(string.concat(c, ".amberCommitment"))
+            amberCommitment: json.readBytes32(string.concat(c, ".amberCommitment")),
+            userKeyHash: json.readBytes32(string.concat(c, ".userKeyHash"))
         });
         assertEq(json.readUint(".proven.index"), 37);
         bytes32 leaf = keccak256(bytes.concat(keccak256(abi.encode(KeelsonTypes.hash(coverage)))));

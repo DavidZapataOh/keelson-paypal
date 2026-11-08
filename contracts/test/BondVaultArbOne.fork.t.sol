@@ -26,6 +26,7 @@ contract BondVaultArbOneForkTest is ForkTest {
         _select(42161);
         DeployBondVault script = new DeployBondVault();
         string memory json = _json();
+        (uint48 window, uint208 capacity) = script.rateLimit();
         vault = new KeelsonBondVault(
             IPYUSD(json.readAddress(".external.pyusd")),
             IVerdictVerifier(script.predict("VerdictVerifier")),
@@ -35,7 +36,9 @@ contract BondVaultArbOneForkTest is ForkTest {
             keccak256(bytes(json.readString(".params.logOrigin"))),
             sha256("keelson.finance"),
             script.predict("AccessManager"),
-            script.params()
+            script.params(),
+            window,
+            capacity
         );
     }
 

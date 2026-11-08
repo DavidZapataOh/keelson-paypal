@@ -59,7 +59,8 @@ library CoverageVector {
             premium: uint96(amount * PREMIUM_BPS / 10_000),
             expiresAt: v.countersign.issuedAt + disputeWindow,
             mandateHash: v.countersign.mandateHash,
-            amberCommitment: keccak256(abi.encode("amber", v.countersign.requestId))
+            amberCommitment: keccak256(abi.encode("amber", v.countersign.requestId)),
+            userKeyHash: v.userKeyHash
         });
     }
 

@@ -125,6 +125,38 @@ contract BondVaultLockForkTest is LockBase {
         _expectLockRevert(v, IKeelsonBondVault.InvalidUserAssertion.selector);
     }
 
+    /// @dev Anyone can read `M` and the signatures from a pending transaction and sign `M` with a key of their own.
+    function _substituteKey(Vector memory v) internal pure returns (Vector memory) {
+        uint256 pk = uint256(keccak256("someone else's passkey")) % P256_N;
+        (uint256 qx, uint256 qy) = vm.publicKeyP256(pk);
+        bytes32 message =
+            sha256(abi.encodePacked(v.assertion.authenticatorData, sha256(bytes(v.assertion.clientDataJSON))));
+        (bytes32 r, bytes32 s) = vm.signP256(pk, message);
+        if (uint256(s) > P256_N / 2) s = bytes32(P256_N - uint256(s));
+        (v.qx, v.qy, v.assertion.r, v.assertion.s) = (bytes32(qx), bytes32(qy), r, s);
+        return v;
+    }
+
+    function test_lock_substitutedKeyReverts() public {
+        Vector memory v = _at(WEBAUTHN);
+        bytes memory sig = _operatorSig(v.coverage);
+        Vector memory forged = _substituteKey(_vector(WEBAUTHN));
+        vm.expectRevert(IKeelsonBondVault.InvalidUserAssertion.selector);
+        vm.prank(makeAddr("front-runner"));
+        _lock(forged, sig);
+
+        _lock(v, sig);
+        assertEq(uint8(vault.coverages(v.coverage.coverageId).status), uint8(IKeelsonBondVault.Status.Active));
+    }
+
+    /// @dev The substituted assertion is valid: only the operator-signed `userKeyHash` stops it.
+    function test_lock_substitutedKeyLocksOnlyIfOperatorSignedIt() public {
+        Vector memory forged = _substituteKey(_at(WEBAUTHN));
+        forged.coverage.userKeyHash = keccak256(abi.encodePacked(forged.qx, forged.qy));
+        _lock(forged);
+        assertEq(uint8(vault.coverages(forged.coverage.coverageId).status), uint8(IKeelsonBondVault.Status.Active));
+    }
+
     // A coverage the TEEs never countersigned, or countersigned for something else.
 
     function test_lock_denyReverts() public {

@@ -55,9 +55,9 @@ const registry = JSON.parse(readFileSync(registryUrl, "utf8")) as {
   demo: { agentId: number };
 };
 const AGENT_ID = BigInt(registry.demo.agentId);
-/** The vault the coverage is locked in: `KeelsonBondVaultPreview`'s CREATE3 address. */
+/** The vault the coverage is locked in: `KeelsonBondVault`'s CREATE3 address, which the legs bind. */
 const VAULT = (process.env.KEELSON_BOND_VAULT ??
-  "0x69ccD2fB3a85f590F2A8f431cca3ecc2e9Bf3c14") as Address;
+  "0xb39898Ef4333f3CB32d1B420E744f5a1Aa2ae2Bf") as Address;
 
 interface Countersigned {
   mode: "2of2" | "degraded";

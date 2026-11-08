@@ -13,9 +13,9 @@ import {console} from "forge-std/console.sol";
 /// @notice Locks a live coverage in the vault deployed under `vaultName`: the funders' faucet PYUSD is deposited for the
 /// demo agent by EIP-3009 when its bond is short, then the coverage of a vector captured minutes before (its countersign
 /// lives 15 minutes) is locked with the demo operator's signature. The deployer EOA submits, as the relayer would.
-/// @dev `forge script script/LockCoverageLive.s.sol --sig "run(string,string)" KeelsonBondVaultPreview
-/// test/vectors/coverage-live.json --rpc-url arbitrum_sepolia --account keelson-deployer --broadcast`; reads
-/// `KEELSON_FUNDER_KEYS` and `KEELSON_OPERATOR_KEY`.
+/// @dev `forge script script/LockCoverageLive.s.sol --sig "run(string,string)" KeelsonBondVault
+/// test/vectors/coverage-live.json --rpc-url arbitrum_sepolia --account keelson-deployer --broadcast
+/// --evm-version osaka` (the simulation needs P256VERIFY); reads `KEELSON_FUNDER_KEYS` and `KEELSON_OPERATOR_KEY`.
 contract LockCoverageLive is KeelsonDeploy {
     using stdJson for string;
 

@@ -48,6 +48,27 @@ interface IKeelsonBondVault {
         Status status;
     }
 
+    enum SlashStatus {
+        None,
+        Queued,
+        Executed,
+        Vetoed
+    }
+
+    /// @notice A slash waiting for its veto window. `batchId` is zero unless the coverage is part of a batch.
+    struct QueuedSlash {
+        bytes32 coverageId;
+        bytes32 batchId;
+        address payee;
+        uint96 amount;
+        uint64 agentId;
+        uint40 readyAt;
+        uint8 fieldId;
+        SlashStatus status;
+        bytes32 evidenceHash;
+        bytes32 verdictDigest;
+    }
+
     struct Withdrawal {
         uint128 amount;
         uint64 agentId;
@@ -85,6 +106,31 @@ interface IKeelsonBondVault {
         uint64 treeSize
     );
     event CoverageBatchReleased(bytes32 indexed batchId, uint256 indexed agentId, uint128 amount);
+    /// @notice An operator's bond paid a merchant; `verdictDigest` is the EIP-712 digest the TEE legs signed.
+    event Slashed(
+        bytes32 indexed disputeId,
+        bytes32 indexed coverageId,
+        uint256 indexed agentId,
+        address payee,
+        uint96 amount,
+        uint8 fieldId,
+        bytes32 evidenceHash,
+        bytes32 verdictDigest
+    );
+    event SlashQueued(
+        bytes32 indexed disputeId,
+        bytes32 indexed coverageId,
+        uint256 indexed agentId,
+        uint96 amount,
+        uint40 readyAt,
+        bool degraded,
+        bytes32 verdictDigest
+    );
+    event SlashVetoed(bytes32 indexed disputeId, string reason);
+    /// @notice The transfer to `recipient` failed (a frozen address, a paused token): the amount waits in `claimable`.
+    event PayoutFailed(bytes32 indexed disputeId, address indexed recipient, uint96 amount);
+    event Claimed(address indexed account, address to, uint256 amount);
+    event RateLimitSet(uint48 window, uint208 capacity);
 
     /// @notice The signer is neither the agent's ERC-8004 owner nor its agent wallet.
     error NotAgentAuthority();
@@ -109,6 +155,15 @@ interface IKeelsonBondVault {
     error BatchExists();
     error NotAnchored();
     error ZeroAmount();
+    error InvalidVerdictSignature();
+    error NotOperatorLiable();
+    /// @notice The dispute was already settled, by a slash or a warranty. On a retry it means done.
+    error AlreadySettled();
+    error CoverageNotActive();
+    error ExceedsCoverage();
+    error NotInBatch();
+    error NotQueued();
+    error VetoClosed();
 
     function depositWithAuthorization(
         uint256 agentId,
@@ -130,7 +185,8 @@ interface IKeelsonBondVault {
 
     /// @param hSd The hash of the mandate's selectively disclosable payload; with `cs.mandateCommitment` it gives the
     /// challenge the user's passkey signed.
-    /// @param qx The user's P-256 public key, as disclosed in the mandate's `user.cred`.
+    /// @param qx The user's P-256 public key, as disclosed in the mandate's `user.cred`; `keccak256(qx ‖ qy)` must be
+    /// the `userKeyHash` the operator signed in `c`.
     /// @param countersigs `tdx ‖ nitro` (130 bytes), or `tdx` alone (65 bytes) for a degraded purchase.
     function lockCoverage(
         KeelsonTypes.Coverage calldata c,
@@ -169,6 +225,48 @@ interface IKeelsonBondVault {
         returns (bytes32 batchId);
 
     function releaseBatch(bytes32 batchId) external;
+
+    /// @notice Pays `v.payee` (or its payout address) from the operator's bond on a verdict that names the operator
+    /// liable, signed by both TEE legs (`sigs` = `tdx ‖ nitro`) or by the TDX leg alone (65 bytes), against a
+    /// checkpoint anchored at `treeSize`. Large, degraded or rate-limited slashes wait in the veto window instead.
+    function slash(KeelsonTypes.Verdict calldata v, uint64 treeSize, bytes calldata sigs) external;
+
+    /// @notice `slash` for a coverage locked in a batch: `c` is the coverage and `proof` its Merkle proof in the batch.
+    function slashBatched(
+        KeelsonTypes.Verdict calldata v,
+        uint64 treeSize,
+        bytes calldata sigs,
+        bytes32 batchId,
+        KeelsonTypes.Coverage calldata c,
+        bytes32[] calldata proof
+    ) external;
+
+    /// @notice Pays a queued slash once its veto window has passed. Permissionless.
+    function executeSlash(bytes32 disputeId) external;
+
+    /// @notice Cancels a queued slash inside its veto window. Moves no funds; the dispute stays settled.
+    function vetoSlash(bytes32 disputeId, string calldata reason) external;
+
+    /// @notice Pays all of `account`'s failed payouts to `to`. Gasless: anyone may submit `account`'s `Claim`
+    /// signature; `sig` is ignored when `account` is the caller.
+    function claim(address account, address to, uint256 nonce, uint256 deadline, bytes calldata sig) external;
+
+    function setRateLimit(uint48 window, uint208 capacity) external;
+
+    /// @notice PYUSD that slashes may still pay out now before the rate limit queues them.
+    function rateLimitAvailable() external view returns (uint256);
+
+    function settled(bytes32 disputeId) external view returns (bool);
+
+    /// @notice Amount slashed from a coverage, queued slashes included.
+    function slashed(bytes32 coverageId) external view returns (uint96);
+
+    /// @notice Where a merchant's payouts go instead of its own address, if set.
+    function payoutAddress(address merchant) external view returns (address);
+
+    function claimable(address account) external view returns (uint256);
+
+    function queuedSlashes(bytes32 disputeId) external view returns (QueuedSlash memory);
 
     function bonds(uint256 agentId) external view returns (Bond memory);
 
