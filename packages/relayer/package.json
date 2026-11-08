@@ -1,0 +1,34 @@
+{
+  "name": "@keelson/relayer",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:live": "KEELSON_LIVE=1 vitest run test/live.test.ts test/recovery.live.test.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-kms": "catalog:",
+    "@keelson/chain": "workspace:*",
+    "@keelson/db": "workspace:*",
+    "@noble/curves": "2.4.0",
+    "viem": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "pino": "10.4.0",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
