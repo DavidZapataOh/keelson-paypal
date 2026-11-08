@@ -1640,6 +1640,235 @@ components:
         - countersign
       description: The data of an ERC-8004 validation request Keelson records for a
         countersign.
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: string
+        chainId:
+          type: integer
+        key:
+          type: string
+          description: "`<contract>.<function>:<natural id>`."
+        contract:
+          type: string
+        functionName:
+          type: string
+        status:
+          type: string
+          enum:
+            - pending
+            - confirmed
+            - reverted
+            - rejected
+            - dropped
+        hash:
+          type: string
+        nonce:
+          type: string
+        blockNumber:
+          type: string
+        blockHash:
+          type: string
+        gasUsed:
+          type: string
+        effectiveGasPrice:
+          type: string
+        latencyMs:
+          type: integer
+        errorCode:
+          type: string
+        error:
+          type: object
+          properties:
+            name:
+              type: string
+            args:
+              type: array
+              items: {}
+          required:
+            - name
+            - args
+        explorerUrl:
+          type: string
+      required:
+        - id
+        - chainId
+        - key
+        - contract
+        - functionName
+        - status
+      description: A transaction the Keelson relayer sent and paid for.
+    BondDeposit:
+      oneOf:
+        - type: object
+          properties:
+            chainId:
+              anyOf:
+                - type: number
+                  enum:
+                    - 421614
+                - type: number
+                  enum:
+                    - 42161
+              description: Arbitrum Sepolia (421614) or Arbitrum One (42161).
+            kind:
+              type: string
+              enum:
+                - authorization
+            from:
+              type: string
+              pattern: ^0x[0-9a-fA-F]{40}$
+            amount:
+              type: string
+              pattern: ^(0|[1-9]\d{0,77})$
+              description: PYUSD base units.
+            validAfter:
+              type: string
+              pattern: ^(0|[1-9]\d{0,77})$
+              description: Unix seconds.
+            validBefore:
+              type: string
+              pattern: ^(0|[1-9]\d{0,77})$
+              description: Unix seconds.
+            salt:
+              type: string
+              pattern: ^0x[0-9a-fA-F]{64}$
+              description: The EIP-3009 nonce is `keccak256(abi.encode(agentId, salt))`, so
+                the authorization credits only this agent.
+            signature:
+              type: string
+              maxLength: 8194
+              pattern: ^0x([0-9a-fA-F]{2})+$
+              description: PYUSD's EIP-3009 `ReceiveWithAuthorization` to the vault, signed by
+                `from`.
+          required:
+            - chainId
+            - kind
+            - from
+            - amount
+            - validAfter
+            - validBefore
+            - salt
+            - signature
+        - type: object
+          properties:
+            chainId:
+              anyOf:
+                - type: number
+                  enum:
+                    - 421614
+                - type: number
+                  enum:
+                    - 42161
+              description: Arbitrum Sepolia (421614) or Arbitrum One (42161).
+            kind:
+              type: string
+              enum:
+                - permit
+            owner:
+              type: string
+              pattern: ^0x[0-9a-fA-F]{40}$
+              description: The agent's owner or agent wallet.
+            amount:
+              type: string
+              pattern: ^(0|[1-9]\d{0,77})$
+              description: PYUSD base units.
+            deadline:
+              type: string
+              pattern: ^(0|[1-9]\d{0,77})$
+              description: Unix seconds.
+            signature:
+              type: string
+              maxLength: 8194
+              pattern: ^0x([0-9a-fA-F]{2})+$
+              description: PYUSD's EIP-2612 permit to the vault.
+          required:
+            - chainId
+            - kind
+            - owner
+            - amount
+            - deadline
+            - signature
+    BondWithdrawal:
+      type: object
+      properties:
+        chainId:
+          anyOf:
+            - type: number
+              enum:
+                - 421614
+            - type: number
+              enum:
+                - 42161
+          description: Arbitrum Sepolia (421614) or Arbitrum One (42161).
+        amount:
+          type: string
+          pattern: ^(0|[1-9]\d{0,77})$
+          description: PYUSD base units.
+        to:
+          type: string
+          pattern: ^0x[0-9a-fA-F]{40}$
+        nonce:
+          type: string
+          pattern: ^(0|[1-9]\d{0,77})$
+          description: "`vault.nonces(signer)`."
+        deadline:
+          type: string
+          pattern: ^(0|[1-9]\d{0,77})$
+          description: Unix seconds.
+        ownerSignature:
+          type: string
+          maxLength: 8194
+          pattern: ^0x([0-9a-fA-F]{2})+$
+          description: The vault's EIP-712 `WithdrawalRequest`, by the agent's owner or
+            agent wallet.
+      required:
+        - chainId
+        - amount
+        - to
+        - nonce
+        - deadline
+        - ownerSignature
+    PayoutAddress:
+      type: object
+      properties:
+        chainId:
+          anyOf:
+            - type: number
+              enum:
+                - 421614
+            - type: number
+              enum:
+                - 42161
+        merchant:
+          type: string
+          pattern: ^0x[0-9a-fA-F]{40}$
+        payout:
+          type: string
+          pattern: ^0x[0-9a-fA-F]{40}$
+          description: Where slashes and warranties for the merchant are paid.
+        nonce:
+          type: string
+          pattern: ^(0|[1-9]\d{0,77})$
+          description: "`vault.nonces(merchant)`."
+        deadline:
+          type: string
+          pattern: ^(0|[1-9]\d{0,77})$
+          description: Unix seconds.
+        merchantSignature:
+          type: string
+          maxLength: 8194
+          pattern: ^0x([0-9a-fA-F]{2})+$
+          description: The vault's EIP-712 `PayoutAddress`, by the merchant (EOA or
+            ERC-1271).
+      required:
+        - chainId
+        - merchant
+        - payout
+        - nonce
+        - deadline
+        - merchantSignature
   parameters: {}
 paths:
   /health:
@@ -1702,6 +1931,46 @@ paths:
                         enum:
                           - up
                           - down
+                      relayer:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                            enum:
+                              - up
+                              - down
+                              - degraded
+                          chains:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                chainId:
+                                  type: integer
+                                status:
+                                  type: string
+                                  enum:
+                                    - up
+                                    - down
+                                    - degraded
+                                address:
+                                  type: string
+                                balanceWei:
+                                  type: string
+                                nextNonce:
+                                  type: string
+                                pending:
+                                  type: integer
+                                baseFeeWei:
+                                  type: string
+                              required:
+                                - chainId
+                                - status
+                                - address
+                                - pending
+                        required:
+                          - status
+                          - chains
                       log:
                         type: object
                         properties:
@@ -2719,6 +2988,346 @@ paths:
                 $ref: "#/components/schemas/ValidationRequest"
         "404":
           description: No countersign has this digest
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/bonds/{agentId}/deposits:
+    post:
+      tags:
+        - bonds
+      summary: Deposit PYUSD into an operator's bond, gasless
+      description: Relays `depositWithAuthorization` (EIP-3009) or `depositWithPermit`
+        (EIP-2612) to the bond vault; Keelson pays the gas. The same
+        authorization is sent once, whatever the idempotency key.
+      parameters:
+        - schema:
+            type: string
+            pattern: ^(0|[1-9]\d{0,19})$
+            description: The ERC-8004 agent id, a decimal integer.
+          required: true
+          description: The ERC-8004 agent id, a decimal integer.
+          name: agentId
+          in: path
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BondDeposit"
+      responses:
+        "200":
+          description: Confirmed on-chain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+        "202":
+          description: Sent and not yet confirmed; poll `Location`
+          headers:
+            Location:
+              schema:
+                type: string
+              required: true
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+        "401":
+          description: No valid credentials
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Not allowed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: The same call was submitted with other arguments
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: "Invalid, or the call reverts: `error` names the contract's custom
+            error"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: "The relayer cannot send now: chain unavailable, gas price cap or
+            low balance"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/bonds/{agentId}/withdrawals:
+    post:
+      tags:
+        - bonds
+      summary: Queue a bond withdrawal, gasless
+      description: Relays `requestWithdrawal`; the funds stay slashable until the
+        withdrawal delay ends and it is completed.
+      parameters:
+        - schema:
+            type: string
+            pattern: ^(0|[1-9]\d{0,19})$
+            description: The ERC-8004 agent id, a decimal integer.
+          required: true
+          description: The ERC-8004 agent id, a decimal integer.
+          name: agentId
+          in: path
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BondWithdrawal"
+      responses:
+        "200":
+          description: Confirmed on-chain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+        "202":
+          description: Sent and not yet confirmed; poll `Location`
+          headers:
+            Location:
+              schema:
+                type: string
+              required: true
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+        "401":
+          description: No valid credentials
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Not allowed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: The same call was submitted with other arguments
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: "Invalid, or the call reverts: `error` names the contract's custom
+            error"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: "The relayer cannot send now: chain unavailable, gas price cap or
+            low balance"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/bonds/withdrawals/{chainId}/{withdrawalId}/complete:
+    post:
+      tags:
+        - bonds
+      summary: Complete a queued withdrawal, gasless
+      description: Relays `completeWithdrawal`, which anyone may call once the delay
+        ended; it pays only the signed recipient.
+      parameters:
+        - schema:
+            type: string
+            enum:
+              - "42161"
+              - "421614"
+          required: true
+          name: chainId
+          in: path
+        - schema:
+            type: string
+            pattern: ^[1-9]\d{0,19}$
+          required: true
+          name: withdrawalId
+          in: path
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      responses:
+        "200":
+          description: Confirmed on-chain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+        "202":
+          description: Sent and not yet confirmed; poll `Location`
+          headers:
+            Location:
+              schema:
+                type: string
+              required: true
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+        "401":
+          description: No valid credentials
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Not allowed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: The same call was submitted with other arguments
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: "Invalid, or the call reverts: `error` names the contract's custom
+            error"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: "The relayer cannot send now: chain unavailable, gas price cap or
+            low balance"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/merchants/payout-address:
+    post:
+      tags:
+        - merchants
+      summary: Set a merchant's payout address, gasless
+      description: Relays `setPayoutAddress` to the bond vault; Keelson pays the gas.
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PayoutAddress"
+      responses:
+        "200":
+          description: Confirmed on-chain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+        "202":
+          description: Sent and not yet confirmed; poll `Location`
+          headers:
+            Location:
+              schema:
+                type: string
+              required: true
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+        "401":
+          description: No valid credentials
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Not allowed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: The same call was submitted with other arguments
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: "Invalid, or the call reverts: `error` names the contract's custom
+            error"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: "The relayer cannot send now: chain unavailable, gas price cap or
+            low balance"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/transactions/{id}:
+    get:
+      tags:
+        - transactions
+      summary: A relayed transaction
+      description: "A transaction the Keelson relayer sent: its status, hash, receipt
+        fields and explorer link. Final records are immutable."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^[0-7][0-9A-HJKMNP-TV-Z]{25}$
+          required: true
+          name: id
+          in: path
+      responses:
+        "200":
+          description: The transaction
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              required: true
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+        "404":
+          description: No such transaction
           content:
             application/problem+json:
               schema:

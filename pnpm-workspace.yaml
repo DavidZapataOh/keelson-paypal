@@ -5,6 +5,7 @@ packages:
   - packages/*
 
 catalog:
+  "@aws-sdk/client-kms": 3.1164.0
   "@biomejs/biome": 2.6.5
   "@noble/hashes": 2.4.0
   typescript: 7.0.2

@@ -10,6 +10,7 @@ import {
   pgTable,
   smallint,
   text,
+  timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
 import { purchaseState } from "./enums.ts";
@@ -47,6 +48,10 @@ export const purchases = pgTable(
     logIndex: bigint({ mode: "bigint" }).unique("purchases_log_index_unique"),
     anchoredSize: bigint({ mode: "bigint" }),
     chainId: integer(),
+    /** The relayed `recordCountersign` of the purchase's ERC-8004 validation. */
+    validationTxId: char({ length: 26 }),
+    /** The validation does not apply on this chain: an ALLOW with no coverage to prove the request. */
+    validationSkippedAt: timestamp({ withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

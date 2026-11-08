@@ -2,6 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { httpInstrumentationMiddleware } from "@hono/otel";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import type { Db } from "@keelson/db";
+import type { Relayer } from "@keelson/relayer";
 import type { Context, MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
@@ -22,6 +23,7 @@ import { requireClient } from "./middleware/auth.ts";
 import { idempotency } from "./middleware/idempotency.ts";
 import { type RateLimitOptions, rateLimit } from "./middleware/rate-limit.ts";
 import { ProblemSchema, problem } from "./problem.ts";
+import { registerBonds } from "./routes/bonds.ts";
 import { registerChannel3Webhook } from "./routes/channel3-webhook.ts";
 import { type CompileSources, registerCompile } from "./routes/compile.ts";
 import { registerCountersign } from "./routes/countersign.ts";
@@ -30,12 +32,14 @@ import { registerEvidence } from "./routes/evidence.ts";
 import { registerFeedback } from "./routes/feedback.ts";
 import { registerHealth } from "./routes/health.ts";
 import { registerMandates } from "./routes/mandates.ts";
+import { registerMerchantsPayout } from "./routes/merchants-payout.ts";
 import { registerObservations } from "./routes/observations.ts";
 import { registerOperators } from "./routes/operators.ts";
 import { registerPasskeys } from "./routes/passkeys.ts";
 import { registerStatus } from "./routes/status.ts";
 import { registerTee } from "./routes/tee.ts";
 import { registerTimestamps } from "./routes/timestamps.ts";
+import { registerTransactions } from "./routes/transactions.ts";
 import { registerValidations } from "./routes/validations.ts";
 import type { TeeConfig } from "./tee/signers.ts";
 import type { StampWorker } from "./timestamps/worker.ts";
@@ -73,6 +77,8 @@ export interface Deps {
   stamps?: StampWorker;
   /** The chains whose ERC-8004 registries and Keelson contracts are read; their routes answer 503 without them. */
   chains?: ChainReaders;
+  /** Sends Keelson's contract calls and pays their gas; the gasless routes answer 503 without it. */
+  relayer?: Relayer;
   /** Aborting it ends every open event stream so the server can close. */
   shutdown?: AbortSignal;
 }
@@ -196,6 +202,9 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerOperators(app, deps);
   registerFeedback(app, deps);
   registerValidations(app, deps);
+  registerBonds(app, deps);
+  registerMerchantsPayout(app, deps);
+  registerTransactions(app, deps);
   app.get("/openapi.json", (c) =>
     c.json(app.getOpenAPI31Document({ openapi: "3.1.0", info: apiInfo })),
   );

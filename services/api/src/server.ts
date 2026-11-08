@@ -13,6 +13,8 @@ import { parseEnv } from "./env.ts";
 import { createKv } from "./kv.ts";
 import { createLogger } from "./logger.ts";
 import { authenticate } from "./middleware/auth.ts";
+import { relayerFromEnv } from "./onchain/relayer.ts";
+import { startValidationSweeper } from "./onchain/validations.ts";
 import { closeServer } from "./shutdown.ts";
 import { startPurchaseSweeper } from "./sweeper.ts";
 import { createTee } from "./tee/config.ts";
@@ -68,6 +70,7 @@ const chains = {
     logs: createPublicClient({ chain: arbitrumSepolia, transport: http() }),
   },
 };
+const relayer = await relayerFromEnv(env, db, log);
 const app = createApp({
   db,
   kv,
@@ -80,6 +83,7 @@ const app = createApp({
   shutdown: shutdown.signal,
   stamps,
   chains,
+  ...(relayer ? { relayer } : {}),
   ...(env.CHANNEL3_API_KEY ? { channel3: createChannel3(env.CHANNEL3_API_KEY) } : {}),
   ...(env.CHANNEL3_WEBHOOK_SECRET ? { channel3WebhookSecret: env.CHANNEL3_WEBHOOK_SECRET } : {}),
   ...(tee ? { tee, compileSources: { engine: engineSource } } : {}),
@@ -94,6 +98,10 @@ const app = createApp({
 
 const stopRefresh = tee ? startSignerRefresh({ db, log, tee }) : undefined;
 const stopSweeper = tee ? startPurchaseSweeper({ db, log }) : undefined;
+const stopReconciler = relayer?.startReconciler();
+const stopValidations = relayer
+  ? startValidationSweeper({ db, kv, log, relayer, chain: chains[arbitrumSepolia.id] })
+  : undefined;
 
 const server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
   log.info({ port: info.port }, "listening");
@@ -107,6 +115,8 @@ process.once("SIGTERM", () => {
   }, FORCE_EXIT_MS).unref();
   stopRefresh?.();
   stopSweeper?.();
+  stopReconciler?.();
+  stopValidations?.();
   void closeServer(server, shutdown)
     .then(() => stamps.stop())
     .then(() => Promise.all([pool.end(), kv.close()]))
