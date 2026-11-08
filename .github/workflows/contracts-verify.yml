@@ -79,3 +79,62 @@ jobs:
         with:
           name: smtchecker
           path: contracts/smt.log
+
+  symbolic:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1.9.2
+        with:
+          version: ${{ env.FOUNDRY_VERSION }}
+      - uses: astral-sh/setup-uv@v10
+      - run: uv tool install halmos==0.3.3
+      - name: Install z3
+        run: |
+          curl -fsSL -o z3.zip "https://github.com/Z3Prover/z3/releases/download/z3-${Z3_VERSION}/z3-${Z3_VERSION}-x64-glibc-2.39.zip"
+          unzip -q z3.zip -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/z3-${Z3_VERSION}-x64-glibc-2.39/bin" >> "$GITHUB_PATH"
+      # Halmos 0.3.3 cannot execute the SHA-256 precompile, so the RFC 6962 check runs under forge only.
+      - run: FOUNDRY_PROFILE=halmos halmos --root . --match-contract '^(BondVault|VerdictVerifier|Reserve)SymbolicTest$' --json-output halmos.json
+      # Forge's engine does not sign symbolic digests: it runs the checks whose signatures are concrete.
+      - run: forge test --symbolic --match-path 'test/symbolic/*' --match-test '^check_(verify2of2|slashRequiresSignatures|completeWithdrawalGuards|reserveCooldown|rfc6962Consistency)\(' --json > forge-symbolic.json
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: symbolic
+          path: |
+            contracts/halmos.json
+            contracts/forge-symbolic.json
+
+  seeded-bugs:
+    runs-on: ubuntu-24.04
+    env:
+      ARBITRUM_SEPOLIA_RPC_URL: https://arb-sepolia.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1.9.2
+        with:
+          version: ${{ env.FOUNDRY_VERSION }}
+      - uses: astral-sh/setup-uv@v10
+      - run: uv tool install halmos==0.3.3
+      - name: Each removed guard yields a Halmos counterexample
+        run: |
+          for bug in double-settle any-liable degraded-instant; do
+            script/seeded.sh "$bug" halmos | tee "seeded-$bug.txt"
+            { echo "### $bug"; echo '```'; grep -A6 Counterexample "seeded-$bug.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          done
+      - name: Anchoring a rewritten history succeeds once the consistency check is removed
+        run: |
+          forge build --root lib/nitro-validator
+          script/seeded.sh anchor-rewrite forge | tee seeded-anchor-rewrite.txt
+          { echo "### anchor-rewrite"; echo '```'; grep -B2 -A8 '\[FAIL' seeded-anchor-rewrite.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

@@ -10,13 +10,13 @@ usage="usage: script/seeded.sh <double-settle|any-liable|degraded-instant|anchor
 bug=${1:?$usage}
 tool=${2:?$usage}
 
-# bug: Halmos check | Certora conf and rule | Forge test
+# bug: Halmos check | Certora conf and rule | Forge test file:name (fork tests read ARBITRUM_SEPOLIA_RPC_URL)
 case "$bug" in
-  double-settle) check=check_noDoubleSettle conf=BondVault rule=noDoubleSettle test=test_slash_revertsOnReuse ;;
-  any-liable) check=check_liable conf=BondVault rule=slashOnlyOperatorLiable test=test_slash_revertsUnlessOperatorLiable ;;
-  degraded-instant) check=check_degradedQueued conf=BondVault rule=degradedNeverInstant test=test_slash_degradedVerdictQueues72h ;;
+  double-settle) check=check_noDoubleSettle conf=BondVault rule=noDoubleSettle test=test/BondVaultSlash.fork.t.sol:test_slash_revertsOnReuse ;;
+  any-liable) check=check_liable conf=BondVault rule=slashOnlyOperatorLiable test=test/BondVaultSlash.fork.t.sol:test_slash_revertsUnlessOperatorLiable ;;
+  degraded-instant) check=check_degradedQueued conf=BondVault rule=degradedNeverInstant test=test/BondVaultVeto.fork.t.sol:test_slash_degradedVerdictQueues72h ;;
   # Halmos 0.3.3 cannot execute the SHA-256 precompile the consistency proof hashes with.
-  anchor-rewrite) check= conf=CheckpointAnchor rule=anchorChecksConsistency test=test_rewrittenRootReverts ;;
+  anchor-rewrite) check= conf=CheckpointAnchor rule=anchorChecksConsistency test=test/CheckpointAnchor.t.sol:test_rewrittenRootReverts ;;
   # Static analyzers do not see the token call SafeERC20 makes in assembly; the Prover's CALL hook does.
   reentrancy) check= conf=BondVault rule=externalCallsHoldLock test= ;;
   *) echo "$usage" >&2; exit 2 ;;
@@ -33,6 +33,8 @@ trap 'git apply -R "$patch"; rm -f "$tmp"' EXIT
 echo "Applied $patch:"
 git diff --stat -- src
 
+# A removed guard can leave a variable unused, which the default profile denies.
+export FOUNDRY_DENY=never
 caught=0
 case "$tool" in
   halmos)
@@ -45,8 +47,8 @@ case "$tool" in
     ;;
   forge)
     [[ -n "$test" ]] || { echo "no Forge test for $bug" >&2; exit 2; }
-    forge test --match-test "^$test\$" -vv | tee "$tmp" || true
-    grep -q "\[FAIL.*$test" "$tmp" && caught=1
+    forge test --match-path "${test%%:*}" --match-test "^${test#*:}\\(" -vv | tee "$tmp" || true
+    grep -q "\[FAIL.*${test#*:}" "$tmp" && caught=1
     ;;
   *) echo "$usage" >&2; exit 2 ;;
 esac
