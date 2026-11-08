@@ -1,0 +1,81 @@
+name: contracts-verify
+
+on:
+  pull_request:
+    paths:
+      - contracts/**
+      - .github/workflows/contracts-verify.yml
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contracts-verify-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  FOUNDRY_VERSION: v1.9.0
+  Z3_VERSION: 5.3.3
+
+jobs:
+  static:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1.9.2
+        with:
+          version: ${{ env.FOUNDRY_VERSION }}
+      - uses: astral-sh/setup-uv@v10
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+      - run: uv tool install slither-analyzer==0.11.6 --with crytic-compile==0.4.2
+      # Accepted findings live in slither.db.json, Slither's triage database.
+      - run: slither . --config-file slither.config.json --fail-medium --json slither.json
+      - run: npx --yes @cyfrin/aderyn@0.6.8 . --output aderyn.json
+      - name: Aderyn reports no high finding outside the accepted list
+        run: script/aderyn-gate.sh aderyn.json verification/aderyn-accepted.json
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: static
+          path: |
+            contracts/slither.json
+            contracts/aderyn.json
+
+  smtchecker:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1.9.2
+        with:
+          version: ${{ env.FOUNDRY_VERSION }}
+      - name: Install z3
+        run: |
+          curl -fsSL -o z3.zip "https://github.com/Z3Prover/z3/releases/download/z3-${Z3_VERSION}/z3-${Z3_VERSION}-x64-glibc-2.39.zip"
+          unzip -q z3.zip -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/z3-${Z3_VERSION}-x64-glibc-2.39/bin" >> "$GITHUB_PATH"
+      - run: z3 --version
+      - run: FOUNDRY_PROFILE=smt forge build --force --skip test --skip script 2>&1 | tee smt.log
+      - name: Every model checker warning is accepted
+        run: script/smt-gate.sh smt.log verification/smt-accepted.txt
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: smtchecker
+          path: contracts/smt.log

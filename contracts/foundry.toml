@@ -27,6 +27,25 @@ fs_permissions = [
 fuzz = { runs = 1024 }
 invariant = { runs = 256, depth = 100 }
 
+[profile.smt]
+# The model checker reports its results as warnings.
+deny = "never"
+out = "out/smt"
+cache_path = "cache/smt"
+[profile.smt.model_checker]
+contracts = { "src/CheckpointAnchor.sol" = ["CheckpointAnchor"], "src/KeelsonBondVault.sol" = ["KeelsonBondVault"], "src/KeelsonReputationReporter.sol" = ["KeelsonReputationReporter"], "src/KeelsonReserve.sol" = ["KeelsonReserve"], "src/KeelsonValidationRegistry.sol" = ["KeelsonValidationRegistry"], "src/VerdictVerifier.sol" = ["VerdictVerifier"], "src/deploy/KeelsonDeployer.sol" = ["KeelsonDeployer"] }
+engine = "chc"
+targets = ["assert", "overflow", "underflow", "divByZero", "outOfBounds"]
+timeout = 30000
+show_unproved = true
+
+[profile.halmos]
+dynamic_test_linking = false
+ast = true
+
+[mutation]
+timeout = 120
+
 [rpc_endpoints]
 arbitrum_sepolia = "${ARBITRUM_SEPOLIA_RPC_URL}"
 arbitrum = "${ARBITRUM_ONE_RPC_URL}"

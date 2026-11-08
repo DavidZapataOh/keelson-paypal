@@ -1,0 +1,24 @@
+diff --git a/contracts/src/KeelsonBondVault.sol b/contracts/src/KeelsonBondVault.sol
+index e55419d..dca780e 100644
+--- a/contracts/src/KeelsonBondVault.sol
++++ b/contracts/src/KeelsonBondVault.sol
+@@ -263,16 +263,16 @@ contract KeelsonBondVault is IKeelsonBondVault, AccessManaged, EIP712, Nonces, R
+ 
+     /// @inheritdoc IKeelsonBondVault
+     /// @dev Pays what slashing left of the queue, at most the requested amount. Permissionless and open while paused.
+-    function completeWithdrawal(uint256 id) external nonReentrant {
++    function completeWithdrawal(uint256 id) external {
+         Withdrawal memory w = _withdrawals[id];
+         if (w.amount == 0) revert UnknownWithdrawal();
+         if (block.timestamp < w.readyAt) revert NotReady();
+         if (pendingSlashes[w.agentId] != 0) revert SlashPending();
+-        delete _withdrawals[id];
+         Bond storage bond = _bonds[w.agentId];
+         uint128 paid = w.amount < bond.queued ? w.amount : bond.queued;
+-        bond.queued -= paid;
+         if (paid != 0) pyusd.safeTransfer(w.to, paid);
++        delete _withdrawals[id];
++        bond.queued -= paid;
+         // forge-lint: disable-next-line(reentrancy-events)
+         emit WithdrawalCompleted(id, paid);
+     }
