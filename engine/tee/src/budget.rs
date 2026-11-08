@@ -15,6 +15,20 @@ fn live(expires_at: OffsetDateTime, now: OffsetDateTime) -> bool {
     now < expires_at + Duration::SECOND
 }
 
+/// How long a request id's record is kept after the id's timestamp, on the request's clock.
+/// [`crate::Engine`] accepts an id only while its own clock is under `id + 900 s − 60 s`, and a
+/// leg B request's clock may run up to 2 s ahead of the engine's or 60 s behind it, so a record
+/// kept for `900 + 60 + 2` s on any request's clock outlives every moment the id is accepted.
+const ID_WINDOW: Duration = Duration::seconds(962);
+
+/// Whether a request id could still be accepted at `now`. Its record is kept that long, past its
+/// countersign's expiry, so the id can never be answered twice: two countersigns under one id
+/// would prove the signer compromised on-chain.
+fn acceptable(request: Ulid, now: OffsetDateTime) -> bool {
+    let issued = OffsetDateTime::UNIX_EPOCH + Duration::milliseconds(request.timestamp_ms() as i64);
+    now < issued + ID_WINDOW + Duration::SECOND
+}
+
 /// One request on one mandate: its input, what it reserved and its answer, all until one
 /// expiry.
 #[derive(Debug)]
@@ -38,8 +52,9 @@ pub const MAX_LIVE_REQUESTS: usize = 4096;
 /// Requests and their reservations per mandate, keyed by the mandate challenge `M`. `M` commits
 /// to the whole mandate, so two mandates never share a budget even if they reuse a `mid`.
 ///
-/// A request id is bound to the digest of its whole input by its first claim. The record holds
-/// the reservation and the answer and expires with the countersign, all at once.
+/// A request id is bound to the digest of its whole input by its first claim, on one mandate. The
+/// record holds the reservation and the answer until the countersign expires, and the binding
+/// until the id could no longer be accepted.
 ///
 /// The ledger lives only in RAM; [`crate::Engine`] allows nothing until every reservation a
 /// previous boot could have made has expired.
@@ -85,9 +100,17 @@ impl Budget {
     ) -> Result<Claimed<'_>, Replay> {
         let mut ledger = self.lock();
         ledger.retain(|_, records| {
-            records.retain(|_, r| r.running > 0 || live(r.expires_at, now));
+            records
+                .retain(|id, r| r.running > 0 || live(r.expires_at, now) || acceptable(*id, now));
             !records.is_empty()
         });
+        // A request id is answered once across all mandates.
+        if ledger
+            .iter()
+            .any(|(m, records)| m != mandate && records.contains_key(&request))
+        {
+            return Err(Replay);
+        }
         let known = ledger
             .get(mandate)
             .is_some_and(|records| records.contains_key(&request));
@@ -290,8 +313,30 @@ mod tests {
         // A runner does not count its own request's reservation; other requests do.
         assert_eq!(again.left(10_000, 0, at(0)), 10_000);
         assert_eq!(work(&b, id(9), 9, 900, 0).left(10_000, 0, at(0)), 4_000);
-        // The same id on another mandate is another request.
-        assert!(b.claim(&[2; 32], id(1), [2; 32], at(900), at(0)).is_ok());
+        // The same id on another mandate is a replay: an id is answered once.
+        assert_eq!(
+            b.claim(&[2; 32], id(1), [2; 32], at(900), at(0)).err(),
+            Some(Replay)
+        );
+    }
+
+    #[test]
+    fn an_answered_id_stays_bound_until_it_can_no_longer_be_accepted() {
+        let b = Budget::default();
+        // The id's timestamp is 0, so its record is kept through second 962.
+        let g = work(&b, id(1), 1, 60, 0);
+        g.answer(deny()).unwrap();
+        // Past the countersign's expiry the record still refuses another input under the id.
+        let other = b.claim(&[1; 32], id(1), [2; 32], at(900), at(120));
+        assert_eq!(other.err(), Some(Replay));
+        let elsewhere = b.claim(&[2; 32], id(1), [2; 32], at(900), at(120));
+        assert_eq!(elsewhere.err(), Some(Replay));
+        // Once the id is out of its window the record is dropped.
+        assert!(
+            b.claim(&[3; 32], id(2), [3; 32], at(1_000), at(963))
+                .is_ok()
+        );
+        assert_eq!(b.requests(), 0);
     }
 
     #[test]
@@ -370,10 +415,10 @@ mod tests {
     fn expired_requests_of_every_mandate_are_dropped() {
         let b = Budget::default();
         answered(&b, 1, id(1), 900, 0);
-        answered(&b, 2, id(1), 1_800, 0);
+        answered(&b, 2, id(2), 1_800, 0);
         assert_eq!(b.requests(), 2);
         // A claim on any mandate drops what expired on every other one.
-        answered(&b, 3, id(1), 2_700, 901);
+        answered(&b, 3, id(3), 2_700, 963);
         assert_eq!(b.requests(), 2);
     }
 
@@ -384,7 +429,13 @@ mod tests {
             .map(|n| work(&b, id(n), 1, 900, 0))
             .collect();
         assert!(matches!(
-            b.claim(&[2; 32], id(0), [1; 32], at(900), at(0)),
+            b.claim(
+                &[2; 32],
+                id(MAX_LIVE_REQUESTS as u128),
+                [1; 32],
+                at(900),
+                at(0)
+            ),
             Ok(Claimed::Full)
         ));
         // A request already in the ledger is still answered.
@@ -394,7 +445,13 @@ mod tests {
         ));
         drop(held);
         assert!(matches!(
-            b.claim(&[2; 32], id(0), [1; 32], at(900), at(0)),
+            b.claim(
+                &[2; 32],
+                id(MAX_LIVE_REQUESTS as u128),
+                [1; 32],
+                at(900),
+                at(0)
+            ),
             Ok(Claimed::Working(_))
         ));
     }

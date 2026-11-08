@@ -214,9 +214,15 @@ impl Nitro {
     }
 }
 
-/// Attests `engine`'s signer over `block` and checks the NSM's document says so.
-fn attest(nsm: &Nsm, engine: &Engine, block: Block) -> Result<Attestation, NitroError> {
-    let binding = engine.binding().map_err(NitroError::Binding)?;
+/// Attests `engine`'s signer for `chain_id` over `block` of that chain and checks the NSM's
+/// document says so.
+fn attest(
+    nsm: &Nsm,
+    engine: &Engine,
+    chain_id: u64,
+    block: Block,
+) -> Result<Attestation, NitroError> {
+    let binding = engine.binding_for(chain_id).map_err(NitroError::Binding)?;
     let data = report_data(&binding, block.hash.0).map_err(NitroError::Binding)?;
     let key = engine.signer_public_key();
     let document = nsm.attest(&data, &block.hash.0, &key)?;
@@ -351,7 +357,8 @@ async fn boot(
             let nsm = enclave.nsm.clone();
             let block = request.block;
             let state = tokio::task::spawn_blocking(move || {
-                let attestation = attest(&nsm, state.engine(), block)?;
+                let chain_id = state.engine().config().chain_id;
+                let attestation = attest(&nsm, state.engine(), chain_id, block)?;
                 let served = Nitro::new(nsm, attestation, state.now());
                 Ok::<_, NitroError>(state.with_nitro(served))
             })
@@ -392,14 +399,34 @@ pub(crate) async fn attestation(
 #[serde(deny_unknown_fields)]
 pub(crate) struct Refresh {
     block: Block,
+    /// Another chain than the enclave's own: the document is made for it and returned, and the
+    /// served one stays.
+    #[serde(default)]
+    chain_id: Option<u64>,
 }
 
-/// Attests the same signer over a newer block than the one served.
+/// Attests the same signer over a newer block than the one served, or over `block` of another
+/// chain.
 pub(crate) async fn refresh(
     State(state): State<Arc<AppState>>,
     body: Result<Bytes, BytesRejection>,
 ) -> Result<Json<Attestation>, Problem> {
-    let Refresh { block } = parse(body)?;
+    let Refresh { block, chain_id } = parse(body)?;
+    let own = state.engine().config().chain_id;
+    let chain_id = chain_id.unwrap_or(own);
+    if chain_id != own {
+        let worker = state.clone();
+        return tokio::task::spawn_blocking(move || {
+            attest(&worker.nitro().nsm, worker.engine(), chain_id, block)
+        })
+        .await
+        .map_err(|_| Problem::new(StatusCode::INTERNAL_SERVER_ERROR, "internal"))?
+        .map(Json)
+        .map_err(|e| {
+            eprintln!("keelson-engine: attestation for chain {chain_id} failed: {e}");
+            Problem::new(StatusCode::BAD_GATEWAY, "attestation")
+        });
+    }
     let at = state.now();
     let current = state
         .nitro()
@@ -412,14 +439,15 @@ pub(crate) async fn refresh(
         return Err(invalid("bad_request"));
     }
     let worker = state.clone();
-    let fresh =
-        tokio::task::spawn_blocking(move || attest(&worker.nitro().nsm, worker.engine(), block))
-            .await
-            .map_err(|_| Problem::new(StatusCode::INTERNAL_SERVER_ERROR, "internal"))?
-            .map_err(|e| {
-                eprintln!("keelson-engine: attestation refresh failed: {e}");
-                Problem::new(StatusCode::BAD_GATEWAY, "attestation")
-            })?;
+    let fresh = tokio::task::spawn_blocking(move || {
+        attest(&worker.nitro().nsm, worker.engine(), own, block)
+    })
+    .await
+    .map_err(|_| Problem::new(StatusCode::INTERNAL_SERVER_ERROR, "internal"))?
+    .map_err(|e| {
+        eprintln!("keelson-engine: attestation refresh failed: {e}");
+        Problem::new(StatusCode::BAD_GATEWAY, "attestation")
+    })?;
     let mut served = state
         .nitro()
         .served

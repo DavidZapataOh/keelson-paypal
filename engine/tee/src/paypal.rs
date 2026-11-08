@@ -178,6 +178,11 @@ mod client {
     }
 
     impl PayPalClient {
+        /// Whether the client reads the live API rather than the sandbox.
+        pub fn is_live(&self) -> bool {
+            self.base == LIVE
+        }
+
         /// A client for the REST API at `base` (no trailing slash).
         pub fn new(base: &str, client_id: &str, client_secret: &str) -> Self {
             Self {

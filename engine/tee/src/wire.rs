@@ -230,6 +230,10 @@ pub struct CountersignRequest {
     pub authorization_id: Option<String>,
     /// Present on leg B, from leg A.
     pub observation: Option<Observation>,
+    /// The chain whose EIP-712 domain the countersign is signed under; the engine's own chain
+    /// when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chain_id: Option<u64>,
 }
 
 /// A `Countersign` message in the JSON form of viem typed data.

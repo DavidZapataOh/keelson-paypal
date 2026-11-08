@@ -2,7 +2,7 @@ import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { and, desc, eq, events, teeSignatures, teeSigners } from "@keelson/db";
 import { pino } from "pino";
-import { recoverAddress, zeroAddress } from "viem";
+import { recoverAddress } from "viem";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import {
   type Countersigned,
@@ -11,7 +11,7 @@ import {
   LegError,
   ObservationSchema,
 } from "../src/tee/client.ts";
-import { createTee } from "../src/tee/config.ts";
+import { createTee, VERIFYING_CONTRACT } from "../src/tee/config.ts";
 import {
   type CoordinatorDeps,
   CoordinatorError,
@@ -40,7 +40,7 @@ describe.skipIf(!live)("coordinator (live legs)", { timeout: 120_000 }, () => {
     kv: testKv,
     log: pino({ level: "silent" }),
     tee: { ...tee, client: { ...tee.client, ...over } },
-    verifyingContract: zeroAddress,
+    verifyingContract: VERIFYING_CONTRACT,
   });
   let passkey: VirtualPasskey;
   const fresh = () => registerMandate(tee.client.a, passkey);
@@ -430,7 +430,7 @@ describe.skipIf(!live)("coordinator (live legs)", { timeout: 120_000 }, () => {
             name: "Keelson",
             version: "1",
             chainId: 421614,
-            verifyingContract: zeroAddress,
+            verifyingContract: VERIFYING_CONTRACT,
           },
           capturedAt: new Date().toISOString(),
           allow,
@@ -458,7 +458,7 @@ describe.skipIf(!live)("coordinator (live legs)", { timeout: 120_000 }, () => {
             name: "Keelson",
             version: "1",
             chainId: 421614,
-            verifyingContract: zeroAddress,
+            verifyingContract: VERIFYING_CONTRACT,
           },
           capturedAt: new Date().toISOString(),
           degraded,

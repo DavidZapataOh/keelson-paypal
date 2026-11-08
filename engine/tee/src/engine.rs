@@ -6,7 +6,6 @@ use std::sync::Arc;
 
 use alloy_primitives::aliases::U40;
 use alloy_primitives::{Address, B256, U256};
-use alloy_sol_types::Eip712Domain;
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use keelson_canon::{Cart, canonicalize, cart_hash};
@@ -85,6 +84,10 @@ const MAX_SOURCES: usize = 16;
 /// Boot configuration, bound into the attestation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EngineConfig {
+    /// The chain the engine attests to and countersigns for unless a request names another of
+    /// the chains `keelson_core::domain` accepts. The same signer serves every one of them: each
+    /// chain's EIP-712 domain and attestation binding carry its chain id, so nothing signed or
+    /// attested for one chain verifies on another.
     pub chain_id: u64,
     pub bond_vault: Address,
     pub verifying_contract: Address,
@@ -198,7 +201,6 @@ pub struct Engine {
     budget: Budget,
     issuer: Option<Jwk>,
     meta: EngineMeta,
-    domain: Eip712Domain,
     captured: Option<Arc<dyn CapturedSource>>,
     users: Option<Arc<dyn UserRecords>>,
 }
@@ -228,7 +230,7 @@ impl Engine {
     ///
     /// If the chain is neither Arbitrum Sepolia nor Arbitrum One.
     pub fn booted_at(config: EngineConfig, root: Option<Root>, boot: OffsetDateTime) -> Self {
-        let domain = keelson_core::domain(config.chain_id, config.verifying_contract)
+        keelson_core::domain(config.chain_id, config.verifying_contract)
             .expect("the engine runs on Arbitrum Sepolia or Arbitrum One");
         let issuer = match &root {
             Some(root) => Some(jwk_of(&root.issuer_key())),
@@ -242,7 +244,6 @@ impl Engine {
             boot,
             budget: Budget::default(),
             issuer,
-            domain,
             captured: None,
             users: None,
         }
@@ -285,9 +286,15 @@ impl Engine {
         self.issuer.as_ref()
     }
 
-    /// What the attestation binds this engine's signer to; the engine build id is the image
-    /// digest.
+    /// What the attestation binds this engine's signer to on its own chain; the engine build id
+    /// is the image digest.
     pub fn binding(&self) -> Result<SignerBinding, Error> {
+        self.binding_for(self.config.chain_id)
+    }
+
+    /// [`Engine::binding`] on `chain_id`, one of the chains `keelson_core::domain` accepts.
+    pub fn binding_for(&self, chain_id: u64) -> Result<SignerBinding, Error> {
+        crate::error::check_chain(chain_id)?;
         let engine_build_id = self
             .config
             .oci_digest
@@ -295,7 +302,7 @@ impl Engine {
             .and_then(|digest| wire::parse_hex(&format!("0x{digest}")))
             .ok_or(Error::OciDigest)?;
         Ok(SignerBinding {
-            chain_id: self.config.chain_id,
+            chain_id,
             bond_vault: self.config.bond_vault,
             tee_kind: self.config.tee_kind,
             signer: self.signer(),
@@ -437,6 +444,9 @@ impl Engine {
         paypal: Option<PayPalObservation>,
     ) -> Result<Countersigned, EngineError> {
         check_countersign(r)?;
+        let chain_id = r.chain_id.unwrap_or(self.config.chain_id);
+        let domain = keelson_core::domain(chain_id, self.config.verifying_contract)
+            .map_err(|_| bad("chain_id"))?;
         let captured = match (&self.root, &r.observation, &paypal) {
             (Some(_), Some(_), _) | (None, None, _) | (None, _, Some(_)) => {
                 return Err(bad("observation"));
@@ -463,10 +473,11 @@ impl Engine {
             .map_err(|_| bad("clock"))?;
         let now_s = now_ms.div_euclid(1000);
         // A request id is accepted only while a record for it could still be live, so it can
-        // never be signed again once its record has expired, across restarts too.
+        // never be signed again once its record has expired, across restarts too. The window is
+        // read on this engine's own clock, which the caller cannot move.
         let id_ms = i64::try_from(r.request_id.timestamp_ms()).map_err(|_| EngineError::Replay)?;
         let skew_ms = MAX_SKEW_SEC * 1000;
-        if id_ms <= now_ms - COUNTERSIGN_TTL * 1000 + skew_ms || id_ms > now_ms + skew_ms {
+        if id_ms <= clock_ms - COUNTERSIGN_TTL * 1000 + skew_ms || id_ms > clock_ms + skew_ms {
             return Err(EngineError::Replay);
         }
         let forged = |e: &String| e.starts_with("ucp:") || e.starts_with("zktls:");
@@ -521,7 +532,7 @@ impl Engine {
             (None, None) => 0,
         };
         // An empty reading is leg A's without a PayPal read, which checks nothing.
-        let live = self.config.chain_id == ARBITRUM_ONE;
+        let live = chain_id == ARBITRUM_ONE;
         let denied = match (&context, observed) {
             (Ok(c), Some(o)) if !o.authorization_id.is_empty() => {
                 match paypal_check(m, o, c, live) {
@@ -616,7 +627,7 @@ impl Engine {
             };
             let signature = self
                 .signer
-                .sign_countersign(&c, &self.domain)
+                .sign_countersign(&c, &domain)
                 .map_err(EngineError::Signer)?;
             // Reserving is the last step, so no failure can leave a reservation behind. Cedar allowed `total ≤ budget_left`, so a failed reservation means another request
             // reserved since, and evaluating again makes progress. A zero total reserves nothing.
@@ -631,7 +642,7 @@ impl Engine {
             }
             break Countersigned {
                 countersign: (&c).into(),
-                digest: Hex(countersign_digest(&c, &self.domain)),
+                digest: Hex(countersign_digest(&c, &domain)),
                 signature: Hex(signature),
                 signer: self.signer.address(),
                 tee: self.config.tee_kind,

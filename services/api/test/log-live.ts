@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { LOG_ORIGINS } from "@keelson/log";
+import { VERIFYING_CONTRACT } from "../src/tee/config.ts";
 
 const root = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 
@@ -80,7 +81,7 @@ export async function startLocalLog(databaseUrl: string): Promise<LocalLog> {
       LOG_PRIVATE_ADDR: `127.0.0.1:${priv}`,
       LOG_DATA_DIR: join(dir, "data"),
       DATABASE_URL: databaseUrl,
-      KEELSON_VERIFYING_CONTRACT: `0x${"00".repeat(20)}`,
+      KEELSON_VERIFYING_CONTRACT: VERIFYING_CONTRACT,
       LOG_WRITE_TOKEN_SHA256: createHash("sha256").update(token).digest("hex"),
     },
     stdio: "ignore",

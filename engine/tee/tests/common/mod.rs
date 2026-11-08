@@ -372,6 +372,7 @@ pub fn countersign_request(
         evidence_root: Hex([0x55; 32]),
         authorization_id: None,
         observation,
+        chain_id: None,
     }
 }
 

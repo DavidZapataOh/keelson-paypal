@@ -351,11 +351,16 @@ pub async fn boot(config: EngineConfig) -> Result<(Engine, Attestation), BootErr
     Ok((engine, attestation))
 }
 
-/// Attests `engine`'s signer over the latest block of the RPC in [`chain::rpc_url`].
+/// Attests `engine`'s signer over the latest block of its own chain.
 pub async fn attest(engine: &Engine) -> Result<Attestation, BootError> {
+    attest_for(engine, engine.config().chain_id).await
+}
+
+/// Attests `engine`'s signer for `chain_id` over the latest block of [`chain::rpc_url_for`].
+pub async fn attest_for(engine: &Engine, chain_id: u64) -> Result<Attestation, BootError> {
     let dstack = Dstack::from_env();
-    let rpc = chain::rpc_url();
-    let binding = engine.binding().map_err(BootError::Binding)?;
+    let rpc = chain::rpc_url_for(chain_id);
+    let binding = engine.binding_for(chain_id).map_err(BootError::Binding)?;
     let (rpc_chain, (number, hash), info, version) = tokio::try_join!(
         async { Ok::<_, BootError>(chain::chain_id(&rpc).await?) },
         async { Ok(chain::latest_block(&rpc).await?) },
