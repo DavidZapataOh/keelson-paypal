@@ -1,0 +1,22 @@
+[
+  {
+    "url": "https://www.shopwss.com/products/jl4201a",
+    "note": "adidas crew socks on a Shopify store: Size options, Color selected, four merchant offers",
+    "catalog": true
+  },
+  {
+    "url": "https://www.allbirds.com/products/mens-tree-runners?variant=33179624767568",
+    "note": "Allbirds Tree Runner pinned to size 11 on a Shopify store: Size options",
+    "catalog": true
+  },
+  {
+    "url": "https://www.zumiez.com/adidas-trefoil-6-pack-white-black-crew-socks.html",
+    "note": "adidas crew socks with no variant options, three merchant offers",
+    "catalog": true
+  },
+  {
+    "url": "https://jolyn.com/products/final-sale-accessories-crew-socks",
+    "note": "Shopify store page outside the catalog: resolves only with a realtime fetch",
+    "catalog": false
+  }
+]
