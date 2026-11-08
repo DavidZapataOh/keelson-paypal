@@ -114,15 +114,32 @@ const notJudged = (err: unknown): boolean =>
   err.kind === "problem" &&
   (err.code === undefined ? (err.status ?? 0) >= 500 : NOT_JUDGED.has(err.code));
 
-const readmitting = new Set<Leg>();
+const readmitting = new Map<Leg, Promise<void>>();
 
-/** Admits the leg's new signer after a restart without holding the request that noticed it. */
-function readmit(deps: CoordinatorDeps, leg: Leg): void {
-  if (readmitting.has(leg)) return;
-  readmitting.add(leg);
-  void refreshLeg(deps.db, leg, deps.tee)
-    .catch((err: unknown) => deps.log.warn({ err, leg }, "tee signer could not be admitted"))
-    .finally(() => readmitting.delete(leg));
+/** How long a request waits for a restarted leg's new signer to be attested and admitted. */
+const READMIT_WAIT_MS = 15_000;
+
+/**
+ * Admits the leg's new signer after a restart, once per leg at a time, and waits at most
+ * {@link READMIT_WAIT_MS} for it.
+ */
+async function readmit(deps: CoordinatorDeps, leg: Leg): Promise<void> {
+  let pending = readmitting.get(leg);
+  if (!pending) {
+    pending = refreshLeg(deps.db, leg, deps.tee)
+      .then(() => undefined)
+      .catch((err: unknown) => deps.log.warn({ err, leg }, "tee signer could not be admitted"))
+      .finally(() => readmitting.delete(leg));
+    readmitting.set(leg, pending);
+  }
+  let timer: NodeJS.Timeout | undefined;
+  await Promise.race([
+    pending,
+    new Promise((resolve) => {
+      timer = setTimeout(resolve, READMIT_WAIT_MS);
+    }),
+  ]);
+  clearTimeout(timer);
 }
 
 function emit(deps: CoordinatorDeps, type: string, requestId: string, extra: Json = {}): void {
@@ -189,12 +206,6 @@ async function checked(
 
   const digest = countersignDigest(typed, keelsonDomain(DOMAIN_CHAIN, deps.verifyingContract));
   const unregistered = async (why: string) => {
-    // A restarted leg has a new signer the registry has not seen; one it knows is merely misfiled.
-    const known = await deps.db.query.teeSigners.findFirst({
-      columns: { address: true },
-      where: (t, { eq }) => eq(t.address, Buffer.from(hexToBytes(answer.signer as Hex))),
-    });
-    if (!known) readmit(deps, leg);
     deps.log.warn({ leg, requestId, why }, "tee signer refused");
     emit(deps, "tee.unregistered", requestId, { leg });
     return new CoordinatorError(
@@ -208,9 +219,24 @@ async function checked(
   }
   const signature = answer.signature as Hex;
   const recovered = getAddress(await recoverAddress({ hash: digest, signature }));
-  const registered = await activeSigner(deps.db, leg === "a" ? 1 : 2);
-  if (recovered !== registered?.address || recovered !== getAddress(answer.signer)) {
-    throw await unregistered("the signer is not the registered one");
+  if (recovered !== getAddress(answer.signer)) {
+    throw await unregistered("the signature is not the answer's signer's");
+  }
+  let registered = await activeSigner(deps.db, leg === "a" ? 1 : 2);
+  if (recovered !== registered?.address) {
+    // A restarted leg has a new signer the registry has not seen: its attestation is verified
+    // and the signer admitted before the answer counts. One the registry knows is refused.
+    const known = await deps.db.query.teeSigners.findFirst({
+      columns: { address: true },
+      where: (t, { eq }) => eq(t.address, Buffer.from(hexToBytes(recovered))),
+    });
+    if (!known) {
+      await readmit(deps, leg);
+      registered = await activeSigner(deps.db, leg === "a" ? 1 : 2);
+    }
+    if (recovered !== registered?.address) {
+      throw await unregistered("the signer is not the registered one");
+    }
   }
   return { signer: recovered, digest, signature, trace };
 }
@@ -284,7 +310,7 @@ export async function countersign2of2(
     new CoordinatorError("tee-unavailable", "A TEE signer is not available.", 503);
 
   if (!(await activeSigner(deps.db, 1))) {
-    readmit(deps, "a");
+    void readmit(deps, "a");
     throw unavailable();
   }
   let a: Countersigned;
