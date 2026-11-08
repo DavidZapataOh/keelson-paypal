@@ -130,7 +130,8 @@ interface IKeelsonBondVault {
 
     /// @param hSd The hash of the mandate's selectively disclosable payload; with `cs.mandateCommitment` it gives the
     /// challenge the user's passkey signed.
-    /// @param qx The user's P-256 public key, as disclosed in the mandate's `user.cred`.
+    /// @param qx The user's P-256 public key, as disclosed in the mandate's `user.cred`; `keccak256(qx ‖ qy)` must be
+    /// the `userKeyHash` the operator signed in `c`.
     /// @param countersigs `tdx ‖ nitro` (130 bytes), or `tdx` alone (65 bytes) for a degraded purchase.
     function lockCoverage(
         KeelsonTypes.Coverage calldata c,

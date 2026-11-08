@@ -26,6 +26,7 @@ import {
   coverageTypedData,
   lockCoverageArgs,
   toAssertion,
+  userKeyHash,
 } from "../src/coverage.ts";
 
 const contracts = new URL("../../../contracts/", import.meta.url);
@@ -234,6 +235,7 @@ describe.skipIf(!live)("lockCoverage on an anvil fork", { timeout: 120_000 }, ()
       expiresAt: Number(cs.issuedAt) + registry.params.disputeWindow,
       mandateHash: cs.mandateHash,
       amberCommitment: keccak256(stringToHex(`amber/${cs.requestId}`)),
+      userKeyHash: userKeyHash(v.qx, v.qy),
     };
     const operatorSig = await operator().signTypedData(coverageTypedData(coverage, 421614, vault));
     const data = encodeFunctionData({

@@ -84,6 +84,7 @@ contract KeelsonTypesTest is VerifierBase {
         c.expiresAt = uint40(vectors.readUint(string.concat(m, ".expiresAt")));
         c.mandateHash = vectors.readBytes32(string.concat(m, ".mandateHash"));
         c.amberCommitment = vectors.readBytes32(string.concat(m, ".amberCommitment"));
+        c.userKeyHash = vectors.readBytes32(string.concat(m, ".userKeyHash"));
     }
 
     function _coverageBatch(string memory m) internal view returns (KeelsonTypes.CoverageBatch memory b) {
@@ -150,7 +151,7 @@ contract KeelsonTypesTest is VerifierBase {
             KeelsonTypes.COVERAGE_TYPEHASH,
             keccak256(
                 "Coverage(bytes32 coverageId,uint256 agentId,address merchant,uint96 amount,uint96 premium,"
-                "uint40 expiresAt,bytes32 mandateHash,bytes32 amberCommitment)"
+                "uint40 expiresAt,bytes32 mandateHash,bytes32 amberCommitment,bytes32 userKeyHash)"
             )
         );
         assertEq(

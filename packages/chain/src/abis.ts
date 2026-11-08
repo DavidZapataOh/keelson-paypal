@@ -886,6 +886,7 @@ export const iKeelsonBondVaultAbi = [
           { name: "expiresAt", type: "uint40", internalType: "uint40" },
           { name: "mandateHash", type: "bytes32", internalType: "bytes32" },
           { name: "amberCommitment", type: "bytes32", internalType: "bytes32" },
+          { name: "userKeyHash", type: "bytes32", internalType: "bytes32" },
         ],
       },
       {
@@ -1791,6 +1792,7 @@ export const keelsonBondVaultAbi = [
           { name: "expiresAt", type: "uint40", internalType: "uint40" },
           { name: "mandateHash", type: "bytes32", internalType: "bytes32" },
           { name: "amberCommitment", type: "bytes32", internalType: "bytes32" },
+          { name: "userKeyHash", type: "bytes32", internalType: "bytes32" },
         ],
       },
       {

@@ -48,7 +48,8 @@ library KeelsonTypes {
         bytes32 rootHash;
     }
 
-    /// @notice An operator's promise to cover one purchase. `amount` and `premium` are PYUSD base units.
+    /// @notice An operator's promise to cover one purchase. `amount` and `premium` are PYUSD base units;
+    /// `userKeyHash` is `keccak256(qx ‖ qy)` of the passkey the mandate discloses in `user.cred`.
     struct Coverage {
         bytes32 coverageId;
         uint256 agentId;
@@ -58,6 +59,7 @@ library KeelsonTypes {
         uint40 expiresAt;
         bytes32 mandateHash;
         bytes32 amberCommitment;
+        bytes32 userKeyHash;
     }
 
     /// @notice Coverage for many purchases at once: `root` is the OpenZeppelin standard Merkle tree (leaf encoding
@@ -89,7 +91,7 @@ library KeelsonTypes {
 
     bytes32 internal constant COVERAGE_TYPEHASH = keccak256(
         "Coverage(bytes32 coverageId,uint256 agentId,address merchant,uint96 amount,uint96 premium,uint40 expiresAt,"
-        "bytes32 mandateHash,bytes32 amberCommitment)"
+        "bytes32 mandateHash,bytes32 amberCommitment,bytes32 userKeyHash)"
     );
 
     bytes32 internal constant COVERAGE_BATCH_TYPEHASH = keccak256(

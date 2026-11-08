@@ -60,6 +60,7 @@ sol! {
         uint40 expiresAt;
         bytes32 mandateHash;
         bytes32 amberCommitment;
+        bytes32 userKeyHash;
     }
 
     struct CoverageBatch {

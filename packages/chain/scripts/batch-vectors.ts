@@ -10,6 +10,7 @@ const read = (path: string) => JSON.parse(readFileSync(new URL(path, contracts),
 const registry = read("deployments/421614.json");
 const live = read("test/vectors/coverage-2of2-webauthn.json") as {
   countersign: { requestId: Hex; mandateHash: Hex; issuedAt: string };
+  userKeyHash: Hex;
 };
 
 const COUNT = 100;
@@ -32,6 +33,7 @@ const coverages: Coverage[] = Array.from({ length: COUNT }, (_, i) => {
     expiresAt: Number(live.countersign.issuedAt) + registry.params.disputeWindow,
     mandateHash: live.countersign.mandateHash,
     amberCommitment: keccak256(stringToHex(`amber/${coverageId}`)),
+    userKeyHash: live.userKeyHash,
   };
 });
 const { batch, proofs } = coverageBatch(

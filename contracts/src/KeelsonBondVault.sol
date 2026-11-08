@@ -148,7 +148,8 @@ contract KeelsonBondVault is IKeelsonBondVault, AccessManaged, EIP712, Nonces, R
         Params memory p = _params;
         if (c.expiresAt < uint256(cs.issuedAt) + p.disputeWindow) revert WindowTooShort();
         if (
-            PasskeyAssertion.mandateChallenge(hSd, cs.mandateCommitment) != cs.mandateHash
+            keccak256(abi.encodePacked(qx, qy)) != c.userKeyHash
+                || PasskeyAssertion.mandateChallenge(hSd, cs.mandateCommitment) != cs.mandateHash
                 || !PasskeyAssertion.verify(cs.mandateHash, userAuth, rpIdHash, qx, qy)
         ) revert InvalidUserAssertion();
         bytes32 structHash = KeelsonTypes.hash(c);
@@ -193,7 +194,7 @@ contract KeelsonBondVault is IKeelsonBondVault, AccessManaged, EIP712, Nonces, R
             c.mandateHash,
             c.amberCommitment,
             digest,
-            keccak256(abi.encodePacked(qx, qy)),
+            c.userKeyHash,
             degraded
         );
         emit PremiumPaid(c.coverageId, c.agentId, c.premium);
