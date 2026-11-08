@@ -18,11 +18,15 @@ interface IKeelsonValidationRegistry is IERC8004Validation {
     /// @notice The coverage is neither released clean nor slashed with no slash still pending.
     error OutcomeNotFinal();
     error OutcomeRecorded();
+    /// @notice A DENY's `ValidationRequest` is signed by neither the agent's owner nor its agent wallet.
+    error NotAgentAuthority();
 
     /// @notice Records the validation of an Alibi from its countersign and the legs' signatures (`tdx ‖ nitro`, or
-    /// `tdx` alone when degraded). Permissionless. An ALLOW needs the coverage the vault locked under `c.requestId`.
+    /// `tdx` alone when degraded). Permissionless. An ALLOW needs the coverage the vault locked under `c.requestId`
+    /// for the same agent and amount; a DENY needs `operatorSig`, the agent owner's or agent wallet's EIP-712
+    /// `ValidationRequest(bytes32 requestHash)` under this contract's domain `{Keelson, 1, chainId, this}`.
     /// @return requestHash The countersign's EIP-712 digest.
-    function recordCountersign(KeelsonTypes.Countersign calldata c, bytes calldata sigs)
+    function recordCountersign(KeelsonTypes.Countersign calldata c, bytes calldata sigs, bytes calldata operatorSig)
         external
         returns (bytes32 requestHash);
 
@@ -32,4 +36,6 @@ interface IKeelsonValidationRegistry is IERC8004Validation {
 
     /// @notice The validation of the ALLOW countersign whose request id is `coverageId`, or zero.
     function requestOf(bytes32 coverageId) external view returns (bytes32);
+
+    function domainSeparator() external view returns (bytes32);
 }

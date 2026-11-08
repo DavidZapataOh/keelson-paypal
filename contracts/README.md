@@ -131,6 +131,42 @@ The testnet windows are demo values (veto 2 minutes, grace 1 minute); production
 
 The fork tests (`test/BondVault*.fork.t.sol`, `test/Reserve.fork.t.sol`, `test/Settlement.fork.t.sol`) use coverages captured live (`test/vectors/coverage-*.json`, written by `services/api/test/coverage-vectors.live.test.ts`): the demo mandate signed in Chromium with a virtual authenticator through WebAuthn and through Secure Payment Confirmation, countersigned by the live legs, two of them 2-of-2 and one with leg B down. They read `KEELSON_FUNDER_KEYS`; on the fork the demo operator transfers its agent to a key the test holds, which then signs as the operator. PYUSD beyond the funders' faucet balances comes from the faucet's own wallet (`external.pyusdHolder`) by plain transfers on the fork.
 
+## ERC-8004
+
+Keelson builds on [ERC-8004](https://eips.ethereum.org/EIPS/eip-8004) ("Trustless Agents"), which is a Draft standard. Keelson pins the official registries at v2.0.0 (`erc-8004/erc-8004-contracts` at `b9e466c`): bonds are keyed by the `agentId` of the official Identity registry, operators are rated on the official Reputation registry, and each Alibi gets a validation in Keelson's own Validation registry. The official registries are upgradeable by their authors; nothing in the vault depends on them beyond `ownerOf` and `getAgentWallet`.
+
+| Chain                         | IdentityRegistry                             | ReputationRegistry                           |
+| ----------------------------- | -------------------------------------------- | -------------------------------------------- |
+| Arbitrum Sepolia, Sepolia     | `0x8004A818BFB912233c491871b3d84c89A494BD9e` | `0x8004B663056A597Dffe9eCcC1965A193B7388713` |
+| Arbitrum One                  | `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` | `0x8004BAa17C55a88189AE136b182e5fdA19dE9b63` |
+
+The two networks use different registry addresses, so both contracts below take them as constructor arguments: their CREATE3 addresses are the same on every chain, their runtime bytecode is not.
+
+### KeelsonReputationReporter
+
+`src/KeelsonReputationReporter.sol` is the bond vault's reputation client: it is the `clientAddress` of every rating Keelson gives on the official Reputation registry. The vault itself is frozen at the address the TEE legs' attestations bind, so its ratings come from this separate, ownerless contract that reads the vault's state:
+
+| Coverage, as the vault reports it                                                 | `rateCoverage(coverageId)` gives          |
+| --------------------------------------------------------------------------------- | ----------------------------------------- |
+| `Released` and `slashed(coverageId) == 0`                                         | `+100`, 2 decimals, `"keelson"`/`"release"` |
+| `slashed(coverageId) > 0`, no slash pending for the coverage or its agent          | `-100`, 2 decimals, `"keelson"`/`"slash"`   |
+| a slash still queued, or an active coverage with nothing slashed                    | reverts `OutcomeNotFinal`                 |
+
+Anyone may call it, once per coverage. A vetoed slash restores the coverage, which is then rated on its release. Coverages locked in a batch have no per-coverage state in the vault and are not rated. Read an operator's record with `getSummary(agentId, [reporter], "keelson", "")`, and its slashes with the `"slash"` filter; the values have two decimals because the registry averages in the most frequent precision and would truncate `±1` to `0`. The vault's `Slashed` events and `slashCount` remain the authoritative record.
+
+The registry refuses feedback from the agent's owner or anyone it approved. An operator that approves the reporter, or transfers its agent to it, makes the feedback fail: `rateCoverage` emits `FeedbackSkipped`, leaves the coverage unrated and can be called again later. While a refused `-1.00` is outstanding, no `+1.00` of that agent is given (`SlashUnrated`), so revoking the approval only around its own clean releases gains an operator nothing. The call to the registry gets a fixed stipend of `REPUTATION_GAS` (1.5 times its measured worst case) and copies no revert data; `rateCoverage` reverts `InsufficientGas` unless the full stipend is available, so no gas limit makes it skip the feedback.
+
+### KeelsonValidationRegistry
+
+`src/KeelsonValidationRegistry.sol` implements the reads and events of the ERC-8004 Validation registry (v2.0.0) over the official Identity registry, with the `VerdictVerifier` as the validator of every entry:
+
+- `recordCountersign(countersign, sigs)`: the request hash is the countersign's EIP-712 digest, checked through the `VerdictVerifier` (`tdx ‖ nitro`, tag `"2of2"`; or `tdx` alone, tag `"degraded"`). An ALLOW needs the coverage the vault locked under the countersign's request id for the same agent and amount, with the same signature mode, and responds `100`. A DENY responds `0` and needs the operator's request: the agent owner's or agent wallet's EIP-712 `ValidationRequest(bytes32 requestHash)` under the registry's domain `{Keelson, 1, chainId, registry}`, so nobody can pin denials on an agent whose operator did not ask. A DENY first recorded from the TDX signature alone becomes `"2of2"` when both signatures arrive. The response hash is the countersign's `evalHash`; the request URI serves the 66-byte typed-data payload.
+- `recordOutcome(coverageId)`: moves an ALLOW's validation to its coverage's outcome, read from the vault as the reporter reads it: `100`/`"settled"` or `0`/`"slashed"`. Anyone may call it, once.
+
+Deviation from the ERC: the request is not sent by the agent's owner and the response is not sent by the validator address. Both are proven by signatures instead (the operator's, which `lockCoverage` required for an ALLOW and the `ValidationRequest` carries for a DENY, and the legs'), so recording is permissionless and gasless for every party. The legs' signers must still be active when a countersign is recorded, so a validation is recorded right after its coverage is locked. The registry has no `validationRequest`/`validationResponse` for third parties, since a request hash chosen by anyone could claim a countersign's digest before it is recorded.
+
+`script/DeployErc8004.s.sol` deploys both at their CREATE3 addresses.
+
 ## Pause
 
 The Guardian can pause new coverage and veto a queued slash. Neither moves funds: there is no admin path that moves bonded PYUSD or the reserve's.

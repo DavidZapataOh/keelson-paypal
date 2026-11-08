@@ -188,6 +188,33 @@ contract ReputationReporterForkTest is Erc8004Base {
         _assertFeedback(1, -100, "slash");
     }
 
+    /// @dev An owner that keeps the reporter approved and revokes it only around its own clean releases gets no +1.00
+    /// until its refused -1.00 lands.
+    function test_operatorTogglingApproval_cannotDodgeTheSlash() public {
+        Vector memory payment = _locked(PAYMENT);
+        Vector memory webauthn = _locked(WEBAUTHN);
+        _slash(_amber(webauthn, AMOUNT));
+        vm.prank(operator);
+        _identity().setApprovalForAll(address(reporter), true);
+        _assertSkippedThenRetried(webauthn.coverage.coverageId);
+        assertFalse(reporter.rateCoverage(webauthn.coverage.coverageId));
+        assertEq(reporter.unratedSlashes(agentId), 1);
+
+        _release(payment);
+        vm.prank(operator);
+        _identity().setApprovalForAll(address(reporter), false);
+        vm.expectRevert(KeelsonReputationReporter.SlashUnrated.selector);
+        reporter.rateCoverage(payment.coverage.coverageId);
+
+        assertTrue(reporter.rateCoverage(webauthn.coverage.coverageId));
+        assertEq(reporter.unratedSlashes(agentId), 0);
+        assertFalse(reporter.slashSkipped(webauthn.coverage.coverageId));
+        assertTrue(reporter.rateCoverage(payment.coverage.coverageId));
+        (uint64 count, int128 value,) = _summary("");
+        assertEq(count, 2);
+        assertEq(value, 0);
+    }
+
     function test_operatorGivingTheAgentToTheReporter_skips() public {
         Vector memory v = _locked(WEBAUTHN);
         vm.prank(operator);

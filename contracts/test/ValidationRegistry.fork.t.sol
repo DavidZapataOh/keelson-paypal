@@ -32,7 +32,7 @@ contract ValidationRegistryForkTest is Erc8004Base {
     }
 
     function _record(Vector memory v) internal returns (bytes32) {
-        return validation.recordCountersign(v.countersign, v.countersigs);
+        return validation.recordCountersign(v.countersign, v.countersigs, "");
     }
 
     function _deny() internal view returns (KeelsonTypes.Countersign memory c) {
@@ -86,7 +86,7 @@ contract ValidationRegistryForkTest is Erc8004Base {
     function test_allow_signaturesMustMatchTheCoverage() public {
         Vector memory v = _locked(WEBAUTHN);
         vm.expectRevert(IKeelsonValidationRegistry.InvalidCountersign.selector);
-        validation.recordCountersign(v.countersign, v.tdx);
+        validation.recordCountersign(v.countersign, v.tdx, "");
     }
 
     function test_allow_coverageOfAnotherAgentIsNotCovered() public {
@@ -95,7 +95,7 @@ contract ValidationRegistryForkTest is Erc8004Base {
         c.agentId = agentId + 1;
         bytes memory sigs = _sign2of2(c);
         vm.expectRevert(IKeelsonValidationRegistry.NotCovered.selector);
-        validation.recordCountersign(c, sigs);
+        validation.recordCountersign(c, sigs, "");
     }
 
     function test_invalidSignatures() public {
@@ -103,18 +103,18 @@ contract ValidationRegistryForkTest is Erc8004Base {
         bytes memory tampered = bytes.concat(v.countersigs);
         tampered[70] = bytes1(uint8(tampered[70]) ^ 1);
         vm.expectRevert(IKeelsonValidationRegistry.InvalidCountersign.selector);
-        validation.recordCountersign(v.countersign, tampered);
+        validation.recordCountersign(v.countersign, tampered, "");
 
         tampered = bytes.concat(v.countersigs);
         tampered[3] = bytes1(uint8(tampered[3]) ^ 1);
         vm.expectRevert(IKeelsonValidationRegistry.InvalidCountersign.selector);
-        validation.recordCountersign(v.countersign, tampered);
+        validation.recordCountersign(v.countersign, tampered, "");
 
         vm.expectRevert(IKeelsonValidationRegistry.InvalidCountersign.selector);
-        validation.recordCountersign(v.countersign, v.nitro);
+        validation.recordCountersign(v.countersign, v.nitro, "");
 
         vm.expectRevert(IKeelsonValidationRegistry.InvalidCountersign.selector);
-        validation.recordCountersign(v.countersign, bytes.concat(v.countersigs, hex"00"));
+        validation.recordCountersign(v.countersign, bytes.concat(v.countersigs, hex"00"), "");
     }
 
     /// @dev The live TDX signer's registration lasts 72 h.
@@ -129,17 +129,50 @@ contract ValidationRegistryForkTest is Erc8004Base {
         KeelsonTypes.Countersign memory c = _deny();
         bytes memory sigs = _sign2of2(c);
         bytes memory tdx = _signCountersign(tdxKey, c);
-        bytes32 requestHash = validation.recordCountersign(c, tdx);
+        bytes32 requestHash = validation.recordCountersign(c, tdx, _operatorRequest(c));
         _assertStatus(requestHash, 0, "degraded", c.evalHash);
         assertEq(validation.requestOf(c.requestId), bytes32(0));
 
-        validation.recordCountersign(c, sigs);
+        validation.recordCountersign(c, sigs, "");
         _assertStatus(requestHash, 0, "2of2", c.evalHash);
 
         vm.expectRevert(IKeelsonValidationRegistry.ValidationExists.selector);
-        validation.recordCountersign(c, sigs);
+        validation.recordCountersign(c, sigs, "");
         vm.expectRevert(IKeelsonValidationRegistry.ValidationExists.selector);
-        validation.recordCountersign(c, tdx);
+        validation.recordCountersign(c, tdx, "");
+    }
+
+    /// @dev Anyone holding a real DENY countersign must not pin a 0 on an agent whose operator did not ask.
+    function test_deny_needsTheOperator() public {
+        KeelsonTypes.Countersign memory c = _deny();
+        bytes memory sigs = _sign2of2(c);
+        bytes32 digest = keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                validation.domainSeparator(),
+                keccak256(
+                    abi.encode(
+                        validation.VALIDATION_REQUEST_TYPEHASH(), verdictVerifier.hashTypedData(KeelsonTypes.hash(c))
+                    )
+                )
+            )
+        );
+        (, uint256 strangerKey) = makeAddrAndKey("erc8004 stranger");
+        (uint8 sv, bytes32 r, bytes32 s) = vm.sign(strangerKey, digest);
+        vm.expectRevert(IKeelsonValidationRegistry.NotAgentAuthority.selector);
+        validation.recordCountersign(c, sigs, abi.encodePacked(r, s, sv));
+        vm.expectRevert(IKeelsonValidationRegistry.NotAgentAuthority.selector);
+        validation.recordCountersign(c, sigs, "");
+    }
+
+    /// @dev Another countersign under the same request id, for another amount, is not the covered one.
+    function test_allow_amountMustMatchTheCoverage() public {
+        Vector memory v = _locked(WEBAUTHN);
+        KeelsonTypes.Countersign memory c = v.countersign;
+        c.amount -= 1;
+        bytes memory sigs = _sign2of2(c);
+        vm.expectRevert(IKeelsonValidationRegistry.NotCovered.selector);
+        validation.recordCountersign(c, sigs, "");
     }
 
     function test_unknownDecision() public {
@@ -147,7 +180,7 @@ contract ValidationRegistryForkTest is Erc8004Base {
         c.decision = 3;
         bytes memory sigs = _sign2of2(c);
         vm.expectRevert(IKeelsonValidationRegistry.InvalidCountersign.selector);
-        validation.recordCountersign(c, sigs);
+        validation.recordCountersign(c, sigs, "");
     }
 
     function test_outcome_settled() public {
@@ -193,7 +226,7 @@ contract ValidationRegistryForkTest is Erc8004Base {
         Vector memory v = _locked(WEBAUTHN);
         _record(v);
         KeelsonTypes.Countersign memory c = _deny();
-        validation.recordCountersign(c, _sign2of2(c));
+        validation.recordCountersign(c, _sign2of2(c), _operatorRequest(c));
 
         (uint64 count, uint8 avg) = validation.getSummary(agentId, _validators(), "");
         assertEq(count, 2);
