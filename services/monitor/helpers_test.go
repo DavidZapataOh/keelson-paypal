@@ -148,11 +148,10 @@ func freePort(t testing.TB) int {
 // testOrigin is the origin of the local logs the tests run.
 const testOrigin = "log.keelson.finance/alibi/2026-1"
 
-// logKeys are a log's Ed25519 key and the witnesses that cosign it.
+// logKeys are a log's Ed25519 key.
 type logKeys struct {
-	signer    note.Signer
-	vkey      string
-	witnesses []*testWitness
+	signer note.Signer
+	vkey   string
 }
 
 func newLogKeys(t testing.TB, origin string) *logKeys {

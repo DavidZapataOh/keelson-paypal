@@ -336,8 +336,8 @@ func TestEveryCheckpointIsWitnessedTwoOfThree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	checkRefusesForks(t, ws[0].url, s)
 	n := checkRefusesForks(t, ws[0].url, s)
-	n = checkRefusesForks(t, ws[0].url, s)
 	if n != 2 {
 		t.Fatalf("the witness knows size %d of the conformance log, want 2", n)
 	}

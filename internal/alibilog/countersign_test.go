@@ -64,7 +64,7 @@ func TestRecoverRejectsMalleableSignatures(t *testing.T) {
 	digest := Digest(pos[0].Countersign, pos[0].ChainID, contract(t, pos[0].VerifyingContract))
 	sig := l.TeeSigs[0]
 
-	n := secp256k1.S256().N
+	n := secp256k1.Params().N
 	s := new(big.Int).SetBytes(sig[32:64])
 	high := sig
 	new(big.Int).Sub(n, s).FillBytes(high[32:64])
