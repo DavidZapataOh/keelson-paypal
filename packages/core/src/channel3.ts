@@ -52,7 +52,12 @@ export interface Channel3Comparison {
 
 const record = (v: unknown): Record<string, unknown> | null =>
   typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
-const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
+/** Strings Channel3 copies from merchant pages, made storable: no NUL, no lone surrogate. */
+const str = (v: unknown): string | null =>
+  typeof v === "string" ? v.replaceAll("\0", "").toWellFormed().slice(0, MAX_STRING) : null;
+const MAX_STRING = 512;
+/** More merchants than any comparison reads; the document stays small. */
+const MAX_OFFERS = 32;
 
 /**
  * A Channel3 price, a JSON number in major units, as an integer string in minor units. The number
@@ -90,7 +95,7 @@ export function normalizeProduct(product: unknown): Channel3Product {
   const title = str(p?.title);
   if (!p || id === null || title === null) throw new TypeError("not a Channel3 product");
   const brands = Array.isArray(p.brands) ? p.brands : [];
-  const offers = (Array.isArray(p.offers) ? p.offers : []).flatMap((o) => {
+  const offers = (Array.isArray(p.offers) ? p.offers.slice(0, MAX_OFFERS) : []).flatMap((o) => {
     const offer = record(o);
     const price = record(offer?.price);
     const domain = str(offer?.domain);

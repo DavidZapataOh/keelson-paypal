@@ -112,6 +112,12 @@ describe("POST /webhooks/channel3", () => {
     expect(await rowsFor(event.id)).toEqual([]);
   });
 
+  test("a signed event whose timestamp is not an RFC 3339 time of this century is refused", async () => {
+    const event = { ...priceChanged(), timestamp: "+275760-09-13T00:00:00Z" };
+    expect((await deliver(JSON.stringify(event)).send()).status).toBe(400);
+    expect(await rowsFor(event.id)).toEqual([]);
+  });
+
   test("a body altered by one byte is refused", async () => {
     const event = priceChanged();
     const body = JSON.stringify(event);

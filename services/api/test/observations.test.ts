@@ -75,6 +75,19 @@ describe("POST /v1/observations/channel3", () => {
     expect(res.status).toBe(422);
   });
 
+  test("a URL holding an email address is refused before Channel3 is asked", async () => {
+    const { channel3, attempts } = refusedChannel3();
+    const mandateId = await channel3Mandate();
+    const res = await post(appWith(channel3), {
+      mandateId,
+      url: "https://www.shopwss.com/products/jl4201a?ref=buyer%40example.com",
+      agentView,
+    });
+    expect(res.status).toBe(422);
+    expect(await problemType(res)).toMatch(/url-pii$/);
+    expect(attempts()).toBe(0);
+  });
+
   test("an unknown mandate is 404 and a revoked one 409", async () => {
     const app = appWith(refusedChannel3().channel3);
     const url = "https://www.shopwss.com/products/jl4201a";
@@ -88,7 +101,8 @@ describe("POST /v1/observations/channel3", () => {
     const app = appWith(channel3);
     const mandateId = await channel3Mandate();
     const url = "https://www.shopwss.com/products/jl4201a";
-    const res = await post(app, { mandateId, url, agentView });
+    // The fragment never leaves the browser, so it is not sent on either.
+    const res = await post(app, { mandateId, url: `${url}#reviews`, agentView });
     expect(res.status, await res.clone().text()).toBe(201);
     const body = (await res.json()) as {
       id: string;

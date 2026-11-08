@@ -2,7 +2,7 @@ import { isIP } from "node:net";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { CURRENCIES, type CurrencyCode, toHex } from "@keelson/core";
 import { and, channel3Observations, eq } from "@keelson/db";
-import { itemLeaf, MEDIA_TYPES } from "@keelson/evidence";
+import { containsPii, itemLeaf, MEDIA_TYPES } from "@keelson/evidence";
 import type { Deps } from "../app.ts";
 import { observe } from "../channel3/observe.ts";
 import { requireClient } from "../middleware/auth.ts";
@@ -12,6 +12,9 @@ import { ProblemSchema, problem } from "../problem.ts";
 const Hex32 = z.string().regex(/^0x[0-9a-f]{64}$/);
 const RATE_PER_MANDATE = 30;
 const RATE_WINDOW_SEC = 60;
+/** The month's 1,000 Channel3 credits are shared; one client spends at most this many a day. */
+const DAILY_PER_CLIENT = 100;
+const DAY_SEC = 86_400;
 const USABLE = new Set(["SIGNED", "HOLD_PENDING", "ACTIVE"]);
 const ITEM_TYPE = "channel3.observation" as const;
 
@@ -120,8 +123,14 @@ const create = createRoute({
     404: { description: "No such mandate", content: problemContent },
     409: { description: "The mandate is not active", content: problemContent },
     422: { description: "The request is invalid", content: problemContent },
-    429: { description: "Too many observations for this mandate", content: problemContent },
-    503: { description: "Channel3 is not configured", content: problemContent },
+    429: {
+      description: "Too many observations for this mandate, or today for this client",
+      content: problemContent,
+    },
+    503: {
+      description: "Channel3 is not configured, or the rate limit store is unreachable",
+      content: problemContent,
+    },
   },
 });
 
@@ -180,23 +189,56 @@ export function registerObservations(
     }
     const body = c.req.valid("json");
     const client = c.var.principal?.subject as string;
+    const page = new URL(body.url);
+    page.hash = "";
+    const url = page.toString();
+    if (containsPii("text/plain; charset=utf-8", new TextEncoder().encode(url))) {
+      return problem(
+        c,
+        422,
+        "url-pii",
+        "URL holds PII",
+        "The URL holds an email address or phone number; it is sent to Channel3 and published.",
+      );
+    }
 
-    const window = Math.floor(Date.now() / 1000 / RATE_WINDOW_SEC);
-    const key = `rl:channel3:${principalKey({ kind: "client", subject: client })}:${body.mandateId}:${window}`;
+    // Each observation spends a Channel3 credit, so the limits fail closed.
+    const now = Math.floor(Date.now() / 1000);
+    const owner = principalKey({ kind: "client", subject: client });
+    const minute = `rl:channel3:${owner}:${body.mandateId}:${Math.floor(now / RATE_WINDOW_SEC)}`;
+    const day = `rl:channel3-day:${owner}:${Math.floor(now / DAY_SEC)}`;
+    let counts: number[];
     try {
-      const [count] = await kv.multi().incr(key).expire(key, RATE_WINDOW_SEC, "NX").exec();
-      if (Number(count) > RATE_PER_MANDATE) {
-        c.header("Retry-After", String(RATE_WINDOW_SEC));
-        return problem(
-          c,
-          429,
-          "rate-limited",
-          "Too many requests",
-          "Too many observations for this mandate.",
-        );
-      }
+      const replies = await kv
+        .multi()
+        .incr(minute)
+        .expire(minute, RATE_WINDOW_SEC, "NX")
+        .incr(day)
+        .expire(day, DAY_SEC, "NX")
+        .exec();
+      counts = [Number(replies[0]), Number(replies[2])];
     } catch {
-      // Each observation is one Channel3 credit, but the store being down does not stop one.
+      return problem(
+        c,
+        503,
+        "dependency-unavailable",
+        "Dependency unavailable",
+        "The rate limit store is unreachable.",
+      );
+    }
+    const [perMandate = 0, perDay = 0] = counts;
+    if (perMandate > RATE_PER_MANDATE || perDay > DAILY_PER_CLIENT) {
+      const daily = perDay > DAILY_PER_CLIENT;
+      c.header("Retry-After", String(daily ? DAY_SEC - (now % DAY_SEC) : RATE_WINDOW_SEC));
+      return problem(
+        c,
+        429,
+        "rate-limited",
+        "Too many requests",
+        daily
+          ? "Too many observations today for this client."
+          : "Too many observations for this mandate.",
+      );
     }
 
     const mandate = await db.query.mandates.findFirst({
@@ -220,12 +262,12 @@ export function registerObservations(
       {
         mandateId: mandate.id,
         requestedBy: client,
-        url: body.url,
+        url,
         agentView: {
           ...view,
           ...(brand ? { brand } : {}),
           contentHash: view.contentHash as `0x${string}`,
-          url: body.url,
+          url,
         },
       },
     );

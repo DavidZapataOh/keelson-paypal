@@ -494,13 +494,19 @@ describe.skipIf(!live)("POST /v1/countersign (live legs)", { timeout: 180_000 },
   // A Channel3 catalog SKU whose selected Color is "Black"; the store's own page calls the same
   // pack "Heather Grey & Black".
   const sku = capturedLookup("shopwss-com");
+  // The agent's view describes the line it is buying: the cart's price, currency and color.
   const view = (color: string) => ({
     brand: "adidas",
-    priceMinor: "2000",
+    priceMinor: "9400",
     currency: "USD",
     available: true,
     selected: [{ name: "Color", label: color }],
   });
+  const cartIn = (color: string) => {
+    const c = structuredClone(carts.demo);
+    for (const line of c.cart.lines) line.color = color;
+    return c;
+  };
   const boundTo = async (id: string) =>
     (
       await testDb
@@ -515,10 +521,11 @@ describe.skipIf(!live)("POST /v1/countersign (live legs)", { timeout: 180_000 },
       const observing = appWith(tee.client, createChannel3(process.env.CHANNEL3_API_KEY as string));
       for (const [color, result] of [
         ["Heather Grey & Black", "mismatch"],
-        ["Black", "match"],
+        ["black", "match"],
       ] as const) {
         const m = await issue();
-        const capture = await evidence.capture(carts.demo.cart);
+        const cart = cartIn(color);
+        const capture = await evidence.capture(cart.cart);
         const observation = await evidence.observe(
           observing,
           mandateId,
@@ -530,7 +537,7 @@ describe.skipIf(!live)("POST /v1/countersign (live legs)", { timeout: 180_000 },
         expect(observation.status).toBe("ok");
         const root = await evidence.store(app, mandateId, capture, asAgent, observation);
         const requestId = ulid();
-        const res = await send(app, await countersignBody(carts.demo, requestId, m, root));
+        const res = await send(app, await countersignBody(cart, requestId, m, root));
         const out = (await res.json()) as {
           decision: string;
           trace: { fields: { field: string; color: string; evidence: string[] }[] };
@@ -557,7 +564,7 @@ describe.skipIf(!live)("POST /v1/countersign (live legs)", { timeout: 180_000 },
         owner,
         capture,
         sku.url,
-        view("Black"),
+        view("black"),
         asAgent,
       );
       return { capture, observation };
@@ -574,9 +581,36 @@ describe.skipIf(!live)("POST /v1/countersign (live legs)", { timeout: 180_000 },
       ...(await countersignBody(carts.demo, ulid(), m)),
       evidence: { variant: [`channel3:match:variant:${ulid()}`] },
     };
-    const res = await send(watched, written);
-    expect(res.status).toBe(422);
-    expect(((await res.json()) as { type: string }).type).toMatch(/invalid-evidence$/);
+    for (const evidence of [
+      { variant: [`channel3:match:variant:${ulid()}`] },
+      { variant: [`Channel3:match:variant:${ulid()}`] },
+      { [`channel3:match:${ulid()}`]: ["x"] },
+    ]) {
+      const res = await send(watched, { ...written, evidence });
+      expect(res.status).toBe(422);
+      expect(((await res.json()) as { type: string }).type).toMatch(/invalid-evidence$/);
+    }
+
+    const notTheCart = await (async () => {
+      const capture = await evidence.capture(carts.demo.cart);
+      const observation = await evidence.observe(
+        observing,
+        mandateId,
+        capture,
+        sku.url,
+        { ...view("black"), priceMinor: "2000" },
+        asAgent,
+      );
+      return evidence.store(app, mandateId, capture, asAgent, observation);
+    })();
+    await refused(notTheCart, /not the cart's/);
+
+    const superseded = await observed();
+    await observed();
+    await refused(
+      await evidence.store(app, mandateId, superseded.capture, asAgent, superseded.observation),
+      /newer Channel3 observation/,
+    );
 
     const other = await observed(await channel3Mandate());
     await refused(
@@ -612,7 +646,7 @@ describe.skipIf(!live)("POST /v1/countersign (live legs)", { timeout: 180_000 },
       mandateId,
       capture,
       sku.url,
-      { ...view("Black"), contentHash: toHex(sha256(cartItem?.bytes ?? new Uint8Array())) },
+      { ...view("black"), contentHash: toHex(sha256(cartItem?.bytes ?? new Uint8Array())) },
       asAgent,
     );
     await refused(

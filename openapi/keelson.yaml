@@ -2004,13 +2004,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
         "429":
-          description: Too many observations for this mandate
+          description: Too many observations for this mandate, or today for this client
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
         "503":
-          description: Channel3 is not configured
+          description: Channel3 is not configured, or the rate limit store is unreachable
           content:
             application/problem+json:
               schema:

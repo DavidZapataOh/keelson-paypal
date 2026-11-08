@@ -18,6 +18,7 @@ function isOfferEvent(v: unknown): v is OfferEvent {
     typeof e?.id === "string" &&
     typeof e.type === "string" &&
     typeof e.timestamp === "string" &&
+    /^20\d\d-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(Z|[+-]\d\d:\d\d)$/.test(e.timestamp) &&
     !Number.isNaN(Date.parse(e.timestamp))
   );
 }

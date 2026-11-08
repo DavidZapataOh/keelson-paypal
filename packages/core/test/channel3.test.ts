@@ -189,6 +189,16 @@ describe("channel3PriceMinor", () => {
 });
 
 describe("normalizeProduct", () => {
+  it("drops NUL and lone surrogates a merchant page may carry", () => {
+    const p = normalizeProduct({
+      id: "x",
+      title: "Sock\u0000 \ud800pack",
+      brands: [{ name: "a\u0000b" }],
+    });
+    expect(p.title).toBe("Sock \ufffdpack");
+    expect(p.brand).toBe("ab");
+  });
+
   it("refuses what is not a product", () => {
     expect(() => normalizeProduct(null)).toThrow(TypeError);
     expect(() => normalizeProduct({ id: "x" })).toThrow(TypeError);

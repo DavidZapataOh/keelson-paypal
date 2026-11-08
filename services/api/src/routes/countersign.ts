@@ -16,10 +16,12 @@ import {
   eq,
   evidenceBundles,
   evidenceItems,
+  gt,
   inArray,
   isNull,
   or,
   purchases,
+  sql,
   transition,
 } from "@keelson/db";
 import { merchantLeaf } from "@keelson/mandate";
@@ -53,7 +55,8 @@ const MAX_UNIT_BYTES = 8_192;
 
 const bytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value));
 /** An observation is usable for as long as the countersign it feeds may take to be asked for. */
-const OBSERVATION_TTL_MS = 900_000;
+const OBSERVATION_TTL_SEC = 900;
+const fold = (s: string) => s.normalize("NFKC").trim().toUpperCase().toLowerCase();
 
 const CartSchema = z
   .object({
@@ -282,6 +285,33 @@ async function failPurchase(db: Db, id: string, reason: string): Promise<void> {
   });
 }
 
+interface StoredView {
+  price_minor?: unknown;
+  currency?: unknown;
+  selected?: { name: string; label: string }[];
+}
+
+/**
+ * Whether the agent's view describes a line of the cart being countersigned: its price and
+ * currency, and its size and color where the view names them. The view is the agent's word, so
+ * it only counts when it is the purchase itself that Channel3 is compared with.
+ */
+function viewDescribesCart(
+  view: StoredView | undefined,
+  cart: z.infer<typeof CartSchema>,
+): boolean {
+  if (!view || view.currency !== cart.currency) return false;
+  return cart.lines.some(
+    (line) =>
+      String(line.unit_minor) === view.price_minor &&
+      (view.selected ?? []).every((option) => {
+        const name = fold(option.name);
+        const value = name === "size" ? line.size : name === "color" ? line.color : undefined;
+        return value === undefined || (value !== null && fold(value) === fold(option.label));
+      }),
+  );
+}
+
 function observationInvalid(c: Context, detail: string) {
   return problem(c, 422, "observation-invalid", "Observation invalid", detail);
 }
@@ -311,7 +341,10 @@ export function registerCountersign(
       return problem(c, 503, "tee-unavailable", "TEE unavailable", "No TEE legs are configured.");
     }
     if (
-      Object.values(body.evidence).some((sources) => sources.some((s) => s.startsWith("channel3:")))
+      Object.entries(body.evidence).some(
+        ([field, sources]) =>
+          fold(field).startsWith("channel3") || sources.some((s) => fold(s).startsWith("channel3")),
+      )
     ) {
       return problem(
         c,
@@ -433,12 +466,21 @@ export function registerCountersign(
     const observed = item("channel3.observation");
     if (observed?.contentHash && observed.salt) {
       const [obs] = await db
-        .select()
+        .select({
+          id: channel3Observations.id,
+          mandateId: channel3Observations.mandateId,
+          purchaseId: channel3Observations.purchaseId,
+          url: channel3Observations.url,
+          salt: channel3Observations.salt,
+          document: channel3Observations.document,
+          // Both sides of the window on the database clock.
+          fresh: sql<boolean>`${channel3Observations.createdAt} > now() - make_interval(secs => ${OBSERVATION_TTL_SEC})`,
+        })
         .from(channel3Observations)
         .where(eq(channel3Observations.contentHash, observed.contentHash));
       const productHash = item("api.product")?.contentHash;
-      const viewHash = (obs?.document as { agent_view?: { content_hash?: unknown } } | undefined)
-        ?.agent_view?.content_hash;
+      const view = (obs?.document as { agent_view?: StoredView & { content_hash?: unknown } })
+        ?.agent_view;
       if (!obs?.salt.equals(observed.salt)) {
         return observationInvalid(
           c,
@@ -451,14 +493,39 @@ export function registerCountersign(
       if (obs.purchaseId !== null && obs.purchaseId !== purchaseId) {
         return observationInvalid(c, "The Channel3 observation already serves another purchase.");
       }
-      if (obs.createdAt.getTime() < Date.now() - OBSERVATION_TTL_MS) {
+      if (!obs.fresh) {
         return observationInvalid(c, "The Channel3 observation is older than 900 seconds.");
       }
-      if (!productHash || viewHash !== toHex(productHash)) {
+      if (!productHash || view?.content_hash !== toHex(productHash)) {
         return observationInvalid(
           c,
           "The Channel3 observation compares a view that is not this evidence's api.product item.",
         );
+      }
+      if (!viewDescribesCart(view, body.cart)) {
+        return observationInvalid(
+          c,
+          "The Channel3 observation compares a price, currency, size or color that is not the cart's.",
+        );
+      }
+      // Only the latest observation of a page counts: an agent cannot keep the answer it liked.
+      const [newer] = await db
+        .select({ id: channel3Observations.id })
+        .from(channel3Observations)
+        .where(
+          and(
+            eq(channel3Observations.mandateId, mandate.id),
+            eq(channel3Observations.url, obs.url),
+            // Compared in SQL: the column keeps microseconds, a JavaScript Date does not.
+            gt(
+              channel3Observations.createdAt,
+              sql`(select created_at from channel3_observations where id = ${obs.id})`,
+            ),
+          ),
+        )
+        .limit(1);
+      if (newer) {
+        return observationInvalid(c, "A newer Channel3 observation of this page exists.");
       }
       const added = channel3Sources(obs.id, storedComparison(obs.document));
       evidenceSources = { ...body.evidence };
