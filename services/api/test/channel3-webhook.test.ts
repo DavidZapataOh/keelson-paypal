@@ -118,6 +118,13 @@ describe("POST /webhooks/channel3", () => {
     expect(await rowsFor(event.id)).toEqual([]);
   });
 
+  test("a timestamp without an offset, as the portal's example events send, is read as UTC", async () => {
+    const event = { ...priceChanged(), timestamp: "2026-11-07T22:04:28.292368914" };
+    expect((await deliver(JSON.stringify(event)).send()).status).toBe(204);
+    const [row] = await rowsFor(event.id);
+    expect(row?.committedAt.toISOString()).toBe("2026-11-07T22:04:28.292Z");
+  });
+
   test("a body altered by one byte is refused", async () => {
     const event = priceChanged();
     const body = JSON.stringify(event);

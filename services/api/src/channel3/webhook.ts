@@ -12,14 +12,26 @@ interface OfferEvent {
   data?: { subject?: { product_id?: unknown; domain?: unknown }; current?: unknown };
 }
 
+const TIMESTAMP = /^20\d\d-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(Z|[+-]\d\d:\d\d)?$/;
+
+/**
+ * The commit time of an event. A timestamp without an offset, as the portal's example events
+ * carry, is read as UTC.
+ */
+function committedAt(timestamp: string): Date | null {
+  const match = TIMESTAMP.exec(timestamp);
+  if (!match) return null;
+  const at = new Date(match[2] ? timestamp : `${timestamp}Z`);
+  return Number.isNaN(at.getTime()) ? null : at;
+}
+
 function isOfferEvent(v: unknown): v is OfferEvent {
   const e = v as Partial<OfferEvent> | null;
   return (
     typeof e?.id === "string" &&
     typeof e.type === "string" &&
     typeof e.timestamp === "string" &&
-    /^20\d\d-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(Z|[+-]\d\d:\d\d)$/.test(e.timestamp) &&
-    !Number.isNaN(Date.parse(e.timestamp))
+    committedAt(e.timestamp) !== null
   );
 }
 
@@ -44,7 +56,7 @@ export async function storeEvent(
       type: event.type,
       productId: typeof subject?.product_id === "string" ? subject.product_id : null,
       domain: typeof subject?.domain === "string" ? subject.domain : null,
-      committedAt: new Date(event.timestamp),
+      committedAt: committedAt(event.timestamp) as Date,
       svixId,
       body: Buffer.from(body),
       contentHash: Buffer.from(contentHash),
