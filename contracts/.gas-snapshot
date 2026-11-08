@@ -1,0 +1,5 @@
+KeelsonDeployerTest:test_AddressIgnoresInitCode() (gas: 245689)
+KeelsonDeployerTest:test_OtherOwnerOtherAddresses() (gas: 457146)
+KeelsonDeployerTest:test_PredictMatchesDeploy() (gas: 270869)
+KeelsonDeployerTest:test_RevertWhen_NotOwner() (gas: 39689)
+KeelsonDeployerTest:test_RevertWhen_SaltReused() (gas: 1040459050)

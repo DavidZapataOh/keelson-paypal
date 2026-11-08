@@ -220,6 +220,30 @@ jobs:
           docker logs monitor
           exit 1
 
+  contracts:
+    runs-on: ubuntu-24.04
+    env:
+      ARBITRUM_SEPOLIA_RPC_URL: https://sepolia-rollup.arbitrum.io/rpc
+      ARBITRUM_ONE_RPC_URL: https://arb1.arbitrum.io/rpc
+      ETHEREUM_SEPOLIA_RPC_URL: https://ethereum-sepolia-rpc.publicnode.com
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1.9.2
+        with:
+          version: v1.9.0
+          # Fork tests pin their blocks in the registry, so the RPC cache stays valid until a block moves.
+          cache-key: contracts-${{ hashFiles('contracts/deployments/*.json', 'contracts/test/**/*.fork.t.sol') }}
+          cache-restore-keys: contracts-
+      - run: forge fmt --check
+      - run: forge build --sizes
+      - run: forge test --no-match-path 'test/**/*.live.t.sol' -vvv
+      - run: forge snapshot --check --no-match-path 'test/**/*.{fork,live}.t.sol'
+
   log-live:
     needs: go
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
