@@ -155,6 +155,25 @@ describe("manifest", () => {
     expect(verifyManifest({ ...m, items: [...m.items].reverse() })).toBe(false);
   });
 
+  test("a channel3 observation goes after the HAR and before the originals", () => {
+    const items = twelveItems();
+    const observation: SealedItem = {
+      type: "channel3.observation",
+      mediaType: MEDIA_TYPES["channel3.observation"],
+      bytes: encoder.encode('{"v":"keelson.channel3.observation/1"}'),
+      salt: salt(),
+    };
+    const m = buildManifest([...items.slice(0, 9), observation, ...items.slice(9)]);
+    expect(m.items.map((i) => i.type).slice(8, 11)).toEqual([
+      "har",
+      "channel3.observation",
+      "api.cart.original",
+    ]);
+    expect(verifyManifest(m)).toBe(true);
+    expect(() => buildManifest([observation, ...items])).toThrow(/out of order/);
+    expect(() => buildManifest([...items, observation])).toThrow(/out of order/);
+  });
+
   test("refuses two items with the same salt", () => {
     const s = salt();
     const items = twelveItems().map((i) => ({ ...i, salt: s }));

@@ -22,18 +22,19 @@ evidenceRoot = MTH(leaf_0 … leaf_{n-1})        n ≥ 1
 injective. Each salt is 32 random bytes, one per item; without it an unrevealed item could be
 guessed from its hash. Items appear in this order, and an item that does not apply is omitted:
 
-| #   | `type`            | `media_type`                          | Public bytes                                                                          |
-| --- | ----------------- | ------------------------------------- | ------------------------------------------------------------------------------------- |
-| 1   | `api.product`     | `application/json`                    | RFC 8785 JSON, PII redacted                                                           |
-| 2   | `api.cart`        | `application/json`                    | RFC 8785 JSON, PII redacted                                                           |
-| 3   | `llm.observation` | `text/plain; charset=utf-8`           | as the model received it, PII redacted                                                |
-| 4   | `dom.snapshot`    | `application/vnd.keelson.dom.v1+json` | `keelson-dom-v1`, PII redacted                                                        |
-| 5   | `ax.tree`         | `application/json`                    | RFC 8785 JSON of the normalized accessibility tree, PII redacted                      |
-| 6   | `hidden.text`     | `application/json`                    | RFC 8785 JSON of the hidden-text findings                                             |
-| 7   | `screenshot`      | `image/png`                           | viewport at device scale factor 1, PII areas masked in `#000000`                      |
-| 8   | `mhtml`           | `multipart/related`                   | boundary and `Date` normalized, PII redacted                                          |
-| 9   | `har`             | `application/json`                    | RFC 8785 JSON of the normalized HAR, PII redacted                                     |
-| 10+ | `<type>.original` | `application/octet-stream`            | age ciphertext of the unredacted bytes, for each item that had PII, in the same order |
+| #   | `type`                 | `media_type`                          | Public bytes                                                                          |
+| --- | ---------------------- | ------------------------------------- | ------------------------------------------------------------------------------------- |
+| 1   | `api.product`          | `application/json`                    | RFC 8785 JSON, PII redacted                                                           |
+| 2   | `api.cart`             | `application/json`                    | RFC 8785 JSON, PII redacted                                                           |
+| 3   | `llm.observation`      | `text/plain; charset=utf-8`           | as the model received it, PII redacted                                                |
+| 4   | `dom.snapshot`         | `application/vnd.keelson.dom.v1+json` | `keelson-dom-v1`, PII redacted                                                        |
+| 5   | `ax.tree`              | `application/json`                    | RFC 8785 JSON of the normalized accessibility tree, PII redacted                      |
+| 6   | `hidden.text`          | `application/json`                    | RFC 8785 JSON of the hidden-text findings                                             |
+| 7   | `screenshot`           | `image/png`                           | viewport at device scale factor 1, PII areas masked in `#000000`                      |
+| 8   | `mhtml`                | `multipart/related`                   | boundary and `Date` normalized, PII redacted                                          |
+| 9   | `har`                  | `application/json`                    | RFC 8785 JSON of the normalized HAR, PII redacted                                     |
+| 10  | `channel3.observation` | `application/json`                    | RFC 8785 JSON `keelson.channel3.observation/1`, issued by the API, never redacted     |
+| 11+ | `<type>.original`      | `application/octet-stream`            | age ciphertext of the unredacted bytes, for each item that had PII, in the same order |
 
 The public manifest is `{ v: "keelson.manifest/1", root, items: [{ type, media_type, leaf }] }`.
 Anyone can rebuild `root` from the leaves (`verifyManifest`), but nothing public is an unsalted

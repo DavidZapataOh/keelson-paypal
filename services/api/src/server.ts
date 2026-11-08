@@ -6,6 +6,7 @@ import { identityToRecipient } from "age-encryption";
 import { pino } from "pino";
 import { createApp } from "./app.ts";
 import { createAuth } from "./auth.ts";
+import { createChannel3 } from "./channel3/client.ts";
 import { parseEnv } from "./env.ts";
 import { createKv } from "./kv.ts";
 import { createLogger } from "./logger.ts";
@@ -65,6 +66,7 @@ const app = createApp({
   rateLimit: { trustProxy: process.env.RENDER === "true" },
   shutdown: shutdown.signal,
   stamps,
+  ...(env.CHANNEL3_API_KEY ? { channel3: createChannel3(env.CHANNEL3_API_KEY) } : {}),
   ...(tee ? { tee, compileSources: { engine: engineSource } } : {}),
   ...(env.KEELSON_EVIDENCE_AGE_IDENTITY
     ? { evidenceIdentity: env.KEELSON_EVIDENCE_AGE_IDENTITY }

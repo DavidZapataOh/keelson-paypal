@@ -16,6 +16,7 @@ const production = {
   TEE_B_URL: "https://tee-b.example",
   KEELSON_TEE_TOKEN: "t".repeat(64),
   KEELSON_ISSUER_THUMBPRINT: `0x${"ab".repeat(32)}`,
+  CHANNEL3_API_KEY: "channel3-key",
   NODE_ENV: "production",
   BETTER_AUTH_URL: "https://api.keelson.finance",
   APP_ORIGIN: "https://app.keelson.finance",
@@ -90,4 +91,13 @@ test("the evidence identity and recipient are set together", () => {
       KEELSON_EVIDENCE_AGE_RECIPIENT: recipient,
     }).KEELSON_EVIDENCE_AGE_RECIPIENT,
   ).toBe(recipient);
+});
+
+test("production requires a Channel3 key; the webhook secret is a whsec_ secret", () => {
+  const { CHANNEL3_API_KEY: _, ...withoutKey } = production;
+  expect(() => parseEnv(withoutKey)).toThrow();
+  expect(() => parseEnv({ ...production, CHANNEL3_WEBHOOK_SECRET: "secret" })).toThrow();
+  expect(
+    parseEnv({ ...production, CHANNEL3_WEBHOOK_SECRET: "whsec_c2VjcmV0" }).CHANNEL3_WEBHOOK_SECRET,
+  ).toBe("whsec_c2VjcmV0");
 });

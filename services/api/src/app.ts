@@ -13,6 +13,7 @@ import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
 import { ulid } from "ulid";
 import type { Auth } from "./auth.ts";
+import type { Channel3Lookup } from "./channel3/client.ts";
 import type { LogConfig } from "./log/append.ts";
 import { requestLogger } from "./logger.ts";
 import { requireClient } from "./middleware/auth.ts";
@@ -25,6 +26,7 @@ import { registerEvents } from "./routes/events.ts";
 import { registerEvidence } from "./routes/evidence.ts";
 import { registerHealth } from "./routes/health.ts";
 import { registerMandates } from "./routes/mandates.ts";
+import { registerObservations } from "./routes/observations.ts";
 import { registerPasskeys } from "./routes/passkeys.ts";
 import { registerStatus } from "./routes/status.ts";
 import { registerTee } from "./routes/tee.ts";
@@ -57,6 +59,8 @@ export interface Deps {
   tlog?: LogConfig;
   /** The age identity that opens `.original` evidence items for an arbiter. */
   evidenceIdentity?: string;
+  /** Channel3 product lookups; observing answers 503 without them. */
+  channel3?: Channel3Lookup;
   /** Stamps queued hashes with RFC 3161 tokens; queued rows wait for the sweeper without it. */
   stamps?: StampWorker;
   /** Aborting it ends every open event stream so the server can close. */
@@ -161,6 +165,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerCompile(app, deps);
   registerCountersign(app, deps);
   registerEvidence(app, deps);
+  registerObservations(app, deps);
   registerTee(app, deps);
   registerTimestamps(app, deps);
   registerPasskeys(app, deps);

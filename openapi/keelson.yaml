@@ -1017,7 +1017,7 @@ components:
               - salt
               - bytes
           minItems: 1
-          maxItems: 18
+          maxItems: 20
       required:
         - mandateId
         - manifest
@@ -1051,7 +1051,7 @@ components:
               - media_type
               - leaf
           minItems: 1
-          maxItems: 18
+          maxItems: 20
       required:
         - v
         - root
@@ -1100,6 +1100,183 @@ components:
         - salt
         - path
         - size
+    Channel3Observation:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum:
+            - ok
+            - unavailable
+          description: "`unavailable` when Channel3 did not answer in time or failed; it
+            is stored too."
+        item:
+          type: object
+          properties:
+            type:
+              type: string
+              enum:
+                - channel3.observation
+            mediaType:
+              type: string
+              enum:
+                - application/json
+            salt:
+              type: string
+              description: 32 random bytes, base64.
+            bytes:
+              type: string
+              description: The JCS observation document, base64.
+            content_hash:
+              type: string
+              pattern: ^0x[0-9a-f]{64}$
+            leaf:
+              type: string
+              pattern: ^0x[0-9a-f]{64}$
+          required:
+            - type
+            - mediaType
+            - salt
+            - bytes
+            - content_hash
+            - leaf
+          description: The sealed evidence item to add to the capture's items, after
+            `har`, before `buildManifest` and `POST /v1/evidence`.
+        comparison:
+          $ref: "#/components/schemas/Channel3Comparison"
+      required:
+        - id
+        - status
+        - item
+        - comparison
+    Channel3Comparison:
+      type: object
+      properties:
+        offerDomain:
+          type:
+            - string
+            - "null"
+        variant:
+          type: string
+          enum:
+            - match
+            - mismatch
+            - unknown
+        price:
+          type: string
+          enum:
+            - match
+            - mismatch
+            - unknown
+        availability:
+          type: string
+          enum:
+            - match
+            - mismatch
+            - unknown
+        brand:
+          type: string
+          enum:
+            - match
+            - mismatch
+            - unknown
+        mismatches:
+          type: array
+          items:
+            type: string
+      required:
+        - offerDomain
+        - variant
+        - price
+        - availability
+        - brand
+        - mismatches
+    Channel3ObservationRequest:
+      type: object
+      properties:
+        mandateId:
+          type: string
+          minLength: 26
+          maxLength: 26
+        url:
+          type: string
+          maxLength: 2048
+          description: The product page the agent is on.
+        agentView:
+          type: object
+          properties:
+            contentHash:
+              type: string
+              pattern: ^0x[0-9a-f]{64}$
+              description: The `content_hash` of the capture's `api.product` item the view was
+                read from.
+            brand:
+              type: string
+              minLength: 1
+              maxLength: 256
+            priceMinor:
+              type: string
+              pattern: ^(0|[1-9][0-9]{0,17})$
+              description: The price the agent saw, in minor units.
+            currency:
+              type: string
+              enum:
+                - AUD
+                - BRL
+                - CAD
+                - CNY
+                - CZK
+                - DKK
+                - EUR
+                - HKD
+                - HUF
+                - ILS
+                - JPY
+                - MYR
+                - MXN
+                - TWD
+                - NZD
+                - NOK
+                - PHP
+                - PLN
+                - GBP
+                - SGD
+                - SEK
+                - CHF
+                - THB
+                - USD
+            available:
+              type: boolean
+            selected:
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  label:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                required:
+                  - name
+                  - label
+              maxItems: 16
+          required:
+            - contentHash
+            - priceMinor
+            - currency
+            - available
+            - selected
+          description: What the agent saw on the page.
+      required:
+        - mandateId
+        - url
+        - agentView
     TeeLeg:
       type: object
       properties:
@@ -1721,7 +1898,7 @@ paths:
               - integer
               - "null"
             minimum: 0
-            maximum: 17
+            maximum: 19
           required: true
           name: index
           in: path
@@ -1769,6 +1946,109 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "503":
           description: The evidence identity is not configured
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/observations/channel3:
+    post:
+      tags:
+        - evidence
+      summary: Observe a product through Channel3
+      description: "Asks Channel3 about the product page once (live fetch if its data
+        is older than an hour, eight seconds at most), compares variant, price,
+        availability and brand with what the agent saw, stores the observation
+        and queues RFC 3161 tokens over its hash. Channel3 is third-party
+        testimony: it is shown in the countersigned trace and never changes a
+        decision."
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Channel3ObservationRequest"
+      responses:
+        "201":
+          description: The observation and its sealed evidence item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel3Observation"
+        "404":
+          description: No such mandate
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: The mandate is not active
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: The request is invalid
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Too many observations for this mandate
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: Channel3 is not configured
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/observations/channel3/{id}:
+    get:
+      tags:
+        - evidence
+      summary: Read a Channel3 observation
+      description: The stored observation document and its hash; `GET
+        /v1/timestamps/{content_hash}` serves its RFC 3161 tokens. Only the
+        client that asked for it may read it.
+      parameters:
+        - schema:
+            type: string
+            minLength: 26
+            maxLength: 26
+          required: true
+          name: id
+          in: path
+      responses:
+        "200":
+          description: The observation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  document:
+                    type: object
+                    additionalProperties: {}
+                    description: The `keelson.channel3.observation/1` document; its JCS bytes hash
+                      to `content_hash`.
+                  content_hash:
+                    type: string
+                    pattern: ^0x[0-9a-f]{64}$
+                required:
+                  - document
+                  - content_hash
+        "404":
+          description: No such observation
           content:
             application/problem+json:
               schema:

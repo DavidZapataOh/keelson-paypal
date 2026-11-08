@@ -11,6 +11,7 @@ export const ITEM_TYPES = [
   "screenshot",
   "mhtml",
   "har",
+  "channel3.observation",
 ] as const;
 
 export type ItemType = (typeof ITEM_TYPES)[number];
@@ -28,6 +29,7 @@ export const MEDIA_TYPES: Readonly<Record<ItemType, string>> = Object.freeze({
   screenshot: "image/png",
   mhtml: "multipart/related",
   har: "application/json",
+  "channel3.observation": "application/json",
 });
 
 export const ORIGINAL_MEDIA_TYPE = "application/octet-stream";

@@ -99,6 +99,13 @@
       "when": 1794085234012,
       "tag": "0013_timestamps",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1794096188170,
+      "tag": "0014_channel3_observations",
+      "breakpoints": true
     }
   ]
 }
