@@ -36,7 +36,8 @@ contract VerdictVerifier is IVerdictVerifier, EIP712, AccessManaged {
     /// @dev Automata's `TCBStatus`: `OK` and `TCB_SW_HARDENING_NEEDED`.
     uint8 internal constant TCB_OK = 0;
     uint8 internal constant TCB_SW_HARDENING_NEEDED = 1;
-    /// @dev Automata's `ZkCoProcessorType.RiscZero`.
+    /// @dev Automata's `ZkCoProcessorType.RiscZero`. The proof goes to the same Automata entrypoint as on-chain
+    /// verification, so the ZK path adds no trust beyond it.
     uint8 internal constant RISC_ZERO = 1;
     bytes32 internal constant BINDING_TAG = keccak256("KEELSON_TEE_SIGNER_V1");
     IArbSys internal constant ARB_SYS = IArbSys(address(0x64));
@@ -47,24 +48,25 @@ contract VerdictVerifier is IVerdictVerifier, EIP712, AccessManaged {
     // forge-lint: disable-next-line(screaming-snake-case-immutable)
     address public immutable BOND_VAULT;
     IAutomataDcapAttestation public immutable DCAP_ATTESTATION;
-    IAutomataDcapAttestation public immutable ZK_DCAP_ATTESTATION;
     INitroValidator public immutable NITRO_VALIDATOR;
 
     /// @dev One slot for everything `isActive` reads, so a verification costs two cold reads per signer: the record
-    /// and the allowlist entry of its measurement's first 16 bytes. Matching an allowed measurement's first 16 bytes
-    /// with another SHA-256 measurement takes 2^128 work.
+    /// and the allowlist entry of its measurement's id.
     struct Record {
         uint8 teeKind;
         uint40 registeredAt;
         uint40 expiresAt;
         uint40 revokedAt;
-        bytes16 allowKey;
+        uint64 measurementId;
         bytes32 measurement;
     }
 
     /// @inheritdoc IVerdictVerifier
     bytes32 public issuer;
-    mapping(bytes16 allowKey => bool) internal _allowed;
+    /// @dev Each measurement ever allowed gets a non-zero id, which never changes.
+    mapping(bytes32 measurement => uint64) internal _measurementIds;
+    mapping(uint64 measurementId => bool) internal _allowed;
+    uint64 internal _lastMeasurementId;
     mapping(address signer => Record) internal _signers;
 
     constructor(
@@ -73,22 +75,22 @@ contract VerdictVerifier is IVerdictVerifier, EIP712, AccessManaged {
         bytes32 issuer_,
         bytes32[] memory initialMeasurements,
         IAutomataDcapAttestation dcapAttestation,
-        IAutomataDcapAttestation zkDcapAttestation,
         INitroValidator nitroValidator
     ) EIP712("Keelson", "1") AccessManaged(authority) {
+        // The verifiers are immutable, so they must already be the deployed contracts they name.
         if (
-            bondVault == address(0) || address(dcapAttestation) == address(0)
-                || address(zkDcapAttestation) == address(0) || address(nitroValidator) == address(0)
-        ) revert ZeroAddress();
+            bondVault == address(0) || address(dcapAttestation).code.length == 0
+                || address(nitroValidator).code.length == 0
+        ) {
+            revert ZeroAddress();
+        }
         BOND_VAULT = bondVault;
         DCAP_ATTESTATION = dcapAttestation;
-        ZK_DCAP_ATTESTATION = zkDcapAttestation;
         NITRO_VALIDATOR = nitroValidator;
         issuer = issuer_;
         emit IssuerSet(issuer_);
         for (uint256 i; i < initialMeasurements.length; ++i) {
-            _allowed[_allowKey(initialMeasurements[i])] = true;
-            emit MeasurementAllowed(initialMeasurements[i], true);
+            _setAllowed(initialMeasurements[i], true);
         }
     }
 
@@ -120,7 +122,7 @@ contract VerdictVerifier is IVerdictVerifier, EIP712, AccessManaged {
     ) external payable {
         if (binding.teeKind != TDX) revert WrongTeeKind();
         (bool ok, bytes memory verified) =
-            ZK_DCAP_ATTESTATION.verifyAndAttestWithZKProof{value: msg.value}(output, RISC_ZERO, proof);
+            DCAP_ATTESTATION.verifyAndAttestWithZKProof{value: msg.value}(output, RISC_ZERO, proof);
         if (!ok) revert AttestationFailed(string(verified));
         _registerTdx(verified, events, binding, blockNumber);
     }
@@ -208,7 +210,7 @@ contract VerdictVerifier is IVerdictVerifier, EIP712, AccessManaged {
         uint40 now_ = SafeCast.toUint40(block.timestamp);
         if (s.registeredAt == 0 || now_ >= s.expiresAt) {
             s.teeKind = teeKind;
-            s.allowKey = _allowKey(measurement);
+            s.measurementId = _measurementIds[measurement];
             s.measurement = measurement;
             s.registeredAt = now_;
         }
@@ -222,7 +224,7 @@ contract VerdictVerifier is IVerdictVerifier, EIP712, AccessManaged {
     /// @inheritdoc IVerdictVerifier
     function isActive(address signer, uint8 teeKind) public view returns (bool) {
         Record storage s = _signers[signer];
-        return s.teeKind == teeKind && s.revokedAt == 0 && block.timestamp < s.expiresAt && _allowed[s.allowKey];
+        return s.teeKind == teeKind && s.revokedAt == 0 && block.timestamp < s.expiresAt && _allowed[s.measurementId];
     }
 
     /// @inheritdoc IVerdictVerifier
@@ -237,7 +239,7 @@ contract VerdictVerifier is IVerdictVerifier, EIP712, AccessManaged {
 
     /// @inheritdoc IVerdictVerifier
     function allowedMeasurement(bytes32 measurement) public view returns (bool) {
-        return _allowed[_allowKey(measurement)];
+        return _allowed[_measurementIds[measurement]];
     }
 
     /// @inheritdoc IVerdictVerifier
@@ -266,7 +268,22 @@ contract VerdictVerifier is IVerdictVerifier, EIP712, AccessManaged {
 
     /// @inheritdoc IVerdictVerifier
     function setAllowedMeasurement(bytes32 measurement, bool allowed) external restricted {
-        _allowed[_allowKey(measurement)] = allowed;
+        _setAllowed(measurement, allowed);
+    }
+
+    /// @inheritdoc IVerdictVerifier
+    function disallowMeasurement(bytes32 measurement) external restricted {
+        _setAllowed(measurement, false);
+    }
+
+    function _setAllowed(bytes32 measurement, bool allowed) internal {
+        uint64 id = _measurementIds[measurement];
+        if (id == 0) {
+            if (!allowed) return;
+            id = ++_lastMeasurementId;
+            _measurementIds[measurement] = id;
+        }
+        _allowed[id] = allowed;
         // forge-lint: disable-next-line(reentrancy-events)
         emit MeasurementAllowed(measurement, allowed);
     }
@@ -311,11 +328,6 @@ contract VerdictVerifier is IVerdictVerifier, EIP712, AccessManaged {
         s.revokedAt = SafeCast.toUint40(block.timestamp);
         // forge-lint: disable-next-line(reentrancy-events)
         emit SignerRevoked(signer, s.revokedAt);
-    }
-
-    function _allowKey(bytes32 measurement) internal pure returns (bytes16) {
-        // forge-lint: disable-next-line(unsafe-typecast)
-        return bytes16(measurement);
     }
 
     function _slice(bytes memory data, uint256 start, uint256 length) private pure returns (bytes memory out) {

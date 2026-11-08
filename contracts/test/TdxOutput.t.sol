@@ -19,15 +19,15 @@ contract TdxOutputHarness {
 /// @notice Exposes the TDX registration after Automata's verification, so its policy checks run without a quote
 /// verified on-chain. The binding check that follows them reads `ArbSys`, which only the live chain has.
 contract VerdictVerifierTdxHarness is VerdictVerifier {
+    /// @dev The verifiers must have code; the policy checks under test never call them.
     constructor(bytes32[] memory measurements)
         VerdictVerifier(
             address(1),
             address(2),
             bytes32(0),
             measurements,
-            IAutomataDcapAttestation(address(3)),
-            IAutomataDcapAttestation(address(4)),
-            INitroValidator(address(5))
+            IAutomataDcapAttestation(msg.sender),
+            INitroValidator(msg.sender)
         )
     {}
 

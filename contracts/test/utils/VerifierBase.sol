@@ -17,7 +17,8 @@ abstract contract VerifierBase is Test {
 
     uint256 internal constant CHAIN_ID = 421614;
     /// @dev `forge inspect VerdictVerifier storageLayout`.
-    uint256 internal constant SIGNERS_SLOT = 5;
+    uint256 internal constant MEASUREMENT_IDS_SLOT = 4;
+    uint256 internal constant SIGNERS_SLOT = 7;
 
     DeployVerdictVerifier internal deployScript;
     VerdictVerifier internal verifier;
@@ -35,6 +36,9 @@ abstract contract VerifierBase is Test {
         _etchFromChain(json, ".external.safeL2");
         _etchFromChain(json, ".external.safeProxyFactory");
         _etchFromChain(json, ".external.safeFallbackHandler");
+        // The verifiers the VerdictVerifier is built over; its constructor requires their code.
+        _etchFromChain(json, ".external.automataDcapAttestation");
+        _etchFromChain(json, ".contracts.NitroValidator");
         owner = json.readAddress(".governance.proposer");
         minDelay = json.readUint(".params.timelockMinDelay");
         signersDelay = json.readUint(".params.signersDelay");
@@ -97,8 +101,9 @@ abstract contract VerifierBase is Test {
         internal
     {
         bytes32 slot = keccak256(abi.encode(signer, SIGNERS_SLOT));
-        uint256 packed = uint256(teeKind) | uint256(registeredAt) << 8 | uint256(expiresAt) << 48;
-        vm.store(address(verifier), slot, bytes32(packed | uint256(measurement) >> 128 << 128));
+        uint256 id = uint256(vm.load(address(verifier), keccak256(abi.encode(measurement, MEASUREMENT_IDS_SLOT))));
+        uint256 packed = uint256(teeKind) | uint256(registeredAt) << 8 | uint256(expiresAt) << 48 | id << 128;
+        vm.store(address(verifier), slot, bytes32(packed));
         vm.store(address(verifier), bytes32(uint256(slot) + 1), measurement);
     }
 }

@@ -43,8 +43,8 @@ contract DeployVerdictVerifier is KeelsonDeploy {
         _timelock().executeBatch(targets, values, payloads, bytes32(0), WIRING_SALT);
     }
 
-    /// @notice `(authority, bondVault, issuer, initialMeasurements, dcapAttestation, zkDcapAttestation,
-    /// nitroValidator)`: the measurements of `engine/tee/measurements.json` and the issuer of the registry.
+    /// @notice `(authority, bondVault, issuer, initialMeasurements, dcapAttestation, nitroValidator)`: the measurements
+    /// of `engine/tee/measurements.json`, the issuer of the registry and the Nitro validator deployed before.
     function constructorArgs() public view returns (bytes memory) {
         string memory json = _registry();
         return abi.encode(
@@ -53,8 +53,7 @@ contract DeployVerdictVerifier is KeelsonDeploy {
             json.readBytes32(".tee.issuerJwkThumbprint"),
             initialMeasurements(),
             IAutomataDcapAttestation(json.readAddress(".external.automataDcapAttestation")),
-            IAutomataDcapAttestation(predict("AutomataDcapAttestationZk")),
-            INitroValidator(predict("NitroValidator"))
+            INitroValidator(json.readAddress(".contracts.NitroValidator"))
         );
     }
 
@@ -75,8 +74,9 @@ contract DeployVerdictVerifier is KeelsonDeploy {
         bytes4[] memory signers = new bytes4[](2);
         signers[0] = VerdictVerifier.setAllowedMeasurement.selector;
         signers[1] = VerdictVerifier.setIssuer.selector;
-        bytes4[] memory guardian = new bytes4[](1);
+        bytes4[] memory guardian = new bytes4[](2);
         guardian[0] = VerdictVerifier.revokeSigner.selector;
+        guardian[1] = VerdictVerifier.disallowMeasurement.selector;
 
         targets = new address[](3);
         values = new uint256[](3);
@@ -96,6 +96,8 @@ contract DeployVerdictVerifier is KeelsonDeploy {
                 == KeelsonRoles.SIGNERS_ROLE
             && manager.getTargetFunctionRole(verifier, VerdictVerifier.setIssuer.selector) == KeelsonRoles.SIGNERS_ROLE
             && manager.getTargetFunctionRole(verifier, VerdictVerifier.revokeSigner.selector)
+                == KeelsonRoles.GUARDIAN_ROLE
+            && manager.getTargetFunctionRole(verifier, VerdictVerifier.disallowMeasurement.selector)
                 == KeelsonRoles.GUARDIAN_ROLE;
     }
 

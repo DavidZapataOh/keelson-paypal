@@ -20,7 +20,7 @@ library NitroDocument {
 
     uint256 private constant BYTE_STRING = 0x40;
 
-    /// @notice PCR0, PCR1 or PCR2 is missing or not 48 bytes.
+    /// @notice PCR0, PCR1 or PCR2 is missing or not 48 bytes, or PCR0 is zero (debug mode).
     error NitroPcrsMissing();
     /// @notice `public_key` is not a 65-byte SEC1 uncompressed key.
     error NitroKeyMismatch();
@@ -31,6 +31,8 @@ library NitroDocument {
         if (_length(p.pcrs[0]) != 48 || _length(p.pcrs[1]) != 48 || _length(p.pcrs[2]) != 48) {
             revert NitroPcrsMissing();
         }
+        // A debug-mode enclave reports all-zero PCRs.
+        if (keccak256(_slice(tbs, p.pcrs[0])) == keccak256(new bytes(48))) revert NitroPcrsMissing();
         f.measurement = sha256(bytes.concat(_slice(tbs, p.pcrs[0]), _slice(tbs, p.pcrs[1]), _slice(tbs, p.pcrs[2])));
         f.userData = _slice(tbs, p.userData);
         f.nonce = _slice(tbs, p.nonce);

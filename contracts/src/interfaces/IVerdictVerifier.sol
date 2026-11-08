@@ -76,6 +76,10 @@ interface IVerdictVerifier {
 
     function setIssuer(bytes32 issuer) external;
 
+    /// @notice Deactivates every signer with `measurement` at once and stops new registrations from it. Allowing a
+    /// measurement again reactivates its unexpired signers.
+    function disallowMeasurement(bytes32 measurement) external;
+
     function revokeSigner(address signer) external;
 
     /// @notice Revokes the signer of two different `Countersign`s with the same `requestId`: an engine answers a

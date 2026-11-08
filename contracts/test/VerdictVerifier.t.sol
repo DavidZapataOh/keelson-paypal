@@ -172,6 +172,21 @@ contract VerdictVerifierTest is VerifierBase {
         );
     }
 
+    function test_GuardianDisallowsMeasurementWithoutDelay() public {
+        (bytes32 digest, bytes memory tdx, bytes memory nitro) = _pair(".allow");
+        _guardianExec(address(verifier), abi.encodeCall(verifier.disallowMeasurement, (NITRO_2OF2)));
+        assertFalse(verifier.allowedMeasurement(NITRO_2OF2));
+        assertFalse(verifier.verify2of2(digest, bytes.concat(tdx, nitro)));
+        vm.prank(address(guardian));
+        vm.expectRevert(abi.encodeWithSelector(IAccessManaged.AccessManagedUnauthorized.selector, address(guardian)));
+        verifier.setAllowedMeasurement(NITRO_2OF2, true);
+    }
+
+    function test_AllowlistMatchesTheWholeMeasurement() public view {
+        assertTrue(verifier.allowedMeasurement(TDX_2OF2));
+        assertFalse(verifier.allowedMeasurement(TDX_2OF2 ^ bytes32(uint256(1))));
+    }
+
     function test_RevertWhen_AnyoneElseRevokes() public {
         vm.expectRevert(abi.encodeWithSelector(IAccessManaged.AccessManagedUnauthorized.selector, address(this)));
         verifier.revokeSigner(tdxSigner);
