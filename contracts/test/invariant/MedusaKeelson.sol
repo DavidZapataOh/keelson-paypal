@@ -288,7 +288,7 @@ contract MedusaKeelson is Properties {
                 verifier: verifier,
                 tdxKey: tdxKey,
                 nitroKey: nitroKey,
-                merchant: vm.addr(uint256(keccak256("medusa merchant"))),
+                merchantKey: uint256(keccak256("medusa merchant")),
                 treeSize: treeSize,
                 checkpointRoot: root,
                 guardian: MedusaFork.GUARDIAN,

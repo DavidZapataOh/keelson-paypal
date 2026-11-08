@@ -63,7 +63,7 @@ contract KeelsonInvariantForkTest is SlashBase, Properties {
                 verifier: vault.verifier(),
                 tdxKey: tdxKey,
                 nitroKey: nitroKey,
-                merchant: merchant,
+                merchantKey: merchantKey,
                 treeSize: treeSize,
                 checkpointRoot: checkpointRoot,
                 guardian: _json().readAddress(".contracts.GuardianSafe"),

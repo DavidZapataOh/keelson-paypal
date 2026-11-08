@@ -29,7 +29,7 @@ contract KeelsonHandler is BondVaultHandler {
         IVerdictVerifier verifier;
         uint256 tdxKey;
         uint256 nitroKey;
-        address merchant;
+        uint256 merchantKey;
         uint64 treeSize;
         bytes32 checkpointRoot;
         address guardian;
@@ -64,6 +64,7 @@ contract KeelsonHandler is BondVaultHandler {
     IVerdictVerifier internal immutable verifier;
     uint256 internal immutable tdxKey;
     uint256 internal immutable nitroKey;
+    uint256 internal immutable merchantKey;
     address public immutable merchant;
     address public immutable claimTo;
     uint64 internal immutable treeSize;
@@ -115,7 +116,8 @@ contract KeelsonHandler is BondVaultHandler {
         verifier = c.verifier;
         tdxKey = c.tdxKey;
         nitroKey = c.nitroKey;
-        merchant = c.merchant;
+        merchantKey = c.merchantKey;
+        merchant = vm.addr(c.merchantKey);
         claimTo = vm.addr(uint256(keccak256("claim recipient")));
         treeSize = c.treeSize;
         checkpointRoot = c.checkpointRoot;
@@ -124,7 +126,7 @@ contract KeelsonHandler is BondVaultHandler {
         recordLogs = c.recordLogs;
         // EIP-3009 salts the test's own deposits may have used.
         salts = 1000;
-        _tracked.push(c.merchant);
+        _tracked.push(merchant);
         _tracked.push(recipient);
         _tracked.push(address(c.reserve));
         _tracked.push(claimTo);
@@ -423,7 +425,8 @@ contract KeelsonHandler is BondVaultHandler {
     }
 
     /// @dev The merchant claims what a failed payout left, from the vault or (odd seeds) the reserve, whichever owes it
-    /// something, to itself or to another address it chose that is not frozen.
+    /// something, to itself or to another address it chose that is not frozen; half the time a relayer submits the
+    /// merchant's signed claim instead.
     function claim(uint256 seed) external {
         if (_outer(this.claim.selector)) {
             try this.claim(seed) {
@@ -441,16 +444,18 @@ contract KeelsonHandler is BondVaultHandler {
         if (seed % 2 == 0 ? fromVault != 0 || fromReserve == 0 : fromReserve == 0) {
             uint256 amount = vault.claimable(account);
             if (amount == 0) revert Skip();
-            vm.prank(account);
-            vault.claim(account, to, 0, 0, "");
+            (uint256 nonce, uint256 deadline, bytes memory sig) =
+                _claimAuth(seed, account, to, vault.nonces(account), vault.domainSeparator());
+            vault.claim(account, to, nonce, deadline, sig);
             if (pyusd.balanceOf(to) - toBefore != amount) ++ghostPayeeMismatch;
             ghostEntitled[to] += amount;
             _vaultFlows(before);
         } else {
             uint256 amount = reserve.claimable(account);
             if (amount == 0) revert Skip();
-            vm.prank(account);
-            reserve.claim(account, to, 0, 0, "");
+            (uint256 nonce, uint256 deadline, bytes memory sig) =
+                _claimAuth(seed, account, to, reserve.nonces(account), reserve.domainSeparator());
+            reserve.claim(account, to, nonce, deadline, sig);
             if (pyusd.balanceOf(to) - toBefore != amount) ++ghostPayeeMismatch;
             _reserveFlows(before);
         }
@@ -617,6 +622,21 @@ contract KeelsonHandler is BondVaultHandler {
         if (msg.sender == address(this)) return false;
         ++calls[selector];
         return true;
+    }
+
+    /// @dev Either the account itself calls (no signature), or a relayer calls with the account's EIP-712 claim.
+    function _claimAuth(uint256 seed, address account, address to, uint256 nonce, bytes32 domain)
+        internal
+        returns (uint256, uint256, bytes memory)
+    {
+        if ((seed >> 16) % 2 == 0 || account != merchant) {
+            vm.prank(account);
+            return (0, 0, "");
+        }
+        uint256 deadline = this.now_() + 1 hours;
+        bytes32 digest =
+            keccak256(abi.encodePacked("\x19\x01", domain, KeelsonTypes.hashClaim(account, to, nonce, deadline)));
+        return (nonce, deadline, _signWith(merchantKey, digest));
     }
 
     function _lockValid(uint256 i) internal {
