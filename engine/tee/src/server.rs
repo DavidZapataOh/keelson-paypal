@@ -19,11 +19,17 @@ use subtle::ConstantTimeEq;
 use time::OffsetDateTime;
 
 use crate::engine::unix_ms;
-use crate::wire::{CountersignRequest, Countersigned, MandateIssued, RegisterMandate};
+use crate::wire::{
+    CheckpointRequest, CheckpointSigned, CountersignRequest, Countersigned, MandateIssued,
+    RegisterMandate,
+};
 use crate::{Engine, EngineError, TeeKind};
 
 /// Largest request body, in bytes.
 pub const BODY_LIMIT: usize = 256 * 1024;
+
+/// Largest `POST /v1/checkpoint` body, in bytes.
+pub const CHECKPOINT_BODY_LIMIT: usize = 16 * 1024;
 
 const PROBLEM_BASE: &str = "https://keelson.finance/problems/";
 
@@ -114,6 +120,10 @@ pub fn router(state: Arc<AppState>) -> Router {
     let open = Router::new().route("/v1/health", get(health));
     let protected = Router::new()
         .route("/v1/countersign", post(countersign))
+        .route(
+            "/v1/checkpoint",
+            post(checkpoint).layer(DefaultBodyLimit::max(CHECKPOINT_BODY_LIMIT)),
+        )
         .route("/v1/mandates/register", post(register))
         .layer(DefaultBodyLimit::max(BODY_LIMIT));
     #[cfg(feature = "tdx")]
@@ -172,7 +182,8 @@ impl From<EngineError> for Problem {
             EngineError::CommitmentMismatch
             | EngineError::BadRequest(_)
             | EngineError::Expired
-            | EngineError::NotYetValid => StatusCode::UNPROCESSABLE_ENTITY,
+            | EngineError::NotYetValid
+            | EngineError::Checkpoint(_) => StatusCode::UNPROCESSABLE_ENTITY,
             EngineError::TooLarge(_) => StatusCode::PAYLOAD_TOO_LARGE,
             EngineError::NotReady | EngineError::Busy => StatusCode::SERVICE_UNAVAILABLE,
             EngineError::Signer(_) => StatusCode::INTERNAL_SERVER_ERROR,
@@ -345,6 +356,14 @@ async fn read_paypal(
             Err(EngineError::PayPal.into())
         }
     }
+}
+
+async fn checkpoint(
+    State(state): State<Arc<AppState>>,
+    body: Result<Bytes, BytesRejection>,
+) -> Result<Json<CheckpointSigned>, Problem> {
+    let request: CheckpointRequest = parse(body)?;
+    blocking(move || state.engine.sign_checkpoint(&request, (state.clock)())).await
 }
 
 async fn register(

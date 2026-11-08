@@ -39,6 +39,7 @@ alloy-sol-types = "1.7.3"
 aws-nitro-enclaves-nsm-api = { version = "=0.5.2", optional = true }
 axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "tokio"] }
 base64 = "0.23.1"
+ed25519-dalek = { version = "3.0.0", default-features = false }
 getrandom = "0.4.3"
 hkdf = "0.13.0"
 http-body-util = { version = "0.1.5", optional = true }
@@ -100,4 +101,8 @@ required-features = ["tdx", "nitro"]
 
 [[bench]]
 name = "countersign"
+harness = false
+
+[[bench]]
+name = "checkpoint"
 harness = false
