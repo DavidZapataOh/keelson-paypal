@@ -1,0 +1,22 @@
+5724  # Unsupported features (inline assembly, transient storage, OpenZeppelin's low-level calls): those paths are covered by Certora, Halmos and the fuzzers.
+src/CheckpointAnchor.sol:98:25 4984  # newline < note.length <= MAX_NOTE (8192): longer notes return early.
+src/CheckpointAnchor.sol:99:31 4984  # start and body.length are both below 8192 plus a 20-digit size and a 44-byte root.
+src/CheckpointAnchor.sol:99:75 4984  # Same bound as 99:31; evaluated only after note.length >= start + body.length.
+src/KeelsonReputationReporter.sol:75:17 3944  # Runs only when slashSkipped[coverageId] is true, which is set together with ++unratedSlashes[agentId].
+src/KeelsonReputationReporter.sol:83:17 4984  # One increment per skipped coverage: the count cannot reach 2^256.
+src/libraries/RFC6962.sol:33:21 3944  # size1 == 0 returns false first.
+src/libraries/RFC6962.sol:34:21 3944  # size2 >= size1 >= 1 here: size1 > size2 returns false first.
+src/libraries/RFC6962.sol:42:18 6368  # An empty proof returns false first, so proof[0] exists.
+src/libraries/RFC6962.sol:50:34 4984  # i < proof.length, a calldata length.
+src/libraries/RFC6962.sol:52:25 6368  # Guarded by the loop condition i < proof.length.
+src/libraries/RFC6962.sol:78:21 3944  # index >= size returns first, so size >= 1.
+src/libraries/RFC6962.sol:80:47 4984  # i < proof.length, a calldata length.
+src/libraries/RFC6962.sol:82:25 6368  # Guarded by the loop condition i < proof.length.
+src/KeelsonValidationRegistry.sol:96:24 4984  # Countersign.amount is at most 2^64 - 1 cents; times 10,000 stays far below 2^256.
+src/KeelsonValidationRegistry.sol:180:51 4984  # i < requestHashes.length, a storage array length.
+src/KeelsonValidationRegistry.sol:181:55 6368  # Guarded by the loop condition i < requestHashes.length.
+src/KeelsonValidationRegistry.sol:183:83 4984  # j < validatorAddresses.length, a calldata length.
+src/KeelsonValidationRegistry.sol:184:56 6368  # Guarded by the loop condition j < validatorAddresses.length.
+src/KeelsonValidationRegistry.sol:187:17 4984  # Each response is at most 100, summed over one agent's validations.
+src/KeelsonValidationRegistry.sol:188:17 4984  # count is at most requestHashes.length, which pushes one at a time.
+src/KeelsonValidationRegistry.sol:192:41 4281  # Divided only when count > 0.

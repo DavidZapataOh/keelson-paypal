@@ -1,0 +1,12 @@
+diff --git a/contracts/src/CheckpointAnchor.sol b/contracts/src/CheckpointAnchor.sol
+index b0416ae..bba3899 100644
+--- a/contracts/src/CheckpointAnchor.sol
++++ b/contracts/src/CheckpointAnchor.sol
+@@ -61,7 +61,6 @@ contract CheckpointAnchor is ICheckpointAnchor {
+             ? consistency.length == 0
+             : consistency.length <= MAX_PROOF
+                 && RFC6962.verifyConsistency(last.size, size, rootAt[origin][last.size], root, consistency);
+-        if (!consistent) revert InconsistentCheckpoint();
+ 
+         rootAt[origin][size] = root;
+         _latest[origin] = Anchor({size: size, anchoredAt: SafeCast.toUint40(block.timestamp)});

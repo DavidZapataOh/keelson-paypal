@@ -1,0 +1,4 @@
+version = 1
+root = "."
+src = "src"
+exclude = ["lib", "test", "script", "certora"]

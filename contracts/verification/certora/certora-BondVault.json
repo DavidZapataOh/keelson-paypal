@@ -1,0 +1,33 @@
+{
+  "rules": {
+    "conservation": "VERIFIED",
+    "conservationReachable": "VERIFIED",
+    "degradedNeverInstant": "VERIFIED",
+    "degradedNeverInstantReachable": "VERIFIED",
+    "degradedOnlyTdx": "VERIFIED",
+    "degradedOnlyTdxReachable": "VERIFIED",
+    "externalCallsHoldLock": "VERIFIED",
+    "externalCallsHoldLockReachable": "VERIFIED",
+    "noDoubleSettle": "VERIFIED",
+    "noDoubleSettleReachable": "VERIFIED",
+    "noEarlyWithdrawal": "VERIFIED",
+    "noEarlyWithdrawalReachable": "VERIFIED",
+    "outflowsOnlyToEntitled": "VERIFIED",
+    "outflowsOnlyToEntitledReachable": "VERIFIED",
+    "queuedImpliesSettled": "VERIFIED",
+    "settledIsPermanent": "VERIFIED",
+    "settledIsPermanentReachable": "VERIFIED",
+    "slashOnlyOperatorLiable": "VERIFIED",
+    "slashOnlyOperatorLiableReachable": "VERIFIED",
+    "slashPaysPayeeExactly": "VERIFIED",
+    "slashPaysPayeeExactlyReachable": "VERIFIED",
+    "slashRequiresValidVerdict": "VERIFIED",
+    "slashRequiresValidVerdictReachable": "VERIFIED",
+    "slashedWithinCoverage": "VERIFIED",
+    "slashedWithinCoverageReachable": "VERIFIED",
+    "vaultCallsNoRegistry": "VERIFIED",
+    "vaultCallsNoRegistryReachable": "VERIFIED",
+    "withdrawalPaysSignedTo": "VERIFIED",
+    "withdrawalPaysSignedToReachable": "VERIFIED"
+  }
+}

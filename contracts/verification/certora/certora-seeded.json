@@ -1,0 +1,7 @@
+{
+  "rules": {
+    "seeded:double-settle": "CAUGHT",
+    "seeded:any-liable": "CAUGHT",
+    "seeded:degraded-instant": "CAUGHT"
+  }
+}

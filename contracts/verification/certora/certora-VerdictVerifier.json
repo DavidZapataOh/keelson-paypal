@@ -1,0 +1,15 @@
+{
+  "rules": {
+    "activeOnlyViaRegistration": "VERIFIED",
+    "activeOnlyViaRegistrationReachable": "VERIFIED",
+    "registryChangesNeedAuthority": "FAIL",
+    "registryChangesNeedAuthorityReachable": "VERIFIED",
+    "revocationPermanent": "FAIL",
+    "revocationPermanentReachable": "VERIFIED",
+    "signerMeasurementConsistent": "FAIL",
+    "verify2of2Sound": "FAIL",
+    "verify2of2SoundReachable": "VERIFIED",
+    "verifyDegradedTdxOnly": "VERIFIED",
+    "verifyDegradedTdxOnlyReachable": "VERIFIED"
+  }
+}
