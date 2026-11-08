@@ -18,6 +18,7 @@ methods {
 
 function anyString() returns string {
     string s;
+    require s.length == 106, "the URI is the 40-byte base followed by 66 hex characters";
     return s;
 }
 

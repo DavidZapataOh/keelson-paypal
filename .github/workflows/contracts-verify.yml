@@ -262,6 +262,9 @@ jobs:
             tests: "test/ValidationRegistry*.t.sol"
           - name: KeelsonReputationReporter
             tests: "test/ReputationReporter*.t.sol"
+          - name: libraries
+            path: "src/{libraries,access,deploy}/*.sol"
+            tests: "test/**/*.t.sol"
     defaults:
       run:
         working-directory: contracts
@@ -276,9 +279,10 @@ jobs:
       - name: Mutate
         env:
           CONTRACT: ${{ matrix.name }}
+          MUTATE: ${{ matrix.path || format('src/{0}.sol', matrix.name) }}
           TESTS: ${{ matrix.tests }}
         run: |
-          forge test --mutate "src/${CONTRACT}.sol" --match-path "$TESTS" --no-match-path 'test/**/*.live.t.sol' \
+          forge test --mutate --mutate-path "$MUTATE" --match-path "$TESTS" --no-match-path 'test/**/*.live.t.sol' \
             --mutation-jobs 0 --json > "mutation-${CONTRACT}.json"
       - run: script/mutation-gate.sh "mutation-${{ matrix.name }}.json"
       - uses: actions/upload-artifact@v6

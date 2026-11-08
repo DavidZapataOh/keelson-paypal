@@ -22,6 +22,7 @@ methods {
 
 function anyString() returns string {
     string s;
+    require s.length == 66, "`0x` followed by 64 hex characters";
     return s;
 }
 
