@@ -411,7 +411,7 @@ try {
         return (
           o &&
           o.leavesAudited > appended.index &&
-          (mode === "2of2" || o.degradedLeaves.includes(appended.index))
+          (mode === "2of2" || o.degradedLeaves.includes(Number(appended.index)))
         );
       },
     );
