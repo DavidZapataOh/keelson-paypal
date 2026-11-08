@@ -76,7 +76,6 @@ describe.skipIf(!relayerKeys)(
       requestTimeoutMs: 60_000,
     });
     const evidence = new EvidenceUploader();
-    const operator = privateKeyToAccount(process.env.KEELSON_OPERATOR_KEY as Hex);
     const client = createPublicClient({
       chain: arbitrumSepolia,
       transport: http(process.env.ARBITRUM_SEPOLIA_RPC_URL),
@@ -225,7 +224,9 @@ describe.skipIf(!relayerKeys)(
         const cred = signed.body.disclosures
           .map((d) => JSON.parse(Buffer.from(d, "base64url").toString()) as unknown[])
           .find((d) => d[1] === "cred");
-        const jwk = (cred?.[2] as { jwk: { kty: "EC"; crv: "P-256"; x: string; y: string } }).jwk;
+        const jwk = (
+          (cred as unknown[])[2] as { jwk: { kty: "EC"; crv: "P-256"; x: string; y: string } }
+        ).jwk;
         const { qx, qy } = passkeyPublicKey(jwk);
         const coverage = {
           coverageId: cs.requestId,
@@ -238,6 +239,7 @@ describe.skipIf(!relayerKeys)(
           amberCommitment: `0x${"00".repeat(32)}` as Hex,
           userKeyHash: userKeyHash(qx, qy),
         };
+        const operator = privateKeyToAccount(process.env.KEELSON_OPERATOR_KEY as Hex);
         const operatorSig = await operator.signTypedData(
           coverageTypedData(coverage, 421614, VAULT),
         );
@@ -273,7 +275,8 @@ describe.skipIf(!relayerKeys)(
         const validation = await relayer.getById(row?.validationTxId as string);
         expect(validation?.status).toBe("confirmed");
         validationLags.push(
-          (validation?.confirmedAt as Date).getTime() - (lock.confirmedAt as Date).getTime(),
+          (validation as { confirmedAt: Date }).confirmedAt.getTime() -
+            (lock.confirmedAt as Date).getTime(),
         );
         console.info(`validation ${validation?.hash}, lag ${validationLags.at(-1)} ms`);
 
@@ -318,8 +321,8 @@ describe.skipIf(!relayerKeys)(
           `KeelsonValidationRegistry.recordOutcome:${cs.requestId}`,
         );
         const last = Math.max(
-          (rated?.confirmedAt as Date).getTime(),
-          (settled?.confirmedAt as Date).getTime(),
+          (rated as { confirmedAt: Date }).confirmedAt.getTime(),
+          (settled as { confirmedAt: Date }).confirmedAt.getTime(),
         );
         outcomeLags.push(last - (release.confirmedAt as Date).getTime());
         console.info(
