@@ -267,7 +267,8 @@ func (r tileReader) ReadEndpoint(ctx context.Context, path string) ([]byte, erro
 	defer res.Body.Close()
 	switch res.StatusCode {
 	case http.StatusOK:
-		return io.ReadAll(res.Body)
+		// A tile or entry bundle is at most a few hundred KiB.
+		return io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	case http.StatusNotFound:
 		return nil, fmt.Errorf("%s: %w", path, errNotFound)
 	default:

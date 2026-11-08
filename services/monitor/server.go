@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"sync"
 	"time"
 )
@@ -28,12 +29,14 @@ type monitor struct {
 	log     *slog.Logger
 	// page is the public page, if served.
 	page *page
-	// gossipMu serializes the checks of gossiped checkpoints.
+	// gossipMu serializes the checks of gossiped checkpoints, and guards
+	// gossiped: checkpoint pairs already found to agree, and their status.
 	gossipMu sync.Mutex
+	gossiped map[string]string
 }
 
 func newMonitor(cfg *config, st *State, eqs *equivocations, hc *http.Client, log *slog.Logger) *monitor {
-	return &monitor{cfg: cfg, st: st, eqs: eqs, hc: hc, limiter: newRateLimiter(gossipPerMinute, time.Minute), log: log}
+	return &monitor{cfg: cfg, st: st, eqs: eqs, hc: hc, limiter: newRateLimiter(gossipPerMinute, time.Minute), log: log, gossiped: map[string]string{}}
 }
 
 // Checks reports which checks run.
@@ -72,16 +75,19 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 // clientIP is the address gossip is rate limited by: the header the proxy in
 // front sets, if configured, or the connection's address.
 func (m *monitor) clientIP(r *http.Request) string {
+	ip := ""
 	if h := m.cfg.ClientIPHeader; h != "" {
-		if ip := r.Header.Get(h); ip != "" {
-			return ip
-		}
+		ip = r.Header.Get(h)
 	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
+	if ip == "" {
+		ip, _, _ = net.SplitHostPort(r.RemoteAddr)
 	}
-	return host
+	// An IPv6 client usually holds a whole /64.
+	if a, err := netip.ParseAddr(ip); err == nil && a.Is6() && !a.Is4In6() {
+		p, _ := a.Prefix(64)
+		return p.String()
+	}
+	return ip
 }
 
 func (m *monitor) handler() http.Handler {

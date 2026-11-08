@@ -40,7 +40,7 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	hc := &http.Client{Timeout: 10 * time.Second}
+	hc := newLogClient()
 	m := newMonitor(cfg, st, eqs, hc, logger)
 	if m.page, err = newPage(cfg); err != nil {
 		return err

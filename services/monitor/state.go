@@ -17,7 +17,11 @@ const maxFindings = 1000
 
 // maxGossiped bounds the checkpoints kept per gossip-only origin; the
 // smallest sizes are dropped.
-const maxGossiped = 1000
+const maxGossiped = 100
+
+// maxListed bounds the degraded leaf indices kept per origin; the oldest are
+// dropped and only counted.
+const maxListed = 1000
 
 // Finding is something the monitor checked and found wrong.
 type Finding struct {
@@ -39,7 +43,9 @@ type OriginState struct {
 	Range      [][]byte `json:"range,omitempty"`
 	// LeavesAudited counts the leaves whose format and inclusion were checked.
 	LeavesAudited uint64 `json:"leavesAudited"`
-	// DegradedLeaves are the indices of leaves countersigned by the TDX leg alone.
+	// DegradedCount counts the leaves countersigned by the TDX leg alone, and
+	// DegradedLeaves holds the indices of the latest maxListed of them.
+	DegradedCount  uint64    `json:"degradedCount"`
 	DegradedLeaves []uint64  `json:"degradedLeaves"`
 	Findings       []Finding `json:"findings"`
 	// CoLogged is the last co-logged checkpoint the monitor checked in Sigsum.
@@ -64,6 +70,14 @@ func (o *OriginState) addFinding(f Finding) {
 	o.Findings = append(o.Findings, f)
 	if n := len(o.Findings); n > maxFindings {
 		o.Findings = slices.Delete(o.Findings, 0, n-maxFindings)
+	}
+}
+
+func (o *OriginState) addDegraded(indices []uint64) {
+	o.DegradedCount += uint64(len(indices))
+	o.DegradedLeaves = append(o.DegradedLeaves, indices...)
+	if n := len(o.DegradedLeaves); n > maxListed {
+		o.DegradedLeaves = slices.Delete(o.DegradedLeaves, 0, n-maxListed)
 	}
 }
 

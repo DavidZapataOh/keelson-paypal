@@ -26,6 +26,13 @@ const (
 	gossipBehind     = "behind"
 )
 
+const (
+	// gossipTimeout bounds reading the log to check one gossiped checkpoint.
+	gossipTimeout = 5 * time.Second
+	// maxGossipCache bounds the checkpoints remembered as agreeing.
+	maxGossipCache = 4096
+)
+
 // errGossipRejected is a checkpoint the monitor cannot check: an unknown
 // origin or signatures that do not verify under the pinned log keys.
 var errGossipRejected = errors.New("gossip rejected")
@@ -54,6 +61,14 @@ func (m *monitor) gossip(ctx context.Context, signed []byte) (string, *Equivocat
 	if len(cur.Checkpoint) == 0 {
 		return gossipAhead, nil, nil
 	}
+	// A checkpoint already found to agree with this view is answered without
+	// reading the log again, so replaying public checkpoints costs nothing.
+	key := checkpointBody(cur.Checkpoint) + checkpointBody(signed)
+	if status, ok := m.gossiped[key]; ok {
+		return status, nil, nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, gossipTimeout)
+	defer cancel()
 	var e *Equivocation
 	status := gossipConsistent
 	switch {
@@ -82,7 +97,7 @@ func (m *monitor) gossip(ctx context.Context, signed []byte) (string, *Equivocat
 		// the log has not published that size to the monitor yet.
 		p, err := m.consistencyProof(ctx, o, cur.Size, n, n)
 		if errors.Is(err, os.ErrNotExist) {
-			break
+			return gossipAhead, nil, nil
 		}
 		if err != nil {
 			return "", nil, err
@@ -95,21 +110,36 @@ func (m *monitor) gossip(ctx context.Context, signed []byte) (string, *Equivocat
 		stored, err := m.recordEquivocation(e)
 		return "", stored, err
 	}
+	if len(m.gossiped) >= maxGossipCache {
+		clear(m.gossiped)
+	}
+	m.gossiped[key] = status
 	return status, nil, nil
 }
 
-// consistencyProof builds the proof from size m to size n from the log's
+// consistencyProof builds the proof from size from to size to from the log's
 // tiles at treeSize.
 func (m *monitor) consistencyProof(ctx context.Context, o *origin, from, to, treeSize uint64) ([][]byte, error) {
 	f, err := client.NewHTTPFetcher(o.URL, m.hc)
 	if err != nil {
 		return nil, err
 	}
-	pb, err := client.NewProofBuilder(ctx, treeSize, f.ReadTile)
+	// The client does not wrap fetch errors, so a missing tile is noted here.
+	missing := false
+	readTile := func(ctx context.Context, level, index uint64, p uint8) ([]byte, error) {
+		b, err := f.ReadTile(ctx, level, index, p)
+		missing = missing || errors.Is(err, os.ErrNotExist)
+		return b, err
+	}
+	pb, err := client.NewProofBuilder(ctx, treeSize, readTile)
 	if err != nil {
 		return nil, err
 	}
-	return pb.ConsistencyProof(ctx, from, to)
+	proof, err := pb.ConsistencyProof(ctx, from, to)
+	if err != nil && missing {
+		return nil, fmt.Errorf("%w: %v", os.ErrNotExist, err)
+	}
+	return proof, err
 }
 
 // gossipOnly checks a checkpoint of an origin the monitor knows only through
@@ -165,8 +195,9 @@ type rateLimiter struct {
 	n      int
 	window time.Duration
 
-	mu   sync.Mutex
-	seen map[string][]time.Time
+	mu    sync.Mutex
+	seen  map[string][]time.Time
+	swept time.Time
 }
 
 func newRateLimiter(n int, window time.Duration) *rateLimiter {
@@ -180,7 +211,9 @@ func (l *rateLimiter) allow(client string) bool {
 	recent := func(ts []time.Time) []time.Time {
 		return slices.DeleteFunc(ts, func(t time.Time) bool { return now.Sub(t) >= l.window })
 	}
-	if len(l.seen) > 10000 {
+	// Clients idle for a window are forgotten, at most once a window.
+	if now.Sub(l.swept) >= l.window {
+		l.swept = now
 		for k, ts := range l.seen {
 			if ts = recent(ts); len(ts) == 0 {
 				delete(l.seen, k)

@@ -28,8 +28,10 @@ type Report struct {
 	Cosigners     []string  `json:"cosigners"`
 	VerifiedAt    time.Time `json:"verifiedAt"`
 	LeavesAudited uint64    `json:"leavesAudited"`
-	// DegradedLeaves are the indices of audited leaves countersigned by the
-	// TDX leg alone, which happens only while the Nitro leg is down.
+	// DegradedCount counts the audited leaves countersigned by the TDX leg
+	// alone, which happens only while the Nitro leg is down; DegradedLeaves
+	// lists the latest of their indices.
+	DegradedCount  uint64    `json:"degradedCount"`
 	DegradedLeaves []uint64  `json:"degradedLeaves"`
 	Findings       []Finding `json:"findings"`
 	CoLogged       *CoLog    `json:"coLogged,omitempty"`
@@ -70,10 +72,10 @@ type follower struct {
 	tracker *client.LogStateTracker
 	// fetched is the checkpoint the last consensus call verified.
 	fetched []byte
-	// equivocatedAt is the size of the view an equivocation was already
-	// recorded against, so a growing fork yields one proof.
-	equivocatedAt *uint64
-	colog         *coLogProbe
+	// equivocated holds the kinds of equivocation already recorded against
+	// the view at each size, so a growing fork yields one proof.
+	equivocated map[string]bool
+	colog       *coLogProbe
 }
 
 // Follow checks the origin every poll until ctx is done.
@@ -128,10 +130,14 @@ func (f *follower) finding(fd Finding) {
 
 func (f *follower) equivocation(e *Equivocation) {
 	cur := f.st.Get(f.o.Name)
-	if f.equivocatedAt != nil && *f.equivocatedAt == cur.Size {
+	key := fmt.Sprintf("%s %d", e.Kind, cur.Size)
+	if f.equivocated[key] {
 		return
 	}
-	f.equivocatedAt = &cur.Size
+	if f.equivocated == nil {
+		f.equivocated = map[string]bool{}
+	}
+	f.equivocated[key] = true
 	f.finding(Finding{Kind: "equivocation", Detail: e.Kind + " " + e.ID, At: e.DetectedAt})
 	f.emit(Event{Equivocation: e})
 }
@@ -243,7 +249,7 @@ func (f *follower) accept(ctx context.Context, cur OriginState, latest log.Check
 		s.Root = latest.Hash
 		s.Range = rng.Hashes()
 		s.LeavesAudited += latest.Size - cur.Size
-		s.DegradedLeaves = append(s.DegradedLeaves, res.degraded...)
+		s.addDegraded(res.degraded)
 		for _, fd := range res.findings {
 			fd.At = now
 			s.addFinding(fd)
@@ -271,6 +277,7 @@ func buildReport(o *origin, st *State) Report {
 		Cosigners:      cosigners(o, s.Checkpoint),
 		VerifiedAt:     at,
 		LeavesAudited:  s.LeavesAudited,
+		DegradedCount:  s.DegradedCount,
 		DegradedLeaves: append([]uint64{}, s.DegradedLeaves...),
 		Findings:       append([]Finding{}, s.Findings...),
 		CoLogged:       s.CoLogged,

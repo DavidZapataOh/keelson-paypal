@@ -177,6 +177,8 @@ func TestGossipedCheckpointsAreCheckedAgainstTheView(t *testing.T) {
 	f := newForkedLogs(t)
 	dataDir := t.TempDir()
 	srv, m, cs := gossipServer(t, f.o, dataDir)
+	// This test posts more checkpoints than one client may in a minute.
+	m.limiter = newRateLimiter(100, time.Minute)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	t.Cleanup(func() { cancel(); <-done })
@@ -214,6 +216,16 @@ func TestGossipedCheckpointsAreCheckedAgainstTheView(t *testing.T) {
 			}
 		}
 	}
+	// A fork ahead of what the log published cannot be checked yet.
+	cpB25 := f.b.append(t, freshLeaves(t, loadVectors(t)["deny"], 5)...)
+	if status, out := post(t, srv, cpB25); status != 200 || out["status"] != "ahead" {
+		t.Fatalf("a checkpoint ahead of the log: %d %v", status, out)
+	}
+	// Replaying a checkpoint that agrees is answered from memory.
+	if status, out := post(t, srv, f.cpA10); status != 200 || out["status"] != "behind" {
+		t.Fatalf("a replayed checkpoint: %d %v", status, out)
+	}
+
 	var cp []byte
 	res, err := http.Get(srv.URL + "/checkpoints/" + testOrigin)
 	if err == nil {

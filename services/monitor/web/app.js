@@ -215,7 +215,8 @@ function finish(started, failed) {
 // The monitor's report ----------------------------------------------------------
 
 function originCard(r, checks) {
-  const degraded = r.degradedLeaves ?? [];
+  const degraded = (r.degradedLeaves ?? []).slice(-50);
+  const degradedCount = r.degradedCount ?? 0;
   const findings = r.findings ?? [];
   const row = (term, ...value) => [el("dt", { text: term }), el("dd", {}, ...value)];
   const colog = r.coLogged
@@ -263,8 +264,8 @@ function originCard(r, checks) {
       ...row("Leaves audited", el("span", { text: String(r.leavesAudited) })),
       ...row(
         "Degraded leaves",
-        el("span", { "data-field": "degraded-count", text: String(degraded.length) }),
-        degraded.length
+        el("span", { "data-field": "degraded-count", text: String(degradedCount) }),
+        degradedCount
           ? el("div", { class: "flag", text: "Degraded: TDX leg only, Nitro was down" })
           : "",
         degradedList,

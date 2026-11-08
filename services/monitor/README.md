@@ -31,13 +31,13 @@ the point of the section below is that anyone can run the same binary.
 
 ## What it trusts
 
-| File                                                                         | Pins                                                                  |
-| ---------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| [`policy/alibi-2026-1.policy`](policy/alibi-2026-1.policy)                   | Log keys and witness quorum of `log.keelson.finance/alibi/2026-1`      |
-| [`policy/alibi-live-2026-1.policy`](policy/alibi-live-2026-1.policy)         | Log keys and witness quorum of `log.keelson.finance/alibi-live/2026-1` |
-| [`policy/conformance-2026-1.policy`](policy/conformance-2026-1.policy)       | Log key of the test origin `log.keelson.finance/conformance/2026-1`    |
-| [`policy/sigsum-seasalp.policy`](policy/sigsum-seasalp.policy)               | Sigsum log and witness quorum the checkpoints are co-logged under     |
-| [`policy/sigsum-submit.pub`](policy/sigsum-submit.pub)                       | The key the log co-logs with                                          |
+| File                                                                   | Pins                                                                   |
+| ---------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| [`policy/alibi-2026-1.policy`](policy/alibi-2026-1.policy)             | Log keys and witness quorum of `log.keelson.finance/alibi/2026-1`      |
+| [`policy/alibi-live-2026-1.policy`](policy/alibi-live-2026-1.policy)   | Log keys and witness quorum of `log.keelson.finance/alibi-live/2026-1` |
+| [`policy/conformance-2026-1.policy`](policy/conformance-2026-1.policy) | Log key of the test origin `log.keelson.finance/conformance/2026-1`    |
+| [`policy/sigsum-seasalp.policy`](policy/sigsum-seasalp.policy)         | Sigsum log and witness quorum the checkpoints are co-logged under      |
+| [`policy/sigsum-submit.pub`](policy/sigsum-submit.pub)                 | The key the log co-logs with                                           |
 
 They are embedded in the binary and never fetched from the log. If you run your own monitor,
 compare them with what the log publishes at `https://<origin>/policy` and with
@@ -45,14 +45,14 @@ compare them with what the log publishes at `https://<origin>/policy` and with
 
 ## API
 
-| Request                       | Answer                                                                                                                      |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `GET /report`                 | Per origin: size, root, latest verified checkpoint, cosigners, leaves audited, degraded leaves, Sigsum status, findings     |
-| `GET /checkpoints/<origin>`   | The latest verified signed checkpoint, `text/plain`                                                                         |
-| `POST /gossip`                | A signed checkpoint (`text/plain`, at most 16 KiB, 10 a minute per client): `200 {status}`, `409 {equivocation}` or `422`   |
-| `GET /equivocations`          | `[{id, origin, kind, detectedAt}]`                                                                                          |
-| `GET /equivocations/<id>`     | `{origin, kind, a, b, consistencyProof?, sigsumProof?, detectedAt}`: the two conflicting views; never rewritten             |
-| `GET /`                       | The public page                                                                                                             |
+| Request                     | Answer                                                                                                                    |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `GET /report`               | Per origin: size, root, latest verified checkpoint, cosigners, leaves audited, degraded leaves, Sigsum status, findings   |
+| `GET /checkpoints/<origin>` | The latest verified signed checkpoint, `text/plain`                                                                       |
+| `POST /gossip`              | A signed checkpoint (`text/plain`, at most 16 KiB, 10 a minute per client): `200 {status}`, `409 {equivocation}` or `422` |
+| `GET /equivocations`        | `[{id, origin, kind, detectedAt}]`                                                                                        |
+| `GET /equivocations/<id>`   | `{origin, kind, a, b, consistencyProof?, sigsumProof?, detectedAt}`: the two conflicting views; never rewritten           |
+| `GET /`                     | The public page                                                                                                           |
 
 A gossiped checkpoint needs only the log's signatures, so a split view shown to a single user is
 still caught: `status` is `consistent`, `ahead` or `behind` the monitor's view, and a conflict
@@ -101,12 +101,12 @@ railway up ../.. --path-as-root --service keelson-monitor
 railway domain --service keelson-monitor --port 8080
 ```
 
-| Variable                   |                                                                               |
-| -------------------------- | ----------------------------------------------------------------------------- |
-| `MONITOR_DATA_DIR`         | Where the view and the proofs are kept, on persistent storage (required)      |
-| `PORT`                     | HTTP listener (default `8080`)                                                |
-| `LOG_URL`                  | Where the log is read (default `https://log.keelson.finance`), e.g. a mirror  |
-| `MONITOR_CLIENT_IP_HEADER` | The header a proxy in front sets to the client address, such as `X-Real-IP`   |
+| Variable                   |                                                                              |
+| -------------------------- | ---------------------------------------------------------------------------- |
+| `MONITOR_DATA_DIR`         | Where the view and the proofs are kept, on persistent storage (required)     |
+| `PORT`                     | HTTP listener (default `8080`)                                               |
+| `LOG_URL`                  | Where the log is read (default `https://log.keelson.finance`), e.g. a mirror |
+| `MONITOR_CLIENT_IP_HEADER` | The header a proxy in front sets to the client address, such as `X-Real-IP`  |
 
 ## Tests
 

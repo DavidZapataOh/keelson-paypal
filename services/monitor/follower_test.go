@@ -1,6 +1,10 @@
 package main
 
 import (
+	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -134,5 +138,21 @@ func TestFollowerCatchesARolledBackLog(t *testing.T) {
 	r = m.report()
 	if r.Size != 40 || !hasFinding(r, "equivocation") {
 		t.Fatalf("report: %+v", r)
+	}
+}
+
+func TestLogResponsesAreBounded(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(make([]byte, maxResponseBytes+1))
+	}))
+	defer srv.Close()
+	res, err := newLogClient().Get(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var tooLarge *http.MaxBytesError
+	if _, err := io.ReadAll(res.Body); !errors.As(err, &tooLarge) {
+		t.Fatalf("an oversized response read with %v", err)
 	}
 }

@@ -13,6 +13,8 @@ import (
 type auditResult struct {
 	degraded []uint64
 	findings []Finding
+	// unlisted counts malformed leaves past the findings kept.
+	unlisted uint64
 }
 
 // audit fetches the entries from rng.End() up to size, checks the format of
@@ -35,8 +37,10 @@ func audit(ctx context.Context, fetch client.EntryBundleFetcherFunc, rng *compac
 			index := first + uint64(i)
 			l, err := alibilog.Parse(leaf)
 			switch {
-			case err != nil:
+			case err != nil && len(res.findings) < maxFindings:
 				res.findings = append(res.findings, Finding{Kind: "leaf.format", Index: &index, Detail: err.Error()})
+			case err != nil:
+				res.unlisted++
 			case l.Mode == alibilog.ModeDegraded:
 				res.degraded = append(res.degraded, index)
 			}
@@ -45,6 +49,10 @@ func audit(ctx context.Context, fetch client.EntryBundleFetcherFunc, rng *compac
 				return nil, err
 			}
 		}
+	}
+	if res.unlisted > 0 {
+		res.findings = append(res.findings, Finding{Kind: "leaf.format",
+			Detail: fmt.Sprintf("%d more malformed leaves below size %d", res.unlisted, size)})
 	}
 	return res, nil
 }

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"filippo.io/torchwood"
 	sigsumcrypto "sigsum.org/sigsum-go/pkg/crypto"
 	"sigsum.org/sigsum-go/pkg/proof"
 )
@@ -85,6 +86,10 @@ func (p *coLogProbe) check(ctx context.Context, size uint64, signed []byte) erro
 	h := sigsumcrypto.HashBytes(msg)
 	if err := sp.Verify(&h, p.f.sigsum.SubmitKeys, p.f.sigsum.Policy); err != nil {
 		p.f.finding(Finding{Kind: "sigsum", Detail: fmt.Sprintf("size %d: %v", size, err), At: time.Now()})
+		return nil
+	}
+	if c, err := torchwood.ParseCheckpoint(string(msg)); err != nil || c.Origin != p.f.o.Name || uint64(c.N) != size {
+		p.f.finding(Finding{Kind: "sigsum", Detail: fmt.Sprintf("size %d: the co-logged message is not a checkpoint of this origin and size", size), At: time.Now()})
 		return nil
 	}
 	if !bytes.Equal(msg, []byte(checkpointBody(signed))) {
