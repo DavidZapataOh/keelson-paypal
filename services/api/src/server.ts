@@ -35,6 +35,7 @@ const tee =
         KEELSON_TEE_TOKEN: env.KEELSON_TEE_TOKEN,
         ARBITRUM_SEPOLIA_RPC_URL: env.ARBITRUM_SEPOLIA_RPC_URL,
         KEELSON_ISSUER_THUMBPRINT: env.KEELSON_ISSUER_THUMBPRINT,
+        KEELSON_REGISTRAR_KEY: env.KEELSON_REGISTRAR_KEY,
       })
     : undefined;
 // The environment sets both or neither; the identity must open what agents seal to the recipient.

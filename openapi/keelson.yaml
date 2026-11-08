@@ -1298,6 +1298,26 @@ components:
           description: When the attestation last verified.
         expiresAt:
           type: string
+        onchain:
+          type:
+            - object
+            - "null"
+          properties:
+            chainId:
+              type: number
+            verdictVerifier:
+              type: string
+            registeredAt:
+              type: string
+            expiresAt:
+              type: string
+          required:
+            - chainId
+            - verdictVerifier
+            - registeredAt
+            - expiresAt
+          description: The signer's record in the VerdictVerifier, which on-chain
+            verification reads; null when it is not registered there.
         attestation:
           type: object
           additionalProperties: {}
@@ -1310,6 +1330,7 @@ components:
         - registeredAt
         - verifiedAt
         - expiresAt
+        - onchain
         - attestation
     Timestamp:
       type: object

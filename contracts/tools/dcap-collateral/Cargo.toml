@@ -1,0 +1,16 @@
+[package]
+name = "dcap-collateral"
+version = "0.0.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+
+# Built on its own: Automata's crates pin their own dependency tree.
+[workspace]
+
+[dependencies]
+anyhow = "1"
+automata-dcap-network-registry = { git = "https://github.com/automata-network/automata-dcap-attestation", tag = "v1.2.0" }
+automata-dcap-qpl = { git = "https://github.com/automata-network/automata-dcap-attestation", tag = "v1.2.0" }
+hex = "0.4"
+tokio = { version = "1", features = ["rt-multi-thread"] }

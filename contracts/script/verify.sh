@@ -16,10 +16,22 @@ if [[ "${1:-}" == "--check-only" ]]; then
 fi
 [[ $# -gt 0 ]] || { echo "usage: $0 [--check-only] <chainId>..." >&2; exit 2; }
 
-# out/<File>.sol/<Name>.json names its source in the compilation target.
+# out/<File>.sol/<Name>.json names its source in the compilation target. Contracts built with their own
+# settings (Base's nitro-validator) are verified from their own project root.
+EXTERNAL_ROOTS=(lib/nitro-validator)
+
+root_of() {
+  local name="$1" root
+  for root in "${EXTERNAL_ROOTS[@]}"; do
+    compgen -G "$root/out/*/$name.json" >/dev/null && { echo "$root"; return; }
+  done
+  echo .
+}
+
 source_of() {
-  local name="$1" artifact
-  for artifact in out/*/"$name".json; do
+  local name="$1" root artifact
+  root="$(root_of "$name")"
+  for artifact in "$root"/out/*/"$name".json; do
     jq -r --arg n "$name" '.metadata.settings.compilationTarget | to_entries[] | select(.value == $n) | "\(.key):\(.value)"' "$artifact"
     return
   done
@@ -48,7 +60,7 @@ for chain in "$@"; do
       args=$(jq -r --arg n "$name" '.constructorArgs[$n]' "$registry")
       # Foundry submits the same sources to Sourcify after Etherscan.
       forge verify-contract "$address" "$target" --chain "$chain" --verifier etherscan \
-        --constructor-args "$args" --watch
+        --constructor-args "$args" --root "$(root_of "$name")" --watch
     fi
   done
 done

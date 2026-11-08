@@ -614,6 +614,9 @@ importers:
       '@keelson/attest':
         specifier: workspace:*
         version: link:../../packages/attest
+      '@keelson/chain':
+        specifier: workspace:*
+        version: link:../../packages/chain
       '@keelson/compiler':
         specifier: workspace:*
         version: link:../../packages/compiler

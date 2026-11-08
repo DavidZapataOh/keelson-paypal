@@ -16,6 +16,8 @@ fs_permissions = [
   { access = "read-write", path = "./deployments" },
   { access = "read", path = "./test/vectors" },
   { access = "read", path = "../packages/core/test/vectors" },
+  { access = "read", path = "../engine/tee/measurements.json" },
+  { access = "read", path = "./lib/nitro-validator/out" },
 ]
 
 [profile.ci]
@@ -34,3 +36,7 @@ sepolia = { key = "${ETHERSCAN_API_KEY}", chain = 11155111 }
 
 [fmt]
 sort_imports = true
+
+[lint]
+# Signer validity, attestation freshness and every protocol window are measured in block time by design.
+exclude_lints = ["block-timestamp"]
