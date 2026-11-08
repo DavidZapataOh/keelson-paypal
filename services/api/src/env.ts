@@ -23,6 +23,8 @@ const schema = z
     LOG_WRITE_TOKEN: z.string().min(32).optional(),
     KEELSON_EVIDENCE_AGE_IDENTITY: z.string().startsWith("AGE-SECRET-KEY-").optional(),
     KEELSON_EVIDENCE_AGE_RECIPIENT: z.string().startsWith("age1").optional(),
+    CHANNEL3_API_KEY: z.string().min(1).optional(),
+    CHANNEL3_WEBHOOK_SECRET: z.string().startsWith("whsec_").optional(),
     TSA_DIGICERT_URL: z.url().optional(),
     TSA_SIGSTORE_URL: z.url().optional(),
     TSA_FREETSA_URL: z.url().optional(),
@@ -64,6 +66,12 @@ const schema = z
   .refine((env) => env.NODE_ENV !== "production" || env.KEELSON_ISSUER_THUMBPRINT !== undefined, {
     message: "KEELSON_ISSUER_THUMBPRINT is required in production",
     path: ["KEELSON_ISSUER_THUMBPRINT"],
+  })
+  // The webhook secret comes from Channel3's portal once the endpoint is registered; until then
+  // the webhook answers 503 and decisions still get their lookup.
+  .refine((env) => env.NODE_ENV !== "production" || env.CHANNEL3_API_KEY !== undefined, {
+    message: "CHANNEL3_API_KEY is required in production",
+    path: ["CHANNEL3_API_KEY"],
   })
   .refine((env) => env.PASSKEY_RP_ID === undefined || env.NODE_ENV === "test", {
     message: "PASSKEY_RP_ID may only be set in tests",

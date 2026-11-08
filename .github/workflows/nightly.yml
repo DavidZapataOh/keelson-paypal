@@ -48,3 +48,44 @@ jobs:
       - run: pnpm --filter @keelson/policy test
         env:
           PARITY_FILE: ${{ runner.temp }}/parity.jsonl
+
+  channel3:
+    runs-on: ubuntu-24.04
+    env:
+      DATABASE_URL: postgres://postgres:keelson@localhost:5432/keelson
+      REDIS_URL: redis://localhost:6379
+      CHANNEL3_API_KEY: ${{ secrets.CHANNEL3_API_KEY }}
+      KEELSON_LIVE: "1"
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: keelson
+          POSTGRES_DB: keelson
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d keelson"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      valkey:
+        image: valkey/valkey:8
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run build --filter=@keelson/api^...
+      - name: One live Channel3 lookup, stored, sealed and stamped (one credit)
+        run: pnpm --filter @keelson/api exec vitest run test/observations.live.test.ts

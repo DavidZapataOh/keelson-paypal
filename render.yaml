@@ -64,6 +64,10 @@ services:
         sync: false
       - key: KEELSON_EVIDENCE_AGE_RECIPIENT
         sync: false
+      - key: CHANNEL3_API_KEY
+        sync: false
+      - key: CHANNEL3_WEBHOOK_SECRET
+        sync: false
       - fromGroup: keelson-secrets
 
   - type: web

@@ -1,5 +1,6 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import type { PiiValues } from "@keelson/evidence";
+import { sha256, toHex } from "@keelson/core";
+import { buildManifest, type PiiValues, type SealedItem } from "@keelson/evidence";
 import { type Capture, captureEvidence, startRecorder } from "@keelson/evidence/capture";
 import { generateHybridIdentity, identityToRecipient } from "age-encryption";
 import { type Browser, chromium } from "playwright";
@@ -74,13 +75,88 @@ export function uploadBody(mandateId: string, capture: Pick<Capture, "manifest" 
   };
 }
 
+/** A Channel3 observation the API issued, as the sealed item the agent adds to its evidence. */
+export interface ObservedItem extends SealedItem {
+  id: string;
+  status: string;
+}
+
 /**
  * Stores evidence for the countersign of `cart`: each call captures the product page with that
  * cart and fresh salts, so each countersign binds a root of its own.
  */
 export class EvidenceUploader {
-  private readonly store = new StoreCapture();
+  private readonly pages = new StoreCapture();
   private keys?: { recipient: string };
+
+  async capture(cart: unknown): Promise<Capture> {
+    this.keys ??= await ageKeys();
+    return this.pages.capture("product.html", { recipient: this.keys.recipient, cart });
+  }
+
+  /**
+   * Asks the API for a Channel3 observation of `url`, with the agent's view built over the
+   * content hash of the capture's `api.product` item unless `view` names another.
+   */
+  async observe(
+    app: Pick<OpenAPIHono, "request">,
+    mandateId: string,
+    capture: Capture,
+    url: string,
+    view: Record<string, unknown>,
+    headers: Record<string, string>,
+  ): Promise<ObservedItem> {
+    const product = capture.items.find((i) => i.type === "api.product");
+    if (!product) throw new Error("the capture has no api.product item");
+    const res = await app.request("/v1/observations/channel3", {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": ulid(), ...headers },
+      body: JSON.stringify({
+        mandateId,
+        url,
+        agentView: { contentHash: toHex(sha256(product.bytes)), ...view },
+      }),
+    });
+    if (res.status !== 201) throw new Error(`not observed: ${res.status} ${await res.text()}`);
+    const body = (await res.json()) as {
+      id: string;
+      status: string;
+      item: { salt: string; bytes: string };
+    };
+    return {
+      id: body.id,
+      status: body.status,
+      type: "channel3.observation",
+      mediaType: "application/json",
+      salt: Uint8Array.from(Buffer.from(body.item.salt, "base64")),
+      bytes: Uint8Array.from(Buffer.from(body.item.bytes, "base64")),
+    };
+  }
+
+  /** Stores `capture`, with `extra` placed after the public items when given. */
+  async store(
+    app: Pick<OpenAPIHono, "request">,
+    mandateId: string,
+    capture: Capture,
+    headers: Record<string, string>,
+    extra?: SealedItem,
+  ): Promise<`0x${string}`> {
+    let sealed: Pick<Capture, "manifest" | "items"> = capture;
+    if (extra) {
+      const items = [...capture.items];
+      const at = items.findIndex((i) => i.type.endsWith(".original"));
+      items.splice(at < 0 ? items.length : at, 0, extra);
+      sealed = { manifest: buildManifest(items), items };
+    }
+    const res = await app.request("/v1/evidence", {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": ulid(), ...headers },
+      body: JSON.stringify(uploadBody(mandateId, sealed)),
+    });
+    if (res.status !== 201)
+      throw new Error(`evidence not stored: ${res.status} ${await res.text()}`);
+    return ((await res.json()) as { evidenceRoot: `0x${string}` }).evidenceRoot;
+  }
 
   async upload(
     app: Pick<OpenAPIHono, "request">,
@@ -88,22 +164,10 @@ export class EvidenceUploader {
     cart: unknown,
     headers: Record<string, string>,
   ): Promise<`0x${string}`> {
-    this.keys ??= await ageKeys();
-    const capture = await this.store.capture("product.html", {
-      recipient: this.keys.recipient,
-      cart,
-    });
-    const res = await app.request("/v1/evidence", {
-      method: "POST",
-      headers: { "content-type": "application/json", "idempotency-key": ulid(), ...headers },
-      body: JSON.stringify(uploadBody(mandateId, capture)),
-    });
-    if (res.status !== 201)
-      throw new Error(`evidence not stored: ${res.status} ${await res.text()}`);
-    return ((await res.json()) as { evidenceRoot: `0x${string}` }).evidenceRoot;
+    return this.store(app, mandateId, await this.capture(cart), headers);
   }
 
   close(): Promise<void> {
-    return this.store.close();
+    return this.pages.close();
   }
 }

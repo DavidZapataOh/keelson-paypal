@@ -300,6 +300,9 @@ describe.skipIf(!sandbox)("checkout capture with the PayPal sandbox buyer", () =
     await recorder.stop();
     await product.close();
     expect(clean.items.some((i) => i.type.endsWith(".original"))).toBe(false);
-    expect(clean.items.map((i) => i.type)).toEqual([...ITEM_TYPES]);
+    // The Channel3 observation is issued by the API and added by the driver, not captured.
+    expect(clean.items.map((i) => i.type)).toEqual(
+      ITEM_TYPES.filter((t) => t !== "channel3.observation"),
+    );
   });
 });
