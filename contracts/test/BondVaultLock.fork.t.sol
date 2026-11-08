@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.38;
 
+import {Vector} from "../script/CoverageVector.sol";
 import {IKeelsonBondVault} from "../src/interfaces/IKeelsonBondVault.sol";
 import {KeelsonTypes} from "../src/libraries/KeelsonTypes.sol";
-import {LockBase, Vector} from "./utils/VaultBase.sol";
+import {LockBase} from "./utils/VaultBase.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 

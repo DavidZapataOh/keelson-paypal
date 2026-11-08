@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.38;
 
+import {CoverageVector, Vector} from "../../script/CoverageVector.sol";
 import {DeployBondVault} from "../../script/DeployBondVault.s.sol";
 import {KeelsonBondVault} from "../../src/KeelsonBondVault.sol";
 import {IKeelsonBondVault} from "../../src/interfaces/IKeelsonBondVault.sol";
 import {KeelsonTypes} from "../../src/libraries/KeelsonTypes.sol";
-import {PasskeyAssertion} from "../../src/libraries/PasskeyAssertion.sol";
 import {ForkTest} from "./Fork.sol";
 import {IPyusd} from "./IPyusd.sol";
 import {TimelockController} from "@openzeppelin/contracts/governance/TimelockController.sol";
@@ -32,8 +32,12 @@ abstract contract VaultBase is ForkTest {
         vm.createSelectFork(vm.envString("ARBITRUM_SEPOLIA_RPC_URL"), FORK_BLOCK);
         pyusd = _pyusd();
         agentId = _demoAgentId();
-        (operator, operatorKey) = _operator();
-        assertEq(_identity().ownerOf(agentId), operator, "demo agent owner");
+        // The demo operator transfers its agent to a key this test holds, so the operator's signatures are real ones.
+        address demoOperator = _json().readAddress(".demo.operator");
+        assertEq(_identity().ownerOf(agentId), demoOperator, "demo agent owner");
+        (operator, operatorKey) = makeAddrAndKey("agent owner");
+        vm.prank(demoOperator);
+        _identity().transferFrom(demoOperator, operator, agentId);
 
         deployScript = new DeployBondVault();
         vault = deployScript.run(VAULT);
@@ -95,83 +99,18 @@ abstract contract VaultBase is ForkTest {
     }
 }
 
-/// @notice A coverage captured live: the demo mandate signed with a real passkey in Chromium, countersigned by the live
-/// legs (`vectors/coverage-*.json`), and the `Coverage` the demo operator signs for it.
-struct Vector {
-    KeelsonTypes.Coverage coverage;
-    KeelsonTypes.Countersign countersign;
-    bytes32 hSd;
-    PasskeyAssertion.Assertion assertion;
-    bytes32 qx;
-    bytes32 qy;
-    bytes countersigs;
-    bytes tdx;
-    bytes nitro;
-    bytes32 digest;
-    bytes32 userKeyHash;
-    bool degraded;
-}
-
 abstract contract LockBase is VaultBase {
     using stdJson for string;
 
     string internal constant WEBAUTHN = "coverage-2of2-webauthn";
     string internal constant PAYMENT = "coverage-2of2-payment";
     string internal constant DEGRADED = "coverage-degraded";
-    /// @dev The premium the risk model will set; 1% for the tests.
-    uint256 internal constant PREMIUM_BPS = 100;
 
     function _vector(string memory name) internal view returns (Vector memory v) {
         string memory json = vm.readFile(string.concat(vm.projectRoot(), "/test/vectors/", name, ".json"));
         assertEq(json.readUint(".chainId"), 421614);
-        assertEq(json.readAddress(".vault"), address(vault), "vector vault");
-        v.countersign = _countersign(json);
-        v.hSd = json.readBytes32(".hSd");
-        v.assertion.r = json.readBytes32(".encodedAssertion.r");
-        v.assertion.s = json.readBytes32(".encodedAssertion.s");
-        v.assertion.challengeIndex = json.readUint(".encodedAssertion.challengeIndex");
-        v.assertion.typeIndex = json.readUint(".encodedAssertion.typeIndex");
-        v.assertion.authenticatorData = json.readBytes(".encodedAssertion.authenticatorData");
-        v.assertion.clientDataJSON = json.readString(".encodedAssertion.clientDataJSON");
-        v.qx = json.readBytes32(".qx");
-        v.qy = json.readBytes32(".qy");
-        v.tdx = json.readBytes(".signatures.tdx");
-        v.degraded = keccak256(bytes(json.readString(".mode"))) == keccak256("degraded");
-        if (!v.degraded) v.nitro = json.readBytes(".signatures.nitro");
-        v.countersigs = bytes.concat(v.tdx, v.nitro);
-        v.digest = json.readBytes32(".digest");
-        v.userKeyHash = json.readBytes32(".userKeyHash");
-
-        uint96 amount = uint96(v.countersign.amount * 10_000);
-        v.coverage = KeelsonTypes.Coverage({
-            coverageId: v.countersign.requestId,
-            agentId: v.countersign.agentId,
-            merchant: _json().readAddress(".demo.merchant"),
-            amount: amount,
-            premium: uint96(amount * PREMIUM_BPS / 10_000),
-            expiresAt: v.countersign.issuedAt + uint40(vault.params().disputeWindow),
-            mandateHash: v.countersign.mandateHash,
-            amberCommitment: keccak256(abi.encode("amber", v.countersign.requestId))
-        });
-    }
-
-    function _countersign(string memory json) internal pure returns (KeelsonTypes.Countersign memory c) {
-        c.requestId = json.readBytes32(".countersign.requestId");
-        c.mandateHash = json.readBytes32(".countersign.mandateHash");
-        c.mandateCommitment = json.readBytes32(".countersign.mandateCommitment");
-        c.cartHash = json.readBytes32(".countersign.cartHash");
-        c.agentId = json.readUint(".countersign.agentId");
-        c.merchantId = json.readBytes32(".countersign.merchantId");
-        c.amount = uint64(json.readUint(".countersign.amount"));
-        c.currency = uint16(json.readUint(".countersign.currency"));
-        c.category = uint8(json.readUint(".countersign.category"));
-        c.evidenceRoot = json.readBytes32(".countersign.evidenceRoot");
-        c.evalHash = json.readBytes32(".countersign.evalHash");
-        c.policySetHash = json.readBytes32(".countersign.policySetHash");
-        c.decision = uint8(json.readUint(".countersign.decision"));
-        c.failedFieldsMask = uint32(json.readUint(".countersign.failedFieldsMask"));
-        c.issuedAt = uint40(json.readUint(".countersign.issuedAt"));
-        c.expiresAt = uint40(json.readUint(".countersign.expiresAt"));
+        v = CoverageVector.read(json, _json().readAddress(".demo.merchant"), vault.params().disputeWindow);
+        assertEq(v.vault, address(vault), "vector vault");
     }
 
     function _operatorSig(KeelsonTypes.Coverage memory c) internal view returns (bytes memory) {

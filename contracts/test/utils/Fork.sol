@@ -58,13 +58,6 @@ abstract contract ForkTest is Test {
         return IERC8004Identity(_json().readAddress(".external.erc8004Identity"));
     }
 
-    /// @dev The demo operator: owner of the registry's demo agent in the ERC-8004 Identity registry.
-    function _operator() internal view returns (address account, uint256 pk) {
-        pk = vm.envUint("KEELSON_OPERATOR_KEY");
-        account = vm.addr(pk);
-        assertEq(account, _json().readAddress(".demo.operator"), "operator key");
-    }
-
     function _demoAgentId() internal view returns (uint256) {
         return _json().readUint(".demo.agentId");
     }

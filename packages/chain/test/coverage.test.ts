@@ -1,10 +1,18 @@
 import { createHash } from "node:crypto";
+import { hashKeelson, keelsonDomain } from "@keelson/core/eip712";
 import { p256 } from "@noble/curves/nist.js";
-import { hexToBytes } from "viem";
+import { hashTypedData, hexToBytes, recoverTypedDataAddress } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import { describe, expect, test } from "vitest";
 import verifyVectors from "../../mandate/test/vectors/webauthn.json" with { type: "json" };
 import captures from "../../mandate/test/vectors/webauthn-captures.json" with { type: "json" };
-import { passkeyPublicKey, toAssertion, userKeyHash } from "../src/coverage.ts";
+import {
+  passkeyPublicKey,
+  payoutAddressTypedData,
+  toAssertion,
+  userKeyHash,
+  withdrawalTypedData,
+} from "../src/coverage.ts";
 
 const N = p256.Point.CURVE().n;
 const sha256 = (b: Uint8Array) => new Uint8Array(createHash("sha256").update(b).digest());
@@ -64,5 +72,40 @@ describe("passkeyPublicKey", () => {
     expect(passkeyPublicKey(jwk)).toEqual({ qx, qy });
     expect(userKeyHash(qx, qy)).toMatch(/^0x[0-9a-f]{64}$/);
     expect(() => passkeyPublicKey({ ...jwk, crv: "P-384" })).toThrow(TypeError);
+  });
+});
+
+describe("vault typed data", () => {
+  const vault = "0x69ccD2fB3a85f590F2A8f431cca3ecc2e9Bf3c14" as const;
+  const account = privateKeyToAccount(`0x${"11".repeat(32)}`);
+
+  test("a withdrawal request is signed under the vault's domain", async () => {
+    const request = {
+      agentId: 351n,
+      amount: 10_000_000n,
+      to: account.address,
+      nonce: 0n,
+      deadline: 1n,
+    };
+    const typed = withdrawalTypedData(request, 421614, vault);
+    expect(typed.domain).toEqual({
+      name: "Keelson",
+      version: "1",
+      chainId: 421614,
+      verifyingContract: vault,
+    });
+    const signature = await account.signTypedData(typed);
+    expect(await recoverTypedDataAddress({ ...typed, signature })).toBe(account.address);
+    expect(hashTypedData(typed)).toBe(
+      hashKeelson("WithdrawalRequest", request, keelsonDomain(421614, vault)),
+    );
+  });
+
+  test("a payout address is signed under the vault's domain", () => {
+    const payout = { merchant: account.address, payout: vault, nonce: 0n, deadline: 1n };
+    const typed = payoutAddressTypedData(payout, 421614, vault);
+    expect(hashTypedData(typed)).toBe(
+      hashKeelson("PayoutAddress", payout, keelsonDomain(421614, vault)),
+    );
   });
 });

@@ -5,11 +5,13 @@ import {
   keelsonDomain,
 } from "@keelson/core/eip712";
 import { p256 } from "@noble/curves/nist.js";
+import { StandardMerkleTree } from "@openzeppelin/merkle-tree";
 import {
   type Address,
   bytesToHex,
   concat,
   type Hex,
+  hashStruct,
   keccak256,
   type TypedDataDefinition,
 } from "viem";
@@ -152,4 +154,90 @@ export function lockCoverageArgs(input: {
     input.operatorSig,
     packCountersigs(input.mode, input.signatures),
   ] as const;
+}
+
+export type WithdrawalRequest = TypedDataDefinition<
+  typeof KEELSON_TYPES,
+  "WithdrawalRequest"
+>["message"];
+export type PayoutAddress = TypedDataDefinition<typeof KEELSON_TYPES, "PayoutAddress">["message"];
+
+/** The `WithdrawalRequest` the agent's owner or agent wallet signs; `nonce` is `vault.nonces(signer)`. */
+export function withdrawalTypedData(
+  request: WithdrawalRequest,
+  chainId: KeelsonChainId,
+  vault: Address,
+): TypedDataDefinition<typeof KEELSON_TYPES, "WithdrawalRequest"> {
+  return {
+    domain: keelsonDomain(chainId, vault),
+    types: KEELSON_TYPES,
+    primaryType: "WithdrawalRequest",
+    message: request,
+  };
+}
+
+/** The `PayoutAddress` a merchant signs; `nonce` is `vault.nonces(merchant)`. */
+export function payoutAddressTypedData(
+  payout: PayoutAddress,
+  chainId: KeelsonChainId,
+  vault: Address,
+): TypedDataDefinition<typeof KEELSON_TYPES, "PayoutAddress"> {
+  return {
+    domain: keelsonDomain(chainId, vault),
+    types: KEELSON_TYPES,
+    primaryType: "PayoutAddress",
+    message: payout,
+  };
+}
+
+export type CoverageBatch = TypedDataDefinition<typeof KEELSON_TYPES, "CoverageBatch">["message"];
+
+/**
+ * A batch of one agent's coverages for `lockCoverageBatch`: an OpenZeppelin standard Merkle tree
+ * (leaf encoding `["bytes32"]`) of their EIP-712 struct hashes, the batch over its root and the
+ * anchored checkpoint that logs them, and each coverage's proof by `coverageId`.
+ */
+export function coverageBatch(
+  coverages: readonly Coverage[],
+  checkpoint: { root: Hex; treeSize: bigint },
+  premium: bigint,
+): { batch: CoverageBatch; tree: StandardMerkleTree<[Hex]>; proofs: Map<Hex, Hex[]> } {
+  const first = coverages[0];
+  if (!first) throw new RangeError("a batch holds at least one coverage");
+  if (coverages.some((c) => c.agentId !== first.agentId)) {
+    throw new RangeError("a batch covers one agent");
+  }
+  const leaves = coverages.map(
+    (c) => [hashStruct({ data: c, primaryType: "Coverage", types: KEELSON_TYPES })] as [Hex],
+  );
+  const tree = StandardMerkleTree.of(leaves, ["bytes32"]);
+  const proofs = new Map<Hex, Hex[]>();
+  for (const [i, c] of coverages.entries()) proofs.set(c.coverageId, tree.getProof(i) as Hex[]);
+  return {
+    batch: {
+      agentId: first.agentId,
+      root: tree.root as Hex,
+      total: coverages.reduce((sum, c) => sum + c.amount, 0n),
+      premium,
+      expiresAt: Math.max(...coverages.map((c) => c.expiresAt)),
+      checkpointRoot: checkpoint.root,
+      treeSize: checkpoint.treeSize,
+    },
+    tree,
+    proofs,
+  };
+}
+
+/** The `CoverageBatch` the operator signs; the vault keys the batch by its struct hash. */
+export function coverageBatchTypedData(
+  batch: CoverageBatch,
+  chainId: KeelsonChainId,
+  vault: Address,
+): TypedDataDefinition<typeof KEELSON_TYPES, "CoverageBatch"> {
+  return {
+    domain: keelsonDomain(chainId, vault),
+    types: KEELSON_TYPES,
+    primaryType: "CoverageBatch",
+    message: batch,
+  };
 }
