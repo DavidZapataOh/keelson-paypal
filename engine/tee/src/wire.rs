@@ -177,6 +177,10 @@ pub struct MandateIssued {
 #[serde(deny_unknown_fields)]
 pub struct PayPalObservation {
     pub authorization_id: String,
+    /// The order the authorization belongs to, `supplementary_data.related_ids.order_id`; a
+    /// reauthorization keeps it. Leg B decides nothing on it, so an observation without it parses.
+    #[serde(default)]
+    pub order_id: String,
     /// The authorization status, e.g. `CREATED` or `PARTIALLY_CAPTURED`.
     pub status: String,
     pub currency: String,
