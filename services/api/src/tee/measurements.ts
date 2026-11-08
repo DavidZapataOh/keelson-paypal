@@ -3,13 +3,13 @@ import type { Hex } from "viem";
 
 const file = new URL("../../../../engine/tee/measurements.json", import.meta.url);
 /**
- * The published `measurements.json` files of builds the API still admits while the legs move to a
- * new one, each kept byte for byte as it was attested. Absent outside a rotation.
+ * The published `measurements.json` files of other builds the API admits while the legs move from
+ * one image to another, each kept byte for byte as it was attested. Absent outside a rotation.
  */
-const previousFile = new URL("../../../../engine/tee/measurements-previous.json", import.meta.url);
+const rotationFile = new URL("../../../../engine/tee/measurements-rotation.json", import.meta.url);
 
 /** One build both legs may run: its image digest and the measurement id of each leg. */
-export interface Build {
+interface Build {
   /** The image digest, as the 32 bytes `engineBuildId` carries. */
   engineBuildId: Hex;
   /** The image digest, `sha256:<hex>`. */
@@ -21,8 +21,8 @@ export interface Build {
 interface Measurements extends Build {
   /** Where the Sigstore-attested copy of the file is published. */
   provenance: string;
-  /** Earlier builds whose signers are still admitted. */
-  previous: Build[];
+  /** Other builds whose signers are admitted during a rotation. */
+  rotation: Build[];
 }
 
 interface Published {
@@ -38,15 +38,15 @@ const build = (m: Published): Build => ({
   nitro: [m.nitro.id],
 });
 
-/** The measurement ids in the published `measurements.json`, and any earlier builds admitted. */
+/** The measurement ids in the published `measurements.json`, and any other builds admitted. */
 export function loadMeasurements(): Measurements {
   const m = JSON.parse(readFileSync(file, "utf8")) as Published;
-  const previous = existsSync(previousFile)
-    ? (JSON.parse(readFileSync(previousFile, "utf8")) as Published[]).map(build)
+  const rotation = existsSync(rotationFile)
+    ? (JSON.parse(readFileSync(rotationFile, "utf8")) as Published[]).map(build)
     : [];
   return {
     ...build(m),
     provenance: `https://github.com/DavidZapataOh/keelson-paypal/releases/download/${m.oci_digest.replace(":", "-")}/measurements.json`,
-    previous,
+    rotation,
   };
 }

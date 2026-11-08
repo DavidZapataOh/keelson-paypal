@@ -19,10 +19,10 @@ export const ATTESTATION_MAX_AGE_MS = 2 * 3_600_000;
 
 export type LegExpectations = Omit<Expectations, "now"> & {
   /**
-   * Earlier builds still admitted during a rotation: a signer attesting one of them, with its
-   * own image digest and measurement, is admitted like one of the current build.
+   * Other builds admitted while the legs move between images: a signer attesting one of them,
+   * with its own image digest and measurement, is admitted like one of the current build.
    */
-  previous?: readonly Pick<Expectations, "engineBuildId" | "measurements">[];
+  rotation?: readonly Pick<Expectations, "engineBuildId" | "measurements">[];
 };
 
 /** What the coordinator needs to reach and admit the two legs. */
@@ -64,17 +64,17 @@ function fromRow(row: typeof teeSigners.$inferSelect): RegisteredSigner {
 
 class RegistrationError extends Error {}
 
-/** Verifies against the current build, then each earlier one; the current build's error wins. */
+/** Verifies against the current build, then each rotation build; the current build's error wins. */
 async function verifyAgainstBuilds(
   attestation: SignerAttestation,
   expect: LegExpectations,
   now: Date,
 ): ReturnType<typeof verifySigner> {
-  const { previous = [], ...current } = expect;
+  const { rotation = [], ...current } = expect;
   try {
     return await verifySigner(attestation, { ...current, now });
   } catch (err) {
-    for (const build of previous) {
+    for (const build of rotation) {
       try {
         return await verifySigner(attestation, { ...current, ...build, now });
       } catch {}

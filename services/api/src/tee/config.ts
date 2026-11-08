@@ -80,12 +80,12 @@ export function createTee(
     a: {
       ...common,
       measurements: m.tdx,
-      previous: m.previous.map((p) => ({ engineBuildId: p.engineBuildId, measurements: p.tdx })),
+      rotation: m.rotation.map((p) => ({ engineBuildId: p.engineBuildId, measurements: p.tdx })),
     },
     b: {
       ...common,
       measurements: m.nitro,
-      previous: m.previous.map((p) => ({ engineBuildId: p.engineBuildId, measurements: p.nitro })),
+      rotation: m.rotation.map((p) => ({ engineBuildId: p.engineBuildId, measurements: p.nitro })),
     },
   };
   return {

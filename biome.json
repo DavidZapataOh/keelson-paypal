@@ -19,7 +19,7 @@
       "!**/test/evidence",
       "!**/test/snapshots",
       "!engine/tee/measurements.json",
-      "!engine/tee/measurements-previous.json",
+      "!engine/tee/measurements-rotation.json",
       "!**/src/generated",
       "!engine/policy/proofs",
       "!contracts/lib",

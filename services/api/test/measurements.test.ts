@@ -3,14 +3,14 @@ import { expect, test } from "vitest";
 import { createTee } from "../src/tee/config.ts";
 import { loadMeasurements } from "../src/tee/measurements.ts";
 
-const previousFile = new URL("../../../engine/tee/measurements-previous.json", import.meta.url);
+const rotationFile = new URL("../../../engine/tee/measurements-rotation.json", import.meta.url);
 
-test("each leg admits the current build and every earlier build listed as previous", () => {
+test("each leg admits the current build and every other build listed for a rotation", () => {
   const m = loadMeasurements();
-  const listed = existsSync(previousFile)
-    ? (JSON.parse(readFileSync(previousFile, "utf8")) as { oci_digest: string }[])
+  const listed = existsSync(rotationFile)
+    ? (JSON.parse(readFileSync(rotationFile, "utf8")) as { oci_digest: string }[])
     : [];
-  expect(m.previous.map((p) => p.digest)).toEqual(listed.map((p) => p.oci_digest));
+  expect(m.rotation.map((p) => p.digest)).toEqual(listed.map((p) => p.oci_digest));
 
   const tee = createTee({
     TEE_A_URL: "https://a.invalid",
@@ -19,10 +19,10 @@ test("each leg admits the current build and every earlier build listed as previo
   });
   expect(tee.expect.a.measurements).toEqual(m.tdx);
   expect(tee.expect.b.measurements).toEqual(m.nitro);
-  expect(tee.expect.a.previous).toEqual(
-    m.previous.map((p) => ({ engineBuildId: p.engineBuildId, measurements: p.tdx })),
+  expect(tee.expect.a.rotation).toEqual(
+    m.rotation.map((p) => ({ engineBuildId: p.engineBuildId, measurements: p.tdx })),
   );
-  expect(tee.expect.b.previous).toEqual(
-    m.previous.map((p) => ({ engineBuildId: p.engineBuildId, measurements: p.nitro })),
+  expect(tee.expect.b.rotation).toEqual(
+    m.rotation.map((p) => ({ engineBuildId: p.engineBuildId, measurements: p.nitro })),
   );
 });

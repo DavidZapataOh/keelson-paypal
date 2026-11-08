@@ -54,14 +54,14 @@ describe.skipIf(!live)("tee signers (live legs)", { timeout: 60_000 }, () => {
     });
   });
 
-  test("a signer of an earlier build listed as previous is admitted, any other is refused", async () => {
+  test("a signer of another build listed for a rotation is admitted, any other is refused", async () => {
     const elsewhere = { engineBuildId: `0x${"00".repeat(32)}`, measurements: ["tdx:00"] } as const;
     const { engineBuildId, measurements } = tee.expect.a;
-    const rotating = { ...tee.expect.a, ...elsewhere, previous: [{ engineBuildId, measurements }] };
+    const rotating = { ...tee.expect.a, ...elsewhere, rotation: [{ engineBuildId, measurements }] };
     const admitted = await registerLeg(testDb, "a", tee.client.a, rotating);
     expect(measurements).toContain(admitted.measurement);
 
-    const unlisted = { ...tee.expect.a, ...elsewhere, previous: [elsewhere] };
+    const unlisted = { ...tee.expect.a, ...elsewhere, rotation: [elsewhere] };
     await expect(registerLeg(testDb, "a", tee.client.a, unlisted)).rejects.toMatchObject({
       code: "binding_mismatch",
     });
