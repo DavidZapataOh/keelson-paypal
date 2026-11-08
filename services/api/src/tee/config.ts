@@ -12,7 +12,7 @@ import type { LegExpectations, TeeConfig } from "./signers.ts";
 export const VERIFYING_CONTRACT: Address = "0xe16E8767EC1DA59Ef0D9Bc7851637E4D22352d96";
 
 /** The `KeelsonBondVault` both legs' attestations bind, at the same CREATE3 address on every chain. */
-export const BOND_VAULT: Address = "0xb39898Ef4333f3CB32d1B420E744f5a1Aa2ae2Bf";
+const BOND_VAULT: Address = "0xb39898Ef4333f3CB32d1B420E744f5a1Aa2ae2Bf";
 
 /**
  * Leg A reads PayPal, so it gets longer than leg B, which only evaluates: more than the engine's
