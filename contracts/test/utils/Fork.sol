@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.38;
 
+import {Deploy} from "../../script/Deploy.s.sol";
 import {IPyusd} from "./IPyusd.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 import {Test} from "forge-std/Test.sol";
@@ -94,5 +95,10 @@ abstract contract ForkTest is Test {
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", _pyusd().DOMAIN_SEPARATOR(), structHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk, digest);
         return abi.encodePacked(r, s, v);
+    }
+
+    /// @dev Runs the release deployment on the selected fork as the real deployer EOA.
+    function _deployRelease() internal returns (Deploy.Release memory) {
+        return new Deploy().run();
     }
 }
