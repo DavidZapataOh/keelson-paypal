@@ -41,7 +41,7 @@ func TestAdmissionRefusesWhatTheTEEsDidNotSign(t *testing.T) {
 	highS := func(sig string) string {
 		b, _ := base64.RawURLEncoding.DecodeString(sig)
 		s := new(big.Int).SetBytes(b[32:64])
-		new(big.Int).Sub(secp256k1.S256().N, s).FillBytes(b[32:64])
+		new(big.Int).Sub(secp256k1.Params().N, s).FillBytes(b[32:64])
 		b[64] = 55 - b[64]
 		return b64(b)
 	}

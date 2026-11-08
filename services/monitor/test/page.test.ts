@@ -159,6 +159,15 @@ describe("the monitor page", () => {
     await context.close();
   });
 
+  test("asks the browser to open the connection to each log while the verifier loads", async () => {
+    const res = await fetch(fixture.monitor);
+    const config = await (await fetch(new URL("/config.json", fixture.monitor))).json();
+    const logs = [...new Set(config.origins.map((o: { url: string }) => new URL(o.url).origin))];
+    expect(logs.length).toBeGreaterThan(0);
+    for (const log of logs)
+      expect(res.headers.get("link")).toContain(`<${log}>; rel=preconnect; crossorigin`);
+  });
+
   test("renders at 360 px without horizontal scroll", async () => {
     const context = await browser.newContext({ viewport: { width: 360, height: 800 } });
     const page = await open(context);

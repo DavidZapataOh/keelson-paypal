@@ -11,6 +11,7 @@ const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.len
 const browser = await chromium.launch();
 const verify: number[] = [];
 const wasm: number[] = [];
+const total: number[] = [];
 let saved: string | null = null;
 let origin = "";
 let transfer = 0;
@@ -40,6 +41,7 @@ for (let i = 0; i < 11; i++) {
     const body = page.locator("body");
     verify.push(Number(await body.getAttribute("data-verify-ms")));
     wasm.push(Number(await body.getAttribute("data-wasm-ms")));
+    total.push(await page.evaluate(() => Math.round(performance.now())));
     if ((await page.locator("#verdict").getAttribute("data-state")) !== "ok")
       throw new Error("verification failed");
   }
@@ -50,4 +52,5 @@ console.log(`| Metric | Value |
 |---|---|
 | Verification (checkpoint + consistency + inclusion), cold median of ${verify.length} | ${median(verify)} ms |
 | verifier.wasm download and instantiation, median | ${median(wasm)} ms |
+| Navigation to verdict, median | ${median(total)} ms |
 | verifier.wasm transfer (gzip) | ${transfer} bytes |`);

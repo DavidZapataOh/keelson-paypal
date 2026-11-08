@@ -49,6 +49,16 @@ jobs:
         env:
           PARITY_FILE: ${{ runner.temp }}/parity.jsonl
 
+  log-public:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Cache headers, and every public leaf in the closed schema
+        run: go test -tags live -run '^TestLive(CheckpointIsNotCached|TilesAreImmutable|WritePath|PublicLeaves)' -v ./services/log/
+
   channel3:
     runs-on: ubuntu-24.04
     env:

@@ -154,6 +154,21 @@ Each item that had PII gets a `<type>.original` item: the unredacted bytes encry
 X25519 recipient, with its own salt. `node scripts/age-keygen.ts` prints a new identity and its
 recipient.
 
+## What is public and who sees what
+
+| Data                                     | Who can read it                                                                                                                                                                                                                                     |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The log leaf                             | Everyone, for good: the log is append-only and witnessed, so an entry cannot be deleted. It has a closed set of keys, hashes, ids and signatures only; a PayPal order or authorization id appears only inside `paypal_ref_commit`, a salted SHA-256 |
+| The manifest (`GET /v1/evidence/{root}`) | Everyone: item types, media types and salted leaves, never content                                                                                                                                                                                  |
+| A public item                            | An arbiter the API discloses it to (`evidence:disclose`), one item at a time, with the reason recorded. Its PII is already redacted                                                                                                                 |
+| A `.original` item                       | Only with `decrypt=1` and the `evidence:decrypt` scope: it is age ciphertext, and the identity that opens it is held only in the API's secret environment (`KEELSON_EVIDENCE_AGE_IDENTITY`)                                                         |
+| The pages the agent visits               | KERNEL, whose browser the agent drives, sees them as the agent does, including what the agent types into a checkout form                                                                                                                            |
+| Product page URLs                        | Channel3, which is asked about the product page and nothing else: no user identifier and no cart                                                                                                                                                    |
+| Leaf hashes and observation hashes       | The time-stamping authorities, which receive a SHA-256 and nothing else                                                                                                                                                                             |
+
+The API's request log records the route, status and duration of each request, never a body, and
+redacts `Authorization`, `Cookie` and `Set-Cookie`.
+
 ## Normalized HAR
 
 A HAR 1.2 `log` built from the CDP `Network` events recorded since the tab opened, with only what

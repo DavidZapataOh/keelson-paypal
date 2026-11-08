@@ -164,6 +164,8 @@ jobs:
           go-version-file: go.mod
       - run: test -z "$(gofmt -l $(go list -f '{{.Dir}}' ./...))"
       - run: go vet ./...
+      - run: go mod tidy -diff
+      - run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
       - run: go test -race ./...
       - run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
@@ -179,6 +181,10 @@ jobs:
         with:
           node-version-file: .node-version
           cache: pnpm
+      - uses: acifani/setup-tinygo@db56321a62b9a67922bb9ac8f9d085e218807bb3 # v2
+        with:
+          tinygo-version: 0.44.0
+          binaryen-version: "133"
       - run: pnpm install --frozen-lockfile --filter @keelson/monitor
       - run: pnpm --filter @keelson/monitor exec playwright install chromium
       - run: pnpm --filter @keelson/monitor test
@@ -191,6 +197,7 @@ jobs:
             echo "| raw | $(wc -c < verifier.wasm) |"
             echo "| gzip -9 | $(gzip -9 -c verifier.wasm | wc -c) |"
           } >> "$GITHUB_STEP_SUMMARY"
+          test "$(gzip -9 -c verifier.wasm | wc -c)" -lt 1000000
 
   monitor-selfhost:
     runs-on: ubuntu-24.04

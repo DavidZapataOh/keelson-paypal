@@ -26,6 +26,12 @@ witnesses, and an append that no witnessed checkpoint covers answers `503`. The 
 [litewitness](../witness) and refuse any checkpoint that is not consistent with the last one they
 cosigned.
 
+The three witnesses are operated by Keelson, so they are not independent of each other or of the
+log: they keep a log whose keys leaked from showing a split view without their keys too, and they
+make each checkpoint a fact on three providers, but they do not protect anyone from Keelson itself.
+The independent record is [Sigsum](#sigsum): each checkpoint co-logged there is cosigned by
+witnesses Keelson does not run, and anyone can [run the monitor](../monitor#run-your-own-monitor).
+
 | Witness                     | Provider              |
 | --------------------------- | --------------------- |
 | `witness-1.keelson.finance` | Render (Oregon)       |
@@ -77,6 +83,51 @@ so the log serves them with `Cache-Control: public, max-age=31536000, immutable`
 `no-cache`. A Cloudflare Cache Rule on `(http.host eq "log.keelson.finance" and
 http.request.uri.path contains "/tile/")` makes tiles eligible for the edge cache, and both edge
 and browser TTLs follow the origin's `Cache-Control`. SSL/TLS mode is Full.
+
+## Operations
+
+| Piece                       | Where                                                                                                                                                   |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Log                         | Render `keelson-log`, Oregon, `0.5c-512mb` with a 10 GB disk at `/var/lib/keelson-log`, behind Cloudflare; write listener on Render's private network   |
+| Witness 1                   | Render `keelson-witness-1`, Oregon, `0.5c-512mb` with a 1 GB disk                                                                                       |
+| Witness 2                   | Railway `keelson-witness-2`, US West, with a volume                                                                                                     |
+| Witness 3                   | AWS `us-west-2`: a container (`keelson-witness-3` systemd unit) on the Nitro leg's parent instance, its key in SSM at `/keelson/witness-3/key`          |
+| Monitor                     | Railway `keelson-monitor`, operated by Keelson at <https://keelson-monitor-production.up.railway.app>; anyone can run their own ([monitor](../monitor)) |
+| Independent co-log          | Sigsum `seasalp`, cosigned by Glasklar, Mullvad and Tillitis witnesses                                                                                  |
+| Timestamps                  | DigiCert and Sigstore, with FreeTSA and Sectigo as fallbacks ([`@keelson/timestamp`](../../packages/timestamp))                                         |
+| Third-party product reading | Channel3 lookups and offer webhooks ([API](../api#channel3-observation))                                                                                |
+| Agent browser               | KERNEL headless browsers over CDP ([`@keelson/evidence`](../../packages/evidence))                                                                      |
+
+**Restart the log.** Restart or redeploy `keelson-log` on Render. The disk keeps the tiles, the
+entry bundles and the antispam index, so the log resumes at the same size and root; check with
+`curl -s https://log.keelson.finance/alibi/2026-1/checkpoint` before and after. A leaf appended
+again after a restart gets its old index.
+
+**Replace a witness.** Generate a key, give it to the witness's host (`WITNESS_KEY`; for witness 3
+the SSM parameter), deploy it with the `witness-deploy` workflow (witness 3: [`aws/deploy.sh`](../witness/aws/deploy.sh)), and
+put its new `vkey` in every policy in [`policy/`](policy) and in the monitor's pinned
+[`policy/`](../monitor/policy). Then redeploy the log and the monitor. A witness that lost its
+database must not come back under its old key: it would cosign a rolled-back tree.
+
+**Read the monitor's alerts.** `GET /report` lists the findings of each origin, and
+`GET /equivocations` every split view the monitor caught, each with the two conflicting checkpoints
+([API](../monitor#api)). The `monitor-deploy` workflow runs
+the live checks after each deploy, and the nightly workflow checks the cache headers and every
+public leaf.
+
+**Drain pending timestamps.** Hashes whose TSAs were down stay `pending` in `timestamps`; the API's
+stamp worker sweeps them every 30 seconds and asks the fallback TSA once a primary has failed three
+rounds. Starting the API runs a sweep at once.
+`select tsa, count(*) from timestamps where status = 'pending' group by tsa` shows what is left.
+
+**Recreate the Channel3 subscriptions.** With `CHANNEL3_API_KEY` set, `node scripts/channel3-subscribe.ts`
+in `services/api` subscribes every SKU in `channel3-skus.json` again; it is free and idempotent.
+
+**Rotate `CHANNEL3_WEBHOOK_SECRET`.** Rotate the endpoint's secret in Channel3's webhook portal,
+set the new `whsec_` value on the Render service `keelson-api` and redeploy it, then send a test
+event from the portal: the API answers it `204`.
+
+## Leaf
 
 ## Leaf
 
