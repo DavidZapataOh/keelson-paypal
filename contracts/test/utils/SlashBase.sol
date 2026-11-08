@@ -15,7 +15,7 @@ abstract contract SlashBase is LockBase, VerdictSigners {
 
     uint8 internal constant OPERATOR = 1;
     uint8 internal constant KEELSON = 2;
-    /// @dev SPEC rule ids: R61 the operator exceeded the mandate (amber), R60 a covered purchase Keelson answers for.
+    /// @dev Policy rule ids: R61 the operator exceeded the mandate (amber), R60 a covered purchase Keelson answers for.
     uint8 internal constant R61 = 61;
     uint8 internal constant R60 = 60;
     /// @dev `FIELD_BITS.variant` in `@keelson/core`: the size the operator bought differs from the mandate's.

@@ -127,7 +127,7 @@ An ERC-4626 vault over PYUSD (`kwPYUSD`, OpenZeppelin `ERC4626` with a 6-decimal
 
 `script/DeployReserve.s.sol` deploys it at its CREATE3 address, the one the vault sends premiums to, and wires its roles. Deploy and seed it before the vault locks any coverage: the vault's `slash` reads the reserve, and premiums that reach it before the first deposit mostly accrue to the virtual shares.
 
-The testnet windows are demo values (veto 2 minutes, grace 1 minute); production uses SPEC values (veto 24 h, grace 3 days), long enough for the 2-of-3 Guardian to act. No coverage is locked before the role wiring has executed.
+The testnet windows are demo values (veto 2 minutes, grace 1 minute); production uses a 24 h veto window and 3 days of grace, long enough for the 2-of-3 Guardian to act. No coverage is locked before the role wiring has executed.
 
 The fork tests (`test/BondVault*.fork.t.sol`, `test/Reserve.fork.t.sol`, `test/Settlement.fork.t.sol`) use coverages captured live (`test/vectors/coverage-*.json`, written by `services/api/test/coverage-vectors.live.test.ts`): the demo mandate signed in Chromium with a virtual authenticator through WebAuthn and through Secure Payment Confirmation, countersigned by the live legs, two of them 2-of-2 and one with leg B down. They read `KEELSON_FUNDER_KEYS`; on the fork the demo operator transfers its agent to a key the test holds, which then signs as the operator. PYUSD beyond the funders' faucet balances comes from the faucet's own wallet (`external.pyusdHolder`) by plain transfers on the fork.
 
