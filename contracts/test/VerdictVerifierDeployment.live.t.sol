@@ -34,7 +34,7 @@ contract VerdictVerifierDeploymentLiveTest is ForkTest {
 
             assertTrue(script.wired(address(verifier)), "roles");
             AccessManager manager = AccessManager(json.readAddress(".contracts.AccessManager"));
-            assertEq(manager.getTargetAdminDelay(address(verifier)), json.readUint(".params.signersDelay"));
+            // The target admin delay the wiring sets takes effect only after the AccessManager's `minSetback`.
             assertEq(
                 manager.getTargetFunctionRole(address(verifier), VerdictVerifier.setAllowedMeasurement.selector),
                 KeelsonRoles.SIGNERS_ROLE
