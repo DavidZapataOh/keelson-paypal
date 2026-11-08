@@ -1,0 +1,33 @@
+name: dcap-collateral
+
+# Intel's TCB info and identities expire monthly. Fails when Automata's on-chain PCCS no longer holds
+# current collateral for leg A's live quote, before registrations start failing with Automata's reason.
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      ARBITRUM_SEPOLIA_RPC_URL: https://arb-sepolia.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/tools/dcap-collateral/target
+          key: dcap-collateral-${{ hashFiles('contracts/tools/dcap-collateral/Cargo.lock') }}
+      - run: cargo build --release --locked
+        working-directory: contracts/tools/dcap-collateral
+      - name: Leg A's live quote on Arbitrum Sepolia
+        run: |
+          quote="$(curl -fsS https://api.keelson.finance/v1/tee/attestations | jq -r '.legs[] | select(.tee == "tdx") | .attestation.quote')"
+          contracts/tools/dcap-collateral/target/release/dcap-collateral "$ARBITRUM_SEPOLIA_RPC_URL" "$quote" | tee -a "$GITHUB_STEP_SUMMARY"

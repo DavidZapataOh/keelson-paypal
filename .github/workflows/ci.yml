@@ -241,6 +241,8 @@ jobs:
           cache-key: contracts-${{ hashFiles('contracts/deployments/*.json', 'contracts/test/**/*.fork.t.sol') }}
           cache-restore-keys: contracts-
       - run: forge fmt --check
+      # Base's nitro-validator is deployed with its own audited settings, so its bytecode comes from its own build.
+      - run: forge build --root lib/nitro-validator
       - run: forge build --sizes
       # -vv: traces of failing tests would print the funder keys parsed from the secret.
       - run: forge test --no-match-path 'test/**/*.live.t.sol' -vv
@@ -277,6 +279,7 @@ jobs:
       - uses: foundry-rs/foundry-toolchain@v1.9.2
         with:
           version: v1.9.0
+      - run: forge build --root lib/nitro-validator
       - run: forge test --match-path 'test/**/*.live.t.sol' -vv
       - run: script/verify.sh --check-only 421614 11155111 42161
 
