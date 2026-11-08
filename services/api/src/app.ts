@@ -12,7 +12,9 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
 import { ulid } from "ulid";
+import { BaseError, HttpRequestError, TimeoutError } from "viem";
 import type { Auth } from "./auth.ts";
+import type { ChainReaders } from "./chain/reader.ts";
 import type { Channel3Lookup } from "./channel3/client.ts";
 import type { LogConfig } from "./log/append.ts";
 import { requestLogger } from "./logger.ts";
@@ -25,13 +27,16 @@ import { type CompileSources, registerCompile } from "./routes/compile.ts";
 import { registerCountersign } from "./routes/countersign.ts";
 import { registerEvents } from "./routes/events.ts";
 import { registerEvidence } from "./routes/evidence.ts";
+import { registerFeedback } from "./routes/feedback.ts";
 import { registerHealth } from "./routes/health.ts";
 import { registerMandates } from "./routes/mandates.ts";
 import { registerObservations } from "./routes/observations.ts";
+import { registerOperators } from "./routes/operators.ts";
 import { registerPasskeys } from "./routes/passkeys.ts";
 import { registerStatus } from "./routes/status.ts";
 import { registerTee } from "./routes/tee.ts";
 import { registerTimestamps } from "./routes/timestamps.ts";
+import { registerValidations } from "./routes/validations.ts";
 import type { TeeConfig } from "./tee/signers.ts";
 import type { StampWorker } from "./timestamps/worker.ts";
 
@@ -66,6 +71,8 @@ export interface Deps {
   channel3WebhookSecret?: string;
   /** Stamps queued hashes with RFC 3161 tokens; queued rows wait for the sweeper without it. */
   stamps?: StampWorker;
+  /** The chains whose ERC-8004 registries and Keelson contracts are read; their routes answer 503 without them. */
+  chains?: ChainReaders;
   /** Aborting it ends every open event stream so the server can close. */
   shutdown?: AbortSignal;
 }
@@ -151,6 +158,19 @@ export function createApp(deps: Deps): OpenAPIHono {
         err.message,
       );
     }
+    if (
+      err instanceof BaseError &&
+      err.walk((e) => e instanceof HttpRequestError || e instanceof TimeoutError) !== null
+    ) {
+      deps.log.warn({ err, requestId: c.get("requestId") }, "chain rpc unavailable");
+      return problem(
+        c,
+        503,
+        "chain-unavailable",
+        "Chain unavailable",
+        "The chain RPC did not answer.",
+      );
+    }
     deps.log.error({ err, requestId: c.get("requestId") }, "unhandled error");
     const detail = process.env.NODE_ENV === "production" ? undefined : err.message;
     return problem(c, 500, "internal", "Internal server error", detail);
@@ -173,6 +193,9 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerTee(app, deps);
   registerTimestamps(app, deps);
   registerPasskeys(app, deps);
+  registerOperators(app, deps);
+  registerFeedback(app, deps);
+  registerValidations(app, deps);
   app.get("/openapi.json", (c) =>
     c.json(app.getOpenAPI31Document({ openapi: "3.1.0", info: apiInfo })),
   );

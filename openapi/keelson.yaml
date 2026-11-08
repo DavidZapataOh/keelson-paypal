@@ -1380,6 +1380,266 @@ components:
               - payment
       required:
         - passkeys
+    Operator:
+      type: object
+      properties:
+        agentId:
+          type: string
+          pattern: ^(0|[1-9]\d{0,19})$
+          description: The ERC-8004 agent id, a decimal integer.
+        chainId:
+          type: integer
+        agentRegistry:
+          type: string
+        owner:
+          type: string
+          description: The agent's owner in the Identity registry.
+      required:
+        - agentId
+        - chainId
+        - agentRegistry
+        - owner
+    LinkOperator:
+      type: object
+      properties:
+        chainId:
+          anyOf:
+            - type: number
+              enum:
+                - 421614
+            - type: number
+              enum:
+                - 42161
+            - type: number
+              enum:
+                - 11155111
+        agentId:
+          type: string
+          pattern: ^(0|[1-9]\d{0,19})$
+          description: The ERC-8004 agent id, a decimal integer.
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        cnfJwk:
+          type: object
+          properties:
+            kty:
+              type: string
+              enum:
+                - EC
+            crv:
+              type: string
+              enum:
+                - P-256
+            x:
+              type: string
+              pattern: ^[A-Za-z0-9_-]{43}$
+            y:
+              type: string
+              pattern: ^[A-Za-z0-9_-]{43}$
+            kid:
+              type: string
+              maxLength: 64
+          required:
+            - kty
+            - crv
+            - x
+            - y
+          description: The agent's P-256 `cnf` key, a public JWK.
+        deadline:
+          type: integer
+          exclusiveMinimum: 0
+          description: Unix seconds, at most 15 minutes ahead.
+        signature:
+          type: string
+          maxLength: 8194
+          pattern: ^0x([0-9a-fA-F]{2})+$
+          description: "The EIP-712 `OperatorLink(uint256 agentId,bytes32
+            cnfThumbprint,uint256 deadline)` signature under the domain `{ name:
+            \"Keelson\", version: \"1\", chainId }`, by the agent's owner or
+            `agentWallet` (EOA, ERC-1271 or ERC-6492). `cnfThumbprint` is the
+            RFC 7638 SHA-256 thumbprint of `cnfJwk`."
+      required:
+        - chainId
+        - agentId
+        - name
+        - cnfJwk
+        - deadline
+        - signature
+    AgentRegistration:
+      type: object
+      properties:
+        type:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        image:
+          type: string
+        services:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              endpoint:
+                type: string
+              version:
+                type: string
+            required:
+              - name
+              - endpoint
+        x402Support:
+          type: boolean
+        active:
+          type: boolean
+        registrations:
+          type: array
+          items:
+            type: object
+            properties:
+              agentId:
+                anyOf:
+                  - type: number
+                  - type: string
+              agentRegistry:
+                type: string
+            required:
+              - agentId
+              - agentRegistry
+        supportedTrust:
+          type: array
+          items:
+            type: string
+      required:
+        - type
+        - name
+        - description
+        - image
+        - services
+        - x402Support
+        - active
+        - registrations
+      description: An ERC-8004 agent registration file (`registration-v1`).
+    OperatorBond:
+      type: object
+      properties:
+        bond:
+          type: object
+          properties:
+            free:
+              type: string
+            locked:
+              type: string
+            queued:
+              type: string
+            slashCount:
+              type: integer
+          required:
+            - free
+            - locked
+            - queued
+            - slashCount
+        reputation:
+          type: object
+          properties:
+            count:
+              type: integer
+            value:
+              type: string
+              description: The average feedback value, fixed-point.
+            decimals:
+              type: integer
+            slashes:
+              type: integer
+          required:
+            - count
+            - value
+            - decimals
+            - slashes
+        validation:
+          type: object
+          properties:
+            count:
+              type: integer
+            averageResponse:
+              type: integer
+          required:
+            - count
+            - averageResponse
+      required:
+        - bond
+        - reputation
+        - validation
+      description: The operator's bond in PYUSD base units, the Keelson feedback it
+        has in the ERC-8004 Reputation registry, and the TEE countersigns
+        recorded for it in the Keelson validation registry.
+    Feedback:
+      type: object
+      properties:
+        agentRegistry:
+          type: string
+        agentId:
+          anyOf:
+            - type: number
+            - type: string
+        clientAddress:
+          type: string
+          description: The reporter, as a CAIP-10 account.
+        createdAt:
+          type: string
+        value:
+          type: integer
+        valueDecimals:
+          type: integer
+        tag1:
+          type: string
+        tag2:
+          type: string
+        keelson:
+          type: object
+          properties:
+            coverageId:
+              type: string
+            txHash:
+              type: string
+          required:
+            - coverageId
+            - txHash
+      required:
+        - agentRegistry
+        - agentId
+        - clientAddress
+        - createdAt
+        - value
+        - valueDecimals
+        - tag1
+        - tag2
+        - keelson
+      description: An ERC-8004 off-chain feedback file.
+    ValidationRequest:
+      type: object
+      properties:
+        payload:
+          type: string
+          description: "`0x1901 ‖ domainSeparator ‖ hashStruct(Countersign)`; its
+            keccak256 is the request hash."
+        countersign:
+          type: object
+          additionalProperties:
+            type: string
+          description: The EIP-712 `Countersign` message, as decimal strings.
+        alibi:
+          type: string
+          description: The purchase's Alibi, once logged.
+      required:
+        - payload
+        - countersign
+      description: The data of an ERC-8004 validation request Keelson records for a
+        countersign.
   parameters: {}
 paths:
   /health:
@@ -2187,6 +2447,278 @@ paths:
                 $ref: "#/components/schemas/Passkeys"
         "401":
           description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/operators:
+    post:
+      tags:
+        - operators
+      summary: Link an ERC-8004 agent as an operator
+      description: Binds the agent's `cnf` key to its ERC-8004 identity once its owner
+        or `agentWallet` signs `OperatorLink`. The owner of an agent that is
+        already linked re-links it, after a transfer for example.
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LinkOperator"
+      responses:
+        "201":
+          description: The operator is linked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operator"
+        "401":
+          description: No valid access token
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Not signed by the agent's owner or agent wallet
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: No such agent in the Identity registry
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: The agent id is linked on another registry
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: Invalid, or past its deadline
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: The chain cannot be read
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/operators/by-address/{address}/registration.json:
+    get:
+      tags:
+        - operators
+      summary: Registration file of an owner's agents
+      description: The ERC-8004 registration file listing every linked agent whose
+        owner in the Identity registry is `address` now.
+      parameters:
+        - schema:
+            type: string
+            pattern: ^0x[0-9a-fA-F]{40}$
+          required: true
+          name: address
+          in: path
+      responses:
+        "200":
+          description: The registration file
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              required: true
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentRegistration"
+        "404":
+          description: The address owns no linked agent
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: The chain cannot be read
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/operators/{chainId}/{agentId}/registration.json:
+    get:
+      tags:
+        - operators
+      summary: Registration file of an agent
+      description: The ERC-8004 registration file of the agent's current owner,
+        listing every linked agent it owns.
+      parameters:
+        - schema:
+            type: string
+            enum:
+              - "42161"
+              - "421614"
+              - "11155111"
+            description: An EIP-155 chain id.
+          required: true
+          description: An EIP-155 chain id.
+          name: chainId
+          in: path
+        - schema:
+            type: string
+            pattern: ^(0|[1-9]\d{0,19})$
+            description: The ERC-8004 agent id, a decimal integer.
+          required: true
+          description: The ERC-8004 agent id, a decimal integer.
+          name: agentId
+          in: path
+      responses:
+        "200":
+          description: The registration file
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              required: true
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentRegistration"
+        "404":
+          description: Not a linked agent
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: The chain cannot be read
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/operators/{chainId}/{agentId}/bond:
+    get:
+      tags:
+        - operators
+      summary: Bond, reputation and validations of an agent
+      description: "Read on-chain in one multicall: the vault's `bonds(agentId)`, the
+        Reputation registry's `getSummary(agentId, [reporter], \"keelson\",
+        \"\")` and its `\"slash\"` count, and the validation registry's
+        `getSummary(agentId, [VerdictVerifier], \"\")`."
+      parameters:
+        - schema:
+            type: string
+            enum:
+              - "42161"
+              - "421614"
+              - "11155111"
+            description: An EIP-155 chain id.
+          required: true
+          description: An EIP-155 chain id.
+          name: chainId
+          in: path
+        - schema:
+            type: string
+            pattern: ^(0|[1-9]\d{0,19})$
+            description: The ERC-8004 agent id, a decimal integer.
+          required: true
+          description: The ERC-8004 agent id, a decimal integer.
+          name: agentId
+          in: path
+      responses:
+        "200":
+          description: The bond
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatorBond"
+        "404":
+          description: Keelson is not deployed on the chain
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: The chain cannot be read
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/feedback/{coverageId}:
+    get:
+      tags:
+        - reputation
+      summary: Feedback file of a rated coverage
+      description: The off-chain feedback file the `feedbackURI` of Keelson's ERC-8004
+        feedback points to, built from the reporter's `CoverageRated` log and
+        the Reputation registry's `NewFeedback` log of the same transaction.
+      parameters:
+        - schema:
+            type: string
+            pattern: ^0x[0-9a-f]{64}$
+            description: The coverage id, 32 bytes of lowercase hex.
+          required: true
+          description: The coverage id, 32 bytes of lowercase hex.
+          name: coverageId
+          in: path
+      responses:
+        "200":
+          description: The feedback file
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              required: true
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Feedback"
+        "404":
+          description: The coverage was not rated
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/validations/{requestHash}:
+    get:
+      tags:
+        - validations
+      summary: Validation request of a countersign
+      description: "What the `requestURI` of a Keelson validation request points to:
+        the countersign whose EIP-712 digest, under the VerdictVerifier domain,
+        is `requestHash`."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^0x[0-9a-f]{64}$
+            description: The countersign digest, 32 bytes of lowercase hex.
+          required: true
+          description: The countersign digest, 32 bytes of lowercase hex.
+          name: requestHash
+          in: path
+      responses:
+        "200":
+          description: The validation request
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              required: true
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationRequest"
+        "404":
+          description: No countersign has this digest
           content:
             application/problem+json:
               schema:

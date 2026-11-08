@@ -21,9 +21,13 @@ beforeEach(async () => {
   await pool.query(
     "truncate events, disputes, purchases, mandates, operators restart identity cascade",
   );
-  await db
-    .insert(operators)
-    .values({ agentId, chainId: 84532, name: "op", cnfJwk: { kty: "OKP" } });
+  await db.insert(operators).values({
+    agentId,
+    chainId: 421614,
+    agentRegistry: "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+    name: "op",
+    cnfJwk: { kty: "OKP" },
+  });
   mandateIds = Array.from({ length: 5 }, ulid);
   await db.insert(mandates).values(
     mandateIds.map((id, i) => ({

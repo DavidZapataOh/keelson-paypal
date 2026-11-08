@@ -4,6 +4,8 @@ import { serve } from "@hono/node-server";
 import { createDb } from "@keelson/db";
 import { identityToRecipient } from "age-encryption";
 import { pino } from "pino";
+import { createPublicClient, http } from "viem";
+import { arbitrumSepolia } from "viem/chains";
 import { createApp } from "./app.ts";
 import { createAuth } from "./auth.ts";
 import { createChannel3 } from "./channel3/client.ts";
@@ -56,6 +58,16 @@ const stamps = startStampWorker(
     },
   },
 );
+// The chain's public RPC serves `eth_getLogs` over ranges that provider free tiers refuse.
+const chains = {
+  [arbitrumSepolia.id]: {
+    client: createPublicClient({
+      chain: arbitrumSepolia,
+      transport: http(env.ARBITRUM_SEPOLIA_RPC_URL),
+    }),
+    logs: createPublicClient({ chain: arbitrumSepolia, transport: http() }),
+  },
+};
 const app = createApp({
   db,
   kv,
@@ -67,6 +79,7 @@ const app = createApp({
   rateLimit: { trustProxy: process.env.RENDER === "true" },
   shutdown: shutdown.signal,
   stamps,
+  chains,
   ...(env.CHANNEL3_API_KEY ? { channel3: createChannel3(env.CHANNEL3_API_KEY) } : {}),
   ...(env.CHANNEL3_WEBHOOK_SECRET ? { channel3WebhookSecret: env.CHANNEL3_WEBHOOK_SECRET } : {}),
   ...(tee ? { tee, compileSources: { engine: engineSource } } : {}),

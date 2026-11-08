@@ -41,7 +41,7 @@ async function withAdmin<T>(fn: (c: pg.Client) => Promise<T>): Promise<T> {
 
 async function populate(p: pg.Pool): Promise<void> {
   await p.query(
-    `insert into operators (agent_id, chain_id, name, cnf_jwk) values (1, 84532, 'bench', '{"kty":"OKP"}')`,
+    `insert into operators (agent_id, chain_id, agent_registry, name, cnf_jwk) values (1, 421614, 'eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e', 'bench', '{"kty":"OKP"}')`,
   );
   await p.query(`
     insert into "user" (id, name, email)

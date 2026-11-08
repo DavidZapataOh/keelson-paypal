@@ -624,7 +624,13 @@ export async function seedUser(db: Db, passkey: Passkey, sub: string): Promise<v
   });
   await db
     .insert(operators)
-    .values({ agentId: 42n, chainId: 421614, name: "Demo operator", cnfJwk: {} })
+    .values({
+      agentId: 42n,
+      chainId: 421614,
+      agentRegistry: "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+      name: "Demo operator",
+      cnfJwk: {},
+    })
     .onConflictDoNothing();
 }
 
