@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build:wasm": "GOOS=js GOARCH=wasm go build -trimpath -ldflags=\"-s -w\" -o web/verifier.wasm ./wasm && cp -f \"$(go env GOROOT)/lib/wasm/wasm_exec.js\" web/",
+    "build:wasm": "tinygo build -target wasm -no-debug -opt z -stack-size=256KB -o web/verifier.wasm ./wasm && cp -f \"$(tinygo env TINYGOROOT)/targets/wasm_exec.js\" web/",
     "test": "pnpm build:wasm && vitest run",
     "bench": "node scripts/bench.ts"
   },

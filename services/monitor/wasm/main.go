@@ -11,10 +11,9 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"syscall/js"
 
 	"filippo.io/torchwood"
@@ -225,14 +224,17 @@ func prove(args []js.Value) (any, error) {
 // tileReader fetches c2sp.org/tlog-tiles resources with the browser's fetch.
 type tileReader struct{ base string }
 
+// ReadTiles fetches the tiles concurrently.
 func (r tileReader) ReadTiles(ctx context.Context, tiles []tlog.Tile) ([][]byte, error) {
 	out := make([][]byte, len(tiles))
+	errs := make([]error, len(tiles))
+	var wg sync.WaitGroup
 	for i, t := range tiles {
-		b, err := r.get(ctx, t)
-		if err != nil {
-			return nil, err
-		}
-		out[i] = b
+		wg.Go(func() { out[i], errs[i] = r.get(ctx, t) })
+	}
+	wg.Wait()
+	if err := errors.Join(errs...); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
@@ -255,25 +257,51 @@ func (r tileReader) get(ctx context.Context, t tlog.Tile) ([]byte, error) {
 var errNotFound = errors.New("not found")
 
 // ReadEndpoint fetches a resource under the log's prefix.
-func (r tileReader) ReadEndpoint(ctx context.Context, path string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, r.base+path, nil)
+func (r tileReader) ReadEndpoint(_ context.Context, path string) ([]byte, error) {
+	res, err := await(js.Global().Call("fetch", r.base+path))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s: %w", path, err)
 	}
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Body.Close()
-	switch res.StatusCode {
-	case http.StatusOK:
+	switch status := res.Get("status").Int(); status {
+	case 200:
+		buf, err := await(res.Call("arrayBuffer"))
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
 		// A tile or entry bundle is at most a few hundred KiB.
-		return io.ReadAll(io.LimitReader(res.Body, 1<<20))
-	case http.StatusNotFound:
+		if n := buf.Get("byteLength").Int(); n > 1<<20 {
+			return nil, fmt.Errorf("%s: %d bytes is too large", path, n)
+		}
+		b := make([]byte, buf.Get("byteLength").Int())
+		js.CopyBytesToGo(b, js.Global().Get("Uint8Array").New(buf))
+		return b, nil
+	case 404:
 		return nil, fmt.Errorf("%s: %w", path, errNotFound)
 	default:
-		return nil, fmt.Errorf("%s: %s", path, res.Status)
+		return nil, fmt.Errorf("%s: %d %s", path, status, res.Get("statusText").String())
 	}
+}
+
+// await blocks the calling goroutine until the Promise p settles.
+func await(p js.Value) (js.Value, error) {
+	type settled struct {
+		v   js.Value
+		err error
+	}
+	ch := make(chan settled, 1)
+	onOK := js.FuncOf(func(_ js.Value, a []js.Value) any {
+		ch <- settled{v: a[0]}
+		return nil
+	})
+	onErr := js.FuncOf(func(_ js.Value, a []js.Value) any {
+		ch <- settled{err: errors.New(a[0].Call("toString").String())}
+		return nil
+	})
+	defer onOK.Release()
+	defer onErr.Release()
+	p.Call("then", onOK, onErr)
+	s := <-ch
+	return s.v, s.err
 }
 
 // entry returns entry index of the tree of size.

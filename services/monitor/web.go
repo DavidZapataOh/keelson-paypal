@@ -29,6 +29,9 @@ type page struct {
 	wasmGzip []byte
 	config   []byte
 	csp      string
+	// preconnect lets the browser open the connections to the logs while
+	// the verifier loads.
+	preconnect string
 }
 
 // pageConfig tells the page where each log is and which policy pins it.
@@ -75,6 +78,11 @@ func newPage(cfg *config) (*page, error) {
 			connect = append(connect, logOrigin)
 		}
 	}
+	var links []string
+	for _, o := range connect[1:] {
+		links = append(links, "<"+o+">; rel=preconnect; crossorigin")
+	}
+	p.preconnect = strings.Join(links, ", ")
 	if p.config, err = json.Marshal(pc); err != nil {
 		return nil, err
 	}
@@ -95,7 +103,13 @@ func (p *page) register(mux *http.ServeMux, cfg *config) {
 			_, _ = w.Write(b)
 		}
 	}
-	mux.HandleFunc("GET /{$}", static("index.html", "text/html; charset=utf-8"))
+	index := static("index.html", "text/html; charset=utf-8")
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+		if p.preconnect != "" {
+			w.Header().Set("Link", p.preconnect)
+		}
+		index(w, r)
+	})
 	mux.HandleFunc("GET /app.js", static("app.js", "text/javascript; charset=utf-8"))
 	mux.HandleFunc("GET /style.css", static("style.css", "text/css; charset=utf-8"))
 	mux.HandleFunc("GET /wasm_exec.js", static("wasm_exec.js", "text/javascript; charset=utf-8"))

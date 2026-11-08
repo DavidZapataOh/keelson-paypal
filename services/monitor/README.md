@@ -72,7 +72,8 @@ apart from the production logs.
 ## The page
 
 The page shows the report beside a **Verify in your browser** panel, whose result comes only from
-`verifier.wasm` (built from [`wasm/`](wasm) with the same Go packages) over data fetched directly
+`verifier.wasm` (built with [TinyGo](https://tinygo.org) from [`wasm/`](wasm), with the same Go
+packages) over data fetched directly
 from the log: it checks the checkpoint under the pinned policy, proves consistency with the
 checkpoint saved in `localStorage` on your previous visit, and verifies the inclusion and format of
 any leaf, rebuilding every proof from tiles it checks against the root.
