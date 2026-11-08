@@ -7,6 +7,7 @@ export * from "./disputes.ts";
 export * from "./enums.ts";
 export * from "./events.ts";
 export * from "./evidence.ts";
+export * from "./holds.ts";
 export * from "./mandates.ts";
 export * from "./operators.ts";
 export * from "./purchases.ts";
