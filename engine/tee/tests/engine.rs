@@ -934,3 +934,55 @@ fn binding_needs_a_sha256_image_digest() {
         assert_eq!(engine.binding(), Err(keelson_tee::Error::OciDigest));
     }
 }
+
+#[test]
+fn one_signer_countersigns_under_the_domain_of_the_requested_chain() {
+    let issued = register();
+    let f = CartFixture::demo();
+    let engine = leg_a();
+    let mut one = countersign_request(&issued, &f, request_id(1), None);
+    one.chain_id = Some(42_161);
+    let out = engine.countersign(&one, at(NOW + 10)).unwrap();
+    assert_eq!(recover(&out), engine.signer());
+    let mut sepolia = countersign_request(&issued, &f, request_id(2), None);
+    sepolia.chain_id = Some(421_614);
+    let other = engine.countersign(&sepolia, at(NOW + 10)).unwrap();
+    // Same message fields, other domain: the digests differ only by chain.
+    assert_ne!(out.digest.0, other.digest.0);
+
+    let mut unsupported = countersign_request(&issued, &f, request_id(3), None);
+    unsupported.chain_id = Some(1);
+    assert_eq!(
+        engine.countersign(&unsupported, at(NOW + 10)).err(),
+        Some(EngineError::BadRequest("chain_id"))
+    );
+}
+
+#[test]
+fn a_request_id_is_answered_once_across_mandates() {
+    let issued = register();
+    let f = CartFixture::demo();
+    let engine = leg_a();
+    let id = request_id(1);
+    engine
+        .countersign(&countersign_request(&issued, &f, id, None), at(NOW + 10))
+        .unwrap();
+    let mut again = countersign_request(&issued, &f, id, None);
+    again.chain_id = Some(42_161);
+    assert_eq!(
+        engine.countersign(&again, at(NOW + 10)).err(),
+        Some(EngineError::Replay)
+    );
+}
+
+#[test]
+fn binding_for_another_chain_names_it() {
+    let engine = leg_a();
+    let one = engine.binding_for(42_161).unwrap();
+    assert_eq!(one.chain_id, 42_161);
+    assert_eq!(one.signer, engine.signer());
+    assert_eq!(
+        engine.binding_for(1),
+        Err(keelson_tee::Error::UnsupportedChain(1))
+    );
+}

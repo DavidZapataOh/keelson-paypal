@@ -329,6 +329,11 @@ async fn read_paypal(
     let (Some(client), None) = (&state.paypal, &request.observation) else {
         return Ok(None);
     };
+    // Arbitrum One countersigns against the live PayPal API, every other chain against the sandbox.
+    let chain_id = request.chain_id.unwrap_or(state.engine.config().chain_id);
+    if (chain_id == 42_161) != client.is_live() {
+        return Err(EngineError::BadRequest("chain_id").into());
+    }
     let id = request
         .authorization_id
         .as_deref()
@@ -423,11 +428,31 @@ async fn attestation(
     Ok(Json(served.attestation.clone()))
 }
 
+/// The chain of `?chainId=<id>`, when the query names one.
+#[cfg(feature = "tdx")]
+fn chain_query(uri: &axum::http::Uri) -> Result<Option<u64>, Problem> {
+    let Some(query) = uri.query() else {
+        return Ok(None);
+    };
+    match query.strip_prefix("chainId=").map(str::parse) {
+        Some(Ok(chain_id)) => Ok(Some(chain_id)),
+        _ => Err(EngineError::BadRequest("chain_id").into()),
+    }
+}
+
+/// Renews the served attestation; for another chain than the engine's own, attests for it and
+/// returns that without serving it.
 #[cfg(feature = "tdx")]
 async fn refresh(
     State(state): State<Arc<AppState>>,
+    uri: axum::http::Uri,
 ) -> Result<Json<crate::tdx::Attestation>, Problem> {
-    reattest(&state).await.map(Json).map_err(|e| {
+    let own = state.engine.config().chain_id;
+    let attested = match chain_query(&uri)? {
+        Some(chain_id) if chain_id != own => crate::tdx::attest_for(&state.engine, chain_id).await,
+        _ => reattest(&state).await,
+    };
+    attested.map(Json).map_err(|e| {
         eprintln!("keelson-engine: attestation refresh failed: {e}");
         Problem::new(StatusCode::BAD_GATEWAY, "attestation")
     })

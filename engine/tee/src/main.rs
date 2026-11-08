@@ -24,9 +24,9 @@
 //! | `KEELSON_ORIGIN` | the origin passkey assertions are made on |
 //! | `KEELSON_ISSUER_JWK` | the credential issuer's public JWK; not read with `--platform tdx` |
 //! | `KEELSON_TEE_TOKEN_SHA256` | the hex SHA-256 of the bearer token |
-//! | `KEELSON_CHAIN_ID` | optional, `421614` by default |
+//! | `KEELSON_CHAIN_ID` | optional, `421614` by default: the chain attested and countersigned for unless a request names another supported chain |
 //! | `KEELSON_DATA_DIR` | with `--platform tdx`, where the sealed user records are kept; `/data` by default |
-//! | `KEELSON_BOND_VAULT`, `KEELSON_VERIFYING_CONTRACT` | optional, the zero address by default |
+//! | `KEELSON_BOND_VAULT`, `KEELSON_VERIFYING_CONTRACT` | optional, the zero address by default: the bond vault bound into the attestation and the `VerdictVerifier`, `verifyingContract` of every EIP-712 domain |
 //!
 //! With `--platform tdx`, `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` are required: the engine
 //! reads the authorization of each cart it countersigns (`PAYPAL_ENV=live` selects the live API

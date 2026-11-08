@@ -47,9 +47,22 @@ pub fn http_client() -> reqwest::Client {
     reqwest::Client::new()
 }
 
+/// The public Arbitrum One RPC.
+pub const ARBITRUM_ONE_RPC: &str = "https://arb1.arbitrum.io/rpc";
+
 /// `ARBITRUM_SEPOLIA_RPC_URL` when set, otherwise [`ARBITRUM_SEPOLIA_RPC`].
 pub fn rpc_url() -> String {
-    std::env::var("ARBITRUM_SEPOLIA_RPC_URL").unwrap_or_else(|_| ARBITRUM_SEPOLIA_RPC.into())
+    rpc_url_for(421_614)
+}
+
+/// The RPC of `chain_id`: `ARBITRUM_ONE_RPC_URL` or [`ARBITRUM_ONE_RPC`] for Arbitrum One,
+/// [`rpc_url`] otherwise.
+pub fn rpc_url_for(chain_id: u64) -> String {
+    match chain_id {
+        42_161 => std::env::var("ARBITRUM_ONE_RPC_URL").unwrap_or_else(|_| ARBITRUM_ONE_RPC.into()),
+        _ => std::env::var("ARBITRUM_SEPOLIA_RPC_URL")
+            .unwrap_or_else(|_| ARBITRUM_SEPOLIA_RPC.into()),
+    }
 }
 
 /// The number and hash of the latest block: `eth_getBlockByNumber("latest", false)`.
