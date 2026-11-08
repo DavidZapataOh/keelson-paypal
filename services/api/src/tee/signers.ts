@@ -1,6 +1,7 @@
 import { and, type Db, desc, eq, gt, isNull, ne, teeSigners } from "@keelson/db";
 import type { Logger } from "pino";
 import { type Address, getAddress, type Hex, hexToBytes, type PublicClient } from "viem";
+import { type ChainDeps, ensureRegisteredOnChain } from "../chain/registry.ts";
 import { type Expectations, type SignerAttestation, verifySigner } from "./attest.ts";
 import type { LegClient } from "./client.ts";
 
@@ -24,6 +25,8 @@ export interface TeeConfig {
   expect: Record<Leg, LegExpectations>;
   /** Arbitrum Sepolia, read for the block both legs attest over. */
   rpc: PublicClient;
+  /** When set, a signer is admitted only once it is registered in the VerdictVerifier. */
+  chain?: ChainDeps;
 }
 
 interface RegisteredSigner {
@@ -56,8 +59,9 @@ function fromRow(row: typeof teeSigners.$inferSelect): RegisteredSigner {
 class RegistrationError extends Error {}
 
 /**
- * Fetches the leg's attestation, verifies it, and admits its signer. The previous signer of the
- * leg is marked superseded. Both legs must attest the pinned issuer; without a pin, leg B takes
+ * Fetches the leg's attestation, verifies it, and admits its signer, after registering it in the
+ * VerdictVerifier and waiting for the receipt when `chain` is set, so no countersign precedes its
+ * on-chain registration. The previous signer of the leg is marked superseded. Both legs must attest the pinned issuer; without a pin, leg B takes
  * the one leg A's registered signer attests and is refused when there is none.
  *
  * @internal
@@ -68,6 +72,7 @@ export async function registerLeg(
   client: LegClient,
   expect: LegExpectations,
   now: Date = new Date(),
+  chain?: ChainDeps,
 ): Promise<RegisteredSigner> {
   const attestation = await client.attestation();
   let pinned = expect;
@@ -80,6 +85,7 @@ export async function registerLeg(
   if (verified.teeKind !== TEE_KIND[leg]) {
     throw new RegistrationError(`leg ${leg} attests a signer of another TEE kind`);
   }
+  if (chain) await ensureRegisteredOnChain(chain, attestation, verified, now);
 
   const address = toBuffer(verified.signer);
   const values = {
@@ -164,7 +170,7 @@ export async function revokeSigner(db: Db, address: Address, reason: string): Pr
 export async function refreshLeg(db: Db, leg: Leg, tee: TeeConfig): Promise<RegisteredSigner> {
   const block = leg === "b" ? await tee.rpc.getBlock() : undefined;
   await tee.client[leg].refresh(block && { number: block.number, hash: block.hash });
-  return registerLeg(db, leg, tee.client[leg], tee.expect[leg]);
+  return registerLeg(db, leg, tee.client[leg], tee.expect[leg], new Date(), tee.chain);
 }
 
 /**

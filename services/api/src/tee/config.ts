@@ -1,6 +1,9 @@
+import { addresses } from "@keelson/chain";
 import { POLICY_SET_HASH } from "@keelson/policy/hashes";
-import { type Address, createPublicClient, type Hex, http } from "viem";
+import { type Address, createPublicClient, createWalletClient, type Hex, http } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import { arbitrumSepolia } from "viem/chains";
+import type { ChainDeps } from "../chain/registry.ts";
 import { LegClient } from "./client.ts";
 import { loadMeasurements } from "./measurements.ts";
 import type { LegExpectations, TeeConfig } from "./signers.ts";
@@ -29,6 +32,25 @@ interface TeeEnv {
   ARBITRUM_SEPOLIA_RPC_URL?: string | undefined;
   /** The RFC 7638 thumbprint of the credential issuer key both legs must attest. */
   KEELSON_ISSUER_THUMBPRINT?: Hex | undefined;
+  /** Registers each admitted signer in the VerdictVerifier first. */
+  KEELSON_REGISTRAR_KEY?: Hex | undefined;
+}
+
+/** The registrar on Arbitrum Sepolia: the VerdictVerifier and its Nitro validator's CertManager. */
+function registrar(key: Hex, rpcUrl: string | undefined): ChainDeps {
+  const transport = http(rpcUrl);
+  const certManager = addresses[arbitrumSepolia.id].CertManager;
+  if (!certManager) throw new Error("no CertManager on Arbitrum Sepolia");
+  return {
+    wallet: createWalletClient({
+      account: privateKeyToAccount(key),
+      chain: arbitrumSepolia,
+      transport,
+    }),
+    public: createPublicClient({ chain: arbitrumSepolia, transport }),
+    verdictVerifier: VERIFYING_CONTRACT,
+    certManager,
+  };
 }
 
 /**
@@ -65,5 +87,8 @@ export function createTee(
     },
     expect,
     rpc,
+    ...(env.KEELSON_REGISTRAR_KEY
+      ? { chain: registrar(env.KEELSON_REGISTRAR_KEY, env.ARBITRUM_SEPOLIA_RPC_URL) }
+      : {}),
   };
 }
