@@ -290,3 +290,74 @@ jobs:
         with:
           name: mutation-${{ matrix.name }}
           path: contracts/mutation-${{ matrix.name }}.json
+
+  certora:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        conf:
+          - BondVault
+          - BondVaultRevertingToken
+          - Reserve
+          - VerdictVerifier
+          - CheckpointAnchor
+          - ValidationRegistry
+          - ReputationReporter
+    env:
+      CERTORAKEY: ${{ secrets.CERTORAKEY }}
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - run: script/check-harness.sh
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+      - run: pip install certora-cli==8.20.3 solc-select==1.2.0
+      - name: Install solc 0.8.38 as solc0.8.38
+        run: |
+          solc-select install 0.8.38
+          ln -s "$HOME/.solc-select/artifacts/solc-0.8.38/solc-0.8.38" "$RUNNER_TEMP/solc0.8.38"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: Prove
+        env:
+          CONF: ${{ matrix.conf }}
+        run: certoraRun "certora/conf/${CONF}.conf" --wait_for_results all | tee prover.log
+      - name: Rule results
+        if: always()
+        env:
+          CONF: ${{ matrix.conf }}
+        run: |
+          script/certora-results.sh "certora-${CONF}.json"
+          { echo "### ${CONF}"; grep -m1 -o 'https://prover.certora.com/output/[^ ]*' prover.log || true; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: certora-${{ matrix.conf }}
+          path: contracts/certora-${{ matrix.conf }}.json
+
+  # The README declares exactly what the full run established.
+  report:
+    if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    needs: [static, smtchecker, symbolic, seeded-bugs, invariant, medusa, certora, mutation]
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          path: contracts/results
+          merge-multiple: true
+      - run: script/verification-report.sh results
+      - run: git diff --exit-code README.md
