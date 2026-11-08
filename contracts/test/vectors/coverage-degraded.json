@@ -1,0 +1,49 @@
+{
+  "chainId": 421614,
+  "verifier": "0xe16E8767EC1DA59Ef0D9Bc7851637E4D22352d96",
+  "vault": "0x69ccD2fB3a85f590F2A8f431cca3ecc2e9Bf3c14",
+  "coverageId": "0x0000000000000000000000000000000001a1baef2ddc212ccd4fc893ac5cf997",
+  "countersign": {
+    "requestId": "0x0000000000000000000000000000000001a1baef2ddc212ccd4fc893ac5cf997",
+    "mandateHash": "0x71a4302391a6f1c722c86bc462fa78503235c195b033633ea6198a1449384b07",
+    "mandateCommitment": "0x0b4c9be8c1c8da176e452a182b1351e08ef093b70b0ef9852a2257c1b109017d",
+    "cartHash": "0xc74c44e1b852d5134056bae404a00880cc39512ba4e0d93cdf700d03222f03a1",
+    "agentId": "351",
+    "merchantId": "0x1f0a71f468ae72a38151f84f8077b9209dfd331a519173426d07258de56c366c",
+    "amount": "9400",
+    "currency": "840",
+    "category": "21",
+    "evidenceRoot": "0x3e0501755e55414b27799cb71617a96f7ff493bd753b3c05500cbfc4b55fead8",
+    "evalHash": "0xb3bfe3b2499c6355ec0afd4d64c88bfeb5944a45cc2cd58f33b35b730ab96400",
+    "policySetHash": "0x76e3a5959eddc084b99b80a7376d85eeb86f005a7ce447420ac67c3e80902123",
+    "decision": "1",
+    "failedFieldsMask": "0",
+    "issuedAt": "1794137600",
+    "expiresAt": "1794138500"
+  },
+  "digest": "0x278eeff8d9cc290880f4a5f7858345d623d4ab5450795c73be71cd7b965e0c44",
+  "mode": "degraded",
+  "signatures": {
+    "tdx": "0x7ae5d0b292933a4a8e6c57e82d9e2bfcb8f2632542068112f9d0e9e7f15b3d65139768e75f9fdfc629b5a86d023965a7288ee0f0532441c9b03ab4ac622172991b",
+    "nitro": null
+  },
+  "hSd": "0x71af5c796c1b8b0ced49e983f776e82e6032d4916af648518f365c76a59bf1c5",
+  "cm": "0x0b4c9be8c1c8da176e452a182b1351e08ef093b70b0ef9852a2257c1b109017d",
+  "assertion": {
+    "authenticatorData": "EHHKqDnsJdN7IzwdSzf9Op0bCgmDDhN-RSEFwH1vxPcFAAAAAg",
+    "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiY2FRd0k1R204Y2NpeUd2RVl2cDRVREkxd1pXd00yTS1waG1LRkVrNFN3YyIsIm9yaWdpbiI6Imh0dHBzOi8vYXBwLmtlZWxzb24uZmluYW5jZSIsImNyb3NzT3JpZ2luIjpmYWxzZSwib3RoZXJfa2V5c19jYW5fYmVfYWRkZWRfaGVyZSI6ImRvIG5vdCBjb21wYXJlIGNsaWVudERhdGFKU09OIGFnYWluc3QgYSB0ZW1wbGF0ZS4gU2VlIGh0dHBzOi8vZ29vLmdsL3lhYlBleCJ9",
+    "signature": "MEUCIQDC7w5E6Du7SMfOR4TNEI8uvldhDLnFfJjfCgkvKY6teQIgMwhEM0mK7ckl1_csIUmxoZTgiNLysfNzGGDg6e9RSoU",
+    "credentialId": "Y73w3pj29xtEdcK6iI8ZdxvABAtCXjzZaNGvwqERbgQ"
+  },
+  "encodedAssertion": {
+    "r": "0xc2ef0e44e83bbb48c7ce4784cd108f2ebe57610cb9c57c98df0a092f298ead79",
+    "s": "0x33084433498aedc925d7f72c2149b1a194e088d2f2b1f3731860e0e9ef514a85",
+    "challengeIndex": 23,
+    "typeIndex": 1,
+    "authenticatorData": "0x1071caa839ec25d37b233c1d4b37fd3a9d1b0a09830e137e452105c07d6fc4f70500000002",
+    "clientDataJSON": "{\"type\":\"webauthn.get\",\"challenge\":\"caQwI5Gm8cciyGvEYvp4UDI1wZWwM2M-phmKFEk4Swc\",\"origin\":\"https://app.keelson.finance\",\"crossOrigin\":false,\"other_keys_can_be_added_here\":\"do not compare clientDataJSON against a template. See https://goo.gl/yabPex\"}"
+  },
+  "qx": "0xd77979d2cbd5887eead04bc3abeb062ef85f7b3772dfa2ca545ff7a826612e0f",
+  "qy": "0x755deb8367edca4125bab479df51752d2ddc13db773171da16603832f1f06405",
+  "userKeyHash": "0xd74a2eaba9b27836518ffe74ee5bdc3d823f58849b52cfef2d3c472ab1323645"
+}

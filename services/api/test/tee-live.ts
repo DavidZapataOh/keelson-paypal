@@ -1,4 +1,10 @@
+import { execFileSync } from "node:child_process";
 import { createHash, createPublicKey, generateKeyPairSync, randomBytes, sign } from "node:crypto";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { createServer as createHttpsServer, type Server as HttpsServer } from "node:https";
+import { type AddressInfo, connect, createServer as createTcpServer, type Server } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { type Cart, CURRENCIES, type CurrencyCode, cartHash, toHex } from "@keelson/core";
 import { type Db, operators, passkey as passkeyTable, user } from "@keelson/db";
 import {
@@ -7,6 +13,8 @@ import {
   merchantLeaf,
   parseMandate,
   prepareSigning,
+  SPC_INSTRUMENT,
+  type SpcDetails,
 } from "@keelson/mandate";
 import { isoCBOR } from "@simplewebauthn/server/helpers";
 import type { MiddlewareHandler } from "hono";
@@ -44,7 +52,8 @@ export interface Assertion {
 export interface Passkey {
   readonly credentialId: string;
   readonly jwk: { kty: string; crv: string; x: string; y: string };
-  assert(challenge: Uint8Array): Promise<Assertion>;
+  /** `spc` is what the Secure Payment Confirmation dialog shows; passkeys that do not use SPC ignore it. */
+  assert(challenge: Uint8Array, spc?: SpcDetails): Promise<Assertion>;
   close(): Promise<void>;
 }
 
@@ -212,6 +221,207 @@ export class VirtualPasskey implements Passkey {
   }
 }
 
+/**
+ * The app origin served over real TLS, which Secure Payment Confirmation requires: a local HTTPS
+ * server with a self-signed certificate for `app.keelson.finance`, reached through a CONNECT
+ * proxy so the origin keeps port 443, and the certificate's key pinned in Chromium.
+ */
+async function appOriginOverTls(): Promise<{
+  proxy: string;
+  spki: string;
+  close(): void;
+}> {
+  const dir = mkdtempSync(join(tmpdir(), "keelson-tls-"));
+  const [key, cert] = [join(dir, "key.pem"), join(dir, "cert.pem")];
+  execFileSync(
+    "openssl",
+    [
+      "req",
+      "-x509",
+      "-newkey",
+      "ec",
+      "-pkeyopt",
+      "ec_paramgen_curve:prime256v1",
+      "-nodes",
+      "-days",
+      "1",
+      "-subj",
+      "/CN=app.keelson.finance",
+      "-addext",
+      "subjectAltName=DNS:app.keelson.finance",
+      "-keyout",
+      key,
+      "-out",
+      cert,
+    ],
+    { stdio: "ignore" },
+  );
+  const spkiDer = createPublicKey(readFileSync(key)).export({ type: "spki", format: "der" });
+  const spki = createHash("sha256").update(spkiDer).digest("base64");
+  const site: HttpsServer = createHttpsServer(
+    { key: readFileSync(key), cert: readFileSync(cert) },
+    (_req, res) => {
+      res.writeHead(200, { "content-type": "text/html" });
+      res.end("<!doctype html><title>passkey</title>");
+    },
+  );
+  await new Promise<void>((resolve) => site.listen(0, "127.0.0.1", resolve));
+  const proxy: Server = createTcpServer((client) => {
+    client.once("data", () => {
+      const upstream = connect((site.address() as AddressInfo).port, "127.0.0.1", () => {
+        client.write("HTTP/1.1 200 Connection Established\r\n\r\n");
+        upstream.pipe(client);
+        client.pipe(upstream);
+      });
+      upstream.on("error", () => client.destroy());
+      client.on("error", () => upstream.destroy());
+    });
+  });
+  await new Promise<void>((resolve) => proxy.listen(0, "127.0.0.1", resolve));
+  return {
+    proxy: `http://127.0.0.1:${(proxy.address() as AddressInfo).port}`,
+    spki,
+    close: () => {
+      proxy.close();
+      site.close();
+    },
+  };
+}
+
+/**
+ * A payment passkey on Chrome's virtual authenticator that signs through Secure Payment
+ * Confirmation (`payment.get`), with the dialog accepted automatically, on the origin the legs
+ * expect. SPC needs the full Chromium build (the headless shell has no SPC service) and a page
+ * served over TLS.
+ */
+export class SpcPasskey implements Passkey {
+  private constructor(
+    private readonly browser: Browser,
+    private readonly page: Page,
+    private readonly tls: { close(): void },
+    readonly credentialId: string,
+    readonly jwk: { kty: string; crv: string; x: string; y: string },
+  ) {}
+
+  static async create(): Promise<SpcPasskey> {
+    const tls = await appOriginOverTls();
+    const browser = await chromium.launch({
+      channel: "chromium",
+      proxy: { server: tls.proxy },
+      args: [
+        "--enable-features=SecurePaymentConfirmationBrowser",
+        `--ignore-certificate-errors-spki-list=${tls.spki}`,
+      ],
+    });
+    const page = await browser.newPage();
+    await page.goto(ORIGIN);
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("WebAuthn.enable");
+    await cdp.send("WebAuthn.addVirtualAuthenticator", {
+      options: {
+        protocol: "ctap2",
+        transport: "internal",
+        hasResidentKey: true,
+        hasUserVerification: true,
+        isUserVerified: true,
+        automaticPresenceSimulation: true,
+      },
+    });
+    await cdp.send("Page.setSPCTransactionMode", { mode: "autoAccept" });
+    const created = await page.evaluate(
+      async ({ rpId }) => {
+        const b64u = (buf: ArrayBuffer) =>
+          btoa(String.fromCharCode(...new Uint8Array(buf)))
+            .replaceAll("+", "-")
+            .replaceAll("/", "_")
+            .replaceAll("=", "");
+        const credential = (await navigator.credentials.create({
+          publicKey: {
+            rp: { id: rpId, name: "Keelson" },
+            user: {
+              id: crypto.getRandomValues(new Uint8Array(16)),
+              name: "tester",
+              displayName: "tester",
+            },
+            challenge: crypto.getRandomValues(new Uint8Array(32)),
+            pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+            authenticatorSelection: {
+              authenticatorAttachment: "platform",
+              residentKey: "required",
+              userVerification: "required",
+            },
+            extensions: { payment: { isPayment: true } } as AuthenticationExtensionsClientInputs,
+          },
+        })) as PublicKeyCredential;
+        const response = credential.response as AuthenticatorAttestationResponse;
+        return { id: credential.id, spki: b64u(response.getPublicKey() as ArrayBuffer) };
+      },
+      { rpId: RP_ID },
+    );
+    const jwk = createPublicKey({
+      key: Buffer.from(created.spki, "base64url"),
+      format: "der",
+      type: "spki",
+    }).export({ format: "jwk" }) as { kty: string; crv: string; x: string; y: string };
+    return new SpcPasskey(browser, page, tls, created.id, jwk);
+  }
+
+  async assert(challenge: Uint8Array, spc?: SpcDetails): Promise<Assertion> {
+    if (!spc) throw new Error("an SPC assertion needs the dialog details");
+    return this.page.evaluate(
+      async ({ challenge, id, rpId, spc, instrument }) => {
+        const b64u = (buf: ArrayBuffer) =>
+          btoa(String.fromCharCode(...new Uint8Array(buf)))
+            .replaceAll("+", "-")
+            .replaceAll("/", "_")
+            .replaceAll("=", "");
+        const request = new PaymentRequest(
+          [
+            {
+              supportedMethods: "secure-payment-confirmation",
+              data: {
+                credentialIds: [
+                  Uint8Array.from(atob(id.replaceAll("-", "+").replaceAll("_", "/")), (c) =>
+                    c.charCodeAt(0),
+                  ),
+                ],
+                challenge: Uint8Array.from(challenge),
+                rpId,
+                instrument,
+                payeeName: spc.payeeName,
+                payeeOrigin: spc.payeeOrigin,
+                timeout: 60_000,
+              },
+            },
+          ],
+          { total: { label: "Total", amount: spc.total } },
+        );
+        const response = await request.show();
+        await response.complete("success");
+        const r = (response.details as PublicKeyCredential)
+          .response as AuthenticatorAssertionResponse;
+        return {
+          authenticatorData: b64u(r.authenticatorData),
+          clientDataJSON: b64u(r.clientDataJSON),
+          signature: b64u(r.signature),
+        };
+      },
+      {
+        challenge: [...challenge],
+        id: this.credentialId,
+        rpId: RP_ID,
+        spc,
+        instrument: { ...SPC_INSTRUMENT },
+      },
+    );
+  }
+
+  async close(): Promise<void> {
+    await this.browser.close();
+    this.tls.close();
+  }
+}
+
 let payee: Promise<string> | undefined;
 
 /** The merchant the sandbox authorization pays, which the mandate must allow. */
@@ -265,10 +475,18 @@ export interface SignedMandate {
   };
 }
 
+/** Who the mandate names as operator and bond vault, when not the demo fixture's. */
+export interface MandateAgent {
+  agentId: bigint;
+  /** CAIP-10 account of the bond vault. */
+  vault: string;
+}
+
 /** The demo mandate for `sub` and a new agent key, signed with `passkey`. */
 export async function signedMandate(
   passkey: Passkey,
   sub = `kls_usr_${randomBytes(8).toString("hex")}`,
+  operator?: MandateAgent,
 ): Promise<SignedMandate> {
   const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, [
     "sign",
@@ -297,6 +515,10 @@ export async function signedMandate(
     agent: {
       ...demo.agent,
       cnf: { jwk: { kty: "EC", crv: "P-256", kid: "agt-01", x: agentJwk.x, y: agentJwk.y } },
+      ...(operator && {
+        operator: { ...demo.agent.operator, agent_id: operator.agentId.toString() },
+        bond: { ...demo.agent.bond, vault: operator.vault },
+      }),
     },
   });
   const salt = randomBytes(16);
@@ -306,7 +528,7 @@ export async function signedMandate(
     { merchantSignedCheckout: false, zkTlsFields: new Set() },
     [],
   );
-  const assertion = await passkey.assert(signing.challenge);
+  const assertion = await passkey.assert(signing.challenge, signing.spc);
   return {
     sub,
     key: pair.privateKey,
