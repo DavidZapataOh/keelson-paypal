@@ -169,6 +169,69 @@ Deviation from the ERC: the request is not sent by the agent's owner and the res
 
 `script/DeployErc8004.s.sol` deploys both at their CREATE3 addresses.
 
+## Verification
+
+`.github/workflows/contracts-verify.yml` checks every property below three ways, and keeps the three apart. **Proven** means the Certora Prover verified the rule for every input and every reachable state, with `rule_sanity: basic` passing and each rule's `satisfy` twin reachable. Only these rows are formally verified. **Bounded** means Halmos 0.3.3 (`--loop 3`, signatures of 65 and 130 bytes) or `forge test --symbolic` found no counterexample within those bounds. That is evidence, not a proof. **Fuzzed** means the Foundry invariant handler (256 runs × 100 calls) and Medusa (200,000 calls per pull request, 2,000,000 nightly) found no violation on an Arbitrum Sepolia fork with real PYUSD, real Paxos `freeze` and `pause`, and coverages locked from real passkey and countersign vectors.
+
+`script/verification-report.sh <results>` regenerates the table from a run's results.
+
+<!-- verification:start -->
+<!-- verification:end -->
+
+### What runs where
+
+| Job | Tool | When |
+| --- | --- | --- |
+| `static` | Slither 0.11.6 (fails on high or medium), Aderyn 0.6.8 (fails on high) | every pull request and push |
+| `symbolic` | Halmos 0.3.3 and `forge test --symbolic` (z3 5.3.3) over `test/symbolic/` | every pull request and push |
+| `invariant` | `test/invariant/`: the Keelson handler and `Properties`, and a16z's `ERC4626Test` on `KeelsonReserve` | every pull request and push |
+| `medusa` | Medusa 1.5.1 on `MedusaKeelson`, which calls the same `Properties` | every pull request and push; 2,000,000 calls nightly |
+| `certora` | Certora Prover, one job per `certora/conf/*.conf`, after `script/check-harness.sh` | every pull request and push |
+| `seeded-bugs` | `script/seeded.sh`: each removed guard must produce a counterexample | every pull request and push |
+| `smtchecker` | solc's model checker (CHC, z3), one contract per job | nightly |
+| `mutation` | `forge test --mutate`, one contract per job, gated at 90% by `script/mutation-gate.sh` | nightly |
+
+### Try it
+
+```sh
+script/seeded.sh double-settle halmos      # deletes the settled check, prints Halmos's counterexample, restores the source
+script/seeded.sh any-liable certora        # deletes the liable == operator check; the Prover reports slashOnlyOperatorLiable violated
+script/seeded.sh degraded-instant halmos   # lets a degraded verdict pay at once
+script/seeded.sh anchor-rewrite forge      # anchors a rewritten history once the consistency check is gone
+script/seeded.sh reentrancy certora        # drops nonReentrant from completeWithdrawal and pays before updating state
+```
+
+Each patch in `certora/seeded/` deletes exactly one guard from `src/`. The script refuses to run on a modified `src/` and always reverts the patch.
+
+### Assumptions and what is not covered
+
+- Certora, Halmos and `forge --symbolic` cannot fork a chain. They use OpenZeppelin's `ERC20` as the token. For I11, the Prover uses a token whose `transfer` and `transferFrom` may revert or return false, which is how a Paxos freeze or pause looks to the vault.
+- No TEE signs a `Verdict` yet. On the forks, verdicts are signed by two keys written into the `VerdictVerifier`'s signer records with `vm.store` (`test/utils/VerdictSigners.sol`). The Prover and Halmos model them through `ecrecover`.
+- `lockCoverage` verifies a P-256 passkey assertion, which symbolic engines do not execute. The symbolic checks therefore start from coverages, bonds and an anchored root written at their storage slots exactly as `lockCoverage` and `anchor` leave them. The fork suites lock coverages through `lockCoverage` itself.
+- Medusa's EVM has no P256VERIFY precompile at `0x100`. `MedusaKeelson` etches one there that computes EIP-7951 with OpenZeppelin's `P256.verifySolidity`, and only when the address does not answer. Medusa has no log cheatcodes, so it checks I12 through the stored digests of queued slashes; Foundry checks every `Slashed` event.
+- The fuzzers fork Arbitrum Sepolia at block 327,231,200, where the `VerdictVerifier` and `CheckpointAnchor` already exist, and deploy the vault and reserve at their real CREATE3 addresses.
+- Halmos 0.3.3 models the SHA-256 precompile with an argument width in bytes rather than bits, so it cannot execute RFC 6962 hashing. The consistency check is bounded with `forge --symbolic` (trees of up to 16 leaves), and the Prover treats `RFC6962.verifyConsistency` as a function it does not open.
+- Forge's symbolic engine does not sign symbolic digests. It runs the checks whose signatures are concrete; the rest are bounded by Halmos alone.
+- Halmos computes `vm.addr` as an uninterpreted function, so `test/symbolic/SymbolicSetup.sol` pins the signers to their real addresses and uses constant addresses for the merchant and staker.
+- Slither and Aderyn do not see the token call OpenZeppelin's `SafeERC20` makes in assembly. Their reentrancy detectors are no evidence for I10; the Prover's `CALL` hook is.
+- The vault calls no reputation or validation registry. `KeelsonReputationReporter` and `KeelsonValidationRegistry` read it, permissionlessly. VAL3 is stated for that design.
+- Each Certora summary and `require` is justified in its spec, and listed here:
+<!-- certora-assumptions -->
+
+### Accepted findings
+
+The contracts are deployed and immutable, so accepted findings are recorded beside them instead of in the source.
+
+- Slither: `slither.db.json`, Slither's triage database.
+  - `arbitrary-send-erc20` in `depositWithPermit`: `owner` must be the agent's owner or wallet, and the tokens go to that agent's bond.
+  - `unused-return` (four): `tryRecover`'s error code (the zero address already means failure), `outcomeOf`'s agent id, and `toUint64`, which is called only for its range check.
+  - `incorrect-equality` on `last.size == 0`: intended.
+  - `reentrancy-no-eth` in `rateCoverage`: `rated` is set before the call, and the call goes to the official registry with a fixed gas stipend.
+- Aderyn: `verification/aderyn-accepted.json`. It covers `contract-locks-ether` (all of `msg.value` goes to Automata) and `reentrancy-state-change` after view calls, which compile to `STATICCALL`.
+- Model checker: `verification/smt-accepted.txt`. Every unproved target is listed with the guard that excludes it.
+- ERC-4626 (Low): `KeelsonReserve` does not override `maxDeposit` and `maxMint`, so they return the maximum even for a receiver whose cooldown runs, whose deposit then reverts with `CooldownActive`. No funds are at risk.
+- Surviving mutants: `verification/survivors.md`.
+
 ## Pause
 
 The Guardian can pause new coverage and veto a queued slash. Neither moves funds: there is no admin path that moves bonded PYUSD or the reserve's.
