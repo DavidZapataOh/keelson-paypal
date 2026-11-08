@@ -206,6 +206,9 @@ export function registerMandates(
         ? undefined
         : await db.query.operators.findFirst({ where: (row, { eq }) => eq(row.agentId, agentId) });
     if (!operator) return invalid("agent.operator.agent_id is not a registered operator");
+    if (operator.agentRegistry.toLowerCase() !== m.agent.operator.agent_registry.toLowerCase()) {
+      return invalid(`agent.operator.agent_registry must be ${operator.agentRegistry}`);
+    }
 
     const key = await db.query.passkey.findFirst({
       where: (row, { eq }) => eq(row.credentialID, body.assertion.credentialId),

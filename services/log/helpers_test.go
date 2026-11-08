@@ -187,7 +187,7 @@ func purchase(t testing.TB, db *pgxpool.Pool, id string, mode *string) {
 	ctx := context.Background()
 	for _, q := range []string{
 		`insert into "user" (id, name, email) values ('u_log_test', 'Log Test', 'log-test@keelson.finance') on conflict do nothing`,
-		`insert into operators (agent_id, chain_id, name, cnf_jwk) values (42, 421614, 'Log Test', '{}') on conflict do nothing`,
+		`insert into operators (agent_id, chain_id, agent_registry, name, cnf_jwk) values (42, 421614, 'eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e', 'Log Test', '{}') on conflict do nothing`,
 		`insert into mandates (id, user_id, operator_agent_id, currency, max_minor, remaining_minor, merchant_ids, expires_at)
 		 values ('01M6T2S5CDQGMQX1MR9ZTB0000', 'u_log_test', 42, 'USD', 100000, 100000, '{}', now() + interval '1 day')
 		 on conflict do nothing`,

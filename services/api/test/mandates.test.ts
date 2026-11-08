@@ -183,7 +183,8 @@ let browser!: Browser;
 beforeAll(async () => {
   await testDb.insert(operators).values({
     agentId: operatorId,
-    chainId: 84532,
+    chainId: 421614,
+    agentRegistry: demo.agent.operator.agent_registry,
     name: "Test operator",
     cnfJwk: demo.agent.cnf.jwk,
   });
@@ -462,6 +463,19 @@ test("the commitment must be the one the payload carries", { timeout: 60_000 }, 
   const res = await post(s.page, { ...signed.body, commitment: `0x${"0".repeat(63)}1` });
   expect(res.status).toBe(422);
   expect(res.body.type).toBe(problemType("invalid-mandate"));
+});
+
+test("the mandate must name the operator's agent registry", { timeout: 60_000 }, async () => {
+  const s = await signer();
+  const m = mandateFor(s, (m) => {
+    m.agent.operator.agent_registry = "eip155:11155111:0x8004A818BFB912233c491871b3d84c89A494BD9e";
+  });
+  const res = await post(s.page, (await sign(s.page, m)).body);
+  expect(res.status).toBe(422);
+  expect(res.body.type).toBe(problemType("invalid-mandate"));
+  expect(res.body.detail).toBe(
+    `agent.operator.agent_registry must be ${demo.agent.operator.agent_registry}`,
+  );
 });
 
 test("the server verifies and stores signed mandates (latency budget)", {

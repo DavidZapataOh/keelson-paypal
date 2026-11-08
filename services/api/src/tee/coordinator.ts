@@ -74,7 +74,8 @@ interface CoordinatedCountersign {
 
 const DOMAIN_CHAIN = CHAIN_IDS.arbitrumSepolia;
 
-function message(c: CountersignJson): Countersign {
+/** The typed `Countersign` message of its JSON form. */
+export function countersignMessage(c: CountersignJson): Countersign {
   return {
     requestId: c.requestId,
     mandateHash: c.mandateHash,
@@ -160,7 +161,7 @@ async function checked(
   const c = answer.countersign;
   let typed: Countersign;
   try {
-    typed = message(c);
+    typed = countersignMessage(c);
   } catch {
     throw refuse("the countersign has a malformed number");
   }

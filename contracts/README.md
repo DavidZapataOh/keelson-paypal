@@ -54,7 +54,7 @@ forge script script/Deploy.s.sol --rpc-url <arbitrum_sepolia|sepolia|arbitrum> \
 script/verify.sh <chainId>
 ```
 
-On Sepolia, pass `--gas-estimate-multiplier 200`: its node underestimates the hand-over transactions. `script/Predict.s.sol` prints where any contract name lands before it is deployed.
+On Sepolia, pass `--gas-estimate-multiplier 200`: its node underestimates the hand-over transactions. Sepolia also prices contract creation above what Foundry's local EVM simulates, so deployments there need `--skip-simulation`, which takes each transaction's gas from the node. `script/Predict.s.sol` prints where any contract name lands before it is deployed.
 
 ## VerdictVerifier
 
@@ -135,10 +135,10 @@ The fork tests (`test/BondVault*.fork.t.sol`, `test/Reserve.fork.t.sol`, `test/S
 
 Keelson builds on [ERC-8004](https://eips.ethereum.org/EIPS/eip-8004) ("Trustless Agents"), which is a Draft standard. Keelson pins the official registries at v2.0.0 (`erc-8004/erc-8004-contracts` at `b9e466c`): bonds are keyed by the `agentId` of the official Identity registry, operators are rated on the official Reputation registry, and each Alibi gets a validation in Keelson's own Validation registry. The official registries are upgradeable by their authors; nothing in the vault depends on them beyond `ownerOf` and `getAgentWallet`.
 
-| Chain                         | IdentityRegistry                             | ReputationRegistry                           |
-| ----------------------------- | -------------------------------------------- | -------------------------------------------- |
-| Arbitrum Sepolia, Sepolia     | `0x8004A818BFB912233c491871b3d84c89A494BD9e` | `0x8004B663056A597Dffe9eCcC1965A193B7388713` |
-| Arbitrum One                  | `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` | `0x8004BAa17C55a88189AE136b182e5fdA19dE9b63` |
+| Chain                     | IdentityRegistry                             | ReputationRegistry                           |
+| ------------------------- | -------------------------------------------- | -------------------------------------------- |
+| Arbitrum Sepolia, Sepolia | `0x8004A818BFB912233c491871b3d84c89A494BD9e` | `0x8004B663056A597Dffe9eCcC1965A193B7388713` |
+| Arbitrum One              | `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` | `0x8004BAa17C55a88189AE136b182e5fdA19dE9b63` |
 
 The two networks use different registry addresses, so both contracts below take them as constructor arguments: their CREATE3 addresses are the same on every chain, their runtime bytecode is not.
 
@@ -146,11 +146,11 @@ The two networks use different registry addresses, so both contracts below take 
 
 `src/KeelsonReputationReporter.sol` is the bond vault's reputation client: it is the `clientAddress` of every rating Keelson gives on the official Reputation registry. The vault itself is frozen at the address the TEE legs' attestations bind, so its ratings come from this separate, ownerless contract that reads the vault's state:
 
-| Coverage, as the vault reports it                                                 | `rateCoverage(coverageId)` gives          |
-| --------------------------------------------------------------------------------- | ----------------------------------------- |
-| `Released` and `slashed(coverageId) == 0`                                         | `+100`, 2 decimals, `"keelson"`/`"release"` |
-| `slashed(coverageId) > 0`, no slash pending for the coverage or its agent          | `-100`, 2 decimals, `"keelson"`/`"slash"`   |
-| a slash still queued, or an active coverage with nothing slashed                    | reverts `OutcomeNotFinal`                 |
+| Coverage, as the vault reports it                                         | `rateCoverage(coverageId)` gives            |
+| ------------------------------------------------------------------------- | ------------------------------------------- |
+| `Released` and `slashed(coverageId) == 0`                                 | `+100`, 2 decimals, `"keelson"`/`"release"` |
+| `slashed(coverageId) > 0`, no slash pending for the coverage or its agent | `-100`, 2 decimals, `"keelson"`/`"slash"`   |
+| a slash still queued, or an active coverage with nothing slashed          | reverts `OutcomeNotFinal`                   |
 
 Anyone may call it, once per coverage. A vetoed slash restores the coverage, which is then rated on its release. Coverages locked in a batch have no per-coverage state in the vault and are not rated. Read an operator's record with `getSummary(agentId, [reporter], "keelson", "")`, and its slashes with the `"slash"` filter; the values have two decimals because the registry averages in the most frequent precision and would truncate `±1` to `0`. The vault's `Slashed` events and `slashCount` remain the authoritative record.
 

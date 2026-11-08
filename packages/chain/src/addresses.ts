@@ -14,7 +14,9 @@ export const addresses: Record<ChainId, Readonly<Record<string, Address>>> = {
     KeelsonBondVault: "0xb39898Ef4333f3CB32d1B420E744f5a1Aa2ae2Bf",
     KeelsonBondVaultPreview: "0x69ccD2fB3a85f590F2A8f431cca3ecc2e9Bf3c14",
     KeelsonDeployer: "0x539638ee1C4021730f9fA63b725c7E9bA02b714A",
+    KeelsonReputationReporter: "0x0D736293957C481626553Bec31e46913A21FBc25",
     KeelsonReserve: "0xd10Cb524B3C5EC3c60A420e8900e4f8C5aB88972",
+    KeelsonValidationRegistry: "0x2405d211CaAdFbB193287882fAb76e8A5D41f714",
     NitroValidator: "0x3F09DAc4C09620329a0b292AF54B6f03378Fd74B",
     P384Verifier: "0x6fb8c2c0173425b8747900948E50d1f7A7baB3A2",
     TimelockController: "0xEDD241A9B8cf55765eDA7182483351555cf3E07e",
@@ -25,6 +27,8 @@ export const addresses: Record<ChainId, Readonly<Record<string, Address>>> = {
     AccessManager: "0x57c30a4a175978673bAD2B2B2D3667966cd58314",
     GuardianSafe: "0x1cd0152d2d954Fc8c9436986C9F4B2C15903eF5C",
     KeelsonDeployer: "0x539638ee1C4021730f9fA63b725c7E9bA02b714A",
+    KeelsonReputationReporter: "0x0D736293957C481626553Bec31e46913A21FBc25",
+    KeelsonValidationRegistry: "0x2405d211CaAdFbB193287882fAb76e8A5D41f714",
     TimelockController: "0xEDD241A9B8cf55765eDA7182483351555cf3E07e",
   },
 };

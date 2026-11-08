@@ -111,7 +111,13 @@ if (!process.env.RENDER) {
     await db.insert(user).values({ id: userId, name: "Bench", email: `${userId}@example.test` });
     const [operator] = await db
       .insert(operators)
-      .values({ agentId: 1n, chainId: 421614, name: "bench", cnfJwk: {} })
+      .values({
+        agentId: 1n,
+        chainId: 421614,
+        agentRegistry: "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+        name: "bench",
+        cnfJwk: {},
+      })
       .returning();
     const mandateId = ulid();
     await db.insert(mandates).values({

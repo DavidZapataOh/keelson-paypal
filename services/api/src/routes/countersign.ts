@@ -624,6 +624,7 @@ export function registerCountersign(
       const allow = out.countersign.decision === "1";
       const patch = {
         countersignDigest: Buffer.from(hexToBytes(out.digest)),
+        countersign: out.countersign,
         decision: Number(out.countersign.decision),
         failedFieldsMask: Number(out.countersign.failedFieldsMask),
         countersignMode: out.mode,

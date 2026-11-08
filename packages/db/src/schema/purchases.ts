@@ -6,6 +6,7 @@ import {
   check,
   index,
   integer,
+  jsonb,
   pgTable,
   smallint,
   text,
@@ -34,6 +35,8 @@ export const purchases = pgTable(
     /** The evidence root the countersign bound; a root binds one purchase only. */
     evidenceRoot: bytea().unique("purchases_evidence_root_unique"),
     countersignDigest: bytea().unique("purchases_countersign_digest_unique"),
+    /** The EIP-712 `Countersign` message whose digest is `countersign_digest`, as decimal strings. */
+    countersign: jsonb().$type<Record<string, string>>(),
     decision: smallint(),
     /** `degraded` when only the TDX leg signed. Set with the countersign. */
     countersignMode: text(),

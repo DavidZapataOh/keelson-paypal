@@ -113,6 +113,13 @@
       "when": 1794096762526,
       "tag": "0015_channel3_events",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1794150140817,
+      "tag": "0016_erc8004_operators",
+      "breakpoints": true
     }
   ]
 }

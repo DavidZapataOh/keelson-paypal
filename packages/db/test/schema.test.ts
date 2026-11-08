@@ -39,7 +39,8 @@ async function newMandate(overrides: Partial<typeof mandates.$inferInsert> = {})
     .insert(operators)
     .values({
       agentId: AGENT_ID - BigInt(Math.floor(Math.random() * 1e9)),
-      chainId: 84532,
+      chainId: 421614,
+      agentRegistry: "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
       name: "op",
       cnfJwk: { kty: "OKP" },
     })

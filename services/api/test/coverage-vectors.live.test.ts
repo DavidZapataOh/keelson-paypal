@@ -93,7 +93,13 @@ describe.skipIf(!live)("coverage vectors (live legs, real passkeys)", { timeout:
     await refreshLeg(testDb, "b", tee);
     await testDb
       .insert(operators)
-      .values({ agentId: AGENT_ID, chainId: arbitrumSepolia.id, name: "Demo operator", cnfJwk: {} })
+      .values({
+        agentId: AGENT_ID,
+        chainId: arbitrumSepolia.id,
+        agentRegistry: "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+        name: "Demo operator",
+        cnfJwk: {},
+      })
       .onConflictDoNothing();
   }, 120_000);
   afterAll(async () => {
