@@ -1,0 +1,69 @@
+{
+  "capturedAt": "2026-11-08T05:24:01.015Z",
+  "source": "https://api.keelson.finance/v1/tee/attestations",
+  "signer": "0xaEAf872A94C591E39db670Dc1087a89241FD8158",
+  "measurement": "0xcedece5a77e6b0709ceb43de797ca53ea1588ad7d0eae257d80124fd244da2bd",
+  "mrtd": "0x2a674327c50218dba880066b349b8d559d749ed68dce33fd651c184a877d084b07a9e583767a7ad5da13ed91deec2b70",
+  "rtmr0": "0x68102e7b524af310f7b7d426ce75481e36c40f5d513a9009c046e9d37e31551f0134d954b496a3357fd61d03f07ffe96",
+  "rtmr1": "0x89ef86c5125b986c325f0a94acfa87718a4ef3a4d4f237dbb72dda3cf777fd2c054555fb4407eb53338d7d67329a7333",
+  "rtmr2": "0xe9000e338f33233e8f51b7fd031e1c158bdcf8572eab041c0bc8eb7fef48b23259a6a556e6c8e2af99999fc39c793179",
+  "rtmr3": "0x75a4637e7b70519966e2ccb6e27fb354960352b353b5f57b89c3ab2c23c4010006490d249df603de9b7e581e24d38527",
+  "reportData": "0x261e7021fa0c84181425cbb7d0b287d71428481a7b5483614d040107cf3177ef470d2d136ece957efeddd8a3ed013fb3cd76a36882ce21d5c57dc2658127dfad",
+  "events": [
+    {
+      "name": "system-preparing",
+      "payload": "0x",
+      "eventType": 134217729
+    },
+    {
+      "name": "app-id",
+      "payload": "0x58955baac3072bac57064089176bed1c2379f86d",
+      "eventType": 134217729
+    },
+    {
+      "name": "compose-hash",
+      "payload": "0x3b7a8ce513f015f0778e92af04e3dd1731705ef8b5a94264e276fe1193fd9a45",
+      "eventType": 134217729
+    },
+    {
+      "name": "gpu-policy-hash",
+      "payload": "0x44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "eventType": 134217729
+    },
+    {
+      "name": "instance-id",
+      "payload": "0x63d387d9ac888c4dca21cbf010dccad72d33f958",
+      "eventType": 134217729
+    },
+    {
+      "name": "boot-mr-done",
+      "payload": "0x",
+      "eventType": 134217729
+    },
+    {
+      "name": "os-image-hash",
+      "payload": "0xec43cb8c5e04b6bb6c53b33b16076a01d83d01f7f4b703f2f78a0d947d6247e6",
+      "eventType": 134217729
+    },
+    {
+      "name": "key-provider",
+      "payload": "0x7b226e616d65223a226b6d73222c226964223a223330353933303133303630373261383634386365336430323031303630383261383634386365336430333031303730333432303030346538653332356134373762306266323238303064633932376134366336383633383933386432383366653733643166393032386565616337303238313933663334373031323231393338373566353938623761646463353033653533343731326162343337623431323037373662626163333264646638383937663834346565227d",
+      "eventType": 134217729
+    },
+    {
+      "name": "storage-fs",
+      "payload": "0x7a6673",
+      "eventType": 134217729
+    },
+    {
+      "name": "storage-encrypted",
+      "payload": "0x31",
+      "eventType": 134217729
+    },
+    {
+      "name": "system-ready",
+      "payload": "0x",
+      "eventType": 134217729
+    }
+  ]
+}
