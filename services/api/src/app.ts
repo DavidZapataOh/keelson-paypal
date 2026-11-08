@@ -20,6 +20,7 @@ import { requireClient } from "./middleware/auth.ts";
 import { idempotency } from "./middleware/idempotency.ts";
 import { type RateLimitOptions, rateLimit } from "./middleware/rate-limit.ts";
 import { ProblemSchema, problem } from "./problem.ts";
+import { registerChannel3Webhook } from "./routes/channel3-webhook.ts";
 import { type CompileSources, registerCompile } from "./routes/compile.ts";
 import { registerCountersign } from "./routes/countersign.ts";
 import { registerEvents } from "./routes/events.ts";
@@ -61,6 +62,8 @@ export interface Deps {
   evidenceIdentity?: string;
   /** Channel3 product lookups; observing answers 503 without them. */
   channel3?: Channel3Lookup;
+  /** The `whsec_` secret of the Channel3 webhook endpoint; the webhook answers 503 without it. */
+  channel3WebhookSecret?: string;
   /** Stamps queued hashes with RFC 3161 tokens; queued rows wait for the sweeper without it. */
   stamps?: StampWorker;
   /** Aborting it ends every open event stream so the server can close. */
@@ -166,6 +169,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerCountersign(app, deps);
   registerEvidence(app, deps);
   registerObservations(app, deps);
+  registerChannel3Webhook(app, deps);
   registerTee(app, deps);
   registerTimestamps(app, deps);
   registerPasskeys(app, deps);

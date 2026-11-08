@@ -67,6 +67,7 @@ const app = createApp({
   shutdown: shutdown.signal,
   stamps,
   ...(env.CHANNEL3_API_KEY ? { channel3: createChannel3(env.CHANNEL3_API_KEY) } : {}),
+  ...(env.CHANNEL3_WEBHOOK_SECRET ? { channel3WebhookSecret: env.CHANNEL3_WEBHOOK_SECRET } : {}),
   ...(tee ? { tee, compileSources: { engine: engineSource } } : {}),
   ...(env.KEELSON_EVIDENCE_AGE_IDENTITY
     ? { evidenceIdentity: env.KEELSON_EVIDENCE_AGE_IDENTITY }

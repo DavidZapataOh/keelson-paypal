@@ -17,6 +17,7 @@ import { ulid } from "ulid";
 import { enqueueStamp } from "../timestamps/queue.ts";
 import type { StampWorker } from "../timestamps/worker.ts";
 import type { Channel3Lookup } from "./client.ts";
+import { recentEvents } from "./webhook.ts";
 
 /** Response bodies larger than this are hashed but not kept. */
 const MAX_RAW_BYTES = 512 * 1024;
@@ -66,6 +67,11 @@ export async function observe(
   }
   const status = product ? "ok" : "unavailable";
   const comparison = compareChannel3(input.agentView, product);
+  // Channel3's signed offer events for the same offer are a dated second account of it.
+  const webhookEvents =
+    product && comparison.offerDomain
+      ? await recentEvents(deps.db, product.id, comparison.offerDomain)
+      : [];
   const document = observationDocument({
     id,
     url: input.url,
@@ -78,6 +84,7 @@ export async function observe(
     ...(product ? { product } : {}),
     agentView: input.agentView,
     comparison,
+    webhookEvents,
   });
   const bytes = new TextEncoder().encode(jcs(document));
   const contentHash = sha256(bytes);

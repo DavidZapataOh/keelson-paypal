@@ -2,17 +2,35 @@
   {
     "url": "https://www.shopwss.com/products/jl4201a",
     "note": "adidas crew socks on a Shopify store: Size options, Color selected, four merchant offers",
-    "catalog": true
+    "catalog": true,
+    "product_id": "B9VPi4s",
+    "selection": [
+      {
+        "name": "Size",
+        "label": "L"
+      }
+    ],
+    "subscription_id": "01M6W846VDVTHNAK7TX7WNNCAR"
   },
   {
     "url": "https://www.allbirds.com/products/mens-tree-runners?variant=33179624767568",
     "note": "Allbirds Tree Runner pinned to size 11 on a Shopify store: Size options",
-    "catalog": true
+    "catalog": true,
+    "product_id": "biyIA8e",
+    "selection": [
+      {
+        "name": "Size",
+        "label": "11"
+      }
+    ],
+    "subscription_id": "01M6W8471Q0F5EQHH9ATWFS5ZD"
   },
   {
     "url": "https://www.zumiez.com/adidas-trefoil-6-pack-white-black-crew-socks.html",
     "note": "adidas crew socks with no variant options, three merchant offers",
-    "catalog": true
+    "catalog": true,
+    "product_id": "Ftt0lvj",
+    "subscription_id": "01M6W847881YP4B1KE926NQ3WW"
   },
   {
     "url": "https://jolyn.com/products/final-sale-accessories-crew-socks",

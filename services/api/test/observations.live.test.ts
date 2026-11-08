@@ -1,7 +1,9 @@
+import { randomBytes } from "node:crypto";
 import { type Json, jcs, normalizeProduct, sha256, toHex } from "@keelson/core";
 import { itemLeaf } from "@keelson/evidence";
 import { verifyTimestamp } from "@keelson/timestamp";
 import { pino } from "pino";
+import { Webhook } from "svix";
 import { ulid } from "ulid";
 import { afterAll, describe, expect, test } from "vitest";
 import { createApp } from "../src/app.ts";
@@ -17,7 +19,9 @@ describe.skipIf(!live)("Channel3 observation, live", { timeout: 60_000 }, () => 
   const log = pino({ level: "silent" });
   const stamps = startStampWorker({ db: testDb, kv: testKv, log });
   afterAll(() => stamps.stop());
+  const secret = `whsec_${randomBytes(24).toString("base64")}`;
   const app = createApp({
+    channel3WebhookSecret: secret,
     db: testDb,
     kv: testKv,
     log,
@@ -32,6 +36,32 @@ describe.skipIf(!live)("Channel3 observation, live", { timeout: 60_000 }, () => 
     const product = normalizeProduct(fixture.product);
     const offer = product.offers.find((o) => o.domain === "shopwss.com");
     const mandateId = await channel3Mandate();
+    // A signed offer event for the same product and merchant, received before the decision.
+    const event = {
+      id: randomBytes(20).toString("hex"),
+      timestamp: new Date().toISOString(),
+      type: "offer.availability.changed",
+      data: {
+        subscription_id: ulid(),
+        subject: { product_id: product.id, domain: "shopwss.com", selection: null },
+        previous: "OutOfStock",
+        current: "InStock",
+      },
+    };
+    const payload = JSON.stringify(event);
+    const msgId = `msg_${ulid()}`;
+    const at = new Date();
+    const delivered = await app.request("/webhooks/channel3", {
+      method: "POST",
+      headers: {
+        "svix-id": msgId,
+        "svix-timestamp": String(Math.floor(at.getTime() / 1000)),
+        "svix-signature": new Webhook(secret).sign(msgId, at, payload),
+      },
+      body: payload,
+    });
+    expect(delivered.status).toBe(204);
+
     const res = await app.request("/v1/observations/channel3", {
       method: "POST",
       headers: { "content-type": "application/json", "idempotency-key": ulid(), ...agent },
@@ -70,7 +100,18 @@ describe.skipIf(!live)("Channel3 observation, live", { timeout: 60_000 }, () => 
     expect(toHex(hash)).toBe(body.item.content_hash);
     const document = JSON.parse(bytes.toString("utf8")) as Json;
     expect(toHex(sha256(new TextEncoder().encode(jcs(document))))).toBe(body.item.content_hash);
-    expect(document).toMatchObject({ v: "keelson.channel3.observation/1", http_status: 200 });
+    expect(document).toMatchObject({
+      v: "keelson.channel3.observation/1",
+      http_status: 200,
+      webhook_events: [
+        {
+          id: event.id,
+          type: "offer.availability.changed",
+          committed_at: event.timestamp,
+          current: "InStock",
+        },
+      ],
+    });
     expect(body.item.leaf).toBe(
       toHex(
         itemLeaf({

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { char, check, index, jsonb, pgTable, text } from "drizzle-orm/pg-core";
+import { char, check, index, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { mandates } from "./mandates.ts";
 import { purchases } from "./purchases.ts";
 import { bytea, createdAt } from "./types.ts";
@@ -36,5 +36,32 @@ export const channel3Observations = pgTable(
     check("channel3_observations_salt_len", sql`octet_length(${t.salt}) = 32`),
     check("channel3_observations_raw_size", sql`octet_length(${t.raw}) <= 524288`),
     index("channel3_observations_mandate_id_created_at_idx").on(t.mandateId, t.createdAt.desc()),
+  ],
+);
+
+/** Channel3's signed offer events, kept as the exact bytes it delivered. */
+export const channel3Events = pgTable(
+  "channel3_events",
+  {
+    /** The event `id`, stable across redeliveries. */
+    id: text().primaryKey(),
+    type: text().notNull(),
+    productId: text(),
+    domain: text(),
+    /** When Channel3 committed the change: the envelope `timestamp`. */
+    committedAt: timestamp({ withTimezone: true }).notNull(),
+    receivedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    svixId: text().notNull(),
+    body: bytea().notNull(),
+    /** SHA-256 of `body`; stamped under kind `channel3`. */
+    contentHash: bytea().notNull(),
+  },
+  (t) => [
+    check("channel3_events_content_hash_len", sql`octet_length(${t.contentHash}) = 32`),
+    index("channel3_events_product_domain_committed_at_idx").on(
+      t.productId,
+      t.domain,
+      t.committedAt.desc(),
+    ),
   ],
 );
