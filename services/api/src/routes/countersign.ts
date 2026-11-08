@@ -1,11 +1,24 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { type Cart, CURRENCIES, type CurrencyCode, cartHash, isUlid } from "@keelson/core";
+import {
+  type Cart,
+  type Channel3Comparison,
+  CURRENCIES,
+  type CurrencyCode,
+  cartHash,
+  channel3Sources,
+  isUlid,
+  toHex,
+} from "@keelson/core";
 import {
   and,
+  channel3Observations,
   type Db,
   eq,
   evidenceBundles,
   evidenceItems,
+  inArray,
+  isNull,
+  or,
   purchases,
   transition,
 } from "@keelson/db";
@@ -39,6 +52,8 @@ const MAX_EVIDENCE_BYTES = 8_192;
 const MAX_UNIT_BYTES = 8_192;
 
 const bytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value));
+/** An observation is usable for as long as the countersign it feeds may take to be asked for. */
+const OBSERVATION_TTL_MS = 900_000;
 
 const CartSchema = z
   .object({
@@ -79,7 +94,11 @@ const Body = z
       .record(z.string(), z.array(z.string().max(MAX_STRING)).max(MAX_SOURCES))
       .refine((e) => Object.keys(e).length <= MAX_EVIDENCE_FIELDS, "Too many evidence fields.")
       .refine((e) => bytes(e) <= MAX_EVIDENCE_BYTES, "The evidence is too large.")
-      .default({}),
+      .default({})
+      .openapi({
+        description:
+          "Evidence sources per field. `channel3:` sources are refused here: the API adds them from the observation stored in the evidence.",
+      }),
     evidenceRoot: Hex32.openapi({
       description: "The root of the evidence stored with `POST /v1/evidence` for this mandate.",
     }),
@@ -140,7 +159,8 @@ const route = createRoute({
     404: { description: "No such mandate", content: problemContent },
     413: { description: "A leg refused the request as too large", content: problemContent },
     422: {
-      description: "The request is invalid, or the evidence holds another cart",
+      description:
+        "The request is invalid, the evidence holds another cart, or its Channel3 observation is not usable",
       content: problemContent,
     },
     429: { description: "Too many countersigns for this mandate", content: problemContent },
@@ -251,8 +271,32 @@ function evidenceUsed(c: Context) {
   );
 }
 
+/** Fails the purchase and frees the observation it claimed, so the same request can retry. */
 async function failPurchase(db: Db, id: string, reason: string): Promise<void> {
-  await transition(db, "purchases", id, "EVALUATING", "FAILED", { failureReason: reason });
+  await db.transaction(async (tx) => {
+    await transition(tx, "purchases", id, "EVALUATING", "FAILED", { failureReason: reason });
+    await tx
+      .update(channel3Observations)
+      .set({ purchaseId: null })
+      .where(eq(channel3Observations.purchaseId, id));
+  });
+}
+
+function observationInvalid(c: Context, detail: string) {
+  return problem(c, 422, "observation-invalid", "Observation invalid", detail);
+}
+
+/** The comparison stored in a `keelson.channel3.observation/1` document. */
+function storedComparison(document: unknown): Channel3Comparison {
+  const c = (document as { comparison: Record<string, unknown> }).comparison;
+  return {
+    offerDomain: c.offer_domain as string | null,
+    variant: c.variant as Channel3Comparison["variant"],
+    price: c.price as Channel3Comparison["price"],
+    availability: c.availability as Channel3Comparison["availability"],
+    brand: c.brand as Channel3Comparison["brand"],
+    mismatches: c.mismatches as string[],
+  };
 }
 
 export function registerCountersign(
@@ -265,6 +309,17 @@ export function registerCountersign(
     const body = c.req.valid("json");
     if (!tee) {
       return problem(c, 503, "tee-unavailable", "TEE unavailable", "No TEE legs are configured.");
+    }
+    if (
+      Object.values(body.evidence).some((sources) => sources.some((s) => s.startsWith("channel3:")))
+    ) {
+      return problem(
+        c,
+        422,
+        "invalid-evidence",
+        "Invalid evidence",
+        "channel3: sources are added by Keelson from the stored observation, never by the agent.",
+      );
     }
     let ids: { requestId: string; mid: string };
     try {
@@ -308,16 +363,26 @@ export function registerCountersign(
     }
 
     const evidenceRoot = Buffer.from(hexToBytes(body.evidenceRoot as `0x${string}`));
-    const [evidence] = await db
-      .select({ cart: evidenceItems.bytes })
+    const rows = await db
+      .select({
+        type: evidenceItems.type,
+        bytes: evidenceItems.bytes,
+        contentHash: evidenceItems.contentHash,
+        salt: evidenceItems.salt,
+      })
       .from(evidenceBundles)
       .leftJoin(
         evidenceItems,
-        and(eq(evidenceItems.root, evidenceBundles.root), eq(evidenceItems.type, "api.cart")),
+        and(
+          eq(evidenceItems.root, evidenceBundles.root),
+          inArray(evidenceItems.type, ["api.product", "api.cart", "channel3.observation"]),
+        ),
       )
       .where(
         and(eq(evidenceBundles.root, evidenceRoot), eq(evidenceBundles.mandateId, mandate.id)),
       );
+    const item = (type: string) => rows.find((r) => r.type === type);
+    const evidence = rows.length > 0 ? { cart: item("api.cart")?.bytes ?? null } : undefined;
     if (!evidence) {
       return problem(
         c,
@@ -363,6 +428,59 @@ export function registerCountersign(
     }
 
     const purchaseId = ids.requestId;
+    let evidenceSources = body.evidence;
+    let observationId: string | undefined;
+    const observed = item("channel3.observation");
+    if (observed?.contentHash && observed.salt) {
+      const [obs] = await db
+        .select()
+        .from(channel3Observations)
+        .where(eq(channel3Observations.contentHash, observed.contentHash));
+      const productHash = item("api.product")?.contentHash;
+      const viewHash = (obs?.document as { agent_view?: { content_hash?: unknown } } | undefined)
+        ?.agent_view?.content_hash;
+      if (!obs?.salt.equals(observed.salt)) {
+        return observationInvalid(
+          c,
+          "The Channel3 observation in the evidence was not issued by Keelson.",
+        );
+      }
+      if (obs.mandateId !== mandate.id) {
+        return observationInvalid(c, "The Channel3 observation belongs to another mandate.");
+      }
+      if (obs.purchaseId !== null && obs.purchaseId !== purchaseId) {
+        return observationInvalid(c, "The Channel3 observation already serves another purchase.");
+      }
+      if (obs.createdAt.getTime() < Date.now() - OBSERVATION_TTL_MS) {
+        return observationInvalid(c, "The Channel3 observation is older than 900 seconds.");
+      }
+      if (!productHash || viewHash !== toHex(productHash)) {
+        return observationInvalid(
+          c,
+          "The Channel3 observation compares a view that is not this evidence's api.product item.",
+        );
+      }
+      const added = channel3Sources(obs.id, storedComparison(obs.document));
+      evidenceSources = { ...body.evidence };
+      for (const [field, sources] of Object.entries(added)) {
+        evidenceSources[field] = [...(evidenceSources[field] ?? []), ...sources];
+      }
+      if (
+        Object.keys(evidenceSources).length > MAX_EVIDENCE_FIELDS ||
+        Object.values(evidenceSources).some((s) => s.length > MAX_SOURCES) ||
+        bytes(evidenceSources) > MAX_EVIDENCE_BYTES
+      ) {
+        return problem(
+          c,
+          422,
+          "evidence-too-large",
+          "Evidence too large",
+          "The evidence with the Channel3 sources added exceeds the evidence limits.",
+        );
+      }
+      observationId = obs.id;
+    }
+
     const [bound] = await db
       .select({ id: purchases.id })
       .from(purchases)
@@ -401,6 +519,25 @@ export function registerCountersign(
         "This request id was already used.",
       );
     }
+    if (observationId) {
+      const claimed = await db
+        .update(channel3Observations)
+        .set({ purchaseId })
+        .where(
+          and(
+            eq(channel3Observations.id, observationId),
+            or(
+              isNull(channel3Observations.purchaseId),
+              eq(channel3Observations.purchaseId, purchaseId),
+            ),
+          ),
+        )
+        .returning({ id: channel3Observations.id });
+      if (claimed.length === 0) {
+        await failPurchase(db, purchaseId, "observation-invalid");
+        return observationInvalid(c, "The Channel3 observation already serves another purchase.");
+      }
+    }
 
     try {
       const out = await countersign2of2(
@@ -411,7 +548,7 @@ export function registerCountersign(
           sub: mandate.userId,
           cart: body.cart,
           unit: body.unit,
-          evidence: body.evidence,
+          evidence: evidenceSources,
           evidence_root: body.evidenceRoot as `0x${string}`,
           authorization_id: body.authorizationId,
         },

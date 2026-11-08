@@ -918,6 +918,8 @@ components:
               maxLength: 256
             maxItems: 8
           default: {}
+          description: "Evidence sources per field. `channel3:` sources are refused here:
+            the API adds them from the observation stored in the evidence."
         evidenceRoot:
           type: string
           pattern: ^0x[0-9a-f]{64}$
@@ -1759,7 +1761,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
         "422":
-          description: The request is invalid, or the evidence holds another cart
+          description: The request is invalid, the evidence holds another cart, or its
+            Channel3 observation is not usable
           content:
             application/problem+json:
               schema:

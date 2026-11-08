@@ -1,15 +1,17 @@
-import { cartHash } from "@keelson/core";
-import { eq, mandates, purchases, teeSignatures, user } from "@keelson/db";
+import { cartHash, sha256, toHex } from "@keelson/core";
+import { channel3Observations, eq, mandates, purchases, teeSignatures, user } from "@keelson/db";
 import { closeMandate, OPEN_MANDATE_TYP, verifyCredential } from "@keelson/mandate";
 import { pino } from "pino";
 import { ulid } from "ulid";
 import { bytesToHex, hexToBytes } from "viem";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { createApp } from "../src/app.ts";
+import { type Channel3Lookup, createChannel3 } from "../src/channel3/client.ts";
 import { failStalePurchases } from "../src/sweeper.ts";
 import { LegClient } from "../src/tee/client.ts";
 import { createTee } from "../src/tee/config.ts";
 import { refreshLeg } from "../src/tee/signers.ts";
+import { capturedLookup, channel3Mandate } from "./channel3.ts";
 import { EvidenceUploader } from "./evidence.ts";
 import { testDb, testKv } from "./setup.ts";
 import {
@@ -30,7 +32,7 @@ const APP_ORIGIN = "https://app.keelson.finance";
 describe.skipIf(!live)("POST /v1/countersign (live legs)", { timeout: 180_000 }, () => {
   const tee = createTee(liveEnv(), { a: 10_000, b: 10_000 });
   const log = pino({ level: "silent" });
-  const appWith = (client = tee.client) =>
+  const appWith = (client = tee.client, channel3?: Channel3Lookup) =>
     createApp({
       db: testDb,
       kv: testKv,
@@ -39,6 +41,7 @@ describe.skipIf(!live)("POST /v1/countersign (live legs)", { timeout: 180_000 },
       authenticate: headerPrincipal,
       tee: { ...tee, client },
       requestTimeoutMs: 60_000,
+      ...(channel3 ? { channel3 } : {}),
     });
   const app = appWith();
   let passkey: VirtualPasskey;
@@ -485,6 +488,151 @@ describe.skipIf(!live)("POST /v1/countersign (live legs)", { timeout: 180_000 },
     const res = await send(counted(calls), again);
     expect(res.status).toBe(409);
     expect(((await res.json()) as { type: string }).type).toMatch(/evidence-used$/);
+    expect(calls).toEqual([]);
+  });
+
+  // A Channel3 catalog SKU whose selected Color is "Black"; the store's own page calls the same
+  // pack "Heather Grey & Black".
+  const sku = capturedLookup("shopwss-com");
+  const view = (color: string) => ({
+    brand: "adidas",
+    priceMinor: "2000",
+    currency: "USD",
+    available: true,
+    selected: [{ name: "Color", label: color }],
+  });
+  const boundTo = async (id: string) =>
+    (
+      await testDb
+        .select({ purchaseId: channel3Observations.purchaseId })
+        .from(channel3Observations)
+        .where(eq(channel3Observations.id, id))
+    )[0]?.purchaseId;
+
+  test.skipIf(!process.env.CHANNEL3_API_KEY)(
+    "the Channel3 comparison is in the countersigned trace and never changes a color",
+    async () => {
+      const observing = appWith(tee.client, createChannel3(process.env.CHANNEL3_API_KEY as string));
+      for (const [color, result] of [
+        ["Heather Grey & Black", "mismatch"],
+        ["Black", "match"],
+      ] as const) {
+        const m = await issue();
+        const capture = await evidence.capture(carts.demo.cart);
+        const observation = await evidence.observe(
+          observing,
+          mandateId,
+          capture,
+          sku.url,
+          view(color),
+          asAgent,
+        );
+        expect(observation.status).toBe("ok");
+        const root = await evidence.store(app, mandateId, capture, asAgent, observation);
+        const requestId = ulid();
+        const res = await send(app, await countersignBody(carts.demo, requestId, m, root));
+        const out = (await res.json()) as {
+          decision: string;
+          trace: { fields: { field: string; color: string; evidence: string[] }[] };
+        };
+        expect(res.status, JSON.stringify(out)).toBe(200);
+        const variant = out.trace.fields.find((f) => f.field === "variant");
+        expect(variant?.evidence).toContain(`channel3:${result}:variant:${observation.id}`);
+        expect(variant?.color).toBe("amber");
+        expect(await boundTo(observation.id)).toBe(requestId);
+      }
+    },
+  );
+
+  test("a Channel3 observation the agent wrote, or one that is not this purchase's, is refused before any leg is called", async () => {
+    const m = await issue();
+    const calls: string[] = [];
+    const watched = counted(calls);
+    // Channel3 unreachable: the observation is stored as unavailable, at no credit.
+    const observing = appWith(tee.client, createChannel3("unused-key", "http://127.0.0.1:9"));
+    const observed = async (owner = mandateId) => {
+      const capture = await evidence.capture(carts.demo.cart);
+      const observation = await evidence.observe(
+        observing,
+        owner,
+        capture,
+        sku.url,
+        view("Black"),
+        asAgent,
+      );
+      return { capture, observation };
+    };
+    const refused = async (root: `0x${string}`, detail: RegExp) => {
+      const res = await send(watched, await countersignBody(carts.demo, ulid(), m, root));
+      const problem = (await res.json()) as { type: string; detail: string };
+      expect(res.status).toBe(422);
+      expect(problem.type).toMatch(/observation-invalid$/);
+      expect(problem.detail).toMatch(detail);
+    };
+
+    const written = {
+      ...(await countersignBody(carts.demo, ulid(), m)),
+      evidence: { variant: [`channel3:match:variant:${ulid()}`] },
+    };
+    const res = await send(watched, written);
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { type: string }).type).toMatch(/invalid-evidence$/);
+
+    const other = await observed(await channel3Mandate());
+    await refused(
+      await evidence.store(app, mandateId, other.capture, asAgent, other.observation),
+      /another mandate/,
+    );
+
+    const stale = await observed();
+    await testDb
+      .update(channel3Observations)
+      .set({ createdAt: new Date(Date.now() - 901_000) })
+      .where(eq(channel3Observations.id, stale.observation.id));
+    await refused(
+      await evidence.store(app, mandateId, stale.capture, asAgent, stale.observation),
+      /older than 900/,
+    );
+
+    const resalted = await observed();
+    const salt = crypto.getRandomValues(new Uint8Array(32));
+    await refused(
+      await evidence.store(app, mandateId, resalted.capture, asAgent, {
+        ...resalted.observation,
+        salt,
+      }),
+      /not issued/,
+    );
+
+    // A view said to be read from another item than the evidence's api.product.
+    const capture = await evidence.capture(carts.demo.cart);
+    const cartItem = capture.items.find((i) => i.type === "api.cart");
+    const elsewhere = await evidence.observe(
+      observing,
+      mandateId,
+      capture,
+      sku.url,
+      { ...view("Black"), contentHash: toHex(sha256(cartItem?.bytes ?? new Uint8Array())) },
+      asAgent,
+    );
+    await refused(
+      await evidence.store(app, mandateId, capture, asAgent, elsewhere),
+      /api\.product/,
+    );
+    expect(calls).toEqual([]);
+
+    const used = await observed();
+    const requestId = ulid();
+    const first = await evidence.store(app, mandateId, used.capture, asAgent, used.observation);
+    expect((await send(app, await countersignBody(carts.demo, requestId, m, first))).status).toBe(
+      200,
+    );
+    expect(await boundTo(used.observation.id)).toBe(requestId);
+    const again = await evidence.capture(carts.demo.cart);
+    await refused(
+      await evidence.store(app, mandateId, again, asAgent, used.observation),
+      /another purchase/,
+    );
     expect(calls).toEqual([]);
   });
 
