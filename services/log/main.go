@@ -53,6 +53,12 @@ func run(log *slog.Logger) error {
 		}
 		go s.colog.run(ctx, s.origins)
 	}
+	if cfg.Anchor != nil {
+		if s.anchor, err = newAnchorer(cfg.Anchor, cfg.VerifyingContract, s.origins, s.registry, log); err != nil {
+			return err
+		}
+		go s.anchor.run(ctx)
+	}
 
 	servers := newServers(cfg, s)
 	errc := make(chan error, len(servers))

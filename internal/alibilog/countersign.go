@@ -61,13 +61,17 @@ var (
 	versionHash         = keccak([]byte("1"))
 )
 
-// Digest is the EIP-712 signing hash of c under the domain
+// HashTypedData is the EIP-712 signing hash of structHash under the domain
 // {name: "Keelson", version: "1", chainId, verifyingContract}.
-func Digest(c Countersign, chainID uint64, verifyingContract [20]byte) [32]byte {
+func HashTypedData(structHash [32]byte, chainID uint64, verifyingContract [20]byte) [32]byte {
 	var contract [32]byte
 	copy(contract[12:], verifyingContract[:])
 	domain := keccak(domainTypeHash[:], nameHash[:], versionHash[:], word(chainID), contract[:])
+	return keccak([]byte{0x19, 0x01}, domain[:], structHash[:])
+}
 
+// Digest is the EIP-712 signing hash of c under the Keelson domain.
+func Digest(c Countersign, chainID uint64, verifyingContract [20]byte) [32]byte {
 	var agent [32]byte
 	if c.AgentID != nil {
 		c.AgentID.FillBytes(agent[:])
@@ -81,7 +85,16 @@ func Digest(c Countersign, chainID uint64, verifyingContract [20]byte) [32]byte 
 		word(uint64(c.Decision)), word(uint64(c.FailedFieldsMask)),
 		word(c.IssuedAt), word(c.ExpiresAt),
 	)
-	return keccak([]byte{0x19, 0x01}, domain[:], s[:])
+	return HashTypedData(s, chainID, verifyingContract)
+}
+
+var checkpointTypeHash = keccak([]byte("Checkpoint(bytes32 origin,uint64 treeSize,bytes32 rootHash)"))
+
+// CheckpointDigest is the EIP-712 signing hash of the Checkpoint of a log
+// origin's tree, origin being keccak256 of the origin string.
+func CheckpointDigest(origin [32]byte, treeSize uint64, rootHash [32]byte, chainID uint64, verifyingContract [20]byte) [32]byte {
+	s := keccak(checkpointTypeHash[:], origin[:], word(treeSize), rootHash[:])
+	return HashTypedData(s, chainID, verifyingContract)
 }
 
 // countersignJSON is the shape the API returns: 0x hex for bytes32 and decimal

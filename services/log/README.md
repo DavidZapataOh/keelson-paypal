@@ -75,6 +75,36 @@ curl -s https://log.keelson.finance/alibi/2026-1/sigsum/<size>.msg |
   sigsum-verify -k keys/sigsum-submit.pub -p policy/sigsum-seasalp.policy <size>.proof
 ```
 
+## Anchors
+
+Witnessed checkpoints are anchored in `CheckpointAnchor`
+(`0x049621749722D0660d5026456F25192fBD9A57ab`, the same CREATE3 address on every chain), which
+accepts a checkpoint only with both TEE legs' signatures over its EIP-712 `Checkpoint` and an RFC
+6962 consistency proof from the origin's previous anchor, so a rewritten history cannot be
+anchored. The sandbox origin anchors on Arbitrum Sepolia; the live origin anchors on Arbitrum One
+once `ARBITRUM_ONE_RPC_URL` is set and a leg pair is registered there.
+
+Every 10 seconds the log compares each origin's published checkpoint with its latest anchor and
+anchors it when the log grew and either an hour passed since the last anchor or 1,000 leaves were
+added. `POST /<origin path>/anchor` (private, bearer) anchors now and answers
+`200 {"size", "root", "tx", "fresh"}` (`fresh: false` with the latest anchor when there is
+nothing new), `503 {"code": "tee_unavailable"}` when a leg does not sign and
+`502 {"code": "chain"}` when the chain cannot be reached. `GET /health` reports each origin's
+`anchoredSize`. Anchors are sent from `ANCHOR_SUBMITTER_KEY`, which has no on-chain privilege.
+
+Check an anchor with Foundry's `cast`:
+
+```sh
+origin=$(cast keccak "log.keelson.finance/alibi/2026-1")
+cast call 0x049621749722D0660d5026456F25192fBD9A57ab "latest(bytes32)(uint64,bytes32,uint40)" $origin \
+  --rpc-url https://sepolia-rollup.arbitrum.io/rpc
+cast call 0x049621749722D0660d5026456F25192fBD9A57ab "rootAt(bytes32,uint64)(bytes32)" $origin <size> \
+  --rpc-url https://sepolia-rollup.arbitrum.io/rpc
+```
+
+The signed note of each anchor is the `signedNote` argument of its transaction, and the
+`CheckpointAnchored` event carries its `keccak256`.
+
 ## Hosting
 
 The service runs on Render with its log on a persistent disk, behind Cloudflare. The write
