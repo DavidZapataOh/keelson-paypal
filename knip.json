@@ -41,6 +41,7 @@
     "packages/paypal": {
       "entry": [
         "src/index.ts!",
+        "src/browser.ts!",
         "src/testing.ts!",
         "scripts/*.ts",
         "test/sandbox/*.sandbox.test.ts"

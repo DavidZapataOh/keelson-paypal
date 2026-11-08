@@ -8,6 +8,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "default": "./dist/browser.js"
+    },
     "./testing": {
       "types": "./dist/testing.d.ts",
       "default": "./dist/testing.js"
@@ -25,6 +29,7 @@
   },
   "dependencies": {
     "@keelson/core": "workspace:*",
+    "@paypal/paypal-js": "11.3.0",
     "@paypal/paypal-server-sdk": "2.5.0",
     "zod": "catalog:"
   },

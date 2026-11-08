@@ -540,6 +540,9 @@ importers:
       '@keelson/core':
         specifier: workspace:*
         version: link:../core
+      '@paypal/paypal-js':
+        specifier: 11.3.0
+        version: 11.3.0
       '@paypal/paypal-server-sdk':
         specifier: 2.5.0
         version: 2.5.0(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
@@ -2329,6 +2332,9 @@ packages:
 
   '@oxc-project/types@0.156.0':
     resolution: {integrity: sha512-1Duyg48TdJNdyhEB8Xn1L36bT9Pv6GUtlKjHxOys8xkaF/rQq3XJE+bAurSK/AgIz5mGFsb77cn9Pb20+WCScw==}
+
+  '@paypal/paypal-js@11.3.0':
+    resolution: {integrity: sha512-Sn0M20QICbV8AeVcMvwQ1QWDX/JaxPgLsxrUFUshYC/W3gMVUZXlpmO/6z3JOhrhk9PU4HZLTYb/F0A/xMwHVw==}
 
   '@paypal/paypal-server-sdk@2.5.0':
     resolution: {integrity: sha512-smJXZx7Euj6f886BszgMyy8dhWWVCI0++QDPn+I5ugcYwNmhzR+vvWr5CuW1Z4+KPh44hSOzhlXnNEjWnugEtg==}
@@ -4178,6 +4184,9 @@ packages:
   progress@2.0.3:
     resolution: {integrity: sha512-7PiHtLll5LdnKIMw100I+8xJXR5gW2QwWYkT6iJva0bXitZKa/XMrSbdmg3r2Xnaidz9Qumd0VPaMrZlF9V9sA==}
     engines: {node: '>=0.4.0'}
+
+  promise-polyfill@8.3.0:
+    resolution: {integrity: sha512-H5oELycFml5yto/atYqmjyigJoAo3+OXwolYiH7OfQuYlAqhxNvTfiNMbV9hsC6Yp83yE5r2KTVmtrG6R9i6Pg==}
 
   property-information@7.2.0:
     resolution: {integrity: sha512-IAtzIB6sUiWaJYrX9smp3V46pBGbBeLFRGdh25kg1334VcBlD8HzhPeNIWQH9zhGmo2itIe25EHt9dQP7G5hmg==}
@@ -6057,6 +6066,10 @@ snapshots:
 
   '@oxc-project/types@0.156.0': {}
 
+  '@paypal/paypal-js@11.3.0':
+    dependencies:
+      promise-polyfill: 8.3.0
+
   '@paypal/paypal-server-sdk@2.5.0(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)':
     dependencies:
       '@apimatic/authentication-adapters': 0.5.14
@@ -7896,6 +7909,8 @@ snapshots:
   process-warning@5.1.1: {}
 
   progress@2.0.3: {}
+
+  promise-polyfill@8.3.0: {}
 
   property-information@7.2.0: {}
 
