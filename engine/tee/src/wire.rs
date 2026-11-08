@@ -177,12 +177,20 @@ pub struct MandateIssued {
 #[serde(deny_unknown_fields)]
 pub struct PayPalObservation {
     pub authorization_id: String,
+    /// The order the authorization belongs to, `supplementary_data.related_ids.order_id`; a
+    /// reauthorization keeps it. Leg B decides nothing on it, so an observation without it parses.
+    #[serde(default)]
+    pub order_id: String,
     /// The authorization status, e.g. `CREATED` or `PARTIALLY_CAPTURED`.
     pub status: String,
     pub currency: String,
     pub authorized_minor: i64,
     /// The sum of the order's `COMPLETED` and `PENDING` captures of this authorization.
     pub captured_minor: i64,
+    /// The sum of the order's `COMPLETED` and `PENDING` captures of every authorization, a
+    /// reauthorization's parent included: what a mandate hold has spent.
+    #[serde(default)]
+    pub order_captured_minor: i64,
     pub payee_merchant_id: String,
     /// The authorization's `expiration_time`, in Unix milliseconds.
     pub expires_at_ms: i64,

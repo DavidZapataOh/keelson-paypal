@@ -1,6 +1,7 @@
 use alloy_primitives::{Address, B256, Signature, U256, keccak256};
 use alloy_sol_types::Eip712Domain;
 use keelson_core::{domain, eip712::Countersign};
+use keelson_tee::wire::Observation;
 use keelson_tee::{
     BIT_CANON, BIT_CEDAR_ERROR, BIT_EXTRA, BIT_PAYPAL, Error, FIELD_BITS, Signer, SignerBinding,
     TeeKind, countersign_digest, failed_fields_mask, report_data,
@@ -223,4 +224,37 @@ fn every_forbid_policy_has_a_bit() {
             "policy {id} has no failedFieldsMask bit"
         );
     }
+}
+
+/// The observation leg A forwards to leg B names the PayPal order of the authorization, in the
+/// shape leg B parses.
+#[test]
+fn observation_json_names_the_order() {
+    let json = serde_json::json!({
+        "now_ms": 1_793_750_470_000_i64,
+        "budget_left_minor": 10_000,
+        "user_key": {
+            "kty": "EC", "crv": "P-256",
+            "x": "rG2YAN80tmhPdXxOOH_ZsBqdI97Cf4yJL3H8ZToyX-M",
+            "y": "uIq1dTwXYVvt26u9ehj7Itc4yr0f0N89hi4tBE2PVdk"
+        },
+        "paypal": {
+            "authorization_id": "2YE949500W649811X",
+            "order_id": "6XX99734C4618040C",
+            "status": "CREATED",
+            "currency": "USD",
+            "authorized_minor": 10_000,
+            "captured_minor": 0,
+            "order_captured_minor": 0,
+            "payee_merchant_id": "A4WCRYD5EYDF2",
+            "expires_at_ms": 1_796_665_574_000_i64,
+            "custom_id": "ks1.sm.01JBXG3K5N7Q9R2T4V6W8Y0Z1A.SC4lPIQQS_7hUI1WoHbFiKBE6nmxEfU5sBAD1IV3YDI",
+            "raw_authorization": "",
+            "raw_order": "",
+            "read_at_ms": 1_794_160_222_638_i64
+        }
+    });
+    let o: Observation = serde_json::from_value(json.clone()).unwrap();
+    assert_eq!(o.paypal.order_id, "6XX99734C4618040C");
+    assert_eq!(serde_json::to_value(&o).unwrap(), json);
 }
