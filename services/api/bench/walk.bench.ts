@@ -30,6 +30,7 @@ import { ulid } from "ulid";
 import type { Hex } from "viem";
 import { hexToBytes } from "viem";
 import { routePages } from "../../../packages/evidence/test/server.ts";
+import demo from "../../../packages/mandate/test/fixtures/demo-mandate.json" with { type: "json" };
 import skus from "../channel3-skus.json" with { type: "json" };
 import { createApp } from "../src/app.ts";
 import { createChannel3 } from "../src/channel3/client.ts";
@@ -168,9 +169,11 @@ try {
   const passkey = await SoftwarePasskey.create();
   const signed = await signedMandate(passkey);
   await seedUser(db, passkey, signed.sub);
+  // The sandbox authorization names the demo mandate, so its row is reused once stored.
   const stored = await post(app, "/v1/mandates", signed.body, asUser(signed.sub));
-  if (stored.status !== 201) throw new Error(`mandate not stored: ${stored.status}`);
-  const { id: mandateId } = (await stored.json()) as { id: string };
+  if (stored.status !== 201 && stored.status !== 409)
+    throw new Error(`mandate not stored: ${stored.status}`);
+  const mandateId = demo.mid;
   const agent = await registerMandate(tee.client.a, passkey);
   await db.insert(user).values({ id: agent.sub, name: "Walk", email: `${agent.sub}@example.test` });
   await db
