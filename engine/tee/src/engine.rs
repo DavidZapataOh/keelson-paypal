@@ -473,10 +473,11 @@ impl Engine {
             .map_err(|_| bad("clock"))?;
         let now_s = now_ms.div_euclid(1000);
         // A request id is accepted only while a record for it could still be live, so it can
-        // never be signed again once its record has expired, across restarts too.
+        // never be signed again once its record has expired, across restarts too. The window is
+        // read on this engine's own clock, which the caller cannot move.
         let id_ms = i64::try_from(r.request_id.timestamp_ms()).map_err(|_| EngineError::Replay)?;
         let skew_ms = MAX_SKEW_SEC * 1000;
-        if id_ms <= now_ms - COUNTERSIGN_TTL * 1000 + skew_ms || id_ms > now_ms + skew_ms {
+        if id_ms <= clock_ms - COUNTERSIGN_TTL * 1000 + skew_ms || id_ms > clock_ms + skew_ms {
             return Err(EngineError::Replay);
         }
         let forged = |e: &String| e.starts_with("ucp:") || e.starts_with("zktls:");

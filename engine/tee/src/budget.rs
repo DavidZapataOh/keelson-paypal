@@ -15,9 +15,11 @@ fn live(expires_at: OffsetDateTime, now: OffsetDateTime) -> bool {
     now < expires_at + Duration::SECOND
 }
 
-/// How long after its timestamp a request id can still be accepted: [`crate::Engine`] refuses
-/// ids older than the countersign lifetime.
-const ID_WINDOW: Duration = Duration::seconds(900);
+/// How long a request id's record is kept after the id's timestamp, on the request's clock.
+/// [`crate::Engine`] accepts an id only while its own clock is under `id + 900 s − 60 s`, and a
+/// leg B request's clock may run up to 2 s ahead of the engine's or 60 s behind it, so a record
+/// kept for `900 + 60 + 2` s on any request's clock outlives every moment the id is accepted.
+const ID_WINDOW: Duration = Duration::seconds(962);
 
 /// Whether a request id could still be accepted at `now`. Its record is kept that long, past its
 /// countersign's expiry, so the id can never be answered twice: two countersigns under one id
@@ -321,7 +323,7 @@ mod tests {
     #[test]
     fn an_answered_id_stays_bound_until_it_can_no_longer_be_accepted() {
         let b = Budget::default();
-        // The id's timestamp is 0, so it can be accepted through second 900.
+        // The id's timestamp is 0, so its record is kept through second 962.
         let g = work(&b, id(1), 1, 60, 0);
         g.answer(deny()).unwrap();
         // Past the countersign's expiry the record still refuses another input under the id.
@@ -331,7 +333,7 @@ mod tests {
         assert_eq!(elsewhere.err(), Some(Replay));
         // Once the id is out of its window the record is dropped.
         assert!(
-            b.claim(&[3; 32], id(2), [3; 32], at(1_000), at(901))
+            b.claim(&[3; 32], id(2), [3; 32], at(1_000), at(963))
                 .is_ok()
         );
         assert_eq!(b.requests(), 0);
@@ -416,7 +418,7 @@ mod tests {
         answered(&b, 2, id(2), 1_800, 0);
         assert_eq!(b.requests(), 2);
         // A claim on any mandate drops what expired on every other one.
-        answered(&b, 3, id(3), 2_700, 901);
+        answered(&b, 3, id(3), 2_700, 963);
         assert_eq!(b.requests(), 2);
     }
 
