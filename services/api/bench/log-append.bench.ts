@@ -7,6 +7,7 @@ import { pino } from "pino";
 import { ulid } from "ulid";
 import type { Hex } from "viem";
 import { hexToBytes } from "viem";
+import demo from "../../../packages/mandate/test/fixtures/demo-mandate.json" with { type: "json" };
 import { createApp } from "../src/app.ts";
 import { createKv } from "../src/kv.ts";
 import { appendLeaf, type LogConfig } from "../src/log/append.ts";
@@ -96,14 +97,15 @@ try {
       body: JSON.stringify(body),
     });
 
-  // The sandbox authorization names one mandate, so there is one mandate row. The route allows
+  // The sandbox authorization names one mandate, so there is one mandate row, reused once stored. The route allows
   // a caller 60 countersigns of a mandate a minute, so each 50 purchases come from another agent.
   const passkey = await SoftwarePasskey.create();
   const first = await signedMandate(passkey);
   await seedUser(db, passkey, first.sub);
   const stored = await post("/v1/mandates", first.body, asUser(first.sub));
-  if (stored.status !== 201) throw new Error(`mandate not stored: ${stored.status}`);
-  const { id: mandateId } = (await stored.json()) as { id: string };
+  if (stored.status !== 201 && stored.status !== 409)
+    throw new Error(`mandate not stored: ${stored.status}`);
+  const mandateId = demo.mid;
   const agent = await registerMandate(tee.client.a, passkey);
   await db
     .insert(user)
