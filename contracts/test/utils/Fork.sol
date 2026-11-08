@@ -2,6 +2,7 @@
 pragma solidity 0.8.38;
 
 import {Deploy} from "../../script/Deploy.s.sol";
+import {IERC8004Identity} from "../../src/interfaces/IERC8004Identity.sol";
 import {IPyusd} from "./IPyusd.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 import {Test} from "forge-std/Test.sol";
@@ -51,6 +52,21 @@ abstract contract ForkTest is Test {
         string[] memory keys = vm.split(vm.envString("KEELSON_FUNDER_KEYS"), ",");
         pk = vm.parseUint(keys[i]);
         account = vm.addr(pk);
+    }
+
+    function _identity() internal view returns (IERC8004Identity) {
+        return IERC8004Identity(_json().readAddress(".external.erc8004Identity"));
+    }
+
+    /// @dev The demo operator: owner of the registry's demo agent in the ERC-8004 Identity registry.
+    function _operator() internal view returns (address account, uint256 pk) {
+        pk = vm.envUint("KEELSON_OPERATOR_KEY");
+        account = vm.addr(pk);
+        assertEq(account, _json().readAddress(".demo.operator"), "operator key");
+    }
+
+    function _demoAgentId() internal view returns (uint256) {
+        return _json().readUint(".demo.agentId");
     }
 
     /// @dev Arbitrum One has no faucet: moves real tokens from the pinned holder with a plain transfer.

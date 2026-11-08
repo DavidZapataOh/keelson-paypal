@@ -20,7 +20,8 @@
     "withdrawalDelay": 900,
     "instantSlashCap": 100000000,
     "signersDelay": 900,
-    "timelockMinDelay": 172800
+    "timelockMinDelay": 172800,
+    "logOrigin": "log.keelson.finance/alibi-live/2026-1"
   },
   "governance": {
     "proposer": "0x9c0215b66F6a64c34CCb0126Cb8d027689Fa68b9",

@@ -19,7 +19,8 @@
     "withdrawalDelay": 900,
     "instantSlashCap": 100000000,
     "signersDelay": 900,
-    "timelockMinDelay": 300
+    "timelockMinDelay": 300,
+    "logOrigin": "log.keelson.finance/alibi/2026-1"
   },
   "governance": {
     "proposer": "0x9c0215b66F6a64c34CCb0126Cb8d027689Fa68b9",
@@ -32,6 +33,10 @@
   },
   "tee": {
     "issuerJwkThumbprint": "0x7d575028b1b6b7208962ac880eeb146675423d9e5441cfca0decf85bb4626253"
+  },
+  "demo": {
+    "agentId": 351,
+    "operator": "0xcdA4d2330C027Aa025f4A14b525a386CE02AD98f"
   },
   "contracts": {
     "KeelsonDeployer": "0x539638ee1C4021730f9fA63b725c7E9bA02b714A",

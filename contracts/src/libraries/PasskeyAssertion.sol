@@ -56,8 +56,10 @@ library PasskeyAssertion {
     function _hasType(bytes calldata json, uint256 i) private pure returns (bool) {
         if (i >= json.length) return false;
         uint256 left = json.length - i;
+        // forge-lint: disable-start(unsafe-typecast)
         return (left >= 21 && bytes21(json[i:i + 21]) == bytes21('"type":"webauthn.get"'))
             || (left >= 20 && bytes20(json[i:i + 20]) == bytes20('"type":"payment.get"'));
+        // forge-lint: disable-end(unsafe-typecast)
     }
 
     function _hasChallenge(bytes calldata json, uint256 i, bytes32 challenge) private pure returns (bool) {
