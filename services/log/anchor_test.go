@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -64,8 +65,6 @@ const (
 	measurementIDsSlot  = 4
 	allowedSlot         = 5
 	signersSlot         = 7
-	anvilDeployerKey    = "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-	anvilSubmitterKey   = "59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
 	signerTTL           = 72 * 3600
 	conformancePolicyFn = "policy/conformance-2026-1.policy"
 )
@@ -109,6 +108,19 @@ func startAnvil(t *testing.T, forkURL string) *anvilFork {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
+}
+
+// fundedKey is a fresh key with 1 ETH on the fork.
+func (f *anvilFork) fundedKey(t *testing.T) *ecdsa.PrivateKey {
+	t.Helper()
+	key, err := crypto.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.rpc.Call(nil, "anvil_setBalance", crypto.PubkeyToAddress(key.PublicKey), hexutil.EncodeBig(big.NewInt(1e18))); err != nil {
+		t.Fatal(err)
+	}
+	return key
 }
 
 func (f *anvilFork) storage(t *testing.T, addr common.Address, slot common.Hash) common.Hash {
@@ -176,8 +188,7 @@ func (f *anvilFork) deployAnchor(t *testing.T) common.Address {
 	if err != nil {
 		t.Fatal(err)
 	}
-	key, _ := crypto.HexToECDSA(anvilDeployerKey)
-	opts := bind.NewKeyedTransactor(key, big.NewInt(421614))
+	opts := bind.NewKeyedTransactor(f.fundedKey(t), big.NewInt(421614))
 	addr, tx, err := bind.DeployContract(opts, code, f.client, args)
 	if err != nil {
 		t.Fatal(err)
@@ -284,7 +295,7 @@ func newAnchorRig(t *testing.T, legB string) *anchorRig {
 	if err != nil {
 		t.Fatal(err)
 	}
-	key, _ := crypto.HexToECDSA(anvilSubmitterKey)
+	key := fork.fundedKey(t)
 	cfg := &anchorConfig{
 		Address: anchorAddr,
 		RPC:     map[uint64]string{421614: fork.url},
