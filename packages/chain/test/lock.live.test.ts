@@ -143,6 +143,8 @@ describe.skipIf(!live)("lockCoverage on an anvil fork", { timeout: 120_000 }, ()
           withdrawalDelay: registry.params.withdrawalDelay,
           instantSlashCap: BigInt(registry.params.instantSlashCap),
         },
+        registry.params.slashRateWindow,
+        BigInt(registry.params.slashRateCapacity),
       ],
     });
     vault = (await client.waitForTransactionReceipt({ hash })).contractAddress as Address;

@@ -4,6 +4,8 @@ import { addresses, type ChainId, chainIds } from "./addresses.ts";
 export * from "./abis.ts";
 export { addresses, type ChainId, chainIds } from "./addresses.ts";
 export * from "./coverage.ts";
+export * from "./reserve.ts";
+export * from "./verdict.ts";
 
 /** Role ids of the AccessManager that governs every Keelson contract (`KeelsonRoles.sol`). */
 export const roles = {

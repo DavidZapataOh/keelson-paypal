@@ -62,9 +62,9 @@ abstract contract ForkTest is Test {
         return _json().readUint(".demo.agentId");
     }
 
-    /// @dev Arbitrum One has no faucet: moves real tokens from the pinned holder with a plain transfer.
+    /// @dev Moves real tokens from the chain's pinned holder (Arbitrum One's largest, the Paxos faucet's wallet on
+    /// Arbitrum Sepolia) with a plain transfer, on the fork only.
     function _fundFromHolder(address to, uint256 amount) internal {
-        assertEq(vm.getChainId(), 42161, "holder only on Arbitrum One");
         vm.prank(_json().readAddress(".external.pyusdHolder"));
         assertTrue(_pyusd().transfer(to, amount));
     }
