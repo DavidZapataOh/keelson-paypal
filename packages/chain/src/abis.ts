@@ -1213,6 +1213,13 @@ export const iNitroValidatorAbi = [
 export const iPYUSDAbi = [
   {
     type: "function",
+    name: "DOMAIN_SEPARATOR",
+    inputs: [],
+    outputs: [{ name: "", type: "bytes32", internalType: "bytes32" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
     name: "allowance",
     inputs: [
       { name: "owner", type: "address", internalType: "address" },
