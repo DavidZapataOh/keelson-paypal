@@ -68,6 +68,17 @@ services:
         sync: false
       - key: CHANNEL3_WEBHOOK_SECRET
         sync: false
+      # The relayer signs with KMS keys only this IAM user may use; reads go through the provider RPC.
+      - key: ARBITRUM_SEPOLIA_RPC_URL
+        sync: false
+      - key: RELAYER_KMS_KEY_SANDBOX
+        value: alias/keelson-relayer-arbitrum-sepolia
+      - key: RELAYER_AWS_ACCESS_KEY_ID
+        sync: false
+      - key: RELAYER_AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_REGION
+        value: us-west-2
       - fromGroup: keelson-secrets
 
   - type: web

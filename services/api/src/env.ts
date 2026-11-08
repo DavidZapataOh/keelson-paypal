@@ -23,6 +23,13 @@ const schema = z
     KEELSON_REGISTRAR_KEY: z
       .custom<`0x${string}`>((v) => typeof v === "string" && /^0x[0-9a-fA-F]{64}$/.test(v))
       .optional(),
+    ARBITRUM_ONE_RPC_URL: z.url().optional(),
+    /** KMS key ids of the relayer's senders; each needs its chain's RPC URL and the relayer's AWS key. */
+    RELAYER_KMS_KEY_SANDBOX: z.string().min(1).optional(),
+    RELAYER_KMS_KEY_LIVE: z.string().min(1).optional(),
+    RELAYER_AWS_ACCESS_KEY_ID: z.string().min(1).optional(),
+    RELAYER_AWS_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+    AWS_REGION: z.string().min(1).default("us-west-2"),
     LOG_URL: z.url().optional(),
     LOG_WRITE_TOKEN: z.string().min(32).optional(),
     KEELSON_EVIDENCE_AGE_IDENTITY: z.string().startsWith("AGE-SECRET-KEY-").optional(),
@@ -77,6 +84,33 @@ const schema = z
     message: "CHANNEL3_API_KEY is required in production",
     path: ["CHANNEL3_API_KEY"],
   })
+  .refine(
+    (env) =>
+      (env.RELAYER_AWS_ACCESS_KEY_ID === undefined) ===
+      (env.RELAYER_AWS_SECRET_ACCESS_KEY === undefined),
+    {
+      message: "RELAYER_AWS_ACCESS_KEY_ID and RELAYER_AWS_SECRET_ACCESS_KEY are set together",
+      path: ["RELAYER_AWS_ACCESS_KEY_ID"],
+    },
+  )
+  .refine(
+    (env) =>
+      env.RELAYER_KMS_KEY_SANDBOX === undefined ||
+      (env.ARBITRUM_SEPOLIA_RPC_URL !== undefined && env.RELAYER_AWS_ACCESS_KEY_ID !== undefined),
+    {
+      message: "RELAYER_KMS_KEY_SANDBOX needs ARBITRUM_SEPOLIA_RPC_URL and the relayer's AWS key",
+      path: ["RELAYER_KMS_KEY_SANDBOX"],
+    },
+  )
+  .refine(
+    (env) =>
+      env.RELAYER_KMS_KEY_LIVE === undefined ||
+      (env.ARBITRUM_ONE_RPC_URL !== undefined && env.RELAYER_AWS_ACCESS_KEY_ID !== undefined),
+    {
+      message: "RELAYER_KMS_KEY_LIVE needs ARBITRUM_ONE_RPC_URL and the relayer's AWS key",
+      path: ["RELAYER_KMS_KEY_LIVE"],
+    },
+  )
   .refine((env) => env.PASSKEY_RP_ID === undefined || env.NODE_ENV === "test", {
     message: "PASSKEY_RP_ID may only be set in tests",
     path: ["PASSKEY_RP_ID"],

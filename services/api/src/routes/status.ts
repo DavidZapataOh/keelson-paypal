@@ -2,6 +2,7 @@ import { createRequire } from "node:module";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { Db } from "@keelson/db";
 import { LOG_HOST, LOG_ORIGINS } from "@keelson/log";
+import type { Relayer } from "@keelson/relayer";
 import type { RedisClientType } from "redis";
 import type { LogConfig } from "../log/append.ts";
 import type { TeeConfig } from "../tee/signers.ts";
@@ -27,6 +28,22 @@ const route = createRoute({
               kv: Dependency,
               teeA: Dependency.optional(),
               teeB: Dependency.optional(),
+              relayer: z
+                .object({
+                  status: z.enum(["up", "down", "degraded"]),
+                  chains: z.array(
+                    z.object({
+                      chainId: z.number().int(),
+                      status: z.enum(["up", "down", "degraded"]),
+                      address: z.string(),
+                      balanceWei: z.string().optional(),
+                      nextNonce: z.string().optional(),
+                      pending: z.number().int(),
+                      baseFeeWei: z.string().optional(),
+                    }),
+                  ),
+                })
+                .optional(),
               log: z
                 .object({
                   status: Dependency,
@@ -92,6 +109,30 @@ async function logState(tlog: LogConfig) {
   return { status: fresh ? ("up" as const) : ("down" as const), origins };
 }
 
+/** Each chain's relayer: its address, balance, next nonce and the calls still pending. */
+async function relayerState(relayer: Relayer) {
+  const chains = await Promise.all(
+    relayer.chains().map(async (chainId) => {
+      const s = await relayer.status(chainId);
+      return {
+        chainId: s.chainId,
+        status: s.status,
+        address: s.address,
+        ...(s.balanceWei !== undefined ? { balanceWei: s.balanceWei.toString() } : {}),
+        ...(s.nextNonce !== undefined ? { nextNonce: s.nextNonce.toString() } : {}),
+        pending: s.pending,
+        ...(s.baseFeeWei !== undefined ? { baseFeeWei: s.baseFeeWei.toString() } : {}),
+      };
+    }),
+  );
+  const status = chains.some((c) => c.status === "down")
+    ? ("down" as const)
+    : chains.some((c) => c.status === "degraded")
+      ? ("degraded" as const)
+      : ("up" as const);
+  return { status, chains };
+}
+
 export function registerStatus(
   app: OpenAPIHono,
   deps: {
@@ -99,22 +140,32 @@ export function registerStatus(
     kv: RedisClientType;
     tee?: TeeConfig | undefined;
     tlog?: LogConfig | undefined;
+    relayer?: Relayer | undefined;
   },
 ): void {
   app.openapi(route, async (c) => {
-    const { tee, tlog } = deps;
-    const [db, kv, teeA, teeB, log] = await Promise.all([
+    const { tee, tlog, relayer } = deps;
+    const [db, kv, teeA, teeB, log, relayerDep] = await Promise.all([
       probe(() => deps.db.execute("select 1")),
       probe(() => deps.kv.ping()),
       tee ? probe(() => tee.client.a.health(), TEE_PROBE_TIMEOUT_MS) : undefined,
       tee ? probe(() => tee.client.b.health(), TEE_PROBE_TIMEOUT_MS) : undefined,
       tlog ? logState(tlog).catch(() => ({ status: "down" as const, origins: [] })) : undefined,
+      relayer ? relayerState(relayer) : undefined,
     ]);
-    const up = [db, kv, teeA, teeB, log?.status].every((d) => d === undefined || d === "up");
+    const up = [db, kv, teeA, teeB, log?.status, relayerDep?.status].every(
+      (d) => d === undefined || d === "up",
+    );
     return c.json(
       {
         status: up ? ("ok" as const) : ("degraded" as const),
-        dependencies: { db, kv, ...(teeA && teeB ? { teeA, teeB } : {}), ...(log ? { log } : {}) },
+        dependencies: {
+          db,
+          kv,
+          ...(teeA && teeB ? { teeA, teeB } : {}),
+          ...(log ? { log } : {}),
+          ...(relayerDep ? { relayer: relayerDep } : {}),
+        },
         version,
       },
       200,

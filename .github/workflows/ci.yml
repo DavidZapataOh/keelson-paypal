@@ -36,7 +36,7 @@ jobs:
           grep -rEn "paypalMockResponse|PayPal-Mock-Response" packages services apps --exclude-dir=node_modules --exclude-dir=dist || status=$?
           test "$status" -eq 1
       - run: pnpm --filter @keelson/timestamp exec playwright install chromium
-      - run: pnpm turbo run typecheck test build --filter='!./packages/db' --filter='!./packages/attest' --filter='!./packages/evidence' --filter='!./services/api' --filter='!./services/monitor' --cache-dir=.turbo
+      - run: pnpm turbo run typecheck test build --filter='!./packages/db' --filter='!./packages/attest' --filter='!./packages/evidence' --filter='!./services/api' --filter='!./services/monitor' --filter='!./packages/relayer' --cache-dir=.turbo
       - name: The captured timestamp tokens verify with OpenSSL
         working-directory: packages/timestamp
         run: node scripts/openssl-verify.ts
@@ -102,6 +102,8 @@ jobs:
     env:
       DATABASE_URL: postgres://postgres:keelson@localhost:5432/keelson
       REDIS_URL: redis://localhost:6379
+      ARBITRUM_SEPOLIA_RPC_URL: https://arb-sepolia.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}
+      KEELSON_FUNDER_KEYS: ${{ secrets.KEELSON_FUNDER_KEYS }}
       PAYPAL_CLIENT_ID: ${{ secrets.PAYPAL_CLIENT_ID }}
       PAYPAL_CLIENT_SECRET: ${{ secrets.PAYPAL_CLIENT_SECRET }}
       PAYPAL_SANDBOX_BUYER_EMAIL: ${{ secrets.PAYPAL_SANDBOX_BUYER_EMAIL }}
@@ -136,9 +138,53 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @keelson/api exec playwright install chromium
+      - uses: foundry-rs/foundry-toolchain@v1.9.2
+        with:
+          version: v1.9.0
+          cache-key: relayer-${{ hashFiles('packages/relayer/test/fork.ts') }}
+          cache-restore-keys: relayer-
       - run: pnpm turbo run typecheck test build --filter=./packages/db --filter=./services/api
       - run: pnpm migrate
       - run: pnpm --filter @keelson/api openapi && git diff --exit-code openapi/
+
+  relayer:
+    runs-on: ubuntu-24.04
+    env:
+      DATABASE_URL: postgres://postgres:keelson@localhost:5432/keelson
+      ARBITRUM_SEPOLIA_RPC_URL: https://arb-sepolia.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}
+      KEELSON_FUNDER_KEYS: ${{ secrets.KEELSON_FUNDER_KEYS }}
+      # The relayer's own least-privilege key: the KMS tests sign with the real sandbox key.
+      RELAYER_AWS_ACCESS_KEY_ID: ${{ secrets.RELAYER_AWS_ACCESS_KEY_ID }}
+      RELAYER_AWS_SECRET_ACCESS_KEY: ${{ secrets.RELAYER_AWS_SECRET_ACCESS_KEY }}
+      RELAYER_KMS_KEY_SANDBOX: alias/keelson-relayer-arbitrum-sepolia
+      AWS_REGION: us-west-2
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: keelson
+          POSTGRES_DB: keelson
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d keelson"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - uses: foundry-rs/foundry-toolchain@v1.9.2
+        with:
+          version: v1.9.0
+          cache-key: relayer-${{ hashFiles('packages/relayer/test/fork.ts') }}
+          cache-restore-keys: relayer-
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run typecheck test build --filter=@keelson/relayer
 
   go:
     runs-on: ubuntu-24.04

@@ -93,15 +93,15 @@ export interface Fork {
   stop(): void;
 }
 
-/** An anvil fork of Arbitrum Sepolia at `FORK_BLOCK`. */
-export async function startFork(port: number): Promise<Fork> {
+/** An anvil fork of Arbitrum Sepolia at `block`. */
+export async function startFork(port: number, block = FORK_BLOCK): Promise<Fork> {
   const rpc = process.env.ARBITRUM_SEPOLIA_RPC_URL;
   if (!rpc) throw new Error("ARBITRUM_SEPOLIA_RPC_URL is not set");
   const anvil: ChildProcess = spawn("anvil", [
     "--fork-url",
     rpc,
     "--fork-block-number",
-    FORK_BLOCK.toString(),
+    block.toString(),
     "--port",
     String(port),
     "--silent",
