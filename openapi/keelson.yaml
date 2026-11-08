@@ -1385,7 +1385,7 @@ components:
       properties:
         agentId:
           type: string
-          pattern: ^(0|[1-9]\d{0,77})$
+          pattern: ^(0|[1-9]\d{0,19})$
           description: The ERC-8004 agent id, a decimal integer.
         chainId:
           type: integer
@@ -1415,7 +1415,7 @@ components:
                 - 11155111
         agentId:
           type: string
-          pattern: ^(0|[1-9]\d{0,77})$
+          pattern: ^(0|[1-9]\d{0,19})$
           description: The ERC-8004 agent id, a decimal integer.
         name:
           type: string
@@ -1450,9 +1450,10 @@ components:
         deadline:
           type: integer
           exclusiveMinimum: 0
-          description: Unix seconds.
+          description: Unix seconds, at most 15 minutes ahead.
         signature:
           type: string
+          maxLength: 8194
           pattern: ^0x([0-9a-fA-F]{2})+$
           description: "The EIP-712 `OperatorLink(uint256 agentId,bytes32
             cnfThumbprint,uint256 deadline)` signature under the domain `{ name:
@@ -2574,7 +2575,7 @@ paths:
           in: path
         - schema:
             type: string
-            pattern: ^(0|[1-9]\d{0,77})$
+            pattern: ^(0|[1-9]\d{0,19})$
             description: The ERC-8004 agent id, a decimal integer.
           required: true
           description: The ERC-8004 agent id, a decimal integer.
@@ -2627,7 +2628,7 @@ paths:
           in: path
         - schema:
             type: string
-            pattern: ^(0|[1-9]\d{0,77})$
+            pattern: ^(0|[1-9]\d{0,19})$
             description: The ERC-8004 agent id, a decimal integer.
           required: true
           description: The ERC-8004 agent id, a decimal integer.
