@@ -60,7 +60,7 @@ contract BondVaultHandler is CommonBase, StdUtils {
         return agents.length;
     }
 
-    function deposit(uint256 funderSeed, uint256 amountSeed, uint256 agentSeed) external {
+    function deposit(uint256 funderSeed, uint256 amountSeed, uint256 agentSeed) public virtual {
         uint256 pk = funderKeys[funderSeed % funderKeys.length];
         address from = vm.addr(pk);
         uint256 balance = pyusd.balanceOf(from);
@@ -78,7 +78,7 @@ contract BondVaultHandler is CommonBase, StdUtils {
         deposited += amount;
     }
 
-    function lock(uint256 which) external {
+    function lock(uint256 which) public virtual {
         uint256 i = which % vectors.length;
         Vector memory v = vectors[i];
         if (locked[i] || block.timestamp >= v.coverage.expiresAt) return;
@@ -94,7 +94,7 @@ contract BondVaultHandler is CommonBase, StdUtils {
         premiums += v.coverage.premium;
     }
 
-    function release(uint256 which) external {
+    function release(uint256 which) public virtual {
         uint256 i = which % vectors.length;
         bytes32 id = vectors[i].coverage.coverageId;
         IKeelsonBondVault.CoverageState memory c = vault.coverages(id);
@@ -102,7 +102,7 @@ contract BondVaultHandler is CommonBase, StdUtils {
         vault.releaseCoverage(id);
     }
 
-    function request(uint256 amountSeed) external {
+    function request(uint256 amountSeed) public virtual {
         uint128 free = vault.bonds(agentId).free;
         if (free == 0) return;
         uint128 amount = uint128(bound(amountSeed, 1, free));
@@ -124,7 +124,7 @@ contract BondVaultHandler is CommonBase, StdUtils {
         );
     }
 
-    function complete(uint256 which) external {
+    function complete(uint256 which) public virtual {
         if (pendingWithdrawals.length == 0) return;
         uint256 i = which % pendingWithdrawals.length;
         uint256 id = pendingWithdrawals[i];
@@ -136,7 +136,7 @@ contract BondVaultHandler is CommonBase, StdUtils {
         pendingWithdrawals.pop();
     }
 
-    function warp(uint256 secondsSeed) external {
+    function warp(uint256 secondsSeed) public virtual {
         vm.warp(block.timestamp + bound(secondsSeed, 1, 6 hours));
     }
 }
