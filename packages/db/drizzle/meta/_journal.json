@@ -120,6 +120,13 @@
       "when": 1794150140817,
       "tag": "0016_erc8004_operators",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1794153660863,
+      "tag": "0017_chain_transactions",
+      "breakpoints": true
     }
   ]
 }

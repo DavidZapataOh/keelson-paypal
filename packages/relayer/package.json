@@ -23,10 +23,13 @@
     "@keelson/chain": "workspace:*",
     "@keelson/db": "workspace:*",
     "@noble/curves": "2.4.0",
+    "ulid": "3.0.2",
     "viem": "catalog:"
   },
   "devDependencies": {
     "@types/node": "26.6.6",
+    "@types/pg": "8.23.1",
+    "pg": "8.23.1",
     "pino": "10.4.0",
     "typescript": "catalog:",
     "vitest": "catalog:"

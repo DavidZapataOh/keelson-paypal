@@ -9,6 +9,7 @@ import {
   parseTransaction,
   recoverAddress,
   recoverTransactionAddress,
+  type TransactionSerializedEIP1559,
   verifyTypedData,
 } from "viem";
 import { arbitrumSepolia } from "viem/chains";
@@ -75,11 +76,13 @@ describe.skipIf(!kms)("kmsAccount (real KMS, sandbox key)", () => {
       maxFeePerGas: 40_000_000n,
       maxPriorityFeePerGas: 0n,
     });
-    const tx = parseTransaction(serialized);
+    const tx = parseTransaction(serialized as TransactionSerializedEIP1559);
     expect(tx.chainId).toBe(arbitrumSepolia.id);
-    expect(await recoverTransactionAddress({ serializedTransaction: serialized })).toBe(
-      account.address,
-    );
+    expect(
+      await recoverTransactionAddress({
+        serializedTransaction: serialized as TransactionSerializedEIP1559,
+      }),
+    ).toBe(account.address);
   });
 
   test("a key the relayer may not use is refused", async () => {
