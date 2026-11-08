@@ -26,8 +26,8 @@ library DstackEvents {
     function replay(RuntimeEvent[] calldata events) internal pure returns (bytes memory rtmr3) {
         rtmr3 = new bytes(48);
         for (uint256 i; i < events.length; ++i) {
-            bytes memory digest = Sha384.hash(abi.encodePacked(EVENT_PREFIX, events[i].name, ":", events[i].payload));
-            rtmr3 = Sha384.hash(abi.encodePacked(rtmr3, digest));
+            bytes memory digest = Sha384.hash(bytes.concat(EVENT_PREFIX, bytes(events[i].name), ":", events[i].payload));
+            rtmr3 = Sha384.hash(bytes.concat(rtmr3, digest));
         }
     }
 
@@ -42,7 +42,7 @@ library DstackEvents {
         RuntimeEvent[] calldata events
     ) internal pure returns (bytes32) {
         return sha256(
-            abi.encodePacked(
+            bytes.concat(
                 mrtd,
                 rtmr0,
                 rtmr1,
@@ -60,13 +60,10 @@ library DstackEvents {
         returns (bytes calldata payload)
     {
         bytes32 nameHash = keccak256(bytes(name));
-        for (uint256 i; i < events.length; ++i) {
-            if (keccak256(bytes(events[i].name)) == nameHash) {
-                payload = events[i].payload;
-                if (payload.length != length) revert BadEventPayload(name);
-                return payload;
-            }
-        }
-        revert MissingEvent(name);
+        uint256 i = 0;
+        while (i < events.length && keccak256(bytes(events[i].name)) != nameHash) ++i;
+        if (i == events.length) revert MissingEvent(name);
+        payload = events[i].payload;
+        if (payload.length != length) revert BadEventPayload(name);
     }
 }
