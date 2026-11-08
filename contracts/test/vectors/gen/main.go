@@ -29,6 +29,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -87,7 +88,6 @@ func writeJSON[T any](v T, err error) error {
 		return err
 	}
 	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", " ")
 	return enc.Encode(v)
 }
 
@@ -219,7 +219,7 @@ func checkInclusion(v inclusionVector) error {
 // negativeConsistency breaks a positive vector in one of three ways, chosen by k.
 func negativeConsistency(v consistencyVector, other hash32, k int) consistencyVector {
 	v.OK = false
-	v.Proof = append([]hash32(nil), v.Proof...)
+	v.Proof = slices.Clone(v.Proof)
 	switch {
 	case k%3 == 0 && len(v.Proof) > 0:
 		v.Proof[k%len(v.Proof)][k%32] ^= 1 << (k % 8)
@@ -233,7 +233,7 @@ func negativeConsistency(v consistencyVector, other hash32, k int) consistencyVe
 
 func negativeInclusion(v inclusionVector, k int) inclusionVector {
 	v.OK = false
-	v.Proof = append([]hash32(nil), v.Proof...)
+	v.Proof = slices.Clone(v.Proof)
 	switch {
 	case k%3 == 0 && len(v.Proof) > 0:
 		v.Proof[k%len(v.Proof)][k%32] ^= 1 << (k % 8)
@@ -301,7 +301,7 @@ func rfc6962Vectors(ctx context.Context, sandboxNote string) (*rfc6962File, erro
 		if err != nil {
 			return nil, err
 		}
-		old, err := sandboxRoot(ctx, fetcher, m)
+		old, err := sandboxRoot(ctx, fetcher, m, size)
 		if err != nil {
 			return nil, err
 		}
@@ -342,9 +342,10 @@ func sandboxProofs(ctx context.Context, size uint64) (*client.HTTPFetcher, *clie
 	return f, pb, err
 }
 
-// sandboxRoot is the root of the sandbox log at size m, from its tiles.
-func sandboxRoot(ctx context.Context, f *client.HTTPFetcher, m uint64) (hash32, error) {
-	leaves, err := client.FetchLeafHashes(ctx, f.ReadTile, 0, m, m)
+// sandboxRoot is the root of the sandbox log at size m, from the tiles of
+// its tree at size n: Tessera keeps only the latest partial tile.
+func sandboxRoot(ctx context.Context, f *client.HTTPFetcher, m, n uint64) (hash32, error) {
+	leaves, err := client.FetchLeafHashes(ctx, f.ReadTile, 0, m, n)
 	if err != nil {
 		return hash32{}, err
 	}
