@@ -20,6 +20,7 @@
     "vectors": "node scripts/passkey-vectors.ts"
   },
   "dependencies": {
+    "@keelson/core": "workspace:*",
     "@noble/curves": "2.4.0",
     "viem": "catalog:"
   },

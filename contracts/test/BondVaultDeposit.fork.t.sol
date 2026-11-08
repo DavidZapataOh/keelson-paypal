@@ -31,9 +31,24 @@ contract BondVaultDepositForkTest is VaultBase {
         emit IKeelsonBondVault.BondDeposited(agentId, from, AMOUNT);
         vm.prank(makeAddr("relayer"));
         vault.depositWithAuthorization(agentId, from, AMOUNT, 0, type(uint256).max, "a", sig);
-        emit log_named_uint("depositWithAuthorization", vm.lastCallGas().gasTotalUsed);
-        assertEq(_bond().free, AMOUNT);
-        assertEq(pyusd.balanceOf(address(vault)) - before, AMOUNT);
+        emit log_named_uint(
+            "depositWithAuthorization execution, first deposit",
+            _executionGas(
+                abi.encodeCall(vault.depositWithAuthorization, (agentId, from, AMOUNT, 0, type(uint256).max, "a", sig))
+            )
+        );
+        (address from2, bytes memory sig2) = _authorization(0, type(uint256).max, "b");
+        vault.depositWithAuthorization(agentId, from2, AMOUNT, 0, type(uint256).max, "b", sig2);
+        emit log_named_uint(
+            "depositWithAuthorization execution, later deposit",
+            _executionGas(
+                abi.encodeCall(
+                    vault.depositWithAuthorization, (agentId, from2, AMOUNT, 0, type(uint256).max, "b", sig2)
+                )
+            )
+        );
+        assertEq(_bond().free, 2 * AMOUNT);
+        assertEq(pyusd.balanceOf(address(vault)) - before, 2 * AMOUNT);
         assertTrue(pyusd.authorizationState(from, keccak256(abi.encode(agentId, bytes32("a")))));
     }
 
@@ -71,7 +86,10 @@ contract BondVaultDepositForkTest is VaultBase {
         bytes memory sig = _signPermit(operatorKey, address(vault), AMOUNT, type(uint256).max);
         vm.prank(makeAddr("relayer"));
         vault.depositWithPermit(agentId, operator, AMOUNT, type(uint256).max, sig);
-        emit log_named_uint("depositWithPermit", vm.lastCallGas().gasTotalUsed);
+        emit log_named_uint(
+            "depositWithPermit execution",
+            _executionGas(abi.encodeCall(vault.depositWithPermit, (agentId, operator, AMOUNT, type(uint256).max, sig)))
+        );
         assertEq(_bond().free, AMOUNT);
         assertEq(pyusd.balanceOf(operator), 0);
     }

@@ -36,7 +36,8 @@
   },
   "demo": {
     "agentId": 351,
-    "operator": "0xcdA4d2330C027Aa025f4A14b525a386CE02AD98f"
+    "operator": "0xcdA4d2330C027Aa025f4A14b525a386CE02AD98f",
+    "merchant": "0x467D2beBb479D9B80Ab1c461243E05A2b82387d8"
   },
   "contracts": {
     "KeelsonDeployer": "0x539638ee1C4021730f9fA63b725c7E9bA02b714A",

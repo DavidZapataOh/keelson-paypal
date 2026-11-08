@@ -1,5 +1,18 @@
+import {
+  type Countersign,
+  KEELSON_TYPES,
+  type KeelsonChainId,
+  keelsonDomain,
+} from "@keelson/core/eip712";
 import { p256 } from "@noble/curves/nist.js";
-import { bytesToHex, concat, type Hex, keccak256 } from "viem";
+import {
+  type Address,
+  bytesToHex,
+  concat,
+  type Hex,
+  keccak256,
+  type TypedDataDefinition,
+} from "viem";
 
 /** A passkey assertion as `KeelsonBondVault` takes it (`PasskeyAssertion.Assertion`). */
 export interface Assertion {
@@ -88,4 +101,55 @@ export function passkeyPublicKey(jwk: P256PublicJwk): { qx: Hex; qy: Hex } {
 /** `keccak256(qx ‖ qy)`, the key `CoverageLocked` names. */
 export function userKeyHash(qx: Hex, qy: Hex): Hex {
   return keccak256(concat([qx, qy]));
+}
+
+export type Coverage = TypedDataDefinition<typeof KEELSON_TYPES, "Coverage">["message"];
+export type CountersignMode = "2of2" | "degraded";
+
+/** The `Coverage` the operator signs (viem `signTypedData`), under the vault's own domain. */
+export function coverageTypedData(
+  coverage: Coverage,
+  chainId: KeelsonChainId,
+  vault: Address,
+): TypedDataDefinition<typeof KEELSON_TYPES, "Coverage"> {
+  return {
+    domain: keelsonDomain(chainId, vault),
+    types: KEELSON_TYPES,
+    primaryType: "Coverage",
+    message: coverage,
+  };
+}
+
+/** `tdx ‖ nitro` for a 2-of-2 countersign, `tdx` alone for a degraded one. */
+export function packCountersigs(
+  mode: CountersignMode,
+  signatures: { tdx: Hex; nitro: Hex | null },
+): Hex {
+  if (mode === "degraded") return signatures.tdx;
+  if (!signatures.nitro) throw new TypeError("a 2-of-2 countersign needs the Nitro signature");
+  return concat([signatures.tdx, signatures.nitro]);
+}
+
+/** The arguments of `KeelsonBondVault.lockCoverage`, for `encodeFunctionData` or `writeContract`. */
+export function lockCoverageArgs(input: {
+  coverage: Coverage;
+  countersign: Countersign;
+  hSd: Hex;
+  assertion: SignedAssertion;
+  publicKeyJwk: P256PublicJwk;
+  operatorSig: Hex;
+  mode: CountersignMode;
+  signatures: { tdx: Hex; nitro: Hex | null };
+}) {
+  const { qx, qy } = passkeyPublicKey(input.publicKeyJwk);
+  return [
+    input.coverage,
+    input.countersign,
+    input.hSd,
+    toAssertion(input.assertion),
+    qx,
+    qy,
+    input.operatorSig,
+    packCountersigs(input.mode, input.signatures),
+  ] as const;
 }
