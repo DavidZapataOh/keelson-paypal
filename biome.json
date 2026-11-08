@@ -18,7 +18,11 @@
       "!**/test/snapshots",
       "!engine/tee/measurements.json",
       "!**/src/generated",
-      "!engine/policy/proofs"
+      "!engine/policy/proofs",
+      "!contracts/lib",
+      "!contracts/out",
+      "!contracts/cache",
+      "!contracts/broadcast"
     ]
   },
   "formatter": {

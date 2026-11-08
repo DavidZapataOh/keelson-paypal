@@ -1,0 +1,35 @@
+{
+  "chainId": 42161,
+  "rpcEnv": "ARBITRUM_ONE_RPC_URL",
+  "forkBlock": 522274000,
+  "external": {
+    "pyusd": "0x46850aD61C2B7d64d08c9C754F45254596696984",
+    "pyusdAssetProtector": "0x3Af3e85f4f97De7AD0f000B724Fb77fE5ffc024B",
+    "pyusdHolder": "0x264bd8291fAE1D75DB2c5F573b07faA6715997B5",
+    "erc8004Identity": "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
+    "erc8004Reputation": "0x8004BAa17C55a88189AE136b182e5fdA19dE9b63",
+    "safeL2": "0xEdd160fEBBD92E350D4D398fb636302fccd67C7e",
+    "safeProxyFactory": "0x14F2982D601c9458F93bd70B218933A6f8165e7b",
+    "safeFallbackHandler": "0x3EfCBb83A4A7AfcB4F68D501E2c2203a38be77f4"
+  },
+  "params": {
+    "disputeWindow": 600,
+    "vetoWindow": 120,
+    "grace": 60,
+    "withdrawalDelay": 900,
+    "instantSlashCap": 100000000,
+    "signersDelay": 900,
+    "timelockMinDelay": 172800
+  },
+  "governance": {
+    "proposer": "0x9c0215b66F6a64c34CCb0126Cb8d027689Fa68b9",
+    "guardianOwners": [
+      "0xA5393a3a866afF571958432cB3CbC6a21400c69e",
+      "0x6397f0a3Ac0701BDFEbe16ae45365CE3ba80beBB",
+      "0x3f2164Bda9BD980f070bC3a693d192ac23EE9a9A"
+    ],
+    "guardianThreshold": 2
+  },
+  "contracts": {},
+  "constructorArgs": {}
+}

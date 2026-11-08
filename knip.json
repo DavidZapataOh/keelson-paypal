@@ -1,5 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignore": ["contracts/**"],
   "workspaces": {
     "engine/tee": {
       "entry": ["scripts/*.ts!"],
@@ -55,6 +56,10 @@
     "services/monitor": {
       "entry": [".railway/railway.ts", "scripts/*.ts", "test/**/*.test.ts", "web/app.js"],
       "project": ["scripts/**/*.ts", "test/**/*.ts", "web/**/*.js"]
+    },
+    "packages/chain": {
+      "entry": ["src/index.ts!", "scripts/generate.ts"],
+      "project": ["src/**/*.ts!", "scripts/**/*.ts", "test/**/*.ts"]
     }
   }
 }
