@@ -1,7 +1,7 @@
 // Command gen writes the RFC 6962 and checkpoint vectors of the contract tests.
 //
 //	gen rfc6962 <sandbox note>                  > rfc6962.json
-//	gen checkpoints <sandbox note a> <sandbox note b> > checkpoints.json
+//	gen checkpoints <sandbox note>              > checkpoints.json
 //	gen note <size>
 //
 // rfc6962 emits every consistency pair and inclusion proof of the conformance
@@ -10,7 +10,7 @@
 // from its public tiles. Every vector is checked with transparency-dev/merkle
 // before it is written.
 //
-// checkpoints asks both live legs to sign the two sandbox notes and the
+// checkpoints asks both live legs to sign the sandbox note and the
 // conformance checkpoints, honest and forked, signed with
 // LOG_SIGNER_KEY_CONFORMANCE. It reads TEE_A_URL, TEE_B_URL, KEELSON_TEE_TOKEN
 // and KEELSON_VERIFYING_CONTRACT.
@@ -66,8 +66,8 @@ func run(args []string) error {
 	switch {
 	case len(args) == 2 && args[0] == "rfc6962":
 		return writeJSON(rfc6962Vectors(ctx, args[1]))
-	case len(args) == 3 && args[0] == "checkpoints":
-		return writeJSON(checkpointVectors(ctx, args[1], args[2]))
+	case len(args) == 2 && args[0] == "checkpoints":
+		return writeJSON(checkpointVectors(ctx, args[1]))
 	case len(args) == 2 && args[0] == "note":
 		n, err := strconv.ParseUint(args[1], 10, 64)
 		if err != nil {
@@ -80,7 +80,7 @@ func run(args []string) error {
 		_, err = os.Stdout.Write(conformance.SignedCheckpoint(s, n, conformance.Tree(n)))
 		return err
 	}
-	return errors.New("usage: gen rfc6962 <note> | gen checkpoints <note a> <note b> | gen note <size>")
+	return errors.New("usage: gen rfc6962 <note> | gen checkpoints <note> | gen note <size>")
 }
 
 func writeJSON[T any](v T, err error) error {
@@ -434,35 +434,19 @@ func sign(ctx context.Context, leg, signedNote string) (*legSignature, error) {
 	return &s, json.Unmarshal(b, &s)
 }
 
-func checkpointVectors(ctx context.Context, notePathA, notePathB string) (*checkpointsFile, error) {
+func checkpointVectors(ctx context.Context, notePath string) (*checkpointsFile, error) {
 	signer, err := conformanceSigner()
 	if err != nil {
 		return nil, err
 	}
-	a, err := readNote(notePathA)
+	a, err := readNote(notePath)
 	if err != nil {
 		return nil, err
 	}
-	b, err := readNote(notePathB)
+	noteA, err := os.ReadFile(notePath)
 	if err != nil {
 		return nil, err
 	}
-	if a.N >= b.N {
-		return nil, fmt.Errorf("sandbox sizes %d and %d are not increasing", a.N, b.N)
-	}
-	_, pb, err := sandboxProofs(ctx, uint64(b.N))
-	if err != nil {
-		return nil, err
-	}
-	ab, err := pb.ConsistencyProof(ctx, uint64(a.N), uint64(b.N))
-	if err != nil {
-		return nil, err
-	}
-	if err := proof.VerifyConsistency(rfc6962.DefaultHasher, uint64(a.N), uint64(b.N), ab, a.Hash[:], b.Hash[:]); err != nil {
-		return nil, fmt.Errorf("sandbox %d → %d: %w", a.N, b.N, err)
-	}
-	noteA, _ := os.ReadFile(notePathA)
-	noteB, _ := os.ReadFile(notePathB)
 
 	t := build(16, conformance.Entry)
 	fork := build(16, forked)
@@ -476,8 +460,7 @@ func checkpointVectors(ctx context.Context, notePathA, notePathB string) (*check
 		return checkpointCase{Name: name, Origin: conformance.Origin, Size: n, Root: hash32(root), ConsistencyFromPrevious: p, SignedNote: string(conformance.SignedCheckpoint(signer, n, root))}
 	}
 	cases := []checkpointCase{
-		{Name: "sandbox-a", Origin: a.Origin, Size: uint64(a.N), Root: hash32(a.Hash), ConsistencyFromPrevious: []hash32{}, SignedNote: string(noteA)},
-		{Name: "sandbox-b", Origin: b.Origin, Size: uint64(b.N), Root: hash32(b.Hash), ConsistencyFromPrevious: toHashes(ab), SignedNote: string(noteB)},
+		{Name: "sandbox", Origin: a.Origin, Size: uint64(a.N), Root: hash32(a.Hash), ConsistencyFromPrevious: []hash32{}, SignedNote: string(noteA)},
 		conf("conformance-8", t, 8, 0),
 		conf("conformance-16", t, 16, 8),
 		conf("fork-8", fork, 8, 0),
