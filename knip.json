@@ -64,6 +64,10 @@
     "packages/chain": {
       "entry": ["src/index.ts!", "scripts/generate.ts"],
       "project": ["src/**/*.ts!", "scripts/**/*.ts", "test/**/*.ts"]
+    },
+    "packages/relayer": {
+      "entry": ["src/index.ts!", "bench/*.bench.ts"],
+      "project": ["src/**/*.ts!", "bench/**/*.ts", "test/**/*.ts"]
     }
   }
 }

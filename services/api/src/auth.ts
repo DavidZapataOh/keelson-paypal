@@ -44,6 +44,7 @@ const scopes = [
   "alibis:read",
   "disputes:read",
   "operators:write",
+  "merchants:write",
 ] as const;
 
 export interface AuthEnv {
