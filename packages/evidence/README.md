@@ -81,10 +81,7 @@ The bytes are the UTF-8 RFC 8785 serialization. Example (two nodes of a page):
       "i": 0,
       "p": null,
       "tag": "p",
-      "attrs": [
-        ["id", "hide-opacity"],
-        ["style", "opacity: 0"]
-      ],
+      "attrs": [["id", "hide-opacity"], ["style", "opacity: 0"]],
       "box": [384, 306, 864, 24],
       "style": {
         "display": "block",
