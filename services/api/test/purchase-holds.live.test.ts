@@ -1,7 +1,7 @@
 import { cartHash, toPayPalValue } from "@keelson/core";
-import { eq, events, purchaseHolds } from "@keelson/db";
+import { eq, events, purchaseHolds, transition } from "@keelson/db";
 import { closeMandate } from "@keelson/mandate";
-import { purchaseHoldCustomId, purchaseHoldDigest } from "@keelson/paypal";
+import { ids, purchaseHoldCustomId, purchaseHoldDigest } from "@keelson/paypal";
 import { pino } from "pino";
 import { ulid } from "ulid";
 import { bytesToHex } from "viem";
@@ -12,7 +12,7 @@ import { call } from "../src/paypal.ts";
 import { createTee } from "../src/tee/config.ts";
 import { refreshLeg } from "../src/tee/signers.ts";
 import { EvidenceUploader } from "./evidence.ts";
-import { APP_ORIGIN, holdHarness, row, sandbox } from "./hold-live.ts";
+import { APP_ORIGIN, afterAuthorize, holdHarness, row, sandbox } from "./hold-live.ts";
 import { testDb, testKv } from "./setup.ts";
 import { asAgent, asUser, carts, headerPrincipal, live, liveEnv } from "./tee-live.ts";
 
@@ -50,10 +50,13 @@ describe.skipIf(!live)("per-purchase holds (live sandbox and legs)", { timeout: 
   const authorized: string[] = [];
 
   type Mandate = Awaited<ReturnType<typeof signed>>;
-  const multi = () =>
+  /** A mandate allowing two merchants, with a budget of `budget` minor units. */
+  const multi = (budget?: number) =>
     signed((m) => {
       const allowed = m.checkout.constraints.find((c) => c.type === "checkout.allowed_merchants");
       if (allowed?.type === "checkout.allowed_merchants") allowed.allowed.push(TRAILHUB);
+      const total = m.payment.constraints.find((c) => c.type === "payment.budget");
+      if (budget !== undefined && total?.type === "payment.budget") total.max = budget;
     });
 
   const send = async (path: string, body: unknown, headers: Record<string, string>) => {
@@ -76,7 +79,7 @@ describe.skipIf(!live)("per-purchase holds (live sandbox and legs)", { timeout: 
     m: Mandate,
     requestId = ulid(),
     o: { amountMinor?: bigint; merchant?: string; key?: CryptoKey } = {},
-  ) =>
+  ): Promise<{ status: number; body: Record<string, unknown> }> =>
     send(
       `/v1/mandates/${m.mid}/holds`,
       {
@@ -91,9 +94,9 @@ describe.skipIf(!live)("per-purchase holds (live sandbox and legs)", { timeout: 
     );
 
   /** Holds, approves and authorizes one demo cart; resolves to its request and authorization ids. */
-  const heldCart = async (m: Mandate) => {
+  const heldCart = async (m: Mandate, amountMinor?: bigint) => {
     const requestId = ulid();
-    const held = await askHold(m, requestId);
+    const held = await askHold(m, requestId, amountMinor === undefined ? {} : { amountMinor });
     expect(held.status, JSON.stringify(held.body)).toBe(201);
     const orderId = held.body.orderId as string;
     await approve(orderId, m.mid);
@@ -127,7 +130,8 @@ describe.skipIf(!live)("per-purchase holds (live sandbox and legs)", { timeout: 
   beforeAll(async () => {
     await refreshLeg(testDb, "a", tee);
     await refreshLeg(testDb, "b", tee);
-    mandate = await multi();
+    // Room for every cart these tests hold under one mandate.
+    mandate = await multi(200_000);
   }, 120_000);
 
   afterAll(async () => {
@@ -235,6 +239,88 @@ describe.skipIf(!live)("per-purchase holds (live sandbox and legs)", { timeout: 
     const elsewhere = await askHold(mandate, ulid(), { merchant: TRAILHUB.id });
     expect(elsewhere.status).toBe(422);
     expect(elsewhere.body.type).toMatch(/merchant-not-capturable$/);
+  });
+
+  test("open cart holds cannot together exceed the remaining budget", async () => {
+    const small = await multi();
+    const first = await askHold(small);
+    expect(first.status, JSON.stringify(first.body)).toBe(201);
+    const over = await askHold(small);
+    expect(over.status, JSON.stringify(over.body)).toBe(422);
+    expect(over.body.type).toMatch(/holds-exceed-budget$/);
+    const fits = await askHold(small, ulid(), { amountMinor: 10_000n - TOTAL });
+    expect(fits.status, JSON.stringify(fits.body)).toBe(201);
+  });
+
+  test("a cart authorized after the mandate was revoked is voided", async () => {
+    const m = await multi();
+    const racing = createApp({
+      db: testDb,
+      kv: testKv,
+      log: pino({ level: "silent" }),
+      appOrigin: APP_ORIGIN,
+      authenticate: headerPrincipal,
+      paypal: afterAuthorize(paypal, async () => {
+        await transition(testDb, "mandates", m.mid, "ACTIVE", "REVOKED");
+      }),
+      requestTimeoutMs: 60_000,
+    });
+    const requestId = ulid();
+    const held = await askHold(m, requestId);
+    expect(held.status, JSON.stringify(held.body)).toBe(201);
+    const orderId = held.body.orderId as string;
+    await approve(orderId, m.mid);
+    const res = await racing.request(`/v1/mandates/${m.mid}/holds/${requestId}/authorize`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": ulid(), ...asUser(m.sub) },
+      body: JSON.stringify({ orderId }),
+    });
+    const order = await call(paypal.paypal.orders.getOrder({ id: orderId }));
+    const authorizationId = order.purchaseUnits?.[0]?.payments?.authorizations?.[0]?.id as string;
+    authorized.push(authorizationId);
+    console.info(`cart hold ${orderId} authorized after revocation: ${authorizationId}`);
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { type: string }).type).toMatch(/hold-not-pending$/);
+    expect(
+      (await call(paypal.paypal.payments.getAuthorizedPayment({ authorizationId }))).status,
+    ).toBe("VOIDED");
+    expect((await purchaseHoldOf(testDb, requestId))?.state).toBe("VOIDED");
+  });
+
+  test("revoking voids a pending cart hold whose order PayPal authorized", async () => {
+    const m = await multi();
+    const requestId = ulid();
+    const held = await askHold(m, requestId);
+    expect(held.status, JSON.stringify(held.body)).toBe(201);
+    const orderId = held.body.orderId as string;
+    await approve(orderId, m.mid);
+    const done = await call(
+      paypal.paypal.orders.authorizeOrder({
+        id: orderId,
+        paypalRequestId: ids.operationRequestId(orderId, "authorize"),
+      }),
+    );
+    const authorizationId = done.purchaseUnits?.[0]?.payments?.authorizations?.[0]?.id as string;
+    authorized.push(authorizationId);
+    console.info(`pending cart hold ${orderId} authorized outside the route: ${authorizationId}`);
+    expect((await purchaseHoldOf(testDb, requestId))?.state).toBe("PENDING");
+    const revoked = await send(`/v1/mandates/${m.mid}/revoke`, {}, asUser(m.sub));
+    expect(revoked, JSON.stringify(revoked.body)).toEqual({
+      status: 200,
+      body: { state: "REVOKED" },
+    });
+    expect(
+      (await call(paypal.paypal.payments.getAuthorizedPayment({ authorizationId }))).status,
+    ).toBe("VOIDED");
+    expect((await purchaseHoldOf(testDb, requestId))?.state).toBe("VOIDED");
+  });
+
+  test("countersign refuses a cart that is not the one held for the request", async () => {
+    const cheaper = await heldCart(mandate, TOTAL - 100n);
+    const res = await countersign(mandate, cheaper.requestId, cheaper.authorizationId);
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    expect(res.body.type).toMatch(/purchase-hold-mismatch$/);
+    expect(res.body.field).toBe("amount");
   });
 
   test("a mandate with one merchant holds its budget and refuses cart holds", async () => {
