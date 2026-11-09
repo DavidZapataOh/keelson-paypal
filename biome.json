@@ -68,6 +68,10 @@
       }
     },
     {
+      "includes": ["apps/verify/src/styles.css"],
+      "css": { "parser": { "tailwindDirectives": true } }
+    },
+    {
       "includes": ["apps/landing/src/styles/global.css"],
       "linter": {
         "rules": {
