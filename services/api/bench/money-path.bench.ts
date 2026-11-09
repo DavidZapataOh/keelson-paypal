@@ -120,9 +120,7 @@ async function openHold(count: number): Promise<Hold> {
   const passkey = await SoftwarePasskey.create();
   const sub = `kls_usr_${randomBytes(8).toString("hex")}`;
   await seedUser(db, passkey, sub);
-  // Leg A keeps each countersign's reservation until the countersign expires (900 s), on top
-  // of the capture PayPal reports, so a mandate spent in quick succession needs twice its total.
-  const max = 2 * count * PRICE_MINOR;
+  const max = count * PRICE_MINOR;
   const signed = await signedMandate(passkey, sub, demoOperator, (m) => {
     m.mid = ulid();
     m.payment.constraints = m.payment.constraints.map((c) =>
