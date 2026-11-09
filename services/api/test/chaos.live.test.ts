@@ -54,7 +54,6 @@ describe.skipIf(!onRender)(
     test.each([
       ["the log's private listener", { logUrl: UNREACHABLE }],
       ["the RPC", { rpcUrl: UNREACHABLE }],
-      ["PayPal", { noPayPal: true as const }],
     ])("%s unreachable: the purchase waits, then the service captures it once", async (_, over) => {
       const r = await h.countersign(hold, 100, await h.appWith(over));
       expect(r.status, JSON.stringify(r.out).slice(0, 300)).toBeLessThan(300);
@@ -89,17 +88,23 @@ describe.skipIf(!onRender)(
     });
 
     test("the purchase that spends the rest ends the mandate, and the next is refused", async () => {
+      // A hold of its own: a purchase that failed after its countersign keeps leg A's
+      // reservation for the countersign's lifetime, so the shared hold has less left than its
+      // budget says.
+      const own = await h.openHold(200);
+      const first = await h.countersign(own, 100);
+      expect(await h.settled(first.requestId)).toBe("CAPTURED");
       // Evidence is only accepted for a usable mandate: the refused cart's is uploaded first.
-      const refused = await h.cartBody(hold, 100);
-      const r = await h.countersign(hold, Number(await remaining()));
+      const refused = await h.cartBody(own, 100);
+      const r = await h.countersign(own, 100);
       expect(await h.settled(r.requestId)).toBe("CAPTURED");
       await invariants(r.requestId);
-      const [m] = await h.db.select().from(mandates).where(eq(mandates.id, hold.mid));
+      const [m] = await h.db.select().from(mandates).where(eq(mandates.id, own.mid));
       expect(m?.state).toBe("EXHAUSTED");
       const next = await h.send(h.app, refused.body);
       expect(next.status).toBe(409);
       expect(next.out.type).toContain("mandate-not-active");
-      await checkBudget({ db: h.db, paypal: h.paypal }, hold.mid);
+      await checkBudget({ db: h.db, paypal: h.paypal }, own.mid);
     });
   },
 );

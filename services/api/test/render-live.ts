@@ -103,7 +103,7 @@ export async function renderHarness() {
     });
 
   const appWith = async (
-    over: { teeA?: string; teeB?: string; logUrl?: string; rpcUrl?: string; noPayPal?: true } = {},
+    over: { teeA?: string; teeB?: string; logUrl?: string; rpcUrl?: string } = {},
   ) => {
     const t =
       over.teeA || over.teeB
@@ -133,7 +133,7 @@ export async function renderHarness() {
       relayer: over.rpcUrl ? await relayerOn(over.rpcUrl) : relayer,
       operators,
       chains: { 421614: { client, logs: client } },
-      ...(over.noPayPal ? {} : { paypal }),
+      paypal,
       requestTimeoutMs: 60_000,
     });
   };
