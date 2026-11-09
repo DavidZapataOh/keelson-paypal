@@ -6,7 +6,18 @@ import {
   toHex,
   toPayPalValue,
 } from "@keelson/core";
-import { and, type Db, eq, mandates, purchaseHolds, purchases, sql, transition } from "@keelson/db";
+import {
+  and,
+  type Db,
+  eq,
+  isNull,
+  like,
+  mandates,
+  purchaseHolds,
+  purchases,
+  sql,
+  transition,
+} from "@keelson/db";
 import { ids, PayPalError } from "@keelson/paypal";
 import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
@@ -18,7 +29,11 @@ import { publishPurchase } from "./events.ts";
 import { done, final, type Outcome, retry } from "./outcome.ts";
 
 /** A capture is sent only this long after the countersign was issued, well inside its lifetime. */
-export const CAPTURE_WINDOW_SEC = Number(process.env.CAPTURE_WINDOW_SEC ?? 600);
+export const CAPTURE_WINDOW_SEC = ((v) => (Number.isSafeInteger(v) && v > 0 && v <= 600 ? v : 600))(
+  Number(process.env.CAPTURE_WINDOW_SEC),
+);
+/** PayPal answers these for the caller or the moment, never for the capture itself. */
+const TRANSIENT = new Set([401, 408, 409, 429]);
 /** Authorization refusals that mean the hold moved to another authorization or is gone. */
 const AUTHORIZATION_GONE = new Set([
   "AUTHORIZATION_VOIDED",
@@ -65,11 +80,17 @@ export async function invoiceFor(
   purchaseId: string,
 ): Promise<{ invoiceId: string; requestId: string; first: boolean } | undefined> {
   return deps.db.transaction(async (tx) => {
-    const [p] = await tx.select().from(purchases).where(eq(purchases.id, purchaseId));
+    const [{ mandateId } = { mandateId: undefined }] = await tx
+      .select({ mandateId: purchases.mandateId })
+      .from(purchases)
+      .where(eq(purchases.id, purchaseId));
+    if (!mandateId) return undefined;
+    // The mandate first, then the purchase: every path that locks both locks them in this order.
+    await tx.execute(sql`select 1 from mandates where id = ${mandateId} for update`);
+    const [p] = await tx.select().from(purchases).where(eq(purchases.id, purchaseId)).for("update");
     if (!p?.countersign || !p.countersignDigest || !p.paypalOrderId) return undefined;
     const requestId = ids.requestIdFromDigest(p.countersignDigest);
     if (p.invoiceId) return { invoiceId: p.invoiceId, requestId, first: false };
-    await tx.execute(sql`select 1 from mandates where id = ${p.mandateId} for update`);
     const [{ seq } = { seq: 1 }] = await tx
       .select({ seq: sql<number>`coalesce(max(${purchases.captureSeq}), 0)::int + 1` })
       .from(purchases)
@@ -89,7 +110,7 @@ export async function invoiceFor(
     await tx
       .update(purchases)
       .set({ captureSeq: seq, invoiceId })
-      .where(eq(purchases.id, purchaseId));
+      .where(and(eq(purchases.id, purchaseId), isNull(purchases.invoiceId)));
     return { invoiceId, requestId, first: true };
   });
 }
@@ -138,7 +159,6 @@ export async function captureStep(
   now: () => number = Date.now,
 ): Promise<Outcome<{ captureId: string; status: string }>> {
   const { db, log, paypal } = deps;
-  if (!paypal) return final("capture:paypal-unavailable");
   const [p] = await db.select().from(purchases).where(eq(purchases.id, purchaseId));
   if (!p) throw new Error(`no purchase ${purchaseId}`);
   if (p.state === "CAPTURED" && p.paypalCaptureId) {
@@ -148,6 +168,12 @@ export async function captureStep(
   const cs = p.countersign as unknown as CountersignJson;
   const amount = moneyOf(p);
   if (!p.paypalOrderId) return final("capture:no-order");
+  // A process without PayPal leaves the capture to one that has it, while there is time.
+  if (!paypal) {
+    return now() / 1000 >= Number(cs.issuedAt) + CAPTURE_WINDOW_SEC
+      ? final("capture:window-closed")
+      : retry("capture:paypal-unavailable");
+  }
 
   const invoice = await invoiceFor({ db, paypal }, purchaseId);
   if (!invoice) return final("capture:invoice-exhausted");
@@ -157,32 +183,41 @@ export async function captureStep(
     await commitCapture(deps, purchaseId, found);
     return done({ captureId: found.id, status: found.status });
   };
+  let sent = !invoice.first;
+  /** Fails the purchase, unless a capture an earlier attempt sent is on the order after all. */
+  const refuse = async (reason: string) =>
+    (sent
+      ? await adopt(await findCapture(paypal, p.paypalOrderId as string, invoice.invoiceId))
+      : undefined) ?? final(reason);
+  const closed = now() / 1000 >= Number(cs.issuedAt) + CAPTURE_WINDOW_SEC;
 
   try {
-    if (now() / 1000 >= Number(cs.issuedAt) + CAPTURE_WINDOW_SEC) {
-      return (
-        (await adopt(await findCapture(paypal, p.paypalOrderId, invoice.invoiceId))) ??
-        final("capture:window-closed")
-      );
+    if (closed) {
+      sent = true;
+      return await refuse("capture:window-closed");
     }
-    if (!invoice.first) {
+    if (sent) {
       const adopted = await adopt(await findCapture(paypal, p.paypalOrderId, invoice.invoiceId));
       if (adopted) return adopted;
     }
 
     const [m] = await db.select().from(mandates).where(eq(mandates.id, p.mandateId));
-    if (m?.state !== "ACTIVE") return final(`capture:mandate-${m?.state ?? "missing"}`);
+    if (m?.state !== "ACTIVE") return await refuse(`capture:mandate-${m?.state ?? "missing"}`);
+    if (m.revokeRequestedAt !== null) return await refuse("capture:mandate-revoked");
+    if (amount.minor > m.remainingMinor) return await refuse("capture:budget-exceeded");
     const perPurchase = m.holdMode === "per_purchase";
-    const authorizationOf = async () =>
-      perPurchase
-        ? (await purchaseHoldOf(db, purchaseId))?.authorizationId
-        : (await holdOf(db, p.mandateId))?.authorizationId;
+    const authorizationOf = async () => {
+      if (!perPurchase) return (await holdOf(db, p.mandateId))?.authorizationId;
+      const h = await purchaseHoldOf(db, purchaseId);
+      return h?.mandateId === p.mandateId && h.state === "AUTHORIZED" ? h.authorizationId : null;
+    };
     let authorizationId = await authorizationOf();
-    if (!authorizationId) return final("capture:no-authorization");
+    if (!authorizationId) return await refuse("capture:no-authorization");
     const finalCapture = perPurchase || amount.minor === m.remainingMinor;
 
     for (let attempt = 0; ; attempt++) {
       try {
+        sent = true;
         const res = await call(
           paypal.paypal.payments.captureAuthorizedPayment({
             authorizationId,
@@ -202,18 +237,15 @@ export async function captureStep(
           invoiceId: invoice.invoiceId,
           final: finalCapture,
         };
-        if (!sameMoney(capture.amount, amount)) return final("capture:amount-mismatch");
+        if (!sameMoney(capture.amount, amount)) {
+          log.error({ purchaseId, captureId: res.id }, "PayPal captured another amount");
+          return final("capture:amount-mismatch");
+        }
         await commitCapture(deps, purchaseId, capture);
         return done({ captureId: capture.id, status: capture.status });
       } catch (err) {
-        if (!(err instanceof PayPalError)) throw err;
+        if (!(err instanceof PayPalError) || TRANSIENT.has(err.status)) throw err;
         const issue = err.details[0]?.issue ?? `HTTP_${err.status}`;
-        if (issue === "DUPLICATE_INVOICE_ID") {
-          return (
-            (await adopt(await findCapture(paypal, p.paypalOrderId, invoice.invoiceId))) ??
-            final("capture:DUPLICATE_INVOICE_ID")
-          );
-        }
         if (AUTHORIZATION_GONE.has(issue) && attempt === 0) {
           const current = await authorizationOf();
           if (current && current !== authorizationId) {
@@ -221,12 +253,15 @@ export async function captureStep(
             continue;
           }
         }
-        return final(`capture:${issue}`);
+        return await refuse(`capture:${issue}`);
       }
     }
   } catch (err) {
-    if (err instanceof PayPalError) return final(`capture:HTTP_${err.status}`);
-    if (err instanceof PayPalUnavailableError) {
+    // A lookup or a call that PayPal did not answer for the capture itself: try again later.
+    if (err instanceof PayPalError || err instanceof PayPalUnavailableError) {
+      if (closed && err instanceof PayPalError && err.status === 404) {
+        return final("capture:window-closed");
+      }
       return retry("capture:paypal-unavailable");
     }
     throw err;
@@ -247,12 +282,28 @@ export async function commitCapture(
 ): Promise<"applied" | "unchanged"> {
   const { db } = deps;
   const applied = await db.transaction(async (tx) => {
-    const moved = await transition(tx, "purchases", purchaseId, "COVERED", "CAPTURED", {
+    const recorded = {
       paypalCaptureId: capture.id,
       invoiceId: capture.invoiceId,
       captureStatus: capture.status,
       capturedAt: new Date(),
-    });
+    };
+    let moved = await transition(tx, "purchases", purchaseId, "COVERED", "CAPTURED", recorded);
+    if (!moved) {
+      // Failed at the capture step, yet PayPal captured: the capture is the truth.
+      const repaired = await tx
+        .update(purchases)
+        .set({ ...recorded, state: "CAPTURED", failureReason: null, updatedAt: sql`now()` })
+        .where(
+          and(
+            eq(purchases.id, purchaseId),
+            eq(purchases.state, "FAILED"),
+            like(purchases.failureReason, "capture:%"),
+          ),
+        )
+        .returning({ id: purchases.id });
+      moved = repaired.length > 0;
+    }
     if (!moved) return undefined;
     const [p] = await tx
       .select({ mandateId: purchases.mandateId, amountMinor: purchases.amountMinor })
@@ -336,8 +387,10 @@ export async function reconcileCapture(
     log.warn({ purchaseId, captureId }, "capture amount is not the countersigned amount");
     return { effect: "mismatch", purchaseId, resource };
   }
-  if (p.state === "COVERED") {
+  const failedAtCapture = p.state === "FAILED" && p.failureReason?.startsWith("capture:");
+  if (p.state === "COVERED" || failedAtCapture) {
     if (status === "DENIED" || status === "DECLINED" || status === "FAILED") {
+      if (failedAtCapture) return { effect: "unchanged", purchaseId, resource };
       const moved = await transition(db, "purchases", purchaseId, "COVERED", "FAILED", {
         failureReason: `capture:${status}`,
       });

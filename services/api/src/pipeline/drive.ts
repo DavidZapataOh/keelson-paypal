@@ -15,6 +15,7 @@ import { logStep } from "./log-step.ts";
 import type { Outcome } from "./outcome.ts";
 
 const LEASE_SEC = 20;
+const HEARTBEAT_MS = 5_000;
 const DRIVEN = ["COUNTERSIGNED", "LOGGED", "COVERED"] as const;
 const RESUME_BATCH = 20;
 const CHAIN_ID = 421614;
@@ -78,9 +79,13 @@ export async function viewOf(db: Db, purchaseId: string): Promise<PurchaseView |
   return p ? purchaseView(p) : undefined;
 }
 
-/** Takes the purchase for `LEASE_SEC` if no other driver holds it and it still has steps to run. */
-async function lease(db: Db, purchaseId: string): Promise<Row | undefined> {
-  const [row] = await db
+/**
+ * Takes the purchase for `LEASE_SEC` if no other driver holds it and it still has steps to run.
+ * The lease's expiry, as Postgres prints it, is the driver's token: only its holder renews or
+ * releases it.
+ */
+async function lease(db: Db, purchaseId: string): Promise<{ row: Row; token: string } | undefined> {
+  const [taken] = await db
     .update(purchases)
     .set({ leaseUntil: sql`now() + make_interval(secs => ${LEASE_SEC})` })
     .where(
@@ -90,15 +95,23 @@ async function lease(db: Db, purchaseId: string): Promise<Row | undefined> {
         or(isNull(purchases.leaseUntil), lt(purchases.leaseUntil, sql`now()`)),
       ),
     )
-    .returning();
-  return row;
+    .returning({ id: purchases.id, token: sql<string>`${purchases.leaseUntil}::text` });
+  if (!taken) return undefined;
+  const [row] = await db.select().from(purchases).where(eq(purchases.id, purchaseId));
+  return row ? { row, token: taken.token } : undefined;
 }
 
-const renew = (db: Db, purchaseId: string) =>
-  db
+const held = (purchaseId: string, token: string) =>
+  and(eq(purchases.id, purchaseId), sql`${purchases.leaseUntil} = ${token}::timestamptz`);
+
+async function renew(db: Db, purchaseId: string, token: string): Promise<string | undefined> {
+  const [r] = await db
     .update(purchases)
     .set({ leaseUntil: sql`now() + make_interval(secs => ${LEASE_SEC})` })
-    .where(eq(purchases.id, purchaseId));
+    .where(held(purchaseId, token))
+    .returning({ token: sql<string>`${purchases.leaseUntil}::text` });
+  return r?.token;
+}
 
 async function fail(
   deps: PipelineDeps,
@@ -142,8 +155,22 @@ async function run<T>(
  * purchase whose driver died is driven again from what its row says.
  */
 export async function drivePurchase(deps: PipelineDeps, purchaseId: string): Promise<PurchaseView> {
-  const row = await lease(deps.db, purchaseId);
-  if (!row) return (await viewOf(deps.db, purchaseId)) as PurchaseView;
+  const taken = await lease(deps.db, purchaseId);
+  if (!taken) return (await viewOf(deps.db, purchaseId)) as PurchaseView;
+  const { row } = taken;
+  let token = taken.token;
+  let lost = false;
+  // Steps can outlast the lease; a heartbeat keeps it while this driver is alive.
+  const heartbeat = setInterval(() => {
+    void renew(deps.db, purchaseId, token).then(
+      (t) => {
+        if (t) token = t;
+        else lost = true;
+      },
+      (err: unknown) => deps.log.warn({ err, purchaseId }, "lease not renewed"),
+    );
+  }, HEARTBEAT_MS);
+  heartbeat.unref();
   try {
     const cs = row.countersign as unknown as CountersignJson;
     const windowClosed = () => Date.now() / 1000 >= Number(cs.issuedAt) + CAPTURE_WINDOW_SEC;
@@ -209,17 +236,22 @@ export async function drivePurchase(deps: PipelineDeps, purchaseId: string): Pro
         txHash: cover.value.txHash,
       });
       state = "COVERED";
-      await renew(deps.db, purchaseId);
+      const renewed = await renew(deps.db, purchaseId, token);
+      // Another driver took over while this one was slow; it captures, not this one.
+      if (!renewed || lost) return (await viewOf(deps.db, purchaseId)) as PurchaseView;
+      token = renewed;
     }
 
+    if (lost) return (await viewOf(deps.db, purchaseId)) as PurchaseView;
     const capture = await run(deps, purchaseId, "capture", () => captureStep(deps, purchaseId));
     if (capture.kind === "final") await fail(deps, purchaseId, "COVERED", capture.reason);
     return (await viewOf(deps.db, purchaseId)) as PurchaseView;
   } finally {
+    clearInterval(heartbeat);
     await deps.db
       .update(purchases)
       .set({ leaseUntil: null })
-      .where(eq(purchases.id, purchaseId))
+      .where(held(purchaseId, token))
       .catch((err: unknown) => deps.log.error({ err, purchaseId }, "lease not released"));
   }
 }

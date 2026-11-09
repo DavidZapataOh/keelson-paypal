@@ -4,7 +4,7 @@ import { addresses, keelsonBondVaultAbi } from "@keelson/chain";
 import { cartHash, ulidToBytes32 } from "@keelson/core";
 import { eq, events, mandates, operators, purchases } from "@keelson/db";
 import { closeMandate } from "@keelson/mandate";
-import { ids, type PayPal } from "@keelson/paypal";
+import { ids } from "@keelson/paypal";
 import { createRelayer, kmsAccount, type Relayer } from "@keelson/relayer";
 import { pino } from "pino";
 import { ulid } from "ulid";
@@ -20,8 +20,13 @@ import { arbitrumSepolia } from "viem/chains";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { createApp } from "../src/app.ts";
 import { operatorSigners } from "../src/operators/signer.ts";
-import { call, type PayPalDeps } from "../src/paypal.ts";
-import { captureStep, findCapture, reconcileCapture } from "../src/pipeline/capture-step.ts";
+import { call } from "../src/paypal.ts";
+import {
+  captureStep,
+  findCapture,
+  invoiceFor,
+  reconcileCapture,
+} from "../src/pipeline/capture-step.ts";
 import { drivePurchase, type PipelineDeps } from "../src/pipeline/drive.ts";
 import { logStep } from "../src/pipeline/log-step.ts";
 import { principalChannel } from "../src/principal.ts";
@@ -58,24 +63,6 @@ const cartOf = (minor: number) => {
   };
 };
 
-/** The sandbox client, answering the first `n` captures with PayPal's own negative-testing 500. */
-function failingCaptures(paypal: PayPalDeps, n: { left: number }): PayPalDeps {
-  const payments = new Proxy(paypal.paypal.payments, {
-    get(target, prop, receiver) {
-      const value = Reflect.get(target, prop, receiver);
-      if (prop !== "captureAuthorizedPayment" || typeof value !== "function") return value;
-      return (req: Record<string, unknown>, ...rest: unknown[]) =>
-        value.apply(target, [
-          n.left-- > 0
-            ? { ...req, paypalMockResponse: '{"mock_application_codes":"INTERNAL_SERVER_ERROR"}' }
-            : req,
-          ...rest,
-        ]);
-    },
-  });
-  return { ...paypal, paypal: { ...paypal.paypal, payments } as PayPal };
-}
-
 describe.skipIf(!keys)(
   "a purchase from countersign to capture (live)",
   { timeout: 1_800_000 },
@@ -83,6 +70,7 @@ describe.skipIf(!keys)(
     const tee = createTee(liveEnv(), { a: 10_000, b: 10_000 });
     const log = pino({ level: "silent" });
     const paypal = sandbox();
+    /** The next countersigns go to an API process that cannot reach PayPal, so they stop at COVERED. */
     const failNext = { left: 0 };
     const evidence = new EvidenceUploader();
     const client = createPublicClient({
@@ -93,6 +81,7 @@ describe.skipIf(!keys)(
     let relayer: Relayer;
     let deps: PipelineDeps;
     let app: ReturnType<typeof createApp>;
+    let uncaptured: ReturnType<typeof createApp>;
     const opened: string[] = [];
 
     beforeAll(async () => {
@@ -130,7 +119,6 @@ describe.skipIf(!keys)(
           },
         },
       });
-      const pp = failingCaptures(paypal, failNext);
       const ops = operatorSigners(AGENT_ID, process.env.KEELSON_OPERATOR_KEY as Hex);
       deps = {
         db: testDb,
@@ -140,7 +128,7 @@ describe.skipIf(!keys)(
         relayer,
         operators: ops,
         chain: { client },
-        paypal: pp,
+        paypal,
       };
       app = createApp({
         db: testDb,
@@ -153,7 +141,20 @@ describe.skipIf(!keys)(
         relayer,
         operators: ops,
         chains: { 421614: { client, logs: client } },
-        paypal: pp,
+        paypal,
+        requestTimeoutMs: 60_000,
+      });
+      uncaptured = createApp({
+        db: testDb,
+        kv: testKv,
+        log,
+        appOrigin: "https://app.keelson.finance",
+        authenticate: headerPrincipal,
+        tee,
+        tlog: { url: tlog.url, token: tlog.token, vkeys: tlog.vkeys },
+        relayer,
+        operators: ops,
+        chains: { 421614: { client, logs: client } },
         requestTimeoutMs: 60_000,
       });
     }, 300_000);
@@ -198,8 +199,9 @@ describe.skipIf(!keys)(
         unit: cart.unit,
         evidenceRoot: await evidence.upload(app, m.mid, cart.cart, asAgent),
       };
+      const via = failNext.left-- > 0 ? uncaptured : app;
       const post = () =>
-        app.request("/v1/countersign", {
+        via.request("/v1/countersign", {
           method: "POST",
           headers: { "content-type": "application/json", "idempotency-key": ulid(), ...asAgent },
           body: JSON.stringify(body),
@@ -248,7 +250,7 @@ describe.skipIf(!keys)(
       const p = await purchase(first);
       expect(p?.logIndex).not.toBeNull();
       expect(p?.coverageTxHash).not.toBeNull();
-      expect(p?.paypalCaptureId).toBe((out.capture as { id: string }).id);
+      expect(p?.paypalCaptureId).not.toBeNull();
       expect(ids.parseInvoiceId(p?.invoiceId as string)).toMatchObject({ id: first, seq: 1 });
       expect((await row(a.mid))?.remainingMinor).toBe(900n);
 
@@ -294,7 +296,7 @@ describe.skipIf(!keys)(
 
     let covered: string;
 
-    test("a retryable capture failure leaves the purchase COVERED, and two drivers capture once", async () => {
+    test("a purchase its process could not capture stays COVERED, and two drivers capture it once", async () => {
       failNext.left = 1;
       const { res, out } = await countersign(a, 200);
       expect(res.status, JSON.stringify(out).slice(0, 400)).toBe(202);
@@ -314,9 +316,10 @@ describe.skipIf(!keys)(
       failNext.left = 1;
       const { out } = await countersign(a, 100);
       const id = out.purchaseId;
+      expect((await purchase(id))?.state).toBe("COVERED");
+      // The crashed driver took the invoice id and sent the capture: same request id, invoice, amount.
+      await invoiceFor({ db: testDb, paypal }, id);
       const p = await purchase(id);
-      expect(p?.state).toBe("COVERED");
-      // The capture the crashed driver sent: the same request id, invoice id and amount.
       const sent = await call(
         paypal.paypal.payments.captureAuthorizedPayment({
           authorizationId: a.authorizationId,

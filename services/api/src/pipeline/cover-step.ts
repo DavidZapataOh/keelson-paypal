@@ -34,6 +34,8 @@ const PREMIUM_BPS = 100n;
 const PENDING_WAIT_MS = 8_000;
 const PARAMS_TTL_MS = 60_000;
 const ACTIVE = 1;
+/** Refusals of the relayer's own state, not of the coverage: a later attempt may be sent. */
+const RETRYABLE = new Set(["chain-unavailable", "gas-price-cap", "relayer-low-balance"]);
 const ZERO = `0x${"00".repeat(32)}` as Hex;
 
 export interface CoverStepDeps {
@@ -101,43 +103,41 @@ export async function coverStep(
   const { qx, qy } = passkeyPublicKey(jwk);
 
   const key = coverageKey(cs.requestId);
-  let record: TxRecord | undefined = await relayer.get(CHAIN_ID, key);
+  let record: TxRecord | undefined;
   try {
-    if (!record || record.status === "rejected" || record.status === "dropped") {
-      const amount = cs.amount * PYUSD_PER_MINOR;
-      const coverage: Coverage = {
-        coverageId: cs.requestId,
-        agentId: cs.agentId,
-        merchant,
-        amount,
-        premium: premiumOf(amount),
-        // From the countersign rather than the clock, so every attempt signs the same coverage.
-        expiresAt: cs.issuedAt + (await disputeWindow(chain.client)),
-        mandateHash: cs.mandateHash,
-        amberCommitment: ZERO,
-        userKeyHash: userKeyHash(qx, qy),
-      };
-      const operatorSig = await operator.signTypedData(
-        coverageTypedData(coverage, CHAIN_ID, VAULT),
-      );
-      record = await relayer.submit({
-        chainId: CHAIN_ID,
-        contract: "KeelsonBondVault",
-        functionName: "lockCoverage",
-        args: lockCoverageArgs({
-          coverage,
-          countersign: cs,
-          hSd: bytesToHex(hSd(row.payloadSd as object)),
-          assertion: row.userAuth as SignedAssertion,
-          publicKeyJwk: jwk,
-          operatorSig,
-          mode: out.mode,
-          signatures: out.signatures,
-        }),
-        key,
-        countersignMode: out.mode,
-      });
-    }
+    // The relayer answers a key it already sent with that transaction's record, and takes over
+    // a submission whose process died before signing, so every attempt submits.
+    const amount = cs.amount * PYUSD_PER_MINOR;
+    const coverage: Coverage = {
+      coverageId: cs.requestId,
+      agentId: cs.agentId,
+      merchant,
+      amount,
+      premium: premiumOf(amount),
+      // From the countersign rather than the clock, so every attempt signs the same coverage.
+      expiresAt: cs.issuedAt + (await disputeWindow(chain.client)),
+      mandateHash: cs.mandateHash,
+      amberCommitment: ZERO,
+      userKeyHash: userKeyHash(qx, qy),
+    };
+    const operatorSig = await operator.signTypedData(coverageTypedData(coverage, CHAIN_ID, VAULT));
+    record = await relayer.submit({
+      chainId: CHAIN_ID,
+      contract: "KeelsonBondVault",
+      functionName: "lockCoverage",
+      args: lockCoverageArgs({
+        coverage,
+        countersign: cs,
+        hSd: bytesToHex(hSd(row.payloadSd as object)),
+        assertion: row.userAuth as SignedAssertion,
+        publicKeyJwk: jwk,
+        operatorSig,
+        mode: out.mode,
+        signatures: out.signatures,
+      }),
+      key,
+      countersignMode: out.mode,
+    });
     const deadline = Date.now() + PENDING_WAIT_MS;
     while (record?.status === "pending" && Date.now() < deadline) {
       await sleep(250);
@@ -156,6 +156,12 @@ export async function coverStep(
     throw err;
   }
   if (!record || record.status === "pending") return retry("cover:pending");
+  if (
+    record.status === "dropped" ||
+    (record.status === "rejected" && RETRYABLE.has(record.errorCode ?? ""))
+  ) {
+    return retry(`cover:${record.errorCode ?? record.status}`);
+  }
   if (record.status !== "confirmed") {
     return final(`cover:${record.error?.name ?? record.errorCode ?? record.status}`);
   }

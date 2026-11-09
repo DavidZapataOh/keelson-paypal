@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import {
   type Cart,
@@ -741,11 +742,14 @@ export function registerCountersign(
         ? drivePurchase(pipeline, purchaseId)
         : logStep(pipeline, purchaseId).then(async () => viewOf(db, purchaseId));
       driving.catch((err: unknown) => log.error({ err, purchaseId }, "purchase not driven"));
+      const budget = new AbortController();
       const view =
         (await Promise.race([
           driving,
-          new Promise<undefined>((r) => setTimeout(r, INLINE_BUDGET_MS)),
-        ]).catch(() => undefined)) ?? (await viewOf(db, purchaseId));
+          delay(INLINE_BUDGET_MS, undefined, { signal: budget.signal }),
+        ])
+          .catch(() => undefined)
+          .finally(() => budget.abort())) ?? (await viewOf(db, purchaseId));
       const pending = view === undefined || PENDING.has(view.state);
       c.header("Keelson-Countersign-Mode", out.mode);
       if (pending) c.header("Location", `/v1/purchases/${purchaseId}`);

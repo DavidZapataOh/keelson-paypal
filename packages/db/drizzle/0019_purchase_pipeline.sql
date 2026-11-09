@@ -12,4 +12,5 @@ ALTER TABLE "purchases" ADD COLUMN "eval_trace" jsonb;--> statement-breakpoint
 CREATE INDEX "purchases_resumable_idx" ON "purchases" USING btree ("lease_until") WHERE "purchases"."state" in ('COUNTERSIGNED', 'LOGGED', 'COVERED');--> statement-breakpoint
 ALTER TABLE "purchases" ADD CONSTRAINT "purchases_mandate_id_capture_seq_unique" UNIQUE("mandate_id","capture_seq");--> statement-breakpoint
 ALTER TABLE "purchases" ADD CONSTRAINT "purchases_paypal_ref_salt_len" CHECK (octet_length("purchases"."paypal_ref_salt") = 32);--> statement-breakpoint
-ALTER TABLE "purchases" ADD CONSTRAINT "purchases_capture_seq_range" CHECK ("purchases"."capture_seq" between 1 and 99);
+ALTER TABLE "purchases" ADD CONSTRAINT "purchases_capture_seq_range" CHECK ("purchases"."capture_seq" between 1 and 99);--> statement-breakpoint
+INSERT INTO "state_transitions" ("entity", "from_state", "to_state") VALUES ('purchases', 'FAILED', 'CAPTURED');
