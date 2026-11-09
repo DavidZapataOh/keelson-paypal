@@ -112,17 +112,25 @@ jobs:
           SERVICE: srv-dbmao3u1egvs73bro2rg
           OWNER: tea-dbmah4e417fc73bqvdk0
         run: |
-          render() { curl -fsS -H "Authorization: Bearer $RENDER_API_KEY" "$@"; }
-          cmd='cd services/api && npx playwright install chromium >/dev/null && PURCHASES=10 CONCURRENCY=2 DEGRADED_EVERY=5 node bench/money-path.bench.ts'
+          set -euo pipefail
+          render() { curl -fsS --retry 5 --retry-all-errors -H "Authorization: Bearer $RENDER_API_KEY" "$@"; }
+          cmd='cd services/api && pnpm exec playwright install chromium >/dev/null && PURCHASES=10 CONCURRENCY=2 DEGRADED_EVERY=5 node bench/money-path.bench.ts'
           job=$(render -X POST -H "content-type: application/json" \
             -d "$(jq -n --arg c "$cmd" '{startCommand: $c}')" \
             "https://api.render.com/v1/services/$SERVICE/jobs" | jq -r .id)
+          [ -n "$job" ] && [ "$job" != null ]
           echo "job $job"
-          while status=$(render "https://api.render.com/v1/services/$SERVICE/jobs/$job" | jq -r .status); \
-            [ "$status" = pending ] || [ "$status" = running ]; do sleep 20; done
+          trap 'render -X POST "https://api.render.com/v1/services/$SERVICE/jobs/$job/cancel" >/dev/null || true' EXIT
+          deadline=$((SECONDS + 50 * 60))
+          until status=$(render "https://api.render.com/v1/services/$SERVICE/jobs/$job" | jq -r .status); \
+            [[ "$status" =~ ^(succeeded|failed|canceled)$ ]]; do
+            [ "$SECONDS" -lt "$deadline" ] || { echo "job still $status after 50 minutes"; exit 1; }
+            sleep 20
+          done
+          trap - EXIT
           sleep 30
           render -G "https://api.render.com/v1/logs" --data-urlencode "ownerId=$OWNER" \
             --data-urlencode "resource=$job" --data-urlencode "direction=backward" \
             --data-urlencode "limit=100" | jq -r '.logs[].message' | grep -m1 '^{"run"' > summary.json || true
-          { echo "### Money path ($status)"; echo '```json'; jq . summary.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "### Money path ($status)"; echo '```json'; jq '{run, endToEnd, endToEnd2of2, endToEndDegraded, sse, steps, outbound, db, purchases, captured, failures}' summary.json || true; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           test "$status" = succeeded
