@@ -42,6 +42,19 @@ source_of() {
   return 1
 }
 
+# Etherscan's free tier allows a few calls a second and answers a rate-limited call with a string `result`.
+etherscan_source() {
+  local body
+  for _ in 1 2 3 4 5; do
+    body=$(curl -fsS "https://api.etherscan.io/v2/api?chainid=$1&module=contract&action=getsourcecode&address=$2&apikey=$ETHERSCAN_API_KEY")
+    if jq -e '.result | type == "array"' <<<"$body" >/dev/null; then
+      jq -r '.result[0].SourceCode // empty' <<<"$body"
+      return
+    fi
+    sleep 2
+  done
+}
+
 status=0
 for chain in "$@"; do
   registry="deployments/$chain.json"
@@ -50,8 +63,7 @@ for chain in "$@"; do
     address=$(jq -r --arg n "$name" '.contracts[$n]' "$registry")
     if $check_only; then
       sourcify=$(curl -fsS "https://sourcify.dev/server/v2/contract/$chain/$address" | jq -r '.match // empty')
-      etherscan=$(curl -fsS "https://api.etherscan.io/v2/api?chainid=$chain&module=contract&action=getsourcecode&address=$address&apikey=$ETHERSCAN_API_KEY" |
-        jq -r '.result[0].SourceCode // empty')
+      etherscan=$(etherscan_source "$chain" "$address")
       if [[ "$sourcify" =~ ^(exact_match|match)$ && -n "$etherscan" ]]; then
         echo "$chain $name $address verified (sourcify: $sourcify)"
       else
