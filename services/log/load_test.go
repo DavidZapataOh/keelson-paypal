@@ -30,7 +30,7 @@ func TestLoad(t *testing.T) {
 	db, dbURL := testDB(t)
 	keys := newTestKeys(t)
 	startWitnesses(t, keys)
-	l := startLog(t, keys, t.TempDir(), db, dbURL)
+	l := startLog(t, keys, logDir(t), db, dbURL)
 	activate(t, db, teeTDX, *allow.Signers["tdx"], *allow.Measurements["tdx"])
 	activate(t, db, teeNitro, *allow.Signers["nitro"], *allow.Measurements["nitro"])
 	purchase(t, db, alibiID(t, allow.Leaf), ptr("2of2"))
