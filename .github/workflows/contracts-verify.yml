@@ -246,7 +246,17 @@ jobs:
           FOUNDRY_CBOR_METADATA: "true"
           FOUNDRY_BYTECODE_HASH: ipfs
           TEST_LIMIT: ${{ github.event_name == 'schedule' && '2000000' || '200000' }}
-        run: medusa fuzz --config medusa.json --rpc-url "$ARBITRUM_SEPOLIA_RPC_URL" --test-limit "$TEST_LIMIT"
+        # Forking the chain can hit the RPC's rate limit while other jobs fork it too; only that setup failure is retried.
+        run: |
+          for attempt in 1 2 3; do
+            set +e
+            medusa fuzz --config medusa.json --rpc-url "$ARBITRUM_SEPOLIA_RPC_URL" --test-limit "$TEST_LIMIT" 2>&1 | tee medusa.log
+            status=${PIPESTATUS[0]}
+            set -e
+            grep -q "Failed to initialize the test chain" medusa.log || exit "$status"
+            sleep $((attempt * 60))
+          done
+          exit "$status"
       - uses: actions/upload-artifact@v6
         if: always()
         with:
@@ -381,5 +391,10 @@ jobs:
         with:
           path: contracts/results
           merge-multiple: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
       - run: script/verification-report.sh results
+      # The repository's formatter aligns the table; the README is committed formatted.
+      - run: npx --yes @biomejs/biome@2.6.5 format --write README.md
       - run: git diff --exit-code README.md
