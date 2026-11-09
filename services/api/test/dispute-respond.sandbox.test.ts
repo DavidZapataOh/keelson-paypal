@@ -165,26 +165,35 @@ describe.skipIf(!disputeId || !f)("dispute response (sandbox)", () => {
     async () => {
       const first = await respondToDispute(deps, id);
       log.info({ first }, "first run");
-      // A rerun resumes: the evidence went in on an earlier run.
-      expect(first).toMatchObject({ action: "provide_evidence" });
-      expect(["sent", "already_sent"]).toContain(first.status);
-      if (first.status === "sent" && deps.anthropic) {
-        expect(first).toMatchObject({ drafted: "model" });
+      if (first.status === "waiting") {
+        // A rerun on a fresh database resumes: PayPal already holds the evidence of an earlier run.
+        const d = (await getDispute(deps.paypal.paypal.fetch, id)) as {
+          evidences?: { source?: string; action_info?: { action?: string } }[];
+        };
+        expect(
+          d.evidences?.some(
+            (e) =>
+              e.source === "SUBMITTED_BY_SELLER" && e.action_info?.action === "PROVIDE_EVIDENCE",
+          ),
+        ).toBe(true);
+      } else {
+        expect(first).toMatchObject({ status: "sent", action: "provide_evidence" });
+        if (deps.anthropic) expect(first).toMatchObject({ drafted: "model" });
+
+        const again = await respondToDispute(deps, id);
+        expect(["already_sent", "waiting"]).toContain(again.status);
+        expect(
+          await testDb.select().from(disputeResponses).where(eq(disputeResponses.disputeId, id)),
+        ).toHaveLength(1);
+
+        const app = createApp({ db: testDb, kv: testKv, log });
+        const shown = await (await app.request(`/v1/disputes/${id}`)).json();
+        log.info({ responses: shown.responses }, "GET /v1/disputes");
+        expect(shown.responses[0]).toMatchObject({
+          action: "provide_evidence",
+          evidence_types: ["PERMISSION_DESCRIPTION"],
+        });
       }
-
-      const again = await respondToDispute(deps, id);
-      expect(["already_sent", "waiting"]).toContain(again.status);
-      expect(
-        await testDb.select().from(disputeResponses).where(eq(disputeResponses.disputeId, id)),
-      ).toHaveLength(1);
-
-      const app = createApp({ db: testDb, kv: testKv, log });
-      const shown = await (await app.request(`/v1/disputes/${id}`)).json();
-      log.info({ responses: shown.responses }, "GET /v1/disputes");
-      expect(shown.responses[0]).toMatchObject({
-        action: "provide_evidence",
-        evidence_types: ["PERMISSION_DESCRIPTION"],
-      });
 
       // The sandbox stands in for PayPal's agent: once the evidence is in, it decides.
       const f = deps.paypal.paypal.fetch;
