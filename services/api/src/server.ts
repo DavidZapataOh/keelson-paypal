@@ -2,6 +2,7 @@ import "./telemetry.ts";
 import Anthropic from "@anthropic-ai/sdk";
 import { serve } from "@hono/node-server";
 import { createDb } from "@keelson/db";
+import { CertStore } from "@keelson/paypal";
 import { identityToRecipient } from "age-encryption";
 import { pino } from "pino";
 import { createPublicClient, http } from "viem";
@@ -75,6 +76,12 @@ const chains = {
 };
 const relayer = await relayerFromEnv(env, db, log);
 const paypal = createPayPalDeps(env);
+const certs = new CertStore(env.PAYPAL_ENV, {
+  get: (key) => kv.get(key),
+  set: async (key, pem, ttlSeconds) => {
+    await kv.set(key, pem, { EX: ttlSeconds });
+  },
+});
 const operators =
   env.KEELSON_OPERATOR_KEY && env.DEMO_AGENT_ID
     ? operatorSigners(env.DEMO_AGENT_ID, env.KEELSON_OPERATOR_KEY)
@@ -92,6 +99,7 @@ const app = createApp({
   stamps,
   chains,
   paypal,
+  ...(env.PAYPAL_WEBHOOK_ID ? { paypalWebhook: { webhookId: env.PAYPAL_WEBHOOK_ID, certs } } : {}),
   ...(operators ? { operators } : {}),
   ...(relayer ? { relayer } : {}),
   ...(env.CHANNEL3_API_KEY ? { channel3: createChannel3(env.CHANNEL3_API_KEY) } : {}),

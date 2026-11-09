@@ -614,6 +614,12 @@ importers:
         specifier: 'catalog:'
         version: 4.6.7
     devDependencies:
+      '@abraham/reflection':
+        specifier: 0.13.0
+        version: 0.13.0
+      '@peculiar/x509':
+        specifier: 3.1.0
+        version: 3.1.0(@peculiar/asn1-schema@3.0.0(asn1js@4.0.0))(asn1js@4.0.0)
       '@types/node':
         specifier: 26.6.6
         version: 26.6.6

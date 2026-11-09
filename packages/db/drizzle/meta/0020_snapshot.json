@@ -1,5 +1,5 @@
 {
-  "id": "c291dea6-48a8-4dba-ac32-cd8b5f80f2a3",
+  "id": "dabbcaf7-5bd7-4998-81ed-786f7c19c700",
   "prevId": "3ae213c9-f411-4777-aefc-4414a1b46b7b",
   "version": "7",
   "dialect": "postgresql",
@@ -26,21 +26,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "anchor": {
-          "name": "anchor",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
@@ -3195,6 +3182,254 @@
         "operators_owner_address_len": {
           "name": "operators_owner_address_len",
           "value": "octet_length(\"operators\".\"owner_address\") = 20"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.paypal_events": {
+      "name": "paypal_events",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "resource_type": {
+          "name": "resource_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "resource_id": {
+          "name": "resource_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "transmission_id": {
+          "name": "transmission_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "transmission_time": {
+          "name": "transmission_time",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cert_url": {
+          "name": "cert_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "headers": {
+          "name": "headers",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "body": {
+          "name": "body",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "received_at": {
+          "name": "received_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'received'"
+        },
+        "resource": {
+          "name": "resource",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resource_read_at": {
+          "name": "resource_read_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "purchase_id": {
+          "name": "purchase_id",
+          "type": "char(26)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mandate_id": {
+          "name": "mandate_id",
+          "type": "char(26)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "dispute_id": {
+          "name": "dispute_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "next_attempt_at": {
+          "name": "next_attempt_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "lease_until": {
+          "name": "lease_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_error": {
+          "name": "last_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "applied_at": {
+          "name": "applied_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "paypal_events_received_next_attempt_at_idx": {
+          "name": "paypal_events_received_next_attempt_at_idx",
+          "columns": [
+            {
+              "expression": "next_attempt_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"paypal_events\".\"status\" = 'received'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "paypal_events_inflight_lease_until_idx": {
+          "name": "paypal_events_inflight_lease_until_idx",
+          "columns": [
+            {
+              "expression": "lease_until",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"paypal_events\".\"status\" = 'inflight'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "paypal_events_resource_id_idx": {
+          "name": "paypal_events_resource_id_idx",
+          "columns": [
+            {
+              "expression": "resource_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "paypal_events_purchase_id_purchases_id_fk": {
+          "name": "paypal_events_purchase_id_purchases_id_fk",
+          "tableFrom": "paypal_events",
+          "tableTo": "purchases",
+          "columnsFrom": ["purchase_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "paypal_events_mandate_id_mandates_id_fk": {
+          "name": "paypal_events_mandate_id_mandates_id_fk",
+          "tableFrom": "paypal_events",
+          "tableTo": "mandates",
+          "columnsFrom": ["mandate_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "paypal_events_dispute_id_disputes_id_fk": {
+          "name": "paypal_events_dispute_id_disputes_id_fk",
+          "tableFrom": "paypal_events",
+          "tableTo": "disputes",
+          "columnsFrom": ["dispute_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "paypal_events_transmission_id_unique": {
+          "name": "paypal_events_transmission_id_unique",
+          "nullsNotDistinct": false,
+          "columns": ["transmission_id"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "paypal_events_source_valid": {
+          "name": "paypal_events_source_valid",
+          "value": "\"paypal_events\".\"source\" in ('webhook', 'poll')"
+        },
+        "paypal_events_status_valid": {
+          "name": "paypal_events_status_valid",
+          "value": "\"paypal_events\".\"status\" in ('received', 'inflight', 'applied', 'ignored', 'mismatch', 'unresolvable', 'failed')"
+        },
+        "paypal_events_lease_iff_inflight": {
+          "name": "paypal_events_lease_iff_inflight",
+          "value": "(\"paypal_events\".\"status\" = 'inflight') = (\"paypal_events\".\"lease_until\" is not null)"
+        },
+        "paypal_events_delivery_iff_webhook": {
+          "name": "paypal_events_delivery_iff_webhook",
+          "value": "(\"paypal_events\".\"source\" = 'webhook') = (\"paypal_events\".\"transmission_id\" is not null)"
         }
       },
       "isRLSEnabled": false

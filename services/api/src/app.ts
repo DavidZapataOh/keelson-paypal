@@ -2,6 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { httpInstrumentationMiddleware } from "@hono/otel";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import type { Db } from "@keelson/db";
+import type { CertStore } from "@keelson/paypal";
 import type { Relayer } from "@keelson/relayer";
 import type { Context, MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -40,6 +41,7 @@ import { registerMerchantsPayout } from "./routes/merchants-payout.ts";
 import { registerObservations } from "./routes/observations.ts";
 import { registerOperators } from "./routes/operators.ts";
 import { registerPasskeys } from "./routes/passkeys.ts";
+import { registerPayPalWebhook } from "./routes/paypal-webhook.ts";
 import { registerPurchaseHolds } from "./routes/purchase-holds.ts";
 import { registerPurchases } from "./routes/purchases.ts";
 import { registerRevoke } from "./routes/revoke.ts";
@@ -90,6 +92,10 @@ export interface Deps {
   operators?: OperatorSigners;
   /** PayPal orders and payments; the hold routes answer 503 without it. */
   paypal?: PayPalDeps;
+  /** The webhook PayPal delivers to; the PayPal webhook answers 503 without it. */
+  paypalWebhook?: { webhookId: string; certs: CertStore; now?: () => Date };
+  /** Applies stored PayPal events; woken when a delivery is stored. */
+  paypalEvents?: { wake(): void };
   /** Aborting it ends every open event stream so the server can close. */
   shutdown?: AbortSignal;
 }
@@ -211,6 +217,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerEvidence(app, deps);
   registerObservations(app, deps);
   registerChannel3Webhook(app, deps);
+  registerPayPalWebhook(app, deps);
   registerTee(app, deps);
   registerTimestamps(app, deps);
   registerAlibis(app, deps);
