@@ -33,7 +33,8 @@ export type Response =
 const READS_ORDER = new Set([10, 20]);
 
 /**
- * Answers PayPal for the party the stored verdict names, once per action and lifecycle stage:
+ * Answers PayPal for the party the stored verdict names, once per action, lifecycle stage and
+ * request from PayPal (its response due date):
  * the Alibi and a cited statement when the user or the merchant is at fault, the claim accepted
  * when the operator or Keelson is. With no call PayPal offers yet, it waits for the dispute to
  * move. A PayPal error throws, so the run is retried.
@@ -66,6 +67,7 @@ export async function respondToDispute(deps: RespondDeps, disputeId: string): Pr
   const step = nextStep(plan, dispute.links ?? []);
   if (!step) return { status: "waiting", disputeId };
   const stage = dispute.dispute_life_cycle_stage ?? "UNKNOWN";
+  const dueDate = dispute.seller_response_due_date ?? "";
   const [sent] = await db
     .select({ id: disputeResponses.id })
     .from(disputeResponses)
@@ -74,6 +76,7 @@ export async function respondToDispute(deps: RespondDeps, disputeId: string): Pr
         eq(disputeResponses.disputeId, disputeId),
         eq(disputeResponses.action, step),
         eq(disputeResponses.stage, stage),
+        eq(disputeResponses.dueDate, dueDate),
       ),
     );
   if (sent) return { status: "already_sent", disputeId, action: step };
@@ -126,6 +129,7 @@ export async function respondToDispute(deps: RespondDeps, disputeId: string): Pr
       disputeId,
       action: step,
       stage,
+      dueDate,
       input,
       draft: draft && {
         source: draft.source,

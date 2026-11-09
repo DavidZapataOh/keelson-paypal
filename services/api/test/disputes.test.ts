@@ -142,6 +142,7 @@ describe("GET /v1/disputes/{id}", () => {
       disputeId,
       action: "provide_evidence",
       stage: "CHARGEBACK",
+      dueDate: "2026-11-16T04:59:59.000Z",
       input: {
         evidences: [
           { evidence_type: "PERMISSION_DESCRIPTION", notes: "n" },

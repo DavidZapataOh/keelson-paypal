@@ -1,5 +1,5 @@
 {
-  "id": "d5028b3a-b8a1-4184-b9d6-e6058c6e6e60",
+  "id": "65c1cb8f-3c95-47b4-93da-c7a251740a27",
   "prevId": "392bada5-46d1-43f8-938c-2b7e3309be59",
   "version": "7",
   "dialect": "postgresql",
@@ -2317,6 +2317,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "due_date": {
+          "name": "due_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "input": {
           "name": "input",
           "type": "jsonb",
@@ -2354,7 +2360,7 @@
         "dispute_responses_once": {
           "name": "dispute_responses_once",
           "nullsNotDistinct": false,
-          "columns": ["dispute_id", "action", "stage"]
+          "columns": ["dispute_id", "action", "stage", "due_date"]
         }
       },
       "policies": {},

@@ -93,9 +93,9 @@ const render =
   env.RENDER_API_KEY && env.DISPUTE_WORKFLOW
     ? new Render({ token: env.RENDER_API_KEY })
     : undefined;
-// A dispute runs once per status and stage: every re-read of an open dispute starts it again,
-// and Render answers a key it saw in the last 24 h with the run it started then. A new status or
-// stage (an inquiry escalated to a claim) runs it again, so the response follows the dispute.
+// A dispute runs once per status, stage and response due date: every re-read of an open dispute starts it again,
+// and Render answers a key it saw in the last 24 h with the run it started then. A new status,
+// stage or request from PayPal (an escalated inquiry, more evidence asked) runs it again.
 const startDisputeWorkflow = render
   ? async (disputeId: string, revision: string) => {
       const run = await render.workflows.startTask(

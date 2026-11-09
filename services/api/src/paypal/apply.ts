@@ -230,7 +230,7 @@ export async function applyDispute(
   if (!resolved && eventType !== "CUSTOMER.DISPUTE.RESOLVED") {
     await deps.startDisputeWorkflow?.(
       id,
-      `${dispute.status}:${dispute.dispute_life_cycle_stage ?? "UNKNOWN"}`,
+      `${dispute.status}:${dispute.dispute_life_cycle_stage ?? "UNKNOWN"}:${dispute.seller_response_due_date ?? ""}`,
     );
   }
   return { status: "applied", resource: dispute, purchaseId, disputeId: id };

@@ -200,7 +200,10 @@ describe.skipIf(!disputeId || !f)("dispute response (sandbox)", () => {
           "dispute",
         );
         if (d.status === "RESOLVED") break;
-        if (!adjudicated && rels.has("adjudicate")) {
+        if (rels.has("provide_evidence")) {
+          // PayPal asked again (a sandbox require-evidence): the workflow answers each request.
+          log.info({ again: await respondToDispute(deps, id) }, "answered again");
+        } else if (!adjudicated && rels.has("adjudicate")) {
           await adjudicate(f, id, "SELLER_FAVOR");
           adjudicated = true;
         } else if (!requested && !adjudicated && rels.has("require_evidence")) {

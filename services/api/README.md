@@ -104,9 +104,9 @@ fixtures.
 ## Dispute evaluation
 
 A dispute stored over a Keelson purchase is handed to the Render workflow task
-`keelson-workflows/evaluateDispute` (`src/workflows.ts`), started with the dispute id, status and
-lifecycle stage as its idempotency key, so the webhook, the poller and every re-read start one run
-a day at most per status and stage, and an escalated inquiry runs again. The API
+`keelson-workflows/evaluateDispute` (`src/workflows.ts`), started with the dispute id, status, lifecycle stage and response due date as its idempotency key,
+so the webhook, the poller and every re-read start one run a day at most per revision, and an
+escalated inquiry or a new request for evidence runs again. The API
 starts it when `RENDER_API_KEY` and `DISPUTE_WORKFLOW` are set; otherwise the dispute stays `OPEN`.
 A run:
 
@@ -122,7 +122,8 @@ A run:
    digest with their admitted signers;
 5. stores the verdict with its facts and signatures and moves the dispute and the purchase to
    `ATTRIBUTED`;
-6. answers PayPal for the party at fault (`src/disputes/respond.ts`), once per action and stage.
+6. answers PayPal for the party at fault (`src/disputes/respond.ts`), once per action, stage and
+   request from PayPal.
 
 | Party at fault    | Rules                   | PayPal call                                             | Evidence                                                                                                                                             |
 | ----------------- | ----------------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |

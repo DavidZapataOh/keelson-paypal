@@ -106,8 +106,8 @@ export interface Deps {
   /** Applies stored PayPal events; woken when a delivery is stored. */
   paypalEvents?: { wake(): void };
   /**
-   * Starts the evaluation of a dispute PayPal reported, keyed by its status and stage
-   * (`revision`); disputes stay `OPEN` without it.
+   * Starts the evaluation of a dispute PayPal reported, keyed by its status, stage and
+   * response due date (`revision`); disputes stay `OPEN` without it.
    */
   startDisputeWorkflow?: (disputeId: string, revision: string) => Promise<void>;
   /** Aborting it ends every open event stream so the server can close. */
