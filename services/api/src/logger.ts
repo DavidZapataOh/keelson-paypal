@@ -3,9 +3,13 @@ import type { MiddlewareHandler } from "hono";
 import { routePath } from "hono/route";
 import { type DestinationStream, type Logger, pino } from "pino";
 
+/** RPC providers such as Alchemy put the API key in the URL path, which viem errors quote. */
+const RPC_KEY = /(alchemy\.com\/v2\/)[A-Za-z0-9_-]+/g;
+
 export function createLogger(destination?: DestinationStream): Logger {
   return pino(
     {
+      hooks: { streamWrite: (line) => line.replace(RPC_KEY, "$1[redacted]") },
       redact: {
         paths: [
           "req.headers.authorization",
