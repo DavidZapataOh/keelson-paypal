@@ -95,6 +95,12 @@ describe.each(fixtures.map((f) => [f.id, f] as const))("the pdf of %s", (_, f) =
     }
   });
 
+  test("its text reads back as written, without ligatures", async () => {
+    const text = await textOf(await renderAlibiPdf(f.bundle));
+    expect(text).toContain("keelson.finance");
+    expect(text).not.toMatch(/[\uFB00-\uFB06]/);
+  });
+
   test.skipIf(!qrTools)("its QR decodes to the verify url", async () => {
     const dir = mkdtempSync(join(tmpdir(), "alibi-qr-"));
     const file = join(dir, "a.pdf");
