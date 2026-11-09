@@ -28,6 +28,7 @@ export type Response =
   | { status: "sent"; disputeId: string; action: Step; drafted: Draft["source"] | null }
   | { status: "already_sent"; disputeId: string; action: Step }
   | { status: "refunded"; disputeId: string; refundId: string }
+  | { status: "unsettled"; disputeId: string; failure: string }
   | { status: "waiting" | "resolved" | "unattributed"; disputeId: string };
 
 /** Rules whose evidence cites the order's own records. */
@@ -49,6 +50,8 @@ export async function respondToDispute(deps: RespondDeps, disputeId: string): Pr
       digest: verdicts.digest,
       facts: verdicts.facts,
       refundId: verdicts.refundId,
+      outcome: verdicts.outcome,
+      failure: verdicts.failure,
       purchaseId: disputes.purchaseId,
       orderId: purchases.paypalOrderId,
     })
@@ -71,6 +74,11 @@ export async function respondToDispute(deps: RespondDeps, disputeId: string): Pr
   // The settlement refunded the buyer under the verdict: accepting the claim would refund twice.
   if (step === "accept_claim" && row.refundId) {
     return { status: "refunded", disputeId, refundId: row.refundId };
+  }
+  // The chain refused to pay the merchant for the party at fault: accepting would make the merchant
+  // refund the buyer out of its own pocket. PayPal decides instead.
+  if (step === "accept_claim" && row.outcome === "failed") {
+    return { status: "unsettled", disputeId, failure: row.failure ?? "unknown" };
   }
   const stage = dispute.dispute_life_cycle_stage ?? "UNKNOWN";
   const dueDate = dispute.seller_response_due_date ?? "";

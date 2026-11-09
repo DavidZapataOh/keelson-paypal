@@ -390,6 +390,39 @@ describe.skipIf(!rpc)(
       const executed = (await txsFor(id)).find((t) => t.function === "executeSlash");
       console.info(`executeSlash gas ${executed?.gasUsed}`);
     });
+
+    test.skipIf(!process.env.PAYPAL_CLIENT_ID)(
+      "a verdict the chain refuses refunds nobody: the merchant would pay what no one reimburses",
+      async () => {
+        await testDb
+          .update(purchases)
+          .set({ paypalCaptureId: `NOT-REFUNDED-${randomBytes(4).toString("hex")}` })
+          .where(eq(purchases.id, purchaseId));
+        const now = Number((await client.getBlock()).timestamp);
+        const id = await storeVerdict({
+          liable: 2,
+          amount: 1_000n,
+          payee: merchant,
+          deadline: now - 1,
+        });
+        const live: SettleDeps = {
+          ...deps,
+          paypal: createPayPalDeps({
+            PAYPAL_CLIENT_ID: process.env.PAYPAL_CLIENT_ID as string,
+            PAYPAL_CLIENT_SECRET: process.env.PAYPAL_CLIENT_SECRET as string,
+            PAYPAL_ENV: "sandbox",
+            PAYPAL_MERCHANT_ID: "A4WCRYD5EYDF2",
+          }),
+        };
+        expect(await settleDispute(live, id)).toEqual({
+          status: "failed",
+          disputeId: id,
+          failure: "Expired",
+        });
+        const [v] = await testDb.select().from(verdicts).where(eq(verdicts.disputeId, id));
+        expect(v?.refundId).toBeNull();
+      },
+    );
   },
 );
 

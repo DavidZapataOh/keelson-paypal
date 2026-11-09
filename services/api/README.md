@@ -153,16 +153,18 @@ text is not public: it quotes the Alibi) and how the money moved.
 
 When the operator or Keelson is at fault:
 
-1. **The buyer is refunded** while the dispute is an inquiry: the whole capture (PayPal refuses
-   partial refunds on a disputed capture), `custom_id` the verdict's `ksv1.<verdict id>.<digest>`
-   reference and `PayPal-Request-Id` derived from the verdict digest, so a retry is the same
-   refund. `accept-claim` is then not sent. In a chargeback, `accept-claim` settles it.
-2. **The payee is paid on chain** by the relayer: `KeelsonBondVault.slash` from the operator's bond
+1. **The payee is paid on chain** by the relayer: `KeelsonBondVault.slash` from the operator's bond
    (R00, R31, R61) or `KeelsonReserve.payWarranty` from the reserve (R30, R60), keyed by the
    verdict's `disputeId`. A slash above the instant cap, or signed by one leg, is queued for the
    veto window; the settlement sweeper sends `executeSlash` once it closes. A refusal no retry can
-   change (`Expired`, `CoverageNotActive`, `ExceedsCoverage`, `NotAnchored`, …) is stored as
-   `failed` with the error's name.
+   change (`Expired`, `CoverageNotActive`, `ExceedsCoverage`, `NotAnchored`,
+   `WarrantyWindowClosed`, …) is stored as `failed` with the error's name.
+2. **The buyer is refunded** once the chain paid or queued the merchant's money, while the dispute
+   is an inquiry: the whole capture (PayPal refuses partial refunds on a disputed capture),
+   `custom_id` the verdict's `ksv1.<verdict id>.<digest>` reference and `PayPal-Request-Id`
+   derived from the verdict digest, so a retry is the same refund. `accept-claim` is then not
+   sent; in a chargeback, `accept-claim` settles it. When the chain refused, neither is sent: the
+   merchant is not made to refund what no one reimburses, and PayPal decides the case.
 3. **A merchant that settles through PayPal** gets a Payout in USD for the amount the treasury
    received in PYUSD, under the same `ksv1.` reference (`sender_item_id`); the batch id is derived
    from it, so PayPal refuses a second batch.

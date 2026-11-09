@@ -139,17 +139,20 @@ export async function settleDispute(deps: SettleDeps, disputeId: string): Promis
     return { status: "failed", disputeId, failure: row.failure ?? "unknown" };
   }
 
-  if (!row.refundId && deps.paypal && row.captureId) await refundBuyer(deps, deps.paypal, row);
-
   if (row.outcome === null || row.outcome === "queued") {
     if (!deps.relayer) return { status: "pending", disputeId, waiting: "chain" };
     const moved = await onChain(deps, deps.relayer, row);
-    if (moved) return moved;
     row = (await load(deps.db, disputeId)) as Row;
+    if (moved && row.outcome !== "queued") return moved;
+    if (moved) {
+      await refund(deps, row);
+      return moved;
+    }
   }
   if (row.outcome === "failed") {
     return { status: "failed", disputeId, failure: row.failure ?? "unknown" };
   }
+  await refund(deps, row);
 
   if (row.rail === "paypal" && row.outcome === "paid") {
     if (!deps.paypal) return { status: "pending", disputeId, waiting: "payout" };
@@ -189,6 +192,14 @@ async function load(db: Db, disputeId: string): Promise<Row | undefined> {
   if (!row) return undefined;
   const { verdict, ...purchase } = row;
   return { ...verdict, ...purchase };
+}
+
+/**
+ * Refunds the buyer once the chain has paid or queued the merchant's money: a refund the chain
+ * then refused would leave the merchant out of pocket.
+ */
+async function refund(deps: SettleDeps, row: Row): Promise<void> {
+  if (!row.refundId && deps.paypal && row.captureId) await refundBuyer(deps, deps.paypal, row);
 }
 
 /**

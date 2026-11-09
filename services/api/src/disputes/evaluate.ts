@@ -48,6 +48,7 @@ const PYUSD_PER_MINOR = 10_000n;
 /** How long a verdict can be settled after it is signed. */
 const VERDICT_TTL_S = 3_600;
 const ANCHOR_TIMEOUT_MS = 150_000;
+const ANCHOR_VISIBLE_MS = 30_000;
 
 /** Has the log anchor its latest witnessed checkpoint now, through its private listener. */
 async function anchorNow(tlog: LogConfig, chainId: number): Promise<void> {
@@ -105,8 +106,13 @@ export async function evaluateDispute(deps: EvaluateDeps, disputeId: string): Pr
     const anchorDeps: AnchorDeps = { ...deps, tlog: deps.tlog };
     if ((await reanchorAlibi(anchorDeps, p.id)) === "not_covered") {
       await anchorNow(deps.tlog, chainId);
-      if ((await reanchorAlibi(anchorDeps, p.id)) === "not_covered") {
-        throw new Error(`no anchor covers the leaf of purchase ${p.id} yet`);
+      // The anchor's event reaches the logs RPC a few seconds after its receipt; waiting here is
+      // cheaper than a retry, which starts a new workflow instance.
+      const until = Date.now() + ANCHOR_VISIBLE_MS;
+      while ((await reanchorAlibi(anchorDeps, p.id)) === "not_covered") {
+        if (Date.now() > until)
+          throw new Error(`no anchor covers the leaf of purchase ${p.id} yet`);
+        await new Promise((r) => setTimeout(r, 1_000));
       }
     }
   }
