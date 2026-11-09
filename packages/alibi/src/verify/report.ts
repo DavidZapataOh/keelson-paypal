@@ -3,6 +3,11 @@ export type CheckStatus = "pass" | "fail" | "undisclosed" | "pending" | "absent"
 export type CheckId =
   | "bundle.format"
   | "leaf.view"
+  | "mandate.challenge"
+  | "mandate.passkey"
+  | "mandate.credentials"
+  | "tee.attestation.tdx"
+  | "tee.attestation.nitro"
   | "tee.countersign"
   | "log.policy"
   | "log.inclusion"
@@ -41,12 +46,13 @@ export interface Report {
 
 /** Checks whose `pending` means "not anchored yet" rather than missing evidence. */
 const ANCHOR_CHECKS: ReadonlySet<CheckId> = new Set(["anchor.consistency"]);
-/** Checks that may be absent or pending without lowering the verdict. */
+/** Checks that may be pending without lowering the verdict. */
 const OPTIONAL_CHECKS: ReadonlySet<CheckId> = new Set(["zk.c1", "timestamps"]);
 
 /**
- * `failed` if any check failed; `incomplete` if a required check is unreachable or undisclosed;
- * `verified-unanchored` if only the anchor checks are pending; `verified` otherwise.
+ * `failed` if any check failed; `incomplete` if a required check is unreachable, undisclosed or
+ * pending; `verified-unanchored` if only the anchor checks are pending; `verified` otherwise. A
+ * check is `absent` only when the section it reads legitimately does not exist.
  */
 export function verdictOf(checks: readonly Check[]): Verdict {
   if (checks.some((c) => c.status === "fail")) return "failed";
@@ -56,7 +62,6 @@ export function verdictOf(checks: readonly Check[]): Verdict {
       (c) =>
         c.status === "unreachable" ||
         c.status === "undisclosed" ||
-        c.status === "absent" ||
         (c.status === "pending" && !ANCHOR_CHECKS.has(c.id)),
     )
   ) {

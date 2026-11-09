@@ -1,11 +1,13 @@
 import type { AlibiBundle, AlibiReceipt } from "../schema.ts";
 import { runCheck } from "./check.ts";
 import { anchor } from "./checks/anchor.ts";
+import { nitro, tdx } from "./checks/attestation.ts";
 import { countersign } from "./checks/countersign.ts";
 import { evidence } from "./checks/evidence.ts";
 import { format } from "./checks/format.ts";
 import { leaf } from "./checks/leaf.ts";
 import { inclusion, policy, witnesses } from "./checks/log.ts";
+import { challenge, credentials, passkey } from "./checks/mandate.ts";
 import { paypal } from "./checks/paypal.ts";
 import { timestamps, zk } from "./checks/timestamps.ts";
 import { type Report, type VerifyOptions, verdictOf } from "./report.ts";
@@ -16,6 +18,11 @@ export { verdictOf } from "./report.ts";
 const CHECKS = [
   format,
   leaf,
+  challenge,
+  passkey,
+  credentials,
+  tdx,
+  nitro,
   countersign,
   policy,
   inclusion,

@@ -371,7 +371,7 @@ async function verifyUserCredential(
  * and requires every delegated disclosure: the delegate payload must itself be disclosed, and every
  * digest in it, object member or array element, must be resolved.
  */
-async function verifyOpenMandate(
+export async function verifyOpenMandate(
   token: string,
   key: CryptoKey,
   opts: OpenMandateVerifyOptions,

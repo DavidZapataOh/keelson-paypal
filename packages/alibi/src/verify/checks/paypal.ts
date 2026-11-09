@@ -51,6 +51,11 @@ export const paypal: CheckDef = {
       "custom_id names another mandate or request",
       ["/paypal/custom_id"],
     );
+    expect(
+      p.capture_id === undefined || p.invoice_id !== undefined,
+      "a capture without its invoice id",
+      ["/paypal/invoice_id", "/paypal/capture_id"],
+    );
     if (p.invoice_id !== undefined) {
       const inv = parseInvoiceId(p.invoice_id);
       expect(inv?.id === input.alibi_id, "the invoice id names another alibi", [

@@ -252,6 +252,9 @@ importers:
 
   packages/alibi:
     dependencies:
+      '@keelson/attest':
+        specifier: workspace:*
+        version: link:../attest
       '@keelson/chain':
         specifier: workspace:*
         version: link:../chain
@@ -273,6 +276,9 @@ importers:
       '@keelson/timestamp':
         specifier: workspace:*
         version: link:../timestamp
+      jose:
+        specifier: 6.2.15
+        version: 6.2.15
       pdfjs-dist:
         specifier: 6.4.299
         version: 6.4.299

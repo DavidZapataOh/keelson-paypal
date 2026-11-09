@@ -2,7 +2,13 @@ import { type Json, jcs } from "@keelson/core";
 import { leafHash } from "@keelson/log";
 import type { z } from "zod";
 import { fromBase64, toBase64url } from "./b64.ts";
-import { type AlibiBundle, type AlibiReceipt, alibiSchema, receiptSchema } from "./schema.ts";
+import {
+  type AlibiBundle,
+  type AlibiReceipt,
+  alibiSchema,
+  MAX_ALIBI_BYTES,
+  receiptSchema,
+} from "./schema.ts";
 
 export type AlibiFormatCode = "json" | "schema" | "noncanonical" | "attachment";
 
@@ -34,6 +40,7 @@ function validate<T>(schema: z.ZodType<T>, value: unknown): T {
 }
 
 function decode<T>(schema: z.ZodType<T>, bytes: Uint8Array): T {
+  if (bytes.length > MAX_ALIBI_BYTES) throw new AlibiFormatError("json", "larger than 256 KiB");
   let value: unknown;
   try {
     value = JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes));

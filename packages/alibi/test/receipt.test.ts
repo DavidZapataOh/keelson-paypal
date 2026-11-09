@@ -58,6 +58,11 @@ describe("receipts of real log leaves", () => {
       expect(status).toEqual({
         "bundle.format": "pass",
         "leaf.view": "pass",
+        "mandate.challenge": "undisclosed",
+        "mandate.passkey": "undisclosed",
+        "mandate.credentials": "undisclosed",
+        "tee.attestation.tdx": "undisclosed",
+        "tee.attestation.nitro": "undisclosed",
         "tee.countersign": "undisclosed",
         "log.policy": "undisclosed",
         "log.inclusion": "pass",

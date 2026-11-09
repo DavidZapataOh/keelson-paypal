@@ -2,7 +2,7 @@ import type { AlibiBundle, AlibiReceipt } from "../schema.ts";
 import type { Check, CheckId, CheckStatus, VerifyOptions } from "./report.ts";
 
 /** A check's failure: why, and the pointers of the values that do not hold. */
-export class CheckFailure extends Error {
+class CheckFailure extends Error {
   readonly reads: string[];
 
   constructor(reason: string, reads: string[]) {

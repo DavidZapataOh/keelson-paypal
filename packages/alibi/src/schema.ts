@@ -1,4 +1,8 @@
+import { getAddress } from "viem";
 import { z } from "zod";
+
+/** The largest bundle Keelson issues or decodes. */
+export const MAX_ALIBI_BYTES = 256 * 1024;
 
 /** The media type of an Alibi bundle. */
 export const ALIBI_MEDIA_TYPE = "application/vnd.keelson.alibi.v1+json";
@@ -6,14 +10,18 @@ export const ALIBI_MEDIA_TYPE = "application/vnd.keelson.alibi.v1+json";
 const hex = (bytes: number) => z.string().regex(new RegExp(`^0x[0-9a-f]{${bytes * 2}}$`));
 const hex32 = hex(32);
 const decimal = z.string().regex(/^(0|[1-9][0-9]*)$/);
-const address = z.string().regex(/^0x[0-9a-fA-F]{40}$/);
+/** An EIP-55 checksummed address: one spelling per address. */
+const address = z
+  .string()
+  .regex(/^0x[0-9a-fA-F]{40}$/)
+  .refine((a) => getAddress(a) === a, "not an EIP-55 checksummed address");
 const ulid = z.string().regex(/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/);
 const base64 = z.string().regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
 const json = z.record(z.string(), z.json());
 const teeKind = z.enum(["tdx", "nitro"]);
 
 /** The EIP-712 `Countersign` message, every integer as a decimal string. */
-export const countersignSchema = z.strictObject({
+const countersignSchema = z.strictObject({
   requestId: hex32,
   mandateHash: hex32,
   mandateCommitment: hex32,

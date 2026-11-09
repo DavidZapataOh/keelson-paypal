@@ -3,8 +3,10 @@ import {
   type AlibiBundle,
   alibiSchema,
   encodeAlibi,
+  MAX_ALIBI_BYTES,
   toBase64,
 } from "@keelson/alibi";
+import { verifyAlibi } from "@keelson/alibi/verify";
 import { type Json, jcs, toHex } from "@keelson/core";
 import {
   alibis,
@@ -41,15 +43,17 @@ import { countersignOf, purchaseLeaf } from "../pipeline/leaf.ts";
 import { VERIFYING_CONTRACT } from "../tee/config.ts";
 import type { TeeConfig } from "../tee/signers.ts";
 
-/** The largest bundle Keelson issues. */
-export const MAX_ALIBI_BYTES = 256 * 1024;
-
 /** The item types an Alibi discloses: the PII-redacted public ones. */
 const DISCLOSED = ["api.product", "api.cart", "channel3.observation"] as const;
 const ENV: Readonly<Record<number, "s" | "p">> = { 421614: "s", 42161: "p" };
 const KIND = { 1: "tdx", 2: "nitro" } as const;
 
-export type AlibiIssueCode = "leaf" | "size" | "policy" | "issuer" | "evidence";
+/**
+ * `leaf`: the log answered for another leaf; `data`: what Postgres holds cannot make an Alibi;
+ * `format`, `size`, `verify`: the bundle built is malformed, too large or does not verify;
+ * `issuer`: the signer attests another credential issuer; `config`: the API cannot issue at all.
+ */
+export type AlibiIssueCode = "leaf" | "data" | "format" | "size" | "verify" | "issuer" | "config";
 
 /** The purchase cannot get an Alibi; retrying does not change that. */
 export class AlibiIssueError extends Error {
@@ -92,7 +96,7 @@ async function policyOf(origin: string): Promise<string> {
     p.quorum.k !== witnesses.quorum ||
     jcs(p.quorum.members.map((m) => p.witnesses.get(m) ?? "")) !== jcs([...witnesses.vkeys])
   ) {
-    throw new AlibiIssueError("policy", `the published policy of ${origin} is not the pinned one`);
+    throw new Error(`the published policy of ${origin} is not the pinned one`);
   }
   policies.set(origin, text);
   return text;
@@ -102,16 +106,21 @@ let issuer: { jwk: JWK; at: number } | undefined;
 
 /** The credential issuer's public JWK, as leg A serves it, if its thumbprint is `thumbprint`. */
 async function issuerOf(tee: IssueDeps["tee"], thumbprint: string): Promise<JWK> {
-  if (!issuer || Date.now() - issuer.at > 600_000) {
-    if (!tee) throw new Error("no TEE leg to read the credential issuer from");
-    const health = (await tee.client.a.health()) as { issuer?: JWK };
-    if (!health.issuer) throw new Error("leg a serves no credential issuer");
-    issuer = { jwk: health.issuer, at: Date.now() };
+  const thumbprintOf = async (jwk: JWK) =>
+    `0x${Buffer.from(await calculateJwkThumbprint(jwk, "sha256"), "base64url").toString("hex")}`;
+  if (
+    issuer &&
+    Date.now() - issuer.at < 600_000 &&
+    (await thumbprintOf(issuer.jwk)) === thumbprint
+  ) {
+    return issuer.jwk;
   }
-  const got = `0x${Buffer.from(await calculateJwkThumbprint(issuer.jwk, "sha256"), "base64url").toString("hex")}`;
-  if (got !== thumbprint.toLowerCase()) {
-    issuer = undefined;
-    throw new AlibiIssueError("issuer", "leg a's issuer is not the one its attestation binds");
+  if (!tee) throw new AlibiIssueError("config", "no TEE leg to read the credential issuer from");
+  const health = (await tee.client.a.health()) as { issuer?: JWK };
+  if (!health.issuer) throw new Error("leg a serves no credential issuer");
+  issuer = { jwk: health.issuer, at: Date.now() };
+  if ((await thumbprintOf(issuer.jwk)) !== thumbprint.toLowerCase()) {
+    throw new AlibiIssueError("issuer", "leg a's issuer is not the one the signer attests");
   }
   return issuer.jwk;
 }
@@ -129,6 +138,8 @@ const json = (v: unknown) => v as Record<string, Json>;
 export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<void> {
   const { db } = deps;
   const { purchaseId, append } = input;
+  const { merchantId } = deps;
+  if (!merchantId) throw new AlibiIssueError("config", "no PayPal merchant id to bind invoices to");
   const [existing] = await db
     .select({ id: alibis.purchaseId })
     .from(alibis)
@@ -143,16 +154,16 @@ export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<vo
   }
   const [p] = await db.select().from(purchases).where(eq(purchases.id, purchaseId));
   if (!p?.evalTrace || !p.paypalRefSalt || !p.paypalOrderId || !p.paypalAuthorizationId) {
-    throw new Error(`purchase ${purchaseId} has no trace or PayPal reference`);
+    throw new AlibiIssueError("data", `purchase ${purchaseId} has no trace or PayPal reference`);
   }
   const [m] = await db.select().from(mandates).where(eq(mandates.id, p.mandateId));
   if (!m?.openMandate || !m.payloadSd || !m.disclosures || !m.userAuth || !m.mandateHash) {
-    throw new Error(`mandate ${p.mandateId} is not signed`);
+    throw new AlibiIssueError("data", `mandate ${p.mandateId} is not signed`);
   }
   const chainId = p.chainId ?? 421614;
   const origin = LOG_ORIGINS[chainId];
   const env = ENV[chainId];
-  if (!origin || !env) throw new Error(`purchase ${purchaseId} is on an unknown chain`);
+  if (!origin || !env) throw new AlibiIssueError("data", `${purchaseId} is on an unknown chain`);
 
   const c = out.countersign;
   const addresses = [out.signers.tdx, out.signers.nitro].filter((a) => a !== null);
@@ -167,7 +178,7 @@ export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<vo
     );
   const attestations = addresses.map((a) => {
     const r = signerRows.find((s) => getAddress(toHex(s.address)) === a);
-    if (!r) throw new Error(`signer ${a} is not admitted`);
+    if (!r) throw new AlibiIssueError("data", `signer ${a} is not admitted`);
     return {
       kind: KIND[r.teeKind as 1 | 2],
       signer: a,
@@ -191,7 +202,7 @@ export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<vo
       .select()
       .from(purchaseHolds)
       .where(eq(purchaseHolds.requestId, purchaseId));
-    if (!h) throw new Error(`purchase ${purchaseId} has no hold`);
+    if (!h) throw new AlibiIssueError("data", `purchase ${purchaseId} has no hold`);
     customId = purchaseHoldCustomId(
       env,
       purchaseId,
@@ -260,12 +271,25 @@ export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<vo
       authorization_id: p.paypalAuthorizationId,
       custom_id: customId,
       ref_salt: toHex(p.paypalRefSalt),
-      ...(deps.merchantId ? { merchant_id: deps.merchantId } : {}),
+      merchant_id: merchantId,
     },
   };
-  const bytes = encodeAlibi(bundle);
+  let bytes: Uint8Array;
+  try {
+    bytes = encodeAlibi(bundle);
+  } catch (err) {
+    throw new AlibiIssueError("format", err instanceof Error ? err.message : String(err));
+  }
   if (bytes.length > MAX_ALIBI_BYTES) {
     throw new AlibiIssueError("size", `the bundle is ${bytes.length} bytes`);
+  }
+  const report = await verifyAlibi(bundle);
+  const failed = report.checks.filter((c) => c.status === "fail");
+  if (failed.length > 0) {
+    throw new AlibiIssueError(
+      "verify",
+      failed.map((c) => `${c.id}: ${c.reason ?? "fail"}`).join("; "),
+    );
   }
   await db.transaction(async (tx) => {
     const inserted = await tx
@@ -292,7 +316,7 @@ export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<vo
 /** The public manifest, the disclosures of the public items and the Channel3 observation. */
 async function disclosures(db: Db, root: Buffer) {
   const [b] = await db.select().from(evidenceBundles).where(eq(evidenceBundles.root, root));
-  if (!b) throw new AlibiIssueError("evidence", "the purchase's evidence bundle is not stored");
+  if (!b) throw new AlibiIssueError("data", "the purchase's evidence bundle is not stored");
   const manifest = b.manifest as Manifest;
   const items = await db
     .select({

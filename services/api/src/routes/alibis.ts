@@ -99,20 +99,40 @@ async function mayRead(deps: Pick<Deps, "db">, principal: Principal | undefined,
   }
   if (!principal.scopes?.includes("alibis:read")) return false;
   const [row] = await deps.db
-    .select({ uploadedBy: evidenceBundles.uploadedBy })
-    .from(evidenceBundles)
-    .where(eq(evidenceBundles.root, Buffer.from(b.tee.countersign.evidenceRoot.slice(2), "hex")));
-  return row?.uploadedBy === principal.subject;
+    .select({ uploadedBy: evidenceBundles.uploadedBy, clientId: purchases.clientId })
+    .from(purchases)
+    .innerJoin(
+      evidenceBundles,
+      eq(evidenceBundles.root, Buffer.from(b.tee.countersign.evidenceRoot.slice(2), "hex")),
+    )
+    .where(eq(purchases.id, b.alibi_id));
+  return (
+    row?.uploadedBy === principal.subject &&
+    (row.clientId === null || row.clientId === principal.subject)
+  );
 }
 
-function send(c: Context, bytes: Uint8Array, type: string, headers: Record<string, string> = {}) {
-  const etag = `"${createHash("sha256").update(bytes).digest("hex")}"`;
+const etagOf = (bundle: Uint8Array, kind: string) =>
+  `"${kind}-${createHash("sha256").update(bundle).digest("hex")}"`;
+
+/**
+ * Sends a representation of the bundle. Both are functions of the bundle's bytes, so the ETag is
+ * derived from them and a match answers before the PDF is rendered.
+ */
+async function send(
+  c: Context,
+  bundle: Uint8Array,
+  kind: "alibi" | "pdf",
+  body: () => Promise<Uint8Array> | Uint8Array,
+  headers: Record<string, string> = {},
+) {
+  const etag = etagOf(bundle, kind);
   c.header("ETag", etag);
   c.header("Cache-Control", "private, no-cache");
   for (const [k, v] of Object.entries(headers)) c.header(k, v);
   if (c.req.header("if-none-match") === etag) return c.body(null, 304);
-  c.header("Content-Type", type);
-  return c.body(bytes as Uint8Array<ArrayBuffer>, 200);
+  c.header("Content-Type", kind === "pdf" ? "application/pdf" : ALIBI_MEDIA_TYPE);
+  return c.body((await body()) as Uint8Array<ArrayBuffer>, 200);
 }
 
 export function registerAlibis(app: OpenAPIHono, deps: Pick<Deps, "db">): void {
@@ -129,7 +149,7 @@ export function registerAlibis(app: OpenAPIHono, deps: Pick<Deps, "db">): void {
     const id = c.req.param("file").slice(0, 26);
     const b = await readable(c, id);
     if (!b) return missing(c);
-    return send(c, await renderAlibiPdf(b), "application/pdf", {
+    return send(c, encodeAlibi(b), "pdf", () => renderAlibiPdf(b), {
       "Content-Disposition": `attachment; filename="${id}.pdf"`,
     });
   });
@@ -137,7 +157,9 @@ export function registerAlibis(app: OpenAPIHono, deps: Pick<Deps, "db">): void {
   app.openapi(bundleRoute, (async (c: Context) => {
     const { id } = c.req.param() as { id: string };
     const b = await readable(c, id);
-    return b ? send(c, encodeAlibi(b), ALIBI_MEDIA_TYPE) : missing(c);
+    if (!b) return missing(c);
+    const bytes = encodeAlibi(b);
+    return send(c, bytes, "alibi", () => bytes);
   }) as never);
 
   app.openapi(receiptRoute, (async (c: Context) => {

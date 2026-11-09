@@ -31,6 +31,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@keelson/attest": "workspace:*",
     "@keelson/chain": "workspace:*",
     "@keelson/core": "workspace:*",
     "@keelson/evidence": "workspace:*",
@@ -38,6 +39,7 @@
     "@keelson/mandate": "workspace:*",
     "@keelson/paypal": "workspace:*",
     "@keelson/timestamp": "workspace:*",
+    "jose": "6.2.15",
     "pdfjs-dist": "6.4.299",
     "pdfkit": "0.20.2",
     "qrcode": "1.5.4",

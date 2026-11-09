@@ -297,7 +297,8 @@ export async function logDenials(deps: PipelineDeps): Promise<number> {
     .where(
       and(
         eq(purchases.state, "DENIED"),
-        isNull(purchases.logIndex),
+        // A deny logged before its Alibi was issued is driven again: the append is idempotent.
+        sql`not exists (select 1 from alibis a where a.purchase_id = ${purchases.id})`,
         sql`${purchases.countersign} is not null`,
         sql`${purchases.paypalRefSalt} is not null`,
         isNull(purchases.failureReason),

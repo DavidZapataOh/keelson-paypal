@@ -17,5 +17,6 @@ export {
   type AlibiBundle,
   type AlibiReceipt,
   alibiSchema,
+  MAX_ALIBI_BYTES,
   receiptSchema,
 } from "./schema.ts";

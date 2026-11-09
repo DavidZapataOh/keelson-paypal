@@ -1,5 +1,12 @@
+import { deploymentsFor } from "@keelson/chain";
 import { fromHex, toHex } from "@keelson/core";
-import { LOG_VKEYS, verifyConsistency, verifyProof, verifyWitnessedCheckpoint } from "@keelson/log";
+import {
+  LOG_ORIGINS,
+  LOG_VKEYS,
+  verifyConsistency,
+  verifyProof,
+  verifyWitnessedCheckpoint,
+} from "@keelson/log";
 import { leafHashOf } from "../../codec.ts";
 import { type CheckDef, expect, pass } from "../check.ts";
 import { isBundle, pinnedOrigin, proofCheckpoint } from "./util.ts";
@@ -22,6 +29,15 @@ export const anchor: CheckDef = {
         "/tee/domain/chain_id",
       ]);
     }
+    const origin = pinnedOrigin(proofCheckpoint(input.tlog_proof));
+    expect(LOG_ORIGINS[a.chain_id] === origin, "the anchor is on a chain this log is not", [
+      "/anchor/chain_id",
+    ]);
+    expect(
+      a.contract === deploymentsFor(a.chain_id).CheckpointAnchor,
+      "the anchor contract is not Keelson's",
+      ["/anchor/contract"],
+    );
     let anchored: ReturnType<typeof verifyWitnessedCheckpoint>;
     try {
       anchored = verifyWitnessedCheckpoint(a.checkpoint, now);
@@ -29,7 +45,6 @@ export const anchor: CheckDef = {
       const m = /quorum not met: (\d+) of (\d+)/.exec((err as Error).message);
       expect(false, m ? `${m[1]} of ${m[2]}` : (err as Error).message, ["/anchor/checkpoint"]);
     }
-    const origin = pinnedOrigin(proofCheckpoint(input.tlog_proof));
     expect(anchored.origin === origin, "the anchor is of another log", ["/anchor/checkpoint"]);
     expect(anchored.size === BigInt(a.anchored_size), "the anchored size is not the checkpoint's", [
       "/anchor/anchored_size",

@@ -19,6 +19,13 @@ const QR_WIDTH = 40 * MM;
 const INK = "#111111";
 const MUTED = "#5b5b5b";
 
+/** Rows of policy checks printed; the rest are in the embedded bundle. */
+const MAX_FIELDS = 16;
+
+interface Glyphs {
+  hasGlyphForCodePoint(codePoint: number): boolean;
+}
+
 const MODE = { "2of2": "2-of-2: TDX and Nitro", degraded: "Degraded: TDX leg only" } as const;
 
 function amountOf(minor: string, currency: string): string {
@@ -74,19 +81,24 @@ export async function renderAlibiPdf(b: AlibiBundle): Promise<Uint8Array> {
   });
 
   const width = doc.page.width - 2 * MARGIN - QR_WIDTH - 8 * MM;
-  const label = (text: string) =>
-    doc
-      .font("sans")
-      .fontSize(8)
-      .fillColor(MUTED)
-      .text(text.toUpperCase(), { characterSpacing: 0.6 });
-  const value = (text: string, mono = false) =>
+  // PDF/A forbids drawing a glyph the embedded font lacks, so such characters print as "?".
+  const printable = (text: string) => {
+    const font = (doc as unknown as { _font: { font: Glyphs } })._font.font;
+    return [...text]
+      .map((ch) => (ch === "\n" || font.hasGlyphForCodePoint(ch.codePointAt(0) ?? 0) ? ch : "?"))
+      .join("");
+  };
+  const label = (text: string) => {
+    doc.font("sans").fontSize(8).fillColor(MUTED);
+    doc.text(printable(text.toUpperCase()), { characterSpacing: 0.6 });
+  };
+  const value = (text: string, mono = false) => {
     doc
       .font(mono ? "mono" : "sans")
       .fontSize(mono ? 8 : 11)
-      .fillColor(INK)
-      .text(text, { width })
-      .moveDown(0.6);
+      .fillColor(INK);
+    doc.text(printable(text), { width }).moveDown(0.6);
+  };
 
   doc.font("semibold").fontSize(26).fillColor(INK).text("Alibi").moveDown(0.3);
   label("Alibi id");
@@ -98,7 +110,7 @@ export async function renderAlibiPdf(b: AlibiBundle): Promise<Uint8Array> {
 
   const ctx = b.eval.context;
   label("Merchant");
-  value(String(ctx.merchant));
+  value(String(ctx.merchant).slice(0, 120));
   label("Amount");
   value(amountOf(b.tee.countersign.amount, String(ctx.currency)));
   label("Decision");
@@ -108,19 +120,16 @@ export async function renderAlibiPdf(b: AlibiBundle): Promise<Uint8Array> {
 
   label("Policy checks");
   doc.moveDown(0.2);
-  for (const f of b.eval.fields as {
-    field?: string;
-    id?: string;
-    color?: string;
-    pass?: boolean;
-  }[]) {
-    doc
-      .font("sans")
-      .fontSize(9.5)
-      .fillColor(INK)
-      .text(`${f.pass ? "Pass" : "Fail"}   ${f.field ?? f.id ?? ""}   (${f.color ?? ""})`, {
-        width,
-      });
+  const fields = b.eval.fields as { field?: string; id?: string; color?: string; pass?: boolean }[];
+  doc.font("sans").fontSize(9.5).fillColor(INK);
+  for (const f of fields.slice(0, MAX_FIELDS)) {
+    const name = String(f.field ?? f.id ?? "").slice(0, 40);
+    doc.text(printable(`${f.pass ? "Pass" : "Fail"}   ${name}   (${String(f.color ?? "")})`), {
+      width,
+    });
+  }
+  if (fields.length > MAX_FIELDS) {
+    doc.text(`and ${fields.length - MAX_FIELDS} more in the embedded Alibi`, { width });
   }
   doc.moveDown(0.8);
 
@@ -137,7 +146,9 @@ export async function renderAlibiPdf(b: AlibiBundle): Promise<Uint8Array> {
   value(
     [
       `Order ${b.paypal.order_id}`,
-      b.paypal.capture_id ? `Capture ${b.paypal.capture_id}` : "Not captured yet",
+      b.paypal.capture_id
+        ? `Capture ${b.paypal.capture_id} (reported by PayPal, not signed)`
+        : "Not captured yet",
       b.paypal.invoice_id ? `Invoice ${b.paypal.invoice_id}` : "",
     ]
       .filter(Boolean)
