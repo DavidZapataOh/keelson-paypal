@@ -1,5 +1,5 @@
 import { type Json, jcs, sha256, toHex } from "@keelson/core";
-import { hSd, mandateChallenge, verifyOpenMandate } from "@keelson/mandate";
+import { decodeDisclosed, hSd, mandateChallenge, verifyOpenMandate } from "@keelson/mandate";
 import { decodeJwt, importJWK, type JWK } from "jose";
 import { fromBase64url, toBase64url } from "../../b64.ts";
 import type { AlibiBundle } from "../../schema.ts";
@@ -33,8 +33,15 @@ function rawSignature(der: Uint8Array): Uint8Array {
   return out;
 }
 
-const userOf = (b: AlibiBundle) =>
-  (b.mandate.payload_sd as { user?: { cred?: { id?: string; jwk?: JWK } } }).user?.cred;
+/** The user's credential as the mandate's disclosures reveal it; `payload_sd` alone holds only its digest. */
+const userOf = (b: AlibiBundle): { id?: string; jwk?: JWK } | undefined => {
+  try {
+    const m = decodeDisclosed(b.mandate.payload_sd as object, b.mandate.disclosures as string[]);
+    return (m as { user?: { cred?: { id?: string; jwk?: JWK } } }).user?.cred;
+  } catch {
+    return undefined;
+  }
+};
 
 /** The mandate hash the countersignature binds is the challenge of this payload and commitment. */
 export const challenge: CheckDef = {

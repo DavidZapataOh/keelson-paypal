@@ -12,6 +12,9 @@ import {
 
 const webhookPath = (id: string) => `/v1/notifications/webhooks/${encodeURIComponent(id)}`;
 
+/** Pages followed at most. */
+const MAX_PAGES = 100;
+
 export async function createWebhook(
   f: PayPalFetch,
   url: string,
@@ -45,13 +48,15 @@ export async function deleteWebhook(f: PayPalFetch, id: string): Promise<void> {
 }
 
 export interface WebhookEventQuery {
-  /** RFC 3339. */
-  startTime: string;
-  endTime: string;
+  startTime: Date;
+  endTime: Date;
   pageSize?: number;
   eventType?: string;
   transactionId?: string;
 }
+
+/** RFC 3339 in UTC without fractional seconds, which PayPal's event list refuses. */
+const paypalTime = (d: Date) => d.toISOString().replace(/\.\d{3}Z$/, "Z");
 
 /** The app's events in a time range, following `links[rel=next]` to the last page. */
 export async function listWebhookEvents(
@@ -59,8 +64,8 @@ export async function listWebhookEvents(
   q: WebhookEventQuery,
 ): Promise<WebhookEvent[]> {
   const query: Record<string, string> = {
-    start_time: q.startTime,
-    end_time: q.endTime,
+    start_time: paypalTime(q.startTime),
+    end_time: paypalTime(q.endTime),
     page_size: String(q.pageSize ?? 100),
   };
   if (q.eventType) query.event_type = q.eventType;
@@ -69,10 +74,11 @@ export async function listWebhookEvents(
   let page = webhookEventList.parse(
     await f<unknown>("GET", "/v1/notifications/webhooks-events", { query }),
   );
-  for (;;) {
+  for (let pages = 1; ; pages++) {
     events.push(...page.events);
     const next = page.links.find((l) => l.rel === "next")?.href;
     if (!next) return events;
+    if (pages >= MAX_PAGES) throw new Error("too many pages of webhook events");
     const url = new URL(next);
     if (url.pathname !== "/v1/notifications/webhooks-events") {
       throw new Error(`unexpected next link ${url.pathname}`);

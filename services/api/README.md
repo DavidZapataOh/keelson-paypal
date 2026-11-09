@@ -68,6 +68,39 @@ Channel3 gives 1,000 credits a month; each lookup costs one and subscriptions ar
 workflow spends one credit on a live lookup. `bench/channel3.bench.ts` measures lookup latency
 (`LOOKUPS`, default 60 credits), the handler's own time and the stored sizes.
 
+## PayPal webhooks
+
+PayPal delivers the app's events to `POST /webhooks/paypal` (`https://api.keelson.finance/webhooks/paypal`)
+for `PAYMENT.AUTHORIZATION.CREATED`, `PAYMENT.AUTHORIZATION.VOIDED`, `PAYMENT.CAPTURE.COMPLETED`,
+`PAYMENT.CAPTURE.DENIED`, `PAYMENT.CAPTURE.REFUNDED` and `CUSTOMER.DISPUTE.CREATED|UPDATED|RESOLVED`.
+
+- **Verification.** Each delivery is self-verified as PayPal documents it: `SHA256withRSA` over
+  `transmission_id|transmission_time|webhook_id|crc32(body)`, with the CRC-32 of the exact bytes and
+  `PAYPAL_WEBHOOK_ID` from configuration, never from the request. The certificate is fetched only
+  from `https://api.sandbox.paypal.com/v1/notifications/certs/CERT-…` (`api.paypal.com` in
+  production), must chain to a pinned DigiCert root and name PayPal's message verification host,
+  and is cached in memory and Key Value until it expires. Deliveries more than five minutes from
+  their transmission time are refused. Simulator events are signed for the webhook id `WEBHOOK_ID`
+  and are refused.
+- **Store, then acknowledge.** A verified delivery is stored once per event id and transmission in
+  `paypal_events`, with its bytes and headers, and answered `200` without calling PayPal. Refusals
+  answer `400 invalid-signature` with a `code`; PayPal retries non-2xx answers for three days.
+- **Re-read.** A worker leases stored events and re-reads each resource with the app's token:
+  authorizations through the mandate's hold reconciliation, captures and refunds through the
+  capture reconciliation, disputes by `GET /v1/customer/disputes/{id}`. Only what PayPal answers
+  changes state; the body only names the resource. Network failures and 5xx answers retry with
+  backoff (2 s · 4ⁿ, at most ten minutes) for a day.
+- **Polling.** Every 30 s one instance lists the app's events since its cursor (with five minutes of
+  overlap) and stores those not yet stored, and re-reads every dispute updated since its cursor.
+  PayPal lists only events raised while a webhook is subscribed.
+
+To register the webhook, or reset its event types, run
+`node --env-file=../../.env scripts/paypal-webhook.ts` and set the printed id as
+`PAYPAL_WEBHOOK_ID` (required in production). To rotate it, delete the webhook in PayPal, run the
+script again and update `PAYPAL_WEBHOOK_ID`; deliveries signed for the old id are refused until
+then and the poller covers the gap. `scripts/paypal-fixtures.ts` writes stored deliveries as test
+fixtures.
+
 ## Hold lifecycle
 
 A mandate that allows a single merchant holds its whole budget in one PayPal authorization:

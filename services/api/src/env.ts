@@ -7,6 +7,10 @@ const schema = z
     BETTER_AUTH_SECRET: z.string().min(32),
     BETTER_AUTH_URL: z.url(),
     APP_ORIGIN: z.url(),
+    VERIFY_ORIGIN: z
+      .url()
+      .refine((u) => new URL(u).origin === u, "VERIFY_ORIGIN must be an origin")
+      .default("https://verify.keelson.finance"),
     PAYPAL_CLIENT_ID: z.string().min(1),
     PAYPAL_CLIENT_SECRET: z.string().min(1),
     PAYPAL_ENV: z.enum(["sandbox", "production"]),
