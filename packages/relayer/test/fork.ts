@@ -105,6 +105,9 @@ export async function startFork(port: number, block = FORK_BLOCK): Promise<Fork>
     "--port",
     String(port),
     "--silent",
+    // Shares the RPC provider's throughput with the other CI jobs, which pass the same rate to forge.
+    "--compute-units-per-second",
+    process.env.FOUNDRY_COMPUTE_UNITS_PER_SECOND ?? "330",
   ]);
   const url = `http://127.0.0.1:${port}`;
   const client = forkClient(url);

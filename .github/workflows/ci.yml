@@ -12,6 +12,11 @@ concurrency:
 permissions:
   contents: read
 
+# Alchemy allows 500 compute units per second across the whole account, shared with production; each forking
+# process (forge, anvil) is held to this rate so parallel jobs stay well under it.
+env:
+  FOUNDRY_COMPUTE_UNITS_PER_SECOND: 60
+
 jobs:
   node:
     runs-on: ubuntu-24.04
@@ -305,7 +310,7 @@ jobs:
       - run: forge build --root lib/nitro-validator
       - run: forge build --sizes
       # -vv: traces of failing tests would print the funder keys parsed from the secret.
-      - run: forge test --no-match-path 'test/**/*.live.t.sol' -vv
+      - run: forge test --no-match-path 'test/**/*.live.t.sol' -vv --compute-units-per-second "$FOUNDRY_COMPUTE_UNITS_PER_SECOND"
       - run: forge snapshot --check --no-match-path 'test/**/*.{fork,live}.t.sol'
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
@@ -340,7 +345,7 @@ jobs:
         with:
           version: v1.9.0
       - run: forge build --root lib/nitro-validator
-      - run: forge test --match-path 'test/**/*.live.t.sol' -vv
+      - run: forge test --match-path 'test/**/*.live.t.sol' -vv --compute-units-per-second "$FOUNDRY_COMPUTE_UNITS_PER_SECOND"
       - run: script/verify.sh --check-only 421614 11155111 42161
 
   log-live:
