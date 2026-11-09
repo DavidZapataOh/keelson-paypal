@@ -1,4 +1,5 @@
-import { startAnchorWatcher } from "./alibi/anchors.ts";
+// Loads reflect-metadata before anything pulls in @keelson/attest (see tee/attest.ts).
+import "./tee/attest.ts";
 import "./telemetry.ts";
 import Anthropic from "@anthropic-ai/sdk";
 import { serve } from "@hono/node-server";
@@ -9,6 +10,7 @@ import { identityToRecipient } from "age-encryption";
 import { pino } from "pino";
 import { createPublicClient, http } from "viem";
 import { arbitrumSepolia } from "viem/chains";
+import { startAnchorWatcher } from "./alibi/anchors.ts";
 import { createApp } from "./app.ts";
 import { createAuth } from "./auth.ts";
 import { createChannel3 } from "./channel3/client.ts";
