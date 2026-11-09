@@ -10,7 +10,7 @@ export interface SignedVerdict {
   signatures: { tee: number; signer: Hex; signature: Hex }[];
 }
 
-export class VerdictError extends Error {
+class VerdictError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "VerdictError";

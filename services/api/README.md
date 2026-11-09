@@ -101,6 +101,31 @@ script again and update `PAYPAL_WEBHOOK_ID`; deliveries signed for the old id ar
 then and the poller covers the gap. `scripts/paypal-fixtures.ts` writes stored deliveries as test
 fixtures.
 
+## Dispute evaluation
+
+A dispute stored over a Keelson purchase is handed to the Render workflow task
+`keelson-workflows/evaluateDispute` (`src/workflows.ts`), started with the dispute id as its
+idempotency key, so the webhook, the poller and every re-read start one run a day at most. The API
+starts it when `RENDER_API_KEY` and `DISPUTE_WORKFLOW` are set; otherwise the dispute stays `OPEN`.
+A run:
+
+1. re-reads the dispute with `GET /v1/customer/disputes/{id}`; the purchase is the one whose
+   capture's `invoice_id` the dispute names as `invoice_number`;
+2. makes sure an on-chain anchor covers the purchase's leaf, asking the log to anchor now when the
+   latest anchor does not, and verifies the Alibi against the chain;
+3. reads the capture and its order, and judges every mandate field of the countersigned evaluation
+   on its own: it failed if the evaluation failed it or if the Alibi's Channel3 observation
+   contradicts it;
+4. sends the facts and the settlement terms to both TEE legs (`POST /v1/verdict`), which attribute
+   the dispute with the attribution policy sets and sign the `Verdict`; both must sign the same
+   digest with their admitted signers;
+5. stores the verdict with its facts and signatures and moves the dispute and the purchase to
+   `ATTRIBUTED`.
+
+A failed read or signature fails the run, which Render retries five times with backoff. Nothing
+defaults to a fact. `GET /v1/disputes/{id}` shows the party at fault, the verdict and the time from
+the dispute's first webhook or poll to its verdict.
+
 ## Hold lifecycle
 
 A mandate that allows a single merchant holds its whole budget in one PayPal authorization:

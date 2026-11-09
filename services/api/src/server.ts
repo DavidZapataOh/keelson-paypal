@@ -4,6 +4,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { serve } from "@hono/node-server";
 import { createDb } from "@keelson/db";
 import { CertStore } from "@keelson/paypal";
+import { Render } from "@renderinc/sdk";
 import { identityToRecipient } from "age-encryption";
 import { pino } from "pino";
 import { createPublicClient, http } from "viem";
@@ -85,7 +86,23 @@ const certs = new CertStore(env.PAYPAL_ENV, {
     await kv.set(key, pem, { EX: ttlSeconds });
   },
 });
-const paypalEvents = startPayPalEventWorker({ db, kv, log, paypal });
+const render =
+  env.RENDER_API_KEY && env.DISPUTE_WORKFLOW
+    ? new Render({ token: env.RENDER_API_KEY })
+    : undefined;
+// A dispute is evaluated once a day at most per start: every re-read of an open dispute starts
+// it again, and Render answers a key it saw in the last 24 h with the run it started then.
+const startDisputeWorkflow = render
+  ? async (disputeId: string) => {
+      const run = await render.workflows.startTask(
+        `${env.DISPUTE_WORKFLOW}/evaluateDispute`,
+        [disputeId],
+        { idempotencyKey: `evaluateDispute:${disputeId}` },
+      );
+      log.info({ disputeId, taskRunId: run.taskRunId }, "dispute workflow started");
+    }
+  : undefined;
+const paypalEvents = startPayPalEventWorker({ db, kv, log, paypal, startDisputeWorkflow });
 const operators =
   env.KEELSON_OPERATOR_KEY && env.DEMO_AGENT_ID
     ? operatorSigners(env.DEMO_AGENT_ID, env.KEELSON_OPERATOR_KEY)
@@ -137,7 +154,7 @@ const stopResumer = startPipelineResumer({
     : {}),
 });
 const stopHolds = startHoldMaintenance({ db, kv, log, paypal });
-const poller = startPayPalPoller({ db, kv, log, paypal, paypalEvents });
+const poller = startPayPalPoller({ db, kv, log, paypal, paypalEvents, startDisputeWorkflow });
 const stopReconciler = relayer?.startReconciler();
 const stopValidations = relayer
   ? startValidationSweeper({

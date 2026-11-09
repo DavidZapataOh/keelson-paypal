@@ -35,10 +35,10 @@ const FIELD_BITS: Readonly<Record<string, number>> = {
 /** The policy each Channel3 comparison observes independently of the agent. */
 const OBSERVED_BY: Readonly<Record<string, string>> = { price: "amount", variant: "variant" };
 
-export type Color = "green" | "amber" | "gray";
+type Color = "green" | "amber" | "gray";
 
 /** The context the attribution policy sets judge a dispute on. */
-export interface Facts {
+interface Facts {
   reason: string;
   proof_valid: boolean;
   failed_green: boolean;
@@ -53,7 +53,7 @@ export interface Facts {
 }
 
 /** One mandate field of the countersigned evaluation, as the dispute sees it now. */
-export interface FieldResult {
+interface FieldResult {
   id: string;
   field: string;
   color: Color;
@@ -65,12 +65,16 @@ export interface FieldResult {
   contradicted: boolean;
 }
 
-export interface Money {
+interface Money {
   currencyCode?: string | undefined;
   value?: string | undefined;
 }
 
-/** The PayPal reads a dispute is judged on, all made after the dispute was opened. */
+/**
+ * The PayPal reads a dispute is judged on, all made after the dispute was opened.
+ *
+ * @internal
+ */
 export interface PayPalReads {
   dispute: Dispute;
   capture: { status?: string | undefined; amount?: Money | undefined };

@@ -56,6 +56,12 @@ const schema = z
     TSA_SIGSTORE_URL: z.url().optional(),
     TSA_FREETSA_URL: z.url().optional(),
     TSA_SECTIGO_URL: z.url().optional(),
+    /** With both set, disputes are evaluated on the Render workflow whose slug is `DISPUTE_WORKFLOW`. */
+    RENDER_API_KEY: z.string().startsWith("rnd_").optional(),
+    DISPUTE_WORKFLOW: z
+      .string()
+      .regex(/^[a-z0-9-]+$/)
+      .optional(),
     PORT: z.coerce.number().int().positive().default(10000),
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   })
