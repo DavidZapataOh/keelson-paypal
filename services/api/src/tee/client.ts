@@ -129,6 +129,54 @@ const AttestationSchema = z.discriminatedUnion("tee", [
   }),
 ]);
 
+const VerdictJsonSchema = z.strictObject({
+  disputeId: Hex32,
+  coverageId: Hex32,
+  agentId: z.string(),
+  payee: Address,
+  amount: z.string(),
+  ruleId: z.string(),
+  liable: z.string(),
+  fieldId: z.string(),
+  evidenceHash: Hex32,
+  inputsHash: Hex32,
+  policySetHash: Hex32,
+  checkpointRoot: Hex32,
+  issuedAt: z.string(),
+  deadline: z.string(),
+});
+
+export type VerdictJson = z.infer<typeof VerdictJsonSchema>;
+
+const VerdictSignedSchema = z.strictObject({
+  verdict: VerdictJsonSchema,
+  chain_id: z.number().int(),
+  digest: Hex32,
+  signature: Hex65,
+  signer: Address,
+  tee: z.number(),
+});
+
+export type VerdictSigned = z.infer<typeof VerdictSignedSchema>;
+
+/** The body of `POST /v1/verdict`: the dispute's facts and the verdict's settlement terms. */
+export interface VerdictRequest {
+  facts: Record<string, string | boolean>;
+  input: {
+    paypal_dispute_id: string;
+    coverage_id: Hex;
+    agent_id: string;
+    payee: Hex;
+    amount: string;
+    failed_fields: { green?: number; amber?: number; gray?: number };
+    evidence_hash: Hex;
+    checkpoint_root: Hex;
+    issued_at: number;
+    deadline: number;
+  };
+  chain_id?: number;
+}
+
 /** The body of `POST /v1/countersign` on a leg, as the engine reads it. */
 export interface CountersignRequest {
   request_id: string;
@@ -248,6 +296,10 @@ export class LegClient {
 
   async countersign(req: CountersignRequest): Promise<Countersigned> {
     return this.parse(CountersignedSchema, await this.call("POST", "/v1/countersign", req));
+  }
+
+  async verdict(req: VerdictRequest): Promise<VerdictSigned> {
+    return this.parse(VerdictSignedSchema, await this.call("POST", "/v1/verdict", req));
   }
 
   async registerMandate(req: RegisterMandate): Promise<MandateIssued> {
