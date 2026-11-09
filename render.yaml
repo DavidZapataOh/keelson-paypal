@@ -140,6 +140,15 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
+      # Settles verdicts on chain through the relayer's KMS key.
+      - key: RELAYER_KMS_KEY_SANDBOX
+        value: alias/keelson-relayer-arbitrum-sepolia
+      - key: AWS_REGION
+        value: us-west-2
+      - key: RELAYER_AWS_ACCESS_KEY_ID
+        sync: false
+      - key: RELAYER_AWS_SECRET_ACCESS_KEY
+        sync: false
 
   - type: web
     runtime: docker

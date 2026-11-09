@@ -10,7 +10,9 @@ import { arbitrumSepolia } from "viem/chains";
 import { z } from "zod";
 import { type EvaluateDeps, evaluateDispute } from "./disputes/evaluate.ts";
 import { type RespondDeps, respondToDispute } from "./disputes/respond.ts";
+import { type SettleDeps, settleDispute } from "./disputes/settle.ts";
 import { createKv } from "./kv.ts";
+import { relayerFromEnv } from "./onchain/relayer.ts";
 import { createPayPalDeps } from "./paypal.ts";
 import { createTee } from "./tee/config.ts";
 
@@ -28,16 +30,24 @@ const Env = z.object({
   LOG_URL: z.url(),
   LOG_WRITE_TOKEN: z.string().min(32),
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
+  RELAYER_AWS_ACCESS_KEY_ID: z.string().min(1).optional(),
+  RELAYER_AWS_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+  RELAYER_KMS_KEY_SANDBOX: z.string().min(1).optional(),
+  AWS_REGION: z.string().min(1).default("us-west-2"),
 });
 
-let deps: Promise<EvaluateDeps & RespondDeps> | undefined;
+type Deps = EvaluateDeps & RespondDeps & SettleDeps;
+
+let deps: Promise<Deps> | undefined;
 
 /** The connections a run needs, opened by the first run on an instance. */
-async function connect(): Promise<EvaluateDeps & RespondDeps> {
+async function connect(): Promise<Deps> {
   const env = Env.parse(process.env);
   const log = pino();
   const { db } = createDb(env.DATABASE_URL);
   return {
+    // Settles on chain only with the relayer's KMS key.
+    relayer: await relayerFromEnv(env, db, log),
     db,
     kv: await createKv(env.REDIS_URL, log),
     log,
@@ -58,8 +68,8 @@ async function connect(): Promise<EvaluateDeps & RespondDeps> {
 }
 
 /**
- * Attributes a stored PayPal dispute into a `Verdict` both TEE legs signed, then answers PayPal
- * for the party at fault. Started again whenever the dispute changes status or stage.
+ * Attributes a stored PayPal dispute into a `Verdict` both TEE legs signed, settles it with the
+ * party at fault, then answers PayPal. Started again whenever the dispute changes status or stage.
  */
 task(
   {
@@ -76,6 +86,7 @@ task(
     const d = await deps;
     const evaluation = await evaluateDispute(d, disputeId);
     if (evaluation.status !== "attributed") return { evaluation };
-    return { evaluation, response: await respondToDispute(d, disputeId) };
+    const settlement = await settleDispute(d, disputeId);
+    return { evaluation, settlement, response: await respondToDispute(d, disputeId) };
   },
 );

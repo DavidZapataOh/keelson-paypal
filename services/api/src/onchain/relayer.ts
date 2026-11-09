@@ -11,7 +11,20 @@ import type { Logger } from "pino";
 import type { Env } from "../env.ts";
 
 /** The relayer of every chain whose KMS key the environment names; undefined when it names none. */
-export async function relayerFromEnv(env: Env, db: Db, log: Logger): Promise<Relayer | undefined> {
+export async function relayerFromEnv(
+  env: Pick<
+    Env,
+    | "RELAYER_AWS_ACCESS_KEY_ID"
+    | "RELAYER_AWS_SECRET_ACCESS_KEY"
+    | "AWS_REGION"
+    | "RELAYER_KMS_KEY_SANDBOX"
+    | "RELAYER_KMS_KEY_LIVE"
+    | "ARBITRUM_SEPOLIA_RPC_URL"
+    | "ARBITRUM_ONE_RPC_URL"
+  >,
+  db: Db,
+  log: Logger,
+): Promise<Relayer | undefined> {
   if (!env.RELAYER_AWS_ACCESS_KEY_ID || !env.RELAYER_AWS_SECRET_ACCESS_KEY) return undefined;
   const client = new KMSClient({
     region: env.AWS_REGION,

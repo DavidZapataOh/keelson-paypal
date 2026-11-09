@@ -13,7 +13,7 @@ import {
   verdicts,
 } from "@keelson/db";
 import { LOG_HOST, LOG_ORIGINS } from "@keelson/log";
-import { getDispute } from "@keelson/paypal";
+import { getDispute, listTrackers } from "@keelson/paypal";
 import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
 import { ulid } from "ulid";
@@ -21,7 +21,7 @@ import type { Hex, PublicClient } from "viem";
 import { type AnchorDeps, reanchorAlibi } from "../alibi/anchors.ts";
 import { loadAlibi } from "../alibi/issue.ts";
 import type { LogConfig } from "../log/append.ts";
-import { SETTLEMENT } from "../merchants.ts";
+import { payeeFor, settlementOf } from "../merchants.ts";
 import { call, type PayPalDeps } from "../paypal.ts";
 import type { TeeConfig } from "../tee/signers.ts";
 import { verdict2of2 } from "../tee/verdict.ts";
@@ -114,13 +114,14 @@ export async function evaluateDispute(deps: EvaluateDeps, disputeId: string): Pr
   if (!bundle?.anchor) throw new Error(`purchase ${p.id} has no anchored alibi`);
 
   const { payments, orders } = deps.paypal.paypal;
-  const [dispute, report, capture, order, sameCart] = await Promise.all([
+  const [dispute, report, capture, order, trackers, sameCart, settlement] = await Promise.all([
     getDispute(deps.paypal.paypal.fetch, disputeId),
     verifyAlibi(bundle, {
       chain: createChainReader(deps.rpcUrl ? { rpc: { [chainId]: deps.rpcUrl } } : {}),
     }),
     call(payments.getCapturedPayment({ captureId: p.paypalCaptureId })),
     call(orders.getOrder({ id: p.paypalOrderId })),
+    listTrackers(deps.paypal.paypal.fetch, p.paypalCaptureId),
     db
       .select({ id: purchases.id })
       .from(purchases)
@@ -133,17 +134,19 @@ export async function evaluateDispute(deps: EvaluateDeps, disputeId: string): Pr
         ),
       )
       .limit(1),
+    settlementOf(db, p.merchantId),
   ]);
   if (dispute.status === "RESOLVED") return { status: "resolved", disputeId };
   const { facts, failedFields } = disputeFacts({
-    reads: { dispute, capture, order },
+    reads: { dispute, capture, order, trackers },
     bundle,
     verified: report.verdict === "verified",
     sameCartCountersigned: sameCart.length > 0,
   });
 
-  const payee = SETTLEMENT[p.merchantId];
-  if (!payee) throw new Error(`merchant ${p.merchantId} has no settlement address`);
+  // The rail is fixed here: the legs sign the payee it implies.
+  const { rail } = settlement;
+  const payee = payeeFor(p.merchantId, rail);
   const disputed = dispute.dispute_amount
     ? fromPayPalValue(
         dispute.dispute_amount.currency_code as CurrencyCode,
@@ -184,6 +187,7 @@ export async function evaluateDispute(deps: EvaluateDeps, disputeId: string): Pr
         amountMinor: minor,
         currency: p.currency,
         payee,
+        rail,
         digest: Buffer.from(signed.digest.slice(2), "hex"),
         chainId: signed.chainId,
         message: signed.message,

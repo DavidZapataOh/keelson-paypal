@@ -114,15 +114,18 @@ A run:
    capture's `invoice_id` the dispute names as `invoice_number`;
 2. makes sure an on-chain anchor covers the purchase's leaf, asking the log to anchor now when the
    latest anchor does not, and verifies the Alibi against the chain;
-3. reads the capture and its order, and judges every mandate field of the countersigned evaluation
+3. reads the capture, its order and its trackers (PayPal's Add Tracking API, the only one that
+   reports `DELIVERED`: an Orders v2 tracker reads `SHIPPED` or `CANCELLED`), and judges every mandate field of the countersigned evaluation
    on its own: it failed if the evaluation failed it or if the Alibi's Channel3 observation
    contradicts it;
 4. sends the facts and the settlement terms to both TEE legs (`POST /v1/verdict`), which attribute
    the dispute with the attribution policy sets and sign the `Verdict`; both must sign the same
-   digest with their admitted signers;
+   digest with their admitted signers. The payee is the merchant's settlement address, or
+   Keelson's treasury when the merchant settles through PayPal;
 5. stores the verdict with its facts and signatures and moves the dispute and the purchase to
    `ATTRIBUTED`;
-6. answers PayPal for the party at fault (`src/disputes/respond.ts`), once per action, stage and
+6. settles the verdict (`src/disputes/settle.ts`), see below;
+7. answers PayPal for the party at fault (`src/disputes/respond.ts`), once per action, stage and
    request from PayPal.
 
 | Party at fault    | Rules                   | PayPal call                                             | Evidence                                                                                                                                             |
@@ -144,7 +147,37 @@ it.
 A failed read or signature fails the run, which Render retries five times with backoff. Nothing
 defaults to a fact. `GET /v1/disputes/{id}` shows the party at fault, the verdict, the time from
 the dispute's first webhook or poll to its verdict, and what was sent to PayPal (the statement's
-text is not public: it quotes the Alibi).
+text is not public: it quotes the Alibi) and how the money moved.
+
+### Settlement
+
+When the operator or Keelson is at fault:
+
+1. **The buyer is refunded** while the dispute is an inquiry: the whole capture (PayPal refuses
+   partial refunds on a disputed capture), `custom_id` the verdict's `ksv1.<verdict id>.<digest>`
+   reference and `PayPal-Request-Id` derived from the verdict digest, so a retry is the same
+   refund. `accept-claim` is then not sent. In a chargeback, `accept-claim` settles it.
+2. **The payee is paid on chain** by the relayer: `KeelsonBondVault.slash` from the operator's bond
+   (R00, R31, R61) or `KeelsonReserve.payWarranty` from the reserve (R30, R60), keyed by the
+   verdict's `disputeId`. A slash above the instant cap, or signed by one leg, is queued for the
+   veto window; the settlement sweeper sends `executeSlash` once it closes. A refusal no retry can
+   change (`Expired`, `CoverageNotActive`, `ExceedsCoverage`, `NotAnchored`, …) is stored as
+   `failed` with the error's name.
+3. **A merchant that settles through PayPal** gets a Payout in USD for the amount the treasury
+   received in PYUSD, under the same `ksv1.` reference (`sender_item_id`); the batch id is derived
+   from it, so PayPal refuses a second batch.
+
+The purchase then moves to `SLASHED` or `WARRANTY_PAID` (`MERCHANT_LIABLE` or `DEFENDED` when the
+merchant or the user is at fault). The rail is the merchant's choice
+(`PUT /v1/merchants/{merchantId}/settlement`, `pyusd` by default, `paypal` with a PayPal receiver
+that is not Keelson's own account: PayPal answers `SELF_PAY_NOT_ALLOWED`). A shipment is recorded
+with `POST /v1/purchases/{id}/tracking`: the Orders v2 tracker, then `DELIVERED` through the Add
+Tracking API, which makes it the delivery proof of a "not received" dispute.
+
+`test/settle.test.ts` settles amber, green, expired and queued verdicts on an anvil fork of Arbitrum
+Sepolia, one block after a live `lockCoverage`, with two verdict signers written into the forked
+`VerdictVerifier`; `packages/paypal/test/sandbox/settlement.sandbox.test.ts` runs the refund,
+tracking and payout calls against the sandbox.
 
 ## Hold lifecycle
 

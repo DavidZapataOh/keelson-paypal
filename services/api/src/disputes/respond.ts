@@ -27,6 +27,7 @@ export interface RespondDeps {
 export type Response =
   | { status: "sent"; disputeId: string; action: Step; drafted: Draft["source"] | null }
   | { status: "already_sent"; disputeId: string; action: Step }
+  | { status: "refunded"; disputeId: string; refundId: string }
   | { status: "waiting" | "resolved" | "unattributed"; disputeId: string };
 
 /** Rules whose evidence cites the order's own records. */
@@ -47,6 +48,7 @@ export async function respondToDispute(deps: RespondDeps, disputeId: string): Pr
       liable: verdicts.liable,
       digest: verdicts.digest,
       facts: verdicts.facts,
+      refundId: verdicts.refundId,
       purchaseId: disputes.purchaseId,
       orderId: purchases.paypalOrderId,
     })
@@ -66,6 +68,10 @@ export async function respondToDispute(deps: RespondDeps, disputeId: string): Pr
   const plan = responsePlan(row, order);
   const step = nextStep(plan, dispute.links ?? []);
   if (!step) return { status: "waiting", disputeId };
+  // The settlement refunded the buyer under the verdict: accepting the claim would refund twice.
+  if (step === "accept_claim" && row.refundId) {
+    return { status: "refunded", disputeId, refundId: row.refundId };
+  }
   const stage = dispute.dispute_life_cycle_stage ?? "UNKNOWN";
   const dueDate = dispute.seller_response_due_date ?? "";
   const [sent] = await db

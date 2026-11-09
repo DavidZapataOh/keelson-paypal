@@ -1,5 +1,6 @@
 import { and, type Db, eq, lt, purchases, sql } from "@keelson/db";
 import type { Logger } from "pino";
+import { resumeSettlements, type SettleDeps } from "./disputes/settle.ts";
 import { logDenials, type PipelineDeps, resumePurchases } from "./pipeline/drive.ts";
 
 /** A countersign that has not finished by now was lost with its process; the request timeout is 30 s. */
@@ -56,6 +57,29 @@ export function startPipelineResumer(deps: PipelineDeps): () => void {
         running = false;
       });
   }, RESUME_INTERVAL_MS);
+  timer.unref();
+  return () => clearInterval(timer);
+}
+
+const SETTLE_INTERVAL_MS = 15_000;
+
+/** Every 15 seconds, settles again the verdicts waiting on a veto window, a payout or a lost run. */
+export function startSettlementSweeper(deps: SettleDeps): () => void {
+  let running = false;
+  const timer = setInterval(() => {
+    if (running) return;
+    running = true;
+    void resumeSettlements(deps)
+      .then(
+        (count) => {
+          if (count > 0) deps.log.info({ count }, "settlements resumed");
+        },
+        (err: unknown) => deps.log.error({ err }, "settlement sweep failed"),
+      )
+      .finally(() => {
+        running = false;
+      });
+  }, SETTLE_INTERVAL_MS);
   timer.unref();
   return () => clearInterval(timer);
 }

@@ -82,10 +82,14 @@ export interface PayPalReads {
     purchaseUnits?:
       | {
           payments?: { captures?: { status?: string; invoiceId?: string }[] | undefined };
-          shipping?: { trackers?: { status?: string }[] | undefined };
         }[]
       | undefined;
   };
+  /**
+   * The capture's trackers from the Add Tracking API: Orders v2 trackers only ever read `SHIPPED`
+   * or `CANCELLED`, so delivery is known only here.
+   */
+  trackers: { status: string }[];
 }
 
 export interface FactsInput {
@@ -154,7 +158,6 @@ export function disputeFacts({
   const invoice = bundle.paypal.invoice_id;
   const captures = (reads.order.purchaseUnits ?? []).flatMap((u) => u.payments?.captures ?? []);
   const live = (c: { status?: string }) => c.status !== "DECLINED" && c.status !== "FAILED";
-  const trackers = (reads.order.purchaseUnits ?? []).flatMap((u) => u.shipping?.trackers ?? []);
 
   return {
     facts: {
@@ -168,7 +171,7 @@ export function disputeFacts({
       duplicate_capture:
         invoice !== undefined &&
         captures.filter((c) => c.invoiceId === invoice && live(c)).length > 1,
-      tracking_delivered: trackers.some((t) => t.status === "DELIVERED"),
+      tracking_delivered: reads.trackers.some((t) => t.status === "DELIVERED"),
       snapshot_matches_item: !mismatches.has("variant"),
       refund_recorded:
         reads.capture.status === "REFUNDED" || reads.capture.status === "PARTIALLY_REFUNDED",

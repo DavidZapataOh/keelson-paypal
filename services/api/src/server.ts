@@ -27,7 +27,7 @@ import { startPayPalPoller } from "./paypal/poll.ts";
 import { startPayPalEventWorker } from "./paypal/worker.ts";
 import { createPayPalDeps } from "./paypal.ts";
 import { closeServer } from "./shutdown.ts";
-import { startPipelineResumer, startPurchaseSweeper } from "./sweeper.ts";
+import { startPipelineResumer, startPurchaseSweeper, startSettlementSweeper } from "./sweeper.ts";
 import { createTee } from "./tee/config.ts";
 import { engineSource } from "./tee/engine-source.ts";
 import { startSignerRefresh } from "./tee/signers.ts";
@@ -173,6 +173,10 @@ const stopValidations = relayer
     })
   : undefined;
 
+const stopSettlements = relayer
+  ? startSettlementSweeper({ db, log, paypal, relayer, chain: chains[arbitrumSepolia.id] })
+  : undefined;
+
 const anchors =
   env.LOG_URL && env.LOG_WRITE_TOKEN && chains[arbitrumSepolia.id]
     ? startAnchorWatcher({
@@ -196,6 +200,7 @@ process.once("SIGTERM", () => {
   }, FORCE_EXIT_MS).unref();
   stopRefresh?.();
   stopSweeper?.();
+  stopSettlements?.();
   stopResumer();
   stopHolds();
   stopReconciler?.();

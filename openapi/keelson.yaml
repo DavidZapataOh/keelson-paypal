@@ -1935,6 +1935,80 @@ components:
             - message
             - signatures
             - facts
+        settlement:
+          type:
+            - object
+            - "null"
+          properties:
+            rail:
+              type: string
+              enum:
+                - pyusd
+                - paypal
+              description: "`pyusd`: the payee the verdict names is the merchant. `paypal`: it
+                is Keelson's treasury, which pays the merchant a PayPal Payout."
+            outcome:
+              type:
+                - string
+                - "null"
+              enum:
+                - paid
+                - queued
+                - claimable
+                - failed
+                - null
+              description: "`queued`: the slash waits out the veto window until `ready_at`.
+                `claimable`: the PYUSD transfer failed and waits as a claim.
+                Null until the chain answered; always null when neither the
+                operator nor Keelson is liable."
+            failure:
+              type:
+                - string
+                - "null"
+              description: The contract error of a `failed` settlement.
+            refund_id:
+              type:
+                - string
+                - "null"
+              description: The buyer's PayPal refund; its `custom_id` is the verdict's `ksv1.`
+                reference.
+            tx_hash:
+              type:
+                - string
+                - "null"
+            explorer_url:
+              type:
+                - string
+                - "null"
+            ready_at:
+              type:
+                - string
+                - "null"
+              format: date-time
+            payout_batch_id:
+              type:
+                - string
+                - "null"
+            payout_status:
+              type:
+                - string
+                - "null"
+            settled_at:
+              type:
+                - string
+                - "null"
+              format: date-time
+          required:
+            - rail
+            - outcome
+            - failure
+            - refund_id
+            - tx_hash
+            - explorer_url
+            - ready_at
+            - payout_batch_id
+            - payout_status
+            - settled_at
         responses:
           type: array
           items:
@@ -1992,6 +2066,7 @@ components:
         - liable
         - parties
         - verdict
+        - settlement
         - responses
     Passkeys:
       type: object
@@ -2500,6 +2575,46 @@ components:
         - nonce
         - deadline
         - merchantSignature
+    SettlementPreference:
+      type: object
+      properties:
+        rail:
+          type: string
+          enum:
+            - pyusd
+            - paypal
+          description: "`pyusd`: slashes and warranties pay the merchant in PYUSD on
+            chain. `paypal`: they pay Keelson's treasury, and Keelson sends the
+            merchant a PayPal Payout in USD."
+        paypal_receiver:
+          anyOf:
+            - type: string
+              format: email
+            - type: string
+              pattern: ^[A-Z0-9]{13}$
+          description: "The PayPal account paid: an email address or a PayPal account id."
+      required:
+        - rail
+    Tracking:
+      type: object
+      properties:
+        carrier:
+          type: string
+          pattern: ^[A-Z0-9_]{2,64}$
+          description: PayPal's carrier code.
+          example: USPS
+        tracking_number:
+          type: string
+          minLength: 1
+          maxLength: 64
+        delivered:
+          type: boolean
+          default: false
+          description: The carrier confirmed delivery; it becomes the dispute's delivery
+            proof.
+      required:
+        - carrier
+        - tracking_number
   parameters: {}
 paths:
   /health:
@@ -4548,6 +4663,107 @@ paths:
         "503":
           description: "The relayer cannot send now: chain unavailable, gas price cap or
             low balance"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/merchants/{merchantId}/settlement:
+    put:
+      tags:
+        - merchants
+      summary: Choose how a merchant is paid when a dispute goes its way
+      description: "Applies to verdicts signed afterwards: the rail decides the payee
+        the TEE legs sign into the `Verdict`."
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 64
+          required: true
+          name: merchantId
+          in: path
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettlementPreference"
+      responses:
+        "200":
+          description: Stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettlementPreference"
+        "404":
+          description: No such merchant
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/purchases/{id}/tracking:
+    post:
+      tags:
+        - purchases
+      summary: Record a purchase's shipment and its delivery
+      description: Adds the tracker to the PayPal order (Orders v2) and, once
+        delivered, records the delivery with PayPal's Add Tracking API.
+        Idempotent per tracking number.
+      parameters:
+        - schema:
+            type: string
+            pattern: ^[0-7][0-9A-HJKMNP-TV-Z]{25}$
+          required: true
+          name: id
+          in: path
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Tracking"
+      responses:
+        "200":
+          description: Recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  state:
+                    type: string
+                  tracker_id:
+                    type: string
+                required:
+                  - state
+                  - tracker_id
+        "404":
+          description: No such purchase
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: The purchase was not captured
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: PayPal refused
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: PayPal unavailable
           content:
             application/problem+json:
               schema:

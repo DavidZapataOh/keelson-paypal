@@ -1,5 +1,6 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { asc, disputeResponses, disputes, eq, paypalEvents, sql, verdicts } from "@keelson/db";
+import { CHAINS, isChainId } from "@keelson/relayer";
 import type { Context } from "hono";
 import type { Deps } from "../app.ts";
 import { ProblemSchema, problem } from "../problem.ts";
@@ -36,6 +37,32 @@ const DisputeStatus = z
           z.object({ tee: z.number().int(), signer: z.string(), signature: z.string() }),
         ),
         facts: z.record(z.string(), z.union([z.string(), z.boolean()])),
+      })
+      .nullable(),
+    settlement: z
+      .object({
+        rail: z.enum(["pyusd", "paypal"]).openapi({
+          description:
+            "`pyusd`: the payee the verdict names is the merchant. `paypal`: it is Keelson's treasury, which pays the merchant a PayPal Payout.",
+        }),
+        outcome: z.enum(["paid", "queued", "claimable", "failed"]).nullable().openapi({
+          description:
+            "`queued`: the slash waits out the veto window until `ready_at`. `claimable`: the PYUSD transfer failed and waits as a claim. Null until the chain answered; always null when neither the operator nor Keelson is liable.",
+        }),
+        failure: z
+          .string()
+          .nullable()
+          .openapi({ description: "The contract error of a `failed` settlement." }),
+        refund_id: z.string().nullable().openapi({
+          description:
+            "The buyer's PayPal refund; its `custom_id` is the verdict's `ksv1.` reference.",
+        }),
+        tx_hash: z.string().nullable(),
+        explorer_url: z.string().nullable(),
+        ready_at: z.iso.datetime().nullable(),
+        payout_batch_id: z.string().nullable(),
+        payout_status: z.string().nullable(),
+        settled_at: z.iso.datetime().nullable(),
       })
       .nullable(),
     responses: z
@@ -106,6 +133,7 @@ export function registerDisputes(app: OpenAPIHono, deps: Pick<Deps, "db">): void
       .where(eq(disputeResponses.disputeId, id))
       .orderBy(asc(disputeResponses.createdAt));
     const v = row.verdict;
+    const txHash = v?.txHash ? `0x${Buffer.from(v.txHash).toString("hex")}` : null;
     const received = row.receivedAt ? new Date(row.receivedAt) : null;
     const liable = v ? (PARTIES[v.liable - 1] ?? null) : null;
     c.header("Cache-Control", "no-store");
@@ -131,6 +159,23 @@ export function registerDisputes(app: OpenAPIHono, deps: Pick<Deps, "db">): void
               message: v.message,
               signatures: v.signatures,
               facts: v.facts as Record<string, string | boolean>,
+            }
+          : null,
+        settlement: v
+          ? {
+              rail: v.rail as "pyusd" | "paypal",
+              outcome: v.outcome as "paid" | "queued" | "claimable" | "failed" | null,
+              failure: v.failure,
+              refund_id: v.refundId,
+              tx_hash: txHash,
+              explorer_url:
+                txHash && isChainId(v.chainId)
+                  ? `${CHAINS[v.chainId].explorer}/tx/${txHash}`
+                  : null,
+              ready_at: v.readyAt?.toISOString() ?? null,
+              payout_batch_id: v.payoutBatchId,
+              payout_status: v.payoutStatus,
+              settled_at: v.settledAt?.toISOString() ?? null,
             }
           : null,
         responses: responses.map((r) => {
