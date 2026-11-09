@@ -13,6 +13,7 @@ import {
   issueUserCredential,
   type P256PublicJwk,
   verifyClosedMandate,
+  verifyKeyBinding,
 } from "../src/credentials.ts";
 import { type Mandate, parseMandate } from "../src/schema.ts";
 import { buildSdPayload } from "../src/sd.ts";
@@ -131,6 +132,25 @@ describe("closed mandate", () => {
 
   it("rejects an open mandate without key binding", async () => {
     expect(await code(verifyClosedMandate(open, issuer.publicKey, opts))).toBe("closed_signature");
+  });
+
+  it("verifies the key binding alone against the agent key", async () => {
+    const token = await closeMandate(
+      open,
+      { requestId: REQUEST_ID, cartHash: CART_HASH, iat: opts.open.now },
+      agent.privateKey,
+    );
+    const kb = { requestId: REQUEST_ID, cartHash: CART_HASH, now: opts.open.now, maxSkewSec: 60 };
+    const agentJwk = { ...(await publicJwk(agent)), kid: "agt-01" };
+    expect(await verifyKeyBinding(token, agentJwk, kb)).toBe(opts.open.now);
+    expect(await code(verifyKeyBinding(token, await publicJwk(holder), kb))).toBe(
+      "closed_signature",
+    );
+    expect(
+      await code(
+        verifyKeyBinding(token, agentJwk, { ...kb, requestId: "01JC3XQ7ZK8M4N6P9R2T5V7W0Z" }),
+      ),
+    ).toBe("closed_nonce");
   });
 
   it("rejects another request, another cart or a stale iat", async () => {

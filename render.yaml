@@ -37,6 +37,8 @@ services:
         value: production
       - key: PAYPAL_ENV
         value: sandbox
+      - key: PAYPAL_MERCHANT_ID
+        value: A4WCRYD5EYDF2
       - key: BETTER_AUTH_URL
         value: https://api.keelson.finance
       - key: APP_ORIGIN

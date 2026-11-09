@@ -3,6 +3,7 @@ import { oauthProvider } from "@better-auth/oauth-provider";
 import { passkey } from "@better-auth/passkey";
 import { type Db, passkey as passkeyTable, sql } from "@keelson/db";
 import { RP_ID } from "@keelson/mandate";
+import type { PayPalEnv } from "@keelson/paypal";
 import type { AuthenticationExtensionsClientInputs } from "@simplewebauthn/server";
 import { cose, decodeCredentialPublicKey } from "@simplewebauthn/server/helpers";
 import { betterAuth } from "better-auth";
@@ -25,7 +26,7 @@ const PAYMENT_CEREMONY_MS = 10 * 60_000;
 
 const paypalAuthorizeURL = {
   sandbox: "https://www.sandbox.paypal.com/signin/authorize",
-  live: "https://www.paypal.com/signin/authorize",
+  production: "https://www.paypal.com/signin/authorize",
 } as const;
 const paypalScopes = "openid email profile https://uri.paypal.com/services/paypalattributes";
 
@@ -54,7 +55,7 @@ export interface AuthEnv {
   APP_ORIGIN: string;
   PAYPAL_CLIENT_ID: string;
   PAYPAL_CLIENT_SECRET: string;
-  PAYPAL_ENV: "sandbox" | "live";
+  PAYPAL_ENV: PayPalEnv;
   /** Overrides the WebAuthn RP ID; only for tests served from `localhost`. */
   PASSKEY_RP_ID?: string | undefined;
 }
@@ -109,7 +110,8 @@ export function createAuth(db: Db, env: AuthEnv) {
       paypal: {
         clientId: env.PAYPAL_CLIENT_ID,
         clientSecret: env.PAYPAL_CLIENT_SECRET,
-        environment: env.PAYPAL_ENV,
+        // The provider names the production environment `live`.
+        environment: env.PAYPAL_ENV === "production" ? "live" : "sandbox",
         // The provider sends no `scope`, which PayPal rejects; query parameters on the
         // endpoint are kept, so the identity scopes ride on it.
         authorizationEndpoint: `${paypalAuthorizeURL[env.PAYPAL_ENV]}?${new URLSearchParams({ scope: paypalScopes })}`,

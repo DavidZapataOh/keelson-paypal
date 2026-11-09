@@ -7,7 +7,7 @@ export const transitions = {
   mandates: {
     DRAFT: ["COMPILED"],
     COMPILED: ["SIGNED"],
-    SIGNED: ["HOLD_PENDING", "REVOKED", "EXPIRED"],
+    SIGNED: ["HOLD_PENDING", "ACTIVE", "REVOKED", "EXPIRED"],
     HOLD_PENDING: ["ACTIVE", "REVOKED", "EXPIRED"],
     ACTIVE: ["EXHAUSTED", "EXPIRED", "REVOKED"],
   },

@@ -67,7 +67,10 @@ const CreatedMandate = z
   .object({
     id: z.string(),
     mandateHash: Hex32,
-    state: z.literal("SIGNED"),
+    state: z.enum(["SIGNED", "ACTIVE"]).openapi({
+      description:
+        "`ACTIVE` at once when the mandate allows several merchants: each cart is then held on its own.",
+    }),
     openMandate: z.string().nullable().openapi({
       description: "The open mandate (L2) the TEE issued; the agent closes it per purchase.",
     }),
@@ -89,11 +92,31 @@ export const Card = z
   })
   .openapi("MandateCard");
 
+const HoldView = z
+  .object({
+    mode: z.enum(["mandate", "per_purchase"]),
+    orderId: z.string(),
+    authorizationId: z.string().nullable().openapi({
+      description: "The authorization captures use: the original, or its reauthorization.",
+    }),
+    authorizedAt: z.iso.datetime().nullable(),
+    reauthorizedAt: z.iso.datetime().nullable(),
+    remainingMinor: z.string().regex(/^\d+$/),
+    state: z.enum(["PENDING", "AUTHORIZED", "RELEASED"]).openapi({
+      description:
+        "`PENDING` until authorized; `RELEASED` once the mandate ended and the hold was voided or captured.",
+    }),
+  })
+  .openapi("MandateHold");
+
 const MandateView = z
   .object({
     id: z.string(),
     state: MandateState,
     mandateHash: Hex32.nullable(),
+    hold: z.union([HoldView, z.null()]).openapi({
+      description: "The PayPal hold of the mandate's budget, once its order exists.",
+    }),
     card: z.union([Card, z.null()]).openapi({
       description: "The card rendered from the stored payload, before any checkout evidence.",
     }),
@@ -108,7 +131,7 @@ const create = createRoute({
   tags: ["mandates"],
   summary: "Store a passkey-signed mandate",
   description:
-    'Verifies the passkey assertion over `M = SHA-256("keelson/mandate-challenge/v1" || 0x00 || H_sd || C_m)` and stores the mandate as `SIGNED`.',
+    'Verifies the passkey assertion over `M = SHA-256("keelson/mandate-challenge/v1" || 0x00 || H_sd || C_m)` and stores the mandate as `SIGNED`, or `ACTIVE` when it allows several merchants.',
   middleware: [requireSession()],
   request: {
     headers: z.object({ "idempotency-key": z.string().min(1).max(255) }),
@@ -143,6 +166,25 @@ const read = createRoute({
     404: { description: "No such mandate for this user", content: problemContent },
   },
 });
+
+const TERMINAL = new Set(["EXHAUSTED", "EXPIRED", "REVOKED"]);
+
+function holdView(row: typeof mandates.$inferSelect): z.infer<typeof HoldView> | null {
+  if (!row.paypalOrderId) return null;
+  return {
+    mode: row.holdMode,
+    orderId: row.paypalOrderId,
+    authorizationId: row.paypalAuthorizationId,
+    authorizedAt: row.authorizedAt?.toISOString() ?? null,
+    reauthorizedAt: row.reauthorizedAt?.toISOString() ?? null,
+    remainingMinor: row.remainingMinor.toString(),
+    state: TERMINAL.has(row.state)
+      ? "RELEASED"
+      : row.paypalAuthorizationId
+        ? "AUTHORIZED"
+        : "PENDING",
+  };
+}
 
 const NO_EVIDENCE = { merchantSignedCheckout: false, zkTlsFields: new Set<never>() };
 const AGENT_ID = /^(0|[1-9]\d{0,77})$/;
@@ -311,6 +353,9 @@ export function registerMandates(
       }
     }
 
+    // PayPal holds one payee's funds per authorization, so a mandate allowing several merchants
+    // holds each cart on its own and needs no budget hold to be usable.
+    const holdMode = merchants.allowed.length > 1 ? "per_purchase" : "mandate";
     try {
       await db.transaction(async (tx) => {
         const counted = await tx
@@ -322,6 +367,7 @@ export function registerMandates(
         if (counted.rowCount !== 1) throw new CounterError();
         await tx.insert(mandates).values({
           id: m.mid,
+          holdMode,
           userId,
           operatorAgentId: operator.agentId,
           currency: m.payment.currency,
@@ -354,6 +400,12 @@ export function registerMandates(
         if (!(await transition(tx, "mandates", m.mid, "COMPILED", "SIGNED"))) {
           throw new Error("mandate left COMPILED concurrently");
         }
+        if (
+          holdMode === "per_purchase" &&
+          !(await transition(tx, "mandates", m.mid, "SIGNED", "ACTIVE"))
+        ) {
+          throw new Error("mandate left SIGNED concurrently");
+        }
       });
     } catch (err) {
       if (isUniqueViolation(err)) return exists();
@@ -367,7 +419,7 @@ export function registerMandates(
       {
         id: m.mid,
         mandateHash: toHex(M),
-        state: "SIGNED" as const,
+        state: holdMode === "per_purchase" ? ("ACTIVE" as const) : ("SIGNED" as const),
         openMandate: issued?.open_mandate ?? null,
       },
       201,
@@ -387,6 +439,7 @@ export function registerMandates(
         id: row.id,
         state: row.state,
         mandateHash: row.mandateHash ? toHex(row.mandateHash) : null,
+        hold: holdView(row),
         card,
       },
       200,

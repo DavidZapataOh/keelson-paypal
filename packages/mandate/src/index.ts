@@ -51,6 +51,7 @@ export {
   closeMandate,
   issueOpenMandate,
   issueUserCredential,
+  type KeyBindingVerifyOptions,
   OPEN_MANDATE_TYP,
   type OpenMandateParams,
   type OpenMandateVerifyOptions,
@@ -65,6 +66,7 @@ export {
   type VerifiedOpenMandate,
   verifyClosedMandate,
   verifyCredential,
+  verifyKeyBinding,
 } from "./credentials.ts";
 export {
   ANY_ITEM,

@@ -490,19 +490,52 @@ export async function verifyClosedMandate(
   issuerKey: CryptoKey,
   opts: ClosedMandateVerifyOptions,
 ): Promise<VerifiedClosedMandate> {
-  const split = token.lastIndexOf("~") + 1;
-  const openMandate = token.slice(0, split);
-  const kbJwt = token.slice(split);
+  const openMandate = token.slice(0, token.lastIndexOf("~") + 1);
   if (!ULID.test(opts.requestId)) throw new RangeError("requestId is not a ULID");
   if (!CART_HASH.test(opts.cartHash)) throw new RangeError("cartHash is not sha256:<hex>");
   const open = await verifyOpenMandate(openMandate, issuerKey, opts.open);
   const { kid, ...key } = jwkOf(open.claims.cnf);
   const agentJwk = kid === undefined ? publicJwk(key) : { ...publicJwk(key), kid };
+  const iat = await verifyKeyBinding(token, agentJwk, {
+    requestId: opts.requestId,
+    cartHash: opts.cartHash,
+    now: opts.open.now,
+    maxSkewSec: opts.open.maxSkewSec,
+  });
+  return { open, agentJwk, iat };
+}
+
+/** What the agent's key binding must bind, and the clock its `iat` is checked against. */
+export interface KeyBindingVerifyOptions {
+  requestId: string;
+  cartHash: string;
+  /** Current time, in seconds since the epoch. */
+  now: number;
+  maxSkewSec: number;
+}
+
+/**
+ * Verifies only the KB-JWT that closes `token`: signed by `agentJwk`, over the open mandate it
+ * extends (`sd_hash`), bound to `opts.requestId` and `opts.cartHash` and issued within the skew
+ * of `now`. Resolves to its `iat`; a rejected key binding throws a {@link ClosedMandateError}.
+ *
+ * The open mandate is NOT verified here; callers verify it, or compare it with one they trust.
+ */
+export async function verifyKeyBinding(
+  token: string,
+  agentJwk: P256PublicJwk,
+  opts: KeyBindingVerifyOptions,
+): Promise<number> {
+  const split = token.lastIndexOf("~") + 1;
+  const openMandate = token.slice(0, split);
+  const kbJwt = token.slice(split);
+  if (!ULID.test(opts.requestId)) throw new RangeError("requestId is not a ULID");
+  if (!CART_HASH.test(opts.cartHash)) throw new RangeError("cartHash is not sha256:<hex>");
   let payload: Record<string, unknown>;
   try {
     assertStrictJwt(kbJwt);
     if (decodeProtectedHeader(kbJwt).typ !== CLOSED_MANDATE_TYP) throw new RangeError("typ");
-    const agentKey = (await importJWK(agentJwk, "ES256")) as CryptoKey;
+    const agentKey = (await importJWK(publicJwk(jwkOf({ jwk: agentJwk })), "ES256")) as CryptoKey;
     const dot = kbJwt.lastIndexOf(".");
     if (!(await es256Verifier(agentKey)(kbJwt.slice(0, dot), kbJwt.slice(dot + 1)))) {
       throw new RangeError("signature");
@@ -518,11 +551,10 @@ export async function verifyClosedMandate(
   if (payload.nonce !== opts.requestId) throw new ClosedMandateError("closed_nonce");
   if (payload.cart_hash !== opts.cartHash) throw new ClosedMandateError("closed_cart_hash");
   const { iat } = payload;
-  const { now, maxSkewSec } = opts.open;
-  if (typeof iat !== "number" || Math.abs(iat - now) > maxSkewSec) {
+  if (typeof iat !== "number" || Math.abs(iat - opts.now) > opts.maxSkewSec) {
     throw new ClosedMandateError("closed_iat");
   }
-  return { open, agentJwk, iat };
+  return iat;
 }
 
 /**

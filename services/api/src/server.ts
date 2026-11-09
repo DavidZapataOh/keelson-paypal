@@ -10,11 +10,13 @@ import { createApp } from "./app.ts";
 import { createAuth } from "./auth.ts";
 import { createChannel3 } from "./channel3/client.ts";
 import { parseEnv } from "./env.ts";
+import { startHoldMaintenance } from "./hold/maintenance.ts";
 import { createKv } from "./kv.ts";
 import { createLogger } from "./logger.ts";
 import { authenticate } from "./middleware/auth.ts";
 import { relayerFromEnv } from "./onchain/relayer.ts";
 import { startValidationSweeper } from "./onchain/validations.ts";
+import { createPayPalDeps } from "./paypal.ts";
 import { closeServer } from "./shutdown.ts";
 import { startPurchaseSweeper } from "./sweeper.ts";
 import { createTee } from "./tee/config.ts";
@@ -71,6 +73,7 @@ const chains = {
   },
 };
 const relayer = await relayerFromEnv(env, db, log);
+const paypal = createPayPalDeps(env);
 const app = createApp({
   db,
   kv,
@@ -83,6 +86,7 @@ const app = createApp({
   shutdown: shutdown.signal,
   stamps,
   chains,
+  paypal,
   ...(relayer ? { relayer } : {}),
   ...(env.CHANNEL3_API_KEY ? { channel3: createChannel3(env.CHANNEL3_API_KEY) } : {}),
   ...(env.CHANNEL3_WEBHOOK_SECRET ? { channel3WebhookSecret: env.CHANNEL3_WEBHOOK_SECRET } : {}),
@@ -98,6 +102,7 @@ const app = createApp({
 
 const stopRefresh = tee ? startSignerRefresh({ db, log, tee }) : undefined;
 const stopSweeper = tee ? startPurchaseSweeper({ db, log }) : undefined;
+const stopHolds = startHoldMaintenance({ db, kv, log, paypal });
 const stopReconciler = relayer?.startReconciler();
 const stopValidations = relayer
   ? startValidationSweeper({ db, kv, log, relayer, chain: chains[arbitrumSepolia.id] })
@@ -115,6 +120,7 @@ process.once("SIGTERM", () => {
   }, FORCE_EXIT_MS).unref();
   stopRefresh?.();
   stopSweeper?.();
+  stopHolds();
   stopReconciler?.();
   stopValidations?.();
   void closeServer(server, shutdown)
