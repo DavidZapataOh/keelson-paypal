@@ -32,17 +32,20 @@ import { createApp } from "../src/app.ts";
 import { resumeSettlements, type SettleDeps, settleDispute } from "../src/disputes/settle.ts";
 import { KEELSON_TREASURY, SETTLEMENT } from "../src/merchants.ts";
 import { createPayPalDeps } from "../src/paypal.ts";
+import { loadMeasurements } from "../src/tee/measurements.ts";
 import { testDb, testKv } from "./setup.ts";
 
 const rpc = process.env.ARBITRUM_SEPOLIA_RPC_URL;
 const chain = addresses[421614];
-/** One block after the live `lockCoverage` of a 1 PYUSD, 2-of-2 coverage of agent 351; it stays slashable for 657 s. */
-const BLOCK = 327_599_835n;
-const COVERAGE: Hex = "0x0000000000000000000000000000000001a1c100eeec9389220eba1cb562bcce";
+/** One block after the live `lockCoverage` of a 2 PYUSD, 2-of-2 coverage of agent 351; it stays slashable for 11 minutes. */
+const BLOCK = 327_682_892n;
+const COVERAGE: Hex = "0x0000000000000000000000000000000001a1c26a4ab70535ee8599dd9bfe99be";
 const AGENT_ID = 351n;
-/** The TDX and Nitro measurements the `VerdictVerifier` allows at `BLOCK`. */
-const TDX_MEASUREMENT: Hex = "0xecf423e166d5a07723788729808bc4f914cb91e1beb197ed6e76f511cbc88188";
-const NITRO_MEASUREMENT: Hex = "0x036525992b0c50e42123f2debb8f6e5ef99a3e96a1c70ef772a26c7e2177f1fc";
+/** The published TDX and Nitro measurements, which the `VerdictVerifier` allows at `BLOCK`. */
+const measurementOf = (id: string) => `0x${id.split(":")[1]}` as Hex;
+const published = loadMeasurements();
+const TDX_MEASUREMENT = measurementOf(published.tdx[0] as string);
+const NITRO_MEASUREMENT = measurementOf(published.nitro[0] as string);
 /** `forge inspect VerdictVerifier storageLayout`: `measurementIds` and `signers`. */
 const MEASUREMENT_IDS_SLOT = 4n;
 const SIGNERS_SLOT = 7n;
