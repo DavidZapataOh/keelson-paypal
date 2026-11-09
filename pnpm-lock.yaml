@@ -325,6 +325,9 @@ importers:
       '@keelson/paypal':
         specifier: workspace:*
         version: link:../paypal
+      '@keelson/policy':
+        specifier: workspace:*
+        version: link:../policy
       '@keelson/timestamp':
         specifier: workspace:*
         version: link:../timestamp
