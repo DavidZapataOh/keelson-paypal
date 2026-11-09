@@ -227,10 +227,24 @@ jobs:
         with:
           node-version-file: .node-version
           cache: pnpm
-      - uses: acifani/setup-tinygo@db56321a62b9a67922bb9ac8f9d085e218807bb3 # v2
+      - id: tinygo
+        uses: actions/cache@v6
         with:
-          tinygo-version: 0.44.0
-          binaryen-version: "133"
+          path: ~/.local/tinygo
+          key: tinygo-0.44.0-binaryen-133-${{ runner.os }}
+      - if: steps.tinygo.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/.local/tinygo
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 \
+            https://github.com/tinygo-org/tinygo/releases/download/v0.44.0/tinygo0.44.0.linux-amd64.tar.gz \
+            | tar -xz -C ~/.local/tinygo
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 \
+            https://github.com/WebAssembly/binaryen/releases/download/version_133/binaryen-version_133-x86_64-linux.tar.gz \
+            | tar -xz -C ~/.local/tinygo
+      - run: |
+          echo "$HOME/.local/tinygo/tinygo/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/tinygo/binaryen-version_133/bin" >> "$GITHUB_PATH"
+      - run: tinygo version && wasm-opt --version
       - run: pnpm install --frozen-lockfile --filter @keelson/monitor
       - run: pnpm --filter @keelson/monitor exec playwright install chromium
       - run: pnpm --filter @keelson/monitor test
@@ -491,9 +505,11 @@ jobs:
           path: ~/.nargo/bin
           key: nargo-1.0.0-${{ runner.os }}
       - if: steps.nargo.outputs.cache-hit != 'true'
-        uses: noir-lang/noirup@v0.1.5
-        with:
-          toolchain: 1.0.0
+        run: |
+          mkdir -p ~/.nargo/bin
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 \
+            https://github.com/noir-lang/noir/releases/download/v1.0.0/noir-x86_64-unknown-linux-gnu.tar.gz \
+            | tar -xz -C ~/.nargo/bin
       - run: echo "$HOME/.nargo/bin" >> "$GITHUB_PATH"
       - run: nargo test
         working-directory: circuits/vectors
