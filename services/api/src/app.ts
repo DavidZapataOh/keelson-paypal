@@ -22,6 +22,7 @@ import { requestLogger } from "./logger.ts";
 import { requireClient } from "./middleware/auth.ts";
 import { idempotency } from "./middleware/idempotency.ts";
 import { type RateLimitOptions, rateLimit } from "./middleware/rate-limit.ts";
+import type { PayPalDeps } from "./paypal.ts";
 import { ProblemSchema, problem } from "./problem.ts";
 import { registerBonds } from "./routes/bonds.ts";
 import { registerChannel3Webhook } from "./routes/channel3-webhook.ts";
@@ -31,11 +32,14 @@ import { registerEvents } from "./routes/events.ts";
 import { registerEvidence } from "./routes/evidence.ts";
 import { registerFeedback } from "./routes/feedback.ts";
 import { registerHealth } from "./routes/health.ts";
+import { registerHold } from "./routes/hold.ts";
 import { registerMandates } from "./routes/mandates.ts";
 import { registerMerchantsPayout } from "./routes/merchants-payout.ts";
 import { registerObservations } from "./routes/observations.ts";
 import { registerOperators } from "./routes/operators.ts";
 import { registerPasskeys } from "./routes/passkeys.ts";
+import { registerPurchaseHolds } from "./routes/purchase-holds.ts";
+import { registerRevoke } from "./routes/revoke.ts";
 import { registerStatus } from "./routes/status.ts";
 import { registerTee } from "./routes/tee.ts";
 import { registerTimestamps } from "./routes/timestamps.ts";
@@ -79,6 +83,8 @@ export interface Deps {
   chains?: ChainReaders;
   /** Sends Keelson's contract calls and pays their gas; the gasless routes answer 503 without it. */
   relayer?: Relayer;
+  /** PayPal orders and payments; the hold routes answer 503 without it. */
+  paypal?: PayPalDeps;
   /** Aborting it ends every open event stream so the server can close. */
   shutdown?: AbortSignal;
 }
@@ -191,6 +197,9 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerStatus(app, deps);
   registerEvents(app, deps);
   registerMandates(app, deps);
+  registerHold(app, deps);
+  registerPurchaseHolds(app, deps);
+  registerRevoke(app, deps);
   registerCompile(app, deps);
   registerCountersign(app, deps);
   registerEvidence(app, deps);

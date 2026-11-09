@@ -127,6 +127,13 @@
       "when": 1794153660863,
       "tag": "0017_chain_transactions",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1794160084304,
+      "tag": "0018_holds",
+      "breakpoints": true
     }
   ]
 }

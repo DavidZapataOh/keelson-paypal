@@ -39,7 +39,13 @@
       "project": ["src/**/*.ts!", "scripts/**/*.ts", "bench/**/*.ts", "test/**/*.ts"]
     },
     "packages/paypal": {
-      "entry": ["src/index.ts!", "scripts/*.ts", "test/sandbox/*.sandbox.test.ts"],
+      "entry": [
+        "src/index.ts!",
+        "src/browser.ts!",
+        "src/testing.ts!",
+        "scripts/*.ts",
+        "test/sandbox/*.sandbox.test.ts"
+      ],
       "project": ["src/**/*.ts!", "scripts/**/*.ts", "test/**/*.ts"]
     },
     "packages/policy": {
