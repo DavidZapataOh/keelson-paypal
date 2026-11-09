@@ -32,7 +32,7 @@ import {
 import { spans } from "./spans.ts";
 import { stats, waterfall } from "./waterfall.ts";
 
-// PURCHASES $1 purchases of the demo cart spread over HOLDS fresh mandates, each held on PayPal
+// PURCHASES purchases of the demo cart at PRICE_MINOR cents (100) spread over HOLDS fresh mandates, each held on PayPal
 // and approved by the sandbox buyer, CONCURRENCY at a time; every DEGRADED_EVERY-th one runs with
 // leg B unreachable. Each is timed from POST /v1/countersign to a terminal state, against the live
 // legs, the deployed log, Arbitrum Sepolia through the relayer and the PayPal sandbox, in-process
@@ -43,7 +43,9 @@ const CONCURRENCY = Number(process.env.CONCURRENCY ?? 1);
 const HOLDS = Number(process.env.HOLDS ?? 1);
 const DEGRADED_EVERY = Number(process.env.DEGRADED_EVERY ?? 0);
 const BUDGET_P95_MS = 4_500;
-const PRICE_MINOR = 100;
+const PRICE_MINOR = Number(process.env.PRICE_MINOR ?? 100);
+/** With DURATION_S set, purchases keep starting until it has passed (PURCHASES at most). */
+const DURATION_S = Number(process.env.DURATION_S ?? 0);
 const TERMINAL_WAIT_MS = 120_000;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -239,8 +241,9 @@ try {
   for (let i = 0; i < HOLDS; i++) holds.push(await openHold(perHold));
 
   let next = 0;
+  const until = DURATION_S > 0 ? Date.now() + DURATION_S * 1000 : Number.POSITIVE_INFINITY;
   const worker = async () => {
-    for (let i = next++; i < PURCHASES; i = next++) {
+    for (let i = next++; i < PURCHASES && Date.now() < until; i = next++) {
       const mode = DEGRADED_EVERY > 0 && (i + 1) % DEGRADED_EVERY === 0 ? "degraded" : "2of2";
       const r = await purchase(holds[i % HOLDS] as Hold, mode);
       results.push(r);
@@ -264,7 +267,15 @@ try {
     }),
   );
   const summary = {
-    run: { PURCHASES, CONCURRENCY, HOLDS, DEGRADED_EVERY, commit: process.env.RENDER_GIT_COMMIT },
+    run: {
+      PURCHASES,
+      CONCURRENCY,
+      HOLDS,
+      DEGRADED_EVERY,
+      PRICE_MINOR,
+      DURATION_S,
+      commit: process.env.RENDER_GIT_COMMIT,
+    },
     endToEnd: stats(captured.map((r) => r.ms)),
     endToEnd2of2: stats(captured.filter((r) => r.mode === "2of2").map((r) => r.ms)),
     endToEndDegraded: stats(captured.filter((r) => r.mode === "degraded").map((r) => r.ms)),
@@ -283,7 +294,9 @@ try {
       `### Money path\n\n\`\`\`json\n${JSON.stringify(summary, null, 2)}\n\`\`\`\n`,
     );
   }
-  if (captured.length < PURCHASES || summary.endToEnd.p95 >= BUDGET_P95_MS) process.exitCode = 1;
+  if (captured.length < results.length || summary.endToEnd.p95 >= BUDGET_P95_MS) {
+    process.exitCode = 1;
+  }
 } finally {
   for (const m of opened) {
     await post(`/v1/mandates/${m.mid}/revoke`, asUser(m.sub)).catch((err: unknown) =>
