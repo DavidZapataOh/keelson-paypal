@@ -1,3 +1,5 @@
+// Loads reflect-metadata before anything pulls in @keelson/attest (see tee/attest.ts).
+import "./tee/attest.ts";
 import "./telemetry.ts";
 import { createDb } from "@keelson/db";
 import { task } from "@renderinc/sdk/workflows";
