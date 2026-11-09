@@ -1,10 +1,14 @@
 import { createRequire } from "node:module";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import type { Db } from "@keelson/db";
+import { addresses, checkpointAnchorAbi } from "@keelson/chain";
+import { type Db, desc, eq, paypalEvents } from "@keelson/db";
 import { LOG_HOST, LOG_ORIGINS } from "@keelson/log";
 import type { Relayer } from "@keelson/relayer";
 import type { RedisClientType } from "redis";
+import { type Address, keccak256, stringToBytes } from "viem";
+import type { ChainReaders } from "../chain/reader.ts";
 import type { LogConfig } from "../log/append.ts";
+import type { PayPalDeps } from "../paypal.ts";
 import type { TeeConfig } from "../tee/signers.ts";
 
 const { version } = createRequire(import.meta.url)("../../package.json") as { version: string };
@@ -54,6 +58,24 @@ const route = createRoute({
                       checkpointAgeMs: z.number().int(),
                     }),
                   ),
+                })
+                .optional(),
+              paypal: z
+                .object({ status: Dependency, environment: z.enum(["sandbox", "production"]) })
+                .optional(),
+              webhooks: z
+                .object({
+                  status: Dependency,
+                  lastWebhookAgeMs: z.number().int().optional(),
+                  lastPollAgeMs: z.number().int().optional(),
+                })
+                .optional(),
+              anchor: z
+                .object({
+                  status: Dependency,
+                  environment: z.literal("arbitrum-sepolia"),
+                  size: z.string().optional(),
+                  anchoredAgeMs: z.number().int().optional(),
                 })
                 .optional(),
             }),
@@ -133,6 +155,64 @@ async function relayerState(relayer: Relayer) {
   return { status, chains };
 }
 
+/** The poller records its cursor every 30 s; older than this, PayPal events are not being polled. */
+const POLL_MAX_AGE_MS = 120_000;
+const POLL_CURSOR = "paypal:poll:events";
+
+const ageOf = (at: Date | string | null | undefined) =>
+  at ? Math.max(0, Date.now() - new Date(at).getTime()) : undefined;
+
+/** When PayPal last delivered a webhook, and when the poller last caught up. */
+async function webhookState(db: Db, kv: RedisClientType) {
+  const [[last], cursor] = await Promise.all([
+    db
+      .select({ at: paypalEvents.receivedAt })
+      .from(paypalEvents)
+      .where(eq(paypalEvents.source, "webhook"))
+      .orderBy(desc(paypalEvents.receivedAt))
+      .limit(1),
+    kv.get(POLL_CURSOR),
+  ]);
+  const lastWebhookAgeMs = ageOf(last?.at);
+  const lastPollAgeMs = ageOf(cursor);
+  return {
+    status:
+      lastPollAgeMs !== undefined && lastPollAgeMs < POLL_MAX_AGE_MS
+        ? ("up" as const)
+        : ("down" as const),
+    ...(lastWebhookAgeMs !== undefined ? { lastWebhookAgeMs } : {}),
+    ...(lastPollAgeMs !== undefined ? { lastPollAgeMs } : {}),
+  };
+}
+
+/** The latest checkpoint of the sandbox log anchored on Arbitrum Sepolia. */
+async function anchorState(chains: ChainReaders) {
+  const reader = chains[421614];
+  if (!reader) return undefined;
+  const environment = "arbitrum-sepolia" as const;
+  try {
+    const [size, , anchoredAt] = await Promise.race([
+      reader.client.readContract({
+        address: addresses[421614].CheckpointAnchor as Address,
+        abi: checkpointAnchorAbi,
+        functionName: "latest",
+        args: [keccak256(stringToBytes(LOG_ORIGINS[421614] as string))],
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), TEE_PROBE_TIMEOUT_MS).unref(),
+      ),
+    ]);
+    return {
+      status: "up" as const,
+      environment,
+      size: size.toString(),
+      anchoredAgeMs: Math.max(0, Date.now() - anchoredAt * 1000),
+    };
+  } catch {
+    return { status: "down" as const, environment };
+  }
+}
+
 export function registerStatus(
   app: OpenAPIHono,
   deps: {
@@ -141,21 +221,41 @@ export function registerStatus(
     tee?: TeeConfig | undefined;
     tlog?: LogConfig | undefined;
     relayer?: Relayer | undefined;
+    paypal?: PayPalDeps | undefined;
+    chains?: ChainReaders | undefined;
   },
 ): void {
   app.openapi(route, async (c) => {
-    const { tee, tlog, relayer } = deps;
-    const [db, kv, teeA, teeB, log, relayerDep] = await Promise.all([
+    const { tee, tlog, relayer, paypal, chains } = deps;
+    const [db, kv, teeA, teeB, log, relayerDep, paypalDep, webhooks, anchor] = await Promise.all([
       probe(() => deps.db.execute("select 1")),
       probe(() => deps.kv.ping()),
       tee ? probe(() => tee.client.a.health(), TEE_PROBE_TIMEOUT_MS) : undefined,
       tee ? probe(() => tee.client.b.health(), TEE_PROBE_TIMEOUT_MS) : undefined,
       tlog ? logState(tlog).catch(() => ({ status: "down" as const, origins: [] })) : undefined,
       relayer ? relayerState(relayer) : undefined,
+      paypal
+        ? probe(
+            () => paypal.paypal.fetch("GET", "/v1/notifications/webhooks"),
+            TEE_PROBE_TIMEOUT_MS,
+          )
+        : undefined,
+      paypal
+        ? webhookState(deps.db, deps.kv).catch(() => ({ status: "down" as const }))
+        : undefined,
+      chains ? anchorState(chains) : undefined,
     ]);
-    const up = [db, kv, teeA, teeB, log?.status, relayerDep?.status].every(
-      (d) => d === undefined || d === "up",
-    );
+    const up = [
+      db,
+      kv,
+      teeA,
+      teeB,
+      log?.status,
+      relayerDep?.status,
+      paypalDep,
+      webhooks?.status,
+      anchor?.status,
+    ].every((d) => d === undefined || d === "up");
     return c.json(
       {
         status: up ? ("ok" as const) : ("degraded" as const),
@@ -165,6 +265,11 @@ export function registerStatus(
           ...(teeA && teeB ? { teeA, teeB } : {}),
           ...(log ? { log } : {}),
           ...(relayerDep ? { relayer: relayerDep } : {}),
+          ...(paypal && paypalDep
+            ? { paypal: { status: paypalDep, environment: paypal.environment } }
+            : {}),
+          ...(webhooks ? { webhooks } : {}),
+          ...(anchor ? { anchor } : {}),
         },
         version,
       },
