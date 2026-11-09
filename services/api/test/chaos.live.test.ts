@@ -1,7 +1,8 @@
-import { eq, mandates } from "@keelson/db";
+import { and, eq, mandates, paypalEvents } from "@keelson/db";
 import { createPublicClient, http, type PublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { call } from "../src/paypal.ts";
 import { capturesOf, checkBudget, checkInvariants } from "./invariants.ts";
 import { type Hold, onRender, renderHarness, UNREACHABLE } from "./render-live.ts";
 
@@ -105,6 +106,36 @@ describe.skipIf(!onRender)(
       expect(next.status).toBe(409);
       expect(next.out.type).toContain("mandate-not-active");
       await checkBudget({ db: h.db, paypal: h.paypal }, own.mid);
+    });
+    test("a hold voided outside Keelson ends its mandate, and the next countersign is refused", async () => {
+      const own = await h.openHold(200);
+      // Evidence is only accepted for a usable mandate: the refused cart's is uploaded first.
+      const refused = await h.cartBody(own, 100);
+      await call(
+        h.paypal.paypal.payments.voidPayment({
+          authorizationId: own.authorizationId,
+          paypalRequestId: `external-void-${own.authorizationId}`,
+        }),
+      );
+      let state: string | undefined;
+      for (let i = 0; i < 90 && state !== "EXPIRED"; i++) {
+        await new Promise((r) => setTimeout(r, 2_000));
+        state = (await h.db.select().from(mandates).where(eq(mandates.id, own.mid)))[0]?.state;
+      }
+      expect(state, "mandate after PAYMENT.AUTHORIZATION.VOIDED").toBe("EXPIRED");
+      const [event] = await h.db
+        .select()
+        .from(paypalEvents)
+        .where(
+          and(
+            eq(paypalEvents.eventType, "PAYMENT.AUTHORIZATION.VOIDED"),
+            eq(paypalEvents.resourceId, own.authorizationId),
+          ),
+        );
+      expect(event?.mandateId).toBe(own.mid);
+      const next = await h.send(h.app, refused.body);
+      expect(next.status).toBe(409);
+      expect(next.out.type).toContain("mandate-not-active");
     });
   },
 );
