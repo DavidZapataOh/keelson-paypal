@@ -112,6 +112,8 @@ async function consistency(tlog: LogConfig, origin: string, from: bigint, to: bi
  * checkpoint covers its leaf: the anchor's checkpoint must carry the pinned log signatures and
  * witness quorum, match the event, and be consistent with the Alibi's proof checkpoint. Every
  * earlier section stays as it was.
+ *
+ * @internal
  */
 export async function reanchorAlibi(
   deps: AnchorDeps,
@@ -193,7 +195,11 @@ export async function reanchorAlibi(
   return updated ? "anchored" : "already";
 }
 
-/** One pass: anchors every Alibi the latest anchored checkpoint of its chain covers. */
+/**
+ * One pass: anchors every Alibi the latest anchored checkpoint of its chain covers.
+ *
+ * @internal
+ */
 export async function anchorCovered(deps: AnchorDeps): Promise<number> {
   const chainId = 421614;
   const origin = LOG_ORIGINS[chainId] as string;
