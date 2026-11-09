@@ -1935,6 +1935,52 @@ components:
             - message
             - signatures
             - facts
+        responses:
+          type: array
+          items:
+            type: object
+            properties:
+              action:
+                type: string
+                enum:
+                  - provide_evidence
+                  - send_message
+                  - accept_claim
+              stage:
+                type: string
+                description: PayPal's lifecycle stage when it was sent.
+              evidence_types:
+                type: array
+                items:
+                  type: string
+              drafted_by:
+                type:
+                  - string
+                  - "null"
+                enum:
+                  - model
+                  - template
+                  - null
+                description: "`model` when the statement was drafted with citations; `template`
+                  when the rule's fixed statement was sent. Null for an accepted
+                  claim."
+              citations:
+                type: integer
+                description: "How many passages of the Alibi and the verdict the statement
+                  cites. The statement itself is not public: it quotes the
+                  purchase's Alibi."
+              sent_at:
+                type: string
+                format: date-time
+            required:
+              - action
+              - stage
+              - evidence_types
+              - drafted_by
+              - citations
+              - sent_at
+          description: What Keelson sent PayPal for the party at fault. The action and the
+            evidence types follow from the rule; a model only drafts the text.
       required:
         - dispute_id
         - purchase_id
@@ -1946,6 +1992,7 @@ components:
         - liable
         - parties
         - verdict
+        - responses
     Passkeys:
       type: object
       properties:
@@ -3889,7 +3936,7 @@ paths:
       parameters:
         - schema:
             type: string
-            pattern: ^PP-D-[0-9A-Za-z-]{1,40}$
+            pattern: ^PP-[A-Z]-[0-9A-Za-z-]{1,40}$
           required: true
           name: id
           in: path

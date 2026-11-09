@@ -1,6 +1,7 @@
 // Loads reflect-metadata before anything pulls in @keelson/attest (see tee/attest.ts).
 import "./tee/attest.ts";
 import "./telemetry.ts";
+import Anthropic from "@anthropic-ai/sdk";
 import { createDb } from "@keelson/db";
 import { task } from "@renderinc/sdk/workflows";
 import { pino } from "pino";
@@ -8,6 +9,7 @@ import { createPublicClient, http } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { z } from "zod";
 import { type EvaluateDeps, evaluateDispute } from "./disputes/evaluate.ts";
+import { type RespondDeps, respondToDispute } from "./disputes/respond.ts";
 import { createKv } from "./kv.ts";
 import { createPayPalDeps } from "./paypal.ts";
 import { createTee } from "./tee/config.ts";
@@ -25,12 +27,13 @@ const Env = z.object({
   ARBITRUM_SEPOLIA_RPC_URL: z.url(),
   LOG_URL: z.url(),
   LOG_WRITE_TOKEN: z.string().min(32),
+  ANTHROPIC_API_KEY: z.string().min(1).optional(),
 });
 
-let deps: Promise<EvaluateDeps> | undefined;
+let deps: Promise<EvaluateDeps & RespondDeps> | undefined;
 
 /** The connections a run needs, opened by the first run on an instance. */
-async function connect(): Promise<EvaluateDeps> {
+async function connect(): Promise<EvaluateDeps & RespondDeps> {
   const env = Env.parse(process.env);
   const log = pino();
   const { db } = createDb(env.DATABASE_URL);
@@ -50,10 +53,14 @@ async function connect(): Promise<EvaluateDeps> {
     },
     rpcUrl: env.ARBITRUM_SEPOLIA_RPC_URL,
     tlog: { url: env.LOG_URL, token: env.LOG_WRITE_TOKEN },
+    anthropic: env.ANTHROPIC_API_KEY ? new Anthropic({ apiKey: env.ANTHROPIC_API_KEY }) : undefined,
   };
 }
 
-/** Attributes a stored PayPal dispute into a `Verdict` both TEE legs signed. */
+/**
+ * Attributes a stored PayPal dispute into a `Verdict` both TEE legs signed, then answers PayPal
+ * for the party at fault. Started again whenever the dispute changes status or stage.
+ */
 task(
   {
     name: "evaluateDispute",
@@ -66,6 +73,9 @@ task(
       deps = undefined;
       throw err;
     });
-    return evaluateDispute(await deps, disputeId);
+    const d = await deps;
+    const evaluation = await evaluateDispute(d, disputeId);
+    if (evaluation.status !== "attributed") return { evaluation };
+    return { evaluation, response: await respondToDispute(d, disputeId) };
   },
 );

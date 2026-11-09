@@ -104,8 +104,9 @@ fixtures.
 ## Dispute evaluation
 
 A dispute stored over a Keelson purchase is handed to the Render workflow task
-`keelson-workflows/evaluateDispute` (`src/workflows.ts`), started with the dispute id as its
-idempotency key, so the webhook, the poller and every re-read start one run a day at most. The API
+`keelson-workflows/evaluateDispute` (`src/workflows.ts`), started with the dispute id, status and
+lifecycle stage as its idempotency key, so the webhook, the poller and every re-read start one run
+a day at most per status and stage, and an escalated inquiry runs again. The API
 starts it when `RENDER_API_KEY` and `DISPUTE_WORKFLOW` are set; otherwise the dispute stays `OPEN`.
 A run:
 
@@ -120,11 +121,28 @@ A run:
    the dispute with the attribution policy sets and sign the `Verdict`; both must sign the same
    digest with their admitted signers;
 5. stores the verdict with its facts and signatures and moves the dispute and the purchase to
-   `ATTRIBUTED`.
+   `ATTRIBUTED`;
+6. answers PayPal for the party at fault (`src/disputes/respond.ts`), once per action and stage.
+
+| Party at fault    | Rules                   | PayPal call                                             | Evidence                                                                                                                                            |
+| ----------------- | ----------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| User              | R10, R20, R32, R62, R70 | `provide-evidence` (or `send-message` while an inquiry) | `PERMISSION_DESCRIPTION` + `ORDER_DETAILS` with the Alibi PDF; R10 `ONLINE_TRACKING_INFORMATION`, R20 `PROOF_OF_REFUND` with the order's refund ids |
+| Merchant          | R11, R21, R35, R40, R50 | same                                                    | `ORDER_DETAILS` with the Alibi PDF                                                                                                                  |
+| Operator, Keelson | R00, R30, R31, R60, R61 | `accept-claim` (refund to the buyer)                    | none                                                                                                                                                |
+
+The rule fixes the call and the evidence types. With `ANTHROPIC_API_KEY` set, the notes are drafted
+in two calls, because Citations cannot be combined with structured outputs: `claude-opus-5-5`
+writes a statement citing the Alibi PDF and the verdict, then `claude-haiku-5-5` fits it into one
+note per evidence type (2,000 characters each, PayPal's limit). A refusal, a failure or a statement
+without citations sends the rule's fixed statement instead, so a model never delays or changes the
+response. `pnpm test:live` runs the drafter against the API; `test/dispute-respond.sandbox.test.ts`
+answers a buyer-opened sandbox dispute (`PAYPAL_RESPOND_DISPUTE_ID`) and has the sandbox adjudicate
+it.
 
 A failed read or signature fails the run, which Render retries five times with backoff. Nothing
-defaults to a fact. `GET /v1/disputes/{id}` shows the party at fault, the verdict and the time from
-the dispute's first webhook or poll to its verdict.
+defaults to a fact. `GET /v1/disputes/{id}` shows the party at fault, the verdict, the time from
+the dispute's first webhook or poll to its verdict, and what was sent to PayPal (the statement's
+text is not public: it quotes the Alibi).
 
 ## Hold lifecycle
 

@@ -1,7 +1,7 @@
 import type { Evidence } from "@keelson/paypal";
 
 /** The party a verdict names, by its `liable` value. */
-export const PARTIES = ["operator", "keelson", "merchant", "user"] as const;
+const PARTIES = ["operator", "keelson", "merchant", "user"] as const;
 type Party = (typeof PARTIES)[number];
 
 /** The file the Alibi PDF is uploaded as. */

@@ -7,7 +7,10 @@ const DRAFTER = "claude-opus-5-5";
 const FORMATTER = "claude-haiku-5-5";
 const FALLBACK_BETA = "server-side-fallback-2026-07-01";
 const TIMEOUT_MS = 90_000;
-/** PayPal's `notes` and message `content` limit. */
+/**
+ * PayPal's `notes` and message `content` limit.
+ * @internal
+ */
 export const NOTE_MAX = 2_000;
 
 const SYSTEM = `You write a merchant's statement for the PayPal agent reviewing a customer dispute.
@@ -27,7 +30,8 @@ const FIELD_PURPOSE: Readonly<Record<string, string>> = {
   message: "a message to the buyer and PayPal answering the inquiry, with the Alibi attached",
 };
 
-export type DraftFailure =
+type DraftFailure =
+  | "unconfigured"
   | "refused"
   | "uncited"
   | "timeout"
@@ -36,14 +40,14 @@ export type DraftFailure =
   | "invalid_output";
 
 /** The tokens and wall time one model call used. */
-export interface DraftUsage {
+interface DraftUsage {
   model: string;
   input: number;
   output: number;
   ms: number;
 }
 
-export interface Citation {
+interface Citation {
   text: string;
   document: string;
   pages?: [number, number];
@@ -72,11 +76,17 @@ export interface DraftInput {
 
 type Reply = Anthropic.Beta.BetaMessage | Anthropic.Message;
 
-/** The fields the request fills: the planned evidence types, or the inquiry message. */
+/**
+ * The fields the request fills: the planned evidence types, or the inquiry message.
+ * @internal
+ */
 export const fieldsOf = (input: Pick<DraftInput, "plan" | "step">): string[] =>
   input.step === "send_message" ? ["message"] : input.plan.evidences.map((e) => e.evidence_type);
 
-/** The rule's fixed statement, used when the model does not produce a grounded one. */
+/**
+ * The rule's fixed statement, used when the model does not produce a grounded one.
+ * @internal
+ */
 export function templateNotes(input: DraftInput): Record<string, string> {
   const { plan, verdict } = input;
   const tracking = input.trackers?.length
@@ -86,7 +96,10 @@ export function templateNotes(input: DraftInput): Record<string, string> {
   return Object.fromEntries(fieldsOf(input).map((f) => [f, text.slice(0, NOTE_MAX)]));
 }
 
-/** The final text of a reply with its citations, after the last fallback switch point. */
+/**
+ * The final text of a reply with its citations, after the last fallback switch point.
+ * @internal
+ */
 export function citedText(content: Reply["content"]): { text: string; citations: Citation[] } {
   const blocks: readonly { type: string }[] = content;
   const tail = blocks.slice(blocks.findLastIndex((b) => b.type === "fallback") + 1);
@@ -109,7 +122,10 @@ export function citedText(content: Reply["content"]): { text: string; citations:
   return { text: text.trim(), citations };
 }
 
-/** The statement and its numbered sources, as the formatter reads them. */
+/**
+ * The statement and its numbered sources, as the formatter reads them.
+ * @internal
+ */
 export function withSources(statement: string, citations: Citation[]): string {
   const sources = citations.map(
     (c, i) =>
@@ -118,7 +134,10 @@ export function withSources(statement: string, citations: Citation[]): string {
   return `${statement}\n\nSources:\n${sources.join("\n")}`;
 }
 
-/** Why a reply is unusable, checked before its content is read. */
+/**
+ * Why a reply is unusable, checked before its content is read.
+ * @internal
+ */
 export function failureOf(reply: Reply): DraftFailure | null {
   if (reply.stop_reason === "refusal") return "refused";
   if (reply.stop_reason === "max_tokens") return "max_tokens";
@@ -173,7 +192,10 @@ ${facts}`;
  * Haiku fits it into PayPal's fields. The action and the fields are the plan's; the models only
  * write. Any failure, or a statement without citations, falls back to the rule's fixed text.
  */
-export async function draftResponse(client: Anthropic, input: DraftInput): Promise<Draft> {
+export async function draftResponse(
+  client: Anthropic | undefined,
+  input: DraftInput,
+): Promise<Draft> {
   const usage: DraftUsage[] = [];
   const fields = fieldsOf(input);
   const fallback = (failure: DraftFailure, statement = "", citations: Citation[] = []): Draft => ({
@@ -184,6 +206,8 @@ export async function draftResponse(client: Anthropic, input: DraftInput): Promi
     notes: templateNotes(input),
     usage,
   });
+
+  if (!client) return fallback("unconfigured");
 
   let draft: Anthropic.Beta.BetaMessage;
   try {

@@ -93,16 +93,17 @@ const render =
   env.RENDER_API_KEY && env.DISPUTE_WORKFLOW
     ? new Render({ token: env.RENDER_API_KEY })
     : undefined;
-// A dispute is evaluated once a day at most per start: every re-read of an open dispute starts
-// it again, and Render answers a key it saw in the last 24 h with the run it started then.
+// A dispute runs once per status and stage: every re-read of an open dispute starts it again,
+// and Render answers a key it saw in the last 24 h with the run it started then. A new status or
+// stage (an inquiry escalated to a claim) runs it again, so the response follows the dispute.
 const startDisputeWorkflow = render
-  ? async (disputeId: string) => {
+  ? async (disputeId: string, revision: string) => {
       const run = await render.workflows.startTask(
         `${env.DISPUTE_WORKFLOW}/evaluateDispute`,
         [disputeId],
-        { idempotencyKey: `evaluateDispute:${disputeId}` },
+        { idempotencyKey: `evaluateDispute:${disputeId}:${revision}` },
       );
-      log.info({ disputeId, taskRunId: run.taskRunId }, "dispute workflow started");
+      log.info({ disputeId, revision, taskRunId: run.taskRunId }, "dispute workflow started");
     }
   : undefined;
 const paypalEvents = startPayPalEventWorker({ db, kv, log, paypal, startDisputeWorkflow });
