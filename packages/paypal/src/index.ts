@@ -1,3 +1,4 @@
+export type { ShipmentCarrier } from "@paypal/paypal-server-sdk";
 export { type PayPalConfig, type PayPalEnv, paypalConfig } from "./config.ts";
 export * from "./disputes.ts";
 export { fromSdkError, PayPalError, type PayPalErrorDetail } from "./errors.ts";

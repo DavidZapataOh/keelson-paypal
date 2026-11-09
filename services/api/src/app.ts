@@ -40,11 +40,13 @@ import { registerHealth } from "./routes/health.ts";
 import { registerHold } from "./routes/hold.ts";
 import { registerMandates } from "./routes/mandates.ts";
 import { registerMerchantsPayout } from "./routes/merchants-payout.ts";
+import { registerMerchantsSettlement } from "./routes/merchants-settlement.ts";
 import { registerObservations } from "./routes/observations.ts";
 import { registerOperators } from "./routes/operators.ts";
 import { registerPasskeys } from "./routes/passkeys.ts";
 import { registerPayPalWebhook } from "./routes/paypal-webhook.ts";
 import { registerPurchaseHolds } from "./routes/purchase-holds.ts";
+import { registerPurchaseTracking } from "./routes/purchase-tracking.ts";
 import { registerPurchases } from "./routes/purchases.ts";
 import { registerRevoke } from "./routes/revoke.ts";
 import { registerStatus } from "./routes/status.ts";
@@ -255,6 +257,8 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerValidations(app, deps);
   registerBonds(app, deps);
   registerMerchantsPayout(app, deps);
+  registerMerchantsSettlement(app, deps);
+  registerPurchaseTracking(app, deps);
   registerTransactions(app, deps);
   app.get("/openapi.json", (c) =>
     c.json(app.getOpenAPI31Document({ openapi: "3.1.0", info: apiInfo })),

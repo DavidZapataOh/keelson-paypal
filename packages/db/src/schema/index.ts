@@ -10,6 +10,7 @@ export * from "./events.ts";
 export * from "./evidence.ts";
 export * from "./holds.ts";
 export * from "./mandates.ts";
+export * from "./merchant-settlement.ts";
 export * from "./operators.ts";
 export * from "./paypal-events.ts";
 export * from "./purchases.ts";

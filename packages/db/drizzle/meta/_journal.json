@@ -169,6 +169,13 @@
       "when": 1794251203232,
       "tag": "0023_dispute_responses",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1794254103462,
+      "tag": "0024_settlement",
+      "breakpoints": true
     }
   ]
 }

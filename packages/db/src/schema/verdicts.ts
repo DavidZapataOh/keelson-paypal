@@ -1,5 +1,15 @@
 import { sql } from "drizzle-orm";
-import { bigint, char, check, integer, jsonb, pgTable, smallint, text } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  char,
+  check,
+  integer,
+  jsonb,
+  pgTable,
+  smallint,
+  text,
+  timestamp,
+} from "drizzle-orm/pg-core";
 import { disputes } from "./disputes.ts";
 import { bytea, createdAt } from "./types.ts";
 
@@ -24,11 +34,29 @@ export const verdicts = pgTable(
     signatures: jsonb().$type<{ tee: number; signer: string; signature: string }[]>().notNull(),
     /** The facts the legs attributed, whose hash is the message's `inputsHash`. */
     facts: jsonb().notNull(),
+    /** `pyusd` pays the merchant on chain; `paypal` pays Keelson's treasury, which sends a PayPal Payout. */
+    rail: text().notNull().default("pyusd"),
+    /** The buyer's refund under the verdict's `ksv1.` reference. */
+    refundId: text(),
+    /** The relayed `slash`, `payWarranty` or `executeSlash` that last moved the settlement. */
+    txId: char({ length: 26 }),
     txHash: bytea(),
+    /** `paid`, `queued` (behind the veto window), `claimable` (the transfer failed) or `failed`. */
+    outcome: text(),
+    /** The contract error that ended a `failed` settlement. */
+    failure: text(),
+    /** When a queued slash can be executed. */
+    readyAt: timestamp({ withTimezone: true }),
+    payoutBatchId: text(),
+    /** The payout item's PayPal `transaction_status`. */
+    payoutStatus: text(),
+    settledAt: timestamp({ withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [
     check("verdicts_digest_len", sql`octet_length(${t.digest}) = 32`),
     check("verdicts_tx_hash_len", sql`octet_length(${t.txHash}) = 32`),
+    check("verdicts_rail_valid", sql`${t.rail} in ('pyusd', 'paypal')`),
+    check("verdicts_outcome_valid", sql`${t.outcome} in ('paid', 'queued', 'claimable', 'failed')`),
   ],
 );

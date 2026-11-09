@@ -23,6 +23,7 @@ const reads = (over: Partial<PayPalReads> = {}): PayPalReads => ({
   order: {
     purchaseUnits: [{ payments: { captures: [{ status: "COMPLETED", invoiceId: invoice }] } }],
   },
+  trackers: [],
   ...over,
 });
 
@@ -106,15 +107,20 @@ describe("disputeFacts", () => {
                     { status: "DECLINED", invoiceId: invoice },
                   ],
                 },
-                shipping: { trackers: [{ status: "SHIPPED" }, { status: "DELIVERED" }] },
               },
             ],
           },
+          trackers: [{ status: "SHIPPED" }, { status: "DELIVERED" }],
         }),
       }),
     ).facts;
     expect(twice.duplicate_capture).toBe(true);
     expect(twice.tracking_delivered).toBe(true);
+  });
+
+  test("delivery is read from the Add Tracking API, not the order's shipped trackers", () => {
+    const shipped = disputeFacts(input({ reads: reads({ trackers: [{ status: "SHIPPED" }] }) }));
+    expect(shipped.facts.tracking_delivered).toBe(false);
   });
 
   test("the proof and duplicate countersign facts come from the caller's checks", () => {
