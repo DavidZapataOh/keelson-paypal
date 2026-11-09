@@ -102,6 +102,8 @@ const post = async (path: string, headers: Record<string, string>, body?: unknow
 };
 const evidence = new EvidenceUploader();
 const lag: number[] = [];
+/** Every mandate this run stored, revoked at the end whatever state its hold reached. */
+const opened: { sub: string; mid: string }[] = [];
 
 interface Hold {
   sub: string;
@@ -127,13 +129,16 @@ async function openHold(count: number): Promise<Hold> {
   const stored = await post("/v1/mandates", asUser(sub), signed.body);
   if (stored.status !== 201) throw new Error(`mandate not stored: ${JSON.stringify(stored.out)}`);
   const mid = stored.out.id as string;
+  opened.push({ sub, mid });
   const held = await post(`/v1/mandates/${mid}/hold`, asUser(sub));
   const orderId = held.out.orderId as string;
   try {
     const { approveOrder, payerActionUrl } = await import("@keelson/paypal/testing");
     const order = await call(paypal.paypal.orders.getOrder({ id: orderId }));
     await approveOrder(payerActionUrl(order), `${env.APP_ORIGIN}/mandates/${mid}`);
-  } catch {
+  } catch (err) {
+    // Without a browser the run waits for someone to approve, only when asked to.
+    if (process.env.MANUAL_APPROVAL !== "1") throw err;
     console.error(`APPROVE ${orderId} ${env.APP_ORIGIN}/mandates/${mid}`);
     for (let i = 0; ; i++) {
       const order = await call(paypal.paypal.orders.getOrder({ id: orderId }));
@@ -280,7 +285,11 @@ try {
   }
   if (captured.length < PURCHASES || summary.endToEnd.p95 >= BUDGET_P95_MS) process.exitCode = 1;
 } finally {
-  for (const h of holds) await post(`/v1/mandates/${h.mid}/revoke`, asUser(h.sub));
+  for (const m of opened) {
+    await post(`/v1/mandates/${m.mid}/revoke`, asUser(m.sub)).catch((err: unknown) =>
+      console.error(`mandate ${m.mid} not revoked: ${String(err)}`),
+    );
+  }
   await evidence.close();
   await listener.close();
   await kv.close();

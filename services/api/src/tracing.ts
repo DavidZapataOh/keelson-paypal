@@ -4,30 +4,28 @@ import type { NodeSDK, NodeSDKConfiguration } from "@opentelemetry/sdk-node";
 const tracer = trace.getTracer("@keelson/api");
 
 /**
- * Starts the OpenTelemetry Node SDK with the outbound HTTP (undici), inbound HTTP and Postgres
+ * Starts the OpenTelemetry Node SDK with the outbound HTTP (undici) and Postgres
  * instrumentations. Exporters come from `config` or, when it names none, from the SDK's
  * `OTEL_*` environment variables. Modules loaded before this call are not instrumented.
  */
 export async function startTelemetry(config: Partial<NodeSDKConfiguration> = {}): Promise<NodeSDK> {
-  const [{ NodeSDK }, { UndiciInstrumentation }, { HttpInstrumentation }, { PgInstrumentation }] =
-    await Promise.all([
-      import("@opentelemetry/sdk-node"),
-      import("@opentelemetry/instrumentation-undici"),
-      import("@opentelemetry/instrumentation-http"),
-      import("@opentelemetry/instrumentation-pg"),
-    ]);
+  const [{ NodeSDK }, { UndiciInstrumentation }, { PgInstrumentation }] = await Promise.all([
+    import("@opentelemetry/sdk-node"),
+    import("@opentelemetry/instrumentation-undici"),
+    import("@opentelemetry/instrumentation-pg"),
+  ]);
   const sdk = new NodeSDK({
     serviceName: "keelson-api",
     instrumentations: [
       new UndiciInstrumentation({
-        // RPC providers such as Alchemy carry the API key in the path; spans keep the host only.
+        // Queries can carry tokens, and RPC providers such as Alchemy carry the API key in the
+        // path: spans keep the path of other hosts and neither the query nor a key.
         startSpanHook: (request) => {
           const url = new URL(request.path, request.origin);
-          if (!url.hostname.endsWith(".alchemy.com")) return {};
-          return { "url.full": `${url.origin}/REDACTED`, "url.path": "/REDACTED" };
+          const path = url.hostname.endsWith(".alchemy.com") ? "/REDACTED" : url.pathname;
+          return { "url.full": `${url.origin}${path}`, "url.path": path, "url.query": "" };
         },
       }),
-      new HttpInstrumentation(),
       new PgInstrumentation({ requireParentSpan: true }),
     ],
     ...config,
@@ -46,8 +44,10 @@ export function span<T>(
     try {
       return await f(s);
     } catch (err) {
-      s.recordException(err as Error);
-      s.setStatus({ code: SpanStatusCode.ERROR });
+      // The name only: messages can carry ids, amounts or what a database row held.
+      const name = err instanceof Error ? err.name : typeof err;
+      s.recordException({ name });
+      s.setStatus({ code: SpanStatusCode.ERROR, message: name });
       throw err;
     } finally {
       s.end();

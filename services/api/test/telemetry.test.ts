@@ -1,6 +1,9 @@
+import { serve } from "@hono/node-server";
+import { SpanKind } from "@opentelemetry/api";
 import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace";
+import { Hono } from "hono";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { startTelemetry } from "../src/tracing.ts";
+import { span, startTelemetry } from "../src/tracing.ts";
 
 const live =
   process.env.KEELSON_LIVE === "1" &&
@@ -10,6 +13,47 @@ const live =
 // The SDK starts before anything loads `pg`, as the API's entry point does.
 const exporter = new InMemorySpanExporter();
 const sdk = await startTelemetry({ spanProcessors: [new SimpleSpanProcessor({ exporter })] });
+
+afterAll(() => sdk.shutdown());
+
+/** Every name and value the spans carry, once the SDK has exported what already ended. */
+const everything = async () => {
+  await new Promise((r) => setTimeout(r, 200));
+  return exporter
+    .getFinishedSpans()
+    .flatMap((s) => [
+      s.name,
+      ...Object.values(s.attributes).map(String),
+      ...s.events.flatMap((e) => [e.name, ...Object.values(e.attributes ?? {}).map(String)]),
+    ]);
+};
+
+test("a failed span records the error's name, not its message", async () => {
+  await expect(
+    span("probe.fail", {}, async () => {
+      throw new Error("Key (amount)=(4242) already exists");
+    }),
+  ).rejects.toThrow();
+  const values = await everything();
+  expect(values).toContain("Error");
+  for (const v of values) expect(v).not.toContain("4242");
+});
+
+test("inbound requests make no span, and no span keeps a query", async () => {
+  const app = new Hono().get("/cb", (c) => c.text("ok"));
+  const server = serve({ fetch: app.fetch, port: 0, hostname: "127.0.0.1" });
+  await new Promise((r) => server.once("listening", r));
+  const { port } = server.address() as { port: number };
+  try {
+    await (await fetch(`http://127.0.0.1:${port}/cb?code=oauth-code-1234&token=tok-5678`)).text();
+  } finally {
+    server.close();
+  }
+  for (const v of await everything()) {
+    for (const secret of ["oauth-code-1234", "tok-5678"]) expect(v).not.toContain(secret);
+  }
+  expect(exporter.getFinishedSpans().filter((s) => s.kind === SpanKind.SERVER)).toEqual([]);
+});
 
 describe.skipIf(!live)("purchase tracing (live)", { timeout: 900_000 }, () => {
   let release: () => Promise<void>;
@@ -30,7 +74,6 @@ describe.skipIf(!live)("purchase tracing (live)", { timeout: 900_000 }, () => {
 
   afterAll(async () => {
     await release?.();
-    await sdk.shutdown();
   });
 
   test("each step of the purchase is a span, in order, with its outbound calls inside", () => {
@@ -56,10 +99,8 @@ describe.skipIf(!live)("purchase tracing (live)", { timeout: 900_000 }, () => {
     expect(childrenOf("purchase.LOGGED").some((s) => s.name.startsWith("pg."))).toBe(true);
   });
 
-  test("no span carries a secret, the buyer or an amount", () => {
-    const values = exporter
-      .getFinishedSpans()
-      .flatMap((s) => [s.name, ...Object.values(s.attributes).map(String)]);
+  test("no span carries a secret, the buyer or an amount", async () => {
+    const values = await everything();
     const rpcKey = new URL(process.env.ARBITRUM_SEPOLIA_RPC_URL as string).pathname.split("/")[2];
     const forbidden = [
       process.env.PAYPAL_SANDBOX_BUYER_EMAIL,
