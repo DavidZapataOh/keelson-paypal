@@ -53,6 +53,8 @@ import { registerValidations } from "./routes/validations.ts";
 import type { TeeConfig } from "./tee/signers.ts";
 import type { StampWorker } from "./timestamps/worker.ts";
 
+const PUBLIC_RECEIPT = /^\/v1\/alibis\/[^/]+\/receipt$/;
+
 export interface Deps {
   db: Db;
   kv: RedisClientType;
@@ -61,6 +63,8 @@ export interface Deps {
   auth?: Auth;
   /** Browser origin allowed to call `/api/auth/*` with credentials; where mandates are signed. */
   appOrigin?: string;
+  /** Browser origin of the public verifier, allowed to read Alibi receipts without credentials. */
+  verifyOrigin?: string;
   /** WebAuthn RP ID that mandate signatures must be scoped to; defaults to `keelson.finance`. */
   passkeyRpId?: string | undefined;
   /** Resolves `c.var.principal`; runs before idempotency so keys are scoped per principal. */
@@ -134,16 +138,29 @@ export function createApp(deps: Deps): OpenAPIHono {
   app.use(requestLogger(deps.log));
   // The app calls the API cross-origin with its session cookie; preflights end here, before
   // authentication, rate limiting and idempotency.
-  if (deps.appOrigin) {
-    app.use(
-      "/v1/*",
-      cors({
+  const appCors = deps.appOrigin
+    ? cors({
         origin: deps.appOrigin,
         credentials: true,
         allowHeaders: ["content-type", "idempotency-key", "keelson-device"],
         exposeHeaders: ["location", "idempotent-replayed"],
-      }),
-    );
+      })
+    : undefined;
+  // The verifier reads only public receipts, and never with credentials.
+  const receiptCors = deps.verifyOrigin
+    ? cors({ origin: deps.verifyOrigin, allowMethods: ["GET"], allowHeaders: ["accept"] })
+    : undefined;
+  if (appCors || receiptCors) {
+    app.use("/v1/*", (c, next) => {
+      if (
+        receiptCors &&
+        c.req.header("origin") === deps.verifyOrigin &&
+        PUBLIC_RECEIPT.test(c.req.path)
+      ) {
+        return receiptCors(c, next);
+      }
+      return appCors ? appCors(c, next) : next();
+    });
   }
   const tooLarge = (c: Context) => problem(c, 413, "payload-too-large", "Payload too large");
   const smallBody = bodyLimit({ maxSize: 1024 * 1024, onError: tooLarge });

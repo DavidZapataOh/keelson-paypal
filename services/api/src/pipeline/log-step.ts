@@ -43,7 +43,10 @@ export async function logStep(
         { purchaseId, append },
       );
     } catch (err) {
-      if (err instanceof AlibiIssueError) return final(`alibi:${err.code}`);
+      if (err instanceof AlibiIssueError) {
+        deps.log.error({ purchaseId, code: err.code, detail: err.message }, "alibi refused");
+        return final(`alibi:${err.code}`);
+      }
       deps.log.warn({ err, purchaseId }, "alibi not issued yet");
       return retry("alibi:unavailable");
     }
