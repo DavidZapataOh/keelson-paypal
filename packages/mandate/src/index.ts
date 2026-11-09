@@ -67,6 +67,7 @@ export {
   verifyClosedMandate,
   verifyCredential,
   verifyKeyBinding,
+  verifyOpenMandate,
 } from "./credentials.ts";
 export {
   ANY_ITEM,

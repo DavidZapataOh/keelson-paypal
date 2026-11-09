@@ -1,4 +1,4 @@
-import { isUlid, sha256, toHex } from "@keelson/core";
+import { DST, hashObject, isUlid, type Money, sha256, toHex, toPayPalValue } from "@keelson/core";
 
 export type Env = "s" | "p";
 export type Kind = "a" | "m";
@@ -143,4 +143,27 @@ export function requestIdFromDigest(countersignDigest: Uint8Array): string {
 /** `PayPal-Request-Id` of an operation on an order or an authorization: `hex(sha256("<op>:<id>"))[:36]`. */
 export function operationRequestId(id: string, op: "authorize" | "void" | "reauthorize"): string {
   return toHex(sha256(new TextEncoder().encode(`${op}:${id}`))).slice(2, 38);
+}
+
+export interface PurchaseHoldFields {
+  mandateHash: Uint8Array;
+  cartHash: Uint8Array;
+  merchantId: string;
+  amount: Money;
+}
+
+/** Binds a per-purchase hold to the mandate, the cart, the merchant and the amount. */
+export function purchaseHoldDigest({
+  mandateHash,
+  cartHash,
+  merchantId,
+  amount,
+}: PurchaseHoldFields): Uint8Array {
+  return hashObject(DST.alibi, {
+    mandate_hash: toHex(mandateHash),
+    cart_hash: toHex(cartHash),
+    merchant_id: merchantId,
+    amount: toPayPalValue(amount),
+    currency: amount.currency,
+  });
 }

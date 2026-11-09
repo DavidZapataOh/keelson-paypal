@@ -6,9 +6,23 @@
       "entry": ["scripts/*.ts!"],
       "project": ["scripts/**/*.ts!"]
     },
+    "packages/alibi": {
+      "entry": [
+        "src/index.ts!",
+        "src/verify/index.ts!",
+        "src/pdf.ts!",
+        "src/extract.ts!",
+        "scripts/*.ts"
+      ],
+      "project": ["src/**/*.ts!", "scripts/**/*.ts", "test/**/*.ts"]
+    },
     "packages/attest": {
       "entry": ["src/index.ts!", "src/server/collateral.ts!", "scripts/*.ts", "bench/*.bench.ts"],
       "project": ["src/**/*.ts!", "scripts/**/*.ts", "bench/**/*.ts", "test/**/*.ts"]
+    },
+    "packages/chain": {
+      "entry": ["src/index.ts!", "scripts/generate.ts"],
+      "project": ["src/**/*.ts!", "scripts/**/*.ts", "test/**/*.ts"]
     },
     "packages/compiler": {
       "entry": ["src/index.ts!", "eval/run.ts"],
@@ -22,10 +36,6 @@
       "entry": ["src/index.ts!", "src/migrate.ts!", "bench/*.bench.ts"],
       "project": ["src/**/*.ts!", "bench/**/*.ts", "test/**/*.ts"]
     },
-    "packages/log": {
-      "entry": ["src/index.ts!", "scripts/*.ts"],
-      "project": ["src/**/*.ts!", "scripts/**/*.ts", "test/**/*.ts"]
-    },
     "packages/erc8004": {
       "entry": ["src/index.ts!"],
       "project": ["src/**/*.ts!", "test/**/*.ts"]
@@ -33,6 +43,10 @@
     "packages/evidence": {
       "entry": ["src/index.ts!", "src/capture/index.ts!", "scripts/*.ts", "bench/*.bench.ts"],
       "project": ["src/**/*.ts!", "scripts/**/*.ts", "bench/**/*.ts", "test/**/*.ts"]
+    },
+    "packages/log": {
+      "entry": ["src/index.ts!", "scripts/*.ts"],
+      "project": ["src/**/*.ts!", "scripts/**/*.ts", "test/**/*.ts"]
     },
     "packages/mandate": {
       "entry": ["src/index.ts!", "src/browser.ts!", "scripts/*.ts", "bench/*.bench.ts"],
@@ -52,8 +66,9 @@
       "entry": ["src/index.ts!", "src/generated/hashes.ts!", "scripts/*.ts", "bench/*.bench.ts"],
       "project": ["src/**/*.ts!", "scripts/**/*.ts", "bench/**/*.ts", "test/**/*.ts"]
     },
-    "services/witness": {
-      "entry": [".railway/railway.ts"]
+    "packages/relayer": {
+      "entry": ["src/index.ts!", "bench/*.bench.ts"],
+      "project": ["src/**/*.ts!", "bench/**/*.ts", "test/**/*.ts"]
     },
     "packages/timestamp": {
       "entry": ["src/index.ts!", "scripts/*.ts", "bench/*.bench.ts"],
@@ -67,13 +82,8 @@
       "entry": [".railway/railway.ts", "scripts/*.ts", "test/**/*.test.ts", "web/app.js"],
       "project": ["scripts/**/*.ts", "test/**/*.ts", "web/**/*.js"]
     },
-    "packages/chain": {
-      "entry": ["src/index.ts!", "scripts/generate.ts"],
-      "project": ["src/**/*.ts!", "scripts/**/*.ts", "test/**/*.ts"]
-    },
-    "packages/relayer": {
-      "entry": ["src/index.ts!", "bench/*.bench.ts"],
-      "project": ["src/**/*.ts!", "bench/**/*.ts", "test/**/*.ts"]
+    "services/witness": {
+      "entry": [".railway/railway.ts"]
     }
   }
 }

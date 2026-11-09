@@ -1,0 +1,57 @@
+{
+  "name": "@keelson/alibi",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./verify": {
+      "types": "./dist/verify/index.d.ts",
+      "default": "./dist/verify/index.js"
+    },
+    "./pdf": {
+      "types": "./dist/pdf.d.ts",
+      "node": "./dist/pdf.js"
+    },
+    "./extract": {
+      "types": "./dist/extract.d.ts",
+      "default": "./dist/extract.js"
+    }
+  },
+  "files": [
+    "dist",
+    "fonts"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@keelson/attest": "workspace:*",
+    "@keelson/chain": "workspace:*",
+    "@keelson/core": "workspace:*",
+    "@keelson/evidence": "workspace:*",
+    "@keelson/log": "workspace:*",
+    "@keelson/mandate": "workspace:*",
+    "@keelson/paypal": "workspace:*",
+    "@keelson/timestamp": "workspace:*",
+    "jose": "6.2.15",
+    "pdfjs-dist": "6.4.299",
+    "pdfkit": "0.20.2",
+    "qrcode": "1.5.4",
+    "viem": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "@types/pdfkit": "0.17.7",
+    "@types/qrcode": "1.5.6",
+    "typescript": "catalog:",
+    "vitest": "catalog:",
+    "@noble/hashes": "catalog:"
+  }
+}

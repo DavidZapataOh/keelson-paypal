@@ -120,6 +120,7 @@ const stopResumer = startPipelineResumer({
   db,
   kv,
   log,
+  tee,
   paypal,
   operators,
   relayer,

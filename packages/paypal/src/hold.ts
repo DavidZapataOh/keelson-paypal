@@ -1,11 +1,8 @@
 import {
   type CurrencyCode,
-  DST,
   fromPayPalValue,
-  hashObject,
   type Money,
   sha256,
-  toHex,
   toPayPalValue,
 } from "@keelson/core";
 import {
@@ -19,6 +16,8 @@ import {
 import type { PayPalError } from "./errors.ts";
 import { type Env, encodeCustomId, requestIdFromDigest } from "./ids.ts";
 
+export { type PurchaseHoldFields, purchaseHoldDigest } from "./ids.ts";
+
 /** `custom_id` of a mandate hold: `ks1.<env>m.<mid>.<b64url(M)>`, where `M` is the signed mandate hash. */
 export function holdCustomId(env: Env, mid: string, mandateHash: Uint8Array): string {
   return encodeCustomId({ env, kind: "m", id: mid, digest: mandateHash });
@@ -27,29 +26,6 @@ export function holdCustomId(env: Env, mid: string, mandateHash: Uint8Array): st
 /** `custom_id` of a per-purchase hold: `ks1.<env>a.<request_id>.<b64url(digest)>`. */
 export function purchaseHoldCustomId(env: Env, requestId: string, digest: Uint8Array): string {
   return encodeCustomId({ env, kind: "a", id: requestId, digest });
-}
-
-export interface PurchaseHoldFields {
-  mandateHash: Uint8Array;
-  cartHash: Uint8Array;
-  merchantId: string;
-  amount: Money;
-}
-
-/** Binds a per-purchase hold to the mandate, the cart, the merchant and the amount. */
-export function purchaseHoldDigest({
-  mandateHash,
-  cartHash,
-  merchantId,
-  amount,
-}: PurchaseHoldFields): Uint8Array {
-  return hashObject(DST.alibi, {
-    mandate_hash: toHex(mandateHash),
-    cart_hash: toHex(cartHash),
-    merchant_id: merchantId,
-    amount: toPayPalValue(amount),
-    currency: amount.currency,
-  });
 }
 
 /** A Create Order call: its `PayPal-Request-Id` and body. */
