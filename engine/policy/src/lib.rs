@@ -31,8 +31,9 @@ pub use extras::{Extra, ExtrasError, InvalidExtra, MAX_EXTRAS, compile_extras};
 pub use hashes::{policy_set_hash, policy_set_hash_tag, schema_hash, schema_hash_tag};
 #[cfg(feature = "prove")]
 pub use prove::{
-    Cvc5, ProofBundle, ProofResult, SPEC_SRC, SeedBug, Verdict, prove_all, prove_set, replay, spec,
-    spec_hash_tag,
+    AttributionBug, AttributionBundle, Cvc5, ProofBundle, ProofResult, SPEC_SRC, SeedBug, Verdict,
+    prove_all, prove_attribution, prove_attribution_sets, prove_set, replay, replay_attribution,
+    spec, spec_hash_tag,
 };
 pub use trace::{Decision, Engine, FieldTrace, TRACE_VERSION, Trace, trace_jcs};
 

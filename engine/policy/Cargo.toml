@@ -49,3 +49,7 @@ required-features = ["prove"]
 [[test]]
 name = "seeded_bugs"
 required-features = ["prove"]
+
+[[test]]
+name = "attribution_proofs"
+required-features = ["prove"]

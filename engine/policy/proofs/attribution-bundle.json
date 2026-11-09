@@ -1,0 +1,2174 @@
+{
+  "symcc": "0.8.1",
+  "cvc5": "1.3.1",
+  "cedar_policy": "4.14.1",
+  "policy_set_hash": "sha256:281422fdc82371cc8aab61fe37dbaeb4b6a5fe3495b441cbc3b8ce2ea558f2b8",
+  "schema_hash": "sha256:0b69ee430b590be9c5b15fc2e28a0fb7d690eef457fda9a2e0cd737bd9ced541",
+  "results": [
+    {
+      "check": "total",
+      "subject": "attribute/rules",
+      "verdict": "verified"
+    },
+    {
+      "check": "exclusive",
+      "subject": "attribute/operator|keelson",
+      "verdict": "verified"
+    },
+    {
+      "check": "exclusive",
+      "subject": "attribute/operator|merchant",
+      "verdict": "verified"
+    },
+    {
+      "check": "exclusive",
+      "subject": "attribute/operator|user",
+      "verdict": "verified"
+    },
+    {
+      "check": "exclusive",
+      "subject": "attribute/keelson|merchant",
+      "verdict": "verified"
+    },
+    {
+      "check": "exclusive",
+      "subject": "attribute/keelson|user",
+      "verdict": "verified"
+    },
+    {
+      "check": "exclusive",
+      "subject": "attribute/merchant|user",
+      "verdict": "verified"
+    },
+    {
+      "check": "keelson_needs_proof",
+      "subject": "attribute/keelson",
+      "verdict": "verified"
+    },
+    {
+      "check": "slash_needs_fault",
+      "subject": "attribute/operator",
+      "verdict": "verified"
+    },
+    {
+      "check": "alibi_defends_user",
+      "subject": "attribute/user",
+      "verdict": "verified"
+    },
+    {
+      "check": "reachable",
+      "subject": "attribute/R00",
+      "verdict": "verified",
+      "witness": {
+        "principal": {
+          "__entity": {
+            "type": "Keelson::Dispute",
+            "id": ""
+          }
+        },
+        "action": {
+          "__entity": {
+            "type": "Keelson::Action",
+            "id": "attribute"
+          }
+        },
+        "resource": {
+          "__entity": {
+            "type": "Keelson::Dispute",
+            "id": ""
+          }
+        },
+        "context": {
+          "captured_eq_countersigned": true,
+          "duplicate_capture": true,
+          "duplicate_countersig": true,
+          "failed_amber": true,
+          "failed_gray": true,
+          "failed_green": true,
+          "proof_valid": false,
+          "reason": {
+            "__entity": {
+              "type": "Keelson::Reason",
+              "id": "CANCELED_RECURRING_BILLING"
+            }
+          },
+          "refund_recorded": true,
+          "snapshot_matches_item": true,
+          "tracking_delivered": true
+        },
+        "entities": [
+          {
+            "uid": {
+              "type": "Keelson::Action",
+              "id": "attribute"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Dispute",
+              "id": ""
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "CANCELED_RECURRING_BILLING"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "CREDIT_NOT_PROCESSED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "DUPLICATE_TRANSACTION"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "INCORRECT_AMOUNT"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_RECEIVED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "OTHER"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "PAYMENT_BY_OTHER_MEANS"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "PROBLEM_WITH_REMITTANCE"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "UNAUTHORISED"
+            },
+            "attrs": {},
+            "parents": []
+          }
+        ]
+      }
+    },
+    {
+      "check": "reachable",
+      "subject": "attribute/R10",
+      "verdict": "verified",
+      "witness": {
+        "principal": {
+          "__entity": {
+            "type": "Keelson::Dispute",
+            "id": ""
+          }
+        },
+        "action": {
+          "__entity": {
+            "type": "Keelson::Action",
+            "id": "attribute"
+          }
+        },
+        "resource": {
+          "__entity": {
+            "type": "Keelson::Dispute",
+            "id": ""
+          }
+        },
+        "context": {
+          "captured_eq_countersigned": true,
+          "duplicate_capture": true,
+          "duplicate_countersig": true,
+          "failed_amber": true,
+          "failed_gray": true,
+          "failed_green": true,
+          "proof_valid": true,
+          "reason": {
+            "__entity": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_RECEIVED"
+            }
+          },
+          "refund_recorded": true,
+          "snapshot_matches_item": true,
+          "tracking_delivered": true
+        },
+        "entities": [
+          {
+            "uid": {
+              "type": "Keelson::Action",
+              "id": "attribute"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Dispute",
+              "id": ""
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "CANCELED_RECURRING_BILLING"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "CREDIT_NOT_PROCESSED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "DUPLICATE_TRANSACTION"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "INCORRECT_AMOUNT"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_RECEIVED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "OTHER"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "PAYMENT_BY_OTHER_MEANS"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "PROBLEM_WITH_REMITTANCE"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "UNAUTHORISED"
+            },
+            "attrs": {},
+            "parents": []
+          }
+        ]
+      }
+    },
+    {
+      "check": "reachable",
+      "subject": "attribute/R11",
+      "verdict": "verified",
+      "witness": {
+        "principal": {
+          "__entity": {
+            "type": "Keelson::Dispute",
+            "id": ""
+          }
+        },
+        "action": {
+          "__entity": {
+            "type": "Keelson::Action",
+            "id": "attribute"
+          }
+        },
+        "resource": {
+          "__entity": {
+            "type": "Keelson::Dispute",
+            "id": ""
+          }
+        },
+        "context": {
+          "captured_eq_countersigned": true,
+          "duplicate_capture": true,
+          "duplicate_countersig": true,
+          "failed_amber": true,
+          "failed_gray": true,
+          "failed_green": true,
+          "proof_valid": true,
+          "reason": {
+            "__entity": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_RECEIVED"
+            }
+          },
+          "refund_recorded": true,
+          "snapshot_matches_item": true,
+          "tracking_delivered": false
+        },
+        "entities": [
+          {
+            "uid": {
+              "type": "Keelson::Action",
+              "id": "attribute"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Dispute",
+              "id": ""
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "CANCELED_RECURRING_BILLING"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "CREDIT_NOT_PROCESSED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "DUPLICATE_TRANSACTION"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "INCORRECT_AMOUNT"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_RECEIVED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "OTHER"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "PAYMENT_BY_OTHER_MEANS"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "PROBLEM_WITH_REMITTANCE"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "UNAUTHORISED"
+            },
+            "attrs": {},
+            "parents": []
+          }
+        ]
+      }
+    },
+    {
+      "check": "reachable",
+      "subject": "attribute/R20",
+      "verdict": "verified",
+      "witness": {
+        "principal": {
+          "__entity": {
+            "type": "Keelson::Dispute",
+            "id": ""
+          }
+        },
+        "action": {
+          "__entity": {
+            "type": "Keelson::Action",
+            "id": "attribute"
+          }
+        },
+        "resource": {
+          "__entity": {
+            "type": "Keelson::Dispute",
+            "id": ""
+          }
+        },
+        "context": {
+          "captured_eq_countersigned": true,
+          "duplicate_capture": true,
+          "duplicate_countersig": true,
+          "failed_amber": true,
+          "failed_gray": true,
+          "failed_green": true,
+          "proof_valid": true,
+          "reason": {
+            "__entity": {
+              "type": "Keelson::Reason",
+              "id": "CREDIT_NOT_PROCESSED"
+            }
+          },
+          "refund_recorded": true,
+          "snapshot_matches_item": true,
+          "tracking_delivered": true
+        },
+        "entities": [
+          {
+            "uid": {
+              "type": "Keelson::Action",
+              "id": "attribute"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Dispute",
+              "id": ""
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "CANCELED_RECURRING_BILLING"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "CREDIT_NOT_PROCESSED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "DUPLICATE_TRANSACTION"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "INCORRECT_AMOUNT"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_RECEIVED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "OTHER"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "PAYMENT_BY_OTHER_MEANS"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "PROBLEM_WITH_REMITTANCE"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "UNAUTHORISED"
+            },
+            "attrs": {},
+            "parents": []
+          }
+        ]
+      }
+    },
+    {
+      "check": "reachable",
+      "subject": "attribute/R21",
+      "verdict": "verified",
+      "witness": {
+        "principal": {
+          "__entity": {
+            "type": "Keelson::Dispute",
+            "id": ""
+          }
+        },
+        "action": {
+          "__entity": {
+            "type": "Keelson::Action",
+            "id": "attribute"
+          }
+        },
+        "resource": {
+          "__entity": {
+            "type": "Keelson::Dispute",
+            "id": ""
+          }
+        },
+        "context": {
+          "captured_eq_countersigned": true,
+          "duplicate_capture": true,
+          "duplicate_countersig": true,
+          "failed_amber": true,
+          "failed_gray": true,
+          "failed_green": true,
+          "proof_valid": true,
+          "reason": {
+            "__entity": {
+              "type": "Keelson::Reason",
+              "id": "CREDIT_NOT_PROCESSED"
+            }
+          },
+          "refund_recorded": false,
+          "snapshot_matches_item": true,
+          "tracking_delivered": true
+        },
+        "entities": [
+          {
+            "uid": {
+              "type": "Keelson::Action",
+              "id": "attribute"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Dispute",
+              "id": ""
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "CANCELED_RECURRING_BILLING"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "CREDIT_NOT_PROCESSED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "DUPLICATE_TRANSACTION"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "INCORRECT_AMOUNT"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_RECEIVED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "OTHER"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "PAYMENT_BY_OTHER_MEANS"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "PROBLEM_WITH_REMITTANCE"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "UNAUTHORISED"
+            },
+            "attrs": {},
+            "parents": []
+          }
+        ]
+      }
+    },
+    {
+      "check": "reachable",
+      "subject": "attribute/R30",
+      "verdict": "verified",
+      "witness": {
+        "principal": {
+          "__entity": {
+            "type": "Keelson::Dispute",
+            "id": ""
+          }
+        },
+        "action": {
+          "__entity": {
+            "type": "Keelson::Action",
+            "id": "attribute"
+          }
+        },
+        "resource": {
+          "__entity": {
+            "type": "Keelson::Dispute",
+            "id": ""
+          }
+        },
+        "context": {
+          "captured_eq_countersigned": true,
+          "duplicate_capture": true,
+          "duplicate_countersig": true,
+          "failed_amber": true,
+          "failed_gray": true,
+          "failed_green": true,
+          "proof_valid": true,
+          "reason": {
+            "__entity": {
+              "type": "Keelson::Reason",
+              "id": "DUPLICATE_TRANSACTION"
+            }
+          },
+          "refund_recorded": true,
+          "snapshot_matches_item": true,
+          "tracking_delivered": true
+        },
+        "entities": [
+          {
+            "uid": {
+              "type": "Keelson::Action",
+              "id": "attribute"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Dispute",
+              "id": ""
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "CANCELED_RECURRING_BILLING"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "CREDIT_NOT_PROCESSED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "DUPLICATE_TRANSACTION"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "INCORRECT_AMOUNT"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_RECEIVED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "OTHER"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "PAYMENT_BY_OTHER_MEANS"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "PROBLEM_WITH_REMITTANCE"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "UNAUTHORISED"
+            },
+            "attrs": {},
+            "parents": []
+          }
+        ]
+      }
+    },
+    {
+      "check": "reachable",
+      "subject": "attribute/R31",
+      "verdict": "verified",
+      "witness": {
+        "principal": {
+          "__entity": {
+            "type": "Keelson::Dispute",
+            "id": ""
+          }
+        },
+        "action": {
+          "__entity": {
+            "type": "Keelson::Action",
+            "id": "attribute"
+          }
+        },
+        "resource": {
+          "__entity": {
+            "type": "Keelson::Dispute",
+            "id": ""
+          }
+        },
+        "context": {
+          "captured_eq_countersigned": true,
+          "duplicate_capture": true,
+          "duplicate_countersig": false,
+          "failed_amber": true,
+          "failed_gray": true,
+          "failed_green": true,
+          "proof_valid": true,
+          "reason": {
+            "__entity": {
+              "type": "Keelson::Reason",
+              "id": "DUPLICATE_TRANSACTION"
+            }
+          },
+          "refund_recorded": true,
+          "snapshot_matches_item": true,
+          "tracking_delivered": true
+        },
+        "entities": [
+          {
+            "uid": {
+              "type": "Keelson::Action",
+              "id": "attribute"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Dispute",
+              "id": ""
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "CANCELED_RECURRING_BILLING"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "CREDIT_NOT_PROCESSED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "DUPLICATE_TRANSACTION"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "INCORRECT_AMOUNT"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_RECEIVED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "OTHER"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "PAYMENT_BY_OTHER_MEANS"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "PROBLEM_WITH_REMITTANCE"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "UNAUTHORISED"
+            },
+            "attrs": {},
+            "parents": []
+          }
+        ]
+      }
+    },
+    {
+      "check": "reachable",
+      "subject": "attribute/R32",
+      "verdict": "verified",
+      "witness": {
+        "principal": {
+          "__entity": {
+            "type": "Keelson::Dispute",
+            "id": ""
+          }
+        },
+        "action": {
+          "__entity": {
+            "type": "Keelson::Action",
+            "id": "attribute"
+          }
+        },
+        "resource": {
+          "__entity": {
+            "type": "Keelson::Dispute",
+            "id": ""
+          }
+        },
+        "context": {
+          "captured_eq_countersigned": true,
+          "duplicate_capture": false,
+          "duplicate_countersig": false,
+          "failed_amber": true,
+          "failed_gray": true,
+          "failed_green": true,
+          "proof_valid": true,
+          "reason": {
+            "__entity": {
+              "type": "Keelson::Reason",
+              "id": "DUPLICATE_TRANSACTION"
+            }
+          },
+          "refund_recorded": true,
+          "snapshot_matches_item": true,
+          "tracking_delivered": true
+        },
+        "entities": [
+          {
+            "uid": {
+              "type": "Keelson::Action",
+              "id": "attribute"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Dispute",
+              "id": ""
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "CANCELED_RECURRING_BILLING"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "CREDIT_NOT_PROCESSED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "DUPLICATE_TRANSACTION"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "INCORRECT_AMOUNT"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_RECEIVED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "OTHER"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "PAYMENT_BY_OTHER_MEANS"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "PROBLEM_WITH_REMITTANCE"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "UNAUTHORISED"
+            },
+            "attrs": {},
+            "parents": []
+          }
+        ]
+      }
+    },
+    {
+      "check": "reachable",
+      "subject": "attribute/R35",
+      "verdict": "verified",
+      "witness": {
+        "principal": {
+          "__entity": {
+            "type": "Keelson::Dispute",
+            "id": ""
+          }
+        },
+        "action": {
+          "__entity": {
+            "type": "Keelson::Action",
+            "id": "attribute"
+          }
+        },
+        "resource": {
+          "__entity": {
+            "type": "Keelson::Dispute",
+            "id": ""
+          }
+        },
+        "context": {
+          "captured_eq_countersigned": true,
+          "duplicate_capture": true,
+          "duplicate_countersig": true,
+          "failed_amber": true,
+          "failed_gray": true,
+          "failed_green": true,
+          "proof_valid": true,
+          "reason": {
+            "__entity": {
+              "type": "Keelson::Reason",
+              "id": "PROBLEM_WITH_REMITTANCE"
+            }
+          },
+          "refund_recorded": true,
+          "snapshot_matches_item": true,
+          "tracking_delivered": true
+        },
+        "entities": [
+          {
+            "uid": {
+              "type": "Keelson::Action",
+              "id": "attribute"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Dispute",
+              "id": ""
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "CANCELED_RECURRING_BILLING"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "CREDIT_NOT_PROCESSED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "DUPLICATE_TRANSACTION"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "INCORRECT_AMOUNT"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_RECEIVED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "OTHER"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "PAYMENT_BY_OTHER_MEANS"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "PROBLEM_WITH_REMITTANCE"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "UNAUTHORISED"
+            },
+            "attrs": {},
+            "parents": []
+          }
+        ]
+      }
+    },
+    {
+      "check": "reachable",
+      "subject": "attribute/R40",
+      "verdict": "verified",
+      "witness": {
+        "principal": {
+          "__entity": {
+            "type": "Keelson::Dispute",
+            "id": ""
+          }
+        },
+        "action": {
+          "__entity": {
+            "type": "Keelson::Action",
+            "id": "attribute"
+          }
+        },
+        "resource": {
+          "__entity": {
+            "type": "Keelson::Dispute",
+            "id": ""
+          }
+        },
+        "context": {
+          "captured_eq_countersigned": false,
+          "duplicate_capture": true,
+          "duplicate_countersig": true,
+          "failed_amber": true,
+          "failed_gray": true,
+          "failed_green": true,
+          "proof_valid": true,
+          "reason": {
+            "__entity": {
+              "type": "Keelson::Reason",
+              "id": "INCORRECT_AMOUNT"
+            }
+          },
+          "refund_recorded": true,
+          "snapshot_matches_item": true,
+          "tracking_delivered": true
+        },
+        "entities": [
+          {
+            "uid": {
+              "type": "Keelson::Action",
+              "id": "attribute"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Dispute",
+              "id": ""
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "CANCELED_RECURRING_BILLING"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "CREDIT_NOT_PROCESSED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "DUPLICATE_TRANSACTION"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "INCORRECT_AMOUNT"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_RECEIVED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "OTHER"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "PAYMENT_BY_OTHER_MEANS"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "PROBLEM_WITH_REMITTANCE"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "UNAUTHORISED"
+            },
+            "attrs": {},
+            "parents": []
+          }
+        ]
+      }
+    },
+    {
+      "check": "reachable",
+      "subject": "attribute/R50",
+      "verdict": "verified",
+      "witness": {
+        "principal": {
+          "__entity": {
+            "type": "Keelson::Dispute",
+            "id": ""
+          }
+        },
+        "action": {
+          "__entity": {
+            "type": "Keelson::Action",
+            "id": "attribute"
+          }
+        },
+        "resource": {
+          "__entity": {
+            "type": "Keelson::Dispute",
+            "id": ""
+          }
+        },
+        "context": {
+          "captured_eq_countersigned": true,
+          "duplicate_capture": true,
+          "duplicate_countersig": true,
+          "failed_amber": true,
+          "failed_gray": true,
+          "failed_green": true,
+          "proof_valid": true,
+          "reason": {
+            "__entity": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED"
+            }
+          },
+          "refund_recorded": true,
+          "snapshot_matches_item": false,
+          "tracking_delivered": true
+        },
+        "entities": [
+          {
+            "uid": {
+              "type": "Keelson::Action",
+              "id": "attribute"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Dispute",
+              "id": ""
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "CANCELED_RECURRING_BILLING"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "CREDIT_NOT_PROCESSED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "DUPLICATE_TRANSACTION"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "INCORRECT_AMOUNT"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_RECEIVED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "OTHER"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "PAYMENT_BY_OTHER_MEANS"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "PROBLEM_WITH_REMITTANCE"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "UNAUTHORISED"
+            },
+            "attrs": {},
+            "parents": []
+          }
+        ]
+      }
+    },
+    {
+      "check": "reachable",
+      "subject": "attribute/R60",
+      "verdict": "verified",
+      "witness": {
+        "principal": {
+          "__entity": {
+            "type": "Keelson::Dispute",
+            "id": ""
+          }
+        },
+        "action": {
+          "__entity": {
+            "type": "Keelson::Action",
+            "id": "attribute"
+          }
+        },
+        "resource": {
+          "__entity": {
+            "type": "Keelson::Dispute",
+            "id": ""
+          }
+        },
+        "context": {
+          "captured_eq_countersigned": true,
+          "duplicate_capture": true,
+          "duplicate_countersig": true,
+          "failed_amber": true,
+          "failed_gray": true,
+          "failed_green": true,
+          "proof_valid": true,
+          "reason": {
+            "__entity": {
+              "type": "Keelson::Reason",
+              "id": "INCORRECT_AMOUNT"
+            }
+          },
+          "refund_recorded": true,
+          "snapshot_matches_item": true,
+          "tracking_delivered": true
+        },
+        "entities": [
+          {
+            "uid": {
+              "type": "Keelson::Action",
+              "id": "attribute"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Dispute",
+              "id": ""
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "CANCELED_RECURRING_BILLING"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "CREDIT_NOT_PROCESSED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "DUPLICATE_TRANSACTION"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "INCORRECT_AMOUNT"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_RECEIVED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "OTHER"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "PAYMENT_BY_OTHER_MEANS"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "PROBLEM_WITH_REMITTANCE"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "UNAUTHORISED"
+            },
+            "attrs": {},
+            "parents": []
+          }
+        ]
+      }
+    },
+    {
+      "check": "reachable",
+      "subject": "attribute/R61",
+      "verdict": "verified",
+      "witness": {
+        "principal": {
+          "__entity": {
+            "type": "Keelson::Dispute",
+            "id": ""
+          }
+        },
+        "action": {
+          "__entity": {
+            "type": "Keelson::Action",
+            "id": "attribute"
+          }
+        },
+        "resource": {
+          "__entity": {
+            "type": "Keelson::Dispute",
+            "id": ""
+          }
+        },
+        "context": {
+          "captured_eq_countersigned": true,
+          "duplicate_capture": true,
+          "duplicate_countersig": true,
+          "failed_amber": true,
+          "failed_gray": true,
+          "failed_green": false,
+          "proof_valid": true,
+          "reason": {
+            "__entity": {
+              "type": "Keelson::Reason",
+              "id": "INCORRECT_AMOUNT"
+            }
+          },
+          "refund_recorded": true,
+          "snapshot_matches_item": true,
+          "tracking_delivered": true
+        },
+        "entities": [
+          {
+            "uid": {
+              "type": "Keelson::Action",
+              "id": "attribute"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Dispute",
+              "id": ""
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "CANCELED_RECURRING_BILLING"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "CREDIT_NOT_PROCESSED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "DUPLICATE_TRANSACTION"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "INCORRECT_AMOUNT"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_RECEIVED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "OTHER"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "PAYMENT_BY_OTHER_MEANS"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "PROBLEM_WITH_REMITTANCE"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "UNAUTHORISED"
+            },
+            "attrs": {},
+            "parents": []
+          }
+        ]
+      }
+    },
+    {
+      "check": "reachable",
+      "subject": "attribute/R62",
+      "verdict": "verified",
+      "witness": {
+        "principal": {
+          "__entity": {
+            "type": "Keelson::Dispute",
+            "id": ""
+          }
+        },
+        "action": {
+          "__entity": {
+            "type": "Keelson::Action",
+            "id": "attribute"
+          }
+        },
+        "resource": {
+          "__entity": {
+            "type": "Keelson::Dispute",
+            "id": ""
+          }
+        },
+        "context": {
+          "captured_eq_countersigned": true,
+          "duplicate_capture": true,
+          "duplicate_countersig": true,
+          "failed_amber": false,
+          "failed_gray": true,
+          "failed_green": false,
+          "proof_valid": true,
+          "reason": {
+            "__entity": {
+              "type": "Keelson::Reason",
+              "id": "INCORRECT_AMOUNT"
+            }
+          },
+          "refund_recorded": true,
+          "snapshot_matches_item": true,
+          "tracking_delivered": true
+        },
+        "entities": [
+          {
+            "uid": {
+              "type": "Keelson::Action",
+              "id": "attribute"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Dispute",
+              "id": ""
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "CANCELED_RECURRING_BILLING"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "CREDIT_NOT_PROCESSED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "DUPLICATE_TRANSACTION"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "INCORRECT_AMOUNT"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_RECEIVED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "OTHER"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "PAYMENT_BY_OTHER_MEANS"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "PROBLEM_WITH_REMITTANCE"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "UNAUTHORISED"
+            },
+            "attrs": {},
+            "parents": []
+          }
+        ]
+      }
+    },
+    {
+      "check": "reachable",
+      "subject": "attribute/R70",
+      "verdict": "verified",
+      "witness": {
+        "principal": {
+          "__entity": {
+            "type": "Keelson::Dispute",
+            "id": ""
+          }
+        },
+        "action": {
+          "__entity": {
+            "type": "Keelson::Action",
+            "id": "attribute"
+          }
+        },
+        "resource": {
+          "__entity": {
+            "type": "Keelson::Dispute",
+            "id": ""
+          }
+        },
+        "context": {
+          "captured_eq_countersigned": true,
+          "duplicate_capture": true,
+          "duplicate_countersig": true,
+          "failed_amber": false,
+          "failed_gray": false,
+          "failed_green": false,
+          "proof_valid": true,
+          "reason": {
+            "__entity": {
+              "type": "Keelson::Reason",
+              "id": "INCORRECT_AMOUNT"
+            }
+          },
+          "refund_recorded": true,
+          "snapshot_matches_item": true,
+          "tracking_delivered": true
+        },
+        "entities": [
+          {
+            "uid": {
+              "type": "Keelson::Action",
+              "id": "attribute"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Dispute",
+              "id": ""
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "CANCELED_RECURRING_BILLING"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "CREDIT_NOT_PROCESSED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "DUPLICATE_TRANSACTION"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "INCORRECT_AMOUNT"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "MERCHANDISE_OR_SERVICE_NOT_RECEIVED"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "OTHER"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "PAYMENT_BY_OTHER_MEANS"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "PROBLEM_WITH_REMITTANCE"
+            },
+            "attrs": {},
+            "parents": []
+          },
+          {
+            "uid": {
+              "type": "Keelson::Reason",
+              "id": "UNAUTHORISED"
+            },
+            "attrs": {},
+            "parents": []
+          }
+        ]
+      }
+    }
+  ]
+}
