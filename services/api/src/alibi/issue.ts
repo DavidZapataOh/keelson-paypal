@@ -263,7 +263,8 @@ export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<vo
       sd_jwt: m.openMandate,
       disclosures: m.disclosures,
       payload_sd: json(m.payloadSd),
-      user_auth: json(m.userAuth),
+      // The assertion as the open mandate signs it: the stored one also keeps credentialId and userHandle.
+      user_auth: userAuthOf(m.userAuth),
       issuer_jwk: json(issuerJwk),
     },
     manifest: { public: evidence.manifest, disclosures: evidence.disclosures },
@@ -399,4 +400,12 @@ export async function loadAlibi(db: Db, purchaseId: string): Promise<AlibiBundle
       ...(row.invoiceId ? { invoice_id: row.invoiceId } : {}),
     },
   });
+}
+
+function userAuthOf(stored: unknown): Record<string, string> {
+  const { authenticatorData, clientDataJSON, signature } = stored as Record<string, string>;
+  if (!authenticatorData || !clientDataJSON || !signature) {
+    throw new AlibiIssueError("format", "the stored passkey assertion is incomplete");
+  }
+  return { authenticatorData, clientDataJSON, signature };
 }
