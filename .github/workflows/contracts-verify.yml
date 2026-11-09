@@ -189,11 +189,19 @@ jobs:
           cache-key: contracts-verify-${{ hashFiles('contracts/test/utils/VaultBase.sol') }}
           cache-restore-keys: contracts-verify-
       - run: forge build --root lib/nitro-validator
-      # -vv: traces of failing calls would print the funder keys parsed from the secret.
-      # Only the statuses are kept: traces and logs could carry the funder keys.
+      # Only the status lines are kept: traces and logs could carry the funder keys parsed from the secret. Forge runs a
+      # contract's invariants as one campaign and its JSON names only the first, so the per-invariant lines are parsed.
       - run: |
-          forge test --match-path 'test/invariant/*' -vv --json \
-            | jq '[.[] | {test_results: (.test_results | map_values({status}))}]' > invariant.json
+          set +e
+          forge test --match-path 'test/invariant/*' > forge-invariant.log 2>&1
+          status=$?
+          set -e
+          grep -oE '^\[(PASS|FAIL)[^]]*\] [A-Za-z0-9_]+' forge-invariant.log \
+            | jq -Rn '[{test_results: ([inputs | capture("^\\[(?<s>PASS|FAIL)[^]]*\\] (?<n>.+)$")
+                | {(.n): {status: (if .s == "PASS" then "Success" else "Failure" end)}}] | add)}]' > invariant.json
+          rm forge-invariant.log
+          jq -r '.[0].test_results | to_entries[] | "\(.value.status) \(.key)"' invariant.json
+          exit $status
       - uses: actions/upload-artifact@v6
         if: always()
         with:

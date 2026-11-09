@@ -57,10 +57,14 @@ cell() {
   # Killed, invalid and timed-out counts vary with the worker count; the score and the survivors do not.
   echo "| Mutation (\`forge test --mutate\`) | Score | Survived |"
   echo "|---|---|---|"
-  for f in "$dir"/mutation-*.json; do
-    name=$(basename "$f" .json)
-    jq -r --arg n "${name#mutation-}" '.summary | "| `\($n)` | \(.mutation_score)% | \(.survived) |"' "$f"
-  done
+  # The latest local results are pinned in verification/mutation/; a run's own result for a contract replaces them.
+  for f in verification/mutation/mutation-*.json "$dir"/mutation-*.json; do
+    echo "$(basename "$f" .json) $f"
+  done | awk '{ last[$1] = $2; if (!($1 in seen)) { seen[$1] = 1; order[++n] = $1 } } END { for (i = 1; i <= n; i++) print last[order[i]] }' \
+    | while read -r f; do
+      name=$(basename "$f" .json)
+      jq -r --arg n "${name#mutation-}" '.summary | "| `\($n)` | \(.mutation_score)% | \(.survived) |"' "$f"
+    done
   echo "<!-- verification:end -->"
 } > "$dir/verification.md"
 
