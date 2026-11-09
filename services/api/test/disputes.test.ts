@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import {
   disputeResponses,
   disputes,
+  eq,
   mandates,
   operators,
   paypalEvents,
@@ -15,6 +16,7 @@ import { ulid } from "ulid";
 import { beforeAll, describe, expect, test } from "vitest";
 import { createApp } from "../src/app.ts";
 import { evaluateDispute } from "../src/disputes/evaluate.ts";
+import { applyDispute } from "../src/paypal/apply.ts";
 import { createPayPalDeps } from "../src/paypal.ts";
 import { LegClient } from "../src/tee/client.ts";
 import { testDb, testKv } from "./setup.ts";
@@ -213,4 +215,58 @@ describe("evaluateDispute", () => {
     );
     expect(out).toEqual({ status: "unknown", disputeId: "PP-D-unknown" });
   });
+});
+
+describe("applyDispute after the verdict was settled", () => {
+  test.each(["DEFENDED", "MERCHANT_LIABLE", "SLASHED", "WARRANTY_PAID"] as const)(
+    "an escalated dispute on a %s purchase is stored and evaluated again",
+    async (state) => {
+      const [p] = await testDb.select({ mandateId: purchases.mandateId }).from(purchases).limit(1);
+      const purchaseId = ulid();
+      const captureId = randomBytes(8).toString("hex").toUpperCase();
+      await testDb.insert(purchases).values({
+        id: purchaseId,
+        mandateId: p?.mandateId as string,
+        merchantId: "mrc_runfast",
+        currency: "USD",
+        amountMinor: 100n,
+        cartHash: randomBytes(32),
+        state,
+        paypalCaptureId: captureId,
+      });
+      const id = `PP-R-${randomBytes(4).toString("hex").toUpperCase()}`;
+      await testDb
+        .insert(disputes)
+        .values({ id, purchaseId, reason: "UNAUTHORISED", raw: {}, state: "ATTRIBUTED" });
+      const started: string[] = [];
+      // PayPal's dispute as it reads once the buyer escalated the inquiry to a claim.
+      const escalated = {
+        dispute_id: id,
+        reason: "UNAUTHORISED",
+        status: "WAITING_FOR_SELLER_RESPONSE",
+        dispute_life_cycle_stage: "CHARGEBACK",
+        seller_response_due_date: "2026-11-20T00:00:00.000Z",
+        disputed_transactions: [{ seller_transaction_id: captureId }],
+      };
+      const out = await applyDispute(
+        {
+          db: testDb,
+          kv: testKv,
+          log,
+          paypal: undefined as never,
+          startDisputeWorkflow: async (_id, revision) => {
+            started.push(revision);
+          },
+        },
+        escalated,
+      );
+      expect(out).toMatchObject({ status: "applied", disputeId: id, purchaseId });
+      expect(started).toEqual(["WAITING_FOR_SELLER_RESPONSE:CHARGEBACK:2026-11-20T00:00:00.000Z"]);
+      const [stored] = await testDb.select().from(disputes).where(eq(disputes.id, id));
+      expect(
+        (stored?.raw as { dispute_life_cycle_stage?: string } | undefined)
+          ?.dispute_life_cycle_stage,
+      ).toBe("CHARGEBACK");
+    },
+  );
 });

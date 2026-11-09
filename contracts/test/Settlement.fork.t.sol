@@ -6,18 +6,15 @@ import {IKeelsonBondVault} from "../src/interfaces/IKeelsonBondVault.sol";
 import {IKeelsonReserve} from "../src/interfaces/IKeelsonReserve.sol";
 import {KeelsonTypes} from "../src/libraries/KeelsonTypes.sol";
 import {SlashBase} from "./utils/SlashBase.sol";
-import {stdJson} from "forge-std/StdJson.sol";
 
 /// @notice Amber and green disputes settled end to end on a fork of Arbitrum Sepolia with real PYUSD: bonds deposited by
 /// EIP-3009, two coverages locked from the live vectors, the real `CheckpointAnchor`, an amber verdict slashing the
 /// operator (at once, then through the veto queue) and a green one paid by the reserve that collected the premiums.
-/// @dev Verdicts come from `vectors/verdict-amber.json` and `vectors/verdict-green.json` when they exist (signed by the
-/// live legs), and are otherwise signed by the fork-only `VerdictSigners`; the assertions are the same either way.
+/// @dev Verdicts are signed by the fork-only `VerdictSigners`; `SettlementLive.fork.t.sol` settles verdicts the live
+/// legs signed.
 /// forge-config: default.evm_version = "osaka"
 /// forge-config: ci.evm_version = "osaka"
 contract SettlementForkTest is SlashBase {
-    using stdJson for string;
-
     uint256 internal constant SEED = 100e6;
 
     address internal treasury;
@@ -48,27 +45,12 @@ contract SettlementForkTest is SlashBase {
         _lock(b);
     }
 
-    /// @dev The live legs' verdict at `name`, if 07 recorded one, else the given one signed on the fork.
-    function _signed(string memory name, KeelsonTypes.Verdict memory fallback_)
-        internal
-        view
-        returns (KeelsonTypes.Verdict memory v, uint64 size, bytes memory sigs)
-    {
-        string memory path = string.concat(vm.projectRoot(), "/test/vectors/", name, ".json");
-        if (!vm.exists(path)) return (fallback_, treeSize, _sign2of2(fallback_));
-        string memory json = vm.readFile(path);
-        v = abi.decode(json.parseRaw(".verdict"), (KeelsonTypes.Verdict));
-        size = uint64(json.readUint(".treeSize"));
-        sigs = bytes.concat(json.readBytes(".signatures.tdx"), json.readBytes(".signatures.nitro"));
-    }
-
     function test_amberAndGreenSettle() public {
         uint256 premiums = uint256(a.coverage.premium) + b.coverage.premium;
         assertApproxEqAbs(reserve.totalAssets(), SEED + premiums, 0, "premiums in the reserve");
 
         // Amber, within the instant cap: the merchant is paid at once.
-        (KeelsonTypes.Verdict memory amber, uint64 size, bytes memory sigs) =
-            _signed("verdict-amber", _verdict(a, a.coverage.amount, OPERATOR, "PP-D-amber"));
+        KeelsonTypes.Verdict memory amber = _verdict(a, a.coverage.amount, OPERATOR, "PP-D-amber");
         vm.expectEmit(address(vault));
         emit IKeelsonBondVault.Slashed(
             amber.disputeId,
@@ -80,7 +62,7 @@ contract SettlementForkTest is SlashBase {
             amber.evidenceHash,
             _digest(amber)
         );
-        vault.slash(amber, size, sigs);
+        _slash(amber);
         assertEq(pyusd.balanceOf(amber.payee), amber.amount);
         assertEq(_bond().slashCount, 1);
 
@@ -95,12 +77,11 @@ contract SettlementForkTest is SlashBase {
 
         // Green: the reserve pays the merchant.
         uint256 assetsBefore = reserve.totalAssets();
-        (KeelsonTypes.Verdict memory green, uint64 greenSize, bytes memory greenSigs) =
-            _signed("verdict-green", _verdict(b, 30e6, KEELSON, "PP-D-green"));
+        KeelsonTypes.Verdict memory green = _verdict(b, 30e6, KEELSON, "PP-D-green");
         uint256 payeeBefore = pyusd.balanceOf(green.payee);
         vm.expectEmit(address(reserve));
         emit IKeelsonReserve.WarrantyPaid(green.disputeId, green.coverageId, green.payee, green.amount, _digest(green));
-        reserve.payWarranty(green, greenSize, greenSigs);
+        reserve.payWarranty(green, treeSize, _sign2of2(green));
         assertEq(pyusd.balanceOf(green.payee), payeeBefore + green.amount);
         assertEq(reserve.totalAssets(), assetsBefore - green.amount);
 

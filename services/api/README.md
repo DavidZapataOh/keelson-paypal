@@ -170,7 +170,10 @@ When the operator or Keelson is at fault:
 The purchase then moves to `SLASHED` or `WARRANTY_PAID` (`MERCHANT_LIABLE` or `DEFENDED` when the
 merchant or the user is at fault). The rail is the merchant's choice
 (`PUT /v1/merchants/{merchantId}/settlement`, `pyusd` by default, `paypal` with a PayPal receiver
-that is not Keelson's own account: PayPal answers `SELF_PAY_NOT_ALLOWED`). A shipment is recorded
+that is not Keelson's own account: PayPal answers `SELF_PAY_NOT_ALLOWED`). The merchant signs each
+choice with its settlement address (EIP-712 `SettlementPreference` under the bond vault's domain,
+as it signs `PayoutAddress`), with a nonce higher than its last one, so neither a client holding
+`merchants:write` nor a replayed signature can redirect its payouts. A shipment is recorded
 with `POST /v1/purchases/{id}/tracking`: the Orders v2 tracker, then `DELIVERED` through the Add
 Tracking API, which makes it the delivery proof of a "not received" dispute.
 

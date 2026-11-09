@@ -15,7 +15,7 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
 import { ulid } from "ulid";
-import { BaseError, HttpRequestError, TimeoutError } from "viem";
+import { type Address, BaseError, HttpRequestError, TimeoutError } from "viem";
 import type { Auth } from "./auth.ts";
 import type { ChainReaders } from "./chain/reader.ts";
 import type { Channel3Lookup } from "./channel3/client.ts";
@@ -112,6 +112,8 @@ export interface Deps {
    * response due date (`revision`); disputes stay `OPEN` without it.
    */
   startDisputeWorkflow?: (disputeId: string, revision: string) => Promise<void>;
+  /** The address that signs each merchant's settlement choices; its settlement address by default. */
+  merchantSigners?: Readonly<Record<string, Address>>;
   /** Aborting it ends every open event stream so the server can close. */
   shutdown?: AbortSignal;
 }
