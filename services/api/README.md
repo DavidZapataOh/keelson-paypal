@@ -269,3 +269,46 @@ vault parameters from short-lived caches, the PayPal token from its cache until 
 credential issuer and the log's witness policy (both needed for the Alibi) from per-process
 caches. The first purchase after a deploy pays those reads once. RFC 3161 timestamps, the Alibi PDF and
 anchoring are off the path, and `purchase.captured` is published before any of them.
+
+## Runbook
+
+`GET /status` lists every dependency of the money path with its health: Postgres, Redis, both
+TEE legs, the log (each origin's checkpoint size and age), the relayer (balance, next nonce and
+pending calls per chain, `degraded` below its balance floor), PayPal (`sandbox` or `production`,
+`down` when an authenticated call fails), PayPal events (`lastWebhookAgeMs`, and
+`lastPollAgeMs` of the 30 s poller, `down` past 2 minutes) and the anchor (the latest
+checkpoint of the sandbox log anchored on Arbitrum Sepolia and its age). The operator's free bond
+is on `GET /v1/operators/{agentId}`.
+
+**Void a stuck hold.** `POST /v1/mandates/{id}/revoke` as the mandate's owner voids the
+remainder of its authorization. A mandate past `exp` is voided by the hold maintenance loop on its
+own. A hold PayPal voided outside Keelson arrives as `PAYMENT.AUTHORIZATION.VOIDED`, and the
+mandate moves to `EXPIRED` once the re-read confirms it.
+
+**A purchase stuck in a step.** A purchase in `COUNTERSIGNED`, `LOGGED` or `COVERED` whose lease
+has lapsed is driven again within 5 s by any running instance. One that cannot finish fails on its
+own when its 600 s capture window closes (`<step>:window-closed`), with nothing captured. Do not
+edit `purchases.state` by hand: the capture step relies on it to never capture twice.
+
+**Reconcile with PayPal.** Search Transaction Search (`GET /v1/reporting/transactions`) by
+`invoice_id` (`KS1-<purchase id>-…`), then compare with `GET /v2/payments/authorizations/{id}`
+of the mandate's hold. A capture PayPal holds and Postgres does not is adopted the next time the
+purchase is driven, or when its `PAYMENT.CAPTURE.COMPLETED` is applied.
+
+**Replay webhooks.** `GET /v1/notifications/webhooks-events` lists what PayPal sent;
+`POST /v1/notifications/webhooks-events/{event_id}/resend` sends one again. A resent event is
+stored once (`paypal_events` is keyed by event id) and applied from a fresh re-read. The poller
+picks up anything missed within 30 s anyway.
+
+**Anchor now.** `POST /alibi/2026-1/anchor` on the log's private listener, with its bearer
+token, anchors the sandbox checkpoint at once (see the log's README). The API's anchor watcher
+then re-issues every Alibi the new anchor covers with its `anchor` section.
+
+**Rotate the PayPal client secret.** Generate a new secret for the app in the PayPal developer
+dashboard. Set it as `PAYPAL_CLIENT_SECRET` on `keelson-api` and in the repository secrets that
+the TEE deploy workflow passes to leg A, which reads PayPal with the same app. Redeploy both,
+check that `GET /status` shows PayPal `up`, then revoke the old secret.
+
+**Degraded mode.** When leg B does not answer, leg A alone countersigns: the purchase reads
+`mode: "degraded"` in its view, its leaf and its Alibi, and still goes through the log, coverage
+and capture. Two legs that sign different digests never capture.
