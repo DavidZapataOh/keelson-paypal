@@ -1830,6 +1830,122 @@ components:
         - leaf_hash
         - tlog_proof
         - timestamps
+    DisputeStatus:
+      type: object
+      properties:
+        dispute_id:
+          type: string
+        purchase_id:
+          type: string
+        state:
+          type: string
+          enum:
+            - OPEN
+            - ATTRIBUTED
+            - RESOLVED
+        reason:
+          type: string
+          description: PayPal's `dispute_reason`.
+        received_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+          description: When Keelson received the dispute's first webhook or poll.
+        attributed_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        elapsed_ms:
+          type:
+            - integer
+            - "null"
+          description: From `received_at` to `attributed_at`; null while the dispute is
+            open.
+        liable:
+          type:
+            - string
+            - "null"
+          enum:
+            - operator
+            - keelson
+            - merchant
+            - user
+            - null
+        parties:
+          type: array
+          items:
+            type: object
+            properties:
+              party:
+                type: string
+                enum:
+                  - operator
+                  - keelson
+                  - merchant
+              liable:
+                type: boolean
+            required:
+              - party
+              - liable
+          description: "The parties a verdict can make pay: the operator's bond, Keelson's
+            reserve, or the merchant through PayPal."
+        verdict:
+          type:
+            - object
+            - "null"
+          properties:
+            rule:
+              type: string
+              example: R61
+            digest:
+              type: string
+            chain_id:
+              type: integer
+            message:
+              type: object
+              additionalProperties:
+                type: string
+            signatures:
+              type: array
+              items:
+                type: object
+                properties:
+                  tee:
+                    type: integer
+                  signer:
+                    type: string
+                  signature:
+                    type: string
+                required:
+                  - tee
+                  - signer
+                  - signature
+            facts:
+              type: object
+              additionalProperties:
+                anyOf:
+                  - type: string
+                  - type: boolean
+          required:
+            - rule
+            - digest
+            - chain_id
+            - message
+            - signatures
+            - facts
+      required:
+        - dispute_id
+        - purchase_id
+        - state
+        - reason
+        - received_at
+        - attributed_at
+        - elapsed_ms
+        - liable
+        - parties
+        - verdict
     Passkeys:
       type: object
       properties:
@@ -3757,6 +3873,35 @@ paths:
                 $ref: "#/components/schemas/AlibiReceipt"
         "404":
           description: No alibi with this id that the caller may read
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/disputes/{id}:
+    get:
+      tags:
+        - Disputes
+      summary: A dispute's attribution
+      description: "Where a PayPal dispute over a Keelson purchase stands: the party
+        at fault, the `Verdict` both TEE legs signed and the time from the
+        dispute's arrival to its verdict. No authentication; it holds no
+        personal data."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^PP-D-[0-9A-Za-z-]{1,40}$
+          required: true
+          name: id
+          in: path
+      responses:
+        "200":
+          description: The dispute
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DisputeStatus"
+        "404":
+          description: No dispute with this id over a Keelson purchase
           content:
             application/problem+json:
               schema:

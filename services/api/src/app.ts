@@ -32,6 +32,7 @@ import { registerBonds } from "./routes/bonds.ts";
 import { registerChannel3Webhook } from "./routes/channel3-webhook.ts";
 import { type CompileSources, registerCompile } from "./routes/compile.ts";
 import { registerCountersign } from "./routes/countersign.ts";
+import { registerDisputes } from "./routes/disputes.ts";
 import { registerEvents } from "./routes/events.ts";
 import { registerEvidence } from "./routes/evidence.ts";
 import { registerFeedback } from "./routes/feedback.ts";
@@ -244,6 +245,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerTee(app, deps);
   registerTimestamps(app, deps);
   registerAlibis(app, deps);
+  registerDisputes(app, deps);
   registerPasskeys(app, deps);
   registerOperators(app, deps);
   registerFeedback(app, deps);

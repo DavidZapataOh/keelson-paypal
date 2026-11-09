@@ -35,6 +35,10 @@ A request id is answered once per mandate. Right after authentication it is boun
 
 `origin` is `keccak256` of the origin string, and the domain is the engine's (`verifyingContract` = the `VerdictVerifier`). Because both legs sign only witnessed checkpoints, the log key alone cannot get a checkpoint anchored.
 
+## Sign a verdict
+
+`Engine::sign_verdict` attributes a PayPal dispute and signs the EIP-712 `Verdict` that `KeelsonBondVault.slash` and `KeelsonReserve.payWarranty` check. The request carries the dispute's facts (`keelson_policy::Facts`: the PayPal reason and the booleans the host derived from the Alibi, PayPal and the chain) and the settlement terms (`dispute id`, `coverageId`, `agentId`, `payee`, `amount`, a failed field of each color as its `failedFieldsMask` bit, `evidenceHash`, `checkpointRoot`, `issuedAt`, `deadline`). The leg runs `keelson_policy::verdict`, the attribution policy sets in Cedar, so the rule, the liable party and the `fieldId` (the failed field of the rule's color for R60–R62, none otherwise) are the engine's, never the caller's; terms the rule refuses (a field rule with no failed field of its color, a deadline not after `issuedAt`, an amount beyond `uint96`) fail with `bad_request`. Both legs answer the same digest for the same request.
+
 ## What each leg checks
 
 Both legs verify every signature in the closed mandate and the passkey assertion. Two checks run on leg A only, and leg B takes their result from leg A's `Observation`:
@@ -106,7 +110,7 @@ Refusals carry no signature and one of these stable codes: `auth.closed_*`, `aut
 
 ## HTTP
 
-`keelson-engine --listen tcp:<addr>` serves `POST /v1/countersign`, `POST /v1/mandates/register`, `POST /v1/checkpoint` (`{ signed_note, chain_id? }`, at most 16 KiB, answered with `{ origin, tree_size, root_hash, chain_id, digest, signature, signer }`) and `GET /v1/health` (`{ tee, signer, boot_epoch, oci_digest, version, now_ms, issuer, rss_kib }`, `now_ms` being the engine's clock, `issuer` the credential issuer's public JWK and `rss_kib` the process's resident memory on Linux). With `--platform tdx` it also serves `GET /v1/attestation` and `POST /v1/attestation/refresh` (see below). Every route except health and `GET /v1/attestation` needs `Authorization: Bearer <token>`; the engine holds only the token's SHA-256, from `KEELSON_TEE_TOKEN_SHA256`, and compares it in constant time. Refusals are `application/problem+json` (RFC 9457) with `type` `https://keelson.finance/problems/<code>` and the stable code, and never echo the request. Bodies are JSON with unknown fields rejected.
+`keelson-engine --listen tcp:<addr>` serves `POST /v1/countersign`, `POST /v1/mandates/register`, `POST /v1/verdict` (`{ facts, input, chain_id? }`, answered with `{ verdict, chain_id, digest, signature, signer, tee }`), `POST /v1/checkpoint` (`{ signed_note, chain_id? }`, at most 16 KiB, answered with `{ origin, tree_size, root_hash, chain_id, digest, signature, signer }`) and `GET /v1/health` (`{ tee, signer, boot_epoch, oci_digest, version, now_ms, issuer, rss_kib }`, `now_ms` being the engine's clock, `issuer` the credential issuer's public JWK and `rss_kib` the process's resident memory on Linux). With `--platform tdx` it also serves `GET /v1/attestation` and `POST /v1/attestation/refresh` (see below). Every route except health and `GET /v1/attestation` needs `Authorization: Bearer <token>`; the engine holds only the token's SHA-256, from `KEELSON_TEE_TOKEN_SHA256`, and compares it in constant time. Refusals are `application/problem+json` (RFC 9457) with `type` `https://keelson.finance/problems/<code>` and the stable code, and never echo the request. Bodies are JSON with unknown fields rejected.
 
 | Status | Codes                                                                                            |
 | ------ | ------------------------------------------------------------------------------------------------ |

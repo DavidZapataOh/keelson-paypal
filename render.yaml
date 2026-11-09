@@ -83,7 +83,61 @@ services:
         sync: false
       - key: AWS_REGION
         value: us-west-2
+      - key: DISPUTE_WORKFLOW
+        value: keelson-workflows
+      - key: RENDER_API_KEY
+        sync: false
       - fromGroup: keelson-secrets
+
+  # Dispute evaluation runs as Render Workflows tasks, started by the API with the task slug.
+  - type: workflow
+    runtime: node
+    name: keelson-workflows
+    region: oregon
+    buildCommand: npm install -g pnpm@12.16.1 && pnpm install --frozen-lockfile && pnpm turbo run build --filter=@keelson/api...
+    startCommand: pnpm --filter @keelson/api workflows
+    autoDeployTrigger: checksPass
+    buildFilter:
+      paths:
+        - services/api/**
+        - packages/**
+        - package.json
+        - pnpm-lock.yaml
+        - pnpm-workspace.yaml
+        - turbo.json
+        - tsconfig.base.json
+        - .node-version
+        - render.yaml
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: keelson-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: keelson-kv
+          property: connectionString
+      - key: PAYPAL_ENV
+        value: sandbox
+      - key: PAYPAL_MERCHANT_ID
+        value: A4WCRYD5EYDF2
+      - key: LOG_URL
+        value: http://keelson-log:8081
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: TEE_A_URL
+        sync: false
+      - key: TEE_B_URL
+        sync: false
+      - key: KEELSON_TEE_TOKEN
+        sync: false
+      - key: ARBITRUM_SEPOLIA_RPC_URL
+        sync: false
+      - key: LOG_WRITE_TOKEN
+        sync: false
 
   - type: web
     runtime: docker
