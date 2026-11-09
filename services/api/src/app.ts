@@ -22,6 +22,7 @@ import { requestLogger } from "./logger.ts";
 import { requireClient } from "./middleware/auth.ts";
 import { idempotency } from "./middleware/idempotency.ts";
 import { type RateLimitOptions, rateLimit } from "./middleware/rate-limit.ts";
+import type { OperatorSigners } from "./operators/signer.ts";
 import type { PayPalDeps } from "./paypal.ts";
 import { ProblemSchema, problem } from "./problem.ts";
 import { registerBonds } from "./routes/bonds.ts";
@@ -39,6 +40,7 @@ import { registerObservations } from "./routes/observations.ts";
 import { registerOperators } from "./routes/operators.ts";
 import { registerPasskeys } from "./routes/passkeys.ts";
 import { registerPurchaseHolds } from "./routes/purchase-holds.ts";
+import { registerPurchases } from "./routes/purchases.ts";
 import { registerRevoke } from "./routes/revoke.ts";
 import { registerStatus } from "./routes/status.ts";
 import { registerTee } from "./routes/tee.ts";
@@ -83,6 +85,8 @@ export interface Deps {
   chains?: ChainReaders;
   /** Sends Keelson's contract calls and pays their gas; the gasless routes answer 503 without it. */
   relayer?: Relayer;
+  /** The operators whose `Coverage` Keelson signs; their purchases fail before coverage without it. */
+  operators?: OperatorSigners;
   /** PayPal orders and payments; the hold routes answer 503 without it. */
   paypal?: PayPalDeps;
   /** Aborting it ends every open event stream so the server can close. */
@@ -202,6 +206,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerRevoke(app, deps);
   registerCompile(app, deps);
   registerCountersign(app, deps);
+  registerPurchases(app, deps);
   registerEvidence(app, deps);
   registerObservations(app, deps);
   registerChannel3Webhook(app, deps);

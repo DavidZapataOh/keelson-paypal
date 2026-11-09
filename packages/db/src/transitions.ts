@@ -14,7 +14,7 @@ export const transitions = {
   purchases: {
     PROPOSED: ["EVALUATING"],
     EVALUATING: ["DENIED", "COUNTERSIGNED", "FAILED"],
-    FAILED: ["EVALUATING"],
+    FAILED: ["EVALUATING", "CAPTURED"],
     COUNTERSIGNED: ["LOGGED", "FAILED"],
     LOGGED: ["COVERED", "FAILED"],
     COVERED: ["CAPTURED", "FAILED"],

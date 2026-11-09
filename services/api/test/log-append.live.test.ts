@@ -29,6 +29,7 @@ import {
   asUser,
   carts,
   headerPrincipal,
+  holdOnSandboxAuthorization,
   live,
   liveEnv,
   registerMandate,
@@ -230,6 +231,7 @@ describe.skipIf(!live)(
       const json = (await created.json()) as { id: string };
       expect(created.status, JSON.stringify(json)).toBe(201);
       mandateId = json.id;
+      await holdOnSandboxAuthorization(testDb, mandateId);
     }, 300_000);
     afterAll(async () => {
       await tlog?.stop();

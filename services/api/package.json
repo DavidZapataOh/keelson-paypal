@@ -12,6 +12,7 @@
     "bench": "pnpm run build && node bench/health.bench.ts",
     "budgets": "KEELSON_BUDGETS=1 vitest run test/mandates.test.ts -t \"latency budget\"",
     "test:live": "KEELSON_LIVE=1 vitest run test/compile.test.ts",
+    "bench:checkout": "node bench/checkout.bench.ts",
     "bench:countersign": "node bench/countersign.bench.ts",
     "bench:hold": "node bench/hold.bench.ts",
     "bench:log-append": "node bench/log-append.bench.ts"
