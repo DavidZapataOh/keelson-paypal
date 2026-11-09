@@ -6,7 +6,7 @@ use alloy_sol_types::SolStruct;
 use keelson_core::domain;
 use keelson_policy::{Facts, Reason, VerdictInput, attribute, verdict};
 
-/// `attribute`: four Cedar authorizations and the context built from the facts.
+/// `attribute`: one Cedar authorization over the 15 rules and the context built from the facts.
 const ATTRIBUTE_BUDGET_US: f64 = 100.0;
 /// `verdict` and its EIP-712 signing hash, attribution included.
 const VERDICT_BUDGET_US: f64 = 150.0;

@@ -369,38 +369,45 @@ fn request(facts: &Facts) -> Result<Request, AttributionError> {
     Request::new(dispute.clone(), action, dispute, context, Some(schema)).map_err(|e| cedar(&e))
 }
 
-/// The rule that attributes `facts`, evaluated by Cedar over [`attribution_sets`]. Fails unless
-/// exactly one rule in exactly one set allows the request with no evaluation error.
+/// The rule that attributes `facts`, evaluated by Cedar in one authorization over the policies of
+/// [`attribution_sets`]. Fails unless exactly one rule allows the request with no evaluation
+/// error.
 pub fn attribute(facts: &Facts) -> Result<Attribution, AttributionError> {
-    let request = request(facts)?;
-    let entities = Entities::empty();
-    let authorizer = Authorizer::new();
-    let mut fired = Vec::new();
-    for (liable, set) in attribution_sets() {
-        let response = authorizer.is_authorized(&request, set, &entities);
-        let errors: Vec<_> = response
-            .diagnostics()
-            .errors()
-            .map(ToString::to_string)
-            .collect();
-        if !errors.is_empty() {
-            return Err(AttributionError::Cedar(errors.join("; ")));
-        }
-        fired.extend(
-            response
-                .diagnostics()
-                .reason()
-                .map(|id| (*liable, id.to_string())),
-        );
+    static RULE_SET: OnceLock<PolicySet> = OnceLock::new();
+    let rules = RULE_SET.get_or_init(|| {
+        PolicySet::from_policies(
+            attribution_sets()
+                .iter()
+                .flat_map(|(_, set)| set.policies().cloned()),
+        )
+        .expect("rule ids are unique")
+    });
+    let response = Authorizer::new().is_authorized(&request(facts)?, rules, &Entities::empty());
+    let errors: Vec<_> = response
+        .diagnostics()
+        .errors()
+        .map(ToString::to_string)
+        .collect();
+    if !errors.is_empty() {
+        return Err(AttributionError::Cedar(errors.join("; ")));
     }
+    let fired: Vec<_> = response
+        .diagnostics()
+        .reason()
+        .map(ToString::to_string)
+        .collect();
     match fired.as_slice() {
         [] => Err(AttributionError::Unattributed),
-        [(liable, id)] => Ok(Attribution {
-            rule: id[1..].parse().expect("rule ids are R<number>"),
-            liable: *liable,
-        }),
-        _ => Err(AttributionError::Ambiguous(
-            fired.into_iter().map(|(_, id)| id).collect(),
-        )),
+        [id] => {
+            let rule = RULES
+                .iter()
+                .find(|r| r.name() == *id)
+                .expect("every policy is a rule");
+            Ok(Attribution {
+                rule: rule.id,
+                liable: rule.liable,
+            })
+        }
+        _ => Err(AttributionError::Ambiguous(fired)),
     }
 }
