@@ -11,10 +11,19 @@
     "./verify": {
       "types": "./dist/verify/index.d.ts",
       "default": "./dist/verify/index.js"
+    },
+    "./pdf": {
+      "types": "./dist/pdf.d.ts",
+      "node": "./dist/pdf.js"
+    },
+    "./extract": {
+      "types": "./dist/extract.d.ts",
+      "default": "./dist/extract.js"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "fonts"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -29,12 +38,18 @@
     "@keelson/mandate": "workspace:*",
     "@keelson/paypal": "workspace:*",
     "@keelson/timestamp": "workspace:*",
+    "pdfjs-dist": "6.4.299",
+    "pdfkit": "0.20.2",
+    "qrcode": "1.5.4",
     "viem": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@types/node": "26.6.6",
+    "@types/pdfkit": "0.17.7",
+    "@types/qrcode": "1.5.6",
     "typescript": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "@noble/hashes": "catalog:"
   }
 }

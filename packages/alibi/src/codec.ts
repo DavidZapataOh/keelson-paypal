@@ -95,4 +95,3 @@ export function receiptOf(b: AlibiBundle): AlibiReceipt {
     timestamps: b.timestamps,
   };
 }
-

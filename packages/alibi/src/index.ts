@@ -1,7 +1,7 @@
 export { fromBase64, toBase64, toBase64url } from "./b64.ts";
 export {
-  AlibiFormatError,
   type AlibiFormatCode,
+  AlibiFormatError,
   decodeAlibi,
   decodeReceipt,
   encodeAlibi,

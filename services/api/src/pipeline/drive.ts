@@ -7,6 +7,7 @@ import type { LogConfig } from "../log/append.ts";
 import type { OperatorSigners } from "../operators/signer.ts";
 import type { PayPalDeps } from "../paypal.ts";
 import type { CountersignJson } from "../tee/client.ts";
+import type { TeeConfig } from "../tee/signers.ts";
 import type { StampWorker } from "../timestamps/worker.ts";
 import { CAPTURE_WINDOW_SEC, captureStep } from "./capture-step.ts";
 import { coverStep } from "./cover-step.ts";
@@ -30,6 +31,7 @@ export interface PipelineDeps {
   operators?: OperatorSigners | undefined;
   chain?: { client: PublicClient } | undefined;
   paypal?: PayPalDeps | undefined;
+  tee?: Pick<TeeConfig, "client"> | undefined;
 }
 
 /** What `POST /v1/countersign` and `GET /v1/purchases/{id}` say about a purchase. */

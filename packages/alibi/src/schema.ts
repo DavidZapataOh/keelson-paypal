@@ -8,9 +8,7 @@ const hex32 = hex(32);
 const decimal = z.string().regex(/^(0|[1-9][0-9]*)$/);
 const address = z.string().regex(/^0x[0-9a-fA-F]{40}$/);
 const ulid = z.string().regex(/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/);
-const base64 = z
-  .string()
-  .regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
+const base64 = z.string().regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
 const json = z.record(z.string(), z.json());
 const teeKind = z.enum(["tdx", "nitro"]);
 
@@ -46,7 +44,9 @@ const anchor = z.strictObject({
   consistency: z.strictObject({ from: decimal, to: decimal, proof: z.array(hex32) }),
 });
 
-const timestamps = z.array(z.strictObject({ tsa: z.string().regex(/^[a-z0-9-]+$/), token: base64 }));
+const timestamps = z.array(
+  z.strictObject({ tsa: z.string().regex(/^[a-z0-9-]+$/), token: base64 }),
+);
 
 export const alibiSchema = z.strictObject({
   type: z.literal(ALIBI_MEDIA_TYPE),

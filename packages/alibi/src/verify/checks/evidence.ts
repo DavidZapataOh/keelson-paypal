@@ -1,0 +1,62 @@
+import { type Json, jcs, sha256, toHex } from "@keelson/core";
+import {
+  type Disclosure,
+  type Manifest,
+  verifyDisclosure,
+  verifyManifest,
+} from "@keelson/evidence";
+import { type CheckDef, expect, pass } from "../check.ts";
+import { isBundle, UNDISCLOSED } from "./util.ts";
+
+/** The only items an Alibi opens: the PII-redacted public ones. */
+const DISCLOSED = new Set(["api.product", "api.cart", "channel3.observation"]);
+
+/**
+ * The public manifest builds the evidence root the countersignature binds, every disclosure opens
+ * its item under that root, and the Channel3 observation is the disclosed item's content.
+ */
+export const evidence: CheckDef = {
+  id: "evidence.manifest",
+  step: 0,
+  reads: ["/manifest"],
+  run(input) {
+    if (!isBundle(input)) return UNDISCLOSED;
+    const m = input.manifest.public as Manifest;
+    expect(verifyManifest(m), "the manifest's leaves do not build its root", [
+      "/manifest/public/items",
+      "/manifest/public/root",
+    ]);
+    expect(m.root === input.tee.countersign.evidenceRoot, "root", [
+      "/manifest/public/root",
+      "/tee/countersign/evidenceRoot",
+    ]);
+    const seen = new Set<string>();
+    for (const [i, d] of input.manifest.disclosures.entries()) {
+      const at = `/manifest/disclosures/${i}`;
+      const item = m.items[d.index];
+      expect(
+        DISCLOSED.has(d.type) && !seen.has(d.type) && item?.type === d.type,
+        "an Alibi discloses only the public product, cart and Channel3 items, once each",
+        [at],
+      );
+      seen.add(d.type);
+      expect(
+        d.size === m.items.length && verifyDisclosure(m.root, d as Disclosure),
+        "the disclosure does not open its item under the root",
+        [at],
+      );
+    }
+    const obs = input.channel3_observation;
+    if (obs !== undefined) {
+      const i = input.manifest.disclosures.findIndex((d) => d.type === "channel3.observation");
+      const d = input.manifest.disclosures[i];
+      expect(
+        d !== undefined &&
+          toHex(sha256(new TextEncoder().encode(jcs(obs as Json)))) === d.content_hash,
+        "the Channel3 observation is not the disclosed item",
+        ["/channel3_observation", `/manifest/disclosures/${i}/content_hash`],
+      );
+    }
+    return pass({ disclosed: [...seen].join(" ") });
+  },
+};

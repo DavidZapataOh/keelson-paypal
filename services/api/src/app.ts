@@ -25,6 +25,7 @@ import { type RateLimitOptions, rateLimit } from "./middleware/rate-limit.ts";
 import type { OperatorSigners } from "./operators/signer.ts";
 import type { PayPalDeps } from "./paypal.ts";
 import { ProblemSchema, problem } from "./problem.ts";
+import { registerAlibis } from "./routes/alibis.ts";
 import { registerBonds } from "./routes/bonds.ts";
 import { registerChannel3Webhook } from "./routes/channel3-webhook.ts";
 import { type CompileSources, registerCompile } from "./routes/compile.ts";
@@ -212,6 +213,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerChannel3Webhook(app, deps);
   registerTee(app, deps);
   registerTimestamps(app, deps);
+  registerAlibis(app, deps);
   registerPasskeys(app, deps);
   registerOperators(app, deps);
   registerFeedback(app, deps);

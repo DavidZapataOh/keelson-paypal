@@ -1700,6 +1700,41 @@ components:
         - token
         - genTime
         - serial
+    AlibiReceipt:
+      type: object
+      properties:
+        alibi_id:
+          type: string
+        leaf:
+          type: string
+          description: The leaf bytes, base64.
+        leaf_hash:
+          type: string
+          description: The RFC 6962 leaf hash, unpadded base64url.
+        tlog_proof:
+          type: string
+          description: A c2sp.org/tlog-proof@v1 with cosignatures.
+        anchor:
+          type: object
+          additionalProperties: {}
+        timestamps:
+          type: array
+          items:
+            type: object
+            properties:
+              tsa:
+                type: string
+              token:
+                type: string
+            required:
+              - tsa
+              - token
+      required:
+        - alibi_id
+        - leaf
+        - leaf_hash
+        - tlog_proof
+        - timestamps
     Passkeys:
       type: object
       properties:
@@ -3442,6 +3477,102 @@ paths:
                   - pending
         "404":
           description: The hash was never queued
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/alibis/{id}.pdf:
+    get:
+      tags:
+        - alibis
+      summary: An alibi as a PDF/A-3b
+      description: A one-page PDF/A-3b summary of the Alibi with a QR to its verify
+        page and the bundle embedded as `<id>.alibi`. Same readers as the
+        bundle.
+      parameters:
+        - schema:
+            type: string
+            pattern: ^[0-7][0-9A-HJKMNP-TV-Z]{25}$
+            description: "The alibi id: the purchase's ULID."
+          required: true
+          description: "The alibi id: the purchase's ULID."
+          name: id
+          in: path
+      responses:
+        "200":
+          description: The PDF
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "304":
+          description: The PDF has not changed
+        "404":
+          description: No alibi with this id that the caller may read
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/alibis/{id}:
+    get:
+      tags:
+        - alibis
+      summary: An alibi bundle
+      description: "The purchase's Alibi: its RFC 8785 bundle, readable by the
+        mandate's user or, with `alibis:read`, by the client that uploaded the
+        purchase's evidence. It grows as timestamps, the capture and the
+        on-chain anchor arrive; earlier sections never change."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^[0-7][0-9A-HJKMNP-TV-Z]{25}$
+            description: "The alibi id: the purchase's ULID."
+          required: true
+          description: "The alibi id: the purchase's ULID."
+          name: id
+          in: path
+      responses:
+        "200":
+          description: The bundle
+          content:
+            application/vnd.keelson.alibi.v1+json:
+              schema:
+                type: string
+                format: binary
+        "304":
+          description: The bundle has not changed
+        "404":
+          description: No alibi with this id that the caller may read
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/alibis/{id}/receipt:
+    get:
+      tags:
+        - alibis
+      summary: The public receipt of an alibi
+      description: "What the public log already publishes about an Alibi: its leaf,
+        inclusion proof, anchor and timestamps. No authentication."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^[0-7][0-9A-HJKMNP-TV-Z]{25}$
+            description: "The alibi id: the purchase's ULID."
+          required: true
+          description: "The alibi id: the purchase's ULID."
+          name: id
+          in: path
+      responses:
+        "200":
+          description: The receipt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlibiReceipt"
+        "404":
+          description: No alibi with this id that the caller may read
           content:
             application/problem+json:
               schema:
