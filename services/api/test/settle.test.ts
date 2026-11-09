@@ -6,6 +6,7 @@ import {
   disputes,
   eq,
   mandates,
+  merchantSettlement,
   operators,
   purchases,
   user,
@@ -30,6 +31,7 @@ import { ANVIL_KEY, type Fork, PYUSD, startFork } from "../../../packages/relaye
 import { createApp } from "../src/app.ts";
 import { resumeSettlements, type SettleDeps, settleDispute } from "../src/disputes/settle.ts";
 import { KEELSON_TREASURY, SETTLEMENT } from "../src/merchants.ts";
+import { createPayPalDeps } from "../src/paypal.ts";
 import { testDb, testKv } from "./setup.ts";
 
 const rpc = process.env.ARBITRUM_SEPOLIA_RPC_URL;
@@ -46,6 +48,8 @@ const MEASUREMENT_IDS_SLOT = 4n;
 const SIGNERS_SLOT = 7n;
 const LOG_ORIGIN: Hex = "0xe0c0e434acc96fa35fb684556f51efd752a89b3db13536efbf1e4a0d85e800d9";
 const merchant = SETTLEMENT.mrc_runfast as Hex;
+/** A sandbox personal account: PayPal refuses a payout to the account that sends it. */
+const receiver = process.env.PAYPAL_SANDBOX_PERSONAL_EMAIL;
 
 const slotOf = (key: Hex, keyType: "address" | "bytes32", slot: bigint) =>
   keccak256(encodeAbiParameters([{ type: keyType }, { type: "uint256" }], [key, slot]));
@@ -282,6 +286,48 @@ describe.skipIf(!rpc)(
       expect(v?.outcome).toBe("paid");
       console.info(`payWarranty: settled in ${elapsed} ms, gas ${(await txsFor(id))[0]?.gasUsed}`);
     });
+
+    test.skipIf(!receiver || !process.env.PAYPAL_CLIENT_ID)(
+      "the paypal rail then pays the merchant a sandbox Payout under the verdict's reference",
+      async () => {
+        const id = await storeVerdict({
+          liable: 2,
+          amount: 100_000n,
+          payee: KEELSON_TREASURY,
+          rail: "paypal",
+        });
+        await testDb
+          .insert(merchantSettlement)
+          .values({ merchantId: "mrc_runfast", rail: "paypal", paypalReceiver: receiver })
+          .onConflictDoUpdate({
+            target: merchantSettlement.merchantId,
+            set: { rail: "paypal", paypalReceiver: receiver },
+          });
+        const live: SettleDeps = {
+          ...deps,
+          paypal: createPayPalDeps({
+            PAYPAL_CLIENT_ID: process.env.PAYPAL_CLIENT_ID as string,
+            PAYPAL_CLIENT_SECRET: process.env.PAYPAL_CLIENT_SECRET as string,
+            PAYPAL_ENV: "sandbox",
+            PAYPAL_MERCHANT_ID: "A4WCRYD5EYDF2",
+          }),
+        };
+        const started = performance.now();
+        let out = await settleDispute(live, id);
+        while (out.status === "pending" && performance.now() - started < 120_000) {
+          await new Promise((r) => setTimeout(r, 3_000));
+          out = await settleDispute(live, id);
+        }
+        expect(out).toMatchObject({ status: "settled", outcome: "paid" });
+        const [v] = await testDb.select().from(verdicts).where(eq(verdicts.disputeId, id));
+        expect(v?.payoutStatus).toBe("SUCCESS");
+        console.info(
+          `payout ${v?.payoutBatchId}: verdict to SUCCESS in ${Math.round(performance.now() - started)} ms`,
+        );
+        await testDb.delete(merchantSettlement);
+      },
+      180_000,
+    );
 
     test("an expired verdict fails once and is not sent again", async () => {
       const now = Number((await client.getBlock()).timestamp);
