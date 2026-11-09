@@ -9,6 +9,7 @@ import type { PayPalDeps } from "../paypal.ts";
 import type { CountersignJson } from "../tee/client.ts";
 import type { TeeConfig } from "../tee/signers.ts";
 import type { StampWorker } from "../timestamps/worker.ts";
+import { span } from "../tracing.ts";
 import { CAPTURE_WINDOW_SEC, captureStep } from "./capture-step.ts";
 import { coverStep } from "./cover-step.ts";
 import { publishPurchase } from "./events.ts";
@@ -136,15 +137,29 @@ async function fail(
   });
 }
 
-/** Runs a step; a step that throws is retried on the next drive, as a timeout would be. */
+const REACHES = { log: "LOGGED", cover: "COVERED", capture: "CAPTURED" } as const;
+
+/**
+ * Runs a step in a span named for the state it reaches; a step that throws is retried on the
+ * next drive, as a timeout would be.
+ */
 async function run<T>(
   deps: PipelineDeps,
   purchaseId: string,
-  step: string,
+  step: keyof typeof REACHES,
   f: () => Promise<Outcome<T>>,
+  mode?: string | null,
 ): Promise<Outcome<T>> {
   try {
-    return await f();
+    return await span(
+      `purchase.${REACHES[step]}`,
+      { "purchase.id": purchaseId, ...(mode ? { "countersign.mode": mode } : {}) },
+      async (s) => {
+        const out = await f();
+        s.setAttribute("purchase.outcome", out.kind);
+        return out;
+      },
+    );
   } catch (err) {
     deps.log.error({ err, purchaseId, step }, "purchase step failed");
     return { kind: "retry", reason: `${step}:error` };
@@ -187,21 +202,29 @@ export async function drivePurchase(deps: PipelineDeps, purchaseId: string): Pro
     if (state === "COUNTERSIGNED" || state === "LOGGED") {
       const logged =
         state === "COUNTERSIGNED"
-          ? run(deps, purchaseId, "log", () => logStep(deps, purchaseId)).then(async (out) => {
-              if (out.kind !== "done") return out;
-              await deps.db
-                .update(purchases)
-                .set({ state: "LOGGED", updatedAt: sql`now()` })
-                .where(and(eq(purchases.id, purchaseId), eq(purchases.state, "COUNTERSIGNED")));
-              await publishPurchase(deps, purchaseId, {
-                type: "purchase.logged",
-                logIndex: out.value.index.toString(),
-                leafHash: toHex(out.value.leafHash),
-              });
-              return out;
-            })
+          ? run(deps, purchaseId, "log", () => logStep(deps, purchaseId), row.countersignMode).then(
+              async (out) => {
+                if (out.kind !== "done") return out;
+                await deps.db
+                  .update(purchases)
+                  .set({ state: "LOGGED", updatedAt: sql`now()` })
+                  .where(and(eq(purchases.id, purchaseId), eq(purchases.state, "COUNTERSIGNED")));
+                await publishPurchase(deps, purchaseId, {
+                  type: "purchase.logged",
+                  logIndex: out.value.index.toString(),
+                  leafHash: toHex(out.value.leafHash),
+                });
+                return out;
+              },
+            )
           : Promise.resolve({ kind: "done" } as const);
-      const covered = run(deps, purchaseId, "cover", () => coverStep(deps, purchaseId));
+      const covered = run(
+        deps,
+        purchaseId,
+        "cover",
+        () => coverStep(deps, purchaseId),
+        row.countersignMode,
+      );
       const [log, cover] = await Promise.all([logged, covered]);
       for (const out of [log, cover]) {
         if (out.kind === "final") {
@@ -251,7 +274,13 @@ export async function drivePurchase(deps: PipelineDeps, purchaseId: string): Pro
     }
 
     if (lost) return (await viewOf(deps.db, purchaseId)) as PurchaseView;
-    const capture = await run(deps, purchaseId, "capture", () => captureStep(deps, purchaseId));
+    const capture = await run(
+      deps,
+      purchaseId,
+      "capture",
+      () => captureStep(deps, purchaseId),
+      row.countersignMode,
+    );
     if (capture.kind === "final") await fail(deps, purchaseId, "COVERED", capture.reason);
     return (await viewOf(deps.db, purchaseId)) as PurchaseView;
   } finally {

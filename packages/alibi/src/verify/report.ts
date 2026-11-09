@@ -1,5 +1,6 @@
 import type { AlibiBundle, AlibiReceipt } from "../schema.ts";
 import type { ChainReader } from "./chain.ts";
+import type { FieldRow } from "./fields.ts";
 
 export type CheckStatus = "pass" | "fail" | "undisclosed" | "pending" | "absent" | "unreachable";
 
@@ -14,6 +15,7 @@ export type CheckId =
   | "tee.attestation.nitro"
   | "tee.countersign"
   | "tee.registry"
+  | "policy.replay"
   | "log.policy"
   | "log.inclusion"
   | "log.witnesses"
@@ -66,6 +68,8 @@ export interface Report {
   verdict: Verdict;
   checks: Check[];
   mode: "2of2" | "degraded";
+  /** The trace's policies, field by field, with who answers for each; empty for a receipt. */
+  fields: FieldRow[];
   /** Values no signature or hash covers, shown as the operator's word. */
   unbound: { pointer: string; value: unknown }[];
   /** Pointers whose value differs from `VerifyOptions.original`. */

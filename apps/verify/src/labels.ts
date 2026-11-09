@@ -25,6 +25,7 @@ export const CHECKS: Record<CheckId, { label: string; who: string }> = {
   "tee.attestation.nitro": { label: "AWS Nitro attestation", who: "Keelson" },
   "tee.registry": { label: "Signers registered on-chain", who: "Keelson" },
   "tee.countersign": { label: "TEE countersignature", who: "Keelson" },
+  "policy.replay": { label: "Policy decision replayed with Cedar", who: "Keelson" },
   "log.policy": { label: "Log policy is the pinned one", who: "Keelson" },
   "log.inclusion": { label: "Included in the log", who: "Keelson" },
   "log.witnesses": { label: "Witness cosignatures", who: "Witnesses" },

@@ -31,6 +31,9 @@ export function queryOf(input: AlibiBundle | AlibiReceipt, chainId: number): Cha
     size: input.anchor ? BigInt(input.anchor.anchored_size) : 0n,
     signers: atts.map((a) => getAddress(a.signer)),
     measurements: atts.map((a) => measurementHex(a.measurement)),
+    blocks: atts.map((a) =>
+      BigInt((a.document as { block: { number: number | string } }).block.number),
+    ),
     ...(input.anchor
       ? { anchorTx: input.anchor.tx_hash as Hex, anchorBlock: BigInt(input.anchor.block_number) }
       : {}),
@@ -106,6 +109,12 @@ export const registry: CheckDef = {
         `${att.signer} was revoked at ${iso(r.revokedAt)}; its issuedAt cannot be trusted`,
         reads,
       );
+      const block = (att.document as { block: { number: number | string; hash: string } }).block;
+      expect(
+        a.blocks[i] === block.hash.toLowerCase(),
+        `block ${block.number} on chain is ${a.blocks[i]}, not the attested ${block.hash}`,
+        [`${at}/document/block`],
+      );
       detail[`${att.kind}_allowed_today`] = String(a.allowed[i]);
     }
     return pass(detail);
@@ -157,9 +166,11 @@ export const anchorTx: CheckDef = {
     const anchor = input.anchor;
     if (!anchor) return { status: "pending", reason: UNANCHORED, detail: latestDetail(a) };
     const log = a.anchorLog;
-    expect(log, "the anchor transaction emitted no CheckpointAnchored from the pinned contract", [
-      "/anchor/tx_hash",
-    ]);
+    expect(
+      log,
+      "the anchor transaction is not on chain or emitted no CheckpointAnchored from the pinned contract",
+      ["/anchor/tx_hash"],
+    );
     const origin = keccak256(stringToBytes(pinnedOrigin(proofCheckpoint(input.tlog_proof))));
     expect(
       log.origin === origin &&

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { type Browser, chromium, type Page } from "playwright";
 import { type PreviewServer, preview } from "vite";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { fixtures } from "../../../../packages/alibi/test/fixtures.ts";
 import { receipts } from "../../../../packages/alibi/test/log-receipts.ts";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
@@ -75,6 +76,23 @@ describe("the verifier in Chromium", () => {
     expect(await status("mandate.passkey")).toBe("undisclosed");
     // Read from the chain under the site's CSP: pending (not anchored in this receipt), not unreachable.
     expect(await status("anchor.root")).toBe("pending");
+    expect([...origins].every((o) => ALLOWED.has(o))).toBe(true);
+    await page.close();
+  });
+
+  test("a real Alibi: Cedar replays its policy evaluation and the fields say who answers", async () => {
+    const { page, origins } = await open();
+    const f = fixtures.find((x) => x.mode === "2of2");
+    await drop(page, `${f?.id}.alibi`, "application/json", Buffer.from(f?.bytes ?? []));
+    await verdict(page);
+    const status = (id: string) =>
+      page.locator(`[data-check="${id}"] [data-status]`).getAttribute("data-status");
+    expect(await status("policy.replay")).toBe("pass");
+    expect(await status("mandate.passkey")).toBe("pass");
+    const answers = (id: string) =>
+      page.locator(`[data-field="${id}"] [data-answers]`).textContent();
+    expect(await answers("amount")).toBe("Keelson");
+    expect(await answers("variant")).toBe("Agent operator");
     expect([...origins].every((o) => ALLOWED.has(o))).toBe(true);
     await page.close();
   });

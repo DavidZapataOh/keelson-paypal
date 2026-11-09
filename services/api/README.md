@@ -270,3 +270,27 @@ operator's signature over its `ValidationRequest`, and coverages are released
 (`releaseCoverage`) once their window has passed. Keelson signs coverage only for the operator
 whose key it holds (`KEELSON_OPERATOR_KEY` with `DEMO_AGENT_ID`); purchases of any other operator
 end `FAILED` with `cover:operator-unavailable` before anything is sent.
+
+### Latency of a purchase
+
+Each step is a span when tracing is on (`OTEL_TRACES_EXPORTER=console`, or an OTLP endpoint):
+`purchase.COUNTERSIGNED` (or `purchase.DENIED`), `purchase.LOGGED`, `purchase.COVERED` and
+`purchase.CAPTURED`, with `purchase.id` and `countersign.mode`, and the outbound calls (undici)
+and queries (pg) of each step nested under it. `bench/money-path.bench.ts` drives real sandbox
+purchases (`PURCHASES`, `CONCURRENCY`, `HOLDS`, `DEGRADED_EVERY`) and prints the waterfall from
+those spans as JSON.
+
+On the warm path a purchase makes these round trips, in this order:
+
+| Step        | Calls                                                                                                                                                                  | Runs                                                                     |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Countersign | leg A (which reads the authorization from PayPal), then leg B with leg A's observation                                                                                 | in sequence: leg B judges what leg A read, since only leg A reads PayPal |
+| Log         | one append to the log's private listener, which answers once the leaf is in a checkpoint                                                                               | in parallel with coverage                                                |
+| Coverage    | `eth_estimateGas` (the simulation that refuses a reverting call), one KMS signature, one `eth_sendRawTransactionSync` to the sequencer, which answers with the receipt | in parallel with the log                                                 |
+| Capture     | one `POST /v2/payments/authorizations/{id}/capture`                                                                                                                    | last                                                                     |
+
+Nothing else goes out on the warm path. The nonce comes from Postgres, the base fee, balance and
+vault parameters from short-lived caches, the PayPal token from its cache until expiry, and the
+credential issuer and the log's witness policy (both needed for the Alibi) from per-process
+caches. The first purchase after a deploy pays those reads once. RFC 3161 timestamps, the Alibi PDF and
+anchoring are off the path, and `purchase.captured` is published before any of them.

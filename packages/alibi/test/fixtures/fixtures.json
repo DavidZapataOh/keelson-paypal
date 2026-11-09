@@ -2,13 +2,13 @@
   {
     "id": "01M6ZWZJHWRRHQEYNJAT7NMSV8",
     "mode": "2of2",
-    "anchored": false,
+    "anchored": true,
     "captured": "2026-11-09"
   },
   {
     "id": "01M6ZX07MFWDDDW4199FDJHWEG",
     "mode": "degraded",
-    "anchored": false,
+    "anchored": true,
     "captured": "2026-11-09"
   }
 ]
