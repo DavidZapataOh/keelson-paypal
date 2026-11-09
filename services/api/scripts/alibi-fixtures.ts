@@ -7,6 +7,7 @@
  * The sandbox buyer approves the hold: in this process when it has a browser, otherwise the line
  * `APPROVE <order id> <return url>` asks for it and the script waits.
  */
+import "../src/tee/attest.ts";
 import { randomBytes } from "node:crypto";
 import { encodeAlibi, toBase64 } from "@keelson/alibi";
 import { verifyAlibi } from "@keelson/alibi/verify";

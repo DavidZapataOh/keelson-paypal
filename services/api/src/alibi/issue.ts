@@ -1,3 +1,5 @@
+// Loads reflect-metadata before @keelson/alibi/verify pulls in @keelson/attest (see tee/attest.ts).
+import "../tee/attest.ts";
 import {
   ALIBI_MEDIA_TYPE,
   type AlibiBundle,
