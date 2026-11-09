@@ -566,7 +566,9 @@ jobs:
           test "$status" -eq 1
           jq -e '[.counterexamples[] | select(.check == "total")] | length == 1 and all(.replay.seeded == [] and .replay.rules == ["user"])' "$RUNNER_TEMP/drop-gray.json"
       - name: Attribution latency
-        run: cargo bench -p keelson-policy --bench attribute | tee -a "$GITHUB_STEP_SUMMARY"
+        run: |
+          set -o pipefail
+          cargo bench -p keelson-policy --bench attribute | tee -a "$GITHUB_STEP_SUMMARY"
 
   attest-proofs:
     needs: [changes, proofs]

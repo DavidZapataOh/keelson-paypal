@@ -7,10 +7,10 @@ use std::str::FromStr;
 use std::sync::OnceLock;
 
 use cedar_policy::{
-    Authorizer, Context, Entities, EntityUid, Policy, PolicyId, PolicySet, Request, Schema,
+    Authorizer, Context, Entities, EntityId, EntityTypeName, EntityUid, Policy, PolicyId,
+    PolicySet, Request, RestrictedExpression, Schema,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 /// The attribution schema source, `policy/attribution.cedarschema`.
@@ -350,23 +350,55 @@ impl fmt::Display for AttributionError {
 
 impl std::error::Error for AttributionError {}
 
-/// `facts` as the `attribute` context in Cedar JSON form.
-pub(crate) fn context_json(facts: &Facts) -> Value {
-    let mut context = serde_json::to_value(facts).expect("facts serialize");
-    context["reason"] =
-        json!({ "__entity": { "type": "Keelson::Reason", "id": facts.reason.as_str() } });
-    context
+/// A uid of the attribution schema, parsed once.
+fn uid(cell: &'static OnceLock<EntityUid>, ty: &str, id: &str) -> &'static EntityUid {
+    cell.get_or_init(|| {
+        EntityUid::from_type_name_and_id(
+            EntityTypeName::from_str(ty).expect("a schema type name"),
+            EntityId::new(id),
+        )
+    })
 }
 
-/// The `attribute` request for `facts`.
+/// The `attribute` request for `facts`, its context validated against the schema.
 fn request(facts: &Facts) -> Result<Request, AttributionError> {
-    let cedar = |e: &dyn fmt::Display| AttributionError::Cedar(e.to_string());
-    let schema = attribution_schema();
-    let dispute = EntityUid::from_str(r#"Keelson::Dispute::"dispute""#).map_err(|e| cedar(&e))?;
-    let action = EntityUid::from_str(r#"Keelson::Action::"attribute""#).map_err(|e| cedar(&e))?;
-    let context = Context::from_json_value(context_json(facts), Some((schema, &action)))
-        .map_err(|e| cedar(&e))?;
-    Request::new(dispute.clone(), action, dispute, context, Some(schema)).map_err(|e| cedar(&e))
+    static DISPUTE: OnceLock<EntityUid> = OnceLock::new();
+    static ACTION: OnceLock<EntityUid> = OnceLock::new();
+    let dispute = uid(&DISPUTE, "Keelson::Dispute", "dispute");
+    let action = uid(&ACTION, "Keelson::Action", "attribute");
+    static REASON: OnceLock<EntityTypeName> = OnceLock::new();
+    let reason = EntityUid::from_type_name_and_id(
+        REASON
+            .get_or_init(|| EntityTypeName::from_str("Keelson::Reason").expect("a schema type"))
+            .clone(),
+        EntityId::new(facts.reason.as_str()),
+    );
+    let flag = |name: &str, value: bool| (name.to_owned(), RestrictedExpression::new_bool(value));
+    let context = Context::from_pairs([
+        (
+            "reason".to_owned(),
+            RestrictedExpression::new_entity_uid(reason),
+        ),
+        flag("proof_valid", facts.proof_valid),
+        flag("failed_green", facts.failed_green),
+        flag("failed_amber", facts.failed_amber),
+        flag("failed_gray", facts.failed_gray),
+        flag("captured_eq_countersigned", facts.captured_eq_countersigned),
+        flag("duplicate_countersig", facts.duplicate_countersig),
+        flag("duplicate_capture", facts.duplicate_capture),
+        flag("tracking_delivered", facts.tracking_delivered),
+        flag("snapshot_matches_item", facts.snapshot_matches_item),
+        flag("refund_recorded", facts.refund_recorded),
+    ])
+    .map_err(|e| AttributionError::Cedar(e.to_string()))?;
+    Request::new(
+        dispute.clone(),
+        action.clone(),
+        dispute.clone(),
+        context,
+        Some(attribution_schema()),
+    )
+    .map_err(|e| AttributionError::Cedar(e.to_string()))
 }
 
 /// The rule that attributes `facts`, evaluated by Cedar in one authorization over the policies of
