@@ -300,27 +300,27 @@ Every measured path asserts its gas against `budgets.json` through `test/utils/G
 
 Where a path cannot meet its design target without changing a deployed contract, its budget is its measured value, so it can only go down.
 
-| Path | Target | Budget | Measured |
-| --- | --- | --- | --- |
-| `CheckpointAnchor.anchor`, 20-node proof | 80,000 | 80,000 | 77,546 |
-| `lockCoverage`, 2-of-2 WebAuthn / 2-of-2 SPC / degraded | 180,000 | 180,000 | 166,833 / 167,350 / 158,951 |
-| `lockCoverageBatch`, per coverage of 100 | 2,000 | 2,000 | 1,320 |
-| `releaseCoverage` | 50,000 | 50,000 | 17,115 |
-| `depositWithAuthorization`, first / later deposit | 80,000 | 117,434 / 83,234 | 117,434 / 83,234 |
-| `depositWithPermit`, first deposit | 80,000 | 140,037 | 140,037 |
-| `requestWithdrawal`, first / later | 80,000 | 140,211 / 106,011 | 140,211 / 106,011 |
-| `completeWithdrawal`, new / known recipient | 60,000 | 67,254 / 60,000 | 67,254 / 50,154 |
-| `slash`, instant: first ever / later | 120,000 | 195,353 / 144,053 | 195,353 / 144,053 |
-| `slash`, queued | 110,000 | 232,769 | 232,769 |
-| `executeSlash` / `vetoSlash` | 80,000 / 40,000 | 133,901 / 43,566 | 133,901 / 43,566 |
-| `slashBatched`, 100-leaf batch | 130,000 | 221,032 | 221,032 |
-| `payWarranty` | 110,000 | 176,011 | 176,011 |
-| `claim` (signed) | 60,000 | 83,676 | 83,676 |
-| `verify2of2` / `verifyDegraded`, cold | 12,000 / 7,000 | 16,854 / 8,708 | 16,854 / 8,708 |
-| `recordCountersign` 2-of-2 / degraded, transaction | 200,000 / 195,000 | 288,651 / 279,516 | 288,651 / 279,516 |
-| `recordOutcome`, transaction | — | 76,199 | 76,199 |
-| `rateCoverage` first / later feedback, transaction | — | 267,221 / 185,377 | 267,221 / 185,377 |
-| Nitro leaf certificate cache / attestation document, transaction | 8,000,000 / 16,000,000 | 8,000,000 / 16,000,000 | 6,034,801 / 13,243,089 |
+| Path                                                             | Target                 | Budget                 | Measured                    |
+| ---------------------------------------------------------------- | ---------------------- | ---------------------- | --------------------------- |
+| `CheckpointAnchor.anchor`, 20-node proof                         | 80,000                 | 80,000                 | 77,546                      |
+| `lockCoverage`, 2-of-2 WebAuthn / 2-of-2 SPC / degraded          | 180,000                | 180,000                | 166,833 / 167,350 / 158,951 |
+| `lockCoverageBatch`, per coverage of 100                         | 2,000                  | 2,000                  | 1,320                       |
+| `releaseCoverage`                                                | 50,000                 | 50,000                 | 17,115                      |
+| `depositWithAuthorization`, first / later deposit                | 80,000                 | 117,434 / 83,234       | 117,434 / 83,234            |
+| `depositWithPermit`, first deposit                               | 80,000                 | 140,037                | 140,037                     |
+| `requestWithdrawal`, first / later                               | 80,000                 | 140,211 / 106,011      | 140,211 / 106,011           |
+| `completeWithdrawal`, new / known recipient                      | 60,000                 | 67,254 / 60,000        | 67,254 / 50,154             |
+| `slash`, instant: first ever / later                             | 120,000                | 195,353 / 144,053      | 195,353 / 144,053           |
+| `slash`, queued                                                  | 110,000                | 232,769                | 232,769                     |
+| `executeSlash` / `vetoSlash`                                     | 80,000 / 40,000        | 133,901 / 43,566       | 133,901 / 43,566            |
+| `slashBatched`, 100-leaf batch                                   | 130,000                | 221,032                | 221,032                     |
+| `payWarranty`                                                    | 110,000                | 176,011                | 176,011                     |
+| `claim` (signed)                                                 | 60,000                 | 83,676                 | 83,676                      |
+| `verify2of2` / `verifyDegraded`, cold                            | 12,000 / 7,000         | 16,854 / 8,708         | 16,854 / 8,708              |
+| `recordCountersign` 2-of-2 / degraded, transaction               | 200,000 / 195,000      | 288,651 / 279,516      | 288,651 / 279,516           |
+| `recordOutcome`, transaction                                     | —                      | 76,199                 | 76,199                      |
+| `rateCoverage` first / later feedback, transaction               | —                      | 267,221 / 185,377      | 267,221 / 185,377           |
+| Nitro leaf certificate cache / attestation document, transaction | 8,000,000 / 16,000,000 | 8,000,000 / 16,000,000 | 6,034,801 / 13,243,089      |
 
 Why the misses stand:
 
@@ -335,52 +335,52 @@ Why the misses stand:
 
 `forge build --sizes`, Foundry 1.9.0, solc 0.8.38 (EIP-170 runtime limit 24,576 B, EIP-3860 initcode limit 49,152 B).
 
-| Contract | Runtime (B) | Margin (B) | Initcode (B) | Margin (B) |
-| --- | --- | --- | --- | --- |
-| KeelsonBondVault | 24,338 | 238 | 25,884 | 23,268 |
-| VerdictVerifier | 14,354 | 10,222 | 15,569 | 33,583 |
-| KeelsonReserve | 11,542 | 13,034 | 13,603 | 35,549 |
-| KeelsonValidationRegistry | 8,513 | 16,063 | 9,188 | 39,964 |
-| CheckpointAnchor | 3,976 | 20,600 | 4,110 | 45,042 |
-| KeelsonReputationReporter | 2,635 | 21,941 | 2,812 | 46,340 |
-| KeelsonDeployer | 757 | 23,819 | 890 | 48,262 |
+| Contract                  | Runtime (B) | Margin (B) | Initcode (B) | Margin (B) |
+| ------------------------- | ----------- | ---------- | ------------ | ---------- |
+| KeelsonBondVault          | 24,338      | 238        | 25,884       | 23,268     |
+| VerdictVerifier           | 14,354      | 10,222     | 15,569       | 33,583     |
+| KeelsonReserve            | 11,542      | 13,034     | 13,603       | 35,549     |
+| KeelsonValidationRegistry | 8,513       | 16,063     | 9,188        | 39,964     |
+| CheckpointAnchor          | 3,976       | 20,600     | 4,110        | 45,042     |
+| KeelsonReputationReporter | 2,635       | 21,941     | 2,812        | 46,340     |
+| KeelsonDeployer           | 757         | 23,819     | 890          | 48,262     |
 
 `KeelsonBondVault` is 238 B under the limit: anything new that reads the vault lives in its own contract, as the ERC-8004 reporter and validation registry do.
 
 Storage slots per struct (`forge inspect <C> storageLayout`); `test/budgets/Layout.fork.t.sol` reads the packed words after a real deposit, lock and anchor.
 
-| Struct | Slots | Packing |
-| --- | --- | --- |
-| `Bond` | 2 | `free`, `locked` · `queued`, `slashCount` |
-| `CoverageState` | 1 | `amount`, `agentId`, `releaseAfter`, `status`, `degraded`, `pendingSlashes`; the coverage hash in its own mapping |
-| `BatchState` | 1 | `locked`, `agentId`, `releaseAfter`, `status` |
-| `Params` | 1 | the four windows and `instantSlashCap` |
-| `Withdrawal` | 2 | `amount`, `agentId`, `readyAt` · `to` |
-| `QueuedSlash` | 6 | four `bytes32` fields, `payee`+`amount`, `agentId`+`readyAt`+`fieldId`+`status` |
-| `VerdictVerifier.Record` | 2 | `teeKind`, `registeredAt`, `expiresAt`, `revokedAt`, `measurementId` · `measurement` |
-| `CheckpointAnchor.Anchor` | 1 | `size`, `anchoredAt`; roots in `rootAt` |
-| `KeelsonValidationRegistry.ValidationStatus` | 4 | `validatorAddress`, `response`, `lastUpdate` · `agentId` · `responseHash` · `tag` (the ERC's reference layout) |
+| Struct                                       | Slots | Packing                                                                                                           |
+| -------------------------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------- |
+| `Bond`                                       | 2     | `free`, `locked` · `queued`, `slashCount`                                                                         |
+| `CoverageState`                              | 1     | `amount`, `agentId`, `releaseAfter`, `status`, `degraded`, `pendingSlashes`; the coverage hash in its own mapping |
+| `BatchState`                                 | 1     | `locked`, `agentId`, `releaseAfter`, `status`                                                                     |
+| `Params`                                     | 1     | the four windows and `instantSlashCap`                                                                            |
+| `Withdrawal`                                 | 2     | `amount`, `agentId`, `readyAt` · `to`                                                                             |
+| `QueuedSlash`                                | 6     | four `bytes32` fields, `payee`+`amount`, `agentId`+`readyAt`+`fieldId`+`status`                                   |
+| `VerdictVerifier.Record`                     | 2     | `teeKind`, `registeredAt`, `expiresAt`, `revokedAt`, `measurementId` · `measurement`                              |
+| `CheckpointAnchor.Anchor`                    | 1     | `size`, `anchoredAt`; roots in `rootAt`                                                                           |
+| `KeelsonValidationRegistry.ValidationStatus` | 4     | `validatorAddress`, `response`, `lastUpdate` · `agentId` · `responseHash` · `tag` (the ERC's reference layout)    |
 
 ## Operations
 
 ### Environments
 
-| Chain | What it is | Keelson contracts |
-| --- | --- | --- |
-| Arbitrum Sepolia (421614) | Testnet. Test PYUSD from Paxos' faucet; demo windows (10 min disputes, 2 min veto, 15 min withdrawals, 5 min timelock) | All, verified on Arbiscan and Sourcify |
-| Ethereum Sepolia (11155111) | Testnet address mirror | Governance, `KeelsonValidationRegistry`, `KeelsonReputationReporter` |
-| Arbitrum One (42161) | Real PYUSD. Unaudited; small amounts only; no coverage of live purchases | None deployed; the registry and fork tests are ready and every address is the same |
+| Chain                       | What it is                                                                                                             | Keelson contracts                                                                  |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Arbitrum Sepolia (421614)   | Testnet. Test PYUSD from Paxos' faucet; demo windows (10 min disputes, 2 min veto, 15 min withdrawals, 5 min timelock) | All, verified on Arbiscan and Sourcify                                             |
+| Ethereum Sepolia (11155111) | Testnet address mirror                                                                                                 | Governance, `KeelsonValidationRegistry`, `KeelsonReputationReporter`               |
+| Arbitrum One (42161)        | Real PYUSD. Unaudited; small amounts only; no coverage of live purchases                                               | None deployed; the registry and fork tests are ready and every address is the same |
 
 External dependencies:
 
-| Dependency | Arbitrum Sepolia | Arbitrum One |
-| --- | --- | --- |
-| PYUSD (upgradeable, pausable, freezable by its asset protector) | `0x637A1259C6afd7E3AdF63993cA7E58BB438aB1B1` | `0x46850aD61C2B7d64d08c9C754F45254596696984` |
-| ERC-8004 Identity registry (v2.0.0, Draft) | `0x8004A818BFB912233c491871b3d84c89A494BD9e` | `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` |
-| ERC-8004 Reputation registry | `0x8004B663056A597Dffe9eCcC1965A193B7388713` | `0x8004BAa17C55a88189AE136b182e5fdA19dE9b63` |
-| Automata DCAP attestation | `0xaDdeC7e85c2182202b66E331f2a4A0bBB2cEEa1F` | `0xaDdeC7e85c2182202b66E331f2a4A0bBB2cEEa1F` |
-| `nitro-validator` (CertManager, P384Verifier, NitroValidator) | `0x5FE55991F66f8bA97f005Ae46017FAf4FF802600`, `0x6fb8c2c0173425b8747900948E50d1f7A7baB3A2`, `0x3F09DAc4C09620329a0b292AF54B6f03378Fd74B` | not deployed |
-| P256VERIFY (RIP-7212) | `0x0000000000000000000000000000000000000100` | `0x0000000000000000000000000000000000000100` |
+| Dependency                                                      | Arbitrum Sepolia                                                                                                                         | Arbitrum One                                 |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| PYUSD (upgradeable, pausable, freezable by its asset protector) | `0x637A1259C6afd7E3AdF63993cA7E58BB438aB1B1`                                                                                             | `0x46850aD61C2B7d64d08c9C754F45254596696984` |
+| ERC-8004 Identity registry (v2.0.0, Draft)                      | `0x8004A818BFB912233c491871b3d84c89A494BD9e`                                                                                             | `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` |
+| ERC-8004 Reputation registry                                    | `0x8004B663056A597Dffe9eCcC1965A193B7388713`                                                                                             | `0x8004BAa17C55a88189AE136b182e5fdA19dE9b63` |
+| Automata DCAP attestation                                       | `0xaDdeC7e85c2182202b66E331f2a4A0bBB2cEEa1F`                                                                                             | `0xaDdeC7e85c2182202b66E331f2a4A0bBB2cEEa1F` |
+| `nitro-validator` (CertManager, P384Verifier, NitroValidator)   | `0x5FE55991F66f8bA97f005Ae46017FAf4FF802600`, `0x6fb8c2c0173425b8747900948E50d1f7A7baB3A2`, `0x3F09DAc4C09620329a0b292AF54B6f03378Fd74B` | not deployed                                 |
+| P256VERIFY (RIP-7212)                                           | `0x0000000000000000000000000000000000000100`                                                                                             | `0x0000000000000000000000000000000000000100` |
 
 ### Runbook
 
