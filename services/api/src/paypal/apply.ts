@@ -3,7 +3,6 @@ import {
   type Db,
   disputes,
   eq,
-  inArray,
   mandates,
   type paypalEvents,
   purchaseHolds,
@@ -41,7 +40,7 @@ export interface Application {
 }
 
 /** PayPal answers these for a resource that is not there or not this app's to read. */
-const MISSING = new Set([403, 404, 422]);
+export const MISSING = new Set([403, 404, 422]);
 
 /**
  * Reads a resource from PayPal with the app's token. Throws on network failures, 5xx and other
@@ -138,60 +137,96 @@ async function capture(deps: ApplyDeps, captureId: string): Promise<Application>
   return { status: statusOf(effect), resource, purchaseId };
 }
 
-/** The purchase a dispute is about: by its capture's `invoice_id`, else by the capture id. */
-async function purchaseOfDispute(db: Db, dispute: Dispute): Promise<string | undefined> {
-  const transactions = dispute.disputed_transactions ?? [];
-  const invoices = transactions
-    .map((t) => t.invoice_number)
-    .filter((n): n is string => n !== undefined && ids.parseInvoiceId(n) !== null);
-  if (invoices.length > 0) {
+/**
+ * The one purchase a dispute is about: by its capture's `invoice_id`, else by the capture id. A
+ * transaction whose capture id names another capture than the purchase recorded does not count,
+ * and a dispute over several Keelson purchases is not joined to any of them.
+ */
+async function purchaseOfDispute(
+  db: Db,
+  dispute: Dispute,
+): Promise<{ id: string; state: string } | "several" | undefined> {
+  const found = new Map<string, string>();
+  for (const t of dispute.disputed_transactions ?? []) {
+    const byInvoice =
+      t.invoice_number && ids.parseInvoiceId(t.invoice_number)
+        ? eq(purchases.invoiceId, t.invoice_number)
+        : undefined;
+    const where =
+      byInvoice ??
+      (t.seller_transaction_id
+        ? eq(purchases.paypalCaptureId, t.seller_transaction_id)
+        : undefined);
+    if (!where) continue;
     const [p] = await db
-      .select({ id: purchases.id })
+      .select({ id: purchases.id, state: purchases.state, captureId: purchases.paypalCaptureId })
       .from(purchases)
-      .where(inArray(purchases.invoiceId, invoices));
-    if (p) return p.id;
+      .where(where);
+    if (!p) continue;
+    if (t.seller_transaction_id && p.captureId && t.seller_transaction_id !== p.captureId) continue;
+    found.set(p.id, p.state);
   }
-  const captures = transactions
-    .map((t) => t.seller_transaction_id)
-    .filter((id): id is string => id !== undefined);
-  if (captures.length === 0) return undefined;
-  const [p] = await db
-    .select({ id: purchases.id })
-    .from(purchases)
-    .where(inArray(purchases.paypalCaptureId, captures));
-  return p?.id;
+  if (found.size > 1) return "several";
+  const [entry] = found;
+  return entry ? { id: entry[0], state: entry[1] } : undefined;
 }
 
 /**
  * Stores a dispute as PayPal reports it and moves its purchase to `DISPUTED`; a resolved dispute
- * becomes `RESOLVED`. Then, unless the dispute is over, hands it to the dispute workflow.
+ * becomes `RESOLVED`, and one first seen resolved leaves its purchase as it was. Then, unless the
+ * dispute is over, hands it to the dispute workflow, which must be idempotent: every re-read of
+ * an open dispute hands it on again.
  */
 export async function applyDispute(
   deps: ApplyDeps,
   dispute: Dispute,
   eventType?: string,
 ): Promise<Application> {
-  const purchaseId = await purchaseOfDispute(deps.db, dispute);
-  if (!purchaseId) return { status: "ignored", resource: dispute };
+  const purchase = await purchaseOfDispute(deps.db, dispute);
+  if (!purchase) return { status: "ignored", resource: dispute };
   const id = dispute.dispute_id;
+  if (purchase === "several") {
+    deps.log.warn({ disputeId: id }, "dispute names several purchases");
+    return { status: "mismatch", resource: dispute, disputeId: undefined };
+  }
+  const purchaseId = purchase.id;
   const raw = dispute as unknown as Json;
   const resolved = dispute.status === "RESOLVED";
-  await deps.db.transaction(async (tx) => {
-    await tx
-      .insert(disputes)
-      .values({ id, purchaseId, reason: dispute.reason ?? "UNKNOWN", raw })
-      .onConflictDoUpdate({
-        target: disputes.id,
-        set: { reason: dispute.reason ?? "UNKNOWN", raw, updatedAt: sql`now()` },
-        setWhere: eq(disputes.purchaseId, purchaseId),
-      });
-    if (!(await transition(tx, "purchases", purchaseId, "CAPTURED", "DISPUTED"))) {
-      await transition(tx, "purchases", purchaseId, "DELIVERED", "DISPUTED");
-    }
-    if (resolved && !(await transition(tx, "disputes", id, "OPEN", "RESOLVED"))) {
-      await transition(tx, "disputes", id, "ATTRIBUTED", "RESOLVED");
-    }
-  });
+  // A dispute that does not match its purchase rolls back without a trace.
+  const mismatch = new Error("dispute mismatch");
+  const stored = await deps.db
+    .transaction(async (tx) => {
+      const written = await tx
+        .insert(disputes)
+        .values({ id, purchaseId, reason: dispute.reason ?? "UNKNOWN", raw })
+        .onConflictDoUpdate({
+          target: disputes.id,
+          set: { reason: dispute.reason ?? "UNKNOWN", raw, updatedAt: sql`now()` },
+          setWhere: eq(disputes.purchaseId, purchaseId),
+        })
+        .returning({ id: disputes.id });
+      if (written.length === 0) throw mismatch;
+      if (resolved) {
+        if (!(await transition(tx, "disputes", id, "OPEN", "RESOLVED"))) {
+          await transition(tx, "disputes", id, "ATTRIBUTED", "RESOLVED");
+        }
+        return true;
+      }
+      if (purchase.state === "DISPUTED" || purchase.state === "ATTRIBUTED") return true;
+      const moved =
+        (await transition(tx, "purchases", purchaseId, "CAPTURED", "DISPUTED")) ||
+        (await transition(tx, "purchases", purchaseId, "DELIVERED", "DISPUTED"));
+      if (!moved) throw mismatch;
+      return true;
+    })
+    .catch((err: unknown) => {
+      if (err === mismatch) return false;
+      throw err;
+    });
+  if (!stored) {
+    deps.log.warn({ disputeId: id, purchaseId }, "dispute does not match its purchase");
+    return { status: "mismatch", resource: dispute, purchaseId };
+  }
   if (!resolved && eventType !== "CUSTOMER.DISPUTE.RESOLVED") {
     await deps.startDisputeWorkflow?.(id);
   }

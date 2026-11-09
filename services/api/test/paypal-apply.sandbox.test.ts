@@ -303,7 +303,7 @@ describe.runIf(live)("PayPal events applied from a re-read (sandbox)", () => {
     await call(paypal.paypal.payments.voidPayment({ authorizationId: other.authorizationId }));
   }, 300_000);
 
-  test("disputes are stored from the re-read, the purchase disputed, the open one handed on", async () => {
+  test("disputes are stored from the re-read, the open one disputes its purchase and is handed on", async () => {
     const cfg = paypalConfig();
     const f = createPayPal(cfg, new TokenCache(cfg)).fetch;
     const [openId] = await listOpen(f);
@@ -328,13 +328,15 @@ describe.runIf(live)("PayPal events applied from a re-read (sandbox)", () => {
     const [row] = await testDb.select().from(disputes).where(eq(disputes.id, resolved.dispute_id));
     expect(row).toMatchObject({ state: "RESOLVED", purchaseId: r.purchaseId });
     expect(row?.raw).toEqual(resolved);
-    expect((await purchaseRow(r.purchaseId as string))?.state).toBe("DISPUTED");
+    // First seen resolved: the purchase is left as it was.
+    expect((await purchaseRow(r.purchaseId as string))?.state).toBe("CAPTURED");
     expect(started).not.toContain(resolved.dispute_id);
 
     if (open) {
       const o = await applyDispute(deps, open, "CUSTOMER.DISPUTE.CREATED");
       expect(o.status).toBe("applied");
       expect(started.filter((id) => id === open.dispute_id)).toHaveLength(1);
+      expect((await purchaseRow(o.purchaseId as string))?.state).toBe("DISPUTED");
       const [orow] = await testDb.select().from(disputes).where(eq(disputes.id, open.dispute_id));
       expect(orow?.state).toBe("OPEN");
     }

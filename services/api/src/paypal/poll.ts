@@ -1,12 +1,13 @@
-import { sql } from "@keelson/db";
+import { randomUUID } from "node:crypto";
 import {
   eventResourceId,
   getDispute,
   listUpdatedDisputes,
   listWebhookEvents,
+  PayPalError,
   type PayPalFetch,
 } from "@keelson/paypal";
-import { type ApplyDeps, applyDispute } from "./apply.ts";
+import { type ApplyDeps, applyDispute, MISSING } from "./apply.ts";
 import { storeDelivery } from "./webhook.ts";
 
 export interface PayPalPoller {
@@ -24,7 +25,7 @@ const DISPUTES_CURSOR = "paypal:poll:disputes";
 /**
  * Catches what webhooks missed: every round lists the app's events since the cursor and stores the
  * ones not yet stored for the worker, and re-reads every dispute updated since its cursor. One
- * instance polls at a time: the round runs under a transaction-scoped advisory lock.
+ * instance polls at a time: the round runs under a Key Value lock.
  */
 export function startPayPalPoller(
   deps: ApplyDeps & { paypalEvents?: { wake(): void } | undefined },
@@ -52,6 +53,10 @@ export function startPayPalPoller(
   };
 }
 
+/** Longer than a round; a crashed round's lock lapses on its own. */
+const LOCK_MS = 300_000;
+const LOCK = "paypal:poll:lock";
+
 /**
  * One round; resolves to `false` when another instance holds the round.
  *
@@ -60,11 +65,9 @@ export function startPayPalPoller(
 export async function pollOnce(
   deps: ApplyDeps & { paypalEvents?: { wake(): void } | undefined },
 ): Promise<boolean> {
-  return deps.db.transaction(async (tx) => {
-    const { rows } = await tx.execute<{ locked: boolean }>(
-      sql`select pg_try_advisory_xact_lock(hashtext('paypal-poll')) as locked`,
-    );
-    if (!rows[0]?.locked) return false;
+  const token = randomUUID();
+  if ((await deps.kv.set(LOCK, token, { NX: true, PX: LOCK_MS })) !== "OK") return false;
+  try {
     await deps.kv.incr("paypal:poll:rounds");
     const f = deps.paypal.paypal.fetch;
     const now = new Date();
@@ -72,14 +75,24 @@ export async function pollOnce(
     if (stored > 0) deps.paypalEvents?.wake();
     await pollDisputes(deps, f, now);
     return true;
-  });
+  } finally {
+    // Released only by its holder.
+    await deps.kv.eval(
+      "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) end return 0",
+      { keys: [LOCK], arguments: [token] },
+    );
+  }
 }
 
 async function since(deps: ApplyDeps, key: string, now: Date): Promise<Date> {
   const cursor = await deps.kv.get(key);
   const floor = now.getTime() - MAX_LOOKBACK_MS;
-  const from = cursor ? new Date(cursor).getTime() - OVERLAP_MS : floor;
-  return new Date(Math.max(Number.isNaN(from) ? floor : from, floor));
+  const from = cursor ? new Date(cursor).getTime() - OVERLAP_MS : Number.NaN;
+  if (Number.isNaN(from) || from < floor) {
+    if (cursor) deps.log.warn({ key, cursor }, "paypal poll cursor older than a day");
+    return new Date(floor);
+  }
+  return new Date(from);
 }
 
 async function pollEvents(deps: ApplyDeps, f: PayPalFetch, now: Date): Promise<number> {
@@ -107,11 +120,24 @@ async function pollEvents(deps: ApplyDeps, f: PayPalFetch, now: Date): Promise<n
   return stored;
 }
 
+/**
+ * Re-reads and applies every updated dispute. One that fails does not hold the others back; the
+ * cursor stays put so the next round reads it again, and one PayPal no longer shows is skipped.
+ */
 async function pollDisputes(deps: ApplyDeps, f: PayPalFetch, now: Date): Promise<void> {
   const updated = await listUpdatedDisputes(
     f,
     (await since(deps, DISPUTES_CURSOR, now)).toISOString(),
   );
-  for (const item of updated) await applyDispute(deps, await getDispute(f, item.dispute_id));
-  await deps.kv.set(DISPUTES_CURSOR, now.toISOString());
+  let failed = 0;
+  for (const item of updated) {
+    try {
+      await applyDispute(deps, await getDispute(f, item.dispute_id));
+    } catch (err) {
+      if (err instanceof PayPalError && MISSING.has(err.status)) continue;
+      failed++;
+      deps.log.warn({ err, disputeId: item.dispute_id }, "polled dispute not applied");
+    }
+  }
+  if (failed === 0) await deps.kv.set(DISPUTES_CURSOR, now.toISOString());
 }

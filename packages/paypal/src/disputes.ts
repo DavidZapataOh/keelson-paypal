@@ -11,6 +11,9 @@ import {
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 50 * 1024 * 1024;
 
+/** Pages followed at most. */
+const MAX_PAGES = 100;
+
 export interface Evidence {
   evidence_type: string;
   notes?: string;
@@ -46,11 +49,12 @@ export async function listUpdatedDisputes(
 ): Promise<{ dispute_id: string; status: string }[]> {
   const items: { dispute_id: string; status: string }[] = [];
   let query: Record<string, string> = { update_time_after: updateTimeAfter, page_size: "50" };
-  for (;;) {
+  for (let pages = 1; ; pages++) {
     const page = disputeSearch.parse(await f<unknown>("GET", "/v1/customer/disputes", { query }));
     items.push(...(page.items ?? []));
     const next = page.links?.find((l) => l.rel === "next")?.href;
     if (!next) return items;
+    if (pages >= MAX_PAGES) throw new Error("too many pages of disputes");
     const url = new URL(next);
     if (url.pathname !== "/v1/customer/disputes")
       throw new Error(`unexpected next link ${url.pathname}`);

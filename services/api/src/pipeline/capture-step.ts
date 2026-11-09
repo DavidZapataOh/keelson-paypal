@@ -416,7 +416,16 @@ export async function reconcileCapture(
   await db
     .update(purchases)
     .set({ captureStatus: status })
-    .where(and(eq(purchases.id, purchaseId), eq(purchases.paypalCaptureId, captureId)));
+    .where(
+      and(
+        eq(purchases.id, purchaseId),
+        eq(purchases.paypalCaptureId, captureId),
+        // Two reads in flight must not leave the older status last.
+        p.captureStatus === null
+          ? isNull(purchases.captureStatus)
+          : eq(purchases.captureStatus, p.captureStatus),
+      ),
+    );
   if (status === "DENIED" || status === "DECLINED") {
     await publishPurchase(deps, purchaseId, { type: "purchase.capture_denied", captureId });
   }

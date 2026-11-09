@@ -12,6 +12,9 @@ import {
 
 const webhookPath = (id: string) => `/v1/notifications/webhooks/${encodeURIComponent(id)}`;
 
+/** Pages followed at most. */
+const MAX_PAGES = 100;
+
 export async function createWebhook(
   f: PayPalFetch,
   url: string,
@@ -71,10 +74,11 @@ export async function listWebhookEvents(
   let page = webhookEventList.parse(
     await f<unknown>("GET", "/v1/notifications/webhooks-events", { query }),
   );
-  for (;;) {
+  for (let pages = 1; ; pages++) {
     events.push(...page.events);
     const next = page.links.find((l) => l.rel === "next")?.href;
     if (!next) return events;
+    if (pages >= MAX_PAGES) throw new Error("too many pages of webhook events");
     const url = new URL(next);
     if (url.pathname !== "/v1/notifications/webhooks-events") {
       throw new Error(`unexpected next link ${url.pathname}`);

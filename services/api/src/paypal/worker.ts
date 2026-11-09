@@ -15,8 +15,8 @@ export interface PayPalEventWorkerOptions {
 
 const BATCH = 16;
 const SWEEP_INTERVAL_MS = 10_000;
-/** Longer than the worst round: a few PayPal reads of 15 s at most each. */
-const LEASE_MS = 30_000;
+/** Longer than the worst round: a batch whose rows each make a few PayPal reads of 15 s at most. */
+const LEASE_MS = 300_000;
 const MAX_ROUNDS_IN_FLIGHT = 2;
 const FIRST_RETRY_MS = 2_000;
 const MAX_RETRY_MS = 600_000;
