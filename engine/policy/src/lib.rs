@@ -15,6 +15,7 @@ mod hashes;
 #[cfg(feature = "prove")]
 mod prove;
 mod trace;
+mod verdict;
 
 pub use attribution::{
     ATTRIBUTION_SCHEMA_SRC, Attribution, AttributionError, Facts, Liable, RULES, Reason, Rule,
@@ -36,6 +37,7 @@ pub use prove::{
     spec, spec_hash_tag,
 };
 pub use trace::{Decision, Engine, FieldTrace, TRACE_VERSION, Trace, trace_jcs};
+pub use verdict::{NO_FIELD, VerdictError, VerdictInput, dispute_id, inputs_hash, verdict};
 
 use std::collections::BTreeMap;
 use std::fmt;
