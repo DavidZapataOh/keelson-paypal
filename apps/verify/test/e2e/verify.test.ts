@@ -3,12 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type Browser, chromium, type Page } from "playwright";
-import { build, type PreviewServer, preview } from "vite";
+import { type PreviewServer, preview } from "vite";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { receipts } from "../../../../packages/alibi/test/log-receipts.ts";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
-const outDir = join(tmpdir(), "keelson-verify-e2e");
+const outDir = fileURLToPath(new URL("../../dist", import.meta.url));
 const ALLOWED = new Set([
   "https://api.keelson.finance",
   "https://log.keelson.finance",
@@ -16,12 +16,12 @@ const ALLOWED = new Set([
   "https://arbitrum-sepolia-rpc.publicnode.com",
 ]);
 
+// Previews the production build, which turbo runs before the tests.
 let server: PreviewServer;
 let browser: Browser;
 let base: string;
 
 beforeAll(async () => {
-  await build({ root, logLevel: "silent", build: { outDir, emptyOutDir: true } });
   server = await preview({ root, logLevel: "silent", build: { outDir }, preview: { port: 0 } });
   base = server.resolvedUrls?.local[0] as string;
   browser = await chromium.launch();
