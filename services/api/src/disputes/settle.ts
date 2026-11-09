@@ -56,6 +56,7 @@ const OPERATOR = 1;
 const KEELSON = 2;
 const CHAIN_ID = 421614;
 const PENDING_WAIT_MS = 8_000;
+const RECEIPT_WAIT_MS = 15_000;
 /** Contract refusals no retry can change: the verdict cannot be settled on chain. */
 const FINAL = new Set([
   "AlreadySettled",
@@ -311,7 +312,11 @@ async function record(
   if (tx?.status !== "confirmed" || !tx.hash) {
     throw new Error(`settlement of ${row.disputeId}: transaction ${tx?.status ?? "missing"}`);
   }
-  const receipt = await deps.chain.client.getTransactionReceipt({ hash: tx.hash });
+  // The relayer confirmed it through its own RPC; this one may serve the receipt a moment later.
+  const receipt = await deps.chain.client.waitForTransactionReceipt({
+    hash: tx.hash,
+    timeout: RECEIPT_WAIT_MS,
+  });
   const events = parseEventLogs({
     abi: [...keelsonBondVaultAbi, ...keelsonReserveAbi],
     logs: receipt.logs,

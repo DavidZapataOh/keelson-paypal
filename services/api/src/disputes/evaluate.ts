@@ -18,7 +18,7 @@ import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
 import { ulid } from "ulid";
 import type { Hex, PublicClient } from "viem";
-import { type AnchorDeps, reanchorAlibi } from "../alibi/anchors.ts";
+import { type AnchorDeps, reanchorAlibi, recordAnchor } from "../alibi/anchors.ts";
 import { loadAlibi } from "../alibi/issue.ts";
 import type { LogConfig } from "../log/append.ts";
 import { payeeFor, settlementOf } from "../merchants.ts";
@@ -50,8 +50,11 @@ const VERDICT_TTL_S = 3_600;
 const ANCHOR_TIMEOUT_MS = 150_000;
 const ANCHOR_VISIBLE_MS = 30_000;
 
-/** Has the log anchor its latest witnessed checkpoint now, through its private listener. */
-async function anchorNow(tlog: LogConfig, chainId: number): Promise<void> {
+/**
+ * Has the log anchor its latest witnessed checkpoint now, through its private listener; resolves
+ * to the anchor's transaction, absent when the checkpoint was already anchored.
+ */
+async function anchorNow(tlog: LogConfig, chainId: number): Promise<Hex | undefined> {
   const origin = LOG_ORIGINS[chainId];
   if (!origin) throw new Error(`chain ${chainId} has no log origin`);
   const res = await fetch(
@@ -63,6 +66,7 @@ async function anchorNow(tlog: LogConfig, chainId: number): Promise<void> {
     },
   );
   if (!res.ok) throw new Error(`anchor now: ${res.status}`);
+  return ((await res.json()) as { tx?: Hex | null }).tx ?? undefined;
 }
 
 /**
@@ -105,9 +109,10 @@ export async function evaluateDispute(deps: EvaluateDeps, disputeId: string): Pr
   if (!row.anchored) {
     const anchorDeps: AnchorDeps = { ...deps, tlog: deps.tlog };
     if ((await reanchorAlibi(anchorDeps, p.id)) === "not_covered") {
-      await anchorNow(deps.tlog, chainId);
-      // The anchor's event reaches the logs RPC a few seconds after its receipt; waiting here is
-      // cheaper than a retry, which starts a new workflow instance.
+      const tx = await anchorNow(deps.tlog, chainId);
+      if (tx) await recordAnchor(deps, chainId, tx);
+      // An anchor sent before this one reaches the scan of the chain's logs some blocks after its
+      // receipt; waiting here is cheaper than a retry.
       const until = Date.now() + ANCHOR_VISIBLE_MS;
       while ((await reanchorAlibi(anchorDeps, p.id)) === "not_covered") {
         if (Date.now() > until)
