@@ -1,5 +1,6 @@
 import { and, asc, eq, paypalEvents, sql } from "@keelson/db";
 import { PayPalError } from "@keelson/paypal";
+import { span } from "../tracing.ts";
 import { type ApplyDeps, applyEvent, type EventRow } from "./apply.ts";
 
 export interface PayPalEventWorker {
@@ -109,7 +110,15 @@ async function claimAndApply(deps: ApplyDeps, leaseMs: number): Promise<number> 
       eq(paypalEvents.leaseUntil, lease),
     );
     try {
-      const applied = await applyEvent(deps, row);
+      const applied = await span(
+        "webhook.apply",
+        { "paypal.event_type": row.eventType },
+        async (s) => {
+          const applied = await applyEvent(deps, row);
+          s.setAttribute("paypal.apply_status", applied.status);
+          return applied;
+        },
+      );
       await deps.db
         .update(paypalEvents)
         .set({

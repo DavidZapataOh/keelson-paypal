@@ -15,7 +15,8 @@
     "bench:checkout": "node bench/checkout.bench.ts",
     "bench:countersign": "node bench/countersign.bench.ts",
     "bench:hold": "node bench/hold.bench.ts",
-    "bench:log-append": "node bench/log-append.bench.ts"
+    "bench:log-append": "node bench/log-append.bench.ts",
+    "bench:money-path": "node bench/money-path.bench.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.5.0",
@@ -42,6 +43,8 @@
     "@keelson/relayer": "workspace:*",
     "@keelson/timestamp": "workspace:*",
     "@opentelemetry/api": "1.10.0",
+    "@opentelemetry/instrumentation-pg": "0.77.0",
+    "@opentelemetry/instrumentation-undici": "0.34.0",
     "@opentelemetry/sdk-node": "0.300.0",
     "@simplewebauthn/server": "13.3.3",
     "age-encryption": "0.3.1",
@@ -56,6 +59,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@opentelemetry/sdk-trace": "3.0.0",
     "@seriousme/openapi-schema-validator": "2.11.0",
     "@types/autocannon": "7.12.7",
     "@types/node": "26.6.6",
