@@ -333,3 +333,105 @@ pub struct CheckpointSigned {
     pub signature: Hex65,
     pub signer: Address,
 }
+
+/// What a `Verdict` carries besides the attribution, as [`keelson_policy::VerdictInput`].
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VerdictInputJson {
+    /// The PayPal dispute id, `PP-D-…`.
+    pub paypal_dispute_id: String,
+    pub coverage_id: Hex32,
+    /// A decimal string.
+    pub agent_id: String,
+    pub payee: Address,
+    /// PYUSD base units, a decimal string.
+    pub amount: String,
+    /// The `failedFieldsMask` bit of a failed field of each color; the one of the rule's color
+    /// becomes the verdict's `fieldId`.
+    #[serde(default)]
+    pub failed_fields: FailedFields,
+    pub evidence_hash: Hex32,
+    pub checkpoint_root: Hex32,
+    /// Unix seconds.
+    pub issued_at: u64,
+    /// Unix seconds.
+    pub deadline: u64,
+}
+
+/// A failed field of each evidence color, by its `failedFieldsMask` bit.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FailedFields {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub green: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub amber: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gray: Option<u8>,
+}
+
+/// A dispute to attribute and sign as the EIP-712 `Verdict`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VerdictRequest {
+    pub facts: keelson_policy::Facts,
+    pub input: VerdictInputJson,
+    /// The chain of the verdict; the engine's own chain when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chain_id: Option<u64>,
+}
+
+/// A `Verdict` message in the JSON form of viem typed data.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct VerdictJson {
+    pub dispute_id: Hex32,
+    pub coverage_id: Hex32,
+    pub agent_id: String,
+    pub payee: Address,
+    pub amount: String,
+    pub rule_id: String,
+    pub liable: String,
+    pub field_id: String,
+    pub evidence_hash: Hex32,
+    pub inputs_hash: Hex32,
+    pub policy_set_hash: Hex32,
+    pub checkpoint_root: Hex32,
+    pub issued_at: String,
+    pub deadline: String,
+}
+
+impl From<&keelson_core::eip712::Verdict> for VerdictJson {
+    fn from(v: &keelson_core::eip712::Verdict) -> Self {
+        Self {
+            dispute_id: Hex(v.disputeId.0),
+            coverage_id: Hex(v.coverageId.0),
+            agent_id: v.agentId.to_string(),
+            payee: v.payee,
+            amount: v.amount.to_string(),
+            rule_id: v.ruleId.to_string(),
+            liable: v.liable.to_string(),
+            field_id: v.fieldId.to_string(),
+            evidence_hash: Hex(v.evidenceHash.0),
+            inputs_hash: Hex(v.inputsHash.0),
+            policy_set_hash: Hex(v.policySetHash.0),
+            checkpoint_root: Hex(v.checkpointRoot.0),
+            issued_at: v.issuedAt.to_string(),
+            deadline: v.deadline.to_string(),
+        }
+    }
+}
+
+/// A signed `Verdict`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VerdictSigned {
+    pub verdict: VerdictJson,
+    pub chain_id: u64,
+    /// The EIP-712 signing hash.
+    pub digest: Hex32,
+    /// `r ‖ s ‖ v`.
+    pub signature: Hex65,
+    pub signer: Address,
+    pub tee: TeeKind,
+}

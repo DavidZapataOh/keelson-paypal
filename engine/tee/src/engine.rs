@@ -19,8 +19,8 @@ use keelson_mandate::{
     verify_assertion, verify_closed_mandate, verify_credential,
 };
 use keelson_policy::{
-    Decision, EngineMeta, EvalInput, TRACE_VERSION, Trace, agent_uid, evaluate, policy_set_hash,
-    policy_set_hash_tag, schema_hash_tag, trace_jcs,
+    Decision, EngineMeta, EvalInput, TRACE_VERSION, Trace, VerdictError, VerdictInput, agent_uid,
+    evaluate, policy_set_hash, policy_set_hash_tag, schema_hash_tag, trace_jcs,
 };
 use p256::ecdsa::SigningKey;
 use serde_json::{Value, json};
@@ -33,7 +33,7 @@ use crate::checkpoint::{CheckpointError, verify_checkpoint};
 use crate::paypal::{HoldKind, PayPalDeny, paypal_check};
 use crate::wire::{
     self, Base64, CheckpointRequest, CheckpointSigned, CountersignRequest, Countersigned, Hex,
-    MandateIssued, Observation, PayPalObservation, RegisterMandate,
+    MandateIssued, Observation, PayPalObservation, RegisterMandate, VerdictRequest, VerdictSigned,
 };
 use crate::{
     Error, Root, SealAad, Signer, SignerBinding, TeeKind, countersign_digest, failed_fields_mask,
@@ -460,6 +460,60 @@ impl Engine {
             digest: Hex(alloy_sol_types::SolStruct::eip712_signing_hash(&c, &domain).0),
             signature: Hex(signature),
             signer: self.signer.address(),
+        })
+    }
+
+    /// Attributes a dispute from `r.facts` with the attribution policy sets and signs the
+    /// resulting EIP-712 `Verdict`. The caller supplies the facts and the settlement terms; the
+    /// rule, the liable party and which failed field the verdict names are the engine's.
+    pub fn sign_verdict(&self, r: &VerdictRequest) -> Result<VerdictSigned, EngineError> {
+        let chain_id = r.chain_id.unwrap_or(self.config.chain_id);
+        let domain = keelson_core::domain(chain_id, self.config.verifying_contract)
+            .map_err(|_| bad("chain_id"))?;
+        let i = &r.input;
+        let rule = keelson_policy::attribute(&r.facts)
+            .map_err(|_| bad("facts"))?
+            .rule;
+        let field = match rule {
+            60 => i.failed_fields.green,
+            61 => i.failed_fields.amber,
+            62 => i.failed_fields.gray,
+            _ => None,
+        };
+        let input = VerdictInput {
+            paypal_dispute_id: &i.paypal_dispute_id,
+            coverage_id: B256::new(i.coverage_id.0),
+            agent_id: i.agent_id.parse::<U256>().map_err(|_| bad("agent_id"))?,
+            payee: i.payee,
+            amount: i.amount.parse().map_err(|_| bad("amount"))?,
+            field_id: field.unwrap_or(keelson_policy::NO_FIELD),
+            evidence_hash: B256::new(i.evidence_hash.0),
+            checkpoint_root: B256::new(i.checkpoint_root.0),
+            issued_at: i.issued_at,
+            deadline: i.deadline,
+        };
+        let v = keelson_policy::verdict(&r.facts, &input).map_err(|e| {
+            bad(match e {
+                VerdictError::Attribution(_) => "facts",
+                VerdictError::EmptyDisputeId => "paypal_dispute_id",
+                VerdictError::AmountTooLarge => "amount",
+                VerdictError::TimeTooLarge | VerdictError::DeadlineNotAfterIssue => "deadline",
+                VerdictError::FieldRequired(_)
+                | VerdictError::FieldNotApplicable(_)
+                | VerdictError::FieldOutOfRange(_) => "field_id",
+            })
+        })?;
+        let signature = self
+            .signer
+            .sign_verdict(&v, &domain)
+            .map_err(EngineError::Signer)?;
+        Ok(VerdictSigned {
+            verdict: (&v).into(),
+            chain_id,
+            digest: Hex(alloy_sol_types::SolStruct::eip712_signing_hash(&v, &domain).0),
+            signature: Hex(signature),
+            signer: self.signer.address(),
+            tee: self.config.tee_kind,
         })
     }
 

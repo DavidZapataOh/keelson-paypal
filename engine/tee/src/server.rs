@@ -21,7 +21,7 @@ use time::OffsetDateTime;
 use crate::engine::unix_ms;
 use crate::wire::{
     CheckpointRequest, CheckpointSigned, CountersignRequest, Countersigned, MandateIssued,
-    RegisterMandate,
+    RegisterMandate, VerdictRequest, VerdictSigned,
 };
 use crate::{Engine, EngineError, TeeKind};
 
@@ -125,6 +125,7 @@ pub fn router(state: Arc<AppState>) -> Router {
             post(checkpoint).layer(DefaultBodyLimit::max(CHECKPOINT_BODY_LIMIT)),
         )
         .route("/v1/mandates/register", post(register))
+        .route("/v1/verdict", post(verdict))
         .layer(DefaultBodyLimit::max(BODY_LIMIT));
     #[cfg(feature = "tdx")]
     let (open, protected) = if state.attestation.is_some() {
@@ -364,6 +365,14 @@ async fn checkpoint(
 ) -> Result<Json<CheckpointSigned>, Problem> {
     let request: CheckpointRequest = parse(body)?;
     blocking(move || state.engine.sign_checkpoint(&request, (state.clock)())).await
+}
+
+async fn verdict(
+    State(state): State<Arc<AppState>>,
+    body: Result<Bytes, BytesRejection>,
+) -> Result<Json<VerdictSigned>, Problem> {
+    let request: VerdictRequest = parse(body)?;
+    blocking(move || state.engine.sign_verdict(&request)).await
 }
 
 async fn register(

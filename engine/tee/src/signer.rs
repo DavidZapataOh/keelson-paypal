@@ -6,7 +6,7 @@ use alloy_sol_types::SolStruct;
 use k256::ecdsa::{RecoveryId, SigningKey};
 use k256::elliptic_curve::Generate;
 use k256::elliptic_curve::zeroize::ZeroizeOnDrop;
-use keelson_core::eip712::{Checkpoint, Countersign};
+use keelson_core::eip712::{Checkpoint, Countersign, Verdict};
 
 use crate::countersign_digest;
 use crate::error::{Error, check_chain};
@@ -81,6 +81,18 @@ impl Signer {
             .ok_or(Error::MissingChain)?;
         check_chain(chain_id)?;
         self.sign_digest(&c.eip712_signing_hash(domain).0)
+    }
+
+    /// Signs the EIP-712 digest of `v`, as [`Signer::sign_countersign`] does.
+    ///
+    /// Fails on domains outside Arbitrum Sepolia and Arbitrum One.
+    pub fn sign_verdict(&self, v: &Verdict, domain: &Eip712Domain) -> Result<[u8; 65], Error> {
+        let chain_id = domain
+            .chain_id
+            .and_then(|id| u64::try_from(id).ok())
+            .ok_or(Error::MissingChain)?;
+        check_chain(chain_id)?;
+        self.sign_digest(&v.eip712_signing_hash(domain).0)
     }
 
     fn sign_digest(&self, digest: &[u8; 32]) -> Result<[u8; 65], Error> {
