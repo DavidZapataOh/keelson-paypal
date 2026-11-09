@@ -138,6 +138,7 @@ const port = (server.address() as AddressInfo).port;
 // the app and the attacker's page are three origins.
 const apiOrigin = `http://api.keelson.finance:${port}`;
 const appOrigin = `http://app.keelson.finance:${port}`;
+const verifyOrigin = "https://verify.keelson.finance";
 const evilOrigin = `http://evil.example:${port}`;
 
 const auth = createAuth(testDb, { ...testAuthEnv(apiOrigin, secret), APP_ORIGIN: appOrigin });
@@ -147,6 +148,7 @@ app = createApp({
   log: pino({ level: "silent" }),
   auth,
   appOrigin,
+  verifyOrigin,
   authenticate: authenticate(auth, apiOrigin),
 });
 
@@ -688,4 +690,32 @@ test("only the app origin may call the API from a browser", { timeout: 60_000 },
     ),
   );
   expect(read).toContain("Failed to fetch");
+});
+
+test("the verifier may read public receipts, and nothing else", async () => {
+  const preflight = (origin: string, path: string) =>
+    app.request(path, {
+      method: "OPTIONS",
+      headers: { origin, "access-control-request-method": "GET" },
+    });
+  const receipt = "/v1/alibis/01JC0000000000000000000000/receipt";
+  const allowed = await preflight(verifyOrigin, receipt);
+  expect(allowed.headers.get("access-control-allow-origin")).toBe(verifyOrigin);
+  expect(allowed.headers.get("access-control-allow-credentials")).toBeNull();
+  const get = await app.request(receipt, { headers: { origin: verifyOrigin } });
+  expect(get.headers.get("access-control-allow-origin")).toBe(verifyOrigin);
+  for (const path of ["/v1/alibis/01JC0000000000000000000000", "/v1/mandates"]) {
+    const other = await preflight(verifyOrigin, path);
+    expect(other.headers.get("access-control-allow-origin")).not.toBe(verifyOrigin);
+  }
+  for (const path of [
+    "/v1/alibis/01JC0000000000000000000000",
+    "/v1/alibis/01JC0000000000000000000000.pdf",
+    `${receipt}/`,
+  ]) {
+    const read = await app.request(path, { headers: { origin: verifyOrigin } });
+    expect(read.headers.get("access-control-allow-origin")).not.toBe(verifyOrigin);
+  }
+  const evil = await preflight(evilOrigin, receipt);
+  expect(evil.headers.get("access-control-allow-origin")).not.toBe(evilOrigin);
 });
