@@ -31,7 +31,7 @@ runs:
       run: |
         mkdir -p ~/.foundry/bin
         url="https://github.com/foundry-rs/foundry/releases/download/$VERSION/foundry_${VERSION}_linux_amd64.tar.gz"
-        if curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 -o "$RUNNER_TEMP/foundry.tar.gz" "$url"; then
+        if curl -fsSL --retry 12 --retry-all-errors --retry-delay 30 --retry-max-time 900 -o "$RUNNER_TEMP/foundry.tar.gz" "$url"; then
           tar -xzf "$RUNNER_TEMP/foundry.tar.gz" -C ~/.foundry/bin
         else
           echo "::warning::GitHub release download failed; copying the binaries from ghcr.io/foundry-rs/foundry:$VERSION"
