@@ -84,11 +84,11 @@ export const challenge: CheckDef = {
     if (!isBundle(input)) return UNDISCLOSED;
     const c = input.tee.countersign;
     const m = mandateChallenge(hSd(input.mandate.payload_sd), BigInt(c.mandateCommitment));
-    expect(toHex(m) === c.mandateHash, "mandateHash is not the challenge of this mandate", [
-      "/mandate/payload_sd",
-      "/tee/countersign/mandateHash",
-      "/tee/countersign/mandateCommitment",
-    ]);
+    expect(
+      toHex(m) === c.mandateHash,
+      "mandateHash is not the challenge of this mandate's H_sd and commitment",
+      ["/mandate/payload_sd", "/tee/countersign/mandateHash", "/tee/countersign/mandateCommitment"],
+    );
     return pass();
   },
 };
@@ -169,7 +169,7 @@ export const credentials: CheckDef = {
       ?.issuerJwkThumbprint;
     expect(
       bound !== undefined && (await issuerThumbprint(input)) === bound.toLowerCase(),
-      "the issuer key is not the one the TDX attestation binds",
+      "the issuer key's thumbprint is not the one the TDX attestation binds",
       ["/mandate/issuer_jwk", "/tee/attestations/0/binding/issuerJwkThumbprint"],
     );
     const token = input.mandate.sd_jwt;

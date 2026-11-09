@@ -36,9 +36,11 @@ describe("one byte form per bundle", () => {
     expect(code(encoder.encode(s.replace("{", `{"alibi_id":"${alibi_id}",`)))).toBe("noncanonical");
     expect(code(encoder.encode(s.replace("{", '{"aaa":1,')))).toBe("schema");
     expect(code(encoder.encode(s.slice(1)))).toBe("json");
-    expect(code(Uint8Array.of(0xef, 0xbb, 0xbf, ...(f as { bytes: Uint8Array }).bytes))).toBe(
-      "json",
-    );
+    const bytes = (f as { bytes: Uint8Array }).bytes;
+    const bom = new Uint8Array(bytes.length + 3);
+    bom.set([0xef, 0xbb, 0xbf]);
+    bom.set(bytes, 3);
+    expect(code(bom)).toBe("json");
   });
 
   test.each(fixtures.map((f) => [f.id, f] as const))("%s has its canonical verify url", (_, f) => {

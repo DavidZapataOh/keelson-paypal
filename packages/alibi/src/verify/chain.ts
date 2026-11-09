@@ -18,6 +18,8 @@ export interface ChainQuery {
   size: bigint;
   signers: Address[];
   measurements: Hex[];
+  /** The block each attestation names as its freshness proof. */
+  blocks: bigint[];
   anchorTx?: Hex;
   /** The block the anchor transaction is stated to be in; an RPC behind it cannot answer. */
   anchorBlock?: bigint;
@@ -38,7 +40,9 @@ export interface ChainAnswer {
   latest: { size: bigint; root: Hex; at: number };
   signers: SignerRecord[];
   allowed: boolean[];
-  /** The `CheckpointAnchored` log of the anchor transaction, `null` when it holds none. */
+  /** The hash of each block of `ChainQuery.blocks`. */
+  blocks: Hex[];
+  /** The `CheckpointAnchored` log of the anchor transaction, `null` when it holds none or does not exist. */
   anchorLog?: { origin: Hex; size: bigint; root: Hex; blockNumber: bigint } | null;
   /** The RPC that answered. */
   rpc: string;
@@ -126,6 +130,7 @@ export function createChainReader(opts: ChainReaderOptions = {}): ChainReader {
               client.readContract({ ...verifier, functionName: "allowedMeasurement", args: [m] }),
             ),
           ),
+          Promise.all(q.blocks.map((n) => client.getBlock({ blockNumber: n }).then((b) => b.hash))),
           q.anchorTx
             ? client.getTransactionReceipt({ hash: q.anchorTx }).catch((err: unknown) => {
                 if ((err as Error).name === "TransactionReceiptNotFoundError") return null;
@@ -140,7 +145,7 @@ export function createChainReader(opts: ChainReaderOptions = {}): ChainReader {
         }
         const failed = settled.find((s) => s.status === "rejected");
         if (failed) throw failed.reason;
-        const [, head, rootAt, latest, signers, allowed, receipt] = settled.map(
+        const [, head, rootAt, latest, signers, allowed, blocks, receipt] = settled.map(
           (s) => (s as PromiseFulfilledResult<unknown>).value,
         ) as [
           number,
@@ -149,6 +154,7 @@ export function createChainReader(opts: ChainReaderOptions = {}): ChainReader {
           readonly [bigint, Hex, number],
           (readonly [number, number, number, number, Hex])[],
           boolean[],
+          Hex[],
           Awaited<ReturnType<typeof client.getTransactionReceipt>> | null | undefined,
         ];
         const out: ChainAnswer = {
@@ -162,16 +168,16 @@ export function createChainReader(opts: ChainReaderOptions = {}): ChainReader {
             measurement,
           })),
           allowed,
+          blocks,
           rpc: answered,
           custom,
         };
         if (q.anchorBlock !== undefined && head < q.anchorBlock) {
           throw new ChainUnreachableError(`the RPC is at block ${head}, behind the anchor's`);
         }
-        if (receipt !== undefined) {
-          if (receipt === null) {
-            throw new ChainUnreachableError("the RPC does not know the anchor transaction");
-          }
+        // The RPC is past the anchor's block, so a transaction it does not know is not on chain.
+        if (receipt === null) out.anchorLog = null;
+        if (receipt) {
           const log = parseEventLogs({
             abi: checkpointAnchorAbi,
             eventName: "CheckpointAnchored",
