@@ -18,6 +18,8 @@ import { authenticate } from "./middleware/auth.ts";
 import { relayerFromEnv } from "./onchain/relayer.ts";
 import { startValidationSweeper } from "./onchain/validations.ts";
 import { operatorSigners } from "./operators/signer.ts";
+import { startPayPalPoller } from "./paypal/poll.ts";
+import { startPayPalEventWorker } from "./paypal/worker.ts";
 import { createPayPalDeps } from "./paypal.ts";
 import { closeServer } from "./shutdown.ts";
 import { startPipelineResumer, startPurchaseSweeper } from "./sweeper.ts";
@@ -82,6 +84,7 @@ const certs = new CertStore(env.PAYPAL_ENV, {
     await kv.set(key, pem, { EX: ttlSeconds });
   },
 });
+const paypalEvents = startPayPalEventWorker({ db, kv, log, paypal });
 const operators =
   env.KEELSON_OPERATOR_KEY && env.DEMO_AGENT_ID
     ? operatorSigners(env.DEMO_AGENT_ID, env.KEELSON_OPERATOR_KEY)
@@ -99,6 +102,7 @@ const app = createApp({
   stamps,
   chains,
   paypal,
+  paypalEvents,
   ...(env.PAYPAL_WEBHOOK_ID ? { paypalWebhook: { webhookId: env.PAYPAL_WEBHOOK_ID, certs } } : {}),
   ...(operators ? { operators } : {}),
   ...(relayer ? { relayer } : {}),
@@ -131,6 +135,7 @@ const stopResumer = startPipelineResumer({
     : {}),
 });
 const stopHolds = startHoldMaintenance({ db, kv, log, paypal });
+const poller = startPayPalPoller({ db, kv, log, paypal, paypalEvents });
 const stopReconciler = relayer?.startReconciler();
 const stopValidations = relayer
   ? startValidationSweeper({
@@ -160,7 +165,7 @@ process.once("SIGTERM", () => {
   stopReconciler?.();
   stopValidations?.();
   void closeServer(server, shutdown)
-    .then(() => stamps.stop())
+    .then(() => Promise.all([stamps.stop(), poller.stop(), paypalEvents.stop()]))
     .then(() => Promise.all([pool.end(), kv.close()]))
     .then(
       () => 0,
