@@ -20,7 +20,7 @@ import { arbitrumSepolia } from "viem/chains";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { createApp } from "../src/app.ts";
 import { operatorSigners } from "../src/operators/signer.ts";
-import { call } from "../src/paypal.ts";
+import { call, type PayPalDeps } from "../src/paypal.ts";
 import {
   captureStep,
   findCapture,
@@ -69,7 +69,7 @@ describe.skipIf(!keys)(
   () => {
     const tee = createTee(liveEnv(), { a: 10_000, b: 10_000 });
     const log = pino({ level: "silent" });
-    const paypal = sandbox();
+    const paypal = keys ? sandbox() : (undefined as unknown as PayPalDeps);
     /** The next countersigns go to an API process that cannot reach PayPal, so they stop at COVERED. */
     const failNext = { left: 0 };
     const evidence = new EvidenceUploader();

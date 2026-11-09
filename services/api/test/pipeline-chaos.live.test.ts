@@ -8,6 +8,7 @@ import { bytesToHex, createPublicClient, http, type PublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { createApp } from "../src/app.ts";
+import type { PayPalDeps } from "../src/paypal.ts";
 import { createTee } from "../src/tee/config.ts";
 import { refreshLeg } from "../src/tee/signers.ts";
 import { ApiProcess } from "./api-process.ts";
@@ -35,7 +36,7 @@ describe.skipIf(!keys)(
   { timeout: 3_600_000 },
   () => {
     const log = pino({ level: "silent" });
-    const paypal = sandbox();
+    const paypal = keys ? sandbox() : (undefined as unknown as PayPalDeps);
     const chain = createPublicClient({
       chain: arbitrumSepolia,
       transport: http(process.env.ARBITRUM_SEPOLIA_RPC_URL),
