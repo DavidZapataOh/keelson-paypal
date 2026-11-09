@@ -8,7 +8,10 @@ use alloy_primitives::{Address, B256, U256, keccak256};
 use keelson_core::eip712::Verdict;
 use keelson_core::{Dst, hash_object};
 
-use crate::{AttributionError, Facts, attribute, attribution_policy_set_hash};
+use serde_json::json;
+
+use crate::hashes::hex;
+use crate::{AttributionError, Facts, attribute, attribution_policy_set_hash, policy_set_hash};
 
 /// The `fieldId` of a verdict whose rule is not about a mandate field.
 pub const NO_FIELD: u8 = 0xff;
@@ -50,6 +53,8 @@ pub enum VerdictError {
     FieldRequired(u8),
     /// The rule blames no field and a field id was given.
     FieldNotApplicable(u8),
+    /// The field id is not a `failedFieldsMask` bit.
+    FieldOutOfRange(u8),
 }
 
 impl fmt::Display for VerdictError {
@@ -62,6 +67,7 @@ impl fmt::Display for VerdictError {
             Self::DeadlineNotAfterIssue => f.write_str("deadline is not after issuedAt"),
             Self::FieldRequired(rule) => write!(f, "rule R{rule:02} needs a field id"),
             Self::FieldNotApplicable(rule) => write!(f, "rule R{rule:02} takes no field id"),
+            Self::FieldOutOfRange(id) => write!(f, "field id {id} is not a failedFieldsMask bit"),
         }
     }
 }
@@ -76,16 +82,21 @@ pub fn dispute_id(paypal_dispute_id: &str, coverage_id: B256) -> B256 {
     keccak256(packed)
 }
 
-/// `H("keelson/verdict/v1", JCS(facts))`.
+/// `H("keelson/verdict/v1", JCS({attribution_policy_set_hash, facts}))`: the facts and the
+/// attribution rules that judged them, as `sha256:<hex>`.
 pub fn inputs_hash(facts: &Facts) -> B256 {
-    let value = serde_json::to_value(facts).expect("facts serialize");
+    let value = json!({
+        "attribution_policy_set_hash": hex("sha256:", &attribution_policy_set_hash()),
+        "facts": facts,
+    });
     hash_object(Dst::Verdict, &value)
         .expect("facts hold no numbers")
         .into()
 }
 
 /// The `Verdict` for the dispute `facts` describe: attributed by [`attribute`], with
-/// `inputsHash` = [`inputs_hash`] and `policySetHash` = [`attribution_policy_set_hash`].
+/// `inputsHash` = [`inputs_hash`] and `policySetHash` = [`policy_set_hash`], the mandate policy
+/// set the countersignature and the signers' attestation name.
 pub fn verdict(facts: &Facts, input: &VerdictInput) -> Result<Verdict, VerdictError> {
     let attribution = attribute(facts).map_err(VerdictError::Attribution)?;
     if input.paypal_dispute_id.is_empty() {
@@ -101,6 +112,9 @@ pub fn verdict(facts: &Facts, input: &VerdictInput) -> Result<Verdict, VerdictEr
     match (FIELD_RULES.contains(&rule), input.field_id == NO_FIELD) {
         (true, true) => return Err(VerdictError::FieldRequired(rule)),
         (false, false) => return Err(VerdictError::FieldNotApplicable(rule)),
+        (true, false) if input.field_id >= 32 => {
+            return Err(VerdictError::FieldOutOfRange(input.field_id));
+        }
         _ => {}
     }
     Ok(Verdict {
@@ -114,7 +128,7 @@ pub fn verdict(facts: &Facts, input: &VerdictInput) -> Result<Verdict, VerdictEr
         fieldId: input.field_id,
         evidenceHash: input.evidence_hash,
         inputsHash: inputs_hash(facts),
-        policySetHash: attribution_policy_set_hash().into(),
+        policySetHash: policy_set_hash().into(),
         checkpointRoot: input.checkpoint_root,
         issuedAt: issued_at,
         deadline,

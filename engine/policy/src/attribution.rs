@@ -325,8 +325,9 @@ pub struct Attribution {
     pub liable: Liable,
 }
 
-/// Why a dispute could not be attributed. The proofs rule out all but `Cedar`; the evaluator
-/// checks anyway and fails closed.
+/// Why a dispute could not be attributed. The proofs rule out `Unattributed` and two parties;
+/// two rules of one party are ruled out by the precedence guards. The evaluator checks anyway
+/// and fails closed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AttributionError {
     /// Cedar rejected the request or reported an evaluation error.

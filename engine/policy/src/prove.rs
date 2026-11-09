@@ -120,8 +120,8 @@ pub struct ProofResult {
     /// solver produces one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub counterexample: Option<Value>,
-    /// A request the property is shown on, in the same form: an allowed one for `satisfiable`,
-    /// a denied one for `not_always_allows`.
+    /// A request the property is shown on, in the same form: an allowed one for `satisfiable`
+    /// and `reachable`, a denied one for `not_always_allows`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub witness: Option<Value>,
     /// Wall time of the check, symbolic compilation included. Not serialized, so the bundle is reproducible.

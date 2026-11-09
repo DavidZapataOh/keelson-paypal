@@ -3,7 +3,7 @@ use alloy_sol_types::SolStruct;
 use keelson_core::{Dst, domain, hash_object};
 use keelson_policy::{
     Attribution, Facts, Liable, NO_FIELD, Reason, VerdictError, VerdictInput, attribute,
-    attribution_policy_set_hash, dispute_id, inputs_hash, verdict,
+    attribution_policy_set_hash, dispute_id, inputs_hash, policy_set_hash, verdict,
 };
 
 /// The `VerdictVerifier` on Arbitrum Sepolia, whose `hashTypedData` gave the golden digest.
@@ -66,10 +66,20 @@ fn verdict_digest_matches_the_deployed_verifier() {
     assert_eq!(v.liable, 1);
     assert_eq!(v.fieldId, 9);
     assert_eq!(v.inputsHash, inputs_hash(&facts));
-    assert_eq!(v.policySetHash, B256::from(attribution_policy_set_hash()));
+    assert_eq!(v.policySetHash, B256::from(policy_set_hash()));
+    let attribution_rules = format!(
+        "sha256:{}",
+        alloy_primitives::hex::encode(attribution_policy_set_hash())
+    );
     assert_eq!(
         v.inputsHash,
-        B256::from(hash_object(Dst::Verdict, &serde_json::to_value(&facts).unwrap()).unwrap())
+        B256::from(
+            hash_object(
+                Dst::Verdict,
+                &serde_json::json!({ "attribution_policy_set_hash": attribution_rules, "facts": facts }),
+            )
+            .unwrap()
+        )
     );
 
     // The golden digest fixes these two to constants: VerdictVerifier.hashTypedData(structHash)
@@ -146,6 +156,10 @@ fn out_of_range_inputs_are_rejected() {
     assert_eq!(
         verdict(&facts, &expired).err(),
         Some(VerdictError::DeadlineNotAfterIssue)
+    );
+    assert_eq!(
+        verdict(&facts, &input(32)).err(),
+        Some(VerdictError::FieldOutOfRange(32))
     );
     let anonymous = VerdictInput {
         paypal_dispute_id: "",
