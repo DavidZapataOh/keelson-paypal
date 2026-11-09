@@ -3,7 +3,7 @@ import "./spans.ts";
 import { randomBytes } from "node:crypto";
 import { appendFileSync } from "node:fs";
 import { cartHash } from "@keelson/core";
-import { createDb, eq, events, mandates } from "@keelson/db";
+import { createDb, eq, events, mandates, purchases } from "@keelson/db";
 import { closeMandate } from "@keelson/mandate";
 import { pino } from "pino";
 import { ulid } from "ulid";
@@ -200,15 +200,18 @@ async function purchase(h: Hold, mode: Result["mode"], evidenceRoot: string): Pr
     body: JSON.stringify(body),
   });
   const out = (await res.json()) as Record<string, unknown>;
-  let state = (out.state as string | undefined) ?? "ERROR";
+  let state = (out.state as string | undefined) ?? (res.status === 202 ? "COUNTERSIGNED" : "ERROR");
   let failure: string | undefined;
   while (["COUNTERSIGNED", "LOGGED", "COVERED"].includes(state)) {
     if (Date.now() - started > TERMINAL_WAIT_MS) break;
     await sleep(50);
-    const view = await app.request(`/v1/purchases/${requestId}`, { headers: asAgent });
-    const v = (await view.json()) as { state: string; failure?: { step: string; reason: string } };
-    state = v.state;
-    if (v.failure) failure = `${v.failure.step}:${v.failure.reason}`;
+    // Read from the database: polling the API would spend the client's rate limit.
+    const [p] = await db
+      .select({ state: purchases.state, reason: purchases.failureReason })
+      .from(purchases)
+      .where(eq(purchases.id, requestId));
+    state = p?.state ?? state;
+    if (state === "FAILED" && p?.reason) failure = p.reason;
   }
   const ended = Date.now();
   await sleep(200);
