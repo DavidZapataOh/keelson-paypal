@@ -127,13 +127,14 @@ pub use client::{PayPalClient, PayPalError, observe, parse};
 
 #[cfg(feature = "tdx")]
 mod client {
-    use std::collections::HashMap;
+    use std::collections::{BTreeMap, HashMap};
     use std::fmt;
     use std::sync::Mutex;
     use std::time::{Duration, Instant};
 
     use serde::Deserialize;
     use time::OffsetDateTime;
+    use ulid::Ulid;
 
     use crate::wire::{Base64, PayPalObservation};
     use crate::{chain, engine::unix_ms};
@@ -343,6 +344,8 @@ mod client {
         status: String,
         amount: Amount,
         #[serde(default)]
+        invoice_id: String,
+        #[serde(default)]
         links: Vec<Link>,
     }
 
@@ -447,6 +450,7 @@ mod client {
 
         let mut captured: i64 = 0;
         let mut order_captured: i64 = 0;
+        let mut captured_by_request = BTreeMap::new();
         let captures = order
             .purchase_units
             .iter()
@@ -472,6 +476,12 @@ mod client {
                         .checked_add(amount)
                         .ok_or(PayPalError::Malformed("capture"))?;
                 }
+                if let Some(request) = invoice_request(&capture.invoice_id) {
+                    let sum: &mut i64 = captured_by_request.entry(request).or_default();
+                    *sum = sum
+                        .checked_add(amount)
+                        .ok_or(PayPalError::Malformed("capture"))?;
+                }
             }
         }
         let expires_at = OffsetDateTime::parse(
@@ -493,6 +503,13 @@ mod client {
             raw_authorization: Base64(raw_authorization),
             raw_order: Base64(raw_order),
             read_at_ms,
+            captured_by_request,
         })
+    }
+
+    /// The request id a capture's `invoice_id`, `KS1-<request id>-<seq>-<digest>`, names.
+    fn invoice_request(invoice_id: &str) -> Option<Ulid> {
+        let (id, _) = invoice_id.strip_prefix("KS1-")?.split_once('-')?;
+        Ulid::from_string(id).ok()
     }
 }

@@ -1,6 +1,6 @@
 //! The engine: registers mandates and countersigns carts.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::sync::Arc;
 
@@ -618,6 +618,10 @@ impl Engine {
             (None, Some(read)) => read.captured_minor.max(read.order_captured_minor).max(0),
             (None, None) => 0,
         };
+        let no_captures = BTreeMap::new();
+        let captured_by = paypal
+            .as_ref()
+            .map_or(&no_captures, |read| &read.captured_by_request);
         // An empty reading is leg A's without a PayPal read, which checks nothing.
         let live = chain_id == ARBITRUM_ONE;
         let denied = match (&context, observed) {
@@ -645,8 +649,8 @@ impl Engine {
             let budget_left = match &r.observation {
                 Some(o) => o.budget_left_minor,
                 // While warming up nothing above zero is allowed, and never more than is left.
-                None if warming_up => claim.left(budget_max, captured, now).min(0),
-                None => claim.left(budget_max, captured, now),
+                None if warming_up => claim.left(budget_max, captured, captured_by, now).min(0),
+                None => claim.left(budget_max, captured, captured_by, now),
             };
             let (trace, canon) = match &context {
                 Ok(_) if denied.is_some() => {
@@ -724,7 +728,7 @@ impl Engine {
                 && total > 0
                 && r.observation.is_none()
                 && !claim
-                    .reserve(budget_max, captured, total, now)
+                    .reserve(budget_max, captured, captured_by, total, now)
                     .map_err(|Replay| EngineError::Replay)?
             {
                 continue;

@@ -1125,6 +1125,38 @@ mod holds {
     }
 
     #[test]
+    fn a_captured_purchase_stops_counting_its_reservation() {
+        let (leg_a, issued, _) = setup();
+        let f = CartFixture::thirty();
+        for n in [1, 2] {
+            let (a, _) = countersign_both(
+                &leg_a,
+                &issued,
+                &f,
+                paypal_vector("mandate-hold"),
+                request_id(n),
+            );
+            assert_eq!(a.countersign.decision, ALLOW, "{:?}", errors(&a));
+        }
+        // The first purchase is captured: its $30 is spent once, not also reserved.
+        let first = request_id(1).to_string();
+        let captured = paypal_vector_with("mandate-hold-captured", |v| {
+            let capture = &mut v["order"]["purchase_units"][0]["payments"]["captures"][0];
+            let invoice = capture["invoice_id"].as_str().unwrap().replace(MID, &first);
+            capture["invoice_id"] = json!(invoice);
+        });
+        let (a, b) = countersign_both(&leg_a, &issued, &f, captured.clone(), request_id(3));
+        for c in [&a, &b] {
+            assert_eq!(c.countersign.decision, ALLOW, "{:?}", errors(c));
+        }
+        assert_eq!(a.observation.budget_left_minor, 4_000);
+        // Request 2 is still only reserved, and request 3 now is too.
+        let (a, _) = countersign_both(&leg_a, &issued, &f, captured, request_id(4));
+        assert_eq!(a.observation.budget_left_minor, 1_000);
+        assert_eq!(a.countersign.decision, DENY);
+    }
+
+    #[test]
     fn only_a_sandbox_hold_of_this_mandate_or_request_is_accepted() {
         let rid = request_id(PURCHASE).to_string();
         let digest = "SC4lPIQQS_7hUI1WoHbFiKBE6nmxEfU5sBAD1IV3YDI";

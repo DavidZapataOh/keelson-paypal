@@ -202,6 +202,10 @@ pub struct PayPalObservation {
     pub raw_order: Base64,
     /// The engine's clock when the reads finished, in Unix milliseconds.
     pub read_at_ms: i64,
+    /// The order's counted captures summed by the request id their `invoice_id` names
+    /// (`KS1-<request id>-…`). Leg A's own reading of `raw_order`; never serialized.
+    #[serde(skip)]
+    pub captured_by_request: BTreeMap<Ulid, i64>,
 }
 
 /// The facts the leg holding the KMS root (leg A) observed, which the other leg (leg B) signs

@@ -456,11 +456,18 @@ pub fn errors(c: &Countersigned) -> Vec<String> {
 /// Leg A's observation of the PayPal sandbox bodies recorded in `tests/vectors/paypal/<name>.json`.
 #[cfg(feature = "tdx")]
 pub fn paypal_vector(name: &str) -> PayPalObservation {
+    paypal_vector_with(name, |_| {})
+}
+
+/// [`paypal_vector`] with the recorded bodies changed by `edit` first.
+#[cfg(feature = "tdx")]
+pub fn paypal_vector_with(name: &str, edit: impl FnOnce(&mut Value)) -> PayPalObservation {
     let path = format!(
         "{}/tests/vectors/paypal/{name}.json",
         env!("CARGO_MANIFEST_DIR")
     );
-    let v: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    let mut v: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    edit(&mut v);
     keelson_tee::paypal::parse(
         v["authorization_id"].as_str().unwrap(),
         serde_json::to_vec(&v["authorization"]).unwrap(),
