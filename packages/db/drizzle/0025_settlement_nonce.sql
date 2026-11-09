@@ -1,0 +1,1 @@
+ALTER TABLE "merchant_settlement" ADD COLUMN "nonce" numeric(78, 0) DEFAULT '0' NOT NULL;

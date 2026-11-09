@@ -176,6 +176,13 @@
       "when": 1794254103462,
       "tag": "0024_settlement",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1794259310019,
+      "tag": "0025_settlement_nonce",
+      "breakpoints": true
     }
   ]
 }

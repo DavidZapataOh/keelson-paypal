@@ -2575,7 +2575,7 @@ components:
         - nonce
         - deadline
         - merchantSignature
-    SettlementPreference:
+    SignedSettlementPreference:
       type: object
       properties:
         rail:
@@ -2593,8 +2593,26 @@ components:
             - type: string
               pattern: ^[A-Z0-9]{13}$
           description: "The PayPal account paid: an email address or a PayPal account id."
+        nonce:
+          type: string
+          pattern: ^(0|[1-9]\d{0,77})$
+          description: Higher than the nonce of the merchant's last choice.
+        deadline:
+          type: string
+          pattern: ^(0|[1-9]\d{0,77})$
+          description: Unix seconds after which the signature is refused.
+        merchant_signature:
+          type: string
+          pattern: ^0x[0-9a-fA-F]{130}$
+          description: The merchant's EIP-712 `SettlementPreference(string
+            merchantId,string rail,string paypalReceiver,uint256 nonce,uint256
+            deadline)` under the bond vault's domain, by its settlement address;
+            `paypalReceiver` is empty for `pyusd`.
       required:
         - rail
+        - nonce
+        - deadline
+        - merchant_signature
     Tracking:
       type: object
       properties:
@@ -4673,7 +4691,8 @@ paths:
         - merchants
       summary: Choose how a merchant is paid when a dispute goes its way
       description: "Applies to verdicts signed afterwards: the rail decides the payee
-        the TEE legs sign into the `Verdict`."
+        the TEE legs sign into the `Verdict`. The merchant signs the choice, as
+        it signs its on-chain payout address."
       parameters:
         - schema:
             type: string
@@ -4687,16 +4706,46 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/SettlementPreference"
+              $ref: "#/components/schemas/SignedSettlementPreference"
       responses:
         "200":
           description: Stored
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SettlementPreference"
+                type: object
+                properties:
+                  rail:
+                    type: string
+                    enum:
+                      - pyusd
+                      - paypal
+                    description: "`pyusd`: slashes and warranties pay the merchant in PYUSD on
+                      chain. `paypal`: they pay Keelson's treasury, and Keelson
+                      sends the merchant a PayPal Payout in USD."
+                  paypal_receiver:
+                    anyOf:
+                      - type: string
+                        format: email
+                      - type: string
+                        pattern: ^[A-Z0-9]{13}$
+                    description: "The PayPal account paid: an email address or a PayPal account id."
+                required:
+                  - rail
+        "403":
+          description: The signature is not the merchant's
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "404":
           description: No such merchant
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: The nonce is not higher than the one of the merchant's last choice
           content:
             application/problem+json:
               schema:
