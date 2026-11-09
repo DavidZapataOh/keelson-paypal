@@ -161,3 +161,54 @@ Leg A accepts a per-purchase hold whenever its request id is the countersign's, 
 mandate, so `POST /v1/countersign` refuses an authorization that is the hold of another mandate
 or another request, and, for a per-purchase mandate, one that is not a hold Keelson created
 (`422 authorization-not-held`).
+
+## Purchase pipeline
+
+`POST /v1/countersign` accepts a cart only for an `ACTIVE` mandate that is not being revoked, and
+only against the authorization captures use now (the mandate's hold, or this request's own
+per-purchase hold). Every ALLOW then goes through one state machine, stored on its `purchases`
+row:
+
+```
+COUNTERSIGNED ──► LOGGED ──► COVERED ──► CAPTURED
+      └──────────────┴──────────┴──► FAILED  (nothing captured)
+```
+
+- **Log and coverage run in parallel.** The leaf (`@keelson/log` `leafFromCountersign`, with
+  `paypal_ref_commit` over a per-purchase salt, the order and the authorization) is appended to
+  the Alibi log; at the same time the operator signs the `Coverage` and the relayer sends
+  `KeelsonBondVault.lockCoverage` under the key `KeelsonBondVault.lockCoverage:<coverage id>`.
+  The coverage is fixed by the countersign (amount × 10,000 PYUSD units, a 100 bps premium,
+  `expiresAt = issuedAt + disputeWindow`), so every attempt sends the same calldata. `LOGGED` is
+  written when the log answers and `COVERED` once both have.
+- **Capture runs last, and only from `COVERED`,** within 600 s of the countersign's `issuedAt`
+  (below its 900 s lifetime), while the mandate is `ACTIVE`, not being revoked and has the amount
+  left. It captures exactly the countersigned amount with
+  `invoice_id = KS1-<purchase id>-<seq>-<base32(alibi digest)>` (the sequence number is taken once
+  per mandate) and `PayPal-Request-Id = hex(countersign_digest)[:36]`; `final_capture` is set
+  for a per-purchase hold and for the capture that spends the last of the budget, which ends the
+  mandate `EXHAUSTED`.
+- **Never twice.** A purchase driven before first looks for its capture on the order (by
+  `invoice_id`) and adopts it; PayPal answers a repeated `PayPal-Request-Id` with the same
+  capture; recording it (`CAPTURED`, budget reduced) is one conditional transaction, shared with
+  `reconcileCapture`, which applies a capture re-read from PayPal by its `invoice_id`.
+- **Durable without a queue.** A driver holds a 20 s lease on the row, renewed every 5 s; every
+  5 s the server drives the purchases whose lease lapsed, from what their row says. Every step is
+  idempotent, so a process killed at any point is resumed by another.
+- **Failures.** Timeouts, 5xx, a pending transaction and an unavailable log are retried until the
+  capture window closes; a log rejection, a vault revert, a PayPal refusal or a closed window ends
+  the purchase `FAILED` with `failure_reason = '<step>:<code>'` (`log:`, `cover:`, `capture:`).
+  A coverage locked for a purchase that then fails is released after its window.
+
+The countersign answers `200` with `state`, `logIndex`, `coverage` and `capture` (or `failure`),
+or `202` with `Location: /v1/purchases/{id}` when a step is still pending after 4.5 s.
+`GET /v1/purchases/{id}` returns the same view to the mandate's owner and to the client that
+asked for the countersign. Each step is published on their `purchase:<id>` channels of
+`GET /v1/events`: `purchase.countersigned`, `purchase.logged`, `purchase.covered`,
+`purchase.captured`, `purchase.failed`, `purchase.denied`.
+
+A DENY is logged too and stays `DENIED`. The ERC-8004 validation of a DENY is recorded with the
+operator's signature over its `ValidationRequest`, and coverages are released
+(`releaseCoverage`) once their window has passed. Keelson signs coverage only for the operator
+whose key it holds (`KEELSON_OPERATOR_KEY` with `DEMO_AGENT_ID`); purchases of any other operator
+end `FAILED` with `cover:operator-unavailable` before anything is sent.
