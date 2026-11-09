@@ -44,6 +44,7 @@ import {
   type CountersignExpectation,
   countersign2of2,
 } from "../tee/coordinator.ts";
+import { span } from "../tracing.ts";
 import { PurchaseProgress, progressOf } from "./purchases.ts";
 
 const Hex32 = z.string().regex(/^0x[0-9a-f]{64}$/);
@@ -701,20 +702,25 @@ export function registerCountersign(
     }
 
     try {
-      const out = await countersign2of2(
-        { db, kv, log, tee, verifyingContract: VERIFYING_CONTRACT },
-        {
-          request_id: ids.requestId,
-          closed_mandate: body.closedMandate,
-          sub: mandate.userId,
-          cart: body.cart,
-          unit: body.unit,
-          evidence: evidenceSources,
-          evidence_root: body.evidenceRoot as `0x${string}`,
-          authorization_id: body.authorizationId,
-        },
-        want,
-      );
+      const out = await span("purchase.COUNTERSIGNED", { "purchase.id": purchaseId }, async (s) => {
+        const out = await countersign2of2(
+          { db, kv, log, tee, verifyingContract: VERIFYING_CONTRACT },
+          {
+            request_id: ids.requestId,
+            closed_mandate: body.closedMandate,
+            sub: mandate.userId,
+            cart: body.cart,
+            unit: body.unit,
+            evidence: evidenceSources,
+            evidence_root: body.evidenceRoot as `0x${string}`,
+            authorization_id: body.authorizationId,
+          },
+          want,
+        );
+        s.setAttribute("countersign.mode", out.mode);
+        if (out.countersign.decision !== "1") s.updateName("purchase.DENIED");
+        return out;
+      });
       const allow = out.countersign.decision === "1";
       const patch = {
         countersignDigest: Buffer.from(hexToBytes(out.digest)),
