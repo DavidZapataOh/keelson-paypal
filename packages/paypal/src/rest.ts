@@ -6,7 +6,7 @@ export const REQUEST_TIMEOUT_MS = 15_000;
 
 export interface PayPalFetch {
   <T>(
-    method: "GET" | "POST" | "PATCH" | "DELETE",
+    method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
     path: string,
     init?: {
       body?: unknown | FormData;
@@ -20,7 +20,7 @@ export interface PayPalFetch {
 
 export function createRestClient(cfg: PayPalConfig, tokens: TokenCache): PayPalFetch {
   const call = async <T>(
-    method: "GET" | "POST" | "PATCH" | "DELETE",
+    method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
     path: string,
     init: {
       body?: unknown | FormData;

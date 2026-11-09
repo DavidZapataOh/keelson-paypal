@@ -4,7 +4,9 @@ import { createPayoutResponse, type PayoutBatch, payoutBatch } from "./schemas/p
 
 export interface PayoutItem {
   amount: Money;
+  /** An email address, or a PayPal account id with `recipientType: "PAYPAL_ID"`. */
   receiver: string;
+  recipientType?: "EMAIL" | "PAYPAL_ID";
   senderItemId: string;
   note?: string;
 }
@@ -17,9 +19,9 @@ export async function createPayout(
   const res = await f<unknown>("POST", "/v1/payments/payouts", {
     requestId: input.senderBatchId,
     body: {
-      sender_batch_header: { sender_batch_id: input.senderBatchId, recipient_type: "EMAIL" },
+      sender_batch_header: { sender_batch_id: input.senderBatchId },
       items: input.items.map((i) => ({
-        recipient_type: "EMAIL",
+        recipient_type: i.recipientType ?? "EMAIL",
         receiver: i.receiver,
         sender_item_id: i.senderItemId,
         amount: { currency: i.amount.currency, value: toPayPalValue(i.amount) },
