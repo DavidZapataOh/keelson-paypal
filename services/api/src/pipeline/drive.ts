@@ -172,6 +172,11 @@ export async function drivePurchase(deps: PipelineDeps, purchaseId: string): Pro
   }, HEARTBEAT_MS);
   heartbeat.unref();
   try {
+    // A purchase countersigned before its message was stored can be neither logged nor covered.
+    if (row.countersign === null) {
+      await fail(deps, purchaseId, row.state as (typeof DRIVEN)[number], "pipeline:no-countersign");
+      return (await viewOf(deps.db, purchaseId)) as PurchaseView;
+    }
     const cs = row.countersign as unknown as CountersignJson;
     const windowClosed = () => Date.now() / 1000 >= Number(cs.issuedAt) + CAPTURE_WINDOW_SEC;
     let state = row.state as (typeof DRIVEN)[number];
