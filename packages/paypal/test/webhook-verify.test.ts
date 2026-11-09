@@ -146,6 +146,24 @@ describe("CertStore", () => {
     expect(certs.fetches).toBe(0);
   });
 
+  it("does not fetch a cert URL again soon after it failed", async () => {
+    const certs = new CertStore("sandbox", new MapCache(), () =>
+      Promise.reject(new TypeError("fetch failed")),
+    );
+    expect(await codeOf(certs.leaf(CERT_URL, VALID_AT))).toBe("cert_fetch");
+    expect(await codeOf(certs.leaf(CERT_URL, VALID_AT))).toBe("cert_fetch");
+    expect(certs.fetches).toBe(1);
+  });
+
+  it("reads PayPal's certificate when Key Value is down", async () => {
+    const down: CertCache = {
+      get: () => Promise.reject(new Error("down")),
+      set: () => Promise.reject(new Error("down")),
+    };
+    const certs = new CertStore("sandbox", down, async () => new Response(CERT_PEM));
+    expect((await certs.leaf(CERT_URL, VALID_AT)).subject).toContain("paypal.com");
+  });
+
   it.runIf(process.env.KEELSON_LIVE === "1")(
     "fetches a certificate from PayPal once and validates it",
     async () => {

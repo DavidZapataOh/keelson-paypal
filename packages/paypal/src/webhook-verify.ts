@@ -58,6 +58,13 @@ const CERT_FETCH_TIMEOUT_MS = 3_000;
 const MAX_CERT_BYTES = 16 * 1024;
 /** A cached certificate is fetched again after a signature failure at most this often. */
 const REFRESH_INTERVAL_MS = 600_000;
+/** Downloads per process, so unsigned requests naming new cert URLs cannot make it fetch at will. */
+const MAX_FETCHES_IN_FLIGHT = 4;
+const MAX_FETCHES_PER_MINUTE = 30;
+/** A cert URL that failed is not fetched again for this long. */
+const FAILED_TTL_MS = 600_000;
+/** PayPal signs with one certificate at a time; a few cover rotations. */
+const MAX_CACHED = 32;
 
 const CERT_HOSTS: Record<PayPalEnv, { url: RegExp; san: string }> = {
   sandbox: {
@@ -99,6 +106,9 @@ export class CertStore {
   readonly #fetch: typeof fetch;
   readonly #memory = new Map<string, Cached>();
   readonly #pending = new Map<string, Promise<Cached>>();
+  readonly #failed = new Map<string, number>();
+  #recent: number[] = [];
+  #inFlight = 0;
   #fetches = 0;
 
   constructor(env: PayPalEnv, shared?: CertCache, fetchImpl: typeof fetch = fetch) {
@@ -148,16 +158,41 @@ export class CertStore {
 
   async #read(url: string, skipShared: boolean): Promise<Cached> {
     const key = `paypal:cert:${createHash("sha256").update(url).digest("hex")}`;
-    const shared = skipShared ? null : await this.#shared?.get(key);
+    // Key Value is a cache: when it is down, PayPal is asked instead.
+    const shared = skipShared ? null : await this.#shared?.get(key).catch(() => null);
     const pem = shared ?? (await this.#download(url));
     const cached: Cached = { chain: this.#chain(this.#parse(pem)), fetchedAt: Date.now() };
+    if (this.#memory.size >= MAX_CACHED)
+      this.#memory.delete(this.#memory.keys().next().value as string);
     this.#memory.set(url, cached);
     const ttl = Math.floor((cached.chain[0].validToDate.getTime() - Date.now()) / 1000);
-    if (!shared && ttl > 0) await this.#shared?.set(key, pem, ttl);
+    if (!shared && ttl > 0) await this.#shared?.set(key, pem, ttl).catch(() => undefined);
     return cached;
   }
 
   async #download(url: string): Promise<string> {
+    const now = Date.now();
+    if ((this.#failed.get(url) ?? 0) > now) {
+      throw new WebhookVerificationError("cert_fetch", "the cert URL failed recently");
+    }
+    this.#recent = this.#recent.filter((t) => t > now - 60_000);
+    if (this.#inFlight >= MAX_FETCHES_IN_FLIGHT || this.#recent.length >= MAX_FETCHES_PER_MINUTE) {
+      throw new WebhookVerificationError("cert_fetch", "too many certificate downloads");
+    }
+    this.#recent.push(now);
+    this.#inFlight++;
+    try {
+      return await this.#get(url);
+    } catch (err) {
+      if (this.#failed.size >= 1_000) this.#failed.clear();
+      this.#failed.set(url, Date.now() + FAILED_TTL_MS);
+      throw err;
+    } finally {
+      this.#inFlight--;
+    }
+  }
+
+  async #get(url: string): Promise<string> {
     this.#fetches++;
     let res: Response;
     try {
@@ -238,7 +273,7 @@ export async function verifyWebhookDelivery(input: {
   const { headers, body, webhookId, certs } = input;
   const now = input.now ?? new Date();
   if (headers.authAlgo !== ALGORITHM) {
-    throw new WebhookVerificationError("algorithm", `${headers.authAlgo} is not ${ALGORITHM}`);
+    throw new WebhookVerificationError("algorithm", `the algorithm is not ${ALGORITHM}`);
   }
   const sent = new Date(headers.transmissionTime);
   if (!RFC3339.test(headers.transmissionTime) || Number.isNaN(sent.getTime())) {
