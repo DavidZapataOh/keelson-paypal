@@ -138,6 +138,19 @@ async function capture(deps: ApplyDeps, captureId: string): Promise<Application>
 }
 
 /**
+ * A purchase already under a dispute, attributed or settled: an update of its dispute (an inquiry
+ * escalated to a claim, another request for evidence) is stored and evaluated again.
+ */
+const DISPUTED = new Set([
+  "DISPUTED",
+  "ATTRIBUTED",
+  "SLASHED",
+  "WARRANTY_PAID",
+  "DEFENDED",
+  "MERCHANT_LIABLE",
+]);
+
+/**
  * The one purchase a dispute is about: by its capture's `invoice_id`, else by the capture id. A
  * transaction whose capture id names another capture than the purchase recorded does not count,
  * and a dispute over several Keelson purchases is not joined to any of them.
@@ -212,7 +225,7 @@ export async function applyDispute(
         }
         return true;
       }
-      if (purchase.state === "DISPUTED" || purchase.state === "ATTRIBUTED") return true;
+      if (DISPUTED.has(purchase.state)) return true;
       const moved =
         (await transition(tx, "purchases", purchaseId, "CAPTURED", "DISPUTED")) ||
         (await transition(tx, "purchases", purchaseId, "DELIVERED", "DISPUTED"));
