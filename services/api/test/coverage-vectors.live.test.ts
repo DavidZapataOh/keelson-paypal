@@ -35,6 +35,7 @@ import {
   asUser,
   carts,
   headerPrincipal,
+  holdOnSandboxAuthorization,
   live,
   liveEnv,
   type Passkey,
@@ -136,6 +137,7 @@ describe.skipIf(!live)("coverage vectors (live legs, real passkeys)", { timeout:
       expect(created.status, JSON.stringify(stored)).toBe(201);
       mandateId = stored.id;
       openMandate = stored.openMandate;
+      await holdOnSandboxAuthorization(testDb, mandateId);
     } else {
       const issued = await tee.client.a.registerMandate({
         sub: signed.sub,

@@ -16,9 +16,10 @@ import { createLogger } from "./logger.ts";
 import { authenticate } from "./middleware/auth.ts";
 import { relayerFromEnv } from "./onchain/relayer.ts";
 import { startValidationSweeper } from "./onchain/validations.ts";
+import { operatorSigners } from "./operators/signer.ts";
 import { createPayPalDeps } from "./paypal.ts";
 import { closeServer } from "./shutdown.ts";
-import { startPurchaseSweeper } from "./sweeper.ts";
+import { startPipelineResumer, startPurchaseSweeper } from "./sweeper.ts";
 import { createTee } from "./tee/config.ts";
 import { engineSource } from "./tee/engine-source.ts";
 import { startSignerRefresh } from "./tee/signers.ts";
@@ -74,6 +75,10 @@ const chains = {
 };
 const relayer = await relayerFromEnv(env, db, log);
 const paypal = createPayPalDeps(env);
+const operators =
+  env.KEELSON_OPERATOR_KEY && env.DEMO_AGENT_ID
+    ? operatorSigners(env.DEMO_AGENT_ID, env.KEELSON_OPERATOR_KEY)
+    : undefined;
 const app = createApp({
   db,
   kv,
@@ -87,6 +92,7 @@ const app = createApp({
   stamps,
   chains,
   paypal,
+  ...(operators ? { operators } : {}),
   ...(relayer ? { relayer } : {}),
   ...(env.CHANNEL3_API_KEY ? { channel3: createChannel3(env.CHANNEL3_API_KEY) } : {}),
   ...(env.CHANNEL3_WEBHOOK_SECRET ? { channel3WebhookSecret: env.CHANNEL3_WEBHOOK_SECRET } : {}),
@@ -102,10 +108,30 @@ const app = createApp({
 
 const stopRefresh = tee ? startSignerRefresh({ db, log, tee }) : undefined;
 const stopSweeper = tee ? startPurchaseSweeper({ db, log }) : undefined;
+const stopResumer = startPipelineResumer({
+  db,
+  kv,
+  log,
+  paypal,
+  operators,
+  relayer,
+  stamps,
+  chain: chains[arbitrumSepolia.id],
+  ...(env.LOG_URL && env.LOG_WRITE_TOKEN
+    ? { tlog: { url: env.LOG_URL, token: env.LOG_WRITE_TOKEN } }
+    : {}),
+});
 const stopHolds = startHoldMaintenance({ db, kv, log, paypal });
 const stopReconciler = relayer?.startReconciler();
 const stopValidations = relayer
-  ? startValidationSweeper({ db, kv, log, relayer, chain: chains[arbitrumSepolia.id] })
+  ? startValidationSweeper({
+      db,
+      kv,
+      log,
+      relayer,
+      operators,
+      chain: chains[arbitrumSepolia.id],
+    })
   : undefined;
 
 const server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
@@ -120,6 +146,7 @@ process.once("SIGTERM", () => {
   }, FORCE_EXIT_MS).unref();
   stopRefresh?.();
   stopSweeper?.();
+  stopResumer();
   stopHolds();
   stopReconciler?.();
   stopValidations?.();

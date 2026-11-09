@@ -134,6 +134,23 @@ test("a duplicate invoice id violates the unique constraint", async () => {
   expect(code).toBe("23505");
 });
 
+test("a 31-byte paypal reference salt violates the length check", async () => {
+  const mandate = await newMandate();
+  const code = await sqlState(
+    db.insert(purchases).values({ ...purchaseValues(mandate.id), paypalRefSalt: randomBytes(31) }),
+  );
+  expect(code).toBe("23514");
+});
+
+test("two captures of one mandate with the same sequence number violate the unique constraint", async () => {
+  const mandate = await newMandate();
+  await db.insert(purchases).values({ ...purchaseValues(mandate.id), captureSeq: 1 });
+  const code = await sqlState(
+    db.insert(purchases).values({ ...purchaseValues(mandate.id), captureSeq: 1 }),
+  );
+  expect(code).toBe("23505");
+});
+
 test("remaining above max violates the mandate check", async () => {
   const code = await sqlState(newMandate({ remainingMinor: 10_001n }));
   expect(code).toBe("23514");

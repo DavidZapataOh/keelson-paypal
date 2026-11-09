@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import {
   type Cart,
@@ -30,6 +31,9 @@ import type { Context } from "hono";
 import { hexToBytes } from "viem";
 import type { Deps } from "../app.ts";
 import { requireClient } from "../middleware/auth.ts";
+import { drivePurchase, type PipelineDeps, viewOf } from "../pipeline/drive.ts";
+import { publishPurchase } from "../pipeline/events.ts";
+import { logStep } from "../pipeline/log-step.ts";
 import { principalKey } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 import { LegError } from "../tee/client.ts";
@@ -39,6 +43,7 @@ import {
   type CountersignExpectation,
   countersign2of2,
 } from "../tee/coordinator.ts";
+import { PurchaseProgress, progressOf } from "./purchases.ts";
 
 const Hex32 = z.string().regex(/^0x[0-9a-f]{64}$/);
 const Hex = (bytes: number) => z.string().regex(new RegExp(`^0x[0-9a-f]{${bytes * 2}}$`));
@@ -128,6 +133,7 @@ const Result = z
     trace: z
       .unknown()
       .openapi({ description: "The `keelson.eval/1` trace both legs signed over." }),
+    ...PurchaseProgress.shape,
   })
   .openapi("Countersigned");
 
@@ -153,6 +159,12 @@ const route = createRoute({
           description: "`degraded` when only one TEE signed; the same as `mode` in the body.",
         }),
       }),
+      content: { "application/json": { schema: Result } },
+    },
+    202: {
+      description:
+        "Countersigned, and a step of the purchase is still pending; `Location` is the purchase, which finishes on its own",
+      headers: z.object({ Location: z.string() }),
       content: { "application/json": { schema: Result } },
     },
     401: { description: "A leg refused the agent's authority", content: problemContent },
@@ -182,7 +194,7 @@ const route = createRoute({
 
 const RATE_PER_MANDATE = 60;
 const RATE_WINDOW_SEC = 60;
-const USABLE = new Set(["SIGNED", "HOLD_PENDING", "ACTIVE"]);
+const PENDING = new Set(["COUNTERSIGNED", "LOGGED", "COVERED"]);
 /** Failures that say nothing about the request, so the same request id may be driven again. */
 const RETRYABLE = new Set(["tee-unavailable", "paypal-unavailable", "stale"]);
 
@@ -238,6 +250,7 @@ async function redrive(
   want: CountersignExpectation,
   cart: { merchant: string; currency: string },
   evidenceRoot: Buffer,
+  hold: { orderId: string; authorizationId: string },
 ): Promise<boolean> {
   const [row] = await db.select().from(purchases).where(eq(purchases.id, id));
   if (!row) return false;
@@ -253,7 +266,12 @@ async function redrive(
   ) {
     return false;
   }
-  return transition(db, "purchases", id, "FAILED", "EVALUATING", { failureReason: null });
+  // The hold may have been reauthorized since; the countersign reads the current authorization.
+  return transition(db, "purchases", id, "FAILED", "EVALUATING", {
+    failureReason: null,
+    paypalOrderId: hold.orderId,
+    paypalAuthorizationId: hold.authorizationId,
+  });
 }
 
 /** The cart hash of the `api.cart` item stored with the evidence, or `null` if it has none. */
@@ -331,11 +349,18 @@ function storedComparison(document: unknown): Channel3Comparison {
   };
 }
 
+/** How long a countersign answer waits for the purchase to be logged, covered and captured. */
+const INLINE_BUDGET_MS = 4_500;
+
 export function registerCountersign(
   app: OpenAPIHono,
-  deps: Pick<Deps, "db" | "kv" | "log" | "tee">,
+  deps: Pick<
+    Deps,
+    "db" | "kv" | "log" | "tee" | "tlog" | "stamps" | "relayer" | "operators" | "chains" | "paypal"
+  >,
 ): void {
   const { db, kv, log, tee } = deps;
+  const pipeline: PipelineDeps = { ...deps, chain: deps.chains?.[421614] };
 
   app.openapi(route, async (c) => {
     const body = c.req.valid("json");
@@ -387,8 +412,9 @@ export function registerCountersign(
       where: (row, { eq }) => eq(row.id, ids.mid),
     });
     if (!mandate) return problem(c, 404, "not-found", "Not found");
+    // A countersign is only worth something against a live hold.
     if (
-      !USABLE.has(mandate.state) ||
+      mandate.state !== "ACTIVE" ||
       mandate.revokeRequestedAt !== null ||
       !mandate.openMandate ||
       !mandate.mandateHash
@@ -404,9 +430,10 @@ export function registerCountersign(
 
     // Leg A accepts a per-purchase hold for whatever mandate its request id is countersigned
     // under, so the hold must be this mandate's, this request's and authorized. A mandate that
-    // holds its budget countersigns only on that hold once it has one.
+    // holds its budget countersigns only on the authorization captures use now.
     let held: typeof purchaseHolds.$inferSelect | undefined;
     let holdsAuthorization: boolean;
+    let orderId: string | null;
     if (mandate.holdMode === "per_purchase") {
       [held] = await db
         .select()
@@ -416,18 +443,12 @@ export function registerCountersign(
         held?.mandateId === mandate.id &&
         held.state === "AUTHORIZED" &&
         held.paypalAuthorizationId === body.authorizationId;
+      orderId = held?.paypalOrderId ?? null;
     } else {
-      const stored = [mandate.paypalAuthorizationId, mandate.paypalParentAuthorizationId].filter(
-        (id) => id !== null,
-      );
-      const [cartHold] = await db
-        .select({ requestId: purchaseHolds.requestId })
-        .from(purchaseHolds)
-        .where(eq(purchaseHolds.paypalAuthorizationId, body.authorizationId));
-      holdsAuthorization =
-        cartHold === undefined && (stored.length === 0 || stored.includes(body.authorizationId));
+      holdsAuthorization = mandate.paypalAuthorizationId === body.authorizationId;
+      orderId = mandate.paypalOrderId;
     }
-    if (!holdsAuthorization) {
+    if (!holdsAuthorization || orderId === null) {
       return problem(
         c,
         422,
@@ -628,6 +649,10 @@ export function registerCountersign(
         amountMinor: total,
         cartHash: Buffer.from(want.cartHash.slice(2), "hex"),
         evidenceRoot,
+        paypalOrderId: orderId,
+        paypalAuthorizationId: body.authorizationId,
+        paypalRefSalt: randomBytes(32),
+        ...(c.var.principal?.kind === "client" ? { clientId: c.var.principal.subject } : {}),
       })
       .onConflictDoNothing({ target: purchases.id })
       .returning({ id: purchases.id })
@@ -641,7 +666,10 @@ export function registerCountersign(
     const driven =
       inserted.length > 0
         ? await transition(db, "purchases", purchaseId, "PROPOSED", "EVALUATING")
-        : await redrive(db, purchaseId, mandate.id, want, body.cart, evidenceRoot);
+        : await redrive(db, purchaseId, mandate.id, want, body.cart, evidenceRoot, {
+            orderId,
+            authorizationId: body.authorizationId,
+          });
     if (!driven) {
       return problem(
         c,
@@ -693,6 +721,7 @@ export function registerCountersign(
         decision: Number(out.countersign.decision),
         failedFieldsMask: Number(out.countersign.failedFieldsMask),
         countersignMode: out.mode,
+        evalTrace: out.trace,
         failureReason: null,
       };
       await transition(
@@ -703,7 +732,23 @@ export function registerCountersign(
         allow ? "COUNTERSIGNED" : "DENIED",
         patch,
       );
+      await publishPurchase(deps, purchaseId, {
+        type: allow ? "purchase.countersigned" : "purchase.denied",
+        mode: out.mode,
+        digest: out.digest,
+      });
+      const driving = allow
+        ? drivePurchase(pipeline, purchaseId)
+        : logStep(pipeline, purchaseId).then(async () => viewOf(db, purchaseId));
+      driving.catch((err: unknown) => log.error({ err, purchaseId }, "purchase not driven"));
+      const view =
+        (await Promise.race([
+          driving,
+          new Promise<undefined>((r) => setTimeout(r, INLINE_BUDGET_MS)),
+        ]).catch(() => undefined)) ?? (await viewOf(db, purchaseId));
+      const pending = view === undefined || PENDING.has(view.state);
       c.header("Keelson-Countersign-Mode", out.mode);
+      if (pending) c.header("Location", `/v1/purchases/${purchaseId}`);
       return c.json(
         {
           purchaseId,
@@ -714,8 +759,9 @@ export function registerCountersign(
           signatures: out.signatures,
           signers: out.signers,
           trace: out.trace as Record<string, unknown>,
+          ...progressOf(view),
         },
-        200,
+        pending ? 202 : 200,
       );
     } catch (err) {
       if (err instanceof CoordinatorError) {

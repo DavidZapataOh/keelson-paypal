@@ -1093,6 +1093,54 @@ components:
             - nitro
         trace:
           description: The `keelson.eval/1` trace both legs signed over.
+        state:
+          type: string
+          description: "`CAPTURED` once logged, covered and captured; `FAILED` with
+            `failure` when a step refused; `COUNTERSIGNED`, `LOGGED` or
+            `COVERED` while a step is pending; `DENIED` for a DENY."
+        logIndex:
+          type: string
+          description: The leaf's index in the Alibi log.
+        coverage:
+          type: object
+          properties:
+            chainId:
+              type: integer
+            txHash:
+              type:
+                - string
+                - "null"
+          required:
+            - chainId
+            - txHash
+          description: The `lockCoverage` transaction of the operator's bond.
+        capture:
+          type: object
+          properties:
+            id:
+              type: string
+            invoiceId:
+              type: string
+            status:
+              type:
+                - string
+                - "null"
+          required:
+            - id
+            - invoiceId
+            - status
+          description: The PayPal capture of the countersigned amount.
+        failure:
+          type: object
+          properties:
+            step:
+              type: string
+            reason:
+              type: string
+          required:
+            - step
+            - reason
+          description: The step that failed and why; nothing was captured.
       required:
         - purchaseId
         - mode
@@ -1201,6 +1249,82 @@ components:
         - lines
         - return_days
         - returns_free
+    Purchase:
+      type: object
+      properties:
+        id:
+          type: string
+        mandateId:
+          type: string
+        mode:
+          type:
+            - string
+            - "null"
+          enum:
+            - 2of2
+            - degraded
+            - null
+        amount:
+          type: object
+          properties:
+            currency:
+              type: string
+            minor:
+              type: string
+          required:
+            - currency
+            - minor
+        state:
+          type: string
+        logIndex:
+          type: string
+          description: The leaf's index in the Alibi log.
+        coverage:
+          type: object
+          properties:
+            chainId:
+              type: integer
+            txHash:
+              type:
+                - string
+                - "null"
+          required:
+            - chainId
+            - txHash
+          description: The `lockCoverage` transaction of the operator's bond.
+        capture:
+          type: object
+          properties:
+            id:
+              type: string
+            invoiceId:
+              type: string
+            status:
+              type:
+                - string
+                - "null"
+          required:
+            - id
+            - invoiceId
+            - status
+          description: The PayPal capture of the countersigned amount.
+        failure:
+          type: object
+          properties:
+            step:
+              type: string
+            reason:
+              type: string
+          required:
+            - step
+            - reason
+          description: The step that failed and why; nothing was captured.
+      required:
+        - id
+        - mandateId
+        - mode
+        - amount
+        - state
     EvidenceUpload:
       type: object
       properties:
@@ -2865,6 +2989,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Countersigned"
+        "202":
+          description: Countersigned, and a step of the purchase is still pending;
+            `Location` is the purchase, which finishes on its own
+          headers:
+            Location:
+              schema:
+                type: string
+              required: true
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Countersigned"
         "401":
           description: A leg refused the agent's authority
           content:
@@ -2912,6 +3048,34 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "503":
           description: A leg needed to sign, or PayPal, is unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/purchases/{id}:
+    get:
+      tags:
+        - purchases
+      summary: A purchase
+      description: "The purchase's state: its log index, its coverage and its capture
+        once each is recorded. Readable by the mandate's owner and by the client
+        that asked for the countersign."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^[0-7][0-9A-HJKMNP-TV-Z]{25}$
+          required: true
+          name: id
+          in: path
+      responses:
+        "200":
+          description: The purchase
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Purchase"
+        "404":
+          description: No such purchase, or not the caller's
           content:
             application/problem+json:
               schema:

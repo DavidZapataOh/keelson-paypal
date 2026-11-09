@@ -6,7 +6,7 @@ import { type AddressInfo, connect, createServer as createTcpServer, type Server
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Cart, CURRENCIES, type CurrencyCode, cartHash, toHex } from "@keelson/core";
-import { type Db, operators, passkey as passkeyTable, user } from "@keelson/db";
+import { type Db, eq, mandates, operators, passkey as passkeyTable, user } from "@keelson/db";
 import {
   closeMandate,
   type Mandate,
@@ -460,10 +460,35 @@ function authorizationPayee(): Promise<string> {
           headers: { authorization: `Bearer ${token.access_token}` },
         },
       )
-    ).json()) as { payee: { merchant_id: string } };
+    ).json()) as {
+      payee: { merchant_id: string };
+      supplementary_data?: { related_ids?: { order_id?: string } };
+    };
+    sandboxOrder = auth.supplementary_data?.related_ids?.order_id;
     return auth.payee.merchant_id;
   })();
   return payee;
+}
+
+let sandboxOrder: string | undefined;
+
+/**
+ * Puts a signed mandate on the sandbox's standing authorization, for suites that test what
+ * happens after the hold and not the hold itself (the hold suites create and approve real ones).
+ */
+export async function holdOnSandboxAuthorization(db: Db, mandateId: string): Promise<string> {
+  await authorizationPayee();
+  const authorizationId = process.env.PAYPAL_AUTHORIZATION_CREATED as string;
+  await db
+    .update(mandates)
+    .set({
+      state: "ACTIVE",
+      paypalOrderId: sandboxOrder ?? null,
+      paypalAuthorizationId: authorizationId,
+      paypalParentAuthorizationId: authorizationId,
+    })
+    .where(eq(mandates.id, mandateId));
+  return authorizationId;
 }
 
 export interface Agent {
