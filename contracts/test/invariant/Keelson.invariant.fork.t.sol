@@ -2,6 +2,7 @@
 pragma solidity 0.8.38;
 
 import {CoverageVector, Vector} from "../../script/CoverageVector.sol";
+import {IVerdictVerifier} from "../../src/interfaces/IVerdictVerifier.sol";
 import {SlashBase} from "../utils/SlashBase.sol";
 import {KeelsonHandler} from "./KeelsonHandler.sol";
 import {MedusaFork} from "./MedusaKeelson.sol";
@@ -235,14 +236,9 @@ contract KeelsonInvariantForkTest is SlashBase, Properties {
         assertEq(MedusaFork.vaultArgs(), json.readBytes(".constructorArgs.KeelsonBondVault"), "registry vault args");
         assertEq(MedusaFork.reserveArgs(), json.readBytes(".constructorArgs.KeelsonReserve"), "registry reserve args");
 
-        string memory m = vm.readFile(string.concat(vm.projectRoot(), "/../engine/tee/measurements.json"));
-        assertEq(
-            MedusaFork.TDX_MEASUREMENT, vm.parseBytes32(string.concat("0x", vm.split(m.readString(".tdx.id"), ":")[1]))
-        );
-        assertEq(
-            MedusaFork.NITRO_MEASUREMENT,
-            vm.parseBytes32(string.concat("0x", vm.split(m.readString(".nitro.id"), ":")[1]))
-        );
+        IVerdictVerifier vv = IVerdictVerifier(MedusaFork.VERIFIER);
+        assertTrue(vv.allowedMeasurement(MedusaFork.TDX_MEASUREMENT), "tdx measurement allowed at the fork");
+        assertTrue(vv.allowedMeasurement(MedusaFork.NITRO_MEASUREMENT), "nitro measurement allowed at the fork");
 
         string[3] memory names = [WEBAUTHN, PAYMENT, DEGRADED];
         for (uint256 i; i < 3; ++i) {

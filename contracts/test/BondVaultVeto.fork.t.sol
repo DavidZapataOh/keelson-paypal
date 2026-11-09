@@ -4,6 +4,7 @@ pragma solidity 0.8.38;
 import {Vector} from "../script/CoverageVector.sol";
 import {IKeelsonBondVault} from "../src/interfaces/IKeelsonBondVault.sol";
 import {KeelsonTypes} from "../src/libraries/KeelsonTypes.sol";
+import {GasBudget} from "./utils/GasBudget.sol";
 import {SlashBase} from "./utils/SlashBase.sol";
 import {IAccessManaged} from "@openzeppelin/contracts/access/manager/IAccessManaged.sol";
 import {RateLimiter} from "@openzeppelin/contracts/utils/RateLimiter.sol";
@@ -48,9 +49,9 @@ contract BondVaultVetoForkTest is SlashBase {
             _digest(verdict)
         );
         vault.slash(verdict, treeSize, sigs);
-        emit log_named_uint(
-            "slash queued execution", _executionGas(abi.encodeCall(vault.slash, (verdict, treeSize, sigs)))
-        );
+        uint256 gSlashQueued = _executionGas(abi.encodeCall(vault.slash, (verdict, treeSize, sigs)));
+        emit log_named_uint("slash queued execution", gSlashQueued);
+        GasBudget.check("slash_queued", gSlashQueued);
     }
 
     function test_slash_aboveCapQueues() public {
@@ -80,9 +81,9 @@ contract BondVaultVetoForkTest is SlashBase {
         );
         vm.prank(makeAddr("anyone"));
         vault.executeSlash(verdict.disputeId);
-        emit log_named_uint(
-            "executeSlash execution", _executionGas(abi.encodeCall(vault.executeSlash, (verdict.disputeId)))
-        );
+        uint256 gExecuteslash = _executionGas(abi.encodeCall(vault.executeSlash, (verdict.disputeId)));
+        emit log_named_uint("executeSlash execution", gExecuteslash);
+        GasBudget.check("executeSlash", gExecuteslash);
         assertEq(pyusd.balanceOf(merchant), AMOUNT);
         assertEq(vault.pendingSlashes(agentId), 0);
         assertEq(vault.coverages(v.coverage.coverageId).pendingSlashes, 0);
@@ -135,10 +136,9 @@ contract BondVaultVetoForkTest is SlashBase {
         emit IKeelsonBondVault.SlashVetoed(verdict.disputeId, "compromised leg");
         vm.prank(guardian);
         vault.vetoSlash(verdict.disputeId, "compromised leg");
-        emit log_named_uint(
-            "vetoSlash execution",
-            _executionGas(abi.encodeCall(vault.vetoSlash, (verdict.disputeId, "compromised leg")))
-        );
+        uint256 gVetoslash = _executionGas(abi.encodeCall(vault.vetoSlash, (verdict.disputeId, "compromised leg")));
+        emit log_named_uint("vetoSlash execution", gVetoslash);
+        GasBudget.check("vetoSlash", gVetoslash);
         assertEq(vault.slashed(v.coverage.coverageId), 0);
         assertEq(uint8(vault.queuedSlashes(verdict.disputeId).status), uint8(IKeelsonBondVault.SlashStatus.Vetoed));
         assertEq(vault.pendingSlashes(agentId), 0);

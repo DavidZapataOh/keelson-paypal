@@ -3,6 +3,7 @@ pragma solidity 0.8.38;
 
 import {IKeelsonBondVault} from "../src/interfaces/IKeelsonBondVault.sol";
 import {KeelsonTypes} from "../src/libraries/KeelsonTypes.sol";
+import {GasBudget} from "./utils/GasBudget.sol";
 import {SlashBase} from "./utils/SlashBase.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 
@@ -88,10 +89,10 @@ contract BondVaultBatchSlashForkTest is SlashBase {
             _digest(verdict)
         );
         vault.slashBatched(verdict, treeSize, sigs, batchId, entry, proof);
-        emit log_named_uint(
-            "slashBatched execution, 100-leaf batch",
-            _executionGas(abi.encodeCall(vault.slashBatched, (verdict, treeSize, sigs, batchId, entry, proof)))
-        );
+        uint256 gSlashbatched100 =
+            _executionGas(abi.encodeCall(vault.slashBatched, (verdict, treeSize, sigs, batchId, entry, proof)));
+        emit log_named_uint("slashBatched execution, 100-leaf batch", gSlashbatched100);
+        GasBudget.check("slashBatched_100", gSlashbatched100);
         assertEq(pyusd.balanceOf(merchant), entry.amount);
         assertEq(vault.batchSlashed(batchId), entry.amount);
         assertEq(vault.slashed(entry.coverageId), entry.amount);

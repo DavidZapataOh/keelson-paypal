@@ -6,6 +6,7 @@ import {KeelsonReserve} from "../src/KeelsonReserve.sol";
 import {IKeelsonBondVault} from "../src/interfaces/IKeelsonBondVault.sol";
 import {IKeelsonReserve} from "../src/interfaces/IKeelsonReserve.sol";
 import {KeelsonTypes} from "../src/libraries/KeelsonTypes.sol";
+import {GasBudget} from "./utils/GasBudget.sol";
 import {SlashBase} from "./utils/SlashBase.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -63,9 +64,9 @@ contract ReserveForkTest is SlashBase {
         emit IKeelsonReserve.WarrantyPaid(verdict.disputeId, verdict.coverageId, merchant, AMOUNT, _digest(verdict));
         vm.prank(makeAddr("relayer"));
         reserve.payWarranty(verdict, treeSize, sigs);
-        emit log_named_uint(
-            "payWarranty execution", _executionGas(abi.encodeCall(reserve.payWarranty, (verdict, treeSize, sigs)))
-        );
+        uint256 gPaywarranty = _executionGas(abi.encodeCall(reserve.payWarranty, (verdict, treeSize, sigs)));
+        emit log_named_uint("payWarranty execution", gPaywarranty);
+        GasBudget.check("payWarranty", gPaywarranty);
         assertEq(pyusd.balanceOf(merchant), AMOUNT);
         assertEq(reserve.totalAssets(), assetsBefore - AMOUNT);
         assertTrue(reserve.settled(verdict.disputeId));

@@ -4,6 +4,7 @@ pragma solidity 0.8.38;
 import {Vector} from "../script/CoverageVector.sol";
 import {IKeelsonBondVault} from "../src/interfaces/IKeelsonBondVault.sol";
 import {KeelsonTypes} from "../src/libraries/KeelsonTypes.sol";
+import {GasBudget} from "./utils/GasBudget.sol";
 import {SlashBase} from "./utils/SlashBase.sol";
 
 /// @notice Instant slashes against coverages locked from the live vectors, on a fork of Arbitrum Sepolia with real
@@ -34,6 +35,7 @@ contract BondVaultSlashForkTest is SlashBase {
         vault.slash(verdict, treeSize, sigs);
         uint256 gas = _executionGas(abi.encodeCall(vault.slash, (verdict, treeSize, sigs)));
         emit log_named_uint("slash instant execution", gas);
+        GasBudget.check("slash_instant_first", gas);
 
         assertEq(pyusd.balanceOf(merchant), AMOUNT);
         assertEq(_bond().locked, lockedBefore - AMOUNT);
@@ -42,6 +44,25 @@ contract BondVaultSlashForkTest is SlashBase {
         assertEq(vault.slashed(v.coverage.coverageId), AMOUNT);
         assertEq(vault.rateLimitAvailable(), 1_000e6 - AMOUNT);
         _assertBacked();
+    }
+
+    /// @dev A later slash of the same agent and merchant: the vault's counters and the merchant's balance are warm.
+    function test_slash_instantSteadyState() public {
+        _fundFromHolder(address(this), 100e6);
+        (address funder,) = _funder(0);
+        assertTrue(pyusd.transfer(funder, 100e6));
+        _deposit(0, 100e6, keccak256("second coverage"));
+        Vector memory first = _locked(WEBAUTHN);
+        Vector memory v = _locked(PAYMENT);
+        _slash(_amber(first, AMOUNT));
+        KeelsonTypes.Verdict memory verdict = _amber(v, AMOUNT);
+        bytes memory sigs = _sign2of2(verdict);
+        vm.prank(makeAddr("relayer"));
+        vault.slash(verdict, treeSize, sigs);
+        uint256 gas = _executionGas(abi.encodeCall(vault.slash, (verdict, treeSize, sigs)));
+        emit log_named_uint("slash instant execution, later slash", gas);
+        GasBudget.check("slash_instant_later", gas);
+        assertEq(_bond().slashCount, 2);
     }
 
     function test_slash_paysPayoutAddress() public {
@@ -189,9 +210,9 @@ contract BondVaultSlashForkTest is SlashBase {
         emit IKeelsonBondVault.Claimed(merchant, fresh, AMOUNT);
         vm.prank(makeAddr("relayer"));
         vault.claim(merchant, fresh, 0, deadline, sig);
-        emit log_named_uint(
-            "claim (signed) execution", _executionGas(abi.encodeCall(vault.claim, (merchant, fresh, 0, deadline, sig)))
-        );
+        uint256 gClaimSigned = _executionGas(abi.encodeCall(vault.claim, (merchant, fresh, 0, deadline, sig)));
+        emit log_named_uint("claim (signed) execution", gClaimSigned);
+        GasBudget.check("claim_signed", gClaimSigned);
         assertEq(pyusd.balanceOf(fresh), AMOUNT);
         assertEq(vault.claimable(merchant), 0);
 

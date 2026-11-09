@@ -73,7 +73,7 @@ func TestAppendsCountersignedLeaves(t *testing.T) {
 	allow, deny, degraded := vectors["allow"], vectors["deny"], vectors["degraded"]
 	db, dbURL := testDB(t)
 	keys := newTestKeys(t)
-	l := startLog(t, keys, t.TempDir(), db, dbURL)
+	l := startLog(t, keys, logDir(t), db, dbURL)
 	activate(t, db, teeTDX, *allow.Signers["tdx"], *allow.Measurements["tdx"])
 	activate(t, db, teeNitro, *allow.Signers["nitro"], *allow.Measurements["nitro"])
 	purchase(t, db, alibiID(t, allow.Leaf), ptr("2of2"))
@@ -236,7 +236,7 @@ func TestTheWritePathIsPrivate(t *testing.T) {
 	vectors, _ := loadVectors(t)
 	allow := vectors["allow"]
 	db, dbURL := testDB(t)
-	l := startLog(t, newTestKeys(t), t.TempDir(), db, dbURL)
+	l := startLog(t, newTestKeys(t), logDir(t), db, dbURL)
 
 	body, _ := json.Marshal(map[string]any{"leaf": allow.Leaf, "countersign": allow.Countersign})
 	for _, path := range []string{"/" + sandbox + "/add", "/alibi-live/2026-1/add", "/add"} {
@@ -273,7 +273,7 @@ func TestPublicCacheHeaders(t *testing.T) {
 	vectors, _ := loadVectors(t)
 	allow := vectors["allow"]
 	db, dbURL := testDB(t)
-	l := startLog(t, newTestKeys(t), t.TempDir(), db, dbURL)
+	l := startLog(t, newTestKeys(t), logDir(t), db, dbURL)
 	activate(t, db, teeTDX, *allow.Signers["tdx"], *allow.Measurements["tdx"])
 	activate(t, db, teeNitro, *allow.Signers["nitro"], *allow.Measurements["nitro"])
 	purchase(t, db, alibiID(t, allow.Leaf), ptr("2of2"))
@@ -343,7 +343,7 @@ func TestOneLeafPerPurchase(t *testing.T) {
 	allow := vectors["allow"]
 	db, dbURL := testDB(t)
 	keys := newTestKeys(t)
-	l := startLog(t, keys, t.TempDir(), db, dbURL)
+	l := startLog(t, keys, logDir(t), db, dbURL)
 	activate(t, db, teeTDX, *allow.Signers["tdx"], *allow.Measurements["tdx"])
 	activate(t, db, teeNitro, *allow.Signers["nitro"], *allow.Measurements["nitro"])
 	purchase(t, db, alibiID(t, allow.Leaf), ptr("2of2"))
@@ -374,7 +374,7 @@ func TestAnAbandonedAppendKeepsItsClaim(t *testing.T) {
 	allow := vectors["allow"]
 	db, dbURL := testDB(t)
 	keys := newTestKeys(t)
-	l := startLog(t, keys, t.TempDir(), db, dbURL)
+	l := startLog(t, keys, logDir(t), db, dbURL)
 	activate(t, db, teeTDX, *allow.Signers["tdx"], *allow.Measurements["tdx"])
 	activate(t, db, teeNitro, *allow.Signers["nitro"], *allow.Measurements["nitro"])
 	purchase(t, db, alibiID(t, allow.Leaf), ptr("2of2"))

@@ -366,3 +366,28 @@ func rewrite(t testing.TB, leaf []byte, change func(m map[string]any)) []byte {
 	}
 	return append([]byte(alibilog.Prefix), body...)
 }
+
+// logRoot holds the data directories of in-process logs. Tessera's appender writes checkpoints from goroutines that
+// cancelling its context stops but does not join, so a test's own TempDir cleanup could race a last write; the root
+// is removed once every test has finished.
+var logRoot string
+
+func TestMain(m *testing.M) {
+	var err error
+	if logRoot, err = os.MkdirTemp("", "keelson-log-test-"); err != nil {
+		panic(err)
+	}
+	code := m.Run()
+	_ = os.RemoveAll(logRoot)
+	os.Exit(code)
+}
+
+// logDir is a fresh data directory for an in-process log.
+func logDir(t testing.TB) string {
+	t.Helper()
+	dir, err := os.MkdirTemp(logRoot, "log-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}

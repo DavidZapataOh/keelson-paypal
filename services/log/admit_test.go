@@ -16,7 +16,7 @@ func TestAdmissionRefusesWhatTheTEEsDidNotSign(t *testing.T) {
 	vectors, negatives := loadVectors(t)
 	allow, deny, degraded := vectors["allow"], vectors["deny"], vectors["degraded"]
 	db, dbURL := testDB(t)
-	l := startLog(t, newTestKeys(t), t.TempDir(), db, dbURL)
+	l := startLog(t, newTestKeys(t), logDir(t), db, dbURL)
 
 	twoOfTwo := func() {
 		activate(t, db, teeTDX, *allow.Signers["tdx"], *allow.Measurements["tdx"])
@@ -174,7 +174,7 @@ func TestAdmissionJudgesTheSignerAsOfTheCountersign(t *testing.T) {
 	vectors, _ := loadVectors(t)
 	allow := vectors["allow"]
 	db, dbURL := testDB(t)
-	l := startLog(t, newTestKeys(t), t.TempDir(), db, dbURL)
+	l := startLog(t, newTestKeys(t), logDir(t), db, dbURL)
 	activate(t, db, teeTDX, *allow.Signers["tdx"], *allow.Measurements["tdx"])
 	activate(t, db, teeNitro, *allow.Signers["nitro"], *allow.Measurements["nitro"])
 	purchase(t, db, alibiID(t, allow.Leaf), ptr("2of2"))

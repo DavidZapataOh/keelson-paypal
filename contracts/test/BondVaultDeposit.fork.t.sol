@@ -2,6 +2,7 @@
 pragma solidity 0.8.38;
 
 import {IKeelsonBondVault} from "../src/interfaces/IKeelsonBondVault.sol";
+import {GasBudget} from "./utils/GasBudget.sol";
 import {IPyusd} from "./utils/IPyusd.sol";
 import {VaultBase} from "./utils/VaultBase.sol";
 import {IAccessManaged} from "@openzeppelin/contracts/access/manager/IAccessManaged.sol";
@@ -31,22 +32,18 @@ contract BondVaultDepositForkTest is VaultBase {
         emit IKeelsonBondVault.BondDeposited(agentId, from, AMOUNT);
         vm.prank(makeAddr("relayer"));
         vault.depositWithAuthorization(agentId, from, AMOUNT, 0, type(uint256).max, "a", sig);
-        emit log_named_uint(
-            "depositWithAuthorization execution, first deposit",
-            _executionGas(
-                abi.encodeCall(vault.depositWithAuthorization, (agentId, from, AMOUNT, 0, type(uint256).max, "a", sig))
-            )
+        uint256 gDepositwithauthorizationFirst = _executionGas(
+            abi.encodeCall(vault.depositWithAuthorization, (agentId, from, AMOUNT, 0, type(uint256).max, "a", sig))
         );
+        emit log_named_uint("depositWithAuthorization execution, first deposit", gDepositwithauthorizationFirst);
+        GasBudget.check("depositWithAuthorization_first", gDepositwithauthorizationFirst);
         (address from2, bytes memory sig2) = _authorization(0, type(uint256).max, "b");
         vault.depositWithAuthorization(agentId, from2, AMOUNT, 0, type(uint256).max, "b", sig2);
-        emit log_named_uint(
-            "depositWithAuthorization execution, later deposit",
-            _executionGas(
-                abi.encodeCall(
-                    vault.depositWithAuthorization, (agentId, from2, AMOUNT, 0, type(uint256).max, "b", sig2)
-                )
-            )
+        uint256 gDepositwithauthorizationLater = _executionGas(
+            abi.encodeCall(vault.depositWithAuthorization, (agentId, from2, AMOUNT, 0, type(uint256).max, "b", sig2))
         );
+        emit log_named_uint("depositWithAuthorization execution, later deposit", gDepositwithauthorizationLater);
+        GasBudget.check("depositWithAuthorization_later", gDepositwithauthorizationLater);
         assertEq(_bond().free, 2 * AMOUNT);
         assertEq(pyusd.balanceOf(address(vault)) - before, 2 * AMOUNT);
         assertTrue(pyusd.authorizationState(from, keccak256(abi.encode(agentId, bytes32("a")))));
@@ -97,10 +94,10 @@ contract BondVaultDepositForkTest is VaultBase {
         bytes memory sig = _signPermit(operatorKey, address(vault), AMOUNT, type(uint256).max);
         vm.prank(makeAddr("relayer"));
         vault.depositWithPermit(agentId, operator, AMOUNT, type(uint256).max, sig);
-        emit log_named_uint(
-            "depositWithPermit execution",
-            _executionGas(abi.encodeCall(vault.depositWithPermit, (agentId, operator, AMOUNT, type(uint256).max, sig)))
-        );
+        uint256 gDepositwithpermitFirst =
+            _executionGas(abi.encodeCall(vault.depositWithPermit, (agentId, operator, AMOUNT, type(uint256).max, sig)));
+        emit log_named_uint("depositWithPermit execution", gDepositwithpermitFirst);
+        GasBudget.check("depositWithPermit_first", gDepositwithpermitFirst);
         assertEq(_bond().free, AMOUNT);
         assertEq(pyusd.balanceOf(operator), 0);
     }

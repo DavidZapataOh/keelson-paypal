@@ -26,6 +26,28 @@ async function admin(sql: string): Promise<void> {
   }
 }
 
+/**
+ * Drops a test database once the server holds no connection to it. `pool.end()` resolves before the server has
+ * closed the pool's connections, and a forced drop would terminate those still closing, which then report `57P01`.
+ */
+async function dropDatabase(name: string): Promise<void> {
+  const client = new pg.Client({ connectionString: baseUrl });
+  await client.connect();
+  try {
+    for (let i = 0; i < 200; i++) {
+      const { rows } = await client.query<{ n: number }>(
+        "select count(*)::int as n from pg_stat_activity where datname = $1",
+        [name],
+      );
+      if (rows[0]?.n === 0) break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    await client.query(`DROP DATABASE ${name} WITH (FORCE)`);
+  } finally {
+    await client.end();
+  }
+}
+
 const name = `keelson_api_test_${process.pid}_${randomBytes(4).toString("hex")}`;
 await admin(`CREATE DATABASE ${name}`);
 const url = urlFor(name);
@@ -38,7 +60,7 @@ export const testKv: RedisClientType = await createKv(
 afterAll(async () => {
   await handle.pool.end();
   await testKv.close();
-  await admin(`DROP DATABASE ${name} WITH (FORCE)`);
+  await dropDatabase(name);
 });
 
 await migrate(url);
