@@ -22,6 +22,22 @@ async function admin<T>(fn: (client: pg.Client) => Promise<T>): Promise<T> {
   }
 }
 
+/**
+ * Ends `pool` and waits until the server has closed every connection: `pool.end()` resolves first, and a forced drop
+ * would terminate the connections still closing, which then report `57P01` to their clients.
+ */
+async function closePool(pool: pg.Pool): Promise<void> {
+  let open = pool.totalCount;
+  const closed = new Promise<void>((resolve) => {
+    if (open === 0) resolve();
+    pool.on("remove", () => {
+      if (--open === 0) resolve();
+    });
+  });
+  await pool.end();
+  await closed;
+}
+
 /** Creates a fresh migrated database, runs `fn` against it and drops it. */
 export async function withTestDb<T>(fn: (db: Db) => Promise<T>): Promise<T> {
   const name = `keelson_test_${process.pid}_${randomBytes(4).toString("hex")}`;
@@ -32,7 +48,7 @@ export async function withTestDb<T>(fn: (db: Db) => Promise<T>): Promise<T> {
     await migrate(url);
     return await fn(db);
   } finally {
-    await pool.end();
+    await closePool(pool);
     await admin((c) => c.query(`DROP DATABASE ${name} WITH (FORCE)`));
   }
 }
@@ -43,7 +59,7 @@ const url = urlFor(name);
 const handle = createDb(url);
 
 afterAll(async () => {
-  await handle.pool.end();
+  await closePool(handle.pool);
   await admin((c) => c.query(`DROP DATABASE ${name} WITH (FORCE)`));
 });
 

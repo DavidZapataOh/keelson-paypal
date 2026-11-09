@@ -26,6 +26,22 @@ async function admin(sql: string): Promise<void> {
   }
 }
 
+/**
+ * Ends `pool` and waits until the server has closed every connection: `pool.end()` resolves first, and a forced drop
+ * would terminate the connections still closing, which then report `57P01` to their clients.
+ */
+async function closePool(pool: pg.Pool): Promise<void> {
+  let open = pool.totalCount;
+  const closed = new Promise<void>((resolve) => {
+    if (open === 0) resolve();
+    pool.on("remove", () => {
+      if (--open === 0) resolve();
+    });
+  });
+  await pool.end();
+  await closed;
+}
+
 const name = `keelson_api_test_${process.pid}_${randomBytes(4).toString("hex")}`;
 await admin(`CREATE DATABASE ${name}`);
 const url = urlFor(name);
@@ -36,7 +52,7 @@ export const testKv: RedisClientType = await createKv(
 );
 
 afterAll(async () => {
-  await handle.pool.end();
+  await closePool(handle.pool);
   await testKv.close();
   await admin(`DROP DATABASE ${name} WITH (FORCE)`);
 });
