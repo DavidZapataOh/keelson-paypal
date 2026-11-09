@@ -289,8 +289,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/policy
       '@phala/cloud':
-        specifier: 0.4.0
-        version: 0.4.0(@noble/curves@1.9.1)(@noble/hashes@1.8.0)(supports-color@7.2.0)(typescript@7.0.2)
+        specifier: 0.5.0
+        version: 0.5.0(@noble/curves@1.9.1)(@noble/hashes@1.8.0)(supports-color@7.2.0)(typescript@7.0.2)
       '@phala/dcap-qvl':
         specifier: 0.7.1
         version: 0.7.1
@@ -2771,8 +2771,8 @@ packages:
     peerDependencies:
       '@peculiar/asn1-schema': ^3.0.0
 
-  '@phala/cloud@0.4.0':
-    resolution: {integrity: sha512-Fp8C/dTXZgG/wcAGU1lOcShPciqd0dFwgDeLXZDUTG/uOcNMl+P4yOzS+KYR84GUI8+f68VcoMLAg/RInC2ygQ==}
+  '@phala/cloud@0.5.0':
+    resolution: {integrity: sha512-oLlJ+KSxaX5poAggbTYH/rvh0rgzCZ3UkzW2XQJlex44xhJMQNr29L7ONXK1T9Rfhw2gfdyWyIBjFWTK7/vKlA==}
     engines: {node: '>=18'}
     peerDependencies:
       typescript: '>=4.5.0'
@@ -5436,9 +5436,6 @@ packages:
     peerDependencies:
       zod: ^3.25.0 || ^4.0.0
 
-  zod@3.25.76:
-    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
-
   zod@4.6.7:
     resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
 
@@ -7110,15 +7107,15 @@ snapshots:
     transitivePeerDependencies:
       - asn1js
 
-  '@phala/cloud@0.4.0(@noble/curves@1.9.1)(@noble/hashes@1.8.0)(supports-color@7.2.0)(typescript@7.0.2)':
+  '@phala/cloud@0.5.0(@noble/curves@1.9.1)(@noble/hashes@1.8.0)(supports-color@7.2.0)(typescript@7.0.2)':
     dependencies:
-      '@phala/dstack-sdk': 0.5.8(@noble/curves@1.9.1)(@noble/hashes@1.8.0)(viem@2.57.16(typescript@7.0.2)(zod@3.25.76))
+      '@phala/dstack-sdk': 0.5.8(@noble/curves@1.9.1)(@noble/hashes@1.8.0)(viem@2.57.16(typescript@7.0.2)(zod@4.6.7))
       debug: 4.4.3(supports-color@7.2.0)
       mitt: 3.0.1
       ofetch: 1.5.1
       typescript: 7.0.2
-      viem: 2.57.16(typescript@7.0.2)(zod@3.25.76)
-      zod: 3.25.76
+      viem: 2.57.16(typescript@7.0.2)(zod@4.6.7)
+      zod: 4.6.7
     transitivePeerDependencies:
       - '@noble/curves'
       - '@noble/hashes'
@@ -7141,12 +7138,12 @@ snapshots:
     transitivePeerDependencies:
       - encoding
 
-  '@phala/dstack-sdk@0.5.8(@noble/curves@1.9.1)(@noble/hashes@1.8.0)(viem@2.57.16(typescript@7.0.2)(zod@3.25.76))':
+  '@phala/dstack-sdk@0.5.8(@noble/curves@1.9.1)(@noble/hashes@1.8.0)(viem@2.57.16(typescript@7.0.2)(zod@4.6.7))':
     dependencies:
       '@noble/hashes': 1.8.0
     optionalDependencies:
       '@noble/curves': 1.9.1
-      viem: 2.57.16(typescript@7.0.2)(zod@3.25.76)
+      viem: 2.57.16(typescript@7.0.2)(zod@4.6.7)
 
   '@pinojs/redact@0.4.0': {}
 
@@ -7629,11 +7626,6 @@ snapshots:
       vite: 8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)
 
   '@vitest/spy@5.1.0': {}
-
-  abitype@1.2.3(typescript@7.0.2)(zod@3.25.76):
-    optionalDependencies:
-      typescript: 7.0.2
-      zod: 3.25.76
 
   abitype@1.2.3(typescript@7.0.2)(zod@4.6.7):
     optionalDependencies:
@@ -8820,21 +8812,6 @@ snapshots:
     dependencies:
       yaml: 2.9.1
 
-  ox@0.14.59(typescript@7.0.2)(zod@3.25.76):
-    dependencies:
-      '@adraffy/ens-normalize': 1.11.1
-      '@noble/ciphers': 1.3.0
-      '@noble/curves': 1.9.1
-      '@noble/hashes': 1.8.0
-      '@scure/bip32': 1.7.0
-      '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@7.0.2)(zod@3.25.76)
-      eventemitter3: 5.0.1
-    optionalDependencies:
-      typescript: 7.0.2
-    transitivePeerDependencies:
-      - zod
-
   ox@0.14.59(typescript@7.0.2)(zod@4.6.7):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
@@ -9468,23 +9445,6 @@ snapshots:
       '@types/unist': 3.0.3
       vfile-message: 4.0.3
 
-  viem@2.57.16(typescript@7.0.2)(zod@3.25.76):
-    dependencies:
-      '@noble/curves': 1.9.1
-      '@noble/hashes': 1.8.0
-      '@scure/bip32': 1.7.0
-      '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@7.0.2)(zod@3.25.76)
-      isows: 1.0.7(ws@8.21.0)
-      ox: 0.14.59(typescript@7.0.2)(zod@3.25.76)
-      ws: 8.21.0
-    optionalDependencies:
-      typescript: 7.0.2
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
-      - zod
-
   viem@2.57.16(typescript@7.0.2)(zod@4.6.7):
     dependencies:
       '@noble/curves': 1.9.1
@@ -9616,8 +9576,6 @@ snapshots:
   zod-validation-error@5.0.0(zod@4.6.7):
     dependencies:
       zod: 4.6.7
-
-  zod@3.25.76: {}
 
   zod@4.6.7: {}
 
