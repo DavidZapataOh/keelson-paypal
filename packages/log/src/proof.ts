@@ -29,13 +29,18 @@ const concat = (...parts: Uint8Array[]) => {
   return out;
 };
 
+const hex = (b: Uint8Array) => Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+
 const u64 = (v: bigint) => {
   const b = new Uint8Array(8);
   new DataView(b.buffer).setBigUint64(0, v);
   return b;
 };
 
-/** A c2sp.org/signed-note verifier key: Ed25519 (0x01) or ML-DSA-44 (0x06). */
+/**
+ * A c2sp.org/signed-note verifier key: Ed25519 (0x01), ML-DSA-44 (0x06) or an Ed25519
+ * `cosignature/v1` key (0x04, c2sp.org/tlog-cosignature).
+ */
 interface Vkey {
   name: string;
   hash: Uint8Array;
@@ -50,7 +55,12 @@ function parseVkey(vkey: string): Vkey {
   const raw = fromBase64(key64);
   const alg = raw[0];
   const key = raw.subarray(1);
-  if (!((alg === 0x01 && key.length === 32) || (alg === 0x06 && key.length === 1312))) {
+  if (
+    !(
+      ((alg === 0x01 || alg === 0x04) && key.length === 32) ||
+      (alg === 0x06 && key.length === 1312)
+    )
+  ) {
     throw new TypeError("unsupported vkey algorithm");
   }
   const digest = sha256(concat(encoder.encode(`${name}\n`), raw));
@@ -82,11 +92,8 @@ function subtreeMessage(name: string, time: bigint, cp: VerifiedCheckpoint): Uin
   );
 }
 
-/**
- * Verifies a signed checkpoint and requires a valid signature from every vkey, each named
- * after the checkpoint's origin.
- */
-export function verifyCheckpoint(signed: string, vkeys: readonly string[]): VerifiedCheckpoint {
+/** Splits a c2sp.org/signed-note into its text and its signature lines. */
+function parseNote(signed: string) {
   const split = signed.indexOf("\n\n");
   if (split < 0) throw new TypeError("malformed note");
   const text = signed.slice(0, split + 1);
@@ -106,9 +113,19 @@ export function verifyCheckpoint(signed: string, vkeys: readonly string[]): Veri
       if (!m) throw new TypeError("malformed signature line");
       return { name: m[1] as string, sig: fromBase64(m[2] as string) };
     });
+  return { text, lines, cp, sigs };
+}
+
+/**
+ * Verifies a signed checkpoint and requires a valid signature from every vkey, each named
+ * after the checkpoint's origin.
+ */
+export function verifyCheckpoint(signed: string, vkeys: readonly string[]): VerifiedCheckpoint {
+  const { text, lines, cp, sigs } = parseNote(signed);
   if (vkeys.length === 0) throw new TypeError("no verifier keys");
   for (const vkey of vkeys.map(parseVkey)) {
-    if (vkey.name !== origin) throw new Error(`vkey ${vkey.name} is not for ${origin}`);
+    if (vkey.alg === 0x04) throw new TypeError("a cosignature key is not a log key");
+    if (vkey.name !== cp.origin) throw new Error(`vkey ${vkey.name} is not for ${cp.origin}`);
     const ok = sigs.some(({ name, sig }) => {
       if (name !== vkey.name || !equal(sig.subarray(0, 4), vkey.hash)) return false;
       if (vkey.alg === 0x01) {
@@ -121,6 +138,52 @@ export function verifyCheckpoint(signed: string, vkeys: readonly string[]): Veri
     if (!ok) throw new Error(`the checkpoint is not signed by ${vkey.name}+${vkey.alg}`);
   }
   return cp;
+}
+
+/** The witnesses of an origin and how many of them must cosign each checkpoint. */
+export interface WitnessSet {
+  vkeys: readonly string[];
+  quorum: number;
+}
+
+const MAX_CLOCK_SKEW_S = 600n;
+
+/**
+ * Verifies the Ed25519 `cosignature/v1` cosignatures (c2sp.org/tlog-cosignature) of a signed
+ * checkpoint and requires `quorum` distinct witnesses of `witnesses`. The log's own signatures
+ * are checked by {@link verifyCheckpoint}.
+ */
+export function verifyCosignatures(
+  signed: string,
+  witnesses: WitnessSet,
+  now: Date = new Date(),
+): { cosigners: string[]; times: bigint[] } {
+  const { text, sigs } = parseNote(signed);
+  const latest = BigInt(Math.floor(now.getTime() / 1000)) + MAX_CLOCK_SKEW_S;
+  const cosigners: string[] = [];
+  const times: bigint[] = [];
+  const seen = new Set<string>();
+  for (const vkey of witnesses.vkeys.map(parseVkey)) {
+    if (vkey.alg !== 0x04) throw new TypeError("a witness key must be a cosignature/v1 key");
+    const id = `${vkey.name}+${hex(vkey.key)}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    for (const { name, sig } of sigs) {
+      if (name !== vkey.name || sig.length !== 4 + 8 + 64) continue;
+      if (!equal(sig.subarray(0, 4), vkey.hash)) continue;
+      const time = new DataView(sig.buffer, sig.byteOffset + 4, 8).getBigUint64(0);
+      const msg = encoder.encode(`cosignature/v1\ntime ${time}\n${text}`);
+      if (!ed25519.verify(sig.subarray(12), msg, vkey.key, { zip215: false })) continue;
+      if (time > latest) throw new Error(`the cosignature of ${vkey.name} is in the future`);
+      cosigners.push(vkey.name);
+      times.push(time);
+      break;
+    }
+  }
+  if (cosigners.length < witnesses.quorum) {
+    throw new Error(`witness quorum not met: ${cosigners.length} of ${witnesses.quorum}`);
+  }
+  return { cosigners, times };
 }
 
 const nodeHash = (l: Uint8Array, r: Uint8Array) => sha256(concat(Uint8Array.of(1), l, r));
@@ -182,4 +245,45 @@ export function verifyProof(
     throw new Error("the leaf is not included in the checkpoint");
   }
   return { index, checkpoint };
+}
+
+/**
+ * RFC 9162 §2.1.4.2: whether `proof` shows that the tree of `size1` leaves and root `root1` is a
+ * prefix of the tree of `size2` leaves and root `root2`.
+ */
+export function verifyConsistency(
+  size1: bigint,
+  size2: bigint,
+  root1: Uint8Array,
+  root2: Uint8Array,
+  proof: readonly Uint8Array[],
+): boolean {
+  if (size1 <= 0n || size1 > size2 || proof.some((p) => p.length !== 32)) return false;
+  if (size1 === size2) return proof.length === 0 && equal(root1, root2);
+  if (proof.length === 0) return false;
+  const path = (size1 & (size1 - 1n)) === 0n ? [root1, ...proof] : [...proof];
+  let fn = size1 - 1n;
+  let sn = size2 - 1n;
+  while ((fn & 1n) === 1n) {
+    fn >>= 1n;
+    sn >>= 1n;
+  }
+  let fr = path[0] as Uint8Array;
+  let sr = fr;
+  for (const c of path.slice(1)) {
+    if (sn === 0n) return false;
+    if ((fn & 1n) === 1n || fn === sn) {
+      fr = nodeHash(c, fr);
+      sr = nodeHash(c, sr);
+      while ((fn & 1n) === 0n && fn !== 0n) {
+        fn >>= 1n;
+        sn >>= 1n;
+      }
+    } else {
+      sr = nodeHash(sr, c);
+    }
+    fn >>= 1n;
+    sn >>= 1n;
+  }
+  return sn === 0n && equal(fr, root1) && equal(sr, root2);
 }
