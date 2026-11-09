@@ -708,6 +708,14 @@ test("the verifier may read public receipts, and nothing else", async () => {
     const other = await preflight(verifyOrigin, path);
     expect(other.headers.get("access-control-allow-origin")).not.toBe(verifyOrigin);
   }
+  for (const path of [
+    "/v1/alibis/01JC0000000000000000000000",
+    "/v1/alibis/01JC0000000000000000000000.pdf",
+    `${receipt}/`,
+  ]) {
+    const read = await app.request(path, { headers: { origin: verifyOrigin } });
+    expect(read.headers.get("access-control-allow-origin")).not.toBe(verifyOrigin);
+  }
   const evil = await preflight(evilOrigin, receipt);
   expect(evil.headers.get("access-control-allow-origin")).not.toBe(evilOrigin);
 });

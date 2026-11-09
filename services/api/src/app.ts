@@ -148,7 +148,7 @@ export function createApp(deps: Deps): OpenAPIHono {
     : undefined;
   // The verifier reads only public receipts, and never with credentials.
   const receiptCors = deps.verifyOrigin
-    ? cors({ origin: deps.verifyOrigin, allowMethods: ["GET"] })
+    ? cors({ origin: deps.verifyOrigin, allowMethods: ["GET"], allowHeaders: ["accept"] })
     : undefined;
   if (appCors || receiptCors) {
     app.use("/v1/*", (c, next) => {
