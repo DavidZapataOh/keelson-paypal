@@ -21,6 +21,19 @@ export const LOG_VKEYS: Readonly<Record<string, readonly [string, string]>> = {
   ],
 };
 
+const OWN_WITNESSES = [
+  "witness-1.keelson.finance+f179740d+BA2CNkIvGf1TnnZNrT8I4QEE3VFdcK71m1HOqlHv6INc",
+  "witness-2.keelson.finance+25bcde99+BG9zFgsma2ggzGNea4Nm1oG1/011LGpfypKDmR5Qi2ox",
+  "witness-3.keelson.finance+9d46cab2+BHzNOrCnXA/4RzT9dabueqKXrTRswymwxybNZrcNkmX4",
+] as const;
+
+/** The `cosignature/v1` witnesses of each origin and the quorum every checkpoint carries. */
+export const LOG_WITNESSES: Readonly<Record<string, { vkeys: readonly string[]; quorum: number }>> =
+  {
+    [`${LOG_HOST}/alibi/2026-1`]: { vkeys: OWN_WITNESSES, quorum: 2 },
+    [`${LOG_HOST}/alibi-live/2026-1`]: { vkeys: OWN_WITNESSES, quorum: 2 },
+  };
+
 export interface AppendResult {
   index: bigint;
   /** RFC 6962 leaf hash. */
