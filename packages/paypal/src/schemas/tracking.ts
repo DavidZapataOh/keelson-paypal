@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const shippingTracker = z.looseObject({
+const shippingTracker = z.looseObject({
   transaction_id: z.string(),
   tracking_number: z.string().optional(),
   status: z.string(),

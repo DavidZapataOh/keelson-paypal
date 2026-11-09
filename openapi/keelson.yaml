@@ -1935,6 +1935,80 @@ components:
             - message
             - signatures
             - facts
+        settlement:
+          type:
+            - object
+            - "null"
+          properties:
+            rail:
+              type: string
+              enum:
+                - pyusd
+                - paypal
+              description: "`pyusd`: the payee the verdict names is the merchant. `paypal`: it
+                is Keelson's treasury, which pays the merchant a PayPal Payout."
+            outcome:
+              type:
+                - string
+                - "null"
+              enum:
+                - paid
+                - queued
+                - claimable
+                - failed
+                - null
+              description: "`queued`: the slash waits out the veto window until `ready_at`.
+                `claimable`: the PYUSD transfer failed and waits as a claim.
+                Null until the chain answered; always null when neither the
+                operator nor Keelson is liable."
+            failure:
+              type:
+                - string
+                - "null"
+              description: The contract error of a `failed` settlement.
+            refund_id:
+              type:
+                - string
+                - "null"
+              description: The buyer's PayPal refund; its `custom_id` is the verdict's `ksv1.`
+                reference.
+            tx_hash:
+              type:
+                - string
+                - "null"
+            explorer_url:
+              type:
+                - string
+                - "null"
+            ready_at:
+              type:
+                - string
+                - "null"
+              format: date-time
+            payout_batch_id:
+              type:
+                - string
+                - "null"
+            payout_status:
+              type:
+                - string
+                - "null"
+            settled_at:
+              type:
+                - string
+                - "null"
+              format: date-time
+          required:
+            - rail
+            - outcome
+            - failure
+            - refund_id
+            - tx_hash
+            - explorer_url
+            - ready_at
+            - payout_batch_id
+            - payout_status
+            - settled_at
         responses:
           type: array
           items:
@@ -1992,6 +2066,7 @@ components:
         - liable
         - parties
         - verdict
+        - settlement
         - responses
     Passkeys:
       type: object

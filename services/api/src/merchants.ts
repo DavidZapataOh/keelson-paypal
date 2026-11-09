@@ -20,7 +20,11 @@ export const SETTLEMENT: Readonly<Record<string, Address>> = {
   mrc_runfast: "0x467D2beBb479D9B80Ab1c461243E05A2b82387d8",
 };
 
-/** Keelson's treasury: it receives the PYUSD of merchants paid through PayPal, and pays them a Payout. */
+/**
+ * Keelson's treasury: it receives the PYUSD of merchants paid through PayPal, and pays them a Payout.
+ *
+ * @internal
+ */
 export const KEELSON_TREASURY: Address = "0xbEE85Cd040cf4C7D0851fFc5655d7e3a75f84B16";
 
 export type Rail = "pyusd" | "paypal";
