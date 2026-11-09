@@ -3,7 +3,7 @@ import { eq, purchases, sql } from "@keelson/db";
 import { pino } from "pino";
 import { ulid } from "ulid";
 import { expect, test } from "vitest";
-import { resumePurchases } from "../src/pipeline/drive.ts";
+import { drivePurchase } from "../src/pipeline/drive.ts";
 import { channel3Mandate } from "./channel3.ts";
 import { testDb, testKv } from "./setup.ts";
 
@@ -20,7 +20,7 @@ test("a purchase left COUNTERSIGNED without its stored countersign is failed, no
     cartHash: randomBytes(32),
     updatedAt: sql`now() - interval '1 minute'`,
   });
-  await resumePurchases({ db: testDb, kv: testKv, log: pino({ level: "silent" }) });
+  await drivePurchase({ db: testDb, kv: testKv, log: pino({ level: "silent" }) }, id);
   const [p] = await testDb.select().from(purchases).where(eq(purchases.id, id));
   expect(p?.state).toBe("FAILED");
   expect(p?.failureReason).toBe("pipeline:no-countersign");
