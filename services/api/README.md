@@ -231,7 +231,12 @@ COUNTERSIGNED ──► LOGGED ──► COVERED ──► CAPTURED
 - **Failures.** Timeouts, 5xx, a pending transaction and an unavailable log are retried until the
   capture window closes; a log rejection, a vault revert, a PayPal refusal or a closed window ends
   the purchase `FAILED` with `failure_reason = '<step>:<code>'` (`log:`, `cover:`, `capture:`).
-  A coverage locked for a purchase that then fails is released after its window.
+  A coverage locked for a purchase that then fails is released after its window. Since the log
+  and the coverage run in parallel, a purchase whose log append keeps failing still locks its
+  coverage; it is never captured, and the coverage is released after its window like any other.
+- **Degraded mode.** With leg B down, leg A alone countersigns (leg B only ever judges what leg A
+  read from PayPal, so the two legs run one after the other). A degraded purchase goes through the
+  same log, coverage and capture, and its coverage has the vault's usual dispute window.
 
 The countersign answers `200` with `state`, `logIndex`, `coverage` and `capture` (or `failure`),
 or `202` with `Location: /v1/purchases/{id}` when a step is still pending after 4.5 s.
