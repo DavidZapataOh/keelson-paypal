@@ -1700,6 +1700,101 @@ components:
         - token
         - genTime
         - serial
+    AlibiReport:
+      type: object
+      properties:
+        reference:
+          type: string
+        verdict:
+          type: string
+          enum:
+            - verified
+            - verified-unanchored
+            - verified-offline
+            - failed
+            - incomplete
+        checks:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              step:
+                type: integer
+              status:
+                type: string
+                enum:
+                  - pass
+                  - fail
+                  - undisclosed
+                  - pending
+                  - absent
+                  - unreachable
+              reason:
+                type: string
+              reads:
+                type: array
+                items:
+                  type: string
+                description: RFC 6901 pointers the check read.
+              ms:
+                type: number
+              detail:
+                type: object
+                additionalProperties:
+                  type: string
+            required:
+              - id
+              - step
+              - status
+              - reads
+              - ms
+        mode:
+          type: string
+          enum:
+            - 2of2
+            - degraded
+        fields:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        unbound:
+          type: array
+          items:
+            type: object
+            properties:
+              pointer:
+                type: string
+              value: {}
+            required:
+              - pointer
+        changed:
+          type: array
+          items:
+            type: string
+        rpc:
+          type: object
+          properties:
+            url:
+              type: string
+            custom:
+              type: boolean
+          required:
+            - url
+            - custom
+        ms:
+          type: number
+      required:
+        - reference
+        - verdict
+        - checks
+        - mode
+        - fields
+        - unbound
+        - changed
+        - ms
     AlibiReceipt:
       type: object
       properties:
@@ -3544,6 +3639,46 @@ paths:
           description: The bundle has not changed
         "404":
           description: No alibi with this id that the caller may read
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/alibis/verify:
+    post:
+      tags:
+        - alibis
+      summary: Verify an alibi
+      description: Runs the browser verifier's algorithm on an Alibi bundle against
+        the pinned trust roots and a public Arbitrum RPC. No authentication; the
+        bundle is not stored.
+      requestBody:
+        required: true
+        content:
+          application/vnd.keelson.alibi.v1+json:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: The report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlibiReport"
+        "400":
+          description: Not an Alibi bundle; `pointer` names the failing value
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "413":
+          description: The body is over 1 MiB
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "415":
+          description: The body is not an Alibi bundle's media type
           content:
             application/problem+json:
               schema:

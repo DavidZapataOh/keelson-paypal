@@ -3,11 +3,14 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import {
   ALIBI_MEDIA_TYPE,
   type AlibiBundle,
+  AlibiFormatError,
+  decodeAlibi,
   encodeAlibi,
   encodeReceipt,
   receiptOf,
 } from "@keelson/alibi";
 import { renderAlibiPdf } from "@keelson/alibi/pdf";
+import { verifyAlibi } from "@keelson/alibi/verify";
 import { eq, evidenceBundles, mandates, purchases } from "@keelson/db";
 import type { Context } from "hono";
 import { loadAlibi } from "../alibi/issue.ts";
@@ -86,6 +89,69 @@ const receiptRoute = createRoute({
   },
 });
 
+const REFERENCE =
+  "the browser verifier at https://verify.keelson.finance is the reference; this is a convenience copy";
+
+const CheckSchema = z.object({
+  id: z.string(),
+  step: z.number().int(),
+  status: z.enum(["pass", "fail", "undisclosed", "pending", "absent", "unreachable"]),
+  reason: z.string().optional(),
+  reads: z.array(z.string()).openapi({ description: "RFC 6901 pointers the check read." }),
+  ms: z.number(),
+  detail: z.record(z.string(), z.string()).optional(),
+});
+
+const ReportSchema = z
+  .object({
+    reference: z.string(),
+    verdict: z.enum([
+      "verified",
+      "verified-unanchored",
+      "verified-offline",
+      "failed",
+      "incomplete",
+    ]),
+    checks: z.array(CheckSchema),
+    mode: z.enum(["2of2", "degraded"]),
+    fields: z.array(z.record(z.string(), z.unknown())),
+    unbound: z.array(z.object({ pointer: z.string(), value: z.unknown() })),
+    changed: z.array(z.string()),
+    rpc: z.object({ url: z.string(), custom: z.boolean() }).optional(),
+    ms: z.number(),
+  })
+  .openapi("AlibiReport");
+
+const verifyRoute = createRoute({
+  method: "post",
+  path: "/v1/alibis/verify",
+  tags: ["alibis"],
+  summary: "Verify an alibi",
+  description:
+    "Runs the browser verifier's algorithm on an Alibi bundle against the pinned trust roots and a public Arbitrum RPC. No authentication; the bundle is not stored.",
+  request: {
+    body: {
+      required: true,
+      content: { [ALIBI_MEDIA_TYPE]: { schema: z.string().openapi({ format: "binary" }) } },
+    },
+  },
+  responses: {
+    200: { description: "The report", content: { "application/json": { schema: ReportSchema } } },
+    400: {
+      description: "Not an Alibi bundle; `pointer` names the failing value",
+      content: { "application/problem+json": { schema: ProblemSchema } },
+    },
+    413: {
+      description: "The body is over 1 MiB",
+      content: { "application/problem+json": { schema: ProblemSchema } },
+    },
+    415: {
+      description: "The body is not an Alibi bundle's media type",
+      content: { "application/problem+json": { schema: ProblemSchema } },
+    },
+  },
+});
+
 /** Whether the principal is the mandate's user or the client that uploaded the evidence. */
 async function mayRead(deps: Pick<Deps, "db">, principal: Principal | undefined, b: AlibiBundle) {
   if (!principal) return false;
@@ -135,7 +201,7 @@ async function send(
   return c.body((await body()) as Uint8Array<ArrayBuffer>, 200);
 }
 
-export function registerAlibis(app: OpenAPIHono, deps: Pick<Deps, "db">): void {
+export function registerAlibis(app: OpenAPIHono, deps: Pick<Deps, "db" | "alibiChain">): void {
   const readable = async (c: Context, id: string) => {
     const b = await loadAlibi(deps.db, id);
     return b && (await mayRead(deps, c.get("principal"), b)) ? b : null;
@@ -160,6 +226,30 @@ export function registerAlibis(app: OpenAPIHono, deps: Pick<Deps, "db">): void {
     if (!b) return missing(c);
     const bytes = encodeAlibi(b);
     return send(c, bytes, "alibi", () => bytes);
+  }) as never);
+
+  app.openapi(verifyRoute, (async (c: Context) => {
+    if (c.req.header("content-type")?.split(";")[0]?.trim() !== ALIBI_MEDIA_TYPE) {
+      return problem(
+        c,
+        415,
+        "unsupported-media-type",
+        "Unsupported media type",
+        `Send ${ALIBI_MEDIA_TYPE}.`,
+      );
+    }
+    let bundle: AlibiBundle;
+    try {
+      bundle = decodeAlibi(new Uint8Array(await c.req.arrayBuffer()));
+    } catch (err) {
+      if (!(err instanceof AlibiFormatError)) throw err;
+      return problem(c, 400, "alibi-malformed", "Malformed Alibi", err.message, {
+        code: err.code,
+        ...(err.pointer === undefined ? {} : { pointer: err.pointer }),
+      });
+    }
+    const report = await verifyAlibi(bundle, { chain: deps.alibiChain ?? null });
+    return c.json({ reference: REFERENCE, ...report }, 200);
   }) as never);
 
   app.openapi(receiptRoute, (async (c: Context) => {
