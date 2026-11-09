@@ -56,6 +56,20 @@ test("gives up on a dependency that accepts commands but never answers", async (
     expect(elapsed).toBeGreaterThanOrEqual(450);
     expect(elapsed).toBeLessThan(700);
     expect(await res.json()).toMatchObject({ status: "degraded", dependencies: { kv: "down" } });
+
+    // The PayPal event ages read the same store: they give up too.
+    const paypal = createPayPalDeps({
+      PAYPAL_CLIENT_ID: "not-a-client",
+      PAYPAL_CLIENT_SECRET: "not-a-secret",
+      PAYPAL_ENV: "sandbox",
+      PAYPAL_MERCHANT_ID: "A4WCRYD5EYDF2",
+    });
+    const again = Date.now();
+    const withPayPal = await createApp({ db: testDb, kv, log, paypal }).request("/status");
+    expect(Date.now() - again).toBeLessThan(2_500);
+    expect(await withPayPal.json()).toMatchObject({
+      dependencies: { webhooks: { status: "down" } },
+    });
   } finally {
     kv.destroy();
     for (const socket of sockets) socket.destroy();

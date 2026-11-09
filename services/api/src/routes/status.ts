@@ -185,6 +185,42 @@ async function webhookState(db: Db, kv: RedisClientType) {
   };
 }
 
+/** `state`, or `down` when it fails or takes longer than `timeoutMs`. */
+async function within<T>(state: Promise<T>, timeoutMs: number): Promise<T | { status: "down" }> {
+  let timer: NodeJS.Timeout | undefined;
+  const deadline = new Promise<{ status: "down" }>((done) => {
+    timer = setTimeout(() => done({ status: "down" }), timeoutMs);
+  });
+  try {
+    return await Promise.race([state.catch(() => ({ status: "down" as const })), deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** How long one PayPal probe answers for, so `/status` never spends the API's PayPal quota. */
+const PAYPAL_PROBE_TTL_MS = 30_000;
+const paypalProbes = new WeakMap<PayPalDeps, { at: number; status: Promise<"up" | "down"> }>();
+
+/** An authenticated PayPal call, made at most once per `PAYPAL_PROBE_TTL_MS`. */
+function paypalState(paypal: PayPalDeps): Promise<"up" | "down"> {
+  let last = paypalProbes.get(paypal);
+  if (!last || Date.now() - last.at > PAYPAL_PROBE_TTL_MS) {
+    last = {
+      at: Date.now(),
+      status: probe(
+        () =>
+          paypal.paypal.fetch("GET", "/v1/notifications/webhooks", {
+            timeoutMs: TEE_PROBE_TIMEOUT_MS,
+          }),
+        TEE_PROBE_TIMEOUT_MS,
+      ),
+    };
+    paypalProbes.set(paypal, last);
+  }
+  return last.status;
+}
+
 /** The latest checkpoint of the sandbox log anchored on Arbitrum Sepolia. */
 async function anchorState(chains: ChainReaders) {
   const reader = chains[421614];
@@ -234,15 +270,8 @@ export function registerStatus(
       tee ? probe(() => tee.client.b.health(), TEE_PROBE_TIMEOUT_MS) : undefined,
       tlog ? logState(tlog).catch(() => ({ status: "down" as const, origins: [] })) : undefined,
       relayer ? relayerState(relayer) : undefined,
-      paypal
-        ? probe(
-            () => paypal.paypal.fetch("GET", "/v1/notifications/webhooks"),
-            TEE_PROBE_TIMEOUT_MS,
-          )
-        : undefined,
-      paypal
-        ? webhookState(deps.db, deps.kv).catch(() => ({ status: "down" as const }))
-        : undefined,
+      paypal ? paypalState(paypal) : undefined,
+      paypal ? within(webhookState(deps.db, deps.kv), PROBE_TIMEOUT_MS) : undefined,
       chains ? anchorState(chains) : undefined,
     ]);
     const up = [
