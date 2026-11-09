@@ -57,7 +57,7 @@ contract SlashArbOneForkTest is ForkTest, VerdictSigners {
             address(manager),
             address(this),
             bytes32(0),
-            new DeployVerdictVerifier().initialMeasurements(),
+            _forkMeasurements(),
             IAutomataDcapAttestation(dcap),
             INitroValidator(dcap)
         );
