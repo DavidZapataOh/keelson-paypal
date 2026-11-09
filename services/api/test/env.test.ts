@@ -18,6 +18,7 @@ const production = {
   KEELSON_TEE_TOKEN: "t".repeat(64),
   KEELSON_ISSUER_THUMBPRINT: `0x${"ab".repeat(32)}`,
   CHANNEL3_API_KEY: "channel3-key",
+  PAYPAL_WEBHOOK_ID: "4JH86294D6297924G",
   NODE_ENV: "production",
   BETTER_AUTH_URL: "https://api.keelson.finance",
   APP_ORIGIN: "https://app.keelson.finance",
@@ -94,6 +95,13 @@ test("the evidence identity and recipient are set together", () => {
       KEELSON_EVIDENCE_AGE_RECIPIENT: recipient,
     }).KEELSON_EVIDENCE_AGE_RECIPIENT,
   ).toBe(recipient);
+});
+
+test("production requires the PayPal webhook id", () => {
+  const { PAYPAL_WEBHOOK_ID: _id, ...without } = production;
+  expect(() => parseEnv(without)).toThrow(/PAYPAL_WEBHOOK_ID/);
+  expect(() => parseEnv({ ...production, PAYPAL_WEBHOOK_ID: "WH-1" })).toThrow();
+  expect(parseEnv(production).PAYPAL_WEBHOOK_ID).toBe("4JH86294D6297924G");
 });
 
 test("production requires a Channel3 key; the webhook secret is a whsec_ secret", () => {

@@ -12,6 +12,11 @@ const schema = z
     PAYPAL_ENV: z.enum(["sandbox", "production"]),
     /** The payer id of the account the PayPal credentials belong to; holds are payable only to it. */
     PAYPAL_MERCHANT_ID: z.string().min(1),
+    /** The id of the webhook PayPal delivers to; deliveries are verified against it. */
+    PAYPAL_WEBHOOK_ID: z
+      .string()
+      .regex(/^[A-Z0-9]{1,50}$/)
+      .optional(),
     PASSKEY_RP_ID: z.string().min(1).optional(),
     ANTHROPIC_API_KEY: z.string().min(1).optional(),
     TEE_A_URL: z.url().optional(),
@@ -84,6 +89,10 @@ const schema = z
   .refine((env) => env.NODE_ENV !== "production" || env.TEE_A_URL !== undefined, {
     message: "the TEE legs are required in production",
     path: ["TEE_A_URL"],
+  })
+  .refine((env) => env.NODE_ENV !== "production" || env.PAYPAL_WEBHOOK_ID !== undefined, {
+    message: "PAYPAL_WEBHOOK_ID is required in production",
+    path: ["PAYPAL_WEBHOOK_ID"],
   })
   .refine((env) => env.NODE_ENV !== "production" || env.KEELSON_ISSUER_THUMBPRINT !== undefined, {
     message: "KEELSON_ISSUER_THUMBPRINT is required in production",
