@@ -162,6 +162,13 @@
       "when": 1794241100877,
       "tag": "0022_dispute_verdicts",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1794251203232,
+      "tag": "0023_dispute_responses",
+      "breakpoints": true
     }
   ]
 }

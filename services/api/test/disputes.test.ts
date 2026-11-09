@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import {
+  disputeResponses,
   disputes,
   mandates,
   operators,
@@ -133,6 +134,43 @@ describe("GET /v1/disputes/{id}", () => {
       { party: "keelson", liable: false },
       { party: "merchant", liable: false },
     ]);
+  });
+
+  test("lists what was sent to PayPal, without the statement's text", async () => {
+    await testDb.insert(disputeResponses).values({
+      id: ulid(),
+      disputeId,
+      action: "provide_evidence",
+      stage: "CHARGEBACK",
+      dueDate: "2026-11-16T04:59:59.000Z",
+      input: {
+        evidences: [
+          { evidence_type: "PERMISSION_DESCRIPTION", notes: "n" },
+          { evidence_type: "ORDER_DETAILS", notes: "n", documents: [{ name: "alibi.pdf" }] },
+        ],
+      },
+      draft: {
+        source: "model",
+        statement: "The buyer signed a mandate[1].",
+        citations: [{ text: "Max amount", document: "Alibi", pages: [1, 1] }],
+      },
+    });
+    const body = await (await app.request(`/v1/disputes/${disputeId}`)).json();
+    expect(body.responses).toEqual([
+      {
+        action: "provide_evidence",
+        stage: "CHARGEBACK",
+        evidence_types: ["PERMISSION_DESCRIPTION", "ORDER_DETAILS"],
+        drafted_by: "model",
+        citations: 1,
+        sent_at: expect.any(String),
+      },
+    ]);
+    expect(JSON.stringify(body)).not.toContain("signed a mandate");
+  });
+
+  test("PayPal's PP-R ids are routed", async () => {
+    expect((await app.request("/v1/disputes/PP-R-OII-0")).status).toBe(404);
   });
 
   test("a dispute Keelson does not know is not found", async () => {

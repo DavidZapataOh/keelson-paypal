@@ -19,6 +19,8 @@ export const dispute = z.looseObject({
   status: z.string(),
   reason: z.string().optional(),
   dispute_life_cycle_stage: z.string().optional(),
+  /** Set anew each time PayPal asks the seller to respond. */
+  seller_response_due_date: z.string().optional(),
   dispute_amount: money.optional(),
   disputed_transactions: z.array(disputedTransaction).optional(),
   links: z.array(link).optional(),

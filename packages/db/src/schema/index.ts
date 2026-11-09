@@ -3,6 +3,7 @@ export * from "./attacks.ts";
 export * from "./auth.ts";
 export * from "./chain.ts";
 export * from "./channel3.ts";
+export * from "./dispute-responses.ts";
 export * from "./disputes.ts";
 export * from "./enums.ts";
 export * from "./events.ts";

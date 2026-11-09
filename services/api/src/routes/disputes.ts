@@ -1,5 +1,5 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { disputes, eq, paypalEvents, sql, verdicts } from "@keelson/db";
+import { asc, disputeResponses, disputes, eq, paypalEvents, sql, verdicts } from "@keelson/db";
 import type { Context } from "hono";
 import type { Deps } from "../app.ts";
 import { ProblemSchema, problem } from "../problem.ts";
@@ -38,8 +38,34 @@ const DisputeStatus = z
         facts: z.record(z.string(), z.union([z.string(), z.boolean()])),
       })
       .nullable(),
+    responses: z
+      .array(
+        z.object({
+          action: z.enum(["provide_evidence", "send_message", "accept_claim"]),
+          stage: z.string().openapi({ description: "PayPal's lifecycle stage when it was sent." }),
+          evidence_types: z.array(z.string()),
+          drafted_by: z.enum(["model", "template"]).nullable().openapi({
+            description:
+              "`model` when the statement was drafted with citations; `template` when the rule's fixed statement was sent. Null for an accepted claim.",
+          }),
+          citations: z.number().int().openapi({
+            description:
+              "How many passages of the Alibi and the verdict the statement cites. The statement itself is not public: it quotes the purchase's Alibi.",
+          }),
+          sent_at: z.iso.datetime(),
+        }),
+      )
+      .openapi({
+        description:
+          "What Keelson sent PayPal for the party at fault. The action and the evidence types follow from the rule; a model only drafts the text.",
+      }),
   })
   .openapi("DisputeStatus");
+
+interface StoredDraft {
+  source: "model" | "template";
+  citations: unknown[];
+}
 
 const route = createRoute({
   method: "get",
@@ -48,7 +74,7 @@ const route = createRoute({
   summary: "A dispute's attribution",
   description:
     "Where a PayPal dispute over a Keelson purchase stands: the party at fault, the `Verdict` both TEE legs signed and the time from the dispute's arrival to its verdict. No authentication; it holds no personal data.",
-  request: { params: z.object({ id: z.string().regex(/^PP-D-[0-9A-Za-z-]{1,40}$/) }) },
+  request: { params: z.object({ id: z.string().regex(/^PP-[A-Z]-[0-9A-Za-z-]{1,40}$/) }) },
   responses: {
     200: { description: "The dispute", content: { "application/json": { schema: DisputeStatus } } },
     404: {
@@ -74,6 +100,11 @@ export function registerDisputes(app: OpenAPIHono, deps: Pick<Deps, "db">): void
       .leftJoin(verdicts, eq(verdicts.disputeId, disputes.id))
       .where(eq(disputes.id, id));
     if (!row) return problem(c, 404, "not-found", "Not found", "No such dispute.");
+    const responses = await deps.db
+      .select()
+      .from(disputeResponses)
+      .where(eq(disputeResponses.disputeId, id))
+      .orderBy(asc(disputeResponses.createdAt));
     const v = row.verdict;
     const received = row.receivedAt ? new Date(row.receivedAt) : null;
     const liable = v ? (PARTIES[v.liable - 1] ?? null) : null;
@@ -102,6 +133,18 @@ export function registerDisputes(app: OpenAPIHono, deps: Pick<Deps, "db">): void
               facts: v.facts as Record<string, string | boolean>,
             }
           : null,
+        responses: responses.map((r) => {
+          const draft = r.draft as StoredDraft | null;
+          const input = r.input as { evidences?: { evidence_type: string }[] };
+          return {
+            action: r.action,
+            stage: r.stage,
+            evidence_types: input.evidences?.map((e) => e.evidence_type) ?? [],
+            drafted_by: draft?.source ?? null,
+            citations: draft?.citations.length ?? 0,
+            sent_at: r.createdAt.toISOString(),
+          };
+        }),
       },
       200,
     );

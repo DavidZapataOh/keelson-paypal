@@ -138,6 +138,8 @@ services:
         sync: false
       - key: LOG_WRITE_TOKEN
         sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
 
   - type: web
     runtime: docker

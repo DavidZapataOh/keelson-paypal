@@ -23,7 +23,7 @@ export interface ApplyDeps {
   log: Logger;
   paypal: PayPalDeps;
   /** Starts the evaluation of a dispute once it is stored; the dispute stays `OPEN` without it. */
-  startDisputeWorkflow?: ((disputeId: string) => Promise<void>) | undefined;
+  startDisputeWorkflow?: ((disputeId: string, revision: string) => Promise<void>) | undefined;
 }
 
 export type EventRow = typeof paypalEvents.$inferSelect;
@@ -228,7 +228,10 @@ export async function applyDispute(
     return { status: "mismatch", resource: dispute, purchaseId };
   }
   if (!resolved && eventType !== "CUSTOMER.DISPUTE.RESOLVED") {
-    await deps.startDisputeWorkflow?.(id);
+    await deps.startDisputeWorkflow?.(
+      id,
+      `${dispute.status}:${dispute.dispute_life_cycle_stage ?? "UNKNOWN"}:${dispute.seller_response_due_date ?? ""}`,
+    );
   }
   return { status: "applied", resource: dispute, purchaseId, disputeId: id };
 }

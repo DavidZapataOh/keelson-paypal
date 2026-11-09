@@ -105,8 +105,11 @@ export interface Deps {
   paypalWebhook?: { webhookId: string; certs: CertStore; now?: () => Date };
   /** Applies stored PayPal events; woken when a delivery is stored. */
   paypalEvents?: { wake(): void };
-  /** Starts the evaluation of a dispute PayPal reported; disputes stay `OPEN` without it. */
-  startDisputeWorkflow?: (disputeId: string) => Promise<void>;
+  /**
+   * Starts the evaluation of a dispute PayPal reported, keyed by its status, stage and
+   * response due date (`revision`); disputes stay `OPEN` without it.
+   */
+  startDisputeWorkflow?: (disputeId: string, revision: string) => Promise<void>;
   /** Aborting it ends every open event stream so the server can close. */
   shutdown?: AbortSignal;
 }
