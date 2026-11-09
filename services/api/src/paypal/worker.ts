@@ -1,4 +1,5 @@
 import { and, asc, eq, paypalEvents, sql } from "@keelson/db";
+import { PayPalError } from "@keelson/paypal";
 import { type ApplyDeps, applyEvent, type EventRow } from "./apply.ts";
 
 export interface PayPalEventWorker {
@@ -21,6 +22,7 @@ const MAX_ROUNDS_IN_FLIGHT = 2;
 const FIRST_RETRY_MS = 2_000;
 const MAX_RETRY_MS = 600_000;
 const GIVE_UP_MS = 24 * 60 * 60_000;
+const FOREIGN_AFTER_ATTEMPTS = 3;
 
 /** Retry delay after `attempts` failed rounds: 2 s · 4ⁿ⁻¹, at most ten minutes. */
 const retryDelayMs = (attempts: number): number =>
@@ -129,11 +131,15 @@ async function claimAndApply(deps: ApplyDeps, leaseMs: number): Promise<number> 
       );
     } catch (err) {
       const attempts = row.attempts + 1;
-      const giveUp = Date.now() - row.receivedAt.getTime() > GIVE_UP_MS;
+      // PayPal answers 401 for another account's resource, as the simulator's; a token problem
+      // would clear within a few tries.
+      const foreign =
+        err instanceof PayPalError && err.status === 401 && attempts >= FOREIGN_AFTER_ATTEMPTS;
+      const giveUp = foreign || Date.now() - row.receivedAt.getTime() > GIVE_UP_MS;
       await deps.db
         .update(paypalEvents)
         .set({
-          status: giveUp ? "failed" : "received",
+          status: foreign ? "unresolvable" : giveUp ? "failed" : "received",
           leaseUntil: null,
           attempts,
           lastError: err instanceof Error ? err.message.slice(0, 500) : String(err),
@@ -142,7 +148,11 @@ async function claimAndApply(deps: ApplyDeps, leaseMs: number): Promise<number> 
         .where(held);
       deps.log[giveUp ? "error" : "warn"](
         { err, eventId: row.id, eventType: row.eventType, attempts },
-        giveUp ? "paypal event failed for 24 h" : "paypal event will be retried",
+        foreign
+          ? "paypal event names a resource this app cannot read"
+          : giveUp
+            ? "paypal event failed for 24 h"
+            : "paypal event will be retried",
       );
     }
   };
