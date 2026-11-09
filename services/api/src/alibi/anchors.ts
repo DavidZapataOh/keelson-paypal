@@ -1,6 +1,6 @@
 import { addresses, checkpointAnchorAbi } from "@keelson/chain";
 import { fromHex, toHex } from "@keelson/core";
-import { alibis, and, type Db, eq, isNull, lt, or, purchases, sql } from "@keelson/db";
+import { alibis, and, asc, type Db, eq, isNull, lt, or, purchases, sql } from "@keelson/db";
 import {
   LOG_HOST,
   LOG_ORIGINS,
@@ -28,6 +28,8 @@ const INTERVAL_MS = 30_000;
 const BATCH = 50;
 /** The block range of one `eth_getLogs` call. */
 const LOG_RANGE = 100_000n;
+/** About 5 s of Arbitrum blocks, so a block the RPC has not indexed yet is scanned on a later pass. */
+const CONFIRMATIONS = 20n;
 
 export interface AnchorDeps {
   db: Db;
@@ -60,11 +62,14 @@ async function anchoredAt(
   const contract = addresses[chainId as 421614].CheckpointAnchor as Address;
   const cursor = await deps.kv.get(cursorKey(chainId));
   const fromBlock = cursor ? BigInt(cursor) + 1n : (DEPLOYED_AT[chainId] ?? 0n);
-  const latest = await deps.chain.client.getBlockNumber();
+  // Head and logs from the same RPC, kept CONFIRMATIONS behind its head: a block that RPC has not
+  // indexed yet is never passed by the cursor.
+  const logClient = deps.chain.logs ?? deps.chain.client;
+  const latest = (await logClient.getBlockNumber()) - CONFIRMATIONS;
   for (let from = fromBlock; from <= latest; from += LOG_RANGE) {
     // biome-ignore lint/complexity/useMathMinMax: block numbers are bigints.
     const to = from + LOG_RANGE - 1n < latest ? from + LOG_RANGE - 1n : latest;
-    const logs = await (deps.chain.logs ?? deps.chain.client).getContractEvents({
+    const logs = await logClient.getContractEvents({
       address: contract,
       abi: checkpointAnchorAbi,
       eventName: "CheckpointAnchored",
@@ -209,10 +214,15 @@ export async function anchorCovered(deps: AnchorDeps): Promise<number> {
         or(isNull(purchases.chainId), eq(purchases.chainId, chainId)),
       ),
     )
+    .orderBy(asc(purchases.logIndex))
     .limit(BATCH);
   let anchored = 0;
   for (const r of rows) {
-    if ((await reanchorAlibi(deps, r.id)) === "anchored") anchored++;
+    try {
+      if ((await reanchorAlibi(deps, r.id)) === "anchored") anchored++;
+    } catch (err) {
+      deps.log.warn({ err, purchaseId: r.id }, "alibi not re-anchored");
+    }
   }
   return anchored;
 }
