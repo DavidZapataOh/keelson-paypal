@@ -1,0 +1,40 @@
+{
+  "name": "@keelson/alibi",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./verify": {
+      "types": "./dist/verify/index.d.ts",
+      "default": "./dist/verify/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@keelson/chain": "workspace:*",
+    "@keelson/core": "workspace:*",
+    "@keelson/evidence": "workspace:*",
+    "@keelson/log": "workspace:*",
+    "@keelson/mandate": "workspace:*",
+    "@keelson/paypal": "workspace:*",
+    "@keelson/timestamp": "workspace:*",
+    "viem": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
