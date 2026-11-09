@@ -175,7 +175,20 @@ export async function renderHarness() {
     const held = await post(`/v1/mandates/${mid}/hold`, asUser(sub));
     const orderId = held.out.orderId as string;
     const order = await call(paypal.paypal.orders.getOrder({ id: orderId }));
-    await approveOrder(payerActionUrl(order), `${env.APP_ORIGIN}/mandates/${mid}`);
+    const returnUrl = `${env.APP_ORIGIN}/mandates/${mid}`;
+    try {
+      await approveOrder(payerActionUrl(order), returnUrl);
+    } catch (err) {
+      // Without the buyer's credentials here, someone approves it, only when asked to.
+      if (process.env.MANUAL_APPROVAL !== "1") throw err;
+      console.log(`APPROVE ${orderId} ${returnUrl}`);
+      for (let i = 0; ; i++) {
+        const o = await call(paypal.paypal.orders.getOrder({ id: orderId }));
+        if (o.status === "APPROVED") break;
+        if (i > 360) throw new Error("the hold was not approved in 30 minutes");
+        await new Promise((r) => setTimeout(r, 5_000));
+      }
+    }
     const authorized = await post(`/v1/mandates/${mid}/hold/authorize`, asUser(sub), { orderId });
     if (authorized.status !== 200) {
       throw new Error(`hold not authorized: ${JSON.stringify(authorized.out)}`);
