@@ -1,4 +1,7 @@
-/** A witness policy in the Sigsum policy format (sigsum-go `doc/policy.md`). */
+/**
+ * A witness policy in the Sigsum policy format (sigsum-go `doc/policy.md`). Keys are kept as
+ * written: c2sp vkeys in Keelson's policies, hex keys in Sigsum's.
+ */
 export interface WitnessPolicy {
   /** The log keys, as written on the `log` lines. */
   logs: string[];
@@ -16,6 +19,7 @@ export function parseWitnessPolicy(text: string): WitnessPolicy {
   const logs: string[] = [];
   const witnesses = new Map<string, string>();
   const groups = new Map<string, { k: number; members: string[] }>();
+  const keys = new Set<string>();
   let quorum: string | undefined;
   for (const raw of text.split("\n")) {
     const line = raw.replace(/#.*/, "").trim();
@@ -25,11 +29,17 @@ export function parseWitnessPolicy(text: string): WitnessPolicy {
       logs.push(args[0] as string);
     } else if (kind === "witness" && (args.length === 2 || args.length === 3)) {
       const [name, key] = args as [string, string];
-      if (witnesses.has(name) || groups.has(name)) throw new Error(`duplicate name: ${name}`);
+      if (name === "none" || witnesses.has(name) || groups.has(name)) {
+        throw new Error(`duplicate or reserved name: ${name}`);
+      }
+      if (keys.has(key)) throw new Error(`witness ${name} repeats another witness's key`);
+      keys.add(key);
       witnesses.set(name, key);
     } else if (kind === "group" && args.length >= 3) {
       const [name, threshold, ...members] = args as [string, string, ...string[]];
-      if (witnesses.has(name) || groups.has(name)) throw new Error(`duplicate name: ${name}`);
+      if (name === "none" || witnesses.has(name) || groups.has(name)) {
+        throw new Error(`duplicate or reserved name: ${name}`);
+      }
       for (const m of members) {
         if (!witnesses.has(m)) throw new Error(`group ${name}: ${m} is not a witness`);
       }

@@ -45,4 +45,10 @@ test("malformed policies are refused", () => {
   expect(() => parseWitnessPolicy("witness w1 k")).toThrow("no quorum");
   expect(() => parseWitnessPolicy("quorum g")).toThrow("unknown group");
   expect(parseWitnessPolicy("quorum none").quorum.k).toBe(0);
+  expect(() => parseWitnessPolicy("witness w1 k\nwitness w2 k\ngroup g 2 w1 w2\nquorum g")).toThrow(
+    "repeats",
+  );
+  expect(() => parseWitnessPolicy("witness w1 k\ngroup none 1 w1\nquorum none")).toThrow(
+    "reserved",
+  );
 });

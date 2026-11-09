@@ -1,6 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
-import { LOG_ORIGINS, LOG_WITNESSES, verifyCosignatures } from "../src/index.ts";
+import {
+  LOG_ORIGINS,
+  LOG_WITNESSES,
+  verifyCosignatures,
+  verifyWitnessedCheckpoint,
+} from "../src/index.ts";
 
 // Published checkpoints of log.keelson.finance, fetched 2026-11-09.
 const fixture = (name: string) =>
@@ -61,10 +66,31 @@ describe("witness cosignatures", () => {
     );
   });
 
-  test("a cosignature from the future is refused", () => {
+  test("a cosignature from the future does not count", () => {
     expect(() => verifyCosignatures(sandbox, witnesses, new Date("2026-01-01T00:00:00Z"))).toThrow(
-      "in the future",
+      "witness quorum not met: 0 of 2",
     );
+  });
+
+  test("a quorum outside 1..n or a key listed twice is refused", () => {
+    for (const quorum of [0, -1, Number.NaN, 4]) {
+      expect(() => verifyCosignatures(sandbox, { ...witnesses, quorum }, now)).toThrow(RangeError);
+    }
+    const [w1] = witnesses.vkeys as [string];
+    expect(() => verifyCosignatures(sandbox, { vkeys: [w1, w1], quorum: 2 }, now)).toThrow(
+      "listed twice",
+    );
+  });
+
+  test("a witnessed checkpoint is checked under the keys pinned for its origin", () => {
+    expect(verifyWitnessedCheckpoint(sandbox, now).size).toBe(54n);
+    expect(verifyWitnessedCheckpoint(live, now).size).toBe(0n);
+    const body = sandbox.slice(0, sandbox.indexOf("\n\n") + 2);
+    const unsigned = body + lines(sandbox, "witness-").join("\n");
+    expect(() => verifyWitnessedCheckpoint(unsigned, now)).toThrow("not signed");
+    expect(() =>
+      verifyWitnessedCheckpoint(sandbox.replace(/^log\.keelson\.finance/, "x.example"), now),
+    ).toThrow("pinned");
   });
 
   test("log keys are not witness keys", () => {

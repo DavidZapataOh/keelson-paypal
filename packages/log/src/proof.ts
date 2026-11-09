@@ -1,6 +1,7 @@
 import { sha256 } from "@keelson/core";
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { ml_dsa44 } from "@noble/post-quantum/ml-dsa.js";
+import { LOG_VKEYS, LOG_WITNESSES } from "./client.ts";
 
 const encoder = new TextEncoder();
 
@@ -150,23 +151,29 @@ const MAX_CLOCK_SKEW_S = 600n;
 
 /**
  * Verifies the Ed25519 `cosignature/v1` cosignatures (c2sp.org/tlog-cosignature) of a signed
- * checkpoint and requires `quorum` distinct witnesses of `witnesses`. The log's own signatures
- * are checked by {@link verifyCheckpoint}.
+ * checkpoint and requires `quorum` distinct witnesses of `witnesses`. Cosignatures dated more
+ * than 10 min after `now` do not count. It does not check the log's own signatures: use
+ * {@link verifyWitnessedCheckpoint} unless {@link verifyCheckpoint} already ran.
  */
 export function verifyCosignatures(
   signed: string,
   witnesses: WitnessSet,
   now: Date = new Date(),
 ): { cosigners: string[]; times: bigint[] } {
+  const { quorum, vkeys } = witnesses;
+  if (!Number.isInteger(quorum) || quorum < 1 || quorum > vkeys.length) {
+    throw new RangeError("a witness quorum is between 1 and the number of witnesses");
+  }
   const { text, sigs } = parseNote(signed);
   const latest = BigInt(Math.floor(now.getTime() / 1000)) + MAX_CLOCK_SKEW_S;
   const cosigners: string[] = [];
   const times: bigint[] = [];
   const seen = new Set<string>();
-  for (const vkey of witnesses.vkeys.map(parseVkey)) {
+  for (const vkey of vkeys.map(parseVkey)) {
     if (vkey.alg !== 0x04) throw new TypeError("a witness key must be a cosignature/v1 key");
-    const id = `${vkey.name}+${hex(vkey.key)}`;
-    if (seen.has(id)) continue;
+    // cosignature/v1 does not sign the witness name, so one key counts once whatever its name.
+    const id = hex(vkey.key);
+    if (seen.has(id)) throw new TypeError(`witness key of ${vkey.name} is listed twice`);
     seen.add(id);
     for (const { name, sig } of sigs) {
       if (name !== vkey.name || sig.length !== 4 + 8 + 64) continue;
@@ -174,14 +181,14 @@ export function verifyCosignatures(
       const time = new DataView(sig.buffer, sig.byteOffset + 4, 8).getBigUint64(0);
       const msg = encoder.encode(`cosignature/v1\ntime ${time}\n${text}`);
       if (!ed25519.verify(sig.subarray(12), msg, vkey.key, { zip215: false })) continue;
-      if (time > latest) throw new Error(`the cosignature of ${vkey.name} is in the future`);
+      if (time > latest) continue;
       cosigners.push(vkey.name);
       times.push(time);
       break;
     }
   }
-  if (cosigners.length < witnesses.quorum) {
-    throw new Error(`witness quorum not met: ${cosigners.length} of ${witnesses.quorum}`);
+  if (cosigners.length < quorum) {
+    throw new Error(`witness quorum not met: ${cosigners.length} of ${quorum}`);
   }
   return { cosigners, times };
 }
@@ -286,4 +293,20 @@ export function verifyConsistency(
     sn >>= 1n;
   }
   return sn === 0n && equal(fr, root1) && equal(sr, root2);
+}
+
+/**
+ * Verifies a checkpoint of a pinned origin: both log signatures under `LOG_VKEYS` and the witness
+ * quorum of `LOG_WITNESSES`, both chosen by the checkpoint's own origin.
+ */
+export function verifyWitnessedCheckpoint(
+  signed: string,
+  now: Date = new Date(),
+): VerifiedCheckpoint & { cosigners: string[] } {
+  const { cp } = parseNote(signed);
+  const vkeys = LOG_VKEYS[cp.origin];
+  const witnesses = LOG_WITNESSES[cp.origin];
+  if (!vkeys || !witnesses) throw new Error(`not a pinned log origin: ${cp.origin}`);
+  const verified = verifyCheckpoint(signed, vkeys);
+  return { ...verified, cosigners: verifyCosignatures(signed, witnesses, now).cosigners };
 }
