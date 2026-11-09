@@ -4,6 +4,7 @@ import { getAddress, type Hex, keccak256, stringToBytes } from "viem";
 import type { AlibiBundle, AlibiReceipt } from "../../schema.ts";
 import type { ChainAnswer, ChainQuery } from "../chain.ts";
 import { type CheckDef, type Context, expect, type Outcome, pass } from "../check.ts";
+import { OFFLINE } from "../report.ts";
 import { isBundle, measurementHex, pinnedOrigin, proofCheckpoint, UNDISCLOSED } from "./util.ts";
 
 const TEE_KIND = { tdx: 1, nitro: 2 } as const;
@@ -30,7 +31,9 @@ export function queryOf(input: AlibiBundle | AlibiReceipt, chainId: number): Cha
     size: input.anchor ? BigInt(input.anchor.anchored_size) : 0n,
     signers: atts.map((a) => getAddress(a.signer)),
     measurements: atts.map((a) => measurementHex(a.measurement)),
-    ...(input.anchor ? { anchorTx: input.anchor.tx_hash as Hex } : {}),
+    ...(input.anchor
+      ? { anchorTx: input.anchor.tx_hash as Hex, anchorBlock: BigInt(input.anchor.block_number) }
+      : {}),
     anchor,
     verifier,
   };
@@ -38,7 +41,7 @@ export function queryOf(input: AlibiBundle | AlibiReceipt, chainId: number): Cha
 
 /** The chain's answer, or the outcome to report when there is none. */
 async function read(ctx: Context): Promise<ChainAnswer | Outcome> {
-  if (!ctx.chain) return { status: "pending", reason: "the chain was not read (offline)" };
+  if (!ctx.chain) return { status: "pending", reason: OFFLINE };
   try {
     return await ctx.chain;
   } catch (err) {
@@ -63,11 +66,17 @@ export const registry: CheckDef = {
     const a = await read(ctx);
     if (!isAnswer(a)) return a;
     const issuedAt = Number(input.tee.countersign.issuedAt);
-    const detail: Record<string, string> = { rpc: a.rpc };
+    const detail: Record<string, string> = { rpc: a.rpc, rpc_custom: String(a.custom) };
+    const chainReads = ["/anchor/chain_id", "/tee/domain/chain_id"];
     for (const [i, att] of input.tee.attestations.entries()) {
       const at = `/tee/attestations/${i}`;
       const r = a.signers[i];
-      const reads = [`${at}/signer`, `${at}/measurement`, "/tee/countersign/issuedAt"];
+      const reads = [
+        `${at}/signer`,
+        `${at}/measurement`,
+        "/tee/countersign/issuedAt",
+        ...chainReads,
+      ];
       expect(r && r.registeredAt > 0, `${att.kind} signer ${att.signer} is not registered`, reads);
       expect(r.teeKind === TEE_KIND[att.kind], `${att.signer} is registered for another TEE`, [
         `${at}/kind`,
@@ -78,17 +87,25 @@ export const registry: CheckDef = {
         `${att.signer} is registered with measurement ${r.measurement}`,
         reads,
       );
+      if (r.registeredAt > issuedAt && r.revokedAt === 0) {
+        // A registration after a lapse starts anew; the one that covered issuedAt is no longer state.
+        return {
+          status: "unreachable",
+          reason: `${att.signer}'s current registration began at ${iso(r.registeredAt)}, after ${iso(issuedAt)}; the earlier one is not in the chain's state`,
+          reads,
+        };
+      }
       expect(
         r.registeredAt <= issuedAt && issuedAt < r.expiresAt,
         `${att.signer}'s registration (${iso(r.registeredAt)} to ${iso(r.expiresAt)}) does not cover ${iso(issuedAt)}`,
         reads,
       );
+      // issuedAt is the signer's own claim, so a revoked key could backdate it: no pass once revoked.
       expect(
-        r.revokedAt === 0 || r.revokedAt > issuedAt,
-        `${att.signer} was revoked at ${iso(r.revokedAt)}, before ${iso(issuedAt)}`,
+        r.revokedAt === 0,
+        `${att.signer} was revoked at ${iso(r.revokedAt)}; its issuedAt cannot be trusted`,
         reads,
       );
-      if (r.revokedAt !== 0) detail[`${att.kind}_revoked_at`] = iso(r.revokedAt);
       detail[`${att.kind}_allowed_today`] = String(a.allowed[i]);
     }
     return pass(detail);
@@ -97,6 +114,7 @@ export const registry: CheckDef = {
 
 const latestDetail = (a: ChainAnswer) => ({
   rpc: a.rpc,
+  rpc_custom: String(a.custom),
   latest_size: String(a.latest.size),
   latest_at: a.latest.at ? iso(a.latest.at) : "",
 });
@@ -108,7 +126,7 @@ const UNANCHORED =
 export const anchorRoot: CheckDef = {
   id: "anchor.root",
   step: 7,
-  reads: ["/anchor/anchored_root", "/anchor/anchored_size", "/anchor/contract"],
+  reads: ["/anchor/anchored_root", "/anchor/anchored_size", "/anchor/contract", "/tlog_proof"],
   async run(input, ctx) {
     const a = await read(ctx);
     if (!isAnswer(a)) return a;
@@ -122,7 +140,7 @@ export const anchorRoot: CheckDef = {
     expect(
       a.rootAt.toLowerCase() === anchor.anchored_root,
       `the root anchored at size ${anchor.anchored_size} is ${a.rootAt}, not ${anchor.anchored_root}`,
-      ["/anchor/anchored_root", "/anchor/anchored_size"],
+      ["/anchor/anchored_root", "/anchor/anchored_size", "/tlog_proof"],
     );
     return pass(latestDetail(a));
   },
@@ -132,7 +150,7 @@ export const anchorRoot: CheckDef = {
 export const anchorTx: CheckDef = {
   id: "anchor.tx",
   step: 7,
-  reads: ["/anchor/tx_hash", "/anchor/block_number"],
+  reads: ["/anchor/tx_hash", "/anchor/block_number", "/tlog_proof"],
   async run(input, ctx) {
     const a = await read(ctx);
     if (!isAnswer(a)) return a;
@@ -148,7 +166,7 @@ export const anchorTx: CheckDef = {
         log.size === BigInt(anchor.anchored_size) &&
         log.root.toLowerCase() === anchor.anchored_root,
       "the anchor transaction's CheckpointAnchored is of another checkpoint",
-      ["/anchor/tx_hash", "/anchor/anchored_size", "/anchor/anchored_root"],
+      ["/anchor/tx_hash", "/anchor/anchored_size", "/anchor/anchored_root", "/tlog_proof"],
     );
     expect(
       log.blockNumber === BigInt(anchor.block_number),

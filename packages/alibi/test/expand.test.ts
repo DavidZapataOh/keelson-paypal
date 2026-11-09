@@ -2,7 +2,15 @@ import { describe, expect, test } from "vitest";
 import { toBase64url } from "../src/b64.ts";
 import { encodeReceipt, leafHashOf } from "../src/codec.ts";
 import type { AlibiReceipt } from "../src/schema.ts";
-import { collapse, expand, pointers, UNBOUND, verifyAlibi } from "../src/verify/index.ts";
+import {
+  type Check,
+  collapse,
+  expand,
+  pointers,
+  UNBOUND,
+  verdictOf,
+  verifyAlibi,
+} from "../src/verify/index.ts";
 import { receipts } from "./log-receipts.ts";
 
 const r = receipts[0] as AlibiReceipt;
@@ -53,5 +61,30 @@ describe("qr.leaf", () => {
   test("another leaf hash fails and names the QR", async () => {
     const other = receipts[1] as AlibiReceipt;
     expect(await qr(other.leaf_hash)).toMatchObject({ status: "fail", reason: /QR/ });
+  });
+});
+
+describe("verdict", () => {
+  const check = (id: Check["id"], status: Check["status"], reason?: string): Check => ({
+    id,
+    step: 0,
+    status,
+    reads: [],
+    ms: 0,
+    ...(reason ? { reason } : {}),
+  });
+
+  test("chain checks not run make the verdict offline, never verified", () => {
+    const offline = "the chain was not read (offline)";
+    expect(
+      verdictOf([
+        check("log.inclusion", "pass"),
+        check("tee.registry", "pending", offline),
+        check("anchor.root", "pending", offline),
+      ]),
+    ).toBe("verified-offline");
+    expect(verdictOf([check("log.inclusion", "pass"), check("anchor.root", "pending", "x")])).toBe(
+      "verified-unanchored",
+    );
   });
 });

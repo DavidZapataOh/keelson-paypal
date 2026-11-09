@@ -52,7 +52,15 @@ export interface VerifyOptions {
   onCheck?: (check: Check) => void;
 }
 
-export type Verdict = "verified" | "verified-unanchored" | "failed" | "incomplete";
+export type Verdict =
+  | "verified"
+  | "verified-unanchored"
+  | "verified-offline"
+  | "failed"
+  | "incomplete";
+
+/** The reason of a chain check that did not run because no chain reader was given. */
+export const OFFLINE = "the chain was not read (offline)";
 
 export interface Report {
   verdict: Verdict;
@@ -62,8 +70,8 @@ export interface Report {
   unbound: { pointer: string; value: unknown }[];
   /** Pointers whose value differs from `VerifyOptions.original`. */
   changed: string[];
-  /** The RPC that answered the chain read, when one did. */
-  rpc?: string;
+  /** The RPC that answered the chain read, when one did, and whether the caller chose it. */
+  rpc?: { url: string; custom: boolean };
   ms: number;
 }
 
@@ -79,8 +87,9 @@ const OPTIONAL_CHECKS: ReadonlySet<CheckId> = new Set(["zk.c1", "timestamps"]);
 
 /**
  * `failed` if any check failed; `incomplete` if a required check is unreachable, undisclosed or
- * pending; `verified-unanchored` if only the anchor checks are pending; `verified` otherwise. A
- * check is `absent` only when the section it reads legitimately does not exist.
+ * pending; `verified-offline` if the chain was not read, so neither the anchor nor a revocation
+ * was checked; `verified-unanchored` if only the anchor checks are pending; `verified` otherwise.
+ * A check is `absent` only when the section it reads legitimately does not exist.
  */
 export function verdictOf(checks: readonly Check[]): Verdict {
   if (checks.some((c) => c.status === "fail")) return "failed";
@@ -95,5 +104,7 @@ export function verdictOf(checks: readonly Check[]): Verdict {
   ) {
     return "incomplete";
   }
-  return required.some((c) => c.status === "pending") ? "verified-unanchored" : "verified";
+  const pending = required.filter((c) => c.status === "pending");
+  if (pending.some((c) => c.reason === OFFLINE)) return "verified-offline";
+  return pending.length ? "verified-unanchored" : "verified";
 }

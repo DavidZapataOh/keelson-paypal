@@ -67,12 +67,13 @@ export function collapse(e: unknown): AlibiBundle | AlibiReceipt {
   return b as unknown as AlibiBundle | AlibiReceipt;
 }
 
-/** The pointer of every scalar in `e`, in document order. */
+/** The pointer of every scalar and empty container in `e`, in document order. */
 export function pointers(e: unknown): string[] {
   const out: string[] = [];
   const walk = (v: unknown, path: PropertyKey[]) => {
-    if (v !== null && typeof v === "object") {
-      for (const [k, x] of Object.entries(v)) walk(x, [...path, k]);
+    const entries = v !== null && typeof v === "object" ? Object.entries(v) : undefined;
+    if (entries?.length) {
+      for (const [k, x] of entries) walk(x, [...path, k]);
     } else {
       out.push(pointer(path));
     }
@@ -98,7 +99,11 @@ export function diffPointers(a: unknown, b: unknown): string[] {
   const pa = pointers(a);
   const pb = pointers(b);
   const all = [...new Set([...pa, ...pb])];
-  return all.filter((p) => !Object.is(valueAt(a, p), valueAt(b, p)));
+  const same = (x: unknown, y: unknown) =>
+    x !== null && typeof x === "object"
+      ? y !== null && typeof y === "object" && Array.isArray(x) === Array.isArray(y)
+      : Object.is(x, y);
+  return all.filter((p) => !same(valueAt(a, p), valueAt(b, p)));
 }
 
 /** Whether a check that read `reads` read the value at `p`. */

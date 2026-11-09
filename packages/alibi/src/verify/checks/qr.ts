@@ -1,6 +1,7 @@
 import { toBase64url } from "../../b64.ts";
 import { leafHashOf } from "../../codec.ts";
 import { type CheckDef, expect, pass } from "../check.ts";
+import { chainIdOf } from "./chain.ts";
 
 const hexToB64url = (hex: string) =>
   toBase64url(Uint8Array.from(hex.match(/../g) ?? [], (b) => Number.parseInt(b, 16)));
@@ -17,10 +18,14 @@ export const qr: CheckDef = {
       : want.leafHash;
     expect(stated === toBase64url(leafHashOf(input)), "the QR link names another leaf", ["/leaf"]);
     const a = input.anchor;
-    if (want.chainId !== undefined && a) {
-      expect(want.chainId === a.chain_id, "the QR link names another chain", ["/anchor/chain_id"]);
+    if (want.chainId !== undefined) {
+      expect(want.chainId === chainIdOf(input), "the QR link names another chain", [
+        "/anchor/chain_id",
+        "/tee/domain/chain_id",
+      ]);
     }
-    if (want.anchoredSize && a) {
+    if (want.anchoredSize) {
+      expect(a, "the QR link names an anchor this Alibi does not carry", ["/anchor"]);
       expect(
         want.anchoredSize === BigInt(a.anchored_size),
         "the QR link names another anchored size",

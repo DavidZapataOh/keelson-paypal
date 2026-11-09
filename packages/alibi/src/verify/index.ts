@@ -73,7 +73,7 @@ function modeOf(input: AlibiBundle | AlibiReceipt): Report["mode"] {
     const body = JSON.parse(text.slice(LEAF_PREFIX.length)) as { mode?: unknown };
     return body.mode === "degraded" ? "degraded" : "2of2";
   } catch {
-    return "2of2";
+    return "degraded";
   }
 }
 
@@ -115,7 +115,7 @@ export async function verifyAlibi(
       return value === undefined ? [] : [{ pointer: p, value }];
     }),
     changed,
-    ...(answer ? { rpc: answer.rpc } : {}),
+    ...(answer ? { rpc: { url: answer.rpc, custom: answer.custom } } : {}),
     ms: performance.now() - started,
   };
 }

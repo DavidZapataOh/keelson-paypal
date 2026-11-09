@@ -19,6 +19,8 @@ export interface ChainQuery {
   signers: Address[];
   measurements: Hex[];
   anchorTx?: Hex;
+  /** The block the anchor transaction is stated to be in; an RPC behind it cannot answer. */
+  anchorBlock?: bigint;
   anchor: Address;
   verifier: Address;
 }
@@ -40,6 +42,8 @@ export interface ChainAnswer {
   anchorLog?: { origin: Hex; size: bigint; root: Hex; blockNumber: bigint } | null;
   /** The RPC that answered. */
   rpc: string;
+  /** Whether that RPC was chosen by the caller rather than one of the public defaults. */
+  custom: boolean;
 }
 
 export interface ChainReader {
@@ -70,6 +74,10 @@ export interface ChainReaderOptions {
 }
 
 /**
+ * The RPC is trusted for what it reads: no light client checks its answers, so a dishonest RPC can
+ * hide a revocation or claim an anchor. What an Alibi proves offline (witnessed checkpoints,
+ * consistency, attestations, countersignature) does not depend on it.
+ *
  * Reads the anchor and the signer registry in one HTTP request: the contract reads go through
  * Multicall3 in one `eth_call`, batched in the same JSON-RPC request as `eth_chainId` and the
  * anchor transaction's receipt.
@@ -79,7 +87,8 @@ export function createChainReader(opts: ChainReaderOptions = {}): ChainReader {
     async read(chainId, q) {
       const known = CHAINS[chainId];
       if (!known) throw new ChainUnreachableError(`no RPC is known for chain ${chainId}`);
-      const urls = opts.rpc?.[chainId] ? [opts.rpc[chainId] as string] : known.rpcs;
+      const custom = Boolean(opts.rpc?.[chainId]);
+      const urls = custom ? [opts.rpc?.[chainId] as string] : known.rpcs;
       let answered = urls[0] as string;
       const transports = urls.map((url) =>
         http(url, {
@@ -102,6 +111,7 @@ export function createChainReader(opts: ChainReaderOptions = {}): ChainReader {
       try {
         const settled = await Promise.allSettled([
           client.getChainId(),
+          client.getBlockNumber({ cacheTime: 0 }),
           q.size > 0n
             ? client.readContract({ ...anchor, functionName: "rootAt", args: [q.origin, q.size] })
             : Promise.resolve(`0x${"0".repeat(64)}` as Hex),
@@ -130,10 +140,11 @@ export function createChainReader(opts: ChainReaderOptions = {}): ChainReader {
         }
         const failed = settled.find((s) => s.status === "rejected");
         if (failed) throw failed.reason;
-        const [, rootAt, latest, signers, allowed, receipt] = settled.map(
+        const [, head, rootAt, latest, signers, allowed, receipt] = settled.map(
           (s) => (s as PromiseFulfilledResult<unknown>).value,
         ) as [
           number,
+          bigint,
           Hex,
           readonly [bigint, Hex, number],
           (readonly [number, number, number, number, Hex])[],
@@ -152,19 +163,22 @@ export function createChainReader(opts: ChainReaderOptions = {}): ChainReader {
           })),
           allowed,
           rpc: answered,
+          custom,
         };
+        if (q.anchorBlock !== undefined && head < q.anchorBlock) {
+          throw new ChainUnreachableError(`the RPC is at block ${head}, behind the anchor's`);
+        }
         if (receipt !== undefined) {
-          const log = receipt
-            ? parseEventLogs({
-                abi: checkpointAnchorAbi,
-                eventName: "CheckpointAnchored",
-                logs: receipt.logs.filter(
-                  (l) => l.address.toLowerCase() === q.anchor.toLowerCase(),
-                ),
-              })[0]
-            : undefined;
+          if (receipt === null) {
+            throw new ChainUnreachableError("the RPC does not know the anchor transaction");
+          }
+          const log = parseEventLogs({
+            abi: checkpointAnchorAbi,
+            eventName: "CheckpointAnchored",
+            logs: receipt.logs.filter((l) => l.address.toLowerCase() === q.anchor.toLowerCase()),
+          }).find((l) => l.args.origin === q.origin && l.args.size === q.size);
           out.anchorLog =
-            log && receipt?.status === "success"
+            log && receipt.status === "success"
               ? {
                   origin: log.args.origin,
                   size: log.args.size,
