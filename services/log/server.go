@@ -23,6 +23,7 @@ import (
 	"filippo.io/torchwood/tesserax"
 	"github.com/DavidZapataOh/keelson-paypal/internal/alibilog"
 	"github.com/transparency-dev/tessera"
+	"github.com/transparency-dev/tessera/client"
 	"github.com/transparency-dev/tessera/storage/posix"
 	badger_as "github.com/transparency-dev/tessera/storage/posix/antispam"
 	"golang.org/x/mod/sumdb/note"
@@ -156,6 +157,16 @@ func checkpointBody(signed []byte) string {
 	return string(body) + "\n"
 }
 
+// consistency is the RFC 9162 consistency proof from the tree of from leaves to the tree of to
+// leaves, read from the tiles of the published tree of size leaves.
+func (o *origin) consistency(ctx context.Context, from, to, size uint64) ([][]byte, error) {
+	pb, err := client.NewProofBuilder(ctx, size, o.reader.ReadTile)
+	if err != nil {
+		return nil, err
+	}
+	return pb.ConsistencyProof(ctx, from, to)
+}
+
 // size is the tree size of the latest checkpoint.
 func (o *origin) size(ctx context.Context) (int64, error) {
 	cp, err := o.reader.ReadCheckpoint(ctx)
@@ -248,6 +259,35 @@ func (s *server) private() http.Handler {
 				}
 			})
 		}
+		mux.HandleFunc("GET /"+o.path+"/consistency", func(w http.ResponseWriter, r *http.Request) {
+			if !s.authorized(r) {
+				writeJSON(w, http.StatusUnauthorized, map[string]string{"code": "unauthorized"})
+				return
+			}
+			from, errFrom := strconv.ParseUint(r.URL.Query().Get("from"), 10, 64)
+			to, errTo := strconv.ParseUint(r.URL.Query().Get("to"), 10, 64)
+			size, err := o.size(r.Context())
+			if err != nil {
+				s.log.Error("consistency", "origin", o.name, "err", err)
+				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"code": "unavailable"})
+				return
+			}
+			if errFrom != nil || errTo != nil || from == 0 || from > to || to > uint64(size) {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"code": "range"})
+				return
+			}
+			proof, err := o.consistency(r.Context(), from, to, uint64(size))
+			if err != nil {
+				s.log.Error("consistency", "origin", o.name, "err", err)
+				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"code": "unavailable"})
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"from":  strconv.FormatUint(from, 10),
+				"to":    strconv.FormatUint(to, 10),
+				"proof": proof,
+			})
+		})
 		mux.HandleFunc("POST /"+o.path+"/add", func(w http.ResponseWriter, r *http.Request) {
 			if !s.authorized(r) {
 				writeJSON(w, http.StatusUnauthorized, map[string]string{"code": "unauthorized"})
