@@ -103,12 +103,16 @@ fixtures.
 
 ## Dispute evaluation
 
-A dispute stored over a Keelson purchase is handed to the Render workflow task
-`keelson-workflows/evaluateDispute` (`src/workflows.ts`), started with the dispute id, status, lifecycle stage and response due date as its idempotency key,
-so the webhook, the poller and every re-read start one run a day at most per revision, and an
-escalated inquiry or a new request for evidence runs again. The API
-starts it when `RENDER_API_KEY` and `DISPUTE_WORKFLOW` are set; otherwise the dispute stays `OPEN`.
-A run:
+A dispute stored over a Keelson purchase is run at once by the API process that stored it
+(`runDispute`, `src/disputes/run.ts`), and handed to the Render workflow task
+`keelson-workflows/evaluateDispute` (`src/workflows.ts`) as the durable retry, started with the
+dispute id, status, lifecycle stage and response due date as its idempotency key, so the webhook,
+the poller and every re-read start one run a day at most per revision, and an escalated inquiry or
+a new request for evidence runs again. Both hold the dispute in Redis (`dispute:run:<id>`) while
+they run: the workflow retries while the API's run holds it, then finds the work done, or takes
+over when that run failed. The workflow is started when `RENDER_API_KEY` and `DISPUTE_WORKFLOW` are
+set; the API runs disputes when it has the legs and the log. Without either the dispute stays
+`OPEN`. A run:
 
 1. re-reads the dispute with `GET /v1/customer/disputes/{id}`; the purchase is the one whose
    capture's `invoice_id` the dispute names as `invoice_number`;

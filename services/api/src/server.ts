@@ -15,6 +15,7 @@ import { startAnchorWatcher } from "./alibi/anchors.ts";
 import { createApp } from "./app.ts";
 import { createAuth } from "./auth.ts";
 import { createChannel3 } from "./channel3/client.ts";
+import { type RunDeps, runDispute } from "./disputes/run.ts";
 import { parseEnv } from "./env.ts";
 import { startHoldMaintenance } from "./hold/maintenance.ts";
 import { createKv } from "./kv.ts";
@@ -93,19 +94,48 @@ const render =
   env.RENDER_API_KEY && env.DISPUTE_WORKFLOW
     ? new Render({ token: env.RENDER_API_KEY })
     : undefined;
-// A dispute runs once per status, stage and response due date: every re-read of an open dispute starts it again,
-// and Render answers a key it saw in the last 24 h with the run it started then. A new status,
-// stage or request from PayPal (an escalated inquiry, more evidence asked) runs it again.
-const startDisputeWorkflow = render
-  ? async (disputeId: string, revision: string) => {
-      const run = await render.workflows.startTask(
-        `${env.DISPUTE_WORKFLOW}/evaluateDispute`,
-        [disputeId],
-        { idempotencyKey: `evaluateDispute:${disputeId}:${revision}` },
-      );
-      log.info({ disputeId, revision, taskRunId: run.taskRunId }, "dispute workflow started");
-    }
-  : undefined;
+// The API runs a stored dispute at once, so the money moves seconds after the webhook; the workflow
+// is started too and is the durable retry. A dispute runs once per status, stage and response due
+// date: every re-read of an open dispute starts it again, and Render answers a key it saw in the
+// last 24 h with the run it started then. A new status, stage or request from PayPal (an escalated
+// inquiry, more evidence asked) runs it again.
+const disputeRun: RunDeps | undefined =
+  tee && env.LOG_URL && env.LOG_WRITE_TOKEN
+    ? {
+        db,
+        kv,
+        log,
+        paypal,
+        tee,
+        chain: chains[arbitrumSepolia.id],
+        rpcUrl: env.ARBITRUM_SEPOLIA_RPC_URL,
+        tlog: { url: env.LOG_URL, token: env.LOG_WRITE_TOKEN },
+        relayer,
+        anthropic: env.ANTHROPIC_API_KEY
+          ? new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
+          : undefined,
+      }
+    : undefined;
+const startDisputeWorkflow =
+  render || disputeRun
+    ? async (disputeId: string, revision: string) => {
+        if (disputeRun) {
+          void runDispute(disputeRun, disputeId)
+            .then((run) => log.info({ disputeId, revision, run }, "dispute run"))
+            .catch((err: unknown) =>
+              log.warn({ err, disputeId, revision }, "dispute run failed; the workflow retries it"),
+            );
+        }
+        if (render) {
+          const run = await render.workflows.startTask(
+            `${env.DISPUTE_WORKFLOW}/evaluateDispute`,
+            [disputeId],
+            { idempotencyKey: `evaluateDispute:${disputeId}:${revision}` },
+          );
+          log.info({ disputeId, revision, taskRunId: run.taskRunId }, "dispute workflow started");
+        }
+      }
+    : undefined;
 const paypalEvents = startPayPalEventWorker({ db, kv, log, paypal, startDisputeWorkflow });
 const operators =
   env.KEELSON_OPERATOR_KEY && env.DEMO_AGENT_ID
