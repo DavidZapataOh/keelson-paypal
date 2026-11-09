@@ -157,15 +157,24 @@ impl ClaimGuard<'_> {
         self.expires_at
     }
 
-    /// `max − captured − Σ reservations of the other live records` on the request's mandate.
-    /// The request's own reservation is left out, so every runner of it decides alike.
-    pub fn left(&self, max: i64, captured_minor: i64, now: OffsetDateTime) -> i64 {
+    /// `max − captured − Σ reservations of the other live records` on the request's mandate,
+    /// each reservation less what `captured_by` says was captured for its request, since that
+    /// is already in `captured_minor`. The request's own reservation is left out, so every
+    /// runner of it decides alike.
+    pub fn left(
+        &self,
+        max: i64,
+        captured_minor: i64,
+        captured_by: &BTreeMap<Ulid, i64>,
+        now: OffsetDateTime,
+    ) -> i64 {
         left(
             &self.budget.lock(),
             &self.mandate,
             self.request,
             max,
             captured_minor,
+            captured_by,
             now,
         )
     }
@@ -177,6 +186,7 @@ impl ClaimGuard<'_> {
         &self,
         max: i64,
         captured_minor: i64,
+        captured_by: &BTreeMap<Ulid, i64>,
         amount: i64,
         now: OffsetDateTime,
     ) -> Result<bool, Replay> {
@@ -187,6 +197,7 @@ impl ClaimGuard<'_> {
             self.request,
             max,
             captured_minor,
+            captured_by,
             now,
         );
         let record = ledger
@@ -242,28 +253,36 @@ fn left(
     except: Ulid,
     max: i64,
     captured_minor: i64,
+    captured_by: &BTreeMap<Ulid, i64>,
     now: OffsetDateTime,
 ) -> i64 {
+    // A captured request counts once, in `captured_minor`; what it reserved beyond its
+    // captures still counts.
     let reserved = ledger
         .get(mandate)
         .into_iter()
         .flatten()
-        .filter(|(id, _)| **id != except)
-        .map(|(_, r)| r)
-        .filter(|r| live(r.expires_at, now))
-        .filter_map(|r| r.reserved_minor)
+        .filter(|(id, r)| **id != except && live(r.expires_at, now))
+        .filter_map(|(id, r)| {
+            let captured = captured_by.get(id).copied().unwrap_or(0).max(0);
+            Some(r.reserved_minor?.saturating_sub(captured).max(0))
+        })
         .fold(0i64, i64::saturating_add);
     max.saturating_sub(captured_minor).saturating_sub(reserved)
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use serde_json::json;
     use time::OffsetDateTime;
     use ulid::Ulid;
 
     use super::{Budget, ClaimGuard, Claimed, MAX_LIVE_REQUESTS, Replay};
     use crate::wire::Countersigned;
+
+    const NONE: &BTreeMap<Ulid, i64> = &BTreeMap::new();
 
     fn at(s: i64) -> OffsetDateTime {
         OffsetDateTime::from_unix_timestamp(s).unwrap()
@@ -288,15 +307,40 @@ mod tests {
         let b = Budget::default();
         let g1 = work(&b, id(1), 1, 900, 0);
         let g2 = work(&b, id(2), 2, 1_799, 899);
-        assert_eq!(g1.left(10_000, 1_000, at(0)), 9_000);
-        assert_eq!(g1.reserve(10_000, 1_000, 6_000, at(0)), Ok(true));
-        assert_eq!(g2.left(10_000, 1_000, at(899)), 3_000);
-        assert_eq!(g2.reserve(10_000, 1_000, 3_001, at(899)), Ok(false));
-        assert_eq!(g2.reserve(10_000, 1_000, 3_000, at(899)), Ok(true));
+        assert_eq!(g1.left(10_000, 1_000, NONE, at(0)), 9_000);
+        assert_eq!(g1.reserve(10_000, 1_000, NONE, 6_000, at(0)), Ok(true));
+        assert_eq!(g2.left(10_000, 1_000, NONE, at(899)), 3_000);
+        assert_eq!(g2.reserve(10_000, 1_000, NONE, 3_001, at(899)), Ok(false));
+        assert_eq!(g2.reserve(10_000, 1_000, NONE, 3_000, at(899)), Ok(true));
         // A record is held through its expiry second.
         let probe = work(&b, id(9), 9, 1_800, 899);
-        assert_eq!(probe.left(10_000, 1_000, at(900)), 0);
-        assert_eq!(probe.left(10_000, 1_000, at(901)), 6_000);
+        assert_eq!(probe.left(10_000, 1_000, NONE, at(900)), 0);
+        assert_eq!(probe.left(10_000, 1_000, NONE, at(901)), 6_000);
+    }
+
+    #[test]
+    fn a_captured_request_counts_only_what_it_reserved_beyond_its_captures() {
+        let b = Budget::default();
+        let (g1, g2) = (work(&b, id(1), 1, 900, 0), work(&b, id(2), 2, 900, 0));
+        assert_eq!(g1.reserve(10_000, 0, NONE, 3_000, at(0)), Ok(true));
+        assert_eq!(g2.reserve(10_000, 0, NONE, 6_000, at(0)), Ok(true));
+        let probe = work(&b, id(9), 9, 900, 0);
+        assert_eq!(probe.left(10_000, 0, NONE, at(0)), 1_000);
+        // Request 1 captured in full and request 2 in part: 5,000 is captured and 4,000 of
+        // request 2's reservation is still to be captured.
+        let captured = BTreeMap::from([(id(1), 3_000), (id(2), 2_000)]);
+        assert_eq!(probe.left(10_000, 5_000, &captured, at(0)), 1_000);
+        // A capture beyond what a request reserved releases only its own reservation.
+        let over = BTreeMap::from([(id(1), 9_000)]);
+        assert_eq!(probe.left(10_000, 9_000, &over, at(0)), -5_000);
+        assert_eq!(
+            probe.reserve(10_000, 5_000, &captured, 1_001, at(0)),
+            Ok(false)
+        );
+        assert_eq!(
+            probe.reserve(10_000, 5_000, &captured, 1_000, at(0)),
+            Ok(true)
+        );
     }
 
     #[test]
@@ -305,14 +349,17 @@ mod tests {
         let g = work(&b, id(1), 1, 900, 0);
         let other = b.claim(&[1; 32], id(1), [2; 32], at(900), at(0));
         assert_eq!(other.err(), Some(Replay));
-        assert_eq!(g.reserve(10_000, 0, 6_000, at(0)), Ok(true));
+        assert_eq!(g.reserve(10_000, 0, NONE, 6_000, at(0)), Ok(true));
         // The same input running twice is reserved once, and only for the same amount.
         let again = work(&b, id(1), 1, 900, 0);
-        assert_eq!(again.reserve(10_000, 0, 6_000, at(0)), Ok(true));
-        assert_eq!(again.reserve(10_000, 0, 9_400, at(0)), Err(Replay));
+        assert_eq!(again.reserve(10_000, 0, NONE, 6_000, at(0)), Ok(true));
+        assert_eq!(again.reserve(10_000, 0, NONE, 9_400, at(0)), Err(Replay));
         // A runner does not count its own request's reservation; other requests do.
-        assert_eq!(again.left(10_000, 0, at(0)), 10_000);
-        assert_eq!(work(&b, id(9), 9, 900, 0).left(10_000, 0, at(0)), 4_000);
+        assert_eq!(again.left(10_000, 0, NONE, at(0)), 10_000);
+        assert_eq!(
+            work(&b, id(9), 9, 900, 0).left(10_000, 0, NONE, at(0)),
+            4_000
+        );
         // The same id on another mandate is a replay: an id is answered once.
         assert_eq!(
             b.claim(&[2; 32], id(1), [2; 32], at(900), at(0)).err(),
@@ -343,32 +390,35 @@ mod tests {
     fn a_record_keeps_its_first_expiry_and_its_reservation_expires_with_it() {
         let b = Budget::default();
         let g = work(&b, id(1), 1, 900, 0);
-        assert_eq!(g.reserve(10_000, 0, 6_000, at(0)), Ok(true));
+        assert_eq!(g.reserve(10_000, 0, NONE, 6_000, at(0)), Ok(true));
         // A later runner of the same request gets the record's expiry, not its own.
         let late = work(&b, id(1), 1, 901, 1);
         assert_eq!(late.expires_at(), at(900));
-        assert_eq!(late.left(10_000, 0, at(899)), 10_000);
+        assert_eq!(late.left(10_000, 0, NONE, at(899)), 10_000);
         // After the record's expiry second its reservation no longer counts.
         let next = work(&b, id(2), 2, 1_800, 901);
-        assert_eq!(next.left(10_000, 0, at(900)), 4_000);
-        assert_eq!(next.left(10_000, 0, at(901)), 10_000);
+        assert_eq!(next.left(10_000, 0, NONE, at(900)), 4_000);
+        assert_eq!(next.left(10_000, 0, NONE, at(901)), 10_000);
         drop((g, late));
-        assert_eq!(next.reserve(10_000, 0, 9_400, at(901)), Ok(true));
+        assert_eq!(next.reserve(10_000, 0, NONE, 9_400, at(901)), Ok(true));
         let probe = work(&b, id(9), 9, 1_800, 901);
-        assert_eq!(probe.left(10_000, 0, at(901)), 600);
+        assert_eq!(probe.left(10_000, 0, NONE, at(901)), 600);
     }
 
     #[test]
     fn a_request_dropped_without_an_answer_releases_its_reservation() {
         let b = Budget::default();
         let (g, other) = (work(&b, id(1), 1, 900, 0), work(&b, id(1), 1, 900, 0));
-        assert_eq!(g.reserve(10_000, 0, 6_000, at(0)), Ok(true));
+        assert_eq!(g.reserve(10_000, 0, NONE, 6_000, at(0)), Ok(true));
         drop(g);
         // Another countersign of the request still holds it.
-        assert_eq!(work(&b, id(9), 9, 900, 0).left(10_000, 0, at(0)), 4_000);
+        assert_eq!(
+            work(&b, id(9), 9, 900, 0).left(10_000, 0, NONE, at(0)),
+            4_000
+        );
         drop(other);
         let fresh = work(&b, id(2), 2, 900, 0);
-        assert_eq!(fresh.left(10_000, 0, at(0)), 10_000);
+        assert_eq!(fresh.left(10_000, 0, NONE, at(0)), 10_000);
         // And the id is free for another input.
         assert!(b.claim(&[1; 32], id(1), [3; 32], at(900), at(0)).is_ok());
     }
