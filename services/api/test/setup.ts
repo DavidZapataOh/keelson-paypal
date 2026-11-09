@@ -27,19 +27,25 @@ async function admin(sql: string): Promise<void> {
 }
 
 /**
- * Ends `pool` and waits until the server has closed every connection: `pool.end()` resolves first, and a forced drop
- * would terminate the connections still closing, which then report `57P01` to their clients.
+ * Drops a test database once the server holds no connection to it. `pool.end()` resolves before the server has
+ * closed the pool's connections, and a forced drop would terminate those still closing, which then report `57P01`.
  */
-async function closePool(pool: pg.Pool): Promise<void> {
-  let open = pool.totalCount;
-  const closed = new Promise<void>((resolve) => {
-    if (open === 0) resolve();
-    pool.on("remove", () => {
-      if (--open === 0) resolve();
-    });
-  });
-  await pool.end();
-  await closed;
+async function dropDatabase(name: string): Promise<void> {
+  const client = new pg.Client({ connectionString: baseUrl });
+  await client.connect();
+  try {
+    for (let i = 0; i < 200; i++) {
+      const { rows } = await client.query<{ n: number }>(
+        "select count(*)::int as n from pg_stat_activity where datname = $1",
+        [name],
+      );
+      if (rows[0]?.n === 0) break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    await client.query(`DROP DATABASE ${name} WITH (FORCE)`);
+  } finally {
+    await client.end();
+  }
 }
 
 const name = `keelson_api_test_${process.pid}_${randomBytes(4).toString("hex")}`;
@@ -52,9 +58,9 @@ export const testKv: RedisClientType = await createKv(
 );
 
 afterAll(async () => {
-  await closePool(handle.pool);
+  await handle.pool.end();
   await testKv.close();
-  await admin(`DROP DATABASE ${name} WITH (FORCE)`);
+  await dropDatabase(name);
 });
 
 await migrate(url);

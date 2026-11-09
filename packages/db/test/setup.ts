@@ -23,19 +23,25 @@ async function admin<T>(fn: (client: pg.Client) => Promise<T>): Promise<T> {
 }
 
 /**
- * Ends `pool` and waits until the server has closed every connection: `pool.end()` resolves first, and a forced drop
- * would terminate the connections still closing, which then report `57P01` to their clients.
+ * Drops a test database once the server holds no connection to it. `pool.end()` resolves before the server has
+ * closed the pool's connections, and a forced drop would terminate those still closing, which then report `57P01`.
  */
-async function closePool(pool: pg.Pool): Promise<void> {
-  let open = pool.totalCount;
-  const closed = new Promise<void>((resolve) => {
-    if (open === 0) resolve();
-    pool.on("remove", () => {
-      if (--open === 0) resolve();
-    });
-  });
-  await pool.end();
-  await closed;
+async function dropDatabase(name: string): Promise<void> {
+  const client = new pg.Client({ connectionString: baseUrl });
+  await client.connect();
+  try {
+    for (let i = 0; i < 200; i++) {
+      const { rows } = await client.query<{ n: number }>(
+        "select count(*)::int as n from pg_stat_activity where datname = $1",
+        [name],
+      );
+      if (rows[0]?.n === 0) break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    await client.query(`DROP DATABASE ${name} WITH (FORCE)`);
+  } finally {
+    await client.end();
+  }
 }
 
 /** Creates a fresh migrated database, runs `fn` against it and drops it. */
@@ -48,8 +54,8 @@ export async function withTestDb<T>(fn: (db: Db) => Promise<T>): Promise<T> {
     await migrate(url);
     return await fn(db);
   } finally {
-    await closePool(pool);
-    await admin((c) => c.query(`DROP DATABASE ${name} WITH (FORCE)`));
+    await pool.end();
+    await dropDatabase(name);
   }
 }
 
@@ -59,8 +65,8 @@ const url = urlFor(name);
 const handle = createDb(url);
 
 afterAll(async () => {
-  await closePool(handle.pool);
-  await admin((c) => c.query(`DROP DATABASE ${name} WITH (FORCE)`));
+  await handle.pool.end();
+  await dropDatabase(name);
 });
 
 await migrate(url);
