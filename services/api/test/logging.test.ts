@@ -1,4 +1,6 @@
 import { Writable } from "node:stream";
+import { createPublicClient, http } from "viem";
+import { arbitrumSepolia } from "viem/chains";
 import { expect, test } from "vitest";
 import { createApp } from "../src/app.ts";
 import { createLogger } from "../src/logger.ts";
@@ -41,4 +43,19 @@ test("redacts credential headers in structured fields", () => {
   const { lines, log } = capture();
   log.info({ req: { headers: { authorization: "Bearer secret", cookie: "a=secret" } } }, "probe");
   expect(JSON.stringify(lines)).not.toContain("secret");
+});
+
+test("keeps the RPC key out of a logged chain error", async () => {
+  const { lines, log } = capture();
+  const client = createPublicClient({
+    chain: arbitrumSepolia,
+    transport: http("https://arb-sepolia.g.alchemy.com/v2/not-a-real-key-123456", {
+      retryCount: 0,
+    }),
+  });
+  const err = await client.getBlockNumber().catch((e: unknown) => e);
+  log.warn({ err }, "chain read failed");
+  const line = JSON.stringify(lines);
+  expect(line).toContain("alchemy.com/v2/");
+  expect(line).not.toContain("not-a-real-key-123456");
 });

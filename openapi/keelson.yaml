@@ -2465,6 +2465,55 @@ paths:
                         required:
                           - status
                           - origins
+                      paypal:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                            enum:
+                              - up
+                              - down
+                          environment:
+                            type: string
+                            enum:
+                              - sandbox
+                              - production
+                        required:
+                          - status
+                          - environment
+                      webhooks:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                            enum:
+                              - up
+                              - down
+                          lastWebhookAgeMs:
+                            type: integer
+                          lastPollAgeMs:
+                            type: integer
+                        required:
+                          - status
+                      anchor:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                            enum:
+                              - up
+                              - down
+                          environment:
+                            type: string
+                            enum:
+                              - arbitrum-sepolia
+                          size:
+                            type: string
+                          anchoredAgeMs:
+                            type: integer
+                        required:
+                          - status
+                          - environment
                     required:
                       - db
                       - kv

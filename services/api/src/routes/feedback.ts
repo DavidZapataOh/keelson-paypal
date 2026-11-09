@@ -1,12 +1,6 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { addresses, keelsonReputationReporterAbi } from "@keelson/chain";
-import {
-  agentRegistry,
-  ERC8004,
-  type Erc8004ChainId,
-  erc8004ChainIds,
-  reputationRegistryAbi,
-} from "@keelson/erc8004";
+import { agentRegistry, ERC8004, erc8004ChainIds, reputationRegistryAbi } from "@keelson/erc8004";
 import { type Hex, isAddressEqual, parseEventLogs } from "viem";
 import type { Deps } from "../app.ts";
 import { ERC8004_DEPLOY_BLOCK } from "../chain/reader.ts";
