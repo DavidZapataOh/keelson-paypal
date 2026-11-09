@@ -27,8 +27,7 @@ const app = createApp({
 const asClient = (subject: string, scopes = ["alibis:read"]) => ({
   "x-test-principal": JSON.stringify({ kind: "client", subject, scopes }),
 });
-const get = (path: string, headers: Record<string, string> = {}) =>
-  app.request(path, { headers });
+const get = (path: string, headers: Record<string, string> = {}) => app.request(path, { headers });
 
 const f = fixtures[0];
 const owner = `user-${randomBytes(6).toString("hex")}`;
@@ -97,7 +96,11 @@ describe.skipIf(!f)("alibi routes", () => {
     await testDb.insert(alibis).values({
       purchaseId: b.alibi_id,
       leafHash: Buffer.from(leafHashOf(b)),
-      bundle: { ...core, timestamps: [], paypal: { ...core.paypal, capture_id: undefined, invoice_id: undefined } },
+      bundle: {
+        ...core,
+        timestamps: [],
+        paypal: { ...core.paypal, capture_id: undefined, invoice_id: undefined },
+      },
       ...(b.anchor ? { anchor: b.anchor } : {}),
     });
   });
@@ -133,7 +136,9 @@ describe.skipIf(!f)("alibi routes", () => {
   });
 
   test("the pdf embeds the bundle the bundle route serves", async () => {
-    const bundle = new Uint8Array(await (await get(`/v1/alibis/${f?.id}`, asUser(owner))).arrayBuffer());
+    const bundle = new Uint8Array(
+      await (await get(`/v1/alibis/${f?.id}`, asUser(owner))).arrayBuffer(),
+    );
     const res = await get(`/v1/alibis/${f?.id}.pdf`, asUser(owner));
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("application/pdf");
@@ -150,7 +155,14 @@ describe.skipIf(!f)("alibi routes", () => {
     const body = new Uint8Array(await res.arrayBuffer());
     const receipt = decodeReceipt(body);
     expect(Object.keys(receipt).sort()).toEqual(
-      ["alibi_id", "leaf", "leaf_hash", "tlog_proof", "timestamps", ...(f?.anchored ? ["anchor"] : [])].sort(),
+      [
+        "alibi_id",
+        "leaf",
+        "leaf_hash",
+        "tlog_proof",
+        "timestamps",
+        ...(f?.anchored ? ["anchor"] : []),
+      ].sort(),
     );
     const text = new TextDecoder().decode(body);
     for (const secret of ["ref_salt", "payload_sd", "user_auth", "order_id", "manifest", "eval"]) {
