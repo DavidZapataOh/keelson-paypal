@@ -8,9 +8,7 @@ import { pino } from "pino";
 import { createPublicClient, http } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { z } from "zod";
-import { type EvaluateDeps, evaluateDispute } from "./disputes/evaluate.ts";
-import { type RespondDeps, respondToDispute } from "./disputes/respond.ts";
-import { type SettleDeps, settleDispute } from "./disputes/settle.ts";
+import { type RunDeps, runDispute } from "./disputes/run.ts";
 import { createKv } from "./kv.ts";
 import { relayerFromEnv } from "./onchain/relayer.ts";
 import { createPayPalDeps } from "./paypal.ts";
@@ -36,12 +34,10 @@ const Env = z.object({
   AWS_REGION: z.string().min(1).default("us-west-2"),
 });
 
-type Deps = EvaluateDeps & RespondDeps & SettleDeps;
-
-let deps: Promise<Deps> | undefined;
+let deps: Promise<RunDeps> | undefined;
 
 /** The connections a run needs, opened by the first run on an instance. */
-async function connect(): Promise<Deps> {
+async function connect(): Promise<RunDeps> {
   const env = Env.parse(process.env);
   const log = pino();
   const { db } = createDb(env.DATABASE_URL);
@@ -70,6 +66,8 @@ async function connect(): Promise<Deps> {
 /**
  * Attributes a stored PayPal dispute into a `Verdict` both TEE legs signed, settles it with the
  * party at fault, then answers PayPal. Started again whenever the dispute changes status or stage.
+ * The API runs the same steps as soon as the dispute is stored; this run then finds them done, or
+ * retries while the API's run holds the dispute, and takes over when that run failed.
  */
 task(
   {
@@ -83,10 +81,6 @@ task(
       deps = undefined;
       throw err;
     });
-    const d = await deps;
-    const evaluation = await evaluateDispute(d, disputeId);
-    if (evaluation.status !== "attributed") return { evaluation };
-    const settlement = await settleDispute(d, disputeId);
-    return { evaluation, settlement, response: await respondToDispute(d, disputeId) };
+    return runDispute(await deps, disputeId, { wait: true });
   },
 );
