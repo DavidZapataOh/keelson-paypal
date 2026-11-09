@@ -37,7 +37,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
-      - uses: foundry-rs/foundry-toolchain@v1.9.2
+      - uses: ./.github/actions/setup-foundry
         with:
           version: ${{ env.FOUNDRY_VERSION }}
       - uses: astral-sh/setup-uv@v10.3.3
@@ -81,12 +81,12 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
-      - uses: foundry-rs/foundry-toolchain@v1.9.2
+      - uses: ./.github/actions/setup-foundry
         with:
           version: ${{ env.FOUNDRY_VERSION }}
       - name: Install z3
         run: |
-          curl -fsSL -o z3.zip "https://github.com/Z3Prover/z3/releases/download/z3-${Z3_VERSION}/z3-${Z3_VERSION}-x64-glibc-2.39.zip"
+          curl -fsSL --retry 12 --retry-all-errors --retry-delay 30 --retry-max-time 900 -o z3.zip "https://github.com/Z3Prover/z3/releases/download/z3-${Z3_VERSION}/z3-${Z3_VERSION}-x64-glibc-2.39.zip"
           unzip -q z3.zip -d "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/z3-${Z3_VERSION}-x64-glibc-2.39/bin" >> "$GITHUB_PATH"
       - run: z3 --version
@@ -117,14 +117,14 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
-      - uses: foundry-rs/foundry-toolchain@v1.9.2
+      - uses: ./.github/actions/setup-foundry
         with:
           version: ${{ env.FOUNDRY_VERSION }}
       - uses: astral-sh/setup-uv@v10.3.3
       - run: uv tool install halmos==0.3.3
       - name: Install z3
         run: |
-          curl -fsSL -o z3.zip "https://github.com/Z3Prover/z3/releases/download/z3-${Z3_VERSION}/z3-${Z3_VERSION}-x64-glibc-2.39.zip"
+          curl -fsSL --retry 12 --retry-all-errors --retry-delay 30 --retry-max-time 900 -o z3.zip "https://github.com/Z3Prover/z3/releases/download/z3-${Z3_VERSION}/z3-${Z3_VERSION}-x64-glibc-2.39.zip"
           unzip -q z3.zip -d "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/z3-${Z3_VERSION}-x64-glibc-2.39/bin" >> "$GITHUB_PATH"
       # Halmos 0.3.3 cannot execute the SHA-256 precompile, so the RFC 6962 check runs under forge only.
@@ -153,7 +153,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
-      - uses: foundry-rs/foundry-toolchain@v1.9.2
+      - uses: ./.github/actions/setup-foundry
         with:
           version: ${{ env.FOUNDRY_VERSION }}
       - uses: astral-sh/setup-uv@v10.3.3
@@ -183,7 +183,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
-      - uses: foundry-rs/foundry-toolchain@v1.9.2
+      - uses: ./.github/actions/setup-foundry
         with:
           version: ${{ env.FOUNDRY_VERSION }}
           cache-key: contracts-verify-${{ hashFiles('contracts/test/utils/VaultBase.sol') }}
@@ -220,7 +220,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
-      - uses: foundry-rs/foundry-toolchain@v1.9.2
+      - uses: ./.github/actions/setup-foundry
         with:
           version: ${{ env.FOUNDRY_VERSION }}
       - uses: astral-sh/setup-uv@v10.3.3
@@ -229,8 +229,8 @@ jobs:
         working-directory: ${{ runner.temp }}
         run: |
           base="https://github.com/crytic/medusa/releases/download/${MEDUSA_VERSION}"
-          curl -fsSLO "$base/medusa-linux-x64.tar.gz"
-          curl -fsSLO "$base/medusa-linux-x64.tar.gz.sigstore.json"
+          curl -fsSLO --retry 12 --retry-all-errors --retry-delay 30 --retry-max-time 900 "$base/medusa-linux-x64.tar.gz"
+          curl -fsSLO --retry 12 --retry-all-errors --retry-delay 30 --retry-max-time 900 "$base/medusa-linux-x64.tar.gz.sigstore.json"
           uvx --from sigstore sigstore verify github --bundle medusa-linux-x64.tar.gz.sigstore.json \
             --repository crytic/medusa medusa-linux-x64.tar.gz
           tar xzf medusa-linux-x64.tar.gz
@@ -301,7 +301,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
-      - uses: foundry-rs/foundry-toolchain@v1.9.2
+      - uses: ./.github/actions/setup-foundry
         with:
           version: ${{ env.FOUNDRY_VERSION }}
       - run: forge build --root lib/nitro-validator
