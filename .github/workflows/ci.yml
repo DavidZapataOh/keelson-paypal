@@ -124,6 +124,33 @@ jobs:
           pnpm --filter @keelson/log vectors
           test -z "$(git status --porcelain)"
 
+  alibi-pdf:
+    needs: changes
+    if: needs.changes.outputs.ts == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: sudo apt-get update && sudo apt-get install -y poppler-utils zbar-tools
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run build --filter=@keelson/alibi...
+      - name: The Alibi PDFs embed their bundle, render the same twice and their QR decodes
+        working-directory: packages/alibi
+        env:
+          ALIBI_PDF_OUT: ${{ runner.temp }}/alibi-pdf
+        run: pnpm exec vitest run test/pdf.test.ts
+      - name: veraPDF validates every PDF as PDF/A-3b
+        shell: bash
+        run: packages/alibi/scripts/verapdf.sh "$RUNNER_TEMP"/alibi-pdf/*.pdf | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Render and extract time, size and QR
+        working-directory: packages/alibi
+        shell: bash
+        run: node bench/pdf.bench.ts | tee -a "$GITHUB_STEP_SUMMARY"
+
   attest:
     needs: changes
     if: needs.changes.outputs.ts == 'true'
