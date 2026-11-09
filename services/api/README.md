@@ -257,12 +257,12 @@ those spans as JSON.
 
 On the warm path a purchase makes these round trips, in this order:
 
-| Step | Calls | Runs |
-|---|---|---|
-| Countersign | leg A (which reads the authorization from PayPal), then leg B with leg A's observation | in sequence: leg B judges what leg A read, since only leg A reads PayPal |
-| Log | one append to the log's private listener, which answers once the leaf is in a checkpoint | in parallel with coverage |
-| Coverage | `eth_estimateGas` (the simulation that refuses a reverting call), one KMS signature, one `eth_sendRawTransactionSync` to the sequencer, which answers with the receipt | in parallel with the log |
-| Capture | one `POST /v2/payments/authorizations/{id}/capture` | last |
+| Step        | Calls                                                                                                                                                                  | Runs                                                                     |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Countersign | leg A (which reads the authorization from PayPal), then leg B with leg A's observation                                                                                 | in sequence: leg B judges what leg A read, since only leg A reads PayPal |
+| Log         | one append to the log's private listener, which answers once the leaf is in a checkpoint                                                                               | in parallel with coverage                                                |
+| Coverage    | `eth_estimateGas` (the simulation that refuses a reverting call), one KMS signature, one `eth_sendRawTransactionSync` to the sequencer, which answers with the receipt | in parallel with the log                                                 |
+| Capture     | one `POST /v2/payments/authorizations/{id}/capture`                                                                                                                    | last                                                                     |
 
 Nothing else goes out on the warm path. The nonce comes from Postgres, the base fee, balance and
 vault parameters from short-lived caches, the PayPal token from its cache until expiry, and the
