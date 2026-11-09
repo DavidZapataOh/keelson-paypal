@@ -47,11 +47,13 @@ function inflated(pdf: Uint8Array): string {
 }
 
 async function textOf(pdf: Uint8Array): Promise<string> {
-  const doc = await getDocument({ data: pdf.slice() }).promise;
-  const page = await doc.getPage(1);
-  const text = (await page.getTextContent()).items.map((i) => ("str" in i ? i.str : "")).join(" ");
-  await doc.destroy();
-  return text;
+  const task = getDocument({ data: pdf.slice() });
+  try {
+    const page = await (await task.promise).getPage(1);
+    return (await page.getTextContent()).items.map((i) => ("str" in i ? i.str : "")).join(" ");
+  } finally {
+    await task.destroy();
+  }
 }
 
 describe.each(fixtures.map((f) => [f.id, f] as const))("the pdf of %s", (_, f) => {

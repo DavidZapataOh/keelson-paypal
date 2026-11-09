@@ -62,6 +62,7 @@ async function anchoredAt(
   const fromBlock = cursor ? BigInt(cursor) + 1n : (DEPLOYED_AT[chainId] ?? 0n);
   const latest = await deps.chain.client.getBlockNumber();
   for (let from = fromBlock; from <= latest; from += LOG_RANGE) {
+    // biome-ignore lint/complexity/useMathMinMax: block numbers are bigints.
     const to = from + LOG_RANGE - 1n < latest ? from + LOG_RANGE - 1n : latest;
     const logs = await (deps.chain.logs ?? deps.chain.client).getContractEvents({
       address: contract,
