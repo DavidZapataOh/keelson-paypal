@@ -12,9 +12,10 @@
         "src/verify/index.ts!",
         "src/pdf.ts!",
         "src/extract.ts!",
-        "scripts/*.ts"
+        "scripts/*.ts",
+        "bench/*.bench.ts"
       ],
-      "project": ["src/**/*.ts!", "scripts/**/*.ts", "test/**/*.ts"]
+      "project": ["src/**/*.ts!", "scripts/**/*.ts", "test/**/*.ts", "bench/**/*.ts"]
     },
     "packages/attest": {
       "entry": ["src/index.ts!", "src/server/collateral.ts!", "scripts/*.ts", "bench/*.bench.ts"],

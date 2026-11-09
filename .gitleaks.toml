@@ -29,3 +29,9 @@ paths = [
   '''contracts/deployments/.*\.json''',
   '''packages/chain/src/addresses\.ts''',
 ]
+
+[[allowlists]]
+description = "Alibis of sandbox purchases captured from the deployed API: public attestations, timestamp tokens, passkey assertions and sandbox PayPal ids"
+paths = [
+  '''packages/alibi/test/fixtures/.*\.alibi''',
+]
