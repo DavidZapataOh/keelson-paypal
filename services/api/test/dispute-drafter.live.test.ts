@@ -41,7 +41,7 @@ describe.skipIf(!live || !fixture)("dispute drafter (live)", () => {
     );
     expect(draft.source).toBe("model");
     expect(draft.citations.some((c) => c.document === "Alibi")).toBe(true);
-    expect(Object.keys(draft.notes).sort()).toEqual(["ORDER_DETAILS", "PERMISSION_DESCRIPTION"]);
+    expect(Object.keys(draft.notes)).toEqual(["PERMISSION_DESCRIPTION"]);
     for (const note of Object.values(draft.notes)) {
       expect(note.length).toBeGreaterThan(0);
       expect(note.length).toBeLessThanOrEqual(NOTE_MAX);

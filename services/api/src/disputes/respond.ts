@@ -111,7 +111,8 @@ export async function respondToDispute(deps: RespondDeps, disputeId: string): Pr
         return notes ? { ...e, notes } : e;
       });
       input = { evidences };
-      await provideEvidence(fetch, disputeId, { evidences }, [file]);
+      const attached = evidences.some((e) => e.documents?.some((d) => d.name === ALIBI_FILE));
+      await provideEvidence(fetch, disputeId, { evidences }, attached ? [file] : []);
     } else {
       const message = drafted.notes.message ?? plan.finding;
       input = { message };

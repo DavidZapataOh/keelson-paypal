@@ -124,13 +124,14 @@ A run:
    `ATTRIBUTED`;
 6. answers PayPal for the party at fault (`src/disputes/respond.ts`), once per action and stage.
 
-| Party at fault    | Rules                   | PayPal call                                             | Evidence                                                                                                                                            |
-| ----------------- | ----------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| User              | R10, R20, R32, R62, R70 | `provide-evidence` (or `send-message` while an inquiry) | `PERMISSION_DESCRIPTION` + `ORDER_DETAILS` with the Alibi PDF; R10 `ONLINE_TRACKING_INFORMATION`, R20 `PROOF_OF_REFUND` with the order's refund ids |
-| Merchant          | R11, R21, R35, R40, R50 | same                                                    | `ORDER_DETAILS` with the Alibi PDF                                                                                                                  |
-| Operator, Keelson | R00, R30, R31, R60, R61 | `accept-claim` (refund to the buyer)                    | none                                                                                                                                                |
+| Party at fault    | Rules                   | PayPal call                                             | Evidence                                                                                                                                             |
+| ----------------- | ----------------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| User              | R10, R20, R32, R62, R70 | `provide-evidence` (or `send-message` while an inquiry) | `PERMISSION_DESCRIPTION` with the Alibi PDF; R10 `ONLINE_TRACKING_INFORMATION` with the Alibi PDF; R20 `PROOF_OF_REFUND` with the order's refund ids |
+| Merchant          | R11, R21, R35, R40, R50 | same                                                    | `ORDER_DETAILS` with the Alibi PDF                                                                                                                   |
+| Operator, Keelson | R00, R30, R31, R60, R61 | `accept-claim` (refund to the buyer)                    | none                                                                                                                                                 |
 
-The rule fixes the call and the evidence types. With `ANTHROPIC_API_KEY` set, the notes are drafted
+The rule fixes the call and the evidence type; each submission carries one evidence, because
+PayPal requires an `item_id` on each of several evidences. With `ANTHROPIC_API_KEY` set, the notes are drafted
 in two calls, because Citations cannot be combined with structured outputs: `claude-opus-5-5`
 writes a statement citing the Alibi PDF and the verdict, then `claude-haiku-5-5` fits it into one
 note per evidence type (2,000 characters each, PayPal's limit). A refusal, a failure or a statement

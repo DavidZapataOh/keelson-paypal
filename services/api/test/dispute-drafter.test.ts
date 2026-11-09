@@ -62,10 +62,10 @@ describe("drafter", () => {
   });
 
   test("the fixed statement fills every planned field within PayPal's limit", () => {
-    expect(fieldsOf(input)).toEqual(["PERMISSION_DESCRIPTION", "ORDER_DETAILS"]);
+    expect(fieldsOf(input)).toEqual(["PERMISSION_DESCRIPTION"]);
     expect(fieldsOf({ ...input, step: "send_message" })).toEqual(["message"]);
     const notes = templateNotes(input);
-    expect(Object.keys(notes)).toEqual(["PERMISSION_DESCRIPTION", "ORDER_DETAILS"]);
+    expect(Object.keys(notes)).toEqual(["PERMISSION_DESCRIPTION"]);
     for (const note of Object.values(notes)) {
       expect(note).toContain("R70");
       expect(note.length).toBeLessThanOrEqual(NOTE_MAX);

@@ -53,15 +53,16 @@ export type ResponsePlan =
       evidences: Evidence[];
     };
 
-const orderDetails: Evidence = {
-  evidence_type: "ORDER_DETAILS",
+const withAlibi = (evidence_type: string): Evidence => ({
+  evidence_type,
   documents: [{ name: ALIBI_FILE }],
-};
+});
 
 /**
  * The answer to PayPal a verdict calls for. The rule alone fixes the action and the evidence
- * types: when the user or the merchant is at fault the dispute is contested with the Alibi;
- * otherwise the claim is accepted and the buyer refunded.
+ * type: when the user or the merchant is at fault the dispute is contested with the Alibi;
+ * otherwise the claim is accepted and the buyer refunded. One evidence per submission: PayPal
+ * requires an `item_id` on each of several evidences, and a Keelson order has no item ids.
  */
 export function responsePlan(verdict: Verdict, order: OrderRead = {}): ResponsePlan {
   const finding = FINDINGS[verdict.ruleId];
@@ -74,21 +75,20 @@ export function responsePlan(verdict: Verdict, order: OrderRead = {}): ResponseP
     return { action: "accept", party, ruleId, finding };
 
   const units = order.purchaseUnits ?? [];
-  let evidences: Evidence[];
+  let evidence: Evidence;
   if (ruleId === 10) {
-    evidences = [{ evidence_type: "ONLINE_TRACKING_INFORMATION" }, orderDetails];
+    evidence = withAlibi("ONLINE_TRACKING_INFORMATION");
   } else if (ruleId === 20) {
     const refundIds = units.flatMap((u) => u.payments?.refunds ?? []).flatMap((r) => r.id ?? []);
     if (refundIds.length === 0) throw new Error("rule 20 without a refund on the order");
-    evidences = [
-      { evidence_type: "PROOF_OF_REFUND", evidence_info: { refund_ids: refundIds } },
-      orderDetails,
-    ];
+    // PayPal expects `evidence_info` rather than documents for a proof of refund.
+    evidence = { evidence_type: "PROOF_OF_REFUND", evidence_info: { refund_ids: refundIds } };
   } else if (party === "user") {
-    evidences = [{ evidence_type: "PERMISSION_DESCRIPTION" }, orderDetails];
+    evidence = withAlibi("PERMISSION_DESCRIPTION");
   } else {
-    evidences = [orderDetails];
+    evidence = withAlibi("ORDER_DETAILS");
   }
+  const evidences = [evidence];
   return { action: "contest", party, ruleId, finding, evidences };
 }
 

@@ -19,13 +19,16 @@ State only facts that appear in the documents, and cite them. The Alibi is the p
 Write plain prose for a human reviewer: no markdown, no headings, no lists, under 1,500 characters. Leave out email addresses, postal addresses and keys.`;
 
 const FORMAT_SYSTEM = `You fit a merchant's dispute statement into the fields of a PayPal request.
-Write one note per field. Each note must stand alone, be plain text under 1,800 characters, and use only facts and quotes from the statement and its sources. Keep each note on what its field shows. Do not add claims, opinions or apologies.`;
+Write one note per field, in the merchant's voice; never refer to "the statement" or "the sources". Each note must stand alone, be plain text under 1,800 characters, and use only facts and quotes from the statement and its sources. Keep each note on what its field shows. Do not add claims, opinions or apologies.`;
 
 /** What each field of PayPal's request shows, for the formatter. */
 const FIELD_PURPOSE: Readonly<Record<string, string>> = {
-  PERMISSION_DESCRIPTION: "the buyer authorized this purchase through the mandate they signed",
-  ORDER_DETAILS: "what was ordered, for how much, and the attached Alibi PDF that proves it",
-  ONLINE_TRACKING_INFORMATION: "the carrier's tracking shows the item delivered",
+  PERMISSION_DESCRIPTION:
+    "the buyer authorized this purchase through the mandate they signed, as the attached Alibi PDF proves",
+  ORDER_DETAILS:
+    "the agent ordered what the mandate allowed, for the countersigned amount, as the attached Alibi PDF proves",
+  ONLINE_TRACKING_INFORMATION:
+    "the carrier's tracking shows the item delivered; the attached Alibi PDF records the purchase",
   PROOF_OF_REFUND: "the refund already issued for this purchase",
   message: "a message to the buyer and PayPal answering the inquiry, with the Alibi attached",
 };

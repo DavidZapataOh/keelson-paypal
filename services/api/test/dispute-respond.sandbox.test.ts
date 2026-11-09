@@ -165,8 +165,12 @@ describe.skipIf(!disputeId || !f)("dispute response (sandbox)", () => {
     async () => {
       const first = await respondToDispute(deps, id);
       log.info({ first }, "first run");
-      expect(first).toMatchObject({ status: "sent", action: "provide_evidence" });
-      if (deps.anthropic) expect(first).toMatchObject({ drafted: "model" });
+      // A rerun resumes: the evidence went in on an earlier run.
+      expect(first).toMatchObject({ action: "provide_evidence" });
+      expect(["sent", "already_sent"]).toContain(first.status);
+      if (first.status === "sent" && deps.anthropic) {
+        expect(first).toMatchObject({ drafted: "model" });
+      }
 
       const again = await respondToDispute(deps, id);
       expect(["already_sent", "waiting"]).toContain(again.status);
@@ -179,14 +183,15 @@ describe.skipIf(!disputeId || !f)("dispute response (sandbox)", () => {
       log.info({ responses: shown.responses }, "GET /v1/disputes");
       expect(shown.responses[0]).toMatchObject({
         action: "provide_evidence",
-        evidence_types: ["PERMISSION_DESCRIPTION", "ORDER_DETAILS"],
+        evidence_types: ["PERMISSION_DESCRIPTION"],
       });
 
       // The sandbox stands in for PayPal's agent: once the evidence is in, it decides.
       const f = deps.paypal.paypal.fetch;
       let adjudicated = false;
       let requested = false;
-      const deadline = Date.now() + 15 * 60_000;
+      const deadline =
+        Date.now() + Number(process.env.PAYPAL_DISPUTE_TIMEOUT_SECONDS ?? 900) * 1000;
       while (Date.now() < deadline) {
         const d = await getDispute(f, id);
         const rels = new Set(d.links?.map((l) => l.rel));
@@ -205,10 +210,15 @@ describe.skipIf(!disputeId || !f)("dispute response (sandbox)", () => {
         await sleep(5_000);
       }
       const final = (await getDispute(f, id)) as { status: string; dispute_outcome?: unknown };
+      if (final.status !== "RESOLVED") {
+        throw new Error(
+          `dispute ${id} is still ${final.status}; the sandbox has not offered adjudication yet, rerun later`,
+        );
+      }
       log.info({ status: final.status, outcome: final.dispute_outcome }, "final");
       expect(final.status).toBe("RESOLVED");
       expect(final.dispute_outcome).toMatchObject({ outcome_code: "RESOLVED_SELLER_FAVOUR" });
     },
-    20 * 60_000,
+    4 * 3_600_000,
   );
 });
