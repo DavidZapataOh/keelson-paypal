@@ -4,6 +4,7 @@ pragma solidity 0.8.38;
 import {DeployNitroValidator} from "../script/DeployNitroValidator.s.sol";
 import {INitroValidator} from "../src/interfaces/INitroValidator.sol";
 import {NitroDocument} from "../src/libraries/NitroDocument.sol";
+import {GasBudget} from "./utils/GasBudget.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 import {Test} from "forge-std/Test.sol";
 
@@ -70,14 +71,14 @@ contract NitroDocumentForkTest is Test {
         for (uint256 i; i < gas.length; ++i) {
             emit log_named_uint(string.concat("cache certificate ", vm.toString(i)), gas[i]);
         }
-        assertLe(gas[gas.length - 1], 8_000_000, "leaf cache");
+        GasBudget.check("nitro_leafCache_tx", gas[gas.length - 1]);
 
         NitroDocument.Fields memory doc = harness.read(
             live.readBytes(".attestationTbs"), live.readBytes(".signature"), live.readBytes(".attestationHints")
         );
         uint256 validation = vm.lastCallGas().gasTotalUsed;
         emit log_named_uint("validate document", validation);
-        assertLe(validation, 16_000_000, "document");
+        GasBudget.check("nitro_validateDocument_tx", validation);
 
         assertEq(doc.measurement, live.readBytes32(".measurement"), "measurement");
         assertEq(doc.key, live.readAddress(".signer"), "signer");

@@ -4,6 +4,7 @@ pragma solidity 0.8.38;
 import {ICheckpointAnchor} from "../src/interfaces/ICheckpointAnchor.sol";
 import {IKeelsonBondVault} from "../src/interfaces/IKeelsonBondVault.sol";
 import {KeelsonTypes} from "../src/libraries/KeelsonTypes.sol";
+import {GasBudget} from "./utils/GasBudget.sol";
 import {VaultBase} from "./utils/VaultBase.sol";
 import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import {stdJson} from "forge-std/StdJson.sol";
@@ -55,6 +56,7 @@ contract BondVaultBatchForkTest is VaultBase {
         uint256 gas = _executionGas(abi.encodeCall(vault.lockCoverageBatch, (batch, sig)));
         emit log_named_uint("lockCoverageBatch execution, 100 coverages", gas);
         emit log_named_uint("lockCoverageBatch execution per coverage", gas / json.readUint(".count"));
+        GasBudget.check("lockCoverageBatch_perCoverage", gas / json.readUint(".count"));
 
         IKeelsonBondVault.BatchState memory s = vault.batches(batchId);
         assertEq(s.locked, batch.total);

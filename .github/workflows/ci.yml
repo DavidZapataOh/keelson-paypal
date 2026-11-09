@@ -307,6 +307,8 @@ jobs:
       - run: forge build --sizes --skip './test/**' --skip './script/**'
       # -vv: traces of failing tests would print the funder keys parsed from the secret.
       - run: forge test --no-match-path 'test/**/*.live.t.sol' -vv
+      # Each budgeted path asserts its budget from budgets.json; the values it records must match the commit.
+      - run: git diff --exit-code snapshots/
       - run: forge snapshot --check --no-match-path 'test/**/*.{fork,live}.t.sol'
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7

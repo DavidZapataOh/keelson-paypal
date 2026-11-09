@@ -6,6 +6,7 @@ import {IERC8004Validation} from "../src/interfaces/IERC8004Validation.sol";
 import {IKeelsonValidationRegistry} from "../src/interfaces/IKeelsonValidationRegistry.sol";
 import {KeelsonTypes} from "../src/libraries/KeelsonTypes.sol";
 import {Erc8004Base} from "./utils/Erc8004Base.sol";
+import {GasBudget} from "./utils/GasBudget.sol";
 
 /// @notice One ERC-8004 validation per Alibi, recorded from the live legs' countersignatures over real coverages, and
 /// moved to the coverage's outcome.
@@ -64,6 +65,7 @@ contract ValidationRegistryForkTest is Erc8004Base {
         );
         assertEq(_record(v), v.digest);
         emit log_named_uint("recordCountersign 2of2", vm.lastCallGas().gasTotalUsed);
+        GasBudget.check("recordCountersign_2of2_tx", vm.lastCallGas().gasTotalUsed);
         _assertStatus(v.digest, 100, "2of2", v.countersign.evalHash);
         assertEq(validation.requestOf(v.coverage.coverageId), v.digest);
         assertEq(validation.getAgentValidations(agentId)[0], v.digest);
@@ -79,6 +81,7 @@ contract ValidationRegistryForkTest is Erc8004Base {
         Vector memory v = _locked(DEGRADED);
         _record(v);
         emit log_named_uint("recordCountersign degraded", vm.lastCallGas().gasTotalUsed);
+        GasBudget.check("recordCountersign_degraded_tx", vm.lastCallGas().gasTotalUsed);
         _assertStatus(v.digest, 100, "degraded", v.countersign.evalHash);
     }
 
@@ -199,6 +202,7 @@ contract ValidationRegistryForkTest is Erc8004Base {
         );
         validation.recordOutcome(id);
         emit log_named_uint("recordOutcome", vm.lastCallGas().gasTotalUsed);
+        GasBudget.check("recordOutcome_tx", vm.lastCallGas().gasTotalUsed);
         _assertStatus(v.digest, 100, "settled", v.countersign.evalHash);
         vm.expectRevert(IKeelsonValidationRegistry.OutcomeRecorded.selector);
         validation.recordOutcome(id);
