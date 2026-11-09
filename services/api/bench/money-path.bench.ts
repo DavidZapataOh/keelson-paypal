@@ -178,10 +178,9 @@ interface Result {
 const results: Result[] = [];
 const holds: Hold[] = [];
 
-async function purchase(h: Hold, mode: Result["mode"]): Promise<Result> {
+async function purchase(h: Hold, mode: Result["mode"], evidenceRoot: string): Promise<Result> {
   const cart = cartOf(PRICE_MINOR);
   const requestId = ulid();
-  const evidenceRoot = await evidence.upload(app, h.mid, cart.cart, asAgent);
   const channel = principalChannel({ kind: "user", subject: h.sub }, `purchase:${requestId}`);
   const received = new Map<string, number>();
   await listener.subscribe(eventsChannel(channel), (id) => received.set(id, Date.now()));
@@ -241,13 +240,21 @@ try {
   await seedDemoOperator(db);
   const perHold = Math.ceil(PURCHASES / HOLDS);
   for (let i = 0; i < HOLDS; i++) holds.push(await openHold(perHold));
+  // The evidence of every purchase is captured first, one browser page at a time, so the
+  // concurrent purchases are not also running a browser page each.
+  const roots: string[] = [];
+  const cart = cartOf(PRICE_MINOR).cart;
+  for (let i = 0; i < PURCHASES; i++) {
+    roots.push(await evidence.upload(app, (holds[i % HOLDS] as Hold).mid, cart, asAgent));
+  }
+  await evidence.close();
 
   let next = 0;
   const until = DURATION_S > 0 ? Date.now() + DURATION_S * 1000 : Number.POSITIVE_INFINITY;
   const worker = async () => {
     for (let i = next++; i < PURCHASES && Date.now() < until; i = next++) {
       const mode = DEGRADED_EVERY > 0 && (i + 1) % DEGRADED_EVERY === 0 ? "degraded" : "2of2";
-      const r = await purchase(holds[i % HOLDS] as Hold, mode);
+      const r = await purchase(holds[i % HOLDS] as Hold, mode, roots[i] as string);
       results.push(r);
       console.error(
         `${results.length}/${PURCHASES} ${r.id} ${r.mode} ${r.status} ${r.state} ${r.ms} ms`,
@@ -305,7 +312,7 @@ try {
       console.error(`mandate ${m.mid} not revoked: ${String(err)}`),
     );
   }
-  await evidence.close();
+  await evidence.close().catch(() => {});
   await listener.close();
   await kv.close();
   await pool.end();
