@@ -295,13 +295,25 @@ async function appOriginOverTls(): Promise<{
  * served over TLS.
  */
 export class SpcPasskey implements Passkey {
+  private readonly browser: Browser;
+  private readonly page: Page;
+  private readonly tls: { close(): void };
+  readonly credentialId: string;
+  readonly jwk: { kty: string; crv: string; x: string; y: string };
+
   private constructor(
-    private readonly browser: Browser,
-    private readonly page: Page,
-    private readonly tls: { close(): void },
-    readonly credentialId: string,
-    readonly jwk: { kty: string; crv: string; x: string; y: string },
-  ) {}
+    browser: Browser,
+    page: Page,
+    tls: { close(): void },
+    credentialId: string,
+    jwk: { kty: string; crv: string; x: string; y: string },
+  ) {
+    this.browser = browser;
+    this.page = page;
+    this.tls = tls;
+    this.credentialId = credentialId;
+    this.jwk = jwk;
+  }
 
   static async create(): Promise<SpcPasskey> {
     const tls = await appOriginOverTls();

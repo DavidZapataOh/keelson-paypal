@@ -68,6 +68,77 @@ Channel3 gives 1,000 credits a month; each lookup costs one and subscriptions ar
 workflow spends one credit on a live lookup. `bench/channel3.bench.ts` measures lookup latency
 (`LOOKUPS`, default 60 credits), the handler's own time and the stored sizes.
 
+## Hold lifecycle
+
+A mandate that allows a single merchant holds its whole budget in one PayPal authorization:
+
+```
+SIGNED → HOLD_PENDING → ACTIVE → EXHAUSTED | EXPIRED | REVOKED
+```
+
+| Step                                                 | PayPal calls                                                              | `PayPal-Request-Id`                           |
+| ---------------------------------------------------- | ------------------------------------------------------------------------- | --------------------------------------------- |
+| `POST /v1/mandates/{id}/hold`                        | Create Order, `intent: AUTHORIZE`, for `max_minor`                        | `hex(M)[:36]`                                 |
+| buyer approval (JS SDK v6, one-time payment session) | none from the API                                                         | —                                             |
+| `POST /v1/mandates/{id}/hold/authorize`              | Authorize Order, then Show Authorized Payment                             | `operationRequestId(orderId, "authorize")`    |
+| reauthorization (maintenance)                        | Show Order, Show Authorized Payment, Reauthorize, Show Authorized Payment | `operationRequestId(parentId, "reauthorize")` |
+| `POST /v1/mandates/{id}/revoke`, expiry              | Void Authorized Payment of the parent                                     | `operationRequestId(parentId, "void")`        |
+
+`M` is the mandate hash the user's passkey signed and
+`operationRequestId(id, op) = hex(SHA-256("<op>:<id>"))[:36]`, so a retry of any step is the same
+PayPal request. The order carries `custom_id = ks1.<env>m.<mid>.<b64url(M)>` (77 characters;
+`env` is `s` for the sandbox and `p` for production), `reference_id = mid` and the description
+`Agent purchases under Keelson mandate <mid>`. `custom_id` ties the hold to the signed mandate:
+anyone holding the mandate can check that the authorization is its own.
+
+`POST /hold` refuses a mandate whose allowed merchant is not the account Keelson captures for
+(`422 merchant-not-capturable`) and returns the same order while it can still be approved.
+`POST /hold/authorize` authorizes only the order stored for the mandate and checks the
+authorization against it (status `CREATED`, amount, currency, `custom_id` and payee); one that
+does not match is voided (`422 hold-mismatch`). An authorization PayPal holds as `PENDING` leaves
+the mandate in `HOLD_PENDING` until it is created.
+
+An authorization is valid for 29 days and its funds are honored for the first 3
+([Authorization and capture](https://developer.paypal.com/docs/checkout/standard/customize/authorization/)).
+Keelson reauthorizes each hold once, on the first maintenance run after day 3, for what is left
+of the budget; PayPal answers with a new authorization id, which every later capture uses
+([Reauthorize authorized payment](https://developer.paypal.com/docs/api/payments/v2/#authorizations_reauthorize)).
+A refused reauthorization (`REAUTHORIZATION_*`) is recorded and not retried; the original
+authorization stays capturable until it expires. A void always targets the original (parent)
+authorization, because PayPal does not void a reauthorized payment (`CANNOT_BE_VOIDED`,
+[Void authorized payment](https://developer.paypal.com/docs/api/payments/v2/#authorizations_void)).
+A void answered with `AUTHORIZATION_VOIDED`, `AUTHORIZATION_EXPIRED`, `PREVIOUSLY_VOIDED` or
+`PREVIOUSLY_CAPTURED` counts as done.
+
+The hold ends when:
+
+- the budget is spent: `EXHAUSTED` (the last capture is final, so PayPal closes the authorization);
+- the user revokes it: new countersigns are refused at once, the parent is voided, `REVOKED`;
+- the mandate's `exp` passes or the authorization reaches day 29 less one hour: void, `EXPIRED`.
+
+No void runs while a purchase of the mandate may still be countersigned or captured; it waits for
+it, at most 900 seconds (the countersign lifetime), and `POST /revoke` answers `202 REVOKING`
+meanwhile. A maintenance loop started by the server runs every 10 minutes: it reconciles pending
+holds with PayPal, reauthorizes, expires, exhausts, completes revocations and releases the holds
+of ended per-purchase mandates. Every step is idempotent, so two instances overlapping during a
+deploy are harmless.
+
+A mandate that allows several merchants goes `SIGNED → ACTIVE` and holds each purchase
+separately (below).
+
+### Measured
+
+`pnpm --filter @keelson/api bench:hold` (`SAMPLES`, default 20) signs, holds, authorizes and
+revokes mandates one after another through the in-process API on the PayPal sandbox; the
+buyer's approval is not timed. It needs Postgres, Valkey and the PayPal sandbox variables. Each
+request includes the round trips to `api-m.sandbox.paypal.com` (authorize makes two, revoke one).
+
+| Call                                        | Where measured                | Samples | p50      | p95      | p95 budget |
+| ------------------------------------------- | ----------------------------- | ------- | -------- | -------- | ---------- |
+| `POST /hold` (Create Order)                 | local workstation, 2026-11-08 | 20      | 1,421 ms | 1,705 ms | 1.2 s      |
+| `POST /hold/authorize` (authorize + checks) | local workstation, 2026-11-08 | 20      | 3,167 ms | 3,455 ms | 1.5 s      |
+| `POST /revoke` (void of the parent)         | local workstation, 2026-11-08 | 20      | 2,689 ms | 2,862 ms | 1.2 s      |
+
 ## Per-purchase holds
 
 A mandate that allows more than one merchant is stored with `hold_mode = 'per_purchase'` and is
