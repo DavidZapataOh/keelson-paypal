@@ -1,6 +1,6 @@
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -71,6 +71,13 @@ export async function startLocalLog(databaseUrl: string): Promise<LocalLog> {
       readFileSync(join(dir, `${name}.mldsa.vkey`), "utf8").trim(),
     ];
   }
+  // These keys have no witnesses: each checkpoint is published on the log's own signatures.
+  const policyDir = join(dir, "policy");
+  mkdirSync(policyDir);
+  for (const [origin, [ed, ml]] of Object.entries(vkeys)) {
+    const file = `${origin.slice(origin.indexOf("/") + 1).replaceAll("/", "-")}.policy`;
+    writeFileSync(join(policyDir, file), `log ${ed}\nlog ${ml}\nquorum none\n`);
+  }
   const token = randomBytes(32).toString("base64url");
   const [pub, priv] = [await freePort(), await freePort()];
   const child: ChildProcess = spawn(bin, [], {
@@ -80,6 +87,7 @@ export async function startLocalLog(databaseUrl: string): Promise<LocalLog> {
       PORT: String(pub),
       LOG_PRIVATE_ADDR: `127.0.0.1:${priv}`,
       LOG_DATA_DIR: join(dir, "data"),
+      LOG_POLICY_DIR: policyDir,
       DATABASE_URL: databaseUrl,
       KEELSON_VERIFYING_CONTRACT: VERIFYING_CONTRACT,
       LOG_WRITE_TOKEN_SHA256: createHash("sha256").update(token).digest("hex"),

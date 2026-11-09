@@ -25,6 +25,8 @@ concurrency:
 
 env:
   FOUNDRY_VERSION: v1.9.0
+  # Alchemy allows 500 compute units per second across the account, shared with production.
+  FOUNDRY_COMPUTE_UNITS_PER_SECOND: 60
   Z3_VERSION: 5.3.3
 
 jobs:
@@ -50,6 +52,7 @@ jobs:
       - run: npx --yes @cyfrin/aderyn@0.6.8 . --output aderyn.json
       - name: Aderyn reports no high finding outside the accepted list
         run: script/aderyn-gate.sh aderyn.json verification/aderyn-accepted.json
+      - run: forge lint src --severity high --severity med --deny notes
       - uses: actions/upload-artifact@v6
         if: always()
         with:
@@ -109,6 +112,8 @@ jobs:
           path: contracts/smt.log
 
   symbolic:
+    # Minutes-long runs: on main after merge and on schedule; pull requests run the short campaigns in ci.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -171,6 +176,8 @@ jobs:
           { echo "### anchor-rewrite"; echo '```'; grep -B2 -A8 '\[FAIL' seeded-anchor-rewrite.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
   invariant:
+    # Minutes-long runs: on main after merge and on schedule; pull requests run the short campaigns in ci.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     env:
       ARBITRUM_SEPOLIA_RPC_URL: https://arb-sepolia.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}
@@ -193,7 +200,7 @@ jobs:
       # contract's invariants as one campaign and its JSON names only the first, so the per-invariant lines are parsed.
       - run: |
           set +e
-          forge test --match-path 'test/invariant/*' > forge-invariant.log 2>&1
+          forge test --match-path 'test/invariant/*' --compute-units-per-second "$FOUNDRY_COMPUTE_UNITS_PER_SECOND" > forge-invariant.log 2>&1
           status=$?
           set -e
           grep -oE '^\[(PASS|FAIL)[^]]*\] [A-Za-z0-9_]+' forge-invariant.log \
@@ -209,6 +216,8 @@ jobs:
           path: contracts/invariant.json
 
   medusa:
+    # Minutes-long runs: on main after merge and on schedule; pull requests run the short campaigns in ci.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     env:
       ARBITRUM_SEPOLIA_RPC_URL: https://arb-sepolia.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}

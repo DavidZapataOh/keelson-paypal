@@ -4,6 +4,7 @@ pragma solidity 0.8.38;
 import {Vector} from "../script/CoverageVector.sol";
 import {IKeelsonBondVault} from "../src/interfaces/IKeelsonBondVault.sol";
 import {KeelsonTypes} from "../src/libraries/KeelsonTypes.sol";
+import {GasBudget} from "./utils/GasBudget.sol";
 import {LockBase} from "./utils/VaultBase.sol";
 import {Nonces} from "@openzeppelin/contracts/utils/Nonces.sol";
 import {stdJson} from "forge-std/StdJson.sol";
@@ -44,9 +45,9 @@ contract BondVaultLifecycleForkTest is LockBase {
         emit IKeelsonBondVault.CoverageReleased(v.coverage.coverageId, agentId, v.coverage.amount);
         vm.prank(makeAddr("anyone"));
         vault.releaseCoverage(v.coverage.coverageId);
-        emit log_named_uint(
-            "releaseCoverage execution", _executionGas(abi.encodeCall(vault.releaseCoverage, (v.coverage.coverageId)))
-        );
+        uint256 gReleasecoverage = _executionGas(abi.encodeCall(vault.releaseCoverage, (v.coverage.coverageId)));
+        emit log_named_uint("releaseCoverage execution", gReleasecoverage);
+        GasBudget.check("releaseCoverage", gReleasecoverage);
         assertEq(_bond().locked, 0);
         assertEq(_bond().free, deposited - v.coverage.premium);
         assertEq(uint8(vault.coverages(v.coverage.coverageId).status), uint8(IKeelsonBondVault.Status.Released));
@@ -94,10 +95,10 @@ contract BondVaultLifecycleForkTest is LockBase {
         uint256 deadline = vm.getBlockTimestamp() + 1 hours;
         bytes memory sig = _withdrawalSig(operatorKey, amount, recipient, nonce, deadline);
         id = vault.requestWithdrawal(agentId, amount, recipient, nonce, deadline, sig);
-        emit log_named_uint(
-            string.concat("requestWithdrawal execution, request #", vm.toString(id)),
-            _executionGas(abi.encodeCall(vault.requestWithdrawal, (agentId, amount, recipient, nonce, deadline, sig)))
-        );
+        uint256 gas =
+            _executionGas(abi.encodeCall(vault.requestWithdrawal, (agentId, amount, recipient, nonce, deadline, sig)));
+        emit log_named_uint(string.concat("requestWithdrawal execution, request #", vm.toString(id)), gas);
+        if (id <= 2) GasBudget.check(id == 1 ? "requestWithdrawal_first" : "requestWithdrawal_later", gas);
     }
 
     function test_withdrawal_paysTheSignedRecipientAfterTheDelay() public {
@@ -116,9 +117,9 @@ contract BondVaultLifecycleForkTest is LockBase {
         vm.warp(readyAt);
         vm.prank(makeAddr("anyone"));
         vault.completeWithdrawal(id);
-        emit log_named_uint(
-            "completeWithdrawal execution", _executionGas(abi.encodeCall(vault.completeWithdrawal, (id)))
-        );
+        uint256 gCompletewithdrawalFirstrecipient = _executionGas(abi.encodeCall(vault.completeWithdrawal, (id)));
+        emit log_named_uint("completeWithdrawal execution", gCompletewithdrawalFirstrecipient);
+        GasBudget.check("completeWithdrawal_firstRecipient", gCompletewithdrawalFirstrecipient);
         assertEq(pyusd.balanceOf(recipient), amount);
         assertEq(pyusd.balanceOf(makeAddr("anyone")), 0);
         assertEq(_bond().queued, 0);
@@ -129,10 +130,9 @@ contract BondVaultLifecycleForkTest is LockBase {
         id = _request(amount);
         vm.warp(vm.getBlockTimestamp() + vault.params().withdrawalDelay);
         vault.completeWithdrawal(id);
-        emit log_named_uint(
-            "completeWithdrawal execution, same recipient again",
-            _executionGas(abi.encodeCall(vault.completeWithdrawal, (id)))
-        );
+        uint256 gCompletewithdrawalKnownrecipient = _executionGas(abi.encodeCall(vault.completeWithdrawal, (id)));
+        emit log_named_uint("completeWithdrawal execution, same recipient again", gCompletewithdrawalKnownrecipient);
+        GasBudget.check("completeWithdrawal_knownRecipient", gCompletewithdrawalKnownrecipient);
     }
 
     function test_withdrawal_completesWhilePaused() public {

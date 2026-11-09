@@ -1,0 +1,77 @@
+import { readFileSync } from "node:fs";
+import { KMSClient } from "@aws-sdk/client-kms";
+import { addresses } from "@keelson/chain";
+import { type Db, operators } from "@keelson/db";
+import { createRelayer, kmsAccount, type Relayer } from "@keelson/relayer";
+import type { Logger } from "pino";
+import type { Address } from "viem";
+import { carts } from "./tee-live.ts";
+
+const registry = JSON.parse(
+  readFileSync(new URL("../../../contracts/deployments/421614.json", import.meta.url), "utf8"),
+) as { demo: { agentId: number } };
+
+/** The demo store: the sandbox account whose credentials create and capture holds. */
+export const STORE = "A4WCRYD5EYDF2";
+
+/** The demo operator: its key signs the coverage of the purchases under its mandates. */
+export const AGENT_ID = BigInt(registry.demo.agentId);
+export const VAULT = addresses[421614].KeelsonBondVault as Address;
+export const demoOperator = { agentId: AGENT_ID, vault: `eip155:421614:${VAULT}` };
+
+/** The demo cart at another price. */
+export function cartOf(minor: number) {
+  const value = (minor / 100).toFixed(2);
+  return {
+    cart: {
+      ...carts.demo.cart,
+      lines: carts.demo.cart.lines.map((l) => ({ ...l, unit_minor: minor })),
+    },
+    unit: {
+      amount: {
+        currency_code: "USD",
+        value,
+        breakdown: { item_total: { currency_code: "USD", value } },
+      },
+    },
+  };
+}
+
+/** The relayer of Arbitrum Sepolia, signing with the sandbox KMS key. */
+export async function kmsRelayer(db: Db, log: Logger): Promise<Relayer> {
+  const kms = new KMSClient({
+    region: process.env.AWS_REGION ?? "us-west-2",
+    credentials: {
+      accessKeyId: process.env.RELAYER_AWS_ACCESS_KEY_ID as string,
+      secretAccessKey: process.env.RELAYER_AWS_SECRET_ACCESS_KEY as string,
+    },
+  });
+  return createRelayer({
+    db,
+    log,
+    chains: {
+      421614: {
+        rpcUrl: process.env.ARBITRUM_SEPOLIA_RPC_URL as string,
+        fallbackRpcUrls: ["https://sepolia-rollup.arbitrum.io/rpc"],
+        account: await kmsAccount({
+          keyId: process.env.RELAYER_KMS_KEY_SANDBOX as string,
+          client: kms,
+        }),
+      },
+    },
+  });
+}
+
+/** The demo operator's row, which mandates naming it reference. */
+export async function seedDemoOperator(db: Db): Promise<void> {
+  await db
+    .insert(operators)
+    .values({
+      agentId: AGENT_ID,
+      chainId: 421614,
+      agentRegistry: "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+      name: "Demo operator",
+      cnfJwk: {},
+    })
+    .onConflictDoNothing();
+}

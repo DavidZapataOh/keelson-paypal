@@ -30,6 +30,7 @@ import {
   asUser,
   carts,
   headerPrincipal,
+  holdOnSandboxAuthorization,
   live,
   liveEnv,
   registerMandate,
@@ -247,6 +248,7 @@ describe.skipIf(!live)(
       const stored = await post("/v1/mandates", first.body, asUser(first.sub));
       expect(stored.status).toBe(201);
       mandateId = ((await stored.json()) as { id: string }).id;
+      await holdOnSandboxAuthorization(testDb, mandateId);
       agent = await registerMandate(tee.client.a, passkey);
       await testDb
         .insert(user)

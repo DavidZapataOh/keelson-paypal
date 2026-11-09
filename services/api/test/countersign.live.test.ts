@@ -19,6 +19,7 @@ import {
   asUser,
   carts,
   headerPrincipal,
+  holdOnSandboxAuthorization,
   live,
   liveEnv,
   registerMandate,
@@ -92,6 +93,7 @@ describe.skipIf(!live)("POST /v1/countersign (live legs)", { timeout: 180_000 },
     expect(created.status, JSON.stringify(json)).toBe(201);
     openMandate = json.openMandate;
     mandateId = json.id;
+    await holdOnSandboxAuthorization(testDb, mandateId);
   }, 120_000);
   afterAll(async () => {
     await passkey.close();

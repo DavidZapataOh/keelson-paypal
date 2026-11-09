@@ -60,11 +60,14 @@ export function holdHarness(app: Pick<OpenAPIHono, "request">, paypal: PayPalDep
   });
 
   /** A new user with a passkey and the mandate they signed (after `edit`), stored as SIGNED. */
-  const signed = async (edit?: Parameters<typeof signedMandate>[3]) => {
+  const signed = async (
+    edit?: Parameters<typeof signedMandate>[3],
+    operator?: Parameters<typeof signedMandate>[2],
+  ) => {
     const passkey = await SoftwarePasskey.create();
     const sub = `kls_usr_${randomBytes(8).toString("hex")}`;
     await seedUser(testDb, passkey, sub);
-    const mandate = await signedMandate(passkey, sub, undefined, (m) => {
+    const mandate = await signedMandate(passkey, sub, operator, (m) => {
       m.mid = ulid();
       edit?.(m);
     });

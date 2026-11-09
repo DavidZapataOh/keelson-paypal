@@ -25,6 +25,11 @@ const schema = z
     KEELSON_REGISTRAR_KEY: z
       .custom<`0x${string}`>((v) => typeof v === "string" && /^0x[0-9a-fA-F]{64}$/.test(v))
       .optional(),
+    /** The demo operator's key: Keelson signs that operator's `Coverage`, and no other's. */
+    KEELSON_OPERATOR_KEY: z
+      .custom<`0x${string}`>((v) => typeof v === "string" && /^0x[0-9a-fA-F]{64}$/.test(v))
+      .optional(),
+    DEMO_AGENT_ID: z.coerce.bigint().positive().optional(),
     ARBITRUM_ONE_RPC_URL: z.url().optional(),
     /** KMS key ids of the relayer's senders; each needs its chain's RPC URL and the relayer's AWS key. */
     RELAYER_KMS_KEY_SANDBOX: z.string().min(1).optional(),
@@ -59,6 +64,10 @@ const schema = z
       [env.TEE_A_URL, env.TEE_B_URL, env.KEELSON_TEE_TOKEN].every((v) => v !== undefined),
     { message: "TEE_A_URL, TEE_B_URL and KEELSON_TEE_TOKEN are set together", path: ["TEE_A_URL"] },
   )
+  .refine((env) => (env.KEELSON_OPERATOR_KEY === undefined) === (env.DEMO_AGENT_ID === undefined), {
+    message: "KEELSON_OPERATOR_KEY and DEMO_AGENT_ID are set together",
+    path: ["KEELSON_OPERATOR_KEY"],
+  })
   .refine((env) => (env.LOG_URL === undefined) === (env.LOG_WRITE_TOKEN === undefined), {
     message: "LOG_URL and LOG_WRITE_TOKEN are set together",
     path: ["LOG_URL"],

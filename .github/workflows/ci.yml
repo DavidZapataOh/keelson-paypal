@@ -18,7 +18,76 @@ env:
   FOUNDRY_COMPUTE_UNITS_PER_SECOND: 60
 
 jobs:
+  # A pull request runs only the jobs for what it touches; main runs everything. Workflow and toolchain files,
+  # and the test vectors several languages read, count as every area.
+  changes:
+    runs-on: ubuntu-24.04
+    permissions:
+      pull-requests: read
+    outputs:
+      ts: ${{ github.event_name != 'pull_request' || steps.filter.outputs.ts == 'true' }}
+      go: ${{ github.event_name != 'pull_request' || steps.filter.outputs.go == 'true' }}
+      rust: ${{ github.event_name != 'pull_request' || steps.filter.outputs.rust == 'true' }}
+      contracts: ${{ github.event_name != 'pull_request' || steps.filter.outputs.contracts == 'true' }}
+      noir: ${{ github.event_name != 'pull_request' || steps.filter.outputs.noir == 'true' }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: filter
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        with:
+          filters: |
+            shared: &shared
+              - .github/**
+              - package.json
+              - pnpm-lock.yaml
+              - pnpm-workspace.yaml
+              - turbo.json
+              - tsconfig.base.json
+              - biome.json
+              - knip.json
+              - vitest.config.ts
+              - packages/*/test/vectors/**
+              - packages/*/test/fixtures/**
+              - contracts/test/vectors/**
+              - contracts/deployments/**
+              - engine/tee/measurements*.json
+            ts:
+              - *shared
+              - packages/**
+              - services/api/**
+              - services/monitor/**
+              - apps/**
+              - openapi/**
+            go:
+              - *shared
+              - "**/*.go"
+              - go.mod
+              - go.sum
+              - internal/**
+              - services/log/**
+              - services/witness/**
+              - services/monitor/**
+            rust:
+              - *shared
+              - engine/**
+              - dstack/**
+              - Cargo.toml
+              - Cargo.lock
+              - rust-toolchain.toml
+              - packages/policy/**
+              - internal/conformance/**
+            contracts:
+              - *shared
+              - contracts/**
+              - packages/chain/**
+            noir:
+              - *shared
+              - circuits/**
+
   node:
+    needs: changes
+    if: needs.changes.outputs.ts == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -56,6 +125,8 @@ jobs:
           test -z "$(git status --porcelain)"
 
   attest:
+    needs: changes
+    if: needs.changes.outputs.ts == 'true'
     runs-on: ubuntu-24.04
     services:
       # dstack-verifier 0.6.3; it downloads the OS image the quote names.
@@ -83,6 +154,8 @@ jobs:
         run: pnpm bench | tee -a "$GITHUB_STEP_SUMMARY"
 
   evidence:
+    needs: changes
+    if: needs.changes.outputs.ts == 'true'
     runs-on: ubuntu-24.04
     env:
       PAYPAL_SANDBOX_BUYER_EMAIL: ${{ secrets.PAYPAL_SANDBOX_BUYER_EMAIL }}
@@ -103,6 +176,8 @@ jobs:
         run: pnpm bench | tee -a "$GITHUB_STEP_SUMMARY"
 
   services:
+    needs: changes
+    if: needs.changes.outputs.ts == 'true'
     runs-on: ubuntu-24.04
     env:
       DATABASE_URL: postgres://postgres:keelson@localhost:5432/keelson
@@ -153,6 +228,8 @@ jobs:
       - run: pnpm --filter @keelson/api openapi && git diff --exit-code openapi/
 
   relayer:
+    needs: changes
+    if: needs.changes.outputs.ts == 'true'
     runs-on: ubuntu-24.04
     env:
       DATABASE_URL: postgres://postgres:keelson@localhost:5432/keelson
@@ -192,6 +269,8 @@ jobs:
       - run: pnpm turbo run typecheck test build --filter=@keelson/relayer
 
   go:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-24.04
     env:
       DATABASE_URL: postgres://postgres:keelson@localhost:5432/keelson
@@ -221,6 +300,8 @@ jobs:
       - run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
   monitor-page:
+    needs: changes
+    if: needs.changes.outputs.go == 'true' || needs.changes.outputs.ts == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -265,6 +346,8 @@ jobs:
           test "$(gzip -9 -c verifier.wasm | wc -c)" -lt 1000000
 
   monitor-selfhost:
+    needs: changes
+    if: needs.changes.outputs.go == 'true' || needs.changes.outputs.ts == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -286,6 +369,8 @@ jobs:
           exit 1
 
   contracts:
+    needs: changes
+    if: needs.changes.outputs.contracts == 'true'
     runs-on: ubuntu-24.04
     env:
       ARBITRUM_SEPOLIA_RPC_URL: https://arb-sepolia.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}
@@ -312,6 +397,8 @@ jobs:
       - run: forge build --sizes --skip './test/**' --skip './script/**'
       # -vv: traces of failing tests would print the funder keys parsed from the secret.
       - run: forge test --no-match-path 'test/**/*.live.t.sol' -vv --compute-units-per-second "$FOUNDRY_COMPUTE_UNITS_PER_SECOND"
+      # Each budgeted path asserts its budget from budgets.json; the values it records must match the commit.
+      - run: git diff --exit-code snapshots/
       - run: forge snapshot --check --no-match-path 'test/**/*.{fork,live}.t.sol'
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
@@ -327,8 +414,8 @@ jobs:
           git diff --exit-code packages/chain/src
 
   contracts-live:
-    needs: contracts
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [changes, contracts]
+    if: (needs.changes.outputs.contracts == 'true') && (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-24.04
     env:
       ARBITRUM_SEPOLIA_RPC_URL: https://arb-sepolia.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}
@@ -350,8 +437,8 @@ jobs:
       - run: script/verify.sh --check-only 421614 11155111 42161
 
   log-live:
-    needs: go
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [changes, go]
+    if: (needs.changes.outputs.go == 'true') && (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-24.04
     env:
       DATABASE_URL: postgres://postgres:keelson@localhost:5432/keelson
@@ -388,6 +475,8 @@ jobs:
       - run: docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f detect --source /repo --log-opts="--all" --redact --no-banner
 
   rust:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -413,6 +502,8 @@ jobs:
           PAYPAL_AUTHORIZATION_VOIDED: ${{ vars.PAYPAL_AUTHORIZATION_VOIDED }}
 
   tee-simulator:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -440,6 +531,8 @@ jobs:
           DSTACK_SIMULATOR_ENDPOINT: ${{ github.workspace }}/dstack/sdk/simulator/dstack.sock
 
   proofs:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -460,8 +553,8 @@ jobs:
           done
 
   attest-proofs:
-    needs: proofs
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [changes, proofs]
+    if: (needs.changes.outputs.rust == 'true') && (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -475,6 +568,8 @@ jobs:
           subject-path: engine/policy/proofs/proof-bundle.json
 
   policy-parity:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.ts == 'true'
     runs-on: ubuntu-24.04
     strategy:
       matrix:
@@ -502,6 +597,8 @@ jobs:
           PARITY_FILE: ${{ runner.temp }}/parity.jsonl
 
   noir:
+    needs: changes
+    if: needs.changes.outputs.noir == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7

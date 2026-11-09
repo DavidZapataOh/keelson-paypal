@@ -1,4 +1,5 @@
 import { addresses, keelsonBondVaultAbi } from "@keelson/chain";
+import { keelsonDomain } from "@keelson/core/eip712";
 import {
   and,
   chainTxs,
@@ -6,6 +7,7 @@ import {
   desc,
   eq,
   isNull,
+  like,
   purchases,
   sql,
   teeSignatures,
@@ -16,6 +18,7 @@ import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
 import { BaseError, concat, type Hex, type PublicClient, toHex } from "viem";
 import { ERC8004_DEPLOY_BLOCK } from "../chain/reader.ts";
+import type { OperatorSigners } from "../operators/signer.ts";
 import type { CountersignJson } from "../tee/client.ts";
 import { countersignMessage } from "../tee/coordinator.ts";
 
@@ -27,6 +30,10 @@ const COVERABLE_FOR = "1 day";
 const OUTCOME_LOOKBACK_BLOCKS = 20_000n;
 const CURSOR_KEY = `relayer:outcomes:${CHAIN_ID}`;
 const ALLOW = 1;
+const DENY = 2;
+const ACTIVE = 1;
+/** Coverages are looked for among locks confirmed this recently. */
+const RELEASABLE_FOR = "2 days";
 /** Reverts that no later state changes: the outcome is recorded, or there is no validation to update. */
 const FINAL = new Set(["AlreadyRated", "OutcomeRecorded", "UnknownValidation"]);
 
@@ -37,6 +44,8 @@ export interface SweeperDeps {
   relayer: Relayer;
   /** Reads the vault; `logs` scans its events over wide ranges. */
   chain: { client: PublicClient; logs: PublicClient };
+  /** Signs the `ValidationRequest` of an operator's DENY purchases; DENY validations wait without it. */
+  operators?: OperatorSigners | undefined;
   /** No outcome before this block is looked for; the reporter and the registry did not exist yet. */
   outcomesFrom?: bigint;
 }
@@ -235,6 +244,144 @@ export async function recordOutcomes(deps: SweeperDeps): Promise<number> {
   return sent;
 }
 
+/**
+ * Records the ERC-8004 validation of every DENY purchase of an operator whose key Keelson holds,
+ * with that operator's signature over the `ValidationRequest`.
+ *
+ * @internal
+ */
+export async function recordDenials(deps: SweeperDeps): Promise<number> {
+  const { db, relayer, log, operators } = deps;
+  if (!operators) return 0;
+  const registry = addresses[CHAIN_ID].KeelsonValidationRegistry as Hex;
+  const candidates = await db
+    .select({
+      id: purchases.id,
+      countersign: purchases.countersign,
+      digest: purchases.countersignDigest,
+      mode: purchases.countersignMode,
+    })
+    .from(purchases)
+    .where(
+      and(
+        eq(purchases.decision, DENY),
+        isNull(purchases.validationTxId),
+        isNull(purchases.validationSkippedAt),
+        sql`${purchases.countersign} is not null`,
+        sql`${purchases.createdAt} > now() - ${COVERABLE_FOR}::interval`,
+      ),
+    )
+    .orderBy(desc(purchases.createdAt))
+    .limit(100);
+  let recorded = 0;
+  for (const p of candidates) {
+    const countersign = p.countersign as unknown as CountersignJson;
+    const operator = operators(BigInt(countersign.agentId));
+    const skip = () =>
+      db.update(purchases).set({ validationSkippedAt: new Date() }).where(eq(purchases.id, p.id));
+    if (!operator) {
+      await skip();
+      continue;
+    }
+    const digest = p.digest as Buffer;
+    const sigs = await countersigs(db, p.id, digest);
+    if (sigs.length !== (p.mode === "degraded" ? 1 : 2)) {
+      await skip();
+      continue;
+    }
+    const key = `KeelsonValidationRegistry.recordCountersign:${toHex(digest)}`;
+    let record: TxRecord | undefined = await relayer.get(CHAIN_ID, key);
+    try {
+      if (!record || record.status === "rejected" || record.status === "dropped") {
+        const operatorSig = await operator.signTypedData({
+          domain: keelsonDomain(CHAIN_ID, registry),
+          types: { ValidationRequest: [{ name: "requestHash", type: "bytes32" }] },
+          primaryType: "ValidationRequest",
+          message: { requestHash: toHex(digest) },
+        });
+        record = await relayer.submit({
+          chainId: CHAIN_ID,
+          contract: "KeelsonValidationRegistry",
+          functionName: "recordCountersign",
+          args: [countersignMessage(countersign), concat(sigs), operatorSig],
+          key,
+        });
+      }
+    } catch (err) {
+      if (isDone(err, "ValidationExists")) record = await relayer.get(CHAIN_ID, key);
+      else {
+        if (isDone(err, "NotAgentAuthority") || isDone(err, "InvalidCountersign")) await skip();
+        log.warn({ purchaseId: p.id, err: brief(err) }, "deny validation not recorded");
+        continue;
+      }
+    }
+    if (record?.status !== "confirmed") continue;
+    await db.update(purchases).set({ validationTxId: record.id }).where(eq(purchases.id, p.id));
+    recorded++;
+    log.info({ purchaseId: p.id, txId: record.id }, "deny validation recorded");
+  }
+  return recorded;
+}
+
+/**
+ * Releases every coverage Keelson locked whose window has passed, so the operator's bond is free
+ * again. Anyone may call `releaseCoverage`; the relayer pays for it.
+ *
+ * @internal
+ */
+export async function releaseCoverages(deps: SweeperDeps): Promise<number> {
+  const { db, relayer, chain, log } = deps;
+  const vault = addresses[CHAIN_ID].KeelsonBondVault as Hex;
+  const prefix = "KeelsonBondVault.lockCoverage:";
+  const locks = await db
+    .select({ key: chainTxs.key })
+    .from(chainTxs)
+    .where(
+      and(
+        eq(chainTxs.chainId, CHAIN_ID),
+        eq(chainTxs.status, "confirmed"),
+        like(chainTxs.key, `${prefix}%`),
+        sql`${chainTxs.confirmedAt} > now() - ${RELEASABLE_FOR}::interval`,
+      ),
+    )
+    .limit(500);
+  if (locks.length === 0) return 0;
+  const ids = locks.map((l) => l.key.slice(prefix.length) as Hex);
+  const [block, coverages] = await Promise.all([
+    chain.client.getBlock({ blockTag: "latest" }),
+    chain.client.multicall({
+      contracts: ids.map((id) => ({
+        address: vault,
+        abi: keelsonBondVaultAbi,
+        functionName: "coverages" as const,
+        args: [id] as const,
+      })),
+    }),
+  ]);
+  let released = 0;
+  for (const [i, coverageId] of ids.entries()) {
+    const c = coverages[i];
+    if (c?.status !== "success" || c.result.status !== ACTIVE) continue;
+    if (c.result.pendingSlashes !== 0 || BigInt(c.result.releaseAfter) >= block.timestamp) continue;
+    try {
+      const record = await relayer.submit({
+        chainId: CHAIN_ID,
+        contract: "KeelsonBondVault",
+        functionName: "releaseCoverage",
+        args: [coverageId],
+        key: `KeelsonBondVault.releaseCoverage:${coverageId}`,
+      });
+      if (record.status === "confirmed") {
+        released++;
+        log.info({ coverageId, txId: record.id }, "coverage released");
+      }
+    } catch (err) {
+      log.warn({ coverageId, err: brief(err) }, "coverage not released");
+    }
+  }
+  return released;
+}
+
 export function startValidationSweeper(deps: SweeperDeps): () => void {
   let running = false;
   const timer = setInterval(() => {
@@ -246,6 +393,12 @@ export function startValidationSweeper(deps: SweeperDeps): () => void {
       ),
       recordOutcomes(deps).catch((err: unknown) =>
         deps.log.error({ err: brief(err) }, "outcome sweep failed"),
+      ),
+      recordDenials(deps).catch((err: unknown) =>
+        deps.log.error({ err: brief(err) }, "deny validation sweep failed"),
+      ),
+      releaseCoverages(deps).catch((err: unknown) =>
+        deps.log.error({ err: brief(err) }, "coverage release sweep failed"),
       ),
     ]).finally(() => {
       running = false;

@@ -1,5 +1,6 @@
 import { and, type Db, eq, lt, purchases, sql } from "@keelson/db";
 import type { Logger } from "pino";
+import { logDenials, type PipelineDeps, resumePurchases } from "./pipeline/drive.ts";
 
 /** A countersign that has not finished by now was lost with its process; the request timeout is 30 s. */
 const STALE_AFTER_MS = 120_000;
@@ -32,6 +33,29 @@ export function startPurchaseSweeper(deps: { db: Db; log: Logger }): () => void 
       (err: unknown) => deps.log.error({ err }, "purchase sweep failed"),
     );
   }, SWEEP_INTERVAL_MS);
+  timer.unref();
+  return () => clearInterval(timer);
+}
+
+const RESUME_INTERVAL_MS = 5_000;
+
+/** Every five seconds, drives the purchases whose driver is gone and logs DENYs not yet logged. */
+export function startPipelineResumer(deps: PipelineDeps): () => void {
+  let running = false;
+  const timer = setInterval(() => {
+    if (running) return;
+    running = true;
+    void Promise.all([resumePurchases(deps), logDenials(deps)])
+      .then(
+        ([resumed, logged]) => {
+          if (resumed + logged > 0) deps.log.info({ resumed, logged }, "purchases resumed");
+        },
+        (err: unknown) => deps.log.error({ err }, "purchase resume failed"),
+      )
+      .finally(() => {
+        running = false;
+      });
+  }, RESUME_INTERVAL_MS);
   timer.unref();
   return () => clearInterval(timer);
 }

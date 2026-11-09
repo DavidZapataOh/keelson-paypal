@@ -40,7 +40,7 @@ export function createPayPalDeps(env: PayPalEnvVars): PayPalDeps {
 }
 
 /** PayPal did not answer, timed out or failed on its side. */
-class PayPalUnavailableError extends Error {
+export class PayPalUnavailableError extends Error {
   constructor(cause: unknown) {
     super("PayPal is unavailable", { cause });
     this.name = "PayPalUnavailableError";

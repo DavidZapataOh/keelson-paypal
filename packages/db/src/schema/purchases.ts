@@ -11,6 +11,7 @@ import {
   smallint,
   text,
   timestamp,
+  unique,
   varchar,
 } from "drizzle-orm/pg-core";
 import { purchaseState } from "./enums.ts";
@@ -52,6 +53,25 @@ export const purchases = pgTable(
     validationTxId: char({ length: 26 }),
     /** The validation does not apply on this chain: an ALLOW with no coverage to prove the request. */
     validationSkippedAt: timestamp({ withTimezone: true }),
+    /** The OAuth client that asked for the countersign; its purchase events go to it too. */
+    clientId: text(),
+    /** The PayPal order and authorization leg A read for this countersign. */
+    paypalOrderId: text(),
+    paypalAuthorizationId: text(),
+    /** The salt of the leaf's `paypal_ref_commit`. */
+    paypalRefSalt: bytea(),
+    /** The capture's sequence number among the mandate's captures, as its `invoice_id` states it. */
+    captureSeq: smallint(),
+    /** PayPal's status of the capture. */
+    captureStatus: text(),
+    /** The relayed `lockCoverage` of the purchase. */
+    coverageTxId: text(),
+    coverageTxHash: bytea(),
+    /** The purchase is being driven by one process until then. */
+    leaseUntil: timestamp({ withTimezone: true }),
+    capturedAt: timestamp({ withTimezone: true }),
+    /** The `keelson.eval/1` trace both legs signed over; its hash is the countersign's `evalHash`. */
+    evalTrace: jsonb(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -61,6 +81,12 @@ export const purchases = pgTable(
     check("purchases_decision_valid", sql`${t.decision} in (1, 2)`),
     check("purchases_cart_hash_len", sql`octet_length(${t.cartHash}) = 32`),
     check("purchases_countersign_digest_len", sql`octet_length(${t.countersignDigest}) = 32`),
+    check("purchases_paypal_ref_salt_len", sql`octet_length(${t.paypalRefSalt}) = 32`),
+    check("purchases_capture_seq_range", sql`${t.captureSeq} between 1 and 99`),
+    unique("purchases_mandate_id_capture_seq_unique").on(t.mandateId, t.captureSeq),
+    index("purchases_resumable_idx")
+      .on(t.leaseUntil)
+      .where(sql`${t.state} in ('COUNTERSIGNED', 'LOGGED', 'COVERED')`),
     index("purchases_mandate_id_created_at_idx").on(t.mandateId, t.createdAt.desc(), t.id.desc()),
     index("purchases_merchant_id_created_at_idx").on(t.merchantId, t.createdAt.desc()),
     index("purchases_open_created_at_idx").on(t.createdAt, t.id).where(openPurchase(t.state)),

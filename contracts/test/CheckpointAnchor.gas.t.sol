@@ -3,11 +3,10 @@ pragma solidity 0.8.38;
 
 import {RFC6962Harness} from "./RFC6962.t.sol";
 import {AnchorBase} from "./utils/AnchorBase.sol";
+import {GasBudget} from "./utils/GasBudget.sol";
 
 /// @notice Execution gas of `anchor` and `verifyInclusion` with real notes and the live legs' signatures.
 contract CheckpointAnchorGasTest is AnchorBase {
-    uint256 internal constant ANCHOR_BUDGET = 80_000;
-
     struct Consistency {
         bool ok;
         bytes32[] proof;
@@ -65,7 +64,7 @@ contract CheckpointAnchorGasTest is AnchorBase {
         Case memory a = _case(CONFORMANCE_8);
         Case memory b = _case(CONFORMANCE_16);
         _anchor(a);
-        assertLe(_measured(b, b.consistencyFromPrevious, "anchor, 8 to 16"), ANCHOR_BUDGET);
+        GasBudget.check("anchor_extension", _measured(b, b.consistencyFromPrevious, "anchor, 8 to 16"));
     }
 
     function test_gas_anchorWith20NodeProof() public {
@@ -73,7 +72,7 @@ contract CheckpointAnchorGasTest is AnchorBase {
         Case memory to = _case(GAS_TO);
         assertEq(to.consistencyFromPrevious.length, 20);
         _anchor(from);
-        assertLe(_measured(to, to.consistencyFromPrevious, "anchor, 20-node proof"), ANCHOR_BUDGET);
+        GasBudget.check("anchor_20NodeProof", _measured(to, to.consistencyFromPrevious, "anchor, 20-node proof"));
     }
 
     function test_gas_verifyInclusion20() public {

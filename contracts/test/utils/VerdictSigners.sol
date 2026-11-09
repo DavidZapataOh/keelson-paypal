@@ -3,7 +3,6 @@ pragma solidity 0.8.38;
 
 import {IVerdictVerifier} from "../../src/interfaces/IVerdictVerifier.sol";
 import {KeelsonTypes} from "../../src/libraries/KeelsonTypes.sol";
-import {stdJson} from "forge-std/StdJson.sol";
 import {Test} from "forge-std/Test.sol";
 
 /// @notice Two secp256k1 keys installed as one TDX and one Nitro signer of a forked `VerdictVerifier`, under the
@@ -11,8 +10,6 @@ import {Test} from "forge-std/Test.sol";
 /// can only bind a key born inside a TEE, so the records are written at the slots `forge inspect VerdictVerifier
 /// storageLayout` reports. They exist only on the fork.
 abstract contract VerdictSigners is Test {
-    using stdJson for string;
-
     uint256 internal constant MEASUREMENT_IDS_SLOT = 4;
     uint256 internal constant SIGNERS_SLOT = 7;
 
@@ -20,15 +17,26 @@ abstract contract VerdictSigners is Test {
     uint256 internal tdxKey;
     uint256 internal nitroKey;
 
+    /// @dev Measurements the VerdictVerifier allows at `VaultBase.FORK_BLOCK`, not the live legs' current ones.
+    bytes32 internal constant FORK_TDX_MEASUREMENT = 0x0f02189b65737875b58db9e50801fe710433cc7580481670b4a08b9020dd62ae;
+    bytes32 internal constant FORK_NITRO_MEASUREMENT =
+        0xc3077e2be4b9b20d3abdc05d577f4ccba942b32580b08a1bff1a2b23baf8baf7;
+
+    /// @dev The fork measurements, for a verifier deployed on the fork.
+    function _forkMeasurements() internal pure returns (bytes32[] memory measurements) {
+        measurements = new bytes32[](2);
+        measurements[0] = FORK_TDX_MEASUREMENT;
+        measurements[1] = FORK_NITRO_MEASUREMENT;
+    }
+
     function _installVerdictSigners(IVerdictVerifier verifier_) internal {
         verdictVerifier = verifier_;
-        string memory m = vm.readFile(string.concat(vm.projectRoot(), "/../engine/tee/measurements.json"));
         address tdx;
         address nitro;
         (tdx, tdxKey) = makeAddrAndKey("fork-only tdx verdict signer");
         (nitro, nitroKey) = makeAddrAndKey("fork-only nitro verdict signer");
-        _store(tdx, 1, _measurement(m.readString(".tdx.id")));
-        _store(nitro, 2, _measurement(m.readString(".nitro.id")));
+        _store(tdx, 1, FORK_TDX_MEASUREMENT);
+        _store(nitro, 2, FORK_NITRO_MEASUREMENT);
         assertTrue(verifier_.isActive(tdx, 1) && verifier_.isActive(nitro, 2), "verdict signers");
     }
 
@@ -56,11 +64,5 @@ abstract contract VerdictSigners is Test {
         uint256 packed = uint256(teeKind) | now_ << 8 | uint256(type(uint40).max) << 48 | id << 128;
         vm.store(address(verdictVerifier), slot, bytes32(packed));
         vm.store(address(verdictVerifier), bytes32(uint256(slot) + 1), measurement);
-    }
-
-    /// @dev `tdx:<hex>` or `nitro:<hex>` → the measurement.
-    function _measurement(string memory id) private pure returns (bytes32) {
-        string[] memory parts = vm.split(id, ":");
-        return vm.parseBytes32(string.concat("0x", parts[1]));
     }
 }

@@ -7,6 +7,7 @@ import {IERC8004Reputation} from "../src/interfaces/IERC8004Reputation.sol";
 import {IKeelsonBondVault} from "../src/interfaces/IKeelsonBondVault.sol";
 import {KeelsonTypes} from "../src/libraries/KeelsonTypes.sol";
 import {Erc8004Base} from "./utils/Erc8004Base.sol";
+import {GasBudget} from "./utils/GasBudget.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 
 /// @notice The reporter rates real coverages on the official Reputation registry: +1.00 per clean release, -1.00 per
@@ -57,6 +58,7 @@ contract ReputationReporterForkTest is Erc8004Base {
         emit KeelsonReputationReporter.CoverageRated(id, agentId, 100);
         assertTrue(reporter.rateCoverage(id));
         emit log_named_uint("rateCoverage first feedback", vm.lastCallGas().gasTotalUsed);
+        GasBudget.check("rateCoverage_first_tx", vm.lastCallGas().gasTotalUsed);
 
         assertTrue(reporter.rated(id));
         _assertFeedback(1, 100, "release");
@@ -90,6 +92,7 @@ contract ReputationReporterForkTest is Erc8004Base {
         _release(payment);
         reporter.rateCoverage(payment.coverage.coverageId);
         emit log_named_uint("rateCoverage later feedback", vm.lastCallGas().gasTotalUsed);
+        GasBudget.check("rateCoverage_later_tx", vm.lastCallGas().gasTotalUsed);
         _release(degraded);
         reporter.rateCoverage(degraded.coverage.coverageId);
 

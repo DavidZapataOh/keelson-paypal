@@ -4,6 +4,7 @@ pragma solidity 0.8.38;
 import {Vector} from "../script/CoverageVector.sol";
 import {IKeelsonBondVault} from "../src/interfaces/IKeelsonBondVault.sol";
 import {KeelsonTypes} from "../src/libraries/KeelsonTypes.sol";
+import {GasBudget} from "./utils/GasBudget.sol";
 import {LockBase} from "./utils/VaultBase.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {stdJson} from "forge-std/StdJson.sol";
@@ -16,7 +17,6 @@ contract BondVaultLockForkTest is LockBase {
     using stdJson for string;
 
     uint256 internal constant P256_N = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551;
-    uint256 internal constant GAS_BUDGET = 180_000;
 
     uint256 internal deposited;
 
@@ -56,7 +56,7 @@ contract BondVaultLockForkTest is LockBase {
         uint256 gas = _executionGas(_lockCalldata(v, sig));
         emit log_named_uint(string.concat("lockCoverage execution, ", name), gas);
         emit log_named_uint(string.concat("lockCoverage transaction, ", name), vm.lastCallGas().gasTotalUsed);
-        assertLe(gas, GAS_BUDGET, "lockCoverage gas");
+        GasBudget.check(string.concat("lockCoverage_", vm.replace(name, "-", "_")), gas);
 
         IKeelsonBondVault.CoverageState memory c = vault.coverages(v.coverage.coverageId);
         assertEq(c.amount, v.coverage.amount);
