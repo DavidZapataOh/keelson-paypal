@@ -70,6 +70,8 @@ services:
         sync: false
       - key: CHANNEL3_WEBHOOK_SECRET
         sync: false
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
       # The relayer signs with KMS keys only this IAM user may use; reads go through the provider RPC.
       - key: ARBITRUM_SEPOLIA_RPC_URL
         sync: false
