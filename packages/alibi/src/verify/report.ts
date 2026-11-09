@@ -48,6 +48,8 @@ export interface VerifyOptions {
   expect?: { leafHash: string; anchoredSize?: bigint; chainId?: number };
   /** The Alibi before an edit, so the report says which pointers changed and which checks read them. */
   original?: AlibiBundle | AlibiReceipt;
+  /** Called with each check as it completes, before the report. */
+  onCheck?: (check: Check) => void;
 }
 
 export type Verdict = "verified" | "verified-unanchored" | "failed" | "incomplete";

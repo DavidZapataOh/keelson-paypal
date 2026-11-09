@@ -93,7 +93,13 @@ export async function verifyAlibi(
     chain: chainRead(input, opts),
   };
   const changed = opts.original ? diffPointers(expand(opts.original), expand(input)) : [];
-  const checks = await Promise.all(CHECKS.map((c) => runCheck(c, input, ctx)));
+  const checks = await Promise.all(
+    CHECKS.map(async (c) => {
+      const check = await runCheck(c, input, ctx);
+      opts.onCheck?.(check);
+      return check;
+    }),
+  );
   if (changed.length) {
     for (const c of checks) {
       if (c.status === "fail") c.blame = changed.filter((p) => reads(c.reads, p));
