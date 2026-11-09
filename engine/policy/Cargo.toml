@@ -36,6 +36,10 @@ sha2 = "0.11.1"
 name = "evaluate"
 harness = false
 
+[[bench]]
+name = "attribute"
+harness = false
+
 [[bin]]
 name = "prove"
 required-features = ["prove"]

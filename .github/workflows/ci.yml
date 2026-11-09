@@ -551,6 +551,22 @@ jobs:
             test "$status" -eq 1
             jq -e '[.counterexamples[] | select(.check == "equivalent")] | length > 0 and all(.replay.seeded == "allow" and .replay.spec == "deny")' "$RUNNER_TEMP/$bug.json"
           done
+      - name: The committed attribution bundle is fresh
+        run: |
+          cargo run -p keelson-policy --bin prove -- --attribution --out engine/policy/proofs/attribution-bundle.json
+          git diff --exit-code engine/policy/proofs
+      - name: Seeded attribution holes produce replayable counterexamples
+        run: |
+          status=0
+          cargo run -q -p keelson-policy --bin prove -- --seed-bug no-precedence > "$RUNNER_TEMP/no-precedence.json" || status=$?
+          test "$status" -eq 1
+          jq -e '[.counterexamples[] | select(.check == "exclusive")] | length > 0 and all((.replay.seeded | length) >= 2 and (.replay.rules | length) == 1)' "$RUNNER_TEMP/no-precedence.json"
+          status=0
+          cargo run -q -p keelson-policy --bin prove -- --seed-bug drop-gray > "$RUNNER_TEMP/drop-gray.json" || status=$?
+          test "$status" -eq 1
+          jq -e '[.counterexamples[] | select(.check == "total")] | length == 1 and all(.replay.seeded == [] and .replay.rules == ["user"])' "$RUNNER_TEMP/drop-gray.json"
+      - name: Attribution latency
+        run: cargo bench -p keelson-policy --bench attribute | tee -a "$GITHUB_STEP_SUMMARY"
 
   attest-proofs:
     needs: [changes, proofs]
@@ -565,7 +581,9 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/attest-build-provenance@v4
         with:
-          subject-path: engine/policy/proofs/proof-bundle.json
+          subject-path: |
+            engine/policy/proofs/proof-bundle.json
+            engine/policy/proofs/attribution-bundle.json
 
   policy-parity:
     needs: changes
