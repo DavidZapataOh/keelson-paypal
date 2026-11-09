@@ -13,7 +13,7 @@ import {
 import { calculateJwkThumbprint } from "jose";
 import { type Address, BaseError, ContractFunctionRevertedError, getAddress, type Hex } from "viem";
 import type { Deps } from "../app.ts";
-import { chainUnavailable } from "../chain/reader.ts";
+import { blockScoped, chainUnavailable } from "../chain/reader.ts";
 import { requireClient } from "../middleware/auth.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 
@@ -213,6 +213,8 @@ const reverted = (err: unknown) =>
 
 export function registerOperators(app: OpenAPIHono, deps: Pick<Deps, "db" | "chains">): void {
   const { db } = deps;
+
+  const bonds = blockScoped();
 
   /** The agent's owner on `chainId`, or `null` if it is not minted. */
   async function ownerOf(chainId: Erc8004ChainId, agentId: bigint): Promise<Address | null> {
@@ -420,24 +422,33 @@ export function registerOperators(app: OpenAPIHono, deps: Pick<Deps, "db" | "cha
       address: ERC8004[chainId].reputation,
       abi: reputationRegistryAbi,
     } as const;
-    const [b, all, slashes, validations] = await reader.client.multicall({
-      allowFailure: false,
-      contracts: [
-        { address: vault, abi: keelsonBondVaultAbi, functionName: "bonds", args: [agentId] },
-        { ...reputation, functionName: "getSummary", args: [agentId, [reporter], "keelson", ""] },
-        {
-          ...reputation,
-          functionName: "getSummary",
-          args: [agentId, [reporter], "keelson", "slash"],
-        },
-        {
-          address: validation,
-          abi: keelsonValidationRegistryAbi,
-          functionName: "getSummary",
-          args: [agentId, [verifier], ""],
-        },
-      ],
-    });
+    const started = performance.now();
+    const { value, hit } = await bonds(reader.client, `${chainId}:${agentId}`, (blockNumber) =>
+      reader.client.multicall({
+        allowFailure: false,
+        blockNumber,
+        contracts: [
+          { address: vault, abi: keelsonBondVaultAbi, functionName: "bonds", args: [agentId] },
+          { ...reputation, functionName: "getSummary", args: [agentId, [reporter], "keelson", ""] },
+          {
+            ...reputation,
+            functionName: "getSummary",
+            args: [agentId, [reporter], "keelson", "slash"],
+          },
+          {
+            address: validation,
+            abi: keelsonValidationRegistryAbi,
+            functionName: "getSummary",
+            args: [agentId, [verifier], ""],
+          },
+        ],
+      }),
+    );
+    const [b, all, slashes, validations] = value;
+    c.header(
+      "Server-Timing",
+      `chain;dur=${(performance.now() - started).toFixed(1)};desc=${hit ? "hit" : "miss"}`,
+    );
     c.header("Cache-Control", "public, max-age=15");
     return c.json(
       {

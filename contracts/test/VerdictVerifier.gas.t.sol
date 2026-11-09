@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.38;
 
+import {GasBudget} from "./utils/GasBudget.sol";
 import {VerifierBase} from "./utils/VerifierBase.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 
@@ -34,7 +35,7 @@ contract VerdictVerifierGasTest is VerifierBase {
         uint256 used = vm.lastCallGas().gasTotalUsed;
         assertTrue(ok);
         emit log_named_uint("verify2of2 cold", used);
-        assertLe(used, 20_000);
+        GasBudget.check("verify2of2_cold", used);
     }
 
     function test_gas_verifyDegraded_cold() public {
@@ -47,6 +48,6 @@ contract VerdictVerifierGasTest is VerifierBase {
         uint256 used = vm.lastCallGas().gasTotalUsed;
         assertTrue(ok);
         emit log_named_uint("verifyDegraded cold", used);
-        assertLe(used, 10_000);
+        GasBudget.check("verifyDegraded_cold", used);
     }
 }

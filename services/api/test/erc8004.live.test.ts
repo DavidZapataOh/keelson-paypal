@@ -87,7 +87,11 @@ describe.skipIf(!live)("ERC-8004 reads on Arbitrum Sepolia", { timeout: 60_000 }
         },
         validation: { count: Number(validations[0]), averageResponse: validations[1] },
       });
-      console.info(`GET bond: ${ms.toFixed(0)} ms`);
+      expect(res.headers.get("server-timing")).toMatch(/^chain;dur=[\d.]+;desc=(hit|miss)$/);
+      const again = await app.request(`/v1/operators/421614/${agentId}/bond`);
+      expect(again.headers.get("server-timing")).toMatch(/;desc=hit$/);
+      expect(await again.json()).toEqual(body);
+      console.info(`GET bond: ${ms.toFixed(0)} ms, ${res.headers.get("server-timing")}`);
     },
   );
 

@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { chainTxs, eq } from "@keelson/db";
-import { type Address, type Hex, parseAbiItem } from "viem";
+import { type Address, type Hex, parseAbiItem, toHex } from "viem";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { FORK_BLOCK, type Fork, funder, PYUSD, startFork } from "./fork.ts";
 import { testDb, testDbUrl } from "./setup.ts";
@@ -25,14 +25,25 @@ describe.skipIf(!rpc)("two processes relaying the same keys", { timeout: 120_000
       salts,
     };
     const [a, b] = await Promise.all([runChild(config).done, runChild(config).done]);
-    for (const result of [...a.results, ...b.results]) {
-      expect(result.error).toBeUndefined();
-      expect(result.status).toBe("confirmed");
-    }
-    expect(a.results.map((r) => r.hash)).toEqual(b.results.map((r) => r.hash));
     const rows = await testDb.select().from(chainTxs).where(eq(chainTxs.status, "confirmed"));
     expect(rows).toHaveLength(20);
     expect(new Set(rows.map((r) => r.nonce)).size).toBe(20);
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    // Each key has one owner, which returns its receipt. The other process gets the same row, as it stands when the
+    // owner settles or after the relayer's bounded wait for a duplicate, so it may still be pending.
+    for (const [i, owner] of a.results.entries()) {
+      const other = b.results[i];
+      expect(owner.error).toBeUndefined();
+      expect(other?.error).toBeUndefined();
+      expect(other?.id).toBe(owner.id);
+      const row = byId.get(owner.id as string);
+      expect(row).toBeDefined();
+      expect([owner.status, other?.status]).toContain("confirmed");
+      for (const r of [owner, other]) {
+        if (r?.status === "confirmed") expect(r.hash).toBe(toHex(row?.hash as Buffer));
+        expect(["confirmed", "pending"]).toContain(r?.status);
+      }
+    }
     const used = await fork.client.getLogs({
       address: PYUSD,
       event: parseAbiItem(
