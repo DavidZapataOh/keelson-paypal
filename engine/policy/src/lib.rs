@@ -1,11 +1,13 @@
 //! The Keelson Cedar schema, the constant policy set, the `Mandate` entity builder and the
 //! fail-closed evaluator that emits the `keelson.eval/1` trace, and the closed set of user extras
 //! that compile to further `forbid` policies, and the symcc proofs that the policy set states the
-//! mandate rules.
+//! mandate rules. The dispute attribution table is compiled to Cedar the same way and proven
+//! total and exclusive.
 //!
 //! The policy set is a base `permit` plus one `forbid` per mandate field. Each policy carries
 //! `@id`, `@field` and `@color` annotations, and its Cedar policy id is its `@id`.
 
+mod attribution;
 mod entity;
 mod evaluate;
 mod extras;
@@ -13,7 +15,13 @@ mod hashes;
 #[cfg(feature = "prove")]
 mod prove;
 mod trace;
+mod verdict;
 
+pub use attribution::{
+    ATTRIBUTION_SCHEMA_SRC, Attribution, AttributionError, Facts, Liable, RULES, Reason, Rule,
+    attribute, attribution_policy_set_hash, attribution_policy_src, attribution_policy_text,
+    attribution_schema, attribution_schema_hash, attribution_sets,
+};
 pub(crate) use entity::{agent_entity_uid, variant_expr};
 pub use entity::{agent_uid, mandate_agent, mandate_entity};
 pub use evaluate::{
@@ -24,10 +32,12 @@ pub use extras::{Extra, ExtrasError, InvalidExtra, MAX_EXTRAS, compile_extras};
 pub use hashes::{policy_set_hash, policy_set_hash_tag, schema_hash, schema_hash_tag};
 #[cfg(feature = "prove")]
 pub use prove::{
-    Cvc5, ProofBundle, ProofResult, SPEC_SRC, SeedBug, Verdict, prove_all, prove_set, replay, spec,
-    spec_hash_tag,
+    AttributionBug, AttributionBundle, Cvc5, ProofBundle, ProofResult, SPEC_SRC, SeedBug, Verdict,
+    prove_all, prove_attribution, prove_attribution_sets, prove_set, replay, replay_attribution,
+    spec, spec_hash_tag,
 };
 pub use trace::{Decision, Engine, FieldTrace, TRACE_VERSION, Trace, trace_jcs};
+pub use verdict::{NO_FIELD, VerdictError, VerdictInput, dispute_id, inputs_hash, verdict};
 
 use std::collections::BTreeMap;
 use std::fmt;

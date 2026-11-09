@@ -11,6 +11,8 @@ default = ["prove"]
 prove = ["dep:cedar-policy-symcc", "dep:tokio"]
 
 [dependencies]
+alloy-primitives = "1.7.3"
+alloy-sol-types = "1.7.3"
 cedar-policy = "=4.14.1"
 cedar-policy-symcc = { version = "=0.8.1", optional = true }
 keelson-canon = { path = "../canon" }
@@ -34,6 +36,10 @@ sha2 = "0.11.1"
 name = "evaluate"
 harness = false
 
+[[bench]]
+name = "attribute"
+harness = false
+
 [[bin]]
 name = "prove"
 required-features = ["prove"]
@@ -48,4 +54,8 @@ required-features = ["prove"]
 
 [[test]]
 name = "seeded_bugs"
+required-features = ["prove"]
+
+[[test]]
+name = "attribution_proofs"
 required-features = ["prove"]

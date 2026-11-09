@@ -15,11 +15,13 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
+use crate::attribution::{policy_text, sets_from_text};
 use crate::extras::{Extra, compile};
 use crate::hashes::hex;
 use crate::{
-    CEDAR_POLICY_VERSION, CVC5_VERSION, Decision, PolicyError, SYMCC_VERSION, policies,
-    policy_set_hash_tag, policy_texts, schema, schema_hash_tag,
+    CEDAR_POLICY_VERSION, CVC5_VERSION, Decision, Liable, PolicyError, RULES, SYMCC_VERSION,
+    attribution_policy_set_hash, attribution_schema, attribution_schema_hash, attribution_sets,
+    policies, policy_set_hash_tag, policy_texts, schema, schema_hash_tag,
 };
 
 /// The reference spec source, `policy/spec.cedar`: one `permit` stating every mandate rule.
@@ -118,8 +120,8 @@ pub struct ProofResult {
     /// solver produces one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub counterexample: Option<Value>,
-    /// A request the property is shown on, in the same form: an allowed one for `satisfiable`,
-    /// a denied one for `not_always_allows`.
+    /// A request the property is shown on, in the same form: an allowed one for `satisfiable`
+    /// and `reachable`, a denied one for `not_always_allows`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub witness: Option<Value>,
     /// Wall time of the check, symbolic compilation included. Not serialized, so the bundle is reproducible.
@@ -442,6 +444,232 @@ pub fn replay(request: &Value, set: &PolicySet) -> Result<Decision, PolicyError>
             cedar_policy::Decision::Deny => Decision::Deny,
         },
     )
+}
+
+/// The checks run on the dispute attribution table, and the exact inputs and tools they ran on.
+#[derive(Debug, Clone, Serialize)]
+pub struct AttributionBundle {
+    pub symcc: String,
+    pub cvc5: String,
+    pub cedar_policy: String,
+    pub policy_set_hash: String,
+    pub schema_hash: String,
+    pub results: Vec<ProofResult>,
+}
+
+/// Runs every check of [`prove_attribution_sets`] on the attribution table and records the
+/// inputs and tools.
+pub fn prove_attribution(solver: &Cvc5) -> Result<AttributionBundle, Box<Error>> {
+    Ok(AttributionBundle {
+        symcc: SYMCC_VERSION.to_owned(),
+        cvc5: solver.version().to_owned(),
+        cedar_policy: CEDAR_POLICY_VERSION.to_owned(),
+        policy_set_hash: hex("sha256:", &attribution_policy_set_hash()),
+        schema_hash: hex("sha256:", &attribution_schema_hash()),
+        results: prove_attribution_sets(solver, attribution_sets())?,
+    })
+}
+
+/// A `permit` on the `attribute` action under `when`.
+fn attribute_permit(when: &str) -> PolicySet {
+    PolicySet::from_str(&format!(
+        r#"permit(principal, action == Keelson::Action::"attribute", resource) when {{ {when} }};"#
+    ))
+    .expect("the property parses")
+}
+
+/// Runs every check on the per-party attribution `sets`, over every request environment of the
+/// attribution schema. Each subject is prefixed with the environment's action id.
+///
+/// - `total`: the union of the sets allows every request, so every dispute has a liable party;
+/// - `exclusive`: each pair of sets is disjoint, so no dispute has two;
+/// - `keelson_needs_proof`: Keelson is liable only when every proof verifies;
+/// - `slash_needs_fault`: the operator, whose bond is slashed, is liable only for a missing
+///   proof, a duplicate capture or a failed amber field;
+/// - `alibi_defends_user`: an `UNAUTHORISED` dispute with valid proofs and no failed field is the
+///   user's;
+/// - `reachable`: each rule allows some request, so no rule is shadowed by earlier ones. The
+///   witness is that request.
+pub fn prove_attribution_sets(
+    solver: &Cvc5,
+    sets: &[(Liable, PolicySet)],
+) -> Result<Vec<ProofResult>, Box<Error>> {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| Error::from(SolverError::from(e)))?
+        .block_on(check_attribution(solver, sets))
+}
+
+async fn check_attribution(
+    solver: &Cvc5,
+    sets: &[(Liable, PolicySet)],
+) -> Result<Vec<ProofResult>, Box<Error>> {
+    let schema = attribution_schema();
+    let party = |liable: Liable| {
+        &sets
+            .iter()
+            .find(|(l, _)| *l == liable)
+            .expect("a set per party")
+            .1
+    };
+    let union = PolicySet::from_policies(sets.iter().flat_map(|(_, s)| s.policies().cloned()))
+        .expect("rule ids are unique");
+    let properties = [
+        (
+            "keelson_needs_proof",
+            Liable::Keelson,
+            attribute_permit("context.proof_valid"),
+        ),
+        (
+            "slash_needs_fault",
+            Liable::Operator,
+            attribute_permit(
+                "!context.proof_valid || context.duplicate_capture || context.failed_amber",
+            ),
+        ),
+    ];
+    let alibi = attribute_permit(
+        r#"context.reason == Keelson::Reason::"UNAUTHORISED" && context.proof_valid && !context.failed_green && !context.failed_amber && !context.failed_gray"#,
+    );
+    let mut symcc = CedarSymCompiler::new(solver.spawn().map_err(Error::from)?)?;
+    let mut results = Vec::new();
+    for env in schema.request_envs() {
+        let action = env.action().id().unescaped();
+        let subject = |name: &str| format!("{action}/{name}");
+        let compile =
+            |set: &PolicySet| CompiledPolicySet::compile(set, &env, schema).map_err(Box::new);
+
+        let t = Instant::now();
+        let compiled_union = compile(&union)?;
+        let cex = symcc
+            .check_always_allows_with_counterexample_opt(&compiled_union)
+            .await?;
+        results.push(result("total", &subject("rules"), cex, t));
+
+        let compiled: Vec<_> = sets
+            .iter()
+            .map(|(l, s)| Ok((*l, compile(s)?)))
+            .collect::<Result<_, Box<Error>>>()?;
+        for (i, (a, set_a)) in compiled.iter().enumerate() {
+            for (b, set_b) in &compiled[i + 1..] {
+                let t = Instant::now();
+                let cex = symcc
+                    .check_disjoint_with_counterexample_opt(set_a, set_b)
+                    .await?;
+                let pair = format!("{}|{}", a.as_str(), b.as_str());
+                results.push(result("exclusive", &subject(&pair), cex, t));
+            }
+        }
+
+        for (name, liable, property) in &properties {
+            let t = Instant::now();
+            let cex = symcc
+                .check_implies_with_counterexample_opt(
+                    &compile(party(*liable))?,
+                    &compile(property)?,
+                )
+                .await?;
+            results.push(result(name, &subject(liable.as_str()), cex, t));
+        }
+        let t = Instant::now();
+        let cex = symcc
+            .check_implies_with_counterexample_opt(
+                &compile(&alibi)?,
+                &compile(party(Liable::User))?,
+            )
+            .await?;
+        results.push(result("alibi_defends_user", &subject("user"), cex, t));
+
+        let mut rules: Vec<_> = union.policies().collect();
+        rules.sort_by_key(|p| p.id().to_string());
+        for rule in rules {
+            let t = Instant::now();
+            let single = PolicySet::from_policies([rule.clone()]).expect("one policy");
+            let witness = symcc
+                .check_always_denies_with_counterexample_opt(&compile(&single)?)
+                .await?;
+            results.push(witnessed(
+                "reachable",
+                &subject(rule.id().as_ref()),
+                witness,
+                t,
+            ));
+        }
+    }
+    symcc.solver_mut().clean_up().await.map_err(Error::from)?;
+    Ok(results)
+}
+
+/// A known hole in the attribution table, seeded to show the checks catch it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AttributionBug {
+    /// The rules are compiled without the negation of earlier rules: a dispute matching two
+    /// rules is attributed to two parties.
+    NoPrecedence,
+    /// R62 is left out: a dispute whose only failure is a gray field has no liable party.
+    DropGray,
+}
+
+impl AttributionBug {
+    /// `no-precedence` or `drop-gray`.
+    pub fn parse(name: &str) -> Option<Self> {
+        match name {
+            "no-precedence" => Some(Self::NoPrecedence),
+            "drop-gray" => Some(Self::DropGray),
+            _ => None,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::NoPrecedence => "no-precedence",
+            Self::DropGray => "drop-gray",
+        }
+    }
+
+    /// The per-party sets with the hole seeded, built from [`RULES`].
+    pub fn sets(self) -> Vec<(Liable, PolicySet)> {
+        let text = match self {
+            Self::NoPrecedence => policy_text(&RULES, false),
+            Self::DropGray => {
+                let rules: Vec<_> = RULES.iter().copied().filter(|r| r.id != 62).collect();
+                policy_text(&rules, true)
+            }
+        };
+        sets_from_text(&text)
+    }
+}
+
+/// The parties whose set allows a counterexample or witness from a [`ProofResult`], replayed with
+/// `cedar_policy::Authorizer` after validating it against the attribution schema.
+pub fn replay_attribution(
+    request: &Value,
+    sets: &[(Liable, PolicySet)],
+) -> Result<Vec<Liable>, PolicyError> {
+    fn cedar(e: impl Display) -> PolicyError {
+        PolicyError::Cedar(e.to_string())
+    }
+    let schema = attribution_schema();
+    let uid = |key: &str| EntityUid::from_json(request[key].clone()).map_err(cedar);
+    let (principal, action, resource) = (uid("principal")?, uid("action")?, uid("resource")?);
+    let context = Context::from_json_value(request["context"].clone(), Some((schema, &action)))
+        .map_err(cedar)?;
+    let request_entities = request["entities"].clone();
+    let request =
+        Request::new(principal, action, resource, context, Some(schema)).map_err(cedar)?;
+    let entities = Entities::from_json_value(request_entities, Some(schema)).map_err(cedar)?;
+    let authorizer = Authorizer::new();
+    Ok(sets
+        .iter()
+        .filter(|(_, set)| {
+            authorizer
+                .is_authorized(&request, set, &entities)
+                .decision()
+                == cedar_policy::Decision::Allow
+        })
+        .map(|(liable, _)| *liable)
+        .collect())
 }
 
 #[cfg(test)]
