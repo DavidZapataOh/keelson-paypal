@@ -389,3 +389,102 @@ describe.skipIf(!rpc)(
     });
   },
 );
+
+describe.skipIf(!process.env.PAYPAL_CLIENT_ID)(
+  "a settlement payout PayPal fails",
+  { timeout: 180_000 },
+  () => {
+    test("is reported as failed and the purchase is not marked paid", async () => {
+      const userId = ulid();
+      await testDb
+        .insert(user)
+        .values({ id: userId, name: "Tester", email: `${userId}@example.test` });
+      const agentId = BigInt(Date.now());
+      await testDb.insert(operators).values({
+        agentId,
+        chainId: 421614,
+        agentRegistry: "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+        name: "op",
+        cnfJwk: {},
+      });
+      const mandateId = ulid();
+      await testDb.insert(mandates).values({
+        id: mandateId,
+        userId,
+        operatorAgentId: agentId,
+        currency: "USD",
+        maxMinor: 2_000n,
+        remainingMinor: 2_000n,
+        merchantIds: ["mrc_runfast"],
+        expiresAt: new Date(Date.now() + 86_400_000),
+      });
+      const purchaseId = ulid();
+      await testDb.insert(purchases).values({
+        id: purchaseId,
+        mandateId,
+        merchantId: "mrc_runfast",
+        currency: "USD",
+        amountMinor: 100n,
+        cartHash: randomBytes(32),
+        state: "ATTRIBUTED",
+      });
+      const disputeId = `PP-R-${randomBytes(5).toString("hex").toUpperCase()}`;
+      await testDb.insert(disputes).values({
+        id: disputeId,
+        purchaseId,
+        reason: "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED",
+        raw: {},
+        state: "ATTRIBUTED",
+      });
+      // The warranty already reached the treasury on chain; the payout is all that is left.
+      await testDb.insert(verdicts).values({
+        id: ulid(),
+        disputeId,
+        liable: 2,
+        ruleId: 60,
+        amountMinor: 100n,
+        currency: "USD",
+        payee: KEELSON_TREASURY,
+        rail: "paypal",
+        digest: randomBytes(32),
+        chainId: 421614,
+        message: {},
+        signatures: [],
+        facts: {},
+        outcome: "paid",
+      });
+      // A PayPal account id no account has: PayPal accepts the batch, then fails its item.
+      await testDb
+        .insert(merchantSettlement)
+        .values({ merchantId: "mrc_runfast", rail: "paypal", paypalReceiver: "ZZZZZZZZZZZZZ" })
+        .onConflictDoUpdate({
+          target: merchantSettlement.merchantId,
+          set: { rail: "paypal", paypalReceiver: "ZZZZZZZZZZZZZ" },
+        });
+      const deps: SettleDeps = {
+        db: testDb,
+        log: pino({ level: "silent" }),
+        chain: { client: {} as PublicClient },
+        paypal: createPayPalDeps({
+          PAYPAL_CLIENT_ID: process.env.PAYPAL_CLIENT_ID as string,
+          PAYPAL_CLIENT_SECRET: process.env.PAYPAL_CLIENT_SECRET as string,
+          PAYPAL_ENV: "sandbox",
+          PAYPAL_MERCHANT_ID: "A4WCRYD5EYDF2",
+        }),
+      };
+      const started = performance.now();
+      let out = await settleDispute(deps, disputeId);
+      while (out.status === "pending" && performance.now() - started < 150_000) {
+        await new Promise((r) => setTimeout(r, 3_000));
+        out = await settleDispute(deps, disputeId);
+      }
+      expect(out).toEqual({ status: "failed", disputeId, failure: "payout FAILED" });
+      expect(await settleDispute(deps, disputeId)).toEqual(out);
+      const [p] = await testDb.select().from(purchases).where(eq(purchases.id, purchaseId));
+      expect(p?.state).toBe("ATTRIBUTED");
+      const [v] = await testDb.select().from(verdicts).where(eq(verdicts.disputeId, disputeId));
+      expect(v?.payoutStatus).toBe("FAILED");
+      await testDb.delete(merchantSettlement);
+    });
+  },
+);

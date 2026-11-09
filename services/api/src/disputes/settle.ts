@@ -71,7 +71,9 @@ const FINAL = new Set([
   "WarrantyWindowClosed",
   "ZeroAmount",
 ]);
-const PAYOUT_DONE = new Set(["SUCCESS", "FAILED", "RETURNED", "REFUNDED", "REVERSED", "BLOCKED"]);
+/** Payout item statuses PayPal does not move on from without the merchant. */
+const PAYOUT_FAILED = new Set(["FAILED", "RETURNED", "REFUNDED", "REVERSED", "BLOCKED"]);
+const PAYOUT_DONE = new Set(["SUCCESS", ...PAYOUT_FAILED]);
 const SETTLES = { [OPERATOR]: "SLASHED", [KEELSON]: "WARRANTY_PAID" } as const;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -151,8 +153,14 @@ export async function settleDispute(deps: SettleDeps, disputeId: string): Promis
 
   if (row.rail === "paypal" && row.outcome === "paid") {
     if (!deps.paypal) return { status: "pending", disputeId, waiting: "payout" };
-    const status = await payout(deps, deps.paypal, row);
-    if (!PAYOUT_DONE.has(status)) return { status: "pending", disputeId, waiting: "payout" };
+    const status =
+      row.payoutStatus && PAYOUT_DONE.has(row.payoutStatus)
+        ? row.payoutStatus
+        : await payout(deps, deps.paypal, row);
+    // The treasury holds the merchant's money until the merchant names an account PayPal pays.
+    if (PAYOUT_FAILED.has(status))
+      return { status: "failed", disputeId, failure: `payout ${status}` };
+    if (status !== "SUCCESS") return { status: "pending", disputeId, waiting: "payout" };
   }
   await transition(
     deps.db,
