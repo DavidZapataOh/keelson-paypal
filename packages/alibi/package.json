@@ -38,6 +38,7 @@
     "@keelson/log": "workspace:*",
     "@keelson/mandate": "workspace:*",
     "@keelson/paypal": "workspace:*",
+    "@keelson/policy": "workspace:*",
     "@keelson/timestamp": "workspace:*",
     "jose": "6.2.15",
     "pdfjs-dist": "6.4.299",

@@ -1,4 +1,4 @@
-import type { Check, Report as VerifyReport } from "@keelson/alibi/verify";
+import type { Check, FieldRow, Report as VerifyReport } from "@keelson/alibi/verify";
 import { CHECKS, STATUS, STEPS } from "./labels.ts";
 
 const TONE = {
@@ -106,6 +106,7 @@ function Row({ check }: { check: Check }) {
       <div className="min-w-0">
         <p className="text-[15px]">{meta.label}</p>
         {reason && <p className="mt-0.5 break-words text-sm text-ink-2">{reason}</p>}
+        {check.detail?.alert && <p className="mt-0.5 text-sm text-amber">{check.detail.alert}</p>}
         {check.blame && check.blame.length > 0 && (
           <p className="mt-1 font-mono text-xs text-vermilion-deep">
             Caused by {check.blame.join(", ")}
@@ -121,6 +122,48 @@ function Row({ check }: { check: Check }) {
         </p>
       </div>
     </li>
+  );
+}
+
+const COLOR = { green: "bg-pass", amber: "bg-amber", grey: "bg-line" } as const;
+
+const shown = (v: unknown) => (v === undefined ? "—" : JSON.stringify(v));
+
+/** The trace's policies: what each compared, whether it held and who answers for it. */
+function Fields({ fields }: { fields: FieldRow[] }) {
+  return (
+    <div className="mt-8">
+      <h3 className="font-mono text-xs uppercase tracking-wider text-ink-2">Fields</h3>
+      <table className="mt-1 w-full border-y border-line text-left text-sm">
+        <thead className="font-mono text-xs text-ink-2">
+          <tr>
+            <th className="py-2 font-normal">Field</th>
+            <th className="py-2 font-normal">Observed</th>
+            <th className="py-2 font-normal">Bound</th>
+            <th className="py-2 text-right font-normal">Who answers</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-line">
+          {fields.map((f) => (
+            <tr key={f.id} data-field={f.id} data-color={f.color}>
+              <td className="py-2">
+                <span
+                  className={`mr-2 inline-block size-2 rounded-full ${COLOR[f.color]}`}
+                  aria-hidden="true"
+                />
+                {f.id}
+                {!f.pass && <span className="ml-2 text-vermilion-deep">denied</span>}
+              </td>
+              <td className="break-all py-2 font-mono text-xs">{shown(f.observed)}</td>
+              <td className="break-all py-2 font-mono text-xs">{shown(f.bound)}</td>
+              <td className="py-2 text-right" data-answers>
+                {f.answers}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -178,6 +221,8 @@ export function Report({
           );
         })}
       </ol>
+
+      {report && report.fields.length > 0 && <Fields fields={report.fields} />}
 
       {report && report.unbound.length > 0 && (
         <div className="mt-8">

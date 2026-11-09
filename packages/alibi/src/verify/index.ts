@@ -12,10 +12,12 @@ import { leaf } from "./checks/leaf.ts";
 import { inclusion, policy, witnesses } from "./checks/log.ts";
 import { challenge, credentials, passkey } from "./checks/mandate.ts";
 import { paypal } from "./checks/paypal.ts";
+import { replay } from "./checks/policy.ts";
 import { qr } from "./checks/qr.ts";
 import { timestamps, zk } from "./checks/timestamps.ts";
 import { isBundle } from "./checks/util.ts";
 import { diffPointers, expand, reads, UNBOUND, valueAt } from "./expand.ts";
+import { fieldsOf } from "./fields.ts";
 import { type Report, type VerifyOptions, verdictOf } from "./report.ts";
 
 export {
@@ -27,6 +29,7 @@ export {
   createChainReader,
 } from "./chain.ts";
 export { collapse, diffPointers, expand, pointers, UNBOUND, valueAt } from "./expand.ts";
+export type { Answers, FieldRow } from "./fields.ts";
 export type { Check, CheckId, CheckStatus, Report, Verdict, VerifyOptions } from "./report.ts";
 export { verdictOf } from "./report.ts";
 
@@ -41,6 +44,7 @@ const CHECKS = [
   nitro,
   countersign,
   registry,
+  replay,
   policy,
   inclusion,
   witnesses,
@@ -110,6 +114,7 @@ export async function verifyAlibi(
     verdict: verdictOf(checks),
     checks,
     mode: modeOf(input),
+    fields: fieldsOf(input),
     unbound: UNBOUND.flatMap((p) => {
       const value = valueAt(input, p);
       return value === undefined ? [] : [{ pointer: p, value }];

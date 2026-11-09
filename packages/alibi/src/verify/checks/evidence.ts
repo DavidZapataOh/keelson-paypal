@@ -1,7 +1,10 @@
 import { type Json, jcs, sha256, toHex } from "@keelson/core";
 import {
   type Disclosure,
+  type ItemType,
   type Manifest,
+  MEDIA_TYPES,
+  ORIGINAL_MEDIA_TYPE,
   verifyDisclosure,
   verifyManifest,
 } from "@keelson/evidence";
@@ -10,6 +13,12 @@ import { isBundle, UNDISCLOSED } from "./util.ts";
 
 /** The only items an Alibi opens: the PII-redacted public ones. */
 const DISCLOSED = new Set(["api.product", "api.cart", "channel3.observation"]);
+
+/** The media type Keelson accepts for an item type; the leaf hides it until the item is opened. */
+const mediaTypeOf = (type: string) =>
+  type.endsWith(".original")
+    ? ORIGINAL_MEDIA_TYPE
+    : (MEDIA_TYPES as Record<string, string>)[type as ItemType];
 
 /**
  * The public manifest builds the evidence root the countersignature binds, every disclosure opens
@@ -26,6 +35,13 @@ export const evidence: CheckDef = {
       "/manifest/public/items",
       "/manifest/public/root",
     ]);
+    for (const [i, item] of m.items.entries()) {
+      expect(
+        item.media_type === mediaTypeOf(item.type),
+        `item ${item.type} is not ${mediaTypeOf(item.type) ?? "a known type"}`,
+        [`/manifest/public/items/${i}/media_type`, `/manifest/public/items/${i}/type`],
+      );
+    }
     expect(m.root === input.tee.countersign.evidenceRoot, "root", [
       "/manifest/public/root",
       "/tee/countersign/evidenceRoot",

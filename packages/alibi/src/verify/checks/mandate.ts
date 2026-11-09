@@ -1,5 +1,11 @@
 import { type Json, jcs, sha256, toHex } from "@keelson/core";
-import { decodeDisclosed, hSd, mandateChallenge, verifyOpenMandate } from "@keelson/mandate";
+import {
+  decodeDisclosed,
+  hSd,
+  mandateChallenge,
+  type VerifiedOpenMandate,
+  verifyOpenMandate,
+} from "@keelson/mandate";
 import { decodeJwt, importJWK, type JWK } from "jose";
 import { fromBase64url, toBase64url } from "../../b64.ts";
 import type { AlibiBundle } from "../../schema.ts";
@@ -43,6 +49,32 @@ const userOf = (b: AlibiBundle): { id?: string; jwk?: JWK } | undefined => {
   }
 };
 
+const opened = new WeakMap<AlibiBundle, Promise<VerifiedOpenMandate>>();
+
+/**
+ * The bundle's open mandate verified with its issuer key at the countersignature's time, once per
+ * bundle: the credentials check and the policy replay both read it.
+ */
+export function openMandate(b: AlibiBundle): Promise<VerifiedOpenMandate> {
+  let open = opened.get(b);
+  if (!open) {
+    open = (async () => {
+      const token = b.mandate.sd_jwt;
+      const kb = token.split("~")[token.split("~").indexOf("") + 1] ?? "";
+      const { aud, nonce } = decodeJwt(kb) as { aud?: string; nonce?: string };
+      const issuer = (await importJWK(b.mandate.issuer_jwk as JWK, "ES256")) as CryptoKey;
+      return verifyOpenMandate(token, issuer, {
+        expectedAud: String(aud),
+        expectedNonce: String(nonce),
+        now: Number(b.tee.countersign.issuedAt),
+        maxSkewSec: 300,
+      });
+    })();
+    opened.set(b, open);
+  }
+  return open;
+}
+
 /** The mandate hash the countersignature binds is the challenge of this payload and commitment. */
 export const challenge: CheckDef = {
   id: "mandate.challenge",
@@ -52,11 +84,11 @@ export const challenge: CheckDef = {
     if (!isBundle(input)) return UNDISCLOSED;
     const c = input.tee.countersign;
     const m = mandateChallenge(hSd(input.mandate.payload_sd), BigInt(c.mandateCommitment));
-    expect(toHex(m) === c.mandateHash, "mandateHash is not the challenge of this mandate", [
-      "/mandate/payload_sd",
-      "/tee/countersign/mandateHash",
-      "/tee/countersign/mandateCommitment",
-    ]);
+    expect(
+      toHex(m) === c.mandateHash,
+      "mandateHash is not the challenge of this mandate's H_sd and commitment",
+      ["/mandate/payload_sd", "/tee/countersign/mandateHash", "/tee/countersign/mandateCommitment"],
+    );
     return pass();
   },
 };
@@ -137,21 +169,13 @@ export const credentials: CheckDef = {
       ?.issuerJwkThumbprint;
     expect(
       bound !== undefined && (await issuerThumbprint(input)) === bound.toLowerCase(),
-      "the issuer key is not the one the TDX attestation binds",
+      "the issuer key's thumbprint is not the one the TDX attestation binds",
       ["/mandate/issuer_jwk", "/tee/attestations/0/binding/issuerJwkThumbprint"],
     );
     const token = input.mandate.sd_jwt;
-    const kb = token.split("~")[token.split("~").indexOf("") + 1] ?? "";
-    const { aud, nonce } = decodeJwt(kb) as { aud?: string; nonce?: string };
-    const issuer = (await importJWK(input.mandate.issuer_jwk as JWK, "ES256")) as CryptoKey;
-    let open: Awaited<ReturnType<typeof verifyOpenMandate>>;
+    let open: VerifiedOpenMandate;
     try {
-      open = await verifyOpenMandate(token, issuer, {
-        expectedAud: String(aud),
-        expectedNonce: String(nonce),
-        now: Number(input.tee.countersign.issuedAt),
-        maxSkewSec: 300,
-      });
+      open = await openMandate(input);
     } catch (err) {
       expect(false, `the open mandate does not verify: ${(err as Error).message}`, [
         "/mandate/sd_jwt",

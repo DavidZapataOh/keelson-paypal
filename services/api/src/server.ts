@@ -2,6 +2,7 @@ import { startAnchorWatcher } from "./alibi/anchors.ts";
 import "./telemetry.ts";
 import Anthropic from "@anthropic-ai/sdk";
 import { serve } from "@hono/node-server";
+import { createChainReader } from "@keelson/alibi/verify";
 import { createDb } from "@keelson/db";
 import { CertStore } from "@keelson/paypal";
 import { identityToRecipient } from "age-encryption";
@@ -97,6 +98,8 @@ const app = createApp({
   auth,
   appOrigin: env.APP_ORIGIN,
   verifyOrigin: env.VERIFY_ORIGIN,
+  // The public RPCs the browser verifier uses: a report never names the API's keyed RPC URL.
+  alibiChain: createChainReader(),
   passkeyRpId: env.PASSKEY_RP_ID,
   authenticate: authenticate(auth, env.BETTER_AUTH_URL),
   rateLimit: { trustProxy: process.env.RENDER === "true" },

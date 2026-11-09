@@ -151,6 +151,27 @@ jobs:
         shell: bash
         run: node bench/pdf.bench.ts | tee -a "$GITHUB_STEP_SUMMARY"
 
+  # Every tampering class and every field of the real Alibis, verified against Arbitrum Sepolia.
+  alibi-live:
+    needs: changes
+    if: needs.changes.outputs.ts == 'true'
+    runs-on: ubuntu-24.04
+    env:
+      KEELSON_LIVE: "1"
+      ARBITRUM_SEPOLIA_RPC_URL: https://arb-sepolia.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run build --filter=@keelson/alibi...
+      - name: Tampering, field coverage and chain reads
+        working-directory: packages/alibi
+        run: pnpm exec vitest run --reporter=verbose test/tamper.live.test.ts test/coverage.live.test.ts test/verify-chain.live.test.ts | tee -a "$GITHUB_STEP_SUMMARY"
+
   attest:
     needs: changes
     if: needs.changes.outputs.ts == 'true'
