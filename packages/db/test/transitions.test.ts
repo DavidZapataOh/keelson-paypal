@@ -192,3 +192,32 @@ test("the TypeScript map equals the state_transitions table", async () => {
     .sort();
   expect(fromMap).toEqual(fromDb);
 });
+
+async function sign(mandateId: string): Promise<void> {
+  assert(await transition(db, "mandates", mandateId, "DRAFT", "COMPILED"));
+  assert(await transition(db, "mandates", mandateId, "COMPILED", "SIGNED"));
+}
+
+test("a per-purchase mandate goes from SIGNED straight to ACTIVE", async () => {
+  const { mandateId } = await newPurchase();
+  await sign(mandateId);
+  expect(await transition(db, "mandates", mandateId, "SIGNED", "ACTIVE")).toBe(true);
+
+  const raw = (await newPurchase()).mandateId;
+  await sign(raw);
+  await pool.query("update mandates set state = 'ACTIVE' where id = $1", [raw]);
+  const { rows } = await pool.query("select state from mandates where id = $1", [raw]);
+  expect(rows[0].state).toBe("ACTIVE");
+});
+
+test("a pending hold does not go back to SIGNED", async () => {
+  const { mandateId } = await newPurchase();
+  await sign(mandateId);
+  await pool.query("update mandates set state = 'HOLD_PENDING' where id = $1", [mandateId]);
+  await expect(
+    pool.query("update mandates set state = 'SIGNED' where id = $1", [mandateId]),
+  ).rejects.toMatchObject({
+    code: "P0001",
+    message: "illegal transition mandates HOLD_PENDING -> SIGNED",
+  });
+});

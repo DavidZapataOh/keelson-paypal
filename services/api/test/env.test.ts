@@ -9,6 +9,7 @@ const base = {
   PAYPAL_CLIENT_ID: "client",
   PAYPAL_CLIENT_SECRET: "secret",
   PAYPAL_ENV: "sandbox",
+  PAYPAL_MERCHANT_ID: "A4WCRYD5EYDF2",
 };
 const production = {
   ...base,
@@ -50,7 +51,9 @@ test("the passkey RP ID can only be overridden in tests", () => {
 test("PayPal sign-in needs credentials and a known environment", () => {
   const env = { ...base, BETTER_AUTH_URL: "http://localhost:10000" };
   expect(() => parseEnv({ ...env, PAYPAL_CLIENT_ID: undefined })).toThrow();
-  expect(() => parseEnv({ ...env, PAYPAL_ENV: "production" })).toThrow();
+  expect(() => parseEnv({ ...env, PAYPAL_MERCHANT_ID: undefined })).toThrow();
+  expect(() => parseEnv({ ...env, PAYPAL_ENV: "live" })).toThrow();
+  expect(parseEnv({ ...env, PAYPAL_ENV: "production" }).PAYPAL_ENV).toBe("production");
 });
 
 test("the TEE settings come together and are required in production", () => {

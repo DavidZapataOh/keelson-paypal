@@ -1,4 +1,4 @@
-import { isUlid, toHex } from "@keelson/core";
+import { isUlid, sha256, toHex } from "@keelson/core";
 
 export type Env = "s" | "p";
 export type Kind = "a" | "m";
@@ -138,4 +138,9 @@ export function parseVerdictRef(s: string): { id: string; digest12: Uint8Array }
 /** First 36 hex characters of the digest, used as `PayPal-Request-Id`. */
 export function requestIdFromDigest(countersignDigest: Uint8Array): string {
   return toHex(countersignDigest).slice(2, 38);
+}
+
+/** `PayPal-Request-Id` of an operation on an order or an authorization: `hex(sha256("<op>:<id>"))[:36]`. */
+export function operationRequestId(id: string, op: "authorize" | "void" | "reauthorize"): string {
+  return toHex(sha256(new TextEncoder().encode(`${op}:${id}`))).slice(2, 38);
 }

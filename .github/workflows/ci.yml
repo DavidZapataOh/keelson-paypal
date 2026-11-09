@@ -12,6 +12,11 @@ concurrency:
 permissions:
   contents: read
 
+# Alchemy allows 500 compute units per second across the whole account, shared with production; each forking
+# process (forge, anvil) is held to this rate so parallel jobs stay well under it.
+env:
+  FOUNDRY_COMPUTE_UNITS_PER_SECOND: 60
+
 jobs:
   node:
     runs-on: ubuntu-24.04
@@ -138,7 +143,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @keelson/api exec playwright install chromium
-      - uses: foundry-rs/foundry-toolchain@v1.9.2
+      - uses: ./.github/actions/setup-foundry
         with:
           version: v1.9.0
           cache-key: relayer-${{ hashFiles('packages/relayer/test/fork.ts') }}
@@ -178,7 +183,7 @@ jobs:
         with:
           node-version-file: .node-version
           cache: pnpm
-      - uses: foundry-rs/foundry-toolchain@v1.9.2
+      - uses: ./.github/actions/setup-foundry
         with:
           version: v1.9.0
           cache-key: relayer-${{ hashFiles('packages/relayer/test/fork.ts') }}
@@ -227,10 +232,24 @@ jobs:
         with:
           node-version-file: .node-version
           cache: pnpm
-      - uses: acifani/setup-tinygo@db56321a62b9a67922bb9ac8f9d085e218807bb3 # v2
+      - id: tinygo
+        uses: actions/cache@v6
         with:
-          tinygo-version: 0.44.0
-          binaryen-version: "133"
+          path: ~/.local/tinygo
+          key: tinygo-0.44.0-binaryen-133-${{ runner.os }}
+      - if: steps.tinygo.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/.local/tinygo
+          curl -fsSL --retry 12 --retry-all-errors --retry-delay 30 --retry-max-time 900 \
+            https://github.com/tinygo-org/tinygo/releases/download/v0.44.0/tinygo0.44.0.linux-amd64.tar.gz \
+            | tar -xz -C ~/.local/tinygo
+          curl -fsSL --retry 12 --retry-all-errors --retry-delay 30 --retry-max-time 900 \
+            https://github.com/WebAssembly/binaryen/releases/download/version_133/binaryen-version_133-x86_64-linux.tar.gz \
+            | tar -xz -C ~/.local/tinygo
+      - run: |
+          echo "$HOME/.local/tinygo/tinygo/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/tinygo/binaryen-version_133/bin" >> "$GITHUB_PATH"
+      - run: tinygo version && wasm-opt --version
       - run: pnpm install --frozen-lockfile --filter @keelson/monitor
       - run: pnpm --filter @keelson/monitor exec playwright install chromium
       - run: pnpm --filter @keelson/monitor test
@@ -280,7 +299,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
-      - uses: foundry-rs/foundry-toolchain@v1.9.2
+      - uses: ./.github/actions/setup-foundry
         with:
           version: v1.9.0
           # Fork tests pin their blocks in the registry, so the RPC cache stays valid until a block moves.
@@ -289,9 +308,10 @@ jobs:
       - run: forge fmt --check
       # Base's nitro-validator is deployed with its own audited settings, so its bytecode comes from its own build.
       - run: forge build --root lib/nitro-validator
-      - run: forge build --sizes
+      # EIP-170 applies to what is deployed: test handlers and harnesses are exempt.
+      - run: forge build --sizes --skip './test/**' --skip './script/**'
       # -vv: traces of failing tests would print the funder keys parsed from the secret.
-      - run: forge test --no-match-path 'test/**/*.live.t.sol' -vv
+      - run: forge test --no-match-path 'test/**/*.live.t.sol' -vv --compute-units-per-second "$FOUNDRY_COMPUTE_UNITS_PER_SECOND"
       - run: forge snapshot --check --no-match-path 'test/**/*.{fork,live}.t.sol'
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
@@ -322,11 +342,11 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
-      - uses: foundry-rs/foundry-toolchain@v1.9.2
+      - uses: ./.github/actions/setup-foundry
         with:
           version: v1.9.0
       - run: forge build --root lib/nitro-validator
-      - run: forge test --match-path 'test/**/*.live.t.sol' -vv
+      - run: forge test --match-path 'test/**/*.live.t.sol' -vv --compute-units-per-second "$FOUNDRY_COMPUTE_UNITS_PER_SECOND"
       - run: script/verify.sh --check-only 421614 11155111 42161
 
   log-live:
@@ -485,8 +505,17 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-      - uses: noir-lang/noirup@v0.1.5
+      - id: nargo
+        uses: actions/cache@v6
         with:
-          toolchain: 1.0.0
+          path: ~/.nargo/bin
+          key: nargo-1.0.0-${{ runner.os }}
+      - if: steps.nargo.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/.nargo/bin
+          curl -fsSL --retry 12 --retry-all-errors --retry-delay 30 --retry-max-time 900 \
+            https://github.com/noir-lang/noir/releases/download/v1.0.0/noir-x86_64-unknown-linux-gnu.tar.gz \
+            | tar -xz -C ~/.nargo/bin
+      - run: echo "$HOME/.nargo/bin" >> "$GITHUB_PATH"
       - run: nargo test
         working-directory: circuits/vectors

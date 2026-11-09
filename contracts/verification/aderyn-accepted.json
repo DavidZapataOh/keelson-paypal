@@ -1,0 +1,92 @@
+[
+  {
+    "detector": "contract-locks-ether",
+    "location": "src/VerdictVerifier.sol:28",
+    "reason": "registerSignerWithQuote and registerSignerWithZkQuote forward all of msg.value to Automata's DCAP attestation as its fee; the verifier has no receive or fallback, so it keeps no ether."
+  },
+  {
+    "detector": "reentrancy-state-change",
+    "location": "src/CheckpointAnchor.sol:55",
+    "reason": "The external call before the write is a view (compiled to STATICCALL) to an immutable Keelson contract: the verifier, the anchor or the vault. No state can change during it."
+  },
+  {
+    "detector": "reentrancy-state-change",
+    "location": "src/CheckpointAnchor.sol:58",
+    "reason": "The external call before the write is a view (compiled to STATICCALL) to an immutable Keelson contract: the verifier, the anchor or the vault. No state can change during it."
+  },
+  {
+    "detector": "reentrancy-state-change",
+    "location": "src/KeelsonBondVault.sol:176",
+    "reason": "The external call before the write is a view (compiled to STATICCALL) to an immutable Keelson contract: the verifier, the anchor or the vault. No state can change during it."
+  },
+  {
+    "detector": "reentrancy-state-change",
+    "location": "src/KeelsonBondVault.sol:178",
+    "reason": "The external call before the write is a view (compiled to STATICCALL) to an immutable Keelson contract: the verifier, the anchor or the vault. No state can change during it."
+  },
+  {
+    "detector": "reentrancy-state-change",
+    "location": "src/KeelsonBondVault.sol:314",
+    "reason": "The external call before the write is a view (compiled to STATICCALL) to an immutable Keelson contract: the verifier, the anchor or the vault. No state can change during it."
+  },
+  {
+    "detector": "reentrancy-state-change",
+    "location": "src/KeelsonBondVault.sol:356",
+    "reason": "The external call before the write is a view (compiled to STATICCALL) to an immutable Keelson contract: the verifier, the anchor or the vault. No state can change during it."
+  },
+  {
+    "detector": "reentrancy-state-change",
+    "location": "src/KeelsonReserve.sol:81",
+    "reason": "The external call before the write is a view (compiled to STATICCALL) to an immutable Keelson contract: the verifier, the anchor or the vault. No state can change during it."
+  },
+  {
+    "detector": "reentrancy-state-change",
+    "location": "src/KeelsonReserve.sol:82",
+    "reason": "The external call before the write is a view (compiled to STATICCALL) to an immutable Keelson contract: the verifier, the anchor or the vault. No state can change during it."
+  },
+  {
+    "detector": "reentrancy-state-change",
+    "location": "src/KeelsonReserve.sol:85",
+    "reason": "The external call before the write is a view (compiled to STATICCALL) to an immutable Keelson contract: the verifier, the anchor or the vault. No state can change during it."
+  },
+  {
+    "detector": "reentrancy-state-change",
+    "location": "src/KeelsonReserve.sol:87",
+    "reason": "The external call before the write is a view (compiled to STATICCALL) to an immutable Keelson contract: the verifier, the anchor or the vault. No state can change during it."
+  },
+  {
+    "detector": "reentrancy-state-change",
+    "location": "src/KeelsonReserve.sol:88",
+    "reason": "The external call before the write is a view (compiled to STATICCALL) to an immutable Keelson contract: the verifier, the anchor or the vault. No state can change during it."
+  },
+  {
+    "detector": "reentrancy-state-change",
+    "location": "src/KeelsonReserve.sol:90",
+    "reason": "The external call before the write is a view (compiled to STATICCALL) to an immutable Keelson contract: the verifier, the anchor or the vault. No state can change during it."
+  },
+  {
+    "detector": "reentrancy-state-change",
+    "location": "src/KeelsonReserve.sol:91",
+    "reason": "The external call before the write is a view (compiled to STATICCALL) to an immutable Keelson contract: the verifier, the anchor or the vault. No state can change during it."
+  },
+  {
+    "detector": "reentrancy-state-change",
+    "location": "src/KeelsonReserve.sol:97",
+    "reason": "The external call before the write is a view (compiled to STATICCALL) to an immutable Keelson contract: the verifier, the anchor or the vault. No state can change during it."
+  },
+  {
+    "detector": "reentrancy-state-change",
+    "location": "src/KeelsonValidationRegistry.sol:75",
+    "reason": "The external call before the write is a view (compiled to STATICCALL) to an immutable Keelson contract: the verifier, the anchor or the vault. No state can change during it."
+  },
+  {
+    "detector": "reentrancy-state-change",
+    "location": "src/KeelsonValidationRegistry.sol:77",
+    "reason": "The external call before the write is a view (compiled to STATICCALL) to an immutable Keelson contract: the verifier, the anchor or the vault. No state can change during it."
+  },
+  {
+    "detector": "reentrancy-state-change",
+    "location": "src/KeelsonValidationRegistry.sol:93",
+    "reason": "The external call before the write is a view (compiled to STATICCALL) to an immutable Keelson contract: the verifier, the anchor or the vault. No state can change during it."
+  }
+]

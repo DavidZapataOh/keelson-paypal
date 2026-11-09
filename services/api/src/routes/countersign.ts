@@ -20,6 +20,7 @@ import {
   inArray,
   isNull,
   or,
+  purchaseHolds,
   purchases,
   sql,
   transition,
@@ -83,7 +84,8 @@ const CartSchema = z
 const Body = z
   .object({
     authorizationId: z.string().min(1).max(64).openapi({
-      description: "The PayPal authorization that holds the mandate's funds; leg A reads it.",
+      description:
+        "The PayPal authorization that holds the mandate's funds, or this request's own hold when the mandate holds each purchase separately; leg A reads it.",
     }),
     closedMandate: z.string().min(1).max(131_072).openapi({
       description: "The open mandate closed by the agent's key binding over the request and cart.",
@@ -163,7 +165,7 @@ const route = createRoute({
     413: { description: "A leg refused the request as too large", content: problemContent },
     422: {
       description:
-        "The request is invalid, the evidence holds another cart, or its Channel3 observation is not usable",
+        "The request is invalid, the authorization is not this purchase's hold, the cart is not the one held for this request, the evidence holds another cart, or its Channel3 observation is not usable",
       content: problemContent,
     },
     429: { description: "Too many countersigns for this mandate", content: problemContent },
@@ -385,13 +387,53 @@ export function registerCountersign(
       where: (row, { eq }) => eq(row.id, ids.mid),
     });
     if (!mandate) return problem(c, 404, "not-found", "Not found");
-    if (!USABLE.has(mandate.state) || !mandate.openMandate || !mandate.mandateHash) {
+    if (
+      !USABLE.has(mandate.state) ||
+      mandate.revokeRequestedAt !== null ||
+      !mandate.openMandate ||
+      !mandate.mandateHash
+    ) {
       return problem(
         c,
         409,
         "mandate-not-active",
         "Mandate not active",
         "The mandate cannot countersign now.",
+      );
+    }
+
+    // Leg A accepts a per-purchase hold for whatever mandate its request id is countersigned
+    // under, so the hold must be this mandate's, this request's and authorized. A mandate that
+    // holds its budget countersigns only on that hold once it has one.
+    let held: typeof purchaseHolds.$inferSelect | undefined;
+    let holdsAuthorization: boolean;
+    if (mandate.holdMode === "per_purchase") {
+      [held] = await db
+        .select()
+        .from(purchaseHolds)
+        .where(eq(purchaseHolds.requestId, ids.requestId));
+      holdsAuthorization =
+        held?.mandateId === mandate.id &&
+        held.state === "AUTHORIZED" &&
+        held.paypalAuthorizationId === body.authorizationId;
+    } else {
+      const stored = [mandate.paypalAuthorizationId, mandate.paypalParentAuthorizationId].filter(
+        (id) => id !== null,
+      );
+      const [cartHold] = await db
+        .select({ requestId: purchaseHolds.requestId })
+        .from(purchaseHolds)
+        .where(eq(purchaseHolds.paypalAuthorizationId, body.authorizationId));
+      holdsAuthorization =
+        cartHold === undefined && (stored.length === 0 || stored.includes(body.authorizationId));
+    }
+    if (!holdsAuthorization) {
+      return problem(
+        c,
+        422,
+        "authorization-not-held",
+        "Authorization not held",
+        "The authorization is not the hold of this mandate for this request.",
       );
     }
 
@@ -449,6 +491,29 @@ export function registerCountersign(
       currency: currency.numeric,
       mandateHash: `0x${Buffer.from(mandate.mandateHash).toString("hex")}`,
     };
+
+    if (held) {
+      const differs =
+        held.merchantId !== body.cart.merchant
+          ? "merchant"
+          : held.currency !== body.cart.currency
+            ? "currency"
+            : held.amountMinor !== total
+              ? "amount"
+              : `0x${held.cartHash.toString("hex")}` !== want.cartHash
+                ? "cart hash"
+                : undefined;
+      if (differs) {
+        return problem(
+          c,
+          422,
+          "purchase-hold-mismatch",
+          "Purchase hold mismatch",
+          `The cart's ${differs} is not the one held for this request.`,
+          { field: differs },
+        );
+      }
+    }
 
     if (evidenceCartHash(evidence.cart) !== want.cartHash) {
       return problem(

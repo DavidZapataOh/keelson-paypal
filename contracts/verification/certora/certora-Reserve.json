@@ -1,0 +1,12 @@
+{
+  "rules": {
+    "reserveCooldown": "VERIFIED",
+    "reserveCooldownReachable": "VERIFIED",
+    "warrantyOnlyForHeldCoverage": "VERIFIED",
+    "warrantyOnlyForHeldCoverageReachable": "VERIFIED",
+    "warrantyOnlyKeelsonLiable": "VERIFIED",
+    "warrantyOnlyKeelsonLiableReachable": "VERIFIED",
+    "warrantySingleUse": "VERIFIED",
+    "warrantySingleUseReachable": "VERIFIED"
+  }
+}

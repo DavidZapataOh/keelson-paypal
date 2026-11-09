@@ -1,3 +1,5 @@
 @openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/
 forge-std/=lib/forge-std/src/
 @nitro-validator/=lib/nitro-validator/src/
+halmos-cheatcodes/=lib/halmos-cheatcodes/src/
+erc4626-tests/=lib/erc4626-tests/

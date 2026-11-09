@@ -44,7 +44,22 @@ export const mandates = pgTable(
     /** The commitment salt, sealed by the TEE to the user and this mandate. */
     sealedSalt: bytea(),
     paypalOrderId: text().unique("mandates_paypal_order_id_unique"),
+    /** The authorization captures use: the parent, or its reauthorization. */
     paypalAuthorizationId: text().unique("mandates_paypal_authorization_id_unique"),
+    /** `mandate`: one hold for the budget; `per_purchase`: one hold per cart. */
+    holdMode: text({ enum: ["mandate", "per_purchase"] })
+      .notNull()
+      .default("mandate"),
+    /** The original authorization; a void must target it, never a reauthorization. */
+    paypalParentAuthorizationId: text().unique("mandates_paypal_parent_authorization_id_unique"),
+    /** The parent authorization's `create_time`. */
+    authorizedAt: timestamp({ withTimezone: true }),
+    reauthorizedAt: timestamp({ withTimezone: true }),
+    /** The PayPal issue of the last refused reauthorization or void. */
+    holdError: text(),
+    voidedAt: timestamp({ withTimezone: true }),
+    /** Set on revocation; no countersign is issued after it. */
+    revokeRequestedAt: timestamp({ withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -52,6 +67,7 @@ export const mandates = pgTable(
     check("mandates_remaining_within_max", sql`${t.remainingMinor} between 0 and ${t.maxMinor}`),
     check("mandates_mandate_hash_len", sql`octet_length(${t.mandateHash}) = 32`),
     check("mandates_commitment_len", sql`octet_length(${t.commitment}) = 32`),
+    check("mandates_hold_mode_valid", sql`${t.holdMode} in ('mandate', 'per_purchase')`),
     index("mandates_user_id_created_at_idx").on(t.userId, t.createdAt.desc(), t.id.desc()),
   ],
 );

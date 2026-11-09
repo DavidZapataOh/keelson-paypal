@@ -1,0 +1,8 @@
+{
+  "rules": {
+    "conservation": "VERIFIED",
+    "conservationReachable": "VERIFIED",
+    "failedPayoutIsClaimable": "VERIFIED",
+    "failedPayoutIsClaimableReachable": "FAIL"
+  }
+}

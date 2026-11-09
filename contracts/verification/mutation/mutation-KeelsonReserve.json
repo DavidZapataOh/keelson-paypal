@@ -1,0 +1,12 @@
+{
+  "summary": {
+    "total": 283,
+    "killed": 263,
+    "survived": 0,
+    "invalid": 19,
+    "skipped": 0,
+    "timed_out": 1,
+    "mutation_score": 100.0,
+    "duration_secs": 2684.276021959
+  }
+}

@@ -1,0 +1,400 @@
+name: contracts-verify
+
+on:
+  pull_request:
+    paths:
+      - contracts/**
+      - .github/workflows/contracts-verify.yml
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    # bash -eo pipefail: a piped tool's failure fails the step.
+    shell: bash
+
+concurrency:
+  group: contracts-verify-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  FOUNDRY_VERSION: v1.9.0
+  Z3_VERSION: 5.3.3
+
+jobs:
+  static:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/setup-foundry
+        with:
+          version: ${{ env.FOUNDRY_VERSION }}
+      - uses: astral-sh/setup-uv@v10.3.3
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+      - run: uv tool install slither-analyzer==0.11.6 --with crytic-compile==0.4.2
+      # Accepted findings live in slither.db.json, Slither's triage database.
+      - run: slither . --config-file slither.config.json --fail-medium --json slither.json
+      - run: npx --yes @cyfrin/aderyn@0.6.8 . --output aderyn.json
+      - name: Aderyn reports no high finding outside the accepted list
+        run: script/aderyn-gate.sh aderyn.json verification/aderyn-accepted.json
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: static
+          path: |
+            contracts/slither.json
+            contracts/aderyn.json
+
+  # CHC takes hours per contract, so it runs nightly, one job per contract.
+  smtchecker:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        contract:
+          - CheckpointAnchor
+          - KeelsonBondVault
+          - KeelsonReputationReporter
+          - KeelsonReserve
+          - KeelsonValidationRegistry
+          - VerdictVerifier
+          - deploy/KeelsonDeployer
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/setup-foundry
+        with:
+          version: ${{ env.FOUNDRY_VERSION }}
+      - name: Install z3
+        run: |
+          curl -fsSL --retry 12 --retry-all-errors --retry-delay 30 --retry-max-time 900 -o z3.zip "https://github.com/Z3Prover/z3/releases/download/z3-${Z3_VERSION}/z3-${Z3_VERSION}-x64-glibc-2.39.zip"
+          unzip -q z3.zip -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/z3-${Z3_VERSION}-x64-glibc-2.39/bin" >> "$GITHUB_PATH"
+      - run: z3 --version
+      - name: Check only this contract
+        env:
+          CONTRACT: ${{ matrix.contract }}
+        run: sed -i -E "s|^contracts = \{.*\}$|contracts = { \"src/${CONTRACT}.sol\" = [\"${CONTRACT##*/}\"] }|" foundry.toml
+      - run: FOUNDRY_PROFILE=smt forge build --force --skip test --skip script 2>&1 | tee smt.log
+      - name: Every model checker target is accepted
+        run: script/smt-gate.sh smt.log verification/smt-accepted.txt
+      - name: Name the artifact
+        id: name
+        env:
+          CONTRACT: ${{ matrix.contract }}
+        run: echo "value=smtchecker-${CONTRACT##*/}" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: ${{ steps.name.outputs.value }}
+          path: contracts/smt.log
+
+  symbolic:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/setup-foundry
+        with:
+          version: ${{ env.FOUNDRY_VERSION }}
+      - uses: astral-sh/setup-uv@v10.3.3
+      - run: uv tool install halmos==0.3.3
+      - name: Install z3
+        run: |
+          curl -fsSL --retry 12 --retry-all-errors --retry-delay 30 --retry-max-time 900 -o z3.zip "https://github.com/Z3Prover/z3/releases/download/z3-${Z3_VERSION}/z3-${Z3_VERSION}-x64-glibc-2.39.zip"
+          unzip -q z3.zip -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/z3-${Z3_VERSION}-x64-glibc-2.39/bin" >> "$GITHUB_PATH"
+      # Halmos 0.3.3 cannot execute the SHA-256 precompile, so the RFC 6962 check runs under forge only.
+      - run: FOUNDRY_PROFILE=halmos halmos --root . --match-contract '^(BondVault|VerdictVerifier|Reserve)SymbolicTest$' --json-output halmos.json
+      # Forge's engine does not sign symbolic digests: it runs the checks whose signatures are concrete.
+      - run: |
+          forge test --symbolic --match-path 'test/symbolic/*' --json \
+            --match-test '^check_(verify2of2|slashRequiresSignatures|completeWithdrawalGuards|reserveCooldown|rfc6962Consistency)\(' \
+            | jq '[.[] | {test_results: (.test_results | map_values({status}))}]' > forge-symbolic.json
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: symbolic
+          path: |
+            contracts/halmos.json
+            contracts/forge-symbolic.json
+
+  seeded-bugs:
+    runs-on: ubuntu-24.04
+    env:
+      ARBITRUM_SEPOLIA_RPC_URL: https://arb-sepolia.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/setup-foundry
+        with:
+          version: ${{ env.FOUNDRY_VERSION }}
+      - uses: astral-sh/setup-uv@v10.3.3
+      - run: uv tool install halmos==0.3.3
+      - name: Each removed guard yields a Halmos counterexample
+        run: |
+          for bug in double-settle any-liable degraded-instant; do
+            script/seeded.sh "$bug" halmos | tee "seeded-$bug.txt"
+            { echo "### $bug"; echo '```'; grep -A6 Counterexample "seeded-$bug.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          done
+      - name: Anchoring a rewritten history succeeds once the consistency check is removed
+        run: |
+          forge build --root lib/nitro-validator
+          script/seeded.sh anchor-rewrite forge | tee seeded-anchor-rewrite.txt
+          { echo "### anchor-rewrite"; echo '```'; grep -B2 -A8 '\[FAIL' seeded-anchor-rewrite.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+  invariant:
+    runs-on: ubuntu-24.04
+    env:
+      ARBITRUM_SEPOLIA_RPC_URL: https://arb-sepolia.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}
+      KEELSON_FUNDER_KEYS: ${{ secrets.KEELSON_FUNDER_KEYS }}
+      FOUNDRY_PROFILE: ci
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/setup-foundry
+        with:
+          version: ${{ env.FOUNDRY_VERSION }}
+          cache-key: contracts-verify-${{ hashFiles('contracts/test/utils/VaultBase.sol') }}
+          cache-restore-keys: contracts-verify-
+      - run: forge build --root lib/nitro-validator
+      # Only the status lines are kept: traces and logs could carry the funder keys parsed from the secret. Forge runs a
+      # contract's invariants as one campaign and its JSON names only the first, so the per-invariant lines are parsed.
+      - run: |
+          set +e
+          forge test --match-path 'test/invariant/*' > forge-invariant.log 2>&1
+          status=$?
+          set -e
+          grep -oE '^\[(PASS|FAIL)[^]]*\] [A-Za-z0-9_]+' forge-invariant.log \
+            | jq -Rn '[{test_results: ([inputs | capture("^\\[(?<s>PASS|FAIL)[^]]*\\] (?<n>.+)$")
+                | {(.n): {status: (if .s == "PASS" then "Success" else "Failure" end)}}] | add)}]' > invariant.json
+          rm forge-invariant.log
+          jq -r '.[0].test_results | to_entries[] | "\(.value.status) \(.key)"' invariant.json
+          exit $status
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: invariant
+          path: contracts/invariant.json
+
+  medusa:
+    runs-on: ubuntu-24.04
+    env:
+      ARBITRUM_SEPOLIA_RPC_URL: https://arb-sepolia.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}
+      MEDUSA_VERSION: v1.5.1
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/setup-foundry
+        with:
+          version: ${{ env.FOUNDRY_VERSION }}
+      - uses: astral-sh/setup-uv@v10.3.3
+      - run: uv tool install crytic-compile==0.4.2
+      - name: Install Medusa, verifying its Sigstore bundle
+        working-directory: ${{ runner.temp }}
+        run: |
+          base="https://github.com/crytic/medusa/releases/download/${MEDUSA_VERSION}"
+          curl -fsSLO --retry 12 --retry-all-errors --retry-delay 30 --retry-max-time 900 "$base/medusa-linux-x64.tar.gz"
+          curl -fsSLO --retry 12 --retry-all-errors --retry-delay 30 --retry-max-time 900 "$base/medusa-linux-x64.tar.gz.sigstore.json"
+          uvx --from sigstore sigstore verify github --bundle medusa-linux-x64.tar.gz.sigstore.json \
+            --repository crytic/medusa medusa-linux-x64.tar.gz
+          tar xzf medusa-linux-x64.tar.gz
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - uses: actions/cache@v5
+        with:
+          path: contracts/medusa-corpus/call_sequences
+          key: medusa-${{ hashFiles('contracts/src/**', 'contracts/test/invariant/**') }}
+          restore-keys: medusa-
+      # Medusa maps contracts deployed at runtime to sources through their CBOR metadata; behavior is unchanged.
+      - name: Fuzz
+        env:
+          FOUNDRY_CBOR_METADATA: "true"
+          FOUNDRY_BYTECODE_HASH: ipfs
+          TEST_LIMIT: ${{ github.event_name == 'schedule' && '2000000' || '200000' }}
+        # Forking the chain can hit the RPC's rate limit while other jobs fork it too; only that setup failure is retried.
+        run: |
+          for attempt in 1 2 3; do
+            set +e
+            medusa fuzz --config medusa.json --rpc-url "$ARBITRUM_SEPOLIA_RPC_URL" --test-limit "$TEST_LIMIT" 2>&1 | tee medusa.log
+            status=${PIPESTATUS[0]}
+            set -e
+            grep -q "Failed to initialize the test chain" medusa.log || exit "$status"
+            sleep $((attempt * 60))
+          done
+          exit "$status"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: medusa-coverage
+          path: |
+            contracts/medusa-corpus/coverage/lcov.info
+            contracts/medusa-corpus/coverage/coverage_report.html
+
+  # One job per contract, each against the suites that exercise it.
+  mutation:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    env:
+      ARBITRUM_SEPOLIA_RPC_URL: https://arb-sepolia.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}
+      ARBITRUM_ONE_RPC_URL: https://arb-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}
+      ETHEREUM_SEPOLIA_RPC_URL: https://eth-sepolia.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}
+      KEELSON_FUNDER_KEYS: ${{ secrets.KEELSON_FUNDER_KEYS }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: KeelsonBondVault
+            tests: "test/{BondVault,Settlement,Reserve}*.t.sol"
+          - name: KeelsonReserve
+            tests: "test/{Reserve,Settlement,BondVaultSlash}*.t.sol"
+          - name: VerdictVerifier
+            tests: "test/VerdictVerifier*.t.sol"
+          - name: CheckpointAnchor
+            tests: "test/CheckpointAnchor*.t.sol"
+          - name: KeelsonValidationRegistry
+            tests: "test/ValidationRegistry*.t.sol"
+          - name: KeelsonReputationReporter
+            tests: "test/ReputationReporter*.t.sol"
+          - name: libraries
+            path: "src/{libraries,access,deploy}/*.sol"
+            tests: "test/**/*.t.sol"
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/setup-foundry
+        with:
+          version: ${{ env.FOUNDRY_VERSION }}
+      - run: forge build --root lib/nitro-validator
+      - name: Mutate
+        env:
+          CONTRACT: ${{ matrix.name }}
+          MUTATE: ${{ matrix.path || format('src/{0}.sol', matrix.name) }}
+          TESTS: ${{ matrix.tests }}
+        run: |
+          forge test --mutate --mutate-path "$MUTATE" --match-path "$TESTS" --no-match-path 'test/**/*.live.t.sol' \
+            --mutation-jobs 0 --json > "mutation-${CONTRACT}.json"
+      - run: script/mutation-gate.sh "mutation-${{ matrix.name }}.json"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: mutation-${{ matrix.name }}
+          path: contracts/mutation-${{ matrix.name }}.json
+
+  # The Prover's free plan allows 2,120 job-minutes a month, which seven confs on every change would exhaust: the
+  # results of the latest run are pinned in contracts/verification/certora/ and refreshed by dispatching this workflow.
+  certora:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        conf:
+          - BondVault
+          - BondVaultRevertingToken
+          - Reserve
+          - VerdictVerifier
+          - CheckpointAnchor
+          - ValidationRegistry
+          - ReputationReporter
+    env:
+      CERTORAKEY: ${{ secrets.CERTORAKEY }}
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - run: script/check-harness.sh
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+      - run: pip install certora-cli==8.20.3 solc-select==1.2.0
+      - name: Install solc 0.8.38 as solc0.8.38
+        run: |
+          solc-select install 0.8.38
+          ln -s "$HOME/.solc-select/artifacts/solc-0.8.38/solc-0.8.38" "$RUNNER_TEMP/solc0.8.38"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: Prove
+        env:
+          CONF: ${{ matrix.conf }}
+        run: certoraRun "certora/conf/${CONF}.conf" --wait_for_results all | tee prover.log
+      - name: Rule results
+        if: always()
+        env:
+          CONF: ${{ matrix.conf }}
+        run: |
+          script/certora-results.sh "certora-${CONF}.json"
+          { echo "### ${CONF}"; grep -m1 -o 'https://prover.certora.com/output/[^ ]*' prover.log || true; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: certora-${{ matrix.conf }}
+          path: contracts/certora-${{ matrix.conf }}.json
+
+  # The README declares exactly what the full run established.
+  report:
+    if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    needs: [static, smtchecker, symbolic, seeded-bugs, invariant, medusa, certora, mutation]
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          path: contracts/results
+          merge-multiple: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+      - run: script/verification-report.sh results
+      # The repository's formatter aligns the table; the README is committed formatted.
+      - run: npx --yes @biomejs/biome@2.6.5 format --write README.md
+      - run: git diff --exit-code README.md

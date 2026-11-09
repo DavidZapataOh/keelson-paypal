@@ -8,6 +8,7 @@ import {
   mandates,
   operators,
   passkey,
+  purchaseHolds,
   purchases,
   teeSigners,
   user,
@@ -251,4 +252,62 @@ test("a purchase records only a known countersign mode", async () => {
   expect(await row("2of2")).toBeUndefined();
   expect(await row("degraded")).toBeUndefined();
   expect(await row("solo")).toBe("23514");
+});
+
+test("an unknown hold mode violates the mandate check", async () => {
+  expect(await sqlState(newMandate({ holdMode: "other" as never }))).toBe("23514");
+});
+
+test("two mandates cannot share a parent authorization", async () => {
+  await newMandate({ paypalParentAuthorizationId: "AUTH-PARENT-1" });
+  const code = await sqlState(newMandate({ paypalParentAuthorizationId: "AUTH-PARENT-1" }));
+  expect(code).toBe("23505");
+});
+
+const holdValues = (mandateId: string): typeof purchaseHolds.$inferInsert => ({
+  requestId: ulid(),
+  mandateId,
+  merchantId: "m1",
+  currency: "USD",
+  amountMinor: 4_250n,
+  cartHash: hash(),
+  paypalOrderId: `ORDER-${ulid()}`,
+  state: "PENDING",
+});
+
+test("a purchase hold starts PENDING under its mandate", async () => {
+  const mandate = await newMandate({ holdMode: "per_purchase" });
+  expect(mandate.holdMode).toBe("per_purchase");
+  const [hold] = await db.insert(purchaseHolds).values(holdValues(mandate.id)).returning();
+  assert(hold);
+  expect(hold.state).toBe("PENDING");
+  expect(hold.paypalAuthorizationId).toBeNull();
+});
+
+test("a non-positive purchase hold violates its check", async () => {
+  const mandate = await newMandate({ holdMode: "per_purchase" });
+  const code = await sqlState(
+    db.insert(purchaseHolds).values({ ...holdValues(mandate.id), amountMinor: 0n }),
+  );
+  expect(code).toBe("23514");
+});
+
+test("an unknown purchase hold state violates its check", async () => {
+  const mandate = await newMandate({ holdMode: "per_purchase" });
+  const code = await sqlState(
+    db.insert(purchaseHolds).values({ ...holdValues(mandate.id), state: "OTHER" as never }),
+  );
+  expect(code).toBe("23514");
+});
+
+test("two purchase holds cannot share an order", async () => {
+  const mandate = await newMandate({ holdMode: "per_purchase" });
+  const first = holdValues(mandate.id);
+  await db.insert(purchaseHolds).values(first);
+  const code = await sqlState(
+    db
+      .insert(purchaseHolds)
+      .values({ ...holdValues(mandate.id), paypalOrderId: first.paypalOrderId }),
+  );
+  expect(code).toBe("23505");
 });

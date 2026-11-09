@@ -1,28 +1,25 @@
 import { randomBytes } from "node:crypto";
 import { alibiDigest, DST, hashObject, newId, toHex, toPayPalValue } from "@keelson/core";
-import {
-  type ApiResponse,
-  AuthorizationStatus,
-  CheckoutPaymentIntent,
-} from "@paypal/paypal-server-sdk";
+import { type ApiResponse, AuthorizationStatus } from "@paypal/paypal-server-sdk";
 import { beforeAll, describe, expect, it } from "vitest";
 import { paypalConfig } from "../../src/config.ts";
 import { fromSdkError, PayPalError } from "../../src/errors.ts";
 import {
-  encodeCustomId,
+  checkAuthorization,
+  HoldMismatchError,
+  holdCustomId,
+  holdOrderRequest,
+} from "../../src/hold.ts";
+import {
   encodeInvoiceId,
   encodeVerdictRef,
+  operationRequestId,
   requestIdFromDigest,
 } from "../../src/ids.ts";
 import { createPayPal, type PayPal } from "../../src/sdk.ts";
+import { approveOrder, CANCEL_URL, payerActionUrl, RETURN_URL } from "../../src/testing.ts";
 import { TokenCache } from "../../src/token.ts";
-import {
-  approveOrder,
-  experienceContext,
-  operationRequestId,
-  payerActionUrl,
-  usd,
-} from "./approve.ts";
+import { usd } from "./approve.ts";
 
 let paypal: PayPal;
 
@@ -38,6 +35,8 @@ async function call<T>(label: string, p: Promise<ApiResponse<T>>): Promise<T> {
   return res.result;
 }
 
+/** The demo store whose credentials create and capture the hold. */
+const STORE = "A4WCRYD5EYDF2";
 const HOLD = 10_000n;
 const CAPTURE_A = 4_000n;
 const CAPTURE_B = 3_000n;
@@ -53,32 +52,18 @@ describe("mandate hold (sandbox)", () => {
       max: dollars(HOLD),
       currency: "USD",
     });
-    const customId = encodeCustomId({
+    const customId = holdCustomId("s", mandateUlid, mandateDigest);
+    const hold = { currency: "USD", minor: HOLD } as const;
+    const { paypalRequestId, body } = holdOrderRequest({
       env: "s",
-      kind: "m",
-      id: mandateUlid,
-      digest: mandateDigest,
+      mid: mandateUlid,
+      mandateHash: mandateDigest,
+      amount: hold,
+      returnUrl: RETURN_URL,
+      cancelUrl: CANCEL_URL,
     });
-    expect(customId).toHaveLength(77);
 
-    const order = await call(
-      "create order",
-      paypal.orders.createOrder({
-        paypalRequestId: requestIdFromDigest(mandateDigest),
-        body: {
-          intent: CheckoutPaymentIntent.Authorize,
-          purchaseUnits: [
-            {
-              referenceId: mandateUlid,
-              customId,
-              description: `Agent purchase under Keelson mandate ${mandateUlid}; verify: verify.keelson.finance/a/${mandateUlid}`,
-              amount: usd(HOLD),
-            },
-          ],
-          paymentSource: { paypal: { experienceContext } },
-        },
-      }),
-    );
+    const order = await call("create order", paypal.orders.createOrder({ paypalRequestId, body }));
     const orderId = order.id as string;
     console.info(`order id: ${orderId}`);
 
@@ -112,7 +97,17 @@ describe("mandate hold (sandbox)", () => {
         "get authorization",
         paypal.payments.getAuthorizedPayment({ authorizationId }),
       );
-      expect(read.customId).toBe(customId);
+      const expected = { customId, amount: hold, payees: [STORE] };
+      expect(checkAuthorization(read, expected).authorizationId).toBe(authorizationId);
+      expect(() => checkAuthorization(read, { ...expected, payees: ["OTHERMERCHANT1"] })).toThrow(
+        new HoldMismatchError("payee"),
+      );
+      expect(() =>
+        checkAuthorization(read, {
+          ...expected,
+          customId: holdCustomId("s", mandateUlid, randomBytes(32)),
+        }),
+      ).toThrow(new HoldMismatchError("custom_id"));
       const merchantId = read.payee?.merchantId as string;
 
       const purchase = (seq: number, minor: bigint) => {

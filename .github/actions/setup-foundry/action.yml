@@ -1,0 +1,55 @@
+name: Set up Foundry
+description: >-
+  Installs a pinned Foundry release from the runner cache, from its GitHub release (with retries), or from the
+  release's official image on ghcr.io, and restores Foundry's RPC cache for fork tests.
+
+inputs:
+  version:
+    description: Foundry release tag, e.g. v1.9.0.
+    required: true
+  cache-key:
+    description: Key of the RPC cache for fork tests.
+    required: false
+    default: default
+  cache-restore-keys:
+    description: Prefix of earlier RPC caches to restore from.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - id: bin
+      uses: actions/cache@v6
+      with:
+        path: ~/.foundry/bin
+        key: foundry-bin-${{ inputs.version }}-${{ runner.os }}-${{ runner.arch }}
+    - if: steps.bin.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        mkdir -p ~/.foundry/bin
+        url="https://github.com/foundry-rs/foundry/releases/download/$VERSION/foundry_${VERSION}_linux_amd64.tar.gz"
+        if curl -fsSL --retry 12 --retry-all-errors --retry-delay 30 --retry-max-time 900 -o "$RUNNER_TEMP/foundry.tar.gz" "$url"; then
+          tar -xzf "$RUNNER_TEMP/foundry.tar.gz" -C ~/.foundry/bin
+        else
+          echo "::warning::GitHub release download failed; copying the binaries from ghcr.io/foundry-rs/foundry:$VERSION"
+          id=$(docker create "ghcr.io/foundry-rs/foundry:$VERSION")
+          for tool in forge cast anvil chisel; do docker cp "$id:/usr/local/bin/$tool" ~/.foundry/bin/; done
+          docker rm "$id" >/dev/null
+        fi
+    - shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        echo "$HOME/.foundry/bin" >> "$GITHUB_PATH"
+        ~/.foundry/bin/forge --version | grep -q "${VERSION#v}" || { ~/.foundry/bin/forge --version; exit 1; }
+        ~/.foundry/bin/forge --version | head -1
+    - uses: actions/cache@v6
+      with:
+        path: ~/.foundry/cache/rpc
+        key: foundry-rpc-${{ inputs.cache-key }}-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: |
+          foundry-rpc-${{ inputs.cache-key }}-
+          foundry-rpc-${{ inputs.cache-restore-keys }}

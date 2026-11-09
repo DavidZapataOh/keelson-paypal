@@ -1,17 +1,23 @@
 {
+  "lib/erc4626-tests": {
+    "rev": "ac485460e014f22807c1ff687e0b4dc3af96ee40"
+  },
   "lib/forge-std": {
     "tag": {
       "name": "v1.17.0",
       "rev": "f3dae6e6ee381f25eb6a246f7da9b85c91a68219"
     }
   },
+  "lib/halmos-cheatcodes": {
+    "rev": "6da4e692c357ba6d641a2e677a28298cac9f76ab"
+  },
+  "lib/nitro-validator": {
+    "rev": "0ea0d12366b4fa44f9e07e4755f2ad36561cb674"
+  },
   "lib/openzeppelin-contracts": {
     "tag": {
       "name": "v5.7.0",
       "rev": "cab19933c33c2ad1d4c7a84864a3601dddfd16f3"
     }
-  },
-  "lib/nitro-validator": {
-    "rev": "0ea0d12366b4fa44f9e07e4755f2ad36561cb674"
   }
 }
