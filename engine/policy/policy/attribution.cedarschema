@@ -1,0 +1,34 @@
+namespace Keelson {
+  entity Dispute;
+
+  entity Reason enum [
+    "MERCHANDISE_OR_SERVICE_NOT_RECEIVED",
+    "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED",
+    "UNAUTHORISED",
+    "CREDIT_NOT_PROCESSED",
+    "DUPLICATE_TRANSACTION",
+    "INCORRECT_AMOUNT",
+    "PAYMENT_BY_OTHER_MEANS",
+    "CANCELED_RECURRING_BILLING",
+    "PROBLEM_WITH_REMITTANCE",
+    "OTHER"
+  ];
+
+  action "attribute" appliesTo {
+    principal: Dispute,
+    resource: Dispute,
+    context: {
+      reason: Reason,
+      proof_valid: Bool,
+      failed_green: Bool,
+      failed_amber: Bool,
+      failed_gray: Bool,
+      captured_eq_countersigned: Bool,
+      duplicate_countersig: Bool,
+      duplicate_capture: Bool,
+      tracking_delivered: Bool,
+      snapshot_matches_item: Bool,
+      refund_recorded: Bool,
+    },
+  };
+}
