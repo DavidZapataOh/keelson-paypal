@@ -154,7 +154,7 @@ jobs:
   # Every tampering class and every field of the real Alibis, verified against Arbitrum Sepolia.
   alibi-live:
     needs: changes
-    if: needs.changes.outputs.ts == 'true'
+    if: github.event_name != 'pull_request' && needs.changes.outputs.ts == 'true'
     runs-on: ubuntu-24.04
     env:
       KEELSON_LIVE: "1"
