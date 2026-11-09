@@ -30,3 +30,10 @@ export const leafBytesOf = (input: AlibiBundle | AlibiReceipt) => fromBase64(inp
 export const sameJson = (a: unknown, b: unknown) => jcs(a as Json) === jcs(b as Json);
 
 export const UNDISCLOSED = { status: "undisclosed" } as const;
+
+/** The 32-byte measurement of a `tdx:<hex>` or `nitro:<hex>` measurement id. */
+export function measurementHex(id: string): `0x${string}` {
+  const m = /^(tdx|nitro):([0-9a-f]{64})$/.exec(id);
+  if (!m) throw new TypeError(`malformed measurement id: ${id}`);
+  return `0x${m[2]}`;
+}

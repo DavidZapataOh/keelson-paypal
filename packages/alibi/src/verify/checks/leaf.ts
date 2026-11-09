@@ -3,16 +3,11 @@ import { LEAF_PREFIX, leafBytes, leafHash } from "@keelson/log";
 import type { Hex } from "viem";
 import { fromBase64url, toBase64url } from "../../b64.ts";
 import { type CheckDef, expect, pass } from "../check.ts";
-import { b64urlOfHex, isBundle, leafBytesOf, sameJson } from "./util.ts";
+import { b64urlOfHex, isBundle, leafBytesOf, measurementHex, sameJson } from "./util.ts";
 
 const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 const hexOfB64url = (s: string): Hex =>
   `0x${Array.from(fromBase64url(s), (b) => b.toString(16).padStart(2, "0")).join("")}`;
-const measurementHex = (id: string) => {
-  const m = /^(tdx|nitro):([0-9a-f]{64})$/.exec(id);
-  if (!m) throw new TypeError(`malformed measurement id: ${id}`);
-  return `0x${m[2]}`;
-};
 const rfc3339 = (unix: string) =>
   new Date(Number(unix) * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
 

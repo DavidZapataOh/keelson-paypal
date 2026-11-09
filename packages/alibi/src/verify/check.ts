@@ -1,4 +1,5 @@
 import type { AlibiBundle, AlibiReceipt } from "../schema.ts";
+import type { ChainAnswer } from "./chain.ts";
 import type { Check, CheckId, CheckStatus, VerifyOptions } from "./report.ts";
 
 /** A check's failure: why, and the pointers of the values that do not hold. */
@@ -18,8 +19,17 @@ export function expect(ok: unknown, reason: string, reads: string[]): asserts ok
 
 export interface Outcome {
   status: CheckStatus;
+  reason?: string;
   reads?: string[];
   detail?: Record<string, string>;
+}
+
+/** What every check of one verification shares. */
+export interface Context {
+  now: Date;
+  expect: VerifyOptions["expect"];
+  /** The one chain read of this verification; `null` offline. */
+  chain: Promise<ChainAnswer> | null;
 }
 
 export interface CheckDef {
@@ -28,10 +38,7 @@ export interface CheckDef {
   /** What the check reads, reported when it fails on an unexpected error. */
   reads: string[];
   /** `null` when the input is a receipt and the check needs a section only a bundle carries. */
-  run: (
-    input: AlibiBundle | AlibiReceipt,
-    opts: Required<VerifyOptions>,
-  ) => Outcome | Promise<Outcome>;
+  run: (input: AlibiBundle | AlibiReceipt, ctx: Context) => Outcome | Promise<Outcome>;
 }
 
 export const pass = (detail?: Record<string, string>): Outcome =>
@@ -41,15 +48,16 @@ export const pass = (detail?: Record<string, string>): Outcome =>
 export async function runCheck(
   def: CheckDef,
   input: AlibiBundle | AlibiReceipt,
-  opts: Required<VerifyOptions>,
+  ctx: Context,
 ): Promise<Check> {
   const started = performance.now();
   const base = { id: def.id, step: def.step };
   try {
-    const out = await def.run(input, opts);
+    const out = await def.run(input, ctx);
     return {
       ...base,
       status: out.status,
+      ...(out.reason ? { reason: out.reason } : {}),
       reads: out.reads ?? def.reads,
       ms: performance.now() - started,
       ...(out.detail ? { detail: out.detail } : {}),
