@@ -1,0 +1,13 @@
+diff --git a/contracts/src/KeelsonBondVault.sol b/contracts/src/KeelsonBondVault.sol
+index e55419d..a6a638b 100644
+--- a/contracts/src/KeelsonBondVault.sol
++++ b/contracts/src/KeelsonBondVault.sol
+@@ -529,7 +529,7 @@ contract KeelsonBondVault is IKeelsonBondVault, AccessManaged, EIP712, Nonces, R
+                     : degraded && verifier.verifyDegraded(digest, sigs))) revert InvalidVerdictSignature();
+         if (v.liable != LIABLE_OPERATOR) revert NotOperatorLiable();
+         if (v.amount == 0 || v.payee == address(0)) revert ZeroAmount();
+-        if (settled[v.disputeId] || IKeelsonReserve(reserve).settled(v.disputeId)) revert AlreadySettled();
++        if (IKeelsonReserve(reserve).settled(v.disputeId)) revert AlreadySettled();
+         if (block.timestamp > v.deadline) revert Expired();
+         if (v.checkpointRoot == 0 || anchor.rootAt(logOrigin, treeSize) != v.checkpointRoot) revert NotAnchored();
+     }

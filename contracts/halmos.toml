@@ -1,0 +1,6 @@
+[global]
+loop = 3
+solver-timeout-assertion = 60000
+invariant-depth = 3
+forge-build-out = "out"
+default-bytes-lengths = "65,130"

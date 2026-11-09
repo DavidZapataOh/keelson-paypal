@@ -303,7 +303,8 @@ jobs:
       - run: forge fmt --check
       # Base's nitro-validator is deployed with its own audited settings, so its bytecode comes from its own build.
       - run: forge build --root lib/nitro-validator
-      - run: forge build --sizes
+      # EIP-170 applies to what is deployed: test handlers and harnesses are exempt.
+      - run: forge build --sizes --skip './test/**' --skip './script/**'
       # -vv: traces of failing tests would print the funder keys parsed from the secret.
       - run: forge test --no-match-path 'test/**/*.live.t.sol' -vv
       - run: forge snapshot --check --no-match-path 'test/**/*.{fork,live}.t.sol'
