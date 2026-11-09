@@ -23,15 +23,16 @@ Inputs over 8 MB are refused, as is JSON nested deeper than 64 levels or contain
 
 The trust roots are pinned in code. A bundle cannot bring its own:
 
-| Root | Where it is pinned |
-|---|---|
-| Log origins, Ed25519 and ML-DSA-44 keys | `@keelson/log` `LOG_ORIGINS`, `LOG_VKEYS` |
-| Witness keys and the 2-of-3 quorum | `@keelson/log` `LOG_WITNESSES` |
-| RFC 3161 TSA roots | `@keelson/timestamp` `TSA_ROOTS` |
-| Intel and AWS attestation roots, engine builds | `@keelson/attest`; builds in `packages/alibi/src/verify/trust.ts` |
-| `CheckpointAnchor`, `VerdictVerifier`, `KeelsonBondVault` | `@keelson/chain` `deploymentsFor(chainId)` |
+| Root                                                      | Where it is pinned                                                |
+| --------------------------------------------------------- | ----------------------------------------------------------------- |
+| Log origins, Ed25519 and ML-DSA-44 keys                   | `@keelson/log` `LOG_ORIGINS`, `LOG_VKEYS`                         |
+| Witness keys and the 2-of-3 quorum                        | `@keelson/log` `LOG_WITNESSES`                                    |
+| RFC 3161 TSA roots                                        | `@keelson/timestamp` `TSA_ROOTS`                                  |
+| Intel and AWS attestation roots, engine builds            | `@keelson/attest`; builds in `packages/alibi/src/verify/trust.ts` |
+| `CheckpointAnchor`, `VerdictVerifier`, `KeelsonBondVault` | `@keelson/chain` `deploymentsFor(chainId)`                        |
 
 The chain is read once per verification, in a single HTTP request:
+
 - `rootAt` and `latest` of the anchor;
 - the signer records and measurement allowances in `VerdictVerifier`;
 - `eth_chainId`, the block number and the anchor transaction's receipt.
@@ -39,15 +40,18 @@ The chain is read once per verification, in a single HTTP request:
 The contract reads go through Multicall3 in one `eth_call`.
 
 By default the verifier reads from two public Arbitrum RPCs:
+
 - `https://sepolia-rollup.arbitrum.io/rpc`;
 - `https://arbitrum-sepolia-rpc.publicnode.com`, as a fallback.
 
-To use your own RPC, add `?rpc=https://…` to the URL or use the field at the bottom of the page.
-Only `https:` URLs are accepted. The RPC is trusted for what it reads, so use one you trust to
+To use your own RPC, enter it in the field at the bottom of the page. Only `https:` URLs are
+accepted. A link's `?rpc=` only fills that field: the verifier never switches RPC without you, and it
+keeps your RPC out of the URL. The RPC is trusted for what it reads, so use one you trust to
 check revocations and anchors. Everything else the Alibi proves (witnessed checkpoints, consistency,
 attestations, the countersignature) does not depend on it.
 
-If the RPC is down or answers for another chain, the chain checks are `unreachable` and the verdict
+The default RPCs see your IP address and which checkpoint and signers you asked about, but not
+which Alibi. If the RPC is down or answers for another chain, the chain checks are `unreachable` and the verdict
 is `incomplete`, never `verified`. `/paypal/capture_id` is the one field no signature or hash
 covers, because PayPal assigns it after the countersign. The page shows it under "Unverified
 metadata".
@@ -62,6 +66,7 @@ changes what is read from the chain.
 ## Environments
 
 Alibis come from Keelson's sandbox:
+
 - purchases use the PayPal sandbox;
 - anchors and the signer registry are on Arbitrum Sepolia (421614);
 - the log is `log.keelson.finance/alibi/2026-1`.

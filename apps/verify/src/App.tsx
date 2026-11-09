@@ -31,23 +31,25 @@ function download(l: Loaded) {
   );
   const a = Object.assign(document.createElement("a"), { href: url, download: name });
   a.click();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export function App() {
   const [route, setRoute] = useState<Route>(() => parseRoute(location));
   const [loaded, setLoaded] = useState<Loaded>();
-  const [error, setError] = useState<string>();
   const [run, setRun] = useState<Run>();
   const [edited, setEdited] = useState<unknown>();
   const [changed, setChanged] = useState<string[]>([]);
   const [paste, setPaste] = useState("");
+  // A link may suggest an RPC; it is used only once the visitor chooses it.
   const [rpcInput, setRpcInput] = useState(route.rpc ?? "");
+  const [error, setErrorState] = useState<string | undefined>(route.rpcRefused);
   const [dragging, setDragging] = useState(false);
   const runId = useRef(0);
   const fromUser = useRef(false);
 
-  const chain = useRef(readerFor(route.rpc));
+  const setError = setErrorState;
+  const chain = useRef(readerFor(undefined));
 
   const verify = useCallback(
     async (alibi: Loaded["alibi"], original?: Loaded["alibi"]) => {
@@ -73,6 +75,7 @@ export function App() {
   const accept = useCallback(
     async (l: Loaded) => {
       setError(undefined);
+      setRun(undefined);
       setLoaded(l);
       const { expand } = await verifier;
       setEdited(expand(l.alibi));
@@ -97,6 +100,9 @@ export function App() {
     loader
       .then(({ fromLink }) => fromLink(route.alibiId as string, ctl.signal))
       .then((l) => {
+        if (l.alibi.alibi_id !== route.alibiId) {
+          throw new Error("The API answered with another Alibi than the link names.");
+        }
         if (!fromUser.current) return accept(l);
       })
       .catch((err: unknown) => {
@@ -109,17 +115,19 @@ export function App() {
     try {
       const { fromFile, isImage, qrTextOf } = await loader;
       if (isImage(file)) {
-        const next = verifyLinkOf(await qrTextOf(file), [VERIFY_ORIGIN, location.origin]);
+        const text = await qrTextOf(file);
+        const next = verifyLinkOf(text, [VERIFY_ORIGIN, location.origin]);
         if (!next?.alibiId) throw new Error("The QR code is not a Keelson verify link.");
-        const url = new URL(await qrTextOf(file));
+        const url = new URL(text);
         history.pushState(null, "", `${url.pathname}${location.search}${url.hash}`);
         fromUser.current = false;
         setLoaded(undefined);
         setRoute(parseRoute(location));
         return;
       }
+      const l = await fromFile(file);
       fromUser.current = true;
-      await accept(await fromFile(file));
+      await accept(l);
     } catch (err) {
       fail(err);
     }
@@ -129,8 +137,19 @@ export function App() {
     if (!loaded) return;
     setEdited(next);
     const { collapse } = await verifier;
-    const report = await verify(collapse(next), loaded.alibi);
-    setChanged(report.changed);
+    let collapsed: Loaded["alibi"];
+    try {
+      collapsed = collapse(next);
+    } catch (err) {
+      ++runId.current;
+      setRun(undefined);
+      setError(`This edit cannot be encoded as an Alibi: ${messageOf(err)}`);
+      return;
+    }
+    setError(undefined);
+    const id = runId.current + 1;
+    const report = await verify(collapsed, loaded.alibi);
+    if (id === runId.current) setChanged(report.changed);
   };
 
   const onReset = async () => {
@@ -138,20 +157,20 @@ export function App() {
     const { expand } = await verifier;
     setEdited(expand(loaded.alibi));
     setChanged([]);
+    setError(undefined);
     await verify(loaded.alibi);
   };
 
+  // The RPC stays out of the URL, so a key in it is never shared with the link.
   const applyRpc = (value: string) => {
-    const url = new URL(location.href);
-    if (value) url.searchParams.set("rpc", value);
-    else url.searchParams.delete("rpc");
-    history.replaceState(null, "", url);
-    const next = parseRoute(location);
-    setRoute(next);
+    const next = value
+      ? parseRoute({ pathname: "/", hash: "", search: `?rpc=${encodeURIComponent(value)}` })
+      : {};
     if (next.rpcRefused) {
       setError(next.rpcRefused);
       return;
     }
+    setError(undefined);
     chain.current = readerFor(next.rpc);
     if (loaded) void verify(loaded.alibi);
   };
@@ -248,7 +267,13 @@ export function App() {
         )}
 
         {run && loaded && (
-          <>
+          <div className="space-y-8" data-run={runId.current}>
+            {route.alibiId === loaded.alibi.alibi_id && !route.expect && (
+              <p className="rounded-[10px] border border-amber px-4 py-3 text-sm text-amber">
+                This link carries no leaf hash, so which Alibi it names is the API's word. Links
+                from an Alibi's QR code carry one.
+              </p>
+            )}
             <Report checks={run.checks} report={run.report} receipt={isReceipt(loaded)} />
             <div className="flex flex-wrap items-center gap-3">
               <button
@@ -265,7 +290,7 @@ export function App() {
                 <Cheat edited={edited} changed={changed} onChange={onEdit} onReset={onReset} />
               </Suspense>
             )}
-          </>
+          </div>
         )}
 
         <section className="rounded-[14px] border border-line p-6">

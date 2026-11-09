@@ -75,8 +75,8 @@
       "project": ["src/**/*.ts!", "scripts/**/*.ts", "bench/**/*.ts", "test/**/*.ts"]
     },
     "apps/verify": {
-      "entry": ["src/main.tsx!", "vite.config.ts", "vitest.config.ts"],
-      "project": ["src/**/*.{ts,tsx}!", "test/**/*.ts"]
+      "entry": ["src/main.tsx!", "vite.config.ts", "vitest.config.ts", "bench/*.bench.ts"],
+      "project": ["src/**/*.{ts,tsx}!", "test/**/*.ts", "bench/**/*.ts"]
     },
     "services/api": {
       "entry": ["src/server.ts!", "scripts/*.ts", "bench/*.bench.ts"],

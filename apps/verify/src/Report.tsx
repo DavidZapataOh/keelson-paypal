@@ -38,11 +38,17 @@ function bannerOf(report: VerifyReport | undefined, receipt: boolean): Banner {
           .join(". "),
       };
     case "verified":
-      return {
-        tone: "pass",
-        title: "Verified",
-        text: "Every check passed against the pinned trust roots and the chain.",
-      };
+      return report.rpc?.custom
+        ? {
+            tone: "warn",
+            title: "Verified with your RPC",
+            text: "Every check passed; the anchor and the signer registry were read from the RPC you chose.",
+          }
+        : {
+            tone: "pass",
+            title: "Verified",
+            text: "Every check passed against the pinned trust roots and the chain.",
+          };
     case "verified-unanchored":
       return {
         tone: "warn",
@@ -57,11 +63,20 @@ function bannerOf(report: VerifyReport | undefined, receipt: boolean): Banner {
       };
     case "incomplete": {
       const unreachable = by("unreachable").length;
-      if (receipt && unreachable === 0) {
+      const onlyUndisclosed = report.checks.every(
+        (c) =>
+          c.status === "pass" ||
+          c.status === "undisclosed" ||
+          c.status === "absent" ||
+          (c.status === "pending" &&
+            (c.id.startsWith("anchor.") || c.id === "timestamps" || c.id === "zk.c1")),
+      );
+      if (receipt && onlyUndisclosed) {
+        const anchored = report.checks.some((c) => c.id === "anchor.root" && c.status === "pass");
         return {
-          tone: "pass",
+          tone: anchored && !report.rpc?.custom ? "pass" : "warn",
           title: "Public receipt verified",
-          text: `The log${report.checks.some((c) => c.id === "anchor.root" && c.status === "pass") ? ", the anchor" : ""} and what the receipt carries hold. ${undisclosed} checks need the full Alibi: drop its PDF or .alibi file.`,
+          text: `The log${anchored ? ", the anchor" : ""} and what the receipt carries hold${anchored ? "" : "; it is not anchored on-chain yet"}. ${undisclosed} checks need the full Alibi: drop its PDF or .alibi file.`,
         };
       }
       return {
