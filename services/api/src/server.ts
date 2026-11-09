@@ -1,3 +1,4 @@
+import { startAnchorWatcher } from "./alibi/anchors.ts";
 import "./telemetry.ts";
 import Anthropic from "@anthropic-ai/sdk";
 import { serve } from "@hono/node-server";
@@ -149,6 +150,17 @@ const stopValidations = relayer
     })
   : undefined;
 
+const anchors =
+  env.LOG_URL && env.LOG_WRITE_TOKEN && chains[arbitrumSepolia.id]
+    ? startAnchorWatcher({
+        db,
+        kv,
+        log,
+        chain: chains[arbitrumSepolia.id],
+        tlog: { url: env.LOG_URL, token: env.LOG_WRITE_TOKEN },
+      })
+    : undefined;
+
 const server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
   log.info({ port: info.port }, "listening");
 });
@@ -166,7 +178,7 @@ process.once("SIGTERM", () => {
   stopReconciler?.();
   stopValidations?.();
   void closeServer(server, shutdown)
-    .then(() => Promise.all([stamps.stop(), poller.stop(), paypalEvents.stop()]))
+    .then(() => Promise.all([stamps.stop(), poller.stop(), paypalEvents.stop(), anchors?.stop()]))
     .then(() => Promise.all([pool.end(), kv.close()]))
     .then(
       () => 0,
