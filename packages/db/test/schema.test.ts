@@ -101,6 +101,10 @@ test("inserts one valid row per table", async () => {
     currency: "USD",
     payee: "0xabc",
     digest: hash(),
+    chainId: 421614,
+    message: { ruleId: "3" },
+    signatures: [],
+    facts: {},
   });
   await db.insert(attacks).values({
     id: ulid(),
