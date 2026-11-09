@@ -48,7 +48,11 @@ const SignedSettlementPreference = SettlementPreference.extend({
 
 const CHAIN_ID = 421614;
 
-/** The typed data a merchant signs to choose how it is paid. */
+/**
+ * The typed data a merchant signs to choose how it is paid.
+ *
+ * @internal
+ */
 export function settlementPreferenceTypedData(message: {
   merchantId: string;
   rail: "pyusd" | "paypal";
