@@ -34,7 +34,12 @@ describe.skipIf(!kms)("kmsAccount (real KMS, sandbox key)", () => {
     expect(account.source).toBe("kms");
   });
 
-  test("1,000 signatures are low-S and recover to the address", { timeout: 300_000 }, async () => {
+  // Every signature is a real KMS Sign with the relayer's key and no transaction behind it, so CI signs only enough to
+  // see high-S values normalized (20: all low-S by chance with probability 2^-20). KMS_SIGNATURES=1000 for the latency bench.
+  const signatures = Number(process.env.KMS_SIGNATURES ?? 20);
+  test(`${signatures} signatures are low-S and recover to the address`, {
+    timeout: 300_000,
+  }, async () => {
     const latencies: number[] = [];
     const run = async () => {
       const hash = bytesToHex(randomBytes(32));
@@ -46,7 +51,7 @@ describe.skipIf(!kms)("kmsAccount (real KMS, sandbox key)", () => {
       expect(BigInt(s) <= HALF_N).toBe(true);
       expect(await recoverAddress({ hash, signature })).toBe(account.address);
     };
-    for (let i = 0; i < 1_000; i += 20) {
+    for (let i = 0; i < signatures; i += 20) {
       await Promise.all(Array.from({ length: 20 }, run));
     }
     latencies.sort((a, b) => a - b);
