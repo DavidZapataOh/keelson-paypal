@@ -39,6 +39,25 @@ export async function listDisputes(
   return disputeSearch.parse(await f<unknown>("GET", "/v1/customer/disputes", { query }));
 }
 
+/** Every dispute updated after `updateTimeAfter` (RFC 3339), following `links[rel=next]`. */
+export async function listUpdatedDisputes(
+  f: PayPalFetch,
+  updateTimeAfter: string,
+): Promise<{ dispute_id: string; status: string }[]> {
+  const items: { dispute_id: string; status: string }[] = [];
+  let query: Record<string, string> = { update_time_after: updateTimeAfter, page_size: "50" };
+  for (;;) {
+    const page = disputeSearch.parse(await f<unknown>("GET", "/v1/customer/disputes", { query }));
+    items.push(...(page.items ?? []));
+    const next = page.links?.find((l) => l.rel === "next")?.href;
+    if (!next) return items;
+    const url = new URL(next);
+    if (url.pathname !== "/v1/customer/disputes")
+      throw new Error(`unexpected next link ${url.pathname}`);
+    query = Object.fromEntries(url.searchParams);
+  }
+}
+
 export async function getDispute(f: PayPalFetch, id: string): Promise<Dispute> {
   return dispute.parse(await f<unknown>("GET", path(id)));
 }
