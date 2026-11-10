@@ -14,10 +14,11 @@ jobs:
   check:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    env:
-      ARBITRUM_SEPOLIA_RPC_URL: https://arb-sepolia.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}
     steps:
       - uses: actions/checkout@v7
+      - uses: ./.github/actions/select-rpc
+        with:
+          alchemy-api-key: ${{ secrets.ALCHEMY_API_KEY }}
       - uses: actions/cache@v6
         with:
           path: |

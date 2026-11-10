@@ -298,7 +298,7 @@ func newAnchorRig(t *testing.T, legB string) *anchorRig {
 	key := fork.fundedKey(t)
 	cfg := &anchorConfig{
 		Address: anchorAddr,
-		RPC:     map[uint64]string{421614: fork.url},
+		RPC:     map[uint64][]string{421614: {fork.url}},
 		Key:     key,
 		TEEA:    env["TEE_A_URL"],
 		TEEB:    cmpOr(legB, env["TEE_B_URL"]),

@@ -8,6 +8,7 @@ import {
   type RelayerChainConfig,
 } from "@keelson/relayer";
 import type { Logger } from "pino";
+import { ARBITRUM_SEPOLIA_PUBLIC_RPC } from "../chain/rpc.ts";
 import type { Env } from "../env.ts";
 
 /** The relayer of every chain whose KMS key the environment names; undefined when it names none. */
@@ -37,7 +38,7 @@ export async function relayerFromEnv(
   if (env.RELAYER_KMS_KEY_SANDBOX && env.ARBITRUM_SEPOLIA_RPC_URL) {
     chains[421614] = {
       rpcUrl: env.ARBITRUM_SEPOLIA_RPC_URL,
-      fallbackRpcUrls: ["https://sepolia-rollup.arbitrum.io/rpc"],
+      fallbackRpcUrls: [ARBITRUM_SEPOLIA_PUBLIC_RPC],
       account: await kmsAccount({ keyId: env.RELAYER_KMS_KEY_SANDBOX, client }),
     };
   }
