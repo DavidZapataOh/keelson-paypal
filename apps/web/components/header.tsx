@@ -30,6 +30,9 @@ export function Header() {
       >
         Scoreboard
       </Link>
+      <Link href="/live/" className="rounded-md px-3 py-2.5 font-medium text-sm hover:bg-accent">
+        Live purchases
+      </Link>
       {data ? (
         <nav aria-label="Account" className="flex items-center gap-1 text-sm">
           <Link href="/new/" className="rounded-md px-3 py-2.5 font-medium hover:bg-accent">

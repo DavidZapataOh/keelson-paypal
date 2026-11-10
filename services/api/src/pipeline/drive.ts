@@ -33,6 +33,7 @@ export interface PipelineDeps {
   chain?: { client: PublicClient } | undefined;
   paypal?: PayPalDeps | undefined;
   tee?: Pick<TeeConfig, "client"> | undefined;
+  proveAnonymousPurchase?: ((purchaseId: string) => Promise<void>) | undefined;
 }
 
 /** What `POST /v1/countersign` and `GET /v1/purchases/{id}` say about a purchase. */
@@ -47,6 +48,8 @@ export interface PurchaseView {
   capture?: { id: string; invoiceId: string; status: string | null };
   failure?: { step: string; reason: string };
   blocked?: string[];
+  /** A purchase the buyer pays at the store's own checkout: the store and PayPal's transaction. */
+  live?: { store: string; transactionId: string | null };
 }
 
 type Row = typeof purchases.$inferSelect;
@@ -83,6 +86,9 @@ export function purchaseView(p: Row): PurchaseView {
       ? { failure: rest.length > 0 ? { step, reason: rest.join(":") } : { step, reason: failure } }
       : {}),
     ...(p.state === "DENIED" ? { blocked: failedFields(p.evalTrace) } : {}),
+    ...(p.liveStore !== null
+      ? { live: { store: p.liveStore, transactionId: p.paypalTransactionId } }
+      : {}),
   };
 }
 
@@ -208,25 +214,38 @@ export async function drivePurchase(deps: PipelineDeps, purchaseId: string): Pro
     const windowClosed = () => Date.now() / 1000 >= Number(cs?.issuedAt) + CAPTURE_WINDOW_SEC;
     let state = row.state as (typeof DRIVEN)[number];
 
+    const toLog = () =>
+      run(deps, purchaseId, "log", () => logStep(deps, purchaseId), row.countersignMode).then(
+        async (out) => {
+          if (out.kind !== "done") return out;
+          await deps.db
+            .update(purchases)
+            .set({ state: "LOGGED", updatedAt: sql`now()` })
+            .where(and(eq(purchases.id, purchaseId), eq(purchases.state, "COUNTERSIGNED")));
+          await publishPurchase(deps, purchaseId, {
+            type: "purchase.logged",
+            logIndex: out.value.index.toString(),
+            leafHash: toHex(out.value.leafHash),
+          });
+          return out;
+        },
+      );
+
+    // The buyer pays a live purchase at the store: Keelson logs it and issues its Alibi only.
+    if (row.liveStore !== null) {
+      if (state === "COUNTERSIGNED") {
+        const out = await toLog();
+        if (out.kind === "final") await fail(deps, purchaseId, state, out.reason);
+        if (out.kind === "retry" && windowClosed()) {
+          await fail(deps, purchaseId, state, `${out.reason.split(":")[0]}:window-closed`);
+        }
+      }
+      return (await viewOf(deps.db, purchaseId)) as PurchaseView;
+    }
+
     if (state === "COUNTERSIGNED" || state === "LOGGED") {
       const logged =
-        state === "COUNTERSIGNED"
-          ? run(deps, purchaseId, "log", () => logStep(deps, purchaseId), row.countersignMode).then(
-              async (out) => {
-                if (out.kind !== "done") return out;
-                await deps.db
-                  .update(purchases)
-                  .set({ state: "LOGGED", updatedAt: sql`now()` })
-                  .where(and(eq(purchases.id, purchaseId), eq(purchases.state, "COUNTERSIGNED")));
-                await publishPurchase(deps, purchaseId, {
-                  type: "purchase.logged",
-                  logIndex: out.value.index.toString(),
-                  leafHash: toHex(out.value.leafHash),
-                });
-                return out;
-              },
-            )
-          : Promise.resolve({ kind: "done" } as const);
+        state === "COUNTERSIGNED" ? toLog() : Promise.resolve({ kind: "done" } as const);
       const covered = run(
         deps,
         purchaseId,
@@ -313,6 +332,8 @@ export async function resumePurchases(deps: PipelineDeps): Promise<number> {
     .where(
       and(
         inArray(purchases.state, [...DRIVEN]),
+        // A live purchase has nothing left to drive once logged.
+        or(isNull(purchases.liveStore), eq(purchases.state, "COUNTERSIGNED")),
         or(
           lt(purchases.leaseUntil, sql`now()`),
           and(

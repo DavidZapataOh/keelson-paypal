@@ -10,6 +10,9 @@ nargo compile --silence-warnings
 jq -c '{noir_version, hash, abi, bytecode}' target/anonymous_mandate.json >../../services/api/zk/anonymous_mandate.json
 bb write_vk -b target/anonymous_mandate.json -o target -t evm
 cp target/vk anonymous_mandate.vk
+# The key for recursion, as fields with its hash, for the composing circuit.
+bb write_vk -b target/anonymous_mandate.json -o target/recursive -t noir-recursive --output_format json
+jq -c '{vk, hash}' target/recursive/vk.json >../../services/api/zk/anonymous_mandate.recursive.json
 bb write_solidity_verifier -k target/vk -t evm --optimized -o "$verifiers/AnonymousMandateVerifier.sol"
 bb write_solidity_verifier -k target/vk -t evm -o "$verifiers/AnonymousMandateReferenceVerifier.sol"
 {

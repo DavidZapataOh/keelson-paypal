@@ -36,6 +36,7 @@ import { merchantLeaf } from "@keelson/mandate";
 import type { Context } from "hono";
 import { hexToBytes } from "viem";
 import type { Deps } from "../app.ts";
+import { capturable } from "../hold/state.ts";
 import { requireClient } from "../middleware/auth.ts";
 import { drivePurchase, type PipelineDeps, viewOf } from "../pipeline/drive.ts";
 import { publishPurchase } from "../pipeline/events.ts";
@@ -119,6 +120,22 @@ const Body = z
     evidenceRoot: Hex32.openapi({
       description: "The root of the evidence stored with `POST /v1/evidence` for this mandate.",
     }),
+    live: z
+      .strictObject({
+        store: z
+          .url({ protocol: /^https$/ })
+          .max(MAX_STRING)
+          .refine(
+            (s) => new URL(s).origin === s,
+            "The store is an origin, such as https://shop.example.",
+          )
+          .openapi({ description: "The store's origin." }),
+      })
+      .optional()
+      .openapi({
+        description:
+          "Only when the buyer pays at the store's own checkout with their own PayPal account: Keelson countersigns and logs the purchase and issues its Alibi, and neither covers nor captures it. The agent's pay click waits for an ALLOW; the agent then records PayPal's transaction id with `PUT /v1/purchases/{id}/paypal-transaction`.",
+      }),
     repeatOf: z.string().length(26).optional().openapi({
       description:
         "Only when the user asked to buy the same cart again: the id of the latest purchase of this cart under the mandate. Not needed once that purchase was denied or failed before capture, or was captured more than ten minutes ago. A retry after a lost answer never sends it: the `409 purchase-exists` answer names the purchase already made.",
@@ -490,6 +507,23 @@ export function registerCountersign(
       );
     }
 
+    // A mandate whose merchant Keelson cannot capture for holds a budget only: the buyer pays
+    // its purchases at the store's own checkout.
+    if (
+      !body.live &&
+      deps.paypal &&
+      mandate.holdMode !== "per_purchase" &&
+      !capturable(deps.paypal, mandate)
+    ) {
+      return problem(
+        c,
+        422,
+        "merchant-not-capturable",
+        "Merchant not capturable",
+        "Keelson cannot capture for this mandate's merchant: countersign its purchases as live.",
+      );
+    }
+
     // Leg A accepts a per-purchase hold for whatever mandate its request id is countersigned
     // under, so the hold must be this mandate's, this request's and authorized. A mandate that
     // holds its budget countersigns only on the authorization captures use now.
@@ -722,6 +756,7 @@ export function registerCountersign(
             paypalOrderId: orderId,
             paypalAuthorizationId: body.authorizationId,
             paypalRefSalt: randomBytes(32),
+            ...(body.live ? { liveStore: body.live.store } : {}),
             ...(c.var.principal?.kind === "client" ? { clientId: c.var.principal.subject } : {}),
           })
           .onConflictDoNothing({ target: purchases.id })

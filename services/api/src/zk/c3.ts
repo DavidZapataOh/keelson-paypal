@@ -1,8 +1,5 @@
 // Loads reflect-metadata before @keelson/alibi/verify pulls in @keelson/attest (see tee/attest.ts).
 import "../tee/attest.ts";
-import { readFileSync } from "node:fs";
-import { availableParallelism } from "node:os";
-import type { Barretenberg } from "@aztec/bb.js";
 import { toBase64 } from "@keelson/alibi";
 import { c3Statement, verifyC3 } from "@keelson/alibi/verify";
 import { toHex } from "@keelson/core";
@@ -16,21 +13,12 @@ import {
   userSet,
 } from "@keelson/mandate";
 import type { Relayer } from "@keelson/relayer";
-import type { CompiledCircuit } from "@noir-lang/noir_js";
 import type { Render } from "@renderinc/sdk";
 import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
 import { passkeyJwk, SignatureError } from "../mandate-signature.ts";
-
-let program: CompiledCircuit | undefined;
-
-/** The circuit's ACIR and ABI, read on the first proof: the API that only delegates never loads them. */
-function circuit(): CompiledCircuit {
-  program ??= JSON.parse(
-    readFileSync(new URL("../../zk/anonymous_mandate.json", import.meta.url), "utf8"),
-  ) as CompiledCircuit;
-  return program;
-}
+import { prove } from "./bb.ts";
+import { awaitingC3, proveAnonymousPurchase } from "./c1c3.ts";
 
 /** How long the API keeps a new mandate's salt for its C3 proof: past it, the proof is not made. */
 const C3_SALT_TTL_SECONDS = 3600;
@@ -38,10 +26,14 @@ const C3_SALT_TTL_SECONDS = 3600;
 /** The Valkey key of a new mandate's commitment salt, kept for its C3 proof. */
 export const c3SaltKey = (mandateId: string): string => `c3:salt:${mandateId}`;
 
-/** A C3 proof as the API stores and serves it: base64 proof bytes and 32-byte hex inputs. */
+/**
+ * A C3 proof as the API stores and serves it: base64 proof bytes and 32-byte hex inputs, and the
+ * proof of the same witness for recursion, which composes it with a purchase's C1.
+ */
 export interface C3Proof {
   proof: string;
   public_inputs: string[];
+  recursive_proof?: string | undefined;
 }
 
 /**
@@ -130,21 +122,6 @@ export async function publishUserSetRoots(deps: {
   }
 }
 
-let api: Promise<Barretenberg> | undefined;
-
-/** Native bb through bb.js, one per process. */
-function barretenberg(): Promise<Barretenberg> {
-  api ??= import("@aztec/bb.js")
-    .then(({ BackendType, Barretenberg }) =>
-      Barretenberg.new({ backend: BackendType.NativeUnixSocket, threads: availableParallelism() }),
-    )
-    .catch((err: unknown) => {
-      api = undefined;
-      throw err;
-    });
-  return api;
-}
-
 /**
  * Proves C3 for mandate `mandateId`, whose commitment opens under `salt` (`0x` + 16 bytes hex),
  * stores the proof on the mandate and returns it. A mandate that already has one keeps it.
@@ -181,14 +158,12 @@ export async function proveAnonymousMandate(
     assertion: row.userAuth as C3Assertion,
     users,
   });
-  const [{ Noir }, { UltraHonkBackend }] = await Promise.all([
-    import("@noir-lang/noir_js"),
-    import("@aztec/bb.js"),
-  ]);
-  const { witness } = await new Noir(circuit()).execute(inputs as never);
-  const backend = new UltraHonkBackend(circuit().bytecode, await barretenberg());
-  const { proof, publicInputs } = await backend.generateProof(witness, { verifierTarget: "evm" });
-  const c3: C3Proof = { proof: toBase64(proof), public_inputs: publicInputs };
+  const proved = await prove("anonymous_mandate", inputs, ["evm", "noir-recursive"]);
+  const c3: C3Proof = {
+    proof: toBase64(proved.evm.proof),
+    public_inputs: proved.evm.publicInputs,
+    recursive_proof: toBase64(proved["noir-recursive"].proof),
+  };
   const expected = c3Statement({
     mandateCommitment: toHex(row.commitment),
     mandateHash: toHex(row.mandateHash),
@@ -212,7 +187,8 @@ export async function proveAnonymousMandate(
 /**
  * Starts the C3 proof of a mandate just stored, then publishes its root with the relayer. With a workflow, the proof needs more memory than
  * the API instance has: the workflow task `proveAnonymousMandate` proves it and reads the salt from
- * Valkey, so that it never becomes a task argument. Without one it is proved in this process.
+ * Valkey, so that it never becomes a task argument, and composes the purchases logged before it.
+ * Without one all of it happens in this process.
  */
 export function c3Prover(
   deps: { db: Db; kv: RedisClientType; log: Logger; relayer?: Relayer | undefined },
@@ -223,6 +199,9 @@ export function c3Prover(
     return async (mandateId, salt) => {
       await proveAnonymousMandate({ db, log }, mandateId, salt);
       if (relayer) await publishUserSetRoots({ db, relayer, log });
+      for (const purchaseId of await awaitingC3(db, mandateId)) {
+        await proveAnonymousPurchase({ db, log }, purchaseId);
+      }
     };
   }
   return async (mandateId, salt) => {

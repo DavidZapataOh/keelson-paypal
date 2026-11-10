@@ -250,8 +250,22 @@
     {
       "idx": 35,
       "version": "7",
-      "when": 1794327350866,
-      "tag": "0035_chain_events",
+      "when": 1794316786473,
+      "tag": "0035_purchase_c1c3_proof",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1794329930351,
+      "tag": "0036_live_purchases",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1794352301173,
+      "tag": "0037_chain_events",
       "breakpoints": true
     }
   ]

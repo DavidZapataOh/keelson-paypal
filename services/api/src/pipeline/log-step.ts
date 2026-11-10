@@ -16,6 +16,7 @@ export interface LogStepDeps {
   stamps?: StampWorker | undefined;
   tee?: Pick<TeeConfig, "client"> | undefined;
   paypal?: Pick<PayPalDeps, "merchantId"> | undefined;
+  proveAnonymousPurchase?: ((purchaseId: string) => Promise<void>) | undefined;
 }
 
 /**
@@ -50,6 +51,10 @@ export async function logStep(
       deps.log.warn({ err, purchaseId }, "alibi not issued yet");
       return retry("alibi:unavailable");
     }
+    // The Alibi carries the purchase's C1 proof now: compose it with the mandate's C3, off the path.
+    void deps
+      .proveAnonymousPurchase?.(purchaseId)
+      .catch((err: unknown) => deps.log.warn({ err, purchaseId }, "composed proof not started"));
     return done({ index: append.index, leafHash: append.leafHash });
   } catch (err) {
     if (!(err instanceof LogError)) throw err;
