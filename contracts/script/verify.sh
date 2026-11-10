@@ -58,18 +58,18 @@ etherscan_source() {
 # bb names every generated verifier HonkVerifier; the reference one is linked to two libraries.
 target_of() {
   case "$1" in
-    MandatePredicateVerifier | MandatePredicateReferenceVerifier) echo "src/verifiers/$1.sol:HonkVerifier" ;;
+    Mandate*Verifier) echo "src/verifiers/$1.sol:HonkVerifier" ;;
     *) source_of "$(contract_of "$1")" ;;
   esac
 }
 
 # The verifiers are compiled without via-IR (foundry.toml `compilation_restrictions`).
 profile_of() {
-  [[ "$1" == MandatePredicate* ]] && echo "--compilation-profile legacy" || true
+  [[ "$1" == Mandate*Verifier ]] && echo "--compilation-profile legacy" || true
 }
 
 libraries_of() {
-  [[ "$1" == MandatePredicateReferenceVerifier ]] || return 0
+  [[ "$1" == Mandate*ReferenceVerifier ]] || return 0
   local lib address
   for lib in RelationsLib ZKTranscriptLib; do
     address=$(forge script script/DeployMandatePredicateVerifier.s.sol --sig "predict(string)" "$1.$lib" 2>/dev/null |

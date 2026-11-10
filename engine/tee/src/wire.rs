@@ -330,9 +330,6 @@ pub struct Countersigned {
     pub trace_jcs: Base64,
     /// The facts the decision used, for leg B.
     pub observation: Observation,
-    /// Leg A's C1 proof of an ALLOW whose request carried the sealed salt.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub c1: Option<ZkProof>,
 }
 
 /// A checkpoint to sign as the EIP-712 `Checkpoint`.

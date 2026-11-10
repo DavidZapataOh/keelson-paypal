@@ -80,8 +80,6 @@ const CountersignedSchema = z.strictObject({
   tee: z.number(),
   trace_jcs: z.string(),
   observation: ObservationSchema,
-  /** Leg A's proof of an ALLOW whose request carried the sealed salt. */
-  c1: ZkProofSchema.optional(),
 });
 export type Countersigned = z.infer<typeof CountersignedSchema>;
 
@@ -220,6 +218,8 @@ interface ChainBlock {
 
 /** Attestation reads and refreshes are not on the countersign path; a refresh takes about 2 s. */
 const ADMIN_TIMEOUT_MS = 15_000;
+/** Leg A waits up to 8 s for a proof still being made. */
+const C1_TIMEOUT_MS = 10_000;
 
 export class LegError extends Error {
   readonly leg: "a" | "b";
@@ -307,6 +307,24 @@ export class LegClient {
 
   async countersign(req: CountersignRequest): Promise<Countersigned> {
     return this.parse(CountersignedSchema, await this.call("POST", "/v1/countersign", req));
+  }
+
+  /**
+   * Leg A's C1 proof of the ALLOW it answered under `requestId`, made after the countersign;
+   * `null` when it has none to give.
+   */
+  async c1(requestId: string): Promise<ZkProof | null> {
+    try {
+      return this.parse(
+        ZkProofSchema,
+        await this.call("GET", `/v1/c1/${encodeURIComponent(requestId)}`, undefined, {
+          timeoutMs: C1_TIMEOUT_MS,
+        }),
+      );
+    } catch (err) {
+      if (err instanceof LegError && err.code === "no_proof") return null;
+      throw err;
+    }
   }
 
   async verdict(req: VerdictRequest): Promise<VerdictSigned> {
