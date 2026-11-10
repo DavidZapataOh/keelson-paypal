@@ -36,7 +36,16 @@ import { EvidenceUploader } from "./evidence.ts";
 import { holdHarness, row, sandbox } from "./hold-live.ts";
 import { type LocalLog, startLocalLog } from "./log-live.ts";
 import { testDb, testDbUrl, testKv } from "./setup.ts";
-import { asAgent, carts, headerPrincipal, live, liveEnv, testAgent } from "./tee-live.ts";
+import {
+  AGENT_CLIENT,
+  asAgent,
+  carts,
+  headerPrincipal,
+  live,
+  liveEnv,
+  repeating,
+  testAgent,
+} from "./tee-live.ts";
 
 const registry = JSON.parse(
   readFileSync(new URL("../../../contracts/deployments/421614.json", import.meta.url), "utf8"),
@@ -96,6 +105,7 @@ describe.skipIf(!keys)(
           agentRegistry: "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
           name: "Demo operator",
           cnfJwk: testAgent.jwk,
+          clientId: AGENT_CLIENT,
         })
         .onConflictDoNothing();
       const kms = new KMSClient({
@@ -198,6 +208,7 @@ describe.skipIf(!keys)(
         cart: cart.cart,
         unit: cart.unit,
         evidenceRoot: await evidence.upload(app, m.mid, cart.cart, asAgent),
+        ...(await repeating(testDb, m.mid, cart.cart, requestId)),
       };
       const via = failNext.left-- > 0 ? uncaptured : app;
       const post = () =>

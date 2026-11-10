@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Countersign } from "@keelson/core/eip712";
-import { eq, inArray, mandates, teeSigners, timestamps, user } from "@keelson/db";
+import { eq, inArray, mandates, operators, sql, teeSigners, timestamps, user } from "@keelson/db";
 import {
   LOG_ORIGINS,
   leafBytes,
@@ -34,6 +34,7 @@ import {
   live,
   liveEnv,
   registerMandate,
+  repeating,
   request,
   SoftwarePasskey,
   seedUser,
@@ -154,6 +155,15 @@ describe.skipIf(!live)(
       const i = made++;
       const r = await request(agent, cheap, ulid());
       const principal = asAgentNo(Math.floor(i / 50));
+      if (i % 50 === 0) {
+        // Only the client the operator linked buys under its mandates.
+        await testDb
+          .update(operators)
+          .set({ clientId: `stamp-agent-${i / 50}` })
+          .where(
+            sql`${operators.agentId} = (select operator_agent_id from mandates where id = ${mandateId})`,
+          );
+      }
       const res = await post(
         "/v1/countersign",
         {
@@ -162,6 +172,7 @@ describe.skipIf(!live)(
           cart: r.cart,
           unit: r.unit,
           evidenceRoot: await evidence.upload(app, mandateId, r.cart, principal),
+          ...(await repeating(testDb, mandateId, r.cart, r.request_id)),
         },
         principal,
       );

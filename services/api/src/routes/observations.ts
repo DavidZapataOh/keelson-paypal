@@ -1,7 +1,7 @@
 import { isIP } from "node:net";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { CURRENCIES, type CurrencyCode, toHex } from "@keelson/core";
-import { and, channel3Observations, eq } from "@keelson/db";
+import { and, channel3Observations, eq, mandates, operators } from "@keelson/db";
 import { containsPii, itemLeaf, MEDIA_TYPES } from "@keelson/evidence";
 import type { Deps } from "../app.ts";
 import { observe } from "../channel3/observe.ts";
@@ -120,7 +120,10 @@ const create = createRoute({
       description: "The observation and its sealed evidence item",
       content: { "application/json": { schema: Created } },
     },
-    404: { description: "No such mandate", content: problemContent },
+    404: {
+      description: "No such mandate of an operator this client linked",
+      content: problemContent,
+    },
     409: { description: "The mandate is not active", content: problemContent },
     422: { description: "The request is invalid", content: problemContent },
     429: {
@@ -241,11 +244,15 @@ export function registerObservations(
       );
     }
 
-    const mandate = await db.query.mandates.findFirst({
-      columns: { id: true, state: true },
-      where: (row, { eq }) => eq(row.id, body.mandateId),
-    });
-    if (!mandate) return problem(c, 404, "not-found", "Not found");
+    const [mandate] = await db
+      .select({ id: mandates.id, state: mandates.state, clientId: operators.clientId })
+      .from(mandates)
+      .innerJoin(operators, eq(operators.agentId, mandates.operatorAgentId))
+      .where(eq(mandates.id, body.mandateId));
+    // The same answer for an unknown mandate and another client's, so neither is disclosed.
+    if (!mandate?.clientId || mandate.clientId !== c.var.principal?.subject) {
+      return problem(c, 404, "not-found", "Not found");
+    }
     if (!USABLE.has(mandate.state)) {
       return problem(
         c,

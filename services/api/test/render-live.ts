@@ -24,6 +24,7 @@ import {
   asAgent,
   asUser,
   headerPrincipal,
+  repeating,
   SoftwarePasskey,
   seedUser,
   signedMandate,
@@ -223,6 +224,7 @@ export async function renderHarness() {
         cart: cart.cart,
         unit: cart.unit,
         evidenceRoot: await evidence.upload(app, h.mid, cart.cart, asAgent),
+        ...(await repeating(db, h.mid, cart.cart, requestId)),
       },
     };
   }

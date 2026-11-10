@@ -9,7 +9,7 @@ import {
   sha256,
   toHex,
 } from "@keelson/core";
-import { createDb, mandates, migrate, operators, user } from "@keelson/db";
+import { createDb, eq, mandates, migrate, operators, user } from "@keelson/db";
 import pg from "pg";
 import { pino } from "pino";
 import { ulid } from "ulid";
@@ -131,6 +131,7 @@ if (!process.env.RENDER) {
       merchantIds: ["shopwss.com"],
       expiresAt: new Date(Date.now() + 86_400_000),
     });
+    let subject = "";
     // Channel3 refuses at once here, so the handler's own work is what is timed; the
     // comparison it skips on an unavailable lookup takes about a microsecond.
     const app = createApp({
@@ -139,8 +140,7 @@ if (!process.env.RENDER) {
       log,
       rateLimit: { limit: 1_000_000 },
       authenticate: async (c, next) => {
-        // A subject per request keeps the per-mandate observation limit out of the timing.
-        c.set("principal", { kind: "client", subject: ulid(), scopes: ["countersign:write"] });
+        c.set("principal", { kind: "client", subject, scopes: ["countersign:write"] });
         await next();
       },
       channel3: createChannel3("unused-key", "http://127.0.0.1:9"),
@@ -158,6 +158,10 @@ if (!process.env.RENDER) {
       },
     });
     for (let i = 0; i < HANDLER_RUNS; i++) {
+      // A client per request, linked to the operator, keeps the per-mandate observation limit
+      // out of the timing.
+      subject = ulid();
+      await db.update(operators).set({ clientId: subject }).where(eq(operators.agentId, 1n));
       const res = await app.request("/v1/observations/channel3", {
         method: "POST",
         headers: { "content-type": "application/json", "idempotency-key": ulid() },

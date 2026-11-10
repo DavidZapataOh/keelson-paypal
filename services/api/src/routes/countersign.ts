@@ -15,12 +15,17 @@ import {
   and,
   channel3Observations,
   type Db,
+  desc,
   eq,
   evidenceBundles,
   evidenceItems,
   gt,
   inArray,
   isNull,
+  like,
+  mandates,
+  ne,
+  operators,
   or,
   purchaseHolds,
   purchases,
@@ -114,6 +119,10 @@ const Body = z
     evidenceRoot: Hex32.openapi({
       description: "The root of the evidence stored with `POST /v1/evidence` for this mandate.",
     }),
+    repeatOf: z.string().length(26).optional().openapi({
+      description:
+        "Only when the user asked to buy the same cart again: the id of the latest purchase of this cart under the mandate. Not needed once that purchase was denied or failed before capture, or was captured more than ten minutes ago. A retry after a lost answer never sends it: the `409 purchase-exists` answer names the purchase already made.",
+    }),
   })
   .openapi("CountersignRequest");
 
@@ -147,7 +156,7 @@ const route = createRoute({
   tags: ["tee"],
   summary: "Countersign a cart",
   description:
-    "Sends the cart to the TEE legs in order and returns the countersignatures only when both agree. A DENY is countersigned too.",
+    "Sends the cart to the TEE legs in order and returns the countersignatures only when both agree. A DENY is countersigned too. A cart is bought once per mandate: while a purchase of the same cart is in flight, or for ten minutes after it was captured, another request for it is answered `409 purchase-exists` with that purchase's id, whatever its request id, evidence or `Idempotency-Key`. Retrying after a lost answer is therefore safe; to buy the same cart again on purpose, name that purchase in `repeatOf`.",
   middleware: [requireClient(["countersign:write"])],
   request: {
     headers: z.object({ "idempotency-key": z.string().min(1).max(255) }),
@@ -172,10 +181,13 @@ const route = createRoute({
     401: { description: "A leg refused the agent's authority", content: problemContent },
     409: {
       description:
-        "The mandate is not active, the evidence root is not stored for it or already binds another purchase, or the request was already used",
+        "The mandate is not active, the evidence root is not stored for it or already binds another purchase, the request was already used, or the same cart is already being bought (`purchase-exists`, with its `purchaseId`)",
       content: problemContent,
     },
-    404: { description: "No such mandate", content: problemContent },
+    404: {
+      description: "No such mandate of an operator this client linked",
+      content: problemContent,
+    },
     413: { description: "A leg refused the request as too large", content: problemContent },
     422: {
       description:
@@ -197,6 +209,48 @@ const route = createRoute({
 const RATE_PER_MANDATE = 60;
 const RATE_WINDOW_SEC = 60;
 const PENDING = new Set(["COUNTERSIGNED", "LOGGED", "COVERED"]);
+/** States of a purchase that may still capture. */
+const IN_FLIGHT = ["PROPOSED", "EVALUATING", "COUNTERSIGNED", "LOGGED", "COVERED"] as const;
+/** How long after a capture another purchase of the same cart needs `repeatOf`. */
+const REPEAT_WINDOW_SEC = 600;
+
+/**
+ * The purchase a new purchase of the cart hashed `hash` under the mandate would repeat, other than
+ * `except`: the latest one still in flight, or captured (or failed at capture) in the last ten
+ * minutes. A countersign
+ * for the same cart goes ahead only when it names this purchase as `repeatOf`.
+ * @internal
+ */
+export async function latestOfCart(
+  db: Pick<Db, "select">,
+  mandateId: string,
+  hash: `0x${string}`,
+  except?: string,
+): Promise<string | undefined> {
+  const [latest] = await db
+    .select({ id: purchases.id })
+    .from(purchases)
+    .where(
+      and(
+        eq(purchases.mandateId, mandateId),
+        eq(purchases.cartHash, Buffer.from(hexToBytes(hash))),
+        except === undefined ? undefined : ne(purchases.id, except),
+        or(
+          inArray(purchases.state, [...IN_FLIGHT]),
+          gt(purchases.capturedAt, sql`now() - make_interval(secs => ${REPEAT_WINDOW_SEC})`),
+          // A capture that failed after it was sent may still hold the money, until reconciled.
+          and(
+            eq(purchases.state, "FAILED"),
+            like(purchases.failureReason, "capture:%"),
+            gt(purchases.updatedAt, sql`now() - make_interval(secs => ${REPEAT_WINDOW_SEC})`),
+          ),
+        ),
+      ),
+    )
+    .orderBy(desc(purchases.createdAt), desc(purchases.id))
+    .limit(1);
+  return latest?.id;
+}
 /** Failures that say nothing about the request, so the same request id may be driven again. */
 const RETRYABLE = new Set(["tee-unavailable", "paypal-unavailable", "stale"]);
 
@@ -246,7 +300,7 @@ function legStatus(
  * reserve twice. Only one of several concurrent retries wins.
  */
 async function redrive(
-  db: Db,
+  db: Pick<Db, "select" | "update">,
   id: string,
   mandateId: string,
   want: CountersignExpectation,
@@ -410,10 +464,16 @@ export function registerCountersign(
       // The store being down does not stop a countersign; the legs bound replays themselves.
     }
 
-    const mandate = await db.query.mandates.findFirst({
-      where: (row, { eq }) => eq(row.id, ids.mid),
-    });
-    if (!mandate) return problem(c, 404, "not-found", "Not found");
+    const [found] = await db
+      .select({ mandate: mandates, clientId: operators.clientId })
+      .from(mandates)
+      .innerJoin(operators, eq(operators.agentId, mandates.operatorAgentId))
+      .where(eq(mandates.id, ids.mid));
+    // The same answer for an unknown mandate and another client's, so neither is disclosed.
+    if (!found?.clientId || found.clientId !== c.var.principal?.subject) {
+      return problem(c, 404, "not-found", "Not found");
+    }
+    const { mandate } = found;
     // A countersign is only worth something against a live hold.
     if (
       mandate.state !== "ACTIVE" ||
@@ -641,38 +701,60 @@ export function registerCountersign(
       .from(purchases)
       .where(eq(purchases.evidenceRoot, evidenceRoot));
     if (bound && bound.id !== purchaseId) return evidenceUsed(c);
-    const inserted = await db
-      .insert(purchases)
-      .values({
-        id: purchaseId,
-        mandateId: mandate.id,
-        merchantId: body.cart.merchant,
-        currency: body.cart.currency,
-        amountMinor: total,
-        cartHash: Buffer.from(want.cartHash.slice(2), "hex"),
-        evidenceRoot,
-        paypalOrderId: orderId,
-        paypalAuthorizationId: body.authorizationId,
-        paypalRefSalt: randomBytes(32),
-        ...(c.var.principal?.kind === "client" ? { clientId: c.var.principal.subject } : {}),
+    const claim = await db
+      .transaction(async (tx) => {
+        // Serializes the purchases of one cart under one mandate, so two retries cannot both pass.
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtext(${`purchase:${mandate.id}:${want.cartHash}`}))`,
+        );
+        const latest = await latestOfCart(tx, mandate.id, want.cartHash, purchaseId);
+        if (latest && latest !== body.repeatOf) return { exists: latest };
+        const inserted = await tx
+          .insert(purchases)
+          .values({
+            id: purchaseId,
+            mandateId: mandate.id,
+            merchantId: body.cart.merchant,
+            currency: body.cart.currency,
+            amountMinor: total,
+            cartHash: Buffer.from(want.cartHash.slice(2), "hex"),
+            evidenceRoot,
+            paypalOrderId: orderId,
+            paypalAuthorizationId: body.authorizationId,
+            paypalRefSalt: randomBytes(32),
+            ...(c.var.principal?.kind === "client" ? { clientId: c.var.principal.subject } : {}),
+          })
+          .onConflictDoNothing({ target: purchases.id })
+          .returning({ id: purchases.id });
+        // Taken into evaluation under the same lock, so the next holder sees it in flight.
+        const driven =
+          inserted.length > 0
+            ? await transition(tx, "purchases", purchaseId, "PROPOSED", "EVALUATING")
+            : await redrive(tx, purchaseId, mandate.id, want, body.cart, evidenceRoot, {
+                orderId,
+                authorizationId: body.authorizationId,
+              });
+        return { driven };
       })
-      .onConflictDoNothing({ target: purchases.id })
-      .returning({ id: purchases.id })
       .catch((err: unknown) => {
         // A unique violation here is the evidence root: the id conflict is already ignored.
         const e = err as { code?: string; cause?: { code?: string } };
         if ((e.cause?.code ?? e.code) === "23505") return null;
         throw err;
       });
-    if (inserted === null) return evidenceUsed(c);
-    const driven =
-      inserted.length > 0
-        ? await transition(db, "purchases", purchaseId, "PROPOSED", "EVALUATING")
-        : await redrive(db, purchaseId, mandate.id, want, body.cart, evidenceRoot, {
-            orderId,
-            authorizationId: body.authorizationId,
-          });
-    if (!driven) {
+    if (claim === null) return evidenceUsed(c);
+    if ("exists" in claim) {
+      c.header("Location", `/v1/purchases/${claim.exists}`);
+      return problem(
+        c,
+        409,
+        "purchase-exists",
+        "Purchase exists",
+        `Purchase ${claim.exists} of this cart is in flight or was captured in the last ten minutes; it is the answer to this request.`,
+        { purchaseId: claim.exists },
+      );
+    }
+    if (!claim.driven) {
       return problem(
         c,
         409,

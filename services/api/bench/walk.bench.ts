@@ -41,10 +41,12 @@ import { createTee } from "../src/tee/config.ts";
 import { refreshLeg } from "../src/tee/signers.ts";
 import { startStampWorker } from "../src/timestamps/worker.ts";
 import {
+  AGENT_CLIENT,
   asUser,
   carts,
   headerPrincipal,
   registerMandate,
+  repeating,
   request,
   SoftwarePasskey,
   seedUser,
@@ -187,7 +189,7 @@ try {
   const asAgent = {
     "x-test-principal": JSON.stringify({
       kind: "client",
-      subject: "walk-agent",
+      subject: AGENT_CLIENT,
       scopes: ["countersign:write", "evidence:write", "evidence:disclose"],
     }),
   };
@@ -314,6 +316,7 @@ try {
         cart: r.cart,
         unit: r.unit,
         evidenceRoot,
+        ...(await repeating(db, mandateId, r.cart, r.request_id)),
       },
       asAgent,
     );

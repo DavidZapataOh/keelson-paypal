@@ -23,6 +23,7 @@ import {
   live,
   liveEnv,
   registerMandate,
+  repeating,
   seedUser,
   signedMandate,
   VirtualPasskey,
@@ -77,6 +78,7 @@ describe.skipIf(!live)("POST /v1/countersign (live legs)", { timeout: 180_000 },
       cart: cart.cart,
       unit: cart.unit,
       evidenceRoot: root ?? (await evidence.upload(app, mandateId, cart.cart, asAgent)),
+      ...(await repeating(testDb, mandateId, cart.cart, requestId)),
     };
   };
 
@@ -614,7 +616,7 @@ describe.skipIf(!live)("POST /v1/countersign (live legs)", { timeout: 180_000 },
       /newer Channel3 observation/,
     );
 
-    const other = await observed(await channel3Mandate());
+    const other = await observed(await channel3Mandate("ACTIVE", "demo-agent"));
     await refused(
       await evidence.store(app, mandateId, other.capture, asAgent, other.observation),
       /another mandate/,
