@@ -439,8 +439,9 @@ async function fromPool(deps: SettleDeps, relayer: Relayer, row: Row): Promise<b
   // `payViolation` pays all the coverage has left, or nothing.
   const left = coverage.amount - BigInt(slashed) - warranted;
   if (left !== owed || deposit.balance < left) return false;
+  let tx: TxRecord | undefined;
   try {
-    await confirmed(deps, row, () =>
+    tx = await confirmed(deps, row, () =>
       relayer.submit({
         chainId: CHAIN_ID,
         contract: "ViolationBondPool",
@@ -462,7 +463,37 @@ async function fromPool(deps: SettleDeps, relayer: Relayer, row: Row): Promise<b
     }
     if (name !== "AlreadyPaid") throw err;
   }
-  return settledByPool(deps, row, await paid(), owed);
+  return settledByPool(
+    deps,
+    row,
+    tx ? await receiptPayment(deps, tx, coverageId) : await paid(),
+    owed,
+  );
+}
+
+/** The pool's payment of a coverage, from the receipt of the transaction that made it. */
+async function receiptPayment(
+  deps: SettleDeps,
+  tx: TxRecord,
+  coverageId: Hex,
+): Promise<PoolPayment | undefined> {
+  const hash = tx.hash as Hex;
+  const receipt = await deps.chain.client.waitForTransactionReceipt({
+    hash,
+    timeout: RECEIPT_WAIT_MS,
+  });
+  const events = parseEventLogs({
+    abi: violationBondPoolAbi,
+    logs: receipt.logs,
+    eventName: ["ViolationPaid", "PayoutFailed"],
+  }).filter((e) => e.args.coverageId === coverageId);
+  const paid = events.find((e) => e.eventName === "ViolationPaid");
+  if (paid?.eventName !== "ViolationPaid") return undefined;
+  return {
+    amount: paid.args.amount,
+    failed: events.some((e) => e.eventName === "PayoutFailed"),
+    txHash: hash,
+  };
 }
 
 interface PoolPayment {
@@ -503,7 +534,9 @@ async function poolPayment(
 
 /**
  * Records that the pool settled the verdict, when it paid at least the verdict's amount; a smaller
- * payment leaves the verdict to the vault's slash. Returns whether it recorded.
+ * payment leaves the verdict to the vault's slash. The pool paid, so a payment whose log cannot be
+ * read yet throws, to be retried: it never falls through to a second payment. Returns whether it
+ * recorded.
  */
 async function settledByPool(
   deps: SettleDeps,
@@ -511,7 +544,9 @@ async function settledByPool(
   payment: PoolPayment | undefined,
   owed: bigint,
 ): Promise<boolean> {
-  if (!payment || payment.amount < owed) return false;
+  if (!payment)
+    throw new Error(`the pool paid ${row.message.coverageId} but its log is not readable yet`);
+  if (payment.amount < owed) return false;
   const outcome = payment.failed ? "claimable" : "paid";
   const updated = await deps.db
     .update(verdicts)
