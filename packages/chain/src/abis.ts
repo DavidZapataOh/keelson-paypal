@@ -812,6 +812,27 @@ export const iCoveredVaultAbi = [
     outputs: [{ name: "", type: "bytes32", internalType: "bytes32" }],
     stateMutability: "view",
   },
+  {
+    type: "function",
+    name: "coverages",
+    inputs: [{ name: "coverageId", type: "bytes32", internalType: "bytes32" }],
+    outputs: [
+      {
+        name: "",
+        type: "tuple",
+        internalType: "struct IKeelsonBondVault.CoverageState",
+        components: [
+          { name: "amount", type: "uint96", internalType: "uint96" },
+          { name: "agentId", type: "uint64", internalType: "uint64" },
+          { name: "releaseAfter", type: "uint40", internalType: "uint40" },
+          { name: "status", type: "uint8", internalType: "enum IKeelsonBondVault.Status" },
+          { name: "degraded", type: "bool", internalType: "bool" },
+          { name: "pendingSlashes", type: "uint8", internalType: "uint8" },
+        ],
+      },
+    ],
+    stateMutability: "view",
+  },
 ] as const;
 
 export const iERC8004IdentityAbi = [
@@ -4611,6 +4632,7 @@ export const mandateViolationCourtAbi = [
           { name: "expiresAt", type: "uint40", internalType: "uint40" },
         ],
       },
+      { name: "hSd", type: "bytes32", internalType: "bytes32" },
       { name: "countersigs", type: "bytes", internalType: "bytes" },
       { name: "violationCode", type: "uint8", internalType: "uint8" },
       { name: "proof", type: "bytes", internalType: "bytes" },

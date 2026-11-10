@@ -846,13 +846,13 @@ impl Engine {
             return;
         }
         while order.len() >= C1_KEPT {
-            if let Some(old) = order.pop_front() {
-                if matches!(
+            if let Some(old) = order.pop_front()
+                && matches!(
                     slots.remove(&old),
                     Some(C1Slot::Queued(_) | C1Slot::Proving)
-                ) {
-                    eprintln!("keelson-engine: C1 proof of request {old} dropped unproved");
-                }
+                )
+            {
+                eprintln!("keelson-engine: C1 proof of request {old} dropped unproved");
             }
         }
         order.push_back(request_id.clone());

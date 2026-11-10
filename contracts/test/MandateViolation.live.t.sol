@@ -65,7 +65,7 @@ contract MandateViolationLiveTest is ForkTest {
             string memory p =
                 vm.readFile(string.concat(vm.projectRoot(), "/test/vectors/c2a-", classes[code - 1], ".json"));
             vm.expectRevert(MandateViolationCourt.InvalidProof.selector);
-            court.proveViolation(v.coverage, v.countersign, v.countersigs, code, p.readBytes(".proof"));
+            court.proveViolation(v.coverage, v.countersign, v.hSd, v.countersigs, code, p.readBytes(".proof"));
         }
     }
 
