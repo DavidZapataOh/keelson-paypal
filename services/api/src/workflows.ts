@@ -13,6 +13,7 @@ import { treasuryFromKey } from "./disputes/treasury.ts";
 import { createKv } from "./kv.ts";
 import { relayerFromEnv } from "./onchain/relayer.ts";
 import { createPayPalDeps } from "./paypal.ts";
+import "./redteam.ts";
 import { createTee } from "./tee/config.ts";
 
 const Env = z.object({

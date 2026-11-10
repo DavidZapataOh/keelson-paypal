@@ -112,6 +112,10 @@
       "entry": ["src/index.ts!", "scripts/*.ts"],
       "project": ["src/**/*.ts!", "scripts/**/*.ts", "test/**/*.ts"]
     },
+    "services/redteam": {
+      "entry": ["src/index.ts!"],
+      "project": ["src/**/*.ts!", "test/**/*.ts"]
+    },
     "services/mcp": {
       "entry": ["src/index.ts!", "src/stdio.ts!", "view/alibi.ts!", "scripts/*.ts"],
       "project": ["src/**/*.ts!", "view/**/*.ts!", "scripts/**/*.ts", "test/**/*.ts"]
