@@ -5,6 +5,7 @@ import { createServer as createHttpsServer, type Server as HttpsServer } from "n
 import { type AddressInfo, connect, createServer as createTcpServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { agentKey } from "@keelson/agent";
 import { type Cart, CURRENCIES, type CurrencyCode, cartHash, toHex } from "@keelson/core";
 import {
   and,
@@ -543,8 +544,16 @@ async function newAgentKey(): Promise<AgentKey> {
   return { key: pair.privateKey, jwk: { kty: "EC", crv: "P-256", x: x as string, y: y as string } };
 }
 
-/** The agent this process buys as: the operators the harness seeds register its key as `cnf`. */
-export const testAgent = await newAgentKey();
+/**
+ * The agent this process buys as: the operator's own agent with `KEELSON_AGENT_KEY`, its private
+ * JWK, or else a new key that the operators the harness seeds register as `cnf`.
+ */
+export const testAgent: AgentKey = process.env.KEELSON_AGENT_KEY
+  ? await agentKey(process.env.KEELSON_AGENT_KEY).then((k) => ({
+      key: k.privateKey,
+      jwk: k.publicJwk,
+    }))
+  : await newAgentKey();
 
 /**
  * The demo mandate for `sub`, signed with `passkey` after `edit`. It binds what compiling fills:
