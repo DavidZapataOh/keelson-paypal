@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
-use acir::{AcirField, FieldElement};
+use acir::FieldElement;
 use keelson_mandate::{mandate_opening, merchant_leaf, merchant_membership};
 use keelson_tee::zk::{Prover, Statement};
 use serde_json::Value;
