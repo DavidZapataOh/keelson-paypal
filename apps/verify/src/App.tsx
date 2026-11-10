@@ -180,10 +180,10 @@ export function App() {
       <header className="flex items-center justify-between py-6">
         <a href="https://keelson.finance" className="flex items-center gap-3">
           <img src="/keelson.svg" alt="Keelson" width="94" height="28" />
-          <span className="font-mono text-xs text-ink-2">Alibi verifier</span>
+          <span className="font-mono text-xs text-muted-foreground">Alibi verifier</span>
         </a>
         <a
-          className="text-sm text-ink-2 hover:text-graphite"
+          className="text-sm text-muted-foreground hover:text-graphite"
           href="https://github.com/DavidZapataOh/keelson-paypal/tree/main/apps/verify"
         >
           Source
@@ -195,7 +195,7 @@ export function App() {
           <h1 className="max-w-2xl text-4xl font-semibold tracking-tight sm:text-5xl">
             Check an Alibi without trusting Keelson.
           </h1>
-          <p className="mt-3 max-w-2xl text-lg text-ink-2">
+          <p className="mt-3 max-w-2xl text-lg text-muted-foreground">
             Every check runs in this browser against trust roots pinned in the code, the public
             transparency log and Arbitrum. Drop the PDF, the .alibi file or a photo of its QR code.
           </p>
@@ -203,7 +203,7 @@ export function App() {
 
         <section className="grid gap-4 md:grid-cols-[1.4fr_1fr]">
           <label
-            className={`flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-[14px] border-2 border-dashed p-6 text-center transition-colors ${dragging ? "border-vermilion bg-bone-2" : "border-line"}`}
+            className={`flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-[14px] border-2 border-dashed p-6 text-center transition-colors ${dragging ? "border-vermilion bg-bone-2" : "border-border"}`}
             onDragOver={(e) => {
               e.preventDefault();
               setDragging(true);
@@ -217,7 +217,7 @@ export function App() {
             }}
           >
             <span className="text-base font-medium">Drop an Alibi here, or choose a file</span>
-            <span className="mt-1 text-sm text-ink-2">
+            <span className="mt-1 text-sm text-muted-foreground">
               PDF, .alibi, .json or a QR image · up to 8 MB
             </span>
             <input
@@ -243,7 +243,7 @@ export function App() {
             <textarea
               aria-label="Paste an Alibi as JSON"
               placeholder="…or paste its JSON"
-              className="min-h-28 flex-1 rounded-[10px] border border-line bg-bone p-3 font-mono text-xs"
+              className="min-h-28 flex-1 rounded-[10px] border border-border bg-bone p-3 font-mono text-xs"
               value={paste}
               onChange={(e) => setPaste(e.currentTarget.value)}
             />
@@ -269,7 +269,7 @@ export function App() {
         {run && loaded && (
           <div className="space-y-8" data-run={runId.current}>
             {route.alibiId === loaded.alibi.alibi_id && !route.expect && (
-              <p className="rounded-[10px] border border-amber px-4 py-3 text-sm text-amber">
+              <p className="rounded-[10px] border border-warn px-4 py-3 text-sm text-warn">
                 This link carries no leaf hash, so which Alibi it names is the API's word. Links
                 from an Alibi's QR code carry one.
               </p>
@@ -278,12 +278,14 @@ export function App() {
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
-                className="rounded-md border border-line px-3 py-1.5 text-sm hover:border-graphite"
+                className="rounded-md border border-border px-3 py-1.5 text-sm hover:border-graphite"
                 onClick={() => download(loaded)}
               >
                 Download this Alibi
               </button>
-              <span className="font-mono text-xs text-ink-2">{loaded.alibi.alibi_id}</span>
+              <span className="font-mono text-xs text-muted-foreground">
+                {loaded.alibi.alibi_id}
+              </span>
             </div>
             {edited !== undefined && (
               <Suspense fallback={null}>
@@ -293,9 +295,9 @@ export function App() {
           </div>
         )}
 
-        <section className="rounded-[14px] border border-line p-6">
+        <section className="rounded-[14px] border border-border p-6">
           <h2 className="text-base font-medium">Arbitrum RPC</h2>
-          <p className="mt-1 text-sm text-ink-2">
+          <p className="mt-1 text-sm text-muted-foreground">
             The anchor and the signer registry are read from a public Arbitrum RPC. Use your own to
             trust nobody else's: it must be https.
           </p>
@@ -308,14 +310,14 @@ export function App() {
           >
             <input
               aria-label="RPC URL"
-              className="min-w-64 flex-1 rounded-md border border-line bg-bone px-3 py-1.5 font-mono text-sm"
+              className="min-w-64 flex-1 rounded-md border border-border bg-bone px-3 py-1.5 font-mono text-sm"
               placeholder="https://sepolia-rollup.arbitrum.io/rpc"
               value={rpcInput}
               onChange={(e) => setRpcInput(e.currentTarget.value)}
             />
             <button
               type="submit"
-              className="rounded-md border border-line px-3 py-1.5 text-sm hover:border-graphite"
+              className="rounded-md border border-border px-3 py-1.5 text-sm hover:border-graphite"
             >
               Use this RPC
             </button>

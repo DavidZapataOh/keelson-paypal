@@ -4,7 +4,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { serve } from "@hono/node-server";
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import { passkey } from "@keelson/db";
+import { operators, passkey } from "@keelson/db";
 import { type Mandate, parseMandate, prepareSigning } from "@keelson/mandate";
 import { POLICY_SET_HASH } from "@keelson/policy/hashes";
 import { cose, isoBase64URL, isoCBOR } from "@simplewebauthn/server/helpers";
@@ -17,6 +17,7 @@ import demoJson from "../../../packages/mandate/test/fixtures/demo-mandate.json"
 };
 import { createApp } from "../src/app.ts";
 import { createAuth } from "../src/auth.ts";
+import { operatorAgent, termsConsent } from "../src/compile-sources.ts";
 import { authenticate } from "../src/middleware/auth.ts";
 import { LOCK_SECONDS } from "../src/middleware/idempotency.ts";
 import { COMPILE_DEADLINE_MS, COMPILE_LIMITS, type CompileSources } from "../src/routes/compile.ts";
@@ -197,6 +198,33 @@ test("answers 503 naming the inputs that are not available yet", async () => {
     app = build({ agent: demoSources.agent }, null);
     const partial = await (await compile({ prompt: DEMO_PROMPT }, user)).json();
     expect(partial.missing).toEqual(["consent", "engine", "anthropic"]);
+  } finally {
+    app = build(demoSources);
+  }
+});
+
+test("answers 503 naming the agent while the operator has no cnf key", async () => {
+  const user = await signIn();
+  await addPasskey(user.id, new Date());
+  const agentId = BigInt(`0x${randomBytes(6).toString("hex")}`);
+  await testDb.insert(operators).values({
+    agentId,
+    chainId: 421614,
+    agentRegistry: "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+    name: "op",
+    cnfJwk: {},
+  });
+  // The agent is read before any model is called, so the client is never used.
+  app = build(
+    { ...demoSources, agent: operatorAgent(testDb, agentId), consent: termsConsent },
+    new Anthropic({ apiKey: "unused" }),
+  );
+  try {
+    const res = await compile({ prompt: DEMO_PROMPT }, user);
+    const body = await res.json();
+    expect(res.status).toBe(503);
+    expect(body.type).toBe(problemType("compile-unavailable"));
+    expect(body.missing).toEqual(["agent"]);
   } finally {
     app = build(demoSources);
   }

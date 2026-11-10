@@ -1,0 +1,31 @@
+import type { Metadata, Viewport } from "next";
+import type { ReactNode } from "react";
+import { Header } from "../components/header";
+import "./globals.css";
+
+export const metadata: Metadata = {
+  title: { default: "Keelson", template: "%s · Keelson" },
+  description: "Sign what your agent may buy. Every purchase is checked before it pays.",
+  icons: { icon: "/favicon.svg", apple: "/apple-touch-icon.png" },
+};
+
+export const viewport: Viewport = { themeColor: "#f2f0ea", width: "device-width", initialScale: 1 };
+
+export default function RootLayout({ children }: { children: ReactNode }) {
+  return (
+    <html lang="en">
+      <body className="min-h-dvh">
+        <a
+          href="#main"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-background focus:px-3 focus:py-2"
+        >
+          Skip to content
+        </a>
+        <Header />
+        <main id="main" className="mx-auto w-full max-w-5xl px-5 pt-6 pb-24 sm:px-8">
+          {children}
+        </main>
+      </body>
+    </html>
+  );
+}
