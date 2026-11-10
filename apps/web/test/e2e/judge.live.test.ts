@@ -86,6 +86,15 @@ test.runIf(ORIGIN)(
       }
       expect(errors).toEqual([]);
       expect(total).toBeLessThan(BUDGET_MS);
+    } catch (err) {
+      // The hourly alert should say what the judge saw, not only which locator timed out.
+      const seen = await page
+        .locator("main")
+        .innerText()
+        .catch(() => "");
+      throw new Error(
+        `${(err as Error).message}\n--- page ---\n${seen.slice(0, 2_000)}\n--- errors ---\n${errors.join("\n")}`,
+      );
     } finally {
       await context.close();
       await browser.close();
