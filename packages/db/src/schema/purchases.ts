@@ -67,6 +67,8 @@ export const purchases = pgTable(
     /** The relayed `lockCoverage` of the purchase. */
     coverageTxId: text(),
     coverageTxHash: bytea(),
+    /** The premium of the coverage, in basis points of its amount, fixed by its first attempt. */
+    premiumBps: smallint(),
     /** The purchase is being driven by one process until then. */
     leaseUntil: timestamp({ withTimezone: true }),
     capturedAt: timestamp({ withTimezone: true }),
@@ -84,6 +86,7 @@ export const purchases = pgTable(
     check("purchases_cart_hash_len", sql`octet_length(${t.cartHash}) = 32`),
     check("purchases_countersign_digest_len", sql`octet_length(${t.countersignDigest}) = 32`),
     check("purchases_paypal_ref_salt_len", sql`octet_length(${t.paypalRefSalt}) = 32`),
+    check("purchases_premium_bps_range", sql`${t.premiumBps} between 0 and 10000`),
     check("purchases_capture_seq_range", sql`${t.captureSeq} between 1 and 99`),
     unique("purchases_mandate_id_capture_seq_unique").on(t.mandateId, t.captureSeq),
     index("purchases_resumable_idx")

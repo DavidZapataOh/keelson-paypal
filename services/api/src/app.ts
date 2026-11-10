@@ -39,6 +39,7 @@ import { registerDisputes } from "./routes/disputes.ts";
 import { registerEvents } from "./routes/events.ts";
 import { registerEvidence } from "./routes/evidence.ts";
 import { registerFeedback } from "./routes/feedback.ts";
+import { registerGrades } from "./routes/grades.ts";
 import { registerHealth } from "./routes/health.ts";
 import { registerHold } from "./routes/hold.ts";
 import { registerMandates } from "./routes/mandates.ts";
@@ -283,6 +284,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerDisputes(app, deps);
   registerPasskeys(app, deps);
   registerOperators(app, deps);
+  registerGrades(app, deps);
   registerFeedback(app, deps);
   registerValidations(app, deps);
   registerBonds(app, deps);

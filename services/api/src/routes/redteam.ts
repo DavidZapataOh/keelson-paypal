@@ -113,7 +113,7 @@ async function campaign(db: Db, id: string): Promise<Campaign | undefined> {
 }
 
 /** The ledger lines of `c` as stored, in chain order. */
-async function lines(db: Db, c: Campaign): Promise<string[]> {
+export async function ledgerLines(db: Db, c: Campaign): Promise<string[]> {
   const rows = await db
     .select({ line: attacks.line })
     .from(attacks)
@@ -146,7 +146,7 @@ export function registerRedTeam(
   const board = async (c: Campaign): Promise<string> => {
     const cached = finished.get(c.id);
     if (cached) return cached;
-    const text = jcs(score(await lines(db, c)) as never);
+    const text = jcs(score(await ledgerLines(db, c)) as never);
     if (c.summary) {
       if (finished.size >= MAX_CACHED) finished.delete(finished.keys().next().value as string);
       finished.set(c.id, text);
@@ -188,7 +188,7 @@ export function registerRedTeam(
     const { id } = c.req.valid("param");
     const found = await campaign(db, id);
     if (!found) return problem(c, 404, "campaign-not-found", "Not found", "No such campaign.");
-    const text = `${(await lines(db, found)).join("\n")}\n`;
+    const text = `${(await ledgerLines(db, found)).join("\n")}\n`;
     // Served as stored, byte for byte; the route documents the body as a string.
     return c.body(text, 200, {
       "Content-Type": "application/jsonl",
