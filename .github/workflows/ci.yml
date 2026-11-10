@@ -90,6 +90,7 @@ jobs:
               - contracts/src/verifiers/**
               - packages/alibi/src/verify/c1-vk.ts
               - packages/alibi/src/verify/c3-vk.ts
+              - packages/alibi/src/verify/c1c3-vk.ts
               - services/api/zk/**
 
   node:
@@ -703,7 +704,7 @@ jobs:
       - name: The engine's program and key and the Solidity verifiers are what the circuit compiles to
         run: |
           circuits/c1/build.sh
-          git diff --exit-code engine/tee/zk contracts/src/verifiers packages/alibi/src/verify/c1-vk.ts
+          git diff --exit-code engine/tee/zk contracts/src/verifiers packages/alibi/src/verify/c1-vk.ts services/api/zk
       - name: bb proves and verifies the demo mandate
         run: |
           circuits/c1/prove.sh "$RUNNER_TEMP/c1-proof.json"
@@ -732,3 +733,11 @@ jobs:
             circuits/c3/prove.sh "$type" "$RUNNER_TEMP/c3-$type.json"
           done
           bb gates -b circuits/c3/target/anonymous_mandate.json | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: The composed program, key and Solidity verifiers are what the circuit compiles to
+        run: |
+          circuits/c1c3/build.sh
+          git diff --exit-code circuits/c1c3 contracts/src/verifiers services/api/zk packages/alibi/src/verify/c1c3-vk.ts
+      - name: bb composes C1 and C3 of the anonymous demo purchase by recursion
+        run: |
+          circuits/c1c3/prove.sh "$RUNNER_TEMP/c1c3.json"
+          bb gates -b circuits/c1c3/target/anonymous_purchase.json | tee -a "$GITHUB_STEP_SUMMARY"

@@ -1,8 +1,5 @@
 // Loads reflect-metadata before @keelson/alibi/verify pulls in @keelson/attest (see tee/attest.ts).
 import "../tee/attest.ts";
-import { readFileSync } from "node:fs";
-import { availableParallelism } from "node:os";
-import type { Barretenberg } from "@aztec/bb.js";
 import { toBase64 } from "@keelson/alibi";
 import { c3Statement, verifyC3 } from "@keelson/alibi/verify";
 import { toHex } from "@keelson/core";
@@ -15,19 +12,9 @@ import {
   userKeyHash,
   userSet,
 } from "@keelson/mandate";
-import type { CompiledCircuit } from "@noir-lang/noir_js";
 import type { Logger } from "pino";
 import { passkeyJwk, SignatureError } from "../mandate-signature.ts";
-
-let program: CompiledCircuit | undefined;
-
-/** The circuit's ACIR and ABI, read on the first proof: the API that only delegates never loads them. */
-function circuit(): CompiledCircuit {
-  program ??= JSON.parse(
-    readFileSync(new URL("../../zk/anonymous_mandate.json", import.meta.url), "utf8"),
-  ) as CompiledCircuit;
-  return program;
-}
+import { prove } from "./bb.ts";
 
 /** How long the API keeps a new mandate's salt for its C3 proof: past it, the proof is not made. */
 export const C3_SALT_TTL_SECONDS = 3600;
@@ -35,10 +22,14 @@ export const C3_SALT_TTL_SECONDS = 3600;
 /** The Valkey key of a new mandate's commitment salt, kept for its C3 proof. */
 export const c3SaltKey = (mandateId: string): string => `c3:salt:${mandateId}`;
 
-/** A C3 proof as the API stores and serves it: base64 proof bytes and 32-byte hex inputs. */
+/**
+ * A C3 proof as the API stores and serves it: base64 proof bytes and 32-byte hex inputs, and the
+ * proof of the same witness for recursion, which composes it with a purchase's C1.
+ */
 export interface C3Proof {
   proof: string;
   public_inputs: string[];
+  recursive_proof?: string | undefined;
 }
 
 /**
@@ -70,21 +61,6 @@ async function currentUserSet(db: Db): Promise<UserSet> {
 
 const word = (x: bigint): Uint8Array =>
   Uint8Array.from({ length: 32 }, (_, i) => Number((x >> BigInt(8 * (31 - i))) & 0xffn));
-
-let api: Promise<Barretenberg> | undefined;
-
-/** Native bb through bb.js, one per process. */
-function barretenberg(): Promise<Barretenberg> {
-  api ??= import("@aztec/bb.js")
-    .then(({ BackendType, Barretenberg }) =>
-      Barretenberg.new({ backend: BackendType.NativeUnixSocket, threads: availableParallelism() }),
-    )
-    .catch((err: unknown) => {
-      api = undefined;
-      throw err;
-    });
-  return api;
-}
 
 /**
  * Proves C3 for mandate `mandateId`, whose commitment opens under `salt` (`0x` + 16 bytes hex),
@@ -122,14 +98,12 @@ export async function proveAnonymousMandate(
     assertion: row.userAuth as C3Assertion,
     users,
   });
-  const [{ Noir }, { UltraHonkBackend }] = await Promise.all([
-    import("@noir-lang/noir_js"),
-    import("@aztec/bb.js"),
-  ]);
-  const { witness } = await new Noir(circuit()).execute(inputs as never);
-  const backend = new UltraHonkBackend(circuit().bytecode, await barretenberg());
-  const { proof, publicInputs } = await backend.generateProof(witness, { verifierTarget: "evm" });
-  const c3: C3Proof = { proof: toBase64(proof), public_inputs: publicInputs };
+  const proved = await prove("anonymous_mandate", inputs, ["evm", "noir-recursive"]);
+  const c3: C3Proof = {
+    proof: toBase64(proved.evm.proof),
+    public_inputs: proved.evm.publicInputs,
+    recursive_proof: toBase64(proved["noir-recursive"].proof),
+  };
   const expected = c3Statement({
     mandateCommitment: toHex(row.commitment),
     mandateHash: toHex(row.mandateHash),

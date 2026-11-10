@@ -259,6 +259,9 @@ pub struct ZkProof {
     pub proof: Base64,
     /// `C_m, amount, currency, category, merchant_id, now, cart_hash, operator_id`.
     pub public_inputs: Vec<Hex32>,
+    /// The proof of the same statement for recursion (Poseidon2 transcript), 32-byte fields.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recursive_proof: Option<Base64>,
 }
 
 impl From<&crate::zk::C1Proof> for ZkProof {
@@ -266,6 +269,7 @@ impl From<&crate::zk::C1Proof> for ZkProof {
         Self {
             proof: Base64(p.proof.clone()),
             public_inputs: p.public_inputs.iter().map(|b| Hex(*b)).collect(),
+            recursive_proof: Some(Base64(p.recursive_proof.clone())),
         }
     }
 }

@@ -45,9 +45,14 @@ export const mandates = pgTable(
     sealedSalt: bytea(),
     /**
      * The C3 `anonymous_mandate` proof: UltraHonk for the EVM over `C_m, mandate_hash,
-     * user_set_root, rp_id_hash`. A registered user signed this mandate; the proof names no user.
+     * user_set_root, rp_id_hash`, and the proof of the same witness for recursion. A registered
+     * user signed this mandate; the proof names no user.
      */
-    c3Proof: jsonb().$type<{ proof: string; public_inputs: string[] }>(),
+    c3Proof: jsonb().$type<{
+      proof: string;
+      public_inputs: string[];
+      recursive_proof?: string | undefined;
+    }>(),
     paypalOrderId: text().unique("mandates_paypal_order_id_unique"),
     /** The authorization captures use: the parent, or its reauthorization. */
     paypalAuthorizationId: text().unique("mandates_paypal_authorization_id_unique"),

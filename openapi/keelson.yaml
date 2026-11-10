@@ -2054,6 +2054,41 @@ components:
         - user_set_root
         - proof
         - public_inputs
+    AnonymousPurchase:
+      type: object
+      properties:
+        user_set_root:
+          type: string
+          pattern: ^0x[0-9a-f]{64}$
+        proof:
+          type: string
+          description: The UltraHonk proof bytes, standard base64.
+        public_inputs:
+          type: array
+          items:
+            type: string
+            pattern: ^0x[0-9a-f]{64}$
+          description: "C1's `C_m, amount, currency, category, merchant_id, now,
+            cart_hash, operator_id`, then `M mod r` and `user_set_root`: the
+            calldata of `verify(bytes,bytes32[])`."
+        verifier:
+          type: object
+          properties:
+            chain_id:
+              type: integer
+            address:
+              type: string
+          required:
+            - chain_id
+            - address
+          description: "The deployed verifier that accepts the proof in an `eth_call`. It
+            checks the proof only: `public_inputs` must also be the
+            countersign's and the root one `GET /v1/user-set/roots/{root}`
+            lists."
+      required:
+        - user_set_root
+        - proof
+        - public_inputs
     UserSetRoot:
       type: object
       properties:
@@ -4438,6 +4473,36 @@ paths:
                 $ref: "#/components/schemas/AnonymousMandate"
         "404":
           description: No proof for this mandate yet
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/anonymous-purchases/{id}:
+    get:
+      tags:
+        - purchases
+      summary: Proof that a purchase was within a mandate a registered user signed
+      description: One zero-knowledge proof that composes the purchase's C1 proof (the
+        countersigned cart satisfies the mandate) with its mandate's C3 proof (a
+        registered user's passkey, the one the mandate names, signed it) by
+        recursion. It shows neither the mandate nor the user, so it needs no
+        authentication.
+      parameters:
+        - schema:
+            type: string
+            pattern: ^[0-9A-HJKMNP-TV-Z]{26}$
+          required: true
+          name: id
+          in: path
+      responses:
+        "200":
+          description: The proof
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnonymousPurchase"
+        "404":
+          description: No composed proof for this purchase yet
           content:
             application/problem+json:
               schema:

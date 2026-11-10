@@ -69,6 +69,8 @@ export type CountersignJson = z.infer<typeof CountersignJsonSchema>;
 const ZkProofSchema = z.strictObject({
   proof: z.base64(),
   public_inputs: z.array(Hex32).length(8),
+  /** The same statement proved for recursion; legs that predate it send none. */
+  recursive_proof: z.base64().optional(),
 });
 export type ZkProof = z.infer<typeof ZkProofSchema>;
 

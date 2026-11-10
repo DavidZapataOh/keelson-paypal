@@ -66,7 +66,7 @@ import type { StampWorker } from "./timestamps/worker.ts";
  * proof and the registered-user roots.
  */
 const PUBLIC_READS =
-  /^\/v1\/(alibis\/[^/]+\/receipt|timestamps\/[^/]+|anonymous-mandates\/[^/]+|user-set\/roots\/[^/]+)$/;
+  /^\/v1\/(alibis\/[^/]+\/receipt|timestamps\/[^/]+|anonymous-mandates\/[^/]+|anonymous-purchases\/[^/]+|user-set\/roots\/[^/]+)$/;
 
 export interface Deps {
   db: Db;
@@ -133,6 +133,11 @@ export interface Deps {
    * no C3 proof without it.
    */
   proveAnonymousMandate?: (mandateId: string, salt: string) => Promise<void>;
+  /**
+   * Composes a logged purchase's C1 proof with its mandate's C3 proof, off the request; purchases
+   * carry no composed proof without it.
+   */
+  proveAnonymousPurchase?: (purchaseId: string) => Promise<void>;
   /** Aborting it ends every open event stream so the server can close. */
   shutdown?: AbortSignal;
 }

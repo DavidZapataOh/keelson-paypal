@@ -15,6 +15,7 @@ import { relayerFromEnv } from "./onchain/relayer.ts";
 import { createPayPalDeps } from "./paypal.ts";
 import "./redteam.ts";
 import { createTee } from "./tee/config.ts";
+import { proveAnonymousPurchase } from "./zk/c1c3.ts";
 import { c3SaltKey, proveAnonymousMandate } from "./zk/c3.ts";
 
 const Env = z.object({
@@ -124,5 +125,34 @@ task(
     }
     await kv.del(key);
     return { mandateId, proved: true };
+  },
+);
+
+/**
+ * Composes a logged purchase's C1 proof with its mandate's C3 proof into one proof. The proofs are
+ * public, so nothing secret reaches the task. About 2.8 GB and 11-13 s on four cores.
+ */
+task(
+  {
+    name: "proveAnonymousPurchase",
+    retry: { maxRetries: 2, waitDurationMs: 5_000, backoffScaling: 2 },
+    timeoutSeconds: 300,
+    plan: "4c-8g",
+  },
+  async function composeC1C3(_ctx, purchaseId: string) {
+    deps ??= connect().catch((err: unknown) => {
+      deps = undefined;
+      throw err;
+    });
+    const { db, log } = await deps;
+    const started = Date.now();
+    try {
+      await proveAnonymousPurchase({ db, log }, purchaseId);
+    } catch (err) {
+      if (!(err instanceof RangeError)) throw err;
+      log.warn({ err, purchaseId }, "nothing to compose");
+      return { purchaseId, proved: false };
+    }
+    return { purchaseId, proved: true, ms: Date.now() - started };
   },
 );
