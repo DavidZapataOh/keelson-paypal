@@ -40,7 +40,6 @@ import { createApp } from "../src/app.ts";
 import { resumeSettlements, type SettleDeps, settleDispute } from "../src/disputes/settle.ts";
 import { KEELSON_TREASURY, SETTLEMENT } from "../src/merchants.ts";
 import { createPayPalDeps } from "../src/paypal.ts";
-import { loadMeasurements } from "../src/tee/measurements.ts";
 import { testDb, testKv } from "./setup.ts";
 
 const rpc = process.env.ARBITRUM_SEPOLIA_RPC_URL;
@@ -49,11 +48,9 @@ const chain = addresses[421614];
 const BLOCK = 327_682_892n;
 const COVERAGE: Hex = "0x0000000000000000000000000000000001a1c26a4ab70535ee8599dd9bfe99be";
 const AGENT_ID = 351n;
-/** The published TDX and Nitro measurements, which the `VerdictVerifier` allows at `BLOCK`. */
-const measurementOf = (id: string) => `0x${id.split(":")[1]}` as Hex;
-const published = loadMeasurements();
-const TDX_MEASUREMENT = measurementOf(published.tdx[0] as string);
-const NITRO_MEASUREMENT = measurementOf(published.nitro[0] as string);
+/** The TDX and Nitro measurements of the build the legs ran at `BLOCK`, which the `VerdictVerifier` allows there. */
+const TDX_MEASUREMENT: Hex = "0x0e61f7054f5881f0e96c8d94468c59bc0afe8f4950ea7eeebe1f864062ba3e99";
+const NITRO_MEASUREMENT: Hex = "0xff32b4d98bd0a98bac0a4555bfd4792040904ce040cd50140891d9311274c322";
 /** `forge inspect VerdictVerifier storageLayout`: `measurementIds` and `signers`. */
 const MEASUREMENT_IDS_SLOT = 4n;
 const SIGNERS_SLOT = 7n;
