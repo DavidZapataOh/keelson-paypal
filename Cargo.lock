@@ -21,7 +21,7 @@ dependencies = [
  "serde-big-array",
  "strum",
  "strum_macros",
- "thiserror",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -41,6 +41,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "acvm"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7ff9b2f6d4dd7b92c2878e43cdbf25097a81918425c684c712b2316c1da5ad9e"
+dependencies = [
+ "acir",
+ "acvm_blackbox_solver",
+ "brillig_vm",
+ "indexmap 2.14.2",
+ "itertools 0.15.0",
+ "rustc-hash",
+ "serde",
+ "thiserror 2.0.21",
+ "tracing",
+]
+
+[[package]]
 name = "acvm_blackbox_solver"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -57,7 +74,7 @@ dependencies = [
  "log",
  "p256",
  "sha2 0.11.1",
- "thiserror",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -675,7 +692,7 @@ checksum = "986ca4c3a91a67cadc5ae92b3dfe9de373c2b432bb2288eed90203343e9f47c4"
 dependencies = [
  "libc",
  "log",
- "nix",
+ "nix 0.31.3",
  "serde",
  "serde_bytes",
  "serde_cbor",
@@ -727,6 +744,24 @@ dependencies = [
  "sync_wrapper",
  "tower-layer",
  "tower-service",
+]
+
+[[package]]
+name = "barretenberg-rs"
+version = "5.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f2c0dd1db610abd71e7e0e65d16f4503167cbcd6929527599e0c003a4e44aec6"
+dependencies = [
+ "hex",
+ "libc",
+ "nix 0.27.1",
+ "rmp",
+ "rmp-serde",
+ "rmpv",
+ "serde",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -950,6 +985,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "brillig_vm"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db620a9e5a1af1a6d7cf5552d429580a8a16e7e50aa20f8a4292c0cd1cd75d60"
+dependencies = [
+ "acir",
+ "acvm_blackbox_solver",
+ "itertools 0.15.0",
+ "num-bigint 0.5.1",
+ "num-traits",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "bs58"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1028,7 +1077,7 @@ dependencies = [
  "serde_json",
  "serde_with",
  "smol_str",
- "thiserror",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -1055,7 +1104,7 @@ dependencies = [
  "serde_with",
  "smol_str",
  "stacker",
- "thiserror",
+ "thiserror 2.0.21",
  "unicode-security",
 ]
 
@@ -1091,7 +1140,7 @@ dependencies = [
  "num-traits",
  "ref-cast",
  "smol_str",
- "thiserror",
+ "thiserror 2.0.21",
  "tokio",
 ]
 
@@ -1521,7 +1570,7 @@ version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "71958f69fb2de856c5dd51ac9377e986ca1aa5919f931bf5395a807277f889a0"
 dependencies = [
- "thiserror",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -2610,7 +2659,7 @@ dependencies = [
  "jni-sys",
  "log",
  "simd_cesu8",
- "thiserror",
+ "thiserror 2.0.21",
  "walkdir",
  "windows-link",
 ]
@@ -2777,14 +2826,19 @@ dependencies = [
 name = "keelson-tee"
 version = "0.0.0"
 dependencies = [
+ "acir",
+ "acvm",
  "aes-gcm",
  "alloy-primitives",
  "alloy-sol-types",
  "aws-nitro-enclaves-nsm-api",
  "axum",
+ "barretenberg-rs",
  "base64",
+ "bn254_blackbox_solver",
  "criterion",
  "ed25519-dalek",
+ "flate2",
  "getrandom 0.4.3",
  "hkdf",
  "http-body-util",
@@ -3062,6 +3116,18 @@ name = "new_debug_unreachable"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
+
+[[package]]
+name = "nix"
+version = "0.27.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2eb04e9c688eff1c89d72b407f168cf79bb9e867a9d3323ed6c01519eb9cc053"
+dependencies = [
+ "bitflags 2.13.2",
+ "cfg-if",
+ "libc",
+ "memoffset",
+]
 
 [[package]]
 name = "nix"
@@ -4630,11 +4696,31 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
+version = "1.0.69"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b6aaf5339b578ea85b50e080feb250a3e8ae8cfcdff9a461c9ec2904bc923f52"
+dependencies = [
+ "thiserror-impl 1.0.69",
+]
+
+[[package]]
+name = "thiserror"
 version = "2.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09e52cb86a36cede5cb101bf8908837b3e4c6e5e59fe7fd85c23fb56200d189e"
 dependencies = [
- "thiserror-impl",
+ "thiserror-impl 2.0.21",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "1.0.69"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4fee6c4efc90059e10f81e6d42c60a18f76588c3d74cb83a0b242a2b6c7504c1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -4713,6 +4799,7 @@ dependencies = [
  "bytes",
  "libc",
  "mio",
+ "parking_lot",
  "pin-project-lite",
  "signal-hook-registry",
  "socket2",
@@ -4837,7 +4924,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "63e71662fa4b2a2c3a26f570f037eb95bb1f85397f3cd8076caed2f026a6d100"
 dependencies = [
  "pin-project-lite",
+ "tracing-attributes",
  "tracing-core",
+]
+
+[[package]]
+name = "tracing-attributes"
+version = "0.1.31"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7490cfa5ec963746568740651ac6781f701c9c5ea257c58e057f3ba8cf69e8da"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -5019,7 +5118,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b7d4dba01e366e2ffbdf0700b1876f747c548db72dced534de41c54945c0148"
 dependencies = [
  "libc",
- "nix",
+ "nix 0.31.3",
 ]
 
 [[package]]

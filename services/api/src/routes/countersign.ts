@@ -714,6 +714,9 @@ export function registerCountersign(
             evidence: evidenceSources,
             evidence_root: body.evidenceRoot as `0x${string}`,
             authorization_id: body.authorizationId,
+            ...(mandate.sealedSalt
+              ? { sealed_salt: Buffer.from(mandate.sealedSalt).toString("base64") }
+              : {}),
           },
           want,
         );
@@ -729,6 +732,7 @@ export function registerCountersign(
         failedFieldsMask: Number(out.countersign.failedFieldsMask),
         countersignMode: out.mode,
         evalTrace: out.trace,
+        c1Proof: out.c1 ?? null,
         failureReason: null,
       };
       await transition(

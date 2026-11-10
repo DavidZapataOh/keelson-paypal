@@ -246,6 +246,28 @@ pub struct CountersignRequest {
     /// when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chain_id: Option<u64>,
+    /// The mandate's commitment salt as registration sealed it. Leg A opens it to prove C1 on
+    /// ALLOW; leg B cannot open it and ignores it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sealed_salt: Option<Base64>,
+}
+
+/// A C1 `mandate_predicate` proof: UltraHonk for the EVM, as `verify(bytes, bytes32[])` takes it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ZkProof {
+    pub proof: Base64,
+    /// `C_m, amount, currency, category, merchant_id, now, cart_hash, operator_id`.
+    pub public_inputs: Vec<Hex32>,
+}
+
+impl From<&crate::zk::C1Proof> for ZkProof {
+    fn from(p: &crate::zk::C1Proof) -> Self {
+        Self {
+            proof: Base64(p.proof.clone()),
+            public_inputs: p.public_inputs.iter().map(|b| Hex(*b)).collect(),
+        }
+    }
 }
 
 /// A `Countersign` message in the JSON form of viem typed data.
@@ -308,6 +330,9 @@ pub struct Countersigned {
     pub trace_jcs: Base64,
     /// The facts the decision used, for leg B.
     pub observation: Observation,
+    /// Leg A's C1 proof of an ALLOW whose request carried the sealed salt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub c1: Option<ZkProof>,
 }
 
 /// A checkpoint to sign as the EIP-712 `Checkpoint`.

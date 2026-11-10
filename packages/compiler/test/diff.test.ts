@@ -650,5 +650,6 @@ describe("merging two drafts", () => {
       { numRuns: 1000 },
     );
     expect(allowed).toBeGreaterThan(200);
-  });
+    // 1,000 runs of eight carts each take about 6 s on a CI runner.
+  }, 30_000);
 });

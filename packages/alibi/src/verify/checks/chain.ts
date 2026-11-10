@@ -1,6 +1,7 @@
 import { deploymentsFor } from "@keelson/chain";
 import { LOG_ORIGINS } from "@keelson/log";
-import { getAddress, type Hex, keccak256, stringToBytes } from "viem";
+import { getAddress, type Hex, keccak256, stringToBytes, toHex } from "viem";
+import { fromBase64 } from "../../b64.ts";
 import type { AlibiBundle, AlibiReceipt } from "../../schema.ts";
 import type { ChainAnswer, ChainQuery } from "../chain.ts";
 import { type CheckDef, type Context, expect, type Outcome, pass } from "../check.ts";
@@ -39,6 +40,15 @@ export function queryOf(input: AlibiBundle | AlibiReceipt, chainId: number): Cha
       : {}),
     anchor,
     verifier,
+    ...(isBundle(input) && input.zk && d.MandatePredicateVerifier
+      ? {
+          c1: {
+            verifier: d.MandatePredicateVerifier,
+            proof: toHex(fromBase64(input.zk.c1.proof)),
+            publicInputs: input.zk.c1.public_inputs as Hex[],
+          },
+        }
+      : {}),
   };
 }
 

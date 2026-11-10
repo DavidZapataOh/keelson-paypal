@@ -15,8 +15,8 @@ use keelson_mandate::{
     CATEGORY_IDS, ClosedMandateVerifyOptions, Expected, Fr, Jwk, OpenMandateParams,
     OpenMandateVerifyOptions, PasskeyCredential, RP_ID, USER_CREDENTIAL_TYP, UserAuth,
     UserCredentialParams, WebAuthnError, decode_mandate, h_sd, issue_open_mandate,
-    issue_user_credential, mandate_challenge, mandate_commitment, merchant_leaf, spc_details,
-    verify_assertion, verify_closed_mandate, verify_credential,
+    issue_user_credential, mandate_challenge, mandate_commitment, mandate_opening, merchant_leaf,
+    merchant_membership, spc_details, verify_assertion, verify_closed_mandate, verify_credential,
 };
 use keelson_policy::{
     Decision, EngineMeta, EvalInput, TRACE_VERSION, Trace, VerdictError, VerdictInput, agent_uid,
@@ -34,7 +34,9 @@ use crate::paypal::{HoldKind, PayPalDeny, paypal_check};
 use crate::wire::{
     self, Base64, CheckpointRequest, CheckpointSigned, CountersignRequest, Countersigned, Hex,
     MandateIssued, Observation, PayPalObservation, RegisterMandate, VerdictRequest, VerdictSigned,
+    ZkProof,
 };
+use crate::zk::{Prover, Statement};
 use crate::{
     Error, Root, SealAad, Signer, SignerBinding, TeeKind, countersign_digest, failed_fields_mask,
 };
@@ -207,6 +209,7 @@ pub struct Engine {
     meta: EngineMeta,
     captured: Option<Arc<dyn CapturedSource>>,
     users: Option<Arc<dyn UserRecords>>,
+    prover: Option<Arc<Prover>>,
 }
 
 /// A closed mandate whose signatures, key binding and passkey assertion all verified.
@@ -250,12 +253,20 @@ impl Engine {
             issuer,
             captured: None,
             users: None,
+            prover: None,
         }
     }
 
     /// Sets the captured amounts leg A counts against each budget.
     pub fn with_captured(mut self, captured: Arc<dyn CapturedSource>) -> Self {
         self.captured = Some(captured);
+        self
+    }
+
+    /// Sets the C1 prover leg A proves every ALLOW of a request carrying the mandate's sealed salt
+    /// with.
+    pub fn with_prover(mut self, prover: Arc<Prover>) -> Self {
+        self.prover = Some(prover);
         self
     }
 
@@ -645,7 +656,7 @@ impl Engine {
         };
         let warming_up = clock_now < self.boot + Duration::seconds(COUNTERSIGN_TTL);
 
-        let out = loop {
+        let (out, statement) = loop {
             let budget_left = match &r.observation {
                 Some(o) => o.budget_left_minor,
                 // While warming up nothing above zero is allowed, and never more than is left.
@@ -733,22 +744,84 @@ impl Engine {
             {
                 continue;
             }
-            break Countersigned {
-                countersign: (&c).into(),
-                digest: Hex(countersign_digest(&c, &domain)),
-                signature: Hex(signature),
-                signer: self.signer.address(),
-                tee: self.config.tee_kind,
-                trace_jcs: Base64(jcs),
-                observation: Observation {
-                    now_ms,
-                    budget_left_minor: budget_left,
-                    user_key: a.user_key.clone(),
-                    paypal: observed.cloned().unwrap_or_default(),
+            let statement = allow.then(|| Statement {
+                c_m: Fr::from_be_bytes_reduce(&a.commitment),
+                amount,
+                currency: c.currency,
+                category: c.category,
+                merchant_id: merchant,
+                now: u64::try_from(now_s).unwrap_or_default(),
+                cart_hash: Fr::from_be_bytes_reduce(&cart_hash),
+                operator_id: Fr::from_be_bytes_reduce(&agent_id.to_be_bytes::<32>()),
+            });
+            break (
+                Countersigned {
+                    countersign: (&c).into(),
+                    digest: Hex(countersign_digest(&c, &domain)),
+                    signature: Hex(signature),
+                    signer: self.signer.address(),
+                    tee: self.config.tee_kind,
+                    trace_jcs: Base64(jcs),
+                    observation: Observation {
+                        now_ms,
+                        budget_left_minor: budget_left,
+                        user_key: a.user_key.clone(),
+                        paypal: observed.cloned().unwrap_or_default(),
+                    },
+                    c1: None,
                 },
-            };
+                statement,
+            );
         };
-        claim.answer(out).map_err(|Replay| EngineError::Replay)
+        let c1 = statement.and_then(|s| self.prove_c1(r, &a, &s));
+        claim
+            .answer(Countersigned { c1, ..out })
+            .map_err(|Replay| EngineError::Replay)
+    }
+
+    /// Proves C1 for an ALLOW on leg A, from the salt sealed to the request's user and `M`. A
+    /// proof that cannot be made is left out: the countersign stands on its signatures alone.
+    fn prove_c1(
+        &self,
+        r: &CountersignRequest,
+        a: &Authenticated,
+        s: &Statement,
+    ) -> Option<ZkProof> {
+        let (prover, root, sealed) = (
+            self.prover.as_ref()?,
+            self.root.as_ref()?,
+            r.sealed_salt.as_ref()?,
+        );
+        let aad = SealAad {
+            purpose: MANDATE_SALT_PURPOSE,
+            sub: Some(&r.sub),
+            record: &a.mandate_hash,
+        };
+        let proved = (|| {
+            let salt = root.unseal(&aad, &sealed.0).map_err(|e| e.to_string())?;
+            let salt: [u8; 16] = salt
+                .try_into()
+                .map_err(|_| "the sealed salt is not 16 bytes")?;
+            let opening = mandate_opening(&a.mandate, salt).map_err(|e| e.to_string())?;
+            if opening.commitment() != s.c_m {
+                return Err("the sealed salt does not open the commitment".to_owned());
+            }
+            let merchant = merchant_membership(&opening.merchants, &r.cart.merchant)
+                .map_err(|e| e.to_string())?;
+            prover
+                .prove(s, &opening, &merchant)
+                .map_err(|e| e.to_string())
+        })();
+        match proved {
+            Ok(p) => Some(ZkProof::from(&p)),
+            Err(e) => {
+                eprintln!(
+                    "keelson-engine: no C1 proof for request {}: {e}",
+                    r.request_id
+                );
+                None
+            }
+        }
     }
 
     /// Verifies the closed mandate against the issuer key, binds its user credential to the

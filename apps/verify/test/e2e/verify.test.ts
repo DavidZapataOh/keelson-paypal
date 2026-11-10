@@ -1,10 +1,11 @@
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type Browser, chromium, type Page } from "playwright";
 import { type PreviewServer, preview } from "vite";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { encodeAlibi } from "../../../../packages/alibi/src/codec.ts";
 import { fixtures } from "../../../../packages/alibi/test/fixtures.ts";
 import { receipts } from "../../../../packages/alibi/test/log-receipts.ts";
 
@@ -93,6 +94,51 @@ describe("the verifier in Chromium", () => {
       page.locator(`[data-field="${id}"] [data-answers]`).textContent();
     expect(await answers("amount")).toBe("Keelson");
     expect(await answers("variant")).toBe("Agent operator");
+    expect([...origins].every((o) => ALLOWED.has(o))).toBe(true);
+    await page.close();
+  });
+
+  test("a C1 proof verifies with bb.js in the page and with the deployed verifier", async () => {
+    const vector = JSON.parse(
+      readFileSync(
+        new URL("../../../../contracts/test/vectors/c1-proof.json", import.meta.url),
+        "utf8",
+      ),
+    ) as { proof: string; publicInputs: string[] };
+    const [cm, amount, currency, category, merchant, now, cart, operator] = vector.publicInputs as [
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+    ];
+    const f = fixtures.find((x) => x.mode === "2of2");
+    const b = structuredClone(f?.bundle) as NonNullable<typeof f>["bundle"];
+    // The demo statement in place of the fixture's: its signatures fail, its proof stands alone.
+    Object.assign(b.tee.countersign, {
+      mandateCommitment: cm,
+      amount: BigInt(amount).toString(),
+      currency: BigInt(currency).toString(),
+      category: BigInt(category).toString(),
+      merchantId: merchant,
+      issuedAt: BigInt(now).toString(),
+      cartHash: cart,
+      agentId: BigInt(operator).toString(),
+    });
+    b.zk = {
+      c1: {
+        proof: Buffer.from(vector.proof.slice(2), "hex").toString("base64"),
+        public_inputs: vector.publicInputs,
+      },
+    };
+    const { page, origins } = await open();
+    await drop(page, "c1.alibi", "application/json", Buffer.from(encodeAlibi(b)));
+    await verdict(page);
+    const check = page.locator('[data-check="zk.c1"] [data-status]');
+    expect(await check.getAttribute("data-status")).toBe("pass");
     expect([...origins].every((o) => ALLOWED.has(o))).toBe(true);
     await page.close();
   });

@@ -1,0 +1,29 @@
+name: Set up bb
+description: >-
+  Installs the bb 5.3.0 Linux x86_64 binary that @aztec/bb.js 5.3.0 ships, after checking the
+  package's SHA-256, cached across runs. Exports KEELSON_BB and CRS_PATH for the engine's prover.
+
+runs:
+  using: composite
+  steps:
+    - id: cache
+      uses: actions/cache@v6
+      with:
+        path: ${{ runner.temp }}/bb.js.tgz
+        key: bb.js-5.3.0
+    - if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        URL: https://registry.npmjs.org/@aztec/bb.js/-/bb.js-5.3.0.tgz
+      run: curl -fsSL --retry 12 --retry-all-errors --retry-delay 30 --retry-max-time 900 -o "$RUNNER_TEMP/bb.js.tgz" "$URL"
+    - shell: bash
+      env:
+        SHA256: c9c6bc37c3ffa65b22220d7c1db40f9e1086ecd4a1614a45f21603eba7ea40a4
+      run: |
+        echo "$SHA256  $RUNNER_TEMP/bb.js.tgz" | sha256sum --check --strict
+        tar -xzf "$RUNNER_TEMP/bb.js.tgz" -C "$RUNNER_TEMP" package/build/amd64-linux/bb
+        echo "$RUNNER_TEMP/package/build/amd64-linux" >> "$GITHUB_PATH"
+        echo "KEELSON_BB=$RUNNER_TEMP/package/build/amd64-linux/bb" >> "$GITHUB_ENV"
+        echo "CRS_PATH=$GITHUB_WORKSPACE/engine/tee/zk" >> "$GITHUB_ENV"
+    - shell: bash
+      run: bb --version

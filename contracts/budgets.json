@@ -29,5 +29,7 @@
   "rateCoverage_first_tx": 267221,
   "rateCoverage_later_tx": 185377,
   "nitro_leafCache_tx": 8000000,
-  "nitro_validateDocument_tx": 16000000
+  "nitro_validateDocument_tx": 16000000,
+  "c1_verify": 660000,
+  "c1_verify_reference": 2300000
 }

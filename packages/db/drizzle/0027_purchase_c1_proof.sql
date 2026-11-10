@@ -1,0 +1,1 @@
+ALTER TABLE "purchases" ADD COLUMN "c1_proof" jsonb;

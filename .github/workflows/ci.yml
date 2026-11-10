@@ -84,6 +84,9 @@ jobs:
             noir:
               - *shared
               - circuits/**
+              - engine/tee/zk/**
+              - contracts/src/verifiers/**
+              - packages/alibi/src/verify/c1-vk.ts
 
   node:
     needs: changes
@@ -531,6 +534,7 @@ jobs:
       - run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
       - uses: ./.github/actions/setup-cvc5
+      - uses: ./.github/actions/setup-bb
       - run: cargo fmt --check
       - run: cargo install cargo-audit --locked --version 0.22.2
       - run: cargo audit
@@ -682,5 +686,16 @@ jobs:
             https://github.com/noir-lang/noir/releases/download/v1.0.0/noir-x86_64-unknown-linux-gnu.tar.gz \
             | tar -xz -C ~/.nargo/bin
       - run: echo "$HOME/.nargo/bin" >> "$GITHUB_PATH"
+      - uses: ./.github/actions/setup-bb
       - run: nargo test
         working-directory: circuits/vectors
+      - run: nargo test
+        working-directory: circuits/c1
+      - name: The engine's program and key and the Solidity verifiers are what the circuit compiles to
+        run: |
+          circuits/c1/build.sh
+          git diff --exit-code engine/tee/zk contracts/src/verifiers packages/alibi/src/verify/c1-vk.ts
+      - name: bb proves and verifies the demo mandate
+        run: |
+          circuits/c1/prove.sh "$RUNNER_TEMP/c1-proof.json"
+          bb gates -b circuits/c1/target/mandate_predicate.json | tee -a "$GITHUB_STEP_SUMMARY"
