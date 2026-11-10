@@ -52,7 +52,7 @@ test.runIf(ORIGIN && KEY)(
     await page.getByRole("button", { name: "Forensics" }).click();
     await page.getByRole("button", { name: /^Price \(cart total\)$/ }).waitFor({ timeout: 60_000 });
     if (ASK) {
-      const box = page.getByRole("textbox", { name: /Ask the AI Assistant/ });
+      const box = page.getByPlaceholder(/Ask the AI Assistant/);
       await box.fill(ASK);
       await box.press("Enter");
       // The forensics agent filters the page to the price field: the matrix keeps one row.

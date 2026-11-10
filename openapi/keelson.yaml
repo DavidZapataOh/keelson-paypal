@@ -1795,6 +1795,94 @@ components:
         - mandateId
         - url
         - agentView
+    WebFact:
+      type: object
+      properties:
+        webFact:
+          type: object
+          properties:
+            web_fact:
+              type: object
+              properties:
+                hostHash:
+                  type: string
+                  pattern: ^0x[0-9a-f]{64}$
+                urlPathHash:
+                  type: string
+                  pattern: ^0x[0-9a-f]{64}$
+                tCapture:
+                  type: integer
+                rangeCommitment:
+                  type: string
+                  pattern: ^0x[0-9a-f]{64}$
+                attId:
+                  type: string
+                  pattern: ^0x[0-9a-f]{64}$
+              required:
+                - hostHash
+                - urlPathHash
+                - tCapture
+                - rangeCommitment
+                - attId
+            chain_id:
+              type: integer
+            digest:
+              type: string
+              pattern: ^0x[0-9a-f]{64}$
+            signature:
+              type: string
+            signer:
+              type: string
+          required:
+            - web_fact
+            - chain_id
+            - digest
+            - signature
+            - signer
+        mode:
+          type: string
+          enum:
+            - mpc
+            - proxy
+        ms:
+          type: integer
+          description: How long the TLSNotary session took.
+        range:
+          type: array
+          prefixItems:
+            - type: integer
+            - type: integer
+          description: The committed range of the response, `[start, end)`.
+        committed:
+          type: string
+          description: The committed bytes, hex.
+        blinder:
+          type: string
+          description: "The 16-byte blinder, hex: `rangeCommitment` is `SHA-256(committed
+            ‖ blinder)`."
+      required:
+        - webFact
+        - mode
+        - ms
+        - range
+        - committed
+        - blinder
+    WebFactRequest:
+      type: object
+      properties:
+        url:
+          type: string
+          maxLength: 1024
+          description: A public JSON product endpoint, such as a Shopify store's
+            `/products/<handle>.js`.
+        anchor:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: Commit to the smallest JSON object in the body that contains this
+            text (a variant's `"id":123`) instead of the whole body.
+      required:
+        - url
     TeeLeg:
       type: object
       properties:
@@ -5202,6 +5290,62 @@ paths:
                   - content_hash
         "404":
           description: No such observation
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/observations/web-fact:
+    post:
+      tags:
+        - evidence
+      summary: Notarize a product endpoint with TLSNotary
+      description: Fetches the endpoint once over TLS with leg A as the TLSNotary
+        notary (MPC-TLS, or Proxy-TLS when MPC-TLS fails), commits to the body
+        or to the object around `anchor`, and returns the EIP-712 `WebFact` leg
+        A signed with its attested key. Runs apart from any countersign and
+        never delays one.
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebFactRequest"
+      responses:
+        "201":
+          description: The signed WebFact
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebFact"
+        "422":
+          description: The URL is refused, or its response is not a 200 the notary accepts
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Too many WebFacts today for this client
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "502":
+          description: The session failed, or its WebFact did not verify
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: No prover is configured, leg A has no admitted signer, or the rate
+            limit store is unreachable
           content:
             application/problem+json:
               schema:
