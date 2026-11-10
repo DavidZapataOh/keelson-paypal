@@ -16,6 +16,7 @@ import { replay } from "./checks/policy.ts";
 import { qr } from "./checks/qr.ts";
 import { timestamps, zk, zkC3 } from "./checks/timestamps.ts";
 import { isBundle } from "./checks/util.ts";
+import { webFact } from "./checks/web-fact.ts";
 import { diffPointers, expand, reads, UNBOUND, valueAt } from "./expand.ts";
 import { fieldsOf } from "./fields.ts";
 import { type Report, type VerifyOptions, verdictOf } from "./report.ts";
@@ -66,6 +67,7 @@ const CHECKS = [
   zk,
   zkC3,
   evidence,
+  webFact,
   paypal,
 ];
 

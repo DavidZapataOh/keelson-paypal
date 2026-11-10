@@ -58,6 +58,14 @@ export const purchases = pgTable(
     /** The PayPal order and authorization leg A read for this countersign. */
     paypalOrderId: text(),
     paypalAuthorizationId: text(),
+    /**
+     * Set when the buyer pays at a real store's own checkout with their PayPal account: the
+     * store's origin. Keelson countersigns and logs such a purchase, and neither covers nor
+     * captures it.
+     */
+    liveStore: text(),
+    /** The PayPal transaction id of a live purchase, as PayPal reported it to the buyer. */
+    paypalTransactionId: text().unique("purchases_paypal_transaction_id_unique"),
     /** The salt of the leaf's `paypal_ref_commit`. */
     paypalRefSalt: bytea(),
     /** The capture's sequence number among the mandate's captures, as its `invoice_id` states it. */
@@ -99,6 +107,10 @@ export const purchases = pgTable(
     check("purchases_countersign_digest_len", sql`octet_length(${t.countersignDigest}) = 32`),
     check("purchases_paypal_ref_salt_len", sql`octet_length(${t.paypalRefSalt}) = 32`),
     check("purchases_premium_bps_range", sql`${t.premiumBps} between 0 and 10000`),
+    check(
+      "purchases_paypal_transaction_id_live",
+      sql`${t.paypalTransactionId} is null or ${t.liveStore} is not null`,
+    ),
     check("purchases_capture_seq_range", sql`${t.captureSeq} between 1 and 99`),
     unique("purchases_mandate_id_capture_seq_unique").on(t.mandateId, t.captureSeq),
     index("purchases_resumable_idx")

@@ -26,6 +26,7 @@ export type CheckId =
   | "zk.c1"
   | "zk.c3"
   | "evidence.manifest"
+  | "evidence.web_fact"
   | "paypal.ids";
 
 export interface Check {
@@ -88,7 +89,12 @@ const ANCHOR_CHECKS: ReadonlySet<CheckId> = new Set([
   "tee.registry",
 ]);
 /** Checks that may be pending without lowering the verdict. */
-const OPTIONAL_CHECKS: ReadonlySet<CheckId> = new Set(["zk.c1", "zk.c3", "timestamps"]);
+const OPTIONAL_CHECKS: ReadonlySet<CheckId> = new Set([
+  "zk.c1",
+  "zk.c3",
+  "timestamps",
+  "evidence.web_fact",
+]);
 
 /**
  * `failed` if any check failed; `incomplete` if a required check is unreachable, undisclosed or
