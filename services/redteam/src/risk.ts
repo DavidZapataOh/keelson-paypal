@@ -39,6 +39,7 @@ function lnGamma(x: number): number {
 }
 
 /** The `q` quantile of Beta(a, b) for real `a, b > 0`, by bisection of the incomplete beta. */
+/** @internal */
 export function betaQuantile(q: number, a: number, b: number): number {
   const lnB = lnGamma(a) + lnGamma(b) - lnGamma(a + b);
   let lo = 0;
