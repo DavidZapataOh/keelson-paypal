@@ -1,17 +1,10 @@
 import { writeFileSync } from "node:fs";
 import { addresses, checkpointAnchorAbi, iVerdictVerifierAbi } from "@keelson/chain";
 import { KEELSON_TYPES } from "@keelson/core/eip712";
-import {
-  concat,
-  createPublicClient,
-  encodeAbiParameters,
-  type Hex,
-  http,
-  keccak256,
-  toHex,
-} from "viem";
+import { concat, createPublicClient, encodeAbiParameters, type Hex, keccak256, toHex } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { beforeAll, describe, expect, test } from "vitest";
+import { arbitrumSepoliaTransport } from "../src/chain/rpc.ts";
 import { responsePlan } from "../src/disputes/evidence.ts";
 import { SETTLEMENT } from "../src/merchants.ts";
 import { createTee } from "../src/tee/config.ts";
@@ -105,7 +98,10 @@ const verdictType = {
 
 describe.skipIf(!live)("every attribution rule on the live legs", { timeout: 300_000 }, () => {
   const rpc = process.env.ARBITRUM_SEPOLIA_RPC_URL as string;
-  const client = createPublicClient({ chain: arbitrumSepolia, transport: http(rpc) });
+  const client = createPublicClient({
+    chain: arbitrumSepolia,
+    transport: arbitrumSepoliaTransport(rpc),
+  });
   let tee: TeeConfig;
   let at: { treeSize: bigint; root: Hex; time: number };
 

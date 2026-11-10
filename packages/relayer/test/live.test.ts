@@ -96,7 +96,9 @@ describe.skipIf(!live || !kms)("live on Arbitrum Sepolia", { timeout: 600_000 },
     const relayer = createRelayer({
       db: testDb,
       log: pino({ level: "silent" }),
-      chains: { 421614: { rpcUrl, account } },
+      chains: {
+        421614: { rpcUrl, fallbackRpcUrls: [...arbitrumSepolia.rpcUrls.default.http], account },
+      },
     });
     const countBefore = await client.getTransactionCount({ address: account.address });
     const again = await Promise.all(
