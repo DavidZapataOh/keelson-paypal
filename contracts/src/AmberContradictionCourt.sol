@@ -164,10 +164,14 @@ contract AmberContradictionCourt {
     /// measurement still allowed, signed `digest`. Malformed and high-S signatures recover the zero address, which is
     /// never registered.
     function _signedAt(bytes32 digest, bytes calldata sig, uint8 teeKind, uint40 time) internal view returns (bool) {
-        (address signer,,) = ECDSA.tryRecover(digest, uint8(sig[64]), bytes32(sig[0:32]), bytes32(sig[32:64]));
+        address signer = _recover(digest, sig);
         (uint8 kind, uint40 registeredAt, uint40 expiresAt, uint40 revokedAt, bytes32 measurement) =
             teeVerifier.signers(signer);
         return kind == teeKind && revokedAt == 0 && registeredAt != 0 && registeredAt <= time && time < expiresAt
             && teeVerifier.allowedMeasurement(measurement);
+    }
+
+    function _recover(bytes32 digest, bytes calldata sig) internal pure returns (address signer) {
+        (signer,,) = ECDSA.tryRecover(digest, uint8(sig[64]), bytes32(sig[0:32]), bytes32(sig[32:64]));
     }
 }
