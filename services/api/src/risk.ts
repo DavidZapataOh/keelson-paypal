@@ -191,7 +191,7 @@ async function amountsOf(db: Db, agentId: bigint): Promise<number[]> {
     .from(mandates)
     .where(eq(mandates.operatorAgentId, agentId))
     .limit(MAX_SAMPLE);
-  return caps.map((r) => Number(r.a));
+  return caps.map((r) => Number(r.a)).filter((a) => a > 0);
 }
 
 export type GradeResult =
@@ -220,7 +220,8 @@ export async function gradeOf(db: Db, agentId: bigint): Promise<GradeResult> {
   const g = grade(
     calibration.prior,
     {
-      incidents: f.incidents.total,
+      // A purchase can carry several verdicts; at most one incident per coverage.
+      incidents: Math.min(f.incidents.total, f.coverages),
       coverages: f.coverages,
       horizon: Math.max(f.recent, MIN_HORIZON),
       amountsMinor: amounts,
@@ -253,8 +254,14 @@ export async function gradeOf(db: Db, agentId: bigint): Promise<GradeResult> {
   return { kind: "graded", grade: out };
 }
 
-/** The premium a new coverage of the operator pays, in basis points of its amount. */
+/** The premium a new coverage of the operator pays, in basis points of its amount, 100 to 10,000. */
 export async function premiumBps(db: Db, agentId: bigint): Promise<number> {
-  const r = await gradeOf(db, agentId);
-  return r.kind === "graded" ? r.grade.premium.bps : FLOOR_BPS;
+  try {
+    const r = await gradeOf(db, agentId);
+    const bps = r.kind === "graded" ? r.grade.premium.bps : FLOOR_BPS;
+    return Number.isInteger(bps) && bps >= FLOOR_BPS && bps <= 10_000 ? bps : FLOOR_BPS;
+  } catch {
+    // A model that cannot price the operator never blocks its coverage: today's rate applies.
+    return FLOOR_BPS;
+  }
 }
