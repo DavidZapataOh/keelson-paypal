@@ -32,7 +32,7 @@ function circuit(): CompiledCircuit {
 }
 
 /** How long the API keeps a new mandate's salt for its C3 proof: past it, the proof is not made. */
-export const C3_SALT_TTL_SECONDS = 3600;
+const C3_SALT_TTL_SECONDS = 3600;
 
 /** The Valkey key of a new mandate's commitment salt, kept for its C3 proof. */
 export const c3SaltKey = (mandateId: string): string => `c3:salt:${mandateId}`;
