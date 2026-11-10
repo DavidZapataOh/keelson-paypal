@@ -7,7 +7,7 @@ import { chainTxs, eq } from "@keelson/db";
 import { createRelayer } from "@keelson/relayer";
 import { pino } from "pino";
 import { ulid } from "ulid";
-import { bytesToHex, createPublicClient, type PublicClient } from "viem";
+import { bytesToHex, createPublicClient, http, type PublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "vitest";
 import {
@@ -15,6 +15,7 @@ import {
   arbitrumSepoliaRpcUrls,
   arbitrumSepoliaTransport,
   computeUnits,
+  counted,
   rpcCalls,
   rpcTransport,
   startRpcReport,
@@ -191,12 +192,17 @@ test("the hourly report warns when a provider's monthly projection passes the bu
   } as unknown as Parameters<typeof startRpcReport>[0];
   const stop = startRpcReport(log, { budget: 1_000, intervalMs: 100 });
   try {
+    // Labeled as Alchemy, sent to the local endpoint.
+    const transport = counted("https://arb-sepolia.g.alchemy.com/", http(primary.url));
+    const alchemy = createPublicClient({ chain: arbitrumSepolia, transport });
+    await alchemy.getBlockNumber({ cacheTime: 0 });
     await client([primary.url]).getBlockNumber({ cacheTime: 0 });
     await new Promise((r) => setTimeout(r, 150));
   } finally {
     stop();
   }
-  const host = new URL(primary.url).host;
-  expect(lines.some((l) => l.level === "warn" && l.obj.provider === host)).toBe(true);
+  const warned = lines.filter((l) => l.level === "warn").map((l) => l.obj.provider);
+  // The public and local hosts have no compute-unit budget.
+  expect(warned).toEqual(["arb-sepolia.g.alchemy.com"]);
   expect(computeUnits("eth_getLogs", 2)).toBe(120);
 });

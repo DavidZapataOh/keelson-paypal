@@ -88,11 +88,17 @@ type anchorTarget struct {
 	// anchored is the latest anchored size, read from the chain or set by
 	// this process's own anchor.
 	anchored atomic.Uint64
-	// anchoredAt is when the latest anchor was made, in Unix seconds; zero
-	// until the chain was read once.
-	anchoredAt atomic.Int64
+	// cache is the latest anchor's size and time, nil until the chain was
+	// read once.
+	cache atomic.Pointer[anchorState]
 	// last is the latest anchor this process sent.
 	last *anchorResult
+}
+
+// anchorState is an origin's latest anchor as last read or made.
+type anchorState struct {
+	size uint64
+	at   time.Time
 }
 
 // anchorResult is the answer to a request to anchor an origin now.
@@ -168,16 +174,20 @@ func (t *anchorTarget) latest(ctx context.Context) (uint64, [32]byte, time.Time,
 		return 0, [32]byte{}, time.Time{}, chainError("latest", err)
 	}
 	size, root, at := out[0].(uint64), out[1].([32]byte), out[2].(*big.Int)
-	t.anchored.Store(size)
-	t.anchoredAt.Store(max(at.Int64(), 1))
+	t.remember(size, time.Unix(at.Int64(), 0))
 	return size, root, time.Unix(at.Int64(), 0), nil
+}
+
+func (t *anchorTarget) remember(size uint64, at time.Time) {
+	t.anchored.Store(size)
+	t.cache.Store(&anchorState{size: size, at: at})
 }
 
 // cached is the latest anchor as last read or made, reading the chain only
 // when nothing is known yet.
 func (t *anchorTarget) cached(ctx context.Context) (uint64, time.Time, error) {
-	if at := t.anchoredAt.Load(); at != 0 {
-		return t.anchored.Load(), time.Unix(at, 0), nil
+	if c := t.cache.Load(); c != nil {
+		return c.size, c.at, nil
 	}
 	size, _, at, err := t.latest(ctx)
 	return size, at, err
@@ -316,8 +326,7 @@ func (a *anchorer) now(ctx context.Context, t *anchorTarget) (*anchorResult, err
 	if receipt.Status != 1 {
 		return nil, fmt.Errorf("%w: %s reverted", errChain, h)
 	}
-	t.anchored.Store(uint64(c.N))
-	t.anchoredAt.Store(a.clock().Unix())
+	t.remember(uint64(c.N), a.clock())
 	hash := tx.Hash().Hex()
 	t.last = &anchorResult{Size: strconv.FormatInt(c.N, 10), Root: hex0x(c.Hash[:]), Tx: &hash, Fresh: true}
 	a.log.Info("anchor", "origin", t.origin.name, "size", c.N, "tx", hash, "gasUsed", receipt.GasUsed, "ms", time.Since(start).Milliseconds())

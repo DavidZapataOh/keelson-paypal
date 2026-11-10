@@ -24,22 +24,30 @@ runs:
         DRPC: ${{ inputs.drpc-arbitrum-sepolia-url }}
       run: |
         [ -n "$KEY" ] && echo "::add-mask::$KEY"
-        [ -n "$DRPC" ] && echo "::add-mask::$DRPC"
+        if [ -n "$DRPC" ]; then
+          echo "::add-mask::$DRPC"
+          key=${DRPC##*/}; key=${key##*dkey=}; [ -n "$key" ] && echo "::add-mask::$key"
+        fi
         answers() {
           curl -fsS --max-time 10 -H 'content-type: application/json' \
             --data '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}' "$1" 2>/dev/null | grep -q '"result"'
         }
-        # A balance at the relayer's pinned fork block: only an archive node has it.
+        # A balance at the oldest pinned fork block (the contracts' fork tests): only an archive node has it.
         archive() {
           curl -fsS --max-time 10 -H 'content-type: application/json' \
-            --data '{"jsonrpc":"2.0","id":1,"method":"eth_getBalance","params":["0xb39898Ef4333f3CB32d1B420E744f5a1Aa2ae2Bf","0x138221a8"]}' \
+            --data '{"jsonrpc":"2.0","id":1,"method":"eth_getBalance","params":["0xb39898Ef4333f3CB32d1B420E744f5a1Aa2ae2Bf","0x138126e0"]}' \
             "$1" 2>/dev/null | grep -q '"result"'
         }
         pick() {
           local name=$1 alchemy=$2 public=$3
-          if [ "$name" = ARBITRUM_SEPOLIA_RPC_URL ] && [ -n "$DRPC" ] && archive "$DRPC"; then
-            echo "$name=$DRPC" >> "$GITHUB_ENV"
-          elif [ -n "$KEY" ] && answers "https://$alchemy.g.alchemy.com/v2/$KEY"; then
+          if [ "$name" = ARBITRUM_SEPOLIA_RPC_URL ] && [ -n "$DRPC" ]; then
+            if archive "$DRPC"; then
+              echo "$name=$DRPC" >> "$GITHUB_ENV"
+              return
+            fi
+            echo "::warning::$name: dRPC does not serve archive state; falling back"
+          fi
+          if [ -n "$KEY" ] && answers "https://$alchemy.g.alchemy.com/v2/$KEY"; then
             echo "$name=https://$alchemy.g.alchemy.com/v2/$KEY" >> "$GITHUB_ENV"
           else
             echo "::warning::$name: Alchemy does not answer; using $public"

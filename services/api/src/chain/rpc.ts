@@ -102,8 +102,9 @@ const HOURS_PER_MONTH = 720;
 export const DEFAULT_CU_BUDGET = 15_000_000;
 
 /**
- * Every hour, logs the calls of the past hour by provider and method, and warns when a provider's
- * rate, projected over a month, passes `budget` compute units.
+ * Every hour, logs this process's calls of the past hour by provider and method, and warns when
+ * its rate on Alchemy, projected over a month, passes `budget` compute units. Counts are requests
+ * the clients made; a transport's own retries are not counted.
  */
 export function startRpcReport(
   log: Logger,
@@ -124,7 +125,7 @@ export function startRpcReport(
     last = now;
     const scale = (HOUR_MS / intervalMs) * HOURS_PER_MONTH;
     const byProvider = new Map<string, number>();
-    for (const c of hour) {
+    for (const c of hour.filter((c) => c.provider.endsWith(".alchemy.com"))) {
       byProvider.set(
         c.provider,
         (byProvider.get(c.provider) ?? 0) + computeUnits(c.method, c.calls),

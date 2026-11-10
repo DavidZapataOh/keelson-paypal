@@ -1,5 +1,5 @@
 import { deploymentsFor } from "@keelson/chain";
-import { and, chainTxs, type Db, eq, inArray, purchases, sql } from "@keelson/db";
+import { and, chainTxs, type Db, eq, inArray, isNull, or, purchases, sql } from "@keelson/db";
 import type { Logger } from "pino";
 import { ulid } from "ulid";
 import {
@@ -41,6 +41,8 @@ const MAX_RESIGNS = 3;
 const BASE_FEE_TTL_MS = 250;
 const BALANCE_TTL_MS = 10_000;
 const DUPLICATE_WAIT_MS = 5_000;
+/** How long a sent call waits for the block of a partial receipt; the reconciler fills it in later. */
+const CANONICAL_RECEIPT_WAIT_MS = 1_500;
 /** How long a send refused as `nonce too high` waits for predecessors still in flight before resynchronizing. */
 const PREDECESSOR_WAIT_MS = 5_000;
 /** A `simulating` row older than this lost its process before signing anything. */
@@ -257,7 +259,8 @@ async function canonical(
   receipt: TransactionReceipt,
 ): Promise<TransactionReceipt> {
   if (receipt.blockHash && receipt.blockHash !== ZERO_HASH) return receipt;
-  return (await receiptOf(read, receipt.transactionHash)) ?? receipt;
+  const late = sleep(CANONICAL_RECEIPT_WAIT_MS).then(() => undefined);
+  return (await Promise.race([receiptOf(read, receipt.transactionHash), late])) ?? receipt;
 }
 
 /** Only viem's short message: the full one carries the request URL, which embeds the provider's key. */
@@ -844,7 +847,13 @@ export function createRelayer(opts: {
         and(
           eq(chainTxs.chainId, ctx.id),
           inArray(chainTxs.status, ["confirmed", "reverted"]),
-          sql`${chainTxs.confirmedAt} > now() - interval '2 minutes'`,
+          or(
+            sql`${chainTxs.confirmedAt} > now() - interval '2 minutes'`,
+            and(
+              isNull(chainTxs.blockHash),
+              sql`${chainTxs.confirmedAt} > now() - interval '1 day'`,
+            ),
+          ),
         ),
       )
       .limit(200);
