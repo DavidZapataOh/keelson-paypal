@@ -1,5 +1,8 @@
+import { InfoIcon, ReceiptIcon } from "lucide-react";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { toast } from "sonner";
+import { Alert, AlertDescription, AlertTitle } from "../../src/components/alert.tsx";
 import { Badge } from "../../src/components/badge.tsx";
 import { Button } from "../../src/components/button.tsx";
 import {
@@ -10,8 +13,70 @@ import {
   CardHeader,
   CardTitle,
 } from "../../src/components/card.tsx";
+import { Checkbox } from "../../src/components/checkbox.tsx";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "../../src/components/dialog.tsx";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "../../src/components/empty.tsx";
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "../../src/components/field.tsx";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+  InputGroupText,
+} from "../../src/components/input-group.tsx";
 import { Liability, LiabilityMark } from "../../src/components/liability.tsx";
+import { RadioGroup, RadioGroupItem } from "../../src/components/radio-group.tsx";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../src/components/select.tsx";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "../../src/components/sheet.tsx";
+import { Skeleton } from "../../src/components/skeleton.tsx";
+import { Toaster } from "../../src/components/sonner.tsx";
 import { STATUS, Status } from "../../src/components/status.tsx";
+import { Switch } from "../../src/components/switch.tsx";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../../src/components/table.tsx";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../src/components/tabs.tsx";
+import { Textarea } from "../../src/components/textarea.tsx";
 import "./styles.css";
 
 const fields = [
@@ -21,9 +86,17 @@ const fields = [
   { name: "A color you will like", kind: "yours" },
 ] as const;
 
+const purchases = [
+  { id: "01M6W3TTKR", merchant: "Allbirds", total: "$84.00", state: "captured" },
+  { id: "01M6W3V0QA", merchant: "Nike", total: "$340.00", state: "blocked" },
+  { id: "01M6W3V7ZC", merchant: "REI", total: "$96.50", state: "countersigned" },
+  { id: "01M6W3VB1D", merchant: "Allbirds", total: "$84.00", state: "disputed" },
+  { id: "01M6W3VF8E", merchant: "Zappos", total: "$72.10", state: "error" },
+] as const;
+
 function Showcase() {
   return (
-    <main className="mx-auto max-w-4xl space-y-10 px-6 py-12">
+    <main className="mx-auto max-w-4xl space-y-12 px-6 py-12">
       <header className="space-y-2">
         <h1 className="text-3xl font-semibold tracking-tight">Proof before payment.</h1>
         <p className="text-muted-foreground">
@@ -43,7 +116,14 @@ function Showcase() {
           <Button variant="link">What Keelson does not do</Button>
           <Button disabled>Countersigning</Button>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm">Export</Button>
+          <Button size="sm" variant="outline">
+            Filters
+          </Button>
+          <Button size="xs" variant="ghost">
+            Reset filters
+          </Button>
           <Badge>Sandbox</Badge>
           <Badge variant="secondary">Arbitrum Sepolia</Badge>
           <Badge variant="outline">PayPal sandbox</Badge>
@@ -102,6 +182,203 @@ function Showcase() {
           alibi 01M6W3TTKRC43V70XQAT1QQK6V · leaf 84712997ee424ff5
         </p>
       </section>
+
+      <section aria-labelledby="form" className="space-y-4">
+        <h2 id="form" className="text-lg font-medium">
+          Mandate form
+        </h2>
+        <FieldGroup className="max-w-md">
+          <Field>
+            <FieldLabel htmlFor="what">What the agent may buy</FieldLabel>
+            <Textarea id="what" defaultValue="Running shoes, men's size 10, neutral colors." />
+            <FieldDescription>
+              One sentence. Keelson turns it into checkable fields.
+            </FieldDescription>
+          </Field>
+          <Field data-invalid>
+            <FieldLabel htmlFor="max">Maximum total</FieldLabel>
+            <InputGroup>
+              <InputGroupAddon>
+                <InputGroupText>$</InputGroupText>
+              </InputGroupAddon>
+              <InputGroupInput
+                id="max"
+                inputMode="decimal"
+                defaultValue="0"
+                aria-invalid
+                aria-describedby="max-error"
+              />
+              <InputGroupAddon align="inline-end">
+                <InputGroupText>USD</InputGroupText>
+              </InputGroupAddon>
+            </InputGroup>
+            <FieldError id="max-error">Enter an amount above $0.00.</FieldError>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="window">Valid for</FieldLabel>
+            <Select defaultValue="7d">
+              <SelectTrigger id="window" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1d">24 hours</SelectItem>
+                <SelectItem value="7d">7 days</SelectItem>
+                <SelectItem value="30d">30 days</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+          <RadioGroup defaultValue="once" aria-label="How often">
+            <Field orientation="horizontal">
+              <RadioGroupItem value="once" id="once" />
+              <FieldLabel htmlFor="once">One purchase</FieldLabel>
+            </Field>
+            <Field orientation="horizontal">
+              <RadioGroupItem value="many" id="many" />
+              <FieldLabel htmlFor="many">Several purchases, same cap</FieldLabel>
+            </Field>
+          </RadioGroup>
+          <Field orientation="horizontal">
+            <Checkbox id="gray" defaultChecked />
+            <FieldLabel htmlFor="gray">I read the gray fields: they are mine.</FieldLabel>
+          </Field>
+          <Field orientation="horizontal">
+            <Switch id="notify" />
+            <FieldLabel htmlFor="notify">Email me when Keelson blocks a cart</FieldLabel>
+          </Field>
+        </FieldGroup>
+      </section>
+
+      <section aria-labelledby="overlays" className="space-y-3">
+        <h2 id="overlays" className="text-lg font-medium">
+          Overlays
+        </h2>
+        <div className="flex flex-wrap gap-3">
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button variant="outline">Revoke mandate</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Revoke this mandate?</DialogTitle>
+                <DialogDescription>
+                  Your agent can no longer buy with <strong>Running shoes, up to $100</strong>.
+                  Purchases already countersigned stay covered.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button variant="outline">Keep it</Button>
+                </DialogClose>
+                <Button>Revoke mandate</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button variant="outline">Open purchase</Button>
+            </SheetTrigger>
+            <SheetContent>
+              <SheetHeader>
+                <SheetTitle>Nike · $340.00</SheetTitle>
+                <SheetDescription>Blocked before payment. Nothing reached PayPal.</SheetDescription>
+              </SheetHeader>
+              <div className="px-4">
+                <Status state="blocked" />
+              </div>
+              <SheetFooter>
+                <Button variant="outline">Open the Alibi</Button>
+              </SheetFooter>
+            </SheetContent>
+          </Sheet>
+          <Button
+            variant="outline"
+            onClick={() =>
+              toast.success("Mandate signed", { description: "Your agent can buy up to $100.00." })
+            }
+          >
+            Show a toast
+          </Button>
+        </div>
+        <Alert variant="attention" role="status">
+          <InfoIcon />
+          <AlertTitle>Bond below minimum</AlertTitle>
+          <AlertDescription>
+            Two attestations were disputed this week. Top up to $500.00.
+          </AlertDescription>
+        </Alert>
+      </section>
+
+      <section aria-labelledby="purchases" className="space-y-3">
+        <h2 id="purchases" className="text-lg font-medium">
+          Purchases
+        </h2>
+        <Tabs defaultValue="all">
+          <TabsList>
+            <TabsTrigger value="all">All</TabsTrigger>
+            <TabsTrigger value="blocked">Blocked</TabsTrigger>
+            <TabsTrigger value="loading">Loading</TabsTrigger>
+            <TabsTrigger value="empty">Disputed</TabsTrigger>
+          </TabsList>
+          <TabsContent value="all">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Purchase</TableHead>
+                  <TableHead>Merchant</TableHead>
+                  <TableHead>State</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {purchases.map((p) => (
+                  <TableRow key={p.id}>
+                    <TableCell className="font-mono text-muted-foreground">{p.id}</TableCell>
+                    <TableCell>{p.merchant}</TableCell>
+                    <TableCell>
+                      <Status state={p.state} appearance="inline" />
+                    </TableCell>
+                    <TableCell className="text-right font-mono">{p.total}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TabsContent>
+          <TabsContent value="blocked">
+            <p className="py-4 text-muted-foreground">One blocked purchase.</p>
+          </TabsContent>
+          <TabsContent value="loading">
+            <div
+              className="space-y-3 py-3"
+              role="status"
+              aria-busy="true"
+              aria-label="Loading purchases"
+            >
+              <Skeleton className="h-4 w-3/4" />
+              <Skeleton className="h-4 w-1/2" />
+              <Skeleton className="h-4 w-2/3" />
+            </div>
+          </TabsContent>
+          <TabsContent value="empty">
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <ReceiptIcon />
+                </EmptyMedia>
+                <EmptyTitle>No disputes</EmptyTitle>
+                <EmptyDescription>
+                  When a buyer disputes an agent purchase, it appears here with its Alibi.
+                </EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <Button size="sm" variant="outline">
+                  How disputes work
+                </Button>
+              </EmptyContent>
+            </Empty>
+          </TabsContent>
+        </Tabs>
+      </section>
+      <Toaster />
     </main>
   );
 }
