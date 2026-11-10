@@ -13,6 +13,7 @@ services:
       paths:
         - services/api/**
         - services/agent/**
+        - services/mcp/**
         - packages/**
         - package.json
         - pnpm-lock.yaml
@@ -110,6 +111,8 @@ services:
     buildFilter:
       paths:
         - services/api/**
+        - services/agent/**
+        - services/mcp/**
         - packages/**
         - package.json
         - pnpm-lock.yaml

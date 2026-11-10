@@ -21,6 +21,7 @@ import type { ChainReaders } from "./chain/reader.ts";
 import type { Channel3Lookup } from "./channel3/client.ts";
 import type { LogConfig } from "./log/append.ts";
 import { requestLogger } from "./logger.ts";
+import { registerMcp } from "./mcp.ts";
 import { requireClient } from "./middleware/auth.ts";
 import { idempotency } from "./middleware/idempotency.ts";
 import { type RateLimitOptions, rateLimit } from "./middleware/rate-limit.ts";
@@ -69,6 +70,12 @@ export interface Deps {
   auth?: Auth;
   /** Browser origin allowed to call `/api/auth/*` with credentials; where mandates are signed. */
   appOrigin?: string;
+  /** The public origin of this API, where Better Auth issues tokens; `/mcp` is served with it. */
+  authBaseUrl?: string;
+  /** The store MCP clients price carts on; `https://store.keelson.finance` by default. */
+  storeOrigin?: string;
+  /** The operator MCP tool calls act for when they name none. */
+  demoAgentId?: bigint | undefined;
   /** Browser origin of the public verifier, allowed to read Alibi receipts and timestamps without credentials. */
   verifyOrigin?: string;
   /** Reads the anchor and signer registry for `POST /v1/alibis/verify`; it verifies offline without it. */
@@ -236,6 +243,13 @@ export function createApp(deps: Deps): OpenAPIHono {
     if (deps.appOrigin) app.use("/api/auth/*", cors({ origin: deps.appOrigin, credentials: true }));
     app.all("/api/auth/*", (c) => auth.handler(c.req.raw));
     if (deps.appOrigin) registerAdminClients(app, auth, deps.appOrigin);
+  }
+  if (deps.authenticate) {
+    registerMcp(
+      app,
+      { ...deps, authenticate: deps.authenticate },
+      rateLimit(deps.kv, deps.rateLimit),
+    );
   }
   registerHealth(app);
   registerStatus(app, deps);
