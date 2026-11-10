@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.38;
 
+import {IConvictions} from "./interfaces/IConvictions.sol";
 import {IKeelsonBondVault} from "./interfaces/IKeelsonBondVault.sol";
 import {IVerdictVerifier} from "./interfaces/IVerdictVerifier.sol";
 import {KeelsonTypes} from "./libraries/KeelsonTypes.sol";
@@ -29,7 +30,7 @@ interface IAmberContradictionVerifier {
 /// @dev The `WebFact` must have been captured from `FACT_LEAD` before to `FACT_LAG` after the purchase was
 /// countersigned, by a TDX signer active at the capture. The countersign gives the purchase time: it is matched to
 /// the coverage as `lockCoverage` matched them and must carry signatures of signers active when it was issued.
-contract AmberContradictionCourt {
+contract AmberContradictionCourt is IConvictions {
     struct Conviction {
         uint8 fieldId;
         uint40 provenAt;
@@ -171,7 +172,9 @@ contract AmberContradictionCourt {
             && teeVerifier.allowedMeasurement(measurement);
     }
 
-    function _recover(bytes32 digest, bytes calldata sig) internal pure returns (address signer) {
-        (signer,,) = ECDSA.tryRecover(digest, uint8(sig[64]), bytes32(sig[0:32]), bytes32(sig[32:64]));
+    function _recover(bytes32 digest, bytes calldata sig) internal pure returns (address) {
+        (address signer, ECDSA.RecoverError err,) =
+            ECDSA.tryRecover(digest, uint8(sig[64]), bytes32(sig[0:32]), bytes32(sig[32:64]));
+        return err == ECDSA.RecoverError.NoError ? signer : address(0);
     }
 }
