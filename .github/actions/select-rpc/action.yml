@@ -1,0 +1,36 @@
+name: Select RPC
+description: >-
+  Exports ARBITRUM_SEPOLIA_RPC_URL, ARBITRUM_ONE_RPC_URL and ETHEREUM_SEPOLIA_RPC_URL: the Alchemy endpoint when it
+  answers eth_blockNumber, otherwise Tenderly's public gateway for the chain, which keeps the archive state that
+  forks at pinned blocks read (the chains' own public RPCs prune it).
+
+inputs:
+  alchemy-api-key:
+    description: Alchemy API key; empty selects the public gateways.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        KEY: ${{ inputs.alchemy-api-key }}
+      run: |
+        [ -n "$KEY" ] && echo "::add-mask::$KEY"
+        answers() {
+          curl -fsS --max-time 10 -H 'content-type: application/json' \
+            --data '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}' "$1" 2>/dev/null | grep -q '"result"'
+        }
+        pick() {
+          local name=$1 alchemy=$2 public=$3
+          if [ -n "$KEY" ] && answers "https://$alchemy.g.alchemy.com/v2/$KEY"; then
+            echo "$name=https://$alchemy.g.alchemy.com/v2/$KEY" >> "$GITHUB_ENV"
+          else
+            echo "::warning::$name: Alchemy does not answer; using $public"
+            echo "$name=$public" >> "$GITHUB_ENV"
+          fi
+        }
+        pick ARBITRUM_SEPOLIA_RPC_URL arb-sepolia https://arbitrum-sepolia.gateway.tenderly.co
+        pick ARBITRUM_ONE_RPC_URL arb-mainnet https://arbitrum.gateway.tenderly.co
+        pick ETHEREUM_SEPOLIA_RPC_URL eth-sepolia https://sepolia.gateway.tenderly.co

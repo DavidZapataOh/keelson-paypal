@@ -8,6 +8,7 @@ import { pino } from "pino";
 import { createPublicClient, http } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { z } from "zod";
+import { arbitrumSepoliaRpcUrls, rpcTransport } from "./chain/rpc.ts";
 import { type RunDeps, runDispute } from "./disputes/run.ts";
 import { treasuryFromKey } from "./disputes/treasury.ts";
 import { resetJudges } from "./judge.ts";
@@ -62,7 +63,7 @@ async function connect(): Promise<RunDeps> {
     chain: {
       client: createPublicClient({
         chain: arbitrumSepolia,
-        transport: http(env.ARBITRUM_SEPOLIA_RPC_URL),
+        transport: rpcTransport(arbitrumSepoliaRpcUrls(env.ARBITRUM_SEPOLIA_RPC_URL)),
       }),
       logs: createPublicClient({ chain: arbitrumSepolia, transport: http() }),
     },
