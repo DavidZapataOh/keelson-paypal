@@ -4,6 +4,7 @@ import { Badge } from "@keelson/ui/components/badge";
 import { Button } from "@keelson/ui/components/button";
 import type { AgStudioApi } from "ag-studio";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "../../lib/api";
 import { authClient } from "../../lib/auth";
@@ -182,20 +183,37 @@ export function MerchantConsole() {
         </nav>
         <p className="mr-auto text-sm" data-testid="settlement-summary">
           {consequence(merchant, settlement)}{" "}
-          <button type="button" className="underline" onClick={() => setSheet(true)}>
-            Change
-          </button>
+          {merchant.read_only ? null : (
+            <button type="button" className="underline" onClick={() => setSheet(true)}>
+              Change
+            </button>
+          )}
         </p>
-        {model === "claude-haiku-5-5" ? (
-          <Badge variant="outline">Assistant on Claude Haiku 5.5: today's budget is spent</Badge>
+        {merchant.read_only ? (
+          <Badge variant="outline" className="font-mono">
+            Judge Mode · read only
+          </Badge>
         ) : null}
-        <button
-          type="button"
-          className="text-muted-foreground text-sm hover:text-foreground"
-          onClick={() => authClient.signOut().then(() => setPhase({ kind: "signed-out" }))}
-        >
-          Sign out
-        </button>
+        {model === "claude-haiku-5-5" ? (
+          <Badge variant="outline">
+            {merchant.read_only
+              ? "Assistant on Claude Haiku 5.5: this session's budget is spent"
+              : "Assistant on Claude Haiku 5.5: today's budget is spent"}
+          </Badge>
+        ) : null}
+        {merchant.read_only ? (
+          <Link href="/judge/" className="font-medium text-sm underline">
+            Back to the tour
+          </Link>
+        ) : (
+          <button
+            type="button"
+            className="text-muted-foreground text-sm hover:text-foreground"
+            onClick={() => authClient.signOut().then(() => setPhase({ kind: "signed-out" }))}
+          >
+            Sign out
+          </button>
+        )}
       </div>
       <div className="min-h-0">
         <MerchantStudio

@@ -14,6 +14,8 @@ export interface MerchantSelf {
   name: string;
   website: string;
   settlement_address: string;
+  /** A Judge Mode session: it reads the console and changes nothing. */
+  read_only: boolean;
 }
 
 export type Rail = "pyusd" | "paypal";

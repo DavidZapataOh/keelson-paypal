@@ -8,7 +8,7 @@ import type { AuthenticationExtensionsClientInputs } from "@simplewebauthn/serve
 import { cose, decodeCredentialPublicKey } from "@simplewebauthn/server/helpers";
 import { betterAuth } from "better-auth";
 import { APIError, createAuthMiddleware } from "better-auth/api";
-import { jwt } from "better-auth/plugins";
+import { anonymous, jwt } from "better-auth/plugins";
 import { siwe } from "better-auth/plugins/siwe";
 import type { PayPalProfile } from "better-auth/social-providers";
 import { type Hex, verifyMessage } from "viem";
@@ -78,7 +78,8 @@ export function createAuth(
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.BETTER_AUTH_URL,
     trustedOrigins: [env.APP_ORIGIN],
-    disabledPaths: ["/token"],
+    // Judges are created only through `POST /v1/judge/sessions`, which limits them.
+    disabledPaths: ["/token", "/sign-in/anonymous"],
     hooks: {
       // A passkey is payment-capable only if the server issued the `payment` extension for its
       // ceremony; the verified registration's challenge identifies that ceremony.
@@ -164,6 +165,8 @@ export function createAuth(
           },
         },
       }),
+      // A Judge Mode tenant: no email, no account, no key.
+      anonymous({ emailDomainName: "judge.keelson.finance", disableDeleteAnonymousUser: true }),
       // Merchants sign in with their settlement wallet (EIP-4361); no other wallet gets an account.
       siwe({
         domain: new URL(env.APP_ORIGIN).host,
