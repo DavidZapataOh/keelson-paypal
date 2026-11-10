@@ -11,6 +11,8 @@ mod error;
 mod keys;
 #[cfg(feature = "nitro")]
 pub mod nitro;
+#[cfg(feature = "tdx")]
+pub mod notary;
 pub mod paypal;
 pub mod process;
 mod records;
