@@ -78,6 +78,8 @@ contract RegisteredUserSet is AccessManaged {
     /// countersign names and never use this argument as an identifier.
     function verify(bytes calldata proof, bytes32 cm, bytes32 mandateHash, bytes32 root) external view returns (bool) {
         Root memory r = roots[root];
+        // Zero means unset, not a time compared against the clock.
+        // slither-disable-next-line incorrect-equality
         if (r.publishedAt == 0 || r.revokedAt != 0) return false;
         bytes32[] memory inputs = new bytes32[](4);
         inputs[0] = cm;
