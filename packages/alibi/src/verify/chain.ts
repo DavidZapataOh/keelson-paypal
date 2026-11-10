@@ -1,4 +1,9 @@
-import { checkpointAnchorAbi, honkVerifierAbi, verdictVerifierAbi } from "@keelson/chain";
+import {
+  checkpointAnchorAbi,
+  honkVerifierAbi,
+  registeredUserSetAbi,
+  verdictVerifierAbi,
+} from "@keelson/chain";
 import {
   type Address,
   type BaseError,
@@ -9,6 +14,7 @@ import {
   type Hex,
   http,
   parseEventLogs,
+  type TransactionReceipt,
 } from "viem";
 import { arbitrum, arbitrumSepolia } from "viem/chains";
 
@@ -29,6 +35,8 @@ export interface ChainQuery {
   verifier: Address;
   /** A C1 proof to check with the deployed `MandatePredicateVerifier`. */
   c1?: { verifier: Address; proof: Hex; publicInputs: Hex[] };
+  /** A C3 proof's registered-user root, and the transaction stated to have published it. */
+  c3?: { registry: Address; root: Hex; tx: Hex };
 }
 
 interface SignerRecord {
@@ -50,10 +58,47 @@ export interface ChainAnswer {
   anchorLog?: { origin: Hex; size: bigint; root: Hex; blockNumber: bigint } | null;
   /** Whether the deployed C1 verifier accepts `ChainQuery.c1`; absent when not asked. */
   c1?: boolean;
+  /**
+   * `RegisteredUserSet.roots(root)` of `ChainQuery.c3`, `publishedAt` 0 when unpublished, and the
+   * `RootPublished` log of its transaction, `null` when it holds none or does not exist.
+   */
+  c3?: {
+    publishedAt: number;
+    size: number;
+    /** When the Guardian revoked the root; 0 while it stands. */
+    revokedAt: number;
+    log: { size: number; blockNumber: bigint } | null;
+  };
   /** The RPC that answered. */
   rpc: string;
   /** Whether that RPC was chosen by the caller rather than one of the public defaults. */
   custom: boolean;
+}
+
+type Receipt = TransactionReceipt;
+
+/** The registry's record of a root, and the `RootPublished` its transaction emitted for it. */
+function c3Of(
+  q: NonNullable<ChainQuery["c3"]>,
+  [publishedAt, size, revokedAt]: readonly [bigint, number, bigint],
+  receipt: Receipt | null,
+): NonNullable<ChainAnswer["c3"]> {
+  const log = receipt
+    ? parseEventLogs({
+        abi: registeredUserSetAbi,
+        eventName: "RootPublished",
+        logs: receipt.logs.filter((l) => l.address.toLowerCase() === q.registry.toLowerCase()),
+      }).find((l) => l.args.root.toLowerCase() === q.root.toLowerCase())
+    : undefined;
+  return {
+    publishedAt: Number(publishedAt),
+    size,
+    revokedAt: Number(revokedAt),
+    log:
+      log && receipt?.status === "success"
+        ? { size: log.args.size, blockNumber: receipt.blockNumber }
+        : null,
+  };
 }
 
 export interface ChainReader {
@@ -118,6 +163,11 @@ export function createChainReader(opts: ChainReaderOptions = {}): ChainReader {
         transport: transports.length === 1 ? (transports[0] as never) : fallback(transports),
       });
       const anchor = { address: q.anchor, abi: checkpointAnchorAbi } as const;
+      const receiptOf = (hash: Hex) =>
+        client.getTransactionReceipt({ hash }).catch((err: unknown) => {
+          if ((err as Error).name === "TransactionReceiptNotFoundError") return null;
+          throw err;
+        });
       const verifier = { address: q.verifier, abi: verdictVerifierAbi } as const;
       try {
         const settled = await Promise.allSettled([
@@ -156,11 +206,17 @@ export function createChainReader(opts: ChainReaderOptions = {}): ChainReader {
                   throw err;
                 })
             : Promise.resolve(undefined),
-          q.anchorTx
-            ? client.getTransactionReceipt({ hash: q.anchorTx }).catch((err: unknown) => {
-                if ((err as Error).name === "TransactionReceiptNotFoundError") return null;
-                throw err;
-              })
+          q.anchorTx ? receiptOf(q.anchorTx) : Promise.resolve(undefined),
+          q.c3
+            ? Promise.all([
+                client.readContract({
+                  address: q.c3.registry,
+                  abi: registeredUserSetAbi,
+                  functionName: "roots",
+                  args: [q.c3.root],
+                }),
+                receiptOf(q.c3.tx),
+              ])
             : Promise.resolve(undefined),
         ] as const);
         // The chain id first: another chain's RPC fails the reads for a reason it would not name.
@@ -170,7 +226,7 @@ export function createChainReader(opts: ChainReaderOptions = {}): ChainReader {
         }
         const failed = settled.find((s) => s.status === "rejected");
         if (failed) throw failed.reason;
-        const [, head, rootAt, latest, signers, allowed, blocks, c1, receipt] = settled.map(
+        const [, head, rootAt, latest, signers, allowed, blocks, c1, receipt, c3] = settled.map(
           (s) => (s as PromiseFulfilledResult<unknown>).value,
         ) as [
           number,
@@ -181,7 +237,8 @@ export function createChainReader(opts: ChainReaderOptions = {}): ChainReader {
           boolean[],
           Hex[],
           boolean | undefined,
-          Awaited<ReturnType<typeof client.getTransactionReceipt>> | null | undefined,
+          Receipt | null | undefined,
+          readonly [readonly [bigint, number, bigint], Receipt | null] | undefined,
         ];
         const out: ChainAnswer = {
           rootAt,
@@ -196,6 +253,7 @@ export function createChainReader(opts: ChainReaderOptions = {}): ChainReader {
           allowed,
           blocks,
           ...(c1 === undefined ? {} : { c1 }),
+          ...(c3 && q.c3 ? { c3: c3Of(q.c3, c3[0], c3[1]) } : {}),
           rpc: answered,
           custom,
         };

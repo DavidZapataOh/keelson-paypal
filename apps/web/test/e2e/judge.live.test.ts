@@ -44,11 +44,11 @@ test.runIf(ORIGIN)(
       mark("alibi");
 
       await next(page, "A dispute arrives");
-      await page.getByText("PayPal dispute").waitFor();
+      await page.getByText("PayPal dispute", { exact: true }).waitFor();
       mark("dispute");
 
       await next(page, "Verdict and settlement");
-      await page.getByText("At fault").waitFor();
+      await page.getByText("At fault", { exact: true }).waitFor();
       mark("verdict");
 
       await next(page, "Merchant forensics");
@@ -61,7 +61,7 @@ test.runIf(ORIGIN)(
       mark("forensics");
 
       await next(page, "Operator grade");
-      await page.getByText("Covered purchases").waitFor();
+      await page.getByText("Covered purchases", { exact: true }).waitFor();
       mark("grade");
 
       await next(page, "Red-team scoreboard");
@@ -86,6 +86,16 @@ test.runIf(ORIGIN)(
       }
       expect(errors).toEqual([]);
       expect(total).toBeLessThan(BUDGET_MS);
+    } catch (err) {
+      // The hourly alert should say what the judge saw, not only which locator timed out.
+      const seen =
+        (await page
+          .locator("main")
+          .textContent()
+          .catch(() => "")) ?? "";
+      throw new Error(
+        `${(err as Error).message}\n--- page ---\n${seen.slice(0, 2_000)}\n--- errors ---\n${errors.join("\n")}`,
+      );
     } finally {
       await context.close();
       await browser.close();

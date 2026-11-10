@@ -19,7 +19,7 @@ import "./redteam.ts";
 import { calibrate, gradeOf } from "./risk.ts";
 import { createTee } from "./tee/config.ts";
 import { awaitingC3, proveAnonymousPurchase } from "./zk/c1c3.ts";
-import { c3SaltKey, proveAnonymousMandate } from "./zk/c3.ts";
+import { c3SaltKey, proveAnonymousMandate, publishUserSetRoots } from "./zk/c3.ts";
 
 const Env = z.object({
   DATABASE_URL: z.string().min(1),
@@ -98,7 +98,8 @@ task(
 
 /**
  * Proves C3 for a mandate the API just stored, with the commitment salt the API left in Valkey
- * for an hour: the salt is never a task argument. The key is deleted once the proof is stored;
+ * for an hour (the salt is never a task argument), then publishes the proof's root, and any
+ * earlier one not yet on chain, to `RegisteredUserSet`. The key is deleted once the proof is stored;
  * without it the mandate keeps no C3 proof.
  */
 task(
@@ -114,7 +115,7 @@ task(
       deps = undefined;
       throw err;
     });
-    const { db, kv, log } = await deps;
+    const { db, kv, log, relayer } = await deps;
     const key = c3SaltKey(mandateId);
     const salt = await kv.get(key);
     if (!salt) return { mandateId, proved: false };
@@ -127,6 +128,8 @@ task(
       log.warn({ err, mandateId }, "C3 cannot prove this mandate");
       return { mandateId, proved: false };
     }
+    // A retry finds the proof stored and publishes again: the salt is kept until the root is on chain.
+    if (relayer) await publishUserSetRoots({ db, relayer, log });
     await kv.del(key);
     // Purchases logged before this proof existed are composed now, on this instance.
     for (const purchaseId of await awaitingC3(db, mandateId)) {

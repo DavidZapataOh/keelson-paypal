@@ -14,6 +14,7 @@ import {
   alibis,
   and,
   asc,
+  chainTxs,
   channel3Observations,
   type Db,
   eq,
@@ -44,6 +45,7 @@ import { getAddress } from "viem";
 import { countersignOf, purchaseLeaf } from "../pipeline/leaf.ts";
 import { VERIFYING_CONTRACT } from "../tee/config.ts";
 import type { TeeConfig } from "../tee/signers.ts";
+import { rootKey } from "../zk/c3.ts";
 
 /** The item types an Alibi discloses: the PII-redacted public ones. */
 const DISCLOSED = ["api.product", "api.cart", "channel3.observation"] as const;
@@ -161,6 +163,44 @@ async function c1Of(
   return proof;
 }
 
+/** How long a new mandate's Alibis wait for its C3 proof and root before they are issued without them. */
+const C3_GRACE_MS = 60_000;
+
+type C3Entry = NonNullable<NonNullable<AlibiBundle["zk"]>["c3"]>;
+
+/**
+ * The mandate's C3 proof with the transaction that published its root, once both exist. A mandate
+ * whose salt leg A sealed is proved and its root published within seconds of its signing, so
+ * until the grace has passed a missing one throws and the Alibi is issued on a later attempt.
+ */
+async function c3Of(
+  deps: IssueDeps,
+  m: typeof mandates.$inferSelect,
+  chainId: number,
+): Promise<C3Entry | null> {
+  let entry: C3Entry | null = null;
+  const root = m.c3Proof?.public_inputs[2];
+  if (m.c3Proof && root) {
+    const [tx] = await deps.db
+      .select({ hash: chainTxs.hash })
+      .from(chainTxs)
+      .where(
+        and(
+          eq(chainTxs.chainId, chainId),
+          eq(chainTxs.key, rootKey(root)),
+          eq(chainTxs.status, "confirmed"),
+        ),
+      );
+    if (tx?.hash) entry = { ...m.c3Proof, root_tx: toHex(tx.hash) };
+  }
+  if (entry || m.sealedSalt === null) return entry;
+  if (Date.now() - m.createdAt.getTime() < C3_GRACE_MS) {
+    throw new Error(`mandate ${m.id} has no published C3 proof yet`);
+  }
+  deps.log.warn({ mandateId: m.id }, "alibi issued without its C3 proof");
+  return null;
+}
+
 /**
  * Issues the Alibi of a logged purchase: the immutable core of its bundle, built from what
  * Postgres holds and the log's answer for its leaf, stored once. Opening the public evidence
@@ -224,11 +264,12 @@ export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<vo
   const thumbprint = (attestations[0]?.binding as { issuerJwkThumbprint?: string } | undefined)
     ?.issuerJwkThumbprint;
   if (!thumbprint) throw new AlibiIssueError("issuer", "the TDX attestation binds no issuer");
-  const [issuerJwk, policyText, evidence, c1] = await Promise.all([
+  const [issuerJwk, policyText, evidence, c1, c3] = await Promise.all([
     issuerOf(deps.tee, thumbprint),
     policyOf(origin),
     disclosures(db, Buffer.from(c.evidenceRoot.slice(2), "hex")),
     c1Of(deps, p, c.decision === "1" && m.sealedSalt !== null),
+    c3Of(deps, m, chainId),
   ]);
 
   let customId: string;
@@ -302,7 +343,14 @@ export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<vo
     },
     manifest: { public: evidence.manifest, disclosures: evidence.disclosures },
     ...(evidence.observation ? { channel3_observation: evidence.observation } : {}),
-    ...(c1 ? { zk: { c1: { proof: c1.proof, public_inputs: c1.public_inputs } } } : {}),
+    ...(c1 || c3
+      ? {
+          zk: {
+            ...(c1 ? { c1: { proof: c1.proof, public_inputs: c1.public_inputs } } : {}),
+            ...(c3 ? { c3 } : {}),
+          },
+        }
+      : {}),
     paypal: {
       order_id: p.paypalOrderId,
       authorization_id: p.paypalAuthorizationId,

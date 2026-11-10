@@ -692,6 +692,19 @@ export const honkVerifierAbi = [
   },
 ] as const;
 
+export const iAnonymousMandateVerifierAbi = [
+  {
+    type: "function",
+    name: "verify",
+    inputs: [
+      { name: "proof", type: "bytes", internalType: "bytes" },
+      { name: "publicInputs", type: "bytes32[]", internalType: "bytes32[]" },
+    ],
+    outputs: [{ name: "", type: "bool", internalType: "bool" }],
+    stateMutability: "view",
+  },
+] as const;
+
 export const iArbSysAbi = [
   {
     type: "function",
@@ -4781,6 +4794,133 @@ export const mandateViolationCourtAbi = [
 export const nitroDocumentAbi = [
   { type: "error", name: "NitroKeyMismatch", inputs: [] },
   { type: "error", name: "NitroPcrsMissing", inputs: [] },
+] as const;
+
+export const registeredUserSetAbi = [
+  {
+    type: "constructor",
+    inputs: [
+      { name: "authority", type: "address", internalType: "address" },
+      { name: "verifier_", type: "address", internalType: "contract IAnonymousMandateVerifier" },
+    ],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "RP_ID_HASH",
+    inputs: [],
+    outputs: [{ name: "", type: "bytes32", internalType: "bytes32" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "authority",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "isConsumingScheduledOp",
+    inputs: [],
+    outputs: [{ name: "", type: "bytes4", internalType: "bytes4" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "publish",
+    inputs: [
+      { name: "root", type: "bytes32", internalType: "bytes32" },
+      { name: "size", type: "uint32", internalType: "uint32" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "revoke",
+    inputs: [{ name: "root", type: "bytes32", internalType: "bytes32" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "roots",
+    inputs: [{ name: "root", type: "bytes32", internalType: "bytes32" }],
+    outputs: [
+      { name: "publishedAt", type: "uint64", internalType: "uint64" },
+      { name: "size", type: "uint32", internalType: "uint32" },
+      { name: "revokedAt", type: "uint64", internalType: "uint64" },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "setAuthority",
+    inputs: [{ name: "newAuthority", type: "address", internalType: "address" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "verifier",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "contract IAnonymousMandateVerifier" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "verify",
+    inputs: [
+      { name: "proof", type: "bytes", internalType: "bytes" },
+      { name: "cm", type: "bytes32", internalType: "bytes32" },
+      { name: "mandateHash", type: "bytes32", internalType: "bytes32" },
+      { name: "root", type: "bytes32", internalType: "bytes32" },
+    ],
+    outputs: [{ name: "", type: "bool", internalType: "bool" }],
+    stateMutability: "view",
+  },
+  {
+    type: "event",
+    name: "AuthorityUpdated",
+    inputs: [{ name: "authority", type: "address", indexed: false, internalType: "address" }],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "RootPublished",
+    inputs: [
+      { name: "root", type: "bytes32", indexed: true, internalType: "bytes32" },
+      { name: "size", type: "uint32", indexed: false, internalType: "uint32" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "RootRevoked",
+    inputs: [{ name: "root", type: "bytes32", indexed: true, internalType: "bytes32" }],
+    anonymous: false,
+  },
+  {
+    type: "error",
+    name: "AccessManagedInvalidAuthority",
+    inputs: [{ name: "authority", type: "address", internalType: "address" }],
+  },
+  {
+    type: "error",
+    name: "AccessManagedRequiredDelay",
+    inputs: [
+      { name: "caller", type: "address", internalType: "address" },
+      { name: "delay", type: "uint32", internalType: "uint32" },
+    ],
+  },
+  {
+    type: "error",
+    name: "AccessManagedUnauthorized",
+    inputs: [{ name: "caller", type: "address", internalType: "address" }],
+  },
+  { type: "error", name: "InvalidRoot", inputs: [] },
+  { type: "error", name: "UnknownRoot", inputs: [] },
 ] as const;
 
 export const relationsLibAbi = [

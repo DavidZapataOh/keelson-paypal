@@ -34,6 +34,8 @@
   "slash_instant_first": "195353",
   "slash_instant_later": "144053",
   "slash_queued": "232769",
+  "userSet_publish": "59894",
+  "userSet_verify": "744224",
   "verify2of2_cold": "16854",
   "verifyDegraded_cold": "8708",
   "vetoSlash": "43566"

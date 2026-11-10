@@ -26,7 +26,7 @@ const AnonymousMandateSchema = z
     }),
     verifier: z.object({ chain_id: z.number().int(), address: z.string() }).optional().openapi({
       description:
-        "The deployed verifier that accepts the proof in an `eth_call`. It checks the proof only: `public_inputs` must also be the countersign's `C_m` and `M`, Keelson's RP ID hash, and a root `GET /v1/user-set/roots/{root}` lists.",
+        "The deployed verifier that accepts the proof in an `eth_call`. It checks the proof only: `public_inputs` must also be the countersign's `C_m` and `M`, Keelson's RP ID hash, and a root published in `RegisteredUserSet`, whose `verify` checks all of it.",
     }),
   })
   .openapi("AnonymousMandate");
@@ -37,7 +37,7 @@ const anonymousRoute = createRoute({
   tags: ["mandates"],
   summary: "Proof that a registered user signed a mandate",
   description:
-    "The C3 `anonymous_mandate` zero-knowledge proof of the mandate whose passkey challenge is `mandateHash`, the `mandateHash` of its countersigns: a passkey in Keelson's registered-user tree signed it, and the mandate's commitment names that passkey. It shows neither the user nor the key, so it needs no authentication. Verify it with bb.js against the C3 key or with `eth_call` on `verifier`, and check `user_set_root` with `GET /v1/user-set/roots/{root}`.",
+    "The C3 `anonymous_mandate` zero-knowledge proof of the mandate whose passkey challenge is `mandateHash`, the `mandateHash` of its countersigns: a passkey in Keelson's registered-user tree signed it, and the mandate's commitment names that passkey. It shows neither the user nor the key, so it needs no authentication. Verify it with bb.js against the C3 key or with `eth_call` on `verifier`, and check that `user_set_root` is published in the `RegisteredUserSet` contract, as `verifyAnonymousMandate` in `@keelson/alibi/verify` does.",
   request: { params: z.object({ mandateHash: Hex32 }) },
   responses: {
     200: {
@@ -97,7 +97,7 @@ const rootRoute = createRoute({
   tags: ["mandates"],
   summary: "A root of the registered-user tree",
   description:
-    "Whether `root` is, or was, the root of Keelson's registered-user tree: the Poseidon2 Merkle tree of every registered passkey's `user_key_hash`. A C3 proof under any root listed here was made by a registered user, who is hidden among the `size` users of that root. Roots stay valid after a passkey is removed.",
+    "Whether `root` is, or was, the root of Keelson's registered-user tree: the Poseidon2 Merkle tree of every registered passkey's `user_key_hash`. A C3 proof under any root listed here was made by a registered user, who is hidden among the `size` users of that root. Roots stay valid after a passkey is removed. Keelson's relayer publishes every root to the `RegisteredUserSet` contract, which is what a verifier trusts; this route is a convenience.",
   request: { params: z.object({ root: Hex32 }) },
   responses: {
     200: { description: "The root", content: { "application/json": { schema: RootSchema } } },

@@ -144,7 +144,7 @@ const startDisputeWorkflow =
       }
     : undefined;
 const proveC3 = c3Prover(
-  { db, kv, log },
+  { db, kv, log, relayer },
   render && env.DISPUTE_WORKFLOW ? { render, slug: env.DISPUTE_WORKFLOW } : undefined,
 );
 // Composing takes about 2.8 GB: the workflow does it, only for a purchase with both recursive proofs.

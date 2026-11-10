@@ -14,7 +14,7 @@ import { challenge, credentials, passkey } from "./checks/mandate.ts";
 import { paypal } from "./checks/paypal.ts";
 import { replay } from "./checks/policy.ts";
 import { qr } from "./checks/qr.ts";
-import { timestamps, zk } from "./checks/timestamps.ts";
+import { timestamps, zk, zkC3 } from "./checks/timestamps.ts";
 import { isBundle } from "./checks/util.ts";
 import { diffPointers, expand, reads, UNBOUND, valueAt } from "./expand.ts";
 import { fieldsOf } from "./fields.ts";
@@ -37,6 +37,7 @@ export {
   c1c3Statement,
   c3Statement,
   RP_ID_HASH,
+  registeredUserSetRoot,
   verifyAnonymousMandate,
   verifyAnonymousPurchase,
   verifyC1C3,
@@ -63,6 +64,7 @@ const CHECKS = [
   anchorTx,
   timestamps,
   zk,
+  zkC3,
   evidence,
   paypal,
 ];

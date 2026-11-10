@@ -12,6 +12,7 @@ import {
   userKeyHash,
   userSet,
 } from "@keelson/mandate";
+import type { Relayer } from "@keelson/relayer";
 import type { Render } from "@renderinc/sdk";
 import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
@@ -64,6 +65,62 @@ async function currentUserSet(db: Db): Promise<UserSet> {
 
 const word = (x: bigint): Uint8Array =>
   Uint8Array.from({ length: 32 }, (_, i) => Number((x >> BigInt(8 * (31 - i))) & 0xffn));
+
+/** The chain `RegisteredUserSet` holds Keelson's roots on. */
+const ROOTS_CHAIN_ID = 421614;
+
+/** The relayer key a registered-user root is published under (`0x` + 64 hex). */
+export const rootKey = (root: string): string => `RegisteredUserSet.publish:${root}`;
+
+/** How long a publish waits for its pending transaction before the caller tries again. */
+const PUBLISH_WAIT_MS = 15_000;
+
+/**
+ * Publishes to `RegisteredUserSet`, oldest first, every recorded root of the registered-user tree
+ * that the relayer has not confirmed on chain, so merchants check a C3 proof's root against the
+ * chain rather than the API. A root already on chain is a no-op for the contract.
+ *
+ * @throws when a root could not be published yet; a later call publishes it.
+ */
+export async function publishUserSetRoots(deps: {
+  db: Db;
+  relayer: Relayer;
+  log: Logger;
+}): Promise<void> {
+  const { db, relayer, log } = deps;
+  const rows = await db
+    .select({ root: userSetRoots.root, size: userSetRoots.size })
+    .from(userSetRoots)
+    .where(sql`not exists (
+      select 1 from chain_txs t
+      where t.chain_id = ${ROOTS_CHAIN_ID}
+        and t.key = 'RegisteredUserSet.publish:0x' || encode(${userSetRoots.root}, 'hex')
+        and t.status = 'confirmed'
+    )`)
+    .orderBy(asc(userSetRoots.createdAt), asc(userSetRoots.root));
+  for (const row of rows) {
+    const root = toHex(row.root);
+    const { size } = row;
+    let record = await relayer.submit({
+      chainId: ROOTS_CHAIN_ID,
+      contract: "RegisteredUserSet",
+      functionName: "publish",
+      args: [root, size],
+      key: rootKey(root),
+    });
+    const deadline = Date.now() + PUBLISH_WAIT_MS;
+    while (record.status === "pending" && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 250));
+      record = (await relayer.getById(record.id)) ?? record;
+    }
+    if (record.status !== "confirmed") {
+      throw new Error(
+        `root ${root} is ${record.status}${record.errorCode ? ` (${record.errorCode})` : ""}`,
+      );
+    }
+    log.info({ root, size, tx: record.hash }, "registered-user root published");
+  }
+}
 
 /**
  * Proves C3 for mandate `mandateId`, whose commitment opens under `salt` (`0x` + 16 bytes hex),
@@ -128,19 +185,20 @@ export async function proveAnonymousMandate(
 }
 
 /**
- * Starts the C3 proof of a mandate just stored. With a workflow, the proof needs more memory than
+ * Starts the C3 proof of a mandate just stored, then publishes its root with the relayer. With a workflow, the proof needs more memory than
  * the API instance has: the workflow task `proveAnonymousMandate` proves it and reads the salt from
  * Valkey, so that it never becomes a task argument, and composes the purchases logged before it.
- * Without one both happen in this process.
+ * Without one all of it happens in this process.
  */
 export function c3Prover(
-  deps: { db: Db; kv: RedisClientType; log: Logger },
+  deps: { db: Db; kv: RedisClientType; log: Logger; relayer?: Relayer | undefined },
   workflow?: { render: Render; slug: string },
 ): (mandateId: string, salt: string) => Promise<void> {
-  const { db, kv, log } = deps;
+  const { db, kv, log, relayer } = deps;
   if (!workflow) {
     return async (mandateId, salt) => {
       await proveAnonymousMandate({ db, log }, mandateId, salt);
+      if (relayer) await publishUserSetRoots({ db, relayer, log });
       for (const purchaseId of await awaitingC3(db, mandateId)) {
         await proveAnonymousPurchase({ db, log }, purchaseId);
       }
