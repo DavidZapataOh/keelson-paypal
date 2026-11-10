@@ -344,24 +344,6 @@ export function registerMandates(
     if (operator.agentRegistry.toLowerCase() !== m.agent.operator.agent_registry.toLowerCase()) {
       return invalid(`agent.operator.agent_registry must be ${operator.agentRegistry}`);
     }
-    const cnf = await agentCnf(operator);
-    const bond = agentBond(operator);
-    const unbound = [
-      ...(cnf && isDeepStrictEqual(m.agent.cnf, cnf) ? [] : ["agent.cnf"]),
-      ...(bond && isDeepStrictEqual(m.agent.bond, bond) ? [] : ["agent.bond"]),
-      ...(isDeepStrictEqual(m.consent, await termsConsent()) ? [] : ["consent"]),
-    ];
-    if (unbound.length > 0) {
-      return problem(
-        c,
-        422,
-        "mandate-binding-mismatch",
-        "Mandate binding mismatch",
-        `${unbound.join(", ")} must be what compiling fills: the operator's registered agent key and bond, and the current terms.`,
-        { fields: unbound },
-      );
-    }
-
     const key = await db.query.passkey.findFirst({
       where: (row, { eq }) => eq(row.credentialID, body.assertion.credentialId),
     });
@@ -403,6 +385,24 @@ export function registerMandates(
         where: (row, { eq }) => eq(row.mandateHash, Buffer.from(M)),
       });
     if (await storedHash()) return exists();
+    const cnf = await agentCnf(operator);
+    const bond = agentBond(operator);
+    const unbound = [
+      ...(cnf && isDeepStrictEqual(m.agent.cnf, cnf) ? [] : ["agent.cnf"]),
+      ...(bond && isDeepStrictEqual(m.agent.bond, bond) ? [] : ["agent.bond"]),
+      ...(isDeepStrictEqual(m.consent, await termsConsent()) ? [] : ["consent"]),
+    ];
+    if (unbound.length > 0) {
+      return problem(
+        c,
+        422,
+        "mandate-binding-mismatch",
+        "Mandate binding mismatch",
+        `${unbound.join(", ")} must be what compiling fills: the operator's registered agent key and bond, and the current terms.`,
+        { fields: unbound },
+      );
+    }
+
     const invalidSignature = () =>
       problem(
         c,

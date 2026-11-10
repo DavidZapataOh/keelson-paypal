@@ -6,7 +6,17 @@ import { type AddressInfo, connect, createServer as createTcpServer, type Server
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Cart, CURRENCIES, type CurrencyCode, cartHash, toHex } from "@keelson/core";
-import { type Db, eq, mandates, operators, passkey as passkeyTable, user } from "@keelson/db";
+import {
+  and,
+  type Db,
+  eq,
+  isNull,
+  mandates,
+  operators,
+  passkey as passkeyTable,
+  sql,
+  user,
+} from "@keelson/db";
 import {
   closeMandate,
   type Mandate,
@@ -681,16 +691,39 @@ export async function seedUser(db: Db, passkey: Passkey, sub: string): Promise<v
     deviceType: "multiDevice",
     backedUp: true,
   });
+  await seedOperator(db, 42n);
+}
+
+/**
+ * Registers {@link testAgent} as `agentId`'s agent, adding the operator if it is missing, and
+ * resolves to the undo. Only rows no owner linked through `POST /v1/operators` are rebound, so a
+ * linked operator's key is never replaced and a run that died before its undo is recovered.
+ */
+export async function seedOperator(db: Db, agentId: bigint): Promise<() => Promise<void>> {
   await db
     .insert(operators)
     .values({
-      agentId: 42n,
+      agentId,
       chainId: 421614,
-      agentRegistry: "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
-      name: "Demo operator",
-      cnfJwk: testAgent.jwk,
+      agentRegistry: demo.agent.operator.agent_registry,
+      name: "Test operator",
+      cnfJwk: {},
     })
     .onConflictDoNothing();
+  const [row] = await db.select().from(operators).where(eq(operators.agentId, agentId));
+  if (row?.ownerAddress) {
+    const { x, y } = row.cnfJwk as { x?: unknown; y?: unknown };
+    if (x === testAgent.jwk.x && y === testAgent.jwk.y) return async () => {};
+    throw new Error(`operator ${agentId} linked its own agent key; buy with that key`);
+  }
+  const unlinked = and(eq(operators.agentId, agentId), isNull(operators.ownerAddress));
+  await db.update(operators).set({ cnfJwk: testAgent.jwk }).where(unlinked);
+  return async () => {
+    await db
+      .update(operators)
+      .set({ cnfJwk: row?.cnfJwk ?? {} })
+      .where(and(unlinked, sql`${operators.cnfJwk} = ${JSON.stringify(testAgent.jwk)}::jsonb`));
+  };
 }
 
 /** Resolves the principal from a header, in place of the OAuth and session lookups. */

@@ -310,6 +310,7 @@ try {
     process.exitCode = 1;
   }
 } finally {
+  await unseed();
   for (const m of opened) {
     await post(`/v1/mandates/${m.mid}/revoke`, asUser(m.sub)).catch((err: unknown) =>
       console.error(`mandate ${m.mid} not revoked: ${String(err)}`),
@@ -317,7 +318,6 @@ try {
   }
   await evidence.close().catch(() => {});
   await listener.close();
-  await unseed();
   await kv.close();
   await pool.end();
 }

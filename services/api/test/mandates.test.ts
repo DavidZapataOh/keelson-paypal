@@ -512,6 +512,7 @@ test("the mandate must bind the operator's agent key, its bond and the current t
     [["agent.bond"], (m) => Object.assign(m.agent.bond, { vault: demo.agent.bond.vault })],
     [["agent.bond"], (m) => Object.assign(m.agent.bond, { min: demo.agent.bond.min })],
     [["consent"], (m) => Object.assign(m.consent, { terms_hash: demo.consent.terms_hash })],
+    [["consent"], (m) => Object.assign(m.consent, { recurrence_ack: true })],
     [
       ["agent.cnf", "agent.bond", "consent"],
       (m) =>
@@ -552,6 +553,31 @@ test("an operator without a registered agent key cannot be named", {
   expect(res.status).toBe(422);
   expect(res.body.type).toBe(problemType("mandate-binding-mismatch"));
   expect(res.body.fields).toEqual(["agent.cnf"]);
+  expect(
+    await testDb.query.mandates.findFirst({ where: (t, { eq }) => eq(t.id, m.mid) }),
+  ).toBeUndefined();
+});
+
+test("an operator on a chain without a bond vault cannot be named", {
+  timeout: 60_000,
+}, async () => {
+  const unbonded = BigInt(`0x${randomBytes(8).toString("hex")}`);
+  const registry = "eip155:42161:0x8004A169FB4a3325136EB29fA0ceB6D2e539a432";
+  await testDb.insert(operators).values({
+    agentId: unbonded,
+    chainId: 42161,
+    agentRegistry: registry,
+    name: "Unbonded operator",
+    cnfJwk: compiled.agent.cnf.jwk,
+  });
+  const s = await signer();
+  const m = mandateFor(s, (m) => {
+    m.agent.operator = { agent_registry: registry, agent_id: String(unbonded) };
+  });
+  const res = await post(s.page, (await sign(s.page, m)).body);
+  expect(res.status).toBe(422);
+  expect(res.body.type).toBe(problemType("mandate-binding-mismatch"));
+  expect(res.body.fields).toEqual(["agent.bond"]);
 });
 
 test("the server verifies and stores signed mandates (latency budget)", {

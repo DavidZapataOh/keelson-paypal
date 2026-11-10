@@ -1,12 +1,11 @@
 import { readFileSync } from "node:fs";
 import { KMSClient } from "@aws-sdk/client-kms";
 import { addresses } from "@keelson/chain";
-import { and, type Db, eq, operators, sql } from "@keelson/db";
+import type { Db } from "@keelson/db";
 import { createRelayer, kmsAccount, type Relayer } from "@keelson/relayer";
 import type { Logger } from "pino";
 import type { Address } from "viem";
-import { agentCnf } from "../src/compile-sources.ts";
-import { carts, testAgent } from "./tee-live.ts";
+import { carts, seedOperator } from "./tee-live.ts";
 
 const registry = JSON.parse(
   readFileSync(new URL("../../../contracts/deployments/421614.json", import.meta.url), "utf8"),
@@ -64,39 +63,7 @@ export async function kmsRelayer(db: Db, log: Logger): Promise<Relayer> {
 }
 
 /**
- * The demo operator's row, with {@link testAgent} as its agent. On a database where the operator
- * registered no agent key, this process's key stands in for the run; the returned function puts the
- * row back. A registered key is never replaced: the harness then cannot buy as the operator's agent.
+ * The demo operator's row with the harness agent key as its agent while it is unlinked; the returned
+ * function puts its key back, so a shared database does not keep a key no one holds.
  */
-export async function seedDemoOperator(db: Db): Promise<() => Promise<void>> {
-  await db
-    .insert(operators)
-    .values({
-      agentId: AGENT_ID,
-      chainId: 421614,
-      agentRegistry: "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
-      name: "Demo operator",
-      cnfJwk: testAgent.jwk,
-    })
-    .onConflictDoNothing();
-  const [row] = await db.select().from(operators).where(eq(operators.agentId, AGENT_ID));
-  const ours = await agentCnf({ cnfJwk: testAgent.jwk });
-  const theirs = row && (await agentCnf(row));
-  if (theirs?.jwk.kid === ours?.jwk.kid) return async () => {};
-  if (theirs) {
-    throw new Error(`operator ${AGENT_ID} registered its own agent key; buy with that key`);
-  }
-  const before = row?.cnfJwk ?? {};
-  await db.update(operators).set({ cnfJwk: testAgent.jwk }).where(eq(operators.agentId, AGENT_ID));
-  return async () => {
-    await db
-      .update(operators)
-      .set({ cnfJwk: before })
-      .where(
-        and(
-          eq(operators.agentId, AGENT_ID),
-          sql`${operators.cnfJwk} = ${JSON.stringify(testAgent.jwk)}::jsonb`,
-        ),
-      );
-  };
-}
+export const seedDemoOperator = (db: Db) => seedOperator(db, AGENT_ID);

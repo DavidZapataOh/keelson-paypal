@@ -208,9 +208,9 @@ try {
   await passkey.close();
   if (total.length < SAMPLES || percentile(total, 0.95) >= BUDGET_P95_MS) process.exitCode = 1;
 } finally {
+  await unseed();
   await evidence.close();
   await listener.close();
-  await unseed();
   await kv.close();
   await pool.end();
 }

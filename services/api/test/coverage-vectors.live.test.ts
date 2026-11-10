@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import {
+  addresses,
   passkeyPublicKey,
   type SignedAssertion,
   toAssertion,
@@ -58,8 +59,7 @@ const registry = JSON.parse(readFileSync(registryUrl, "utf8")) as {
 };
 const AGENT_ID = BigInt(registry.demo.agentId);
 /** The vault the coverage is locked in: `KeelsonBondVault`'s CREATE3 address, which the legs bind. */
-const VAULT = (process.env.KEELSON_BOND_VAULT ??
-  "0xb39898Ef4333f3CB32d1B420E744f5a1Aa2ae2Bf") as Address;
+const VAULT = addresses[421614].KeelsonBondVault as Address;
 
 interface Countersigned {
   mode: "2of2" | "degraded";
