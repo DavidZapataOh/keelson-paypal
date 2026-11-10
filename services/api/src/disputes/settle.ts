@@ -1,4 +1,5 @@
 import {
+  iPYUSDAbi,
   keelsonBondVaultAbi,
   keelsonReserveAbi,
   payWarrantyArgs,
@@ -14,6 +15,7 @@ import {
   inArray,
   isNull,
   lte,
+  ne,
   notInArray,
   or,
   purchases,
@@ -29,11 +31,20 @@ import {
   PayPalError,
   verdictRefund,
 } from "@keelson/paypal";
-import { type Relayer, RelayerError, type TxRecord } from "@keelson/relayer";
+import { EXTERNAL, type Relayer, RelayerError, type TxRecord } from "@keelson/relayer";
 import type { Logger } from "pino";
-import { type Hex, hexToBytes, type PublicClient, parseEventLogs } from "viem";
+import {
+  type Hex,
+  hexToBytes,
+  isAddressEqual,
+  type LocalAccount,
+  type PublicClient,
+  parseEventLogs,
+  zeroHash,
+} from "viem";
 import { settlementOf } from "../merchants.ts";
 import { call, type PayPalDeps } from "../paypal.ts";
+import { pyusdDomain, TREASURY_PAYS, treasuryCheck, treasuryTransfer } from "./treasury.ts";
 
 export interface SettleDeps {
   db: Db;
@@ -44,6 +55,8 @@ export interface SettleDeps {
   relayer?: Relayer | undefined;
   /** Reads the receipts of the relayed calls. */
   chain: { client: PublicClient };
+  /** Signs the treasury's PYUSD transfers; without it a verdict the chain refuses on the `pyusd` rail stays unpaid. */
+  treasury?: LocalAccount | undefined;
 }
 
 export type Settlement =
@@ -76,6 +89,8 @@ const FINAL = new Set([
 const PAYOUT_FAILED = new Set(["FAILED", "RETURNED", "REFUNDED", "REVERSED", "BLOCKED"]);
 const PAYOUT_DONE = new Set(["SUCCESS", ...PAYOUT_FAILED]);
 const SETTLES = { [OPERATOR]: "SLASHED", [KEELSON]: "WARRANTY_PAID" } as const;
+/** PYUSD base units per US cent. */
+const PYUSD_PER_MINOR = 10_000n;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 type Row = typeof verdicts.$inferSelect & {
@@ -120,8 +135,11 @@ const digestOf = (row: Row) => new Uint8Array(row.digest);
  * (Payments v2, under the verdict's `ksv1.` reference, while the dispute is an inquiry) and pays
  * the verdict's payee on chain: the operator's bond through `slash`, Keelson's reserve through
  * `payWarranty`. When the merchant settles through PayPal the payee is Keelson's treasury, which
- * then pays the merchant a PayPal Payout. Run as often as it is started: every call is keyed by the
- * verdict, every write conditional. A failure worth retrying throws.
+ * then pays the merchant a PayPal Payout. When the chain refuses a verdict that still holds (its
+ * window or deadline passed, the reserve ran dry), Keelson's treasury pays the payee the verdict's
+ * amount itself, within what the coverage has left, and an operator's unpaid fault is rated on
+ * ERC-8004. Run as often as it is started: every call is keyed by the verdict, every write
+ * conditional. A failure worth retrying throws.
  */
 export async function settleDispute(deps: SettleDeps, disputeId: string): Promise<Settlement> {
   let row = await load(deps.db, disputeId);
@@ -136,22 +154,19 @@ export async function settleDispute(deps: SettleDeps, disputeId: string): Promis
     );
     return { status: "none", disputeId };
   }
-  if (row.outcome === "failed") {
-    return { status: "failed", disputeId, failure: row.failure ?? "unknown" };
-  }
-
   if (row.outcome === null || row.outcome === "queued") {
     if (!deps.relayer) return { status: "pending", disputeId, waiting: "chain" };
     const moved = await onChain(deps, deps.relayer, row);
     row = (await load(deps.db, disputeId)) as Row;
-    if (moved && row.outcome !== "queued") return moved;
-    if (moved) {
+    if (moved && row.outcome === "queued") {
       await refund(deps, row);
       return moved;
     }
   }
   if (row.outcome === "failed") {
-    return { status: "failed", disputeId, failure: row.failure ?? "unknown" };
+    const unpaid = await fromTreasury(deps, row);
+    if (unpaid) return unpaid;
+    row = (await load(deps.db, disputeId)) as Row;
   }
   await refund(deps, row);
 
@@ -171,7 +186,8 @@ export async function settleDispute(deps: SettleDeps, disputeId: string): Promis
     "purchases",
     row.purchaseId,
     "ATTRIBUTED",
-    SETTLES[row.liable as 1 | 2],
+    // Keelson paid, whoever was at fault.
+    row.paidBy === "treasury" ? "WARRANTY_PAID" : SETTLES[row.liable as 1 | 2],
   );
   const txHash = row.txHash ? (`0x${Buffer.from(row.txHash).toString("hex")}` as Hex) : null;
   return { status: "settled", disputeId, outcome: row.outcome as "paid" | "claimable", txHash };
@@ -290,31 +306,23 @@ async function record(
   row: Row,
   submit: () => Promise<TxRecord>,
 ): Promise<Settlement | undefined> {
-  let tx: TxRecord | undefined;
+  let tx: TxRecord;
   try {
-    tx = await submit();
-    const deadline = Date.now() + PENDING_WAIT_MS;
-    while (tx?.status === "pending" && Date.now() < deadline) {
-      await sleep(250);
-      tx = await deps.relayer?.getById(tx.id);
-    }
+    tx = await confirmed(deps, row, submit);
   } catch (err) {
     const name =
       err instanceof RelayerError
         ? (err.detail as { error?: { name?: string } } | undefined)?.error?.name
-        : undefined;
+        : err instanceof Reverted
+          ? err.reason
+          : undefined;
     if (name && FINAL.has(name)) return fail(deps, row, name);
     throw err;
   }
-  if (tx?.status === "reverted" && tx.error && FINAL.has(tx.error.name)) {
-    return fail(deps, row, tx.error.name);
-  }
-  if (tx?.status !== "confirmed" || !tx.hash) {
-    throw new Error(`settlement of ${row.disputeId}: transaction ${tx?.status ?? "missing"}`);
-  }
+  const hash = tx.hash as Hex;
   // The relayer confirmed it through its own RPC; this one may serve the receipt a moment later.
   const receipt = await deps.chain.client.waitForTransactionReceipt({
-    hash: tx.hash,
+    hash,
     timeout: RECEIPT_WAIT_MS,
   });
   const events = parseEventLogs({
@@ -331,21 +339,22 @@ async function record(
       : queued
         ? "queued"
         : null;
-  if (!outcome) throw new Error(`${tx.hash} settled nothing for ${row.disputeId}`);
+  if (!outcome) throw new Error(`${hash} settled nothing for ${row.disputeId}`);
   const readyAt =
     queued?.eventName === "SlashQueued" ? new Date(Number(queued.args.readyAt) * 1000) : null;
   await deps.db
     .update(verdicts)
     .set({
       outcome,
+      paidBy: "chain",
       txId: tx.id,
-      txHash: Buffer.from(hexToBytes(tx.hash)),
+      txHash: Buffer.from(hexToBytes(hash)),
       readyAt,
       ...(outcome === "queued" ? {} : { settledAt: new Date() }),
     })
-    .where(eq(verdicts.id, row.id));
+    .where(and(eq(verdicts.id, row.id), or(isNull(verdicts.paidBy), eq(verdicts.paidBy, "chain"))));
   deps.log.info(
-    { disputeId: row.disputeId, outcome, txHash: tx.hash, latencyMs: tx.latencyMs },
+    { disputeId: row.disputeId, outcome, txHash: hash, latencyMs: tx.latencyMs },
     "dispute settled on chain",
   );
   return outcome === "queued"
@@ -353,8 +362,220 @@ async function record(
     : undefined;
 }
 
+/** A relayed call that reverted on chain, with the contract's error. */
+class Reverted extends Error {
+  readonly reason: string;
+
+  constructor(reason: string, message: string) {
+    super(message);
+    this.reason = reason;
+  }
+}
+
+/** Submits through the relayer and waits for the transaction to confirm; anything else throws. */
+async function confirmed(
+  deps: SettleDeps,
+  row: Row,
+  submit: () => Promise<TxRecord>,
+): Promise<TxRecord> {
+  let tx: TxRecord | undefined = await submit();
+  const deadline = Date.now() + PENDING_WAIT_MS;
+  while (tx?.status === "pending" && Date.now() < deadline) {
+    await sleep(250);
+    tx = await deps.relayer?.getById(tx.id);
+  }
+  const message = `settlement of ${row.disputeId}: ${tx?.contract}.${tx?.functionName} ${tx?.status ?? "missing"}`;
+  if (tx?.status === "reverted" && tx.error) throw new Reverted(tx.error.name, message);
+  if (tx?.status !== "confirmed" || !tx.hash) throw new Error(message);
+  return tx;
+}
+
+/**
+ * Pays from Keelson's treasury a verdict the chain refused although it holds: PYUSD to the payee
+ * on the `pyusd` rail, a PayPal Payout to the merchant on the `paypal` rail, never more than the
+ * verdict's amount nor than its coverage has left. Returns the settlement while the merchant is not
+ * paid yet, and nothing once it is: the buyer's refund then follows as after a chain payment.
+ */
+async function fromTreasury(deps: SettleDeps, row: Row): Promise<Settlement | undefined> {
+  const { disputeId } = row;
+  const failed: Settlement = { status: "failed", disputeId, failure: row.failure ?? "unknown" };
+  if (row.paidBy !== "treasury") {
+    if (!(await treasuryMayPay(deps, row))) return failed;
+    row.paidBy = "treasury";
+  }
+
+  let tx: TxRecord | undefined;
+  if (row.rail === "pyusd") {
+    if (!deps.treasury || !deps.relayer) return failed;
+    tx = await pyusdFromTreasury(deps, deps.relayer, deps.treasury, row);
+  } else {
+    if (!deps.paypal) return { status: "pending", disputeId, waiting: "payout" };
+    const status =
+      row.payoutStatus && PAYOUT_DONE.has(row.payoutStatus)
+        ? row.payoutStatus
+        : await payout(deps, deps.paypal, row);
+    if (PAYOUT_FAILED.has(status)) {
+      deps.log.error({ disputeId, status }, "the treasury's payout failed: the merchant is unpaid");
+      return { status: "failed", disputeId, failure: `payout ${status}` };
+    }
+    if (status !== "SUCCESS") return { status: "pending", disputeId, waiting: "payout" };
+  }
+  await deps.db
+    .update(verdicts)
+    .set({
+      outcome: "paid",
+      settledAt: new Date(),
+      ...(tx ? { txId: tx.id, txHash: Buffer.from(hexToBytes(tx.hash as Hex)) } : {}),
+    })
+    .where(and(eq(verdicts.id, row.id), eq(verdicts.outcome, "failed")));
+  deps.log.info(
+    {
+      disputeId,
+      rail: row.rail,
+      refused: row.failure,
+      txHash: tx?.hash,
+      batchId: row.payoutBatchId,
+    },
+    "dispute settled by the treasury",
+  );
+  // The merchant is paid: a rating that fails must not hold back the buyer's refund.
+  if (row.liable === OPERATOR && deps.relayer) await rateFault(deps, deps.relayer, row);
+  return undefined;
+}
+
+/**
+ * Commits the treasury to pay a refused verdict, once, when it should: the chain refused it for
+ * good, the verdict is 2-of-2 (a degraded one would have waited out the veto window), the chain
+ * would have accepted it otherwise, PayPal has not resolved the dispute, and its coverage, less
+ * what the treasury already committed to other verdicts on it, still covers the amount. The check
+ * and the commit hold the coverage's lock, so two disputes on one coverage cannot both overdraw it.
+ */
+async function treasuryMayPay(deps: SettleDeps, row: Row): Promise<boolean> {
+  const { disputeId } = row;
+  if (!TREASURY_PAYS.has(row.failure ?? "")) return false;
+  if (row.rail === "pyusd" ? !deps.treasury || !deps.relayer : !deps.paypal) return false;
+  const refuse = (reason: string, extra: Record<string, unknown> = {}) => {
+    deps.log.error({ disputeId, reason, ...extra }, "the treasury does not pay this verdict");
+    return false;
+  };
+  if (!signaturesOf(row).nitro) return refuse("degraded");
+  if (row.anchoredSize === null) return refuse("NotAnchored");
+  const [dispute] = await deps.db
+    .select({ status: sql<string | null>`${disputes.raw}->>'status'` })
+    .from(disputes)
+    .where(eq(disputes.id, disputeId));
+  if (dispute?.status === "RESOLVED") return refuse("resolved");
+  const v = verdictOf(row.message);
+  const check = await treasuryCheck(deps.chain.client, v, row.anchoredSize);
+  if (!check.pays) return refuse(check.reason);
+  return deps.db.transaction(async (db) => {
+    await db.execute(sql`select pg_advisory_xact_lock(hashtext(${v.coverageId}))`);
+    const [sum] = await db
+      .select({ minor: sql<string>`coalesce(sum(${verdicts.amountMinor}), 0)` })
+      .from(verdicts)
+      .where(
+        and(
+          sql`${verdicts.message}->>'coverageId' = ${v.coverageId}`,
+          eq(verdicts.paidBy, "treasury"),
+          ne(verdicts.id, row.id),
+        ),
+      );
+    const committed = BigInt(sum?.minor ?? 0) * PYUSD_PER_MINOR;
+    if (v.amount > check.remaining - committed) {
+      return refuse("ExceedsCoverage", {
+        amount: v.amount.toString(),
+        remaining: check.remaining.toString(),
+        committed: committed.toString(),
+      });
+    }
+    const [taken] = await db
+      .update(verdicts)
+      .set({ paidBy: "treasury" })
+      .where(and(eq(verdicts.id, row.id), eq(verdicts.outcome, "failed"), isNull(verdicts.paidBy)))
+      .returning({ id: verdicts.id });
+    if (!taken) throw new Error(`settlement of ${disputeId} was taken by another run`);
+    return true;
+  });
+}
+
+/**
+ * Relays the treasury's EIP-3009 transfer of the verdict's amount to the payee's payout address
+ * (or the payee), and confirms from the receipt that PYUSD moved it: PYUSD ignores a nonce it
+ * already used instead of reverting.
+ */
+async function pyusdFromTreasury(
+  deps: SettleDeps,
+  relayer: Relayer,
+  treasury: LocalAccount,
+  row: Row,
+): Promise<TxRecord> {
+  const v = verdictOf(row.message);
+  const check = await treasuryCheck(deps.chain.client, v, row.anchoredSize ?? 0n);
+  const to = check.pays ? check.recipient : v.payee;
+  const args = await treasuryTransfer(treasury, await pyusdDomain(deps.chain.client), {
+    to,
+    value: v.amount,
+    nonce: `0x${Buffer.from(row.digest).toString("hex")}`,
+  });
+  const tx = await confirmed(deps, row, () =>
+    relayer.submit({
+      chainId: CHAIN_ID,
+      contract: "PYUSD",
+      functionName: "transferWithAuthorization",
+      args,
+      key: `PYUSD.transferWithAuthorization:${v.disputeId}`,
+    }),
+  );
+  const receipt = await deps.chain.client.waitForTransactionReceipt({
+    hash: tx.hash as Hex,
+    timeout: RECEIPT_WAIT_MS,
+  });
+  const moved = parseEventLogs({ abi: iPYUSDAbi, logs: receipt.logs, eventName: "Transfer" }).some(
+    (e) =>
+      isAddressEqual(e.address, EXTERNAL[CHAIN_ID].PYUSD) &&
+      isAddressEqual(e.args.from, treasury.address) &&
+      isAddressEqual(e.args.to, to) &&
+      e.args.value === v.amount,
+  );
+  if (!moved) throw new Error(`${tx.hash} moved no PYUSD for ${row.disputeId}`);
+  return tx;
+}
+
+/**
+ * Rates the operator `-1.00` (`"keelson"`/`"uncollected"`) on the ERC-8004 Reputation registry for
+ * a fault its bond did not pay, once per verdict. Best effort: the merchant is already paid, so a
+ * refusal (the registry refuses an address the operator approved) or an outage is logged.
+ */
+async function rateFault(deps: SettleDeps, relayer: Relayer, row: Row): Promise<void> {
+  const v = verdictOf(row.message);
+  try {
+    const tx = await confirmed(deps, row, () =>
+      relayer.submit({
+        chainId: CHAIN_ID,
+        contract: "ReputationRegistry",
+        functionName: "giveFeedback",
+        args: [v.agentId, -100n, 2, "keelson", "uncollected", "", "", zeroHash],
+        key: `ReputationRegistry.giveFeedback:${v.disputeId}`,
+      }),
+    );
+    deps.log.info({ disputeId: row.disputeId, txHash: tx.hash }, "uncollected fault rated");
+  } catch (err) {
+    deps.log.error({ disputeId: row.disputeId, err }, "the uncollected fault was not rated");
+  }
+}
+
 async function fail(deps: SettleDeps, row: Row, failure: string): Promise<Settlement> {
-  await deps.db.update(verdicts).set({ outcome: "failed", failure }).where(eq(verdicts.id, row.id));
+  // A run that started before another settled the verdict must not undo it.
+  await deps.db
+    .update(verdicts)
+    .set({ outcome: "failed", failure })
+    .where(
+      and(
+        eq(verdicts.id, row.id),
+        or(isNull(verdicts.outcome), eq(verdicts.outcome, "queued")),
+        isNull(verdicts.paidBy),
+      ),
+    );
   deps.log.error({ disputeId: row.disputeId, failure }, "dispute cannot be settled on chain");
   return { status: "failed", disputeId: row.disputeId, failure };
 }
@@ -394,8 +615,8 @@ async function payout(deps: SettleDeps, paypal: PayPalDeps, row: Row): Promise<s
 
 /**
  * Settles again the verdicts that wait: queued slashes whose veto window closed, payouts PayPal
- * has not finished, and verdicts whose workflow run did not get to settle them. Returns how many
- * were tried.
+ * has not finished, treasury payments not made yet, and verdicts whose workflow run did not get to
+ * settle them. Returns how many were tried.
  */
 export async function resumeSettlements(deps: SettleDeps): Promise<number> {
   const waiting = await deps.db
@@ -415,11 +636,31 @@ export async function resumeSettlements(deps: SettleDeps): Promise<number> {
         ),
       ),
     )
+    .orderBy(verdicts.createdAt)
     .limit(20);
+  // Apart, so treasury payments that keep failing never crowd out the chain's.
+  const owed = await deps.db
+    .select({ disputeId: verdicts.disputeId })
+    .from(verdicts)
+    .where(
+      and(
+        eq(verdicts.outcome, "failed"),
+        eq(verdicts.paidBy, "treasury"),
+        or(isNull(verdicts.payoutStatus), notInArray(verdicts.payoutStatus, [...PAYOUT_DONE])),
+      ),
+    )
+    .orderBy(verdicts.createdAt)
+    .limit(5);
   for (const { disputeId } of waiting) {
     await settleDispute(deps, disputeId).catch((err: unknown) =>
       deps.log.warn({ err, disputeId }, "settlement retry failed"),
     );
   }
-  return waiting.length;
+  for (const { disputeId } of owed) {
+    // The treasury owes the merchant: every failed attempt is an alert.
+    await settleDispute(deps, disputeId).catch((err: unknown) =>
+      deps.log.error({ err, disputeId }, "treasury payment retry failed"),
+    );
+  }
+  return waiting.length + owed.length;
 }

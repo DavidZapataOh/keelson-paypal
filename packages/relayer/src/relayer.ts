@@ -22,7 +22,14 @@ import {
   toHex,
 } from "viem";
 import { sendRawTransactionSync } from "viem/actions";
-import { ABIS, type ContractName, ERRORS, type FunctionName, isAllowed } from "./allowlist.ts";
+import {
+  ABIS,
+  type ContractName,
+  ERRORS,
+  EXTERNAL,
+  type FunctionName,
+  isAllowed,
+} from "./allowlist.ts";
 import { CHAINS, type ChainId, type ChainSettings } from "./chains.ts";
 import { RelayerError, type RelayerErrorCode } from "./errors.ts";
 import { advanceNonce, allocateNonce, nextNonce, resyncNonce } from "./nonces.ts";
@@ -605,7 +612,9 @@ export function createRelayer(opts: {
           `${req.contract}.${req.functionName} is not relayable.`,
         );
       }
-      const to = deploymentsFor(req.chainId)[req.contract];
+      const to =
+        deploymentsFor(req.chainId)[req.contract] ??
+        EXTERNAL[req.chainId][req.contract as keyof (typeof EXTERNAL)[ChainId]];
       if (!to)
         throw new RelayerError(
           "not-allowed",

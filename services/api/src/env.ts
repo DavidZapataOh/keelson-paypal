@@ -39,6 +39,10 @@ const schema = z
       .custom<`0x${string}`>((v) => typeof v === "string" && /^0x[0-9a-fA-F]{64}$/.test(v))
       .optional(),
     DEMO_AGENT_ID: z.coerce.bigint().positive().optional(),
+    /** Keelson's treasury key: it pays in PYUSD the verdicts the chain refuses although they hold. */
+    KEELSON_TREASURY_KEY: z
+      .custom<`0x${string}`>((v) => typeof v === "string" && /^0x[0-9a-fA-F]{64}$/.test(v))
+      .optional(),
     ARBITRUM_ONE_RPC_URL: z.url().optional(),
     /** KMS key ids of the relayer's senders; each needs its chain's RPC URL and the relayer's AWS key. */
     RELAYER_KMS_KEY_SANDBOX: z.string().min(1).optional(),

@@ -9,6 +9,7 @@ import { createPublicClient, http } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { z } from "zod";
 import { type RunDeps, runDispute } from "./disputes/run.ts";
+import { treasuryFromKey } from "./disputes/treasury.ts";
 import { createKv } from "./kv.ts";
 import { relayerFromEnv } from "./onchain/relayer.ts";
 import { createPayPalDeps } from "./paypal.ts";
@@ -31,6 +32,9 @@ const Env = z.object({
   RELAYER_AWS_ACCESS_KEY_ID: z.string().min(1).optional(),
   RELAYER_AWS_SECRET_ACCESS_KEY: z.string().min(1).optional(),
   RELAYER_KMS_KEY_SANDBOX: z.string().min(1).optional(),
+  KEELSON_TREASURY_KEY: z
+    .custom<`0x${string}`>((v) => typeof v === "string" && /^0x[0-9a-fA-F]{64}$/.test(v))
+    .optional(),
   AWS_REGION: z.string().min(1).default("us-west-2"),
 });
 
@@ -44,6 +48,7 @@ async function connect(): Promise<RunDeps> {
   return {
     // Settles on chain only with the relayer's KMS key.
     relayer: await relayerFromEnv(env, db, log),
+    treasury: treasuryFromKey(env.KEELSON_TREASURY_KEY),
     db,
     kv: await createKv(env.REDIS_URL, log),
     log,

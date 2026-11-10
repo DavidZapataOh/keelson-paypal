@@ -83,6 +83,9 @@ services:
         sync: false
       - key: AWS_REGION
         value: us-west-2
+      # Pays from Keelson's treasury the verdicts the chain refuses although they hold.
+      - key: KEELSON_TREASURY_KEY
+        sync: false
       - key: DISPUTE_WORKFLOW
         value: keelson-workflows
       - key: RENDER_API_KEY
@@ -148,6 +151,8 @@ services:
       - key: RELAYER_AWS_ACCESS_KEY_ID
         sync: false
       - key: RELAYER_AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: KEELSON_TREASURY_KEY
         sync: false
 
   - type: web

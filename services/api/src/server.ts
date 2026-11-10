@@ -16,6 +16,7 @@ import { createApp } from "./app.ts";
 import { createAuth } from "./auth.ts";
 import { createChannel3 } from "./channel3/client.ts";
 import { type RunDeps, runDispute } from "./disputes/run.ts";
+import { treasuryFromKey } from "./disputes/treasury.ts";
 import { parseEnv } from "./env.ts";
 import { startHoldMaintenance } from "./hold/maintenance.ts";
 import { createKv } from "./kv.ts";
@@ -83,6 +84,7 @@ const chains = {
   },
 };
 const relayer = await relayerFromEnv(env, db, log);
+const treasury = treasuryFromKey(env.KEELSON_TREASURY_KEY);
 const paypal = createPayPalDeps(env);
 const certs = new CertStore(env.PAYPAL_ENV, {
   get: (key) => kv.get(key),
@@ -111,6 +113,7 @@ const disputeRun: RunDeps | undefined =
         rpcUrl: env.ARBITRUM_SEPOLIA_RPC_URL,
         tlog: { url: env.LOG_URL, token: env.LOG_WRITE_TOKEN },
         relayer,
+        treasury,
         anthropic: env.ANTHROPIC_API_KEY
           ? new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
           : undefined,
@@ -204,7 +207,14 @@ const stopValidations = relayer
   : undefined;
 
 const stopSettlements = relayer
-  ? startSettlementSweeper({ db, log, paypal, relayer, chain: chains[arbitrumSepolia.id] })
+  ? startSettlementSweeper({
+      db,
+      log,
+      paypal,
+      relayer,
+      treasury,
+      chain: chains[arbitrumSepolia.id],
+    })
   : undefined;
 
 const anchors =

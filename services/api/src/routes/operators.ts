@@ -10,6 +10,7 @@ import {
   reputationRegistryAbi,
   verifyOperatorLink,
 } from "@keelson/erc8004";
+import { CHAINS, isChainId } from "@keelson/relayer";
 import { calculateJwkThumbprint } from "jose";
 import { type Address, BaseError, ContractFunctionRevertedError, getAddress, type Hex } from "viem";
 import type { Deps } from "../app.ts";
@@ -199,7 +200,7 @@ const bond = createRoute({
   tags: ["operators"],
   summary: "Bond, reputation and validations of an agent",
   description:
-    'Read on-chain in one multicall: the vault\'s `bonds(agentId)`, the Reputation registry\'s `getSummary(agentId, [reporter], "keelson", "")` and its `"slash"` count, and the validation registry\'s `getSummary(agentId, [VerdictVerifier], "")`.',
+    'Read on-chain in one multicall: the vault\'s `bonds(agentId)`, the Reputation registry\'s `getSummary(agentId, [reporter, relayer], "keelson", "")` (coverage outcomes, and faults the bond did not pay) and its `"slash"` count, and the validation registry\'s `getSummary(agentId, [VerdictVerifier], "")`.',
   request: { params: z.object({ chainId: ChainId, agentId: AgentId }) },
   responses: {
     200: { description: "The bond", content: { "application/json": { schema: Bond } } },
@@ -429,7 +430,11 @@ export function registerOperators(app: OpenAPIHono, deps: Pick<Deps, "db" | "cha
         blockNumber,
         contracts: [
           { address: vault, abi: keelsonBondVaultAbi, functionName: "bonds", args: [agentId] },
-          { ...reputation, functionName: "getSummary", args: [agentId, [reporter], "keelson", ""] },
+          {
+            ...reputation,
+            functionName: "getSummary",
+            args: [agentId, keelsonClients(chainId, reporter), "keelson", ""],
+          },
           {
             ...reputation,
             functionName: "getSummary",
@@ -469,6 +474,14 @@ export function registerOperators(app: OpenAPIHono, deps: Pick<Deps, "db" | "cha
       200,
     );
   });
+}
+
+/**
+ * Keelson's ERC-8004 feedback clients on a chain: the reporter, which rates coverage outcomes, and
+ * the relayer, which rates the faults Keelson's treasury paid for.
+ */
+function keelsonClients(chainId: number, reporter: Address): Address[] {
+  return isChainId(chainId) ? [reporter, CHAINS[chainId].sender] : [reporter];
 }
 
 class ChainUnavailable extends Error {
