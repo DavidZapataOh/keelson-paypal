@@ -17,6 +17,8 @@ export const addresses: Record<ChainId, Readonly<Record<string, Address>>> = {
     KeelsonReputationReporter: "0x0D736293957C481626553Bec31e46913A21FBc25",
     KeelsonReserve: "0xd10Cb524B3C5EC3c60A420e8900e4f8C5aB88972",
     KeelsonValidationRegistry: "0x2405d211CaAdFbB193287882fAb76e8A5D41f714",
+    MandatePredicateReferenceVerifier: "0x7D82a52d7e5Cb71D594B2F826d769FF64b26B046",
+    MandatePredicateVerifier: "0x3940A0D26f0Fbac6e9d43Fe8b3F69B8bd6CDA2a0",
     NitroValidator: "0x3F09DAc4C09620329a0b292AF54B6f03378Fd74B",
     P384Verifier: "0x6fb8c2c0173425b8747900948E50d1f7A7baB3A2",
     TimelockController: "0xEDD241A9B8cf55765eDA7182483351555cf3E07e",

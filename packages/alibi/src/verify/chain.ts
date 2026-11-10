@@ -1,7 +1,9 @@
-import { checkpointAnchorAbi, verdictVerifierAbi } from "@keelson/chain";
+import { checkpointAnchorAbi, honkVerifierAbi, verdictVerifierAbi } from "@keelson/chain";
 import {
   type Address,
+  type BaseError,
   type Chain,
+  ContractFunctionRevertedError,
   createPublicClient,
   fallback,
   type Hex,
@@ -25,6 +27,8 @@ export interface ChainQuery {
   anchorBlock?: bigint;
   anchor: Address;
   verifier: Address;
+  /** A C1 proof to check with the deployed `MandatePredicateVerifier`. */
+  c1?: { verifier: Address; proof: Hex; publicInputs: Hex[] };
 }
 
 interface SignerRecord {
@@ -44,6 +48,8 @@ export interface ChainAnswer {
   blocks: Hex[];
   /** The `CheckpointAnchored` log of the anchor transaction, `null` when it holds none or does not exist. */
   anchorLog?: { origin: Hex; size: bigint; root: Hex; blockNumber: bigint } | null;
+  /** Whether the deployed C1 verifier accepts `ChainQuery.c1`; absent when not asked. */
+  c1?: boolean;
   /** The RPC that answered. */
   rpc: string;
   /** Whether that RPC was chosen by the caller rather than one of the public defaults. */
@@ -131,6 +137,24 @@ export function createChainReader(opts: ChainReaderOptions = {}): ChainReader {
             ),
           ),
           Promise.all(q.blocks.map((n) => client.getBlock({ blockNumber: n }).then((b) => b.hash))),
+          q.c1
+            ? client
+                .readContract({
+                  address: q.c1.verifier,
+                  abi: honkVerifierAbi,
+                  functionName: "verify",
+                  args: [q.c1.proof, q.c1.publicInputs],
+                })
+                .catch((err: unknown) => {
+                  // The verifier reverts on a proof it rejects; anything else is the RPC's failure.
+                  if (
+                    (err as BaseError).walk?.((e) => e instanceof ContractFunctionRevertedError)
+                  ) {
+                    return false;
+                  }
+                  throw err;
+                })
+            : Promise.resolve(undefined),
           q.anchorTx
             ? client.getTransactionReceipt({ hash: q.anchorTx }).catch((err: unknown) => {
                 if ((err as Error).name === "TransactionReceiptNotFoundError") return null;
@@ -145,7 +169,7 @@ export function createChainReader(opts: ChainReaderOptions = {}): ChainReader {
         }
         const failed = settled.find((s) => s.status === "rejected");
         if (failed) throw failed.reason;
-        const [, head, rootAt, latest, signers, allowed, blocks, receipt] = settled.map(
+        const [, head, rootAt, latest, signers, allowed, blocks, c1, receipt] = settled.map(
           (s) => (s as PromiseFulfilledResult<unknown>).value,
         ) as [
           number,
@@ -155,6 +179,7 @@ export function createChainReader(opts: ChainReaderOptions = {}): ChainReader {
           (readonly [number, number, number, number, Hex])[],
           boolean[],
           Hex[],
+          boolean | undefined,
           Awaited<ReturnType<typeof client.getTransactionReceipt>> | null | undefined,
         ];
         const out: ChainAnswer = {
@@ -169,6 +194,7 @@ export function createChainReader(opts: ChainReaderOptions = {}): ChainReader {
           })),
           allowed,
           blocks,
+          ...(c1 === undefined ? {} : { c1 }),
           rpc: answered,
           custom,
         };

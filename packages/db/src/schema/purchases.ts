@@ -72,6 +72,8 @@ export const purchases = pgTable(
     capturedAt: timestamp({ withTimezone: true }),
     /** The `keelson.eval/1` trace both legs signed over; its hash is the countersign's `evalHash`. */
     evalTrace: jsonb(),
+    /** Leg A's C1 `mandate_predicate` proof of the ALLOW: `{ proof, public_inputs }`. */
+    c1Proof: jsonb().$type<{ proof: string; public_inputs: string[] }>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

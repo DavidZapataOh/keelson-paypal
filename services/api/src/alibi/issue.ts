@@ -269,6 +269,7 @@ export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<vo
     },
     manifest: { public: evidence.manifest, disclosures: evidence.disclosures },
     ...(evidence.observation ? { channel3_observation: evidence.observation } : {}),
+    ...(p.c1Proof ? { zk: { c1: p.c1Proof } } : {}),
     paypal: {
       order_id: p.paypalOrderId,
       authorization_id: p.paypalAuthorizationId,

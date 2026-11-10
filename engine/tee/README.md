@@ -24,6 +24,12 @@ The first registration of a `sub` binds it to its passkey in a sealed user recor
 
 A request id is answered once per mandate. Right after authentication it is bound to the digest of the whole request (closed mandate, cart, PayPal unit, evidence, evidence root and observation), in one record that also holds its reservation and its answer and expires with the countersign. The same input gets the same countersign and reserves nothing more; any other input under the id fails with `replay` before anything is evaluated. A countersign that fails removes the record and its reservation.
 
+## Prove C1
+
+On leg A, an ALLOW whose request carries the mandate's `sealed_salt` (as registration returned it) also gets a C1 `mandate_predicate` proof (`circuits/c1`): that the mandate `C_m` commits to allows the cart's amount, currency, category and merchant at `issuedAt`, without revealing the mandate. Leg A opens the salt (sealed to the user and `M`), rebuilds the commitment's opening from the mandate, solves the circuit's witness in process with the ACVM, and proves it with `bb` 5.3.0 (the binary `@aztec/bb.js` 5.3.0 ships) over its msgpack pipe: UltraHonk with the keccak transcript and ZK, what the Solidity verifier and bb.js check. The public inputs are the countersign's `mandateCommitment`, `amount`, `currency`, `category`, `merchantId`, `issuedAt`, `cartHash` reduced modulo the BN254 scalar field, and `agentId`. Leg B has no root, cannot open the salt and proves nothing.
+
+The proof is in `Countersigned.c1`. A proof that cannot be made (a cart of several categories, a salt that does not open) is left out and the countersign stands on its signatures; a `bb` call that fails or takes over 5 s abandons that process, and the next proof starts a new one. The image ships `bb` with the glibc loader and `libc.so.6` it links, and the first 2^13 + 1 points of the Aztec Ignition CRS in `/crs` (`zk/bn254_g1.dat`), so proving never reaches the network. `circuits/c1/build.sh` writes the program and key in `zk/`, and CI checks they are what the circuit compiles to.
+
 ## Sign a checkpoint
 
 `Engine::sign_checkpoint` signs the EIP-712 `Checkpoint(bytes32 origin, uint64 treeSize, bytes32 rootHash)` that `CheckpointAnchor` accepts, for a c2sp.org/tlog-checkpoint signed note of one of the logs in `src/checkpoint.rs` (keys copied from `services/log/policy`):

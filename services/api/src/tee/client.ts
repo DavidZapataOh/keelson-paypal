@@ -65,6 +65,13 @@ const CountersignJsonSchema = z.strictObject({
 });
 export type CountersignJson = z.infer<typeof CountersignJsonSchema>;
 
+/** A C1 `mandate_predicate` proof: UltraHonk for the EVM and its eight public inputs. */
+const ZkProofSchema = z.strictObject({
+  proof: z.base64(),
+  public_inputs: z.array(Hex32).length(8),
+});
+export type ZkProof = z.infer<typeof ZkProofSchema>;
+
 const CountersignedSchema = z.strictObject({
   countersign: CountersignJsonSchema,
   digest: Hex32,
@@ -73,6 +80,8 @@ const CountersignedSchema = z.strictObject({
   tee: z.number(),
   trace_jcs: z.string(),
   observation: ObservationSchema,
+  /** Leg A's proof of an ALLOW whose request carried the sealed salt. */
+  c1: ZkProofSchema.optional(),
 });
 export type Countersigned = z.infer<typeof CountersignedSchema>;
 
@@ -189,6 +198,8 @@ export interface CountersignRequest {
   /** Leg A reads this PayPal authorization; leg B takes `observation` instead. */
   authorization_id?: string;
   observation?: Observation;
+  /** The mandate's commitment salt as leg A sealed it, standard base64; leg A proves C1 with it. */
+  sealed_salt?: string;
 }
 
 /** The body of `POST /v1/mandates/register` on leg A. */

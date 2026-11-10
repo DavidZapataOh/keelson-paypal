@@ -33,13 +33,19 @@ nitro = [
 ]
 
 [dependencies]
+acir = "1.0.0"
+acvm = "1.0.0"
 aes-gcm = { version = "0.11.1", features = ["zeroize"] }
 alloy-primitives = { version = "1.7.3", features = ["serde"] }
 alloy-sol-types = "1.7.3"
 aws-nitro-enclaves-nsm-api = { version = "=0.5.2", optional = true }
+# The pipe backend only: the FFI backend downloads a glibc static library at build time.
+barretenberg-rs = { version = "=5.3.0", default-features = false, features = ["native"] }
 axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "tokio"] }
 base64 = "0.23.1"
+bn254_blackbox_solver = "1.0.0"
 ed25519-dalek = { version = "3.0.0", default-features = false }
+flate2 = "1.1.9"
 getrandom = "0.4.3"
 hkdf = "0.13.0"
 http-body-util = { version = "0.1.5", optional = true }
