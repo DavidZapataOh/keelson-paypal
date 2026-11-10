@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.38;
 
+import {CoverageVector, Vector} from "../script/CoverageVector.sol";
 import {DeployMandateViolationCourt} from "../script/DeployMandateViolationCourt.s.sol";
 import {MandateViolationCourt} from "../src/MandateViolationCourt.sol";
+import {KeelsonTypes} from "../src/libraries/KeelsonTypes.sol";
 import {IHonkVerifier} from "./MandatePredicateVerifier.t.sol";
 import {ForkTest} from "./utils/Fork.sol";
 import {stdJson} from "forge-std/StdJson.sol";
@@ -42,6 +44,28 @@ contract MandateViolationLiveTest is ForkTest {
                 assertTrue(IHonkVerifier(verifier).verify(proof, inputs), classes[k]);
                 assertTrue(IHonkVerifier(standard).verify(proof, inputs), classes[k]);
             }
+        }
+    }
+
+    /// @dev A purchase the live legs countersigned and the live vault covers complied with its mandate: no proof of any
+    /// violation class fits it, so the deployed court cannot convict it.
+    function test_ALiveCompliantPurchaseCannotBeConvicted() public {
+        string memory json = _jsonOf(421614);
+        if (!vm.keyExistsJson(json, ".contracts.MandateViolationCourt")) return;
+        vm.createSelectFork(vm.envString(json.readString(".rpcEnv")));
+        MandateViolationCourt court = MandateViolationCourt(json.readAddress(".contracts.MandateViolationCourt"));
+        Vector memory v = CoverageVector.read(
+            vm.readFile(string.concat(vm.projectRoot(), "/test/vectors/coverage-live.json")),
+            json.readAddress(".demo.merchant"),
+            uint40(json.readUint(".params.disputeWindow"))
+        );
+        assertEq(court.vault().coverageHash(v.coverage.coverageId), KeelsonTypes.hash(v.coverage), "locked live");
+        string[5] memory classes = ["amount", "currency", "category", "expiry", "merchant"];
+        for (uint8 code = 1; code <= 5; ++code) {
+            string memory p =
+                vm.readFile(string.concat(vm.projectRoot(), "/test/vectors/c2a-", classes[code - 1], ".json"));
+            vm.expectRevert(MandateViolationCourt.InvalidProof.selector);
+            court.proveViolation(v.coverage, v.countersign, v.countersigs, code, p.readBytes(".proof"));
         }
     }
 
