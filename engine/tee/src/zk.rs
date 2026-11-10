@@ -1,5 +1,7 @@
 //! C1 `mandate_predicate` proofs (`circuits/c1`): the countersigned cart satisfies the mandate
-//! `C_m` commits to, shown without the mandate.
+//! `C_m` commits to, shown without the mandate. Each proof is made twice from one witness: for the
+//! EVM (keccak transcript), which contracts and bb.js check, and for recursion (Poseidon2
+//! transcript), which a Noir circuit verifies to compose C1 with C3.
 //!
 //! The circuit is executed in process with the ACVM, and the proof is made by a long-lived `bb`
 //! child process over its msgpack pipe (`barretenberg-rs`). `bb` reads the CRS from the directory
@@ -30,6 +32,9 @@ use serde::Deserialize;
 const ARTIFACT: &str = include_str!("../zk/mandate_predicate.json");
 /// The circuit's UltraHonk verification key for the EVM target (keccak transcript, ZK).
 pub const VERIFICATION_KEY: &[u8] = include_bytes!("../zk/mandate_predicate.vk");
+/// The circuit's UltraHonk verification key for recursion (Poseidon2 transcript, ZK).
+pub const RECURSIVE_VERIFICATION_KEY: &[u8] =
+    include_bytes!("../zk/mandate_predicate.recursive.vk");
 /// The CRS points the circuit needs: one more than its 2^13 rows, 64 bytes each.
 const CRS_POINTS: u64 = (1 << 13) + 1;
 
@@ -54,11 +59,15 @@ pub struct Statement {
     pub operator_id: FieldElement,
 }
 
-/// A C1 proof as `bb` writes it for the EVM: the proof bytes and its 32-byte public inputs.
+/// A C1 proof as `bb` writes it for the EVM: the proof bytes and its 32-byte public inputs, with
+/// the proof of the same witness for recursion.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C1Proof {
     pub proof: Vec<u8>,
     pub public_inputs: Vec<[u8; 32]>,
+    /// The proof's fields for `bb prove -t noir-recursive`, 32 bytes each; none when only that
+    /// proof failed, so the EVM proof is still served.
+    pub recursive_proof: Option<Vec<u8>>,
 }
 
 #[derive(Debug)]
@@ -91,6 +100,17 @@ fn evm() -> ProofSystemSettings {
     ProofSystemSettings {
         ipa_accumulation: false,
         oracle_hash_type: "keccak".into(),
+        disable_zk: false,
+        optimized_solidity_verifier: false,
+    }
+}
+
+/// UltraHonk with the Poseidon2 transcript and ZK: what `bb prove -t noir-recursive` makes and
+/// `std::verify_proof_with_type` checks in a circuit.
+fn noir_recursive() -> ProofSystemSettings {
+    ProofSystemSettings {
+        ipa_accumulation: false,
+        oracle_hash_type: "poseidon2".into(),
         disable_zk: false,
         optimized_solidity_verifier: false,
     }
@@ -173,13 +193,25 @@ impl Prover {
         GzDecoder::new(stack.as_slice())
             .read_to_end(&mut witness)
             .map_err(|e| ProverError::Backend(e.to_string()))?;
-        let circuit = CircuitInput {
+        let circuit = |vk: &[u8]| CircuitInput {
             name: "mandate_predicate".into(),
             bytecode: self.bytecode.clone(),
-            verification_key: VERIFICATION_KEY.to_vec(),
+            verification_key: vk.to_vec(),
         };
-        let out = self.call(move |api| api.circuit_prove(circuit, &witness, evm()))?;
+        let (evm_circuit, recursive_circuit) = (
+            circuit(VERIFICATION_KEY),
+            circuit(RECURSIVE_VERIFICATION_KEY),
+        );
+        let recursive_witness = witness.clone();
+        let out = self.call(move |api| api.circuit_prove(evm_circuit, &witness, evm()))?;
+        let recursive = self
+            .call(move |api| {
+                api.circuit_prove(recursive_circuit, &recursive_witness, noir_recursive())
+            })
+            .map_err(|e| eprintln!("keelson-engine: no recursive C1 proof: {e}"))
+            .ok();
         Ok(C1Proof {
+            recursive_proof: recursive.map(|r| r.proof.concat()),
             proof: out.proof.concat(),
             public_inputs: out
                 .public_inputs
@@ -196,6 +228,19 @@ impl Prover {
         let fields = proof.proof.chunks(32).map(<[u8]>::to_vec).collect();
         let out =
             self.call(move |api| api.circuit_verify(VERIFICATION_KEY, inputs, fields, evm()))?;
+        Ok(out.verified)
+    }
+
+    /// Verifies `proof`'s recursive proof against the embedded recursive key with the same `bb`.
+    pub fn verify_recursive(&self, proof: &C1Proof) -> Result<bool, ProverError> {
+        let inputs = proof.public_inputs.iter().map(|f| f.to_vec()).collect();
+        let Some(recursive) = &proof.recursive_proof else {
+            return Ok(false);
+        };
+        let fields = recursive.chunks(32).map(<[u8]>::to_vec).collect();
+        let out = self.call(move |api| {
+            api.circuit_verify(RECURSIVE_VERIFICATION_KEY, inputs, fields, noir_recursive())
+        })?;
         Ok(out.verified)
     }
 

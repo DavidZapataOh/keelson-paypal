@@ -8,7 +8,7 @@ import { pino } from "pino";
 import { createPublicClient, http } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { z } from "zod";
-import { arbitrumSepoliaRpcUrls, rpcTransport } from "./chain/rpc.ts";
+import { arbitrumSepoliaTransport } from "./chain/rpc.ts";
 import { type RunDeps, runDispute } from "./disputes/run.ts";
 import { treasuryFromKey } from "./disputes/treasury.ts";
 import { resetJudges } from "./judge.ts";
@@ -18,6 +18,7 @@ import { createPayPalDeps } from "./paypal.ts";
 import "./redteam.ts";
 import { calibrate, gradeOf } from "./risk.ts";
 import { createTee } from "./tee/config.ts";
+import { awaitingC3, proveAnonymousPurchase } from "./zk/c1c3.ts";
 import { c3SaltKey, proveAnonymousMandate, publishUserSetRoots } from "./zk/c3.ts";
 
 const Env = z.object({
@@ -63,7 +64,7 @@ async function connect(): Promise<RunDeps> {
     chain: {
       client: createPublicClient({
         chain: arbitrumSepolia,
-        transport: rpcTransport(arbitrumSepoliaRpcUrls(env.ARBITRUM_SEPOLIA_RPC_URL)),
+        transport: arbitrumSepoliaTransport(env.ARBITRUM_SEPOLIA_RPC_URL),
       }),
       logs: createPublicClient({ chain: arbitrumSepolia, transport: http() }),
     },
@@ -106,6 +107,7 @@ task(
     name: "proveAnonymousMandate",
     retry: { maxRetries: 3, waitDurationMs: 2_000, backoffScaling: 2 },
     timeoutSeconds: 300,
+    // The composition of purchases logged before the proof needs about 2.8 GB.
     plan: "4c-8g",
   },
   async function proveC3(_ctx, mandateId: string) {
@@ -129,7 +131,42 @@ task(
     // A retry finds the proof stored and publishes again: the salt is kept until the root is on chain.
     if (relayer) await publishUserSetRoots({ db, relayer, log });
     await kv.del(key);
+    // Purchases logged before this proof existed are composed now, on this instance.
+    for (const purchaseId of await awaitingC3(db, mandateId)) {
+      await proveAnonymousPurchase({ db, log }, purchaseId).catch((err: unknown) =>
+        log.warn({ err, purchaseId }, "not composed"),
+      );
+    }
     return { mandateId, proved: true };
+  },
+);
+
+/**
+ * Composes a logged purchase's C1 proof with its mandate's C3 proof into one proof. The proofs are
+ * public, so nothing secret reaches the task. About 2.8 GB and 11-13 s on four cores.
+ */
+task(
+  {
+    name: "proveAnonymousPurchase",
+    retry: { maxRetries: 2, waitDurationMs: 5_000, backoffScaling: 2 },
+    timeoutSeconds: 300,
+    plan: "4c-8g",
+  },
+  async function composeC1C3(_ctx, purchaseId: string) {
+    deps ??= connect().catch((err: unknown) => {
+      deps = undefined;
+      throw err;
+    });
+    const { db, log } = await deps;
+    const started = Date.now();
+    try {
+      await proveAnonymousPurchase({ db, log }, purchaseId);
+    } catch (err) {
+      if (!(err instanceof RangeError)) throw err;
+      log.warn({ err, purchaseId }, "nothing to compose");
+      return { purchaseId, proved: false };
+    }
+    return { purchaseId, proved: true, ms: Date.now() - started };
   },
 );
 

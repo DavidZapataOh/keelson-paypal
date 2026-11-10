@@ -1,6 +1,7 @@
 import { Writable } from "node:stream";
 import { pino } from "pino";
 import { parseUnits } from "viem";
+import { arbitrumSepolia } from "viem/chains";
 import { beforeAll, describe, expect, test } from "vitest";
 import { kmsAccount } from "../src/kms.ts";
 import { allocateNonce, nextNonce } from "../src/nonces.ts";
@@ -34,13 +35,21 @@ describe.skipIf(!live || !kms)(
         client: kms?.client as never,
       });
       address = account.address;
-      relayer = createRelayer({ db: testDb, log, chains: { 421614: { rpcUrl, account } } });
+      relayer = createRelayer({
+        db: testDb,
+        log,
+        chains: {
+          421614: { rpcUrl, fallbackRpcUrls: [...arbitrumSepolia.rpcUrls.default.http], account },
+        },
+      });
     });
 
     test("an allocated nonce that is never sent heals within one sequencer expiry", async () => {
-      const { createPublicClient, http } = await import("viem");
-      const { arbitrumSepolia } = await import("viem/chains");
-      const client = createPublicClient({ chain: arbitrumSepolia, transport: http(rpcUrl) });
+      const { createPublicClient, fallback, http } = await import("viem");
+      const client = createPublicClient({
+        chain: arbitrumSepolia,
+        transport: fallback([http(rpcUrl), http()]),
+      });
       const count = async () =>
         BigInt(await client.getTransactionCount({ address, blockTag: "pending" }));
       const gap = await allocateNonce(testDb, 421614, address, count);

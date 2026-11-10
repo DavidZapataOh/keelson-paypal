@@ -20,6 +20,7 @@ export {
 } from "./checkout.ts";
 export { injectedListing, injectionText, storeMandate } from "./demo.ts";
 export { StoreBrowser, type StoreBrowserOptions } from "./driver.ts";
+export { type PayAction, PayGate } from "./gate.ts";
 export {
   type ApiClientOptions,
   agentKey,
@@ -29,4 +30,14 @@ export {
   operatorMandates,
 } from "./keelson.ts";
 export { openSession, type Session, type SessionSource, VIEWPORT } from "./kernel.ts";
+export {
+  bare,
+  type CheckoutRun,
+  type LiveStore,
+  liveObservations,
+  paypalTransactionId,
+  quoteShopify,
+  runCheckout,
+} from "./live.ts";
+export { ALFRED, LIVE_ITEM, liveMandate } from "./live-store.ts";
 export { isAllowed } from "./policy.ts";

@@ -29,7 +29,7 @@ paths = [
   '''engine/tee/zk/.*''',
   '''packages/alibi/src/verify/c1-vk\.ts''',
   '''contracts/test/vectors/c1-proof\.json''',
-  '''circuits/c1/(Prover\.toml|src/vectors\.nr)''',
+  '''circuits/c1/(Prover(_[a-z]+)?\.toml|src/vectors\.nr)''',
 ]
 
 [[allowlists]]
