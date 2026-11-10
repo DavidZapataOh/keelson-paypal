@@ -54,16 +54,16 @@ The demo store at https://store.keelson.finance sells as RunFast, a PayPal sandb
 
 https://app.keelson.finance/judge opens a temporary tenant with one click (no keys, no sign-up) and walks through the live product in nine steps: a real mandate, the agent run that bought under it and the injected run Keelson blocked, its Alibi in the verifier, a PayPal sandbox dispute with its signed verdict and settlement, the demo merchant's console (read only), the operator's grade, the red-team scoreboard and live status. A judge reads the demo merchant's console and asks its assistant on a budget of its own; it changes nothing, and the nightly reset closes it after 12 hours. https://app.keelson.finance/status shows the health of each dependency.
 
-| Dependency | Runs on |
-|---|---|
-| PayPal | Sandbox: no real money moves |
-| Arbitrum Sepolia (bond vault, reserve, verdict verifier, checkpoint anchor) | Testnet, test PYUSD |
-| TEE leg A, Intel TDX on Phala Cloud | Production hardware |
-| TEE leg B, AWS Nitro Enclaves | Production hardware |
-| Alibi log and witnesses | Production |
-| Claude (Anthropic API) | Production |
-| Agent browser (Kernel) | Production |
-| Demo store (RunFast) | Ours, PayPal sandbox checkout |
+| Dependency                                                                  | Runs on                       |
+| --------------------------------------------------------------------------- | ----------------------------- |
+| PayPal                                                                      | Sandbox: no real money moves  |
+| Arbitrum Sepolia (bond vault, reserve, verdict verifier, checkpoint anchor) | Testnet, test PYUSD           |
+| TEE leg A, Intel TDX on Phala Cloud                                         | Production hardware           |
+| TEE leg B, AWS Nitro Enclaves                                               | Production hardware           |
+| Alibi log and witnesses                                                     | Production                    |
+| Claude (Anthropic API)                                                      | Production                    |
+| Agent browser (Kernel)                                                      | Production                    |
+| Demo store (RunFast)                                                        | Ours, PayPal sandbox checkout |
 
 `JUDGE_LIVE_ORIGIN=https://app.keelson.finance pnpm --filter @keelson/web exec vitest run test/e2e/judge.live.test.ts` runs the judge's journey on production from a clean browser; `.github/workflows/judge-journey.yml` runs it every hour and opens an issue when it fails.
 
