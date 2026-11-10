@@ -978,6 +978,9 @@ importers:
       '@keelson/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@keelson/erc8004':
+        specifier: workspace:*
+        version: link:../../packages/erc8004
       '@keelson/evidence':
         specifier: workspace:*
         version: link:../../packages/evidence
@@ -987,12 +990,18 @@ importers:
       '@onkernel/sdk':
         specifier: 0.142.0
         version: 0.142.0
+      jose:
+        specifier: 6.2.15
+        version: 6.2.15
       playwright:
         specifier: 1.64.1
         version: 1.64.1
       ulid:
         specifier: 3.0.2
         version: 3.0.2
+      viem:
+        specifier: 'catalog:'
+        version: 2.57.16(typescript@7.0.2)(zod@4.6.7)
       zod:
         specifier: 'catalog:'
         version: 4.6.7
