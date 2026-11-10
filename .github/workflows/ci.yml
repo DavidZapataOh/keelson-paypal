@@ -171,6 +171,7 @@ jobs:
       - uses: ./.github/actions/select-rpc
         with:
           alchemy-api-key: ${{ secrets.ALCHEMY_API_KEY }}
+          drpc-arbitrum-sepolia-url: ${{ secrets.DRPC_ARBITRUM_SEPOLIA_URL }}
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
@@ -271,6 +272,7 @@ jobs:
       - uses: ./.github/actions/select-rpc
         with:
           alchemy-api-key: ${{ secrets.ALCHEMY_API_KEY }}
+          drpc-arbitrum-sepolia-url: ${{ secrets.DRPC_ARBITRUM_SEPOLIA_URL }}
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
@@ -317,6 +319,7 @@ jobs:
       - uses: ./.github/actions/select-rpc
         with:
           alchemy-api-key: ${{ secrets.ALCHEMY_API_KEY }}
+          drpc-arbitrum-sepolia-url: ${{ secrets.DRPC_ARBITRUM_SEPOLIA_URL }}
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
@@ -446,6 +449,7 @@ jobs:
       - uses: ./.github/actions/select-rpc
         with:
           alchemy-api-key: ${{ secrets.ALCHEMY_API_KEY }}
+          drpc-arbitrum-sepolia-url: ${{ secrets.DRPC_ARBITRUM_SEPOLIA_URL }}
       - uses: ./.github/actions/setup-foundry
         with:
           version: v1.9.0
@@ -491,6 +495,7 @@ jobs:
       - uses: ./.github/actions/select-rpc
         with:
           alchemy-api-key: ${{ secrets.ALCHEMY_API_KEY }}
+          drpc-arbitrum-sepolia-url: ${{ secrets.DRPC_ARBITRUM_SEPOLIA_URL }}
       - uses: ./.github/actions/setup-foundry
         with:
           version: v1.9.0
