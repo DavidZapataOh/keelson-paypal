@@ -33,7 +33,8 @@ const ARTIFACT: &str = include_str!("../zk/mandate_predicate.json");
 /// The circuit's UltraHonk verification key for the EVM target (keccak transcript, ZK).
 pub const VERIFICATION_KEY: &[u8] = include_bytes!("../zk/mandate_predicate.vk");
 /// The circuit's UltraHonk verification key for recursion (Poseidon2 transcript, ZK).
-pub const RECURSIVE_VERIFICATION_KEY: &[u8] = include_bytes!("../zk/mandate_predicate.recursive.vk");
+pub const RECURSIVE_VERIFICATION_KEY: &[u8] =
+    include_bytes!("../zk/mandate_predicate.recursive.vk");
 /// The CRS points the circuit needs: one more than its 2^13 rows, 64 bytes each.
 const CRS_POINTS: u64 = (1 << 13) + 1;
 
@@ -197,8 +198,10 @@ impl Prover {
             bytecode: self.bytecode.clone(),
             verification_key: vk.to_vec(),
         };
-        let (evm_circuit, recursive_circuit) =
-            (circuit(VERIFICATION_KEY), circuit(RECURSIVE_VERIFICATION_KEY));
+        let (evm_circuit, recursive_circuit) = (
+            circuit(VERIFICATION_KEY),
+            circuit(RECURSIVE_VERIFICATION_KEY),
+        );
         let recursive_witness = witness.clone();
         let out = self.call(move |api| api.circuit_prove(evm_circuit, &witness, evm()))?;
         let recursive = self
