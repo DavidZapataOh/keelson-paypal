@@ -20,7 +20,6 @@ import {
   rpcTransport,
   startRpcReport,
 } from "../src/chain/rpc.ts";
-import { releaseCoverages } from "../src/onchain/validations.ts";
 import { testDb, testKv } from "./setup.ts";
 
 const servers: Server[] = [];
@@ -79,52 +78,6 @@ test("the public RPC follows a configured one, once", () => {
   expect(arbitrumSepoliaRpcUrls(ARBITRUM_SEPOLIA_PUBLIC_RPC)).toEqual([
     ARBITRUM_SEPOLIA_PUBLIC_RPC,
   ]);
-});
-
-describe("the coverage release sweep", { timeout: 60_000 }, () => {
-  const sweep = async (transport: ReturnType<typeof rpcTransport>) => {
-    const client = createPublicClient({ chain: arbitrumSepolia, transport }) as PublicClient;
-    return releaseCoverages({
-      db: testDb,
-      kv: testKv,
-      log: pino({ level: "silent" }),
-      relayer: createRelayer({ db: testDb, log: pino({ level: "silent" }), chains: {} }),
-      chain: { client, logs: client },
-    });
-  };
-
-  const key = `KeelsonBondVault.lockCoverage:${bytesToHex(randomBytes(32))}`;
-  afterAll(async () => {
-    await testDb.delete(chainTxs).where(eq(chainTxs.key, key));
-  });
-
-  beforeAll(async () => {
-    // A lock whose coverage the vault never held: the sweep reads it and has nothing to release.
-    await testDb.insert(chainTxs).values({
-      id: ulid(),
-      chainId: arbitrumSepolia.id,
-      key,
-      contract: "KeelsonBondVault",
-      function: "lockCoverage",
-      sender: Buffer.alloc(20),
-      to: Buffer.alloc(20),
-      data: Buffer.alloc(0),
-      dataHash: Buffer.alloc(32),
-      status: "confirmed",
-      confirmedAt: new Date(),
-    });
-  });
-
-  test("reads the vault through the public RPC when the configured one is rate-limited", async () => {
-    const primary = await endpoint(429, '{"error":"Monthly capacity limit exceeded"}');
-    expect(await sweep(arbitrumSepoliaTransport(primary.url))).toBe(0);
-    expect(primary.hits.count).toBeGreaterThan(0);
-  });
-
-  test("fails without a fallback", async () => {
-    const primary = await endpoint(429, '{"error":"Monthly capacity limit exceeded"}');
-    await expect(sweep(rpcTransport([primary.url]))).rejects.toThrow();
-  });
 });
 
 test("every Arbitrum Sepolia transport goes through the shared fallback", () => {

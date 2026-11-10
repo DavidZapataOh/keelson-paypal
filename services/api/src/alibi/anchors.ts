@@ -1,6 +1,19 @@
 import { addresses, checkpointAnchorAbi } from "@keelson/chain";
 import { fromHex, toHex } from "@keelson/core";
-import { alibis, and, asc, type Db, eq, isNull, lt, or, purchases, sql } from "@keelson/db";
+import {
+  alibis,
+  and,
+  asc,
+  chainEvents,
+  type Db,
+  desc,
+  eq,
+  isNull,
+  lt,
+  or,
+  purchases,
+  sql,
+} from "@keelson/db";
 import {
   LOG_HOST,
   LOG_ORIGINS,
@@ -10,118 +23,90 @@ import {
   verifyWitnessedCheckpoint,
 } from "@keelson/log";
 import type { Logger } from "pino";
-import type { RedisClientType } from "redis";
 import {
   type Address,
   decodeFunctionData,
   type Hex,
   hexToString,
-  isAddressEqual,
   keccak256,
   type PublicClient,
-  parseEventLogs,
   stringToBytes,
 } from "viem";
+import { ingestReceipt } from "../chain/events.ts";
 import type { LogConfig } from "../log/append.ts";
 
-/** The block `CheckpointAnchor` was deployed at, where the search for its events starts. */
-const DEPLOYED_AT: Readonly<Record<number, bigint>> = { 421614: 327_211_576n };
-const INTERVAL_MS = 30_000;
 const BATCH = 50;
-/** The block range of one `eth_getLogs` call. */
-const LOG_RANGE = 100_000n;
-/** About 5 s of Arbitrum blocks, so a block the RPC has not indexed yet is scanned on a later pass. */
-const CONFIRMATIONS = 20n;
 
 export interface AnchorDeps {
   db: Db;
-  kv: RedisClientType;
   log: Logger;
-  /** `logs` serves `eth_getLogs` over wide ranges. */
-  chain: { client: PublicClient; logs?: PublicClient };
+  chain: { client: PublicClient };
   tlog: LogConfig;
 }
 
 interface Anchored {
+  size: bigint;
+  /** When the event was stored: within a second or so of its block, live. */
+  seenAt: Date;
+  root: Hex;
   txHash: Hex;
   blockNumber: string;
-  root: Hex;
 }
 
-const cursorKey = (chainId: number) => `alibi:anchors:${chainId}`;
-const eventsKey = (chainId: number) => `alibi:anchors:${chainId}:events`;
+const anchoredRow = {
+  size: sql<string>`${chainEvents.args}->>'size'`,
+  root: sql<Hex>`${chainEvents.args}->>'root'`,
+  txHash: chainEvents.txHash,
+  blockNumber: chainEvents.blockNumber,
+  seenAt: chainEvents.createdAt,
+};
+const toAnchored = (r: {
+  size: string;
+  root: Hex;
+  txHash: Buffer;
+  blockNumber: bigint;
+  seenAt: Date;
+}) => ({
+  size: BigInt(r.size),
+  seenAt: r.seenAt,
+  root: r.root,
+  txHash: toHex(r.txHash) as Hex,
+  blockNumber: String(r.blockNumber),
+});
 
-/** The `CheckpointAnchored` event of `size` for `origin`, scanning new blocks once. */
-async function anchoredAt(
-  deps: AnchorDeps,
+/** The latest stored `CheckpointAnchored` event of `origin`. */
+export async function latestAnchor(
+  db: Db,
   chainId: number,
   originHash: Hex,
-  size: bigint,
 ): Promise<Anchored | undefined> {
-  const field = `${originHash}:${size}`;
-  const known = await deps.kv.hGet(eventsKey(chainId), field);
-  if (known) return JSON.parse(known) as Anchored;
-  const contract = addresses[chainId as 421614].CheckpointAnchor as Address;
-  const cursor = await deps.kv.get(cursorKey(chainId));
-  const fromBlock = cursor ? BigInt(cursor) + 1n : (DEPLOYED_AT[chainId] ?? 0n);
-  // Head and logs from the same RPC, kept CONFIRMATIONS behind its head: a block that RPC has not
-  // indexed yet is never passed by the cursor.
-  const logClient = deps.chain.logs ?? deps.chain.client;
-  const latest = (await logClient.getBlockNumber()) - CONFIRMATIONS;
-  for (let from = fromBlock; from <= latest; from += LOG_RANGE) {
-    // biome-ignore lint/complexity/useMathMinMax: block numbers are bigints.
-    const to = from + LOG_RANGE - 1n < latest ? from + LOG_RANGE - 1n : latest;
-    const logs = await logClient.getContractEvents({
-      address: contract,
-      abi: checkpointAnchorAbi,
-      eventName: "CheckpointAnchored",
-      fromBlock: from,
-      toBlock: to,
-    });
-    for (const l of logs) {
-      const { origin, size: s, root } = l.args as { origin: Hex; size: bigint; root: Hex };
-      const value: Anchored = {
-        txHash: l.transactionHash,
-        blockNumber: String(l.blockNumber),
-        root,
-      };
-      await deps.kv.hSet(eventsKey(chainId), `${origin}:${s}`, JSON.stringify(value));
-    }
-    await deps.kv.set(cursorKey(chainId), String(to));
-  }
-  const found = await deps.kv.hGet(eventsKey(chainId), field);
-  return found ? (JSON.parse(found) as Anchored) : undefined;
+  const [row] = await db
+    .select(anchoredRow)
+    .from(chainEvents)
+    .where(
+      and(
+        eq(chainEvents.chainId, chainId),
+        eq(chainEvents.name, "CheckpointAnchored"),
+        sql`${chainEvents.args}->>'origin' = ${originHash.toLowerCase()}`,
+      ),
+    )
+    .orderBy(desc(sql`(${chainEvents.args}->>'size')::numeric`))
+    .limit(1);
+  return row ? toAnchored(row) : undefined;
 }
 
 /**
- * Records the `CheckpointAnchored` events of an anchor transaction from its receipt, for an anchor
- * this process asked for: the scan of the chain's logs stays `CONFIRMATIONS` blocks behind its
- * head, seconds after the receipt. `reanchorAlibi` still checks the transaction's checkpoint.
+ * Stores the `CheckpointAnchored` events of an anchor transaction from its receipt, for an anchor
+ * this process asked for, ahead of the subscription. `reanchorAlibi` still checks the
+ * transaction's checkpoint.
  */
 export async function recordAnchor(
-  deps: Pick<AnchorDeps, "kv"> & { chain: { client: PublicClient } },
-  chainId: number,
+  deps: Pick<AnchorDeps, "db"> & { chain: { client: PublicClient } },
+  _chainId: number,
   txHash: Hex,
 ): Promise<void> {
   const receipt = await deps.chain.client.waitForTransactionReceipt({ hash: txHash });
-  const contract = addresses[chainId as 421614].CheckpointAnchor as Address;
-  const events = parseEventLogs({
-    abi: checkpointAnchorAbi,
-    eventName: "CheckpointAnchored",
-    logs: receipt.logs.filter((l) => isAddressEqual(l.address, contract)),
-  });
-  for (const e of events) {
-    const value: Anchored = {
-      txHash: e.transactionHash,
-      blockNumber: String(e.blockNumber),
-      root: e.args.root,
-    };
-    await deps.kv.hSet(
-      eventsKey(chainId),
-      `${e.args.origin}:${e.args.size}`,
-      JSON.stringify(value),
-    );
-  }
+  await ingestReceipt(deps.db, receipt);
 }
 
 /** A consistency proof from the log's private listener, as hex nodes. */
@@ -168,12 +153,9 @@ export async function reanchorAlibi(
   if (!origin || !contract) throw new Error(`chain ${chainId} has no anchor`);
   const originHash = keccak256(stringToBytes(origin));
 
-  const [size, root] = await deps.chain.client.readContract({
-    address: contract,
-    abi: checkpointAnchorAbi,
-    functionName: "latest",
-    args: [originHash],
-  });
+  const event = await latestAnchor(deps.db, chainId, originHash);
+  if (!event) return "not_covered";
+  const { size, root } = event;
   const { tlog_proof: tlogProof } = row.bundle as { tlog_proof: string };
   const { index, checkpoint } = verifyProof(
     tlogProof,
@@ -182,8 +164,6 @@ export async function reanchorAlibi(
   );
   if (index >= size) return "not_covered";
 
-  const event = await anchoredAt(deps, chainId, originHash, size);
-  if (!event) return "not_covered";
   const tx = await deps.chain.client.getTransaction({ hash: event.txHash });
   const { functionName, args } = decodeFunctionData({ abi: checkpointAnchorAbi, data: tx.input });
   if (functionName !== "anchor") throw new Error(`${event.txHash} is not an anchor call`);
@@ -192,7 +172,6 @@ export async function reanchorAlibi(
   if (anchored.origin !== origin || anchored.size !== size || toHex(anchored.root) !== root) {
     throw new Error(`the note of ${event.txHash} is not the anchored checkpoint`);
   }
-  if (event.root !== root) throw new Error(`the event of ${event.txHash} is not the latest root`);
   const older = anchored.size <= checkpoint.size;
   const [from, to] = older ? [anchored, checkpoint] : [checkpoint, anchored];
   const proof = await consistency(deps.tlog, origin, from.size, to.size);
@@ -227,19 +206,16 @@ export async function reanchorAlibi(
 }
 
 /**
- * One pass: anchors every Alibi the latest anchored checkpoint of its chain covers.
+ * Anchors every Alibi the latest stored anchor of its chain covers, then marks the stored
+ * `CheckpointAnchored` events handled. Runs on each new anchor event and each reconcile.
  *
  * @internal
  */
 export async function anchorCovered(deps: AnchorDeps): Promise<number> {
   const chainId = 421614;
   const origin = LOG_ORIGINS[chainId] as string;
-  const [size] = await deps.chain.client.readContract({
-    address: addresses[chainId].CheckpointAnchor as Address,
-    abi: checkpointAnchorAbi,
-    functionName: "latest",
-    args: [keccak256(stringToBytes(origin))],
-  });
+  const latest = await latestAnchor(deps.db, chainId, keccak256(stringToBytes(origin)));
+  if (!latest) return 0;
   const rows = await deps.db
     .select({ id: alibis.purchaseId })
     .from(alibis)
@@ -247,48 +223,34 @@ export async function anchorCovered(deps: AnchorDeps): Promise<number> {
     .where(
       and(
         isNull(alibis.anchor),
-        lt(purchases.logIndex, size),
+        lt(purchases.logIndex, latest.size),
         or(isNull(purchases.chainId), eq(purchases.chainId, chainId)),
       ),
     )
     .orderBy(asc(purchases.logIndex))
     .limit(BATCH);
   let anchored = 0;
+  let failed = false;
   for (const r of rows) {
     try {
       if ((await reanchorAlibi(deps, r.id)) === "anchored") anchored++;
     } catch (err) {
+      failed = true;
       deps.log.warn({ err, purchaseId: r.id }, "alibi not re-anchored");
     }
   }
+  if (!failed && rows.length < BATCH) {
+    await deps.db
+      .update(chainEvents)
+      .set({ handledAt: new Date() })
+      .where(
+        and(
+          eq(chainEvents.chainId, chainId),
+          eq(chainEvents.name, "CheckpointAnchored"),
+          isNull(chainEvents.handledAt),
+        ),
+      );
+  }
+  if (anchored > 0) deps.log.info({ anchored }, "alibis anchored");
   return anchored;
-}
-
-/** Every 30 s, on one process of the deployment at a time, anchors the covered Alibis. */
-export function startAnchorWatcher(
-  deps: AnchorDeps,
-  { intervalMs = INTERVAL_MS }: { intervalMs?: number } = {},
-): { stop(): Promise<void> } {
-  let running: Promise<void> | undefined;
-  const tick = async () => {
-    const lock = await deps.kv.set("alibi:anchors:lock", "1", { NX: true, PX: intervalMs - 1000 });
-    if (lock !== "OK") return;
-    const n = await anchorCovered(deps);
-    if (n > 0) deps.log.info({ anchored: n }, "alibis anchored");
-  };
-  const timer = setInterval(() => {
-    if (running) return;
-    running = tick()
-      .catch((err: unknown) => deps.log.warn({ err }, "alibi anchoring failed"))
-      .finally(() => {
-        running = undefined;
-      });
-  }, intervalMs);
-  timer.unref();
-  return {
-    async stop() {
-      clearInterval(timer);
-      await running;
-    },
-  };
 }

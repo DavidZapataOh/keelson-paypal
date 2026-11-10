@@ -8,12 +8,8 @@ import { pino } from "pino";
 import { createPublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { z } from "zod";
-import {
-  ARBITRUM_SEPOLIA_PUBLIC_RPC,
-  arbitrumSepoliaTransport,
-  POLLING_INTERVAL_MS,
-  rpcTransport,
-} from "./chain/rpc.ts";
+import { isFinalized } from "./chain/events.ts";
+import { arbitrumSepoliaTransport, POLLING_INTERVAL_MS } from "./chain/rpc.ts";
 import { type RunDeps, runDispute } from "./disputes/run.ts";
 import { treasuryFromKey } from "./disputes/treasury.ts";
 import { resetJudges } from "./judge.ts";
@@ -36,6 +32,7 @@ const Env = z.object({
   TEE_B_URL: z.url(),
   KEELSON_TEE_TOKEN: z.string().min(32),
   ARBITRUM_SEPOLIA_RPC_URL: z.url(),
+  DRPC_ARBITRUM_SEPOLIA_URL: z.url().optional(),
   LOG_URL: z.url(),
   LOG_WRITE_TOKEN: z.string().min(32),
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
@@ -64,7 +61,8 @@ async function connect(): Promise<RunDeps> {
     log,
     paypal: createPayPalDeps(env),
     tee: createTee(env),
-    // The chain's public RPC serves `eth_getLogs` over ranges that provider free tiers refuse.
+    // Reads and receipts go to the configured provider; `eth_getLogs` and the reconciler to dRPC, with
+    // the chain's public RPC behind it, so the provider's quota stays for writes and the subscription.
     chain: {
       client: createPublicClient({
         chain: arbitrumSepolia,
@@ -73,11 +71,12 @@ async function connect(): Promise<RunDeps> {
       }),
       logs: createPublicClient({
         chain: arbitrumSepolia,
-        transport: rpcTransport([ARBITRUM_SEPOLIA_PUBLIC_RPC]),
+        transport: arbitrumSepoliaTransport(env.DRPC_ARBITRUM_SEPOLIA_URL),
       }),
     },
     rpcUrl: env.ARBITRUM_SEPOLIA_RPC_URL,
     tlog: { url: env.LOG_URL, token: env.LOG_WRITE_TOKEN },
+    finalized: (block: bigint) => isFinalized(db, block),
     anthropic: env.ANTHROPIC_API_KEY ? new Anthropic({ apiKey: env.ANTHROPIC_API_KEY }) : undefined,
   };
 }

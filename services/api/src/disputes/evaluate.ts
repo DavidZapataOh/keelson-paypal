@@ -130,8 +130,8 @@ export async function evaluateDispute(deps: EvaluateDeps, disputeId: string): Pr
     if ((await reanchorAlibi(anchorDeps, p.id)) === "not_covered") {
       const tx = await anchorNow(deps.tlog, chainId);
       if (tx) await recordAnchor(deps, chainId, tx);
-      // An anchor sent before this one reaches the scan of the chain's logs some blocks after its
-      // receipt; waiting here is cheaper than a retry.
+      // An anchor another process sent reaches the stored events with the subscription, a second
+      // or so after its block; waiting here is cheaper than a retry.
       const until = Date.now() + ANCHOR_VISIBLE_MS;
       while ((await reanchorAlibi(anchorDeps, p.id)) === "not_covered") {
         if (Date.now() > until)

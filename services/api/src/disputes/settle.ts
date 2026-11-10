@@ -13,6 +13,7 @@ import {
 import type { CurrencyCode } from "@keelson/core";
 import {
   and,
+  chainTxs,
   type Db,
   disputes,
   eq,
@@ -62,11 +63,17 @@ export interface SettleDeps {
   chain: { client: PublicClient };
   /** Signs the treasury's PYUSD transfers; without it a verdict the chain refuses on the `pyusd` rail stays unpaid. */
   treasury?: LocalAccount | undefined;
+  /**
+   * Whether a block is final on the parent chain. A refund or payout that follows a chain payment
+   * waits for its block: PayPal's money cannot come back if a reorg undoes the payment. Without
+   * it they follow at once.
+   */
+  finalized?: ((block: bigint) => Promise<boolean>) | undefined;
 }
 
 export type Settlement =
   | { status: "settled"; disputeId: string; outcome: "paid" | "claimable"; txHash: Hex | null }
-  | { status: "pending"; disputeId: string; waiting: "veto" | "payout" | "chain" }
+  | { status: "pending"; disputeId: string; waiting: "veto" | "payout" | "chain" | "finality" }
   | { status: "failed"; disputeId: string; failure: string }
   | { status: "none" | "unattributed"; disputeId: string };
 
@@ -167,6 +174,8 @@ export async function settleDispute(deps: SettleDeps, disputeId: string): Promis
     const moved = await onChain(deps, deps.relayer, row);
     row = (await load(deps.db, disputeId)) as Row;
     if (moved && row.outcome === "queued") {
+      if (await awaitingFinality(deps, row))
+        return { status: "pending", disputeId, waiting: "finality" };
       await refund(deps, row);
       return moved;
     }
@@ -176,6 +185,8 @@ export async function settleDispute(deps: SettleDeps, disputeId: string): Promis
     if (unpaid) return unpaid;
     row = (await load(deps.db, disputeId)) as Row;
   }
+  if (await awaitingFinality(deps, row))
+    return { status: "pending", disputeId, waiting: "finality" };
   await refund(deps, row);
 
   if (row.rail === "paypal" && row.outcome === "paid") {
@@ -199,6 +210,20 @@ export async function settleDispute(deps: SettleDeps, disputeId: string): Promis
   );
   const txHash = row.txHash ? (`0x${Buffer.from(row.txHash).toString("hex")}` as Hex) : null;
   return { status: "settled", disputeId, outcome: row.outcome as "paid" | "claimable", txHash };
+}
+
+/**
+ * Whether the chain call that moved the verdict's money is in a block not yet final. Arbitrum's
+ * `latest` is the sequencer's soft confirmation; `finalized` is its batch final on Ethereum.
+ * https://docs.arbitrum.io/how-arbitrum-works/reference/finality-and-reorgs
+ */
+async function awaitingFinality(deps: SettleDeps, row: Row): Promise<boolean> {
+  if (!deps.finalized || !row.txId || (row.refundId && row.payoutStatus)) return false;
+  const [tx] = await deps.db
+    .select({ block: chainTxs.blockNumber })
+    .from(chainTxs)
+    .where(eq(chainTxs.id, row.txId));
+  return !tx?.block || !(await deps.finalized(tx.block));
 }
 
 async function load(db: Db, disputeId: string): Promise<Row | undefined> {
@@ -859,6 +884,15 @@ export async function resumeSettlements(deps: SettleDeps): Promise<number> {
             or(isNull(verdicts.payoutStatus), notInArray(verdicts.payoutStatus, [...PAYOUT_DONE])),
           ),
           and(isNull(verdicts.outcome), lte(verdicts.createdAt, sql`now() - interval '1 minute'`)),
+          // A buyer's refund waiting for its chain payment's block to be final.
+          and(
+            inArray(verdicts.outcome, ["paid", "queued", "claimable"]),
+            isNull(verdicts.refundId),
+            sql`${verdicts.txId} is not null`,
+            sql`${verdicts.createdAt} > now() - interval '1 day'`,
+            sql`exists (select 1 from ${disputes} d join ${purchases} p on p.id = d.purchase_id
+              where d.id = ${verdicts.disputeId} and p.paypal_capture_id is not null)`,
+          ),
         ),
       ),
     )

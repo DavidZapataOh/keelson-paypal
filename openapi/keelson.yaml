@@ -4430,6 +4430,20 @@ paths:
                             type: integer
                         required:
                           - status
+                      chainEvents:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                            enum:
+                              - up
+                              - down
+                          finalizedBlock:
+                            type: string
+                          reconciledAgeMs:
+                            type: integer
+                        required:
+                          - status
                       anchor:
                         type: object
                         properties:

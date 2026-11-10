@@ -2,12 +2,13 @@ import { addresses, keelsonBondVaultAbi } from "@keelson/chain";
 import { keelsonDomain } from "@keelson/core/eip712";
 import {
   and,
+  chainEvents,
   chainTxs,
   type Db,
   desc,
   eq,
+  inArray,
   isNull,
-  like,
   purchases,
   sql,
   teeSignatures,
@@ -15,39 +16,34 @@ import {
 } from "@keelson/db";
 import { type Relayer, RelayerError, type TxRecord } from "@keelson/relayer";
 import type { Logger } from "pino";
-import type { RedisClientType } from "redis";
 import { BaseError, concat, type Hex, type PublicClient, toHex } from "viem";
-import { ERC8004_DEPLOY_BLOCK } from "../chain/reader.ts";
+import { CHAIN_ID } from "../chain/events.ts";
 import type { OperatorSigners } from "../operators/signer.ts";
 import type { CountersignJson } from "../tee/client.ts";
 import { countersignMessage } from "../tee/coordinator.ts";
 
 const SWEEP_INTERVAL_MS = 10_000;
-const CHAIN_ID = 421614;
 /** A countersign expires within minutes; one never covered by then never will be. */
 const COVERABLE_FOR = "1 day";
-/** Vault events are re-read this far back on every pass, so a restart misses none. */
-const OUTCOME_LOOKBACK_BLOCKS = 20_000n;
-const CURSOR_KEY = `relayer:outcomes:${CHAIN_ID}`;
+/** A released or slashed coverage whose outcome still fails to record after this is left alone. */
+const OUTCOME_WINDOW = "2 days";
+/** Seconds past `releaseAfter` before a coverage is released; the vault's clock may trail. */
+const RELEASE_MARGIN_S = 5;
 const ALLOW = 1;
 const DENY = 2;
-const ACTIVE = 1;
-/** Coverages are looked for among locks confirmed this recently. */
+/** Coverages are released within this long of their window closing; past it, by hand. */
 const RELEASABLE_FOR = "2 days";
 /** Reverts that no later state changes: the outcome is recorded, or there is no validation to update. */
 const FINAL = new Set(["AlreadyRated", "OutcomeRecorded", "UnknownValidation"]);
 
 export interface SweeperDeps {
   db: Db;
-  kv: RedisClientType;
   log: Logger;
   relayer: Relayer;
-  /** Reads the vault; `logs` scans its events over wide ranges. */
-  chain: { client: PublicClient; logs: PublicClient };
+  /** Reads the vault. */
+  chain: { client: PublicClient };
   /** Signs the `ValidationRequest` of an operator's DENY purchases; DENY validations wait without it. */
   operators?: OperatorSigners | undefined;
-  /** No outcome before this block is looked for; the reporter and the registry did not exist yet. */
-  outcomesFrom?: bigint;
 }
 
 /** The countersignatures of a purchase in the order the VerdictVerifier checks them: TDX, then Nitro. */
@@ -176,39 +172,35 @@ export async function recordValidations(deps: SweeperDeps): Promise<number> {
 }
 
 /**
- * Rates the operator and records the validation's outcome of every coverage the vault released or slashed.
+ * Rates the operator and records the validation's outcome of every coverage the vault released or
+ * slashed, from the stored `CoverageReleased` and `Slashed` events not handled yet. A call the
+ * contract refuses is settled for that event: a later slash of the same coverage is its own event.
  *
  * @internal
  */
 export async function recordOutcomes(deps: SweeperDeps): Promise<number> {
-  const { kv, relayer, chain, log } = deps;
-  const vault = addresses[CHAIN_ID].KeelsonBondVault as Hex;
-  const latest = await chain.logs.getBlockNumber();
-  let fromBlock = BigInt((await kv.get(CURSOR_KEY)) ?? latest);
-  if (fromBlock > latest) fromBlock = latest;
-  fromBlock -= OUTCOME_LOOKBACK_BLOCKS;
-  const floor = deps.outcomesFrom ?? ERC8004_DEPLOY_BLOCK[CHAIN_ID];
-  if (fromBlock < floor) fromBlock = floor;
-  const [released, slashed] = await Promise.all([
-    chain.logs.getContractEvents({
-      address: vault,
-      abi: keelsonBondVaultAbi,
-      eventName: "CoverageReleased",
-      fromBlock,
-      toBlock: latest,
-    }),
-    chain.logs.getContractEvents({
-      address: vault,
-      abi: keelsonBondVaultAbi,
-      eventName: "Slashed",
-      fromBlock,
-      toBlock: latest,
-    }),
-  ]);
-  const ended = new Set([...released, ...slashed].map((e) => e.args.coverageId as Hex));
+  const { db, relayer, log } = deps;
+  const rows = await db
+    .select({
+      txHash: chainEvents.txHash,
+      logIndex: chainEvents.logIndex,
+      coverageId: sql<Hex>`${chainEvents.args}->>'coverageId'`,
+    })
+    .from(chainEvents)
+    .where(
+      and(
+        eq(chainEvents.chainId, CHAIN_ID),
+        inArray(chainEvents.name, ["CoverageReleased", "Slashed"]),
+        isNull(chainEvents.handledAt),
+        sql`${chainEvents.createdAt} > now() - ${OUTCOME_WINDOW}::interval`,
+      ),
+    )
+    .orderBy(chainEvents.blockNumber)
+    .limit(100);
   let sent = 0;
-  let failed = false;
-  for (const coverageId of ended) {
+  for (const row of rows) {
+    const coverageId = row.coverageId;
+    let failed = false;
     for (const [contract, functionName, done] of [
       ["KeelsonReputationReporter", "rateCoverage", "AlreadyRated"],
       ["KeelsonValidationRegistry", "recordOutcome", "OutcomeRecorded"],
@@ -238,9 +230,20 @@ export async function recordOutcomes(deps: SweeperDeps): Promise<number> {
         }
       }
     }
+    // After a failure the event is read again on the next pass.
+    if (!failed) {
+      await db
+        .update(chainEvents)
+        .set({ handledAt: new Date() })
+        .where(
+          and(
+            eq(chainEvents.chainId, CHAIN_ID),
+            eq(chainEvents.txHash, row.txHash),
+            eq(chainEvents.logIndex, row.logIndex),
+          ),
+        );
+    }
   }
-  // After a failure the same range is read again, however long the outage.
-  if (!failed) await kv.set(CURSOR_KEY, latest.toString());
   return sent;
 }
 
@@ -324,45 +327,47 @@ export async function recordDenials(deps: SweeperDeps): Promise<number> {
 }
 
 /**
- * Releases every coverage Keelson locked whose window has passed, so the operator's bond is free
- * again. Anyone may call `releaseCoverage`; the relayer pays for it.
+ * The coverages whose window has passed, from the stored `CoverageLocked` events: not released,
+ * with no slash queued and neither executed nor vetoed. The vault's clock may trail this one by
+ * a block, so a coverage is due `RELEASE_MARGIN_S` after its `releaseAfter`.
+ *
+ * @internal
+ */
+export async function dueCoverages(db: Db): Promise<Hex[]> {
+  const rows = await db.execute<{ coverage_id: Hex }>(sql`
+    select l.args->>'coverageId' as coverage_id
+    from chain_events l
+    where l.chain_id = ${CHAIN_ID} and l.name = 'CoverageLocked'
+      and (l.args->>'releaseAfter')::bigint + ${RELEASE_MARGIN_S} < extract(epoch from now())
+      and (l.args->>'releaseAfter')::bigint > extract(epoch from now() - ${RELEASABLE_FOR}::interval)
+      and not exists (
+        select 1 from chain_events r
+        where r.chain_id = l.chain_id and r.name = 'CoverageReleased'
+          and r.args->>'coverageId' = l.args->>'coverageId')
+      and not exists (
+        select 1 from chain_events q
+        where q.chain_id = l.chain_id and q.name = 'SlashQueued'
+          and q.args->>'coverageId' = l.args->>'coverageId'
+          and not exists (
+            select 1 from chain_events e
+            where e.chain_id = q.chain_id and e.name in ('Slashed', 'SlashVetoed')
+              and e.args->>'disputeId' = q.args->>'disputeId'))
+    order by (l.args->>'releaseAfter')::bigint
+    limit 100`);
+  return rows.rows.map((r) => r.coverage_id);
+}
+
+/**
+ * Releases every coverage whose window has passed, so the operator's bond is free again: the
+ * stored events say which are due, and the chain is only asked to release those. Anyone may call
+ * `releaseCoverage`; the relayer pays for it.
  *
  * @internal
  */
 export async function releaseCoverages(deps: SweeperDeps): Promise<number> {
-  const { db, relayer, chain, log } = deps;
-  const vault = addresses[CHAIN_ID].KeelsonBondVault as Hex;
-  const prefix = "KeelsonBondVault.lockCoverage:";
-  const locks = await db
-    .select({ key: chainTxs.key })
-    .from(chainTxs)
-    .where(
-      and(
-        eq(chainTxs.chainId, CHAIN_ID),
-        eq(chainTxs.status, "confirmed"),
-        like(chainTxs.key, `${prefix}%`),
-        sql`${chainTxs.confirmedAt} > now() - ${RELEASABLE_FOR}::interval`,
-      ),
-    )
-    .limit(500);
-  if (locks.length === 0) return 0;
-  const ids = locks.map((l) => l.key.slice(prefix.length) as Hex);
-  const [block, coverages] = await Promise.all([
-    chain.client.getBlock({ blockTag: "latest" }),
-    chain.client.multicall({
-      contracts: ids.map((id) => ({
-        address: vault,
-        abi: keelsonBondVaultAbi,
-        functionName: "coverages" as const,
-        args: [id] as const,
-      })),
-    }),
-  ]);
+  const { db, relayer, log } = deps;
   let released = 0;
-  for (const [i, coverageId] of ids.entries()) {
-    const c = coverages[i];
-    if (c?.status !== "success" || c.result.status !== ACTIVE) continue;
-    if (c.result.pendingSlashes !== 0 || BigInt(c.result.releaseAfter) >= block.timestamp) continue;
+  for (const coverageId of await dueCoverages(db)) {
     try {
       const record = await relayer.submit({
         chainId: CHAIN_ID,
@@ -390,9 +395,6 @@ export function startValidationSweeper(deps: SweeperDeps): () => void {
     void Promise.all([
       recordValidations(deps).catch((err: unknown) =>
         deps.log.error({ err: brief(err) }, "validation sweep failed"),
-      ),
-      recordOutcomes(deps).catch((err: unknown) =>
-        deps.log.error({ err: brief(err) }, "outcome sweep failed"),
       ),
       recordDenials(deps).catch((err: unknown) =>
         deps.log.error({ err: brief(err) }, "deny validation sweep failed"),
