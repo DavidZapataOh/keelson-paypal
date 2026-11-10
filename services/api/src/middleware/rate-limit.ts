@@ -16,7 +16,7 @@ export interface RateLimitOptions {
   windowSec?: number;
   /**
    * Behind Render, which sits behind Cloudflare: read the client IP from `CF-Connecting-IP`, which
-   * Cloudflare overwrites; else the third-from-right `X-Forwarded-For` entry (`<client>, <edge>,
+   * Cloudflare sets and refuses from callers (error 1000); else the third-from-right `X-Forwarded-For` entry (`<client>, <edge>,
    * <render>`); else the socket address. Left-hand entries and `True-Client-IP` are never used.
    */
   trustProxy?: boolean;
