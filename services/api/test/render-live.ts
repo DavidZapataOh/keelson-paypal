@@ -5,7 +5,6 @@ import { createDb, eq, purchases } from "@keelson/db";
 import { closeMandate } from "@keelson/mandate";
 import { approveOrder, payerActionUrl } from "@keelson/paypal/testing";
 import { createRelayer, kmsAccount } from "@keelson/relayer";
-import { pino } from "pino";
 import { ulid } from "ulid";
 import { bytesToHex, createPublicClient, type Hex, http, type PublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
@@ -13,6 +12,7 @@ import { createApp } from "../src/app.ts";
 import { parseEnv } from "../src/env.ts";
 import { createKv } from "../src/kv.ts";
 import type { LogConfig } from "../src/log/append.ts";
+import { createLogger } from "../src/logger.ts";
 import { relayerFromEnv } from "../src/onchain/relayer.ts";
 import { operatorSigners } from "../src/operators/signer.ts";
 import { call, createPayPalDeps } from "../src/paypal.ts";
@@ -59,7 +59,8 @@ export async function renderHarness() {
   if (!env.LOG_URL || !env.LOG_WRITE_TOKEN || !env.KEELSON_OPERATOR_KEY || !env.DEMO_AGENT_ID) {
     throw new Error("needs LOG_URL, LOG_WRITE_TOKEN, KEELSON_OPERATOR_KEY and DEMO_AGENT_ID");
   }
-  const log = pino({ level: "warn" });
+  const log = createLogger();
+  log.level = "warn";
   const { db, pool } = createDb(env.DATABASE_URL);
   const kv = await createKv(env.REDIS_URL, log);
   const chain = createPublicClient({
