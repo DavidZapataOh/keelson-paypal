@@ -6,13 +6,14 @@ mod common;
 
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use acir::{AcirField, FieldElement};
 use common::*;
 use keelson_mandate::{mandate_opening, merchant_leaf, merchant_membership};
-use keelson_tee::wire::{Base64, Countersigned};
+use keelson_tee::wire::{Base64, Countersigned, ZkProof};
 use keelson_tee::zk::{C1Proof, Prover, ProverError, Statement};
+use keelson_tee::{C1Status, Engine};
 use serde_json::Value;
 
 fn repo() -> PathBuf {
@@ -171,8 +172,24 @@ fn proving_is_within_budget() {
     assert!(ms[10] < 200.0, "p50 {:.1} ms", ms[10]);
 }
 
-fn c1_of(out: &Countersigned) -> C1Proof {
-    let c1 = out.c1.as_ref().expect("leg A proved the ALLOW");
+const WAIT: Duration = Duration::from_secs(8);
+
+/// What `GET /v1/c1/{request_id}` serves once the leg proved `out` after answering it.
+fn proved(leg: &Engine, out: &Countersigned) -> C1Status {
+    let id = request_id_of(out);
+    leg.prove_c1(&id);
+    leg.c1(&id, WAIT)
+}
+
+/// The request id the countersign was answered for, as the route takes it.
+fn request_id_of(out: &Countersigned) -> String {
+    ulid::Ulid::from_bytes(out.countersign.request_id.0[16..].try_into().unwrap()).to_string()
+}
+
+fn c1_of(status: C1Status) -> C1Proof {
+    let C1Status::Ready(c1) = status else {
+        panic!("leg A proved the ALLOW: {status:?}");
+    };
     C1Proof {
         proof: c1.proof.0.clone(),
         public_inputs: c1.public_inputs.iter().map(|h| h.0).collect(),
@@ -191,13 +208,16 @@ fn leg_a_proves_the_allow_of_a_request_carrying_the_sealed_salt() {
     let f = CartFixture::demo();
     let mut r = countersign_request(&issued, &f, request_id(1), None);
     r.sealed_salt = Some(issued.sealed_salt.clone());
-    let out = leg_a()
-        .with_prover(shared().clone())
-        .countersign(&r, at(NOW + 10))
-        .unwrap();
+    let a = leg_a().with_prover(shared().clone());
+    let out = a.countersign(&r, at(NOW + 10)).unwrap();
     let c = &out.countersign;
     assert_eq!(c.decision, "1");
-    let proof = c1_of(&out);
+    // Answered before any proof exists: the proof is made after, off the countersign's path.
+    assert_eq!(
+        a.c1(&request_id_of(&out), Duration::ZERO),
+        C1Status::Pending
+    );
+    let proof = c1_of(proved(&a, &out));
     assert!(prover().verify(&proof).unwrap());
     let cart_hash = FieldElement::from_be_bytes_reduce(&c.cart_hash.0).to_be_bytes();
     let expected: Vec<[u8; 32]> = vec![
@@ -211,15 +231,33 @@ fn leg_a_proves_the_allow_of_a_request_carrying_the_sealed_salt() {
         word(c.agent_id.parse().unwrap()),
     ];
     assert_eq!(proof.public_inputs, expected);
+    // Proving again changes nothing; the same proof is served.
+    assert_eq!(c1_of(proved(&a, &out)), proof);
 
     // Leg B cannot open the salt: it signs the same digest and proves nothing.
     r.observation = Some(out.observation.clone());
-    let b = leg_b()
-        .with_prover(shared().clone())
-        .countersign(&r, at(NOW + 10))
-        .unwrap();
-    assert_eq!(b.digest, out.digest);
-    assert!(b.c1.is_none());
+    let b = leg_b().with_prover(shared().clone());
+    assert!(!b.proves_c1());
+    let out_b = b.countersign(&r, at(NOW + 10)).unwrap();
+    assert_eq!(out_b.digest, out.digest);
+    assert_eq!(proved(&b, &out_b), C1Status::None);
+}
+
+#[test]
+fn a_replayed_countersign_queues_no_second_proof() {
+    let issued = register();
+    let f = CartFixture::demo();
+    let mut r = countersign_request(&issued, &f, request_id(5), None);
+    r.sealed_salt = Some(issued.sealed_salt.clone());
+    let a = leg_a().with_prover(shared().clone());
+    let out = a.countersign(&r, at(NOW + 10)).unwrap();
+    let first = c1_of(proved(&a, &out));
+    let again = a.countersign(&r, at(NOW + 11)).unwrap();
+    assert_eq!(again.digest, out.digest);
+    assert_eq!(
+        a.c1(&request_id_of(&out), Duration::ZERO),
+        C1Status::Ready(zk(&first))
+    );
 }
 
 #[test]
@@ -227,12 +265,10 @@ fn without_the_sealed_salt_leg_a_proves_nothing() {
     let issued = register();
     let f = CartFixture::demo();
     let r = countersign_request(&issued, &f, request_id(2), None);
-    let out = leg_a()
-        .with_prover(shared().clone())
-        .countersign(&r, at(NOW + 10))
-        .unwrap();
+    let a = leg_a().with_prover(shared().clone());
+    let out = a.countersign(&r, at(NOW + 10)).unwrap();
     assert_eq!(out.countersign.decision, "1");
-    assert!(out.c1.is_none());
+    assert_eq!(proved(&a, &out), C1Status::None);
 }
 
 #[test]
@@ -241,12 +277,10 @@ fn a_deny_carries_no_proof() {
     let f = CartFixture::bundle();
     let mut r = countersign_request(&issued, &f, request_id(3), None);
     r.sealed_salt = Some(issued.sealed_salt.clone());
-    let out = leg_a()
-        .with_prover(shared().clone())
-        .countersign(&r, at(NOW + 10))
-        .unwrap();
+    let a = leg_a().with_prover(shared().clone());
+    let out = a.countersign(&r, at(NOW + 10)).unwrap();
     assert_eq!(out.countersign.decision, "2");
-    assert!(out.c1.is_none());
+    assert_eq!(proved(&a, &out), C1Status::None);
 }
 
 #[test]
@@ -257,12 +291,30 @@ fn a_salt_that_does_not_open_leaves_the_allow_without_a_proof() {
     let mut sealed = issued.sealed_salt.0.clone();
     *sealed.last_mut().unwrap() ^= 1;
     r.sealed_salt = Some(Base64(sealed));
-    let out = leg_a()
-        .with_prover(shared().clone())
-        .countersign(&r, at(NOW + 10))
-        .unwrap();
+    let a = leg_a().with_prover(shared().clone());
+    let out = a.countersign(&r, at(NOW + 10)).unwrap();
     assert_eq!(out.countersign.decision, "1");
-    assert!(out.c1.is_none());
+    assert_eq!(proved(&a, &out), C1Status::None);
+}
+
+#[test]
+fn an_unknown_request_has_no_proof() {
+    let a = leg_a().with_prover(shared().clone());
+    assert_eq!(
+        a.c1(&request_id(9).to_string(), Duration::ZERO),
+        C1Status::None
+    );
+}
+
+fn zk(p: &C1Proof) -> ZkProof {
+    ZkProof {
+        proof: Base64(p.proof.clone()),
+        public_inputs: p
+            .public_inputs
+            .iter()
+            .map(|b| keelson_tee::wire::Hex(*b))
+            .collect(),
+    }
 }
 
 #[cfg(unix)]

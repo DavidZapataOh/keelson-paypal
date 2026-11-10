@@ -6,7 +6,7 @@ use std::sync::Arc;
 use alloy_primitives::Address;
 use axum::body::Bytes;
 use axum::extract::rejection::BytesRejection;
-use axum::extract::{DefaultBodyLimit, Request, State};
+use axum::extract::{DefaultBodyLimit, Path, Request, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -18,10 +18,10 @@ use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 use time::OffsetDateTime;
 
-use crate::engine::unix_ms;
+use crate::engine::{C1Status, unix_ms};
 use crate::wire::{
     CheckpointRequest, CheckpointSigned, CountersignRequest, Countersigned, MandateIssued,
-    RegisterMandate, VerdictRequest, VerdictSigned,
+    RegisterMandate, VerdictRequest, VerdictSigned, ZkProof,
 };
 use crate::{Engine, EngineError, TeeKind};
 
@@ -120,6 +120,7 @@ pub fn router(state: Arc<AppState>) -> Router {
     let open = Router::new().route("/v1/health", get(health));
     let protected = Router::new()
         .route("/v1/countersign", post(countersign))
+        .route("/v1/c1/{request_id}", get(c1))
         .route(
             "/v1/checkpoint",
             post(checkpoint).layer(DefaultBodyLimit::max(CHECKPOINT_BODY_LIMIT)),
@@ -324,12 +325,43 @@ async fn countersign(
     let paypal = read_paypal(&state, &request).await?;
     #[cfg(not(feature = "tdx"))]
     let paypal = None;
-    blocking(move || {
+    let id = request.request_id.to_string();
+    let engine = state.clone();
+    let out = blocking(move || {
         state
             .engine
             .countersign_with(&request, (state.clock)(), paypal)
     })
-    .await
+    .await?;
+    // The answer goes out now; the proof follows on `GET /v1/c1/{request_id}`.
+    if out.countersign.decision == "1" && engine.engine.proves_c1() {
+        tokio::task::spawn_blocking(move || engine.engine.prove_c1(&id));
+    }
+    Ok(out)
+}
+
+/// How long `GET /v1/c1/{request_id}` waits for a proof still being made: past the prover's own
+/// deadline.
+const C1_WAIT: std::time::Duration = std::time::Duration::from_secs(8);
+
+/// The C1 proof of an ALLOW this leg answered: 404 `no_proof` when there is none to wait for,
+/// 503 `proof_pending` when it is still being made after [`C1_WAIT`].
+async fn c1(
+    State(state): State<Arc<AppState>>,
+    Path(request_id): Path<String>,
+) -> Result<Json<ZkProof>, Problem> {
+    let Ok(id) = request_id.parse::<ulid::Ulid>() else {
+        return Err(Problem::new(StatusCode::NOT_FOUND, "no_proof"));
+    };
+    match tokio::task::spawn_blocking(move || state.engine.c1(&id.to_string(), C1_WAIT)).await {
+        Ok(C1Status::Ready(proof)) => Ok(Json(proof)),
+        Ok(C1Status::None) => Err(Problem::new(StatusCode::NOT_FOUND, "no_proof")),
+        Ok(C1Status::Pending) => Err(Problem::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "proof_pending",
+        )),
+        Err(_) => Err(Problem::new(StatusCode::INTERNAL_SERVER_ERROR, "internal")),
+    }
 }
 
 /// Leg A's own reading of the request's authorization, made now and not retried.

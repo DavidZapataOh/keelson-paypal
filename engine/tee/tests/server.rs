@@ -240,3 +240,22 @@ async fn countersigns_over_http_and_the_signature_recovers_to_the_health_signer(
     .await;
     problem(&response, &body, StatusCode::CONFLICT, "replay");
 }
+
+#[tokio::test]
+async fn serves_no_c1_proof_for_a_request_it_does_not_hold() {
+    let app = app();
+    let get = |path: &str, token: Option<&str>| {
+        let mut req = Request::get(path);
+        if let Some(token) = token {
+            req = req.header(header::AUTHORIZATION, format!("Bearer {token}"));
+        }
+        req.body(Body::empty()).unwrap()
+    };
+    let path = format!("/v1/c1/{}", request_id(77));
+    let (response, body) = send(&app, get(&path, None)).await;
+    problem(&response, &body, StatusCode::UNAUTHORIZED, "unauthorized");
+    let (response, body) = send(&app, get(&path, Some(TOKEN))).await;
+    problem(&response, &body, StatusCode::NOT_FOUND, "no_proof");
+    let (response, body) = send(&app, get("/v1/c1/not-a-ulid", Some(TOKEN))).await;
+    problem(&response, &body, StatusCode::NOT_FOUND, "no_proof");
+}

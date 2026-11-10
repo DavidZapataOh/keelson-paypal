@@ -1,8 +1,8 @@
 //! The engine: registers mandates and countersigns carts.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::fmt;
-use std::sync::Arc;
+use std::sync::{Arc, Condvar, Mutex};
 
 use alloy_primitives::aliases::U40;
 use alloy_primitives::{Address, B256, U256};
@@ -210,6 +210,44 @@ pub struct Engine {
     captured: Option<Arc<dyn CapturedSource>>,
     users: Option<Arc<dyn UserRecords>>,
     prover: Option<Arc<Prover>>,
+    c1: C1Proofs,
+}
+
+/// What leg A needs to prove C1 for an ALLOW it already answered.
+struct C1Job {
+    sub: String,
+    sealed_salt: Vec<u8>,
+    mandate_hash: [u8; 32],
+    mandate: Value,
+    merchant: String,
+    statement: Statement,
+}
+
+enum C1Slot {
+    Queued(Box<C1Job>),
+    Proving,
+    /// `None` when the proof could not be made.
+    Done(Option<ZkProof>),
+}
+
+/// The C1 proofs of the latest ALLOWs, by request id, proved after the countersign is answered.
+#[derive(Default)]
+struct C1Proofs {
+    slots: Mutex<(HashMap<String, C1Slot>, VecDeque<String>)>,
+    done: Condvar,
+}
+
+/// How many requests' proofs leg A keeps; the API fetches each one seconds after its countersign.
+const C1_KEPT: usize = 4096;
+
+/// The proof of a request as [`Engine::c1`] finds it.
+#[derive(Debug, PartialEq, Eq)]
+pub enum C1Status {
+    Ready(ZkProof),
+    /// Not proved yet when the wait ended.
+    Pending,
+    /// Never queued, forgotten, or not provable.
+    None,
 }
 
 /// A closed mandate whose signatures, key binding and passkey assertion all verified.
@@ -254,6 +292,7 @@ impl Engine {
             captured: None,
             users: None,
             prover: None,
+            c1: C1Proofs::default(),
         }
     }
 
@@ -768,60 +807,134 @@ impl Engine {
                         user_key: a.user_key.clone(),
                         paypal: observed.cloned().unwrap_or_default(),
                     },
-                    c1: None,
                 },
                 statement,
             );
         };
-        let c1 = statement.and_then(|s| self.prove_c1(r, &a, &s));
-        claim
-            .answer(Countersigned { c1, ..out })
-            .map_err(|Replay| EngineError::Replay)
+        let answered = claim.answer(out).map_err(|Replay| EngineError::Replay)?;
+        if let (Some(statement), Some(_), Some(_), Some(sealed)) =
+            (statement, &self.prover, &self.root, &r.sealed_salt)
+        {
+            self.queue_c1(
+                r.request_id.to_string(),
+                C1Job {
+                    sub: r.sub.clone(),
+                    sealed_salt: sealed.0.clone(),
+                    mandate_hash: a.mandate_hash,
+                    mandate: a.mandate,
+                    merchant: r.cart.merchant.clone(),
+                    statement,
+                },
+            );
+        }
+        Ok(answered)
     }
 
-    /// Proves C1 for an ALLOW on leg A, from the salt sealed to the request's user and `M`. A
-    /// proof that cannot be made is left out: the countersign stands on its signatures alone.
-    fn prove_c1(
-        &self,
-        r: &CountersignRequest,
-        a: &Authenticated,
-        s: &Statement,
-    ) -> Option<ZkProof> {
-        let (prover, root, sealed) = (
-            self.prover.as_ref()?,
-            self.root.as_ref()?,
-            r.sealed_salt.as_ref()?,
-        );
-        let aad = SealAad {
-            purpose: MANDATE_SALT_PURPOSE,
-            sub: Some(&r.sub),
-            record: &a.mandate_hash,
-        };
-        let proved = (|| {
-            let salt = root.unseal(&aad, &sealed.0).map_err(|e| e.to_string())?;
-            let salt: [u8; 16] = salt
-                .try_into()
-                .map_err(|_| "the sealed salt is not 16 bytes")?;
-            let opening = mandate_opening(&a.mandate, salt).map_err(|e| e.to_string())?;
-            if opening.commitment() != s.c_m {
-                return Err("the sealed salt does not open the commitment".to_owned());
-            }
-            let merchant = merchant_membership(&opening.merchants, &r.cart.merchant)
-                .map_err(|e| e.to_string())?;
-            prover
-                .prove(s, &opening, &merchant)
-                .map_err(|e| e.to_string())
-        })();
-        match proved {
-            Ok(p) => Some(ZkProof::from(&p)),
-            Err(e) => {
-                eprintln!(
-                    "keelson-engine: no C1 proof for request {}: {e}",
-                    r.request_id
-                );
-                None
+    /// Whether this leg proves C1 for the ALLOWs it answers ([`Engine::prove_c1`]).
+    pub fn proves_c1(&self) -> bool {
+        self.prover.is_some() && self.root.is_some()
+    }
+
+    fn queue_c1(&self, request_id: String, job: C1Job) {
+        let mut guard = self
+            .c1
+            .slots
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let (slots, order) = &mut *guard;
+        if slots.contains_key(&request_id) {
+            return;
+        }
+        while order.len() >= C1_KEPT {
+            if let Some(old) = order.pop_front() {
+                slots.remove(&old);
             }
         }
+        order.push_back(request_id.clone());
+        slots.insert(request_id, C1Slot::Queued(Box::new(job)));
+    }
+
+    /// Proves C1 for the ALLOW answered under `request_id`, from the salt sealed to the request's
+    /// user and `M`. Runs once per request; a proof that cannot be made is recorded as none: the
+    /// countersign stands on its signatures alone.
+    pub fn prove_c1(&self, request_id: &str) {
+        let job = {
+            let mut guard = self
+                .c1
+                .slots
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            match guard.0.get_mut(request_id) {
+                Some(slot @ C1Slot::Queued(_)) => match std::mem::replace(slot, C1Slot::Proving) {
+                    C1Slot::Queued(job) => job,
+                    _ => unreachable!(),
+                },
+                _ => return,
+            }
+        };
+        let proof = self.prove_job(&job).map_err(|e| {
+            eprintln!("keelson-engine: no C1 proof for request {request_id}: {e}");
+        });
+        let mut guard = self
+            .c1
+            .slots
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(slot) = guard.0.get_mut(request_id) {
+            *slot = C1Slot::Done(proof.ok());
+        }
+        self.c1.done.notify_all();
+    }
+
+    /// The C1 proof of `request_id`, waiting up to `wait` for one still being proved.
+    pub fn c1(&self, request_id: &str, wait: std::time::Duration) -> C1Status {
+        let guard = self
+            .c1
+            .slots
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let (guard, _) = self
+            .c1
+            .done
+            .wait_timeout_while(guard, wait, |(slots, _)| {
+                matches!(
+                    slots.get(request_id),
+                    Some(C1Slot::Queued(_) | C1Slot::Proving)
+                )
+            })
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        match guard.0.get(request_id) {
+            Some(C1Slot::Done(Some(p))) => C1Status::Ready(p.clone()),
+            Some(C1Slot::Queued(_) | C1Slot::Proving) => C1Status::Pending,
+            Some(C1Slot::Done(None)) | None => C1Status::None,
+        }
+    }
+
+    fn prove_job(&self, job: &C1Job) -> Result<ZkProof, String> {
+        let (Some(prover), Some(root)) = (self.prover.as_ref(), self.root.as_ref()) else {
+            return Err("this leg does not prove".to_owned());
+        };
+        let aad = SealAad {
+            purpose: MANDATE_SALT_PURPOSE,
+            sub: Some(&job.sub),
+            record: &job.mandate_hash,
+        };
+        let salt = root
+            .unseal(&aad, &job.sealed_salt)
+            .map_err(|e| e.to_string())?;
+        let salt: [u8; 16] = salt
+            .try_into()
+            .map_err(|_| "the sealed salt is not 16 bytes")?;
+        let opening = mandate_opening(&job.mandate, salt).map_err(|e| e.to_string())?;
+        if opening.commitment() != job.statement.c_m {
+            return Err("the sealed salt does not open the commitment".to_owned());
+        }
+        let merchant =
+            merchant_membership(&opening.merchants, &job.merchant).map_err(|e| e.to_string())?;
+        prover
+            .prove(&job.statement, &opening, &merchant)
+            .map(|p| ZkProof::from(&p))
+            .map_err(|e| e.to_string())
     }
 
     /// Verifies the closed mandate against the issuer key, binds its user credential to the
