@@ -63,7 +63,7 @@ export function Story() {
     <section aria-labelledby="story-title" className="grid gap-6">
       <div
         aria-hidden="true"
-        className="relative aspect-[32/22] w-full overflow-hidden rounded-xl border bg-bone-2/60 dark:bg-graphite-2"
+        className="relative aspect-[32/22] w-full ticks overflow-hidden rounded-xl border bg-bone-2/60 dark:bg-graphite-2"
       >
         <canvas
           ref={canvas}

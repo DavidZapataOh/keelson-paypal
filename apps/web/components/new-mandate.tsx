@@ -192,7 +192,9 @@ export function NewMandate() {
       ))}
       <LiabilityLegend />
       <details className="max-w-2xl rounded-lg border px-4 py-3 text-sm">
-        <summary className="cursor-pointer py-1 font-medium">Terms you accept by signing</summary>
+        <summary className="cursor-pointer py-1 font-medium">
+          Signing accepts these terms; their hash is part of what you sign
+        </summary>
         <p className="mt-2 whitespace-pre-line text-muted-foreground">{TERMS}</p>
       </details>
       <div className="flex flex-col gap-3 sm:flex-row">

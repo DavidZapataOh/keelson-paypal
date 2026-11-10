@@ -41,7 +41,7 @@ test("the agent is the registered operator, its cnf key and its bond vault", asy
     bond: {
       vault: `eip155:421614:${addresses[421614].KeelsonBondVault}`,
       asset: "PYUSD",
-      min: 5000,
+      min: 50_000_000,
     },
   });
   expect(MandateSchema.shape.agent.safeParse(agent).success).toBe(true);

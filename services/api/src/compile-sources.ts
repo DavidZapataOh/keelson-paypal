@@ -11,8 +11,8 @@ export class SourceUnavailable extends Error {
   }
 }
 
-/** The smallest bond, in PYUSD minor units, the operator holds for a mandate's amber fields. */
-const BOND_MIN = 5000;
+/** The smallest bond the operator holds for a mandate's amber fields: 50 PYUSD, in its 6-decimal units. */
+const BOND_MIN = 50_000_000;
 
 /**
  * The agent the app's mandates delegate to: the registered operator `agentId`, its agent's
