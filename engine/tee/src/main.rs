@@ -26,6 +26,8 @@
 //! | `KEELSON_TEE_TOKEN_SHA256` | the hex SHA-256 of the bearer token |
 //! | `KEELSON_CHAIN_ID` | optional, `421614` by default: the chain attested and countersigned for unless a request names another supported chain |
 //! | `KEELSON_DATA_DIR` | with `--platform tdx`, where the sealed user records are kept; `/data` by default |
+//! | `KEELSON_BB` | with `--platform tdx`, the `bb` binary leg A proves C1 with; no proofs when unset |
+//! | `CRS_PATH` | with `KEELSON_BB`, the directory holding the CRS points `bb` reads (`zk/bn254_g1.dat`) |
 //! | `KEELSON_BOND_VAULT`, `KEELSON_VERIFYING_CONTRACT` | optional, the zero address by default: the bond vault bound into the attestation and the `VerdictVerifier`, `verifyingContract` of every EIP-712 domain |
 //!
 //! With `--platform tdx`, `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` are required: the engine
@@ -158,7 +160,12 @@ async fn tdx_state(config: EngineConfig, token_hash: [u8; 32]) -> Result<AppStat
     let dir = std::env::var("KEELSON_DATA_DIR").unwrap_or_else(|_| DEFAULT_DATA_DIR.into());
     let records = keelson_tee::FileRecords::open(&dir)
         .map_err(|e| format!("cannot open the record store {dir}: {e}"))?;
-    let engine = engine.with_user_records(Arc::new(records));
+    let mut engine = engine.with_user_records(Arc::new(records));
+    if let Some(bb) = std::env::var_os("KEELSON_BB") {
+        let prover = keelson_tee::zk::Prover::spawn(bb.as_ref())
+            .map_err(|e| format!("cannot start the C1 prover: {e}"))?;
+        engine = engine.with_prover(Arc::new(prover));
+    }
     Ok(AppState::new(engine, token_hash)
         .with_attestation(attestation, at)
         .with_paypal(paypal))

@@ -1,6 +1,8 @@
 {
   "anchor_20NodeProof": "77546",
   "anchor_extension": "64380",
+  "c1_verify": "646139",
+  "c1_verify_reference": "2270454",
   "claim_signed": "83676",
   "completeWithdrawal_firstRecipient": "67254",
   "completeWithdrawal_knownRecipient": "50154",

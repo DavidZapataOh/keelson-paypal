@@ -88,6 +88,19 @@ jobs:
           usage="$("$binary" 2>&1)" || status=$?
           test "$status" -eq 1
           test "$usage" = "keelson-engine: usage: keelson-engine [--platform tdx|nitro] --listen tcp:<addr>|vsock:<port>"
+      - name: bb runs on the image's own loader and libc
+        run: |
+          layout="$RUNNER_TEMP/layout"
+          rootfs="$RUNNER_TEMP/rootfs"
+          mkdir "$rootfs"
+          blob() { echo "$layout/blobs/${1/://}"; }
+          index="$(blob "$(jq -r '.manifests[0].digest' "$layout/index.json")")"
+          manifest="$(blob "$(jq -r '.manifests[] | select(.platform.architecture == "amd64") | .digest' "$index")")"
+          for layer in $(jq -r '.layers[].digest' "$manifest"); do tar -xzf "$(blob "$layer")" -C "$rootfs"; done
+          version="$(sudo chroot --userspec=65534:65534 "$rootfs" /bb --version)"
+          test "$version" = "5.3.0"
+          test "$(stat -c %s "$rootfs/crs/bn254_g1.dat")" -eq $(( (8192 + 1) * 64 ))
+          echo "| bb | $version |" >> "$GITHUB_STEP_SUMMARY"
       - name: Check the layers
         shell: bash
         run: |
