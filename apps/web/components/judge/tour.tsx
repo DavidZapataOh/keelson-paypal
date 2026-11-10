@@ -56,12 +56,13 @@ export function JudgeMode() {
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
   const invite = useRef<string | undefined>(undefined);
   useEffect(() => {
-    // The invite stays in memory only: it leaves the address bar and the history at once.
+    // A fragment never reaches a server nor a Referer; the invite then leaves the address bar
+    // and the history, and stays in memory only.
     const url = new URL(location.href);
-    const code = url.searchParams.get("invite");
+    const code = new URLSearchParams(url.hash.slice(1)).get("invite");
     if (code === null) return;
     invite.current = code;
-    url.searchParams.delete("invite");
+    url.hash = "";
     history.replaceState(history.state, "", url);
   }, []);
 

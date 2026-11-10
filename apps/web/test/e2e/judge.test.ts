@@ -66,7 +66,7 @@ test("an invite link is forwarded once and leaves the address bar and the histor
     return route.fulfill({ status: 401, contentType: "application/problem+json", json: {} });
   });
   const page = await context.newPage();
-  await page.goto(`${site.base}/judge/?invite=${invite}`);
+  await page.goto(`${site.base}/judge/#invite=${invite}`);
   const start = page.getByRole("button", { name: "Start Judge Mode" });
   await start.waitFor();
   await page.waitForURL(`${site.base}/judge/`);
