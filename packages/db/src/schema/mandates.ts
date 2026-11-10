@@ -69,5 +69,6 @@ export const mandates = pgTable(
     check("mandates_commitment_len", sql`octet_length(${t.commitment}) = 32`),
     check("mandates_hold_mode_valid", sql`${t.holdMode} in ('mandate', 'per_purchase')`),
     index("mandates_user_id_created_at_idx").on(t.userId, t.createdAt.desc(), t.id.desc()),
+    index("mandates_operator_agent_id_idx").on(t.operatorAgentId),
   ],
 );

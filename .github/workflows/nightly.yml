@@ -134,3 +134,29 @@ jobs:
             --data-urlencode "limit=100" | jq -r '.logs[].message' | grep -m1 '^{"run"' > summary.json || true
           { echo "### Money path ($status)"; echo '```json'; jq '{run, endToEnd, endToEnd2of2, endToEndDegraded, sse, steps, outbound, db, purchases, captured, failures}' summary.json || true; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           test "$status" = succeeded
+
+  trust-grades:
+    # Recalibrates the risk model on the deployed workflows: on the schedule or by hand.
+    if: github.event_name != 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Run refreshTrustGrades on keelson-workflows and wait for it
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: |
+          set -euo pipefail
+          render() { curl -fsS --retry 5 --retry-all-errors -H "Authorization: Bearer $RENDER_API_KEY" "$@"; }
+          run=$(render -X POST -H "content-type: application/json" \
+            -d '{"task": "keelson-workflows/refreshTrustGrades", "input": []}' \
+            https://api.render.com/v1/task-runs | jq -r .id)
+          [ -n "$run" ] && [ "$run" != null ]
+          echo "task run $run"
+          deadline=$((SECONDS + 12 * 60))
+          until body=$(render "https://api.render.com/v1/task-runs/$run"); \
+            status=$(jq -r .status <<<"$body"); [[ "$status" =~ ^(completed|succeeded|failed|canceled)$ ]]; do
+            [ "$SECONDS" -lt "$deadline" ] || { echo "task run still $status after 12 minutes"; exit 1; }
+            sleep 10
+          done
+          { echo "### Trust grades ($status)"; echo '```json'; jq '.results // .' <<<"$body"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          [[ "$status" =~ ^(completed|succeeded)$ ]]

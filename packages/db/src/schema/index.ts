@@ -14,6 +14,7 @@ export * from "./merchant-settlement.ts";
 export * from "./operators.ts";
 export * from "./paypal-events.ts";
 export * from "./purchases.ts";
+export * from "./risk.ts";
 export * from "./tee.ts";
 export * from "./timestamps.ts";
 export * from "./verdicts.ts";

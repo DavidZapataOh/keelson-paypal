@@ -132,6 +132,7 @@ test("a client with client credentials lists the tools, each with an output sche
     "keelson.compile_mandate",
     "keelson.confirm_mandate",
     "keelson.get_alibi",
+    "keelson.get_trust_grade",
     "keelson.submit_evidence",
     "keelson.verify_alibi",
   ]);
@@ -218,6 +219,17 @@ test("an Alibi the client may not read is a tool error, not a protocol error", a
   });
   expect(result.isError).toBe(true);
   expect(JSON.stringify(result.content)).toContain("Not found");
+  await client.close();
+});
+
+test("the trust grade of an operator that is not linked is a tool error", async () => {
+  const client = await connect(["alibis:read"]);
+  const result = await client.callTool({
+    name: "keelson.get_trust_grade",
+    arguments: { agentId: "1" },
+  });
+  expect(result.isError).toBe(true);
+  expect(JSON.stringify(result.content)).toContain("operator-not-found");
   await client.close();
 });
 

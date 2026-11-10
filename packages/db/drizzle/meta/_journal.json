@@ -218,6 +218,13 @@
       "when": 1794299928049,
       "tag": "0030_red_team_ledger",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1794304682826,
+      "tag": "0031_risk_model",
+      "breakpoints": true
     }
   ]
 }
