@@ -266,7 +266,16 @@ A stopped parent is the only state in which the second vendor is missing for mor
 
 **Rotate the bearer token.** Generate a token, set it as `KEELSON_TEE_TOKEN` in the API's environment and the CI secrets, and its SHA-256 as `KEELSON_TEE_TOKEN_SHA256` in the CI secrets. Run `tee-deploy` with the deployed digest (an update replaces leg A's encrypted environment and restarts the engine) and `nitro/update.sh` with the same digest, since the enclave takes the hash only in its boot message. Both legs restart, so countersigns wait for leg A's warm-up.
 
-**Redeploy a new image.** `tee-image` builds the image twice and publishes its digest from `main`. Run `tee-deploy` with that digest, then `nitro/update.sh sha256:<digest>`. Commit the files of the `deployment` artifact (`phala/app.json`, `phala/app-compose.json` and `phala/docker-compose.yml`) and the new `nitro/eif.json`, so that `make measure` rebuilds the deployment, then commit the `measurements.json` it produces. The API reads that file at build time and admits only signers whose attestation matches it. Until then `make measure` fails on any change to the engine, by design: the source no longer builds the deployed digest.
+**Redeploy a new image.** Countersigning never stops if the chain and the API trust the new build before any leg runs it:
+
+1. `tee-image` builds the image twice and publishes its digest from `main`.
+2. On a branch, pin that digest where the legs read it (`phala/docker-compose.yml`, the compose it renders into `phala/app-compose.json`, and `nitro/eif.json`), and run `tee-image` on the branch (`workflow_dispatch`): its `measure` jobs compute both legs' measurements from source, before any deploy. Commit its `measurements` artifact as `measurements.json` and move the previous file into `measurements-rotation.json`, so the API admits the signers of both builds; add the new build to `TEE_BUILDS` in `packages/alibi/src/verify/trust.ts` and keep the old ones, so earlier Alibis keep verifying.
+3. Allow both measurement ids on the `VerdictVerifier`: one timelock batch that has the AccessManager schedule `setAllowedMeasurement(id, true)` for each, and a second batch, scheduled in the same minute, that executes them once the `SIGNERS_ROLE` delay has passed (timelock 5 min, then the signers delay, on the testnets about 20 min in all).
+4. Merge and deploy the API, which now admits both builds.
+5. Run `tee-deploy` with the digest and `nitro/update.sh sha256:<digest>`. Commit the `deployment` artifact's files and the new `nitro/eif.json` if they differ from step 2, and check that `measure-live` passes. The API admits each new signer when it first meets it, and its refresh registers the signer on chain with `KEELSON_REGISTRAR_KEY`.
+6. Once nothing runs the old build, empty `measurements-rotation.json` and disallow the old measurements from the Guardian Safe.
+
+`make measure` fails on any change to the engine until step 2 is committed, by design: the source no longer builds the deployed digest.
 
 **Cost.** Both legs run around the clock. Rates read on 2026-11-06:
 
