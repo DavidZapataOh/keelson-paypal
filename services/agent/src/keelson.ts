@@ -48,9 +48,7 @@ export function apiClient(o: ApiClientOptions): Keelson {
 }
 
 /** The agent's P-256 `cnf` key from its private JWK (`KEELSON_AGENT_KEY`). */
-export async function agentKey(
-  privateJwk: string,
-): Promise<{
+export async function agentKey(privateJwk: string): Promise<{
   privateKey: CryptoKey;
   publicJwk: { kty: "EC"; crv: "P-256"; x: string; y: string };
 }> {
