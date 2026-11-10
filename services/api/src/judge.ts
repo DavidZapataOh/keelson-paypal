@@ -27,13 +27,17 @@ export const JUDGE_COMPILES = 5;
 /** New judges a day, over every address. */
 const JUDGES_PER_DAY = 200;
 
-/** Whether the user is a Judge Mode tenant. */
+/** Whether a judge opened at `createdAt` has outlived its tenant. */
+export const judgeExpired = (createdAt: Date, now = Date.now()): boolean =>
+  now - new Date(createdAt).getTime() >= JUDGE_TTL_MS;
+
+/** Whether the user is a Judge Mode tenant that has not expired. */
 export async function isJudge(db: Db, userId: string): Promise<boolean> {
   const [row] = await db
-    .select({ isAnonymous: user.isAnonymous })
+    .select({ isAnonymous: user.isAnonymous, createdAt: user.createdAt })
     .from(user)
     .where(eq(user.id, userId));
-  return row?.isAnonymous === true;
+  return row?.isAnonymous === true && !judgeExpired(row.createdAt);
 }
 
 const day = () => new Date().toISOString().slice(0, 10);
@@ -62,7 +66,8 @@ export async function admitJudgeCompile(kv: RedisClientType, userId: string): Pr
 
 /**
  * The newest real rows the tour walks through: the demo operator's latest mandate with a captured
- * purchase that has an Alibi, the latest sandbox dispute with a verdict, and the latest finished
+ * purchase that has an Alibi, signed by one of Keelson's own test buyers (an `example.test`
+ * address the agent runs create) so no shopper's mandate is shown, the latest sandbox dispute with a verdict, and the latest finished
  * red-team campaign.
  */
 export async function tourSeed(db: Db, agentId: bigint | undefined) {
@@ -71,7 +76,8 @@ export async function tourSeed(db: Db, agentId: bigint | undefined) {
     select p.mandate_id from purchases p
     join mandates m on m.id = p.mandate_id
     join alibis a on a.purchase_id = p.id
-    where p.state = 'CAPTURED' ${agentId === undefined ? sql`` : sql`and m.operator_agent_id = ${agentId.toString()}`}
+    join "user" u on u.id = m.user_id
+    where p.state = 'CAPTURED' and not u.is_anonymous and u.email like '%@example.test' ${agentId === undefined ? sql`` : sql`and m.operator_agent_id = ${agentId.toString()}`}
     order by p.created_at desc limit 1`)
     .then((r) => r.rows);
   const [dispute] = await db

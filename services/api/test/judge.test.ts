@@ -221,6 +221,50 @@ describe("judge sessions", () => {
     expect(res.status).toBe(409);
   });
 
+  test("only the app's origin can open a judge", async () => {
+    const res = await fetch(`${baseURL}/v1/judge/sessions`, {
+      method: "POST",
+      headers: {
+        origin: "https://evil.example",
+        "idempotency-key": ulid(),
+        "x-forwarded-for": "10.77.0.1, 10.255.0.1, 10.255.0.2",
+      },
+    });
+    expect(res.status).toBe(403);
+    expect(res.headers.getSetCookie()).toEqual([]);
+  });
+
+  test("addresses of one IPv6 /64 share the limit", async () => {
+    const prefix = `2001:db8:${(Date.now() % 65_000).toString(16)}:1`;
+    const statuses: number[] = [];
+    for (let i = 1; i <= 6; i++)
+      statuses.push((await startJudge(`${prefix}::${i.toString(16)}`)).status);
+    expect(statuses.filter((s) => s === 201)).toHaveLength(5);
+    expect(statuses[5]).toBe(429);
+  });
+
+  test("a judge cannot link a PayPal account to its tenant", async () => {
+    const res = await call("/api/auth/link-social", judgeCookie, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ provider: "paypal" }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  test("an expired judge is nobody, even with a live session", async () => {
+    const res = await startJudge();
+    const cookie = cookieOf(res);
+    const id = ((await res.json()) as { user_id: string }).user_id;
+    expect((await call("/v1/judge/tour", cookie)).status).toBe(200);
+    await testDb
+      .update(user)
+      .set({ createdAt: new Date(Date.now() - JUDGE_TTL_MS - 1_000) })
+      .where(eq(user.id, id));
+    expect((await call("/v1/judge/tour", cookie)).status).toBe(401);
+    expect((await call("/v1/merchants/me", cookie)).status).toBe(401);
+  });
+
   test("five judges an hour per address", async () => {
     const statuses: number[] = [];
     const ip = `10.9.${Date.now() % 250}.9`;
@@ -265,6 +309,42 @@ describe("tour", () => {
       "amount",
       "line_items",
     ]);
+  });
+
+  test("never shows a shopper's mandate, only Keelson's own test buyers'", async () => {
+    const shopper = ulid();
+    await testDb
+      .insert(user)
+      .values({ id: shopper, name: "Shopper", email: `${shopper}@shopper.invalid` });
+    const theirs = ulid();
+    await testDb.insert(mandates).values({
+      id: theirs,
+      userId: shopper,
+      operatorAgentId: agentId,
+      state: "ACTIVE",
+      currency: "USD",
+      maxMinor: 15_000n,
+      remainingMinor: 1_100n,
+      merchantIds: ["mrc_runfast"],
+      expiresAt: new Date(Date.now() + 86_400_000),
+    });
+    const bought = ulid();
+    await testDb.insert(purchases).values({
+      id: bought,
+      mandateId: theirs,
+      merchantId: "mrc_runfast",
+      currency: "USD",
+      amountMinor: 13_900n,
+      cartHash: randomBytes(32),
+      state: "CAPTURED",
+    });
+    await testDb
+      .insert(alibis)
+      .values({ purchaseId: bought, leafHash: randomBytes(32), bundle: {} });
+    const tour = (await (await call("/v1/judge/tour", judgeCookie)).json()) as {
+      mandate: { id: string };
+    };
+    expect(tour.mandate.id).toBe(mandateId);
   });
 
   test("is for judges only", async () => {

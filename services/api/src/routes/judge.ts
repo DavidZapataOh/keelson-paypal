@@ -31,6 +31,7 @@ const start = createRoute({
       description: "The judge, signed in (the session cookie is set)",
       content: { "application/json": { schema: Started } },
     },
+    403: { description: "Not called from the app's origin", content: problemContent },
     409: { description: "Already signed in as someone else", content: problemContent },
     429: { description: "Too many judges", content: problemContent },
     503: { description: "Sign-in is not configured", content: problemContent },
@@ -122,7 +123,7 @@ function requireJudge(deps: Pick<Deps, "db">): MiddlewareHandler {
 
 export function registerJudge(
   app: OpenAPIHono,
-  deps: Pick<Deps, "db" | "kv" | "auth" | "rateLimit" | "demoAgentId">,
+  deps: Pick<Deps, "db" | "kv" | "auth" | "rateLimit" | "demoAgentId" | "appOrigin">,
 ): void {
   const { db, auth } = deps;
   app.on(
@@ -141,6 +142,10 @@ export function registerJudge(
 
   app.openapi(start, async (c) => {
     if (!auth) return problem(c, 503, "dependency-unavailable", "Sign-in unavailable");
+    // A form on another site cannot sign its visitors in as judges.
+    if (deps.appOrigin && c.req.header("origin") !== deps.appOrigin) {
+      return problem(c, 403, "cross-origin", "Forbidden", "Start Judge Mode from the app.");
+    }
     if (c.var.principal) {
       return problem(
         c,

@@ -163,7 +163,11 @@ export const JUDGE_LIMIT: Limits = {
 };
 
 const day = () => new Date().toISOString().slice(0, 10);
-const spentKey = (merchantId: string, model: Model) => `assistant:${merchantId}:${model}:${day()}`;
+/** A merchant's budget is per UTC day; a judge's lasts its whole tenant. */
+const spentKey = (owner: string, model: Model) =>
+  owner.startsWith("judge:")
+    ? `assistant:${owner}:${model}`
+    : `assistant:${owner}:${model}:${day()}`;
 
 /**
  * The most a turn can cost: every three bytes of its body an input token, and a full reply.

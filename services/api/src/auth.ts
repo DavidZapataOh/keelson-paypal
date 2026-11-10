@@ -7,7 +7,7 @@ import type { PayPalEnv } from "@keelson/paypal";
 import type { AuthenticationExtensionsClientInputs } from "@simplewebauthn/server";
 import { cose, decodeCredentialPublicKey } from "@simplewebauthn/server/helpers";
 import { betterAuth } from "better-auth";
-import { APIError, createAuthMiddleware } from "better-auth/api";
+import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
 import { anonymous, jwt } from "better-auth/plugins";
 import { siwe } from "better-auth/plugins/siwe";
 import type { PayPalProfile } from "better-auth/social-providers";
@@ -81,6 +81,14 @@ export function createAuth(
     // Judges are created only through `POST /v1/judge/sessions`, which limits them.
     disabledPaths: ["/token", "/sign-in/anonymous"],
     hooks: {
+      // A judge's tenant is temporary: it cannot take a PayPal account the reset would then strand.
+      before: createAuthMiddleware(async (ctx) => {
+        if (ctx.path !== "/link-social") return;
+        const session = await getSessionFromCtx(ctx);
+        if ((session?.user as { isAnonymous?: boolean | null } | undefined)?.isAnonymous) {
+          throw new APIError("FORBIDDEN", { message: "Judge Mode cannot link an account." });
+        }
+      }),
       // A passkey is payment-capable only if the server issued the `payment` extension for its
       // ceremony; the verified registration's challenge identifies that ceremony.
       after: createAuthMiddleware(async (ctx) => {

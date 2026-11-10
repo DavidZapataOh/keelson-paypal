@@ -6514,6 +6514,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/JudgeSession"
+        "403":
+          description: Not called from the app's origin
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "409":
           description: Already signed in as someone else
           content:
