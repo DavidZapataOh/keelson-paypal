@@ -88,7 +88,7 @@ if (casePath && caseName) {
     field: j.field,
   });
 } else {
-  const url = new URL("https://store.keelson.finance/api/products/tempo-3");
+  const url = new URL("https://store.keelson.finance/api/products/tempo-3/variants/RF-TMP3-11");
   const range = new TextEncoder().encode(
     '{"sku":"RF-TMP3-11","size":"11","color":"blue","unit_minor":12900,"returns_free":true}',
   );

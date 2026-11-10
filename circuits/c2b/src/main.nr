@@ -1,9 +1,10 @@
 //! C2b `amber_contradiction`: a JSON object a TLS server sent, committed to in a `WebFact`,
 //! contradicts an amber attribute the operator attested for the same item.
 //!
-//! The operator's amber commitment opens to the product URL, the item's SKU and its attested size,
-//! color, unit price and free-returns flag. The committed range opens to a JSON object whose
-//! top-level `sku` is the attested SKU and whose value for `field_id` differs from the attested one.
+//! The operator's amber commitment opens to the item's page, its SKU and its attested size, color,
+//! unit price and free-returns flag. The committed range opens to the item's JSON object: exactly
+//! the keys `sku`, `size`, `color`, `unit_minor` and `returns_free`, its `sku` the attested one and
+//! its value for `field_id` another than the attested one.
 
 mod vectors;
 
@@ -107,26 +108,83 @@ fn main(
     }
     let json = JSON512b::parse_json(text);
 
-    let sku: BoundedVec<u8, MAX_STRING> = json.get_string_unchecked("sku".as_bytes());
+    // Five pairs in the whole object and the five keys at its root: nothing nested, no key twice.
+    assert(pairs(text) == 5, "not an item");
+    let sku = json.get_value_unchecked("sku".as_bytes());
+    let sku = plain_string(sku.is_string(), sku.value());
+    let size = json.get_value_unchecked("size".as_bytes());
+    let size = plain_string(size.is_string(), size.value());
+    let color = json.get_value_unchecked("color".as_bytes());
+    let color = plain_string(color.is_string(), color.value());
+    let unit_minor = json.get_value_unchecked("unit_minor".as_bytes());
+    let unit_minor = integer(unit_minor.is_number(), unit_minor.value());
+    let returns_free = json.get_literal_unchecked("returns_free".as_bytes());
+    assert(!returns_free.is_null(), "not an item");
     assert(pack(sku) == amber.sku, "another item");
 
-    if field_id == SIZE {
-        let size: BoundedVec<u8, MAX_STRING> = json.get_string_unchecked("size".as_bytes());
-        assert(pack(size) != amber.size, "no contradiction");
+    let differs = if field_id == SIZE {
+        pack(size) != amber.size
     } else if field_id == COLOR {
-        let color: BoundedVec<u8, MAX_STRING> = json.get_string_unchecked("color".as_bytes());
-        assert(pack(color) != amber.color, "no contradiction");
+        pack(color) != amber.color
     } else if field_id == UNIT_PRICE {
-        assert(
-            json.get_number_unchecked("unit_minor".as_bytes()) != amber.unit_minor,
-            "no contradiction",
-        );
+        unit_minor != amber.unit_minor
     } else {
         assert(field_id == RETURNS_FREE, "unknown field");
-        let returns_free = json.get_literal_unchecked("returns_free".as_bytes());
-        assert(!returns_free.is_null());
-        assert(returns_free.to_bool() != amber.returns_free, "no contradiction");
+        returns_free.to_bool() != amber.returns_free
+    };
+    assert(differs, "no contradiction");
+}
+
+/// The `:` outside strings in valid JSON, one per key/value pair at any depth.
+fn pairs(text: [u8; MAX_RANGE]) -> u32 {
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut n = 0;
+    for i in 0..MAX_RANGE {
+        let b = text[i];
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if b == 0x5c {
+                escaped = true;
+            } else if b == 0x22 {
+                in_string = false;
+            }
+        } else if b == 0x22 {
+            in_string = true;
+        } else if b == 0x3a {
+            n += 1;
+        }
     }
+    n
+}
+
+/// A string value as sent, without escapes or control characters: an escaped string could spell
+/// the same text differently, and a control byte could be framing spliced into the body.
+fn plain_string(is_string: bool, s: BoundedVec<u8, MAX_STRING>) -> BoundedVec<u8, MAX_STRING> {
+    assert(is_string, "not a string");
+    for i in 0..MAX_STRING {
+        if i < s.len() {
+            let b = s.get_unchecked(i);
+            assert((b >= 0x20) & (b != 0x5c) & (b != 0x7f), "escaped string");
+        }
+    }
+    s
+}
+
+/// A non-negative integer of up to 19 digits, which a `u64` holds.
+fn integer(is_number: bool, digits: BoundedVec<u8, MAX_STRING>) -> u64 {
+    assert(is_number, "not a number");
+    assert(digits.len() <= 19, "not a u64");
+    let mut n: u64 = 0;
+    for i in 0..19 {
+        if i < digits.len() {
+            let d = digits.get_unchecked(i);
+            assert((d >= 0x30) & (d <= 0x39), "not an integer");
+            n = n * 10 + (d - 0x30) as u64;
+        }
+    }
+    n
 }
 
 #[test]
@@ -213,7 +271,7 @@ fn test_returns_free_contradiction() {
 
 #[test]
 fn test_reads_top_level_keys_in_any_order_and_spacing() {
-    let json = "{ \"variant\": {\"size\": \"10\"}, \"size\" : \"11\",\n \"sku\": \"RF-TMP3-11\" }";
+    let json = "{ \"returns_free\" : true,\n \"unit_minor\": 12900, \"color\": \"blue\", \"size\" : \"11\",\"sku\": \"RF-TMP3-11\" }";
     prove(
         json,
         SIZE,
@@ -245,7 +303,7 @@ fn test_honest_returns_free_is_no_contradiction() {
     prove(VARIANT, RETURNS_FREE, honest());
 }
 
-#[test(should_fail_with = "no contradiction")]
+#[test(should_fail_with = "not an item")]
 fn test_a_nested_key_is_not_the_items() {
     let json = "{\"sku\":\"RF-TMP3-11\",\"variant\":{\"size\":\"10\"},\"size\":\"11\"}";
     prove(json, SIZE, honest());
@@ -463,4 +521,40 @@ fn prove<let N: u32>(json: str<N>, field_id: u8, amber: Amber) {
         amber,
         SALT,
     );
+}
+
+#[test(should_fail_with = "not an item")]
+fn test_a_repeated_key_proves_nothing() {
+    let json = "{\"sku\":\"RF-TMP3-11\",\"size\":\"10\",\"size\":\"11\",\"color\":\"blue\",\"unit_minor\":12900,\"returns_free\":true}";
+    prove(json, SIZE, honest());
+}
+
+#[test(should_fail_with = "not an item")]
+fn test_an_extra_key_proves_nothing() {
+    let json = "{\"sku\":\"RF-TMP3-11\",\"size\":\"10\",\"color\":\"blue\",\"unit_minor\":12900,\"returns_free\":true,\"x\":1}";
+    prove(json, SIZE, honest());
+}
+
+#[test]
+fn test_a_colon_inside_a_string_is_no_pair() {
+    let json = "{\"sku\":\"RF-TMP3-11\",\"size\":\"10\",\"color\":\"blue:navy\",\"unit_minor\":12900,\"returns_free\":true}";
+    prove(json, SIZE, honest());
+}
+
+#[test(should_fail_with = "escaped string")]
+fn test_an_escaped_value_proves_nothing() {
+    let json = "{\"sku\":\"RF-TMP3-11\",\"size\":\"1\\u0031\",\"color\":\"blue\",\"unit_minor\":12900,\"returns_free\":true}";
+    prove(json, SIZE, honest());
+}
+
+#[test(should_fail_with = "escaped string")]
+fn test_a_control_byte_in_a_value_proves_nothing() {
+    let json = "{\"sku\":\"RF-TMP3-11\",\"size\":\"1\r\n1\",\"color\":\"blue\",\"unit_minor\":12900,\"returns_free\":true}";
+    prove(json, SIZE, honest());
+}
+
+#[test(should_fail_with = "not a u64")]
+fn test_a_price_past_u64_proves_nothing() {
+    let json = "{\"sku\":\"RF-TMP3-11\",\"size\":\"11\",\"color\":\"blue\",\"unit_minor\":18446744073709564516,\"returns_free\":true}";
+    prove(json, UNIT_PRICE, honest());
 }

@@ -162,9 +162,20 @@ contract AmberContradictionForkTest is ViolationBase {
         k.fact.tCapture = issuedAt - amber.FACT_LEAD() - 1;
         k.factSig = _signFact(tdxKey, k.fact);
         _expectRevert(k, AmberContradictionCourt.StaleWebFact.selector);
-        k.fact.tCapture = k.coverage.expiresAt + 1;
+        k.fact.tCapture = issuedAt + amber.FACT_LAG() + 1;
         k.factSig = _signFact(tdxKey, k.fact);
+        vm.warp(k.fact.tCapture);
         _expectRevert(k, AmberContradictionCourt.StaleWebFact.selector);
+        k.fact.tCapture = issuedAt + amber.FACT_LAG();
+        k.factSig = _signFact(tdxKey, k.fact);
+        vm.warp(k.fact.tCapture - 1);
+        _expectRevert(k, AmberContradictionCourt.StaleWebFact.selector);
+        vm.warp(k.fact.tCapture);
+        _slash(k);
+    }
+
+    function test_webFactCapturedBeforeThePurchase_convicts() public {
+        AmberCase memory k = _lockedAmber("size", amber.SIZE());
         k.fact.tCapture = issuedAt - amber.FACT_LEAD();
         k.factSig = _signFact(tdxKey, k.fact);
         _slash(k);
@@ -187,7 +198,7 @@ contract AmberContradictionForkTest is ViolationBase {
     function test_webFactOfAnotherPageOrRange_reverts() public {
         AmberCase memory k = _lockedAmber("size", amber.SIZE());
         KeelsonTypes.WebFact memory fact = k.fact;
-        k.fact.urlPathHash = keccak256("/api/products/trail-runner-2");
+        k.fact.urlPathHash = keccak256("/api/products/tempo-3/variants/RF-TMP3-10");
         k.factSig = _signFact(tdxKey, k.fact);
         _expectRevert(k, AmberContradictionCourt.InvalidProof.selector);
         k.fact = fact;
@@ -273,7 +284,7 @@ contract AmberContradictionForkTest is ViolationBase {
         k.countersigs = _countersign(k.countersign);
         k.fact = KeelsonTypes.WebFact({
             hostHash: keccak256("store.keelson.finance"),
-            urlPathHash: keccak256("/api/products/tempo-3"),
+            urlPathHash: keccak256("/api/products/tempo-3/variants/RF-TMP3-11"),
             tCapture: issuedAt + CAPTURE_DELAY,
             rangeCommitment: bytes32(uint256(inputs[0]) << 128 | uint256(inputs[1])),
             attId: keccak256("leg A's attestation")

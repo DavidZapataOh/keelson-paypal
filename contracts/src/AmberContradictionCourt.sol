@@ -23,11 +23,11 @@ interface IAmberContradictionVerifier {
 /// @title AmberContradictionCourt
 /// @notice Records, once per coverage, that an amber field the coverage's operator attested is false: the store's own
 /// server said otherwise in a TLS session the TLSNotary notary (leg A) signed as a `WebFact`, and the C2b proof shows
-/// that the session's committed JSON object is the attested item (same SKU) with another value of the field. The
-/// operator's `amberCommitment` in the locked coverage is what the proof opens. No role, no owner; the
-/// `ViolationBondPool` pays the merchant on the conviction.
-/// @dev The `WebFact` must have been captured within `FACT_LEAD` before the purchase was countersigned and before the
-/// coverage expired, by a TDX signer active at the capture. The countersign gives the purchase time: it is matched to
+/// that the session's committed body is the attested item's JSON object (same SKU, exactly its five fields) with another
+/// value of the field. The operator's `amberCommitment` in the locked coverage is what the proof opens. No role, no
+/// owner; the `ViolationBondPool` pays the merchant on the conviction.
+/// @dev The `WebFact` must have been captured from `FACT_LEAD` before to `FACT_LAG` after the purchase was
+/// countersigned, by a TDX signer active at the capture. The countersign gives the purchase time: it is matched to
 /// the coverage as `lockCoverage` matched them and must carry signatures of signers active when it was issued.
 contract AmberContradictionCourt {
     struct Conviction {
@@ -41,7 +41,9 @@ contract AmberContradictionCourt {
     uint8 public constant UNIT_PRICE = 3;
     uint8 public constant RETURNS_FREE = 4;
     /// @notice How long before the countersign a `WebFact` may have been captured: the page the agent bought from.
-    uint40 public constant FACT_LEAD = 1 hours;
+    uint40 public constant FACT_LEAD = 10 minutes;
+    /// @notice How long after the countersign a `WebFact` may have been captured: the session checkout starts.
+    uint40 public constant FACT_LAG = 10 minutes;
 
     uint8 internal constant TDX = 1;
     uint8 internal constant NITRO = 2;
@@ -71,7 +73,7 @@ contract AmberContradictionCourt {
     error CountersignMismatch();
     error InvalidCountersignature();
     error InvalidWebFact();
-    /// @notice The `WebFact` was captured too long before the purchase or after the coverage expired.
+    /// @notice The `WebFact` was not captured around the purchase, or claims a time still to come.
     error StaleWebFact();
     error InvalidProof();
 
@@ -113,7 +115,10 @@ contract AmberContradictionCourt {
         if (!_countersigned(teeVerifier.hashTypedData(KeelsonTypes.hash(cs)), countersigs, cs.issuedAt)) {
             revert InvalidCountersignature();
         }
-        if (uint256(fact.tCapture) + FACT_LEAD < cs.issuedAt || fact.tCapture > c.expiresAt) revert StaleWebFact();
+        if (
+            uint256(fact.tCapture) + FACT_LEAD < cs.issuedAt || fact.tCapture > uint256(cs.issuedAt) + FACT_LAG
+                || fact.tCapture > block.timestamp
+        ) revert StaleWebFact();
         bytes32 factDigest = teeVerifier.hashTypedData(KeelsonTypes.hash(fact));
         if (factSig.length != SIGNATURE_LENGTH || !_signedAt(factDigest, factSig, TDX, fact.tCapture)) {
             revert InvalidWebFact();

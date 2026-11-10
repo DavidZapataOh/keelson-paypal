@@ -12,16 +12,26 @@ describe("amber commitment", () => {
   });
 
   test("the product names the page as the notary hashes it: lowercase host, path and query", () => {
-    const page = amberProduct(new URL("https://store.keelson.finance/api/products/tempo-3"));
-    expect(amberProduct(new URL("https://STORE.keelson.finance/api/products/tempo-3"))).toBe(page);
+    const page = amberProduct(
+      new URL("https://store.keelson.finance/api/products/tempo-3/variants/RF-TMP3-11"),
+    );
     expect(
-      amberProduct(new URL("https://store.keelson.finance/api/products/tempo-3?x=1")),
+      amberProduct(
+        new URL("https://STORE.keelson.finance/api/products/tempo-3/variants/RF-TMP3-11"),
+      ),
+    ).toBe(page);
+    expect(
+      amberProduct(
+        new URL("https://store.keelson.finance/api/products/tempo-3/variants/RF-TMP3-11?x=1"),
+      ),
     ).not.toBe(page);
-    expect(page).toBe(0x2331e453b6124e47edc8e636aee16ab129ffe8a5cf71cf529a1e702345bc9d06n);
+    expect(page).toBe(0x1797628e5344cc4a8428fc94d110c65c7d2594aa5824778bdc17185a6828702an);
   });
 
   test("the commitment is the one the C2b circuit opens (circuits/c2b/src/vectors.nr)", async () => {
-    const product = amberProduct(new URL("https://store.keelson.finance/api/products/tempo-3"));
+    const product = amberProduct(
+      new URL("https://store.keelson.finance/api/products/tempo-3/variants/RF-TMP3-11"),
+    );
     const amber = {
       sku: "RF-TMP3-11",
       size: "10",
@@ -30,10 +40,10 @@ describe("amber commitment", () => {
       returnsFree: true,
     };
     expect(await amberCommitment(product, amber, 0x0a3b3e5c1d2f40516273849506a7b8c9n)).toBe(
-      0x1e49470de7af9aede92d4a09f488237805a511b68fd648fbd911bafedb959b8dn,
+      0x0e9031affb017059e038d205ed727d9720f2c2b2e5c70c2684ab85b1d4724937n,
     );
     expect(
       await amberCommitment(product, { ...amber, size: "11" }, 0x0a3b3e5c1d2f40516273849506a7b8c9n),
-    ).not.toBe(0x1e49470de7af9aede92d4a09f488237805a511b68fd648fbd911bafedb959b8dn);
+    ).not.toBe(0x0e9031affb017059e038d205ed727d9720f2c2b2e5c70c2684ab85b1d4724937n);
   });
 });
