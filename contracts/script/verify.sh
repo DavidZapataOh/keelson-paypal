@@ -58,7 +58,7 @@ etherscan_source() {
 # bb names every generated verifier HonkVerifier; the reference one is linked to two libraries.
 target_of() {
   case "$1" in
-    Mandate*Verifier) echo "src/verifiers/$1.sol:HonkVerifier" ;;
+    Mandate*Verifier | Anonymous*Verifier) echo "src/verifiers/$1.sol:HonkVerifier" ;;
     *) source_of "$(contract_of "$1")" ;;
   esac
 }
@@ -66,7 +66,7 @@ target_of() {
 # The verifiers are compiled without via-IR (foundry.toml `compilation_restrictions`); everything else in this
 # project with the default profile. External roots have a single profile of their own.
 profile_of() {
-  if [[ "$1" == Mandate*Verifier ]]; then
+  if [[ "$1" =~ ^(Mandate|Anonymous).*Verifier$ ]]; then
     echo "--compilation-profile legacy"
   elif [[ "$(root_of "$(contract_of "$1")")" == . ]]; then
     echo "--compilation-profile default"
@@ -75,7 +75,7 @@ profile_of() {
 
 # The libraries' CREATE3 addresses, predicted from the chain's registry.
 libraries_of() {
-  [[ "$1" == Mandate*ReferenceVerifier ]] || return 0
+  [[ "$1" =~ ^(Mandate|Anonymous).*ReferenceVerifier$ ]] || return 0
   local lib address
   for lib in RelationsLib ZKTranscriptLib; do
     address=$(forge script script/DeployMandatePredicateVerifier.s.sol --sig "predict(string)" "$1.$lib" \
