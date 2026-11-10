@@ -12,6 +12,7 @@ services:
     buildFilter:
       paths:
         - services/api/**
+        - services/agent/**
         - packages/**
         - package.json
         - pnpm-lock.yaml
@@ -89,6 +90,9 @@ services:
       - key: DISPUTE_WORKFLOW
         value: keelson-workflows
       - key: RENDER_API_KEY
+        sync: false
+      # The shopping agent's browsers, for its one-off runs against this service.
+      - key: KERNEL_API_KEY
         sync: false
       - fromGroup: keelson-secrets
 
