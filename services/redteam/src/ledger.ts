@@ -98,7 +98,7 @@ export type Line = Header | Attack | Summary;
 type Chained = Line & { prev: string };
 
 /** `SHA-256(utf8(LEDGER_DST) || 0x00 || utf8(line))`, in hex. */
-function lineHash(line: string): string {
+export function lineHash(line: string): string {
   return createHash("sha256").update(`${LEDGER_DST}\0`).update(line).digest("hex");
 }
 
