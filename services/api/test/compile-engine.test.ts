@@ -18,6 +18,10 @@ test("the build id the legs are held to is the published image digest", async ()
   expect(loadMeasurements().digest).toBe(published.oci_digest);
 });
 
+test("the policy compile fills is bound", async () => {
+  expect(unboundPolicy(await engineSource())).toEqual([]);
+});
+
 test("a mandate compiled for a build still admitted in a rotation stays bound", () => {
   const current = loadMeasurements();
   const previous = {

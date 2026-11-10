@@ -9,7 +9,7 @@ const file = new URL("../../../../engine/tee/measurements.json", import.meta.url
 const rotationFile = new URL("../../../../engine/tee/measurements-rotation.json", import.meta.url);
 
 /** One build both legs may run: its image digest and the measurement id of each leg. */
-interface Build {
+export interface Build {
   /** The image digest, as the 32 bytes `engineBuildId` carries. */
   engineBuildId: Hex;
   /** The image digest, `sha256:<hex>`. */

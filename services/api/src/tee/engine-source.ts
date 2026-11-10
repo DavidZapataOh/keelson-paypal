@@ -1,13 +1,16 @@
 import { isDeepStrictEqual } from "node:util";
 import type { Mandate } from "@keelson/mandate";
-import { loadMeasurements } from "./measurements.ts";
+import { type Build, loadMeasurements } from "./measurements.ts";
 
 const ENGINE = "keelson-engine";
 
 type Engine = Pick<Mandate["policy"], "engine" | "version" | "measurements">;
-type Build = { digest: string; tdx: string[]; nitro: string[] };
+type Admitted = Pick<Build, "digest" | "tdx" | "nitro">;
 
-const engineOf = (b: Build): Engine & { engine: typeof ENGINE } => ({
+/** The builds the legs are held to, read once at startup as `createTee` reads them. */
+const admitted = loadMeasurements();
+
+const engineOf = (b: Admitted): Engine & { engine: typeof ENGINE } => ({
   engine: ENGINE,
   version: b.digest.replace("sha256:", "").slice(0, 12),
   measurements: [...b.tdx, ...b.nitro],
@@ -20,11 +23,12 @@ export async function engineSource(): Promise<Engine & { engine: typeof ENGINE }
 
 /**
  * The `policy` fields of a signed mandate that name no build the legs are admitted to run: the
- * current one, or another listed for a rotation, which compiled mandates name until it ends.
+ * current one, or one listed for a rotation, which mandates compiled before the swap name until
+ * the rotation ends.
  */
 export function unboundPolicy(
   policy: Engine,
-  m: Build & { rotation: Build[] } = loadMeasurements(),
+  m: Admitted & { rotation: Admitted[] } = admitted,
 ): string[] {
   const builds = [m, ...m.rotation].map(engineOf);
   const build = builds.find((b) => b.version === policy.version);
