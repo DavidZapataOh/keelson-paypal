@@ -21,9 +21,8 @@ export const SETTLEMENT: Readonly<Record<string, Address>> = {
 };
 
 /**
- * Keelson's treasury: it receives the PYUSD of merchants paid through PayPal, and pays them a Payout.
- *
- * @internal
+ * Keelson's treasury: it receives the PYUSD of merchants paid through PayPal, and pays them a Payout;
+ * it also pays the verdicts the chain refuses although they hold.
  */
 export const KEELSON_TREASURY: Address = "0xbEE85Cd040cf4C7D0851fFc5655d7e3a75f84B16";
 

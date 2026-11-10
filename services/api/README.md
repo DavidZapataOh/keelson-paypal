@@ -163,15 +163,24 @@ When the operator or Keelson is at fault:
    veto window; the settlement sweeper sends `executeSlash` once it closes. A refusal no retry can
    change (`Expired`, `CoverageNotActive`, `ExceedsCoverage`, `NotAnchored`,
    `WarrantyWindowClosed`, …) is stored as `failed` with the error's name.
-2. **The buyer is refunded** once the chain paid or queued the merchant's money, while the dispute
+2. **Keelson's treasury pays what the chain refused** when the verdict still holds: refused with
+   `Expired`, `WarrantyWindowClosed`, `CoverageNotActive` or `InsufficientReserve`, the treasury pays
+   the verdict's amount, and only while the coverage (less what it already paid, on chain or from
+   the treasury) still covers it. On the `pyusd` rail it is the treasury's EIP-3009
+   `transferWithAuthorization` to the payee, relayed with the verdict's digest as its nonce, so
+   PYUSD moves it once; on the `paypal` rail it is the Payout of step 4. When the operator was at
+   fault, the relayer rates it `-1.00` (`"keelson"`/`"uncollected"`) on the ERC-8004 Reputation
+   registry. The settlement reads `paid_by: "treasury"` and the purchase moves to `WARRANTY_PAID`.
+   Without `KEELSON_TREASURY_KEY` a `pyusd` verdict the chain refused stays `failed`.
+3. **The buyer is refunded** once the chain or the treasury paid, or the chain queued, the merchant's money, while the dispute
    is an inquiry: the whole capture (PayPal refuses partial refunds on a disputed capture),
    `custom_id` the verdict's `ksv1.<verdict id>.<digest>` reference and `PayPal-Request-Id`
    derived from the verdict digest, so a retry is the same refund. `accept-claim` is then not
-   sent; in a chargeback, `accept-claim` settles it. When the chain refused, neither is sent: the
-   merchant is not made to refund what no one reimburses, and PayPal decides the case.
-3. **A merchant that settles through PayPal** gets a Payout in USD for the amount the treasury
-   received in PYUSD, under the same `ksv1.` reference (`sender_item_id`); the batch id is derived
-   from it, so PayPal refuses a second batch.
+   sent; in a chargeback, `accept-claim` settles it. While no one has paid the merchant, neither is
+   sent: the merchant is not made to refund what no one reimburses, and PayPal decides the case.
+4. **A merchant that settles through PayPal** gets a Payout in USD for the verdict's amount, which
+   the treasury received in PYUSD or pays from its own funds, under the same `ksv1.` reference
+   (`sender_item_id`); the batch id is derived from it, so PayPal refuses a second batch.
 
 The purchase then moves to `SLASHED` or `WARRANTY_PAID` (`MERCHANT_LIABLE` or `DEFENDED` when the
 merchant or the user is at fault). The rail is the merchant's choice
@@ -183,7 +192,7 @@ as it signs `PayoutAddress`), with a nonce higher than its last one, so neither 
 with `POST /v1/purchases/{id}/tracking`: the Orders v2 tracker, then `DELIVERED` through the Add
 Tracking API, which makes it the delivery proof of a "not received" dispute.
 
-`test/settle.test.ts` settles amber, green, expired and queued verdicts on an anvil fork of Arbitrum
+`test/settle.test.ts` settles amber, green, expired, treasury-paid and queued verdicts on an anvil fork of Arbitrum
 Sepolia, one block after a live `lockCoverage`, with two verdict signers written into the forked
 `VerdictVerifier`; `packages/paypal/test/sandbox/settlement.sandbox.test.ts` runs the refund,
 tracking and payout calls against the sandbox.
