@@ -1,5 +1,6 @@
 "use client";
 
+import { Amount } from "@keelson/ui/components/amount";
 import { Button } from "@keelson/ui/components/button";
 import {
   Empty,
@@ -80,11 +81,14 @@ export function Dashboard() {
                 className="grid grid-cols-[1fr_auto] items-center gap-x-6 gap-y-1 px-5 py-4 hover:bg-accent/60"
               >
                 <span className="font-medium">{m.merchantIds.join(", ")}</span>
-                <span className="tnum text-right font-mono">
-                  {money(m.budget.remainingMinor, m.budget.currency)}
-                  <span className="text-muted-foreground">
+                <span className="text-right">
+                  <Amount
+                    value={Number(m.budget.remainingMinor) / 100}
+                    currency={m.budget.currency}
+                  />
+                  <span className="sr-only">
                     {" "}
-                    / {money(m.budget.maxMinor, m.budget.currency)}
+                    left of {money(m.budget.maxMinor, m.budget.currency)}
                   </span>
                 </span>
                 <span className="text-muted-foreground text-sm">
