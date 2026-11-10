@@ -18,3 +18,8 @@ export function arbitrumSepoliaRpcUrls(primary: string | undefined): string[] {
 export function rpcTransport(urls: readonly string[]): Transport {
   return urls.length === 1 ? http(urls[0]) : fallback(urls.map((url) => http(url)));
 }
+
+/** The configured Arbitrum Sepolia RPC with the public one behind it. */
+export function arbitrumSepoliaTransport(primary: string | undefined): Transport {
+  return rpcTransport(arbitrumSepoliaRpcUrls(primary));
+}

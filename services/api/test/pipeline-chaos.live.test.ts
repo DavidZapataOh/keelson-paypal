@@ -4,10 +4,11 @@ import { chainTxs, eq, purchases } from "@keelson/db";
 import { closeMandate } from "@keelson/mandate";
 import { pino } from "pino";
 import { ulid } from "ulid";
-import { bytesToHex, createPublicClient, http, type PublicClient } from "viem";
+import { bytesToHex, createPublicClient, type PublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { createApp } from "../src/app.ts";
+import { arbitrumSepoliaTransport } from "../src/chain/rpc.ts";
 import type { PayPalDeps } from "../src/paypal.ts";
 import { createTee } from "../src/tee/config.ts";
 import { refreshLeg } from "../src/tee/signers.ts";
@@ -39,7 +40,7 @@ describe.skipIf(!keys)(
     const paypal = keys ? sandbox() : (undefined as unknown as PayPalDeps);
     const chain = createPublicClient({
       chain: arbitrumSepolia,
-      transport: http(process.env.ARBITRUM_SEPOLIA_RPC_URL),
+      transport: arbitrumSepoliaTransport(process.env.ARBITRUM_SEPOLIA_RPC_URL),
     }) as PublicClient;
     const tee = createTee(liveEnv(), { a: 10_000, b: 10_000 });
     const app = createApp({

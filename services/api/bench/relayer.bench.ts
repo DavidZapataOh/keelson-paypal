@@ -14,6 +14,7 @@ import {
   stringToHex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { ARBITRUM_SEPOLIA_PUBLIC_RPC } from "../src/chain/rpc.ts";
 
 const VAULT = "0xb39898Ef4333f3CB32d1B420E744f5a1Aa2ae2Bf";
 const PYUSD_DOMAIN: Hex = "0xf3ecc5aec9b5298246e45dbdcf197d113d30718459718fca6a79848cbabfacb2";
@@ -57,7 +58,7 @@ const relayer = createRelayer({
   chains: {
     421614: {
       rpcUrl: need("ARBITRUM_SEPOLIA_RPC_URL"),
-      fallbackRpcUrls: ["https://sepolia-rollup.arbitrum.io/rpc"],
+      fallbackRpcUrls: [ARBITRUM_SEPOLIA_PUBLIC_RPC],
       account,
     },
   },
