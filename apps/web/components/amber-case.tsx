@@ -66,7 +66,7 @@ export function AmberCase({
         <p className="text-muted-foreground text-sm">
           {v
             ? `The store's own answer for ${amber.attested.sku}, notarized by Keelson's TLSNotary leg, holds another ${AMBER_LABEL[v.field].toLowerCase()}. A zero-knowledge proof showed it without revealing the answer.`
-            : `Signed into the coverage as one commitment and backed by the operator's bond. Anyone holding the store's notarized answer for ${amber.attested.sku} can convict a false field.`}
+            : `Signed into the coverage as one commitment, backed by the operator's bond. AmberContradictionCourt convicts a field the store's own notarized answer contradicts.`}
         </p>
       </header>
 
