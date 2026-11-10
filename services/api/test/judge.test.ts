@@ -347,6 +347,40 @@ describe("tour", () => {
     expect(tour.mandate.id).toBe(mandateId);
   });
 
+  test("prefers the agent run, where a cart was blocked, over a newer plain purchase", async () => {
+    const buyer = ulid();
+    await testDb.insert(user).values({ id: buyer, name: "Buyer", email: `${buyer}@example.test` });
+    const plain = ulid();
+    await testDb.insert(mandates).values({
+      id: plain,
+      userId: buyer,
+      operatorAgentId: agentId,
+      state: "ACTIVE",
+      currency: "USD",
+      maxMinor: 100n,
+      remainingMinor: 0n,
+      merchantIds: ["mrc_runfast"],
+      expiresAt: new Date(Date.now() + 86_400_000),
+    });
+    const bought = ulid();
+    await testDb.insert(purchases).values({
+      id: bought,
+      mandateId: plain,
+      merchantId: "mrc_runfast",
+      currency: "USD",
+      amountMinor: 100n,
+      cartHash: randomBytes(32),
+      state: "CAPTURED",
+    });
+    await testDb
+      .insert(alibis)
+      .values({ purchaseId: bought, leafHash: randomBytes(32), bundle: {} });
+    const tour = (await (await call("/v1/judge/tour", judgeCookie)).json()) as {
+      mandate: { id: string };
+    };
+    expect(tour.mandate.id).toBe(mandateId);
+  });
+
   test("is for judges only", async () => {
     expect((await call("/v1/judge/tour", "")).status).toBe(401);
     expect((await call("/v1/judge/tour", shopperCookie)).status).toBe(403);
