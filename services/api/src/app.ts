@@ -54,6 +54,7 @@ import { registerTee } from "./routes/tee.ts";
 import { registerTimestamps } from "./routes/timestamps.ts";
 import { registerTransactions } from "./routes/transactions.ts";
 import { registerValidations } from "./routes/validations.ts";
+import { registerWebFacts } from "./routes/web-facts.ts";
 import type { TeeConfig } from "./tee/signers.ts";
 import type { StampWorker } from "./timestamps/worker.ts";
 
@@ -89,6 +90,8 @@ export interface Deps {
   tlog?: LogConfig;
   /** The age identity that opens `.original` evidence items for an arbiter. */
   evidenceIdentity?: string;
+  /** The TLSNotary prover service's base URL; WebFacts answer 503 without it. */
+  prover?: string;
   /** Channel3 product lookups; observing answers 503 without them. */
   channel3?: Channel3Lookup;
   /** The `whsec_` secret of the Channel3 webhook endpoint; the webhook answers 503 without it. */
@@ -247,6 +250,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerPurchases(app, deps);
   registerEvidence(app, deps);
   registerObservations(app, deps);
+  registerWebFacts(app, deps);
   registerChannel3Webhook(app, deps);
   registerPayPalWebhook(app, deps);
   registerTee(app, deps);

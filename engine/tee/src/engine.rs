@@ -9,7 +9,7 @@ use alloy_primitives::{Address, B256, U256};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use keelson_canon::{Cart, canonicalize, cart_hash};
-use keelson_core::eip712::Countersign;
+use keelson_core::eip712::{Countersign, WebFact};
 use keelson_core::{AcirField, Dst, currency_numeric};
 use keelson_mandate::{
     CATEGORY_IDS, ClosedMandateVerifyOptions, Expected, Fr, Jwk, OpenMandateParams,
@@ -34,7 +34,7 @@ use crate::paypal::{HoldKind, PayPalDeny, paypal_check};
 use crate::wire::{
     self, Base64, CheckpointRequest, CheckpointSigned, CountersignRequest, Countersigned, Hex,
     MandateIssued, Observation, PayPalObservation, RegisterMandate, VerdictRequest, VerdictSigned,
-    ZkProof,
+    WebFactJson, WebFactSigned, ZkProof,
 };
 use crate::zk::{Prover, Statement};
 use crate::{
@@ -508,6 +508,47 @@ impl Engine {
             root_hash: Hex(c.rootHash.0),
             chain_id,
             digest: Hex(alloy_sol_types::SolStruct::eip712_signing_hash(&c, &domain).0),
+            signature: Hex(signature),
+            signer: self.signer.address(),
+        })
+    }
+
+    /// Signs the EIP-712 `WebFact` for a TLS session the notary accepted: `server_name` served
+    /// a body range committing to `commitment` in answer to a `GET` of `target`, at `now`.
+    /// `attId` is the signer binding the attestation covers, the first half of its report data.
+    pub fn sign_web_fact(
+        &self,
+        server_name: &str,
+        target: &str,
+        commitment: [u8; 32],
+        now: OffsetDateTime,
+    ) -> Result<WebFactSigned, EngineError> {
+        let chain_id = self.config.chain_id;
+        let domain = keelson_core::domain(chain_id, self.config.verifying_contract)
+            .map_err(|_| bad("chain_id"))?;
+        let binding = crate::report_data(&self.binding().map_err(EngineError::Signer)?, [0; 32])
+            .map_err(EngineError::Signer)?;
+        let fact = WebFact {
+            hostHash: alloy_primitives::keccak256(server_name),
+            urlPathHash: alloy_primitives::keccak256(target),
+            tCapture: U40::from(u64::try_from(now.unix_timestamp()).map_err(|_| bad("clock"))?),
+            rangeCommitment: B256::new(commitment),
+            attId: B256::from_slice(&binding[..32]),
+        };
+        let signature = self
+            .signer
+            .sign_web_fact(&fact, &domain)
+            .map_err(EngineError::Signer)?;
+        Ok(WebFactSigned {
+            web_fact: WebFactJson {
+                host_hash: Hex(fact.hostHash.0),
+                url_path_hash: Hex(fact.urlPathHash.0),
+                t_capture: now.unix_timestamp(),
+                range_commitment: Hex(commitment),
+                att_id: Hex(fact.attId.0),
+            },
+            chain_id,
+            digest: Hex(alloy_sol_types::SolStruct::eip712_signing_hash(&fact, &domain).0),
             signature: Hex(signature),
             signer: self.signer.address(),
         })

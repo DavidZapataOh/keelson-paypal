@@ -168,7 +168,8 @@ async fn tdx_state(config: EngineConfig, token_hash: [u8; 32]) -> Result<AppStat
     }
     Ok(AppState::new(engine, token_hash)
         .with_attestation(attestation, at)
-        .with_paypal(paypal))
+        .with_paypal(paypal)
+        .with_notary())
 }
 
 #[cfg(not(feature = "tdx"))]
