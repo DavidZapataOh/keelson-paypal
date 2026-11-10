@@ -26,6 +26,7 @@ export const addresses: Record<ChainId, Readonly<Record<string, Address>>> = {
     P384Verifier: "0x6fb8c2c0173425b8747900948E50d1f7A7baB3A2",
     TimelockController: "0xEDD241A9B8cf55765eDA7182483351555cf3E07e",
     VerdictVerifier: "0xe16E8767EC1DA59Ef0D9Bc7851637E4D22352d96",
+    ViolationBondPool: "0x6187AC242Ef06884a2fC83bd8a6849379Ed1EF37",
   },
   42161: {},
   11155111: {

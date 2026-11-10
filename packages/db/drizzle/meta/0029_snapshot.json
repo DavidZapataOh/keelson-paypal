@@ -1,5 +1,5 @@
 {
-  "id": "c507e068-c7ac-44e7-a276-b6606d18d489",
+  "id": "25ad4fd7-94dc-41ad-8ced-68088b055033",
   "prevId": "d44b1fc0-4cda-41c7-b6f9-73037a90e075",
   "version": "7",
   "dialect": "postgresql",
@@ -92,12 +92,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "seq": {
-          "name": "seq",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
         "backbone": {
           "name": "backbone",
           "type": "text",
@@ -123,18 +117,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "line": {
-          "name": "line",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "hash": {
-          "name": "hash",
-          "type": "bytea",
-          "primaryKey": false,
-          "notNull": true
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -144,27 +126,6 @@
         }
       },
       "indexes": {
-        "attacks_campaign_seq_idx": {
-          "name": "attacks_campaign_seq_idx",
-          "columns": [
-            {
-              "expression": "campaign",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "seq",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "attacks_created_at_idx": {
           "name": "attacks_created_at_idx",
           "columns": [
@@ -182,15 +143,6 @@
         }
       },
       "foreignKeys": {
-        "attacks_campaign_red_team_campaigns_id_fk": {
-          "name": "attacks_campaign_red_team_campaigns_id_fk",
-          "tableFrom": "attacks",
-          "tableTo": "red_team_campaigns",
-          "columnsFrom": ["campaign"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
         "attacks_purchase_id_purchases_id_fk": {
           "name": "attacks_purchase_id_purchases_id_fk",
           "tableFrom": "attacks",
@@ -208,65 +160,6 @@
         "attacks_payload_hash_len": {
           "name": "attacks_payload_hash_len",
           "value": "octet_length(\"attacks\".\"payload_hash\") = 32"
-        },
-        "attacks_hash_len": {
-          "name": "attacks_hash_len",
-          "value": "octet_length(\"attacks\".\"hash\") = 32"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.red_team_campaigns": {
-      "name": "red_team_campaigns",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "header": {
-          "name": "header",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "summary": {
-          "name": "summary",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "head": {
-          "name": "head",
-          "type": "bytea",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "finished_at": {
-          "name": "finished_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "red_team_campaigns_head_len": {
-          "name": "red_team_campaigns_head_len",
-          "value": "octet_length(\"red_team_campaigns\".\"head\") = 32"
         }
       },
       "isRLSEnabled": false
@@ -4612,7 +4505,7 @@
         },
         "verdicts_paid_by_valid": {
           "name": "verdicts_paid_by_valid",
-          "value": "\"verdicts\".\"paid_by\" in ('chain', 'treasury')"
+          "value": "\"verdicts\".\"paid_by\" in ('chain', 'treasury', 'violation-pool')"
         }
       },
       "isRLSEnabled": false
