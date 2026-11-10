@@ -51,7 +51,11 @@ contract RegisteredUserSet is AccessManaged {
     function publish(bytes32 root, uint32 size) external restricted {
         if (root == bytes32(0) || uint256(root) >= R || size == 0 || size > MAX_SIZE) revert InvalidRoot();
         if (roots[root].publishedAt != 0) return;
+        // casting to 'uint64' is safe because timestamps fit it for billions of years
+        // forge-lint: disable-next-line(unsafe-typecast)
         roots[root] = Root(uint64(block.timestamp), size, 0);
+        // The only external call is `restricted`'s to the AccessManager, a Keelson contract.
+        // forge-lint: disable-next-line(reentrancy-events)
         emit RootPublished(root, size);
     }
 
@@ -60,7 +64,10 @@ contract RegisteredUserSet is AccessManaged {
         Root storage r = roots[root];
         if (r.publishedAt == 0) revert UnknownRoot();
         if (r.revokedAt != 0) return;
+        // casting to 'uint64' is safe because timestamps fit it for billions of years
+        // forge-lint: disable-next-line(unsafe-typecast)
         r.revokedAt = uint64(block.timestamp);
+        // forge-lint: disable-next-line(reentrancy-events)
         emit RootRevoked(root);
     }
 
