@@ -4,13 +4,14 @@
 //   KEELSON_AGENT_KEY                          the private JWK of the `cnf` key the mandate names
 //   KEELSON_CLIENT_ID, KEELSON_CLIENT_SECRET   an OAuth client with countersign and evidence scopes
 //   KEELSON_EVIDENCE_AGE_RECIPIENT             seals the unredacted evidence originals
-//   MANDATE_ID, OPEN_MANDATE, AUTHORIZATION_ID the user's mandate, as issued, and its hold
+//   AGENT_ID                                   the operator the mandate names (DEMO_AGENT_ID)
+//   MANDATE_ID                                 optional: which of its active mandates; the newest by default
 //   STORE_URL (the demo store), KEELSON_API_URL, KERNEL_API_KEY, ANTHROPIC_API_KEY
 import Anthropic from "@anthropic-ai/sdk";
 import { parseMandate } from "@keelson/mandate";
 import { runAgent } from "../src/agent.ts";
 import { checkout, quoteCart } from "../src/checkout.ts";
-import { agentKey, apiClient } from "../src/keelson.ts";
+import { agentKey, apiClient, operatorMandates } from "../src/keelson.ts";
 import { openSession } from "../src/kernel.ts";
 
 const env = (name: string) => {
@@ -18,9 +19,20 @@ const env = (name: string) => {
   if (!value) throw new Error(`${name} is required`);
   return value;
 };
-const store = process.env.STORE_URL ?? "https://store.keelson.finance";
+const store = process.env.STORE_URL ?? "https://keelson-store.onrender.com";
 const hosts = [new URL(store).hostname];
-const openMandate = env("OPEN_MANDATE");
+const keelson = apiClient({
+  apiUrl: process.env.KEELSON_API_URL ?? "https://api.keelson.finance",
+  clientId: env("KEELSON_CLIENT_ID"),
+  clientSecret: env("KEELSON_CLIENT_SECRET"),
+  scopes: ["countersign:write", "evidence:write"],
+});
+const listed = await operatorMandates(keelson, BigInt(env("AGENT_ID")));
+const held = listed.find((m) =>
+  process.env.MANDATE_ID ? m.id === process.env.MANDATE_ID : m.authorizationId !== null,
+);
+if (!held?.authorizationId) throw new Error("no active mandate held as a whole for this operator");
+const openMandate = held.openMandate;
 // The mandate is the SD-JWT disclosure whose value is the `keelson.mandate.1` payload.
 const mandate = parseMandate(
   openMandate
@@ -35,12 +47,6 @@ const mandate = parseMandate(
       }
     })[0],
 );
-const keelson = apiClient({
-  apiUrl: process.env.KEELSON_API_URL ?? "https://api.keelson.finance",
-  clientId: env("KEELSON_CLIENT_ID"),
-  clientSecret: env("KEELSON_CLIENT_SECRET"),
-  scopes: ["countersign:write", "evidence:write"],
-});
 const { privateKey } = await agentKey(env("KEELSON_AGENT_KEY"));
 const session = await openSession({ hosts });
 try {
@@ -60,10 +66,10 @@ try {
     keelson,
     headers: {},
     hold: {
-      mandateId: env("MANDATE_ID"),
+      mandateId: held.id,
       openMandate,
       agentKey: privateKey,
-      authorizationId: env("AUTHORIZATION_ID"),
+      authorizationId: held.authorizationId,
     },
     session,
     quote: await quoteCart(store, run.proposal),

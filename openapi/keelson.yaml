@@ -2467,6 +2467,52 @@ components:
       description: The operator's bond in PYUSD base units, the Keelson feedback it
         has in the ERC-8004 Reputation registry, and the TEE countersigns
         recorded for it in the Keelson validation registry.
+    OperatorMandate:
+      type: object
+      properties:
+        id:
+          type: string
+        state:
+          type: string
+          enum:
+            - ACTIVE
+        currency:
+          type: string
+        maxMinor:
+          type: integer
+        remainingMinor:
+          type: integer
+        expiresAt:
+          type: string
+          format: date-time
+        holdMode:
+          type:
+            - string
+            - "null"
+          enum:
+            - mandate
+            - per_purchase
+            - null
+        authorizationId:
+          type:
+            - string
+            - "null"
+          description: The PayPal authorization that holds the mandate's funds, when the
+            mandate is held as a whole.
+        openMandate:
+          type: string
+          description: The mandate as issued, which the agent closes with its `cnf` key
+            for each countersign.
+      required:
+        - id
+        - state
+        - currency
+        - maxMinor
+        - remainingMinor
+        - expiresAt
+        - holdMode
+        - authorizationId
+        - openMandate
     Feedback:
       type: object
       properties:
@@ -4514,6 +4560,56 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "503":
           description: The chain cannot be read
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/operators/{agentId}/mandates:
+    get:
+      tags:
+        - operators
+      summary: The active mandates naming the operator
+      description: Lists the active mandates whose operator is `agentId`, with their
+        open mandates and holds, so that the operator's agent can buy under
+        them. Only the OAuth client that linked the operator (`POST
+        /v1/operators`) reads them; any other caller gets 404.
+      parameters:
+        - schema:
+            type: string
+            pattern: ^(0|[1-9]\d{0,19})$
+            description: The ERC-8004 agent id, a decimal integer.
+          required: true
+          description: The ERC-8004 agent id, a decimal integer.
+          name: agentId
+          in: path
+      responses:
+        "200":
+          description: The operator's active mandates, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mandates:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/OperatorMandate"
+                required:
+                  - mandates
+        "401":
+          description: No valid access token
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The token lacks countersign:write
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: No operator this client linked
           content:
             application/problem+json:
               schema:

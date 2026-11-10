@@ -65,3 +65,24 @@ export async function agentKey(privateJwk: string): Promise<{
   );
   return { privateKey, publicJwk: { kty: "EC", crv: "P-256", x: jwk.x, y: jwk.y } };
 }
+
+/** An active mandate naming the agent's operator, as `GET /v1/operators/{agentId}/mandates` lists it. */
+export interface OperatorMandate {
+  id: string;
+  currency: string;
+  remainingMinor: number;
+  expiresAt: string;
+  holdMode: "mandate" | "per_purchase" | null;
+  authorizationId: string | null;
+  openMandate: string;
+}
+
+/** The active mandates the operator's agent may buy under, newest first. */
+export async function operatorMandates(
+  keelson: Keelson,
+  agentId: bigint,
+): Promise<OperatorMandate[]> {
+  const res = await keelson.request(`/v1/operators/${agentId}/mandates`, { method: "GET" });
+  if (!res.ok) throw new Error(`mandates not read: HTTP ${res.status}`);
+  return ((await res.json()) as { mandates: OperatorMandate[] }).mandates;
+}
