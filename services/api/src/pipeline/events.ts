@@ -6,7 +6,8 @@ import { principalChannel } from "../principal.ts";
 
 /**
  * Publishes a purchase event on `purchase:<id>` of the mandate's owner and of the client that
- * asked for the countersign.
+ * asked for the countersign, and with its `mandateId` on the owner's `mandate:<id>`, so the app
+ * follows every purchase of a mandate on one stream.
  */
 export async function publishPurchase(
   deps: { db: Db; kv: RedisClientType },
@@ -14,7 +15,7 @@ export async function publishPurchase(
   payload: { type: `purchase.${string}` } & Record<string, Json>,
 ): Promise<void> {
   const [row] = await deps.db
-    .select({ userId: mandates.userId, clientId: purchases.clientId })
+    .select({ userId: mandates.userId, mandateId: mandates.id, clientId: purchases.clientId })
     .from(purchases)
     .innerJoin(mandates, eq(mandates.id, purchases.mandateId))
     .where(eq(purchases.id, purchaseId));
@@ -26,6 +27,12 @@ export async function publishPurchase(
     principalChannel({ kind: "user", subject: row.userId }, suffix),
     purchaseId,
     event,
+  );
+  await publishEvent(
+    deps,
+    principalChannel({ kind: "user", subject: row.userId }, `mandate:${row.mandateId}`),
+    purchaseId,
+    { ...event, mandateId: row.mandateId },
   );
   if (row.clientId) {
     await publishEvent(

@@ -14,6 +14,7 @@ import { POLICY_SET_HASH } from "@keelson/policy/hashes";
 import type { Context } from "hono";
 import { ulid } from "ulid";
 import type { Deps } from "../app.ts";
+import { SourceUnavailable } from "../compile-sources.ts";
 import { passkeyJwk } from "../mandate-signature.ts";
 import { MERCHANTS } from "../merchants.ts";
 import { requireSession } from "../middleware/auth.ts";
@@ -194,6 +195,21 @@ async function compileContext(
     );
   }
 
+  let filled: Pick<Mandate, "agent" | "consent"> & { policy: Awaited<ReturnType<typeof engine>> };
+  try {
+    filled = { agent: await agent(userId), consent: await consent(userId), policy: await engine() };
+  } catch (err) {
+    if (!(err instanceof SourceUnavailable)) throw err;
+    return problem(
+      c,
+      503,
+      "compile-unavailable",
+      "Compiling unavailable",
+      `Compiling needs inputs that are not available yet: ${err.source}.`,
+      { missing: [err.source] },
+    );
+  }
+
   const user = await deps.db.query.user.findFirst({
     columns: { email: true },
     where: (row, { eq }) => eq(row.id, userId),
@@ -210,9 +226,9 @@ async function compileContext(
       },
       app_login_id: user.email,
     },
-    agent: await agent(userId),
-    consent: await consent(userId),
-    policy: { ...(await engine()), policy_set_hash: POLICY_SET_HASH },
+    agent: filled.agent,
+    consent: filled.consent,
+    policy: { ...filled.policy, policy_set_hash: POLICY_SET_HASH },
     risk_data: { device_fp: device, ip },
     client: deps.anthropic,
   };

@@ -61,6 +61,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@opentelemetry/sdk-trace": "3.0.0",
     "@seriousme/openapi-schema-validator": "2.11.0",
     "@types/autocannon": "7.12.7",

@@ -1,30 +1,6 @@
-@import "tailwindcss";
-
-@theme {
-  --font-sans: "Instrument Sans Variable", system-ui, sans-serif;
-  --font-mono: "Geist Mono Variable", ui-monospace, monospace;
-  --color-graphite: #17181b;
-  --color-graphite-2: #1f2024;
-  --color-bone: #f2f0ea;
-  --color-bone-2: #e9e6de;
-  --color-line: #d8d4c9;
-  --color-ink-2: #5f5c56;
-  --color-vermilion: #ff4b1f;
-  --color-vermilion-deep: #b82e06;
-  --color-pass: #1f7a4d;
-  --color-amber: #9a6100;
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-html {
-  color-scheme: light;
-}
-
-body {
-  @apply bg-bone text-graphite font-sans antialiased;
-}
+@import "@keelson/ui/globals.css";
 
 :focus-visible {
-  outline: 2px solid var(--color-vermilion);
+  outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
