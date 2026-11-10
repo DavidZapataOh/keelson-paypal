@@ -1,5 +1,12 @@
 import { randomBytes } from "node:crypto";
-import { addresses, checkpointAnchorAbi, iPYUSDAbi, keelsonBondVaultAbi } from "@keelson/chain";
+import {
+  addresses,
+  checkpointAnchorAbi,
+  iPYUSDAbi,
+  keelsonBondVaultAbi,
+  keelsonReserveAbi,
+  payoutAddressTypedData,
+} from "@keelson/chain";
 import { KEELSON_TYPES, keelsonDomain } from "@keelson/core/eip712";
 import {
   chainTxs,
@@ -12,7 +19,8 @@ import {
   user,
   verdicts,
 } from "@keelson/db";
-import { createRelayer } from "@keelson/relayer";
+import { reputationRegistryAbi } from "@keelson/erc8004";
+import { createRelayer, EXTERNAL } from "@keelson/relayer";
 import { pino } from "pino";
 import { ulid } from "ulid";
 import {
@@ -53,6 +61,8 @@ const LOG_ORIGIN: Hex = "0xe0c0e434acc96fa35fb684556f51efd752a89b3db13536efbf1e4
 const merchant = SETTLEMENT.mrc_runfast as Hex;
 /** A sandbox personal account: PayPal refuses a payout to the account that sends it. */
 const receiver = process.env.PAYPAL_SANDBOX_PERSONAL_EMAIL;
+/** Holds PYUSD at `BLOCK` (`contracts/deployments/421614.json`); it funds the fork's treasury. */
+const PYUSD_HOLDER: Hex = "0xcc9644EC26A647de0B9b86f1560d5180232f70a3";
 
 const slotOf = (key: Hex, keyType: "address" | "bytes32", slot: bigint) =>
   keccak256(encodeAbiParameters([{ type: keyType }, { type: "uint256" }], [key, slot]));
@@ -65,6 +75,7 @@ describe.skipIf(!rpc)(
     let deps: SettleDeps;
     let client: PublicClient;
     let purchaseId: string;
+    let mandateId: string;
     let treeSize: bigint;
     let checkpointRoot: Hex;
     const tdx = privateKeyToAccount(generatePrivateKey());
@@ -110,6 +121,7 @@ describe.skipIf(!rpc)(
       rail?: "pyusd" | "paypal";
       degraded?: boolean;
       deadline?: number;
+      purchase?: string;
     }): Promise<string> {
       const disputeId = `PP-R-${randomBytes(5).toString("hex").toUpperCase()}`;
       const now = Number((await client.getBlock()).timestamp);
@@ -148,7 +160,7 @@ describe.skipIf(!rpc)(
       }
       await testDb.insert(disputes).values({
         id: disputeId,
-        purchaseId,
+        purchaseId: opts.purchase ?? purchaseId,
         reason: "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED",
         raw: {},
         state: "ATTRIBUTED",
@@ -219,7 +231,7 @@ describe.skipIf(!rpc)(
         name: "op",
         cnfJwk: {},
       });
-      const mandateId = ulid();
+      mandateId = ulid();
       await testDb.insert(mandates).values({
         id: mandateId,
         userId,
@@ -230,9 +242,14 @@ describe.skipIf(!rpc)(
         merchantIds: ["mrc_runfast"],
         expiresAt: new Date(Date.now() + 86_400_000),
       });
-      purchaseId = ulid();
+      purchaseId = await newPurchase();
+    });
+
+    /** An attributed purchase covered by `COVERAGE`, anchored in the log. */
+    async function newPurchase(): Promise<string> {
+      const id = ulid();
       await testDb.insert(purchases).values({
-        id: purchaseId,
+        id,
         mandateId,
         merchantId: "mrc_runfast",
         currency: "USD",
@@ -242,7 +259,8 @@ describe.skipIf(!rpc)(
         anchoredSize: treeSize,
         chainId: 421614,
       });
-    });
+      return id;
+    }
     afterAll(() => fork?.stop());
 
     test("an amber verdict slashes the operator's bond to the merchant, once", async () => {
@@ -348,6 +366,287 @@ describe.skipIf(!rpc)(
       expect(await settleDispute(deps, id)).toMatchObject({ status: "failed", failure: "Expired" });
     });
 
+    describe("when the chain refuses a verdict that holds", () => {
+      /** A treasury of the fork's own, funded from a PYUSD holder: its key signs the transfers. */
+      const treasury = privateKeyToAccount(generatePrivateKey());
+      let paying: SettleDeps;
+      const feedback = () =>
+        client.readContract({
+          address: EXTERNAL[421614].ReputationRegistry,
+          abi: reputationRegistryAbi,
+          functionName: "getSummary",
+          args: [AGENT_ID, [privateKeyToAccount(ANVIL_KEY).address], "keelson", "uncollected"],
+        });
+
+      beforeAll(async () => {
+        paying = { ...deps, treasury };
+        await fork.client.impersonateAccount({ address: PYUSD_HOLDER });
+        await fork.client.setBalance({ address: PYUSD_HOLDER, value: 10n ** 18n });
+        const funded = await fork.client.writeContract({
+          account: PYUSD_HOLDER,
+          chain: null,
+          address: PYUSD,
+          abi: iPYUSDAbi,
+          functionName: "transfer",
+          args: [treasury.address, 500_000n],
+        });
+        await fork.client.waitForTransactionReceipt({ hash: funded });
+        await fork.client.stopImpersonatingAccount({ address: PYUSD_HOLDER });
+      });
+
+      test("the treasury pays an operator's expired verdict in PYUSD, once, and rates the fault on ERC-8004", async () => {
+        const purchase = await newPurchase();
+        const now = Number((await client.getBlock()).timestamp);
+        const id = await storeVerdict({
+          liable: 1,
+          amount: 100_000n,
+          payee: merchant,
+          deadline: now - 1,
+          purchase,
+        });
+        const [merchantBefore, treasuryBefore, [faultsBefore]] = await Promise.all([
+          balance(merchant),
+          balance(treasury.address),
+          feedback(),
+        ]);
+        const started = performance.now();
+        const out = await settleDispute(paying, id);
+        const elapsed = Math.round(performance.now() - started);
+        expect(out).toMatchObject({ status: "settled", disputeId: id, outcome: "paid" });
+        expect((await balance(merchant)) - merchantBefore).toBe(100_000n);
+        expect(treasuryBefore - (await balance(treasury.address))).toBe(100_000n);
+        const [count, value, decimals] = await feedback();
+        expect(count).toBe(faultsBefore + 1n);
+        expect([value, decimals]).toEqual([-100n, 2]);
+        const [v] = await testDb.select().from(verdicts).where(eq(verdicts.disputeId, id));
+        expect(v).toMatchObject({ outcome: "paid", paidBy: "treasury", failure: "Expired" });
+        const [p] = await testDb.select().from(purchases).where(eq(purchases.id, purchase));
+        expect(p?.state).toBe("WARRANTY_PAID");
+
+        expect(await settleDispute(paying, id)).toEqual(out);
+        expect((await balance(merchant)) - merchantBefore).toBe(100_000n);
+        expect((await feedback())[0]).toBe(faultsBefore + 1n);
+        const txs = await txsFor(id);
+        expect(txs.map((t) => `${t.contract}.${t.function}:${t.status}`).sort()).toEqual([
+          "KeelsonBondVault.slash:rejected",
+          "PYUSD.transferWithAuthorization:confirmed",
+          "ReputationRegistry.giveFeedback:confirmed",
+        ]);
+        const transfer = txs.find((t) => t.contract === "PYUSD");
+        console.info(`treasury transfer: settled in ${elapsed} ms, gas ${transfer?.gasUsed}`);
+
+        const res = await createApp({ db: testDb, kv: testKv, log: deps.log }).request(
+          `/v1/disputes/${id}`,
+        );
+        const body = (await res.json()) as { settlement: Record<string, unknown> };
+        expect(body.settlement).toMatchObject({
+          rail: "pyusd",
+          outcome: "paid",
+          paid_by: "treasury",
+          failure: "Expired",
+          tx_hash: `0x${Buffer.from(transfer?.hash as Buffer).toString("hex")}`,
+        });
+      });
+
+      test("Keelson's own refused warranty is paid by the treasury without rating the operator", async () => {
+        const purchase = await newPurchase();
+        const now = Number((await client.getBlock()).timestamp);
+        const id = await storeVerdict({
+          liable: 2,
+          amount: 50_000n,
+          payee: merchant,
+          deadline: now - 1,
+          purchase,
+        });
+        const [before, [faults]] = await Promise.all([balance(merchant), feedback()]);
+        expect(await settleDispute(paying, id)).toMatchObject({
+          status: "settled",
+          outcome: "paid",
+        });
+        expect((await balance(merchant)) - before).toBe(50_000n);
+        expect((await feedback())[0]).toBe(faults);
+        expect((await txsFor(id)).map((t) => t.contract).sort()).toEqual([
+          "KeelsonReserve",
+          "PYUSD",
+        ]);
+      });
+
+      test("never pays more than the coverage has left", async () => {
+        const purchase = await newPurchase();
+        const now = Number((await client.getBlock()).timestamp);
+        const id = await storeVerdict({
+          liable: 1,
+          amount: 1_990_000n,
+          payee: merchant,
+          deadline: now - 1,
+          purchase,
+        });
+        const before = await balance(treasury.address);
+        expect(await settleDispute(paying, id)).toEqual({
+          status: "failed",
+          disputeId: id,
+          failure: "Expired",
+        });
+        expect(await balance(treasury.address)).toBe(before);
+        const [v] = await testDb.select().from(verdicts).where(eq(verdicts.disputeId, id));
+        expect(v?.paidBy).toBeNull();
+      });
+
+      test("a treasury without the PYUSD waits and pays once it has it", async () => {
+        const purchase = await newPurchase();
+        const now = Number((await client.getBlock()).timestamp);
+        const id = await storeVerdict({
+          liable: 2,
+          amount: 400_000n,
+          payee: merchant,
+          deadline: now - 1,
+          purchase,
+        });
+        await expect(settleDispute(paying, id)).rejects.toThrow();
+        const [v] = await testDb.select().from(verdicts).where(eq(verdicts.disputeId, id));
+        expect(v).toMatchObject({ outcome: "failed", paidBy: "treasury" });
+        expect(await resumeSettlements(paying)).toBeGreaterThanOrEqual(1);
+
+        await fork.client.impersonateAccount({ address: PYUSD_HOLDER });
+        const funded = await fork.client.writeContract({
+          account: PYUSD_HOLDER,
+          chain: null,
+          address: PYUSD,
+          abi: iPYUSDAbi,
+          functionName: "transfer",
+          args: [treasury.address, 1_000_000n],
+        });
+        await fork.client.waitForTransactionReceipt({ hash: funded });
+        await fork.client.stopImpersonatingAccount({ address: PYUSD_HOLDER });
+        const before = await balance(merchant);
+        await resumeSettlements(paying);
+        const [done] = await testDb.select().from(verdicts).where(eq(verdicts.disputeId, id));
+        expect(done).toMatchObject({ outcome: "paid", paidBy: "treasury" });
+        expect((await balance(merchant)) - before).toBe(400_000n);
+      });
+
+      test("pays the payee's payout address, as the vault and the reserve do", async () => {
+        const payee = privateKeyToAccount(generatePrivateKey());
+        const payout = privateKeyToAccount(generatePrivateKey()).address;
+        const deadline = (await client.getBlock()).timestamp + 600n;
+        const signature = await payee.signTypedData(
+          payoutAddressTypedData(
+            { merchant: payee.address, payout, nonce: 0n, deadline },
+            421614,
+            chain.KeelsonBondVault as Hex,
+          ),
+        );
+        const set = await deps.relayer?.submit({
+          chainId: 421614,
+          contract: "KeelsonBondVault",
+          functionName: "setPayoutAddress",
+          args: [payee.address, payout, 0n, deadline, signature],
+          key: `KeelsonBondVault.setPayoutAddress:${payee.address}`,
+        });
+        expect(set?.status).not.toBe("rejected");
+        const purchase = await newPurchase();
+        const now = Number((await client.getBlock()).timestamp);
+        const id = await storeVerdict({
+          liable: 2,
+          amount: 50_000n,
+          payee: payee.address,
+          deadline: now - 1,
+          purchase,
+        });
+        expect(await settleDispute(paying, id)).toMatchObject({
+          status: "settled",
+          outcome: "paid",
+        });
+        expect(await balance(payout)).toBe(50_000n);
+        expect(await balance(payee.address)).toBe(0n);
+      });
+
+      test("a degraded verdict, or one whose dispute PayPal resolved, is not paid", async () => {
+        const now = Number((await client.getBlock()).timestamp);
+        const degraded = await storeVerdict({
+          liable: 1,
+          amount: 10_000n,
+          payee: merchant,
+          deadline: now - 1,
+          degraded: true,
+          purchase: await newPurchase(),
+        });
+        const resolved = await storeVerdict({
+          liable: 2,
+          amount: 10_000n,
+          payee: merchant,
+          deadline: now - 1,
+          purchase: await newPurchase(),
+        });
+        await testDb
+          .update(disputes)
+          .set({ raw: { status: "RESOLVED" } })
+          .where(eq(disputes.id, resolved));
+        const before = await balance(treasury.address);
+        for (const id of [degraded, resolved]) {
+          expect(await settleDispute(paying, id)).toEqual({
+            status: "failed",
+            disputeId: id,
+            failure: "Expired",
+          });
+          const [v] = await testDb.select().from(verdicts).where(eq(verdicts.disputeId, id));
+          expect(v?.paidBy).toBeNull();
+        }
+        expect(await balance(treasury.address)).toBe(before);
+      });
+
+      test("two disputes on one coverage settled at once never overdraw it", async () => {
+        const [coverage, slashed, warranted] = await Promise.all([
+          client.readContract({
+            address: chain.KeelsonBondVault as Hex,
+            abi: keelsonBondVaultAbi,
+            functionName: "coverages",
+            args: [COVERAGE],
+          }),
+          client.readContract({
+            address: chain.KeelsonBondVault as Hex,
+            abi: keelsonBondVaultAbi,
+            functionName: "slashed",
+            args: [COVERAGE],
+          }),
+          client.readContract({
+            address: chain.KeelsonReserve as Hex,
+            abi: keelsonReserveAbi,
+            functionName: "warranted",
+            args: [COVERAGE],
+          }),
+        ]);
+        const committed = (await testDb.select().from(verdicts))
+          .filter((v) => v.paidBy === "treasury")
+          .reduce((sum, v) => sum + v.amountMinor * 10_000n, 0n);
+        const left = BigInt(coverage.amount) - slashed - warranted - committed;
+        // Each fits what is left, both do not.
+        const amount = ((left * 6n) / 10n / 10_000n) * 10_000n;
+        expect(amount * 2n).toBeGreaterThan(left);
+        const now = Number((await client.getBlock()).timestamp);
+        const ids = [
+          await storeVerdict({
+            liable: 2,
+            amount,
+            payee: merchant,
+            deadline: now - 1,
+            purchase: await newPurchase(),
+          }),
+          await storeVerdict({
+            liable: 2,
+            amount,
+            payee: merchant,
+            deadline: now - 1,
+            purchase: await newPurchase(),
+          }),
+        ];
+        const before = await balance(merchant);
+        const outs = await Promise.all(ids.map((id) => settleDispute(paying, id)));
+        expect(outs.map((o) => o.status).sort()).toEqual(["failed", "settled"]);
+        expect((await balance(merchant)) - before).toBe(amount);
+      });
+    });
+
     test("a degraded verdict waits out the veto window, then the sweeper executes it", async () => {
       const before = await balance(merchant);
       const id = await storeVerdict({
@@ -391,8 +690,64 @@ describe.skipIf(!rpc)(
       console.info(`executeSlash gas ${executed?.gasUsed}`);
     });
 
+    test.skipIf(!receiver || !process.env.PAYPAL_CLIENT_ID)(
+      "on the paypal rail the treasury pays a refused verdict with a sandbox Payout under its reference",
+      async () => {
+        const purchase = await newPurchase();
+        const now = Number((await client.getBlock()).timestamp);
+        const id = await storeVerdict({
+          liable: 2,
+          amount: 100_000n,
+          payee: KEELSON_TREASURY,
+          rail: "paypal",
+          deadline: now - 1,
+          purchase,
+        });
+        await testDb
+          .insert(merchantSettlement)
+          .values({ merchantId: "mrc_runfast", rail: "paypal", paypalReceiver: receiver })
+          .onConflictDoUpdate({
+            target: merchantSettlement.merchantId,
+            set: { rail: "paypal", paypalReceiver: receiver },
+          });
+        const live: SettleDeps = {
+          ...deps,
+          paypal: createPayPalDeps({
+            PAYPAL_CLIENT_ID: process.env.PAYPAL_CLIENT_ID as string,
+            PAYPAL_CLIENT_SECRET: process.env.PAYPAL_CLIENT_SECRET as string,
+            PAYPAL_ENV: "sandbox",
+            PAYPAL_MERCHANT_ID: "A4WCRYD5EYDF2",
+          }),
+        };
+        const started = performance.now();
+        let out = await settleDispute(live, id);
+        expect(out).toEqual({ status: "pending", disputeId: id, waiting: "payout" });
+        const [waiting] = await testDb.select().from(verdicts).where(eq(verdicts.disputeId, id));
+        expect(waiting).toMatchObject({ outcome: "failed", paidBy: "treasury" });
+        while (out.status === "pending" && performance.now() - started < 120_000) {
+          await new Promise((r) => setTimeout(r, 3_000));
+          out = await settleDispute(live, id);
+        }
+        expect(out).toMatchObject({ status: "settled", outcome: "paid", txHash: null });
+        const [v] = await testDb.select().from(verdicts).where(eq(verdicts.disputeId, id));
+        expect(v).toMatchObject({
+          outcome: "paid",
+          paidBy: "treasury",
+          failure: "Expired",
+          payoutStatus: "SUCCESS",
+        });
+        const [p] = await testDb.select().from(purchases).where(eq(purchases.id, purchase));
+        expect(p?.state).toBe("WARRANTY_PAID");
+        console.info(
+          `treasury payout ${v?.payoutBatchId}: verdict to SUCCESS in ${Math.round(performance.now() - started)} ms`,
+        );
+        await testDb.delete(merchantSettlement);
+      },
+      180_000,
+    );
+
     test.skipIf(!process.env.PAYPAL_CLIENT_ID)(
-      "a verdict the chain refuses refunds nobody: the merchant would pay what no one reimburses",
+      "without the treasury's key a verdict the chain refuses refunds nobody: the merchant would pay what no one reimburses",
       async () => {
         await testDb
           .update(purchases)

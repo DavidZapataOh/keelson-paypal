@@ -49,10 +49,14 @@ const DisputeStatus = z
           description:
             "`queued`: the slash waits out the veto window until `ready_at`. `claimable`: the PYUSD transfer failed and waits as a claim. Null until the chain answered; always null when neither the operator nor Keelson is liable.",
         }),
-        failure: z
-          .string()
-          .nullable()
-          .openapi({ description: "The contract error of a `failed` settlement." }),
+        failure: z.string().nullable().openapi({
+          description:
+            "The contract error that refused the settlement on chain: of a `failed` one, or of one Keelson's treasury paid instead.",
+        }),
+        paid_by: z.enum(["chain", "treasury"]).nullable().openapi({
+          description:
+            "`chain`: the operator's bond or Keelson's reserve paid. `treasury`: the chain refused a verdict that still holds (its window or deadline had passed), so Keelson's treasury pays the payee itself, PYUSD on chain or a PayPal Payout; the settlement is paid once `outcome` is `paid`.",
+        }),
         refund_id: z.string().nullable().openapi({
           description:
             "The buyer's PayPal refund; its `custom_id` is the verdict's `ksv1.` reference.",
@@ -166,6 +170,7 @@ export function registerDisputes(app: OpenAPIHono, deps: Pick<Deps, "db">): void
               rail: v.rail as "pyusd" | "paypal",
               outcome: v.outcome as "paid" | "queued" | "claimable" | "failed" | null,
               failure: v.failure,
+              paid_by: v.paidBy as "chain" | "treasury" | null,
               refund_id: v.refundId,
               tx_hash: txHash,
               explorer_url:

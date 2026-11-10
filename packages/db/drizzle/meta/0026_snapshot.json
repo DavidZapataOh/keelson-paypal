@@ -1,5 +1,5 @@
 {
-  "id": "4faa3058-3361-41cd-8df9-0fcc7257961a",
+  "id": "baab4c48-e118-482f-ade9-7d178a991ff2",
   "prevId": "91223a51-db7e-4ad3-aab4-8033e77bb538",
   "version": "7",
   "dialect": "postgresql",
@@ -3782,12 +3782,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "c1_proof": {
-          "name": "c1_proof",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -4410,6 +4404,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "paid_by": {
+          "name": "paid_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "ready_at": {
           "name": "ready_at",
           "type": "timestamp with time zone",
@@ -4484,6 +4484,10 @@
         "verdicts_outcome_valid": {
           "name": "verdicts_outcome_valid",
           "value": "\"verdicts\".\"outcome\" in ('paid', 'queued', 'claimable', 'failed')"
+        },
+        "verdicts_paid_by_valid": {
+          "name": "verdicts_paid_by_valid",
+          "value": "\"verdicts\".\"paid_by\" in ('chain', 'treasury')"
         }
       },
       "isRLSEnabled": false

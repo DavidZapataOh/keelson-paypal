@@ -45,6 +45,11 @@ export const verdicts = pgTable(
     outcome: text(),
     /** The contract error that ended a `failed` settlement. */
     failure: text(),
+    /**
+     * Who pays the payee: `chain` (the bond or the reserve) or `treasury` (Keelson's own funds, once
+     * the chain refused); `treasury` is set before it pays, and `outcome` turns `paid` once it has.
+     */
+    paidBy: text(),
     /** When a queued slash can be executed. */
     readyAt: timestamp({ withTimezone: true }),
     payoutBatchId: text(),
@@ -58,5 +63,6 @@ export const verdicts = pgTable(
     check("verdicts_tx_hash_len", sql`octet_length(${t.txHash}) = 32`),
     check("verdicts_rail_valid", sql`${t.rail} in ('pyusd', 'paypal')`),
     check("verdicts_outcome_valid", sql`${t.outcome} in ('paid', 'queued', 'claimable', 'failed')`),
+    check("verdicts_paid_by_valid", sql`${t.paidBy} in ('chain', 'treasury')`),
   ],
 );

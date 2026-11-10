@@ -1965,7 +1965,21 @@ components:
               type:
                 - string
                 - "null"
-              description: The contract error of a `failed` settlement.
+              description: "The contract error that refused the settlement on chain: of a
+                `failed` one, or of one Keelson's treasury paid instead."
+            paid_by:
+              type:
+                - string
+                - "null"
+              enum:
+                - chain
+                - treasury
+                - null
+              description: "`chain`: the operator's bond or Keelson's reserve paid.
+                `treasury`: the chain refused a verdict that still holds (its
+                window or deadline had passed), so Keelson's treasury pays the
+                payee itself, PYUSD on chain or a PayPal Payout; the settlement
+                is paid once `outcome` is `paid`."
             refund_id:
               type:
                 - string
@@ -2002,6 +2016,7 @@ components:
             - rail
             - outcome
             - failure
+            - paid_by
             - refund_id
             - tx_hash
             - explorer_url
@@ -4265,8 +4280,9 @@ paths:
         - operators
       summary: Bond, reputation and validations of an agent
       description: "Read on-chain in one multicall: the vault's `bonds(agentId)`, the
-        Reputation registry's `getSummary(agentId, [reporter], \"keelson\",
-        \"\")` and its `\"slash\"` count, and the validation registry's
+        Reputation registry's `getSummary(agentId, [reporter, relayer],
+        \"keelson\", \"\")` (coverage outcomes, and faults the bond did not pay)
+        and its `\"slash\"` count, and the validation registry's
         `getSummary(agentId, [VerdictVerifier], \"\")`."
       parameters:
         - schema:

@@ -75,8 +75,8 @@ export async function respondToDispute(deps: RespondDeps, disputeId: string): Pr
   if (step === "accept_claim" && row.refundId) {
     return { status: "refunded", disputeId, refundId: row.refundId };
   }
-  // The chain refused to pay the merchant for the party at fault: accepting would make the merchant
-  // refund the buyer out of its own pocket. PayPal decides instead.
+  // Neither the chain nor Keelson's treasury has paid the merchant for the party at fault:
+  // accepting would make the merchant refund the buyer out of its own pocket. PayPal decides instead.
   if (step === "accept_claim" && row.outcome === "failed") {
     return { status: "unsettled", disputeId, failure: row.failure ?? "unknown" };
   }
