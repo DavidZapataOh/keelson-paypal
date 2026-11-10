@@ -113,7 +113,7 @@ jobs:
           grep -rEn "paypalMockResponse|PayPal-Mock-Response" packages services apps --exclude-dir=node_modules --exclude-dir=dist || status=$?
           test "$status" -eq 1
       - run: pnpm --filter @keelson/timestamp exec playwright install chromium
-      - run: pnpm turbo run typecheck test build --filter='!./packages/db' --filter='!./packages/attest' --filter='!./packages/evidence' --filter='!./services/api' --filter='!./services/monitor' --filter='!./packages/relayer' --cache-dir=.turbo
+      - run: pnpm turbo run typecheck test build --filter='!./packages/db' --filter='!./packages/attest' --filter='!./packages/evidence' --filter='!./services/api' --filter='!./apps/store' --filter='!./services/monitor' --filter='!./packages/relayer' --cache-dir=.turbo
       - name: The captured timestamp tokens verify with OpenSSL
         working-directory: packages/timestamp
         run: node scripts/openssl-verify.ts
@@ -274,7 +274,7 @@ jobs:
           version: v1.9.0
           cache-key: relayer-${{ hashFiles('packages/relayer/test/fork.ts') }}
           cache-restore-keys: relayer-
-      - run: pnpm turbo run typecheck test build --filter=./packages/db --filter=./services/api
+      - run: pnpm turbo run typecheck test build --filter=./packages/db --filter=./services/api --filter=./apps/store
       - run: pnpm migrate
       - run: pnpm --filter @keelson/api openapi && git diff --exit-code openapi/
 
