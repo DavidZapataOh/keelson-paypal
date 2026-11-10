@@ -242,6 +242,17 @@ async function receiptOf(
   }
 }
 
+/**
+ * Arbitrum's sequencer may answer `eth_sendRawTransactionSync` at execution, before the block is
+ * sealed, with a zero `blockHash`; the node's receipt carries the block. Without it the partial
+ * receipt stands and the reconciler fills the block in.
+ * https://docs.arbitrum.io/notices/transaction-submission-changes-notice
+ */
+async function canonical(read: PublicClient, receipt: TransactionReceipt): Promise<TransactionReceipt> {
+  if (receipt.blockHash && receipt.blockHash !== ZERO_HASH) return receipt;
+  return (await receiptOf(read, receipt.transactionHash)) ?? receipt;
+}
+
 /** Only viem's short message: the full one carries the request URL, which embeds the provider's key. */
 function brief(err: unknown): string {
   if (err instanceof BaseError) return err.shortMessage;
@@ -531,7 +542,7 @@ export function createRelayer(opts: {
             throwOnReceiptRevert: false,
           });
           ctx.balance = undefined;
-          return finish(stored, receipt, startedAt);
+          return finish(stored, await canonical(ctx.read, receipt), startedAt);
         } catch (err) {
           failure = classify(err);
           log.warn({ id: row.id, nonce, failure, err: brief(err) }, "relayer send failed");
