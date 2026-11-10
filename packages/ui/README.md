@@ -55,10 +55,20 @@ No blue.
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `Button`, `Badge`, `Card`    | shadcn/ui (new-york). Buttons are 44 px by default, `sm` 32 px and `xs` 28 px for consoles.                                                                                    |
 | Forms                        | `Field`, `Input`, `InputGroup`, `Textarea`, `Label`, `Select`, `Checkbox`, `RadioGroup`, `Switch`. Inputs are 44 px.                                                           |
-| Overlays                     | `Dialog` for consequential confirmations, `Sheet` for details and editors, `Tooltip`, and `Toaster` (Sonner, bottom right).                                                    |
+| Overlays                     | `Dialog` for consequential confirmations, `Sheet` for details and editors, and `Toaster` (Sonner, bottom right).                                                               |
 | Data and states              | `Table` (40 px rows, tabular numbers), `Tabs` (`default` pill, `line`), `Skeleton`, `Empty`, `Alert` (`attention`, `destructive`), `Separator`.                                |
 | `Liability`, `LiabilityMark` | A field's liability as color, shape and label: square with a check, diamond, dotted circle. The mark alone is a named image.                                                   |
 | `Status`                     | A purchase's state as text, glyph and tone, from `mandate-signed` to `bond-slashed`, plus `error`. `appearance="inline"` for table cells; `reveal` plays the countersign once. |
+| `LiabilityField`             | A mandate field as a row: its name, its value and who answers for it.                                                                                                          |
+| `Amount`                     | Money in Geist Mono with tabular figures and a muted currency code; `signed`, true minus, `struck` with its reason.                                                            |
+| `DataList`, `DataItem`       | Label and value pairs: `row` for receipts and ledgers, `stacked` for detail rails.                                                                                             |
+| `CopyValue`                  | An ID in mono with a copy button; `short` keeps the ends on screen and the full value in the copy.                                                                             |
+| `Timeline`, `TimelineItem`   | Who did what and when: `done`, `current`, `upcoming`, `blocked` (Keelson's act, vermilion), `failed` (ink "!").                                                                |
+| `Meter`                      | How much of a cap is used, as a bar and in words; warn past 90 %, never vermilion.                                                                                             |
+| `BlockDiff`                  | Why a cart was blocked, in one line: the mandate, the cart, the block.                                                                                                         |
+
+An error names the problem, the fix and an example: "Enter an amount above $0.00, for example
+100.00." It sits under the field with `FieldError`, never in a native browser bubble.
 
 ## AG Studio
 
@@ -68,7 +78,7 @@ import { keelsonStudioTheme } from "@keelson/ui/studio";
 <AgStudio theme={keelsonStudioTheme} />;
 ```
 
-`ag-studio` is a peer dependency. Grid cells use Geist Mono, selection and focus use the foreground
+`ag-studio` is a peer dependency. Rows are 40 px, grid cells use Geist Mono, selection and focus use the foreground
 color, and the chart palette is ink, the three field colors and warm gray.
 
 ## Tests
