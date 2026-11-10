@@ -349,11 +349,42 @@ fn operator_id(agent_id: &str) -> Result<Fr, Error> {
     Fr::try_from_str(agent_id).ok_or_else(|| Error::Commitment("operator id".into()))
 }
 
-/// `C_m = poseidon2([KEELSON_MANDATE, user_key_hash, max_amount, currency_num, category_mask,
-/// merchant_root, expiry, operator_id, nonce, salt])`, with `nonce` and the 16-byte `salt` read
-/// big-endian. The mandate is validated with [`parse_mandate`] first.
-pub fn mandate_commitment(m: &Value, salt: [u8; 16]) -> Result<Fr, Error> {
-    parse_mandate(m)?;
+/// The private fields of a mandate's commitment `C_m`: the preimage the C1 circuit opens.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MandateOpening {
+    pub user_key_hash: Fr,
+    pub max_amount: u64,
+    pub currency: u16,
+    pub category_mask: u64,
+    pub merchants: MerchantTree,
+    pub expiry: u64,
+    pub operator_id: Fr,
+    pub nonce: Fr,
+    pub salt: Fr,
+}
+
+impl MandateOpening {
+    /// `C_m = poseidon2([KEELSON_MANDATE, user_key_hash, max_amount, currency_num,
+    /// category_mask, merchant_root, expiry, operator_id, nonce, salt])`.
+    pub fn commitment(&self) -> Fr {
+        poseidon2(&[
+            tag("KEELSON_MANDATE"),
+            self.user_key_hash,
+            Fr::from(u128::from(self.max_amount)),
+            Fr::from(u128::from(self.currency)),
+            Fr::from(u128::from(self.category_mask)),
+            self.merchants.root,
+            Fr::from(u128::from(self.expiry)),
+            self.operator_id,
+            self.nonce,
+            self.salt,
+        ])
+    }
+}
+
+/// Reads the opening of `m`'s commitment under `salt`, with `nonce` and the 16-byte `salt` read
+/// big-endian. `m` is not validated: [`mandate_commitment`] validates it first.
+pub fn mandate_opening(m: &Value, salt: [u8; 16]) -> Result<MandateOpening, Error> {
     let range = find_constraint(&m["payment"]["constraints"], "payment.amount_range");
     let merchants = find_constraint(&m["checkout"]["constraints"], "checkout.allowed_merchants");
     let (Some(range), Some(merchants)) = (range, merchants) else {
@@ -361,13 +392,13 @@ pub fn mandate_commitment(m: &Value, salt: [u8; 16]) -> Result<Fr, Error> {
             "mandate lacks amount_range or allowed_merchants".into(),
         ));
     };
-    let operator = operator_id(
+    let operator_id = operator_id(
         m["agent"]["operator"]["agent_id"]
             .as_str()
             .unwrap_or_default(),
     )?;
     let jwk = &m["user"]["cred"]["jwk"];
-    let user_key = user_key_hash(
+    let user_key_hash = user_key_hash(
         jwk["x"].as_str().unwrap_or_default(),
         jwk["y"].as_str().unwrap_or_default(),
     )?;
@@ -377,20 +408,24 @@ pub fn mandate_commitment(m: &Value, salt: [u8; 16]) -> Result<Fr, Error> {
         .flatten()
         .filter_map(|x| x["id"].as_str())
         .collect();
-    let root = merchant_root(&ids)?;
-    let currency = currency_numeric(m["payment"]["currency"].as_str().unwrap_or_default())?;
-    let integer = |v: &Value| Fr::from(v.as_f64().unwrap_or_default() as u128);
+    let integer = |v: &Value| v.as_f64().unwrap_or_default() as u64;
     let nonce = b64_bytes::<16>(m["nonce"].as_str().unwrap_or_default())?;
-    Ok(poseidon2(&[
-        tag("KEELSON_MANDATE"),
-        user_key,
-        integer(&range["max"]),
-        Fr::from(u128::from(currency)),
-        Fr::from(u128::from(mandate_category_mask(m)?)),
-        root,
-        integer(&m["exp"]),
-        operator,
-        Fr::from_be_bytes_reduce(&nonce),
-        Fr::from_be_bytes_reduce(&salt),
-    ]))
+    Ok(MandateOpening {
+        user_key_hash,
+        max_amount: integer(&range["max"]),
+        currency: currency_numeric(m["payment"]["currency"].as_str().unwrap_or_default())?,
+        category_mask: mandate_category_mask(m)?,
+        merchants: merchant_tree(&ids)?,
+        expiry: integer(&m["exp"]),
+        operator_id,
+        nonce: Fr::from_be_bytes_reduce(&nonce),
+        salt: Fr::from_be_bytes_reduce(&salt),
+    })
+}
+
+/// `C_m` of [`MandateOpening::commitment`] for `m` under `salt`. The mandate is validated with
+/// [`parse_mandate`] first.
+pub fn mandate_commitment(m: &Value, salt: [u8; 16]) -> Result<Fr, Error> {
+    parse_mandate(m)?;
+    mandate_opening(m, salt).map(|o| o.commitment())
 }

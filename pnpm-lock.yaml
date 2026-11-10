@@ -304,6 +304,9 @@ importers:
 
   packages/alibi:
     dependencies:
+      '@aztec/bb.js':
+        specifier: 5.3.0
+        version: 5.3.0
       '@keelson/attest':
         specifier: workspace:*
         version: link:../attest

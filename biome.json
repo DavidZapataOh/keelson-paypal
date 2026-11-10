@@ -20,6 +20,7 @@
       "!**/test/snapshots",
       "!engine/tee/measurements.json",
       "!engine/tee/measurements-rotation.json",
+      "!engine/tee/zk",
       "!**/src/generated",
       "!engine/policy/proofs",
       "!contracts/lib",

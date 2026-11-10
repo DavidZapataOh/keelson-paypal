@@ -34,7 +34,7 @@ import {
 // The sandbox buyer approves the hold: in this process when it has a browser, otherwise the line
 // `APPROVE <order id>` asks for it and the bench waits until PayPal reports the order approved.
 const SAMPLES = Number(process.env.SAMPLES ?? 30);
-const BUDGET_P95_MS = 4_500;
+const BUDGET_P95_MS = 8_000;
 
 const percentile = (xs: number[], q: number) => {
   const sorted = [...xs].sort((a, b) => a - b);

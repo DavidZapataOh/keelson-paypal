@@ -373,6 +373,7 @@ pub fn countersign_request(
         authorization_id: None,
         observation,
         chain_id: None,
+        sealed_salt: None,
     }
 }
 

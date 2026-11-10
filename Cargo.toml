@@ -27,3 +27,26 @@ opt-level = 3
 # A panic ends the process: a leg that panicked is never trusted with a key again.
 [profile.release]
 panic = "abort"
+
+# The C1 witness is solved by the ACVM and its BN254 black-box solver, which the proving budget
+# test times; unoptimized, they take longer than the proof.
+[profile.dev.package.acvm]
+opt-level = 3
+
+[profile.dev.package.brillig_vm]
+opt-level = 3
+
+[profile.dev.package.acir]
+opt-level = 3
+
+[profile.dev.package.acir_field]
+opt-level = 3
+
+[profile.dev.package.bn254_blackbox_solver]
+opt-level = 3
+
+[profile.dev.package.ark-ff]
+opt-level = 3
+
+[profile.dev.package.ark-bn254]
+opt-level = 3

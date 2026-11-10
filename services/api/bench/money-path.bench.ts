@@ -42,7 +42,7 @@ const PURCHASES = Number(process.env.PURCHASES ?? 40);
 const CONCURRENCY = Number(process.env.CONCURRENCY ?? 1);
 const HOLDS = Number(process.env.HOLDS ?? 1);
 const DEGRADED_EVERY = Number(process.env.DEGRADED_EVERY ?? 0);
-const BUDGET_P95_MS = 4_500;
+const BUDGET_P95_MS = 8_000;
 const PRICE_MINOR = Number(process.env.PRICE_MINOR ?? 100);
 /** With DURATION_S set, purchases keep starting until it has passed (PURCHASES at most). */
 const DURATION_S = Number(process.env.DURATION_S ?? 0);

@@ -55,6 +55,29 @@ etherscan_source() {
   done
 }
 
+# bb names every generated verifier HonkVerifier; the reference one is linked to two libraries.
+target_of() {
+  case "$1" in
+    MandatePredicateVerifier | MandatePredicateReferenceVerifier) echo "src/verifiers/$1.sol:HonkVerifier" ;;
+    *) source_of "$(contract_of "$1")" ;;
+  esac
+}
+
+# The verifiers are compiled without via-IR (foundry.toml `compilation_restrictions`).
+profile_of() {
+  [[ "$1" == MandatePredicate* ]] && echo "--compilation-profile legacy" || true
+}
+
+libraries_of() {
+  [[ "$1" == MandatePredicateReferenceVerifier ]] || return 0
+  local lib address
+  for lib in RelationsLib ZKTranscriptLib; do
+    address=$(forge script script/DeployMandatePredicateVerifier.s.sol --sig "predict(string)" "$1.$lib" 2>/dev/null |
+      grep -oE '0x[0-9a-fA-F]{40}' | tail -1)
+    echo "--libraries src/verifiers/$1.sol:$lib:$address"
+  done
+}
+
 status=0
 for chain in "$@"; do
   registry="deployments/$chain.json"
@@ -71,11 +94,11 @@ for chain in "$@"; do
         status=1
       fi
     else
-      target=$(source_of "$(contract_of "$name")")
+      target=$(target_of "$name")
       args=$(jq -r --arg n "$name" '.constructorArgs[$n]' "$registry")
       # Foundry submits the same sources to Sourcify after Etherscan.
-      forge verify-contract "$address" "$target" --chain "$chain" --verifier etherscan \
-        --constructor-args "$args" --root "$(root_of "$(contract_of "$name")")" --watch
+      forge verify-contract "$address" "$target" --chain "$chain" --verifier etherscan $(profile_of "$name") \
+        --constructor-args "$args" --root "$(root_of "$(contract_of "$name")")" $(libraries_of "$name") --watch
     fi
   done
 done

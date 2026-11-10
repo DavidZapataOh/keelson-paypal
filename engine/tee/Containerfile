@@ -3,12 +3,18 @@
 
 FROM docker.io/stagex/core-ca-certificates:sx2026.11.0@sha256:2e5d0da04413dfbc739f3009fe6616e90e733c463f8495ce6997b02c0832735c AS ca
 
+# bb is linked against glibc (libc.so.6 and its loader only); the witness service pins the same image.
+FROM docker.io/library/debian:bookworm-20261104-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS glibc
+
 FROM docker.io/stagex/pallet-rust:sx2026.11.0@sha256:4f12174acd7ccab9506e20a986c556cd5837dbd0ce616abf3031bcaaaa365590 AS build
 ENV CARGO_HOME=/cargo
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY engine/ ./engine/
 RUN cargo fetch --locked --target x86_64-unknown-linux-musl
+# Leg A proves C1 with the bb that @aztec/bb.js 5.3.0 ships, the version the verifier runs.
+ADD --checksum=sha256:c9c6bc37c3ffa65b22220d7c1db40f9e1086ecd4a1614a45f21603eba7ea40a4 \
+    https://registry.npmjs.org/@aztec/bb.js/-/bb.js-5.3.0.tgz /bb.js.tgz
 # StageX's Rust links musl dynamically unless asked otherwise. Crate-local ThinLTO over 16
 # codegen units names promoted symbols after a hash of each unit's bitcode, which LLVM does not
 # produce deterministically (rust-lang/rust#165355); one unit with fat LTO, symbols stripped.
@@ -26,6 +32,7 @@ RUN --network=none <<EOF
         --features tdx,nitro \
         --bin keelson-engine
     cp target/x86_64-unknown-linux-musl/release/keelson-engine /keelson-engine
+    tar -xzf /bb.js.tgz -C / package/build/amd64-linux/bb
     mkdir /data
     # An enclave's init mounts these over the image's root and fails when one is missing.
     mkdir -p /skel/dev /skel/proc /skel/run /skel/sys /skel/tmp
@@ -37,7 +44,12 @@ LABEL org.opencontainers.image.source="https://github.com/DavidZapataOh/keelson-
 COPY --from=ca /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build --chown=65534:65534 /data /data
 COPY --from=build /skel/ /
+COPY --from=glibc /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2 /lib64/ld-linux-x86-64.so.2
+COPY --from=glibc /usr/lib/x86_64-linux-gnu/libc.so.6 /lib/x86_64-linux-gnu/libc.so.6
+COPY --from=build /package/build/amd64-linux/bb /bb
+COPY engine/tee/zk/bn254_g1.dat /crs/bn254_g1.dat
 COPY --from=build /keelson-engine /keelson-engine
+ENV KEELSON_BB=/bb CRS_PATH=/crs
 USER 65534:65534
 EXPOSE 8080
 ENTRYPOINT ["/keelson-engine"]

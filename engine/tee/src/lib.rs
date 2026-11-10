@@ -20,6 +20,7 @@ mod signer;
 #[cfg(feature = "tdx")]
 pub mod tdx;
 pub mod wire;
+pub mod zk;
 
 pub use budget::{Budget, ClaimGuard, Claimed, Replay};
 pub use countersign::{
