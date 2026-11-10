@@ -16,17 +16,17 @@ export const ALFRED: LiveStore = {
   returnsFree: false,
   hosts: [
     "www.alfred.com",
-    "_.shopify.com",
-    "_.shopifycdn.com",
-    "_.shopifyinc.com",
-    "_.shopifysvc.com",
+    "*.shopify.com",
+    "*.shopifycdn.com",
+    "*.shopifyinc.com",
+    "*.shopifysvc.com",
     "shop.app",
     "www.paypal.com",
-    "_.paypal.com",
+    "*.paypal.com",
     "www.paypalobjects.com",
-    "_.hcaptcha.com",
+    "*.hcaptcha.com",
   ],
-  checkoutHosts: ["www.paypal.com", "_.paypal.com", "shop.app", "_.shop.app"],
+  checkoutHosts: ["www.paypal.com", "*.paypal.com", "shop.app", "*.shop.app"],
 };
 
 /** The live flow's item: one digital copy of "The Change" for piano, vocal and chords. */
