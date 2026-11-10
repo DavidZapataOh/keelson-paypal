@@ -21,7 +21,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "bench": "vitest bench --reporter=verbose",
-    "vectors": "node scripts/unicode.ts && node scripts/vectors.ts && node scripts/webauthn-vectors.ts && node scripts/c1-vectors.ts"
+    "vectors": "node scripts/unicode.ts && node scripts/vectors.ts && node scripts/webauthn-vectors.ts && node scripts/c1-vectors.ts && node scripts/c2a-vectors.ts"
   },
   "dependencies": {
     "@keelson/core": "workspace:*",
