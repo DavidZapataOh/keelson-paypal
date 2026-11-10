@@ -17,7 +17,7 @@ function params(mode: Mode): Partial<AgStudioThemeParams> {
     gridCellFontFamily: fonts.mono,
     chartFontFamily: fonts.sans,
     borderRadius: 6,
-    gridRowHeight: 42,
+    gridRowHeight: 40,
     gridHeaderBackgroundColor: t.muted,
     gridOddRowBackgroundColor: t.background,
     studioCanvasBackgroundColor: t.background,
