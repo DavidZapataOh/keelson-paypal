@@ -7,6 +7,7 @@ import type { Deps } from "../app.ts";
 import { MERCHANTS, SETTLEMENT } from "../merchants.ts";
 import { requireClient } from "../middleware/auth.ts";
 import { ProblemSchema, problem } from "../problem.ts";
+import { requireMerchant } from "./merchant-console.ts";
 
 const Receiver = z.union([z.email(), z.string().regex(/^[A-Z0-9]{13}$/)]).openapi({
   description: "The PayPal account paid: an email address or a PayPal account id.",
@@ -82,8 +83,7 @@ const route = createRoute({
   tags: ["merchants"],
   summary: "Choose how a merchant is paid when a dispute goes its way",
   description:
-    "Applies to verdicts signed afterwards: the rail decides the payee the TEE legs sign into the `Verdict`. The merchant signs the choice, as it signs its on-chain payout address.",
-  middleware: [requireClient(["merchants:write"])],
+    "Applies to verdicts signed afterwards: the rail decides the payee the TEE legs sign into the `Verdict`. The merchant signs the choice, as it signs its on-chain payout address. Sent by a client with `merchants:write` or by the merchant's own session.",
   request: {
     params: z.object({ merchantId: z.string().min(1).max(64) }),
     body: {
@@ -97,7 +97,7 @@ const route = createRoute({
       content: { "application/json": { schema: SettlementPreference } },
     },
     403: {
-      description: "The signature is not the merchant's",
+      description: "The signature, or the session, is not the merchant's",
       content: { "application/problem+json": { schema: ProblemSchema } },
     },
     404: {
@@ -116,6 +116,11 @@ export function registerMerchantsSettlement(
   deps: Pick<Deps, "db" | "merchantSigners">,
 ): void {
   const signers = deps.merchantSigners ?? SETTLEMENT;
+  const client = requireClient(["merchants:write"]);
+  const merchant = requireMerchant(deps);
+  app.on("PUT", "/v1/merchants/:merchantId/settlement", (c, next) =>
+    c.var.principal?.kind === "user" ? merchant(c, next) : client(c, next),
+  );
   app.openapi(route, async (c) => {
     const { merchantId } = c.req.valid("param");
     const signer = signers[merchantId];

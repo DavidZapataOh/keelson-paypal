@@ -43,6 +43,8 @@ import { registerGrades } from "./routes/grades.ts";
 import { registerHealth } from "./routes/health.ts";
 import { registerHold } from "./routes/hold.ts";
 import { registerMandates } from "./routes/mandates.ts";
+import { registerMerchantAssistant } from "./routes/merchant-assistant.ts";
+import { registerMerchantConsole } from "./routes/merchant-console.ts";
 import { registerMerchantsPayout } from "./routes/merchants-payout.ts";
 import { registerMerchantsSettlement } from "./routes/merchants-settlement.ts";
 import { registerObservations } from "./routes/observations.ts";
@@ -61,6 +63,9 @@ import { registerTransactions } from "./routes/transactions.ts";
 import { registerValidations } from "./routes/validations.ts";
 import type { TeeConfig } from "./tee/signers.ts";
 import type { StampWorker } from "./timestamps/worker.ts";
+
+/** POST routes that stream their response. */
+const STREAMED_POSTS = /^\/v1\/merchants\/[^/]+\/assistant$/;
 
 /**
  * The public reads the verifier makes: an Alibi's receipt, a leaf's timestamps, a mandate's C3
@@ -175,7 +180,7 @@ export function createApp(deps: Deps): OpenAPIHono {
         origin: deps.appOrigin,
         credentials: true,
         allowHeaders: ["content-type", "idempotency-key", "keelson-device"],
-        exposeHeaders: ["location", "idempotent-replayed"],
+        exposeHeaders: ["location", "idempotent-replayed", "keelson-model"],
       })
     : undefined;
   // The verifier reads only public receipts and timestamps, and never with credentials.
@@ -205,7 +210,9 @@ export function createApp(deps: Deps): OpenAPIHono {
   // An upload is refused before its body is read or fingerprinted.
   app.on("POST", "/v1/evidence", requireClient(["evidence:write"]));
   app.use("/v1/*", rateLimit(deps.kv, deps.rateLimit));
-  app.use("/v1/*", idempotency(deps.kv, deps.log));
+  // A model turn streams and changes nothing a retry could repeat; a buffered replay would end the stream.
+  const idempotent = idempotency(deps.kv, deps.log);
+  app.use("/v1/*", (c, next) => (STREAMED_POSTS.test(c.req.path) ? next() : idempotent(c, next)));
   app.use(
     "/v1/*",
     timeout(deps.requestTimeoutMs ?? 30_000, (c) => {
@@ -290,6 +297,8 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerBonds(app, deps);
   registerMerchantsPayout(app, deps);
   registerMerchantsSettlement(app, deps);
+  registerMerchantConsole(app, deps);
+  registerMerchantAssistant(app, deps);
   registerPurchaseTracking(app, deps);
   registerTransactions(app, deps);
   registerRedTeam(app, deps);

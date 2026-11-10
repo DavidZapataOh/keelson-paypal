@@ -1,5 +1,5 @@
 import type { Merchant } from "@keelson/compiler";
-import { type Db, eq, merchantSettlement } from "@keelson/db";
+import { type Db, eq, merchantSettlement, walletAddress } from "@keelson/db";
 import type { Address } from "viem";
 
 /**
@@ -51,4 +51,24 @@ export function payeeFor(merchantId: string, rail: Rail): Address {
   const payee = SETTLEMENT[merchantId];
   if (!payee) throw new Error(`merchant ${merchantId} has no settlement address`);
   return payee;
+}
+
+/**
+ * The merchant a signed-in user is: the one whose settlement address the user signed in with
+ * (EIP-4361). Addresses are compared case-insensitively; Better Auth stores them checksummed.
+ */
+export async function merchantOfUser(
+  db: Db,
+  userId: string,
+  signers: Readonly<Record<string, Address>> = SETTLEMENT,
+): Promise<Merchant | undefined> {
+  const wallets = await db
+    .select({ address: walletAddress.address })
+    .from(walletAddress)
+    .where(eq(walletAddress.userId, userId));
+  const signed = new Set(wallets.map((w) => w.address.toLowerCase()));
+  return MERCHANTS.find((m) => {
+    const signer = signers[m.id];
+    return signer !== undefined && signed.has(signer.toLowerCase());
+  });
 }
