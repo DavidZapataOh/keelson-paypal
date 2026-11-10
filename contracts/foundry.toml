@@ -29,6 +29,7 @@ fs_permissions = [
   { access = "read", path = "./out/MandateViolationReferenceVerifier.sol" },
   { access = "read", path = "./out/AnonymousMandateReferenceVerifier.sol" },
   { access = "read", path = "./out/AnonymousPurchaseReferenceVerifier.sol" },
+  { access = "read", path = "./out/AmberContradictionReferenceVerifier.sol" },
 ]
 
 [profile.ci]
