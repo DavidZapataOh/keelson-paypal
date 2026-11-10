@@ -14,7 +14,14 @@ export function arbitrumSepoliaRpcUrls(primary: string | undefined): string[] {
 /**
  * Sends each request to the first URL and, on a rate limit, a server error or a timeout, to the
  * next. Errors name the last URL tried, so a provider's key in the first one stays out of logs.
+ *
+ * @internal
  */
 export function rpcTransport(urls: readonly string[]): Transport {
   return urls.length === 1 ? http(urls[0]) : fallback(urls.map((url) => http(url)));
+}
+
+/** The configured Arbitrum Sepolia RPC with the public one behind it. */
+export function arbitrumSepoliaTransport(primary: string | undefined): Transport {
+  return rpcTransport(arbitrumSepoliaRpcUrls(primary));
 }

@@ -12,6 +12,7 @@ import { createPublicClient, http, keccak256 } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { describe, expect, test } from "vitest";
 import { createApp } from "../src/app.ts";
+import { arbitrumSepoliaTransport } from "../src/chain/rpc.ts";
 import { DEMO_OPERATOR } from "../src/routes/operators.ts";
 import { testDb, testKv } from "./setup.ts";
 
@@ -23,7 +24,7 @@ const validation = deployed.KeelsonValidationRegistry;
 const verifier = deployed.VerdictVerifier;
 const client = createPublicClient({
   chain: arbitrumSepolia,
-  transport: http(process.env.ARBITRUM_SEPOLIA_RPC_URL),
+  transport: arbitrumSepoliaTransport(process.env.ARBITRUM_SEPOLIA_RPC_URL),
 });
 const logs = createPublicClient({ chain: arbitrumSepolia, transport: http() });
 const app = createApp({

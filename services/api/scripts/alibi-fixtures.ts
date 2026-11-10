@@ -16,10 +16,11 @@ import { createDb } from "@keelson/db";
 import { closeMandate } from "@keelson/mandate";
 import { pino } from "pino";
 import { ulid } from "ulid";
-import { bytesToHex, createPublicClient, type Hex, http, type PublicClient } from "viem";
+import { bytesToHex, createPublicClient, type Hex, type PublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { loadAlibi } from "../src/alibi/issue.ts";
 import { createApp } from "../src/app.ts";
+import { arbitrumSepoliaTransport } from "../src/chain/rpc.ts";
 import { parseEnv } from "../src/env.ts";
 import { createKv } from "../src/kv.ts";
 import { relayerFromEnv } from "../src/onchain/relayer.ts";
@@ -50,7 +51,7 @@ const { db, pool } = createDb(env.DATABASE_URL);
 const kv = await createKv(env.REDIS_URL, log);
 const client = createPublicClient({
   chain: arbitrumSepolia,
-  transport: http(env.ARBITRUM_SEPOLIA_RPC_URL),
+  transport: arbitrumSepoliaTransport(env.ARBITRUM_SEPOLIA_RPC_URL),
 }) as PublicClient;
 const paypal = createPayPalDeps(env);
 const relayer = await relayerFromEnv(env, db, log);

@@ -1,3 +1,4 @@
+import { arbitrumSepolia } from "viem/chains";
 import { describe, expect, test } from "vitest";
 import type { AlibiReceipt } from "../src/schema.ts";
 import { createChainReader, verifyAlibi } from "../src/verify/index.ts";
@@ -14,7 +15,7 @@ describe.skipIf(!live)("chain reads on Arbitrum Sepolia", () => {
   test("one HTTP request reads the latest anchor of the receipt's log", async () => {
     let requests = 0;
     const chain = createChainReader({
-      ...(rpc ? { rpc: { 421614: rpc } } : {}),
+      ...(rpc ? { rpc: { 421614: [rpc, ...arbitrumSepolia.rpcUrls.default.http] } } : {}),
       fetchFn: (input, init) => {
         requests++;
         return fetch(input, init);

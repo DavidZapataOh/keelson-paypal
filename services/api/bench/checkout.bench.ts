@@ -3,9 +3,10 @@ import { cartHash, ulidToBytes32 } from "@keelson/core";
 import { createDb, eq, events, mandates } from "@keelson/db";
 import { closeMandate } from "@keelson/mandate";
 import { ulid } from "ulid";
-import { bytesToHex, createPublicClient, type Hex, http, type PublicClient } from "viem";
+import { bytesToHex, createPublicClient, type Hex, type PublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { createApp } from "../src/app.ts";
+import { arbitrumSepoliaTransport } from "../src/chain/rpc.ts";
 import { parseEnv } from "../src/env.ts";
 import { eventsChannel } from "../src/events.ts";
 import { createKv } from "../src/kv.ts";
@@ -59,7 +60,7 @@ const listener = kv.duplicate();
 await listener.connect();
 const client = createPublicClient({
   chain: arbitrumSepolia,
-  transport: http(env.ARBITRUM_SEPOLIA_RPC_URL),
+  transport: arbitrumSepoliaTransport(env.ARBITRUM_SEPOLIA_RPC_URL),
 }) as PublicClient;
 const paypal = createPayPalDeps(env);
 const relayer = await relayerFromEnv(env, db, log);

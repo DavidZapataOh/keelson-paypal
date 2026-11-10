@@ -7,9 +7,10 @@ import { alibis, and, eq, mandates, paypalEvents } from "@keelson/db";
 import { LOG_ORIGINS } from "@keelson/log";
 import { ids } from "@keelson/paypal";
 import { chromium, type Page } from "playwright";
-import { createPublicClient, http, type PublicClient } from "viem";
+import { createPublicClient, type PublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { arbitrumSepoliaTransport } from "../src/chain/rpc.ts";
 import { call } from "../src/paypal.ts";
 import { capturesOf, checkBudget, checkInvariants } from "./invariants.ts";
 import { type Hold, onRender, renderHarness, UNREACHABLE } from "./render-live.ts";
@@ -54,7 +55,7 @@ describe.skipIf(!onRender)("the money path, end to end (live)", { timeout: 900_0
     h = await renderHarness();
     chain = createPublicClient({
       chain: arbitrumSepolia,
-      transport: http(process.env.ARBITRUM_SEPOLIA_RPC_URL),
+      transport: arbitrumSepoliaTransport(process.env.ARBITRUM_SEPOLIA_RPC_URL),
     }) as PublicClient;
   }, 120_000);
 

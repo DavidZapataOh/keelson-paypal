@@ -3,9 +3,10 @@ import { eq, purchases } from "@keelson/db";
 import { closeMandate } from "@keelson/mandate";
 import { pino } from "pino";
 import { ulid } from "ulid";
-import { bytesToHex, createPublicClient, type Hex, http, type PublicClient } from "viem";
+import { bytesToHex, createPublicClient, type Hex, type PublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { createApp, type Deps } from "../src/app.ts";
+import { arbitrumSepoliaTransport } from "../src/chain/rpc.ts";
 import { operatorSigners } from "../src/operators/signer.ts";
 import type { PipelineDeps } from "../src/pipeline/drive.ts";
 import { createTee } from "../src/tee/config.ts";
@@ -41,7 +42,7 @@ export async function pipelineHarness(
   const paypal = sandbox();
   const client = createPublicClient({
     chain: arbitrumSepolia,
-    transport: http(process.env.ARBITRUM_SEPOLIA_RPC_URL),
+    transport: arbitrumSepoliaTransport(process.env.ARBITRUM_SEPOLIA_RPC_URL),
   }) as PublicClient;
   const operators = operatorSigners(AGENT_ID, process.env.KEELSON_OPERATOR_KEY as Hex);
   const tlogConfig = { url: tlog.url, token: tlog.token, vkeys: tlog.vkeys };

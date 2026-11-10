@@ -5,6 +5,7 @@ import { pino } from "pino";
 import { createPublicClient, http, type PublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { beforeAll, describe, expect, test } from "vitest";
+import { arbitrumSepoliaTransport } from "../src/chain/rpc.ts";
 import { type EvaluateDeps, evaluateDispute } from "../src/disputes/evaluate.ts";
 import { createPayPalDeps } from "../src/paypal.ts";
 import { LegClient } from "../src/tee/client.ts";
@@ -37,7 +38,10 @@ describe.skipIf(!live)("evaluating a dispute on the live legs", { timeout: 180_0
     );
     await refreshLeg(testDb, "a", tee);
     await refreshLeg(testDb, "b", tee);
-    const client = createPublicClient({ chain: arbitrumSepolia, transport: http(rpc) });
+    const client = createPublicClient({
+      chain: arbitrumSepolia,
+      transport: arbitrumSepoliaTransport(rpc),
+    });
     deps = {
       db: testDb,
       kv: testKv,
