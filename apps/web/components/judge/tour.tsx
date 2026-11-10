@@ -5,6 +5,7 @@ import { Button } from "@keelson/ui/components/button";
 import { DataItem, DataList } from "@keelson/ui/components/data-list";
 import { Status } from "@keelson/ui/components/status";
 import { Timeline, TimelineItem } from "@keelson/ui/components/timeline";
+import { cn } from "@keelson/ui/lib/utils";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../../lib/api";
@@ -67,6 +68,11 @@ export function JudgeMode() {
   }, []);
 
   const load = useCallback(async () => {
+    // Without a session there is no tenant to read: the visitor starts one first.
+    if (!localStorage.getItem(SESSION_HINT)) {
+      setPhase({ kind: "welcome", signedIn: false });
+      return;
+    }
     try {
       setPhase({ kind: "touring", tour: await tourOf() });
     } catch (err) {
@@ -81,29 +87,39 @@ export function JudgeMode() {
     void load();
   }, [load]);
 
-  if (phase.kind === "loading") {
-    return <p className="py-16 text-muted-foreground">Opening Judge Mode…</p>;
-  }
-  if (phase.kind === "welcome") return <Welcome {...phase} invite={invite} onStarted={load} />;
-  return <Walkthrough tour={phase.tour} />;
+  if (phase.kind === "touring") return <Walkthrough tour={phase.tour} />;
+  // A visitor's welcome is the static first paint; a browser with a session hides it
+  // (html[data-session]) until the session is read.
+  return (
+    <Welcome
+      pending={phase.kind === "loading"}
+      signedIn={phase.kind === "welcome" && phase.signedIn}
+      {...(phase.kind === "welcome" && phase.error ? { error: phase.error } : {})}
+      invite={invite}
+      onStarted={load}
+    />
+  );
 }
 
 function Welcome({
+  pending,
   signedIn,
   error,
   invite,
   onStarted,
 }: {
+  pending: boolean;
   signedIn: boolean;
   error?: string;
   invite: { current: string | undefined };
   onStarted: () => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState(error);
+  const [failure, setFailure] = useState<string>();
+  const problem = failure ?? error;
   async function start() {
     setBusy(true);
-    setProblem(undefined);
+    setFailure("");
     try {
       if (signedIn) await authClient.signOut();
       await startJudge(invite.current);
@@ -113,7 +129,7 @@ function Welcome({
       localStorage.setItem(STARTED_KEY, String(Date.now()));
       await onStarted();
     } catch (err) {
-      setProblem(
+      setFailure(
         err instanceof ApiError && err.status === 429
           ? "Too many judges from this network right now. Try again in an hour."
           : (err as Error).message,
@@ -122,7 +138,7 @@ function Welcome({
     }
   }
   return (
-    <div className="grid gap-12">
+    <div className={cn("grid gap-12", pending && "pending-session")}>
       <section aria-labelledby="judge-title" className="grid max-w-3xl gap-5">
         <Eyebrow>Judge Mode</Eyebrow>
         <h1
@@ -138,7 +154,7 @@ function Welcome({
           from production records on PayPal sandbox and Arbitrum Sepolia.
         </p>
         <div className="flex flex-wrap items-center gap-4">
-          <Button size="lg" onClick={start} disabled={busy}>
+          <Button size="lg" onClick={start} disabled={busy || pending}>
             {busy ? "Opening your tenant…" : "Start Judge Mode"}
           </Button>
           <span className="text-muted-foreground text-sm">

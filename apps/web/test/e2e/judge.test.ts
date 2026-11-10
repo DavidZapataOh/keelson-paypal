@@ -50,6 +50,30 @@ describe.each(Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[])("signed out 
       await context.close();
     });
   }
+
+  test("/status/ keeps its shape while the first report loads", async () => {
+    const context = await browser.newContext(VIEWPORTS[kind]);
+    // The live report, held back a moment so it lands after first paint.
+    await context.route(`${API}/status`, async (route) => {
+      const response = await route.fetch();
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      await route.fulfill({ response });
+    });
+    const page = await context.newPage();
+    await page.addInitScript(() => {
+      (window as unknown as { cls: number }).cls = 0;
+      new PerformanceObserver((list) => {
+        for (const e of list.getEntries() as unknown as { value: number }[]) {
+          (window as unknown as { cls: number }).cls += e.value;
+        }
+      }).observe({ type: "layout-shift", buffered: true });
+    });
+    await page.goto(`${site.base}/status/`);
+    await page.getByText(/^Checked /).waitFor();
+    const cls = await page.evaluate(() => (window as unknown as { cls: number }).cls);
+    expect(cls).toBeLessThan(0.1);
+    await context.close();
+  });
 });
 
 test("an invite link is forwarded once and leaves the address bar and the history", async () => {

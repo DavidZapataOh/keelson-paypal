@@ -205,6 +205,13 @@ components:
           items:
             $ref: "#/components/schemas/MandatePurchase"
           description: The mandate's latest 100 purchases, newest first.
+        pendingHolds:
+          type: array
+          items:
+            $ref: "#/components/schemas/PendingPurchaseHold"
+          description: Purchase holds of a several-store mandate still waiting for the
+            buyer's PayPal approval, oldest first. Later changes arrive as
+            `mandate.purchase_hold` events.
       required:
         - id
         - state
@@ -214,6 +221,7 @@ components:
         - hold
         - card
         - purchases
+        - pendingHolds
     MandateHold:
       type: object
       properties:
@@ -366,6 +374,11 @@ components:
             - step
             - reason
           description: The step that failed and why; nothing was captured.
+        blocked:
+          type: array
+          items:
+            type: string
+          description: For a `DENIED` cart, the mandate fields whose check failed.
         disputes:
           type: array
           items:
@@ -390,6 +403,23 @@ components:
         - createdAt
         - state
         - disputes
+    PendingPurchaseHold:
+      type: object
+      properties:
+        requestId:
+          type: string
+        orderId:
+          type: string
+          description: The PayPal order the buyer approves.
+        merchant:
+          type: string
+        amountMinor:
+          type: string
+      required:
+        - requestId
+        - orderId
+        - merchant
+        - amountMinor
     PayPalClient:
       type: object
       properties:
@@ -1310,6 +1340,11 @@ components:
             - step
             - reason
           description: The step that failed and why; nothing was captured.
+        blocked:
+          type: array
+          items:
+            type: string
+          description: For a `DENIED` cart, the mandate fields whose check failed.
       required:
         - purchaseId
         - mode
@@ -1497,6 +1532,11 @@ components:
             - step
             - reason
           description: The step that failed and why; nothing was captured.
+        blocked:
+          type: array
+          items:
+            type: string
+          description: For a `DENIED` cart, the mandate fields whose check failed.
       required:
         - id
         - mandateId

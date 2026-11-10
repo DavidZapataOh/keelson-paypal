@@ -1,6 +1,8 @@
 "use client";
 
+import type { Card } from "@keelson/mandate/browser";
 import { Amount } from "@keelson/ui/components/amount";
+import { BlockDiff } from "@keelson/ui/components/block-diff";
 import { Button } from "@keelson/ui/components/button";
 import { CopyValue } from "@keelson/ui/components/copy-value";
 import { DataItem, DataList } from "@keelson/ui/components/data-list";
@@ -36,8 +38,31 @@ const CAPTURED = new Set([
   "MERCHANT_LIABLE",
 ]);
 
+/**
+ * One line per field that failed its check: what the mandate allows against the cart. The API
+ * keeps only the cart's total, so other fields say the cart did not match.
+ */
+function Blocks({ p, card }: { p: Purchase; card: Card | null }) {
+  if (!p.blocked?.length) return null;
+  return (
+    <div className="mt-2 grid gap-1">
+      {p.blocked.map((field) => {
+        const row = card?.rows.find((r) => r.field === field);
+        return (
+          <BlockDiff
+            key={field}
+            field={row?.label ?? field.replaceAll("_", " ")}
+            mandate={row ? row.values.join(", ") : "as signed"}
+            cart={field === "total" ? money(p.amount.minor, p.amount.currency) : "not as signed"}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 /** Sign → Check → Pay → Dispute → Resolve: who acted at each step, and when. */
-function Steps({ p }: { p: Purchase }) {
+function Steps({ p, card }: { p: Purchase; card: Card | null }) {
   const checking = p.state === "PROPOSED" || p.state === "EVALUATING";
   const blocked = p.state === "DENIED";
   const paid = CAPTURED.has(p.state);
@@ -54,6 +79,7 @@ function Steps({ p }: { p: Purchase }) {
       ) : blocked ? (
         <TimelineItem state="blocked" actor="Keelson" time={p.createdAt}>
           blocked the cart before payment
+          <Blocks p={p} card={card} />
         </TimelineItem>
       ) : (
         <TimelineItem state="done" actor="Keelson" time={p.createdAt}>
@@ -164,7 +190,7 @@ export function PurchasePage() {
             <span>{when(p.createdAt)}</span>
           </div>
         </div>
-        <Steps p={p} />
+        <Steps p={p} card={mandate.card} />
         {p.disputes.map((d) => (
           <DisputeCard key={d.id} id={d.id} />
         ))}
