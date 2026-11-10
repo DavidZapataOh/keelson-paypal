@@ -37,7 +37,7 @@ interface PayPalEmail {
   confirmed: boolean;
 }
 
-const scopes = [
+export const OAUTH_SCOPES = [
   "countersign:write",
   "evidence:write",
   "evidence:disclose",
@@ -127,7 +127,7 @@ export function createAuth(db: Db, env: AuthEnv) {
       oauthProvider({
         loginPage: "/sign-in",
         consentPage: "/consent",
-        scopes: [...scopes],
+        scopes: [...OAUTH_SCOPES],
         grantTypes: ["client_credentials"],
         resources: [apiAudience],
         clientPrivileges: ({ user }) => user?.role === "admin",
