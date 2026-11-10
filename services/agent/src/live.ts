@@ -341,13 +341,15 @@ const TRANSACTION = /^[0-9A-Z]{17}$/;
 
 /**
  * The PayPal transaction id of the payment just made: from the store's confirmation page when it
- * shows one, else from the newest entry of the buyer's PayPal activity for `total`, read in a tab
+ * shows one, else from the newest entry of the buyer's PayPal activity that names `merchant` and
+ * `total`, read in a tab
  * of its own that nothing records. Only the id leaves the page.
  */
 export async function paypalTransactionId(
   context: BrowserContext,
   confirmation: Page,
   total: string,
+  merchant: string,
 ): Promise<string | undefined> {
   const shown = await confirmation
     .locator("body")
@@ -359,7 +361,11 @@ export async function paypalTransactionId(
   const tab = await context.newPage();
   try {
     await tab.goto("https://www.paypal.com/myaccount/activities/", { waitUntil: "load" });
-    const link = tab.locator('a[href*="/activit"]').filter({ hasText: total }).first();
+    const link = tab
+      .locator('a[href*="/activit"]')
+      .filter({ hasText: total })
+      .filter({ hasText: merchant })
+      .first();
     await link.waitFor({ timeout: 15_000 });
     const href = (await link.getAttribute("href")) ?? "";
     const id = /\/([0-9A-Z]{17})(?:[/?#]|$)/.exec(href)?.[1];

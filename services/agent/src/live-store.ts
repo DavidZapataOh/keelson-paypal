@@ -25,7 +25,7 @@ export const ALFRED: LiveStore = {
     "www.paypalobjects.com",
     "_.hcaptcha.com",
   ],
-  checkoutHosts: ["www.paypal.com"],
+  checkoutHosts: ["www.paypal.com", "_.paypal.com", "shop.app", "_.shop.app"],
 };
 
 /** The live flow's item: one digital copy of "The Change" for piano, vocal and chords. */

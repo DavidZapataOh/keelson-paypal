@@ -88,6 +88,8 @@ describe("live purchases", () => {
     const other = await record(id, "1AB23456CD789012E");
     expect(other.status).toBe(409);
     expect(((await other.json()) as { type: string }).type).toMatch(/transaction-recorded$/);
+    const second = await purchase(mandateId, "LOGGED", STORE);
+    expect((await record(second, TX)).status).toBe(409);
   });
 
   test("only a logged live purchase of the caller takes a transaction id", async () => {

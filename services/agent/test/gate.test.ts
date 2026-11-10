@@ -30,6 +30,12 @@ const PAGES: Record<string, string> = {
   "/checkouts/cn/save": page(
     '<p>Total $2.95 USD</p><label><input type="checkbox" id="s"> Save PayPal for future purchases</label><label><input type="checkbox" id="k" checked> Remember me</label>',
   ),
+  "/checkouts/cn/two": page(
+    "<p>The Change $2.95</p><p>Total $5.90 USD</p><button><span>Pay</span> now</button>",
+  ),
+  "/checkouts/cn/icon": page(
+    '<p>Total $2.95 USD</p><button aria-label="x"><span id="icon">&#10148;</span> Pay now</button>',
+  ),
   "/checkouts/cn/more": page("<h1>Checkout</h1><p>Total $4.99 USD</p><button>Pay now</button>"),
   "/checkouts/cn/frame": page(
     `<h1>Checkout</h1><p>Total $2.95 USD</p><iframe srcdoc='${page("<button>Complete Purchase</button>").replaceAll("'", "&#39;")}'></iframe>`,
@@ -148,5 +154,34 @@ describe("the pay-click gate", () => {
     expect(await tab.locator("#s").isChecked()).toBe(false);
     expect((await click({ type: "ref", ref: box("Remember me") })).is_error).toBeFalsy();
     expect(await tab.locator("#k").isChecked()).toBe(false);
+  });
+
+  test("Space or any key on a checkout page is refused, so a focused pay button cannot be pressed", async () => {
+    gate.allow({ minor: 295, currency: "USD" });
+    await open("/checkouts/cn/abc");
+    for (const text of ["Tab", "space", "NumpadEnter"]) {
+      expect((await driver.toolResult(call("key", { text }))).is_error).toBe(true);
+    }
+    expect((await driver.toolResult(call("type", { text: " " }))).is_error).toBe(true);
+    expect(await out()).toBe("");
+  });
+
+  test("a click on a pay button's unnamed child is held like the button", async () => {
+    await open("/checkouts/cn/icon");
+    const tree = text(await driver.toolResult(call("read_page", {})));
+    const refs = [...tree.matchAll(/\[(ref_e\d+)\]/g)].map((m) => m[1] as string);
+    for (const r of refs) {
+      const res = await click({ type: "ref", ref: r });
+      expect(res.is_error).toBe(true);
+    }
+    expect(await out()).toBe("");
+  });
+
+  test("a page whose largest amount is more than the countersigned total is refused", async () => {
+    gate.allow({ minor: 295, currency: "USD" });
+    await open("/checkouts/cn/two");
+    const r = await click({ type: "ref", ref: await ref("Pay now") });
+    expect(r.is_error).toBe(true);
+    expect(await out()).toBe("");
   });
 });

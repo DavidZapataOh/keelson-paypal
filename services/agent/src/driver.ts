@@ -270,7 +270,7 @@ export class StoreBrowser extends BetaAbstractBrowserToolset20260801 {
     _ctx: BetaToolsetCallContext,
     input: BetaBrowserTypeInput,
   ): Promise<void> {
-    if (/[\r\n]/.test(input.text)) await this.#gate?.check(this.#page, { kind: "enter" });
+    await this.#gate?.check(this.#page, { kind: "key" });
     await this.#page.keyboard.type(input.text);
   }
 
@@ -278,9 +278,7 @@ export class StoreBrowser extends BetaAbstractBrowserToolset20260801 {
     _ctx: BetaToolsetCallContext,
     input: BetaBrowserKeyInput,
   ): Promise<void> {
-    if (/\b(enter|return|space)\b/i.test(input.text)) {
-      await this.#gate?.check(this.#page, { kind: "enter" });
-    }
+    await this.#gate?.check(this.#page, { kind: "key" });
     for (let i = 0; i < (input.repeat ?? 1); i++) {
       for (const k of input.text.split(" ").filter(Boolean)) {
         await this.#page.keyboard.press(chord(k));

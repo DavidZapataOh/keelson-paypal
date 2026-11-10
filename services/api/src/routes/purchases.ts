@@ -191,21 +191,28 @@ export function registerPurchases(app: OpenAPIHono, deps: Pick<Deps, "db">): voi
         "The purchase is not logged with its Alibi yet.",
       );
     }
-    const [set] = await deps.db
-      .update(purchases)
-      .set({ paypalTransactionId: transactionId })
-      .where(and(eq(purchases.id, id), isNull(purchases.paypalTransactionId)))
-      .returning();
-    const now = set ?? row;
-    if (!set && row.paypalTransactionId !== transactionId) {
-      return problem(
+    const taken = () =>
+      problem(
         c,
         409,
         "transaction-recorded",
         "Transaction recorded",
-        "Another PayPal transaction id is recorded for this purchase.",
+        "Another PayPal transaction id is recorded for this purchase, or this one for another.",
       );
-    }
+    const set = await deps.db
+      .update(purchases)
+      .set({ paypalTransactionId: transactionId })
+      .where(and(eq(purchases.id, id), isNull(purchases.paypalTransactionId)))
+      .returning()
+      .then(([r]) => r)
+      .catch((err: unknown) => {
+        const e = err as { code?: string; cause?: { code?: string } };
+        if ((e.cause?.code ?? e.code) === "23505") return null;
+        throw err;
+      });
+    if (set === null) return taken();
+    const now = set ?? row;
+    if (!set && row.paypalTransactionId !== transactionId) return taken();
     c.header("Cache-Control", "no-store");
     return c.json(purchaseView(now), 200);
   });

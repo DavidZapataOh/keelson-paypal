@@ -146,7 +146,12 @@ try {
     let transactionId: string | undefined;
     let recorded: number | undefined;
     if (run?.outcome === "paid") {
-      transactionId = await paypalTransactionId(session.context, session.page, quote.total.display);
+      transactionId = await paypalTransactionId(
+        session.context,
+        session.page,
+        quote.total.display,
+        "Alfred",
+      );
       if (transactionId) {
         const res = await h.app.request(`/v1/purchases/${result.requestId}/paypal-transaction`, {
           method: "PUT",
@@ -182,7 +187,6 @@ try {
       agent: agent && { outcome: agent.outcome, ms: agent.ms, usd: agent.usage.usd },
       checkout: run && {
         outcome: run.outcome,
-        note: run.note,
         ms: run.ms,
         usd: run.usage.usd,
         refusedByGate: gate.refused,
