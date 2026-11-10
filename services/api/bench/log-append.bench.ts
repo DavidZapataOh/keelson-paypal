@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { Countersign } from "@keelson/core/eip712";
-import { createDb, eq, mandates, migrate, teeSigners, user } from "@keelson/db";
+import { createDb, eq, mandates, migrate, operators, sql, teeSigners, user } from "@keelson/db";
 import { leafBytes, leafFromCountersign, paypalRefCommit } from "@keelson/log";
 import pg from "pg";
 import { pino } from "pino";
@@ -20,6 +20,7 @@ import {
   carts,
   headerPrincipal,
   registerMandate,
+  repeating,
   request,
   SoftwarePasskey,
   seedUser,
@@ -145,6 +146,15 @@ try {
   const evidence = new EvidenceUploader();
   const purchases: { id: string; leaf: Uint8Array; countersign: Record<string, string> }[] = [];
   for (let i = 0; i < SAMPLES; i++) {
+    if (i % 50 === 0) {
+      // Only the client the operator linked buys under its mandates.
+      await db
+        .update(operators)
+        .set({ clientId: `bench-agent-${i / 50}` })
+        .where(
+          sql`${operators.agentId} = (select operator_agent_id from mandates where id = ${mandateId})`,
+        );
+    }
     const r = await request(agent, cheap, ulid());
     const res = await post(
       "/v1/countersign",
@@ -159,6 +169,7 @@ try {
           r.cart,
           asBenchAgent(Math.floor(i / 50)),
         ),
+        ...(await repeating(db, mandateId, r.cart, r.request_id)),
       },
       asBenchAgent(Math.floor(i / 50)),
     );

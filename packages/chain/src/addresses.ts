@@ -8,6 +8,8 @@ export type ChainId = (typeof chainIds)[number];
 export const addresses: Record<ChainId, Readonly<Record<string, Address>>> = {
   421614: {
     AccessManager: "0x57c30a4a175978673bAD2B2B2D3667966cd58314",
+    AnonymousMandateReferenceVerifier: "0x07639DbF0E01E4c134B51Dc6210968600b499c6B",
+    AnonymousMandateVerifier: "0x103CC9650C1f1d9568e5EdF45Cd1A3C0978BFc7C",
     CertManager: "0x5FE55991F66f8bA97f005Ae46017FAf4FF802600",
     CheckpointAnchor: "0x049621749722D0660d5026456F25192fBD9A57ab",
     GuardianSafe: "0x1cd0152d2d954Fc8c9436986C9F4B2C15903eF5C",
@@ -26,6 +28,7 @@ export const addresses: Record<ChainId, Readonly<Record<string, Address>>> = {
     P384Verifier: "0x6fb8c2c0173425b8747900948E50d1f7A7baB3A2",
     TimelockController: "0xEDD241A9B8cf55765eDA7182483351555cf3E07e",
     VerdictVerifier: "0xe16E8767EC1DA59Ef0D9Bc7851637E4D22352d96",
+    ViolationBondPool: "0x6187AC242Ef06884a2fC83bd8a6849379Ed1EF37",
   },
   42161: {},
   11155111: {

@@ -5,6 +5,7 @@ import { appendFileSync } from "node:fs";
 import { cartHash } from "@keelson/core";
 import { createDb, eq, events, mandates, purchases } from "@keelson/db";
 import { closeMandate } from "@keelson/mandate";
+import { Render } from "@renderinc/sdk";
 import { ulid } from "ulid";
 import { bytesToHex, createPublicClient, type Hex, http, type PublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
@@ -19,12 +20,14 @@ import { call, createPayPalDeps } from "../src/paypal.ts";
 import { principalChannel } from "../src/principal.ts";
 import { createTee } from "../src/tee/config.ts";
 import { refreshLeg } from "../src/tee/signers.ts";
+import { c3Prover } from "../src/zk/c3.ts";
 import { EvidenceUploader } from "../test/evidence.ts";
 import { cartOf, demoOperator, seedDemoOperator } from "../test/pipeline-live.ts";
 import {
   asAgent,
   asUser,
   headerPrincipal,
+  repeating,
   SoftwarePasskey,
   seedUser,
   signedMandate,
@@ -32,15 +35,15 @@ import {
 import { spans } from "./spans.ts";
 import { stats, waterfall } from "./waterfall.ts";
 
-// PURCHASES purchases of the demo cart at PRICE_MINOR cents (100) spread over HOLDS fresh mandates, each held on PayPal
-// and approved by the sandbox buyer, CONCURRENCY at a time; every DEGRADED_EVERY-th one runs with
+// PURCHASES purchases of the demo cart at PRICE_MINOR cents (100) spread over CONCURRENCY fresh mandates, each held
+// on PayPal and approved by the sandbox buyer, one at a time per mandate, each naming the last purchase of the
+// cart as the one it repeats. Every DEGRADED_EVERY-th one runs with
 // leg B unreachable. Each is timed from POST /v1/countersign to a terminal state, against the live
 // legs, the deployed log, Arbitrum Sepolia through the relayer and the PayPal sandbox, in-process
 // on the database the log reads. Prints the per-step waterfall from the purchase spans as JSON
 // and exits 1 if a purchase is not captured or the end-to-end p95 is over budget.
 const PURCHASES = Number(process.env.PURCHASES ?? 40);
 const CONCURRENCY = Number(process.env.CONCURRENCY ?? 1);
-const HOLDS = Number(process.env.HOLDS ?? 1);
 const DEGRADED_EVERY = Number(process.env.DEGRADED_EVERY ?? 0);
 const BUDGET_P95_MS = 8_000;
 const PRICE_MINOR = Number(process.env.PRICE_MINOR ?? 100);
@@ -75,6 +78,13 @@ const teeEnv = {
   ARBITRUM_SEPOLIA_RPC_URL: env.ARBITRUM_SEPOLIA_RPC_URL,
 };
 const tee = createTee(teeEnv);
+// Each mandate's C3 proof is started as the server starts it: on the workflow when there is one.
+const proveAnonymousMandate = c3Prover(
+  { db, kv, log },
+  env.RENDER_API_KEY && env.DISPUTE_WORKFLOW
+    ? { render: new Render({ token: env.RENDER_API_KEY }), slug: env.DISPUTE_WORKFLOW }
+    : undefined,
+);
 const appWith = (t: typeof tee) =>
   createApp({
     db,
@@ -88,6 +98,7 @@ const appWith = (t: typeof tee) =>
     operators: operatorSigners(env.DEMO_AGENT_ID as bigint, env.KEELSON_OPERATOR_KEY as Hex),
     chains: { 421614: { client, logs: client } },
     paypal,
+    proveAnonymousMandate,
     requestTimeoutMs: 60_000,
   });
 const app = appWith(tee);
@@ -193,6 +204,7 @@ async function purchase(h: Hold, mode: Result["mode"], evidenceRoot: string): Pr
     cart: cart.cart,
     unit: cart.unit,
     evidenceRoot,
+    ...(await repeating(db, h.mid, cart.cart, requestId)),
   };
   const started = Date.now();
   const res = await (mode === "degraded" ? degraded : app).request("/v1/countersign", {
@@ -241,30 +253,30 @@ try {
   await refreshLeg(db, "a", tee);
   await refreshLeg(db, "b", tee);
   unseed = await seedDemoOperator(db);
-  const perHold = Math.ceil(PURCHASES / HOLDS);
-  for (let i = 0; i < HOLDS; i++) holds.push(await openHold(perHold));
+  const perHold = Math.ceil(PURCHASES / CONCURRENCY);
+  for (let i = 0; i < CONCURRENCY; i++) holds.push(await openHold(perHold));
   // The evidence of every purchase is captured first, one browser page at a time, so the
   // concurrent purchases are not also running a browser page each.
   const roots: string[] = [];
   const cart = cartOf(PRICE_MINOR).cart;
   for (let i = 0; i < PURCHASES; i++) {
-    roots.push(await evidence.upload(app, (holds[i % HOLDS] as Hold).mid, cart, asAgent));
+    roots.push(await evidence.upload(app, (holds[i % CONCURRENCY] as Hold).mid, cart, asAgent));
   }
   await evidence.close();
 
-  let next = 0;
   const until = DURATION_S > 0 ? Date.now() + DURATION_S * 1000 : Number.POSITIVE_INFINITY;
-  const worker = async () => {
-    for (let i = next++; i < PURCHASES && Date.now() < until; i = next++) {
+  // Worker w buys on holds[w] alone: purchases w, w + CONCURRENCY, ...
+  const worker = async (w: number) => {
+    for (let i = w; i < PURCHASES && Date.now() < until; i += CONCURRENCY) {
       const mode = DEGRADED_EVERY > 0 && (i + 1) % DEGRADED_EVERY === 0 ? "degraded" : "2of2";
-      const r = await purchase(holds[i % HOLDS] as Hold, mode, roots[i] as string);
+      const r = await purchase(holds[i % CONCURRENCY] as Hold, mode, roots[i] as string);
       results.push(r);
       console.error(
         `${results.length}/${PURCHASES} ${r.id} ${r.mode} ${r.status} ${r.state} ${r.ms} ms`,
       );
     }
   };
-  await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+  await Promise.all(Array.from({ length: CONCURRENCY }, (_, w) => worker(w)));
 
   const captured = results.filter((r) => r.state === "CAPTURED");
   const failures: Record<string, number> = {};
@@ -282,7 +294,6 @@ try {
     run: {
       PURCHASES,
       CONCURRENCY,
-      HOLDS,
       DEGRADED_EVERY,
       PRICE_MINOR,
       DURATION_S,

@@ -39,7 +39,8 @@ async function fails(b: AlibiBundle, check: string, edited: string, reason?: str
 describe.each(fixtures.map((f) => [f.id, f] as const))("alibi %s", (_, f) => {
   const b = f.bundle;
 
-  test("verifies offline with no failing check", async () => {
+  // The first verification starts bb.js and the policy engine.
+  test("verifies offline with no failing check", { timeout: 30_000 }, async () => {
     const report = await verifyAlibi(b);
     expect(report.checks.filter((c) => c.status === "fail")).toEqual([]);
     expect(report.verdict).toBe("verified-offline");

@@ -25,7 +25,10 @@ const arbiter = as("evidence:disclose");
 
 const buyerEmail = process.env.PAYPAL_SANDBOX_BUYER_EMAIL;
 
-async function mandate(state: "ACTIVE" | "DRAFT" = "ACTIVE"): Promise<string> {
+async function mandate(
+  state: "ACTIVE" | "DRAFT" = "ACTIVE",
+  clientId: string | null = "evidence-test",
+): Promise<string> {
   const userId = `user-${ulid()}`;
   await testDb.insert(user).values({ id: userId, name: "Tester", email: `${userId}@example.test` });
   const [operator] = await testDb
@@ -36,6 +39,7 @@ async function mandate(state: "ACTIVE" | "DRAFT" = "ACTIVE"): Promise<string> {
       agentRegistry: "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
       name: "op",
       cnfJwk: {},
+      clientId,
     })
     .returning();
   const id = ulid();
@@ -160,6 +164,18 @@ describe("evidence routes", { timeout: 120_000 }, () => {
       body: "{",
     });
     expect(res.status).toBe(401);
+  });
+
+  test("only the client its operator linked stores evidence for a mandate", async () => {
+    const unknown = await post(uploadBody(ulid(), capture));
+    expect(unknown.status).toBe(404);
+    const notFound = await unknown.json();
+    for (const clientId of ["another-client", null]) {
+      const res = await post(uploadBody(await mandate("ACTIVE", clientId), resalted(capture)));
+      expect(res.status).toBe(404);
+      // The same answer as for a mandate that does not exist, so neither is disclosed.
+      expect(await res.json()).toEqual(notFound);
+    }
   });
 
   test("a mandate that is not active takes no evidence", async () => {

@@ -24,7 +24,7 @@ import { APP_ORIGIN } from "./hold-live.ts";
 import { AGENT_ID, cartOf } from "./pipeline-live.ts";
 import { pipelineHarness } from "./purchase-live.ts";
 import { testAuthEnv, testDb } from "./setup.ts";
-import { asAgent, headerPrincipal, live } from "./tee-live.ts";
+import { asAgent, headerPrincipal, live, repeating } from "./tee-live.ts";
 
 const API_ORIGIN = "https://api.keelson.finance";
 // The app's static export, built before this suite (`pnpm --filter @keelson/web build`).
@@ -262,6 +262,7 @@ describe.skipIf(!live)("the user app, first-time user (live sandbox)", { timeout
             cart: cart.cart,
             unit: cart.unit,
             evidenceRoot: await harness.evidence.upload(harness.app, mid, cart.cart, asAgent),
+            ...(await repeating(testDb, mid, cart.cart, requestId)),
           }),
         });
         const countersigned = (await res.json()) as { purchaseId?: string };

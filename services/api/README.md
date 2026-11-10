@@ -296,10 +296,25 @@ or another request, and, for a per-purchase mandate, one that is not a hold Keel
 
 ## Purchase pipeline
 
-`POST /v1/countersign` accepts a cart only for an `ACTIVE` mandate that is not being revoked, and
+`POST /v1/countersign` accepts a cart only for an `ACTIVE` mandate that is not being revoked, of
+an operator the calling client linked (`POST /v1/operators`; `POST /v1/evidence` and
+`POST /v1/observations/channel3` check the same, and all three answer `404` otherwise), and
 only against the authorization captures use now (the mandate's hold, or this request's own
-per-purchase hold). Every ALLOW then goes through one state machine, stored on its `purchases`
-row:
+per-purchase hold).
+
+A cart is bought once per mandate. While a purchase of the same cart (same cart hash) is in
+flight, or for 600 s after it was captured or failed at capture, another countersign of it answers
+`409 purchase-exists` with that purchase's `purchaseId` and `Location`, whatever its request id,
+evidence or `Idempotency-Key`: an agent that lost an answer and retries with new evidence gets
+the purchase it already made. The `Idempotency-Key` still replays the stored answer of the same
+request. To buy the same cart again because the user asked to, the agent names that purchase as
+`repeatOf`; a retry of that repeat names a purchase that is no longer the latest and gets the
+repeat back. A purchase denied, or failed before capture, holds nothing back. The check, the new
+purchase and its move into evaluation (or a retry's) commit together under an advisory lock per
+mandate and cart. `keelson.request_countersign` answers a `purchase-exists` with the purchase
+already made.
+
+Every ALLOW then goes through one state machine, stored on its `purchases` row:
 
 ```
 COUNTERSIGNED ──► LOGGED ──► COVERED ──► CAPTURED
@@ -310,8 +325,10 @@ COUNTERSIGNED ──► LOGGED ──► COVERED ──► CAPTURED
   `paypal_ref_commit` over a per-purchase salt, the order and the authorization) is appended to
   the Alibi log; at the same time the operator signs the `Coverage` and the relayer sends
   `KeelsonBondVault.lockCoverage` under the key `KeelsonBondVault.lockCoverage:<coverage id>`.
-  The coverage is fixed by the countersign (amount × 10,000 PYUSD units, a 100 bps premium,
-  `expiresAt = issuedAt + disputeWindow`), so every attempt sends the same calldata. `LOGGED` is
+  The coverage is fixed by the countersign (amount × 10,000 PYUSD units,
+  `expiresAt = issuedAt + disputeWindow`) and by the premium the operator's trust grade sets on
+  the first attempt, stored as `purchases.premium_bps` (see [Risk model](#risk-model)), so every
+  attempt sends the same calldata. `LOGGED` is
   written when the log answers and `COVERED` once both have.
 - **Capture runs last, and only from `COVERED`,** within 600 s of the countersign's `issuedAt`
   (below its 900 s lifetime), while the mandate is `ACTIVE`, not being revoked and has the amount
@@ -356,8 +373,8 @@ Each step is a span when tracing is on (`OTEL_TRACES_EXPORTER=console`, or an OT
 `purchase.COUNTERSIGNED` (or `purchase.DENIED`), `purchase.LOGGED`, `purchase.COVERED` and
 `purchase.CAPTURED`, with `purchase.id` and `countersign.mode`, and the outbound calls (undici)
 and queries (pg) of each step nested under it. `bench/money-path.bench.ts` drives real sandbox
-purchases (`PURCHASES`, `CONCURRENCY`, `HOLDS`, `DEGRADED_EVERY`) and prints the waterfall from
-those spans as JSON.
+purchases (`PURCHASES`, `CONCURRENCY` mandates buying at once, `DEGRADED_EVERY`) and prints the
+waterfall from those spans as JSON.
 
 On the warm path a purchase makes these round trips, in this order:
 
@@ -373,6 +390,44 @@ vault parameters from short-lived caches, the PayPal token from its cache until 
 credential issuer and the log's witness policy (both needed for the Alibi) from per-process
 caches. The first purchase after a deploy pays those reads once. RFC 3161 timestamps, the Alibi PDF and
 anchoring are off the path, and `purchase.captured` is published before any of them.
+
+## Risk model
+
+Every linked operator has a trust grade, a premium and a minimum bond:
+`GET /v1/operators/{agentId}/grade` (public), followed live by `GET /v1/operators/{agentId}/grade/stream`
+(SSE, a `grade` event whenever it changes) and by the MCP tool `keelson.get_trust_grade`.
+`@keelson/redteam` (`src/risk.ts`) is the model; `src/risk.ts` here reads its inputs.
+
+- **Prior, from the red team.** Every finished campaign's pooled scoreboard row sets the global
+  prior of the incident rate per covered purchase: `μ = ASR · escape + amber`, each the mean of
+  its uniform-prior posterior `Beta(k + 1, n - k + 1)`, with every purchase assumed attacked.
+  `κ` is fitted by the method of moments, so `Beta(κμ, κ(1 - μ))` has the variance of that
+  product. Red-team runs move only the prior.
+- **Operator, from its own record.** `n` is its covered purchases (state `COVERED` or later),
+  `k` the verdicts against them with the operator at fault: paid from its bond or its
+  `ViolationBondPool` deposit, or by Keelson's treasury when neither could. Keelson's own faults
+  (warranties) are its reserve's, reported apart as `reserve.warranties` and left out of the grade. The posterior is `Beta(κμ + k, κ(1 - μ) + n - k)`, whose mean
+  is Bühlmann's credibility estimate `Z · k/n + (1 - Z) · μ`, `Z = n / (n + κ)`. The grade reads
+  its one-sided 95 % credible upper bound: A ≤ 1 %, B ≤ 2 %, C ≤ 5 %, D ≤ 10 %, F above.
+- **Loss.** A loss is a covered amount, drawn from the operator's recorded coverages (everyone's
+  for a new operator, its mandates' caps before any coverage), times a loss ratio drawn from the
+  recorded operator-fault verdicts (1 until one exists). 20,000 scenarios over the next 30 days
+  (at least 100 purchases) draw the rate from the posterior (stratified) and the losses with
+  common random numbers seeded by the operator and the calibration, so a grade is reproducible
+  and moves only with the record.
+- **Premium and bond.** Premium per purchase `EL · (1 + θ) + c · (ES99 - E[S]) / N`, `θ = 0.25`,
+  `c` = Solvency II's 6 % cost of capital for 30 days, in basis points of the mean covered amount
+  and never under 100 bps. Bond `max(ES99, VaR99.5, the largest coverage)`.
+- **Where the premium is charged.** `KeelsonBondVault.lockCoverage` takes the `Coverage`'s
+  `premium` as the operator signs it, up to the covered amount, and pays it to the
+  `KeelsonReserve`. The pipeline sets it to the grade's basis points of the amount, rounded up, and
+  fixes them on the purchase on the first attempt. The contracts are unchanged.
+- **Calibration.** The Render Workflows task `refreshTrustGrades` rebuilds the prior and the loss
+  ratios into `risk_calibrations` and regrades every operator; the `nightly` GitHub workflow
+  starts it through `POST /v1/task-runs`. Until the first one, the API calibrates on its first
+  request; with no finished campaign, coverage pays 100 bps and the route answers 503.
+- **Live.** A grade is recomputed only when the operator's record (coverages, verdicts, their
+  settlement) or the calibration changes, read in one query; the stream polls it every 2 s.
 
 ## Runbook
 

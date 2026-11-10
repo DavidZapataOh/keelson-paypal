@@ -43,6 +43,11 @@ export const mandates = pgTable(
     openMandate: text(),
     /** The commitment salt, sealed by the TEE to the user and this mandate. */
     sealedSalt: bytea(),
+    /**
+     * The C3 `anonymous_mandate` proof: UltraHonk for the EVM over `C_m, mandate_hash,
+     * user_set_root, rp_id_hash`. A registered user signed this mandate; the proof names no user.
+     */
+    c3Proof: jsonb().$type<{ proof: string; public_inputs: string[] }>(),
     paypalOrderId: text().unique("mandates_paypal_order_id_unique"),
     /** The authorization captures use: the parent, or its reauthorization. */
     paypalAuthorizationId: text().unique("mandates_paypal_authorization_id_unique"),
@@ -69,5 +74,6 @@ export const mandates = pgTable(
     check("mandates_commitment_len", sql`octet_length(${t.commitment}) = 32`),
     check("mandates_hold_mode_valid", sql`${t.holdMode} in ('mandate', 'per_purchase')`),
     index("mandates_user_id_created_at_idx").on(t.userId, t.createdAt.desc(), t.id.desc()),
+    index("mandates_operator_agent_id_idx").on(t.operatorAgentId),
   ],
 );

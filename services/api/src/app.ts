@@ -21,6 +21,7 @@ import type { ChainReaders } from "./chain/reader.ts";
 import type { Channel3Lookup } from "./channel3/client.ts";
 import type { LogConfig } from "./log/append.ts";
 import { requestLogger } from "./logger.ts";
+import { registerMcp } from "./mcp.ts";
 import { requireClient } from "./middleware/auth.ts";
 import { idempotency } from "./middleware/idempotency.ts";
 import { type RateLimitOptions, rateLimit } from "./middleware/rate-limit.ts";
@@ -29,6 +30,7 @@ import type { PayPalDeps } from "./paypal.ts";
 import { ProblemSchema, problem } from "./problem.ts";
 import { registerAdminClients } from "./routes/admin-clients.ts";
 import { registerAlibis } from "./routes/alibis.ts";
+import { registerAnonymousMandates } from "./routes/anonymous-mandates.ts";
 import { registerBonds } from "./routes/bonds.ts";
 import { registerChannel3Webhook } from "./routes/channel3-webhook.ts";
 import { type CompileSources, registerCompile } from "./routes/compile.ts";
@@ -37,9 +39,12 @@ import { registerDisputes } from "./routes/disputes.ts";
 import { registerEvents } from "./routes/events.ts";
 import { registerEvidence } from "./routes/evidence.ts";
 import { registerFeedback } from "./routes/feedback.ts";
+import { registerGrades } from "./routes/grades.ts";
 import { registerHealth } from "./routes/health.ts";
 import { registerHold } from "./routes/hold.ts";
 import { registerMandates } from "./routes/mandates.ts";
+import { registerMerchantAssistant } from "./routes/merchant-assistant.ts";
+import { registerMerchantConsole } from "./routes/merchant-console.ts";
 import { registerMerchantsPayout } from "./routes/merchants-payout.ts";
 import { registerMerchantsSettlement } from "./routes/merchants-settlement.ts";
 import { registerObservations } from "./routes/observations.ts";
@@ -49,6 +54,7 @@ import { registerPayPalWebhook } from "./routes/paypal-webhook.ts";
 import { registerPurchaseHolds } from "./routes/purchase-holds.ts";
 import { registerPurchaseTracking } from "./routes/purchase-tracking.ts";
 import { registerPurchases } from "./routes/purchases.ts";
+import { registerRedTeam } from "./routes/redteam.ts";
 import { registerRevoke } from "./routes/revoke.ts";
 import { registerStatus } from "./routes/status.ts";
 import { registerTee } from "./routes/tee.ts";
@@ -59,8 +65,15 @@ import { registerWebFacts } from "./routes/web-facts.ts";
 import type { TeeConfig } from "./tee/signers.ts";
 import type { StampWorker } from "./timestamps/worker.ts";
 
-/** The public reads the verifier makes: an Alibi's receipt and a leaf's timestamps. */
-const PUBLIC_READS = /^\/v1\/(alibis\/[^/]+\/receipt|timestamps\/[^/]+)$/;
+/** POST routes that stream their response. */
+const STREAMED_POSTS = /^\/v1\/merchants\/[^/]+\/assistant$/;
+
+/**
+ * The public reads the verifier makes: an Alibi's receipt, a leaf's timestamps, a mandate's C3
+ * proof and the registered-user roots.
+ */
+const PUBLIC_READS =
+  /^\/v1\/(alibis\/[^/]+\/receipt|timestamps\/[^/]+|anonymous-mandates\/[^/]+|user-set\/roots\/[^/]+)$/;
 
 export interface Deps {
   db: Db;
@@ -70,6 +83,12 @@ export interface Deps {
   auth?: Auth;
   /** Browser origin allowed to call `/api/auth/*` with credentials; where mandates are signed. */
   appOrigin?: string;
+  /** The public origin of this API, where Better Auth issues tokens; `/mcp` is served with it. */
+  authBaseUrl?: string;
+  /** The store MCP clients price carts on; `https://store.keelson.finance` by default. */
+  storeOrigin?: string;
+  /** The operator MCP tool calls act for when they name none. */
+  demoAgentId?: bigint | undefined;
   /** Browser origin of the public verifier, allowed to read Alibi receipts and timestamps without credentials. */
   verifyOrigin?: string;
   /** Reads the anchor and signer registry for `POST /v1/alibis/verify`; it verifies offline without it. */
@@ -118,6 +137,11 @@ export interface Deps {
   startDisputeWorkflow?: (disputeId: string, revision: string) => Promise<void>;
   /** The address that signs each merchant's settlement choices; its settlement address by default. */
   merchantSigners?: Readonly<Record<string, Address>>;
+  /**
+   * Proves C3 for a stored mandate under its commitment salt, off the request; mandates carry
+   * no C3 proof without it.
+   */
+  proveAnonymousMandate?: (mandateId: string, salt: string) => Promise<void>;
   /** Aborting it ends every open event stream so the server can close. */
   shutdown?: AbortSignal;
 }
@@ -159,7 +183,7 @@ export function createApp(deps: Deps): OpenAPIHono {
         origin: deps.appOrigin,
         credentials: true,
         allowHeaders: ["content-type", "idempotency-key", "keelson-device"],
-        exposeHeaders: ["location", "idempotent-replayed"],
+        exposeHeaders: ["location", "idempotent-replayed", "keelson-model"],
       })
     : undefined;
   // The verifier reads only public receipts and timestamps, and never with credentials.
@@ -189,7 +213,9 @@ export function createApp(deps: Deps): OpenAPIHono {
   // An upload is refused before its body is read or fingerprinted.
   app.on("POST", "/v1/evidence", requireClient(["evidence:write"]));
   app.use("/v1/*", rateLimit(deps.kv, deps.rateLimit));
-  app.use("/v1/*", idempotency(deps.kv, deps.log));
+  // A model turn streams and changes nothing a retry could repeat; a buffered replay would end the stream.
+  const idempotent = idempotency(deps.kv, deps.log);
+  app.use("/v1/*", (c, next) => (STREAMED_POSTS.test(c.req.path) ? next() : idempotent(c, next)));
   app.use(
     "/v1/*",
     timeout(deps.requestTimeoutMs ?? 30_000, (c) => {
@@ -240,6 +266,13 @@ export function createApp(deps: Deps): OpenAPIHono {
     app.all("/api/auth/*", (c) => auth.handler(c.req.raw));
     if (deps.appOrigin) registerAdminClients(app, auth, deps.appOrigin);
   }
+  if (deps.authenticate) {
+    registerMcp(
+      app,
+      { ...deps, authenticate: deps.authenticate },
+      rateLimit(deps.kv, deps.rateLimit),
+    );
+  }
   registerHealth(app);
   registerStatus(app, deps);
   registerEvents(app, deps);
@@ -258,16 +291,21 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerTee(app, deps);
   registerTimestamps(app, deps);
   registerAlibis(app, deps);
+  registerAnonymousMandates(app, deps);
   registerDisputes(app, deps);
   registerPasskeys(app, deps);
   registerOperators(app, deps);
+  registerGrades(app, deps);
   registerFeedback(app, deps);
   registerValidations(app, deps);
   registerBonds(app, deps);
   registerMerchantsPayout(app, deps);
   registerMerchantsSettlement(app, deps);
+  registerMerchantConsole(app, deps);
+  registerMerchantAssistant(app, deps);
   registerPurchaseTracking(app, deps);
   registerTransactions(app, deps);
+  registerRedTeam(app, deps);
   app.get("/openapi.json", (c) =>
     c.json(app.getOpenAPI31Document({ openapi: "3.1.0", info: apiInfo })),
   );

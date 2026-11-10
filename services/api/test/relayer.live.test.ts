@@ -35,6 +35,7 @@ import { refreshLeg } from "../src/tee/signers.ts";
 import { EvidenceUploader } from "./evidence.ts";
 import { testDb, testKv } from "./setup.ts";
 import {
+  AGENT_CLIENT,
   asAgent,
   asUser,
   carts,
@@ -43,6 +44,7 @@ import {
   live,
   liveEnv,
   type Passkey,
+  repeating,
   seedUser,
   signedMandate,
   testAgent,
@@ -99,6 +101,7 @@ describe.skipIf(!relayerKeys)(
           agentRegistry: "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
           name: "Demo operator",
           cnfJwk: testAgent.jwk,
+          clientId: AGENT_CLIENT,
         })
         .onConflictDoNothing();
       const kms = new KMSClient({
@@ -193,6 +196,7 @@ describe.skipIf(!relayerKeys)(
           cart: cart.cart,
           unit: cart.unit,
           evidenceRoot: await evidence.upload(app, mandateId as string, cart.cart, asAgent),
+          ...(await repeating(testDb, mandateId as string, cart.cart, requestId)),
         },
         asAgent,
       );

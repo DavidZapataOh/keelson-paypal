@@ -10,6 +10,7 @@ import {
   passkey,
   purchaseHolds,
   purchases,
+  redTeamCampaigns,
   teeSigners,
   user,
   verdicts,
@@ -106,12 +107,17 @@ test("inserts one valid row per table", async () => {
     signatures: [],
     facts: {},
   });
+  const campaign = ulid();
+  await db.insert(redTeamCampaigns).values({ id: campaign, header: "{}" });
   await db.insert(attacks).values({
     id: ulid(),
-    campaign: "c1",
+    campaign,
+    seq: 0,
     backbone: "b1",
     payloadHash: hash(),
     outcome: "BLOCKED",
+    line: "{}",
+    hash: hash(),
   });
   const [event] = await db
     .insert(events)

@@ -21,6 +21,7 @@
       "!engine/tee/measurements.json",
       "!engine/tee/measurements-rotation.json",
       "!engine/tee/zk",
+      "!services/api/zk",
       "!**/src/generated",
       "!engine/policy/proofs",
       "!contracts/lib",
@@ -101,7 +102,7 @@
       }
     },
     {
-      "includes": ["apps/landing/src/styles/global.css"],
+      "includes": ["apps/landing/src/styles/global.css", "services/mcp/view/alibi.css"],
       "linter": {
         "rules": {
           "complexity": {

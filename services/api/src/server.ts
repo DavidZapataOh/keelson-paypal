@@ -35,6 +35,7 @@ import { createTee } from "./tee/config.ts";
 import { engineSource } from "./tee/engine-source.ts";
 import { startSignerRefresh } from "./tee/signers.ts";
 import { startStampWorker } from "./timestamps/worker.ts";
+import { c3Prover } from "./zk/c3.ts";
 
 const FORCE_EXIT_MS = 10_000;
 
@@ -140,6 +141,10 @@ const startDisputeWorkflow =
         }
       }
     : undefined;
+const proveC3 = c3Prover(
+  { db, kv, log },
+  render && env.DISPUTE_WORKFLOW ? { render, slug: env.DISPUTE_WORKFLOW } : undefined,
+);
 const paypalEvents = startPayPalEventWorker({ db, kv, log, paypal, startDisputeWorkflow });
 const operators =
   env.KEELSON_OPERATOR_KEY && env.DEMO_AGENT_ID
@@ -156,12 +161,15 @@ const app = createApp({
   alibiChain: createChainReader(),
   passkeyRpId: env.PASSKEY_RP_ID,
   authenticate: authenticate(auth, env.BETTER_AUTH_URL),
+  authBaseUrl: env.BETTER_AUTH_URL,
+  demoAgentId: env.DEMO_AGENT_ID,
   rateLimit: { trustProxy: process.env.RENDER === "true" },
   shutdown: shutdown.signal,
   stamps,
   chains,
   paypal,
   paypalEvents,
+  proveAnonymousMandate: proveC3,
   ...(env.PAYPAL_WEBHOOK_ID ? { paypalWebhook: { webhookId: env.PAYPAL_WEBHOOK_ID, certs } } : {}),
   ...(operators ? { operators } : {}),
   ...(relayer ? { relayer } : {}),

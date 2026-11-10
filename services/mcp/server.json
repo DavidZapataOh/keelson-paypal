@@ -1,0 +1,19 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.DavidZapataOh/keelson",
+  "title": "Keelson",
+  "description": "Mandates, TEE countersigns and Alibis for agents that buy with PayPal.",
+  "version": "0.1.0",
+  "websiteUrl": "https://keelson.finance",
+  "repository": {
+    "url": "https://github.com/DavidZapataOh/keelson-paypal",
+    "source": "github",
+    "subfolder": "services/mcp"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://api.keelson.finance/mcp"
+    }
+  ]
+}

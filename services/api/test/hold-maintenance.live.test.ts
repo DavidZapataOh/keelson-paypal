@@ -21,6 +21,7 @@ import {
   headerPrincipal,
   live,
   liveEnv,
+  repeating,
   SoftwarePasskey,
   seedUser,
 } from "./tee-live.ts";
@@ -214,6 +215,7 @@ describe.skipIf(!live)("hold maintenance (live sandbox)", { timeout: 600_000 }, 
           cart: cart.cart,
           unit: cart.unit,
           evidenceRoot: evidenceRoot ?? (await evidence.upload(teeApp, m.mid, cart.cart, asAgent)),
+          ...(await repeating(testDb, m.mid, cart.cart, requestId)),
         }),
       });
     };

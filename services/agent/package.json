@@ -7,6 +7,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./checkout": {
+      "types": "./dist/checkout.d.ts",
+      "default": "./dist/checkout.js"
+    },
+    "./keelson": {
+      "types": "./dist/keelson.d.ts",
+      "default": "./dist/keelson.js"
     }
   },
   "files": [

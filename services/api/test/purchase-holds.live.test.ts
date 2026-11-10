@@ -14,7 +14,7 @@ import { refreshLeg } from "../src/tee/signers.ts";
 import { EvidenceUploader } from "./evidence.ts";
 import { APP_ORIGIN, afterAuthorize, holdHarness, row, sandbox } from "./hold-live.ts";
 import { testDb, testKv } from "./setup.ts";
-import { asAgent, asUser, carts, headerPrincipal, live, liveEnv } from "./tee-live.ts";
+import { asAgent, asUser, carts, headerPrincipal, live, liveEnv, repeating } from "./tee-live.ts";
 
 const cart = carts.demo;
 const CART_HASH = bytesToHex(cartHash(cart.cart));
@@ -120,6 +120,7 @@ describe.skipIf(!live)("per-purchase holds (live sandbox and legs)", { timeout: 
         cart: cart.cart,
         unit: cart.unit,
         evidenceRoot: await evidence.upload(app, m.mid, cart.cart, asAgent),
+        ...(await repeating(testDb, m.mid, cart.cart, requestId)),
       },
       asAgent,
     );

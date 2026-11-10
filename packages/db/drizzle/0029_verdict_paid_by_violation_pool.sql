@@ -1,0 +1,2 @@
+ALTER TABLE "verdicts" DROP CONSTRAINT "verdicts_paid_by_valid";--> statement-breakpoint
+ALTER TABLE "verdicts" ADD CONSTRAINT "verdicts_paid_by_valid" CHECK ("verdicts"."paid_by" in ('chain', 'treasury', 'violation-pool'));

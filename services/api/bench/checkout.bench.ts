@@ -22,6 +22,7 @@ import {
   asAgent,
   asUser,
   headerPrincipal,
+  repeating,
   SoftwarePasskey,
   seedUser,
   signedMandate,
@@ -154,6 +155,7 @@ try {
       cart: cart.cart,
       unit: cart.unit,
       evidenceRoot,
+      ...(await repeating(db, mid, cart.cart, requestId)),
     });
     let state = res.out.state as string;
     while (["COUNTERSIGNED", "LOGGED", "COVERED"].includes(state)) {

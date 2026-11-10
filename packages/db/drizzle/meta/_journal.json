@@ -204,6 +204,41 @@
       "when": 1794293924714,
       "tag": "0028_operator_client",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1794295528312,
+      "tag": "0029_verdict_paid_by_violation_pool",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1794299928049,
+      "tag": "0030_red_team_ledger",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1794303513029,
+      "tag": "0031_user_set",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1794306321613,
+      "tag": "0032_risk_model",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1794307334241,
+      "tag": "0033_merchant_wallet",
+      "breakpoints": true
     }
   ]
 }

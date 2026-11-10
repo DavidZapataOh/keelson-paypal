@@ -32,6 +32,13 @@ export { collapse, diffPointers, expand, pointers, UNBOUND, valueAt } from "./ex
 export type { Answers, FieldRow } from "./fields.ts";
 export type { Check, CheckId, CheckStatus, Report, Verdict, VerifyOptions } from "./report.ts";
 export { verdictOf } from "./report.ts";
+export {
+  type AnonymousMandateProof,
+  c3Statement,
+  RP_ID_HASH,
+  verifyAnonymousMandate,
+  verifyC3,
+} from "./zk.ts";
 
 const CHECKS = [
   format,

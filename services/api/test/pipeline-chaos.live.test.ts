@@ -18,7 +18,7 @@ import { checkBudget, checkInvariants } from "./invariants.ts";
 import { type LocalLog, startLocalLog } from "./log-live.ts";
 import { cartOf, demoOperator, seedDemoOperator } from "./pipeline-live.ts";
 import { testDb, testDbUrl, testKv } from "./setup.ts";
-import { asAgent, headerPrincipal, live, liveEnv } from "./tee-live.ts";
+import { asAgent, headerPrincipal, live, liveEnv, repeating } from "./tee-live.ts";
 
 const keys = live && process.env.RELAYER_AWS_ACCESS_KEY_ID && process.env.KEELSON_OPERATOR_KEY;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -106,6 +106,7 @@ describe.skipIf(!keys)(
         cart: cart.cart,
         unit: cart.unit,
         evidenceRoot: await evidence.upload(app, mandate.mid, cart.cart, asAgent),
+        ...(await repeating(testDb, mandate.mid, cart.cart, requestId)),
       });
       driven.push(requestId);
       return {

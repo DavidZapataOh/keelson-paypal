@@ -1356,6 +1356,15 @@ components:
           pattern: ^0x[0-9a-f]{64}$
           description: The root of the evidence stored with `POST /v1/evidence` for this
             mandate.
+        repeatOf:
+          type: string
+          minLength: 26
+          maxLength: 26
+          description: "Only when the user asked to buy the same cart again: the id of the
+            latest purchase of this cart under the mandate. Not needed once that
+            purchase was denied or failed before capture, or was captured more
+            than ten minutes ago. A retry after a lost answer never sends it:
+            the `409 purchase-exists` answer names the purchase already made."
       required:
         - authorizationId
         - closedMandate
@@ -2087,6 +2096,68 @@ components:
         - leaf_hash
         - tlog_proof
         - timestamps
+    AnonymousMandate:
+      type: object
+      properties:
+        mandate_hash:
+          type: string
+          pattern: ^0x[0-9a-f]{64}$
+          description: The passkey challenge `M` the user signed.
+        mandate_commitment:
+          type: string
+          pattern: ^0x[0-9a-f]{64}$
+          description: "`C_m`, the commitment the mandate names."
+        user_set_root:
+          type: string
+          pattern: ^0x[0-9a-f]{64}$
+          description: The registered-user tree the signer is a leaf of when the proof was
+            made.
+        proof:
+          type: string
+          description: The UltraHonk proof bytes, standard base64.
+        public_inputs:
+          type: array
+          items:
+            type: string
+            pattern: ^0x[0-9a-f]{64}$
+          description: '`C_m, M mod r, user_set_root, SHA-256("keelson.finance")`: the
+            calldata of `verify(bytes,bytes32[])`.'
+        verifier:
+          type: object
+          properties:
+            chain_id:
+              type: integer
+            address:
+              type: string
+          required:
+            - chain_id
+            - address
+          description: "The deployed verifier that accepts the proof in an `eth_call`. It
+            checks the proof only: `public_inputs` must also be the
+            countersign's `C_m` and `M`, Keelson's RP ID hash, and a root `GET
+            /v1/user-set/roots/{root}` lists."
+      required:
+        - mandate_hash
+        - mandate_commitment
+        - user_set_root
+        - proof
+        - public_inputs
+    UserSetRoot:
+      type: object
+      properties:
+        root:
+          type: string
+          pattern: ^0x[0-9a-f]{64}$
+        size:
+          type: integer
+          description: Registered users when the tree had this root.
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - root
+        - size
+        - created_at
     DisputeStatus:
       type: object
       properties:
@@ -2231,8 +2302,11 @@ components:
               enum:
                 - chain
                 - treasury
+                - violation-pool
                 - null
               description: "`chain`: the operator's bond or Keelson's reserve paid.
+                `violation-pool`: the operator's `ViolationBondPool` deposit
+                paid the merchant on a court's conviction, with no verdict.
                 `treasury`: the chain refused a verdict that still holds (its
                 window or deadline had passed), so Keelson's treasury pays the
                 payee itself, PYUSD on chain or a PayPal Payout; the settlement
@@ -2615,6 +2689,196 @@ components:
           description: Kernel's live view of the agent's browser, opened read-only.
       required:
         - state
+    TrustGrade:
+      type: object
+      properties:
+        v:
+          type: string
+          enum:
+            - keelson.grade/1
+        agentId:
+          type: string
+        grade:
+          type: string
+          enum:
+            - A
+            - B
+            - C
+            - D
+            - F
+          description: "From the one-sided 95 % credible upper bound of the incident rate:
+            A ≤ 1 %, B ≤ 2 %, C ≤ 5 %, D ≤ 10 %, F above."
+        computedAt:
+          type: string
+          format: date-time
+        calibration:
+          type: object
+          properties:
+            id:
+              type: string
+            at:
+              type: string
+              format: date-time
+            campaigns:
+              type: array
+              items:
+                type: string
+              description: The red-team campaigns pooled.
+            mu_ppm:
+              type: integer
+              description: The prior's mean, ASR × escape + amber.
+            kappa:
+              type: number
+              description: The prior's strength, by the method of moments.
+          required:
+            - id
+            - at
+            - campaigns
+            - mu_ppm
+            - kappa
+        evidence:
+          type: object
+          properties:
+            coverages:
+              type: integer
+            incidents:
+              type: object
+              properties:
+                total:
+                  type: integer
+                slashes:
+                  type: integer
+                  description: Paid from the operator's bond.
+                pool:
+                  type: integer
+                  description: Paid from its `ViolationBondPool` deposit.
+                uncollected:
+                  type: integer
+                  description: Paid by Keelson's treasury instead.
+                pending:
+                  type: integer
+                  description: Not settled yet.
+              required:
+                - total
+                - slashes
+                - pool
+                - uncollected
+                - pending
+              description: "Verdicts with the operator at fault: what the grade counts."
+          required:
+            - coverages
+            - incidents
+        reserve:
+          type: object
+          properties:
+            warranties:
+              type: integer
+          required:
+            - warranties
+          description: Keelson's own faults on the operator's coverages, paid by its
+            reserve. Not in the grade.
+        frequency:
+          type: object
+          properties:
+            alpha:
+              type: number
+            beta:
+              type: number
+            credibility_ppm:
+              type: integer
+            mean_ppm:
+              type: integer
+            upper95_ppm:
+              type: integer
+          required:
+            - alpha
+            - beta
+            - credibility_ppm
+            - mean_ppm
+            - upper95_ppm
+        severity:
+          type: object
+          properties:
+            meanMinor:
+              type: integer
+            maxMinor:
+              type: integer
+            lossRatio_ppm:
+              type: integer
+          required:
+            - meanMinor
+            - maxMinor
+            - lossRatio_ppm
+        loss:
+          type: object
+          properties:
+            horizon:
+              type: integer
+            scenarios:
+              type: integer
+            expectedMinor:
+              type: integer
+            var99Minor:
+              type: integer
+            es99Minor:
+              type: integer
+            var995Minor:
+              type: integer
+          required:
+            - horizon
+            - scenarios
+            - expectedMinor
+            - var99Minor
+            - es99Minor
+            - var995Minor
+        premium:
+          type: object
+          properties:
+            bps:
+              type: integer
+              description: Charged on each new coverage, in `lockCoverage`.
+            modelBps:
+              type: integer
+            floorBps:
+              type: integer
+            theta:
+              type: number
+            costOfCapital:
+              type: number
+          required:
+            - bps
+            - modelBps
+            - floorBps
+            - theta
+            - costOfCapital
+        bond:
+          type: object
+          properties:
+            requiredMinor:
+              type: integer
+          required:
+            - requiredMinor
+        computeMs:
+          type: number
+      required:
+        - v
+        - agentId
+        - grade
+        - computedAt
+        - calibration
+        - evidence
+        - reserve
+        - frequency
+        - severity
+        - loss
+        - premium
+        - bond
+        - computeMs
+      description: An operator's trust grade, premium and minimum bond. Amounts are US
+        cents. The red-team campaigns set the prior of the incident rate; the
+        operator's covered purchases and the verdicts with it at fault update it
+        in closed form; a seeded Monte Carlo of the aggregate loss over the next
+        30 days prices the premium and the bond.
     Feedback:
       type: object
       properties:
@@ -2945,6 +3209,357 @@ components:
         - nonce
         - deadline
         - merchant_signature
+    MerchantSelf:
+      type: object
+      properties:
+        merchant_id:
+          type: string
+        name:
+          type: string
+        website:
+          type: string
+          format: uri
+        settlement_address:
+          type: string
+          description: The wallet the merchant signs in and signs its choices with.
+      required:
+        - merchant_id
+        - name
+        - website
+        - settlement_address
+    MerchantSettlement:
+      type: object
+      properties:
+        rail:
+          type: string
+          enum:
+            - pyusd
+            - paypal
+        paypal_receiver:
+          type:
+            - string
+            - "null"
+        nonce:
+          type: string
+          description: The nonce of the last signed choice; 0 if none.
+        updated_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+      required:
+        - rail
+        - paypal_receiver
+        - nonce
+        - updated_at
+    MerchantDispute:
+      type: object
+      properties:
+        dispute_id:
+          type: string
+        purchase_id:
+          type: string
+          description: Also the id of the purchase's Alibi.
+        state:
+          type: string
+          enum:
+            - OPEN
+            - ATTRIBUTED
+            - RESOLVED
+        reason:
+          type: string
+        amount_minor:
+          type: string
+        currency:
+          type: string
+        agent_id:
+          type: string
+          description: The ERC-8004 agent that made the purchase.
+        received_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        attributed_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        elapsed_ms:
+          type:
+            - integer
+            - "null"
+        liable:
+          type:
+            - string
+            - "null"
+          enum:
+            - operator
+            - keelson
+            - merchant
+            - user
+            - null
+        rule:
+          type:
+            - string
+            - "null"
+        rail:
+          type:
+            - string
+            - "null"
+          enum:
+            - pyusd
+            - paypal
+            - null
+        outcome:
+          type:
+            - string
+            - "null"
+          enum:
+            - paid
+            - queued
+            - claimable
+            - failed
+            - null
+        paid_by:
+          type:
+            - string
+            - "null"
+          enum:
+            - chain
+            - treasury
+            - violation-pool
+            - null
+        ready_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        settled_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        explorer_url:
+          type:
+            - string
+            - "null"
+          format: uri
+        has_alibi:
+          type: boolean
+      required:
+        - dispute_id
+        - purchase_id
+        - state
+        - reason
+        - amount_minor
+        - currency
+        - agent_id
+        - received_at
+        - attributed_at
+        - elapsed_ms
+        - liable
+        - rule
+        - rail
+        - outcome
+        - paid_by
+        - ready_at
+        - settled_at
+        - explorer_url
+        - has_alibi
+    MerchantEvaluations:
+      type: object
+      properties:
+        columns:
+          type: array
+          items:
+            type: string
+            enum:
+              - source
+              - evaluation_id
+              - at
+              - agent
+              - operator
+              - field
+              - color
+              - failed
+              - decision
+              - attack_class
+              - dispute_id
+              - liable
+        rows:
+          type: array
+          items:
+            type: array
+            items:
+              anyOf:
+                - type: string
+                - type: number
+                - type: "null"
+      required:
+        - columns
+        - rows
+      description: "One row per mandate field per evaluation at this merchant: its
+        countersigned purchases and the red-team campaigns' attacks. `failed` is
+        1 when the field's check failed."
+    AssistantTurn:
+      type: object
+      properties:
+        model:
+          type: string
+          enum:
+            - claude-opus-5-5
+            - claude-haiku-5-5
+        system:
+          type: string
+          maxLength: 200000
+        messages:
+          type: array
+          items:
+            type: object
+            properties:
+              role:
+                type: string
+                enum:
+                  - user
+                  - assistant
+              content:
+                anyOf:
+                  - type: string
+                  - type: array
+                    items:
+                      oneOf:
+                        - type: object
+                          properties:
+                            type:
+                              type: string
+                              enum:
+                                - text
+                            text:
+                              type: string
+                          required:
+                            - type
+                            - text
+                          additionalProperties: false
+                        - type: object
+                          properties:
+                            type:
+                              type: string
+                              enum:
+                                - tool_use
+                            id:
+                              type: string
+                              maxLength: 128
+                            name:
+                              type: string
+                              maxLength: 128
+                            input:
+                              type: object
+                              additionalProperties: {}
+                          required:
+                            - type
+                            - id
+                            - name
+                            - input
+                          additionalProperties: false
+                        - type: object
+                          properties:
+                            type:
+                              type: string
+                              enum:
+                                - tool_result
+                            tool_use_id:
+                              type: string
+                              maxLength: 128
+                            content:
+                              anyOf:
+                                - type: string
+                                - type: array
+                                  items:
+                                    type: object
+                                    properties:
+                                      type:
+                                        type: string
+                                        enum:
+                                          - text
+                                      text:
+                                        type: string
+                                    required:
+                                      - type
+                                      - text
+                                    additionalProperties: false
+                            is_error:
+                              type: boolean
+                          required:
+                            - type
+                            - tool_use_id
+                            - content
+                          additionalProperties: false
+                        - type: object
+                          properties:
+                            type:
+                              type: string
+                              enum:
+                                - thinking
+                            thinking:
+                              type: string
+                            signature:
+                              type: string
+                          required:
+                            - type
+                            - thinking
+                            - signature
+                          additionalProperties: false
+                        - type: object
+                          properties:
+                            type:
+                              type: string
+                              enum:
+                                - redacted_thinking
+                            data:
+                              type: string
+                          required:
+                            - type
+                            - data
+                          additionalProperties: false
+                    minItems: 1
+            required:
+              - role
+              - content
+            additionalProperties: false
+          minItems: 1
+          maxItems: 400
+        tools:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                pattern: ^[a-zA-Z0-9_-]{1,128}$
+              description:
+                type: string
+                maxLength: 8000
+              input_schema:
+                type: object
+                additionalProperties: {}
+            required:
+              - name
+              - description
+              - input_schema
+            additionalProperties: false
+          maxItems: 64
+        tool_choice:
+          type: string
+          enum:
+            - auto
+            - none
+      required:
+        - system
+        - messages
+      description: "One turn of the console's agents: Messages API `system`,
+        `messages` and client `tools`. The proxy sets the model limits, thinking
+        and effort."
     Tracking:
       type: object
       properties:
@@ -3787,8 +4402,14 @@ paths:
       tags:
         - tee
       summary: Countersign a cart
-      description: Sends the cart to the TEE legs in order and returns the
-        countersignatures only when both agree. A DENY is countersigned too.
+      description: "Sends the cart to the TEE legs in order and returns the
+        countersignatures only when both agree. A DENY is countersigned too. A
+        cart is bought once per mandate: while a purchase of the same cart is in
+        flight, or for ten minutes after it was captured, another request for it
+        is answered `409 purchase-exists` with that purchase's id, whatever its
+        request id, evidence or `Idempotency-Key`. Retrying after a lost answer
+        is therefore safe; to buy the same cart again on purpose, name that
+        purchase in `repeatOf`."
       parameters:
         - schema:
             type: string
@@ -3841,14 +4462,16 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
         "404":
-          description: No such mandate
+          description: No such mandate of an operator this client linked
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
         "409":
           description: The mandate is not active, the evidence root is not stored for it
-            or already binds another purchase, or the request was already used
+            or already binds another purchase, the request was already used, or
+            the same cart is already being bought (`purchase-exists`, with its
+            `purchaseId`)
           content:
             application/problem+json:
               schema:
@@ -3918,11 +4541,12 @@ paths:
       tags:
         - evidence
       summary: Store sealed evidence
-      description: Stores what the agent saw at decision time for an active mandate.
-        The manifest is rebuilt from the items and must match, every item has
-        its own salt, no public item may still hold an email address or phone
-        number, and every `.original` must open with the evidence identity. A
-        countersign may only bind a stored root, once.
+      description: Stores what the agent saw at decision time for an active mandate of
+        an operator this client linked. The manifest is rebuilt from the items
+        and must match, every item has its own salt, no public item may still
+        hold an email address or phone number, and every `.original` must open
+        with the evidence identity. A countersign may only bind a stored root,
+        once.
       parameters:
         - schema:
             type: string
@@ -3951,7 +4575,7 @@ paths:
                 required:
                   - evidenceRoot
         "404":
-          description: No such mandate
+          description: No such mandate of an operator this client linked
           content:
             application/problem+json:
               schema:
@@ -4114,7 +4738,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Channel3Observation"
         "404":
-          description: No such mandate
+          description: No such mandate of an operator this client linked
           content:
             application/problem+json:
               schema:
@@ -4467,6 +5091,68 @@ paths:
                 $ref: "#/components/schemas/AlibiReceipt"
         "404":
           description: No alibi with this id that the caller may read
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/anonymous-mandates/{mandateHash}:
+    get:
+      tags:
+        - mandates
+      summary: Proof that a registered user signed a mandate
+      description: "The C3 `anonymous_mandate` zero-knowledge proof of the mandate
+        whose passkey challenge is `mandateHash`, the `mandateHash` of its
+        countersigns: a passkey in Keelson's registered-user tree signed it, and
+        the mandate's commitment names that passkey. It shows neither the user
+        nor the key, so it needs no authentication. Verify it with bb.js against
+        the C3 key or with `eth_call` on `verifier`, and check `user_set_root`
+        with `GET /v1/user-set/roots/{root}`."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^0x[0-9a-f]{64}$
+          required: true
+          name: mandateHash
+          in: path
+      responses:
+        "200":
+          description: The proof
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnonymousMandate"
+        "404":
+          description: No proof for this mandate yet
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/user-set/roots/{root}:
+    get:
+      tags:
+        - mandates
+      summary: A root of the registered-user tree
+      description: "Whether `root` is, or was, the root of Keelson's registered-user
+        tree: the Poseidon2 Merkle tree of every registered passkey's
+        `user_key_hash`. A C3 proof under any root listed here was made by a
+        registered user, who is hidden among the `size` users of that root.
+        Roots stay valid after a passkey is removed."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^0x[0-9a-f]{64}$
+          required: true
+          name: root
+          in: path
+      responses:
+        "200":
+          description: The root
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserSetRoot"
+        "404":
+          description: No such root
           content:
             application/problem+json:
               schema:
@@ -4834,6 +5520,89 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "422":
           description: Invalid, or not a Kernel live view
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/operators/{agentId}/grade:
+    get:
+      tags:
+        - operators
+      summary: Trust grade, premium and bond of an operator
+      description: Recomputed whenever a coverage or a verdict of the operator, or the
+        nightly calibration, changes it. Public.
+      parameters:
+        - schema:
+            type: string
+            pattern: ^(0|[1-9]\d{0,19})$
+            description: The operator's ERC-8004 agent id, a decimal integer.
+          required: true
+          description: The operator's ERC-8004 agent id, a decimal integer.
+          name: agentId
+          in: path
+      responses:
+        "200":
+          description: The grade
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrustGrade"
+        "404":
+          description: Not a linked operator
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Nothing to price the operator's losses from yet
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: No finished red-team campaign to calibrate from
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/operators/{agentId}/grade/stream:
+    get:
+      tags:
+        - operators
+      summary: Follow an operator's trust grade
+      description: "Server-sent events: a `grade` event with the current grade, and
+        another each time a coverage, a verdict or a calibration changes it.
+        Public."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^(0|[1-9]\d{0,19})$
+            description: The operator's ERC-8004 agent id, a decimal integer.
+          required: true
+          description: The operator's ERC-8004 agent id, a decimal integer.
+          name: agentId
+          in: path
+      responses:
+        "200":
+          description: An event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "404":
+          description: Not a linked operator
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Nothing to price the operator's losses from yet
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: No calibration yet, or too many open streams
           content:
             application/problem+json:
               schema:
@@ -5223,7 +5992,8 @@ paths:
       summary: Choose how a merchant is paid when a dispute goes its way
       description: "Applies to verdicts signed afterwards: the rail decides the payee
         the TEE legs sign into the `Verdict`. The merchant signs the choice, as
-        it signs its on-chain payout address."
+        it signs its on-chain payout address. Sent by a client with
+        `merchants:write` or by the merchant's own session."
       parameters:
         - schema:
             type: string
@@ -5264,7 +6034,7 @@ paths:
                 required:
                   - rail
         "403":
-          description: The signature is not the merchant's
+          description: The signature, or the session, is not the merchant's
           content:
             application/problem+json:
               schema:
@@ -5277,6 +6047,202 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "409":
           description: The nonce is not higher than the one of the merchant's last choice
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    get:
+      tags:
+        - merchants
+      summary: How a merchant is paid when a dispute goes its way
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 64
+          required: true
+          name: merchantId
+          in: path
+      responses:
+        "200":
+          description: The current choice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MerchantSettlement"
+        "401":
+          description: No session
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The session is not this merchant's
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/merchants/me:
+    get:
+      tags:
+        - merchants
+      summary: The merchant signed in
+      responses:
+        "200":
+          description: The merchant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MerchantSelf"
+        "401":
+          description: No session
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The session is not this merchant's
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/merchants/{merchantId}/disputes:
+    get:
+      tags:
+        - merchants
+      summary: A merchant's disputes and their verdicts
+      description: The latest 500 PayPal disputes over the merchant's Keelson
+        purchases, newest first.
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 64
+          required: true
+          name: merchantId
+          in: path
+      responses:
+        "200":
+          description: The disputes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  disputes:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/MerchantDispute"
+                required:
+                  - disputes
+        "401":
+          description: No session
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The session is not this merchant's
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/merchants/{merchantId}/evaluations:
+    get:
+      tags:
+        - merchants
+      summary: Field-level evaluations of the agents that shopped at a merchant
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 64
+          required: true
+          name: merchantId
+          in: path
+      responses:
+        "200":
+          description: The evaluations, as columns and rows
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MerchantEvaluations"
+        "401":
+          description: No session
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The session is not this merchant's
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/merchants/{merchantId}/assistant:
+    post:
+      tags:
+        - merchants
+      summary: One streamed model turn for the merchant console's agents
+      description: Streams the Messages API events as newline-delimited JSON (the
+        Anthropic SDK's `MessageStream.toReadableStream`). Each merchant has a
+        daily budget; once it is spent the turn runs on `claude-haiku-5-5`,
+        named in `Keelson-Model`.
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 64
+          required: true
+          name: merchantId
+          in: path
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssistantTurn"
+      responses:
+        "200":
+          description: The turn's events
+          headers:
+            keelson-model:
+              schema:
+                type: string
+                enum:
+                  - claude-opus-5-5
+                  - claude-haiku-5-5
+              required: true
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+        "401":
+          description: No session
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The session is not this merchant's
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Too many turns, or today's budget is spent
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "502":
+          description: The model provider refused the turn
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: No model provider configured
           content:
             application/problem+json:
               schema:
@@ -5376,6 +6342,143 @@ paths:
                 $ref: "#/components/schemas/Transaction"
         "404":
           description: No such transaction
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/redteam/campaigns:
+    get:
+      tags:
+        - red team
+      summary: Red-team campaigns
+      description: The latest red-team campaigns, newest first. Public.
+      responses:
+        "200":
+          description: Up to 20 campaigns
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  campaigns:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        startedAt:
+                          type: string
+                        finishedAt:
+                          type:
+                            - string
+                            - "null"
+                        attacks:
+                          type: integer
+                      required:
+                        - id
+                        - startedAt
+                        - finishedAt
+                        - attacks
+                required:
+                  - campaigns
+  /v1/redteam/campaigns/{id}/ledger:
+    get:
+      tags:
+        - red team
+      summary: A campaign's ledger
+      description: "The campaign's hash-chained JSON Lines ledger, byte for byte: the
+        header, one line per attack and, once finished, the summary. Each line
+        is RFC 8785 JSON whose `prev` is the SHA-256 of `keelson/redteam/v1 ‖
+        0x00 ‖ previous line`. Public."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^[0-9A-HJKMNP-TV-Z]{26}$
+            description: The campaign's ULID.
+          required: true
+          description: The campaign's ULID.
+          name: id
+          in: path
+      responses:
+        "200":
+          description: The ledger so far
+          content:
+            application/jsonl:
+              schema:
+                type: string
+        "404":
+          description: No such campaign
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/redteam/campaigns/{id}/scoreboard:
+    get:
+      tags:
+        - red team
+      summary: A campaign's scoreboard
+      description: "Agent ASR, Keelson's escape rate with its Clopper-Pearson 95 %
+        interval, false blocks and utility under attack with Wilson 95 %
+        intervals, per backbone and split, computed from the ledger alone. The
+        body is RFC 8785 JSON: recomputing it from the ledger gives the same
+        bytes. Public."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^[0-9A-HJKMNP-TV-Z]{26}$
+            description: The campaign's ULID.
+          required: true
+          description: The campaign's ULID.
+          name: id
+          in: path
+      responses:
+        "200":
+          description: The scoreboard of the ledger so far
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: {}
+                additionalProperties: {}
+        "404":
+          description: No such campaign
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/redteam/campaigns/{id}/scoreboard/stream:
+    get:
+      tags:
+        - red team
+      summary: Follow a campaign's scoreboard
+      description: "Server-sent events: a `scoreboard` event with the current
+        scoreboard, another each time the ledger grows, and `end` once the
+        campaign is finished. Public."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^[0-9A-HJKMNP-TV-Z]{26}$
+            description: The campaign's ULID.
+          required: true
+          description: The campaign's ULID.
+          name: id
+          in: path
+      responses:
+        "200":
+          description: An event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "404":
+          description: No such campaign
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: Too many open streams
           content:
             application/problem+json:
               schema:

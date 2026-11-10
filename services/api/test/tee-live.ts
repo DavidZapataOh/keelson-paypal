@@ -38,6 +38,7 @@ import cartDemo from "../../../engine/canon/tests/fixtures/demo-shoes.json" with
 import demo from "../../../packages/mandate/test/fixtures/demo-mandate.json" with { type: "json" };
 import { agentBond, agentCnf, termsConsent } from "../src/compile-sources.ts";
 import type { Principal } from "../src/principal.ts";
+import { latestOfCart } from "../src/routes/countersign.ts";
 import type { CountersignRequest, LegClient, MandateIssued } from "../src/tee/client.ts";
 import type { CountersignExpectation } from "../src/tee/coordinator.ts";
 import { engineSource } from "../src/tee/engine-source.ts";
@@ -487,6 +488,15 @@ function authorizationPayee(): Promise<string> {
 let sandboxOrder: string | undefined;
 
 /**
+ * The merchant the mandate allows: the API's own (`PAYPAL_MERCHANT_ID`), which every hold the
+ * harness creates pays; else the payee of the sandbox's standing authorization.
+ */
+function mandatePayee(): Promise<string> {
+  const configured = process.env.PAYPAL_MERCHANT_ID;
+  return configured ? Promise.resolve(configured) : authorizationPayee();
+}
+
+/**
  * Puts a signed mandate on the sandbox's standing authorization, for suites that test what
  * happens after the hold and not the hold itself (the hold suites create and approve real ones).
  */
@@ -569,7 +579,7 @@ export async function signedMandate(
   edit: (m: Mandate) => void = () => {},
   agent: AgentKey = testAgent,
 ): Promise<SignedMandate> {
-  const merchant = await authorizationPayee();
+  const merchant = await mandatePayee();
   const now = Math.floor(Date.now() / 1000);
   const m: Mandate = parseMandate({
     ...demo,
@@ -661,6 +671,20 @@ export async function request(
   };
 }
 
+/**
+ * `repeatOf` for countersigning `cart` under the mandate as request `requestId`, as an agent that
+ * buys the same cart again on purpose: the purchase of it the API would otherwise answer with.
+ */
+export async function repeating(
+  db: Db,
+  mandateId: string,
+  cart: unknown,
+  requestId?: string,
+): Promise<{ repeatOf?: string }> {
+  const latest = await latestOfCart(db, mandateId, toHex(cartHash(cart as Cart)), requestId);
+  return latest ? { repeatOf: latest } : {};
+}
+
 /** What the countersign for `req` has to say, from the request alone. */
 export async function expectation(
   agent: Agent,
@@ -707,9 +731,12 @@ export async function seedUser(db: Db, passkey: Passkey, sub: string): Promise<v
   await seedOperator(db, 42n);
 }
 
+/** The OAuth client {@link asAgent} acts as: the client the seeded operators are linked to. */
+export const AGENT_CLIENT = "demo-agent";
+
 /**
- * Registers {@link testAgent} as `agentId`'s agent, adding the operator if it is missing, and
- * resolves to the undo. Only rows no owner linked through `POST /v1/operators` are rebound, so a
+ * Registers {@link testAgent} as `agentId`'s agent, linked to {@link AGENT_CLIENT}, adding the
+ * operator if it is missing, and resolves to the undo. Only rows no owner linked through `POST /v1/operators` are rebound, so a
  * linked operator's key is never replaced and a run that died before its undo is recovered.
  */
 export async function seedOperator(db: Db, agentId: bigint): Promise<() => Promise<void>> {
@@ -730,11 +757,11 @@ export async function seedOperator(db: Db, agentId: bigint): Promise<() => Promi
     throw new Error(`operator ${agentId} linked its own agent key; buy with that key`);
   }
   const unlinked = and(eq(operators.agentId, agentId), isNull(operators.ownerAddress));
-  await db.update(operators).set({ cnfJwk: testAgent.jwk }).where(unlinked);
+  await db.update(operators).set({ cnfJwk: testAgent.jwk, clientId: AGENT_CLIENT }).where(unlinked);
   return async () => {
     await db
       .update(operators)
-      .set({ cnfJwk: row?.cnfJwk ?? {} })
+      .set({ cnfJwk: row?.cnfJwk ?? {}, clientId: row?.clientId ?? null })
       .where(and(unlinked, sql`${operators.cnfJwk} = ${JSON.stringify(testAgent.jwk)}::jsonb`));
   };
 }
@@ -752,7 +779,7 @@ export const asUser = (sub: string) => ({
 export const asAgent = {
   "x-test-principal": JSON.stringify({
     kind: "client",
-    subject: "demo-agent",
+    subject: AGENT_CLIENT,
     scopes: ["countersign:write", "evidence:write"],
   }),
 };

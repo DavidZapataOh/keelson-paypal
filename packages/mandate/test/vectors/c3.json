@@ -1,0 +1,347 @@
+{
+  "mandate": {
+    "v": "keelson.mandate.1",
+    "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+    "iat": 1793750400,
+    "nbf": 1793750400,
+    "exp": 1794355200,
+    "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+    "mode": "autonomous",
+    "user": {
+      "sub": "kls_usr_7f3a9c21",
+      "cred": {
+        "id": "Zk3p0xQmH8vN1sLwT5uYdA",
+        "rp_id": "keelson.finance",
+        "jwk": {
+          "kty": "EC",
+          "crv": "P-256",
+          "x": "hgy9TP3sVCISv0CC3Cb3Wj0VEYiHpWQhzA5Qm6EMF_4",
+          "y": "8sq-zNgAKmIKF4jghZtM6tEf8St7it9qqoEwlGGSbvM"
+        }
+      },
+      "app_login_id": "andres@example.com"
+    },
+    "agent": {
+      "operator": {
+        "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+        "agent_id": "42"
+      },
+      "cnf": {
+        "jwk": {
+          "kty": "EC",
+          "crv": "P-256",
+          "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+          "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+          "kid": "agt-01"
+        }
+      },
+      "bond": {
+        "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+        "asset": "PYUSD",
+        "min": 5000
+      }
+    },
+    "payment": {
+      "rail": "paypal",
+      "currency": "USD",
+      "constraints": [
+        {
+          "type": "payment.amount_range",
+          "max": 10000,
+          "currency": "USD"
+        },
+        {
+          "type": "payment.budget",
+          "max": 10000,
+          "currency": "USD"
+        },
+        {
+          "type": "payment.allowed_payees",
+          "allowed": [
+            {
+              "paypal_merchant_id": "MERCH7XK2Q9LD"
+            }
+          ]
+        },
+        {
+          "type": "payment.execution_date",
+          "not_after": "2026-11-13T23:59:59Z"
+        }
+      ]
+    },
+    "checkout": {
+      "constraints": [
+        {
+          "type": "checkout.allowed_merchants",
+          "allowed": [
+            {
+              "id": "mrc_runfast",
+              "name": "RunFast",
+              "website": "https://runfast.example",
+              "paypal_merchant_id": "MERCH7XK2Q9LD"
+            }
+          ]
+        },
+        {
+          "type": "checkout.line_items",
+          "items": [
+            {
+              "id": "l1",
+              "acceptable_items": [
+                {
+                  "id": "sku-trail-10",
+                  "title": "Trail running shoe"
+                }
+              ],
+              "quantity": 1
+            }
+          ]
+        },
+        {
+          "type": "keelson.category",
+          "allow": [
+            "gpt:187"
+          ],
+          "deny": []
+        },
+        {
+          "type": "keelson.attributes",
+          "must": {
+            "size_us": "10",
+            "color": "any"
+          }
+        },
+        {
+          "type": "keelson.returns",
+          "min_days": 30,
+          "free": true
+        }
+      ]
+    },
+    "intent": {
+      "prompt_summary": "Running shoes, size 10, under $100, free returns, by Friday",
+      "prompt_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+      "subjective": [
+        "look good"
+      ]
+    },
+    "policy": {
+      "engine": "keelson-engine",
+      "version": "1.0.0",
+      "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+      "measurements": [
+        "tdx:0a1b2c",
+        "nitro:3d4e5f"
+      ]
+    },
+    "consent": {
+      "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+      "instruction_use": true,
+      "responsibility_ack": true,
+      "merchant_policy_ack": "at_capture",
+      "recurrence_ack": false
+    },
+    "zk": {
+      "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+    },
+    "risk_data": {
+      "device_fp": "fp_3c9a71",
+      "ip": "203.0.113.7"
+    }
+  },
+  "salt": "AQIDBAUGBwgJCgsMDQ4PEA",
+  "payloadSd": {
+    "v": "keelson.mandate.1",
+    "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+    "iat": 1793750400,
+    "nbf": 1793750400,
+    "exp": 1794355200,
+    "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+    "mode": "autonomous",
+    "user": {
+      "_sd": [
+        "JTpLgXwXPQqaiNh08KxmPqeMNhtCWhJRpmJiEI38Ku8",
+        "O1vrhm0eZW2hWDF_Uy4QjGgq9UMWm0xnM6MBpUvmwdg",
+        "k0TYisNC2PD-I3mDK6alBmZVVV43j1-PrQd3ZB-lSo0"
+      ]
+    },
+    "agent": {
+      "operator": {
+        "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+        "agent_id": "42"
+      },
+      "cnf": {
+        "jwk": {
+          "kty": "EC",
+          "crv": "P-256",
+          "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+          "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+          "kid": "agt-01"
+        }
+      },
+      "bond": {
+        "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+        "asset": "PYUSD",
+        "min": 5000
+      }
+    },
+    "payment": {
+      "rail": "paypal",
+      "currency": "USD",
+      "constraints": [
+        {
+          "...": "zaGobFMPRaiDjzBWLUws3yT7_hmNq3koCnd_nWaNWEY"
+        },
+        {
+          "type": "payment.budget",
+          "currency": "USD",
+          "_sd": [
+            "Qtt21VfS-gxZpkHtLKOMvNhLFzfEG5CHsAJzuTMzrd8"
+          ]
+        },
+        {
+          "type": "payment.allowed_payees",
+          "allowed": [
+            {
+              "...": "cOF3_H1H7TMGyKh6UlxV7DPKQuY7FgodboTeLoF9wcs"
+            }
+          ]
+        },
+        {
+          "type": "payment.execution_date",
+          "not_after": "2026-11-13T23:59:59Z"
+        }
+      ]
+    },
+    "checkout": {
+      "constraints": [
+        {
+          "type": "checkout.allowed_merchants",
+          "allowed": [
+            {
+              "...": "9AmmtxepOFQQ-8ySejgSWL9_vrHadsUGyLLgQN2Y_FY"
+            }
+          ]
+        },
+        {
+          "type": "checkout.line_items",
+          "items": [
+            {
+              "id": "l1",
+              "acceptable_items": [
+                {
+                  "...": "7PlngnES75BulAIC2-vzXBdOr8HvdYFFJ6qeUjzmqas"
+                }
+              ],
+              "quantity": 1
+            }
+          ]
+        },
+        {
+          "type": "keelson.category",
+          "allow": [
+            "gpt:187"
+          ],
+          "deny": []
+        },
+        {
+          "type": "keelson.attributes",
+          "must": {
+            "size_us": "10",
+            "color": "any"
+          }
+        },
+        {
+          "type": "keelson.returns",
+          "min_days": 30,
+          "free": true
+        }
+      ]
+    },
+    "intent": {
+      "subjective": [
+        "look good"
+      ],
+      "_sd": [
+        "kYjQvyf0ewEDK3kL7tXVzgp5K3dcWPolplwYdw9g2aM",
+        "pH9PBodPDGFgm4YGurLRdiN4dNJ5ujYFAvObXZMAxXk"
+      ]
+    },
+    "policy": {
+      "engine": "keelson-engine",
+      "version": "1.0.0",
+      "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+      "measurements": [
+        "tdx:0a1b2c",
+        "nitro:3d4e5f"
+      ]
+    },
+    "consent": {
+      "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+      "instruction_use": true,
+      "responsibility_ack": true,
+      "merchant_policy_ack": "at_capture",
+      "recurrence_ack": false
+    },
+    "zk": {
+      "commitment": "0x05e05ff70bf2cee8d59b4fdc8b8e173e245fe80e591c3e81b54d22e87701ba0c"
+    },
+    "cnf": {
+      "jwk": {
+        "kty": "EC",
+        "crv": "P-256",
+        "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+        "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+        "kid": "agt-01"
+      }
+    },
+    "_sd": [
+      "D1DUBuz5Q04C119UYrIHV5Be5OKB9qmE4tDvf76Vj7s"
+    ]
+  },
+  "disclosures": [
+    "WyI1SXhLcWFpUzJtUFpkUm5tdWdidjBnIiwic3ViIiwia2xzX3Vzcl83ZjNhOWMyMSJd",
+    "WyJZcnJkcFQtNk1tTGpPdDAzbkVxdkV3IiwiY3JlZCIseyJpZCI6IlprM3AweFFtSDh2TjFzTHdUNXVZZEEiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6ImhneTlUUDNzVkNJU3YwQ0MzQ2IzV2owVkVZaUhwV1FoekE1UW02RU1GXzQiLCJ5IjoiOHNxLXpOZ0FLbUlLRjRqZ2hadE02dEVmOFN0N2l0OXFxb0V3bEdHU2J2TSJ9fV0",
+    "WyJKVkxXRFdDRWd4MmZjdVpaaVZjWEF3IiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+    "WyJlbF9KVERpNGZBNU9tR1RqS2VBYnJnIiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+    "WyJiMV9BeUgxZ05GMThxUFNnZlpGSzNBIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+    "WyJObWhJbEI3bU1OTmFuNmUyUDk3MUx3IiwibWF4IiwxMDAwMF0",
+    "WyJWazBfMXAtSTZHcWlSdUFhV3liQWVBIix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+    "WyJtV0lwOGZsVk9pcGRaVVN3ZTFvbGFnIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+    "WyJVWGQtT2ZTZkxzaXFYQUx0NWh1bFFBIix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+    "WyJGRHdPQzU3clZkTnh2aTczeTJlUTBnIix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+    "WyIwd01LWG5LaXI0alYyMlhKUXJVM2dnIiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+  ],
+  "publicKey": "pQECAyYgASFYIIYMvUz97FQiEr9Agtwm91o9FRGIh6VkIcwOUJuhDBf+Ilgg8sq+zNgAKmIKF4jghZtM6tEf8St7it9qqoEwlGGSbvM=",
+  "users": [
+    "0x92ec86fa88925dabc1026bfc9335f5f6848886c98586c005f4a0c02716e3bb",
+    "0x102ae1466243f3db3df92be06686fdd2f463708fb80dc2cca509969a04bcee0",
+    "0x8a66366737b3140d307236b8fce3f0297a3c093b60529e0d3d15a50e133820"
+  ],
+  "payment": {
+    "assertion": {
+      "authenticatorData": "EHHKqDnsJdN7IzwdSzf9Op0bCgmDDhN-RSEFwH1vxPcFAAAAAg",
+      "clientDataJSON": "eyJ0eXBlIjoicGF5bWVudC5nZXQiLCJjaGFsbGVuZ2UiOiIwTkpieGh3U1hEaC15VHZVenpyQ2J1UTJRZ0Fob2VrcTlGQmJEMkpTdlhVIiwib3JpZ2luIjoiaHR0cHM6Ly9hcHAua2VlbHNvbi5maW5hbmNlIiwiY3Jvc3NPcmlnaW4iOmZhbHNlLCJwYXltZW50Ijp7InJwSWQiOiJrZWVsc29uLmZpbmFuY2UiLCJ0b3BPcmlnaW4iOiJodHRwOi8vYXBwLmtlZWxzb24uZmluYW5jZTo1NjM1OCIsInBheWVlTmFtZSI6IktlZWxzb24iLCJwYXllZU9yaWdpbiI6Imh0dHBzOi8va2VlbHNvbi5maW5hbmNlIiwicGF5bWVudEVudGl0aWVzTG9nb3MiOltdLCJ0b3RhbCI6eyJ2YWx1ZSI6IjEwMC4wMCIsImN1cnJlbmN5IjoiVVNEIn0sImluc3RydW1lbnQiOnsiaWNvbiI6ImRhdGE6aW1hZ2Uvc3ZnK3htbCwlM0NzdmcgeG1sbnM9J2h0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnJyB3aWR0aD0nMzInIGhlaWdodD0nMzInJTNFJTNDcmVjdCB3aWR0aD0nMzInIGhlaWdodD0nMzInIHJ4PSc2JyBmaWxsPSclMjMxMTEnLyUzRSUzQy9zdmclM0UiLCJkaXNwbGF5TmFtZSI6IktlZWxzb24gbWFuZGF0ZSJ9fX0",
+      "signature": "MEUCIGd1EXBC6a2D_YsXU0IFA39YFPz-Q91JCeRw-IjjfdSqAiEAu9_0Wfab895xom9g6Ir7ESLOZ9ZxLQDdJU-_qSPDV9c"
+    },
+    "statement": {
+      "cm": "0x5e05ff70bf2cee8d59b4fdc8b8e173e245fe80e591c3e81b54d22e87701ba0c",
+      "mandateHash": "0xf4121fa974bdb919d8824fac93560fa4366a0de3abc26e5e4c884bfa252bd71",
+      "userSetRoot": "0x134a4f4a139a4ef44223466dd1d4c8a96b5814fc05a5d983571fccf46b15cbdb",
+      "rpIdHash": "0x1071caa839ec25d37b233c1d4b37fd3a9d1b0a09830e137e452105c07d6fc4f7"
+    }
+  },
+  "webauthn": {
+    "assertion": {
+      "authenticatorData": "EHHKqDnsJdN7IzwdSzf9Op0bCgmDDhN-RSEFwH1vxPcFAAAAAw",
+      "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiME5KYnhod1NYRGgteVR2VXp6ckNidVEyUWdBaG9la3E5RkJiRDJKU3ZYVSIsIm9yaWdpbiI6Imh0dHBzOi8vYXBwLmtlZWxzb24uZmluYW5jZSIsImNyb3NzT3JpZ2luIjpmYWxzZX0",
+      "signature": "MEUCIQDOdh7Hfixv4OA5a6CBChWmUQ9QZVnJpGniuiD4--QPHAIgEwCNy7mCIOmrdbSR0fVV3yTw2nAe8DdSJoaFF4xcx9c"
+    },
+    "statement": {
+      "cm": "0x5e05ff70bf2cee8d59b4fdc8b8e173e245fe80e591c3e81b54d22e87701ba0c",
+      "mandateHash": "0xf4121fa974bdb919d8824fac93560fa4366a0de3abc26e5e4c884bfa252bd71",
+      "userSetRoot": "0x134a4f4a139a4ef44223466dd1d4c8a96b5814fc05a5d983571fccf46b15cbdb",
+      "rpIdHash": "0x1071caa839ec25d37b233c1d4b37fd3a9d1b0a09830e137e452105c07d6fc4f7"
+    }
+  }
+}

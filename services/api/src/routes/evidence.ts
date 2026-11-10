@@ -1,6 +1,16 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { fromHex, sha256, toHex } from "@keelson/core";
-import { and, asc, eq, evidenceAccess, evidenceBundles, evidenceItems, sql } from "@keelson/db";
+import {
+  and,
+  asc,
+  eq,
+  evidenceAccess,
+  evidenceBundles,
+  evidenceItems,
+  mandates,
+  operators,
+  sql,
+} from "@keelson/db";
 import {
   buildManifest,
   containsPii,
@@ -94,7 +104,7 @@ const upload = createRoute({
   tags: ["evidence"],
   summary: "Store sealed evidence",
   description:
-    "Stores what the agent saw at decision time for an active mandate. The manifest is rebuilt from the items and must match, every item has its own salt, no public item may still hold an email address or phone number, and every `.original` must open with the evidence identity. A countersign may only bind a stored root, once.",
+    "Stores what the agent saw at decision time for an active mandate of an operator this client linked. The manifest is rebuilt from the items and must match, every item has its own salt, no public item may still hold an email address or phone number, and every `.original` must open with the evidence identity. A countersign may only bind a stored root, once.",
   middleware: [requireClient(["evidence:write"])],
   request: {
     headers: z.object({ "idempotency-key": z.string().min(1).max(255) }),
@@ -105,7 +115,10 @@ const upload = createRoute({
       description: "Stored",
       content: { "application/json": { schema: z.object({ evidenceRoot: Hex32 }) } },
     },
-    404: { description: "No such mandate", content: problemContent },
+    404: {
+      description: "No such mandate of an operator this client linked",
+      content: problemContent,
+    },
     409: {
       description:
         "The mandate is not active, holds the most bundles it may, or the root is stored for another mandate",
@@ -222,11 +235,15 @@ export function registerEvidence(
     const body = c.req.valid("json");
     const client = c.var.principal?.subject as string;
 
-    const mandate = await db.query.mandates.findFirst({
-      columns: { id: true, state: true },
-      where: (row, { eq }) => eq(row.id, body.mandateId),
-    });
-    if (!mandate) return problem(c, 404, "not-found", "Not found");
+    const [mandate] = await db
+      .select({ id: mandates.id, state: mandates.state, clientId: operators.clientId })
+      .from(mandates)
+      .innerJoin(operators, eq(operators.agentId, mandates.operatorAgentId))
+      .where(eq(mandates.id, body.mandateId));
+    // The same answer for an unknown mandate and another client's, so neither is disclosed.
+    if (!mandate?.clientId || mandate.clientId !== client) {
+      return problem(c, 404, "not-found", "Not found");
+    }
     if (!USABLE.has(mandate.state)) {
       return problem(
         c,
