@@ -6,8 +6,10 @@ import { calculateJwkThumbprint } from "jose";
 /** A mandate input that cannot be filled now; compiling answers 503 naming it. */
 export class SourceUnavailable extends Error {
   override name = "SourceUnavailable";
-  constructor(readonly source: string) {
+  readonly source: string;
+  constructor(source: string) {
     super(`${source} is not available`);
+    this.source = source;
   }
 }
 

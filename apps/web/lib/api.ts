@@ -3,13 +3,14 @@ import { API } from "./config";
 /** An RFC 9457 problem the API answered with. */
 export class ApiError extends Error {
   override name = "ApiError";
-  constructor(
-    readonly status: number,
-    readonly slug: string,
-    message: string,
-    readonly fields: readonly string[] = [],
-  ) {
+  readonly status: number;
+  readonly slug: string;
+  readonly fields: readonly string[];
+  constructor(status: number, slug: string, message: string, fields: readonly string[] = []) {
     super(message);
+    this.status = status;
+    this.slug = slug;
+    this.fields = fields;
   }
 }
 
