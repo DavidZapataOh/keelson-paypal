@@ -225,6 +225,13 @@
       "when": 1794303513029,
       "tag": "0031_user_set",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1794306511350,
+      "tag": "0032_merchant_wallet",
+      "breakpoints": true
     }
   ]
 }
