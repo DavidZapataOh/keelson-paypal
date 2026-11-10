@@ -27,7 +27,7 @@ const DRIVEN = ["COUNTERSIGNED", "LOGGED", "COVERED"];
 export async function pipelineHarness(
   extra: Pick<Deps, "auth" | "authenticate" | "compileSources" | "anthropic"> = {},
 ) {
-  const log = pino({ level: "silent" });
+  const log = pino({ level: process.env.HARNESS_LOG ?? "silent" });
   const tee = createTee(liveEnv(), { a: 10_000, b: 10_000 });
   const degradedTee = createTee(
     { ...liveEnv(), TEE_B_URL: "http://127.0.0.1:9" },
