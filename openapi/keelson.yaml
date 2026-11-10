@@ -5257,4 +5257,141 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+  /v1/redteam/campaigns:
+    get:
+      tags:
+        - red team
+      summary: Red-team campaigns
+      description: The latest red-team campaigns, newest first. Public.
+      responses:
+        "200":
+          description: Up to 20 campaigns
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  campaigns:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        startedAt:
+                          type: string
+                        finishedAt:
+                          type:
+                            - string
+                            - "null"
+                        attacks:
+                          type: integer
+                      required:
+                        - id
+                        - startedAt
+                        - finishedAt
+                        - attacks
+                required:
+                  - campaigns
+  /v1/redteam/campaigns/{id}/ledger:
+    get:
+      tags:
+        - red team
+      summary: A campaign's ledger
+      description: "The campaign's hash-chained JSON Lines ledger, byte for byte: the
+        header, one line per attack and, once finished, the summary. Each line
+        is RFC 8785 JSON whose `prev` is the SHA-256 of `keelson/redteam/v1 ‖
+        0x00 ‖ previous line`. Public."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^[0-9A-HJKMNP-TV-Z]{26}$
+            description: The campaign's ULID.
+          required: true
+          description: The campaign's ULID.
+          name: id
+          in: path
+      responses:
+        "200":
+          description: The ledger so far
+          content:
+            application/jsonl:
+              schema:
+                type: string
+        "404":
+          description: No such campaign
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/redteam/campaigns/{id}/scoreboard:
+    get:
+      tags:
+        - red team
+      summary: A campaign's scoreboard
+      description: "Agent ASR, Keelson's escape rate with its Clopper-Pearson 95 %
+        interval, false blocks and utility under attack with Wilson 95 %
+        intervals, per backbone and split, computed from the ledger alone. The
+        body is RFC 8785 JSON: recomputing it from the ledger gives the same
+        bytes. Public."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^[0-9A-HJKMNP-TV-Z]{26}$
+            description: The campaign's ULID.
+          required: true
+          description: The campaign's ULID.
+          name: id
+          in: path
+      responses:
+        "200":
+          description: The scoreboard of the ledger so far
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: {}
+                additionalProperties: {}
+        "404":
+          description: No such campaign
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/redteam/campaigns/{id}/scoreboard/stream:
+    get:
+      tags:
+        - red team
+      summary: Follow a campaign's scoreboard
+      description: "Server-sent events: a `scoreboard` event with the current
+        scoreboard, another each time the ledger grows, and `end` once the
+        campaign is finished. Public."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^[0-9A-HJKMNP-TV-Z]{26}$
+            description: The campaign's ULID.
+          required: true
+          description: The campaign's ULID.
+          name: id
+          in: path
+      responses:
+        "200":
+          description: An event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "404":
+          description: No such campaign
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: Too many open streams
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
 webhooks: {}

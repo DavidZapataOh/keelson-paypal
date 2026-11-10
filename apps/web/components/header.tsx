@@ -24,6 +24,12 @@ export function Header() {
       <Badge variant="outline" className="mr-auto ml-3 font-mono">
         PayPal sandbox
       </Badge>
+      <Link
+        href="/scoreboard/"
+        className="rounded-md px-3 py-2.5 font-medium text-sm hover:bg-accent"
+      >
+        Scoreboard
+      </Link>
       {data ? (
         <nav aria-label="Account" className="flex items-center gap-1 text-sm">
           <Link href="/new/" className="rounded-md px-3 py-2.5 font-medium hover:bg-accent">
