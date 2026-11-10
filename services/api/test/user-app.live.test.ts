@@ -287,6 +287,7 @@ describe.skipIf(!live)("the user app, first-time user (live sandbox)", { timeout
         } else {
           expect(p?.failureReason).toBe("alibi:verify");
           await page.getByText("Stopped at alibi: nothing was captured").waitFor();
+          await page.getByText("No Alibi was issued for this cart (stopped at alibi).").waitFor();
         }
         console.info(`${device} purchase ${p?.id}: ${p?.state} ${p?.failureReason ?? ""}`);
 
