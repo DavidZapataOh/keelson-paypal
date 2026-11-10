@@ -31,5 +31,7 @@
   "nitro_leafCache_tx": 8000000,
   "nitro_validateDocument_tx": 16000000,
   "c1_verify": 660000,
-  "c1_verify_reference": 2300000
+  "c1_verify_reference": 2300000,
+  "c2a_verify": 700000,
+  "c2a_proveViolation": 950000
 }

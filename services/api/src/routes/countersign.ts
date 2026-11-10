@@ -732,7 +732,6 @@ export function registerCountersign(
         failedFieldsMask: Number(out.countersign.failedFieldsMask),
         countersignMode: out.mode,
         evalTrace: out.trace,
-        c1Proof: out.c1 ?? null,
         failureReason: null,
       };
       await transition(

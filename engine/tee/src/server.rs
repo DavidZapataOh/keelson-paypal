@@ -6,7 +6,7 @@ use std::sync::Arc;
 use alloy_primitives::Address;
 use axum::body::Bytes;
 use axum::extract::rejection::BytesRejection;
-use axum::extract::{DefaultBodyLimit, Request, State};
+use axum::extract::{DefaultBodyLimit, Path, Request, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -18,10 +18,10 @@ use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 use time::OffsetDateTime;
 
-use crate::engine::unix_ms;
+use crate::engine::{C1Status, unix_ms};
 use crate::wire::{
     CheckpointRequest, CheckpointSigned, CountersignRequest, Countersigned, MandateIssued,
-    RegisterMandate, VerdictRequest, VerdictSigned,
+    RegisterMandate, VerdictRequest, VerdictSigned, ZkProof,
 };
 use crate::{Engine, EngineError, TeeKind};
 
@@ -36,6 +36,8 @@ const PROBLEM_BASE: &str = "https://keelson.finance/problems/";
 /// What the routes share: the engine and the hash of the bearer token it accepts.
 pub struct AppState {
     engine: Engine,
+    /// Leg A's prover thread, started with the first ALLOW to prove.
+    c1_queue: std::sync::OnceLock<std::sync::mpsc::SyncSender<String>>,
     token_hash: [u8; 32],
     clock: fn() -> OffsetDateTime,
     #[cfg(feature = "tdx")]
@@ -51,6 +53,7 @@ impl AppState {
     pub fn new(engine: Engine, token_hash: [u8; 32]) -> Self {
         Self {
             engine,
+            c1_queue: std::sync::OnceLock::new(),
             token_hash,
             clock: OffsetDateTime::now_utc,
             #[cfg(feature = "tdx")]
@@ -120,6 +123,7 @@ pub fn router(state: Arc<AppState>) -> Router {
     let open = Router::new().route("/v1/health", get(health));
     let protected = Router::new()
         .route("/v1/countersign", post(countersign))
+        .route("/v1/c1/{request_id}", get(c1))
         .route(
             "/v1/checkpoint",
             post(checkpoint).layer(DefaultBodyLimit::max(CHECKPOINT_BODY_LIMIT)),
@@ -324,12 +328,68 @@ async fn countersign(
     let paypal = read_paypal(&state, &request).await?;
     #[cfg(not(feature = "tdx"))]
     let paypal = None;
-    blocking(move || {
+    let id = request.request_id.to_string();
+    let engine = state.clone();
+    let out = blocking(move || {
         state
             .engine
             .countersign_with(&request, (state.clock)(), paypal)
     })
-    .await
+    .await?;
+    // The answer goes out now; the proof follows on `GET /v1/c1/{request_id}`.
+    if out.countersign.decision == "1" && engine.engine.proves_c1() {
+        let queue = engine.c1_queue.get_or_init(|| {
+            let (tx, rx) = std::sync::mpsc::sync_channel::<String>(C1_QUEUE);
+            let prover = engine.clone();
+            std::thread::spawn(move || {
+                for id in rx {
+                    prover.engine.prove_c1(&id);
+                }
+            });
+            tx
+        });
+        if queue.try_send(id.clone()).is_err() {
+            eprintln!("keelson-engine: C1 queue full, request {id} is not proved");
+            engine.engine.forgo_c1(&id);
+        }
+    }
+    Ok(out)
+}
+
+/// ALLOWs waiting for their C1 proof on leg A's prover thread, one proof at a time: about as many
+/// as it proves within the minute the API waits for a proof.
+const C1_QUEUE: usize = 64;
+/// How often `GET /v1/c1/{request_id}` looks again at a proof still being made.
+const C1_POLL: std::time::Duration = std::time::Duration::from_millis(20);
+
+/// How long `GET /v1/c1/{request_id}` waits for a proof still being made: past the prover's own
+/// deadline.
+const C1_WAIT: std::time::Duration = std::time::Duration::from_secs(8);
+
+/// The C1 proof of an ALLOW this leg answered: 404 `no_proof` when there is none to wait for,
+/// 503 `proof_pending` when it is still being made after [`C1_WAIT`].
+async fn c1(
+    State(state): State<Arc<AppState>>,
+    Path(request_id): Path<String>,
+) -> Result<Json<ZkProof>, Problem> {
+    let Ok(id) = request_id.parse::<ulid::Ulid>() else {
+        return Err(Problem::new(StatusCode::NOT_FOUND, "no_proof"));
+    };
+    let id = id.to_string();
+    let deadline = tokio::time::Instant::now() + C1_WAIT;
+    loop {
+        match state.engine.c1(&id, std::time::Duration::ZERO) {
+            C1Status::Ready(proof) => return Ok(Json(proof)),
+            C1Status::None => return Err(Problem::new(StatusCode::NOT_FOUND, "no_proof")),
+            C1Status::Pending if tokio::time::Instant::now() >= deadline => {
+                return Err(Problem::new(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "proof_pending",
+                ));
+            }
+            C1Status::Pending => tokio::time::sleep(C1_POLL).await,
+        }
+    }
 }
 
 /// Leg A's own reading of the request's authorization, made now and not retried.

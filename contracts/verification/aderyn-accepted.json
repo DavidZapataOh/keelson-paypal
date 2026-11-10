@@ -88,5 +88,25 @@
     "detector": "reentrancy-state-change",
     "location": "src/KeelsonValidationRegistry.sol:93",
     "reason": "The external call before the write is a view (compiled to STATICCALL) to an immutable Keelson contract: the verifier, the anchor or the vault. No state can change during it."
+  },
+  {
+    "detector": "reentrancy-state-change",
+    "location": "src/MandateViolationCourt.sol:96",
+    "reason": "The calls before the write are views (compiled to STATICCALL) to immutable contracts: the vault, the VerdictVerifier and the C2a verifier. No state can change during them."
+  },
+  {
+    "detector": "reentrancy-state-change",
+    "location": "src/MandateViolationCourt.sol:104",
+    "reason": "The calls before the write are views (compiled to STATICCALL) to immutable contracts: the vault, the VerdictVerifier and the C2a verifier. No state can change during them."
+  },
+  {
+    "detector": "reentrancy-state-change",
+    "location": "src/MandateViolationCourt.sol:108",
+    "reason": "The calls before the write are views (compiled to STATICCALL) to immutable contracts: the vault, the VerdictVerifier and the C2a verifier. No state can change during them."
+  },
+  {
+    "detector": "reentrancy-state-change",
+    "location": "src/MandateViolationCourt.sol:120",
+    "reason": "The calls before the write are views (compiled to STATICCALL) to immutable contracts: the vault, the VerdictVerifier and the C2a verifier. No state can change during them."
   }
 ]

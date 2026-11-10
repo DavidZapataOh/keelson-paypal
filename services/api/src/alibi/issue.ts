@@ -129,6 +129,38 @@ async function issuerOf(tee: IssueDeps["tee"], thumbprint: string): Promise<JWK>
 
 const json = (v: unknown) => v as Record<string, Json>;
 
+/** How long a purchase's Alibi waits for leg A's C1 proof before it is issued without one. */
+const C1_GRACE_MS = 60_000;
+
+type C1Proof = NonNullable<(typeof purchases.$inferSelect)["c1Proof"]>;
+
+/**
+ * The purchase's C1 proof. Leg A answers the countersign first and proves after, so a proof not
+ * stored yet is fetched from it and stored; `null` when the ALLOW has none.
+ */
+async function c1Of(
+  deps: IssueDeps,
+  p: typeof purchases.$inferSelect,
+  provable: boolean,
+): Promise<C1Proof | null> {
+  if (p.c1Proof || !provable || !deps.tee) return p.c1Proof ?? null;
+  let proof: C1Proof | null;
+  try {
+    proof = await deps.tee.client.a.c1(p.id);
+  } catch (err) {
+    // The proof is optional; past the grace the Alibi is issued without it so the purchase is
+    // captured.
+    const age = Date.now() - Number(p.countersign?.issuedAt ?? 0) * 1000;
+    if (age < C1_GRACE_MS) throw err;
+    deps.log.warn({ err, purchaseId: p.id }, "alibi issued without its C1 proof");
+    return null;
+  }
+  if (proof) {
+    await deps.db.update(purchases).set({ c1Proof: proof }).where(eq(purchases.id, p.id));
+  }
+  return proof;
+}
+
 /**
  * Issues the Alibi of a logged purchase: the immutable core of its bundle, built from what
  * Postgres holds and the log's answer for its leaf, stored once. Opening the public evidence
@@ -192,10 +224,11 @@ export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<vo
   const thumbprint = (attestations[0]?.binding as { issuerJwkThumbprint?: string } | undefined)
     ?.issuerJwkThumbprint;
   if (!thumbprint) throw new AlibiIssueError("issuer", "the TDX attestation binds no issuer");
-  const [issuerJwk, policyText, evidence] = await Promise.all([
+  const [issuerJwk, policyText, evidence, c1] = await Promise.all([
     issuerOf(deps.tee, thumbprint),
     policyOf(origin),
     disclosures(db, Buffer.from(c.evidenceRoot.slice(2), "hex")),
+    c1Of(deps, p, c.decision === "1" && m.sealedSalt !== null),
   ]);
 
   let customId: string;
@@ -269,7 +302,7 @@ export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<vo
     },
     manifest: { public: evidence.manifest, disclosures: evidence.disclosures },
     ...(evidence.observation ? { channel3_observation: evidence.observation } : {}),
-    ...(p.c1Proof ? { zk: { c1: p.c1Proof } } : {}),
+    ...(c1 ? { zk: { c1 } } : {}),
     paypal: {
       order_id: p.paypalOrderId,
       authorization_id: p.paypalAuthorizationId,

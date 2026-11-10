@@ -2,7 +2,8 @@ import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { and, desc, eq, events, isNull, teeSignatures, teeSigners } from "@keelson/db";
 import { pino } from "pino";
-import { recoverAddress } from "viem";
+import { ulid } from "ulid";
+import { numberToHex, recoverAddress } from "viem";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import {
   type Countersigned,
@@ -29,6 +30,9 @@ import {
   request,
   VirtualPasskey,
 } from "./tee-live.ts";
+
+const BN254_FR_MODULUS =
+  21888242871839275222246405745257275088548364400416034343698204186575808495617n;
 
 // The legs are reached from a laptop here, not from the API's region.
 const SLOW = { a: 10_000, b: 10_000 };
@@ -95,6 +99,32 @@ describe.skipIf(!live)("coordinator (live legs)", { timeout: 120_000 }, () => {
       .where(eq(teeSignatures.requestId, req.request_id));
     expect(rows).toHaveLength(2);
     vectors.allow = out;
+  });
+
+  test("leg a answers before proving and serves the C1 proof after", async () => {
+    const { req, want } = await prepare();
+    const agent = await fresh();
+    const signed = await request(agent, carts.demo);
+    const sealed = { ...signed, sealed_salt: agent.issued.sealed_salt };
+    const out = await countersign2of2(deps(), sealed, await expectation(agent, sealed));
+    expect(out.countersign.decision).toBe("1");
+    const proof = await tee.client.a.c1(sealed.request_id);
+    const c = out.countersign;
+    const word = (n: string | bigint) => numberToHex(BigInt(n), { size: 32 });
+    expect(proof?.public_inputs).toEqual([
+      c.mandateCommitment,
+      word(c.amount),
+      word(c.currency),
+      word(c.category),
+      c.merchantId,
+      word(c.issuedAt),
+      word(BigInt(c.cartHash) % BN254_FR_MODULUS),
+      word(c.agentId),
+    ]);
+    // Nothing to prove: no sealed salt, and a request leg a never answered.
+    await countersign2of2(deps(), req, want);
+    expect(await tee.client.a.c1(req.request_id)).toBeNull();
+    expect(await tee.client.a.c1(ulid())).toBeNull();
   });
 
   test("a $340 bundle is a countersigned deny on both legs", async () => {

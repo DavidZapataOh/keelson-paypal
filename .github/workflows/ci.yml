@@ -705,3 +705,15 @@ jobs:
         run: |
           circuits/c1/prove.sh "$RUNNER_TEMP/c1-proof.json"
           bb gates -b circuits/c1/target/mandate_predicate.json | tee -a "$GITHUB_STEP_SUMMARY"
+      - run: nargo test
+        working-directory: circuits/c2a
+      - name: The C2a key and Solidity verifiers are what the circuit compiles to
+        run: |
+          circuits/c2a/build.sh
+          git diff --exit-code circuits/c2a/mandate_violation.vk contracts/src/verifiers
+      - name: bb proves and verifies each violation class of the demo mandate
+        run: |
+          for class in amount currency category expiry merchant; do
+            circuits/c2a/prove.sh "$class" "$RUNNER_TEMP/c2a-$class.json"
+          done
+          bb gates -b circuits/c2a/target/mandate_violation.json | tee -a "$GITHUB_STEP_SUMMARY"
