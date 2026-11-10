@@ -1,6 +1,6 @@
 services:
   engine:
-    image: ghcr.io/davidzapataoh/keelson-engine@sha256:9967b89c2fed0ab1b854c8ea20247eee70d7c1fb3ae9445c7134bbf692b6a3fd
+    image: ghcr.io/davidzapataoh/keelson-engine@sha256:b97f7db82daee29af8c54c8d510f5ac78ff409792f025688b3e3e21cbf900441
     command: ["--platform", "tdx", "--listen", "tcp:0.0.0.0:8080"]
     ports:
       - "8080:8080"
@@ -8,7 +8,7 @@ services:
       - /var/run/dstack.sock:/var/run/dstack.sock
       - data:/data
     environment:
-      - KEELSON_OCI_DIGEST=sha256:9967b89c2fed0ab1b854c8ea20247eee70d7c1fb3ae9445c7134bbf692b6a3fd
+      - KEELSON_OCI_DIGEST=sha256:b97f7db82daee29af8c54c8d510f5ac78ff409792f025688b3e3e21cbf900441
       - KEELSON_CANONICALIZER=keelson-canon/0.0.0
       - KEELSON_ORIGIN=https://app.keelson.finance
       - KEELSON_BOND_VAULT=0xb39898Ef4333f3CB32d1B420E744f5a1Aa2ae2Bf
