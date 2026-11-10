@@ -3,9 +3,10 @@
 import { serve } from "@hono/node-server";
 import { createDb } from "@keelson/db";
 import { pino } from "pino";
-import { createPublicClient, type Hex, http, type PublicClient } from "viem";
+import { createPublicClient, type Hex, type PublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { createApp } from "../src/app.ts";
+import { arbitrumSepoliaTransport } from "../src/chain/rpc.ts";
 import { createKv } from "../src/kv.ts";
 import { operatorSigners } from "../src/operators/signer.ts";
 import { createPayPalDeps } from "../src/paypal.ts";
@@ -19,7 +20,7 @@ const { db } = createDb(process.env.DATABASE_URL as string);
 const kv = await createKv(process.env.REDIS_URL as string, log);
 const client = createPublicClient({
   chain: arbitrumSepolia,
-  transport: http(process.env.ARBITRUM_SEPOLIA_RPC_URL),
+  transport: arbitrumSepoliaTransport(process.env.ARBITRUM_SEPOLIA_RPC_URL),
 }) as PublicClient;
 const tlog = JSON.parse(process.env.TEST_TLOG as string);
 const relayer = await kmsRelayer(db, log);

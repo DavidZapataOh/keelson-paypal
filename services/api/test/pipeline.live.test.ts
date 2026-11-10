@@ -8,17 +8,11 @@ import { ids } from "@keelson/paypal";
 import { createRelayer, kmsAccount, type Relayer } from "@keelson/relayer";
 import { pino } from "pino";
 import { ulid } from "ulid";
-import {
-  type Address,
-  bytesToHex,
-  createPublicClient,
-  type Hex,
-  http,
-  type PublicClient,
-} from "viem";
+import { type Address, bytesToHex, createPublicClient, type Hex, type PublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { createApp } from "../src/app.ts";
+import { ARBITRUM_SEPOLIA_PUBLIC_RPC, arbitrumSepoliaTransport } from "../src/chain/rpc.ts";
 import { operatorSigners } from "../src/operators/signer.ts";
 import { call, type PayPalDeps } from "../src/paypal.ts";
 import {
@@ -84,7 +78,7 @@ describe.skipIf(!keys)(
     const evidence = new EvidenceUploader();
     const client = createPublicClient({
       chain: arbitrumSepolia,
-      transport: http(process.env.ARBITRUM_SEPOLIA_RPC_URL),
+      transport: arbitrumSepoliaTransport(process.env.ARBITRUM_SEPOLIA_RPC_URL),
     }) as PublicClient;
     let tlog: LocalLog;
     let relayer: Relayer;
@@ -121,7 +115,7 @@ describe.skipIf(!keys)(
         chains: {
           421614: {
             rpcUrl: process.env.ARBITRUM_SEPOLIA_RPC_URL as string,
-            fallbackRpcUrls: ["https://sepolia-rollup.arbitrum.io/rpc"],
+            fallbackRpcUrls: [ARBITRUM_SEPOLIA_PUBLIC_RPC],
             account: await kmsAccount({
               keyId: process.env.RELAYER_KMS_KEY_SANDBOX as string,
               client: kms,
