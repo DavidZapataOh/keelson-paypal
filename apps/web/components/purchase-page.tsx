@@ -1,7 +1,11 @@
 "use client";
 
+import { Amount } from "@keelson/ui/components/amount";
 import { Button } from "@keelson/ui/components/button";
+import { CopyValue } from "@keelson/ui/components/copy-value";
+import { DataItem, DataList } from "@keelson/ui/components/data-list";
 import { Status } from "@keelson/ui/components/status";
+import { Timeline, TimelineItem } from "@keelson/ui/components/timeline";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -32,58 +36,51 @@ const CAPTURED = new Set([
   "MERCHANT_LIABLE",
 ]);
 
-/** Sign → Check → Pay → Dispute → Resolve, with who acted at each step. */
+/** Sign → Check → Pay → Dispute → Resolve: who acted at each step, and when. */
 function Steps({ p }: { p: Purchase }) {
+  const checking = p.state === "PROPOSED" || p.state === "EVALUATING";
   const blocked = p.state === "DENIED";
   const paid = CAPTURED.has(p.state);
-  const disputed = p.disputes.length > 0;
-  const resolved = p.disputes.length > 0 && p.disputes.every((d) => d.state !== "OPEN");
-  const steps = [
-    { name: "Sign", who: "You, with your passkey", done: true },
-    {
-      name: "Check",
-      who: blocked ? "Keelson blocked the cart before payment" : "Keelson countersigned the cart",
-      done: p.state !== "PROPOSED" && p.state !== "EVALUATING",
-    },
-    {
-      name: "Pay",
-      who: blocked
-        ? "Nothing was paid"
-        : p.failure
-          ? `Stopped at ${p.failure.step}: nothing was captured`
-          : "PayPal captured the amount",
-      done: paid,
-    },
-    ...(disputed
-      ? [
-          { name: "Dispute", who: "Opened on PayPal", done: true },
-          { name: "Resolve", who: "Keelson attributes the field at fault", done: resolved },
-        ]
-      : []),
-  ];
+  const amount = money(p.amount.minor, p.amount.currency);
   return (
-    <ol className="grid gap-0">
-      {steps.map((s, i) => (
-        <li key={s.name} className="grid grid-cols-[1.25rem_1fr] gap-x-4">
-          <span className="flex flex-col items-center">
-            <span
-              aria-hidden="true"
-              className={`mt-1.5 size-2.5 rounded-full border-2 ${s.done ? "border-foreground bg-foreground" : "border-border"}`}
-            />
-            {i < steps.length - 1 ? (
-              <span aria-hidden="true" className="w-px flex-1 bg-border" />
-            ) : null}
-          </span>
-          <span className="grid gap-0.5 pb-5">
-            <span className="font-medium">
-              {s.name}
-              <span className="sr-only">{s.done ? ", done" : ", pending"}</span>
-            </span>
-            <span className="text-muted-foreground text-sm">{s.who}</span>
-          </span>
-        </li>
+    <Timeline aria-label="What happened">
+      <TimelineItem state="done" actor="You">
+        signed the mandate with your passkey
+      </TimelineItem>
+      {checking ? (
+        <TimelineItem state="current" actor="Keelson">
+          is checking the cart against your mandate
+        </TimelineItem>
+      ) : blocked ? (
+        <TimelineItem state="blocked" actor="Keelson" time={p.createdAt}>
+          blocked the cart before payment
+        </TimelineItem>
+      ) : (
+        <TimelineItem state="done" actor="Keelson" time={p.createdAt}>
+          countersigned the cart
+        </TimelineItem>
+      )}
+      {blocked ? null : p.failure ? (
+        <TimelineItem state="failed" actor="Keelson">
+          stopped at {p.failure.step}: nothing was captured{" "}
+          <span className="font-mono text-muted-foreground text-xs">{p.failure.reason}</span>
+        </TimelineItem>
+      ) : paid ? (
+        <TimelineItem state="done" actor="PayPal">
+          captured {amount}
+        </TimelineItem>
+      ) : (
+        <TimelineItem state={checking ? "upcoming" : "current"} actor="PayPal">
+          captures {amount} once the Alibi is sealed
+        </TimelineItem>
+      )}
+      {p.disputes.map((d) => (
+        <TimelineItem key={d.id} state={d.state === "OPEN" ? "current" : "done"} actor="PayPal">
+          dispute {d.id}{" "}
+          {d.state === "OPEN" ? "is open; Keelson is attributing it" : "has been attributed"}
+        </TimelineItem>
       ))}
-    </ol>
+    </Timeline>
   );
 }
 
@@ -154,8 +151,13 @@ export function PurchasePage() {
         </Link>
         <div className="grid gap-3">
           <Eyebrow>{p.merchantId}</Eyebrow>
-          <h1 className="text-amount font-semibold tracking-[-0.035em]">
-            {money(p.amount.minor, p.amount.currency)}
+          <h1>
+            <Amount
+              value={Number(p.amount.minor) / 100}
+              currency={p.amount.currency}
+              className="text-amount"
+              {...(p.failure || p.state === "DENIED" ? { struck: "Not paid" } : {})}
+            />
           </h1>
           <div className="flex flex-wrap items-center gap-3 text-muted-foreground text-sm">
             <Status state={purchaseStatus(p)} />
@@ -179,38 +181,22 @@ export function PurchasePage() {
           The sealed record of this purchase: your mandate, the cart, the check and the payment.
           Anyone can verify it; nobody can rewrite it.
         </p>
-        <dl className="grid gap-3 font-mono text-sm">
-          <div className="grid gap-0.5">
-            <dt className="text-muted-foreground text-xs uppercase tracking-[0.14em]">Alibi id</dt>
-            <dd className="break-all">{p.id}</dd>
-          </div>
-          {logged ? (
-            <div className="grid gap-0.5">
-              <dt className="text-muted-foreground text-xs uppercase tracking-[0.14em]">
-                Log entry
-              </dt>
-              <dd>#{p.logIndex}</dd>
-            </div>
-          ) : null}
+        <DataList layout="stacked">
+          <DataItem label="Alibi id">
+            <CopyValue value={p.id} label="Alibi id" />
+          </DataItem>
+          {logged ? <DataItem label="Log entry">#{p.logIndex}</DataItem> : null}
           {p.capture ? (
-            <div className="grid gap-0.5">
-              <dt className="text-muted-foreground text-xs uppercase tracking-[0.14em]">
-                PayPal capture
-              </dt>
-              <dd className="break-all">{p.capture.id}</dd>
-            </div>
+            <DataItem label="PayPal capture">
+              <CopyValue value={p.capture.id} label="PayPal capture id" />
+            </DataItem>
           ) : null}
           {p.mode ? (
-            <div className="grid gap-0.5">
-              <dt className="text-muted-foreground text-xs uppercase tracking-[0.14em]">
-                Countersigned by
-              </dt>
-              <dd>
-                {p.mode === "2of2" ? "Both attested engines" : "One attested engine (degraded)"}
-              </dd>
-            </div>
+            <DataItem label="Countersigned by">
+              {p.mode === "2of2" ? "Both attested engines" : "One attested engine (degraded)"}
+            </DataItem>
           ) : null}
-        </dl>
+        </DataList>
         {sealed ? (
           <div className="grid gap-3">
             <Button asChild>

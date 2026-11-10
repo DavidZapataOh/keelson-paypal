@@ -221,10 +221,15 @@ describe.skipIf(!live)("the user app, first-time user (live sandbox)", { timeout
         await page.getByRole("button", { name: "Use the example" }).click();
         await page.getByRole("button", { name: "Review the mandate" }).click();
         await page.getByRole("heading", { name: "Check it, then sign" }).waitFor();
-        const sign = page.getByRole("button", { name: "Sign with passkey" });
-        await expect.poll(() => sign.isEnabled(), { timeout: 60_000 }).toBe(true);
+        const review = page.getByRole("button", { name: "Review and sign" });
+        await expect.poll(() => review.isEnabled(), { timeout: 60_000 }).toBe(true);
         await axe();
-        await sign.click();
+        await review.click();
+        // The grant is said once more, with Cancel as weighty as the act and the cap on the button.
+        await page.getByRole("dialog", { name: "Sign this mandate" }).waitFor();
+        expect(await page.getByRole("button", { name: "Cancel" }).isVisible()).toBe(true);
+        await axe();
+        await page.getByRole("button", { name: "Sign: allow up to $100.00" }).click();
         await page.waitForURL(/\/mandate\/\?id=/);
         const mid = new URL(page.url()).searchParams.get("id") as string;
 

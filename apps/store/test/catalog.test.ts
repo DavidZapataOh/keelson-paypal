@@ -17,6 +17,11 @@ describe("catalog", () => {
     expect(PRODUCTS.find((p) => p.handle === "premium-bundle")?.priceMinor).toBe(34000);
   });
 
+  test("cart lines name Google Product Taxonomy categories, which the engine checks", () => {
+    const bundle = quote([{ handle: "premium-bundle", size: "10", qty: 1 }]);
+    expect(bundle.cart.lines[0]?.category).toBe("gpt:988");
+  });
+
   test("a quote is the cart the engine hashes, priced from the catalog", () => {
     const shoe = PRODUCTS[0];
     if (!shoe) throw new Error("empty catalog");
@@ -30,7 +35,7 @@ describe("catalog", () => {
           sku: `${shoe.sku}-${size}`,
           size,
           color: shoe.color,
-          category: shoe.category,
+          category: "gpt:187",
           qty: 2,
           unit_minor: shoe.priceMinor,
         },

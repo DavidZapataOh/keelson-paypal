@@ -23,6 +23,8 @@ export function useMandate(id: string | null) {
   const [mandate, setMandate] = useState<MandateView>();
   const [error, setError] = useState<string>();
   const [pending, setPending] = useState<PendingHold[]>([]);
+  // Purchases countersigned while the page was open: the one moment the app animates.
+  const [countersigned, setCountersigned] = useState<ReadonlySet<string>>(new Set());
 
   const load = useCallback(() => {
     if (!id) return;
@@ -48,6 +50,10 @@ export function useMandate(id: string | null) {
             : all.filter((p) => p.requestId !== hold.requestId),
         );
       }
+      if (e.type === "purchase.countersigned" && typeof e.purchaseId === "string") {
+        const id = e.purchaseId;
+        setCountersigned((all) => new Set(all).add(id));
+      }
       load();
     },
     [load],
@@ -59,6 +65,7 @@ export function useMandate(id: string | null) {
     mandate,
     error,
     pending,
+    countersigned,
     reload: load,
     signedIn: session.data !== null,
     sessionPending: session.isPending,
