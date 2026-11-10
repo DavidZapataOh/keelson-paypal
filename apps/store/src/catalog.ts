@@ -21,6 +21,9 @@ export interface Product {
   sizes: string[];
 }
 
+/** Google Product Taxonomy ids, the categories mandates allow: Shoes and Sporting Goods. */
+const TAXONOMY: Record<Product["category"], string> = { shoes: "gpt:187", bundle: "gpt:988" };
+
 const SIZES = ["7", "8", "9", "10", "11", "12"];
 
 export const PRODUCTS: readonly Product[] = [
@@ -189,7 +192,7 @@ export function quote(requested: readonly LineRequest[]): Quote {
         sku: `${p.sku}-${size}`,
         size,
         color: p.color,
-        category: p.category,
+        category: TAXONOMY[p.category],
         qty,
         unit_minor: p.priceMinor,
       })),

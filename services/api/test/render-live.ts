@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { KMSClient } from "@aws-sdk/client-kms";
 import { cartHash } from "@keelson/core";
 import { createDb, eq, purchases } from "@keelson/db";
-import { closeMandate } from "@keelson/mandate";
+import { closeMandate, type Mandate } from "@keelson/mandate";
 import { approveOrder, payerActionUrl } from "@keelson/paypal/testing";
 import { createRelayer, kmsAccount } from "@keelson/relayer";
 import { ulid } from "ulid";
@@ -155,8 +155,11 @@ export async function renderHarness() {
   await refreshLeg(db, "b", tee);
   const unseed = await seedDemoOperator(db);
 
-  /** A new user's mandate of `maxMinor`, held on PayPal and approved by the sandbox buyer. */
-  async function openHold(maxMinor: number): Promise<Hold> {
+  /**
+   * A new user's mandate of `maxMinor`, after `edit`, held on PayPal and approved by the sandbox
+   * buyer.
+   */
+  async function openHold(maxMinor: number, edit: (m: Mandate) => void = () => {}): Promise<Hold> {
     const passkey = await SoftwarePasskey.create();
     const sub = `kls_usr_${randomBytes(8).toString("hex")}`;
     await seedUser(db, passkey, sub);
@@ -167,6 +170,7 @@ export async function renderHarness() {
           ? { ...c, max: maxMinor }
           : c,
       );
+      edit(m);
     });
     await passkey.close();
     const stored = await post("/v1/mandates", asUser(sub), signed.body);
