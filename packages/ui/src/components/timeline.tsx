@@ -1,3 +1,4 @@
+import { ArrowUpRightIcon } from "lucide-react";
 import type * as React from "react";
 import { cn } from "#lib/utils";
 
@@ -9,7 +10,8 @@ type TimelineState = "done" | "current" | "upcoming" | "blocked" | "failed";
 
 const MARKER: Record<TimelineState, string> = {
   done: "bg-foreground text-background",
-  current: "border-2 border-foreground bg-background",
+  // The live step pulses while it waits (countersign, capture); nothing moves under reduced motion.
+  current: "border-2 border-foreground bg-background motion-safe:animate-pending",
   upcoming: "border border-dashed border-muted-foreground bg-background",
   blocked: "rounded-[3px] bg-vermilion text-graphite",
   failed: "border border-vermilion-deep bg-graphite text-bone",
@@ -49,12 +51,13 @@ function Timeline({ className, ...props }: React.ComponentProps<"ol">) {
   return <ol data-slot="timeline" className={cn("grid", className)} {...props} />;
 }
 
-/** One event: marker, actor, what they did, and when. */
+/** One event: marker, actor, what they did, when, and where to check it. */
 function TimelineItem({
   state,
   actor,
   time,
   timeLabel,
+  proof,
   className,
   children,
   ...props
@@ -65,6 +68,8 @@ function TimelineItem({
   time?: string;
   /** What to show for the time; defaults to `time` in UTC. */
   timeLabel?: React.ReactNode;
+  /** Where this step can be checked outside the app: an explorer, the PayPal order, the log. */
+  proof?: { href: string; label: string };
 }) {
   return (
     <li
@@ -95,10 +100,26 @@ function TimelineItem({
         >
           <span className="font-medium">{actor}</span> {children}
         </p>
-        {time && (
-          <time dateTime={time} className="font-mono text-xs text-muted-foreground tabular-nums">
-            {timeLabel ?? `${time.replace("T", " ").replace(/\.\d+/, "").replace("Z", "")} UTC`}
-          </time>
+        {(time || proof) && (
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs text-muted-foreground tabular-nums">
+            {time && (
+              <time dateTime={time}>
+                {timeLabel ?? `${time.replace("T", " ").replace(/\.\d+/, "").replace("Z", "")} UTC`}
+              </time>
+            )}
+            {proof && (
+              <a
+                href={proof.href}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-0.5 underline decoration-border underline-offset-4 hover:text-foreground hover:decoration-current"
+              >
+                {proof.label}
+                <ArrowUpRightIcon aria-hidden="true" className="size-3" />
+                <span className="sr-only"> (opens in a new tab)</span>
+              </a>
+            )}
+          </span>
         )}
       </div>
     </li>

@@ -67,6 +67,9 @@ No blue.
 | `Meter`                      | How much of a cap is used, as a bar and in words; warn past 90 %, never vermilion.                                                                                             |
 | `BlockDiff`                  | Why a cart was blocked, in one line: the mandate, the cart, the block.                                                                                                         |
 
+An error names the problem, the fix and an example: "Enter an amount above $0.00, for example
+100.00." It sits under the field with `FieldError`, never in a native browser bubble.
+
 ## AG Studio
 
 ```tsx

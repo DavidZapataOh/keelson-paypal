@@ -229,7 +229,12 @@ function Showcase() {
             <TimelineItem state="done" actor="You" time="2026-11-09T14:01:52Z">
               signed the mandate
             </TimelineItem>
-            <TimelineItem state="done" actor="Keelson" time="2026-11-09T14:02:09Z">
+            <TimelineItem
+              state="done"
+              actor="Keelson"
+              time="2026-11-09T14:02:09Z"
+              proof={{ href: "https://sepolia.arbiscan.io", label: "Log anchor" }}
+            >
               checked the cart and countersigned
             </TimelineItem>
             <TimelineItem state="current" actor="PayPal">

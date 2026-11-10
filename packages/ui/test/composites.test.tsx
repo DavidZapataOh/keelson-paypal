@@ -145,3 +145,30 @@ describe("LiabilityField", () => {
     expect(out).toContain('data-kind="attested"');
   });
 });
+
+describe("research-driven details", () => {
+  test("cents are set small and raised; the plain figure is for screen readers", () => {
+    const out = html(<Amount value={200} />);
+    expect(out).toMatch(/align-\[0\.4em\][^>]*>\.00</);
+    expect(out).toMatch(/sr-only[^>]*>\$200\.00</);
+  });
+
+  test("the live step pulses only when motion is allowed", () => {
+    expect(html(<TimelineItem state="current" actor="Keelson" />)).toContain(
+      "motion-safe:animate-pending",
+    );
+  });
+
+  test("a step links to its proof outside the app", () => {
+    const out = html(
+      <TimelineItem
+        state="done"
+        actor="PayPal"
+        proof={{ href: "https://www.sandbox.paypal.com/activity", label: "PayPal order" }}
+      />,
+    );
+    expect(out).toContain('href="https://www.sandbox.paypal.com/activity"');
+    expect(out).toContain('rel="noreferrer"');
+    expect(out).toContain("(opens in a new tab)");
+  });
+});
