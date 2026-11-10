@@ -48,6 +48,7 @@ import { registerMerchantConsole } from "./routes/merchant-console.ts";
 import { registerMerchantsPayout } from "./routes/merchants-payout.ts";
 import { registerMerchantsSettlement } from "./routes/merchants-settlement.ts";
 import { registerObservations } from "./routes/observations.ts";
+import { registerOperatorConsole } from "./routes/operator-console.ts";
 import { registerOperators } from "./routes/operators.ts";
 import { registerPasskeys } from "./routes/passkeys.ts";
 import { registerPayPalWebhook } from "./routes/paypal-webhook.ts";
@@ -65,8 +66,9 @@ import { registerWebFacts } from "./routes/web-facts.ts";
 import type { TeeConfig } from "./tee/signers.ts";
 import type { StampWorker } from "./timestamps/worker.ts";
 
-/** POST routes that stream their response. */
-const STREAMED_POSTS = /^\/v1\/merchants\/[^/]+\/assistant$/;
+/** POST routes that stream their response, or that read: neither changes anything a retry repeats. */
+const STREAMED_POSTS =
+  /^\/v1\/(merchants\/[^/]+\/assistant|operators\/[^/]+\/(coverages\/rows|grid-query))$/;
 
 /**
  * The public reads the verifier makes: an Alibi's receipt, a leaf's timestamps, a mandate's C3
@@ -303,6 +305,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerMerchantsSettlement(app, deps);
   registerMerchantConsole(app, deps);
   registerMerchantAssistant(app, deps);
+  registerOperatorConsole(app, deps);
   registerPurchaseTracking(app, deps);
   registerTransactions(app, deps);
   registerRedTeam(app, deps);
