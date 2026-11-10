@@ -35,7 +35,7 @@ import { createTee } from "./tee/config.ts";
 import { engineSource } from "./tee/engine-source.ts";
 import { startSignerRefresh } from "./tee/signers.ts";
 import { startStampWorker } from "./timestamps/worker.ts";
-import { composable, proveAnonymousPurchase } from "./zk/c1c3.ts";
+import { awaitingC3, composable, proveAnonymousPurchase } from "./zk/c1c3.ts";
 import { C3_SALT_TTL_SECONDS, c3SaltKey, proveAnonymousMandate } from "./zk/c3.ts";
 
 const FORCE_EXIT_MS = 10_000;
@@ -156,6 +156,9 @@ const proveC3 = render
     }
   : async (mandateId: string, salt: string) => {
       await proveAnonymousMandate({ db, log }, mandateId, salt);
+      for (const purchaseId of await awaitingC3(db, mandateId)) {
+        await proveAnonymousPurchase({ db, log }, purchaseId);
+      }
     };
 // Composing takes about 2.8 GB: the workflow does it, only for a purchase with both recursive proofs.
 const proveC1C3 = async (purchaseId: string) => {

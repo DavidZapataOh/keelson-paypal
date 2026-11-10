@@ -64,8 +64,9 @@ pub struct Statement {
 pub struct C1Proof {
     pub proof: Vec<u8>,
     pub public_inputs: Vec<[u8; 32]>,
-    /// The proof's fields for `bb prove -t noir-recursive`, 32 bytes each.
-    pub recursive_proof: Vec<u8>,
+    /// The proof's fields for `bb prove -t noir-recursive`, 32 bytes each; none when only that
+    /// proof failed, so the EVM proof is still served.
+    pub recursive_proof: Option<Vec<u8>>,
 }
 
 #[derive(Debug)]
@@ -200,11 +201,14 @@ impl Prover {
             (circuit(VERIFICATION_KEY), circuit(RECURSIVE_VERIFICATION_KEY));
         let recursive_witness = witness.clone();
         let out = self.call(move |api| api.circuit_prove(evm_circuit, &witness, evm()))?;
-        let recursive = self.call(move |api| {
-            api.circuit_prove(recursive_circuit, &recursive_witness, noir_recursive())
-        })?;
+        let recursive = self
+            .call(move |api| {
+                api.circuit_prove(recursive_circuit, &recursive_witness, noir_recursive())
+            })
+            .map_err(|e| eprintln!("keelson-engine: no recursive C1 proof: {e}"))
+            .ok();
         Ok(C1Proof {
-            recursive_proof: recursive.proof.concat(),
+            recursive_proof: recursive.map(|r| r.proof.concat()),
             proof: out.proof.concat(),
             public_inputs: out
                 .public_inputs
@@ -227,7 +231,10 @@ impl Prover {
     /// Verifies `proof`'s recursive proof against the embedded recursive key with the same `bb`.
     pub fn verify_recursive(&self, proof: &C1Proof) -> Result<bool, ProverError> {
         let inputs = proof.public_inputs.iter().map(|f| f.to_vec()).collect();
-        let fields = proof.recursive_proof.chunks(32).map(<[u8]>::to_vec).collect();
+        let Some(recursive) = &proof.recursive_proof else {
+            return Ok(false);
+        };
+        let fields = recursive.chunks(32).map(<[u8]>::to_vec).collect();
         let out = self.call(move |api| {
             api.circuit_verify(RECURSIVE_VERIFICATION_KEY, inputs, fields, noir_recursive())
         })?;

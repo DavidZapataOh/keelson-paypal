@@ -22,6 +22,20 @@ function fields(base64: string): string[] {
   return out;
 }
 
+/**
+ * The purchases of mandate `mandateId` that wait for its C3 proof to be composed: their C1 came
+ * first. A C3 proof stored after a purchase was logged composes them then.
+ */
+export async function awaitingC3(db: Db, mandateId: string): Promise<string[]> {
+  const rows = await db
+    .select({ id: purchases.id })
+    .from(purchases)
+    .where(
+      sql`${purchases.mandateId} = ${mandateId} and ${purchases.c1c3Proof} is null and ${purchases.c1Proof} ? 'recursive_proof'`,
+    );
+  return rows.map((r) => r.id);
+}
+
 /** Whether purchase `purchaseId` has the recursive C1 and C3 proofs a composition needs. */
 export async function composable(db: Db, purchaseId: string): Promise<boolean> {
   const [row] = await db
@@ -80,12 +94,15 @@ export async function proveAnonymousPurchase(
   );
   const c1c3: C1C3Proof = { proof: toBase64(evm.proof), public_inputs: evm.publicInputs };
   const countersign = Object.fromEntries(
-    Object.entries(row.countersign).map(([k, v]) => [k, v.toLowerCase()]),
+    Object.entries(row.countersign).map(([k, v]) => [k, v.startsWith("0x") ? v.toLowerCase() : v]),
   ) as Parameters<typeof c1c3Statement>[0];
   const expected = c1c3Statement(countersign, c3.public_inputs[2] as string);
-  const holds = expected.every((x, i) => x === c1c3.public_inputs[i]);
+  const holds =
+    expected.length === c1c3.public_inputs.length &&
+    expected.every((x, i) => x === c1c3.public_inputs[i]);
   if (!holds || !(await verifyC1C3(c1c3.proof, c1c3.public_inputs))) {
-    throw new Error(`the composed proof of purchase ${purchaseId} does not verify`);
+    // The same proofs compose the same way: this never succeeds on a retry.
+    throw new RangeError(`the composed proof of purchase ${purchaseId} does not verify`);
   }
   await db
     .update(purchases)

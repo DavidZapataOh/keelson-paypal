@@ -15,7 +15,7 @@ import { relayerFromEnv } from "./onchain/relayer.ts";
 import { createPayPalDeps } from "./paypal.ts";
 import "./redteam.ts";
 import { createTee } from "./tee/config.ts";
-import { proveAnonymousPurchase } from "./zk/c1c3.ts";
+import { awaitingC3, proveAnonymousPurchase } from "./zk/c1c3.ts";
 import { c3SaltKey, proveAnonymousMandate } from "./zk/c3.ts";
 
 const Env = z.object({
@@ -103,6 +103,7 @@ task(
     name: "proveAnonymousMandate",
     retry: { maxRetries: 3, waitDurationMs: 2_000, backoffScaling: 2 },
     timeoutSeconds: 300,
+    // The composition of purchases logged before the proof needs about 2.8 GB.
     plan: "4c-8g",
   },
   async function proveC3(_ctx, mandateId: string) {
@@ -124,6 +125,12 @@ task(
       return { mandateId, proved: false };
     }
     await kv.del(key);
+    // Purchases logged before this proof existed are composed now, on this instance.
+    for (const purchaseId of await awaitingC3(db, mandateId)) {
+      await proveAnonymousPurchase({ db, log }, purchaseId).catch((err: unknown) =>
+        log.warn({ err, purchaseId }, "not composed"),
+      );
+    }
     return { mandateId, proved: true };
   },
 );

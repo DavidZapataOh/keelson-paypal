@@ -69,7 +69,7 @@ const purchaseRoute = createRoute({
   tags: ["purchases"],
   summary: "Proof that a purchase was within a mandate a registered user signed",
   description:
-    "One zero-knowledge proof that composes the purchase's C1 proof (the countersigned cart satisfies the mandate) with its mandate's C3 proof (a registered user's passkey, the one the mandate names, signed it) by recursion. It shows neither the mandate nor the user, so it needs no authentication.",
+    "One zero-knowledge proof that composes the purchase's C1 proof (the countersigned cart satisfies the mandate) with its mandate's C3 proof (a registered user's passkey, the one the mandate names, signed it) by recursion. It shows neither the mandate nor the user. Its public inputs are the countersign's cart fields, `C_m` and `M`, which link the purchases of one mandate: anyone holding the purchase id can read it.",
   request: { params: z.object({ id: z.string().regex(/^[0-9A-HJKMNP-TV-Z]{26}$/) }) },
   responses: {
     200: {

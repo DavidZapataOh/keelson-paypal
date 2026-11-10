@@ -14,7 +14,7 @@ import { beforeAll, describe, expect, test } from "vitest";
 import c1 from "../../../contracts/test/vectors/c1-anonymous-recursive.json" with { type: "json" };
 import vector from "../../../packages/mandate/test/vectors/c3.json" with { type: "json" };
 import { createApp } from "../src/app.ts";
-import { composable, proveAnonymousPurchase } from "../src/zk/c1c3.ts";
+import { awaitingC3, composable, proveAnonymousPurchase } from "../src/zk/c1c3.ts";
 import { proveAnonymousMandate } from "../src/zk/c3.ts";
 import { testDb, testKv } from "./setup.ts";
 
@@ -188,6 +188,7 @@ describe("proveAnonymousPurchase", () => {
     expect(c3.recursive_proof).toBeDefined();
     const purchaseId = await storePurchase(id);
     expect(await composable(testDb, purchaseId)).toBe(true);
+    expect(await awaitingC3(testDb, id)).toContain(purchaseId);
     const composed = await proveAnonymousPurchase({ db: testDb, log }, purchaseId);
     const root = c3.public_inputs[2] as string;
     const row = await testDb.query.purchases.findFirst({
@@ -196,6 +197,7 @@ describe("proveAnonymousPurchase", () => {
     const countersign = row?.countersign as Parameters<typeof c1c3Statement>[0];
     expect(composed.public_inputs).toEqual(c1c3Statement(countersign, root));
     expect(await composable(testDb, purchaseId)).toBe(false);
+    expect(await awaitingC3(testDb, id)).not.toContain(purchaseId);
 
     const res = await get(`/v1/anonymous-purchases/${purchaseId}`);
     expect(res.status).toBe(200);

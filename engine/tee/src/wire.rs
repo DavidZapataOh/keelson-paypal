@@ -269,7 +269,7 @@ impl From<&crate::zk::C1Proof> for ZkProof {
         Self {
             proof: Base64(p.proof.clone()),
             public_inputs: p.public_inputs.iter().map(|b| Hex(*b)).collect(),
-            recursive_proof: Some(Base64(p.recursive_proof.clone())),
+            recursive_proof: p.recursive_proof.clone().map(Base64),
         }
     }
 }

@@ -740,4 +740,5 @@ jobs:
       - name: bb composes C1 and C3 of the anonymous demo purchase by recursion
         run: |
           circuits/c1c3/prove.sh "$RUNNER_TEMP/c1c3.json"
+          circuits/c1c3/refuses.sh
           bb gates -b circuits/c1c3/target/anonymous_purchase.json | tee -a "$GITHUB_STEP_SUMMARY"
