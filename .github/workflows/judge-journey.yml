@@ -1,0 +1,48 @@
+name: judge-journey
+
+# The judge's journey on production, from a clean browser, every hour. A failure opens an issue
+# (or comments on the open one), which notifies the repository's watchers.
+on:
+  schedule:
+    - cron: "23 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: judge-journey
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  journey:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @keelson/web exec playwright install --with-deps chromium
+      - name: Walk the tour on app.keelson.finance
+        env:
+          JUDGE_LIVE_ORIGIN: https://app.keelson.finance
+        run: pnpm --filter @keelson/web exec vitest run test/e2e/judge.live.test.ts
+      - name: Alert
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          open=$(gh issue list --state open --label judge-journey --json number --jq '.[0].number')
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --body "Failed again: $RUN_URL"
+          else
+            gh label create judge-journey --color B60205 --description "Hourly judge journey" 2>/dev/null || true
+            gh issue create --label judge-journey --title "Judge journey failing on production" \
+              --body "The hourly judge journey failed: $RUN_URL"
+          fi

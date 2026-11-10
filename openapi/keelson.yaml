@@ -3222,11 +3222,16 @@ components:
         settlement_address:
           type: string
           description: The wallet the merchant signs in and signs its choices with.
+        read_only:
+          type: boolean
+          description: "True for a Judge Mode session: it reads the console and changes
+            nothing."
       required:
         - merchant_id
         - name
         - website
         - settlement_address
+        - read_only
     MerchantSettlement:
       type: object
       properties:
@@ -4074,6 +4079,159 @@ components:
       required:
         - carrier
         - tracking_number
+    JudgeSession:
+      type: object
+      properties:
+        user_id:
+          type: string
+      required:
+        - user_id
+    JudgeTour:
+      type: object
+      properties:
+        merchant_id:
+          type: string
+        agent_id:
+          type:
+            - string
+            - "null"
+        mandate:
+          type:
+            - object
+            - "null"
+          properties:
+            id:
+              type: string
+            state:
+              type: string
+            mandate_hash:
+              type:
+                - string
+                - "null"
+            budget:
+              type: object
+              properties:
+                currency:
+                  type: string
+                max_minor:
+                  type: string
+              required:
+                - currency
+                - max_minor
+            created_at:
+              type: string
+              format: date-time
+            card:
+              allOf:
+                - $ref: "#/components/schemas/MandateCard"
+                - type:
+                    - object
+                    - "null"
+            purchases:
+              type: array
+              items:
+                $ref: "#/components/schemas/JudgeTourPurchase"
+          required:
+            - id
+            - state
+            - mandate_hash
+            - budget
+            - created_at
+            - card
+            - purchases
+        dispute_id:
+          type:
+            - string
+            - "null"
+        campaign_id:
+          type:
+            - string
+            - "null"
+      required:
+        - merchant_id
+        - agent_id
+        - mandate
+        - dispute_id
+        - campaign_id
+    JudgeTourPurchase:
+      type: object
+      properties:
+        id:
+          type: string
+          description: The purchase's ULID, which is also its Alibi id.
+        state:
+          type: string
+        mode:
+          type:
+            - string
+            - "null"
+        amount:
+          type: object
+          properties:
+            currency:
+              type: string
+            minor:
+              type: string
+          required:
+            - currency
+            - minor
+        merchant_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        log_index:
+          type:
+            - string
+            - "null"
+        capture_id:
+          type:
+            - string
+            - "null"
+        coverage_tx:
+          type:
+            - string
+            - "null"
+        failure:
+          type:
+            - string
+            - "null"
+        checks:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              color:
+                type: string
+              pass:
+                type: boolean
+            required:
+              - field
+              - color
+              - pass
+          description: Each mandate field the engine checked.
+        alibi_fragment:
+          type:
+            - string
+            - "null"
+          description: "`<leaf hash>.<anchored size>.<chain id>`: the fragment of the
+            Alibi's verifier link,
+            `https://verify.keelson.finance/a/<id>#<fragment>`."
+      required:
+        - id
+        - state
+        - mode
+        - amount
+        - merchant_id
+        - created_at
+        - log_index
+        - capture_id
+        - coverage_tx
+        - failure
+        - checks
+        - alibi_fragment
   parameters: {}
 paths:
   /health:
@@ -7164,6 +7322,75 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "503":
           description: Too many open streams
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/judge/sessions:
+    post:
+      tags:
+        - judge
+      summary: Open a Judge Mode session
+      description: "Creates a judge: a tenant with no email, no account and no key,
+        signed in with a session cookie until the nightly reset after 12 hours.
+        A judge reads the demo merchant's console (no changes), walks the tour,
+        and can sign its own mandates with a passkey like any user. Five per
+        hour per address."
+      responses:
+        "201":
+          description: The judge, signed in (the session cookie is set)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JudgeSession"
+        "403":
+          description: Not called from the app's origin
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Already signed in as someone else
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Too many judges
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: Sign-in is not configured
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/judge/tour:
+    get:
+      tags:
+        - judge
+      summary: What the Judge Mode tour shows
+      description: "The newest real records on this deployment: the demo operator's
+        latest mandate with a captured purchase (its card and every purchase
+        under it, blocked ones included), the latest sandbox dispute with a
+        verdict, and the latest finished red-team campaign. Judges only."
+      responses:
+        "200":
+          description: The tour
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JudgeTour"
+        "401":
+          description: No session
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Not a judge
           content:
             application/problem+json:
               schema:

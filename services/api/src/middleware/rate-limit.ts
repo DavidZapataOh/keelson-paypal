@@ -24,6 +24,24 @@ export interface RateLimitOptions {
 
 /** The caller's IP address, read as {@link RateLimitOptions.trustProxy} describes, if known. */
 export function clientAddress(c: Context, trustProxy: boolean): string | undefined {
+  const address = rawAddress(c, trustProxy);
+  const mapped = address && /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(address);
+  if (mapped) return mapped[1];
+  return address?.includes(":") ? ipv6Prefix(address) : address;
+}
+
+/** One IPv6 host usually holds a whole /64, so it is counted as one caller. */
+function ipv6Prefix(address: string): string {
+  const [head = "", tail = ""] = address.split("::");
+  const left = head ? head.split(":") : [];
+  const right = tail ? tail.split(":") : [];
+  const groups = address.includes("::")
+    ? [...left, ...Array(Math.max(0, 8 - left.length - right.length)).fill("0"), ...right]
+    : left;
+  return `${groups.slice(0, 4).join(":")}::/64`;
+}
+
+function rawAddress(c: Context, trustProxy: boolean): string | undefined {
   if (trustProxy) {
     const cf = c.req.header("cf-connecting-ip")?.trim();
     if (cf) return cf;

@@ -22,6 +22,8 @@ export const user = pgTable("user", {
   role: text("role", { enum: ["user", "admin"] })
     .default("user")
     .notNull(),
+  /** A Judge Mode tenant: a session with no email, no account and no key. */
+  isAnonymous: boolean("is_anonymous").default(false).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .defaultNow()

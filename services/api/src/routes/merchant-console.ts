@@ -15,6 +15,7 @@ import {
 import { CHAINS, isChainId } from "@keelson/relayer";
 import type { Context, MiddlewareHandler } from "hono";
 import type { Deps } from "../app.ts";
+import { isJudge } from "../judge.ts";
 import { MERCHANTS, merchantOfUser, SETTLEMENT } from "../merchants.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 
@@ -23,8 +24,17 @@ const PARTIES = ["operator", "keelson", "merchant", "user"] as const;
 declare module "hono" {
   interface ContextVariableMap {
     merchantId: string | undefined;
+    /** Set when a judge reads the demo merchant's console: the judge's user id. */
+    judgeId: string | undefined;
   }
 }
+
+/** The merchant Judge Mode shows: the demo store's. */
+const DEMO_MERCHANT = (MERCHANTS[0] as (typeof MERCHANTS)[number]).id;
+
+/** What a judge may do in the demo merchant's console: read it and ask its assistant. */
+const judgeMay = (method: string, path: string) =>
+  method === "GET" || (method === "POST" && path.endsWith("/assistant"));
 
 const problems = {
   401: {
@@ -39,7 +49,8 @@ const problems = {
 
 /**
  * Admits only the session of the merchant in the path: a user signed in (EIP-4361) with that
- * merchant's settlement address. Sets `c.var.merchantId`.
+ * merchant's settlement address. A judge reads the demo merchant's console and asks its
+ * assistant; it changes nothing. Sets `c.var.merchantId`, and `c.var.judgeId` for a judge.
  */
 export function requireMerchant(deps: Pick<Deps, "db" | "merchantSigners">): MiddlewareHandler {
   return async (c, next) => {
@@ -56,6 +67,19 @@ export function requireMerchant(deps: Pick<Deps, "db" | "merchantSigners">): Mid
         ? await merchantOfUser(deps.db, principal.subject, deps.merchantSigners ?? SETTLEMENT)
         : undefined;
     const wanted = c.req.param("merchantId");
+    if (
+      !merchant &&
+      principal.kind === "user" &&
+      (wanted === undefined || wanted === DEMO_MERCHANT) &&
+      (await isJudge(deps.db, principal.subject))
+    ) {
+      if (!judgeMay(c.req.method, c.req.path)) {
+        return problem(c, 403, "read-only", "Read only", "Judge Mode cannot change a merchant.");
+      }
+      c.set("merchantId", DEMO_MERCHANT);
+      c.set("judgeId", principal.subject);
+      return next();
+    }
     if (!merchant || (wanted !== undefined && merchant.id !== wanted)) {
       return problem(
         c,
@@ -79,6 +103,9 @@ const Me = z
     website: z.url(),
     settlement_address: z.string().openapi({
       description: "The wallet the merchant signs in and signs its choices with.",
+    }),
+    read_only: z.boolean().openapi({
+      description: "True for a Judge Mode session: it reads the console and changes nothing.",
     }),
   })
   .openapi("MerchantSelf");
@@ -241,6 +268,7 @@ export function registerMerchantConsole(
         name: merchant.name,
         website: merchant.website,
         settlement_address: signers[merchant.id] as string,
+        read_only: c.var.judgeId !== undefined,
       },
       200,
     );

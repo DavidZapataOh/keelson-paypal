@@ -147,13 +147,27 @@ export function costMicros(
 }
 
 const MAX_TOKENS = 16_000;
-const LIMIT: Record<Model, number> = {
+type Limits = Record<Model, number>;
+const LIMIT: Limits = {
   "claude-opus-5-5": DAILY_BUDGET_MICROS,
   "claude-haiku-5-5": FALLBACK_BUDGET_MICROS,
 };
+/**
+ * A judge's own budget over its whole session, apart from the merchant's: one worst-case turn on
+ * `claude-opus-5-5`, then `claude-haiku-5-5`.
+ * @internal
+ */
+export const JUDGE_LIMIT: Limits = {
+  "claude-opus-5-5": 500_000,
+  "claude-haiku-5-5": 100_000,
+};
 
 const day = () => new Date().toISOString().slice(0, 10);
-const spentKey = (merchantId: string, model: Model) => `assistant:${merchantId}:${model}:${day()}`;
+/** A merchant's budget is per UTC day; a judge's lasts its whole tenant. */
+const spentKey = (owner: string, model: Model) =>
+  owner.startsWith("judge:")
+    ? `assistant:${owner}:${model}`
+    : `assistant:${owner}:${model}:${day()}`;
 
 /**
  * The most a turn can cost: every three bytes of its body an input token, and a full reply.
@@ -184,11 +198,12 @@ export async function reserve(
   merchantId: string,
   asked: Model,
   bodyBytes: number,
+  limits: Limits = LIMIT,
 ): Promise<{ model: Model; reserved: number } | undefined> {
   for (const model of asked === FALLBACK ? [FALLBACK] : [asked, FALLBACK]) {
     const reserved = worstCase(model, bodyBytes);
     const key = spentKey(merchantId, model);
-    if ((await add(kv, key, reserved)) <= LIMIT[model]) return { model, reserved };
+    if ((await add(kv, key, reserved)) <= limits[model]) return { model, reserved };
     await kv.decrBy(key, reserved);
   }
   return undefined;
@@ -220,7 +235,9 @@ export function registerMerchantAssistant(
     if (!anthropic) {
       return problem(c, 503, "dependency-unavailable", "Model unavailable");
     }
-    const merchantId = c.var.merchantId as string;
+    const judge = c.var.judgeId;
+    // A judge spends its own budget, never the merchant's.
+    const merchantId = judge ? `judge:${judge}` : (c.var.merchantId as string);
     const raw = await c.req.text();
     const body = Body.parse(JSON.parse(raw));
     const turn = await reserve(
@@ -228,6 +245,7 @@ export function registerMerchantAssistant(
       merchantId,
       body.model ?? MODELS[0],
       Buffer.byteLength(raw),
+      judge ? JUDGE_LIMIT : LIMIT,
     );
     if (!turn) {
       return problem(
@@ -235,7 +253,9 @@ export function registerMerchantAssistant(
         429,
         "budget-spent",
         "Budget spent",
-        "Today's assistant budget is spent; it resets at 00:00 UTC.",
+        judge
+          ? "This Judge Mode session's assistant budget is spent."
+          : "Today's assistant budget is spent; it resets at 00:00 UTC.",
       );
     }
     const { model } = turn;
