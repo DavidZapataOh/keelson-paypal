@@ -4,6 +4,7 @@ import { addresses, type ChainId, chainIds } from "./addresses.ts";
 export * from "./abis.ts";
 export { addresses, type ChainId, chainIds } from "./addresses.ts";
 export * from "./coverage.ts";
+export * from "./permit.ts";
 export * from "./reserve.ts";
 export * from "./verdict.ts";
 

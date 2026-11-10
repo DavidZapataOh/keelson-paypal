@@ -50,6 +50,23 @@ cargo test
 
 The demo store at https://store.keelson.finance sells as RunFast, a PayPal sandbox business account: checkout runs the PayPal JavaScript SDK v6 against the sandbox, so no real money moves. `KEELSON_LIVE=1 pnpm --filter @keelson/store exec vitest run test/checkout.live.test.ts` buys one pair as the sandbox buyer (`PAYPAL_SANDBOX_BUYER_EMAIL` and `PAYPAL_SANDBOX_BUYER_PASSWORD`); set `STORE_URL` to run it against a deployed store.
 
+## Judge Mode
+
+https://app.keelson.finance/judge opens a temporary tenant with one click (no keys, no sign-up) and walks through the live product in nine steps: a real mandate, the agent run that bought under it and the injected run Keelson blocked, its Alibi in the verifier, a PayPal sandbox dispute with its signed verdict and settlement, the demo merchant's console (read only), the operator's grade, the red-team scoreboard and live status. A judge reads the demo merchant's console and asks its assistant on a budget of its own; it changes nothing, and the nightly reset closes it after 12 hours. https://app.keelson.finance/status shows the health of each dependency.
+
+| Dependency                                                                  | Runs on                       |
+| --------------------------------------------------------------------------- | ----------------------------- |
+| PayPal                                                                      | Sandbox: no real money moves  |
+| Arbitrum Sepolia (bond vault, reserve, verdict verifier, checkpoint anchor) | Testnet, test PYUSD           |
+| TEE leg A, Intel TDX on Phala Cloud                                         | Production hardware           |
+| TEE leg B, AWS Nitro Enclaves                                               | Production hardware           |
+| Alibi log and witnesses                                                     | Production                    |
+| Claude (Anthropic API)                                                      | Production                    |
+| Agent browser (Kernel)                                                      | Production                    |
+| Demo store (RunFast)                                                        | Ours, PayPal sandbox checkout |
+
+`JUDGE_LIVE_ORIGIN=https://app.keelson.finance pnpm --filter @keelson/web exec vitest run test/e2e/judge.live.test.ts` runs the judge's journey on production from a clean browser; `.github/workflows/judge-journey.yml` runs it every hour and opens an issue when it fails.
+
 ## MCP server
 
 Keelson's MCP server is served by the API at `https://api.keelson.finance/mcp` (Streamable HTTP, stateless). It is an OAuth 2.1 protected resource: clients find the authorization server at `/.well-known/oauth-protected-resource` and get a token with the client credentials grant for the resource `https://api.keelson.finance`; each tool asks for the scope its API calls need. `keelson.get_alibi` renders the Alibi as an MCP App.

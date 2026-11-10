@@ -21,6 +21,7 @@ import { ulid } from "ulid";
 import type { Hex, PublicClient } from "viem";
 import { type AnchorDeps, reanchorAlibi, recordAnchor } from "../alibi/anchors.ts";
 import { loadAlibi } from "../alibi/issue.ts";
+import { arbitrumSepoliaRpcUrls } from "../chain/rpc.ts";
 import type { LogConfig } from "../log/append.ts";
 import { payeeFor, settlementOf } from "../merchants.ts";
 import { call, type PayPalDeps } from "../paypal.ts";
@@ -148,7 +149,9 @@ export async function evaluateDispute(deps: EvaluateDeps, disputeId: string): Pr
     await Promise.all([
       getDispute(deps.paypal.paypal.fetch, disputeId),
       verifyAlibi(bundle, {
-        chain: createChainReader(deps.rpcUrl ? { rpc: { [chainId]: deps.rpcUrl } } : {}),
+        chain: createChainReader(
+          deps.rpcUrl ? { rpc: { [chainId]: arbitrumSepoliaRpcUrls(deps.rpcUrl) } } : {},
+        ),
       }),
       call(payments.getCapturedPayment({ captureId: p.paypalCaptureId })),
       call(orders.getOrder({ id: p.paypalOrderId })),

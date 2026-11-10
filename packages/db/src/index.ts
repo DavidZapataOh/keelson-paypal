@@ -13,6 +13,7 @@ export {
   ne,
   notInArray,
   or,
+  type SQL,
   sql,
 } from "drizzle-orm";
 export { createDb, type Db, migrate } from "./client.ts";

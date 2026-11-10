@@ -22,6 +22,8 @@ export const user = pgTable("user", {
   role: text("role", { enum: ["user", "admin"] })
     .default("user")
     .notNull(),
+  /** A Judge Mode tenant: a session with no email, no account and no key. */
+  isAnonymous: boolean("is_anonymous").default(false).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .defaultNow()
@@ -301,6 +303,25 @@ export const passkey = pgTable(
   (table) => [
     index("passkey_userId_idx").on(table.userId),
     uniqueIndex("passkey_credentialID_uidx").on(table.credentialID),
+  ],
+);
+
+/** A wallet a user signed in with (EIP-4361); a merchant signs in with its settlement address. */
+export const walletAddress = pgTable(
+  "wallet_address",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    address: text("address").notNull(),
+    chainId: integer("chain_id").notNull(),
+    isPrimary: boolean("is_primary").default(false).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    index("walletAddress_userId_idx").on(table.userId),
+    uniqueIndex("walletAddress_address_chainId_uidx").on(table.address, table.chainId),
   ],
 );
 

@@ -7,9 +7,14 @@ import type { PayPalEnv } from "@keelson/paypal";
 import type { AuthenticationExtensionsClientInputs } from "@simplewebauthn/server";
 import { cose, decodeCredentialPublicKey } from "@simplewebauthn/server/helpers";
 import { betterAuth } from "better-auth";
-import { APIError, createAuthMiddleware } from "better-auth/api";
-import { jwt } from "better-auth/plugins";
+import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
+import { anonymous, jwt } from "better-auth/plugins";
+import { siwe } from "better-auth/plugins/siwe";
 import type { PayPalProfile } from "better-auth/social-providers";
+import { type Hex, verifyMessage } from "viem";
+import { generateSiweNonce } from "viem/siwe";
+import { SETTLEMENT } from "./merchants.ts";
+import { ownsLinkedOperator } from "./operators/owners.ts";
 
 /** RFC 8707 resource identifier of this API; the `aud` of every access token it accepts. */
 export const apiAudience = "https://api.keelson.finance";
@@ -23,6 +28,9 @@ const paymentExtension = { payment: { isPayment: true } } as AuthenticationExten
 /** Verification-table prefix marking a registration challenge issued with `paymentExtension`. */
 const PAYMENT_CEREMONY = "passkey-payment:";
 const PAYMENT_CEREMONY_MS = 10 * 60_000;
+
+/** Arbitrum Sepolia and Arbitrum One, the chains a merchant's settlement wallet signs on. */
+const SIWE_CHAINS = new Set([421614, 42161]);
 
 const paypalAuthorizeURL = {
   sandbox: "https://www.sandbox.paypal.com/signin/authorize",
@@ -60,14 +68,28 @@ export interface AuthEnv {
   PASSKEY_RP_ID?: string | undefined;
 }
 
-export function createAuth(db: Db, env: AuthEnv) {
+export function createAuth(
+  db: Db,
+  env: AuthEnv,
+  merchantSigners: Readonly<Record<string, string>> = SETTLEMENT,
+) {
+  const merchantWallets = new Set(Object.values(merchantSigners).map((a) => a.toLowerCase()));
   return betterAuth({
     database: drizzleAdapter(db, { provider: "pg" }),
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.BETTER_AUTH_URL,
     trustedOrigins: [env.APP_ORIGIN],
-    disabledPaths: ["/token"],
+    // Judges are created only through `POST /v1/judge/sessions`, which limits them.
+    disabledPaths: ["/token", "/sign-in/anonymous"],
     hooks: {
+      // A judge's tenant is temporary: it cannot take a PayPal account the reset would then strand.
+      before: createAuthMiddleware(async (ctx) => {
+        if (ctx.path !== "/link-social") return;
+        const session = await getSessionFromCtx(ctx);
+        if ((session?.user as { isAnonymous?: boolean | null } | undefined)?.isAnonymous) {
+          throw new APIError("FORBIDDEN", { message: "Judge Mode cannot link an account." });
+        }
+      }),
       // A passkey is payment-capable only if the server issued the `payment` extension for its
       // ceremony; the verified registration's challenge identifies that ceremony.
       after: createAuthMiddleware(async (ctx) => {
@@ -151,6 +173,18 @@ export function createAuth(db: Db, env: AuthEnv) {
             }
           },
         },
+      }),
+      // A Judge Mode tenant: no email, no account, no key.
+      anonymous({ emailDomainName: "judge.keelson.finance", disableDeleteAnonymousUser: true }),
+      // Merchants sign in with their settlement wallet and operators with their agent's owner wallet
+      // (EIP-4361); no other wallet gets an account.
+      siwe({
+        domain: new URL(env.APP_ORIGIN).host,
+        getNonce: async () => generateSiweNonce(),
+        verifyMessage: async ({ message, signature, address, chainId }) =>
+          SIWE_CHAINS.has(chainId) &&
+          (merchantWallets.has(address.toLowerCase()) || (await ownsLinkedOperator(db, address))) &&
+          verifyMessage({ address: address as Hex, message, signature: signature as Hex }),
       }),
     ],
   });

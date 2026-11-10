@@ -1795,6 +1795,94 @@ components:
         - mandateId
         - url
         - agentView
+    WebFact:
+      type: object
+      properties:
+        webFact:
+          type: object
+          properties:
+            web_fact:
+              type: object
+              properties:
+                hostHash:
+                  type: string
+                  pattern: ^0x[0-9a-f]{64}$
+                urlPathHash:
+                  type: string
+                  pattern: ^0x[0-9a-f]{64}$
+                tCapture:
+                  type: integer
+                rangeCommitment:
+                  type: string
+                  pattern: ^0x[0-9a-f]{64}$
+                attId:
+                  type: string
+                  pattern: ^0x[0-9a-f]{64}$
+              required:
+                - hostHash
+                - urlPathHash
+                - tCapture
+                - rangeCommitment
+                - attId
+            chain_id:
+              type: integer
+            digest:
+              type: string
+              pattern: ^0x[0-9a-f]{64}$
+            signature:
+              type: string
+            signer:
+              type: string
+          required:
+            - web_fact
+            - chain_id
+            - digest
+            - signature
+            - signer
+        mode:
+          type: string
+          enum:
+            - mpc
+            - proxy
+        ms:
+          type: integer
+          description: How long the TLSNotary session took.
+        range:
+          type: array
+          prefixItems:
+            - type: integer
+            - type: integer
+          description: The committed range of the response, `[start, end)`.
+        committed:
+          type: string
+          description: The committed bytes, hex.
+        blinder:
+          type: string
+          description: "The 16-byte blinder, hex: `rangeCommitment` is `SHA-256(committed
+            ‖ blinder)`."
+      required:
+        - webFact
+        - mode
+        - ms
+        - range
+        - committed
+        - blinder
+    WebFactRequest:
+      type: object
+      properties:
+        url:
+          type: string
+          maxLength: 1024
+          description: A public JSON product endpoint, such as a Shopify store's
+            `/products/<handle>.js`.
+        anchor:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: Commit to the smallest JSON object in the body that contains this
+            text (a variant's `"id":123`) instead of the whole body.
+      required:
+        - url
     TeeLeg:
       type: object
       properties:
@@ -3156,6 +3244,856 @@ components:
         - nonce
         - deadline
         - merchant_signature
+    MerchantSelf:
+      type: object
+      properties:
+        merchant_id:
+          type: string
+        name:
+          type: string
+        website:
+          type: string
+          format: uri
+        settlement_address:
+          type: string
+          description: The wallet the merchant signs in and signs its choices with.
+        read_only:
+          type: boolean
+          description: "True for a Judge Mode session: it reads the console and changes
+            nothing."
+      required:
+        - merchant_id
+        - name
+        - website
+        - settlement_address
+        - read_only
+    MerchantSettlement:
+      type: object
+      properties:
+        rail:
+          type: string
+          enum:
+            - pyusd
+            - paypal
+        paypal_receiver:
+          type:
+            - string
+            - "null"
+        nonce:
+          type: string
+          description: The nonce of the last signed choice; 0 if none.
+        updated_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+      required:
+        - rail
+        - paypal_receiver
+        - nonce
+        - updated_at
+    MerchantDispute:
+      type: object
+      properties:
+        dispute_id:
+          type: string
+        purchase_id:
+          type: string
+          description: Also the id of the purchase's Alibi.
+        state:
+          type: string
+          enum:
+            - OPEN
+            - ATTRIBUTED
+            - RESOLVED
+        reason:
+          type: string
+        amount_minor:
+          type: string
+        currency:
+          type: string
+        agent_id:
+          type: string
+          description: The ERC-8004 agent that made the purchase.
+        received_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        attributed_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        elapsed_ms:
+          type:
+            - integer
+            - "null"
+        liable:
+          type:
+            - string
+            - "null"
+          enum:
+            - operator
+            - keelson
+            - merchant
+            - user
+            - null
+        rule:
+          type:
+            - string
+            - "null"
+        rail:
+          type:
+            - string
+            - "null"
+          enum:
+            - pyusd
+            - paypal
+            - null
+        outcome:
+          type:
+            - string
+            - "null"
+          enum:
+            - paid
+            - queued
+            - claimable
+            - failed
+            - null
+        paid_by:
+          type:
+            - string
+            - "null"
+          enum:
+            - chain
+            - treasury
+            - violation-pool
+            - null
+        ready_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        settled_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        explorer_url:
+          type:
+            - string
+            - "null"
+          format: uri
+        has_alibi:
+          type: boolean
+      required:
+        - dispute_id
+        - purchase_id
+        - state
+        - reason
+        - amount_minor
+        - currency
+        - agent_id
+        - received_at
+        - attributed_at
+        - elapsed_ms
+        - liable
+        - rule
+        - rail
+        - outcome
+        - paid_by
+        - ready_at
+        - settled_at
+        - explorer_url
+        - has_alibi
+    MerchantEvaluations:
+      type: object
+      properties:
+        columns:
+          type: array
+          items:
+            type: string
+            enum:
+              - source
+              - evaluation_id
+              - at
+              - agent
+              - operator
+              - field
+              - color
+              - failed
+              - decision
+              - attack_class
+              - dispute_id
+              - liable
+        rows:
+          type: array
+          items:
+            type: array
+            items:
+              anyOf:
+                - type: string
+                - type: number
+                - type: "null"
+      required:
+        - columns
+        - rows
+      description: "One row per mandate field per evaluation at this merchant: its
+        countersigned purchases and the red-team campaigns' attacks. `failed` is
+        1 when the field's check failed."
+    AssistantTurn:
+      type: object
+      properties:
+        model:
+          type: string
+          enum:
+            - claude-opus-5-5
+            - claude-haiku-5-5
+        system:
+          type: string
+          maxLength: 200000
+        messages:
+          type: array
+          items:
+            type: object
+            properties:
+              role:
+                type: string
+                enum:
+                  - user
+                  - assistant
+              content:
+                anyOf:
+                  - type: string
+                  - type: array
+                    items:
+                      oneOf:
+                        - type: object
+                          properties:
+                            type:
+                              type: string
+                              enum:
+                                - text
+                            text:
+                              type: string
+                          required:
+                            - type
+                            - text
+                          additionalProperties: false
+                        - type: object
+                          properties:
+                            type:
+                              type: string
+                              enum:
+                                - tool_use
+                            id:
+                              type: string
+                              maxLength: 128
+                            name:
+                              type: string
+                              maxLength: 128
+                            input:
+                              type: object
+                              additionalProperties: {}
+                          required:
+                            - type
+                            - id
+                            - name
+                            - input
+                          additionalProperties: false
+                        - type: object
+                          properties:
+                            type:
+                              type: string
+                              enum:
+                                - tool_result
+                            tool_use_id:
+                              type: string
+                              maxLength: 128
+                            content:
+                              anyOf:
+                                - type: string
+                                - type: array
+                                  items:
+                                    type: object
+                                    properties:
+                                      type:
+                                        type: string
+                                        enum:
+                                          - text
+                                      text:
+                                        type: string
+                                    required:
+                                      - type
+                                      - text
+                                    additionalProperties: false
+                            is_error:
+                              type: boolean
+                          required:
+                            - type
+                            - tool_use_id
+                            - content
+                          additionalProperties: false
+                        - type: object
+                          properties:
+                            type:
+                              type: string
+                              enum:
+                                - thinking
+                            thinking:
+                              type: string
+                            signature:
+                              type: string
+                          required:
+                            - type
+                            - thinking
+                            - signature
+                          additionalProperties: false
+                        - type: object
+                          properties:
+                            type:
+                              type: string
+                              enum:
+                                - redacted_thinking
+                            data:
+                              type: string
+                          required:
+                            - type
+                            - data
+                          additionalProperties: false
+                    minItems: 1
+            required:
+              - role
+              - content
+            additionalProperties: false
+          minItems: 1
+          maxItems: 400
+        tools:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                pattern: ^[a-zA-Z0-9_-]{1,128}$
+              description:
+                type: string
+                maxLength: 8000
+              input_schema:
+                type: object
+                additionalProperties: {}
+            required:
+              - name
+              - description
+              - input_schema
+            additionalProperties: false
+          maxItems: 64
+        tool_choice:
+          type: string
+          enum:
+            - auto
+            - none
+      required:
+        - system
+        - messages
+      description: "One turn of the console's agents: Messages API `system`,
+        `messages` and client `tools`. The proxy sets the model limits, thinking
+        and effort."
+    OperatorSelf:
+      type: object
+      properties:
+        wallets:
+          type: array
+          items:
+            type: string
+        operators:
+          type: array
+          items:
+            type: object
+            properties:
+              agentId:
+                type: string
+              chainId:
+                type: integer
+              name:
+                type: string
+            required:
+              - agentId
+              - chainId
+              - name
+      required:
+        - wallets
+        - operators
+    CoverageRow:
+      type: object
+      properties:
+        id:
+          type: string
+          description: The purchase id, also its Alibi's.
+        createdAt:
+          type: string
+          format: date-time
+        merchantId:
+          type: string
+        amount:
+          type: number
+          description: US dollars.
+        premiumBps:
+          type:
+            - integer
+            - "null"
+        premium:
+          type: number
+          description: US dollars.
+        state:
+          type: string
+        coverageTx:
+          type:
+            - string
+            - "null"
+          format: uri
+        disputeId:
+          type:
+            - string
+            - "null"
+        disputeState:
+          type:
+            - string
+            - "null"
+          enum:
+            - OPEN
+            - ATTRIBUTED
+            - RESOLVED
+            - null
+        disputeReason:
+          type:
+            - string
+            - "null"
+        disputedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        liable:
+          type:
+            - string
+            - "null"
+          enum:
+            - operator
+            - keelson
+            - merchant
+            - user
+            - null
+        rule:
+          type:
+            - string
+            - "null"
+        verdictAmount:
+          type:
+            - number
+            - "null"
+          description: US dollars.
+        verdictAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        outcome:
+          type:
+            - string
+            - "null"
+          enum:
+            - paid
+            - queued
+            - claimable
+            - failed
+            - null
+        paidBy:
+          type:
+            - string
+            - "null"
+          enum:
+            - chain
+            - treasury
+            - violation-pool
+            - null
+        settlementTx:
+          type:
+            - string
+            - "null"
+          format: uri
+        settledAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+      required:
+        - id
+        - createdAt
+        - merchantId
+        - amount
+        - premiumBps
+        - premium
+        - state
+        - coverageTx
+        - disputeId
+        - disputeState
+        - disputeReason
+        - disputedAt
+        - liable
+        - rule
+        - verdictAmount
+        - verdictAt
+        - outcome
+        - paidBy
+        - settlementTx
+        - settledAt
+    CoverageRowsRequest:
+      type: object
+      properties:
+        startRow:
+          type: integer
+          minimum: 0
+          maximum: 10000000
+        endRow:
+          type: integer
+          minimum: 1
+          maximum: 10000100
+        sortModel:
+          type: array
+          items:
+            type: object
+            properties:
+              colId:
+                type: string
+                enum:
+                  - id
+                  - createdAt
+                  - merchantId
+                  - amount
+                  - premiumBps
+                  - premium
+                  - state
+                  - disputeState
+                  - liable
+                  - outcome
+                  - paidBy
+              sort:
+                type: string
+                enum:
+                  - asc
+                  - desc
+            required:
+              - colId
+              - sort
+          maxItems: 4
+          default: []
+        filterModel:
+          type:
+            - object
+            - "null"
+          properties:
+            id: &a1
+              anyOf:
+                - type: object
+                  properties:
+                    filterType:
+                      type: string
+                      enum:
+                        - text
+                        - number
+                        - date
+                    operator:
+                      type: string
+                      enum:
+                        - AND
+                        - OR
+                    conditions:
+                      type: array
+                      items:
+                        oneOf:
+                          - type: object
+                            properties:
+                              filterType:
+                                type: string
+                                enum:
+                                  - text
+                              type:
+                                type: string
+                                enum:
+                                  - contains
+                                  - notContains
+                                  - equals
+                                  - notEqual
+                                  - startsWith
+                                  - endsWith
+                                  - blank
+                                  - notBlank
+                              filter:
+                                type:
+                                  - string
+                                  - "null"
+                                maxLength: 200
+                            required:
+                              - filterType
+                              - type
+                          - type: object
+                            properties:
+                              filterType:
+                                type: string
+                                enum:
+                                  - number
+                              type:
+                                type: string
+                                enum:
+                                  - equals
+                                  - notEqual
+                                  - greaterThan
+                                  - greaterThanOrEqual
+                                  - lessThan
+                                  - lessThanOrEqual
+                                  - inRange
+                                  - blank
+                                  - notBlank
+                              filter:
+                                type:
+                                  - number
+                                  - "null"
+                                minimum: -1000000000000
+                                maximum: 1000000000000
+                              filterTo:
+                                type:
+                                  - number
+                                  - "null"
+                                minimum: -1000000000000
+                                maximum: 1000000000000
+                            required:
+                              - filterType
+                              - type
+                          - type: object
+                            properties:
+                              filterType:
+                                type: string
+                                enum:
+                                  - date
+                              type:
+                                type: string
+                                enum:
+                                  - equals
+                                  - notEqual
+                                  - greaterThan
+                                  - greaterThanOrEqual
+                                  - lessThan
+                                  - lessThanOrEqual
+                                  - inRange
+                                  - blank
+                                  - notBlank
+                              dateFrom:
+                                type:
+                                  - string
+                                  - "null"
+                                pattern: ^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}:\d{2})?$
+                              dateTo:
+                                type:
+                                  - string
+                                  - "null"
+                                pattern: ^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}:\d{2})?$
+                            required:
+                              - filterType
+                              - type
+                      minItems: 1
+                      maxItems: 4
+                  required:
+                    - filterType
+                    - operator
+                    - conditions
+                - type: object
+                  properties:
+                    filterType:
+                      type: string
+                      enum:
+                        - text
+                    type:
+                      type: string
+                      enum:
+                        - contains
+                        - notContains
+                        - equals
+                        - notEqual
+                        - startsWith
+                        - endsWith
+                        - blank
+                        - notBlank
+                    filter:
+                      type:
+                        - string
+                        - "null"
+                      maxLength: 200
+                  required:
+                    - filterType
+                    - type
+                - type: object
+                  properties:
+                    filterType:
+                      type: string
+                      enum:
+                        - number
+                    type:
+                      type: string
+                      enum:
+                        - equals
+                        - notEqual
+                        - greaterThan
+                        - greaterThanOrEqual
+                        - lessThan
+                        - lessThanOrEqual
+                        - inRange
+                        - blank
+                        - notBlank
+                    filter:
+                      type:
+                        - number
+                        - "null"
+                      minimum: -1000000000000
+                      maximum: 1000000000000
+                    filterTo:
+                      type:
+                        - number
+                        - "null"
+                      minimum: -1000000000000
+                      maximum: 1000000000000
+                  required:
+                    - filterType
+                    - type
+                - type: object
+                  properties:
+                    filterType:
+                      type: string
+                      enum:
+                        - date
+                    type:
+                      type: string
+                      enum:
+                        - equals
+                        - notEqual
+                        - greaterThan
+                        - greaterThanOrEqual
+                        - lessThan
+                        - lessThanOrEqual
+                        - inRange
+                        - blank
+                        - notBlank
+                    dateFrom:
+                      type:
+                        - string
+                        - "null"
+                      pattern: ^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}:\d{2})?$
+                    dateTo:
+                      type:
+                        - string
+                        - "null"
+                      pattern: ^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}:\d{2})?$
+                  required:
+                    - filterType
+                    - type
+                - type: object
+                  properties:
+                    filterType:
+                      type: string
+                      enum:
+                        - set
+                    values:
+                      type: array
+                      items:
+                        type:
+                          - string
+                          - "null"
+                        maxLength: 64
+                      maxItems: 64
+                  required:
+                    - filterType
+                    - values
+            createdAt: *a1
+            merchantId: *a1
+            amount: *a1
+            premiumBps: *a1
+            premium: *a1
+            state: *a1
+            disputeState: *a1
+            liable: *a1
+            outcome: *a1
+            paidBy: *a1
+      required:
+        - startRow
+        - endRow
+      description: "AG Grid's `IServerSideGetRowsRequest`: the block, its sort and its
+        filter model (text, number, date and set filters). Amounts are filtered
+        in US dollars."
+    CoverageDay:
+      type: object
+      properties:
+        day:
+          type: string
+          format: date
+        coverages:
+          type: integer
+        covered:
+          type: number
+          description: US dollars.
+        premiums:
+          type: number
+          description: US dollars.
+        incidents:
+          type: integer
+          description: Verdicts with the operator at fault on that day's coverages.
+      required:
+        - day
+        - coverages
+        - covered
+        - premiums
+        - incidents
+    GridAnswer:
+      type: object
+      properties:
+        gridState:
+          type: object
+          additionalProperties: {}
+        propertiesToIgnore:
+          type: array
+          items:
+            type: string
+        explanation:
+          type: string
+        model:
+          type: string
+        costMicros:
+          type: integer
+          description: What the query cost, in USD micros.
+      required:
+        - gridState
+        - propertiesToIgnore
+        - explanation
+        - model
+        - costMicros
+    GridQuery:
+      type: object
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 500
+        gridState:
+          type: object
+          additionalProperties: {}
+        schema:
+          type: object
+          additionalProperties: {}
+          description: "`gridApi.getStructuredSchema()`, the JSON Schema of grid state."
+      required:
+        - prompt
+        - gridState
+        - schema
     Tracking:
       type: object
       properties:
@@ -3176,6 +4114,159 @@ components:
       required:
         - carrier
         - tracking_number
+    JudgeSession:
+      type: object
+      properties:
+        user_id:
+          type: string
+      required:
+        - user_id
+    JudgeTour:
+      type: object
+      properties:
+        merchant_id:
+          type: string
+        agent_id:
+          type:
+            - string
+            - "null"
+        mandate:
+          type:
+            - object
+            - "null"
+          properties:
+            id:
+              type: string
+            state:
+              type: string
+            mandate_hash:
+              type:
+                - string
+                - "null"
+            budget:
+              type: object
+              properties:
+                currency:
+                  type: string
+                max_minor:
+                  type: string
+              required:
+                - currency
+                - max_minor
+            created_at:
+              type: string
+              format: date-time
+            card:
+              allOf:
+                - $ref: "#/components/schemas/MandateCard"
+                - type:
+                    - object
+                    - "null"
+            purchases:
+              type: array
+              items:
+                $ref: "#/components/schemas/JudgeTourPurchase"
+          required:
+            - id
+            - state
+            - mandate_hash
+            - budget
+            - created_at
+            - card
+            - purchases
+        dispute_id:
+          type:
+            - string
+            - "null"
+        campaign_id:
+          type:
+            - string
+            - "null"
+      required:
+        - merchant_id
+        - agent_id
+        - mandate
+        - dispute_id
+        - campaign_id
+    JudgeTourPurchase:
+      type: object
+      properties:
+        id:
+          type: string
+          description: The purchase's ULID, which is also its Alibi id.
+        state:
+          type: string
+        mode:
+          type:
+            - string
+            - "null"
+        amount:
+          type: object
+          properties:
+            currency:
+              type: string
+            minor:
+              type: string
+          required:
+            - currency
+            - minor
+        merchant_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        log_index:
+          type:
+            - string
+            - "null"
+        capture_id:
+          type:
+            - string
+            - "null"
+        coverage_tx:
+          type:
+            - string
+            - "null"
+        failure:
+          type:
+            - string
+            - "null"
+        checks:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              color:
+                type: string
+              pass:
+                type: boolean
+            required:
+              - field
+              - color
+              - pass
+          description: Each mandate field the engine checked.
+        alibi_fragment:
+          type:
+            - string
+            - "null"
+          description: "`<leaf hash>.<anchored size>.<chain id>`: the fragment of the
+            Alibi's verifier link,
+            `https://verify.keelson.finance/a/<id>#<fragment>`."
+      required:
+        - id
+        - state
+        - mode
+        - amount
+        - merchant_id
+        - created_at
+        - log_index
+        - capture_id
+        - coverage_tx
+        - failure
+        - checks
+        - alibi_fragment
   parameters: {}
 paths:
   /health:
@@ -4404,6 +5495,62 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+  /v1/observations/web-fact:
+    post:
+      tags:
+        - evidence
+      summary: Notarize a product endpoint with TLSNotary
+      description: Fetches the endpoint once over TLS with leg A as the TLSNotary
+        notary (MPC-TLS, or Proxy-TLS when MPC-TLS fails), commits to the body
+        or to the object around `anchor`, and returns the EIP-712 `WebFact` leg
+        A signed with its attested key. Runs apart from any countersign and
+        never delays one.
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebFactRequest"
+      responses:
+        "201":
+          description: The signed WebFact
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebFact"
+        "422":
+          description: The URL is refused, or its response is not a 200 the notary accepts
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Too many WebFacts today for this client
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "502":
+          description: The session failed, or its WebFact did not verify
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: No prover is configured, leg A has no admitted signer, or the rate
+            limit store is unreachable
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
   /v1/tee/attestations:
     get:
       tags:
@@ -5255,7 +6402,10 @@ paths:
       summary: Deposit PYUSD into an operator's bond, gasless
       description: Relays `depositWithAuthorization` (EIP-3009) or `depositWithPermit`
         (EIP-2612) to the bond vault; Keelson pays the gas. The same
-        authorization is sent once, whatever the idempotency key.
+        authorization is sent once, whatever the idempotency key. An
+        `operators:write` client sends either; the operator's own session
+        (EIP-4361, from the operator console) sends a permit whose `owner` is a
+        wallet it signed in with that owns the agent.
       parameters:
         - schema:
             type: string
@@ -5563,7 +6713,8 @@ paths:
       summary: Choose how a merchant is paid when a dispute goes its way
       description: "Applies to verdicts signed afterwards: the rail decides the payee
         the TEE legs sign into the `Verdict`. The merchant signs the choice, as
-        it signs its on-chain payout address."
+        it signs its on-chain payout address. Sent by a client with
+        `merchants:write` or by the merchant's own session."
       parameters:
         - schema:
             type: string
@@ -5604,7 +6755,7 @@ paths:
                 required:
                   - rail
         "403":
-          description: The signature is not the merchant's
+          description: The signature, or the session, is not the merchant's
           content:
             application/problem+json:
               schema:
@@ -5617,6 +6768,390 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "409":
           description: The nonce is not higher than the one of the merchant's last choice
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    get:
+      tags:
+        - merchants
+      summary: How a merchant is paid when a dispute goes its way
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 64
+          required: true
+          name: merchantId
+          in: path
+      responses:
+        "200":
+          description: The current choice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MerchantSettlement"
+        "401":
+          description: No session
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The session is not this merchant's
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/merchants/me:
+    get:
+      tags:
+        - merchants
+      summary: The merchant signed in
+      responses:
+        "200":
+          description: The merchant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MerchantSelf"
+        "401":
+          description: No session
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The session is not this merchant's
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/merchants/{merchantId}/disputes:
+    get:
+      tags:
+        - merchants
+      summary: A merchant's disputes and their verdicts
+      description: The latest 500 PayPal disputes over the merchant's Keelson
+        purchases, newest first.
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 64
+          required: true
+          name: merchantId
+          in: path
+      responses:
+        "200":
+          description: The disputes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  disputes:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/MerchantDispute"
+                required:
+                  - disputes
+        "401":
+          description: No session
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The session is not this merchant's
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/merchants/{merchantId}/evaluations:
+    get:
+      tags:
+        - merchants
+      summary: Field-level evaluations of the agents that shopped at a merchant
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 64
+          required: true
+          name: merchantId
+          in: path
+      responses:
+        "200":
+          description: The evaluations, as columns and rows
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MerchantEvaluations"
+        "401":
+          description: No session
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The session is not this merchant's
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/merchants/{merchantId}/assistant:
+    post:
+      tags:
+        - merchants
+      summary: One streamed model turn for the merchant console's agents
+      description: Streams the Messages API events as newline-delimited JSON (the
+        Anthropic SDK's `MessageStream.toReadableStream`). Each merchant has a
+        daily budget; once it is spent the turn runs on `claude-haiku-5-5`,
+        named in `Keelson-Model`.
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 64
+          required: true
+          name: merchantId
+          in: path
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssistantTurn"
+      responses:
+        "200":
+          description: The turn's events
+          headers:
+            keelson-model:
+              schema:
+                type: string
+                enum:
+                  - claude-opus-5-5
+                  - claude-haiku-5-5
+              required: true
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+        "401":
+          description: No session
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The session is not this merchant's
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Too many turns, or today's budget is spent
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "502":
+          description: The model provider refused the turn
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: No model provider configured
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/operators/me:
+    get:
+      tags:
+        - operators
+      summary: The operators the session's wallet owns
+      description: The linked agents whose owner or agent wallet in the Identity
+        registry is a wallet the session signed in with (EIP-4361). A wallet
+        signs in if it owned a linked agent when the agent was linked; ownership
+        is then read on chain on every operator route.
+      responses:
+        "200":
+          description: The operators
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatorSelf"
+        "401":
+          description: No session
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The session's wallets do not own the agent
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/operators/{agentId}/coverages/rows:
+    post:
+      tags:
+        - operators
+      summary: A block of the operator's coverages, for AG Grid's server-side row model
+      description: "The operator's covered purchases with their latest dispute and
+        verdict, filtered, sorted and paged as AG Grid asks. `rowCount` is the
+        filtered total. A read: no idempotency key."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^(0|[1-9]\d{0,19})$
+            description: The operator's ERC-8004 agent id, a decimal integer.
+          required: true
+          description: The operator's ERC-8004 agent id, a decimal integer.
+          name: agentId
+          in: path
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CoverageRowsRequest"
+      responses:
+        "200":
+          description: The block
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CoverageRow"
+                  rowCount:
+                    type: integer
+                required:
+                  - rows
+                  - rowCount
+        "401":
+          description: No session
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The session's wallets do not own the agent
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: A filter the column does not have
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/operators/{agentId}/coverages/daily:
+    get:
+      tags:
+        - operators
+      summary: The operator's coverages per day
+      description: "Per UTC day: coverages locked, the amount covered, premiums, and
+        incidents."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^(0|[1-9]\d{0,19})$
+            description: The operator's ERC-8004 agent id, a decimal integer.
+          required: true
+          description: The operator's ERC-8004 agent id, a decimal integer.
+          name: agentId
+          in: path
+      responses:
+        "200":
+          description: The days, oldest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  days:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CoverageDay"
+                required:
+                  - days
+        "401":
+          description: No session
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The session's wallets do not own the agent
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/operators/{agentId}/grid-query:
+    post:
+      tags:
+        - operators
+      summary: Turn a sentence into the coverage grid's state
+      description: "The backend of AG Grid's AI Toolkit: Claude answers with
+        structured output in the grid's own state schema. The console's daily
+        model budget applies; past it the query runs on `claude-haiku-5-5`."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^(0|[1-9]\d{0,19})$
+            description: The operator's ERC-8004 agent id, a decimal integer.
+          required: true
+          description: The operator's ERC-8004 agent id, a decimal integer.
+          name: agentId
+          in: path
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GridQuery"
+      responses:
+        "200":
+          description: The new state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GridAnswer"
+        "401":
+          description: No session
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The session's wallets do not own the agent
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Too many queries, or today's budget is spent
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "502":
+          description: The model did not answer
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: No model provider configured
           content:
             application/problem+json:
               schema:
@@ -5853,6 +7388,75 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "503":
           description: Too many open streams
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/judge/sessions:
+    post:
+      tags:
+        - judge
+      summary: Open a Judge Mode session
+      description: "Creates a judge: a tenant with no email, no account and no key,
+        signed in with a session cookie until the nightly reset after 12 hours.
+        A judge reads the demo merchant's console (no changes), walks the tour,
+        and can sign its own mandates with a passkey like any user. Five per
+        hour per address."
+      responses:
+        "201":
+          description: The judge, signed in (the session cookie is set)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JudgeSession"
+        "403":
+          description: Not called from the app's origin
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Already signed in as someone else
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Too many judges
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: Sign-in is not configured
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/judge/tour:
+    get:
+      tags:
+        - judge
+      summary: What the Judge Mode tour shows
+      description: "The newest real records on this deployment: the demo operator's
+        latest mandate with a captured purchase (its card and every purchase
+        under it, blocked ones included), the latest sandbox dispute with a
+        verdict, and the latest finished red-team campaign. Judges only."
+      responses:
+        "200":
+          description: The tour
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JudgeTour"
+        "401":
+          description: No session
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Not a judge
           content:
             application/problem+json:
               schema:

@@ -7,18 +7,29 @@
     "dev": "next dev",
     "build": "cp node_modules/@rive-app/canvas-lite/rive.wasm public/rive/rive.wasm && next build",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "budgets": "KEELSON_BUDGETS=1 vitest run test/e2e/merchant.test.ts -t \"250k\""
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "1.5.0",
     "@better-auth/passkey": "1.7.17",
+    "@keelson/chain": "workspace:*",
+    "@keelson/core": "workspace:*",
     "@keelson/mandate": "workspace:*",
     "@keelson/paypal": "workspace:*",
     "@keelson/ui": "workspace:*",
     "@rive-app/canvas-lite": "2.49.1",
+    "ag-charts-enterprise": "14.3.0",
+    "ag-grid-community": "36.3.0",
+    "ag-grid-enterprise": "36.3.0",
+    "ag-grid-react": "36.3.0",
+    "ag-studio": "3.1.0",
+    "ag-studio-react": "3.1.0",
     "better-auth": "1.7.17",
     "next": "16.4.5",
     "react": "19.3.1",
-    "react-dom": "19.3.1"
+    "react-dom": "19.3.1",
+    "viem": "catalog:"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",

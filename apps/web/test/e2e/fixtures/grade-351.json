@@ -1,0 +1,43 @@
+{
+  "v": "keelson.grade/1",
+  "agentId": "351",
+  "computedAt": "2026-11-10T11:32:28.906Z",
+  "calibration": {
+    "id": "01M72GW3CJ5QR8JC93DSZC7432",
+    "at": "2026-11-10T10:43:14.962Z",
+    "campaigns": ["01M72AKHZ75KJSNS17AA9BJTJY", "01M72AN4VSH4FYYT9X7RF01P3N"],
+    "mu_ppm": 8719,
+    "kappa": 915.0298692166525
+  },
+  "evidence": {
+    "coverages": 649,
+    "incidents": { "total": 0, "slashes": 0, "pool": 0, "uncollected": 0, "pending": 0 }
+  },
+  "reserve": { "warranties": 9 },
+  "grade": "A",
+  "frequency": {
+    "alpha": 7.977939648414531,
+    "beta": 1556.051929568238,
+    "credibility_ppm": 414954,
+    "mean_ppm": 5101,
+    "upper95_ppm": 8378
+  },
+  "severity": { "meanMinor": 37, "maxMinor": 13900, "lossRatio_ppm": 1000000 },
+  "loss": {
+    "horizon": 649,
+    "scenarios": 20000,
+    "expectedMinor": 120,
+    "var99Minor": 415,
+    "es99Minor": 7054,
+    "var995Minor": 705
+  },
+  "premium": {
+    "bps": 100,
+    "modelBps": 78,
+    "floorBps": 100,
+    "theta": 0.25,
+    "costOfCapital": 0.004931506849315068
+  },
+  "bond": { "requiredMinor": 13900 },
+  "computeMs": 13.1
+}

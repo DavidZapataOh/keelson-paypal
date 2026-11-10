@@ -1,7 +1,14 @@
 {
-  "allowed_envs": ["PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET", "KEELSON_TEE_TOKEN_SHA256"],
-  "docker_compose_file": "services:\n  engine:\n    image: ghcr.io/davidzapataoh/keelson-engine@sha256:9967b89c2fed0ab1b854c8ea20247eee70d7c1fb3ae9445c7134bbf692b6a3fd\n    command: [\"--platform\", \"tdx\", \"--listen\", \"tcp:0.0.0.0:8080\"]\n    ports:\n      - \"8080:8080\"\n    volumes:\n      - /var/run/dstack.sock:/var/run/dstack.sock\n      - data:/data\n    environment:\n      - KEELSON_OCI_DIGEST=sha256:9967b89c2fed0ab1b854c8ea20247eee70d7c1fb3ae9445c7134bbf692b6a3fd\n      - KEELSON_CANONICALIZER=keelson-canon/0.0.0\n      - KEELSON_ORIGIN=https://app.keelson.finance\n      - KEELSON_BOND_VAULT=0xb39898Ef4333f3CB32d1B420E744f5a1Aa2ae2Bf\n      - KEELSON_VERIFYING_CONTRACT=0xe16E8767EC1DA59Ef0D9Bc7851637E4D22352d96\n      - KEELSON_TEE_TOKEN_SHA256=${KEELSON_TEE_TOKEN_SHA256}\n      - PAYPAL_CLIENT_ID=${PAYPAL_CLIENT_ID}\n      - PAYPAL_CLIENT_SECRET=${PAYPAL_CLIENT_SECRET}\n    restart: unless-stopped\n\nvolumes:\n  data:\n",
-  "features": ["kms", "tproxy-net"],
+  "allowed_envs": [
+    "PAYPAL_CLIENT_ID",
+    "PAYPAL_CLIENT_SECRET",
+    "KEELSON_TEE_TOKEN_SHA256"
+  ],
+  "docker_compose_file": "services:\n  engine:\n    image: ghcr.io/davidzapataoh/keelson-engine@sha256:b97f7db82daee29af8c54c8d510f5ac78ff409792f025688b3e3e21cbf900441\n    command: [\"--platform\", \"tdx\", \"--listen\", \"tcp:0.0.0.0:8080\"]\n    ports:\n      - \"8080:8080\"\n    volumes:\n      - /var/run/dstack.sock:/var/run/dstack.sock\n      - data:/data\n    environment:\n      - KEELSON_OCI_DIGEST=sha256:b97f7db82daee29af8c54c8d510f5ac78ff409792f025688b3e3e21cbf900441\n      - KEELSON_CANONICALIZER=keelson-canon/0.0.0\n      - KEELSON_ORIGIN=https://app.keelson.finance\n      - KEELSON_BOND_VAULT=0xb39898Ef4333f3CB32d1B420E744f5a1Aa2ae2Bf\n      - KEELSON_VERIFYING_CONTRACT=0xe16E8767EC1DA59Ef0D9Bc7851637E4D22352d96\n      - KEELSON_TEE_TOKEN_SHA256=${KEELSON_TEE_TOKEN_SHA256}\n      - PAYPAL_CLIENT_ID=${PAYPAL_CLIENT_ID}\n      - PAYPAL_CLIENT_SECRET=${PAYPAL_CLIENT_SECRET}\n    restart: unless-stopped\n\nvolumes:\n  data:\n",
+  "features": [
+    "kms",
+    "tproxy-net"
+  ],
   "gateway_enabled": true,
   "init_script": [],
   "key_provider": "kms",

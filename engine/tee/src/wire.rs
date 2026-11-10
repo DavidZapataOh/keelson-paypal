@@ -364,6 +364,35 @@ pub struct CheckpointSigned {
     pub signer: Address,
 }
 
+/// The EIP-712 `WebFact` the notary signs, in JSON.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WebFactJson {
+    /// `keccak256` of the server name.
+    pub host_hash: Hex32,
+    /// `keccak256` of the request target, path and query.
+    pub url_path_hash: Hex32,
+    /// When the session ended on the engine's clock, in Unix seconds.
+    pub t_capture: i64,
+    /// `SHA-256(range ‖ blinder)` of the committed body range.
+    pub range_commitment: Hex32,
+    /// The signer binding the signer's attestation covers.
+    pub att_id: Hex32,
+}
+
+/// A `WebFact` the notary signed.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WebFactSigned {
+    pub web_fact: WebFactJson,
+    pub chain_id: u64,
+    /// The EIP-712 signing hash.
+    pub digest: Hex32,
+    /// `r ‖ s ‖ v`.
+    pub signature: Hex65,
+    pub signer: Address,
+}
+
 /// What a `Verdict` carries besides the attribution, as [`keelson_policy::VerdictInput`].
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

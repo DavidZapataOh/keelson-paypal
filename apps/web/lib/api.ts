@@ -14,7 +14,7 @@ export class ApiError extends Error {
   }
 }
 
-async function send<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function send<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API}${path}`, { ...init, credentials: "include" });
   if (res.ok) return (await res.json()) as T;
   const body = (await res.json().catch(() => ({}))) as {

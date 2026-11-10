@@ -8,8 +8,10 @@ import { pino } from "pino";
 import { createPublicClient, http } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { z } from "zod";
+import { arbitrumSepoliaRpcUrls, rpcTransport } from "./chain/rpc.ts";
 import { type RunDeps, runDispute } from "./disputes/run.ts";
 import { treasuryFromKey } from "./disputes/treasury.ts";
+import { resetJudges } from "./judge.ts";
 import { createKv } from "./kv.ts";
 import { relayerFromEnv } from "./onchain/relayer.ts";
 import { createPayPalDeps } from "./paypal.ts";
@@ -62,7 +64,7 @@ async function connect(): Promise<RunDeps> {
     chain: {
       client: createPublicClient({
         chain: arbitrumSepolia,
-        transport: http(env.ARBITRUM_SEPOLIA_RPC_URL),
+        transport: rpcTransport(arbitrumSepoliaRpcUrls(env.ARBITRUM_SEPOLIA_RPC_URL)),
       }),
       logs: createPublicClient({ chain: arbitrumSepolia, transport: http() }),
     },
@@ -198,5 +200,21 @@ task(
       campaigns: calibration.prior.campaigns,
       grades,
     };
+  },
+);
+
+/**
+ * Closes the Judge Mode tenants opened more than 12 hours ago: their open mandates are revoked
+ * and their holds voided, their sessions end, and judges that own no mandate are deleted.
+ * Started nightly.
+ */
+task(
+  { name: "resetJudgeMode", timeoutSeconds: 300, plan: "starter" },
+  async function resetJudgeMode() {
+    deps ??= connect().catch((err: unknown) => {
+      deps = undefined;
+      throw err;
+    });
+    return resetJudges(await deps);
   },
 );

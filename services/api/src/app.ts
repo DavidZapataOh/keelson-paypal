@@ -42,10 +42,14 @@ import { registerFeedback } from "./routes/feedback.ts";
 import { registerGrades } from "./routes/grades.ts";
 import { registerHealth } from "./routes/health.ts";
 import { registerHold } from "./routes/hold.ts";
+import { registerJudge } from "./routes/judge.ts";
 import { registerMandates } from "./routes/mandates.ts";
+import { registerMerchantAssistant } from "./routes/merchant-assistant.ts";
+import { registerMerchantConsole } from "./routes/merchant-console.ts";
 import { registerMerchantsPayout } from "./routes/merchants-payout.ts";
 import { registerMerchantsSettlement } from "./routes/merchants-settlement.ts";
 import { registerObservations } from "./routes/observations.ts";
+import { registerOperatorConsole } from "./routes/operator-console.ts";
 import { registerOperators } from "./routes/operators.ts";
 import { registerPasskeys } from "./routes/passkeys.ts";
 import { registerPayPalWebhook } from "./routes/paypal-webhook.ts";
@@ -59,8 +63,13 @@ import { registerTee } from "./routes/tee.ts";
 import { registerTimestamps } from "./routes/timestamps.ts";
 import { registerTransactions } from "./routes/transactions.ts";
 import { registerValidations } from "./routes/validations.ts";
+import { registerWebFacts } from "./routes/web-facts.ts";
 import type { TeeConfig } from "./tee/signers.ts";
 import type { StampWorker } from "./timestamps/worker.ts";
+
+/** POST routes that stream their response, or that read: neither changes anything a retry repeats. */
+const STREAMED_POSTS =
+  /^\/v1\/(merchants\/[^/]+\/assistant|operators\/[^/]+\/(coverages\/rows|grid-query))$/;
 
 /**
  * The public reads the verifier makes: an Alibi's receipt, a leaf's timestamps, a mandate's C3
@@ -104,6 +113,8 @@ export interface Deps {
   tlog?: LogConfig;
   /** The age identity that opens `.original` evidence items for an arbiter. */
   evidenceIdentity?: string;
+  /** The TLSNotary prover service's base URL; WebFacts answer 503 without it. */
+  prover?: string;
   /** Channel3 product lookups; observing answers 503 without them. */
   channel3?: Channel3Lookup;
   /** The `whsec_` secret of the Channel3 webhook endpoint; the webhook answers 503 without it. */
@@ -180,13 +191,15 @@ export function createApp(deps: Deps): OpenAPIHono {
         origin: deps.appOrigin,
         credentials: true,
         allowHeaders: ["content-type", "idempotency-key", "keelson-device"],
-        exposeHeaders: ["location", "idempotent-replayed"],
+        exposeHeaders: ["location", "idempotent-replayed", "keelson-model"],
       })
     : undefined;
   // The verifier reads only public receipts and timestamps, and never with credentials.
   const receiptCors = deps.verifyOrigin
     ? cors({ origin: deps.verifyOrigin, allowMethods: ["GET"], allowHeaders: ["accept"] })
     : undefined;
+  // The app's status page reads the dependency report.
+  if (appCors) app.use("/status", appCors);
   if (appCors || receiptCors) {
     app.use("/v1/*", (c, next) => {
       if (
@@ -210,7 +223,9 @@ export function createApp(deps: Deps): OpenAPIHono {
   // An upload is refused before its body is read or fingerprinted.
   app.on("POST", "/v1/evidence", requireClient(["evidence:write"]));
   app.use("/v1/*", rateLimit(deps.kv, deps.rateLimit));
-  app.use("/v1/*", idempotency(deps.kv, deps.log));
+  // A model turn streams and changes nothing a retry could repeat; a buffered replay would end the stream.
+  const idempotent = idempotency(deps.kv, deps.log);
+  app.use("/v1/*", (c, next) => (STREAMED_POSTS.test(c.req.path) ? next() : idempotent(c, next)));
   app.use(
     "/v1/*",
     timeout(deps.requestTimeoutMs ?? 30_000, (c) => {
@@ -280,6 +295,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerPurchases(app, deps);
   registerEvidence(app, deps);
   registerObservations(app, deps);
+  registerWebFacts(app, deps);
   registerChannel3Webhook(app, deps);
   registerPayPalWebhook(app, deps);
   registerTee(app, deps);
@@ -295,9 +311,13 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerBonds(app, deps);
   registerMerchantsPayout(app, deps);
   registerMerchantsSettlement(app, deps);
+  registerMerchantConsole(app, deps);
+  registerMerchantAssistant(app, deps);
+  registerOperatorConsole(app, deps);
   registerPurchaseTracking(app, deps);
   registerTransactions(app, deps);
   registerRedTeam(app, deps);
+  registerJudge(app, deps);
   app.get("/openapi.json", (c) =>
     c.json(app.getOpenAPI31Document({ openapi: "3.1.0", info: apiInfo })),
   );

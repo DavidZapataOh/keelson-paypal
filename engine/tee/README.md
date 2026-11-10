@@ -45,6 +45,28 @@ Leg A answers the countersign first and proves right after, off the request's pa
 
 `Engine::sign_verdict` attributes a PayPal dispute and signs the EIP-712 `Verdict` that `KeelsonBondVault.slash` and `KeelsonReserve.payWarranty` check. The request carries the dispute's facts (`keelson_policy::Facts`: the PayPal reason and the booleans the host derived from the Alibi, PayPal and the chain) and the settlement terms (`dispute id`, `coverageId`, `agentId`, `payee`, `amount`, a failed field of each color as its `failedFieldsMask` bit, `evidenceHash`, `checkpointRoot`, `issuedAt`, `deadline`). The leg runs `keelson_policy::verdict`, the attribution policy sets in Cedar, so the rule, the liable party and the `fieldId` (the failed field of the rule's color for R60–R62, none otherwise) are the engine's, never the caller's; terms the rule refuses (a field rule with no failed field of its color, a deadline not after `issuedAt`, an amount beyond `uint96`) fail with `bad_request`. Both legs answer the same digest for the same request.
 
+## Notarize a TLS session
+
+Leg A is the TLSNotary notary for public product endpoints. `GET /v1/notary` (bearer) with `Connection: upgrade` and `Upgrade: keelson-notary` answers `101` and runs one TLSNotary session (`tlsn` 0.1.0-alpha.15, through `engine/tlsn`) over the connection: MPC-TLS, or Proxy-TLS, in which the leg dials the server itself, at public addresses only. It accepts a session only when the prover revealed the server name, the whole request, a `GET` with no cookies or credentials (only `Host`, `Accept`, `Accept-Encoding: identity`, `Connection` and `User-Agent`), and the status line and headers of a `200` response, and committed with SHA-256 to one range of the body, at most 1 KiB sent and 16 KiB received. It then signs the EIP-712 `WebFact` with its attested signer and writes it on the same connection as one JSON object before closing it:
+
+```json
+{
+  "web_fact": {
+    "hostHash": "0x…",
+    "urlPathHash": "0x…",
+    "tCapture": 1794200000,
+    "rangeCommitment": "0x…",
+    "attId": "0x…"
+  },
+  "chain_id": 421614,
+  "digest": "0x…",
+  "signature": "0x…",
+  "signer": "0x…"
+}
+```
+
+`hostHash` and `urlPathHash` are `keccak256` of the server name and of the request target, `tCapture` the leg's clock when the session ended, `rangeCommitment` the prover's `SHA-256(range ‖ blinder)` (tlsn's plaintext hash), and `attId` the signer binding its attestation covers (the first 32 bytes of `report_data`), so the key that signs a `WebFact` is the one registered in the `VerdictVerifier`. A refused session is answered with `{ "error": "<code>" }`. One session runs at a time (`503 busy` otherwise) and each is cut at 30 s.
+
 ## What each leg checks
 
 Both legs verify every signature in the closed mandate and the passkey assertion. Two checks run on leg A only, and leg B takes their result from leg A's `Observation`:
@@ -116,7 +138,7 @@ Refusals carry no signature and one of these stable codes: `auth.closed_*`, `aut
 
 ## HTTP
 
-`keelson-engine --listen tcp:<addr>` serves `POST /v1/countersign`, `GET /v1/c1/{request_id}` (see Prove C1), `POST /v1/mandates/register`, `POST /v1/verdict` (`{ facts, input, chain_id? }`, answered with `{ verdict, chain_id, digest, signature, signer, tee }`), `POST /v1/checkpoint` (`{ signed_note, chain_id? }`, at most 16 KiB, answered with `{ origin, tree_size, root_hash, chain_id, digest, signature, signer }`) and `GET /v1/health` (`{ tee, signer, boot_epoch, oci_digest, version, now_ms, issuer, rss_kib }`, `now_ms` being the engine's clock, `issuer` the credential issuer's public JWK and `rss_kib` the process's resident memory on Linux). With `--platform tdx` it also serves `GET /v1/attestation` and `POST /v1/attestation/refresh` (see below). Every route except health and `GET /v1/attestation` needs `Authorization: Bearer <token>`; the engine holds only the token's SHA-256, from `KEELSON_TEE_TOKEN_SHA256`, and compares it in constant time. Refusals are `application/problem+json` (RFC 9457) with `type` `https://keelson.finance/problems/<code>` and the stable code, and never echo the request. Bodies are JSON with unknown fields rejected.
+`keelson-engine --listen tcp:<addr>` serves `POST /v1/countersign`, `GET /v1/c1/{request_id}` (see Prove C1), `GET /v1/notary` on leg A (see Notarize a TLS session), `POST /v1/mandates/register`, `POST /v1/verdict` (`{ facts, input, chain_id? }`, answered with `{ verdict, chain_id, digest, signature, signer, tee }`), `POST /v1/checkpoint` (`{ signed_note, chain_id? }`, at most 16 KiB, answered with `{ origin, tree_size, root_hash, chain_id, digest, signature, signer }`) and `GET /v1/health` (`{ tee, signer, boot_epoch, oci_digest, version, now_ms, issuer, rss_kib }`, `now_ms` being the engine's clock, `issuer` the credential issuer's public JWK and `rss_kib` the process's resident memory on Linux). With `--platform tdx` it also serves `GET /v1/attestation` and `POST /v1/attestation/refresh` (see below). Every route except health and `GET /v1/attestation` needs `Authorization: Bearer <token>`; the engine holds only the token's SHA-256, from `KEELSON_TEE_TOKEN_SHA256`, and compares it in constant time. Refusals are `application/problem+json` (RFC 9457) with `type` `https://keelson.finance/problems/<code>` and the stable code, and never echo the request. Bodies are JSON with unknown fields rejected.
 
 | Status | Codes                                                                                            |
 | ------ | ------------------------------------------------------------------------------------------------ |

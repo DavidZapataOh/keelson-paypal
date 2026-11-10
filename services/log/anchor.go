@@ -131,11 +131,11 @@ func newAnchorer(cfg *anchorConfig, verifyingContract [20]byte, origins []*origi
 		clock:             time.Now,
 	}
 	for _, o := range origins {
-		rpcURL, ok := cfg.RPC[o.chainID]
+		urls, ok := cfg.RPC[o.chainID]
 		if !ok {
 			continue
 		}
-		client, err := ethclient.Dial(rpcURL)
+		client, err := dialRPC(context.Background(), urls)
 		if err != nil {
 			return nil, err
 		}
