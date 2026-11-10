@@ -10,6 +10,8 @@ export const addresses: Record<ChainId, Readonly<Record<string, Address>>> = {
     AccessManager: "0x57c30a4a175978673bAD2B2B2D3667966cd58314",
     AnonymousMandateReferenceVerifier: "0x07639DbF0E01E4c134B51Dc6210968600b499c6B",
     AnonymousMandateVerifier: "0x103CC9650C1f1d9568e5EdF45Cd1A3C0978BFc7C",
+    AnonymousPurchaseReferenceVerifier: "0x9e4AbD6603F21aB9d72De73c83eaa2E8b5CFfaA1",
+    AnonymousPurchaseVerifier: "0x18b2F0b2D235F69461989C0B7dB86efa91e6B77c",
     CertManager: "0x5FE55991F66f8bA97f005Ae46017FAf4FF802600",
     CheckpointAnchor: "0x049621749722D0660d5026456F25192fBD9A57ab",
     GuardianSafe: "0x1cd0152d2d954Fc8c9436986C9F4B2C15903eF5C",
