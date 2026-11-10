@@ -38,6 +38,7 @@ describe("receipts of real log leaves", () => {
         "zk.c1": "absent",
         "zk.c3": "absent",
         "evidence.manifest": "undisclosed",
+        "evidence.web_fact": "undisclosed",
         "paypal.ids": "undisclosed",
         "policy.replay": "undisclosed",
       });

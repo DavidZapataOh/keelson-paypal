@@ -58,6 +58,14 @@ export const purchases = pgTable(
     /** The PayPal order and authorization leg A read for this countersign. */
     paypalOrderId: text(),
     paypalAuthorizationId: text(),
+    /**
+     * Set when the buyer pays at a real store's own checkout with their PayPal account: the
+     * store's origin. Keelson countersigns and logs such a purchase, and neither covers nor
+     * captures it.
+     */
+    liveStore: text(),
+    /** The PayPal transaction id of a live purchase, as PayPal reported it to the buyer. */
+    paypalTransactionId: text().unique("purchases_paypal_transaction_id_unique"),
     /** The salt of the leaf's `paypal_ref_commit`. */
     paypalRefSalt: bytea(),
     /** The capture's sequence number among the mandate's captures, as its `invoice_id` states it. */
@@ -74,8 +82,20 @@ export const purchases = pgTable(
     capturedAt: timestamp({ withTimezone: true }),
     /** The `keelson.eval/1` trace both legs signed over; its hash is the countersign's `evalHash`. */
     evalTrace: jsonb(),
-    /** Leg A's C1 `mandate_predicate` proof of the ALLOW: `{ proof, public_inputs }`. */
-    c1Proof: jsonb().$type<{ proof: string; public_inputs: string[] }>(),
+    /**
+     * Leg A's C1 `mandate_predicate` proof of the ALLOW: `{ proof, public_inputs }`, with the
+     * proof of the same witness for recursion when the leg makes one.
+     */
+    c1Proof: jsonb().$type<{
+      proof: string;
+      public_inputs: string[];
+      recursive_proof?: string | undefined;
+    }>(),
+    /**
+     * C1 composed with the mandate's C3 by recursion (`anonymous_purchase`): UltraHonk for the EVM
+     * over C1's public inputs, `mandate_hash` and `user_set_root`.
+     */
+    c1c3Proof: jsonb().$type<{ proof: string; public_inputs: string[] }>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -87,6 +107,10 @@ export const purchases = pgTable(
     check("purchases_countersign_digest_len", sql`octet_length(${t.countersignDigest}) = 32`),
     check("purchases_paypal_ref_salt_len", sql`octet_length(${t.paypalRefSalt}) = 32`),
     check("purchases_premium_bps_range", sql`${t.premiumBps} between 0 and 10000`),
+    check(
+      "purchases_paypal_transaction_id_live",
+      sql`${t.paypalTransactionId} is null or ${t.liveStore} is not null`,
+    ),
     check("purchases_capture_seq_range", sql`${t.captureSeq} between 1 and 99`),
     unique("purchases_mandate_id_capture_seq_unique").on(t.mandateId, t.captureSeq),
     index("purchases_resumable_idx")

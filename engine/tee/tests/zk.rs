@@ -132,6 +132,19 @@ fn a_compliant_cart_proves_and_verifies() {
 }
 
 #[test]
+fn the_recursive_proof_verifies_for_the_same_statement_only() {
+    let d = demo();
+    let mut proof = prover()
+        .prove(&d.statement, &d.opening, &d.merchant)
+        .unwrap();
+    // `bb prove -t noir-recursive` with ZK: what `std::verify_proof_with_type` takes, 458 fields.
+    assert_eq!(proof.recursive_proof.as_ref().map(Vec::len), Some(458 * 32));
+    assert!(prover().verify_recursive(&proof).unwrap());
+    proof.public_inputs[1][31] ^= 1;
+    assert!(!prover().verify_recursive(&proof).unwrap_or(false));
+}
+
+#[test]
 fn an_amount_over_the_maximum_does_not_prove() {
     let mut d = demo();
     d.statement.amount = d.opening.max_amount + 1;
@@ -151,7 +164,8 @@ fn another_statement_does_not_verify() {
     assert!(!prover().verify(&proof).unwrap_or(false));
 }
 
-/// The budget is 200 ms per proof, witness and `bb` included.
+/// The budget is 200 ms per proof, witness and `bb` included: 400 ms for one statement's two
+/// proofs, EVM and recursive.
 #[test]
 fn proving_is_within_budget() {
     let d = demo();
@@ -169,7 +183,7 @@ fn proving_is_within_budget() {
         .collect();
     ms.sort_by(f64::total_cmp);
     println!("C1 prove: p50 {:.1} ms, max {:.1} ms", ms[10], ms[19]);
-    assert!(ms[10] < 200.0, "p50 {:.1} ms", ms[10]);
+    assert!(ms[10] < 400.0, "p50 {:.1} ms", ms[10]);
 }
 
 const WAIT: Duration = Duration::from_secs(8);
@@ -193,6 +207,7 @@ fn c1_of(status: C1Status) -> C1Proof {
     C1Proof {
         proof: c1.proof.0.clone(),
         public_inputs: c1.public_inputs.iter().map(|h| h.0).collect(),
+        recursive_proof: c1.recursive_proof.as_ref().map(|r| r.0.clone()),
     }
 }
 
@@ -314,6 +329,7 @@ fn zk(p: &C1Proof) -> ZkProof {
             .iter()
             .map(|b| keelson_tee::wire::Hex(*b))
             .collect(),
+        recursive_proof: p.recursive_proof.clone().map(Base64),
     }
 }
 

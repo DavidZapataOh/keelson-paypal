@@ -8,15 +8,17 @@ export function withScheme(url: string): string {
 }
 
 /**
- * Whether the browser may load `url`: `about:blank`, or `http(s)` on one of `hosts` exactly.
- * Every other scheme (`javascript:`, `data:`, `file:`, `blob:`, …) is refused.
+ * Whether the browser may load `url`: `about:blank`, or `http(s)` on one of `hosts`. A host is
+ * exact, or `*.example.com` for the subdomains of `example.com` at any depth, as KERNEL's network
+ * allowlist writes it. Every other scheme (`javascript:`, `data:`, `file:`, `blob:`, …) is refused.
  */
 export function isAllowed(url: string, hosts: readonly string[]): boolean {
   if (url.toLowerCase() === "about:blank") return true;
   // A browser reads "\" as "/" in a web URL.
   const parsed = URL.parse(withScheme(url).replaceAll("\\", "/"));
   if (!parsed || (parsed.protocol !== "https:" && parsed.protocol !== "http:")) return false;
-  return hosts.includes(parsed.hostname);
+  const host = parsed.hostname;
+  return hosts.some((h) => (h.startsWith("*.") ? host.endsWith(h.slice(1)) : h === host));
 }
 
 /** The toolset's `urlPolicy` for `navigate` over `hosts`. */

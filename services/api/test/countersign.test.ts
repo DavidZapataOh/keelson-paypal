@@ -236,6 +236,52 @@ describe("countersigning the same cart again", { timeout: 120_000 }, () => {
     expect(retry.row?.state).toBe("FAILED");
   });
 
+  test("a live purchase records the store it is paid at; the store must be an origin", async () => {
+    const m = await heldMandate();
+    const { row } = await countersign(m, { live: { store: "https://www.alfred.com" } });
+    expect(row?.liveStore).toBe("https://www.alfred.com");
+    for (const store of ["https://www.alfred.com/cart", "http://www.alfred.com"]) {
+      const bad = await countersign(m, { live: { store } });
+      expect(bad.res.status).toBe(422);
+      expect(bad.row).toBeUndefined();
+    }
+  });
+
+  test("a mandate whose merchant Keelson cannot capture for countersigns only live purchases", async () => {
+    // The mandate allows no payee Keelson captures for: its hold can only back a budget.
+    const withPayPal = createApp({
+      db: testDb,
+      kv: testKv,
+      log: pino({ level: "silent" }),
+      authenticate: headerPrincipal,
+      tee,
+      paypal: { merchantId: "A4WCRYD5EYDF2" } as never,
+    });
+    const m = await heldMandate();
+    const send = async (live: boolean) => {
+      const requestId = ulid();
+      const res = await withPayPal.request("/v1/countersign", {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": ulid(), ...agent },
+        body: JSON.stringify({
+          authorizationId: m.authorizationId,
+          closedMandate: closed(m.id, requestId),
+          cart,
+          unit,
+          evidenceRoot: await evidence.upload(withPayPal, m.id, cart, agent),
+          ...(live ? { live: { store: "https://www.alfred.com" } } : {}),
+        }),
+      });
+      const [row] = await testDb.select().from(purchases).where(eq(purchases.id, requestId));
+      return { res, row, body: (await res.json()) as { type?: string } };
+    };
+    const captured = await send(false);
+    expect(captured.res.status).toBe(422);
+    expect(captured.body.type).toMatch(/merchant-not-capturable$/);
+    expect(captured.row).toBeUndefined();
+    expect((await send(true)).row?.liveStore).toBe("https://www.alfred.com");
+  });
+
   test("only the client the operator linked countersigns under its mandates", async () => {
     const m = await heldMandate();
     const evidenceRoot = await evidence.upload(app, m.id, cart, agent);

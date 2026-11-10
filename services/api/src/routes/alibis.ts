@@ -34,7 +34,7 @@ const bundleRoute = createRoute({
   tags: ["alibis"],
   summary: "An alibi bundle",
   description:
-    "The purchase's Alibi: its RFC 8785 bundle, readable by the mandate's user or, with `alibis:read`, by the client that uploaded the purchase's evidence. It grows as timestamps, the capture and the on-chain anchor arrive; earlier sections never change.",
+    "The purchase's Alibi: its RFC 8785 bundle, readable by the mandate's user or, with `alibis:read`, by the client that uploaded the purchase's evidence; the Alibi of a live purchase, once its PayPal transaction is recorded, by anyone. It grows as timestamps, the capture and the on-chain anchor arrive; earlier sections never change.",
   request: { params: z.object({ id: Id }) },
   responses: {
     200: {
@@ -152,8 +152,12 @@ const verifyRoute = createRoute({
   },
 });
 
-/** Whether the principal is the mandate's user or the client that uploaded the evidence. */
+/**
+ * Whether the principal is the mandate's user or the client that uploaded the evidence. The
+ * Alibi of a live purchase is public.
+ */
 async function mayRead(deps: Pick<Deps, "db">, principal: Principal | undefined, b: AlibiBundle) {
+  if (b.paypal.transaction_id !== undefined) return true;
   if (!principal) return false;
   if (principal.kind === "user") {
     const [row] = await deps.db

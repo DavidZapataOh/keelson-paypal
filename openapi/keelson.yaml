@@ -379,6 +379,21 @@ components:
           items:
             type: string
           description: For a `DENIED` cart, the mandate fields whose check failed.
+        live:
+          type: object
+          properties:
+            store:
+              type: string
+            transactionId:
+              type:
+                - string
+                - "null"
+          required:
+            - store
+            - transactionId
+          description: "A purchase the buyer pays at the store's own checkout: the store's
+            origin and the PayPal transaction id once the agent recorded it.
+            Never covered nor captured."
         disputes:
           type: array
           items:
@@ -1345,6 +1360,21 @@ components:
           items:
             type: string
           description: For a `DENIED` cart, the mandate fields whose check failed.
+        live:
+          type: object
+          properties:
+            store:
+              type: string
+            transactionId:
+              type:
+                - string
+                - "null"
+          required:
+            - store
+            - transactionId
+          description: "A purchase the buyer pays at the store's own checkout: the store's
+            origin and the PayPal transaction id once the agent recorded it.
+            Never covered nor captured."
       required:
         - purchaseId
         - mode
@@ -1391,6 +1421,22 @@ components:
           pattern: ^0x[0-9a-f]{64}$
           description: The root of the evidence stored with `POST /v1/evidence` for this
             mandate.
+        live:
+          type: object
+          properties:
+            store:
+              type: string
+              maxLength: 256
+              format: uri
+              description: The store's origin.
+          required:
+            - store
+          additionalProperties: false
+          description: "Only when the buyer pays at the store's own checkout with their
+            own PayPal account: Keelson countersigns and logs the purchase and
+            issues its Alibi, and neither covers nor captures it. The agent's
+            pay click waits for an ALLOW; the agent then records PayPal's
+            transaction id with `PUT /v1/purchases/{id}/paypal-transaction`."
         repeatOf:
           type: string
           minLength: 26
@@ -1462,6 +1508,40 @@ components:
         - lines
         - return_days
         - returns_free
+    LivePurchase:
+      type: object
+      properties:
+        id:
+          type: string
+          description: The purchase and its Alibi's id.
+        store:
+          type: string
+        merchant:
+          type: string
+        amount:
+          type: object
+          properties:
+            currency:
+              type: string
+            minor:
+              type: string
+          required:
+            - currency
+            - minor
+        transactionId:
+          type: string
+        logIndex:
+          type: string
+        createdAt:
+          type: string
+      required:
+        - id
+        - store
+        - merchant
+        - amount
+        - transactionId
+        - logIndex
+        - createdAt
     Purchase:
       type: object
       properties:
@@ -1537,12 +1617,36 @@ components:
           items:
             type: string
           description: For a `DENIED` cart, the mandate fields whose check failed.
+        live:
+          type: object
+          properties:
+            store:
+              type: string
+            transactionId:
+              type:
+                - string
+                - "null"
+          required:
+            - store
+            - transactionId
+          description: "A purchase the buyer pays at the store's own checkout: the store's
+            origin and the PayPal transaction id once the agent recorded it.
+            Never covered nor captured."
       required:
         - id
         - mandateId
         - mode
         - amount
         - state
+    PayPalTransaction:
+      type: object
+      properties:
+        transactionId:
+          type: string
+          pattern: ^[0-9A-Z]{17}$
+          description: PayPal's 17-character transaction id.
+      required:
+        - transactionId
     EvidenceUpload:
       type: object
       properties:
@@ -1575,7 +1679,7 @@ components:
               - salt
               - bytes
           minItems: 1
-          maxItems: 20
+          maxItems: 22
       required:
         - mandateId
         - manifest
@@ -1609,7 +1713,7 @@ components:
               - media_type
               - leaf
           minItems: 1
-          maxItems: 20
+          maxItems: 22
       required:
         - v
         - root
@@ -2179,6 +2283,41 @@ components:
       required:
         - mandate_hash
         - mandate_commitment
+        - user_set_root
+        - proof
+        - public_inputs
+    AnonymousPurchase:
+      type: object
+      properties:
+        user_set_root:
+          type: string
+          pattern: ^0x[0-9a-f]{64}$
+        proof:
+          type: string
+          description: The UltraHonk proof bytes, standard base64.
+        public_inputs:
+          type: array
+          items:
+            type: string
+            pattern: ^0x[0-9a-f]{64}$
+          description: "C1's `C_m, amount, currency, category, merchant_id, now,
+            cart_hash, operator_id`, then `M mod r` and `user_set_root`: the
+            calldata of `verify(bytes,bytes32[])`."
+        verifier:
+          type: object
+          properties:
+            chain_id:
+              type: integer
+            address:
+              type: string
+          required:
+            - chain_id
+            - address
+          description: "The deployed verifier that accepts the proof in an `eth_call`. It
+            checks the proof only: `public_inputs` must also be the
+            countersign's and the root one `GET /v1/user-set/roots/{root}`
+            lists."
+      required:
         - user_set_root
         - proof
         - public_inputs
@@ -5221,6 +5360,72 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+  /v1/live-purchases:
+    get:
+      tags:
+        - purchases
+      summary: Live purchases
+      description: "Purchases the shopping agent made with real money at real stores'
+        own checkouts, newest first: each has a public Alibi and the PayPal
+        transaction it paid. Keelson countersigned and logged them; it covers
+        none of them."
+      responses:
+        "200":
+          description: The live purchases
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  purchases:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/LivePurchase"
+                required:
+                  - purchases
+  /v1/purchases/{id}/paypal-transaction:
+    put:
+      tags:
+        - purchases
+      summary: Record a live purchase's PayPal transaction
+      description: "For a purchase countersigned with `live`, once its Alibi is
+        issued: the PayPal transaction id of the buyer's payment at the store,
+        as PayPal reported it on its confirmation. Recorded once; the Alibi
+        carries it from then on, marked as not signed. Only the client that
+        asked for the countersign records it."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^[0-7][0-9A-HJKMNP-TV-Z]{25}$
+          required: true
+          name: id
+          in: path
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PayPalTransaction"
+      responses:
+        "200":
+          description: The purchase
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Purchase"
+        "404":
+          description: No such purchase of this client
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: The purchase is not live, its Alibi is not issued yet, or another
+            transaction id is recorded
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
   /v1/purchases/{id}:
     get:
       tags:
@@ -5366,7 +5571,7 @@ paths:
               - integer
               - "null"
             minimum: 0
-            maximum: 19
+            maximum: 21
           required: true
           name: index
           in: path
@@ -5712,8 +5917,9 @@ paths:
       summary: An alibi bundle
       description: "The purchase's Alibi: its RFC 8785 bundle, readable by the
         mandate's user or, with `alibis:read`, by the client that uploaded the
-        purchase's evidence. It grows as timestamps, the capture and the
-        on-chain anchor arrive; earlier sections never change."
+        purchase's evidence; the Alibi of a live purchase, once its PayPal
+        transaction is recorded, by anyone. It grows as timestamps, the capture
+        and the on-chain anchor arrive; earlier sections never change."
       parameters:
         - schema:
             type: string
@@ -5837,6 +6043,37 @@ paths:
                 $ref: "#/components/schemas/AnonymousMandate"
         "404":
           description: No proof for this mandate yet
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/anonymous-purchases/{id}:
+    get:
+      tags:
+        - purchases
+      summary: Proof that a purchase was within a mandate a registered user signed
+      description: "One zero-knowledge proof that composes the purchase's C1 proof
+        (the countersigned cart satisfies the mandate) with its mandate's C3
+        proof (a registered user's passkey, the one the mandate names, signed
+        it) by recursion. It shows neither the mandate nor the user. Its public
+        inputs are the countersign's cart fields, `C_m` and `M`, which link the
+        purchases of one mandate: anyone holding the purchase id can read it."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^[0-9A-HJKMNP-TV-Z]{26}$
+          required: true
+          name: id
+          in: path
+      responses:
+        "200":
+          description: The proof
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnonymousPurchase"
+        "404":
+          description: No composed proof for this purchase yet
           content:
             application/problem+json:
               schema:

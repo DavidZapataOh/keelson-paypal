@@ -24,3 +24,16 @@ describe("the browser's host allowlist", () => {
     "https://169.254.169.254/latest/meta-data/",
   ])("refuses %s", (url) => expect(isAllowed(url, HOSTS)).toBe(false));
 });
+
+describe("a wildcard entry, as KERNEL's allowlist writes it", () => {
+  const hosts = ["www.alfred.com", "*.paypal.com"];
+  test.each([
+    "https://www.paypal.com/checkoutnow",
+    "https://c.paypal.com/x",
+    "https://a.b.paypal.com/",
+  ])("allows %s", (url) => expect(isAllowed(url, hosts)).toBe(true));
+  test.each(["https://paypal.com/", "https://evilpaypal.com/", "https://paypal.com.evil.example/"])(
+    "refuses %s",
+    (url) => expect(isAllowed(url, hosts)).toBe(false),
+  );
+});
