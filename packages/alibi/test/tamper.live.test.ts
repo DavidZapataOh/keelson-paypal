@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { deploymentsFor } from "@keelson/chain";
 import { sha256 } from "@keelson/core";
-import { createPublicClient, type Hex, http } from "viem";
+import { createPublicClient, fallback, type Hex, http } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { arbitrumSepolia } from "viem/chains";
 import { describe, expect, test } from "vitest";
@@ -66,7 +66,10 @@ async function resign(x: AlibiBundle): Promise<void> {
 /** A real transaction of the anchor's block that is not the anchor: the block's first. */
 async function otherTx(b: AlibiBundle): Promise<Hex> {
   const rpc = process.env.ARBITRUM_SEPOLIA_RPC_URL;
-  const client = createPublicClient({ chain: arbitrumSepolia, transport: http(rpc) });
+  const client = createPublicClient({
+    chain: arbitrumSepolia,
+    transport: fallback([http(rpc), http()]),
+  });
   const block = await client.getBlock({ blockNumber: BigInt(b.anchor?.block_number ?? 0) });
   return block.transactions[0] as Hex;
 }

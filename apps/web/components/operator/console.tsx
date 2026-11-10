@@ -2,10 +2,11 @@
 
 import { Badge } from "@keelson/ui/components/badge";
 import { Button } from "@keelson/ui/components/button";
+import { cn } from "@keelson/ui/lib/utils";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "../../lib/api";
-import { authClient } from "../../lib/auth";
+import { authClient, SESSION_HINT } from "../../lib/auth";
 import { CHAIN_ID, injectedWallet, me, type OperatorSelf, signIn } from "../../lib/operator";
 import { Standing } from "./standing";
 
@@ -22,29 +23,39 @@ type Phase =
 
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
+/** The page's host, read after hydration so the static first paint and the client agree. */
+function Host() {
+  const [host, setHost] = useState("");
+  useEffect(() => setHost(location.host), []);
+  return <>{host}</>;
+}
+
 function SignIn({
+  pending,
   reason,
   onSignedIn,
 }: {
+  pending: boolean;
   reason?: string;
   onSignedIn: (s: OperatorSelf) => void;
 }) {
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(reason);
+  const [failure, setFailure] = useState<string>();
+  const error = failure ?? reason;
   async function go() {
     const wallet = injectedWallet();
     if (!wallet) {
-      setError(
+      setFailure(
         "No browser wallet found. Open the console in a browser whose wallet holds your agent's owner key.",
       );
       return;
     }
     setBusy(true);
-    setError(undefined);
+    setFailure("");
     try {
       onSignedIn(await signIn(wallet));
     } catch (err) {
-      setError(
+      setFailure(
         err instanceof ApiError && err.status === 403
           ? "This wallet owns no linked agent. Sign in with the address that owns your agent in the ERC-8004 Identity registry."
           : (err as { code?: number }).code === 4001
@@ -57,7 +68,10 @@ function SignIn({
     }
   }
   return (
-    <section aria-labelledby="sign-in" className="mx-auto grid max-w-md gap-5 py-16">
+    <section
+      aria-labelledby="sign-in"
+      className={cn("mx-auto grid max-w-md gap-5 py-16", pending && "pending-session")}
+    >
       <Badge variant="outline" className="w-fit font-mono">
         Arbitrum Sepolia · PayPal sandbox
       </Badge>
@@ -72,13 +86,15 @@ function SignIn({
         <dt className="text-muted-foreground">You sign</dt>
         <dd>A Sign-In with Ethereum message (EIP-4361)</dd>
         <dt className="text-muted-foreground">For</dt>
-        <dd className="font-mono">{typeof location === "undefined" ? "" : location.host}</dd>
+        <dd className="font-mono">
+          <Host />
+        </dd>
         <dt className="text-muted-foreground">Chain</dt>
         <dd className="font-mono">{CHAIN_ID}</dd>
         <dt className="text-muted-foreground">Valid for</dt>
         <dd>10 minutes, once</dd>
       </dl>
-      <Button size="lg" onClick={go} disabled={busy}>
+      <Button size="lg" onClick={go} disabled={busy || pending}>
         {busy ? "Waiting for your wallet…" : "Sign in with wallet"}
       </Button>
       <p role="status" className="min-h-6 text-destructive text-sm">
@@ -96,6 +112,11 @@ export function OperatorConsole() {
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
 
   const open = useCallback(async (self?: OperatorSelf) => {
+    // Without a session there is nothing to read: the visitor signs in first.
+    if (!self && !localStorage.getItem(SESSION_HINT)) {
+      setPhase({ kind: "signed-out" });
+      return;
+    }
     try {
       const s = self ?? (await me());
       const first = s.operators[0];
@@ -113,13 +134,13 @@ export function OperatorConsole() {
     void open();
   }, [open]);
 
-  if (phase.kind === "loading") {
-    return <p className="py-16 text-muted-foreground">Checking your session…</p>;
-  }
-  if (phase.kind === "signed-out") {
+  if (phase.kind === "loading" || phase.kind === "signed-out") {
+    // A visitor's view is the static first paint; a browser with a session hides it
+    // (html[data-session]) until the session is read.
     return (
       <SignIn
-        {...(phase.reason ? { reason: phase.reason } : {})}
+        pending={phase.kind === "loading"}
+        {...(phase.kind === "signed-out" && phase.reason ? { reason: phase.reason } : {})}
         onSignedIn={(s) => void open(s)}
       />
     );

@@ -5,6 +5,7 @@ import type { Db } from "@keelson/db";
 import { createRelayer, kmsAccount, type Relayer } from "@keelson/relayer";
 import type { Logger } from "pino";
 import type { Address } from "viem";
+import { ARBITRUM_SEPOLIA_PUBLIC_RPC } from "../src/chain/rpc.ts";
 import { carts, seedOperator } from "./tee-live.ts";
 
 const registry = JSON.parse(
@@ -52,7 +53,7 @@ export async function kmsRelayer(db: Db, log: Logger): Promise<Relayer> {
     chains: {
       421614: {
         rpcUrl: process.env.ARBITRUM_SEPOLIA_RPC_URL as string,
-        fallbackRpcUrls: ["https://sepolia-rollup.arbitrum.io/rpc"],
+        fallbackRpcUrls: [ARBITRUM_SEPOLIA_PUBLIC_RPC],
         account: await kmsAccount({
           keyId: process.env.RELAYER_KMS_KEY_SANDBOX as string,
           client: kms,

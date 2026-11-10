@@ -14,7 +14,7 @@ import { arbitrumSepolia } from "viem/chains";
 import { startAnchorWatcher } from "./alibi/anchors.ts";
 import { createApp } from "./app.ts";
 import { createAuth } from "./auth.ts";
-import { arbitrumSepoliaRpcUrls, rpcTransport } from "./chain/rpc.ts";
+import { arbitrumSepoliaTransport } from "./chain/rpc.ts";
 import { createChannel3 } from "./channel3/client.ts";
 import { operatorAgent, termsConsent } from "./compile-sources.ts";
 import { type RunDeps, runDispute } from "./disputes/run.ts";
@@ -82,7 +82,7 @@ const chains = {
   [arbitrumSepolia.id]: {
     client: createPublicClient({
       chain: arbitrumSepolia,
-      transport: rpcTransport(arbitrumSepoliaRpcUrls(env.ARBITRUM_SEPOLIA_RPC_URL)),
+      transport: arbitrumSepoliaTransport(env.ARBITRUM_SEPOLIA_RPC_URL),
     }),
     logs: createPublicClient({ chain: arbitrumSepolia, transport: http() }),
   },

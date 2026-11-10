@@ -47,9 +47,17 @@ export interface PurchaseView {
   coverage?: { chainId: number; txHash: Hex | null };
   capture?: { id: string; invoiceId: string; status: string | null };
   failure?: { step: string; reason: string };
+  blocked?: string[];
 }
 
 type Row = typeof purchases.$inferSelect;
+
+/** The mandate fields whose check failed, from the engine's evaluation trace. */
+function failedFields(trace: unknown): string[] {
+  const fields = (trace as { fields?: { id?: unknown; pass?: unknown }[] } | null)?.fields;
+  if (!Array.isArray(fields)) return [];
+  return fields.flatMap((f) => (typeof f.id === "string" && f.pass === false ? [f.id] : []));
+}
 
 export function purchaseView(p: Row): PurchaseView {
   const failure = p.state === "FAILED" && p.failureReason ? p.failureReason : undefined;
@@ -75,6 +83,7 @@ export function purchaseView(p: Row): PurchaseView {
     ...(failure
       ? { failure: rest.length > 0 ? { step, reason: rest.join(":") } : { step, reason: failure } }
       : {}),
+    ...(p.state === "DENIED" ? { blocked: failedFields(p.evalTrace) } : {}),
   };
 }
 

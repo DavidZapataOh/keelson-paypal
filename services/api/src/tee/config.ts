@@ -4,7 +4,7 @@ import { type Address, createPublicClient, createWalletClient, type Hex } from "
 import { privateKeyToAccount } from "viem/accounts";
 import { arbitrumSepolia } from "viem/chains";
 import type { ChainDeps } from "../chain/registry.ts";
-import { arbitrumSepoliaRpcUrls, rpcTransport } from "../chain/rpc.ts";
+import { arbitrumSepoliaTransport } from "../chain/rpc.ts";
 import { LegClient } from "./client.ts";
 import { loadMeasurements } from "./measurements.ts";
 import type { LegExpectations, TeeConfig } from "./signers.ts";
@@ -39,7 +39,7 @@ interface TeeEnv {
 
 /** The registrar on Arbitrum Sepolia: the VerdictVerifier and its Nitro validator's CertManager. */
 function registrar(key: Hex, rpcUrl: string | undefined): ChainDeps {
-  const transport = rpcTransport(arbitrumSepoliaRpcUrls(rpcUrl));
+  const transport = arbitrumSepoliaTransport(rpcUrl);
   const certManager = addresses[arbitrumSepolia.id].CertManager;
   if (!certManager) throw new Error("no CertManager on Arbitrum Sepolia");
   return {
@@ -64,7 +64,7 @@ export function createTee(
 ): TeeConfig {
   const rpc = createPublicClient({
     chain: arbitrumSepolia,
-    transport: rpcTransport(arbitrumSepoliaRpcUrls(env.ARBITRUM_SEPOLIA_RPC_URL)),
+    transport: arbitrumSepoliaTransport(env.ARBITRUM_SEPOLIA_RPC_URL),
   });
   const m = loadMeasurements();
   const common = {

@@ -120,6 +120,8 @@ async function signedInConsole(): Promise<{ context: BrowserContext; page: Page 
     if (path === "/api/auth/get-session") return json(null);
     return route.abort("connectionrefused");
   });
+  // A browser that holds a session (the header records it on every page).
+  await context.addInitScript(() => localStorage.setItem("keelson.session", "1"));
   const page = await context.newPage();
   await page.goto(`${site.base}/merchant/`);
   const forensics = page.getByRole("button", { name: "Forensics" });

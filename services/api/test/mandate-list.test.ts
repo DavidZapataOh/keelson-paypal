@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { disputes, mandates, operators, purchases, user } from "@keelson/db";
+import { disputes, mandates, operators, purchaseHolds, purchases, user } from "@keelson/db";
 import { pino } from "pino";
 import { ulid } from "ulid";
 import { beforeAll, describe, expect, test } from "vitest";
@@ -21,8 +21,9 @@ const owner = `user-${randomBytes(6).toString("hex")}`;
 const other = `user-${randomBytes(6).toString("hex")}`;
 const agentId = BigInt(`0x${randomBytes(6).toString("hex")}`);
 const [older, newer] = [ulid(), ulid()];
-const [captured, failed] = [ulid(), ulid()];
+const [captured, failed, denied] = [ulid(), ulid(), ulid()];
 const disputeId = `PP-D-${randomBytes(4).toString("hex")}`;
+const [waiting, authorized] = [ulid(), ulid()];
 
 const mandate = (id: string, userId: string, createdAt: Date) => ({
   id,
@@ -79,7 +80,33 @@ beforeAll(async () => {
       state: "FAILED",
       failureReason: "capture:declined",
     },
+    {
+      ...purchase(denied, older, new Date()),
+      state: "DENIED",
+      evalTrace: {
+        fields: [
+          { id: "total", color: "green", pass: false },
+          { id: "merchant", color: "green", pass: true },
+          { id: "items", color: "green", pass: false },
+        ],
+      },
+    },
   ]);
+  await testDb.insert(purchaseHolds).values(
+    [
+      [waiting, "PENDING"],
+      [authorized, "AUTHORIZED"],
+    ].map(([requestId, state]) => ({
+      requestId: requestId as string,
+      mandateId: newer,
+      merchantId: "store",
+      currency: "USD",
+      amountMinor: 2_500n,
+      cartHash: randomBytes(32),
+      paypalOrderId: `ord-${requestId}`,
+      state: state as "PENDING" | "AUTHORIZED",
+    })),
+  );
   await testDb.insert(disputes).values({
     id: disputeId,
     purchaseId: captured,
@@ -128,6 +155,25 @@ describe("GET /v1/mandates/{id}", () => {
       capture: { id: `cap-${captured}`, status: "COMPLETED" },
       disputes: [{ id: disputeId, state: "OPEN" }],
     });
+  });
+
+  test("carries the purchase holds still waiting for the buyer's approval", async () => {
+    const res = await get(`/v1/mandates/${newer}`, asUser(owner));
+    const body = (await res.json()) as { pendingHolds: unknown[] };
+    expect(body.pendingHolds).toEqual([
+      { requestId: waiting, orderId: `ord-${waiting}`, merchant: "store", amountMinor: "2500" },
+    ]);
+  });
+
+  test("a blocked cart names the fields that failed their check", async () => {
+    const res = await get(`/v1/mandates/${older}`, asUser(owner));
+    const body = (await res.json()) as { purchases: Record<string, unknown>[] };
+    expect(body.purchases[0]).toMatchObject({
+      id: denied,
+      state: "DENIED",
+      blocked: ["total", "items"],
+    });
+    expect(body.purchases[0]).not.toHaveProperty("failure");
   });
 
   test("another user's mandate is not found", async () => {
