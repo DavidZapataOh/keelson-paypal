@@ -6,6 +6,7 @@
     "lib": ["es2024", "dom", "dom.iterable"],
     "jsx": "react-jsx",
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "isolatedDeclarations": false,
     "declaration": false,
     "allowJs": false,
