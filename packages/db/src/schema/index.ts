@@ -16,4 +16,5 @@ export * from "./paypal-events.ts";
 export * from "./purchases.ts";
 export * from "./tee.ts";
 export * from "./timestamps.ts";
+export * from "./user-set.ts";
 export * from "./verdicts.ts";

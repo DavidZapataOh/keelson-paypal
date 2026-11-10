@@ -295,7 +295,7 @@ function isUniqueViolation(err: unknown): boolean {
 
 export function registerMandates(
   app: OpenAPIHono,
-  deps: Pick<Deps, "db" | "appOrigin" | "passkeyRpId" | "tee">,
+  deps: Pick<Deps, "db" | "log" | "appOrigin" | "passkeyRpId" | "tee" | "proveAnonymousMandate">,
 ): void {
   const { db } = deps;
   const queries = createQueries(db);
@@ -526,6 +526,13 @@ export function registerMandates(
       // A concurrent request with the same assertion advanced the counter first.
       if (err instanceof CounterError) return (await storedHash()) ? exists() : invalidSignature();
       throw err;
+    }
+
+    if (body.salt && deps.proveAnonymousMandate) {
+      const salt = body.salt as string;
+      void deps
+        .proveAnonymousMandate(m.mid, salt)
+        .catch((err: unknown) => deps.log.warn({ err, mandateId: m.mid }, "C3 proof not started"));
     }
 
     c.header("location", `/v1/mandates/${m.mid}`);

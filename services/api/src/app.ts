@@ -30,6 +30,7 @@ import type { PayPalDeps } from "./paypal.ts";
 import { ProblemSchema, problem } from "./problem.ts";
 import { registerAdminClients } from "./routes/admin-clients.ts";
 import { registerAlibis } from "./routes/alibis.ts";
+import { registerAnonymousMandates } from "./routes/anonymous-mandates.ts";
 import { registerBonds } from "./routes/bonds.ts";
 import { registerChannel3Webhook } from "./routes/channel3-webhook.ts";
 import { type CompileSources, registerCompile } from "./routes/compile.ts";
@@ -59,8 +60,12 @@ import { registerValidations } from "./routes/validations.ts";
 import type { TeeConfig } from "./tee/signers.ts";
 import type { StampWorker } from "./timestamps/worker.ts";
 
-/** The public reads the verifier makes: an Alibi's receipt and a leaf's timestamps. */
-const PUBLIC_READS = /^\/v1\/(alibis\/[^/]+\/receipt|timestamps\/[^/]+)$/;
+/**
+ * The public reads the verifier makes: an Alibi's receipt, a leaf's timestamps, a mandate's C3
+ * proof and the registered-user roots.
+ */
+const PUBLIC_READS =
+  /^\/v1\/(alibis\/[^/]+\/receipt|timestamps\/[^/]+|anonymous-mandates\/[^/]+|user-set\/roots\/[^/]+)$/;
 
 export interface Deps {
   db: Db;
@@ -122,6 +127,11 @@ export interface Deps {
   startDisputeWorkflow?: (disputeId: string, revision: string) => Promise<void>;
   /** The address that signs each merchant's settlement choices; its settlement address by default. */
   merchantSigners?: Readonly<Record<string, Address>>;
+  /**
+   * Proves C3 for a stored mandate under its commitment salt, off the request; mandates carry
+   * no C3 proof without it.
+   */
+  proveAnonymousMandate?: (mandateId: string, salt: string) => Promise<void>;
   /** Aborting it ends every open event stream so the server can close. */
   shutdown?: AbortSignal;
 }
@@ -268,6 +278,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerTee(app, deps);
   registerTimestamps(app, deps);
   registerAlibis(app, deps);
+  registerAnonymousMandates(app, deps);
   registerDisputes(app, deps);
   registerPasskeys(app, deps);
   registerOperators(app, deps);
