@@ -5,7 +5,6 @@ import { appendFileSync } from "node:fs";
 import { cartHash } from "@keelson/core";
 import { createDb, eq, events, mandates, purchases } from "@keelson/db";
 import { closeMandate } from "@keelson/mandate";
-import { pino } from "pino";
 import { ulid } from "ulid";
 import { bytesToHex, createPublicClient, type Hex, http, type PublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
@@ -13,6 +12,7 @@ import { createApp } from "../src/app.ts";
 import { parseEnv } from "../src/env.ts";
 import { eventsChannel } from "../src/events.ts";
 import { createKv } from "../src/kv.ts";
+import { createLogger } from "../src/logger.ts";
 import { relayerFromEnv } from "../src/onchain/relayer.ts";
 import { operatorSigners } from "../src/operators/signer.ts";
 import { call, createPayPalDeps } from "../src/paypal.ts";
@@ -55,7 +55,8 @@ if (!env.LOG_URL || !env.LOG_WRITE_TOKEN || !env.KEELSON_OPERATOR_KEY || !env.DE
     "the bench needs LOG_URL, LOG_WRITE_TOKEN, KEELSON_OPERATOR_KEY and DEMO_AGENT_ID",
   );
 }
-const log = pino({ level: "warn" });
+const log = createLogger();
+log.level = "warn";
 const { db, pool } = createDb(env.DATABASE_URL);
 const kv = await createKv(env.REDIS_URL, log);
 const listener = kv.duplicate();
