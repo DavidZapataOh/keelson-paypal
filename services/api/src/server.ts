@@ -14,7 +14,7 @@ import { arbitrumSepolia } from "viem/chains";
 import { anchorCovered } from "./alibi/anchors.ts";
 import { createApp } from "./app.ts";
 import { createAuth } from "./auth.ts";
-import { followChainEvents, isFinalized, wssUrl } from "./chain/events.ts";
+import { followChainEvents, isFinal, wssUrl } from "./chain/events.ts";
 import { arbitrumSepoliaTransport, POLLING_INTERVAL_MS, startRpcReport } from "./chain/rpc.ts";
 import { createChannel3 } from "./channel3/client.ts";
 import { operatorAgent, termsConsent } from "./compile-sources.ts";
@@ -123,7 +123,7 @@ const disputeRun: RunDeps | undefined =
         tlog: { url: env.LOG_URL, token: env.LOG_WRITE_TOKEN },
         relayer,
         treasury,
-        finalized: (block: bigint) => isFinalized(db, block),
+        finalized: isFinal(db, chains[arbitrumSepolia.id].logs),
         anthropic: env.ANTHROPIC_API_KEY
           ? new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
           : undefined,
@@ -235,7 +235,7 @@ const stopSettlements = relayer
       relayer,
       treasury,
       chain: chains[arbitrumSepolia.id],
-      finalized: (block: bigint) => isFinalized(db, block),
+      finalized: isFinal(db, chains[arbitrumSepolia.id].logs),
     })
   : undefined;
 

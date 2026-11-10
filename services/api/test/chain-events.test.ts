@@ -7,10 +7,11 @@ import { beforeEach, describe, expect, test } from "vitest";
 import {
   BACKFILL_BLOCKS,
   CONTRACTS,
+  catchUp,
   type EventLog,
   finalizedBlock,
   ingest,
-  isFinalized,
+  isFinal,
   reconcile,
   retract,
   wssUrl,
@@ -43,11 +44,18 @@ function event(
   } as EventLog;
 }
 
-/** A logs RPC over `logs` whose `finalized` block is `head`, refusing ranges wider than `limit`. */
-function chain(head: bigint, logs: EventLog[], limit = 10_000n) {
+/**
+ * A logs RPC over `logs` whose `finalized` block is `head`, refusing ranges wider than `limit`;
+ * `hashes` are the canonical block hashes.
+ */
+function chain(head: bigint, logs: EventLog[], limit = 10_000n, hashes = new Map<bigint, Hex>()) {
   const calls: [bigint, bigint][] = [];
   const client = {
-    getBlock: async () => ({ number: head }),
+    getBlock: async ({ blockNumber }: { blockNumber?: bigint } = {}) =>
+      blockNumber === undefined
+        ? { number: head }
+        : { number: blockNumber, hash: hashes.get(blockNumber) ?? id() },
+    getBlockNumber: async () => head + 100n,
     getLogs: async ({ fromBlock, toBlock }: { fromBlock: bigint; toBlock: bigint }) => {
       if (toBlock - fromBlock + 1n > limit) throw new Error("range too wide");
       calls.push([fromBlock, toBlock]);
@@ -97,8 +105,6 @@ describe("the reconciler", () => {
     expect(rpc.calls.every(([from, to]) => to - from < 5_000n)).toBe(true);
     expect(rpc.calls.at(-1)?.[1]).toBe(head);
     expect((await finalizedBlock(testDb))?.block).toBe(head);
-    expect(await isFinalized(testDb, head)).toBe(true);
-    expect(await isFinalized(testDb, head + 1n)).toBe(false);
 
     // The next pass reads only the new finalized blocks.
     const next = chain(head + 1_200n, logs);
@@ -121,6 +127,56 @@ describe("the reconciler", () => {
       // Past finalized: left to a later pass.
       [2_000n, false],
     ]);
+  });
+
+  test("keeps a live log a node missed in a canonical block, and the cursor where it was", async () => {
+    await testDb.insert(chainCursors).values({ chainId: 421614, block: 999n });
+    const live = event("CoverageLocked", { coverageId: id() }, 1_005n);
+    await ingest(testDb, [live], { finalized: false });
+    // The node answers no log, yet block 1,005 still has the hash the log was seen in.
+    const lagging = chain(1_500n, [], 10_000n, new Map([[1_005n, live.blockHash as Hex]]));
+    await expect(reconcile({ db: testDb, logs: lagging.client, log })).rejects.toThrow(
+      /miss a log/,
+    );
+    expect(await testDb.select().from(chainEvents)).toHaveLength(1);
+    expect((await finalizedBlock(testDb))?.block).toBe(999n);
+  });
+
+  test("the cursor never moves back", async () => {
+    await testDb.insert(chainCursors).values({ chainId: 421614, block: 2_000n });
+    await reconcile({ db: testDb, logs: chain(1_500n, []).client, log });
+    expect((await finalizedBlock(testDb))?.block).toBe(2_000n);
+  });
+
+  test("catching up stores, not final, what was sequenced past the cursor", async () => {
+    await testDb.insert(chainCursors).values({ chainId: 421614, block: 1_000n });
+    const missed = event("CheckpointAnchored", { origin: id(), size: 7n }, 1_050n);
+    const rpc = chain(1_000n, [missed]);
+    expect(await catchUp({ db: testDb, logs: rpc.client, log })).toHaveLength(1);
+    expect(rpc.calls).toEqual([[1_001n, 1_100n]]);
+    expect((await testDb.select().from(chainEvents))[0]?.finalized).toBe(false);
+  });
+
+  test("a payment is final once the cursor passed it and the node's receipt agrees", async () => {
+    await testDb.insert(chainCursors).values({ chainId: 421614, block: 1_000n });
+    const receipts = new Map<Hex, { status: string; blockNumber: bigint }>();
+    const client = {
+      getTransactionReceipt: async ({ hash }: { hash: Hex }) => {
+        const r = receipts.get(hash);
+        if (!r) throw new Error("not found");
+        return r;
+      },
+    } as unknown as PublicClient;
+    const final = isFinal(testDb, client);
+    const [a, b, c] = [id(), id(), id()];
+    receipts.set(a, { status: "success", blockNumber: 900n });
+    // Reorganized into a later block, past finalized.
+    receipts.set(b, { status: "success", blockNumber: 1_200n });
+    expect(await final({ hash: a, block: 900n })).toBe(true);
+    expect(await final({ hash: a, block: 1_100n })).toBe(false);
+    expect(await final({ hash: b, block: 900n })).toBe(false);
+    // Dropped by a reorg.
+    expect(await final({ hash: c, block: 900n })).toBe(false);
   });
 
   test("a failed range leaves the cursor where it was", async () => {

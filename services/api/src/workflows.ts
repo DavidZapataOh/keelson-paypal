@@ -8,7 +8,7 @@ import { pino } from "pino";
 import { createPublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { z } from "zod";
-import { isFinalized } from "./chain/events.ts";
+import { isFinal } from "./chain/events.ts";
 import { arbitrumSepoliaTransport, POLLING_INTERVAL_MS } from "./chain/rpc.ts";
 import { type RunDeps, runDispute } from "./disputes/run.ts";
 import { treasuryFromKey } from "./disputes/treasury.ts";
@@ -52,6 +52,10 @@ async function connect(): Promise<RunDeps> {
   const env = Env.parse(process.env);
   const log = pino();
   const { db } = createDb(env.DATABASE_URL);
+  const logs = createPublicClient({
+    chain: arbitrumSepolia,
+    transport: arbitrumSepoliaTransport(env.DRPC_ARBITRUM_SEPOLIA_URL),
+  });
   return {
     // Settles on chain only with the relayer's KMS key.
     relayer: await relayerFromEnv(env, db, log),
@@ -69,14 +73,11 @@ async function connect(): Promise<RunDeps> {
         transport: arbitrumSepoliaTransport(env.ARBITRUM_SEPOLIA_RPC_URL),
         pollingInterval: POLLING_INTERVAL_MS,
       }),
-      logs: createPublicClient({
-        chain: arbitrumSepolia,
-        transport: arbitrumSepoliaTransport(env.DRPC_ARBITRUM_SEPOLIA_URL),
-      }),
+      logs,
     },
     rpcUrl: env.ARBITRUM_SEPOLIA_RPC_URL,
     tlog: { url: env.LOG_URL, token: env.LOG_WRITE_TOKEN },
-    finalized: (block: bigint) => isFinalized(db, block),
+    finalized: isFinal(db, logs),
     anthropic: env.ANTHROPIC_API_KEY ? new Anthropic({ apiKey: env.ANTHROPIC_API_KEY }) : undefined,
   };
 }

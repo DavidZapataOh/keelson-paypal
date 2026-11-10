@@ -70,7 +70,12 @@ export async function ingest(
   logs: readonly EventLog[],
   { finalized }: { finalized: boolean },
 ): Promise<EventLog[]> {
-  const rows = logs.filter((l) => !l.removed && l.transactionHash && l.blockHash);
+  const byKey = new Map(
+    logs
+      .filter((l) => !l.removed && l.transactionHash && l.blockHash)
+      .map((l) => [`${(l.transactionHash as Hex).toLowerCase()}:${l.logIndex}`, l]),
+  );
+  const rows = [...byKey.values()];
   if (rows.length === 0) return [];
   const stored = await db
     .insert(chainEvents)
@@ -144,10 +149,18 @@ export async function finalizedBlock(db: Db): Promise<{ block: bigint; at: Date 
   return row;
 }
 
-/** Whether `block` is at or below the reconciled `finalized` block. */
-export async function isFinalized(db: Db, block: bigint): Promise<boolean> {
-  const cursor = await finalizedBlock(db);
-  return cursor !== undefined && cursor.block >= block;
+/**
+ * Whether a transaction recorded at `block` is final: the reconciled `finalized` block has
+ * passed it, and the receipt a node serves now, after any reorg, is a success at or below it.
+ * The node is asked only once the cursor passed the recorded block.
+ */
+export function isFinal(db: Db, client: PublicClient) {
+  return async ({ hash, block }: { hash: Hex; block: bigint }): Promise<boolean> => {
+    const cursor = await finalizedBlock(db);
+    if (!cursor || cursor.block < block) return false;
+    const receipt = await client.getTransactionReceipt({ hash }).catch(() => undefined);
+    return receipt?.status === "success" && receipt.blockNumber <= cursor.block;
+  };
 }
 
 /**
@@ -170,30 +183,22 @@ export interface ReconcileDeps {
 
 let range = MAX_RANGE;
 
-/**
- * Reads every log of `EVENTS` from the cursor to the chain's `finalized` block, a chunk at a
- * time. Each chunk replaces what the live subscription stored for its blocks: logs a reorg
- * removed are deleted, the rest stored final, and the cursor moves past it in the same
- * transaction. Returns the logs stored for the first time.
- */
-export async function reconcile(deps: ReconcileDeps): Promise<EventLog[]> {
-  const head = await deps.logs.getBlock({ blockTag: "finalized" });
-  const cursor = await finalizedBlock(deps.db);
-  let from = cursor
-    ? cursor.block + 1n
-    : head.number - BACKFILL_BLOCKS > DEPLOYED_AT
-      ? head.number - BACKFILL_BLOCKS
-      : DEPLOYED_AT;
-  const fresh: EventLog[] = [];
-  while (from <= head.number) {
-    const to = from + range - 1n < head.number ? from + range - 1n : head.number;
+/** Reads every log of `EVENTS` in `[from, to]`, a chunk at a time, narrowing on refusal. */
+async function readLogs(
+  deps: ReconcileDeps,
+  from: bigint,
+  to: bigint,
+  onChunk: (logs: EventLog[], from: bigint, to: bigint) => Promise<void>,
+): Promise<void> {
+  while (from <= to) {
+    const end = from + range - 1n < to ? from + range - 1n : to;
     let logs: EventLog[];
     try {
       logs = (await deps.logs.getLogs({
         address: [...CONTRACTS],
         events: EVENTS,
         fromBlock: from,
-        toBlock: to,
+        toBlock: end,
         strict: true,
       })) as unknown as EventLog[];
     } catch (err) {
@@ -202,34 +207,119 @@ export async function reconcile(deps: ReconcileDeps): Promise<EventLog[]> {
       deps.log.debug({ range: String(range), err: brief(err) }, "chain events: narrower range");
       continue;
     }
+    await onChunk(logs, from, end);
+    from = end + 1n;
+    if (range < MAX_RANGE) range *= 2n;
+  }
+}
+
+/**
+ * The stored live logs in `[from, to]` the canonical chain does not have: each is dropped when
+ * its block's hash changed, a reorg. A log whose block is still canonical means the node that
+ * answered missed it; the chunk is read again on the next pass.
+ */
+async function orphans(
+  deps: ReconcileDeps,
+  logs: readonly EventLog[],
+  from: bigint,
+  to: bigint,
+): Promise<{ txHash: Buffer; logIndex: number }[]> {
+  const canonical = new Set(
+    logs.map((l) => `${(l.transactionHash as Hex).toLowerCase()}:${l.logIndex}`),
+  );
+  const live = await deps.db
+    .select({
+      txHash: chainEvents.txHash,
+      logIndex: chainEvents.logIndex,
+      blockNumber: chainEvents.blockNumber,
+      blockHash: chainEvents.blockHash,
+    })
+    .from(chainEvents)
+    .where(
+      and(
+        eq(chainEvents.chainId, CHAIN_ID),
+        sql`${chainEvents.blockNumber} between ${from} and ${to}`,
+        eq(chainEvents.finalized, false),
+      ),
+    );
+  const missing = live.filter((r) => !canonical.has(`${bytesToHex(r.txHash)}:${r.logIndex}`));
+  const hashes = new Map<bigint, Hex>();
+  for (const r of missing) {
+    if (!hashes.has(r.blockNumber)) {
+      hashes.set(r.blockNumber, (await deps.logs.getBlock({ blockNumber: r.blockNumber })).hash);
+    }
+    if (hashes.get(r.blockNumber) === bytesToHex(r.blockHash)) {
+      throw new Error(
+        `the logs of blocks ${from}..${to} miss a log of canonical block ${r.blockNumber}`,
+      );
+    }
+  }
+  return missing;
+}
+
+const moveCursor = (db: Pick<Db, "insert">, block: bigint) =>
+  db
+    .insert(chainCursors)
+    .values({ chainId: CHAIN_ID, block })
+    .onConflictDoUpdate({
+      target: chainCursors.chainId,
+      // Never backwards, whichever of two overlapping passes writes last.
+      set: { block: sql`greatest(${chainCursors.block}, excluded.block)`, updatedAt: sql`now()` },
+    });
+
+/**
+ * Reads every log of `EVENTS` from the cursor to the chain's `finalized` block. Each chunk
+ * replaces what the live subscription stored for its blocks: logs a reorg removed are deleted,
+ * the rest stored final, and the cursor moves past it in the same transaction. Returns the logs
+ * stored for the first time.
+ */
+export async function reconcile(deps: ReconcileDeps): Promise<EventLog[]> {
+  const head = await deps.logs.getBlock({ blockTag: "finalized" });
+  const cursor = await finalizedBlock(deps.db);
+  const from = cursor
+    ? cursor.block + 1n
+    : head.number - BACKFILL_BLOCKS > DEPLOYED_AT
+      ? head.number - BACKFILL_BLOCKS
+      : DEPLOYED_AT;
+  const fresh: EventLog[] = [];
+  await readLogs(deps, from, head.number, async (logs, start, end) => {
+    const removed = await orphans(deps, logs, start, end);
     const stored = await deps.db.transaction(async (tx) => {
-      const keep = logs.map((l) => sql`(${buf(l.transactionHash as Hex)}, ${l.logIndex})`);
-      await tx
-        .delete(chainEvents)
-        .where(
-          and(
-            eq(chainEvents.chainId, CHAIN_ID),
-            sql`${chainEvents.blockNumber} between ${from} and ${to}`,
-            eq(chainEvents.finalized, false),
-            keep.length > 0
-              ? sql`(${chainEvents.txHash}, ${chainEvents.logIndex}) not in (${sql.join(keep, sql`, `)})`
-              : undefined,
-          ),
-        );
+      for (const r of removed) {
+        await tx
+          .delete(chainEvents)
+          .where(
+            and(
+              eq(chainEvents.chainId, CHAIN_ID),
+              eq(chainEvents.txHash, r.txHash),
+              eq(chainEvents.logIndex, r.logIndex),
+              eq(chainEvents.finalized, false),
+            ),
+          );
+      }
       const stored = await ingest(tx, logs, { finalized: true });
-      await tx
-        .insert(chainCursors)
-        .values({ chainId: CHAIN_ID, block: to })
-        .onConflictDoUpdate({
-          target: chainCursors.chainId,
-          set: { block: to, updatedAt: sql`now()` },
-        });
+      await moveCursor(tx, end);
       return stored;
     });
     fresh.push(...stored);
-    from = to + 1n;
-    if (range < MAX_RANGE) range *= 2n;
-  }
+  });
+  // A pass with nothing new still proves the follower alive.
+  if (cursor && from > head.number) await moveCursor(deps.db, cursor.block);
+  return fresh;
+}
+
+/**
+ * Stores, not final, every log from the reconciled cursor to `latest`: what a subscription
+ * missed while no process held it. Returns the logs stored for the first time.
+ */
+export async function catchUp(deps: ReconcileDeps): Promise<EventLog[]> {
+  const cursor = await finalizedBlock(deps.db);
+  if (!cursor) return [];
+  const latest = await deps.logs.getBlockNumber({ cacheTime: 0 });
+  const fresh: EventLog[] = [];
+  await readLogs(deps, cursor.block + 1n, latest, async (logs) => {
+    fresh.push(...(await ingest(deps.db, logs, { finalized: false })));
+  });
   return fresh;
 }
 
@@ -252,6 +342,8 @@ export function wssUrl(env: {
 }
 
 const RECONCILE_INTERVAL_MS = 300_000;
+/** Longer than a first pass's backfill; two overlapping passes are harmless, only wasteful. */
+const RECONCILE_LOCK_MS = 900_000;
 const LIVE_RETRY_MS = 10_000;
 /** A live holder that stops renewing frees the subscription to another process this soon. */
 const LIVE_LOCK_MS = 30_000;
@@ -301,18 +393,19 @@ export function followChainEvents(deps: FollowDeps): {
     if (
       (await deps.kv.set(RECONCILE_LOCK, token, {
         NX: true,
-        PX: RECONCILE_INTERVAL_MS - 10_000,
+        PX: RECONCILE_LOCK_MS,
       })) !== "OK"
     ) {
       return;
     }
+    let fresh: EventLog[];
     try {
-      const fresh = await reconcile(deps);
-      if (fresh.length > 0) deps.log.info({ events: fresh.length }, "chain events reconciled");
-      await run(fresh);
+      fresh = await reconcile(deps);
     } finally {
       await release(deps.kv, RECONCILE_LOCK, token);
     }
+    if (fresh.length > 0) deps.log.info({ events: fresh.length }, "chain events reconciled");
+    await run(fresh);
   };
   const reconcileNow = () => {
     reconciling ??= tick()
@@ -327,9 +420,12 @@ export function followChainEvents(deps: FollowDeps): {
 
   let unwatch: (() => void) | undefined;
   let socket: PublicClient | undefined;
+  // Batches are stored in order: a removal never runs ahead of the log it removes.
+  let writes: Promise<void> = Promise.resolve();
   const drop = () => {
     unwatch?.();
     unwatch = undefined;
+    void release(deps.kv, LIVE_LOCK, token).catch(() => {});
     void (socket?.transport as { getRpcClient?: () => Promise<{ close(): void }> } | undefined)
       ?.getRpcClient?.()
       .then((c) => c.close())
@@ -344,17 +440,19 @@ export function followChainEvents(deps: FollowDeps): {
       strict: true,
       onLogs: (logs) => {
         const all = logs as unknown as EventLog[];
-        void (async () => {
-          await retract(
-            deps.db,
-            all.filter((l) => l.removed),
-          );
-          const fresh = await ingest(deps.db, all, { finalized: false });
-          if (fresh.length > 0) {
-            deps.log.info({ events: fresh.map((l) => l.eventName) }, "chain events received");
-            await run(fresh);
-          }
-        })().catch((err: unknown) => deps.log.warn({ err: brief(err) }, "chain events not stored"));
+        writes = writes
+          .then(async () => {
+            await retract(
+              deps.db,
+              all.filter((l) => l.removed),
+            );
+            const fresh = await ingest(deps.db, all, { finalized: false });
+            if (fresh.length > 0) {
+              deps.log.info({ events: fresh.map((l) => l.eventName) }, "chain events received");
+              void run(fresh);
+            }
+          })
+          .catch((err: unknown) => deps.log.warn({ err: brief(err) }, "chain events not stored"));
       },
       onError: (err) => {
         deps.log.warn({ err: brief(err) }, "chain event subscription failed");
@@ -371,8 +469,12 @@ export function followChainEvents(deps: FollowDeps): {
     }
     if ((await deps.kv.set(LIVE_LOCK, token, { NX: true, PX: LIVE_LOCK_MS })) !== "OK") return;
     subscribe(deps.wss);
-    // A gap while no process held the subscription is read now, not in five minutes.
-    reconcileNow();
+    // What was sequenced while no process held the subscription is read now, not at finality.
+    const missed = await catchUp(deps);
+    if (missed.length > 0) {
+      deps.log.info({ events: missed.length }, "chain events caught up");
+      void run(missed);
+    }
   };
   const liveTimer = setInterval(() => {
     liveTick().catch((err: unknown) =>
@@ -388,11 +490,10 @@ export function followChainEvents(deps: FollowDeps): {
       stopped = true;
       clearInterval(reconcileTimer);
       clearInterval(liveTimer);
-      if (unwatch) {
-        drop();
-        await release(deps.kv, LIVE_LOCK, token);
-      }
+      drop();
+      await release(deps.kv, LIVE_LOCK, token);
       await reconciling;
+      await writes;
       await queue;
     },
   };

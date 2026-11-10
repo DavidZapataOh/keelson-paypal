@@ -289,7 +289,7 @@ describe.skipIf(!rpc)(
       const blocks: bigint[] = [];
       const gated: SettleDeps = {
         ...deps,
-        finalized: async (block) => {
+        finalized: async ({ block }) => {
           blocks.push(block);
           return final;
         },
@@ -307,6 +307,10 @@ describe.skipIf(!rpc)(
       final = true;
       expect(await settleDispute(gated, id)).toMatchObject({ status: "settled", outcome: "paid" });
       expect(await txsFor(id)).toHaveLength(1);
+      // Final once: the gate does not ask again for the same payment.
+      const asked = blocks.length;
+      await settleDispute(gated, id);
+      expect(blocks).toHaveLength(asked);
     });
 
     test("a green verdict on the paypal rail pays the treasury from the reserve and waits for the payout", async () => {

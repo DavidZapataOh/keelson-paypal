@@ -173,8 +173,8 @@ export async function recordValidations(deps: SweeperDeps): Promise<number> {
 
 /**
  * Rates the operator and records the validation's outcome of every coverage the vault released or
- * slashed, from the stored `CoverageReleased` and `Slashed` events not handled yet. A call the
- * contract refuses is settled for that event: a later slash of the same coverage is its own event.
+ * slashed, from the stored `CoverageReleased` and `Slashed` events not handled yet. An event is
+ * handled once both calls are confirmed or refused for good.
  *
  * @internal
  */
@@ -200,7 +200,7 @@ export async function recordOutcomes(deps: SweeperDeps): Promise<number> {
   let sent = 0;
   for (const row of rows) {
     const coverageId = row.coverageId;
-    let failed = false;
+    let settled = true;
     for (const [contract, functionName, done] of [
       ["KeelsonReputationReporter", "rateCoverage", "AlreadyRated"],
       ["KeelsonValidationRegistry", "recordOutcome", "OutcomeRecorded"],
@@ -219,19 +219,20 @@ export async function recordOutcomes(deps: SweeperDeps): Promise<number> {
         if (record.status === "confirmed") {
           sent++;
           log.info({ coverageId, functionName, txId: record.id }, "coverage outcome recorded");
-        }
+        } else settled = false;
       } catch (err) {
-        // Already done by someone else, no validation to update, or a slash still pending: nothing to send now.
-        if (!(err instanceof RelayerError) || err.code !== "simulation-reverted") {
-          failed = true;
-          log.warn({ coverageId, functionName, err: brief(err) }, "coverage outcome not recorded");
-        } else if (isDone(err, done)) {
+        const name = (err as RelayerError).detail as { error?: { name?: string } } | undefined;
+        if (isDone(err, done) || FINAL.has(name?.error?.name ?? "")) {
           log.debug({ coverageId, functionName }, "coverage outcome already recorded");
+          continue;
         }
+        // A slash still pending, or a node a block behind the event: tried again on a later pass.
+        settled = false;
+        log.warn({ coverageId, functionName, err: brief(err) }, "coverage outcome not recorded");
       }
     }
-    // After a failure the event is read again on the next pass.
-    if (!failed) {
+    // Until both calls are done for good, the event is read again on each pass.
+    if (settled) {
       await db
         .update(chainEvents)
         .set({ handledAt: new Date() })
@@ -344,6 +345,10 @@ export async function dueCoverages(db: Db): Promise<Hex[]> {
         select 1 from chain_events r
         where r.chain_id = l.chain_id and r.name = 'CoverageReleased'
           and r.args->>'coverageId' = l.args->>'coverageId')
+      and not exists (
+        select 1 from chain_txs t
+        where t.chain_id = l.chain_id and t.status = 'confirmed'
+          and t.key = 'KeelsonBondVault.releaseCoverage:' || (l.args->>'coverageId'))
       and not exists (
         select 1 from chain_events q
         where q.chain_id = l.chain_id and q.name = 'SlashQueued'

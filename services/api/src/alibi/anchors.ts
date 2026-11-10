@@ -25,6 +25,7 @@ import {
 import type { Logger } from "pino";
 import {
   type Address,
+  BaseError,
   decodeFunctionData,
   type Hex,
   hexToString,
@@ -236,7 +237,10 @@ export async function anchorCovered(deps: AnchorDeps): Promise<number> {
       if ((await reanchorAlibi(deps, r.id)) === "anchored") anchored++;
     } catch (err) {
       failed = true;
-      deps.log.warn({ err, purchaseId: r.id }, "alibi not re-anchored");
+      deps.log.warn(
+        { err: err instanceof BaseError ? err.shortMessage : String(err), purchaseId: r.id },
+        "alibi not re-anchored",
+      );
     }
   }
   if (!failed && rows.length < BATCH) {

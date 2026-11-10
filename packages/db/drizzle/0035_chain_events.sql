@@ -20,6 +20,8 @@ CREATE TABLE "chain_events" (
 	CONSTRAINT "chain_events_tx_hash_len" CHECK (octet_length("chain_events"."tx_hash") = 32)
 );
 --> statement-breakpoint
+ALTER TABLE "verdicts" ADD COLUMN "final_tx_id" char(26);--> statement-breakpoint
 CREATE INDEX "chain_events_coverage_idx" ON "chain_events" USING btree ("chain_id","name",("args"->>'coverageId'));--> statement-breakpoint
+CREATE INDEX "chain_events_anchor_idx" ON "chain_events" USING btree ("chain_id","name",("args"->>'origin'),(("args"->>'size')::numeric));--> statement-breakpoint
 CREATE INDEX "chain_events_block_idx" ON "chain_events" USING btree ("chain_id","block_number");--> statement-breakpoint
 CREATE INDEX "chain_events_unhandled_idx" ON "chain_events" USING btree ("chain_id","name") WHERE "chain_events"."handled_at" is null;

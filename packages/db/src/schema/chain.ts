@@ -107,6 +107,12 @@ export const chainEvents = pgTable(
   (t) => [
     primaryKey({ name: "chain_events_pk", columns: [t.chainId, t.txHash, t.logIndex] }),
     index("chain_events_coverage_idx").on(t.chainId, t.name, sql`(${t.args}->>'coverageId')`),
+    index("chain_events_anchor_idx").on(
+      t.chainId,
+      t.name,
+      sql`(${t.args}->>'origin')`,
+      sql`((${t.args}->>'size')::numeric)`,
+    ),
     index("chain_events_block_idx").on(t.chainId, t.blockNumber),
     index("chain_events_unhandled_idx").on(t.chainId, t.name).where(sql`${t.handledAt} is null`),
     check("chain_events_tx_hash_len", sql`octet_length(${t.txHash}) = 32`),
