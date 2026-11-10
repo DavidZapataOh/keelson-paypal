@@ -3112,11 +3112,14 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "422":
           description: "The mandate is invalid (`invalid-mandate`), or it binds an agent
-            key, a bond or terms other than the ones `POST /v1/mandates/compile`
-            fills: the named operator's registered `cnf` key, its bond vault
-            with the 50 PYUSD minimum, and the current terms
-            (`mandate-binding-mismatch`; `fields` names `agent.cnf`,
-            `agent.bond` or `consent`)"
+            key, a bond, an engine build, a policy set or terms other than the
+            ones `POST /v1/mandates/compile` fills: the named operator's
+            registered `cnf` key, its bond vault with the 50 PYUSD minimum, the
+            engine version and TEE measurements of the build the legs run (or of
+            another build admitted during a rotation), the current policy set
+            hash and the current terms (`mandate-binding-mismatch`; `fields`
+            names `agent.cnf`, `agent.bond`, `policy.engine`, `policy.version`,
+            `policy.measurements`, `policy.policy_set_hash` or `consent`)"
           content:
             application/problem+json:
               schema:
