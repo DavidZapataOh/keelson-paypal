@@ -28,8 +28,8 @@ import { ledgerLines } from "./routes/redteam.ts";
 
 /** A verdict with the operator at fault; Keelson's own faults (2) are its reserve's to price. */
 const OPERATOR = 1;
-/** Purchases whose coverage was locked and not released by a failure. */
-const COVERED = [
+/** Purchases whose coverage was locked and not released by a failure: the operator's coverages. */
+export const COVERED = [
   "COVERED",
   "CAPTURED",
   "DELIVERED",
