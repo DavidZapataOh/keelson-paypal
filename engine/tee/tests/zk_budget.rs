@@ -7,7 +7,8 @@ use std::time::Instant;
 
 use zk_demo::{demo, prover};
 
-/// The budget is 200 ms per proof, witness and `bb` included.
+/// The budget is 200 ms per proof, witness and `bb` included: 400 ms for one statement's two
+/// proofs, EVM and recursive.
 #[test]
 fn proving_is_within_budget() {
     let d = demo();
@@ -25,5 +26,5 @@ fn proving_is_within_budget() {
         .collect();
     ms.sort_by(f64::total_cmp);
     println!("C1 prove: p50 {:.1} ms, max {:.1} ms", ms[10], ms[19]);
-    assert!(ms[10] < 200.0, "p50 {:.1} ms", ms[10]);
+    assert!(ms[10] < 400.0, "p50 {:.1} ms", ms[10]);
 }

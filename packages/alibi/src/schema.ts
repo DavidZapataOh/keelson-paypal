@@ -128,6 +128,8 @@ export const alibiSchema = z.strictObject({
     ),
   }),
   channel3_observation: json.optional(),
+  /** The store's product endpoint notarized with TLSNotary: the disclosed `tlsn.web_fact` item. */
+  web_fact: json.optional(),
   zk: z
     .strictObject({
       /**
@@ -158,6 +160,11 @@ export const alibiSchema = z.strictObject({
     invoice_id: z.string().optional(),
     /** The payee's PayPal merchant id, which the invoice id's digest binds. */
     merchant_id: z.string().optional(),
+    /**
+     * A live purchase only: the PayPal transaction of the buyer's own payment at the store, as
+     * PayPal reported it to the buyer. Not signed.
+     */
+    transaction_id: z.string().optional(),
   }),
 });
 

@@ -6,78 +6,18 @@
 import { writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { currencyNumeric } from "@keelson/core";
-import {
-  categoryMask,
-  mandateCommitment,
-  merchantLeaf,
-  merchantMembership,
-  merchantTree,
-  userKeyHash,
-} from "../src/commitment.ts";
-import { CATEGORY_TABLE, type Mandate, parseMandate } from "../src/schema.ts";
+import { type Mandate, parseMandate } from "../src/schema.ts";
 import demo from "../test/fixtures/demo-mandate.json" with { type: "json" };
+import { c1Inputs, c1Toml } from "./c1-inputs.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const circuit = resolve(here, "../../../circuits/c1");
 
 const m: Mandate = parseMandate(structuredClone(demo));
 const salt = Uint8Array.from({ length: 16 }, (_, i) => i + 1);
-const hex = (x: bigint) => `0x${x.toString(16).padStart(64, "0")}`;
-const be = (bytes: Uint8Array) => BigInt(`0x${Buffer.from(bytes).toString("hex")}`);
-
-const range = m.payment.constraints.find((c) => c.type === "payment.amount_range");
-const merchants = m.checkout.constraints.find((c) => c.type === "checkout.allowed_merchants");
-const category = m.checkout.constraints.find((c) => c.type === "keelson.category");
-if (
-  range?.type !== "payment.amount_range" ||
-  merchants?.type !== "checkout.allowed_merchants" ||
-  category?.type !== "keelson.category"
-) {
-  throw new Error("the demo mandate lacks a C1 constraint");
-}
-const merchantId = merchants.allowed[0]?.id as string;
-const tree = await merchantTree(merchants.allowed.map((x) => x.id));
-const opening = await merchantMembership(tree, merchantId);
-const cartCategory = category.allow[0] as string;
-const nonce = Buffer.from(m.nonce, "base64url");
-
-const inputs = {
-  c_m: hex(await mandateCommitment(m, salt)),
-  amount: "8500",
-  currency: String(currencyNumeric(m.payment.currency)),
-  category: String(CATEGORY_TABLE.ids.indexOf(cartCategory)),
-  merchant_id: hex(await merchantLeaf(merchantId)),
-  now: String(m.iat + 3600),
-  cart_hash: hex(0x2a5f1c0e9b7d43a18e6c05f2d4b3a1908f7e6d5c4b3a29180f1e2d3c4b5a6978n),
-  operator_id: m.agent.operator.agent_id,
-  user_key_hash: hex(await userKeyHash(m.user.cred.jwk)),
-  max_amount: String(range.max),
-  category_mask: String(categoryMask(category.allow) & ~categoryMask(category.deny)),
-  merchant_root: hex(tree.root),
-  expiry: String(m.exp),
-  nonce: hex(be(nonce)),
-  salt: hex(be(salt)),
-  merchant: {
-    next: hex(opening.leaf.next),
-    next_index: String(opening.leaf.nextIndex),
-    index: String(opening.index),
-    path: opening.path.map(hex),
-  },
-};
-
-const toml = (key: string, v: unknown): string =>
-  Array.isArray(v) ? `${key} = [${v.map((x) => `"${x}"`).join(", ")}]` : `${key} = "${v}"`;
+const inputs = await c1Inputs(m, salt);
 const { merchant, ...flat } = inputs;
-writeFileSync(
-  resolve(circuit, "Prover.toml"),
-  `${[
-    ...Object.entries(flat).map(([k, v]) => toml(k, v)),
-    "",
-    "[merchant]",
-    ...Object.entries(merchant).map(([k, v]) => toml(k, v)),
-  ].join("\n")}\n`,
-);
+writeFileSync(resolve(circuit, "Prover.toml"), c1Toml(inputs));
 
 const nr = (k: string, v: string, t: string) => `pub global ${k.toUpperCase()}: ${t} = ${v};`;
 const types: Record<string, string> = {
@@ -104,5 +44,5 @@ writeFileSync(
 
 writeFileSync(
   resolve(here, "../test/vectors/c1.json"),
-  `${JSON.stringify({ mandate: "fixtures/demo-mandate.json", salt: hex(be(salt)), inputs }, null, 2)}\n`,
+  `${JSON.stringify({ mandate: "fixtures/demo-mandate.json", salt: inputs.salt, inputs }, null, 2)}\n`,
 );

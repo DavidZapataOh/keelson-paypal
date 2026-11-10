@@ -6,23 +6,15 @@ import { authClient } from "./auth";
 import { useEvents, userChannel } from "./events";
 import type { MandateView } from "./types";
 
-/** A purchase of a several-store mandate waiting for the buyer's PayPal approval. */
-export interface PendingHold {
-  requestId: string;
-  orderId: string;
-  merchant: string;
-  amountMinor: string;
-}
-
 /**
  * The signed-in user's mandate `id`, kept current: every event on its channel (hold, purchase
- * holds, purchases) re-reads it, so what is shown is always what the API holds.
+ * holds, purchases) re-reads it, so what is shown, the purchases waiting for approval included,
+ * is always what the API holds.
  */
 export function useMandate(id: string | null) {
   const session = authClient.useSession();
   const [mandate, setMandate] = useState<MandateView>();
   const [error, setError] = useState<string>();
-  const [pending, setPending] = useState<PendingHold[]>([]);
   // Purchases countersigned while the page was open: the one moment the app animates.
   const [countersigned, setCountersigned] = useState<ReadonlySet<string>>(new Set());
   // The live view of the agent's browser while it shops under this mandate.
@@ -44,14 +36,6 @@ export function useMandate(id: string | null) {
 
   const onEvent = useCallback(
     (e: { type: string } & Record<string, unknown>) => {
-      if (e.type === "mandate.purchase_hold") {
-        const hold = e as unknown as PendingHold & { state: string };
-        setPending((all) =>
-          hold.state === "PENDING"
-            ? [...all.filter((p) => p.requestId !== hold.requestId), hold]
-            : all.filter((p) => p.requestId !== hold.requestId),
-        );
-      }
       if (e.type === "agent.run") {
         setLiveView(
           e.state === "started" && typeof e.liveViewUrl === "string" ? e.liveViewUrl : undefined,
@@ -72,7 +56,7 @@ export function useMandate(id: string | null) {
   return {
     mandate,
     error,
-    pending,
+    pending: mandate?.pendingHolds ?? [],
     countersigned,
     liveView,
     reload: load,

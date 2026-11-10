@@ -146,9 +146,11 @@ export async function renderAlibiPdf(b: AlibiBundle): Promise<Uint8Array> {
   value(
     [
       `Order ${b.paypal.order_id}`,
-      b.paypal.capture_id
-        ? `Capture ${b.paypal.capture_id} (reported by PayPal, not signed)`
-        : "Not captured yet",
+      b.paypal.transaction_id
+        ? `Paid by the buyer at the store: PayPal transaction ${b.paypal.transaction_id} (reported by PayPal, not signed)`
+        : b.paypal.capture_id
+          ? `Capture ${b.paypal.capture_id} (reported by PayPal, not signed)`
+          : "Not captured yet",
       b.paypal.invoice_id ? `Invoice ${b.paypal.invoice_id}` : "",
     ]
       .filter(Boolean)

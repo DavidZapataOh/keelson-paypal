@@ -14,7 +14,7 @@ import { arbitrumSepolia } from "viem/chains";
 import { startAnchorWatcher } from "./alibi/anchors.ts";
 import { createApp } from "./app.ts";
 import { createAuth } from "./auth.ts";
-import { arbitrumSepoliaRpcUrls, rpcTransport } from "./chain/rpc.ts";
+import { arbitrumSepoliaTransport } from "./chain/rpc.ts";
 import { createChannel3 } from "./channel3/client.ts";
 import { operatorAgent, termsConsent } from "./compile-sources.ts";
 import { type RunDeps, runDispute } from "./disputes/run.ts";
@@ -36,6 +36,7 @@ import { createTee } from "./tee/config.ts";
 import { engineSource } from "./tee/engine-source.ts";
 import { startSignerRefresh } from "./tee/signers.ts";
 import { startStampWorker } from "./timestamps/worker.ts";
+import { composable, proveAnonymousPurchase } from "./zk/c1c3.ts";
 import { c3Prover } from "./zk/c3.ts";
 
 const FORCE_EXIT_MS = 10_000;
@@ -81,7 +82,7 @@ const chains = {
   [arbitrumSepolia.id]: {
     client: createPublicClient({
       chain: arbitrumSepolia,
-      transport: rpcTransport(arbitrumSepoliaRpcUrls(env.ARBITRUM_SEPOLIA_RPC_URL)),
+      transport: arbitrumSepoliaTransport(env.ARBITRUM_SEPOLIA_RPC_URL),
     }),
     logs: createPublicClient({ chain: arbitrumSepolia, transport: http() }),
   },
@@ -146,6 +147,20 @@ const proveC3 = c3Prover(
   { db, kv, log, relayer },
   render && env.DISPUTE_WORKFLOW ? { render, slug: env.DISPUTE_WORKFLOW } : undefined,
 );
+// Composing takes about 2.8 GB: the workflow does it, only for a purchase with both recursive proofs.
+const proveC1C3 = async (purchaseId: string) => {
+  if (!(await composable(db, purchaseId))) return;
+  if (!render) {
+    await proveAnonymousPurchase({ db, log }, purchaseId);
+    return;
+  }
+  const run = await render.workflows.startTask(
+    `${env.DISPUTE_WORKFLOW}/proveAnonymousPurchase`,
+    [purchaseId],
+    { idempotencyKey: `proveAnonymousPurchase:${purchaseId}` },
+  );
+  log.info({ purchaseId, taskRunId: run.taskRunId }, "composition workflow started");
+};
 const paypalEvents = startPayPalEventWorker({ db, kv, log, paypal, startDisputeWorkflow });
 const operators =
   env.KEELSON_OPERATOR_KEY && env.DEMO_AGENT_ID
@@ -171,6 +186,7 @@ const app = createApp({
   paypal,
   paypalEvents,
   proveAnonymousMandate: proveC3,
+  proveAnonymousPurchase: proveC1C3,
   ...(env.PAYPAL_WEBHOOK_ID ? { paypalWebhook: { webhookId: env.PAYPAL_WEBHOOK_ID, certs } } : {}),
   ...(operators ? { operators } : {}),
   ...(relayer ? { relayer } : {}),
@@ -208,6 +224,7 @@ const stopResumer = startPipelineResumer({
   relayer,
   stamps,
   chain: chains[arbitrumSepolia.id],
+  proveAnonymousPurchase: proveC1C3,
   ...(env.LOG_URL && env.LOG_WRITE_TOKEN
     ? { tlog: { url: env.LOG_URL, token: env.LOG_WRITE_TOKEN } }
     : {}),

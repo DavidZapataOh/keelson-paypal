@@ -9,6 +9,8 @@ import { ulid } from "ulid";
 import { bytesToHex, createPublicClient, type Hex, http, type PublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { createApp } from "../src/app.ts";
+import { arbitrumSepoliaTransport } from "../src/chain/rpc.ts";
+import { createChannel3 } from "../src/channel3/client.ts";
 import { parseEnv } from "../src/env.ts";
 import { createKv } from "../src/kv.ts";
 import type { LogConfig } from "../src/log/append.ts";
@@ -66,7 +68,7 @@ export async function renderHarness() {
   const kv = await createKv(env.REDIS_URL, log);
   const chain = createPublicClient({
     chain: arbitrumSepolia,
-    transport: http(env.ARBITRUM_SEPOLIA_RPC_URL),
+    transport: arbitrumSepoliaTransport(env.ARBITRUM_SEPOLIA_RPC_URL),
   }) as PublicClient;
   const paypal = createPayPalDeps(env);
   const relayer = await relayerFromEnv(env, db, log);
@@ -137,6 +139,8 @@ export async function renderHarness() {
       chains: { 421614: { client, logs: client } },
       paypal,
       requestTimeoutMs: 60_000,
+      ...(env.PROVER_URL ? { prover: env.PROVER_URL } : {}),
+      ...(env.CHANNEL3_API_KEY ? { channel3: createChannel3(env.CHANNEL3_API_KEY) } : {}),
     });
   };
   const app = await appWith();

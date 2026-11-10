@@ -29,6 +29,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { arbitrumSepolia } from "viem/chains";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { createApp } from "../src/app.ts";
+import { ARBITRUM_SEPOLIA_PUBLIC_RPC, arbitrumSepoliaTransport } from "../src/chain/rpc.ts";
 import { recordOutcomes, recordValidations, type SweeperDeps } from "../src/onchain/validations.ts";
 import { createTee } from "../src/tee/config.ts";
 import { refreshLeg } from "../src/tee/signers.ts";
@@ -82,7 +83,7 @@ describe.skipIf(!relayerKeys)(
     const evidence = new EvidenceUploader();
     const client = createPublicClient({
       chain: arbitrumSepolia,
-      transport: http(process.env.ARBITRUM_SEPOLIA_RPC_URL),
+      transport: arbitrumSepoliaTransport(process.env.ARBITRUM_SEPOLIA_RPC_URL),
     });
     const logs = createPublicClient({ chain: arbitrumSepolia, transport: http() });
     const passkeys: Passkey[] = [];
@@ -121,7 +122,7 @@ describe.skipIf(!relayerKeys)(
         chains: {
           421614: {
             rpcUrl: process.env.ARBITRUM_SEPOLIA_RPC_URL as string,
-            fallbackRpcUrls: ["https://sepolia-rollup.arbitrum.io/rpc"],
+            fallbackRpcUrls: [ARBITRUM_SEPOLIA_PUBLIC_RPC],
             account,
           },
         },

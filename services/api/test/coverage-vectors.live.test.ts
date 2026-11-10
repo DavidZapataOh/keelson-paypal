@@ -21,11 +21,11 @@ import {
   hashStruct,
   hashTypedData,
   hexToBytes,
-  http,
 } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { createApp } from "../src/app.ts";
+import { arbitrumSepoliaTransport } from "../src/chain/rpc.ts";
 import { LegClient } from "../src/tee/client.ts";
 import { createTee, VERIFYING_CONTRACT } from "../src/tee/config.ts";
 import { refreshLeg } from "../src/tee/signers.ts";
@@ -88,7 +88,7 @@ describe.skipIf(!live)("coverage vectors (live legs, real passkeys)", { timeout:
   const evidence = new EvidenceUploader();
   const chain = createPublicClient({
     chain: arbitrumSepolia,
-    transport: http(process.env.ARBITRUM_SEPOLIA_RPC_URL),
+    transport: arbitrumSepoliaTransport(process.env.ARBITRUM_SEPOLIA_RPC_URL),
   });
   const passkeys: Passkey[] = [];
 

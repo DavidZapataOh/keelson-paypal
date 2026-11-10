@@ -17,6 +17,7 @@ export const CHECKS: Record<CheckId, { label: string; who: string }> = {
   "leaf.view": { label: "Log leaf matches the bundle", who: "Keelson" },
   "qr.leaf": { label: "Matches the QR link", who: "Keelson" },
   "evidence.manifest": { label: "Evidence manifest", who: "Agent operator" },
+  "evidence.web_fact": { label: "Store's product endpoint, notarized (TLSNotary)", who: "Keelson" },
   "paypal.ids": { label: "PayPal ids", who: "Keelson" },
   "mandate.challenge": { label: "Mandate challenge", who: "User" },
   "mandate.passkey": { label: "User's passkey signature", who: "User" },

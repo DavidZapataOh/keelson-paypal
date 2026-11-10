@@ -12,6 +12,7 @@ export const ITEM_TYPES = [
   "mhtml",
   "har",
   "channel3.observation",
+  "tlsn.web_fact",
 ] as const;
 
 export type ItemType = (typeof ITEM_TYPES)[number];
@@ -30,6 +31,7 @@ export const MEDIA_TYPES: Readonly<Record<ItemType, string>> = Object.freeze({
   mhtml: "multipart/related",
   har: "application/json",
   "channel3.observation": "application/json",
+  "tlsn.web_fact": "application/json",
 });
 
 export const ORIGINAL_MEDIA_TYPE = "application/octet-stream";

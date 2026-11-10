@@ -17,9 +17,12 @@ export interface Session {
 
 /**
  * Where to find the browser: a new KERNEL session (`KERNEL_API_KEY`), or one already created
- * and handed over by its CDP URL, which the session's owner deletes.
+ * and handed over by its CDP URL, which the session's owner deletes. A new session can load a
+ * KERNEL profile, such as one the buyer signed in to PayPal with; the run never saves to it.
  */
-export type SessionSource = { hosts: readonly string[] } | { cdpUrl: string; liveViewUrl?: string };
+export type SessionSource =
+  | { hosts: readonly string[]; profile?: string }
+  | { cdpUrl: string; liveViewUrl?: string };
 
 /**
  * Creates a headful KERNEL browser whose egress is limited to `hosts` (Kernel's network
@@ -34,9 +37,10 @@ export async function openSession(source: SessionSource): Promise<Session> {
     kernel = new Kernel();
     const created = await kernel.browsers.create({
       headless: false,
-      timeout_seconds: 300,
+      timeout_seconds: source.profile ? 900 : 300,
       viewport: { ...VIEWPORT },
       network: { allowed_hosts: [...source.hosts] },
+      ...(source.profile ? { profile: { name: source.profile, save_changes: false } } : {}),
     });
     id = created.session_id;
     cdpUrl = created.cdp_ws_url;

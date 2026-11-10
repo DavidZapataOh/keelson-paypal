@@ -304,6 +304,13 @@ export function App() {
           </p>
         )}
 
+        {route.alibiId && !run && !error && (
+          // Holds the report's place, so what follows does not move when the receipt lands.
+          <p role="status" className="min-h-dvh text-muted-foreground">
+            Loading the Alibi's public receipt…
+          </p>
+        )}
+
         {run && loaded && (
           <div className="space-y-8" data-run={runId.current}>
             {route.alibiId === loaded.alibi.alibi_id && !route.expect && (

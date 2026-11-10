@@ -38,6 +38,7 @@
   "c2b_verify": 750000,
   "c2b_slashAmber": 1050000,
   "c3_verify": 750000,
+  "c1c3_verify": 820000,
   "userSet_publish": 62000,
   "userSet_verify": 760000
 }
