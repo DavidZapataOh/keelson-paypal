@@ -120,11 +120,14 @@ export default function Cheat({
   changed,
   onChange,
   onReset,
+  embed = false,
 }: {
   edited: unknown;
   changed: readonly string[];
   onChange: (next: unknown) => void;
   onReset: () => void;
+  /** Framed on another page: only the cheats that apply, and the field editor folded. */
+  embed?: boolean;
 }) {
   const onEdit = (p: string, v: unknown) => onChange(setAt(edited, p, v));
   return (
@@ -149,6 +152,7 @@ export default function Cheat({
       <div className="mt-4 flex flex-wrap gap-2">
         {PRESETS.map((preset) => {
           const p = preset.pointer(edited);
+          if (embed && !p) return null;
           return (
             <button
               key={preset.id}
@@ -167,7 +171,14 @@ export default function Cheat({
         })}
       </div>
       <div className="mt-4 max-h-[32rem] overflow-auto">
-        <Node name="alibi" path="" value={edited} changed={changed} onEdit={onEdit} open />
+        <Node
+          name={embed ? "all fields" : "alibi"}
+          path=""
+          value={edited}
+          changed={changed}
+          onEdit={onEdit}
+          open={!embed}
+        />
       </div>
     </section>
   );

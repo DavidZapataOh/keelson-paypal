@@ -9,6 +9,7 @@ import { encodeAlibi } from "../../../../packages/alibi/src/codec.ts";
 import { fixtures } from "../../../../packages/alibi/test/fixtures.ts";
 import { receipts } from "../../../../packages/alibi/test/log-receipts.ts";
 
+const VERIFY_ORIGIN = "https://verify.keelson.finance";
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const outDir = fileURLToPath(new URL("../../dist", import.meta.url));
 const ALLOWED = new Set([
@@ -162,6 +163,42 @@ describe("the verifier in Chromium", () => {
     await page.locator("[data-verdict=incomplete]").waitFor();
     expect(posted.some((b) => b.includes(receipts[0]?.alibi_id as string))).toBe(false);
     expect([...origins].every((o) => ALLOWED.has(o))).toBe(true);
+    await page.close();
+  });
+
+  test("embedded, a live receipt fails every cheat that applies to it and names the field", async () => {
+    // A sandbox purchase's Alibi in log.keelson.finance/alibi/2026-1, anchored on Arbitrum Sepolia.
+    const link = `${VERIFY_ORIGIN}/a/01M71DB3MZAX38NGP3NM8F48T6#PEcnLYqWw5d91wlYjOVd5sYkUkqz2uQJ-k6TBE0t5h0.758.421614`;
+    const page = await browser.newPage();
+    // The API answers CORS for the verifier's origin, so the build is served under it.
+    await page.route(`${VERIFY_ORIGIN}/**`, async (route) => {
+      const url = new URL(route.request().url());
+      const response = await route.fetch({
+        url: new URL(`${url.pathname}${url.search}`, base).href,
+      });
+      await route.fulfill({ response });
+    });
+    await page.goto(link.replace("#", "?embed#"));
+    await page.getByText("Public receipt verified").waitFor({ timeout: 30_000 });
+    expect(await page.locator("[data-testid=file]").count()).toBe(0);
+    expect(await page.getByLabel("RPC URL").count()).toBe(0);
+    const presets = await page
+      .locator("[data-preset]")
+      .evaluateAll((els) => els.map((e) => e.getAttribute("data-preset")));
+    expect(presets).toEqual(["swap-cart", "blame-agent", "fake-anchor"]);
+    for (const [preset, pointer] of [
+      ["swap-cart", "/leaf/cart_hash"],
+      ["blame-agent", "/leaf/agent_id"],
+      ["fake-anchor", "/anchor/anchored_root"],
+    ] as const) {
+      await page.locator(`[data-preset=${preset}]`).click();
+      await page.locator("[data-verdict=failed]").waitFor();
+      expect(await page.locator("[data-check]", { hasText: pointer }).count()).toBeGreaterThan(0);
+      await page.getByRole("button", { name: "Reset to the original" }).click();
+      await page.getByText("Public receipt verified").waitFor();
+    }
+    const full = page.getByRole("link", { name: "Open in the full verifier" });
+    expect(await full.getAttribute("href")).toBe(link);
     await page.close();
   });
 
