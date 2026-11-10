@@ -23,6 +23,7 @@ export { StoreBrowser, type StoreBrowserOptions } from "./driver.ts";
 export {
   type ApiClientOptions,
   agentKey,
+  announceRun,
   apiClient,
   type OperatorMandate,
   operatorMandates,

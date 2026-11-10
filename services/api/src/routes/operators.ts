@@ -16,7 +16,9 @@ import { calculateJwkThumbprint } from "jose";
 import { type Address, BaseError, ContractFunctionRevertedError, getAddress, type Hex } from "viem";
 import type { Deps } from "../app.ts";
 import { blockScoped, chainUnavailable } from "../chain/reader.ts";
+import { publishEvent } from "../events.ts";
 import { requireClient } from "../middleware/auth.ts";
+import { principalChannel } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 
 /**
@@ -255,7 +257,48 @@ const operatorMandates = createRoute({
   },
 });
 
-export function registerOperators(app: OpenAPIHono, deps: Pick<Deps, "db" | "chains">): void {
+/** Kernel's read-only live view of a browser session: `https://<host>.kernel.sh/browser/live/…`. */
+const LiveViewUrl = z
+  .url({ protocol: /^https$/, hostname: /^[a-z0-9-]+\.kernel\.sh$/ })
+  .refine((u) => new URL(u).pathname.startsWith("/browser/live/"), "Not a Kernel live view.")
+  .openapi({ description: "Kernel's live view of the agent's browser, opened read-only." });
+
+const AgentRun = z
+  .object({
+    state: z.enum(["started", "ended"]),
+    liveViewUrl: LiveViewUrl.optional(),
+  })
+  .openapi("AgentRun");
+
+const agentRun = createRoute({
+  method: "post",
+  path: "/v1/operators/{agentId}/mandates/{mandateId}/runs",
+  tags: ["operators"],
+  summary: "Announce an agent run under a mandate",
+  description:
+    "Tells the mandate's owner that the operator's agent started or ended shopping under the mandate, with the live view of its browser, as an `agent.run` event on the owner's `mandate:<id>` stream. Only the OAuth client that linked the operator announces runs, on its active mandates.",
+  middleware: [requireClient(["countersign:write"])],
+  request: {
+    headers: z.object({ "idempotency-key": z.string().min(1).max(255) }),
+    params: z.object({ agentId: AgentId, mandateId: z.string().length(26) }),
+    body: { required: true, content: { "application/json": { schema: AgentRun } } },
+  },
+  responses: {
+    202: { description: "Published to the mandate's owner" },
+    401: { description: "No valid access token", content: problemContent },
+    403: { description: "The token lacks countersign:write", content: problemContent },
+    404: {
+      description: "No active mandate of an operator this client linked",
+      content: problemContent,
+    },
+    422: { description: "Invalid, or not a Kernel live view", content: problemContent },
+  },
+});
+
+export function registerOperators(
+  app: OpenAPIHono,
+  deps: Pick<Deps, "db" | "kv" | "chains">,
+): void {
   const { db } = deps;
 
   const bonds = blockScoped();
@@ -580,6 +623,43 @@ export function registerOperators(app: OpenAPIHono, deps: Pick<Deps, "db" | "cha
       },
       200,
     );
+  });
+
+  app.openapi(agentRun, async (c) => {
+    const { agentId, mandateId } = c.req.valid("param");
+    const run = c.req.valid("json");
+    const [row] = await db
+      .select({ userId: mandates.userId, clientId: operators.clientId })
+      .from(mandates)
+      .innerJoin(operators, eq(operators.agentId, mandates.operatorAgentId))
+      .where(
+        and(
+          eq(mandates.id, mandateId),
+          eq(mandates.operatorAgentId, BigInt(agentId)),
+          eq(mandates.state, "ACTIVE"),
+        ),
+      );
+    if (!row?.clientId || row.clientId !== c.var.principal?.subject) {
+      return problem(
+        c,
+        404,
+        "not-found",
+        "Not found",
+        "No active mandate of an operator this client linked.",
+      );
+    }
+    await publishEvent(
+      { db, kv: deps.kv },
+      principalChannel({ kind: "user", subject: row.userId }, `mandate:${mandateId}`),
+      mandateId,
+      {
+        type: "agent.run",
+        mandateId,
+        state: run.state,
+        ...(run.liveViewUrl ? { liveViewUrl: run.liveViewUrl } : {}),
+      },
+    );
+    return c.body(null, 202);
   });
 }
 

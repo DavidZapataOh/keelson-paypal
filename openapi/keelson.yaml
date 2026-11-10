@@ -2513,6 +2513,20 @@ components:
         - holdMode
         - authorizationId
         - openMandate
+    AgentRun:
+      type: object
+      properties:
+        state:
+          type: string
+          enum:
+            - started
+            - ended
+        liveViewUrl:
+          type: string
+          format: uri
+          description: Kernel's live view of the agent's browser, opened read-only.
+      required:
+        - state
     Feedback:
       type: object
       properties:
@@ -4610,6 +4624,72 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "404":
           description: No operator this client linked
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/operators/{agentId}/mandates/{mandateId}/runs:
+    post:
+      tags:
+        - operators
+      summary: Announce an agent run under a mandate
+      description: Tells the mandate's owner that the operator's agent started or
+        ended shopping under the mandate, with the live view of its browser, as
+        an `agent.run` event on the owner's `mandate:<id>` stream. Only the
+        OAuth client that linked the operator announces runs, on its active
+        mandates.
+      parameters:
+        - schema:
+            type: string
+            pattern: ^(0|[1-9]\d{0,19})$
+            description: The ERC-8004 agent id, a decimal integer.
+          required: true
+          description: The ERC-8004 agent id, a decimal integer.
+          name: agentId
+          in: path
+        - schema:
+            type: string
+            minLength: 26
+            maxLength: 26
+          required: true
+          name: mandateId
+          in: path
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentRun"
+      responses:
+        "202":
+          description: Published to the mandate's owner
+        "401":
+          description: No valid access token
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The token lacks countersign:write
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: No active mandate of an operator this client linked
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: Invalid, or not a Kernel live view
           content:
             application/problem+json:
               schema:

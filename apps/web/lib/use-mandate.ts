@@ -25,6 +25,8 @@ export function useMandate(id: string | null) {
   const [pending, setPending] = useState<PendingHold[]>([]);
   // Purchases countersigned while the page was open: the one moment the app animates.
   const [countersigned, setCountersigned] = useState<ReadonlySet<string>>(new Set());
+  // The live view of the agent's browser while it shops under this mandate.
+  const [liveView, setLiveView] = useState<string>();
 
   const load = useCallback(() => {
     if (!id) return;
@@ -50,6 +52,12 @@ export function useMandate(id: string | null) {
             : all.filter((p) => p.requestId !== hold.requestId),
         );
       }
+      if (e.type === "agent.run") {
+        setLiveView(
+          e.state === "started" && typeof e.liveViewUrl === "string" ? e.liveViewUrl : undefined,
+        );
+        return;
+      }
       if (e.type === "purchase.countersigned" && typeof e.purchaseId === "string") {
         const id = e.purchaseId;
         setCountersigned((all) => new Set(all).add(id));
@@ -66,6 +74,7 @@ export function useMandate(id: string | null) {
     error,
     pending,
     countersigned,
+    liveView,
     reload: load,
     signedIn: session.data !== null,
     sessionPending: session.isPending,
