@@ -62,7 +62,10 @@
     "KeelsonValidationRegistry": "0x2405d211CaAdFbB193287882fAb76e8A5D41f714",
     "KeelsonReputationReporter": "0x0D736293957C481626553Bec31e46913A21FBc25",
     "MandatePredicateVerifier": "0x3940A0D26f0Fbac6e9d43Fe8b3F69B8bd6CDA2a0",
-    "MandatePredicateReferenceVerifier": "0x7D82a52d7e5Cb71D594B2F826d769FF64b26B046"
+    "MandatePredicateReferenceVerifier": "0x7D82a52d7e5Cb71D594B2F826d769FF64b26B046",
+    "MandateViolationVerifier": "0x0e82f941A3F75FEe528753B24dBE16964eECAA48",
+    "MandateViolationReferenceVerifier": "0x060c12c2ABC7adC8AaA4a462A5925D5F3555d4e0",
+    "MandateViolationCourt": "0xdfFCB5DE6f65A10DC9191e31e16AF68E7995ca26"
   },
   "constructorArgs": {
     "KeelsonDeployer": "0x0000000000000000000000009c0215b66f6a64c34ccb0126cb8d027689fa68b9",
@@ -80,6 +83,9 @@
     "KeelsonValidationRegistry": "0x0000000000000000000000008004a818bfb912233c491871b3d84c89a494bd9e000000000000000000000000e16e8767ec1da59ef0d9bc7851637e4d22352d96000000000000000000000000b39898ef4333f3cb32d1b420e744f5a1aa2ae2bf",
     "KeelsonReputationReporter": "0x000000000000000000000000b39898ef4333f3cb32d1b420e744f5a1aa2ae2bf0000000000000000000000008004b663056a597dffe9eccc1965a193b7388713",
     "MandatePredicateVerifier": "0x",
-    "MandatePredicateReferenceVerifier": "0x"
+    "MandatePredicateReferenceVerifier": "0x",
+    "MandateViolationVerifier": "0x",
+    "MandateViolationReferenceVerifier": "0x",
+    "MandateViolationCourt": "0x000000000000000000000000b39898ef4333f3cb32d1b420e744f5a1aa2ae2bf000000000000000000000000e16e8767ec1da59ef0d9bc7851637e4d22352d960000000000000000000000000e82f941a3f75fee528753b24dbe16964eecaa48"
   }
 }

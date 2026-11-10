@@ -36,7 +36,7 @@ paths = [
 description = "The C2a circuit's public artifacts: its verification key, the demo mandate's prover inputs (fixed salt 0x01..0x10, no key) and a proof of each violation class"
 paths = [
   '''circuits/c2a/(mandate_violation\.vk|Prover_[a-z]+\.toml|src/vectors\.nr)''',
-  '''contracts/test/vectors/c2a-[a-z]+\.json''',
+  '''contracts/test/vectors/c2a-[a-z-]+\.json''',
 ]
 
 [[allowlists]]

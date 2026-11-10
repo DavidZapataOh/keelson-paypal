@@ -9,6 +9,11 @@ export const TEE_BUILDS: readonly {
   nitro: string;
 }[] = [
   {
+    engineBuildId: "0x9967b89c2fed0ab1b854c8ea20247eee70d7c1fb3ae9445c7134bbf692b6a3fd",
+    tdx: "tdx:f33b8b201d9daa57f1ddb49ddc1e4d2176caeeea97d7ce2b23fa891b223ad947",
+    nitro: "nitro:35db041c95b64fa5f5229256fc17c9e1ac55238d45af87614c5ab566f09f121d",
+  },
+  {
     engineBuildId: "0x0af4d1ec1e2c3743bad0f8d50b9feec1516e7fbbd7809d5649d8fd5dc53651bc",
     tdx: "tdx:a50ad21c8a724475b6c24df85d8a77078f72d08efb3e7b845e8768acbff332e1",
     nitro: "nitro:4404b1f00e6eb3971942e9f16c8cbd64df81ebf50646367f5aefa3229c992322",
