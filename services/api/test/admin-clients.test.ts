@@ -167,7 +167,10 @@ test("an admin's scopes let the client get a token for the API", async () => {
 });
 
 test("an admin links a client to the API, so it gets a JWT for the API's audience", async () => {
-  const client = await registerClient([], []);
+  const client = await registerClient(SCOPES, []);
+  const unlinked = await issueToken(client);
+  expect(unlinked.status).toBe(400);
+  expect((await unlinked.json()).error).toBe("invalid_target");
   expect((await set(client.id, sessionHeaders)).status).toBe(200);
   expect((await set(client.id, sessionHeaders)).status).toBe(200);
   const res = await issueToken(client, { resource: apiAudience, scope: SCOPES.join(" ") });
