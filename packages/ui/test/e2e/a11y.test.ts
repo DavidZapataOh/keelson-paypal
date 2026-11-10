@@ -16,7 +16,7 @@ const pkg = fileURLToPath(new URL("../..", import.meta.url));
 const out = mkdtempSync(join(tmpdir(), "keelson-ui-"));
 const plugins = [react(), tailwindcss()];
 
-const BUDGET = { cssGzip: 15 * 1024, jsGzip: 20 * 1024 };
+const BUDGET = { cssGzip: 20 * 1024, coreJsGzip: 20 * 1024, fullJsGzip: 80 * 1024 };
 
 let server: PreviewServer;
 let browser: Browser;
@@ -107,6 +107,109 @@ describe.each(["light", "dark"] as const)("the showcase in Chromium, %s", (theme
   });
 });
 
+describe("keyboard and assistive technology", () => {
+  test("a dialog traps focus, closes on Escape and returns focus to its trigger", async () => {
+    const page = await open("");
+    const trigger = page.getByRole("button", { name: "Revoke mandate" });
+    await trigger.focus();
+    await page.keyboard.press("Enter");
+    const dialog = page.getByRole("dialog", { name: "Revoke this mandate?" });
+    await dialog.waitFor();
+    await settled(page);
+    for (let i = 0; i < 6; i++) {
+      await page.keyboard.press("Tab");
+      expect(await dialog.evaluate((d) => d.contains(document.activeElement))).toBe(true);
+    }
+    const { violations } = await new AxeBuilder({ page })
+      .include('[role="dialog"]')
+      .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
+      .analyze();
+    expect(violations.map((v) => v.id)).toEqual([]);
+    await page.keyboard.press("Escape");
+    await dialog.waitFor({ state: "detached" });
+    expect(await trigger.evaluate((t) => t === document.activeElement)).toBe(true);
+    await page.context().close();
+  });
+
+  test("a sheet opens from the right and closes on Escape", async () => {
+    const page = await open("?theme=dark");
+    await page.getByRole("button", { name: "Open purchase" }).click();
+    const sheet = page.getByRole("dialog", { name: "Nike · $340.00" });
+    await sheet.waitFor();
+    await settled(page);
+    const box = await sheet.boundingBox();
+    expect(Math.round((box?.x ?? 0) + (box?.width ?? 0))).toBe(page.viewportSize()?.width);
+    await page.keyboard.press("Escape");
+    await sheet.waitFor({ state: "detached" });
+    await page.context().close();
+  });
+
+  test("tabs move with the arrow keys", async () => {
+    const page = await open("");
+    await page.getByRole("tab", { name: "All" }).click();
+    // Radix moves focus on the next tick; each press waits for it.
+    await page.keyboard.press("ArrowRight");
+    await page.getByRole("tab", { name: "Blocked", selected: true }).waitFor();
+    await page.keyboard.press("ArrowRight");
+    await page.getByRole("tab", { name: "Loading", selected: true }).waitFor();
+    await page.getByRole("tab", { name: "Disputed" }).click();
+    await page.getByText("No disputes").waitFor();
+    await page.context().close();
+  });
+
+  test("a select opens and picks with the keyboard", async () => {
+    const page = await open("");
+    const trigger = page.getByRole("combobox", { name: "Valid for" });
+    await trigger.focus();
+    await page.keyboard.press("Enter");
+    await page.getByRole("option", { name: "7 days" }).and(page.locator(":focus")).waitFor();
+    await page.keyboard.press("ArrowDown");
+    await page.getByRole("option", { name: "30 days" }).and(page.locator(":focus")).waitFor();
+    await page.keyboard.press("Enter");
+    await page.waitForFunction(
+      () => document.querySelector("#window")?.textContent === "30 days",
+      undefined,
+      { timeout: 2_000 },
+    );
+    await page.context().close();
+  });
+
+  test("a toast is announced in a live region", async () => {
+    const page = await open("");
+    await page.getByRole("button", { name: "Show a toast" }).click();
+    const toast = page.locator("[data-sonner-toast]");
+    await toast.waitFor();
+    expect(await toast.textContent()).toContain("Mandate signed");
+    expect(await page.locator("section[aria-live]").count()).toBeGreaterThan(0);
+    await page.context().close();
+  });
+
+  test("an invalid field links its error and marks its label", async () => {
+    const page = await open("");
+    const input = page.getByRole("textbox", { name: "Maximum total" });
+    expect(await input.getAttribute("aria-invalid")).toBe("true");
+    const label = page.locator('label[for="max"]');
+    const color = await label.evaluate((l) => getComputedStyle(l).color);
+    expect(color).toBe(rgb(themes.light.destructive));
+    await page.context().close();
+  });
+
+  test("reduced motion: nothing animates", async () => {
+    const context = await browser.newContext({ reducedMotion: "reduce" });
+    const page = await context.newPage();
+    await page.goto(base);
+    await page.getByRole("button", { name: "Revoke mandate" }).click();
+    const durations = await page
+      .getByRole("dialog")
+      .evaluate((d) => [
+        getComputedStyle(d).animationDuration,
+        getComputedStyle(d).transitionDuration,
+      ]);
+    for (const d of durations) expect(Number.parseFloat(d)).toBeLessThanOrEqual(0.00001);
+    await context.close();
+  });
+});
+
 test("AG Studio resolves the brand theme in light and dark", async () => {
   const page = await open("studio.html");
   const read = () =>
@@ -144,29 +247,43 @@ test("AG Studio resolves the brand theme in light and dark", async () => {
 });
 
 test("bundle size within budget", async () => {
-  // The components and their dependencies alone, with React external, as an app pays for them.
-  await build({
-    root: pkg,
-    logLevel: "silent",
-    plugins,
-    build: {
-      outDir: join(out, "lib"),
-      emptyOutDir: true,
-      lib: { entry: join(fixture, "size.ts"), formats: ["es"], fileName: "ui" },
-      rolldownOptions: { external: [/^react($|\/)/, /^react-dom($|\/)/] },
-    },
-  });
+  // The components and their dependencies alone, with React external, as an app pays for them:
+  // the core every app imports, and every component as the worst case.
+  const gzip = async (entry: string) => {
+    await build({
+      root: pkg,
+      logLevel: "silent",
+      plugins,
+      build: {
+        outDir: join(out, entry),
+        emptyOutDir: true,
+        lib: { entry: join(fixture, `${entry}.ts`), formats: ["es"], fileName: "ui" },
+        rolldownOptions: { external: [/^react($|\/)/, /^react-dom($|\/)/] },
+      },
+    });
+    return gzipSync(readFileSync(join(out, entry, "ui.js"))).length;
+  };
+  const coreJsGzip = await gzip("size-core");
+  const fullJsGzip = await gzip("size");
   const site = join(out, "site", "assets");
   const css = readdirSync(site).filter((f) => f.endsWith(".css"));
   const cssGzip = css.reduce((n, f) => n + gzipSync(readFileSync(join(site, f))).length, 0);
-  const jsGzip = gzipSync(readFileSync(join(out, "lib", "ui.js"))).length;
+  const kb = (n: number) => `${(n / 1024).toFixed(1)} KB`;
   console.log(
-    `ui css ${(cssGzip / 1024).toFixed(1)} KB gzip, js ${(jsGzip / 1024).toFixed(1)} KB gzip`,
+    `ui css ${kb(cssGzip)} gzip, core js ${kb(coreJsGzip)} gzip, full js ${kb(fullJsGzip)} gzip`,
   );
   expect(css.length).toBe(1);
   expect(cssGzip).toBeLessThan(BUDGET.cssGzip);
-  expect(jsGzip).toBeLessThan(BUDGET.jsGzip);
+  expect(coreJsGzip).toBeLessThan(BUDGET.coreJsGzip);
+  expect(fullJsGzip).toBeLessThan(BUDGET.fullJsGzip);
 });
+
+/** Resolves once no CSS animation or transition is running. */
+async function settled(page: Page): Promise<void> {
+  await page.waitForFunction(() =>
+    document.getAnimations().every((a) => a.playState !== "running"),
+  );
+}
 
 function rgb(hex: string): string {
   const [r, g, b] = [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16));

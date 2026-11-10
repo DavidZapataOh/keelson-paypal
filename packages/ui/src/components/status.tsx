@@ -71,21 +71,41 @@ function Glyph({ state }: { state: StatusState }) {
   );
 }
 
-/** A purchase's state as a chip: text, glyph and tone together. */
+/** In table cells the state reads as glyph and word, without the chip around it. */
+const INLINE_TONES = {
+  neutral: "text-foreground",
+  ok: "text-ok",
+  attention: "text-warn",
+  act: "text-destructive",
+  error: "text-foreground [&>span:first-child]:text-destructive",
+} as const;
+
+/**
+ * A purchase's state: text, glyph and tone together. `chip` for headers and details, `inline` for
+ * dense rows. `reveal` plays the countersign moment once, when the state arrives live.
+ */
 function Status({
   state,
+  appearance = "chip",
+  reveal = false,
   className,
   ...props
-}: React.ComponentProps<"span"> & { state: StatusState }) {
+}: React.ComponentProps<"span"> & {
+  state: StatusState;
+  appearance?: "chip" | "inline";
+  reveal?: boolean;
+}) {
   const { text, tone } = STATUS[state];
   return (
     <span
       data-slot="status"
       data-state={state}
       data-tone={tone}
+      data-appearance={appearance}
       className={cn(
-        "inline-flex h-6 items-center gap-1.5 rounded-sm border px-2 text-xs font-medium whitespace-nowrap",
-        TONES[tone],
+        "inline-flex items-center gap-1.5 text-xs font-medium whitespace-nowrap",
+        appearance === "chip" ? ["h-6 rounded-sm border px-2", TONES[tone]] : INLINE_TONES[tone],
+        reveal && "motion-safe:animate-reveal",
         className,
       )}
       {...props}
