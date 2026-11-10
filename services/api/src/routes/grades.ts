@@ -35,13 +35,19 @@ const TrustGrade = z
     }),
     evidence: z.object({
       coverages: int(),
-      incidents: z.object({
-        total: int(),
-        slashes: int(),
-        warranties: int(),
-        uncollected: int(),
-        pending: int().openapi({ description: "Verdicts not settled yet." }),
-      }),
+      incidents: z
+        .object({
+          total: int(),
+          slashes: int().openapi({ description: "Paid from the operator's bond." }),
+          pool: int().openapi({ description: "Paid from its `ViolationBondPool` deposit." }),
+          uncollected: int().openapi({ description: "Paid by Keelson's treasury instead." }),
+          pending: int().openapi({ description: "Not settled yet." }),
+        })
+        .openapi({ description: "Verdicts with the operator at fault: what the grade counts." }),
+    }),
+    reserve: z.object({ warranties: int() }).openapi({
+      description:
+        "Keelson's own faults on the operator's coverages, paid by its reserve. Not in the grade.",
     }),
     frequency: z.object({
       alpha: z.number(),
@@ -71,7 +77,7 @@ const TrustGrade = z
   })
   .openapi("TrustGrade", {
     description:
-      "An operator's trust grade, premium and minimum bond. Amounts are US cents. The red-team campaigns set the prior of the incident rate; the operator's covered purchases and the verdicts against them update it in closed form; a seeded Monte Carlo of the aggregate loss over the next 30 days prices the premium and the bond.",
+      "An operator's trust grade, premium and minimum bond. Amounts are US cents. The red-team campaigns set the prior of the incident rate; the operator's covered purchases and the verdicts with it at fault update it in closed form; a seeded Monte Carlo of the aggregate loss over the next 30 days prices the premium and the bond.",
   });
 
 const problemContent = { "application/problem+json": { schema: ProblemSchema } };

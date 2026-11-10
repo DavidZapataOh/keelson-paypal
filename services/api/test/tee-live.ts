@@ -488,6 +488,15 @@ function authorizationPayee(): Promise<string> {
 let sandboxOrder: string | undefined;
 
 /**
+ * The merchant the mandate allows: the API's own (`PAYPAL_MERCHANT_ID`), which every hold the
+ * harness creates pays; else the payee of the sandbox's standing authorization.
+ */
+function mandatePayee(): Promise<string> {
+  const configured = process.env.PAYPAL_MERCHANT_ID;
+  return configured ? Promise.resolve(configured) : authorizationPayee();
+}
+
+/**
  * Puts a signed mandate on the sandbox's standing authorization, for suites that test what
  * happens after the hold and not the hold itself (the hold suites create and approve real ones).
  */
@@ -570,7 +579,7 @@ export async function signedMandate(
   edit: (m: Mandate) => void = () => {},
   agent: AgentKey = testAgent,
 ): Promise<SignedMandate> {
-  const merchant = await authorizationPayee();
+  const merchant = await mandatePayee();
   const now = Math.floor(Date.now() / 1000);
   const m: Mandate = parseMandate({
     ...demo,

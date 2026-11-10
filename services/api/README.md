@@ -404,16 +404,17 @@ Every linked operator has a trust grade, a premium and a minimum bond:
   `κ` is fitted by the method of moments, so `Beta(κμ, κ(1 - μ))` has the variance of that
   product. Red-team runs move only the prior.
 - **Operator, from its own record.** `n` is its covered purchases (state `COVERED` or later),
-  `k` the verdicts against them with the operator or Keelson at fault: slashes, warranties and
-  faults Keelson's treasury paid. The posterior is `Beta(κμ + k, κ(1 - μ) + n - k)`, whose mean
+  `k` the verdicts against them with the operator at fault: paid from its bond or its
+  `ViolationBondPool` deposit, or by Keelson's treasury when neither could. Keelson's own faults
+  (warranties) are its reserve's, reported apart as `reserve.warranties` and left out of the grade. The posterior is `Beta(κμ + k, κ(1 - μ) + n - k)`, whose mean
   is Bühlmann's credibility estimate `Z · k/n + (1 - Z) · μ`, `Z = n / (n + κ)`. The grade reads
   its one-sided 95 % credible upper bound: A ≤ 1 %, B ≤ 2 %, C ≤ 5 %, D ≤ 10 %, F above.
 - **Loss.** A loss is a covered amount, drawn from the operator's recorded coverages (everyone's
   for a new operator, its mandates' caps before any coverage), times a loss ratio drawn from the
-  recorded verdicts (1 until a verdict exists). 20,000 scenarios over the next 30 days (at least
-  100 purchases) draw the rate from the posterior (stratified) and the losses with common random
-  numbers seeded by the operator and the calibration, so a grade is reproducible and moves only
-  with the record.
+  recorded operator-fault verdicts (1 until one exists). 20,000 scenarios over the next 30 days
+  (at least 100 purchases) draw the rate from the posterior (stratified) and the losses with
+  common random numbers seeded by the operator and the calibration, so a grade is reproducible
+  and moves only with the record.
 - **Premium and bond.** Premium per purchase `EL · (1 + θ) + c · (ES99 - E[S]) / N`, `θ = 0.25`,
   `c` = Solvency II's 6 % cost of capital for 30 days, in basis points of the mean covered amount
   and never under 100 bps. Bond `max(ES99, VaR99.5, the largest coverage)`.
