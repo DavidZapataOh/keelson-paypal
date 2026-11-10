@@ -6,8 +6,6 @@ export const verifyUrl = "https://verify.keelson.finance";
 
 export const storeUrl = "https://store.keelson.finance";
 
-export const apiStatusUrl = "https://api.keelson.finance/status";
-
 export const apiReferenceUrl = `${repoUrl}/blob/main/openapi/keelson.yaml`;
 
 export const monitorUrl = "https://keelson-monitor-production.up.railway.app";

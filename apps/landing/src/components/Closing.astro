@@ -1,13 +1,5 @@
 ---
-import {
-  apiReferenceUrl,
-  apiStatusUrl,
-  appUrl,
-  monitorUrl,
-  repoUrl,
-  storeUrl,
-  verifyUrl,
-} from "../config";
+import { apiReferenceUrl, appUrl, monitorUrl, repoUrl, storeUrl, verifyUrl } from "../config";
 
 const columns = [
   {
@@ -29,7 +21,7 @@ const columns = [
   {
     title: "Status",
     links: [
-      { label: "API status", href: apiStatusUrl },
+      { label: "System status", href: `${appUrl}/status/` },
       { label: "Log monitor", href: monitorUrl },
       { label: "Issues", href: `${repoUrl}/issues` },
     ],
