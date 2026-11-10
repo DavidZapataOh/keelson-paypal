@@ -66,10 +66,10 @@ type config struct {
 
 // anchorConfig is where and with what checkpoints are anchored: the
 // CheckpointAnchor address (the same on every chain), the RPC of each chain
-// anchors go to, the submitter key and the legs that sign them.
+// anchors go to, in the order they are tried, the submitter key and the legs that sign them.
 type anchorConfig struct {
 	Address common.Address
-	RPC     map[uint64]string
+	RPC     map[uint64][]string
 	Key     *ecdsa.PrivateKey
 	TEEA    string
 	TEEB    string
@@ -91,7 +91,7 @@ func loadAnchorConfig(getenv func(string) string) (*anchorConfig, error) {
 	}
 	c := &anchorConfig{
 		Address: common.HexToAddress(addr),
-		RPC:     map[uint64]string{},
+		RPC:     map[uint64][]string{},
 		Key:     key,
 		TEEA:    getenv("TEE_A_URL"),
 		TEEB:    getenv("TEE_B_URL"),
@@ -102,7 +102,7 @@ func loadAnchorConfig(getenv func(string) string) (*anchorConfig, error) {
 	}
 	for chainID, name := range map[uint64]string{421614: "ARBITRUM_SEPOLIA_RPC_URL", 42161: "ARBITRUM_ONE_RPC_URL"} {
 		if u := getenv(name); u != "" {
-			c.RPC[chainID] = u
+			c.RPC[chainID] = []string{u, publicRPC[chainID]}
 		}
 	}
 	return c, nil

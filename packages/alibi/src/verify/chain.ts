@@ -77,8 +77,8 @@ const CHAINS: Record<number, { chain: Chain; rpcs: string[] }> = {
 };
 
 export interface ChainReaderOptions {
-  /** An RPC per chain id, replacing the public defaults. */
-  rpc?: Partial<Record<number, string>>;
+  /** The RPCs of a chain id, tried in order, replacing the public defaults. */
+  rpc?: Partial<Record<number, string | readonly string[]>>;
   fetchFn?: typeof fetch;
   timeoutMs?: number;
 }
@@ -97,8 +97,9 @@ export function createChainReader(opts: ChainReaderOptions = {}): ChainReader {
     async read(chainId, q) {
       const known = CHAINS[chainId];
       if (!known) throw new ChainUnreachableError(`no RPC is known for chain ${chainId}`);
-      const custom = Boolean(opts.rpc?.[chainId]);
-      const urls = custom ? [opts.rpc?.[chainId] as string] : known.rpcs;
+      const chosen = opts.rpc?.[chainId];
+      const custom = Boolean(chosen);
+      const urls = chosen ? [chosen].flat() : known.rpcs;
       let answered = urls[0] as string;
       const transports = urls.map((url) =>
         http(url, {
