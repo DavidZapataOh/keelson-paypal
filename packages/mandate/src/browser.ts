@@ -27,6 +27,7 @@ export type { Card, CardRow, Signing } from "./card.ts";
 export type { Evidence, FieldId } from "./colors.ts";
 export type { Mandate } from "./schema.ts";
 export type { SpcDetails } from "./spc.ts";
+export { TERMS, TERMS_HASH } from "./terms.ts";
 
 /**
  * Builds the payload, commitment, challenge, card and SPC details of `m`; see the card module's

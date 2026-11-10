@@ -96,3 +96,4 @@ export {
   type SpcDetails,
   spcDetails,
 } from "./spc.ts";
+export { TERMS, TERMS_HASH } from "./terms.ts";
