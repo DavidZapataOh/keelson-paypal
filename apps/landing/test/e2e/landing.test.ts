@@ -138,7 +138,7 @@ describe("the landing", () => {
       expect(await page.locator(href).count(), href).toBe(1);
     }
     const external = [...new Set(hrefs.filter((h) => h.startsWith("https://")))];
-    expect(external.some((h) => h.includes("app.keelson.finance"))).toBe(false);
+    expect(external.some((h) => h.includes("app.keelson.finance"))).toBe(true);
     for (const href of external) {
       const res = await fetch(href.split("#")[0] as string, { redirect: "follow" });
       expect(res.status, href).toBeLessThan(400);
