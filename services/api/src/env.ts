@@ -55,6 +55,7 @@ const schema = z
     KEELSON_EVIDENCE_AGE_IDENTITY: z.string().startsWith("AGE-SECRET-KEY-").optional(),
     KEELSON_EVIDENCE_AGE_RECIPIENT: z.string().startsWith("age1").optional(),
     CHANNEL3_API_KEY: z.string().min(1).optional(),
+    PROVER_URL: z.url().optional(),
     CHANNEL3_WEBHOOK_SECRET: z.string().startsWith("whsec_").optional(),
     TSA_DIGICERT_URL: z.url().optional(),
     TSA_SIGSTORE_URL: z.url().optional(),

@@ -549,6 +549,7 @@ jobs:
       - run: cargo audit
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo clippy -p keelson-tee --all-targets --features tdx,nitro -- -D warnings
+      - run: cargo clippy -p keelson-tlsn --all-targets --features prover -- -D warnings
       - run: cargo test
       - name: The enclave engine carries no proof tooling
         run: "! cargo tree -p keelson-tee --features tdx,nitro -e normal | grep -E 'cedar-policy-symcc|cvc5'"
@@ -630,6 +631,22 @@ jobs:
         run: |
           set -o pipefail
           cargo bench -p keelson-policy --bench attribute | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # TLSNotary sessions against the demo store and a Shopify product, prover and notary on one runner, and the
+  # notary served over HTTP by leg A's engine.
+  tlsn-live:
+    needs: changes
+    if: (needs.changes.outputs.rust == 'true') && (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: Session time with MPC-TLS and Proxy-TLS
+        run: |
+          set -o pipefail
+          cargo test -p keelson-tlsn --release --test live -- --ignored --nocapture --test-threads=1 | tee -a "$GITHUB_STEP_SUMMARY"
+      - run: cargo test -p keelson-tee --release --features tdx --test notary -- --include-ignored
 
   attest-proofs:
     needs: [changes, proofs]

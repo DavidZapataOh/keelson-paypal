@@ -46,6 +46,8 @@ pub struct AppState {
     paypal: Option<crate::paypal::PayPalClient>,
     #[cfg(feature = "nitro")]
     nitro: Option<crate::nitro::Nitro>,
+    #[cfg(feature = "tdx")]
+    notary: Option<Arc<tokio::sync::Semaphore>>,
 }
 
 impl AppState {
@@ -62,7 +64,22 @@ impl AppState {
             paypal: None,
             #[cfg(feature = "nitro")]
             nitro: None,
+            #[cfg(feature = "tdx")]
+            notary: None,
         }
+    }
+
+    /// Serves `GET /v1/notary`: the leg notarizes TLS sessions and signs a `WebFact` for each
+    /// it accepts.
+    #[cfg(feature = "tdx")]
+    pub fn with_notary(mut self) -> Self {
+        self.notary = Some(Arc::new(tokio::sync::Semaphore::new(1)));
+        self
+    }
+
+    #[cfg(feature = "tdx")]
+    pub(crate) fn notary_slot(&self) -> &Arc<tokio::sync::Semaphore> {
+        self.notary.as_ref().expect("routed only with a notary")
     }
 
     /// Makes leg A read the request's PayPal authorization through `client` before every
@@ -93,7 +110,7 @@ impl AppState {
         self
     }
 
-    #[cfg(feature = "nitro")]
+    #[cfg(any(feature = "tdx", feature = "nitro"))]
     pub(crate) fn engine(&self) -> &Engine {
         &self.engine
     }
@@ -105,7 +122,7 @@ impl AppState {
             .expect("routed only with an attestation")
     }
 
-    #[cfg(feature = "nitro")]
+    #[cfg(any(feature = "tdx", feature = "nitro"))]
     pub(crate) fn now(&self) -> OffsetDateTime {
         (self.clock)()
     }
@@ -139,6 +156,12 @@ pub fn router(state: Arc<AppState>) -> Router {
         )
     } else {
         (open, protected)
+    };
+    #[cfg(feature = "tdx")]
+    let protected = if state.notary.is_some() {
+        protected.route("/v1/notary", get(crate::notary::notary))
+    } else {
+        protected
     };
     #[cfg(feature = "nitro")]
     let (open, protected) = if state.nitro.is_some() {
