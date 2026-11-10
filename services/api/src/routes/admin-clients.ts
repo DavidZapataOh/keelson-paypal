@@ -1,6 +1,6 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { isAPIError } from "better-auth/api";
-import { type Auth, OAUTH_SCOPES } from "../auth.ts";
+import { type Auth, apiAudience, OAUTH_SCOPES } from "../auth.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 
 const problemContent = { "application/problem+json": { schema: ProblemSchema } };
@@ -17,7 +17,7 @@ const route = createRoute({
   tags: ["admin"],
   summary: "Set an OAuth client's client credentials scopes",
   description:
-    "Sets the scopes an OAuth client may ask for with the client credentials grant, and turns that grant on. Only a signed-in user whose role is `admin` may, with the session cookie; an access token is not accepted.",
+    "Sets the scopes an OAuth client may ask for with the client credentials grant, turns that grant on, and links the client to the API so its tokens are JWTs for the API's audience. Only a signed-in user whose role is `admin` may, with the session cookie; an access token is not accepted.",
   request: {
     headers: z.object({ "idempotency-key": z.string().min(1).max(255) }),
     params: z.object({ clientId: z.string().min(1).max(128) }),
@@ -83,6 +83,17 @@ export function registerAdminClients(app: OpenAPIHono, auth: Auth, appOrigin: st
         if (!(isAPIError(err) && /client_credentials grant/.test(err.message))) throw err;
         client = await update(true);
       }
+      // A client registered without the API as a resource gets only opaque, audience-less tokens.
+      await auth.api
+        .adminLinkClientResource({
+          headers,
+          params: { identifier: apiAudience, client_id: clientId },
+        })
+        .catch((err: unknown) => {
+          // Better Auth spots an existing link by the error's message, which Drizzle wraps; the
+          // Postgres unique_violation underneath means the client is already linked.
+          if ((err as { cause?: { code?: string } }).cause?.code !== "23505") throw err;
+        });
       return c.json({ clientId, scopes: [...(client.client_credentials_scopes ?? [])] }, 200);
     } catch (err) {
       if (!isAPIError(err)) throw err;
