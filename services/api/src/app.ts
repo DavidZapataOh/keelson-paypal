@@ -90,6 +90,8 @@ export interface Deps {
   authBaseUrl?: string;
   /** The store MCP clients price carts on; `https://store.keelson.finance` by default. */
   storeOrigin?: string;
+  /** Lets a Judge Mode session past the daily cap over every address; unset, no invite does. */
+  judgeInvite?: string | undefined;
   /** The operator MCP tool calls act for when they name none. */
   demoAgentId?: bigint | undefined;
   /** Browser origin of the public verifier, allowed to read Alibi receipts and timestamps without credentials. */

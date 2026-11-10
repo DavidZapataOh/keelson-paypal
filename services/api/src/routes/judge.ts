@@ -4,7 +4,7 @@ import { alibis, desc, eq, inArray, mandates, purchases } from "@keelson/db";
 import { renderCard } from "@keelson/mandate";
 import type { MiddlewareHandler } from "hono";
 import type { Deps } from "../app.ts";
-import { admitJudge, isJudge, tourSeed } from "../judge.ts";
+import { admitJudge, isInvite, isJudge, tourSeed } from "../judge.ts";
 import { MERCHANTS } from "../merchants.ts";
 import { rateLimit } from "../middleware/rate-limit.ts";
 import { purchaseView } from "../pipeline/drive.ts";
@@ -25,7 +25,21 @@ const start = createRoute({
   tags: ["judge"],
   summary: "Open a Judge Mode session",
   description:
-    "Creates a judge: a tenant with no email, no account and no key, signed in with a session cookie until the nightly reset after 12 hours. A judge reads the demo merchant's console (no changes), walks the tour, and can sign its own mandates with a passkey like any user. Five per hour per address.",
+    "Creates a judge: a tenant with no email, no account and no key, signed in with a session cookie until the nightly reset after 12 hours. A judge reads the demo merchant's console (no changes), walks the tour, and can sign its own mandates with a passkey like any user. Five per hour per address, and a cap a day over every address that a judge with the invite is counted apart from.",
+  request: {
+    body: {
+      required: false,
+      content: {
+        "application/json": {
+          schema: z.object({
+            invite: z.string().max(256).optional().openapi({
+              description: "The invite from the hackathon's testing instructions.",
+            }),
+          }),
+        },
+      },
+    },
+  },
   responses: {
     201: {
       description: "The judge, signed in (the session cookie is set)",
@@ -123,7 +137,10 @@ function requireJudge(deps: Pick<Deps, "db">): MiddlewareHandler {
 
 export function registerJudge(
   app: OpenAPIHono,
-  deps: Pick<Deps, "db" | "kv" | "auth" | "rateLimit" | "demoAgentId" | "appOrigin">,
+  deps: Pick<
+    Deps,
+    "db" | "kv" | "log" | "auth" | "rateLimit" | "demoAgentId" | "appOrigin" | "judgeInvite"
+  >,
 ): void {
   const { db, auth } = deps;
   app.on(
@@ -155,7 +172,8 @@ export function registerJudge(
         "Sign out before starting Judge Mode.",
       );
     }
-    if (!(await admitJudge(deps.kv))) {
+    const invited = isInvite(deps.judgeInvite, c.req.valid("json")?.invite);
+    if (!(await admitJudge(deps.kv, deps.log, invited))) {
       return problem(c, 429, "judges-full", "Too many judges", "Today's judges are all taken.");
     }
     const { headers, response } = await auth.api.signInAnonymous({
