@@ -1,5 +1,40 @@
 ---
-import { appUrl, repoUrl } from "../config";
+import {
+  apiReferenceUrl,
+  apiStatusUrl,
+  appUrl,
+  monitorUrl,
+  repoUrl,
+  storeUrl,
+  verifyUrl,
+} from "../config";
+
+const columns = [
+  {
+    title: "Product",
+    links: [
+      { label: "App", href: appUrl },
+      { label: "Alibi verifier", href: verifyUrl },
+      { label: "Demo store", href: storeUrl },
+    ],
+  },
+  {
+    title: "Developers",
+    links: [
+      { label: "Repository", href: repoUrl },
+      { label: "API reference", href: apiReferenceUrl },
+      { label: "Contracts", href: `${repoUrl}/tree/main/contracts` },
+    ],
+  },
+  {
+    title: "Status",
+    links: [
+      { label: "API status", href: apiStatusUrl },
+      { label: "Log monitor", href: monitorUrl },
+      { label: "Issues", href: `${repoUrl}/issues` },
+    ],
+  },
+];
 ---
 
 <section class="closing ticks" aria-labelledby="closing-title">
@@ -24,12 +59,25 @@ import { appUrl, repoUrl } from "../config";
     <div class="row">
       <a class="brand" href="#top" aria-label="Keelson, back to top"><img src="/keelson.svg" alt="" width="190" height="56" /></a>
       <nav aria-label="Footer">
-        <a class="link" href={repoUrl}>Repository</a>
-        <a class="link" href={`${repoUrl}/tree/main/contracts`}>Contracts</a>
-        <a class="link" href={`${repoUrl}/tree/main/sdk`}>SDK</a>
-        <a class="link" href={`${repoUrl}/issues`}>Issues</a>
+        {
+          columns.map((c) => (
+            <div class="col">
+              <p class="col-title mono">{c.title}</p>
+              <ul>
+                {c.links.map((l) => (
+                  <li>
+                    <a class="link" href={l.href}>
+                      {l.label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))
+        }
       </nav>
     </div>
+    <p class="legal mono">Everything runs on the PayPal sandbox and Arbitrum Sepolia. No real money moves.</p>
     <p class="legal mono">Keelson is an independent project. It is not affiliated with or endorsed by PayPal.</p>
     <p class="legal mono">Keelson is not insurance. PayPal decides disputes on its own platform.</p>
   </div>
@@ -119,7 +167,7 @@ import { appUrl, repoUrl } from "../config";
   .row {
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
     gap: 24px 48px;
   }
@@ -130,9 +178,28 @@ import { appUrl, repoUrl } from "../config";
   }
 
   nav {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px 36px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(10rem, auto));
+    gap: 24px 56px;
+  }
+
+  .col-title {
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-2);
+  }
+
+  ul {
+    list-style: none;
+    margin: 6px 0 0;
+    padding: 0;
+  }
+
+  @media (max-width: 640px) {
+    nav {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
   }
 
   .legal {

@@ -93,10 +93,11 @@ const post = async (path: string, headers: Record<string, string>, body?: unknow
 };
 const evidence = new EvidenceUploader();
 
+let unseed = async () => {};
 try {
   await refreshLeg(db, "a", tee);
   await refreshLeg(db, "b", tee);
-  await seedDemoOperator(db);
+  unseed = await seedDemoOperator(db);
   const passkey = await SoftwarePasskey.create();
   const sub = `kls_usr_${randomBytes(8).toString("hex")}`;
   await seedUser(db, passkey, sub);
@@ -207,6 +208,7 @@ try {
   await passkey.close();
   if (total.length < SAMPLES || percentile(total, 0.95) >= BUDGET_P95_MS) process.exitCode = 1;
 } finally {
+  await unseed();
   await evidence.close();
   await listener.close();
   await kv.close();

@@ -236,10 +236,11 @@ async function purchase(h: Hold, mode: Result["mode"], evidenceRoot: string): Pr
   };
 }
 
+let unseed = async () => {};
 try {
   await refreshLeg(db, "a", tee);
   await refreshLeg(db, "b", tee);
-  await seedDemoOperator(db);
+  unseed = await seedDemoOperator(db);
   const perHold = Math.ceil(PURCHASES / HOLDS);
   for (let i = 0; i < HOLDS; i++) holds.push(await openHold(perHold));
   // The evidence of every purchase is captured first, one browser page at a time, so the
@@ -309,6 +310,7 @@ try {
     process.exitCode = 1;
   }
 } finally {
+  await unseed();
   for (const m of opened) {
     await post(`/v1/mandates/${m.mid}/revoke`, asUser(m.sub)).catch((err: unknown) =>
       console.error(`mandate ${m.mid} not revoked: ${String(err)}`),

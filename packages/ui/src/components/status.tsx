@@ -29,7 +29,7 @@ const STATUS = {
 
 type StatusState = keyof typeof STATUS;
 
-function Glyph({ state }: { state: StatusState }) {
+function Glyph({ state, reveal = false }: { state: StatusState; reveal?: boolean }) {
   const tone = STATUS[state].tone;
   if (tone === "error") {
     return (
@@ -61,6 +61,9 @@ function Glyph({ state }: { state: StatusState }) {
           stroke="currentColor"
           strokeWidth="2"
           strokeLinejoin="round"
+          pathLength={1}
+          strokeDasharray={reveal ? 1 : undefined}
+          className={reveal ? "motion-safe:animate-draw" : undefined}
         />
       ),
   };
@@ -110,7 +113,7 @@ function Status({
       )}
       {...props}
     >
-      <Glyph state={state} />
+      <Glyph state={state} reveal={reveal} />
       <span>{text}</span>
     </span>
   );

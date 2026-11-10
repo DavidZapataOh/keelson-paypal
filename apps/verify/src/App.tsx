@@ -175,6 +175,44 @@ export function App() {
     if (loaded) void verify(loaded.alibi);
   };
 
+  if (route.embed) {
+    const full = `${location.origin}${location.pathname}${location.hash}`;
+    return (
+      <main className="space-y-6 p-4 sm:p-6">
+        {error && (
+          <p
+            role="alert"
+            className="rounded-[10px] border border-vermilion px-4 py-3 text-vermilion-deep"
+          >
+            {error}
+          </p>
+        )}
+        {run && loaded && edited !== undefined ? (
+          <>
+            <Suspense fallback={null}>
+              <Cheat edited={edited} changed={changed} onChange={onEdit} onReset={onReset} embed />
+            </Suspense>
+            <Report checks={run.checks} report={run.report} receipt={isReceipt(loaded)} />
+          </>
+        ) : (
+          !error && (
+            <p className="text-muted-foreground" role="status">
+              Loading the Alibi's public receipt…
+            </p>
+          )
+        )}
+        <a
+          className="inline-block text-sm text-muted-foreground underline hover:text-graphite"
+          href={full}
+          target="_blank"
+          rel="noopener"
+        >
+          Open in the full verifier
+        </a>
+      </main>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-5xl px-5 pb-24 sm:px-8">
       <header className="flex items-center justify-between py-6">

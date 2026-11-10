@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import {
+  addresses,
   passkeyPublicKey,
   type SignedAssertion,
   toAssertion,
@@ -42,6 +43,7 @@ import {
   SpcPasskey,
   seedUser,
   signedMandate,
+  testAgent,
   VirtualPasskey,
 } from "./tee-live.ts";
 
@@ -57,8 +59,7 @@ const registry = JSON.parse(readFileSync(registryUrl, "utf8")) as {
 };
 const AGENT_ID = BigInt(registry.demo.agentId);
 /** The vault the coverage is locked in: `KeelsonBondVault`'s CREATE3 address, which the legs bind. */
-const VAULT = (process.env.KEELSON_BOND_VAULT ??
-  "0xb39898Ef4333f3CB32d1B420E744f5a1Aa2ae2Bf") as Address;
+const VAULT = addresses[421614].KeelsonBondVault as Address;
 
 interface Countersigned {
   mode: "2of2" | "degraded";
@@ -99,7 +100,7 @@ describe.skipIf(!live)("coverage vectors (live legs, real passkeys)", { timeout:
         chainId: arbitrumSepolia.id,
         agentRegistry: "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
         name: "Demo operator",
-        cnfJwk: {},
+        cnfJwk: testAgent.jwk,
       })
       .onConflictDoNothing();
   }, 120_000);
@@ -125,10 +126,7 @@ describe.skipIf(!live)("coverage vectors (live legs, real passkeys)", { timeout:
    */
   async function capture(passkey: Passkey, legs = tee.client) {
     passkeys.push(passkey);
-    const signed = await signedMandate(passkey, undefined, {
-      agentId: AGENT_ID,
-      vault: `eip155:${arbitrumSepolia.id}:${VAULT}`,
-    });
+    const signed = await signedMandate(passkey, undefined, { agentId: AGENT_ID });
     let openMandate: string;
     if (mandateId === undefined) {
       await seedUser(testDb, passkey, signed.sub);

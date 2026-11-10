@@ -1,10 +1,10 @@
 ---
-import { repoUrl } from "../config";
+import { apiReferenceUrl, repoUrl, verifyUrl } from "../config";
 
 const tabs = [
   { id: "merchants", label: "Merchants", text: "Can read who answers for each field of an order." },
-  { id: "engineers", label: "Developers", text: "Add one call before the agent pays." },
-  { id: "operators", label: "Operators", text: "Can show every order stayed inside the mandate." },
+  { id: "engineers", label: "Developers", text: "Call Keelson before the agent pays." },
+  { id: "operators", label: "Operators", text: "Bond the agent and answer for what it states." },
 ] as const;
 ---
 
@@ -12,18 +12,19 @@ const tabs = [
   <div class="wrap grid">
     <div class="lede">
       <h2 id="verify-title">Built to be verified.</h2>
-      <p>An open SDK, an MCP server and an Alibi verifier anyone can run.</p>
+      <p>An open API, open contracts and an Alibi verifier anyone can run.</p>
       <div class="links">
         <a class="link" href={repoUrl}>Read the code</a>
         <a class="link" href={`${repoUrl}/tree/main/contracts`}>Contracts</a>
-        <a class="link" href={`${repoUrl}/tree/main/sdk`}>SDK</a>
+        <a class="link" href={apiReferenceUrl}>API reference</a>
+        <a class="link" href={verifyUrl}>Verifier</a>
       </div>
     </div>
 
     <div class="deck" id="deck">
       <div class="card on-dark">
         <div class="card-top">
-          <span class="lang mono" id="lang">TypeScript</span>
+          <span class="lang mono" id="lang">HTTP</span>
           <button class="copy" type="button" id="copy" aria-label="Copy the code">
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="7" y="7" width="9" height="9" rx="1.5" /><path d="M13 7V5.5A1.5 1.5 0 0 0 11.5 4h-6A1.5 1.5 0 0 0 4 5.5v6A1.5 1.5 0 0 0 5.5 13H7" /></svg>
           </button>
@@ -31,7 +32,7 @@ const tabs = [
         </div>
 
         <div id="panel-merchants" role="tabpanel" aria-labelledby="tab-merchants" hidden>
-          <pre class="mono"><code><span class="c">// What every order carries in its Alibi</span>
+          <pre class="mono" tabindex="0"><code><span class="c">// What every order carries in its Alibi</span>
 <span class="k">mandate</span>      hash of what the user signed
 <span class="k">cart</span>         hash of what the agent bought
 <span class="k">policy</span>       hash of the rules that ran
@@ -42,24 +43,31 @@ const tabs = [
         </div>
 
         <div id="panel-engineers" role="tabpanel" aria-labelledby="tab-engineers">
-          <pre class="mono"><code><span class="k">import</span> &#123; Keelson &#125; <span class="k">from</span> <span class="s">"@keelson/sdk"</span>;
+          <pre class="mono" tabindex="0"><code><span class="c"># Before the agent pays: both attested engines check the cart</span>
+<span class="k">POST</span> https://api.keelson.finance/v1/countersign
+Idempotency-Key: <span class="s">7c1e…</span>
 
-<span class="k">const</span> keelson = <span class="k">new</span> Keelson(&#123; apiKey &#125;);
+&#123;
+  <span class="s">"closedMandate"</span>: <span class="s">"…"</span>,     <span class="c">// what the user signed</span>
+  <span class="s">"cart"</span>: &#123; <span class="s">"merchant"</span>: <span class="s">"…"</span>, <span class="s">"lines"</span>: [ … ] &#125;,
+  <span class="s">"evidenceRoot"</span>: <span class="s">"0x…"</span>,
+  <span class="s">"authorizationId"</span>: <span class="s">"…"</span>,   <span class="c">// the PayPal hold</span>
+  <span class="s">"unit"</span>: &#123; … &#125;
+&#125;
 
-<span class="c">// Before the agent pays</span>
-<span class="k">const</span> alibi = <span class="k">await</span> keelson.requestCountersign(&#123; mandate, cart &#125;);
-<span class="k">if</span> (alibi.decision === <span class="s">"blocked"</span>) <span class="k">return</span> alibi.reason;
-
-<span class="k">await</span> paypal.createOrder(&#123;
-  intent: <span class="s">"AUTHORIZE"</span>, customId: alibi.customId, ...cart,
-&#125;);</code></pre>
+<span class="c"># 200: "allow" or "deny", countersigned by both</span></code></pre>
         </div>
 
         <div id="panel-operators" role="tabpanel" aria-labelledby="tab-operators" hidden>
-          <pre class="mono"><code><span class="c">// The calls an operator makes, and nothing else</span>
-<span class="k">keelson</span>.requestCountersign(mandate, cart)
-<span class="k">keelson</span>.attestField(orderId, field, value)
-<span class="k">keelson</span>.bond.deposit(amount)</code></pre>
+          <pre class="mono" tabindex="0"><code><span class="c"># Link an ERC-8004 agent, then bond it in PYUSD</span>
+<span class="k">POST</span> /v1/operators
+<span class="k">POST</span> /v1/bonds/&#123;agentId&#125;/deposits     <span class="c"># gasless</span>
+
+<span class="c"># Anyone can read the bond behind an agent</span>
+<span class="k">GET</span>  /v1/operators/&#123;chainId&#125;/&#123;agentId&#125;/bond
+
+<span class="c"># Who answered for a disputed field</span>
+<span class="k">GET</span>  /v1/disputes/&#123;id&#125;</code></pre>
         </div>
       </div>
 
@@ -74,7 +82,7 @@ const tabs = [
               aria-controls={`panel-${t.id}`}
               aria-selected={t.id === "engineers" ? "true" : "false"}
               tabindex={t.id === "engineers" ? 0 : -1}
-              data-lang={t.id === "engineers" ? "TypeScript" : t.id === "merchants" ? "Alibi fields" : "Operator calls"}
+              data-lang={t.id === "engineers" ? "HTTP" : t.id === "merchants" ? "Alibi fields" : "Operator API"}
             >
               <span class="mono name">{t.label}</span>
               <span class="desc">{t.text}</span>

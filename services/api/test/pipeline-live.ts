@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
 import { KMSClient } from "@aws-sdk/client-kms";
 import { addresses } from "@keelson/chain";
-import { type Db, operators } from "@keelson/db";
+import type { Db } from "@keelson/db";
 import { createRelayer, kmsAccount, type Relayer } from "@keelson/relayer";
 import type { Logger } from "pino";
 import type { Address } from "viem";
-import { carts } from "./tee-live.ts";
+import { carts, seedOperator } from "./tee-live.ts";
 
 const registry = JSON.parse(
   readFileSync(new URL("../../../contracts/deployments/421614.json", import.meta.url), "utf8"),
@@ -17,7 +17,7 @@ export const STORE = "A4WCRYD5EYDF2";
 /** The demo operator: its key signs the coverage of the purchases under its mandates. */
 export const AGENT_ID = BigInt(registry.demo.agentId);
 export const VAULT = addresses[421614].KeelsonBondVault as Address;
-export const demoOperator = { agentId: AGENT_ID, vault: `eip155:421614:${VAULT}` };
+export const demoOperator = { agentId: AGENT_ID };
 
 /** The demo cart at another price. */
 export function cartOf(minor: number) {
@@ -62,16 +62,8 @@ export async function kmsRelayer(db: Db, log: Logger): Promise<Relayer> {
   });
 }
 
-/** The demo operator's row, which mandates naming it reference. */
-export async function seedDemoOperator(db: Db): Promise<void> {
-  await db
-    .insert(operators)
-    .values({
-      agentId: AGENT_ID,
-      chainId: 421614,
-      agentRegistry: "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
-      name: "Demo operator",
-      cnfJwk: {},
-    })
-    .onConflictDoNothing();
-}
+/**
+ * The demo operator's row with the harness agent key as its agent while it is unlinked; the returned
+ * function puts its key back, so a shared database does not keep a key no one holds.
+ */
+export const seedDemoOperator = (db: Db) => seedOperator(db, AGENT_ID);

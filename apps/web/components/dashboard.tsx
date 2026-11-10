@@ -1,6 +1,15 @@
 "use client";
 
+import { Amount } from "@keelson/ui/components/amount";
 import { Button } from "@keelson/ui/components/button";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from "@keelson/ui/components/empty";
+import { Skeleton } from "@keelson/ui/components/skeleton";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { get } from "../lib/api";
@@ -33,20 +42,35 @@ export function Dashboard() {
               : "Nothing is delegated yet"}
           </h1>
         </div>
-        <Button asChild size="lg">
-          <Link href="/new/">New mandate</Link>
-        </Button>
+        {mandates && mandates.length > 0 ? (
+          <Button asChild size="lg">
+            <Link href="/new/">New mandate</Link>
+          </Button>
+        ) : null}
       </div>
       {error ? <ErrorNotice>{error}</ErrorNotice> : null}
-      {mandates && mandates.length === 0 ? (
-        <div className="grid max-w-xl gap-3 rounded-xl border border-dashed p-8">
-          <h2 className="font-semibold text-xl">Write your first mandate</h2>
-          <p className="text-muted-foreground">
-            Say what your agent may buy, for how much and by when, for example: “Running shoes, size
-            10, under $100, from RunFast, by Friday.” You'll see who answers for each field before
-            you sign.
-          </p>
+      {mandates === undefined && !error ? (
+        <div className="grid gap-2" aria-hidden="true">
+          <Skeleton className="h-16" />
+          <Skeleton className="h-16" />
         </div>
+      ) : null}
+      {mandates && mandates.length === 0 ? (
+        <Empty className="border border-dashed">
+          <EmptyHeader>
+            <EmptyTitle>Write your first mandate</EmptyTitle>
+            <EmptyDescription>
+              Say what your agent may buy, for how much and by when, for example: “Running shoes,
+              size 10, under $100, from RunFast, by Friday.” You'll see who answers for each field
+              before you sign.
+            </EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button asChild>
+              <Link href="/new/">New mandate</Link>
+            </Button>
+          </EmptyContent>
+        </Empty>
       ) : null}
       {mandates && mandates.length > 0 ? (
         <ul className="grid divide-y rounded-xl border">
@@ -57,11 +81,14 @@ export function Dashboard() {
                 className="grid grid-cols-[1fr_auto] items-center gap-x-6 gap-y-1 px-5 py-4 hover:bg-accent/60"
               >
                 <span className="font-medium">{m.merchantIds.join(", ")}</span>
-                <span className="tnum text-right font-mono">
-                  {money(m.budget.remainingMinor, m.budget.currency)}
-                  <span className="text-muted-foreground">
+                <span className="text-right">
+                  <Amount
+                    value={Number(m.budget.remainingMinor) / 100}
+                    currency={m.budget.currency}
+                  />
+                  <span className="sr-only">
                     {" "}
-                    / {money(m.budget.maxMinor, m.budget.currency)}
+                    left of {money(m.budget.maxMinor, m.budget.currency)}
                   </span>
                 </span>
                 <span className="text-muted-foreground text-sm">

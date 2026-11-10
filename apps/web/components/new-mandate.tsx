@@ -5,9 +5,10 @@ import {
   prepareSigning,
   type Signing,
   signMandate,
-  TERMS,
 } from "@keelson/mandate/browser";
 import { Button } from "@keelson/ui/components/button";
+import { Field, FieldDescription, FieldLabel } from "@keelson/ui/components/field";
+import { Textarea } from "@keelson/ui/components/textarea";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useState } from "react";
 import { ApiError, get, post } from "../lib/api";
@@ -17,6 +18,7 @@ import type { Compiled } from "../lib/types";
 import { LiabilityLegend, MandateCard } from "./mandate-card";
 import { ErrorNotice, Eyebrow } from "./notice";
 import { PasskeySetup } from "./passkey-setup";
+import { SignSheet } from "./sign-sheet";
 
 const EXAMPLE = "Running shoes, size 10, under $100, from RunFast, by Friday";
 const NO_EVIDENCE = { merchantSignedCheckout: false, zkTlsFields: new Set<never>() };
@@ -44,6 +46,7 @@ export function NewMandate() {
   const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const [confirming, setConfirming] = useState(false);
   const promptId = useId();
 
   useEffect(() => {
@@ -101,6 +104,7 @@ export function NewMandate() {
     } catch (err) {
       setError(message(err));
       setBusy(false);
+      setConfirming(false);
     }
   };
 
@@ -128,11 +132,9 @@ export function NewMandate() {
             answers for each part before you sign.
           </p>
         </div>
-        <div className="grid gap-2">
-          <label htmlFor={promptId} className="font-medium text-sm">
-            Your request
-          </label>
-          <textarea
+        <Field>
+          <FieldLabel htmlFor={promptId}>Your request</FieldLabel>
+          <Textarea
             id={promptId}
             required
             rows={4}
@@ -140,8 +142,9 @@ export function NewMandate() {
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             placeholder={EXAMPLE}
-            className="w-full resize-y rounded-lg border border-input bg-background px-4 py-3 text-lg leading-snug placeholder:text-muted-foreground"
+            className="min-h-28 text-lg leading-snug md:text-lg"
           />
+          <FieldDescription>What, how much, which store, by when.</FieldDescription>
           <button
             type="button"
             onClick={() => setPrompt(EXAMPLE)}
@@ -149,7 +152,7 @@ export function NewMandate() {
           >
             Use the example
           </button>
-        </div>
+        </Field>
         <Button
           type="submit"
           size="lg"
@@ -191,25 +194,24 @@ export function NewMandate() {
         </p>
       ))}
       <LiabilityLegend />
-      <details className="max-w-2xl rounded-lg border px-4 py-3 text-sm">
-        <summary className="cursor-pointer py-1 font-medium">
-          Signing accepts these terms; their hash is part of what you sign
-        </summary>
-        <p className="mt-2 whitespace-pre-line text-muted-foreground">{TERMS}</p>
-      </details>
       <div className="flex flex-col gap-3 sm:flex-row">
-        <Button size="lg" disabled={busy || !signing} onClick={() => signing && sign(signing)}>
-          {busy ? "Waiting for your passkey…" : signing ? "Sign with passkey" : "Preparing…"}
+        <Button size="lg" disabled={!signing} onClick={() => setConfirming(true)}>
+          {signing ? "Review and sign" : "Preparing…"}
         </Button>
-        <Button
-          size="lg"
-          variant="outline"
-          disabled={busy}
-          onClick={() => setStep({ name: "write" })}
-        >
+        <Button size="lg" variant="outline" onClick={() => setStep({ name: "write" })}>
           Edit the request
         </Button>
       </div>
+      {signing ? (
+        <SignSheet
+          open={confirming}
+          onOpenChange={(open) => !busy && setConfirming(open)}
+          signing={signing}
+          compiled={compiled}
+          busy={busy}
+          onSign={() => sign(signing)}
+        />
+      ) : null}
       {error ? <ErrorNotice>{error}</ErrorNotice> : null}
     </div>
   );

@@ -67,7 +67,8 @@ describe.each(fixtures.map((f) => [f.id, f] as const))("the pdf of %s", (_, f) =
     if (out) writeFileSync(join(out, `${f.id}.pdf`), pdf);
   });
 
-  test("the embedded bundle verifies offline", async () => {
+  // Two full offline verifications, each checking the C1 proof with bb.js.
+  test("the embedded bundle verifies offline", { timeout: 30_000 }, async () => {
     const realFetch = globalThis.fetch;
     globalThis.fetch = () => {
       throw new Error("no network");
