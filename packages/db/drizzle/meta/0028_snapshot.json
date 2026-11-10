@@ -1,5 +1,5 @@
 {
-  "id": "58dd0d42-96a1-4fe1-9499-c8432ddb17f2",
+  "id": "d44b1fc0-4cda-41c7-b6f9-73037a90e075",
   "prevId": "41369c15-f228-4ed2-800a-c2bf8276995f",
   "version": "7",
   "dialect": "postgresql",
@@ -3308,6 +3308,12 @@
         "client_id": {
           "name": "client_id",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "link_digest": {
+          "name": "link_digest",
+          "type": "bytea",
           "primaryKey": false,
           "notNull": false
         },

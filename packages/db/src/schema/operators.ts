@@ -15,6 +15,8 @@ export const operators = pgTable(
     ownerAddress: bytea(),
     /** The OAuth client that linked the operator: the only client that acts for the agent. */
     clientId: text(),
+    /** SHA-256 of the last `OperatorLink` message accepted; each one links at most once. */
+    linkDigest: bytea(),
     createdAt: createdAt(),
   },
   (t) => [

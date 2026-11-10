@@ -1,6 +1,7 @@
+import { createHash } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { addresses, keelsonBondVaultAbi, keelsonValidationRegistryAbi } from "@keelson/chain";
-import { and, desc, eq, isNotNull, mandates, operators } from "@keelson/db";
+import { and, desc, eq, isNotNull, mandates, operators, sql } from "@keelson/db";
 import {
   agentRegistry,
   ERC8004,
@@ -362,6 +363,23 @@ export function registerOperators(app: OpenAPIHono, deps: Pick<Deps, "db" | "cha
     }
     const registry = agentRegistry(chainId);
     const owner = Buffer.from(result.owner.slice(2), "hex");
+    // The digest is over the signed message, not the signature, which ECDSA lets anyone re-encode.
+    const linkDigest = createHash("sha256")
+      .update(`${chainId}:${agentId}:${thumbprint.toString("hex")}:${body.deadline}`)
+      .digest();
+    const [linked] = await db
+      .select({ linkDigest: operators.linkDigest })
+      .from(operators)
+      .where(eq(operators.agentId, agentId));
+    if (linked?.linkDigest && Buffer.from(linked.linkDigest).equals(linkDigest)) {
+      return problem(
+        c,
+        409,
+        "link-used",
+        "Link used",
+        "This link signature was already used; the owner signs a new one to link again.",
+      );
+    }
     const [row] = await db
       .insert(operators)
       .values({
@@ -372,6 +390,7 @@ export function registerOperators(app: OpenAPIHono, deps: Pick<Deps, "db" | "cha
         cnfJwk: body.cnfJwk,
         ownerAddress: owner,
         clientId: c.var.principal?.subject,
+        linkDigest,
       })
       .onConflictDoUpdate({
         target: operators.agentId,
@@ -380,8 +399,9 @@ export function registerOperators(app: OpenAPIHono, deps: Pick<Deps, "db" | "cha
           cnfJwk: body.cnfJwk,
           ownerAddress: owner,
           clientId: c.var.principal?.subject,
+          linkDigest,
         },
-        setWhere: eq(operators.agentRegistry, registry),
+        setWhere: sql`${operators.agentRegistry} = ${registry} and ${operators.linkDigest} is distinct from ${linkDigest}`,
       })
       .returning({ agentId: operators.agentId });
     if (!row) {
