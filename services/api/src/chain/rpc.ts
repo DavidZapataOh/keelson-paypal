@@ -31,6 +31,8 @@ export function rpcCalls(): { provider: string; method: string; calls: number }[
 /**
  * Counts every request `transport` sends under the host of `url`; the path, which carries a
  * provider's key, is never kept.
+ *
+ * @internal
  */
 export function counted(url: string, transport: Transport): Transport {
   const provider = new URL(url).host;
@@ -54,8 +56,6 @@ export function countedHttp(url: string, config?: HttpTransportConfig): Transpor
 /**
  * Sends each request to the first URL and, on a rate limit, a server error or a timeout, to the
  * next. Errors name the last URL tried, so a provider's key in the first one stays out of logs.
- *
- * @internal
  */
 export function rpcTransport(urls: readonly string[]): Transport {
   return urls.length === 1
@@ -92,14 +92,18 @@ const COMPUTE_UNITS: Readonly<Record<string, number>> = {
   eth_getLogs: 60,
 };
 
-/** The compute units of `n` calls of `method`, at Alchemy's prices. */
+/**
+ * The compute units of `n` calls of `method`, at Alchemy's prices.
+ *
+ * @internal
+ */
 export const computeUnits = (method: string, n: number) => (COMPUTE_UNITS[method] ?? 26) * n;
 
 const HOUR_MS = 3_600_000;
 /** Hours in a 30-day month: the hourly rate projected over a month. */
 const HOURS_PER_MONTH = 720;
 /** Half of Alchemy's free 30M compute units a month. */
-export const DEFAULT_CU_BUDGET = 15_000_000;
+const DEFAULT_CU_BUDGET = 15_000_000;
 
 /**
  * Every hour, logs this process's calls of the past hour by provider and method, and warns when
