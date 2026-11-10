@@ -63,6 +63,8 @@ services:
         sync: false
       - key: LOG_URL
         value: http://keelson-log:8081
+      - key: PROVER_URL
+        value: http://keelson-prover:10000
       - key: LOG_WRITE_TOKEN
         sync: false
       - key: KEELSON_EVIDENCE_AGE_IDENTITY
@@ -176,6 +178,26 @@ services:
           type: web
           name: keelson-store
           envVarKey: STORE_ATTACK_TOKEN
+
+  # Proves public product endpoints to the notary on leg A; reachable on the private network only.
+  - type: pserv
+    runtime: docker
+    name: keelson-prover
+    plan: 0.5c-512mb
+    region: oregon
+    dockerfilePath: ./engine/tlsn/Dockerfile
+    dockerContext: .
+    autoDeployTrigger: checksPass
+    buildFilter:
+      paths:
+        - engine/**
+        - Cargo.toml
+        - Cargo.lock
+    envVars:
+      - key: PORT
+        value: "10000"
+      # TEE_A_URL and KEELSON_TEE_TOKEN.
+      - fromGroup: keelson-secrets
 
   - type: web
     runtime: docker
