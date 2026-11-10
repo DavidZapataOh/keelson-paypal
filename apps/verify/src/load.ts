@@ -6,6 +6,7 @@ import {
   encodeAlibi,
   encodeReceipt,
 } from "@keelson/alibi";
+import type { AnonymousPurchase } from "@keelson/alibi/verify";
 
 export const MAX_INPUT_BYTES = 8 * 1024 * 1024;
 const MAX_DEPTH = 64;
@@ -131,6 +132,21 @@ export async function fromLink(alibiId: string, signal?: AbortSignal): Promise<L
   const bytes = new Uint8Array(await res.arrayBuffer());
   if (bytes.length > MAX_INPUT_BYTES) throw new InputError("The receipt is larger than 8 MB.");
   return { alibi: decodeReceipt(bytes), bytes };
+}
+
+/** The composed anonymous proof of purchase `alibiId`, or `null` when it has none. */
+export async function anonymousPurchaseOf(
+  alibiId: string,
+  signal?: AbortSignal,
+): Promise<AnonymousPurchase | null> {
+  const res = await fetch(`${API}/v1/anonymous-purchases/${encodeURIComponent(alibiId)}`, {
+    credentials: "omit",
+    ...(signal ? { signal } : {}),
+  });
+  if (res.status === 404) return null;
+  if (!res.ok)
+    throw new InputError(`The anonymous proof could not be fetched (HTTP ${res.status}).`);
+  return (await res.json()) as AnonymousPurchase;
 }
 
 export const isImage = (f: Blob) => /^image\/(png|jpeg|gif|webp|bmp)$/.test(f.type);

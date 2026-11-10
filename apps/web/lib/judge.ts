@@ -30,6 +30,8 @@ export interface Tour {
     card: Card | null;
     purchases: TourPurchase[];
   } | null;
+  /** The newest test purchase with a composed anonymous proof. */
+  anonymous_purchase: { id: string; alibi_fragment: string | null } | null;
   dispute_id: string | null;
   campaign_id: string | null;
 }

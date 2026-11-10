@@ -3,6 +3,7 @@ import "../tee/attest.ts";
 import { fromBase64, toBase64 } from "@keelson/alibi";
 import { c1c3Statement, verifyC1C3 } from "@keelson/alibi/verify";
 import { type Db, eq, mandates, purchases, sql } from "@keelson/db";
+import type { Render } from "@renderinc/sdk";
 import type { Logger } from "pino";
 import { prove, recursiveKey } from "./bb.ts";
 
@@ -110,4 +111,29 @@ export async function proveAnonymousPurchase(
     .where(sql`${purchases.id} = ${purchaseId} and ${purchases.c1c3Proof} is null`);
   log.info({ purchaseId, ms: Math.round(performance.now() - started) }, "C1 and C3 composed");
   return c1c3;
+}
+
+/**
+ * Starts the composition of a purchase just logged, once it has both recursive proofs. Composing
+ * takes about 2.8 GB, so with a workflow its task `proveAnonymousPurchase` does it; without one it
+ * happens in this process.
+ */
+export function c1c3Prover(
+  deps: { db: Db; log: Logger },
+  workflow?: { render: Render; slug: string },
+): (purchaseId: string) => Promise<void> {
+  const { db, log } = deps;
+  return async (purchaseId) => {
+    if (!(await composable(db, purchaseId))) return;
+    if (!workflow) {
+      await proveAnonymousPurchase({ db, log }, purchaseId);
+      return;
+    }
+    const run = await workflow.render.workflows.startTask(
+      `${workflow.slug}/proveAnonymousPurchase`,
+      [purchaseId],
+      { idempotencyKey: `proveAnonymousPurchase:${purchaseId}` },
+    );
+    log.info({ purchaseId, taskRunId: run.taskRunId }, "composition workflow started");
+  };
 }
