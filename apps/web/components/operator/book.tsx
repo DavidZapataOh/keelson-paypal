@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@keelson/ui/components/button";
+import { LiabilityMark } from "@keelson/ui/components/liability";
 import { keelsonChartPalette, keelsonGridTheme } from "@keelson/ui/grid";
 import { AgChartsEnterpriseModule } from "ag-charts-enterprise";
 import {
@@ -28,6 +29,7 @@ import {
 } from "ag-grid-enterprise";
 import { AgGridProvider, AgGridReact } from "ag-grid-react";
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AMBER_LABEL, amberValue } from "../../lib/amber";
 import { ApiError } from "../../lib/api";
 import { VERIFY } from "../../lib/config";
 import {
@@ -102,6 +104,24 @@ function eventsOf(r: CoverageRow): Event[] {
       proofLabel: "Arbiscan",
     },
   ];
+  if (r.amberCommitment) {
+    out.push({
+      at: r.createdAt,
+      actor: "You (operator)",
+      event: `Attested the item's size, color, unit price and free returns in the coverage (commitment ${r.amberCommitment.slice(0, 10)}…)`,
+      proof: `${VERIFY}/a/${r.id}`,
+      proofLabel: "Verifier",
+    });
+  }
+  if (r.amberField) {
+    out.push({
+      at: r.amberProvenAt,
+      actor: "AmberContradictionCourt",
+      event: `Convicted your ${AMBER_LABEL[r.amberField].toLowerCase()} (${r.amberClaimed !== null ? amberValue(r.amberField, r.amberClaimed) : "attested"}) with a C2b proof of the store's notarized answer; WebFact ${r.amberWebFact?.slice(0, 10) ?? ""}…`,
+      proof: r.amberTx,
+      proofLabel: "Arbiscan",
+    });
+  }
   if (r.disputeId) {
     out.push({
       at: r.disputedAt,
@@ -349,6 +369,24 @@ function Book({ agentId }: { agentId: string }) {
         ...set(["paid", "queued", "claimable", "failed"]),
       },
       { field: "paidBy", headerName: "Paid by", ...set(["chain", "treasury", "violation-pool"]) },
+      {
+        field: "amber",
+        headerName: "Amber",
+        ...set(["none", "attested", "contradicted"]),
+        cellRenderer: (p: { value: CoverageRow["amber"]; data?: CoverageRow }) =>
+          p.value === "contradicted" ? (
+            <span className="font-medium text-vermilion-deep dark:text-vermilion">
+              {p.data?.amberField ? AMBER_LABEL[p.data.amberField] : "Field"} proven false
+            </span>
+          ) : p.value === "attested" ? (
+            <span className="inline-flex items-center gap-1.5">
+              <LiabilityMark kind="attested" />
+              attested
+            </span>
+          ) : (
+            ""
+          ),
+      },
       {
         field: "id",
         headerName: "Purchase",

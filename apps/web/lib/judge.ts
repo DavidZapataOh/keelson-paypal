@@ -1,4 +1,5 @@
 import type { Card } from "@keelson/mandate/browser";
+import type { AmberCase } from "./amber";
 import { get, post } from "./api";
 import { API } from "./config";
 
@@ -60,6 +61,7 @@ export interface DisputeStatus {
     payout_batch_id: string | null;
     settled_at: string | null;
   } | null;
+  amber: AmberCase | null;
 }
 
 /** `GET /v1/operators/{agentId}/grade`: public. */

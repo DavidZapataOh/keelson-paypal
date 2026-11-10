@@ -25,6 +25,7 @@ import {
   tour as tourOf,
 } from "../../lib/judge";
 import { percent, type Scoreboard, scoreboard } from "../../lib/scoreboard";
+import { AmberCase } from "../amber-case";
 import { LiabilityLegend, MandateCard } from "../mandate-card";
 import { ErrorNotice, Eyebrow } from "../notice";
 import { EnvironmentTable, HealthList } from "./environment";
@@ -566,6 +567,9 @@ function DisputeStep({ id, part }: { id: string | null; part: "dispute" | "verdi
           </>
         ) : null}
       </DataList>
+      {d.amber ? (
+        <AmberCase amber={d.amber} purchaseId={d.purchase_id} className="max-w-xl" />
+      ) : null}
     </div>
   );
 }
