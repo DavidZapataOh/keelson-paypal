@@ -3565,6 +3565,500 @@ components:
       description: "One turn of the console's agents: Messages API `system`,
         `messages` and client `tools`. The proxy sets the model limits, thinking
         and effort."
+    OperatorSelf:
+      type: object
+      properties:
+        wallets:
+          type: array
+          items:
+            type: string
+        operators:
+          type: array
+          items:
+            type: object
+            properties:
+              agentId:
+                type: string
+              chainId:
+                type: integer
+              name:
+                type: string
+            required:
+              - agentId
+              - chainId
+              - name
+      required:
+        - wallets
+        - operators
+    CoverageRow:
+      type: object
+      properties:
+        id:
+          type: string
+          description: The purchase id, also its Alibi's.
+        createdAt:
+          type: string
+          format: date-time
+        merchantId:
+          type: string
+        amount:
+          type: number
+          description: US dollars.
+        premiumBps:
+          type:
+            - integer
+            - "null"
+        premium:
+          type: number
+          description: US dollars.
+        state:
+          type: string
+        coverageTx:
+          type:
+            - string
+            - "null"
+          format: uri
+        disputeId:
+          type:
+            - string
+            - "null"
+        disputeState:
+          type:
+            - string
+            - "null"
+          enum:
+            - OPEN
+            - ATTRIBUTED
+            - RESOLVED
+            - null
+        disputeReason:
+          type:
+            - string
+            - "null"
+        disputedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        liable:
+          type:
+            - string
+            - "null"
+          enum:
+            - operator
+            - keelson
+            - merchant
+            - user
+            - null
+        rule:
+          type:
+            - string
+            - "null"
+        verdictAmount:
+          type:
+            - number
+            - "null"
+          description: US dollars.
+        verdictAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        outcome:
+          type:
+            - string
+            - "null"
+          enum:
+            - paid
+            - queued
+            - claimable
+            - failed
+            - null
+        paidBy:
+          type:
+            - string
+            - "null"
+          enum:
+            - chain
+            - treasury
+            - violation-pool
+            - null
+        settlementTx:
+          type:
+            - string
+            - "null"
+          format: uri
+        settledAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+      required:
+        - id
+        - createdAt
+        - merchantId
+        - amount
+        - premiumBps
+        - premium
+        - state
+        - coverageTx
+        - disputeId
+        - disputeState
+        - disputeReason
+        - disputedAt
+        - liable
+        - rule
+        - verdictAmount
+        - verdictAt
+        - outcome
+        - paidBy
+        - settlementTx
+        - settledAt
+    CoverageRowsRequest:
+      type: object
+      properties:
+        startRow:
+          type: integer
+          minimum: 0
+          maximum: 10000000
+        endRow:
+          type: integer
+          minimum: 1
+          maximum: 10000100
+        sortModel:
+          type: array
+          items:
+            type: object
+            properties:
+              colId:
+                type: string
+                enum:
+                  - id
+                  - createdAt
+                  - merchantId
+                  - amount
+                  - premiumBps
+                  - premium
+                  - state
+                  - disputeState
+                  - liable
+                  - outcome
+                  - paidBy
+              sort:
+                type: string
+                enum:
+                  - asc
+                  - desc
+            required:
+              - colId
+              - sort
+          maxItems: 4
+          default: []
+        filterModel:
+          type:
+            - object
+            - "null"
+          properties:
+            id: &a1
+              anyOf:
+                - type: object
+                  properties:
+                    filterType:
+                      type: string
+                      enum:
+                        - text
+                        - number
+                        - date
+                    operator:
+                      type: string
+                      enum:
+                        - AND
+                        - OR
+                    conditions:
+                      type: array
+                      items:
+                        oneOf:
+                          - type: object
+                            properties:
+                              filterType:
+                                type: string
+                                enum:
+                                  - text
+                              type:
+                                type: string
+                                enum:
+                                  - contains
+                                  - notContains
+                                  - equals
+                                  - notEqual
+                                  - startsWith
+                                  - endsWith
+                                  - blank
+                                  - notBlank
+                              filter:
+                                type:
+                                  - string
+                                  - "null"
+                                maxLength: 200
+                            required:
+                              - filterType
+                              - type
+                          - type: object
+                            properties:
+                              filterType:
+                                type: string
+                                enum:
+                                  - number
+                              type:
+                                type: string
+                                enum:
+                                  - equals
+                                  - notEqual
+                                  - greaterThan
+                                  - greaterThanOrEqual
+                                  - lessThan
+                                  - lessThanOrEqual
+                                  - inRange
+                                  - blank
+                                  - notBlank
+                              filter:
+                                type:
+                                  - number
+                                  - "null"
+                                minimum: -1000000000000
+                                maximum: 1000000000000
+                              filterTo:
+                                type:
+                                  - number
+                                  - "null"
+                                minimum: -1000000000000
+                                maximum: 1000000000000
+                            required:
+                              - filterType
+                              - type
+                          - type: object
+                            properties:
+                              filterType:
+                                type: string
+                                enum:
+                                  - date
+                              type:
+                                type: string
+                                enum:
+                                  - equals
+                                  - notEqual
+                                  - greaterThan
+                                  - greaterThanOrEqual
+                                  - lessThan
+                                  - lessThanOrEqual
+                                  - inRange
+                                  - blank
+                                  - notBlank
+                              dateFrom:
+                                type:
+                                  - string
+                                  - "null"
+                                pattern: ^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}:\d{2})?$
+                              dateTo:
+                                type:
+                                  - string
+                                  - "null"
+                                pattern: ^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}:\d{2})?$
+                            required:
+                              - filterType
+                              - type
+                      minItems: 1
+                      maxItems: 4
+                  required:
+                    - filterType
+                    - operator
+                    - conditions
+                - type: object
+                  properties:
+                    filterType:
+                      type: string
+                      enum:
+                        - text
+                    type:
+                      type: string
+                      enum:
+                        - contains
+                        - notContains
+                        - equals
+                        - notEqual
+                        - startsWith
+                        - endsWith
+                        - blank
+                        - notBlank
+                    filter:
+                      type:
+                        - string
+                        - "null"
+                      maxLength: 200
+                  required:
+                    - filterType
+                    - type
+                - type: object
+                  properties:
+                    filterType:
+                      type: string
+                      enum:
+                        - number
+                    type:
+                      type: string
+                      enum:
+                        - equals
+                        - notEqual
+                        - greaterThan
+                        - greaterThanOrEqual
+                        - lessThan
+                        - lessThanOrEqual
+                        - inRange
+                        - blank
+                        - notBlank
+                    filter:
+                      type:
+                        - number
+                        - "null"
+                      minimum: -1000000000000
+                      maximum: 1000000000000
+                    filterTo:
+                      type:
+                        - number
+                        - "null"
+                      minimum: -1000000000000
+                      maximum: 1000000000000
+                  required:
+                    - filterType
+                    - type
+                - type: object
+                  properties:
+                    filterType:
+                      type: string
+                      enum:
+                        - date
+                    type:
+                      type: string
+                      enum:
+                        - equals
+                        - notEqual
+                        - greaterThan
+                        - greaterThanOrEqual
+                        - lessThan
+                        - lessThanOrEqual
+                        - inRange
+                        - blank
+                        - notBlank
+                    dateFrom:
+                      type:
+                        - string
+                        - "null"
+                      pattern: ^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}:\d{2})?$
+                    dateTo:
+                      type:
+                        - string
+                        - "null"
+                      pattern: ^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}:\d{2})?$
+                  required:
+                    - filterType
+                    - type
+                - type: object
+                  properties:
+                    filterType:
+                      type: string
+                      enum:
+                        - set
+                    values:
+                      type: array
+                      items:
+                        type:
+                          - string
+                          - "null"
+                        maxLength: 64
+                      maxItems: 64
+                  required:
+                    - filterType
+                    - values
+            createdAt: *a1
+            merchantId: *a1
+            amount: *a1
+            premiumBps: *a1
+            premium: *a1
+            state: *a1
+            disputeState: *a1
+            liable: *a1
+            outcome: *a1
+            paidBy: *a1
+      required:
+        - startRow
+        - endRow
+      description: "AG Grid's `IServerSideGetRowsRequest`: the block, its sort and its
+        filter model (text, number, date and set filters). Amounts are filtered
+        in US dollars."
+    CoverageDay:
+      type: object
+      properties:
+        day:
+          type: string
+          format: date
+        coverages:
+          type: integer
+        covered:
+          type: number
+          description: US dollars.
+        premiums:
+          type: number
+          description: US dollars.
+        incidents:
+          type: integer
+          description: Verdicts with the operator at fault on that day's coverages.
+      required:
+        - day
+        - coverages
+        - covered
+        - premiums
+        - incidents
+    GridAnswer:
+      type: object
+      properties:
+        gridState:
+          type: object
+          additionalProperties: {}
+        propertiesToIgnore:
+          type: array
+          items:
+            type: string
+        explanation:
+          type: string
+        model:
+          type: string
+        costMicros:
+          type: integer
+          description: What the query cost, in USD micros.
+      required:
+        - gridState
+        - propertiesToIgnore
+        - explanation
+        - model
+        - costMicros
+    GridQuery:
+      type: object
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 500
+        gridState:
+          type: object
+          additionalProperties: {}
+        schema:
+          type: object
+          additionalProperties: {}
+          description: "`gridApi.getStructuredSchema()`, the JSON Schema of grid state."
+      required:
+        - prompt
+        - gridState
+        - schema
     Tracking:
       type: object
       properties:
@@ -5842,7 +6336,10 @@ paths:
       summary: Deposit PYUSD into an operator's bond, gasless
       description: Relays `depositWithAuthorization` (EIP-3009) or `depositWithPermit`
         (EIP-2612) to the bond vault; Keelson pays the gas. The same
-        authorization is sent once, whatever the idempotency key.
+        authorization is sent once, whatever the idempotency key. An
+        `operators:write` client sends either; the operator's own session
+        (EIP-4361, from the operator console) sends a permit whose `owner` is a
+        wallet it signed in with that owns the agent.
       parameters:
         - schema:
             type: string
@@ -6395,6 +6892,194 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "502":
           description: The model provider refused the turn
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: No model provider configured
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/operators/me:
+    get:
+      tags:
+        - operators
+      summary: The operators the session's wallet owns
+      description: The linked agents whose owner or agent wallet in the Identity
+        registry is a wallet the session signed in with (EIP-4361). A wallet
+        signs in if it owned a linked agent when the agent was linked; ownership
+        is then read on chain on every operator route.
+      responses:
+        "200":
+          description: The operators
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatorSelf"
+        "401":
+          description: No session
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The session's wallets do not own the agent
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/operators/{agentId}/coverages/rows:
+    post:
+      tags:
+        - operators
+      summary: A block of the operator's coverages, for AG Grid's server-side row model
+      description: "The operator's covered purchases with their latest dispute and
+        verdict, filtered, sorted and paged as AG Grid asks. `rowCount` is the
+        filtered total. A read: no idempotency key."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^(0|[1-9]\d{0,19})$
+            description: The operator's ERC-8004 agent id, a decimal integer.
+          required: true
+          description: The operator's ERC-8004 agent id, a decimal integer.
+          name: agentId
+          in: path
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CoverageRowsRequest"
+      responses:
+        "200":
+          description: The block
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CoverageRow"
+                  rowCount:
+                    type: integer
+                required:
+                  - rows
+                  - rowCount
+        "401":
+          description: No session
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The session's wallets do not own the agent
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: A filter the column does not have
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/operators/{agentId}/coverages/daily:
+    get:
+      tags:
+        - operators
+      summary: The operator's coverages per day
+      description: "Per UTC day: coverages locked, the amount covered, premiums, and
+        incidents."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^(0|[1-9]\d{0,19})$
+            description: The operator's ERC-8004 agent id, a decimal integer.
+          required: true
+          description: The operator's ERC-8004 agent id, a decimal integer.
+          name: agentId
+          in: path
+      responses:
+        "200":
+          description: The days, oldest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  days:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CoverageDay"
+                required:
+                  - days
+        "401":
+          description: No session
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The session's wallets do not own the agent
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/operators/{agentId}/grid-query:
+    post:
+      tags:
+        - operators
+      summary: Turn a sentence into the coverage grid's state
+      description: "The backend of AG Grid's AI Toolkit: Claude answers with
+        structured output in the grid's own state schema. The console's daily
+        model budget applies; past it the query runs on `claude-haiku-5-5`."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^(0|[1-9]\d{0,19})$
+            description: The operator's ERC-8004 agent id, a decimal integer.
+          required: true
+          description: The operator's ERC-8004 agent id, a decimal integer.
+          name: agentId
+          in: path
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GridQuery"
+      responses:
+        "200":
+          description: The new state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GridAnswer"
+        "401":
+          description: No session
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The session's wallets do not own the agent
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Too many queries, or today's budget is spent
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "502":
+          description: The model did not answer
           content:
             application/problem+json:
               schema:

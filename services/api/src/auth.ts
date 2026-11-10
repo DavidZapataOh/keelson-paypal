@@ -14,6 +14,7 @@ import type { PayPalProfile } from "better-auth/social-providers";
 import { type Hex, verifyMessage } from "viem";
 import { generateSiweNonce } from "viem/siwe";
 import { SETTLEMENT } from "./merchants.ts";
+import { ownsLinkedOperator } from "./operators/owners.ts";
 
 /** RFC 8707 resource identifier of this API; the `aud` of every access token it accepts. */
 export const apiAudience = "https://api.keelson.finance";
@@ -175,13 +176,14 @@ export function createAuth(
       }),
       // A Judge Mode tenant: no email, no account, no key.
       anonymous({ emailDomainName: "judge.keelson.finance", disableDeleteAnonymousUser: true }),
-      // Merchants sign in with their settlement wallet (EIP-4361); no other wallet gets an account.
+      // Merchants sign in with their settlement wallet and operators with their agent's owner wallet
+      // (EIP-4361); no other wallet gets an account.
       siwe({
         domain: new URL(env.APP_ORIGIN).host,
         getNonce: async () => generateSiweNonce(),
         verifyMessage: async ({ message, signature, address, chainId }) =>
           SIWE_CHAINS.has(chainId) &&
-          merchantWallets.has(address.toLowerCase()) &&
+          (merchantWallets.has(address.toLowerCase()) || (await ownsLinkedOperator(db, address))) &&
           verifyMessage({ address: address as Hex, message, signature: signature as Hex }),
       }),
     ],
