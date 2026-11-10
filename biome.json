@@ -73,6 +73,17 @@
       "css": { "parser": { "tailwindDirectives": true } }
     },
     {
+      "includes": ["packages/ui/src/styles/globals.css"],
+      "css": { "parser": { "tailwindDirectives": true } },
+      "linter": {
+        "rules": {
+          "complexity": {
+            "noImportantStyles": "off"
+          }
+        }
+      }
+    },
+    {
       "includes": ["apps/landing/src/styles/global.css"],
       "linter": {
         "rules": {
