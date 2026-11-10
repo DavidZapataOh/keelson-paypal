@@ -31,6 +31,11 @@ describe("parseRoute", () => {
     });
   });
 
+  test("?embed asks for the framed layout", () => {
+    expect(parseRoute(at(`/a/${id}?embed#${b64}.1234.421614`)).embed).toBe(true);
+    expect(parseRoute(at(`/a/${id}#${b64}.1234.421614`)).embed).toBeUndefined();
+  });
+
   test("only an https RPC is accepted", () => {
     expect(parseRoute(at("/?rpc=https://rpc.example/x")).rpc).toBe("https://rpc.example/x");
     expect(parseRoute(at("/?rpc=http://x")).rpcRefused).toBeDefined();

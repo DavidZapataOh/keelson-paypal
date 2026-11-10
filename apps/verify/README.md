@@ -63,6 +63,13 @@ copy is re-verified when you commit an edit (Enter or leaving the field). Each f
 the edited pointers it read. Edits never leave the page. The chain answer is reused unless the edit
 changes what is read from the chain.
 
+## Embedding
+
+`?embed` on a link (`/a/<alibi_id>?embed#…`) shows only the cheats that apply to the loaded Alibi and
+its report, with a link to the full verifier. keelson.finance frames it this way over a sandbox
+purchase's public receipt; the receipt's cheats edit the log leaf (`/leaf/cart_hash`,
+`/leaf/agent_id`) or the anchor (`/anchor/anchored_root`).
+
 ## Environments
 
 Alibis come from Keelson's sandbox:
