@@ -97,6 +97,72 @@ components:
         - signature
         - credentialId
       description: A WebAuthn or Secure Payment Confirmation assertion, base64url fields.
+    Mandates:
+      type: object
+      properties:
+        mandates:
+          type: array
+          items:
+            $ref: "#/components/schemas/MandateSummary"
+      required:
+        - mandates
+    MandateSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        state:
+          type: string
+          enum:
+            - DRAFT
+            - COMPILED
+            - SIGNED
+            - HOLD_PENDING
+            - ACTIVE
+            - EXHAUSTED
+            - EXPIRED
+            - REVOKED
+        budget:
+          $ref: "#/components/schemas/MandateBudget"
+        merchantIds:
+          type: array
+          items:
+            type: string
+        holdMode:
+          type: string
+          enum:
+            - mandate
+            - per_purchase
+        expiresAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - state
+        - budget
+        - merchantIds
+        - holdMode
+        - expiresAt
+        - createdAt
+    MandateBudget:
+      type: object
+      properties:
+        currency:
+          type: string
+        maxMinor:
+          type: string
+          pattern: ^\d+$
+        remainingMinor:
+          type: string
+          pattern: ^\d+$
+      required:
+        - currency
+        - maxMinor
+        - remainingMinor
+      description: The mandate's budget and what is left of it, in minor units.
     Mandate:
       type: object
       properties:
@@ -118,6 +184,11 @@ components:
             - string
             - "null"
           pattern: ^0x[0-9a-f]{64}$
+        budget:
+          $ref: "#/components/schemas/MandateBudget"
+        expiresAt:
+          type: string
+          format: date-time
         hold:
           anyOf:
             - $ref: "#/components/schemas/MandateHold"
@@ -129,12 +200,20 @@ components:
             - type: "null"
           description: The card rendered from the stored payload, before any checkout
             evidence.
+        purchases:
+          type: array
+          items:
+            $ref: "#/components/schemas/MandatePurchase"
+          description: The mandate's latest 100 purchases, newest first.
       required:
         - id
         - state
         - mandateHash
+        - budget
+        - expiresAt
         - hold
         - card
+        - purchases
     MandateHold:
       type: object
       properties:
@@ -221,6 +300,96 @@ components:
       required:
         - rows
         - warnings
+    MandatePurchase:
+      type: object
+      properties:
+        id:
+          type: string
+          description: The purchase's ULID, which is also its Alibi id.
+        merchantId:
+          type: string
+        amount:
+          type: object
+          properties:
+            currency:
+              type: string
+            minor:
+              type: string
+          required:
+            - currency
+            - minor
+        createdAt:
+          type: string
+          format: date-time
+        state:
+          type: string
+        logIndex:
+          type: string
+          description: The leaf's index in the Alibi log.
+        coverage:
+          type: object
+          properties:
+            chainId:
+              type: integer
+            txHash:
+              type:
+                - string
+                - "null"
+          required:
+            - chainId
+            - txHash
+          description: The `lockCoverage` transaction of the operator's bond.
+        capture:
+          type: object
+          properties:
+            id:
+              type: string
+            invoiceId:
+              type: string
+            status:
+              type:
+                - string
+                - "null"
+          required:
+            - id
+            - invoiceId
+            - status
+          description: The PayPal capture of the countersigned amount.
+        failure:
+          type: object
+          properties:
+            step:
+              type: string
+            reason:
+              type: string
+          required:
+            - step
+            - reason
+          description: The step that failed and why; nothing was captured.
+        disputes:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              state:
+                type: string
+                enum:
+                  - OPEN
+                  - ATTRIBUTED
+                  - RESOLVED
+            required:
+              - id
+              - state
+          description: PayPal disputes over the purchase; `GET /v1/disputes/{id}` has each.
+      required:
+        - id
+        - merchantId
+        - amount
+        - createdAt
+        - state
+        - disputes
     PayPalClient:
       type: object
       properties:
@@ -2949,6 +3118,24 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "503":
           description: The TEE could not issue the mandate
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    get:
+      tags:
+        - mandates
+      summary: List your mandates
+      description: The signed-in user's latest 50 signed mandates, newest first.
+      responses:
+        "200":
+          description: The mandates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Mandates"
+        "401":
+          description: Not signed in
           content:
             application/problem+json:
               schema:
