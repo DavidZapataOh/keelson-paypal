@@ -314,6 +314,39 @@ services:
         name: Referrer-Policy
         value: no-referrer
 
+  - type: web
+    runtime: static
+    name: keelson-web
+    buildCommand: npm install -g pnpm@12.16.1 && pnpm install --frozen-lockfile && pnpm turbo run build --filter=@keelson/web
+    staticPublishPath: ./apps/web/out
+    autoDeployTrigger: checksPass
+    buildFilter:
+      paths:
+        - apps/web/**
+        - packages/**
+        - package.json
+        - pnpm-lock.yaml
+        - pnpm-workspace.yaml
+        - turbo.json
+        - tsconfig.base.json
+        - .node-version
+        - render.yaml
+    domains:
+      - app.keelson.finance
+    headers:
+      - path: /_next/static/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+      - path: /*
+        name: Content-Security-Policy
+        value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://*.paypal.com https://*.paypalobjects.com; style-src 'self' 'unsafe-inline'; connect-src 'self' data: https://api.keelson.finance https://*.paypal.com https://*.paypalobjects.com; img-src 'self' data: blob: https://*.paypal.com https://*.paypalobjects.com; frame-src https://*.paypal.com; worker-src 'self' blob:; font-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+
   - type: keyvalue
     name: keelson-kv
     plan: 256mb

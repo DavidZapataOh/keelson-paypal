@@ -1,0 +1,44 @@
+import { API } from "./config";
+
+/** An RFC 9457 problem the API answered with. */
+export class ApiError extends Error {
+  override name = "ApiError";
+  constructor(
+    readonly status: number,
+    readonly slug: string,
+    message: string,
+    readonly fields: readonly string[] = [],
+  ) {
+    super(message);
+  }
+}
+
+async function send<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${API}${path}`, { ...init, credentials: "include" });
+  if (res.ok) return (await res.json()) as T;
+  const body = (await res.json().catch(() => ({}))) as {
+    type?: string;
+    title?: string;
+    detail?: string;
+    fields?: string[];
+  };
+  throw new ApiError(
+    res.status,
+    body.type?.split("/").pop() ?? "unknown",
+    body.detail ?? body.title ?? `The API answered ${res.status}.`,
+    body.fields ?? [],
+  );
+}
+
+export const get = <T>(path: string): Promise<T> => send<T>(path, { cache: "no-store" });
+
+export const post = <T>(path: string, body?: unknown, headers: Record<string, string> = {}) =>
+  send<T>(path, {
+    method: "POST",
+    headers: {
+      "idempotency-key": crypto.randomUUID(),
+      ...(body === undefined ? {} : { "content-type": "application/json" }),
+      ...headers,
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
