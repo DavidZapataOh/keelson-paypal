@@ -12,9 +12,9 @@ concurrency:
 permissions:
   contents: read
 
-# Fork jobs read through Alchemy, or the public RPCs when it does not answer (see .github/actions/select-rpc).
+# Fork jobs read through Alchemy, or public archive gateways when it does not answer (see .github/actions/select-rpc).
 # Alchemy allows 500 compute units per second across the whole account, shared with production, and the public
-# RPCs limit each IP; each forking process (forge, anvil) is held to this rate so parallel jobs stay under both.
+# gateways limit each IP; each forking process (forge, anvil) is held to this rate so parallel jobs stay under both.
 env:
   FOUNDRY_COMPUTE_UNITS_PER_SECOND: 60
 

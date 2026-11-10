@@ -1,11 +1,12 @@
 name: Select RPC
 description: >-
   Exports ARBITRUM_SEPOLIA_RPC_URL, ARBITRUM_ONE_RPC_URL and ETHEREUM_SEPOLIA_RPC_URL: the Alchemy endpoint when it
-  answers eth_blockNumber, otherwise the chain's public RPC (rate-limited per IP).
+  answers eth_blockNumber, otherwise Tenderly's public gateway for the chain, which keeps the archive state that
+  forks at pinned blocks read (the chains' own public RPCs prune it).
 
 inputs:
   alchemy-api-key:
-    description: Alchemy API key; empty selects the public RPCs.
+    description: Alchemy API key; empty selects the public gateways.
     required: false
     default: ""
 
@@ -30,6 +31,6 @@ runs:
             echo "$name=$public" >> "$GITHUB_ENV"
           fi
         }
-        pick ARBITRUM_SEPOLIA_RPC_URL arb-sepolia https://sepolia-rollup.arbitrum.io/rpc
-        pick ARBITRUM_ONE_RPC_URL arb-mainnet https://arb1.arbitrum.io/rpc
-        pick ETHEREUM_SEPOLIA_RPC_URL eth-sepolia https://ethereum-sepolia-rpc.publicnode.com
+        pick ARBITRUM_SEPOLIA_RPC_URL arb-sepolia https://arbitrum-sepolia.gateway.tenderly.co
+        pick ARBITRUM_ONE_RPC_URL arb-mainnet https://arbitrum.gateway.tenderly.co
+        pick ETHEREUM_SEPOLIA_RPC_URL eth-sepolia https://sepolia.gateway.tenderly.co
