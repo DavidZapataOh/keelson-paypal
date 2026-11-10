@@ -242,6 +242,58 @@ services:
       - key: WITNESS_KEY
         sync: false
 
+  # The demo merchant's store, on its own origin; RunFast is a PayPal sandbox business account.
+  - type: web
+    runtime: node
+    name: keelson-store
+    plan: 0.5c-512mb
+    region: oregon
+    buildCommand: npm install -g pnpm@12.16.1 && pnpm install --frozen-lockfile && pnpm turbo run build --filter=@keelson/store...
+    startCommand: pnpm --filter @keelson/store start
+    healthCheckPath: /health
+    autoDeployTrigger: checksPass
+    buildFilter:
+      paths:
+        - apps/store/**
+        - packages/core/**
+        - packages/paypal/**
+        - package.json
+        - pnpm-lock.yaml
+        - pnpm-workspace.yaml
+        - turbo.json
+        - tsconfig.base.json
+        - .node-version
+        - render.yaml
+    domains:
+      - store.keelson.finance
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: STORE_ORIGIN
+        value: https://store.keelson.finance
+      - key: PAYPAL_ENV
+        value: sandbox
+      # The store sells as RunFast with the same sandbox REST app the API holds and captures with.
+      - key: PAYPAL_CLIENT_ID
+        fromService:
+          type: web
+          name: keelson-api
+          envVarKey: PAYPAL_CLIENT_ID
+      - key: PAYPAL_CLIENT_SECRET
+        fromService:
+          type: web
+          name: keelson-api
+          envVarKey: PAYPAL_CLIENT_SECRET
+      # Ephemeral attack listings live in Key Value with a TTL.
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: keelson-kv
+          property: connectionString
+      # Bearer token of the red team's listing calls.
+      - key: STORE_ATTACK_TOKEN
+        generateValue: true
+
   - type: web
     runtime: static
     name: keelson-landing

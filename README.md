@@ -7,7 +7,8 @@ The liability layer for AI-agent purchases on PayPal. Keelson checks every purch
 ```
 .
 ├── apps/
-│   └── landing/         Astro marketing site
+│   ├── landing/         Astro marketing site
+│   └── store/           RunFast, the demo merchant store (PayPal sandbox)
 ├── packages/
 │   ├── core/            Canonical JSON, hashing, EIP-712, money and ULID primitives
 │   ├── db/              Drizzle schema, migrations and state machines for PostgreSQL 18
@@ -45,6 +46,8 @@ cargo test
 ```
 
 `pnpm lint` runs Biome, and `pnpm typecheck` runs the TypeScript compiler across the workspace. `pnpm --filter @keelson/paypal test:sandbox` runs the PayPal suite against the PayPal sandbox and needs sandbox credentials in `.env`.
+
+The demo store at https://store.keelson.finance sells as RunFast, a PayPal sandbox business account: checkout runs the PayPal JavaScript SDK v6 against the sandbox, so no real money moves. `KEELSON_LIVE=1 pnpm --filter @keelson/store exec vitest run test/checkout.live.test.ts` buys one pair as the sandbox buyer (`PAYPAL_SANDBOX_BUYER_EMAIL` and `PAYPAL_SANDBOX_BUYER_PASSWORD`); set `STORE_URL` to run it against a deployed store.
 
 ## License
 
