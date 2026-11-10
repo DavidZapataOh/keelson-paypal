@@ -218,6 +218,69 @@ test("the first paint is the welcome, before any script or session read", async 
   expect(html).not.toContain("Loading…");
 });
 
+const VISITOR_VIEWS = [
+  ["merchant/", "Merchant console", "Checking your session"],
+  ["operator/", "Operator console", "Checking your session"],
+  ["judge/", "Judge Keelson in five minutes", "Opening Judge Mode"],
+] as const;
+
+test.each(VISITOR_VIEWS)(
+  "the first paint of /%s is what a visitor sees",
+  async (path, h1, wait) => {
+    const html = await readFile(join(out, path, "index.html"), "utf8");
+    expect(html).toContain(h1);
+    expect(html).not.toContain(wait);
+  },
+);
+
+test.each(VISITOR_VIEWS)(
+  "a visitor on /%s calls no signed-in route and logs no error",
+  async (path, h1) => {
+    const context = await browser.newContext();
+    const calls: string[] = [];
+    await context.route("https://api.keelson.finance/**", (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === "/api/auth/get-session") {
+        return route.fulfill({ status: 200, contentType: "application/json", body: "null" });
+      }
+      calls.push(url.pathname);
+      return route.abort("connectionrefused");
+    });
+    const page = await context.newPage();
+    const errors: string[] = [];
+    page.on("console", (m) => {
+      if (m.type() === "error") errors.push(m.text());
+    });
+    page.on("pageerror", (e) => errors.push(e.message));
+    await page.goto(`${base}/${path}`);
+    await page.getByRole("heading", { level: 1, name: h1 }).waitFor();
+    await page.waitForLoadState("networkidle");
+    expect(calls.filter((p) => p.startsWith("/v1/"))).toEqual([]);
+    expect(errors).toEqual([]);
+    await context.close();
+  },
+);
+
+test("a missing page says so on the brand, in light and dark", async () => {
+  const html = await readFile(join(out, "404.html"), "utf8");
+  expect(html).not.toContain("next-error-h1");
+  for (const colorScheme of ["light", "dark"] as const) {
+    const context = await browser.newContext({ colorScheme });
+    await context.route("https://api.keelson.finance/**", (route) =>
+      route.abort("connectionrefused"),
+    );
+    const page = await context.newPage();
+    await page.goto(`${base}/404.html`);
+    await page.getByRole("heading", { level: 1, name: "This page does not exist" }).waitFor();
+    expect(await page.getByRole("link", { name: "Go to the app" }).getAttribute("href")).toBe("/");
+    const { violations } = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"])
+      .analyze();
+    expect(violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
+    await context.close();
+  }
+});
+
 test("mobile pages never scroll sideways", async () => {
   const { context, page } = await visit("mobile");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -343,5 +406,88 @@ test("the methodology states every denominator and how to recompute", async () =
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"])
     .analyze();
   expect(violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
+  await context.close();
+});
+
+test("a blocked cart shows, field by field, what the mandate allowed against the cart", async () => {
+  const context = await browser.newContext();
+  const now = new Date().toISOString();
+  const later = new Date(Date.now() + 86_400_000).toISOString();
+  const [mandateId, purchaseId] = ["01M7MANDATE000000000000000", "01M7PURCHASE00000000000000"];
+  await context.route("https://api.keelson.finance/**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    const json = (value: unknown) =>
+      route.fulfill({ contentType: "application/json", body: JSON.stringify(value) });
+    if (path === "/api/auth/get-session") {
+      return json({
+        session: {
+          id: "s",
+          userId: "u",
+          token: "t",
+          expiresAt: later,
+          createdAt: now,
+          updatedAt: now,
+        },
+        user: {
+          id: "u",
+          name: "Buyer",
+          email: "b@example.test",
+          emailVerified: false,
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+    }
+    if (path === `/v1/mandates/${mandateId}`) {
+      return json({
+        id: mandateId,
+        state: "ACTIVE",
+        mandateHash: null,
+        budget: { currency: "USD", maxMinor: "10000", remainingMinor: "10000" },
+        expiresAt: later,
+        hold: null,
+        card: {
+          rows: [
+            {
+              field: "total",
+              label: "Total",
+              values: ["≤ $100.00"],
+              color: "green",
+              answers: "Keelson",
+            },
+            {
+              field: "items",
+              label: "Items",
+              values: ["Running shoes"],
+              color: "green",
+              answers: "Keelson",
+            },
+          ],
+          warnings: [],
+        },
+        purchases: [
+          {
+            id: purchaseId,
+            merchantId: "runfast",
+            amount: { currency: "USD", minor: "34000" },
+            createdAt: now,
+            state: "DENIED",
+            mode: "2of2",
+            blocked: ["total", "items"],
+            disputes: [],
+          },
+        ],
+        pendingHolds: [],
+      });
+    }
+    return route.abort("connectionrefused");
+  });
+  const page = await context.newPage();
+  await page.goto(`${base}/purchase/?mandate=${mandateId}&id=${purchaseId}`);
+  await page.getByText("blocked the cart before payment").waitFor();
+  const lines = page.locator('[data-slot="block-diff"]');
+  expect(await lines.count()).toBe(2);
+  expect(await lines.nth(0).innerText()).toMatch(/Mandate ≤ \$100\.00[\s\S]*Cart \$340\.00/);
+  expect(await lines.nth(1).innerText()).toMatch(/Mandate Running shoes[\s\S]*Cart not as signed/);
   await context.close();
 });

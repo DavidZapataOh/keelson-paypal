@@ -145,4 +145,11 @@ describe("the landing", () => {
     }
     await context.close();
   });
+
+  test("claims only the checks the policy runs", async () => {
+    const html = await readFile(join(dist("landing"), "index.html"), "utf8");
+    // The policy's time check is when the cart is paid (`payment.execution_date`), not delivery.
+    expect(html).not.toMatch(/Deliver by|quoted date/);
+    expect(html).not.toMatch(/MCP server|@keelson\/sdk/);
+  });
 });

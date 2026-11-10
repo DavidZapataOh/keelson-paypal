@@ -1,3 +1,4 @@
+import { Skeleton } from "@keelson/ui/components/skeleton";
 import {
   Table,
   TableBody,
@@ -51,68 +52,87 @@ function Row({
   detail,
 }: {
   name: string;
-  health: Health;
+  health: Health | undefined;
   env: string;
-  detail?: string;
+  detail?: string | undefined;
 }) {
   return (
     <li className="flex min-h-14 flex-wrap items-center justify-between gap-x-4 gap-y-1 py-3">
       <span className="grid gap-0.5">
         <span className="font-medium">{name}</span>
-        {detail ? <span className="font-mono text-muted-foreground text-xs">{detail}</span> : null}
+        {detail === "" ? (
+          <Skeleton className="my-0.5 h-3 w-40" />
+        ) : detail ? (
+          <span className="font-mono text-muted-foreground text-xs">{detail}</span>
+        ) : null}
       </span>
       <span className="flex items-center gap-3 text-sm">
         <span className="font-mono text-muted-foreground text-xs">{env}</span>
-        <span
-          data-health={health}
-          className="inline-flex items-center gap-1.5 font-medium data-[health=degraded]:text-warn data-[health=up]:text-ok data-[health=down]:text-foreground"
-        >
-          <span aria-hidden="true" className="font-mono">
-            {health === "up" ? "●" : health === "degraded" ? "◐" : "!"}
+        {health ? (
+          <span
+            data-health={health}
+            className="inline-flex items-center gap-1.5 font-medium data-[health=degraded]:text-warn data-[health=up]:text-ok data-[health=down]:text-foreground"
+          >
+            <span aria-hidden="true" className="font-mono">
+              {health === "up" ? "●" : health === "degraded" ? "◐" : "!"}
+            </span>
+            {WORD[health]}
           </span>
-          {WORD[health]}
-        </span>
+        ) : (
+          <Skeleton className="h-5 w-24" />
+        )}
       </span>
     </li>
   );
 }
 
-/** The API's dependency report, one row per dependency, in words. */
-export function HealthList({ report }: { report: StatusReport }) {
-  const d = report.dependencies;
-  const chain = d.relayer.chains[0];
+/**
+ * The API's dependency report, one row per dependency, in words. Without a report the same
+ * rows render with skeleton values, so the page keeps its shape while the first read runs.
+ */
+export function HealthList({ report }: { report?: StatusReport | undefined }) {
+  const d = report?.dependencies;
+  const chain = d?.relayer.chains[0];
   return (
-    <ul className="divide-y rounded-lg border bg-card px-5">
+    <ul aria-busy={!report} className="divide-y rounded-lg border bg-card px-5">
       <Row
         name="PayPal"
-        health={d.paypal.status}
-        env={d.paypal.environment === "sandbox" ? "Sandbox" : "Production"}
-        detail={`webhook ${age(d.webhooks.lastWebhookAgeMs)} · poll ${age(d.webhooks.lastPollAgeMs)}`}
+        health={d?.paypal.status}
+        env={!d || d.paypal.environment === "sandbox" ? "Sandbox" : "Production"}
+        detail={
+          d
+            ? `webhook ${age(d.webhooks.lastWebhookAgeMs)} · poll ${age(d.webhooks.lastPollAgeMs)}`
+            : ""
+        }
       />
-      <Row name="TEE leg A · Intel TDX" health={d.teeA} env="Production" />
-      <Row name="TEE leg B · AWS Nitro" health={d.teeB} env="Production" />
+      <Row name="TEE leg A · Intel TDX" health={d?.teeA} env="Production" />
+      <Row name="TEE leg B · AWS Nitro" health={d?.teeB} env="Production" />
       <Row
         name="Alibi log"
-        health={d.log.status}
+        health={d?.log.status}
         env="Production"
-        detail={d.log.origins
-          .map((o) => `${o.origin.split("/").slice(1).join("/")} · ${o.size} entries`)
-          .join("  ")}
+        detail={
+          d
+            ? d.log.origins
+                .map((o) => `${o.origin.split("/").slice(1).join("/")} · ${o.size} entries`)
+                .join("  ")
+            : ""
+        }
       />
       <Row
         name="Checkpoint anchor"
-        health={d.anchor.status}
+        health={d?.anchor.status}
         env="Testnet"
-        detail={`size ${d.anchor.size} · anchored ${age(d.anchor.anchoredAgeMs)}`}
+        detail={d ? `size ${d.anchor.size} · anchored ${age(d.anchor.anchoredAgeMs)}` : ""}
       />
       <Row
         name="Relayer · Arbitrum Sepolia"
-        health={d.relayer.status}
+        health={d?.relayer.status}
         env="Testnet"
-        {...(chain ? { detail: `${chain.pending} pending` } : {})}
+        detail={d ? (chain ? `${chain.pending} pending` : undefined) : ""}
       />
-      <Row name="Database" health={d.db} env="Production" />
-      <Row name="Event bus" health={d.kv} env="Production" />
+      <Row name="Database" health={d?.db} env="Production" />
+      <Row name="Event bus" health={d?.kv} env="Production" />
     </ul>
   );
 }
