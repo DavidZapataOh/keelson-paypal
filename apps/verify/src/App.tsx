@@ -6,6 +6,7 @@ import { parseRoute, type Route, verifyLinkOf } from "./route.ts";
 import { loader, memoized, verifier } from "./verifier.ts";
 
 const Cheat = lazy(() => import("./Cheat.tsx"));
+const Amber = lazy(() => import("./Amber.tsx"));
 const VERIFY_ORIGIN = "https://verify.keelson.finance";
 
 interface Run {
@@ -45,6 +46,7 @@ export function App() {
   const [rpcInput, setRpcInput] = useState(route.rpc ?? "");
   const [error, setErrorState] = useState<string | undefined>(route.rpcRefused);
   const [dragging, setDragging] = useState(false);
+  const [rpc, setRpc] = useState<string>();
   const runId = useRef(0);
   const fromUser = useRef(false);
 
@@ -172,6 +174,7 @@ export function App() {
     }
     setError(undefined);
     chain.current = readerFor(next.rpc);
+    setRpc(next.rpc);
     if (loaded) void verify(loaded.alibi);
   };
 
@@ -320,6 +323,9 @@ export function App() {
               </p>
             )}
             <Report checks={run.checks} report={run.report} receipt={isReceipt(loaded)} />
+            <Suspense fallback={null}>
+              <Amber alibiId={loaded.alibi.alibi_id} rpc={rpc} />
+            </Suspense>
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
