@@ -154,7 +154,7 @@ export function PurchasePage() {
         </Link>
         <div className="grid gap-3">
           <Eyebrow>{p.merchantId}</Eyebrow>
-          <h1 className="tnum font-semibold text-5xl tracking-[-0.035em]">
+          <h1 className="text-amount font-semibold tracking-[-0.035em]">
             {money(p.amount.minor, p.amount.currency)}
           </h1>
           <div className="flex flex-wrap items-center gap-3 text-muted-foreground text-sm">

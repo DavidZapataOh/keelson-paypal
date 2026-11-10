@@ -1,6 +1,14 @@
 "use client";
 
 import { Button } from "@keelson/ui/components/button";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from "@keelson/ui/components/empty";
+import { Skeleton } from "@keelson/ui/components/skeleton";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { get } from "../lib/api";
@@ -33,20 +41,35 @@ export function Dashboard() {
               : "Nothing is delegated yet"}
           </h1>
         </div>
-        <Button asChild size="lg">
-          <Link href="/new/">New mandate</Link>
-        </Button>
+        {mandates && mandates.length > 0 ? (
+          <Button asChild size="lg">
+            <Link href="/new/">New mandate</Link>
+          </Button>
+        ) : null}
       </div>
       {error ? <ErrorNotice>{error}</ErrorNotice> : null}
-      {mandates && mandates.length === 0 ? (
-        <div className="grid max-w-xl gap-3 rounded-xl border border-dashed p-8">
-          <h2 className="font-semibold text-xl">Write your first mandate</h2>
-          <p className="text-muted-foreground">
-            Say what your agent may buy, for how much and by when, for example: “Running shoes, size
-            10, under $100, from RunFast, by Friday.” You'll see who answers for each field before
-            you sign.
-          </p>
+      {mandates === undefined && !error ? (
+        <div className="grid gap-2" aria-hidden="true">
+          <Skeleton className="h-16" />
+          <Skeleton className="h-16" />
         </div>
+      ) : null}
+      {mandates && mandates.length === 0 ? (
+        <Empty className="border border-dashed">
+          <EmptyHeader>
+            <EmptyTitle>Write your first mandate</EmptyTitle>
+            <EmptyDescription>
+              Say what your agent may buy, for how much and by when, for example: “Running shoes,
+              size 10, under $100, from RunFast, by Friday.” You'll see who answers for each field
+              before you sign.
+            </EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button asChild>
+              <Link href="/new/">New mandate</Link>
+            </Button>
+          </EmptyContent>
+        </Empty>
       ) : null}
       {mandates && mandates.length > 0 ? (
         <ul className="grid divide-y rounded-xl border">
