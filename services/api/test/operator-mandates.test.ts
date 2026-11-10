@@ -1,9 +1,10 @@
 import { randomBytes } from "node:crypto";
-import { mandates, operators, user } from "@keelson/db";
+import { eq, events, mandates, operators, user } from "@keelson/db";
 import { pino } from "pino";
 import { ulid } from "ulid";
 import { beforeAll, expect, test } from "vitest";
 import { createApp } from "../src/app.ts";
+import { principalChannel } from "../src/principal.ts";
 import { testDb, testKv } from "./setup.ts";
 import { headerPrincipal } from "./tee-live.ts";
 
@@ -101,4 +102,50 @@ test("the linked client gets the active mandates naming its agent, with their ho
     openMandate: "open~active~",
   });
   expect(body.mandates[0]?.authorizationId).toMatch(/^AUTH/);
+});
+
+const runs = (id: string) => `/v1/operators/${agentId}/mandates/${id}/runs`;
+const send = (id: string, headers: Record<string, string>, body: unknown) =>
+  app.request(runs(id), {
+    method: "POST",
+    headers: { "content-type": "application/json", "idempotency-key": ulid(), ...headers },
+    body: JSON.stringify(body),
+  });
+const LIVE = "https://prod-iad-hypeman-61.kernel.sh/browser/live/abc123?readOnly=true";
+
+test("only the linked client announces a run, on a mandate naming its operator", async () => {
+  const run = { state: "started", liveViewUrl: LIVE };
+  expect((await send(active, {}, run)).status).toBe(401);
+  expect((await send(active, client("someone-else", "countersign:write"), run)).status).toBe(404);
+  expect((await send(elsewhere, client(linked, "countersign:write"), run)).status).toBe(404);
+  expect((await send(revoked, client(linked, "countersign:write"), run)).status).toBe(404);
+});
+
+test.each([
+  "http://prod-iad-hypeman-61.kernel.sh/browser/live/abc",
+  "https://kernel.sh.evil.example/browser/live/abc",
+  "https://prod-iad-hypeman-61.kernel.sh/browser/cdp?jwt=x",
+  "javascript:alert(1)",
+])("a live view other than Kernel's is refused: %s", async (liveViewUrl) => {
+  const res = await send(active, client(linked, "countersign:write"), {
+    state: "started",
+    liveViewUrl,
+  });
+  expect(res.status).toBe(422);
+});
+
+test("a run is published to the mandate owner's stream", async () => {
+  const started = await send(active, client(linked, "countersign:write"), {
+    state: "started",
+    liveViewUrl: LIVE,
+  });
+  expect(started.status).toBe(202);
+  const ended = await send(active, client(linked, "countersign:write"), { state: "ended" });
+  expect(ended.status).toBe(202);
+  const channel = principalChannel({ kind: "user", subject: sub }, `mandate:${active}`);
+  const rows = await testDb.select().from(events).where(eq(events.channel, channel));
+  expect(rows.map((r) => r.payload)).toEqual([
+    { type: "agent.run", mandateId: active, state: "started", liveViewUrl: LIVE },
+    { type: "agent.run", mandateId: active, state: "ended" },
+  ]);
 });

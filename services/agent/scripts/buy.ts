@@ -11,7 +11,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { parseMandate } from "@keelson/mandate";
 import { runAgent } from "../src/agent.ts";
 import { checkout, quoteCart } from "../src/checkout.ts";
-import { agentKey, apiClient, operatorMandates } from "../src/keelson.ts";
+import { agentKey, announceRun, apiClient, operatorMandates } from "../src/keelson.ts";
 import { openSession } from "../src/kernel.ts";
 
 const env = (name: string) => {
@@ -27,7 +27,8 @@ const keelson = apiClient({
   clientSecret: env("KEELSON_CLIENT_SECRET"),
   scopes: ["countersign:write", "evidence:write"],
 });
-const listed = await operatorMandates(keelson, BigInt(env("AGENT_ID")));
+const agentId = BigInt(env("AGENT_ID"));
+const listed = await operatorMandates(keelson, agentId);
 const held = listed.find((m) =>
   process.env.MANDATE_ID ? m.id === process.env.MANDATE_ID : m.authorizationId !== null,
 );
@@ -50,7 +51,7 @@ const mandate = parseMandate(
 const { privateKey } = await agentKey(env("KEELSON_AGENT_KEY"));
 const session = await openSession({ hosts });
 try {
-  console.error(`live view ${session.liveViewUrl ?? "(none)"}`);
+  await announceRun(keelson, agentId, held.id, "started", session.liveViewUrl);
   const run = await runAgent({
     client: new Anthropic(),
     backbone: "guarded",
@@ -80,5 +81,6 @@ try {
     JSON.stringify({ status: result.status, purchase: result.requestId, ...result.body }),
   );
 } finally {
+  await announceRun(keelson, agentId, held.id, "ended").catch(() => {});
   await session.close();
 }

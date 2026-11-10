@@ -86,3 +86,19 @@ export async function operatorMandates(
   if (!res.ok) throw new Error(`mandates not read: HTTP ${res.status}`);
   return ((await res.json()) as { mandates: OperatorMandate[] }).mandates;
 }
+
+/** Tells the mandate's owner the agent started or ended a run, with its read-only live view. */
+export async function announceRun(
+  keelson: Keelson,
+  agentId: bigint,
+  mandateId: string,
+  state: "started" | "ended",
+  liveViewUrl?: string,
+): Promise<void> {
+  const res = await keelson.request(`/v1/operators/${agentId}/mandates/${mandateId}/runs`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
+    body: JSON.stringify({ state, ...(liveViewUrl ? { liveViewUrl } : {}) }),
+  });
+  if (res.status !== 202) throw new Error(`run not announced: HTTP ${res.status}`);
+}

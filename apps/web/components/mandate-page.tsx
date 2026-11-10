@@ -12,13 +12,14 @@ import { post } from "../lib/api";
 import { money, when } from "../lib/format";
 import { mandateLabel, purchaseStatus } from "../lib/status";
 import { useMandate } from "../lib/use-mandate";
+import { LiveView } from "./live-view";
 import { MandateCard } from "./mandate-card";
 import { ErrorNotice, Eyebrow } from "./notice";
 import { PayPalHold } from "./paypal-hold";
 
 export function MandatePage() {
   const id = useSearchParams().get("id");
-  const { mandate, error, pending, countersigned, reload, signedIn, sessionPending } =
+  const { mandate, error, pending, countersigned, liveView, reload, signedIn, sessionPending } =
     useMandate(id);
   const [revoking, setRevoking] = useState(false);
 
@@ -73,6 +74,8 @@ export function MandatePage() {
         <Meter label="Spent" value={max - left} max={max} format={dollars} className="max-w-md" />
         <p className="text-muted-foreground text-sm">Valid until {when(mandate.expiresAt)}</p>
       </section>
+
+      {liveView && mandate.state === "ACTIVE" ? <LiveView url={liveView} /> : null}
 
       {needsHold ? (
         <section className="grid max-w-xl gap-4 rounded-xl border p-6" aria-labelledby="hold">
