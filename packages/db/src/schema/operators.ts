@@ -13,6 +13,8 @@ export const operators = pgTable(
     cnfJwk: jsonb().notNull(),
     /** The agent's owner in the Identity registry when it was linked. */
     ownerAddress: bytea(),
+    /** The OAuth client that linked the operator: the only client that acts for the agent. */
+    clientId: text(),
     createdAt: createdAt(),
   },
   (t) => [

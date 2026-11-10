@@ -1,6 +1,6 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { addresses, keelsonBondVaultAbi, keelsonValidationRegistryAbi } from "@keelson/chain";
-import { and, eq, operators } from "@keelson/db";
+import { and, desc, eq, isNotNull, mandates, operators } from "@keelson/db";
 import {
   agentRegistry,
   ERC8004,
@@ -212,6 +212,48 @@ const bond = createRoute({
 const reverted = (err: unknown) =>
   err instanceof BaseError && err.walk((e) => e instanceof ContractFunctionRevertedError) !== null;
 
+const OperatorMandate = z
+  .object({
+    id: z.string(),
+    state: z.literal("ACTIVE"),
+    currency: z.string(),
+    maxMinor: z.number().int(),
+    remainingMinor: z.number().int(),
+    expiresAt: z.string().openapi({ format: "date-time" }),
+    holdMode: z.enum(["mandate", "per_purchase"]).nullable(),
+    authorizationId: z.string().nullable().openapi({
+      description:
+        "The PayPal authorization that holds the mandate's funds, when the mandate is held as a whole.",
+    }),
+    openMandate: z.string().openapi({
+      description:
+        "The mandate as issued, which the agent closes with its `cnf` key for each countersign.",
+    }),
+  })
+  .openapi("OperatorMandate");
+
+const operatorMandates = createRoute({
+  method: "get",
+  path: "/v1/operators/{agentId}/mandates",
+  tags: ["operators"],
+  summary: "The active mandates naming the operator",
+  description:
+    "Lists the active mandates whose operator is `agentId`, with their open mandates and holds, so that the operator's agent can buy under them. Only the OAuth client that linked the operator (`POST /v1/operators`) reads them; any other caller gets 404.",
+  middleware: [requireClient(["countersign:write"])],
+  request: { params: z.object({ agentId: AgentId }) },
+  responses: {
+    200: {
+      description: "The operator's active mandates, newest first",
+      content: {
+        "application/json": { schema: z.object({ mandates: z.array(OperatorMandate) }) },
+      },
+    },
+    401: { description: "No valid access token", content: problemContent },
+    403: { description: "The token lacks countersign:write", content: problemContent },
+    404: { description: "No operator this client linked", content: problemContent },
+  },
+});
+
 export function registerOperators(app: OpenAPIHono, deps: Pick<Deps, "db" | "chains">): void {
   const { db } = deps;
 
@@ -329,10 +371,16 @@ export function registerOperators(app: OpenAPIHono, deps: Pick<Deps, "db" | "cha
         name: body.name,
         cnfJwk: body.cnfJwk,
         ownerAddress: owner,
+        clientId: c.var.principal?.subject,
       })
       .onConflictDoUpdate({
         target: operators.agentId,
-        set: { name: body.name, cnfJwk: body.cnfJwk, ownerAddress: owner },
+        set: {
+          name: body.name,
+          cnfJwk: body.cnfJwk,
+          ownerAddress: owner,
+          clientId: c.var.principal?.subject,
+        },
         setWhere: eq(operators.agentRegistry, registry),
       })
       .returning({ agentId: operators.agentId });
@@ -470,6 +518,45 @@ export function registerOperators(app: OpenAPIHono, deps: Pick<Deps, "db" | "cha
           slashes: Number(slashes[0]),
         },
         validation: { count: Number(validations[0]), averageResponse: validations[1] },
+      },
+      200,
+    );
+  });
+
+  app.openapi(operatorMandates, async (c) => {
+    const agentId = BigInt(c.req.valid("param").agentId);
+    const [operator] = await db
+      .select({ clientId: operators.clientId })
+      .from(operators)
+      .where(eq(operators.agentId, agentId));
+    // The same answer for an unknown operator and another client's, so neither is disclosed.
+    if (!operator?.clientId || operator.clientId !== c.var.principal?.subject) {
+      return problem(c, 404, "not-found", "Not found", "No operator this client linked.");
+    }
+    const rows = await db
+      .select()
+      .from(mandates)
+      .where(
+        and(
+          eq(mandates.operatorAgentId, agentId),
+          eq(mandates.state, "ACTIVE"),
+          isNotNull(mandates.openMandate),
+        ),
+      )
+      .orderBy(desc(mandates.createdAt));
+    return c.json(
+      {
+        mandates: rows.map((m) => ({
+          id: m.id,
+          state: "ACTIVE" as const,
+          currency: m.currency,
+          maxMinor: Number(m.maxMinor),
+          remainingMinor: Number(m.remainingMinor),
+          expiresAt: m.expiresAt.toISOString(),
+          holdMode: m.holdMode,
+          authorizationId: m.paypalAuthorizationId,
+          openMandate: m.openMandate as string,
+        })),
       },
       200,
     );

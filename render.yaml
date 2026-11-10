@@ -94,6 +94,9 @@ services:
       # The shopping agent's browsers, for its one-off runs against this service.
       - key: KERNEL_API_KEY
         sync: false
+      # The private JWK of the shopping agent's cnf key, the one the demo operator links.
+      - key: KEELSON_AGENT_KEY
+        sync: false
       - fromGroup: keelson-secrets
 
   # Dispute evaluation runs as Render Workflows tasks, started by the API with the task slug.
