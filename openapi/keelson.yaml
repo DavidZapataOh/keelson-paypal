@@ -2044,7 +2044,10 @@ components:
           required:
             - chain_id
             - address
-          description: The deployed verifier that accepts the proof in an `eth_call`.
+          description: "The deployed verifier that accepts the proof in an `eth_call`. It
+            checks the proof only: `public_inputs` must also be the
+            countersign's `C_m` and `M`, Keelson's RP ID hash, and a root `GET
+            /v1/user-set/roots/{root}` lists."
       required:
         - mandate_hash
         - mandate_commitment
@@ -4447,7 +4450,8 @@ paths:
       description: "Whether `root` is, or was, the root of Keelson's registered-user
         tree: the Poseidon2 Merkle tree of every registered passkey's
         `user_key_hash`. A C3 proof under any root listed here was made by a
-        registered user."
+        registered user, who is hidden among the `size` users of that root.
+        Roots stay valid after a passkey is removed."
       parameters:
         - schema:
             type: string

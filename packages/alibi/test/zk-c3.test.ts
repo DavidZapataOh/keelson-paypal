@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { toBase64 } from "../src/b64.ts";
-import { c3Statement, RP_ID_HASH, verifyC3 } from "../src/verify/zk.ts";
+import { c3Statement, RP_ID_HASH, verifyAnonymousMandate, verifyC3 } from "../src/verify/zk.ts";
 
 /** Proofs of the demo mandate's C3 statement, as `circuits/c3/prove.sh` writes them. */
 const read = (type: string) =>
@@ -57,5 +57,32 @@ describe("c3Statement", () => {
       }),
     ).toEqual(v.publicInputs);
     expect(v.publicInputs[3]).toBe(RP_ID_HASH);
+  });
+});
+
+describe("verifyAnonymousMandate", () => {
+  const v = read("payment");
+  const s = statement.payment.statement;
+  const c3 = {
+    user_set_root: v.publicInputs[2] as string,
+    proof: b64(v.proof),
+    public_inputs: v.publicInputs,
+  };
+  const mandate = { mandateCommitment: s.cm as string, mandateHash: s.mandateHash as string };
+  const registered = async (root: string) => root === c3.user_set_root;
+
+  test("accepts a registered user's proof of this mandate", async () => {
+    expect(await verifyAnonymousMandate(c3, mandate, registered)).toBe(true);
+  });
+
+  test("refuses an unregistered root, another mandate or another RP", async () => {
+    expect(await verifyAnonymousMandate(c3, mandate, async () => false)).toBe(false);
+    const other = { ...mandate, mandateHash: word(BigInt(mandate.mandateHash) + 1n) };
+    expect(await verifyAnonymousMandate(c3, other, registered)).toBe(false);
+    const rp = [...c3.public_inputs];
+    rp[3] = word(1n);
+    expect(await verifyAnonymousMandate({ ...c3, public_inputs: rp }, mandate, registered)).toBe(
+      false,
+    );
   });
 });

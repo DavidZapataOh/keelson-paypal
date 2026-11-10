@@ -110,10 +110,19 @@ task(
       throw err;
     });
     const { db, kv, log } = await deps;
-    const salt = await kv.get(c3SaltKey(mandateId));
+    const key = c3SaltKey(mandateId);
+    const salt = await kv.get(key);
     if (!salt) return { mandateId, proved: false };
-    await proveAnonymousMandate({ db, log }, mandateId, salt);
-    await kv.del(c3SaltKey(mandateId));
+    try {
+      await proveAnonymousMandate({ db, log }, mandateId, salt);
+    } catch (err) {
+      // An assertion the circuit cannot take never proves: drop the salt now, without retries.
+      if (!(err instanceof RangeError)) throw err;
+      await kv.del(key);
+      log.warn({ err, mandateId }, "C3 cannot prove this mandate");
+      return { mandateId, proved: false };
+    }
+    await kv.del(key);
     return { mandateId, proved: true };
   },
 );

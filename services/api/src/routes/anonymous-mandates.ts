@@ -25,7 +25,8 @@ const AnonymousMandateSchema = z
         '`C_m, M mod r, user_set_root, SHA-256("keelson.finance")`: the calldata of `verify(bytes,bytes32[])`.',
     }),
     verifier: z.object({ chain_id: z.number().int(), address: z.string() }).optional().openapi({
-      description: "The deployed verifier that accepts the proof in an `eth_call`.",
+      description:
+        "The deployed verifier that accepts the proof in an `eth_call`. It checks the proof only: `public_inputs` must also be the countersign's `C_m` and `M`, Keelson's RP ID hash, and a root `GET /v1/user-set/roots/{root}` lists.",
     }),
   })
   .openapi("AnonymousMandate");
@@ -64,7 +65,7 @@ const rootRoute = createRoute({
   tags: ["mandates"],
   summary: "A root of the registered-user tree",
   description:
-    "Whether `root` is, or was, the root of Keelson's registered-user tree: the Poseidon2 Merkle tree of every registered passkey's `user_key_hash`. A C3 proof under any root listed here was made by a registered user.",
+    "Whether `root` is, or was, the root of Keelson's registered-user tree: the Poseidon2 Merkle tree of every registered passkey's `user_key_hash`. A C3 proof under any root listed here was made by a registered user, who is hidden among the `size` users of that root. Roots stay valid after a passkey is removed.",
   request: { params: z.object({ root: Hex32 }) },
   responses: {
     200: { description: "The root", content: { "application/json": { schema: RootSchema } } },

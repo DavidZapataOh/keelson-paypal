@@ -528,7 +528,8 @@ export function registerMandates(
       throw err;
     }
 
-    if (body.salt && deps.proveAnonymousMandate) {
+    // Leg A opened the commitment with this salt; the circuit pins Keelson's RP ID.
+    if (issued && rpId === RP_ID && deps.proveAnonymousMandate) {
       const salt = body.salt as string;
       void deps
         .proveAnonymousMandate(m.mid, salt)

@@ -31,9 +31,9 @@ pub struct Opening {
 
 /// A WebAuthn assertion (`webauthn.get`) or a Secure Payment Confirmation one (`payment.get`).
 pub struct Assertion {
-    /// `r ‖ s`, with `s` in the lower half of the order.
+    /// `r ‖ s`; the secp256r1 black box accepts only `s` in the lower half of the order.
     signature: [u8; 64],
-    /// `rpIdHash (32) ‖ flags (1) ‖ signCount (4)`.
+    /// `rpIdHash (32) ‖ flags (1) ‖ signCount (4)`: assertions with extension data are not taken.
     authenticator_data: [u8; 37],
     client_data_json: BoundedVec<u8, MAX_CLIENT_DATA>,
     /// Byte offset of `"challenge":"` in `client_data_json`.
@@ -82,11 +82,13 @@ fn mandate_challenge(h_sd: [u8; 32], c_m: Field) -> [u8; 32] {
     sha256::digest(input)
 }
 
-/// Whether `json[at..]` starts with `expected`.
+/// Whether `json[at..]` starts with `expected`. Reads past the buffer are not made.
 fn has_at<let N: u32>(json: BoundedVec<u8, MAX_CLIENT_DATA>, at: u32, expected: [u8; N]) -> bool {
     let mut found = at + N <= json.len();
     for i in 0..N {
-        found &= json.storage()[at + i] == expected[i];
+        if found {
+            found = json.storage()[at + i] == expected[i];
+        }
     }
     found
 }

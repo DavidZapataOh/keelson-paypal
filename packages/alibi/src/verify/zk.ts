@@ -113,3 +113,31 @@ export function c3Statement(mandate: {
 export function verifyC3(proof: string, publicInputs: readonly string[]): Promise<boolean> {
   return verifyHonk(C3_VERIFICATION_KEY, proof, publicInputs);
 }
+
+/** A C3 proof as `GET /v1/anonymous-mandates/{mandateHash}` serves it. */
+export interface AnonymousMandateProof {
+  user_set_root: string;
+  proof: string;
+  public_inputs: readonly string[];
+}
+
+/**
+ * What a merchant checks of a C3 proof for the countersign it holds: its public inputs are the
+ * countersign's `mandateCommitment` and `mandateHash` and Keelson's RP ID hash, its root is one
+ * `isRegisteredRoot` vouches for (`GET /v1/user-set/roots/{root}`), and it verifies against the
+ * pinned key. The verifier contract alone checks only the last: any key in any tree, for any RP,
+ * proves its own statement.
+ */
+export async function verifyAnonymousMandate(
+  c3: AnonymousMandateProof,
+  mandate: { mandateCommitment: string; mandateHash: string },
+  isRegisteredRoot: (root: string) => Promise<boolean>,
+): Promise<boolean> {
+  const expected = c3Statement({ ...mandate, userSetRoot: c3.user_set_root });
+  return (
+    c3.public_inputs.length === expected.length &&
+    expected.every((x, i) => x === c3.public_inputs[i]) &&
+    (await isRegisteredRoot(c3.user_set_root)) &&
+    verifyC3(c3.proof, c3.public_inputs)
+  );
+}
