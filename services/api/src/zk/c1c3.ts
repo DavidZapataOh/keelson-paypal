@@ -37,7 +37,10 @@ export async function awaitingC3(db: Db, mandateId: string): Promise<string[]> {
   return rows.map((r) => r.id);
 }
 
-/** Whether purchase `purchaseId` has the recursive C1 and C3 proofs a composition needs. */
+/**
+ * Whether purchase `purchaseId` has the recursive C1 and C3 proofs a composition needs.
+ * @internal
+ */
 export async function composable(db: Db, purchaseId: string): Promise<boolean> {
   const [row] = await db
     .select({ c1: purchases.c1Proof, c3: mandates.c3Proof, c1c3: purchases.c1c3Proof })
