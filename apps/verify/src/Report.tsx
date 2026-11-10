@@ -1,5 +1,5 @@
 import type { Check, FieldRow, Report as VerifyReport } from "@keelson/alibi/verify";
-import { CHECKS, STATUS, STEPS } from "./labels.ts";
+import { CHECKS, evidenceOf, STATUS, STEPS } from "./labels.ts";
 
 const TONE = {
   pass: "text-ok",
@@ -69,7 +69,10 @@ function bannerOf(report: VerifyReport | undefined, receipt: boolean): Banner {
           c.status === "undisclosed" ||
           c.status === "absent" ||
           (c.status === "pending" &&
-            (c.id.startsWith("anchor.") || c.id === "timestamps" || c.id === "zk.c1")),
+            (c.id.startsWith("anchor.") ||
+              c.id === "timestamps" ||
+              c.id === "zk.c1" ||
+              c.id === "zk.c3")),
       );
       if (receipt && onlyUndisclosed) {
         const anchored = report.checks.some((c) => c.id === "anchor.root" && c.status === "pass");
@@ -96,6 +99,7 @@ function bannerOf(report: VerifyReport | undefined, receipt: boolean): Banner {
 function Row({ check }: { check: Check }) {
   const s = STATUS[check.status];
   const meta = CHECKS[check.id];
+  const evidence = evidenceOf(check);
   const reason =
     check.status === "undisclosed"
       ? "The mandate's user or the agent operator can share the full Alibi."
@@ -107,6 +111,18 @@ function Row({ check }: { check: Check }) {
         <p className="text-[15px]">{meta.label}</p>
         {reason && <p className="mt-0.5 break-words text-sm text-muted-foreground">{reason}</p>}
         {check.detail?.alert && <p className="mt-0.5 text-sm text-warn">{check.detail.alert}</p>}
+        {evidence.note && <p className="mt-0.5 text-sm text-muted-foreground">{evidence.note}</p>}
+        {evidence.link && (
+          <a
+            className="mt-0.5 inline-block font-mono text-xs text-muted-foreground underline hover:text-graphite"
+            href={evidence.link.href}
+            target="_blank"
+            rel="noopener"
+            data-proof
+          >
+            {evidence.link.label}
+          </a>
+        )}
         {check.blame && check.blame.length > 0 && (
           <p className="mt-1 font-mono text-xs text-vermilion-deep">
             Caused by {check.blame.join(", ")}

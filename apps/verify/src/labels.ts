@@ -1,4 +1,4 @@
-import type { CheckId, CheckStatus } from "@keelson/alibi/verify";
+import type { Check, CheckId, CheckStatus } from "@keelson/alibi/verify";
 
 export const STEPS: Record<number, string> = {
   0: "Format and bindings",
@@ -34,6 +34,7 @@ export const CHECKS: Record<CheckId, { label: string; who: string }> = {
   "anchor.tx": { label: "Anchor transaction", who: "Arbitrum" },
   timestamps: { label: "RFC 3161 timestamps", who: "Timestamp authorities" },
   "zk.c1": { label: "Zero-knowledge proof", who: "Keelson" },
+  "zk.c3": { label: "Signed by a registered user, anonymously", who: "Arbitrum" },
 };
 
 export const STATUS: Record<
@@ -47,3 +48,33 @@ export const STATUS: Record<
   absent: { text: "Not applicable", tone: "mute" },
   unreachable: { text: "Unreachable", tone: "warn" },
 };
+
+const EXPLORERS: Readonly<Record<string, string>> = {
+  "421614": "https://sepolia.arbiscan.io",
+  "42161": "https://arbiscan.io",
+};
+
+/** What a check found that can be checked outside the verifier: a note and an explorer link. */
+export function evidenceOf(check: Check): {
+  note?: string;
+  link?: { href: string; label: string };
+} {
+  const d = check.detail;
+  if (check.id !== "zk.c3" || !d?.root_tx) return {};
+  const explorer = EXPLORERS[d.chain_id ?? ""];
+  return {
+    ...(check.status === "pass" && d.users
+      ? {
+          note: `One of ${Number(d.users).toLocaleString("en-US")} registered users; which one stays private.`,
+        }
+      : {}),
+    ...(explorer
+      ? {
+          link: {
+            href: `${explorer}/tx/${d.root_tx}`,
+            label: `Root published in ${d.root_tx.slice(0, 10)}…${d.root_tx.slice(-4)}`,
+          },
+        }
+      : {}),
+  };
+}

@@ -32,3 +32,8 @@ test("of PYUSD and the Reputation registry only the signed transfer and feedback
     expect(isAllowed("ReputationRegistry", fn)).toBe(false);
   }
 });
+
+test("of RegisteredUserSet only publishing a root is relayable, never revoking one", () => {
+  expect(isAllowed("RegisteredUserSet", "publish")).toBe(true);
+  expect(isAllowed("RegisteredUserSet", "revoke")).toBe(false);
+});
