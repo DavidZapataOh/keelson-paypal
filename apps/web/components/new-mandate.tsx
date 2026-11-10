@@ -8,6 +8,8 @@ import {
   TERMS,
 } from "@keelson/mandate/browser";
 import { Button } from "@keelson/ui/components/button";
+import { Field, FieldDescription, FieldLabel } from "@keelson/ui/components/field";
+import { Textarea } from "@keelson/ui/components/textarea";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useState } from "react";
 import { ApiError, get, post } from "../lib/api";
@@ -128,11 +130,9 @@ export function NewMandate() {
             answers for each part before you sign.
           </p>
         </div>
-        <div className="grid gap-2">
-          <label htmlFor={promptId} className="font-medium text-sm">
-            Your request
-          </label>
-          <textarea
+        <Field>
+          <FieldLabel htmlFor={promptId}>Your request</FieldLabel>
+          <Textarea
             id={promptId}
             required
             rows={4}
@@ -140,8 +140,9 @@ export function NewMandate() {
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             placeholder={EXAMPLE}
-            className="w-full resize-y rounded-lg border border-input bg-background px-4 py-3 text-lg leading-snug placeholder:text-muted-foreground"
+            className="min-h-28 text-lg leading-snug md:text-lg"
           />
+          <FieldDescription>What, how much, which store, by when.</FieldDescription>
           <button
             type="button"
             onClick={() => setPrompt(EXAMPLE)}
@@ -149,7 +150,7 @@ export function NewMandate() {
           >
             Use the example
           </button>
-        </div>
+        </Field>
         <Button
           type="submit"
           size="lg"

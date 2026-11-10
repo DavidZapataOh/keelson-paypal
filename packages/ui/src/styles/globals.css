@@ -38,10 +38,26 @@
 
   --animate-pulse-soft: pulse-soft 1.6s var(--ease-out) infinite;
   --animate-reveal: reveal 200ms var(--ease-out);
+  --animate-draw: draw 320ms var(--ease-out) 80ms both;
+  --animate-pending: pending 2s var(--ease-out) infinite;
 
   @keyframes pulse-soft {
     50% {
       opacity: 0.5;
+    }
+  }
+  @keyframes draw {
+    from {
+      stroke-dashoffset: 1;
+    }
+  }
+  @keyframes pending {
+    0% {
+      box-shadow: 0 0 0 0 rgb(23 24 27 / 0.28);
+    }
+    70%,
+    100% {
+      box-shadow: 0 0 0 6px rgb(23 24 27 / 0);
     }
   }
   @keyframes reveal {

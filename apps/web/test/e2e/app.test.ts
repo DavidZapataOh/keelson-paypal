@@ -110,6 +110,8 @@ describe.each(Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[])("welcome on 
 
   test("plays the story with Rive, one artboard per step", async () => {
     const { context, page } = await visit(kind);
+    // The runtime loads only once the story is on screen.
+    await page.locator("canvas").scrollIntoViewIfNeeded();
     await page.locator("canvas[data-ready=true]").waitFor({ timeout: 15_000 });
     await page.getByRole("button", { name: "Next" }).click();
     await page.getByRole("heading", { name: "Every cart is checked before it pays." }).waitFor();
@@ -122,6 +124,7 @@ test("with reduced motion the story is words only and loads no Rive", async () =
   const { context, page } = await visit("desktop", "/", true);
   const rive: string[] = [];
   page.on("request", (r) => r.url().includes("/rive/") && rive.push(r.url()));
+  await page.locator("canvas").scrollIntoViewIfNeeded();
   await page.getByRole("button", { name: "Next" }).click();
   await page.getByRole("heading", { name: "Every cart is checked before it pays." }).waitFor();
   await page.waitForTimeout(500);
@@ -206,5 +209,17 @@ test("the CSP holds: no violation while the story plays", async () => {
   );
   await page.locator("canvas[data-ready=true]").waitFor({ timeout: 15_000 });
   expect(violations).toEqual([]);
+  await context.close();
+});
+
+test("the first paint is the welcome, before any script or session read", async () => {
+  const html = await readFile(join(out, "index.html"), "utf8");
+  expect(html).toContain("someone answers, and it isn");
+  expect(html).not.toContain("Loading…");
+});
+
+test("mobile pages never scroll sideways", async () => {
+  const { context, page } = await visit("mobile");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await context.close();
 });

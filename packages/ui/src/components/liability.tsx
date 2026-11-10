@@ -99,4 +99,31 @@ function Liability({
   );
 }
 
-export { LIABILITY, Liability, type LiabilityKind, LiabilityMark };
+/** A mandate field as a row: its name, its value and who answers for it. */
+function LiabilityField({
+  name,
+  value,
+  kind,
+  className,
+  ...props
+}: React.ComponentProps<"div"> & { name: string; value?: React.ReactNode; kind: LiabilityKind }) {
+  return (
+    <div
+      data-slot="liability-field"
+      data-kind={kind}
+      className={cn(
+        "flex min-h-11 flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2",
+        className,
+      )}
+      {...props}
+    >
+      <span className="flex min-w-0 items-baseline gap-2">
+        <span className="text-muted-foreground">{name}</span>
+        {value !== undefined && <span className="font-medium">{value}</span>}
+      </span>
+      <Liability kind={kind} />
+    </div>
+  );
+}
+
+export { LIABILITY, Liability, LiabilityField, type LiabilityKind, LiabilityMark };
