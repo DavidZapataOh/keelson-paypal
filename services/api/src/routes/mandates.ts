@@ -2,6 +2,8 @@ import { isDeepStrictEqual } from "node:util";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { fromHex, toHex } from "@keelson/core";
 import {
+  and,
+  asc,
   createQueries,
   desc,
   disputes,
@@ -9,6 +11,7 @@ import {
   inArray,
   mandates,
   passkey,
+  purchaseHolds,
   purchases,
   sql,
   transition,
@@ -167,6 +170,15 @@ const MandatePurchase = z
   })
   .openapi("MandatePurchase");
 
+const PendingPurchaseHold = z
+  .object({
+    requestId: z.string(),
+    orderId: z.string().openapi({ description: "The PayPal order the buyer approves." }),
+    merchant: z.string(),
+    amountMinor: z.string(),
+  })
+  .openapi("PendingPurchaseHold");
+
 const MandateView = z
   .object({
     id: z.string(),
@@ -182,6 +194,10 @@ const MandateView = z
     }),
     purchases: z.array(MandatePurchase).openapi({
       description: `The mandate's latest ${PURCHASES_SHOWN} purchases, newest first.`,
+    }),
+    pendingHolds: z.array(PendingPurchaseHold).openapi({
+      description:
+        "Purchase holds of a several-store mandate still waiting for the buyer's PayPal approval, oldest first. Later changes arrive as `mandate.purchase_hold` events.",
     }),
   })
   .openapi("Mandate");
@@ -595,6 +611,16 @@ export function registerMandates(
                 bought.map((p) => p.id),
               ),
             );
+    const waiting = await db
+      .select({
+        requestId: purchaseHolds.requestId,
+        orderId: purchaseHolds.paypalOrderId,
+        merchant: purchaseHolds.merchantId,
+        amountMinor: purchaseHolds.amountMinor,
+      })
+      .from(purchaseHolds)
+      .where(and(eq(purchaseHolds.mandateId, row.id), eq(purchaseHolds.state, "PENDING")))
+      .orderBy(asc(purchaseHolds.createdAt));
     c.header("Cache-Control", "no-store");
     const card =
       row.payloadSd && row.disclosures
@@ -620,6 +646,7 @@ export function registerMandates(
               .map((d) => ({ id: d.id, state: d.state })),
           };
         }),
+        pendingHolds: waiting.map((h) => ({ ...h, amountMinor: h.amountMinor.toString() })),
       },
       200,
     );
