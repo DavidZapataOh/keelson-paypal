@@ -39,8 +39,9 @@ function betaFraction(a: number, b: number, x: number): number {
   return h;
 }
 
-/** The regularized incomplete beta function `I_x(a, b)` for positive integers `a` and `b`. */
-function betaCdf(x: number, a: number, b: number, lnB: number): number {
+/** The regularized incomplete beta function `I_x(a, b)`, with `lnB = ln B(a, b)`. */
+/** @internal */
+export function betaCdf(x: number, a: number, b: number, lnB: number): number {
   if (x <= 0) return 0;
   if (x >= 1) return 1;
   const front = Math.exp(a * Math.log(x) + b * Math.log1p(-x) - lnB);

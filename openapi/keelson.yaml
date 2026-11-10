@@ -2601,6 +2601,182 @@ components:
           description: Kernel's live view of the agent's browser, opened read-only.
       required:
         - state
+    TrustGrade:
+      type: object
+      properties:
+        v:
+          type: string
+          enum:
+            - keelson.grade/1
+        agentId:
+          type: string
+        grade:
+          type: string
+          enum:
+            - A
+            - B
+            - C
+            - D
+            - F
+          description: "From the one-sided 95 % credible upper bound of the incident rate:
+            A ≤ 1 %, B ≤ 2 %, C ≤ 5 %, D ≤ 10 %, F above."
+        computedAt:
+          type: string
+          format: date-time
+        calibration:
+          type: object
+          properties:
+            id:
+              type: string
+            at:
+              type: string
+              format: date-time
+            campaigns:
+              type: array
+              items:
+                type: string
+              description: The red-team campaigns pooled.
+            mu_ppm:
+              type: integer
+              description: The prior's mean, ASR × escape + amber.
+            kappa:
+              type: number
+              description: The prior's strength, by the method of moments.
+          required:
+            - id
+            - at
+            - campaigns
+            - mu_ppm
+            - kappa
+        evidence:
+          type: object
+          properties:
+            coverages:
+              type: integer
+            incidents:
+              type: object
+              properties:
+                total:
+                  type: integer
+                slashes:
+                  type: integer
+                warranties:
+                  type: integer
+                uncollected:
+                  type: integer
+                pending:
+                  type: integer
+                  description: Verdicts not settled yet.
+              required:
+                - total
+                - slashes
+                - warranties
+                - uncollected
+                - pending
+          required:
+            - coverages
+            - incidents
+        frequency:
+          type: object
+          properties:
+            alpha:
+              type: number
+            beta:
+              type: number
+            credibility_ppm:
+              type: integer
+            mean_ppm:
+              type: integer
+            upper95_ppm:
+              type: integer
+          required:
+            - alpha
+            - beta
+            - credibility_ppm
+            - mean_ppm
+            - upper95_ppm
+        severity:
+          type: object
+          properties:
+            meanMinor:
+              type: integer
+            maxMinor:
+              type: integer
+            lossRatio_ppm:
+              type: integer
+          required:
+            - meanMinor
+            - maxMinor
+            - lossRatio_ppm
+        loss:
+          type: object
+          properties:
+            horizon:
+              type: integer
+            scenarios:
+              type: integer
+            expectedMinor:
+              type: integer
+            var99Minor:
+              type: integer
+            es99Minor:
+              type: integer
+            var995Minor:
+              type: integer
+          required:
+            - horizon
+            - scenarios
+            - expectedMinor
+            - var99Minor
+            - es99Minor
+            - var995Minor
+        premium:
+          type: object
+          properties:
+            bps:
+              type: integer
+              description: Charged on each new coverage, in `lockCoverage`.
+            modelBps:
+              type: integer
+            floorBps:
+              type: integer
+            theta:
+              type: number
+            costOfCapital:
+              type: number
+          required:
+            - bps
+            - modelBps
+            - floorBps
+            - theta
+            - costOfCapital
+        bond:
+          type: object
+          properties:
+            requiredMinor:
+              type: integer
+          required:
+            - requiredMinor
+        computeMs:
+          type: number
+      required:
+        - v
+        - agentId
+        - grade
+        - computedAt
+        - calibration
+        - evidence
+        - frequency
+        - severity
+        - loss
+        - premium
+        - bond
+        - computeMs
+      description: An operator's trust grade, premium and minimum bond. Amounts are US
+        cents. The red-team campaigns set the prior of the incident rate; the
+        operator's covered purchases and the verdicts against them update it in
+        closed form; a seeded Monte Carlo of the aggregate loss over the next 30
+        days prices the premium and the bond.
     Feedback:
       type: object
       properties:
@@ -5186,6 +5362,89 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "422":
           description: Invalid, or not a Kernel live view
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/operators/{agentId}/grade:
+    get:
+      tags:
+        - operators
+      summary: Trust grade, premium and bond of an operator
+      description: Recomputed whenever a coverage or a verdict of the operator, or the
+        nightly calibration, changes it. Public.
+      parameters:
+        - schema:
+            type: string
+            pattern: ^(0|[1-9]\d{0,19})$
+            description: The operator's ERC-8004 agent id, a decimal integer.
+          required: true
+          description: The operator's ERC-8004 agent id, a decimal integer.
+          name: agentId
+          in: path
+      responses:
+        "200":
+          description: The grade
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrustGrade"
+        "404":
+          description: Not a linked operator
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Nothing to price the operator's losses from yet
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: No finished red-team campaign to calibrate from
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/operators/{agentId}/grade/stream:
+    get:
+      tags:
+        - operators
+      summary: Follow an operator's trust grade
+      description: "Server-sent events: a `grade` event with the current grade, and
+        another each time a coverage, a verdict or a calibration changes it.
+        Public."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^(0|[1-9]\d{0,19})$
+            description: The operator's ERC-8004 agent id, a decimal integer.
+          required: true
+          description: The operator's ERC-8004 agent id, a decimal integer.
+          name: agentId
+          in: path
+      responses:
+        "200":
+          description: An event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "404":
+          description: Not a linked operator
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Nothing to price the operator's losses from yet
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: No calibration yet, or too many open streams
           content:
             application/problem+json:
               schema:

@@ -8,7 +8,7 @@ import {
   type SignedAssertion,
   userKeyHash,
 } from "@keelson/chain";
-import { type Db, eq, mandates, purchases } from "@keelson/db";
+import { type Db, eq, mandates, purchases, sql } from "@keelson/db";
 import { decodeMandate, hSd } from "@keelson/mandate";
 import { type Relayer, RelayerError, type TxRecord } from "@keelson/relayer";
 import {
@@ -21,6 +21,7 @@ import {
 } from "viem";
 import { SETTLEMENT } from "../merchants.ts";
 import type { OperatorSigners } from "../operators/signer.ts";
+import { premiumBps } from "../risk.ts";
 import { countersignMessage } from "../tee/coordinator.ts";
 import { countersignOf } from "./leaf.ts";
 import { done, final, type Outcome, retry } from "./outcome.ts";
@@ -29,8 +30,6 @@ const CHAIN_ID = 421614;
 const VAULT = addresses[CHAIN_ID].KeelsonBondVault as Hex;
 /** PYUSD base units per US cent. */
 const PYUSD_PER_MINOR = 10_000n;
-/** The premium paid to the reserve, in basis points of the covered amount. */
-const PREMIUM_BPS = 100n;
 const PENDING_WAIT_MS = 8_000;
 const PARAMS_TTL_MS = 60_000;
 const ACTIVE = 1;
@@ -59,7 +58,23 @@ async function disputeWindow(client: PublicClient): Promise<number> {
   return params.disputeWindow;
 }
 
-const premiumOf = (amount: bigint) => (amount * PREMIUM_BPS + 9_999n) / 10_000n;
+/** The premium paid to the reserve: `bps` of the covered amount, rounded up. */
+const premiumOf = (amount: bigint, bps: number) => (amount * BigInt(bps) + 9_999n) / 10_000n;
+
+/**
+ * The premium of the purchase's coverage, in basis points: the operator's trust grade prices it
+ * on the first attempt, which fixes it on the purchase so that every retry signs the same coverage.
+ */
+async function premiumFor(db: Db, purchaseId: string, agentId: bigint, fixed: number | null) {
+  if (fixed !== null) return fixed;
+  const bps = await premiumBps(db, agentId);
+  const [row] = await db
+    .update(purchases)
+    .set({ premiumBps: sql`coalesce(${purchases.premiumBps}, ${bps})` })
+    .where(eq(purchases.id, purchaseId))
+    .returning({ premiumBps: purchases.premiumBps });
+  return row?.premiumBps ?? bps;
+}
 
 /** The `lockCoverage` relayer key of a purchase. */
 const coverageKey = (coverageId: Hex) => `KeelsonBondVault.lockCoverage:${coverageId}`;
@@ -92,6 +107,7 @@ export async function coverStep(
       payloadSd: mandates.payloadSd,
       disclosures: mandates.disclosures,
       userAuth: mandates.userAuth,
+      premiumBps: purchases.premiumBps,
     })
     .from(purchases)
     .innerJoin(mandates, eq(mandates.id, purchases.mandateId))
@@ -108,12 +124,13 @@ export async function coverStep(
     // The relayer answers a key it already sent with that transaction's record, and takes over
     // a submission whose process died before signing, so every attempt submits.
     const amount = cs.amount * PYUSD_PER_MINOR;
+    const bps = await premiumFor(db, purchaseId, cs.agentId, row.premiumBps);
     const coverage: Coverage = {
       coverageId: cs.requestId,
       agentId: cs.agentId,
       merchant,
       amount,
-      premium: premiumOf(amount),
+      premium: premiumOf(amount, bps),
       // From the countersign rather than the clock, so every attempt signs the same coverage.
       expiresAt: cs.issuedAt + (await disputeWindow(chain.client)),
       mandateHash: cs.mandateHash,

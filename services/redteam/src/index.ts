@@ -7,6 +7,7 @@ export {
   GENESIS,
   type Header,
   type Line,
+  lineHash,
   type Summary,
   summarize,
   type Tally,
@@ -15,5 +16,14 @@ export {
 } from "./ledger.ts";
 export { type CampaignMandateOptions, campaignMandate } from "./mandate.ts";
 export { MUTATOR_MODEL } from "./mutator.ts";
+export {
+  type Exposure,
+  type Grade,
+  grade,
+  HORIZON_DAYS,
+  type Prior,
+  priorOf,
+  type TrustGrade,
+} from "./risk.ts";
 export { type Rate, type Row, type Scoreboard, score } from "./scoreboard.ts";
 export { holdout, TEMPLATES, templateHash } from "./seeds.ts";

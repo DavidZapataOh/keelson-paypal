@@ -2,7 +2,7 @@
 import "./tee/attest.ts";
 import "./telemetry.ts";
 import Anthropic from "@anthropic-ai/sdk";
-import { createDb } from "@keelson/db";
+import { createDb, operators } from "@keelson/db";
 import { task } from "@renderinc/sdk/workflows";
 import { pino } from "pino";
 import { createPublicClient, http } from "viem";
@@ -14,6 +14,7 @@ import { createKv } from "./kv.ts";
 import { relayerFromEnv } from "./onchain/relayer.ts";
 import { createPayPalDeps } from "./paypal.ts";
 import "./redteam.ts";
+import { calibrate, gradeOf } from "./risk.ts";
 import { createTee } from "./tee/config.ts";
 import { c3SaltKey, proveAnonymousMandate } from "./zk/c3.ts";
 
@@ -124,5 +125,41 @@ task(
     }
     await kv.del(key);
     return { mandateId, proved: true };
+  },
+);
+
+/**
+ * Recalibrates the risk model from every finished red-team campaign and the verdicts' loss
+ * ratios, then regrades every linked operator under it. Started nightly.
+ */
+task(
+  { name: "refreshTrustGrades", timeoutSeconds: 600, plan: "flex" },
+  async function refreshTrustGrades() {
+    deps ??= connect().catch((err: unknown) => {
+      deps = undefined;
+      throw err;
+    });
+    const { db } = await deps;
+    const calibration = await calibrate(db);
+    if (!calibration) return { calibrated: false };
+    const linked = await db.select({ agentId: operators.agentId }).from(operators);
+    const grades: { agentId: string; grade: string; premiumBps: number; computeMs: number }[] = [];
+    for (const { agentId } of linked) {
+      const r = await gradeOf(db, agentId);
+      if (r.kind === "graded") {
+        grades.push({
+          agentId: String(agentId),
+          grade: r.grade.grade,
+          premiumBps: r.grade.premium.bps,
+          computeMs: r.grade.computeMs,
+        });
+      }
+    }
+    return {
+      calibrated: true,
+      calibration: calibration.id,
+      campaigns: calibration.prior.campaigns,
+      grades,
+    };
   },
 );

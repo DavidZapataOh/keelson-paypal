@@ -229,8 +229,15 @@
     {
       "idx": 32,
       "version": "7",
-      "when": 1794306511350,
-      "tag": "0032_merchant_wallet",
+      "when": 1794306321613,
+      "tag": "0032_risk_model",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1794307334241,
+      "tag": "0033_merchant_wallet",
       "breakpoints": true
     }
   ]
