@@ -86,6 +86,21 @@ test("keys anonymous callers by Cloudflare's client IP only behind a trusted pro
   expect((await call(viaXff(ip()))).status).toBe(429);
 });
 
+test("keys on CF-Connecting-IP over any X-Forwarded-For chain behind a trusted proxy", async () => {
+  // Cloudflare rejects a request that already carries CF-Connecting-IP (error 1000) and sets it
+  // itself, so behind Render it names the caller even when the forwarded chain is identical.
+  const proxied = build({ anonymousLimit: 1, trustProxy: true });
+  const chain = `${ip()}, ${ip()}, ${ip()}`;
+  const call = (cf: string) =>
+    proxied.request("/v1/test/ping", {
+      headers: { "cf-connecting-ip": cf, "x-forwarded-for": chain },
+    });
+  const first = ip();
+  expect((await call(first)).status).toBe(200);
+  expect((await call(ip())).status).toBe(200);
+  expect((await call(first)).status).toBe(429);
+});
+
 test("shares one bucket for callers whose IP cannot be trusted", async () => {
   // Other suites also hit the shared `unknown` bucket, so compare remaining quota instead of
   // counting from zero: two separate fresh buckets would report the same value.
