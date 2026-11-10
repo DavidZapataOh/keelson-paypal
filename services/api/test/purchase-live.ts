@@ -5,7 +5,7 @@ import { pino } from "pino";
 import { ulid } from "ulid";
 import { bytesToHex, createPublicClient, type Hex, http, type PublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
-import { createApp } from "../src/app.ts";
+import { createApp, type Deps } from "../src/app.ts";
 import { operatorSigners } from "../src/operators/signer.ts";
 import type { PipelineDeps } from "../src/pipeline/drive.ts";
 import { createTee } from "../src/tee/config.ts";
@@ -24,7 +24,9 @@ const DRIVEN = ["COUNTERSIGNED", "LOGGED", "COVERED"];
  * Sepolia through the KMS relayer and the PayPal sandbox, with helpers that open a held mandate
  * and countersign carts on it. `degraded` is the same API with leg B unreachable.
  */
-export async function pipelineHarness() {
+export async function pipelineHarness(
+  extra: Pick<Deps, "auth" | "authenticate" | "compileSources" | "anthropic"> = {},
+) {
   const log = pino({ level: "silent" });
   const tee = createTee(liveEnv(), { a: 10_000, b: 10_000 });
   const degradedTee = createTee(
@@ -50,6 +52,7 @@ export async function pipelineHarness() {
       log,
       appOrigin: "https://app.keelson.finance",
       authenticate: headerPrincipal,
+      ...extra,
       tee: t,
       tlog: tlogConfig,
       relayer,
@@ -141,6 +144,7 @@ export async function pipelineHarness() {
     paypal,
     tlog,
     holds,
+    evidence,
     activeMandate,
     countersign,
     purchase,

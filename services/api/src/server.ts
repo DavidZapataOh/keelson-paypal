@@ -15,6 +15,7 @@ import { startAnchorWatcher } from "./alibi/anchors.ts";
 import { createApp } from "./app.ts";
 import { createAuth } from "./auth.ts";
 import { createChannel3 } from "./channel3/client.ts";
+import { operatorAgent, termsConsent } from "./compile-sources.ts";
 import { type RunDeps, runDispute } from "./disputes/run.ts";
 import { treasuryFromKey } from "./disputes/treasury.ts";
 import { parseEnv } from "./env.ts";
@@ -166,7 +167,16 @@ const app = createApp({
   ...(relayer ? { relayer } : {}),
   ...(env.CHANNEL3_API_KEY ? { channel3: createChannel3(env.CHANNEL3_API_KEY) } : {}),
   ...(env.CHANNEL3_WEBHOOK_SECRET ? { channel3WebhookSecret: env.CHANNEL3_WEBHOOK_SECRET } : {}),
-  ...(tee ? { tee, compileSources: { engine: engineSource } } : {}),
+  ...(tee
+    ? {
+        tee,
+        compileSources: {
+          engine: engineSource,
+          consent: termsConsent,
+          ...(env.DEMO_AGENT_ID ? { agent: operatorAgent(db, env.DEMO_AGENT_ID) } : {}),
+        },
+      }
+    : {}),
   ...(env.KEELSON_EVIDENCE_AGE_IDENTITY
     ? { evidenceIdentity: env.KEELSON_EVIDENCE_AGE_IDENTITY }
     : {}),
