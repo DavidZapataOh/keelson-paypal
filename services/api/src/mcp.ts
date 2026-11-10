@@ -12,6 +12,7 @@ import {
 } from "@modelcontextprotocol/server";
 import { isAPIError } from "better-auth/api";
 import { verifyBearerToken } from "better-auth/oauth2";
+import { bodyLimit } from "hono/body-limit";
 import type { Deps } from "./app.ts";
 import { apiAudience } from "./auth.ts";
 
@@ -102,7 +103,16 @@ export function registerMcp(
     }),
   );
 
-  app.use("/mcp", deps.authenticate, limit);
+  // The largest call, `keelson.submit_evidence`, is about 100 KB.
+  app.use(
+    "/mcp",
+    bodyLimit({
+      maxSize: 1024 * 1024,
+      onError: (c) => c.json({ error: "payload too large" }, 413),
+    }),
+    deps.authenticate,
+    limit,
+  );
   app.all("/mcp", async (c) => {
     const req = c.req.raw;
     const refused =

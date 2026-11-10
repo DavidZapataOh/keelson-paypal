@@ -17,9 +17,18 @@ const env = (name: string) => {
   return value;
 };
 
+const apiUrl = new URL(process.env.KEELSON_API_URL ?? "https://api.keelson.finance");
+// The client secret goes to this origin: only over TLS, or to a server on this machine.
+if (
+  apiUrl.protocol !== "https:" &&
+  !["localhost", "127.0.0.1", "[::1]"].includes(apiUrl.hostname)
+) {
+  throw new Error("KEELSON_API_URL must use https");
+}
+
 const server = createKeelsonServer({
   keelson: apiClient({
-    apiUrl: process.env.KEELSON_API_URL ?? "https://api.keelson.finance",
+    apiUrl: apiUrl.href,
     clientId: env("KEELSON_CLIENT_ID"),
     clientSecret: env("KEELSON_CLIENT_SECRET"),
     scopes: (process.env.KEELSON_SCOPES ?? "countersign:write evidence:write alibis:read").split(

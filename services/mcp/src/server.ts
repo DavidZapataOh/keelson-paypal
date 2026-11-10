@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { type Keelson, quoteCart } from "@keelson/agent/checkout";
 import { type OperatorMandate, operatorMandates } from "@keelson/agent/keelson";
 import { ALIBI_MEDIA_TYPE, type AlibiBundle, decodeAlibi, verifyUrl } from "@keelson/alibi";
-import { type Cart, cartHash, toHex } from "@keelson/core";
+import { type Cart, type CurrencyCode, cartHash, toHex, toPayPalValue } from "@keelson/core";
 import { buildManifest, canonicalBytes, MEDIA_TYPES, type SealedItem } from "@keelson/evidence";
 import { closeMandate } from "@keelson/mandate";
 import { POLICY_SET_HASH, POLICY_SET_SRC } from "@keelson/policy";
@@ -397,7 +397,7 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
           total: { currency: quote.total.currency, minor: quote.total.minor },
           items: items.map((i) => i.type),
         },
-        `Evidence sealed under ${evidenceRoot} for a ${quote.total.display} cart.`,
+        `Evidence sealed under ${evidenceRoot} for a cart of ${quote.total.minor} ${quote.total.currency} minor units.`,
       );
     },
   );
@@ -436,8 +436,8 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
           );
         }
         const requestId = ulid();
-        const total = cart.lines.reduce((sum, l) => sum + l.qty * l.unit_minor, 0);
-        const value = (total / 100).toFixed(2);
+        const total = cart.lines.reduce((sum, l) => sum + BigInt(l.qty) * BigInt(l.unit_minor), 0n);
+        const value = toPayPalValue({ currency: cart.currency as CurrencyCode, minor: total });
         const res = await call(
           keelson,
           "/v1/countersign",
