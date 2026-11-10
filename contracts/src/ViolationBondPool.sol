@@ -26,7 +26,7 @@ interface IPoolVault {
 /// @notice A PYUSD deposit an operator posts, per ERC-8004 `agentId`, next to its `KeelsonBondVault` bond, which pays
 /// the merchant of a coverage as soon as a listed court holds a conviction for it: no TEE and no Keelson signature in
 /// the payout. Each coverage is paid once: what its amount has left after the vault's slashes and the reserve's
-/// warranties, capped by the operator's deposit, to the merchant's payout address in the vault, or the merchant.
+/// warranties, paid in full from the operator's deposit or not at all, to the merchant's payout address in the vault, or the merchant.
 /// Withdrawals wait longer than the vault's own withdrawal delay, must then complete within `completionWindow`, and
 /// what is waiting stays payable until it leaves. Courts are listed by the admin (the timelock); delisting one keeps
 /// paying the convictions it recorded before. The payout path itself has no role.
@@ -94,6 +94,7 @@ contract ViolationBondPool is AccessManaged, ReentrancyGuardTransient {
     error ConvictedTooLate();
     error NoDeposit();
     error DelayTooShort();
+    error InvalidWindow();
     /// @notice The coverage's amount was already paid by the vault, the reserve or the pool.
     error NothingLeft();
 
@@ -107,6 +108,8 @@ contract ViolationBondPool is AccessManaged, ReentrancyGuardTransient {
         address[] memory courts_
     ) AccessManaged(authority) {
         if (withdrawalDelay_ <= vault_.params().withdrawalDelay) revert DelayTooShort();
+        // A request that can be completed for long could race every payout in its window.
+        if (completionWindow_ == 0 || completionWindow_ > withdrawalDelay_ / 4) revert InvalidWindow();
         pyusd = pyusd_;
         vault = vault_;
         identity = identity_;
@@ -171,9 +174,9 @@ contract ViolationBondPool is AccessManaged, ReentrancyGuardTransient {
         uint256 taken = uint256(vault.slashed(c.coverageId)) + IKeelsonReserve(vault.reserve()).warranted(c.coverageId);
         if (taken >= c.amount) revert NothingLeft();
         Deposit storage d = _deposits[c.agentId];
-        uint256 left = c.amount - taken;
-        uint128 amount = left < d.balance ? left.toUint128() : d.balance;
-        if (amount == 0) revert NoDeposit();
+        // All of what the coverage has left, or nothing: a smaller deposit leaves the coverage to the vault's slash.
+        uint128 amount = (c.amount - taken).toUint128();
+        if (d.balance < amount) revert NoDeposit();
 
         paid[c.coverageId] = true;
         d.balance -= amount;

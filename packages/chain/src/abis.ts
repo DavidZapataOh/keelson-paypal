@@ -5986,6 +5986,7 @@ export const violationBondPoolAbi = [
   { type: "error", name: "ConvictedTooLate", inputs: [] },
   { type: "error", name: "DelayTooShort", inputs: [] },
   { type: "error", name: "ExceedsDeposit", inputs: [] },
+  { type: "error", name: "InvalidWindow", inputs: [] },
   { type: "error", name: "NoDeposit", inputs: [] },
   { type: "error", name: "NotAgentAuthority", inputs: [] },
   { type: "error", name: "NotConvicted", inputs: [] },

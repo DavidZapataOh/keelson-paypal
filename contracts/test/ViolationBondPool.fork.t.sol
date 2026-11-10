@@ -56,12 +56,13 @@ contract ViolationBondPoolForkTest is ViolationBase {
         GasBudget.check("pool_payViolation", gas);
     }
 
-    function test_payout_isCappedByTheDeposit() public {
+    /// @dev A deposit short of the coverage pays nothing, so a token payout cannot stand in for the vault's slash.
+    function test_shortDeposit_paysNothing() public {
         Case memory k = _convicted("amount", court.AMOUNT_OVER_MAX());
-        _withdrawAllBut(k.coverage.amount / 2);
+        _withdrawAllBut(k.coverage.amount - 1);
+        vm.expectRevert(ViolationBondPool.NoDeposit.selector);
         pool.payViolation(address(court), k.coverage);
-        assertEq(pyusd.balanceOf(merchant), k.coverage.amount / 2);
-        assertEq(pool.deposits(agentId).balance, 0);
+        assertFalse(pool.paid(k.coverage.coverageId));
     }
 
     function test_payout_goesToTheMerchantsPayoutAddress() public {
@@ -175,6 +176,16 @@ contract ViolationBondPoolForkTest is ViolationBase {
             IERC8004Identity(address(_identity())),
             address(this),
             vaultDelay,
+            vaultDelay / 6,
+            courts
+        );
+        vm.expectRevert(ViolationBondPool.InvalidWindow.selector);
+        new ViolationBondPool(
+            IPYUSD(address(pyusd)),
+            IPoolVault(address(vault)),
+            IERC8004Identity(address(_identity())),
+            address(this),
+            2 * vaultDelay,
             vaultDelay,
             courts
         );
