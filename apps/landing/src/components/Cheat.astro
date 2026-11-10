@@ -1,0 +1,225 @@
+---
+import { appUrl, demoAlibi, repoUrl, verifyUrl } from "../config";
+
+const embed = `${verifyUrl}/a/${demoAlibi.link.replace("#", "?embed#")}`;
+const full = `${verifyUrl}/a/${demoAlibi.link}`;
+---
+
+<section class="section cheat" id="cheat" aria-labelledby="cheat-title">
+  <div class="wrap grid">
+    <div class="lede">
+      <p class="eyebrow mono">Live · no sign-in</p>
+      <h2 id="cheat-title">Now cheat on a <span class="hl">real one.</span></h2>
+      <p class="sub">
+        This is the public receipt of a purchase an agent made through Keelson on the PayPal
+        sandbox. Swap the cart, blame another agent or fake the on-chain anchor. Your browser
+        re-runs every check against the public log and Arbitrum, and names the field that broke.
+      </p>
+      <dl class="facts mono">
+        <div><dt>Alibi</dt><dd>{demoAlibi.id}</dd></div>
+        <div><dt>Log</dt><dd>log.keelson.finance/alibi/2026-1</dd></div>
+        <div><dt>Anchor</dt><dd>Arbitrum Sepolia · block {demoAlibi.block}</dd></div>
+      </dl>
+      <a class="link" href={full}>Open it in the full verifier</a>
+    </div>
+
+    <figure class="window">
+      <div class="bar mono" aria-hidden="true">
+        <i></i><i></i><i></i>
+        <span>verify.keelson.finance</span>
+      </div>
+      <iframe
+        src={embed}
+        title="Alibi verifier: try to cheat on a real Alibi"
+        loading="lazy"
+        sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+        referrerpolicy="no-referrer"></iframe>
+      <figcaption class="mono">Live: the receipt from the API, the public log and Arbitrum Sepolia.</figcaption>
+    </figure>
+  </div>
+
+  <div class="wrap">
+    <aside class="judges" aria-labelledby="judges-title">
+      <h3 id="judges-title">Judging Keelson?</h3>
+      <p>
+        Everything runs on the PayPal sandbox and Arbitrum Sepolia, so no real money moves. Sign in
+        to the app with a passkey and sign a mandate; every purchase made under it carries an
+        Alibi you can check in the verifier.
+      </p>
+      <div class="actions">
+        <a class="btn btn-dark" href={appUrl}>
+          Open the app
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 12 12 4M5.5 4H12v6.5" /></svg>
+        </a>
+        <a class="link" href={verifyUrl}>Verify an Alibi</a>
+        <a class="link" href={repoUrl}>Read the code</a>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<style>
+  .grid {
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    gap: clamp(40px, 6vw, 96px);
+    align-items: start;
+  }
+
+  .lede {
+    position: sticky;
+    top: calc(var(--header-h) + 32px);
+  }
+
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-2);
+  }
+
+  .eyebrow::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #4fbf8f;
+  }
+
+  h2 {
+    margin-top: 20px;
+    font-size: clamp(2.5rem, 5.4vw, 5rem);
+  }
+
+  .sub {
+    margin-top: 28px;
+    max-width: 40ch;
+    font-size: 1.15rem;
+    line-height: 1.5;
+    color: var(--text-2);
+  }
+
+  .facts {
+    margin: 32px 0 12px;
+    border-top: 1px solid var(--line);
+    font-size: 0.8rem;
+  }
+
+  .facts div {
+    display: grid;
+    grid-template-columns: 8ch minmax(0, 1fr);
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .facts dt {
+    color: var(--text-2);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .facts dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .window {
+    margin: 0;
+    border: 1.5px solid var(--graphite);
+    border-radius: var(--radius-l);
+    background: var(--bone);
+    overflow: hidden;
+  }
+
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 40px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--line);
+    background: var(--bone-2);
+    font-size: 0.75rem;
+    color: var(--text-2);
+  }
+
+  .bar i {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--line);
+  }
+
+  .bar span {
+    margin-left: 12px;
+  }
+
+  iframe {
+    display: block;
+    width: 100%;
+    height: 720px;
+    border: 0;
+    background: var(--bone);
+  }
+
+  figcaption {
+    padding: 12px 16px;
+    border-top: 1px solid var(--line);
+    font-size: 0.75rem;
+    letter-spacing: 0.04em;
+    color: var(--text-2);
+  }
+
+  .judges {
+    display: grid;
+    grid-template-columns: minmax(0, 4fr) minmax(0, 6fr) auto;
+    gap: 20px 48px;
+    align-items: center;
+    margin-top: clamp(64px, 8vw, 112px);
+    padding: clamp(24px, 3vw, 40px);
+    border: 1.5px solid var(--graphite);
+    border-radius: var(--radius-l);
+  }
+
+  .judges h3 {
+    font-size: clamp(1.5rem, 2.4vw, 2.1rem);
+    letter-spacing: -0.02em;
+  }
+
+  .judges p {
+    color: var(--text-2);
+    line-height: 1.5;
+    max-width: 52ch;
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 24px;
+  }
+
+  @media (max-width: 1100px) {
+    .judges {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  @media (max-width: 900px) {
+    .grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .lede {
+      position: static;
+    }
+
+    iframe {
+      height: 760px;
+    }
+  }
+</style>
