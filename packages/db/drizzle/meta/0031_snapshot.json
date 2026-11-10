@@ -1,5 +1,5 @@
 {
-  "id": "62fb4232-0fa4-4bf0-8e9a-06bd863f7c32",
+  "id": "a736d8be-350e-4acb-8f0d-4019896eaa95",
   "prevId": "709f3e66-c992-46df-9715-17003de2c4a5",
   "version": "7",
   "dialect": "postgresql",
@@ -3155,6 +3155,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "c3_proof": {
+          "name": "c3_proof",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "paypal_order_id": {
           "name": "paypal_order_id",
           "type": "text",
@@ -3245,21 +3251,6 @@
               "expression": "id",
               "isExpression": false,
               "asc": false,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "mandates_operator_agent_id_idx": {
-          "name": "mandates_operator_agent_id_idx",
-          "columns": [
-            {
-              "expression": "operator_agent_id",
-              "isExpression": false,
-              "asc": true,
               "nulls": "last"
             }
           ],
@@ -3898,12 +3889,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "premium_bps": {
-          "name": "premium_bps",
-          "type": "smallint",
-          "primaryKey": false,
-          "notNull": false
-        },
         "lease_until": {
           "name": "lease_until",
           "type": "timestamp with time zone",
@@ -4101,63 +4086,11 @@
           "name": "purchases_paypal_ref_salt_len",
           "value": "octet_length(\"purchases\".\"paypal_ref_salt\") = 32"
         },
-        "purchases_premium_bps_range": {
-          "name": "purchases_premium_bps_range",
-          "value": "\"purchases\".\"premium_bps\" between 0 and 10000"
-        },
         "purchases_capture_seq_range": {
           "name": "purchases_capture_seq_range",
           "value": "\"purchases\".\"capture_seq\" between 1 and 99"
         }
       },
-      "isRLSEnabled": false
-    },
-    "public.risk_calibrations": {
-      "name": "risk_calibrations",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "char(26)",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "body": {
-          "name": "body",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "risk_calibrations_created_at_idx": {
-          "name": "risk_calibrations_created_at_idx",
-          "columns": [
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.tee_signatures": {
@@ -4485,6 +4418,47 @@
         "timestamps_token_iff_stamped": {
           "name": "timestamps_token_iff_stamped",
           "value": "(\"timestamps\".\"status\" = 'stamped') = (\"timestamps\".\"token\" is not null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.user_set_roots": {
+      "name": "user_set_roots",
+      "schema": "",
+      "columns": {
+        "root": {
+          "name": "root",
+          "type": "bytea",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "size": {
+          "name": "size",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "user_set_roots_root_len": {
+          "name": "user_set_roots_root_len",
+          "value": "octet_length(\"user_set_roots\".\"root\") = 32"
+        },
+        "user_set_roots_size_positive": {
+          "name": "user_set_roots_size_positive",
+          "value": "\"user_set_roots\".\"size\" > 0"
         }
       },
       "isRLSEnabled": false

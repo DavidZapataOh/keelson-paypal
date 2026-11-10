@@ -43,6 +43,11 @@ export const mandates = pgTable(
     openMandate: text(),
     /** The commitment salt, sealed by the TEE to the user and this mandate. */
     sealedSalt: bytea(),
+    /**
+     * The C3 `anonymous_mandate` proof: UltraHonk for the EVM over `C_m, mandate_hash,
+     * user_set_root, rp_id_hash`. A registered user signed this mandate; the proof names no user.
+     */
+    c3Proof: jsonb().$type<{ proof: string; public_inputs: string[] }>(),
     paypalOrderId: text().unique("mandates_paypal_order_id_unique"),
     /** The authorization captures use: the parent, or its reauthorization. */
     paypalAuthorizationId: text().unique("mandates_paypal_authorization_id_unique"),

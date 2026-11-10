@@ -27,6 +27,7 @@ fs_permissions = [
   { access = "read", path = "./lib/nitro-validator/out" },
   { access = "read", path = "./out/MandatePredicateReferenceVerifier.sol" },
   { access = "read", path = "./out/MandateViolationReferenceVerifier.sol" },
+  { access = "read", path = "./out/AnonymousMandateReferenceVerifier.sol" },
 ]
 
 [profile.ci]

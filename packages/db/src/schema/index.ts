@@ -17,4 +17,5 @@ export * from "./purchases.ts";
 export * from "./risk.ts";
 export * from "./tee.ts";
 export * from "./timestamps.ts";
+export * from "./user-set.ts";
 export * from "./verdicts.ts";

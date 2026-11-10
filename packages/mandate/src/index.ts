@@ -6,6 +6,18 @@
  *
  * @packageDocumentation
  */
+
+export {
+  C3_MAX_CLIENT_DATA,
+  type C3Assertion,
+  type C3Inputs,
+  type C3Statement,
+  c3Inputs,
+  USER_SET_DEPTH,
+  type UserSet,
+  userPath,
+  userSet,
+} from "./c3.ts";
 export {
   type Answerer,
   CATEGORY_LABELS,
@@ -28,10 +40,12 @@ export {
 export {
   categoryMask,
   type LeafPreimage,
+  type MandateOpening,
   MERCHANT_TREE_CAPACITY,
   type MembershipProof,
   type MerchantTree,
   mandateCommitment,
+  mandateOpening,
   merchantLeaf,
   merchantMembership,
   merchantNonMembership,

@@ -89,6 +89,8 @@ jobs:
               - engine/tee/zk/**
               - contracts/src/verifiers/**
               - packages/alibi/src/verify/c1-vk.ts
+              - packages/alibi/src/verify/c3-vk.ts
+              - services/api/zk/**
 
   node:
     needs: changes
@@ -718,3 +720,15 @@ jobs:
             circuits/c2a/prove.sh "$class" "$RUNNER_TEMP/c2a-$class.json"
           done
           bb gates -b circuits/c2a/target/mandate_violation.json | tee -a "$GITHUB_STEP_SUMMARY"
+      - run: nargo test
+        working-directory: circuits/c3
+      - name: The C3 program, key and Solidity verifiers are what the circuit compiles to
+        run: |
+          circuits/c3/build.sh
+          git diff --exit-code circuits/c3/anonymous_mandate.vk contracts/src/verifiers services/api/zk packages/alibi/src/verify/c3-vk.ts
+      - name: bb proves and verifies a passkey assertion of each type
+        run: |
+          for type in payment webauthn; do
+            circuits/c3/prove.sh "$type" "$RUNNER_TEMP/c3-$type.json"
+          done
+          bb gates -b circuits/c3/target/anonymous_mandate.json | tee -a "$GITHUB_STEP_SUMMARY"

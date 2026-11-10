@@ -4,6 +4,7 @@ import { type Hex, hexToBytes, numberToHex } from "viem";
 import { fromBase64 } from "../b64.ts";
 import type { AlibiBundle } from "../schema.ts";
 import { C1_VERIFICATION_KEY } from "./c1-vk.ts";
+import { C3_VERIFICATION_KEY } from "./c3-vk.ts";
 
 /** The generator, the first point of the Aztec Ignition CRS (`crs.aztec.network/g1.dat`). */
 const G1 = `0x${"0".repeat(63)}1${"0".repeat(63)}2` as const;
@@ -50,8 +51,12 @@ export function c1Statement(c: AlibiBundle["tee"]["countersign"]): Hex[] {
   ];
 }
 
-/** Verifies a C1 proof (UltraHonk, keccak transcript, ZK) against the pinned verification key. */
-export async function verifyC1(proof: string, publicInputs: readonly string[]): Promise<boolean> {
+/** Verifies an UltraHonk proof (keccak transcript, ZK) against verification key `vk`. */
+async function verifyHonk(
+  vk: string,
+  proof: string,
+  publicInputs: readonly string[],
+): Promise<boolean> {
   const bytes = fromBase64(proof);
   if (bytes.length === 0 || bytes.length % 32 !== 0) return false;
   const fields: Uint8Array[] = [];
@@ -59,7 +64,7 @@ export async function verifyC1(proof: string, publicInputs: readonly string[]): 
   const bb = await barretenberg();
   try {
     return bb.circuitVerify({
-      verificationKey: fromBase64(C1_VERIFICATION_KEY),
+      verificationKey: fromBase64(vk),
       publicInputs: publicInputs.map((p) => hexToBytes(p as Hex)),
       proof: fields,
       settings: {
@@ -73,4 +78,66 @@ export async function verifyC1(proof: string, publicInputs: readonly string[]): 
     // bb rejects a proof of the wrong shape by throwing.
     return false;
   }
+}
+
+/** Verifies a C1 proof against the pinned verification key. */
+export function verifyC1(proof: string, publicInputs: readonly string[]): Promise<boolean> {
+  return verifyHonk(C1_VERIFICATION_KEY, proof, publicInputs);
+}
+
+/** `SHA-256("keelson.finance")`, the RP ID hash every Keelson passkey assertion names. */
+export const RP_ID_HASH = "0x1071caa839ec25d37b233c1d4b37fd3a9d1b0a09830e137e452105c07d6fc4f7";
+
+/**
+ * The public inputs C3 must carry for a mandate: `C_m, mandate_hash, user_set_root, rp_id_hash`,
+ * with the passkey challenge `mandateHash` reduced modulo the field and the RP ID Keelson's.
+ */
+export function c3Statement(mandate: {
+  mandateCommitment: string;
+  mandateHash: string;
+  userSetRoot: string;
+}): Hex[] {
+  return [
+    word(BigInt(mandate.mandateCommitment)),
+    word(BigInt(mandate.mandateHash) % BN254_FR_MODULUS),
+    word(BigInt(mandate.userSetRoot)),
+    RP_ID_HASH,
+  ];
+}
+
+/**
+ * Verifies a C3 `anonymous_mandate` proof against the pinned verification key: a passkey in the
+ * registered-user tree `public_inputs[2]` signed the mandate `public_inputs[1]` with commitment
+ * `public_inputs[0]`. Which passkey is not in the proof.
+ */
+export function verifyC3(proof: string, publicInputs: readonly string[]): Promise<boolean> {
+  return verifyHonk(C3_VERIFICATION_KEY, proof, publicInputs);
+}
+
+/** A C3 proof as `GET /v1/anonymous-mandates/{mandateHash}` serves it. */
+export interface AnonymousMandateProof {
+  user_set_root: string;
+  proof: string;
+  public_inputs: readonly string[];
+}
+
+/**
+ * What a merchant checks of a C3 proof for the countersign it holds: its public inputs are the
+ * countersign's `mandateCommitment` and `mandateHash` and Keelson's RP ID hash, its root is one
+ * `isRegisteredRoot` vouches for (`GET /v1/user-set/roots/{root}`), and it verifies against the
+ * pinned key. The verifier contract alone checks only the last: any key in any tree, for any RP,
+ * proves its own statement.
+ */
+export async function verifyAnonymousMandate(
+  c3: AnonymousMandateProof,
+  mandate: { mandateCommitment: string; mandateHash: string },
+  isRegisteredRoot: (root: string) => Promise<boolean>,
+): Promise<boolean> {
+  const expected = c3Statement({ ...mandate, userSetRoot: c3.user_set_root });
+  return (
+    c3.public_inputs.length === expected.length &&
+    expected.every((x, i) => x === c3.public_inputs[i]) &&
+    (await isRegisteredRoot(c3.user_set_root)) &&
+    verifyC3(c3.proof, c3.public_inputs)
+  );
 }

@@ -16,6 +16,7 @@ import { createPayPalDeps } from "./paypal.ts";
 import "./redteam.ts";
 import { calibrate, gradeOf } from "./risk.ts";
 import { createTee } from "./tee/config.ts";
+import { c3SaltKey, proveAnonymousMandate } from "./zk/c3.ts";
 
 const Env = z.object({
   DATABASE_URL: z.string().min(1),
@@ -89,6 +90,41 @@ task(
       throw err;
     });
     return runDispute(await deps, disputeId, { wait: true });
+  },
+);
+
+/**
+ * Proves C3 for a mandate the API just stored, with the commitment salt the API left in Valkey
+ * for an hour: the salt is never a task argument. The key is deleted once the proof is stored;
+ * without it the mandate keeps no C3 proof.
+ */
+task(
+  {
+    name: "proveAnonymousMandate",
+    retry: { maxRetries: 3, waitDurationMs: 2_000, backoffScaling: 2 },
+    timeoutSeconds: 300,
+    plan: "4c-8g",
+  },
+  async function proveC3(_ctx, mandateId: string) {
+    deps ??= connect().catch((err: unknown) => {
+      deps = undefined;
+      throw err;
+    });
+    const { db, kv, log } = await deps;
+    const key = c3SaltKey(mandateId);
+    const salt = await kv.get(key);
+    if (!salt) return { mandateId, proved: false };
+    try {
+      await proveAnonymousMandate({ db, log }, mandateId, salt);
+    } catch (err) {
+      // An assertion the circuit cannot take never proves: drop the salt now, without retries.
+      if (!(err instanceof RangeError)) throw err;
+      await kv.del(key);
+      log.warn({ err, mandateId }, "C3 cannot prove this mandate");
+      return { mandateId, proved: false };
+    }
+    await kv.del(key);
+    return { mandateId, proved: true };
   },
 );
 
