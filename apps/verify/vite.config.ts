@@ -7,7 +7,7 @@ import { defineConfig, type Plugin } from "vite";
  * bb.js inlines its wasm as a `data:` URL and fetches it, hence `data:` in `connect-src`.
  */
 export const CSP =
-  "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' data: https://api.keelson.finance https://log.keelson.finance https:; img-src 'self' blob: data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors https://keelson.finance";
+  "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' data: https://api.keelson.finance https://log.keelson.finance https:; img-src 'self' blob: data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors https://keelson.finance https://app.keelson.finance";
 
 /**
  * Cedar's package.json lists only its snippets as side-effectful, so the bundler would drop the

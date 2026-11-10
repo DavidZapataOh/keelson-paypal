@@ -42,12 +42,14 @@ import { registerFeedback } from "./routes/feedback.ts";
 import { registerGrades } from "./routes/grades.ts";
 import { registerHealth } from "./routes/health.ts";
 import { registerHold } from "./routes/hold.ts";
+import { registerJudge } from "./routes/judge.ts";
 import { registerMandates } from "./routes/mandates.ts";
 import { registerMerchantAssistant } from "./routes/merchant-assistant.ts";
 import { registerMerchantConsole } from "./routes/merchant-console.ts";
 import { registerMerchantsPayout } from "./routes/merchants-payout.ts";
 import { registerMerchantsSettlement } from "./routes/merchants-settlement.ts";
 import { registerObservations } from "./routes/observations.ts";
+import { registerOperatorConsole } from "./routes/operator-console.ts";
 import { registerOperators } from "./routes/operators.ts";
 import { registerPasskeys } from "./routes/passkeys.ts";
 import { registerPayPalWebhook } from "./routes/paypal-webhook.ts";
@@ -65,8 +67,9 @@ import { registerWebFacts } from "./routes/web-facts.ts";
 import type { TeeConfig } from "./tee/signers.ts";
 import type { StampWorker } from "./timestamps/worker.ts";
 
-/** POST routes that stream their response. */
-const STREAMED_POSTS = /^\/v1\/merchants\/[^/]+\/assistant$/;
+/** POST routes that stream their response, or that read: neither changes anything a retry repeats. */
+const STREAMED_POSTS =
+  /^\/v1\/(merchants\/[^/]+\/assistant|operators\/[^/]+\/(coverages\/rows|grid-query))$/;
 
 /**
  * The public reads the verifier makes: an Alibi's receipt, a leaf's timestamps, a mandate's C3
@@ -190,6 +193,8 @@ export function createApp(deps: Deps): OpenAPIHono {
   const receiptCors = deps.verifyOrigin
     ? cors({ origin: deps.verifyOrigin, allowMethods: ["GET"], allowHeaders: ["accept"] })
     : undefined;
+  // The app's status page reads the dependency report.
+  if (appCors) app.use("/status", appCors);
   if (appCors || receiptCors) {
     app.use("/v1/*", (c, next) => {
       if (
@@ -303,9 +308,11 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerMerchantsSettlement(app, deps);
   registerMerchantConsole(app, deps);
   registerMerchantAssistant(app, deps);
+  registerOperatorConsole(app, deps);
   registerPurchaseTracking(app, deps);
   registerTransactions(app, deps);
   registerRedTeam(app, deps);
+  registerJudge(app, deps);
   app.get("/openapi.json", (c) =>
     c.json(app.getOpenAPI31Document({ openapi: "3.1.0", info: apiInfo })),
   );

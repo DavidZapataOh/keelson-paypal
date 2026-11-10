@@ -15,6 +15,7 @@ import type { Context } from "hono";
 import { ulid } from "ulid";
 import type { Deps } from "../app.ts";
 import { SourceUnavailable } from "../compile-sources.ts";
+import { admitJudgeCompile, isJudge, JUDGE_COMPILES } from "../judge.ts";
 import { passkeyJwk } from "../mandate-signature.ts";
 import { MERCHANTS } from "../merchants.ts";
 import { requireSession } from "../middleware/auth.ts";
@@ -296,6 +297,15 @@ export function registerCompile(
     const userId = (c.get("principal") as Principal).subject;
     const context = await compileContext(c, deps, userId, body);
     if (context instanceof Response) return context;
+    if ((await isJudge(deps.db, userId)) && !(await admitJudgeCompile(deps.kv, userId))) {
+      return problem(
+        c,
+        429,
+        "judge-compiles-spent",
+        "Compiles spent",
+        `A Judge Mode session compiles at most ${JUDGE_COMPILES} mandates.`,
+      );
+    }
 
     const { client, ...system } = context;
     const r = await compileMandate(

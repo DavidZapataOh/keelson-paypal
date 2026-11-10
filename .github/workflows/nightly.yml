@@ -160,3 +160,29 @@ jobs:
           done
           { echo "### Trust grades ($status)"; echo '```json'; jq '.results // .' <<<"$body"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           [[ "$status" =~ ^(completed|succeeded)$ ]]
+
+  judge-reset:
+    # Closes stale Judge Mode tenants on the deployed workflows: on the schedule or by hand.
+    if: github.event_name != 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Run resetJudgeMode on keelson-workflows and wait for it
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: |
+          set -euo pipefail
+          render() { curl -fsS --retry 5 --retry-all-errors -H "Authorization: Bearer $RENDER_API_KEY" "$@"; }
+          run=$(render -X POST -H "content-type: application/json" \
+            -d '{"task": "keelson-workflows/resetJudgeMode", "input": []}' \
+            https://api.render.com/v1/task-runs | jq -r .id)
+          [ -n "$run" ] && [ "$run" != null ]
+          echo "task run $run"
+          deadline=$((SECONDS + 8 * 60))
+          until body=$(render "https://api.render.com/v1/task-runs/$run"); \
+            status=$(jq -r .status <<<"$body"); [[ "$status" =~ ^(completed|succeeded|failed|canceled)$ ]]; do
+            [ "$SECONDS" -lt "$deadline" ] || { echo "task run still $status after 8 minutes"; exit 1; }
+            sleep 10
+          done
+          { echo "### Judge Mode reset ($status)"; echo '```json'; jq '.results // .' <<<"$body"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          [[ "$status" =~ ^(completed|succeeded)$ ]]

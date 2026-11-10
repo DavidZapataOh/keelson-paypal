@@ -10,8 +10,8 @@ export const CSP = [
   "style-src 'self' 'unsafe-inline'",
   "connect-src 'self' data: https://api.keelson.finance https://*.paypal.com https://*.paypalobjects.com",
   "img-src 'self' data: blob: https://*.paypal.com https://*.paypalobjects.com",
-  // Kernel's live view of the agent's browser, on its per-region hosts.
-  "frame-src https://*.paypal.com https://*.kernel.sh",
+  // Kernel's live view of the agent's browser, on its per-region hosts; Judge Mode's verifier.
+  "frame-src https://*.paypal.com https://*.kernel.sh https://verify.keelson.finance",
   "worker-src 'self' blob:",
   "font-src 'self' data:",
   "object-src 'none'",
