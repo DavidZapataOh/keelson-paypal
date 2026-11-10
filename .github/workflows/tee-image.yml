@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - engine/**
+      - '!engine/zkvm/**'
       - packages/attest/**
       - packages/core/**
       - packages/policy/**

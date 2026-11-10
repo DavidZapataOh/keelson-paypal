@@ -1,6 +1,6 @@
 //! The engine: registers mandates and countersigns carts.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fmt;
 use std::sync::{Arc, Condvar, Mutex};
 
@@ -8,25 +8,24 @@ use alloy_primitives::aliases::U40;
 use alloy_primitives::{Address, B256, U256};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use keelson_canon::{Cart, canonicalize, cart_hash};
+use keelson_canon::{canonicalize, cart_hash};
 use keelson_core::eip712::{Countersign, WebFact};
-use keelson_core::{AcirField, Dst, currency_numeric};
+use keelson_core::{AcirField, currency_numeric};
 use keelson_mandate::{
-    CATEGORY_IDS, ClosedMandateVerifyOptions, Expected, Fr, Jwk, OpenMandateParams,
-    OpenMandateVerifyOptions, PasskeyCredential, RP_ID, USER_CREDENTIAL_TYP, UserAuth,
-    UserCredentialParams, WebAuthnError, decode_mandate, h_sd, issue_open_mandate,
-    issue_user_credential, mandate_challenge, mandate_commitment, mandate_opening, merchant_leaf,
-    merchant_membership, spc_details, verify_assertion, verify_closed_mandate, verify_credential,
+    ClosedMandateVerifyOptions, Expected, Fr, Jwk, OpenMandateParams, OpenMandateVerifyOptions,
+    PasskeyCredential, RP_ID, USER_CREDENTIAL_TYP, UserAuth, UserCredentialParams, WebAuthnError,
+    decode_mandate, h_sd, issue_open_mandate, issue_user_credential, mandate_challenge,
+    mandate_commitment, mandate_opening, merchant_leaf, merchant_membership, spc_details,
+    verify_assertion, verify_closed_mandate, verify_credential,
 };
 use keelson_policy::{
-    Decision, EngineMeta, EvalInput, TRACE_VERSION, Trace, VerdictError, VerdictInput, agent_uid,
-    evaluate, policy_set_hash, policy_set_hash_tag, schema_hash_tag, trace_jcs,
+    Decision, EngineMeta, EvalInput, VerdictError, VerdictInput, agent_uid, cart_trace, category,
+    deny_trace, eval_hash, policy_set_hash, trace_jcs,
 };
 use p256::ecdsa::SigningKey;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use time::macros::format_description;
-use time::{Duration, OffsetDateTime, UtcOffset};
+use time::{Duration, OffsetDateTime};
 
 use crate::budget::{Budget, Claimed, Replay};
 use crate::checkpoint::{CheckpointError, verify_checkpoint};
@@ -61,8 +60,6 @@ const MAX_SKEW_SEC: i64 = 60;
 /// How far ahead of this leg's clock leg A's observation may be. It may be older by up to
 /// `MAX_SKEW_SEC`: leg A answers a retry with the observation it recorded on the first try.
 const MAX_OBSERVATION_AHEAD_MS: i64 = 2_000;
-/// `category` of a cart with no single category in `CATEGORY_IDS`.
-const NO_CATEGORY: u8 = 255;
 
 /// Longest `sub`, in bytes; the mandate schema's limit for `user.sub`.
 const MAX_SUB: usize = 128;
@@ -744,45 +741,34 @@ impl Engine {
                 None if warming_up => claim.left(budget_max, captured, captured_by, now).min(0),
                 None => claim.left(budget_max, captured, captured_by, now),
             };
-            let (trace, canon) = match &context {
+            let trace = match &context {
                 Ok(_) if denied.is_some() => {
                     let reason = denied.map_or("", PayPalDeny::as_str);
-                    (
-                        self.deny_trace(reason, now, &a.mandate_hash, &cart_hash),
-                        None,
-                    )
+                    deny_trace(reason, now, &a.mandate_hash, &cart_hash, &self.meta)
                 }
-                Ok(context) => {
-                    let input = EvalInput {
+                // The KB-JWT signer is the mandate's `cnf`, so the mandate's agent is the
+                // authenticated requester.
+                _ => cart_trace(
+                    &context,
+                    |context| EvalInput {
                         mandate: m.clone(),
                         budget_left_minor: budget_left,
-                        // The KB-JWT signer is the mandate's `cnf`, so the mandate's agent is
-                        // the authenticated requester.
                         agent: agent.clone(),
-                        context: context.clone(),
+                        context,
                         now,
                         evidence: r.evidence.clone(),
                         mandate_hash: a.mandate_hash,
                         cart_hash,
-                    };
-                    (evaluate(&input, &self.meta), None)
-                }
-                Err(deny) => {
-                    let reason = serde_json::to_value(deny).expect("Deny serializes to a string");
-                    let reason = format!("canon.{}", reason.as_str().unwrap_or_default());
-                    (
-                        self.deny_trace(&reason, now, &a.mandate_hash, &cart_hash),
-                        Some(*deny),
-                    )
-                }
+                    },
+                    now,
+                    &a.mandate_hash,
+                    &cart_hash,
+                    &self.meta,
+                ),
             };
+            let canon = context.as_ref().err();
             let jcs = trace_jcs(&trace);
-            let eval_hash: [u8; 32] = Sha256::new()
-                .chain_update(Dst::Eval.as_str())
-                .chain_update([0])
-                .chain_update(&jcs)
-                .finalize()
-                .into();
+            let eval_hash = eval_hash(&jcs);
             let allow = trace.decision == Decision::Allow;
             let cedar_errors = canon.is_none() && denied.is_none() && !trace.errors.is_empty();
             let c = Countersign {
@@ -1090,45 +1076,6 @@ impl Engine {
             && key(&v.claims["cred"]["jwk"]).is_some_and(|k| same_key(&k, passkey));
         bound.then_some(()).ok_or_else(rejected)
     }
-
-    /// The trace of a cart denied before any policy ran, for `reason`.
-    fn deny_trace(
-        &self,
-        reason: &str,
-        now: OffsetDateTime,
-        mandate_hash: &[u8; 32],
-        cart_hash: &[u8; 32],
-    ) -> Trace {
-        let meta = &self.meta;
-        Trace {
-            v: TRACE_VERSION.into(),
-            engine: keelson_policy::Engine {
-                cedar_policy: meta.cedar_policy.clone(),
-                lang: meta.lang.clone(),
-                symcc: meta.symcc.clone(),
-                cvc5: meta.cvc5.clone(),
-                oci_digest: meta.oci_digest.clone(),
-                canonicalizer: meta.canonicalizer.clone(),
-            },
-            policy_set_hash: policy_set_hash_tag(),
-            schema_hash: schema_hash_tag(),
-            proof_bundle_hash: meta.proof_bundle_hash.clone(),
-            extras_hash: None,
-            mandate_hash: Hex(*mandate_hash).to_string(),
-            cart_hash: sha256_tag(cart_hash),
-            context: json!({}),
-            decision: Decision::Deny,
-            fired: Vec::new(),
-            fields: Vec::new(),
-            errors: vec![reason.to_owned()],
-            t_tee: now
-                .to_offset(UtcOffset::UTC)
-                .format(format_description!(
-                    "[year]-[month]-[day]T[hour]:[minute]:[second]Z"
-                ))
-                .unwrap_or_default(),
-        }
-    }
 }
 
 fn within(s: &str, max: usize, what: &'static str) -> Result<(), EngineError> {
@@ -1376,19 +1323,6 @@ fn request_digest(r: &CountersignRequest) -> Result<[u8; 32], EngineError> {
         .chain_update(json)
         .finalize()
         .into())
-}
-
-/// The bit index in `CATEGORY_IDS` of the cart's only category, or 255.
-fn category(cart: &Cart) -> u8 {
-    let ids: BTreeSet<&str> = cart.lines.iter().map(|l| l.category.as_str()).collect();
-    match ids.into_iter().collect::<Vec<_>>()[..] {
-        [id] => CATEGORY_IDS
-            .iter()
-            .position(|c| *c == id)
-            .and_then(|i| u8::try_from(i).ok())
-            .unwrap_or(NO_CATEGORY),
-        _ => NO_CATEGORY,
-    }
 }
 
 /// `sha256:<hex>`.

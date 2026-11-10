@@ -1,0 +1,10 @@
+# The SP1 program runs on the zkVM's own toolchain, so it is its own workspace. Its lockfile starts
+# from the engine's, so the program links the same crate versions as the TEE build.
+[workspace]
+members = ["program", "script"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+license = "Apache-2.0"
+publish = false
