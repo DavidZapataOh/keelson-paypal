@@ -93,6 +93,15 @@ export function capturable(paypal: PayPalDeps, row: MandateRow): boolean {
   );
 }
 
+/**
+ * Whether the mandate can hold its budget on Keelson's account: it allows paying that account.
+ * When Keelson cannot also capture for its merchant, the hold only backs the countersign's budget
+ * and the buyer pays each purchase at the store.
+ */
+export function holdable(paypal: PayPalDeps, row: MandateRow): boolean {
+  return row.merchantIds.length === 1 && allowedPayees(row).includes(paypal.merchantId);
+}
+
 /** What PayPal's authorization of the mandate hold must say. */
 export function expectedHold(paypal: PayPalDeps, row: MandateRow): ExpectedHold {
   if (!row.mandateHash) throw new Error(`mandate ${row.id} has no mandate hash`);
