@@ -12,6 +12,8 @@ library KeelsonRoles {
     uint64 internal constant PARAMETERS_ROLE = 2;
     /// @notice Timelock plus an execution delay of at least the withdrawal delay: signer and measurement rotation.
     uint64 internal constant SIGNERS_ROLE = 3;
+    /// @notice Keelson's relayer, no delay: publishes registered-user roots to `RegisteredUserSet`, nothing else.
+    uint64 internal constant PUBLISHER_ROLE = 4;
     /// @notice OpenZeppelin `AccessManager.PUBLIC_ROLE`.
     uint64 internal constant PUBLIC_ROLE = type(uint64).max;
 }

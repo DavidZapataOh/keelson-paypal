@@ -37,5 +37,7 @@
   "pool_payViolation": 160000,
   "c2b_verify": 750000,
   "c2b_slashAmber": 1050000,
-  "c3_verify": 750000
+  "c3_verify": 750000,
+  "userSet_publish": 62000,
+  "userSet_verify": 760000
 }

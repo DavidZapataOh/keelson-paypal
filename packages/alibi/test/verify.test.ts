@@ -47,6 +47,7 @@ describe.each(fixtures.map((f) => [f.id, f] as const))("alibi %s", (_, f) => {
     const anchor = report.checks.find((c) => c.id === "anchor.consistency");
     expect(anchor?.status).toBe(f.anchored ? "pass" : "pending");
     expect(report.checks.find((c) => c.id === "zk.c1")?.status).toBe("absent");
+    expect(report.checks.find((c) => c.id === "zk.c3")?.status).toBe("absent");
   });
 
   test("its receipt verifies what the log publishes and discloses nothing else", async () => {

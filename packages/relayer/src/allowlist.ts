@@ -4,6 +4,7 @@ import {
   keelsonReputationReporterAbi,
   keelsonReserveAbi,
   keelsonValidationRegistryAbi,
+  registeredUserSetAbi,
   verdictVerifierAbi,
   violationBondPoolAbi,
 } from "@keelson/chain";
@@ -12,8 +13,9 @@ import type { ChainId } from "./chains.ts";
 
 /**
  * The calls the relayer pays for: permissionless functions of Keelson's contracts that authenticate their caller
- * by signature or read their own state, PYUSD's EIP-3009 transfer that its signer authorized, and Keelson's own
- * feedback to the ERC-8004 Reputation registry. Nothing else is simulated or signed.
+ * by signature or read their own state, PYUSD's EIP-3009 transfer that its signer authorized, Keelson's own
+ * feedback to the ERC-8004 Reputation registry, and the registered-user roots it publishes as `PUBLISHER_ROLE`.
+ * Nothing else is simulated or signed.
  */
 export const ALLOWLIST = {
   KeelsonBondVault: [
@@ -36,6 +38,7 @@ export const ALLOWLIST = {
   KeelsonValidationRegistry: ["recordCountersign", "recordOutcome"],
   KeelsonReputationReporter: ["rateCoverage"],
   ViolationBondPool: ["payViolation", "claim", "completeWithdrawal"],
+  RegisteredUserSet: ["publish"],
   PYUSD: ["transferWithAuthorization"],
   ReputationRegistry: ["giveFeedback"],
 } as const;
@@ -65,6 +68,7 @@ export const ABIS = {
   KeelsonValidationRegistry: keelsonValidationRegistryAbi,
   KeelsonReputationReporter: keelsonReputationReporterAbi,
   ViolationBondPool: violationBondPoolAbi,
+  RegisteredUserSet: registeredUserSetAbi,
   // PaxosTokenV2's EIP-3009 transfer in its `bytes signature` form.
   PYUSD: parseAbi([
     "function transferWithAuthorization(address from, address to, uint256 value, uint256 validAfter, uint256 validBefore, bytes32 nonce, bytes signature)",

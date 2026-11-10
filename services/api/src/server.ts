@@ -143,7 +143,7 @@ const startDisputeWorkflow =
       }
     : undefined;
 const proveC3 = c3Prover(
-  { db, kv, log },
+  { db, kv, log, relayer },
   render && env.DISPUTE_WORKFLOW ? { render, slug: env.DISPUTE_WORKFLOW } : undefined,
 );
 const paypalEvents = startPayPalEventWorker({ db, kv, log, paypal, startDisputeWorkflow });

@@ -1,6 +1,8 @@
 import type { BarretenbergSync } from "@aztec/bb.js";
+import { deploymentsFor, registeredUserSetAbi } from "@keelson/chain";
 import { BN254_FR_MODULUS } from "@keelson/core/poseidon2";
-import { type Hex, hexToBytes, numberToHex } from "viem";
+import { createPublicClient, type Hex, hexToBytes, http, numberToHex } from "viem";
+import { arbitrumSepolia } from "viem/chains";
 import { fromBase64 } from "../b64.ts";
 import type { AlibiBundle } from "../schema.ts";
 import { C1_VERIFICATION_KEY } from "./c1-vk.ts";
@@ -122,16 +124,40 @@ export interface AnonymousMandateProof {
 }
 
 /**
+ * `RegisteredUserSet.roots(root)` on Arbitrum Sepolia, where Keelson's relayer publishes every
+ * root of the registered-user tree: when it was published and how many users it held, or `null`
+ * when it never was or the Guardian revoked it. The RPC is trusted for this read; `rpc` replaces the chain's public one.
+ */
+export async function registeredUserSetRoot(
+  root: string,
+  opts: { rpc?: string } = {},
+): Promise<{ publishedAt: Date; size: number } | null> {
+  const registry = deploymentsFor(arbitrumSepolia.id).RegisteredUserSet;
+  if (!registry) throw new RangeError("RegisteredUserSet is not deployed");
+  const client = createPublicClient({ chain: arbitrumSepolia, transport: http(opts.rpc) });
+  const [publishedAt, size, revokedAt] = await client.readContract({
+    address: registry,
+    abi: registeredUserSetAbi,
+    functionName: "roots",
+    args: [root as Hex],
+  });
+  return publishedAt === 0n || revokedAt !== 0n
+    ? null
+    : { publishedAt: new Date(Number(publishedAt) * 1000), size };
+}
+
+/**
  * What a merchant checks of a C3 proof for the countersign it holds: its public inputs are the
  * countersign's `mandateCommitment` and `mandateHash` and Keelson's RP ID hash, its root is one
- * `isRegisteredRoot` vouches for (`GET /v1/user-set/roots/{root}`), and it verifies against the
- * pinned key. The verifier contract alone checks only the last: any key in any tree, for any RP,
- * proves its own statement.
+ * `isRegisteredRoot` vouches for (by default, one `RegisteredUserSet` holds on chain), and it
+ * verifies against the pinned key. The verifier contract alone checks only the last: any key in
+ * any tree, for any RP, proves its own statement.
  */
 export async function verifyAnonymousMandate(
   c3: AnonymousMandateProof,
   mandate: { mandateCommitment: string; mandateHash: string },
-  isRegisteredRoot: (root: string) => Promise<boolean>,
+  isRegisteredRoot: (root: string) => Promise<boolean> = async (root) =>
+    (await registeredUserSetRoot(root)) !== null,
 ): Promise<boolean> {
   const expected = c3Statement({ ...mandate, userSetRoot: c3.user_set_root });
   return (
