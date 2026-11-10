@@ -124,6 +124,7 @@ try {
     totalMinor: r.quote.total.minor,
     decision: r.result.body.decision,
     status: r.result.status,
+    problem: r.result.status >= 400 ? r.result.body.type : undefined,
     purchase: r.result.requestId,
     state: p?.state,
     logIndex: p?.logIndex?.toString(),

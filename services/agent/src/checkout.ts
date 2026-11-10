@@ -107,10 +107,10 @@ export async function checkout(o: {
 }): Promise<CheckoutResult> {
   const timings: Record<string, number> = {};
   let t = performance.now();
-  const cartResponse = { cart: o.quote.cart, total: o.quote.total };
   const capture = await captureEvidence(o.session.recorder, {
     product: o.quote.products.length === 1 ? o.quote.products[0] : o.quote.products,
-    cart: cartResponse,
+    // Keelson hashes this item and countersigns only the cart it holds.
+    cart: o.quote.cart,
     llmObservation: o.observation,
     recipient: o.recipient,
   });
