@@ -33,6 +33,7 @@ export interface PipelineDeps {
   chain?: { client: PublicClient } | undefined;
   paypal?: PayPalDeps | undefined;
   tee?: Pick<TeeConfig, "client"> | undefined;
+  proveAnonymousPurchase?: ((purchaseId: string) => Promise<void>) | undefined;
 }
 
 /** What `POST /v1/countersign` and `GET /v1/purchases/{id}` say about a purchase. */

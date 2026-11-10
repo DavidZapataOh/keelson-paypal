@@ -35,10 +35,13 @@ export type { Check, CheckId, CheckStatus, Report, Verdict, VerifyOptions } from
 export { verdictOf } from "./report.ts";
 export {
   type AnonymousMandateProof,
+  c1c3Statement,
   c3Statement,
   RP_ID_HASH,
   registeredUserSetRoot,
   verifyAnonymousMandate,
+  verifyAnonymousPurchase,
+  verifyC1C3,
   verifyC3,
 } from "./zk.ts";
 

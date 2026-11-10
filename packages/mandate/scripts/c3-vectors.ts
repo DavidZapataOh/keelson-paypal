@@ -3,7 +3,8 @@
  * deterministic test passkey, signed through Secure Payment Confirmation and plain WebAuthn with
  * the client data Chromium produced for the captured assertions, and a registered-user set of
  * three. Outputs the circuit's `Prover_payment.toml`, `Prover_webauthn.toml` and Noir test vectors (SPC),
- * and a JSON vector the TypeScript witness builder is checked against.
+ * a JSON vector the TypeScript witness builder is checked against, and C1's
+ * `Prover_anonymous.toml` for a cart of the same mandate, which the composed circuit proves with it.
  */
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -16,6 +17,7 @@ import { mandateCommitment, userKeyHash } from "../src/commitment.ts";
 import { type Mandate, parseMandate } from "../src/schema.ts";
 import { buildSdPayload } from "../src/sd.ts";
 import demo from "../test/fixtures/demo-mandate.json" with { type: "json" };
+import { c1Inputs, c1Toml } from "./c1-inputs.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const circuit = resolve(here, "../../../circuits/c3");
@@ -163,4 +165,9 @@ writeFileSync(
     null,
     2,
   )}\n`,
+);
+
+writeFileSync(
+  resolve(here, "../../../circuits/c1/Prover_anonymous.toml"),
+  c1Toml(await c1Inputs(m, salt)),
 );

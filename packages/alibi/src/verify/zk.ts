@@ -6,6 +6,7 @@ import { arbitrumSepolia } from "viem/chains";
 import { fromBase64 } from "../b64.ts";
 import type { AlibiBundle } from "../schema.ts";
 import { C1_VERIFICATION_KEY } from "./c1-vk.ts";
+import { C1C3_VERIFICATION_KEY } from "./c1c3-vk.ts";
 import { C3_VERIFICATION_KEY } from "./c3-vk.ts";
 
 /** The generator, the first point of the Aztec Ignition CRS (`crs.aztec.network/g1.dat`). */
@@ -165,5 +166,47 @@ export async function verifyAnonymousMandate(
     expected.every((x, i) => x === c3.public_inputs[i]) &&
     (await isRegisteredRoot(c3.user_set_root)) &&
     verifyC3(c3.proof, c3.public_inputs)
+  );
+}
+
+/**
+ * The public inputs the composed `anonymous_purchase` proof must carry for countersign `c`: C1's
+ * statement, then the countersign's `mandateHash` reduced modulo the field and `userSetRoot`.
+ * The RP ID hash is pinned in the circuit.
+ */
+export function c1c3Statement(c: AlibiBundle["tee"]["countersign"], userSetRoot: string): Hex[] {
+  return [
+    ...c1Statement(c),
+    word(BigInt(c.mandateHash) % BN254_FR_MODULUS),
+    word(BigInt(userSetRoot)),
+  ];
+}
+
+/**
+ * Verifies a composed `anonymous_purchase` proof (C1 and C3 verified by recursion) against the
+ * pinned key: the cart satisfies the mandate, and a registered user, the one the mandate's
+ * commitment names, signed it.
+ */
+export function verifyC1C3(proof: string, publicInputs: readonly string[]): Promise<boolean> {
+  return verifyHonk(C1C3_VERIFICATION_KEY, proof, publicInputs);
+}
+
+/**
+ * What a merchant checks of a composed proof for the countersign it holds: its public inputs are
+ * the countersign's, its root is one `isRegisteredRoot` vouches for (by default, one
+ * `RegisteredUserSet` holds on chain), and it verifies.
+ */
+export async function verifyAnonymousPurchase(
+  c1c3: AnonymousMandateProof,
+  countersign: AlibiBundle["tee"]["countersign"],
+  isRegisteredRoot: (root: string) => Promise<boolean> = async (root) =>
+    (await registeredUserSetRoot(root)) !== null,
+): Promise<boolean> {
+  const expected = c1c3Statement(countersign, c1c3.user_set_root);
+  return (
+    c1c3.public_inputs.length === expected.length &&
+    expected.every((x, i) => x === c1c3.public_inputs[i]) &&
+    (await isRegisteredRoot(c1c3.user_set_root)) &&
+    verifyC1C3(c1c3.proof, c1c3.public_inputs)
   );
 }
