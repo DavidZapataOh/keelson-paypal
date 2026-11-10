@@ -13,8 +13,8 @@ import type { Deps } from "../app.ts";
 import { voidAuthorization } from "../hold/maintenance.ts";
 import {
   activateHold,
-  capturable,
   expectedHold,
+  holdable,
   type MandateRow,
   publishHold,
 } from "../hold/state.ts";
@@ -219,13 +219,13 @@ export function registerHold(
     const pending = (orderId: string) => c.json({ orderId, state: "HOLD_PENDING" as const }, 200);
     try {
       if (row.state === "SIGNED") {
-        if (!capturable(paypal, row)) {
+        if (!holdable(paypal, row)) {
           return problem(
             c,
             422,
             "merchant-not-capturable",
             "Merchant not capturable",
-            "Keelson cannot capture for this mandate's merchant.",
+            "The mandate allows no payee Keelson can hold its budget with.",
           );
         }
         const orderId = await createOrder(paypal, row);
