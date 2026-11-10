@@ -7,7 +7,7 @@ import { hexToBytes } from "viem";
 import { createApp } from "../src/app.ts";
 import { createKv } from "../src/kv.ts";
 import { LegClient } from "../src/tee/client.ts";
-import { createTee } from "../src/tee/config.ts";
+import { createTee, VERIFYING_CONTRACT } from "../src/tee/config.ts";
 import { countersign2of2 } from "../src/tee/coordinator.ts";
 import { refreshLeg } from "../src/tee/signers.ts";
 import { EvidenceUploader } from "../test/evidence.ts";
@@ -110,7 +110,7 @@ try {
     kv,
     log: pino({ level: "silent" }),
     tee: { ...tee, client: { a: wrap("a"), b: wrap("b") } },
-    verifyingContract: "0x0000000000000000000000000000000000000000" as const,
+    verifyingContract: VERIFYING_CONTRACT,
   };
 
   const passkey = await SoftwarePasskey.create();
@@ -124,7 +124,8 @@ try {
 
   let denied = 0;
   for (let i = 0; i < SAMPLES; i++) {
-    const req = await request(agent, cheap, ulid());
+    // With the sealed salt, as the API sends it: leg A proves C1 after it answers.
+    const req = { ...(await request(agent, cheap, ulid())), sealed_salt: agent.issued.sealed_salt };
     const started = performance.now();
     const out = await countersign2of2(deps, req, await expectation(agent, req));
     timed.total.push(performance.now() - started);

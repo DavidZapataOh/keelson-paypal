@@ -63,17 +63,25 @@ target_of() {
   esac
 }
 
-# The verifiers are compiled without via-IR (foundry.toml `compilation_restrictions`).
+# The verifiers are compiled without via-IR (foundry.toml `compilation_restrictions`); everything else in this
+# project with the default profile. External roots have a single profile of their own.
 profile_of() {
-  [[ "$1" == Mandate*Verifier ]] && echo "--compilation-profile legacy" || true
+  if [[ "$1" == Mandate*Verifier ]]; then
+    echo "--compilation-profile legacy"
+  elif [[ "$(root_of "$(contract_of "$1")")" == . ]]; then
+    echo "--compilation-profile default"
+  fi
 }
 
+# The libraries' CREATE3 addresses, predicted from the chain's registry.
 libraries_of() {
   [[ "$1" == Mandate*ReferenceVerifier ]] || return 0
   local lib address
   for lib in RelationsLib ZKTranscriptLib; do
-    address=$(forge script script/DeployMandatePredicateVerifier.s.sol --sig "predict(string)" "$1.$lib" 2>/dev/null |
-      grep -oE '0x[0-9a-fA-F]{40}' | tail -1)
+    address=$(forge script script/DeployMandatePredicateVerifier.s.sol --sig "predict(string)" "$1.$lib" \
+      --chain "$2" --json 2>/dev/null | tail -1 | jq -r '.returns["0"].value')
+    [[ "$address" =~ ^0x[0-9a-fA-F]{40}$ && "$address" != 0x0000000000000000000000000000000000000000 ]] ||
+      { echo "no address for $1.$lib on $2" >&2; return 1; }
     echo "--libraries src/verifiers/$1.sol:$lib:$address"
   done
 }
@@ -96,9 +104,10 @@ for chain in "$@"; do
     else
       target=$(target_of "$name")
       args=$(jq -r --arg n "$name" '.constructorArgs[$n]' "$registry")
+      libraries=$(libraries_of "$name" "$chain")
       # Foundry submits the same sources to Sourcify after Etherscan.
       forge verify-contract "$address" "$target" --chain "$chain" --verifier etherscan $(profile_of "$name") \
-        --constructor-args "$args" --root "$(root_of "$(contract_of "$name")")" $(libraries_of "$name") --watch
+        --constructor-args "$args" --root "$(root_of "$(contract_of "$name")")" $libraries --watch
     fi
   done
 done
