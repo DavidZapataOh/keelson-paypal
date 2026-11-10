@@ -62,7 +62,7 @@ export interface MandateView {
 }
 
 /** A purchase of a several-store mandate waiting for the buyer's PayPal approval. */
-export interface PendingHold {
+interface PendingHold {
   requestId: string;
   orderId: string;
   merchant: string;
