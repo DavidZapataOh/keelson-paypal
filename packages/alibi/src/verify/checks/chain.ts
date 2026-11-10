@@ -40,12 +40,21 @@ export function queryOf(input: AlibiBundle | AlibiReceipt, chainId: number): Cha
       : {}),
     anchor,
     verifier,
-    ...(isBundle(input) && input.zk && d.MandatePredicateVerifier
+    ...(isBundle(input) && input.zk?.c1 && d.MandatePredicateVerifier
       ? {
           c1: {
             verifier: d.MandatePredicateVerifier,
             proof: toHex(fromBase64(input.zk.c1.proof)),
             publicInputs: input.zk.c1.public_inputs as Hex[],
+          },
+        }
+      : {}),
+    ...(isBundle(input) && input.zk?.c3 && d.RegisteredUserSet
+      ? {
+          c3: {
+            registry: d.RegisteredUserSet,
+            root: input.zk.c3.public_inputs[2] as Hex,
+            tx: input.zk.c3.root_tx as Hex,
           },
         }
       : {}),

@@ -15,7 +15,7 @@ Sends Keelson's signature-native contract calls on Arbitrum and pays their gas, 
 | Arbitrum Sepolia (421614) | `alias/keelson-relayer-arbitrum-sepolia` | `0xEd4Aa68f4e0c704422894b072deDa99807Fb2915` | `https://sepolia-rollup-sequencer.arbitrum.io/rpc` | 0.01 ETH        | 1 gwei       |
 | Arbitrum One (42161)      | `alias/keelson-relayer-arbitrum-one`     | `0x1f1645054EC4240b9f4BdCc1E14F380Bc827a7c8` | `https://arb1-sequencer.arbitrum.io/rpc`           | 0.0005 ETH      | 0.1 gwei     |
 
-Both keys are `ECC_SECG_P256K1` / `SIGN_VERIFY` in `us-west-2`. The IAM user `keelson-relayer` may only call `kms:GetPublicKey` and `kms:Sign` (with `ECDSA_SHA_256` over a `DIGEST`) on those two keys. The relayer addresses hold no role in any Keelson contract.
+Both keys are `ECC_SECG_P256K1` / `SIGN_VERIFY` in `us-west-2`. The IAM user `keelson-relayer` may only call `kms:GetPublicKey` and `kms:Sign` (with `ECDSA_SHA_256` over a `DIGEST`) on those two keys. The relayer addresses hold one role: `PUBLISHER_ROLE`, which lets them publish registered-user roots to `RegisteredUserSet` and nothing else.
 
 | Variable                                                     | Meaning                                                                    |
 | ------------------------------------------------------------ | -------------------------------------------------------------------------- |
