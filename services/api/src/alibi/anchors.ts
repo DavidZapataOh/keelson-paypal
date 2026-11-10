@@ -16,8 +16,10 @@ import {
   decodeFunctionData,
   type Hex,
   hexToString,
+  isAddressEqual,
   keccak256,
   type PublicClient,
+  parseEventLogs,
   stringToBytes,
 } from "viem";
 import type { LogConfig } from "../log/append.ts";
@@ -89,6 +91,37 @@ async function anchoredAt(
   }
   const found = await deps.kv.hGet(eventsKey(chainId), field);
   return found ? (JSON.parse(found) as Anchored) : undefined;
+}
+
+/**
+ * Records the `CheckpointAnchored` events of an anchor transaction from its receipt, for an anchor
+ * this process asked for: the scan of the chain's logs stays `CONFIRMATIONS` blocks behind its
+ * head, seconds after the receipt. `reanchorAlibi` still checks the transaction's checkpoint.
+ */
+export async function recordAnchor(
+  deps: Pick<AnchorDeps, "kv"> & { chain: { client: PublicClient } },
+  chainId: number,
+  txHash: Hex,
+): Promise<void> {
+  const receipt = await deps.chain.client.waitForTransactionReceipt({ hash: txHash });
+  const contract = addresses[chainId as 421614].CheckpointAnchor as Address;
+  const events = parseEventLogs({
+    abi: checkpointAnchorAbi,
+    eventName: "CheckpointAnchored",
+    logs: receipt.logs.filter((l) => isAddressEqual(l.address, contract)),
+  });
+  for (const e of events) {
+    const value: Anchored = {
+      txHash: e.transactionHash,
+      blockNumber: String(e.blockNumber),
+      root: e.args.root,
+    };
+    await deps.kv.hSet(
+      eventsKey(chainId),
+      `${e.args.origin}:${e.args.size}`,
+      JSON.stringify(value),
+    );
+  }
 }
 
 /** A consistency proof from the log's private listener, as hex nodes. */
