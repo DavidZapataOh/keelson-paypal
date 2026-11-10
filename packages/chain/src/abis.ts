@@ -804,6 +804,16 @@ export const iCheckpointAnchorAbi = [
   { type: "error", name: "UnauthorizedCheckpoint", inputs: [] },
 ] as const;
 
+export const iCoveredVaultAbi = [
+  {
+    type: "function",
+    name: "coverageHash",
+    inputs: [{ name: "coverageId", type: "bytes32", internalType: "bytes32" }],
+    outputs: [{ name: "", type: "bytes32", internalType: "bytes32" }],
+    stateMutability: "view",
+  },
+] as const;
+
 export const iERC8004IdentityAbi = [
   {
     type: "function",
@@ -2062,6 +2072,19 @@ export const iKeelsonValidationRegistryAbi = [
   { type: "error", name: "OutcomeRecorded", inputs: [] },
   { type: "error", name: "UnknownValidation", inputs: [] },
   { type: "error", name: "ValidationExists", inputs: [] },
+] as const;
+
+export const iMandateViolationVerifierAbi = [
+  {
+    type: "function",
+    name: "verify",
+    inputs: [
+      { name: "proof", type: "bytes", internalType: "bytes" },
+      { name: "publicInputs", type: "bytes32[]", internalType: "bytes32[]" },
+    ],
+    outputs: [{ name: "", type: "bool", internalType: "bool" }],
+    stateMutability: "view",
+  },
 ] as const;
 
 export const iNitroValidatorAbi = [
@@ -4487,6 +4510,164 @@ export const keelsonValidationRegistryAbi = [
   },
   { type: "error", name: "UnknownValidation", inputs: [] },
   { type: "error", name: "ValidationExists", inputs: [] },
+] as const;
+
+export const mandateViolationCourtAbi = [
+  {
+    type: "constructor",
+    inputs: [
+      { name: "vault_", type: "address", internalType: "contract ICoveredVault" },
+      { name: "teeVerifier_", type: "address", internalType: "contract IVerdictVerifier" },
+      {
+        name: "proofVerifier_",
+        type: "address",
+        internalType: "contract IMandateViolationVerifier",
+      },
+    ],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "AMOUNT_OVER_MAX",
+    inputs: [],
+    outputs: [{ name: "", type: "uint8", internalType: "uint8" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "CATEGORY_NOT_ALLOWED",
+    inputs: [],
+    outputs: [{ name: "", type: "uint8", internalType: "uint8" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "CURRENCY_MISMATCH",
+    inputs: [],
+    outputs: [{ name: "", type: "uint8", internalType: "uint8" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "MANDATE_EXPIRED",
+    inputs: [],
+    outputs: [{ name: "", type: "uint8", internalType: "uint8" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "MERCHANT_NOT_ALLOWED",
+    inputs: [],
+    outputs: [{ name: "", type: "uint8", internalType: "uint8" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "proofVerifier",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "contract IMandateViolationVerifier" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "proveViolation",
+    inputs: [
+      {
+        name: "c",
+        type: "tuple",
+        internalType: "struct KeelsonTypes.Coverage",
+        components: [
+          { name: "coverageId", type: "bytes32", internalType: "bytes32" },
+          { name: "agentId", type: "uint256", internalType: "uint256" },
+          { name: "merchant", type: "address", internalType: "address" },
+          { name: "amount", type: "uint96", internalType: "uint96" },
+          { name: "premium", type: "uint96", internalType: "uint96" },
+          { name: "expiresAt", type: "uint40", internalType: "uint40" },
+          { name: "mandateHash", type: "bytes32", internalType: "bytes32" },
+          { name: "amberCommitment", type: "bytes32", internalType: "bytes32" },
+          { name: "userKeyHash", type: "bytes32", internalType: "bytes32" },
+        ],
+      },
+      {
+        name: "cs",
+        type: "tuple",
+        internalType: "struct KeelsonTypes.Countersign",
+        components: [
+          { name: "requestId", type: "bytes32", internalType: "bytes32" },
+          { name: "mandateHash", type: "bytes32", internalType: "bytes32" },
+          { name: "mandateCommitment", type: "bytes32", internalType: "bytes32" },
+          { name: "cartHash", type: "bytes32", internalType: "bytes32" },
+          { name: "agentId", type: "uint256", internalType: "uint256" },
+          { name: "merchantId", type: "bytes32", internalType: "bytes32" },
+          { name: "amount", type: "uint64", internalType: "uint64" },
+          { name: "currency", type: "uint16", internalType: "uint16" },
+          { name: "category", type: "uint8", internalType: "uint8" },
+          { name: "evidenceRoot", type: "bytes32", internalType: "bytes32" },
+          { name: "evalHash", type: "bytes32", internalType: "bytes32" },
+          { name: "policySetHash", type: "bytes32", internalType: "bytes32" },
+          { name: "decision", type: "uint8", internalType: "uint8" },
+          { name: "failedFieldsMask", type: "uint32", internalType: "uint32" },
+          { name: "issuedAt", type: "uint40", internalType: "uint40" },
+          { name: "expiresAt", type: "uint40", internalType: "uint40" },
+        ],
+      },
+      { name: "countersigs", type: "bytes", internalType: "bytes" },
+      { name: "violationCode", type: "uint8", internalType: "uint8" },
+      { name: "proof", type: "bytes", internalType: "bytes" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "teeVerifier",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "contract IVerdictVerifier" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "vault",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "contract ICoveredVault" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "violations",
+    inputs: [{ name: "coverageId", type: "bytes32", internalType: "bytes32" }],
+    outputs: [
+      { name: "code", type: "uint8", internalType: "uint8" },
+      { name: "provenAt", type: "uint40", internalType: "uint40" },
+      { name: "countersignDigest", type: "bytes32", internalType: "bytes32" },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "event",
+    name: "MandateViolationProven",
+    inputs: [
+      { name: "coverageId", type: "bytes32", indexed: true, internalType: "bytes32" },
+      { name: "agentId", type: "uint256", indexed: true, internalType: "uint256" },
+      { name: "violationCode", type: "uint8", indexed: false, internalType: "uint8" },
+      { name: "countersignDigest", type: "bytes32", indexed: false, internalType: "bytes32" },
+    ],
+    anonymous: false,
+  },
+  { type: "error", name: "AlreadyProven", inputs: [] },
+  { type: "error", name: "CountersignMismatch", inputs: [] },
+  { type: "error", name: "InvalidCountersignature", inputs: [] },
+  { type: "error", name: "InvalidProof", inputs: [] },
+  { type: "error", name: "NotCovered", inputs: [] },
+  {
+    type: "error",
+    name: "SafeCastOverflowedUintDowncast",
+    inputs: [
+      { name: "bits", type: "uint8", internalType: "uint8" },
+      { name: "value", type: "uint256", internalType: "uint256" },
+    ],
+  },
+  { type: "error", name: "UnknownViolation", inputs: [] },
 ] as const;
 
 export const nitroDocumentAbi = [
