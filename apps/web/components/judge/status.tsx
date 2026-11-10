@@ -28,7 +28,7 @@ export function StatusPage() {
   }, []);
   return (
     <section aria-labelledby="health-title" aria-live="polite" className="grid gap-4">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-2">
         <h2 id="health-title" className="font-semibold text-xl tracking-tight">
           {report
             ? report.status === "ok"
@@ -36,14 +36,12 @@ export function StatusPage() {
               : "Some systems are degraded"
             : "Checking…"}
         </h2>
-        {checked ? (
-          <span className="font-mono text-muted-foreground text-xs">
-            Checked {checked.toLocaleTimeString("en-US")}
-          </span>
-        ) : null}
+        <span className="min-h-4 font-mono text-muted-foreground text-xs">
+          {checked ? `Checked ${checked.toLocaleTimeString("en-US")}` : null}
+        </span>
       </div>
       {error ? <ErrorNotice>{error}</ErrorNotice> : null}
-      {report ? <HealthList report={report} /> : null}
+      {error && !report ? null : <HealthList report={report} />}
     </section>
   );
 }
