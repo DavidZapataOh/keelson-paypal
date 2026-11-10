@@ -348,16 +348,17 @@ async fn countersign(
             });
             tx
         });
-        // A full queue leaves the proof queued; it is then never made and served as none.
         if queue.try_send(id.clone()).is_err() {
             eprintln!("keelson-engine: C1 queue full, request {id} is not proved");
+            engine.engine.forgo_c1(&id);
         }
     }
     Ok(out)
 }
 
-/// ALLOWs waiting for their C1 proof on leg A's prover thread, one proof at a time.
-const C1_QUEUE: usize = 256;
+/// ALLOWs waiting for their C1 proof on leg A's prover thread, one proof at a time: about as many
+/// as it proves within the minute the API waits for a proof.
+const C1_QUEUE: usize = 64;
 /// How often `GET /v1/c1/{request_id}` looks again at a proof still being made.
 const C1_POLL: std::time::Duration = std::time::Duration::from_millis(20);
 

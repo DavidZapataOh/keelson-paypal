@@ -877,12 +877,9 @@ impl Engine {
                 _ => return,
             }
         };
-        // A panic in the prover must not leave the slot proving until it is evicted.
-        let proof = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.prove_job(&job)))
-            .unwrap_or_else(|_| Err("the prover panicked".to_owned()))
-            .map_err(|e| {
-                eprintln!("keelson-engine: no C1 proof for request {request_id}: {e}");
-            });
+        let proof = self.prove_job(&job).map_err(|e| {
+            eprintln!("keelson-engine: no C1 proof for request {request_id}: {e}");
+        });
         let mut guard = self
             .c1
             .slots
@@ -892,6 +889,18 @@ impl Engine {
             *slot = C1Slot::Done(proof.ok());
         }
         self.c1.done.notify_all();
+    }
+
+    /// Gives up proving `request_id`: its proof is served as none.
+    pub fn forgo_c1(&self, request_id: &str) {
+        let mut guard = self
+            .c1
+            .slots
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(slot @ C1Slot::Queued(_)) = guard.0.get_mut(request_id) {
+            *slot = C1Slot::Done(None);
+        }
     }
 
     /// The C1 proof of `request_id`, waiting up to `wait` for one still being proved.
