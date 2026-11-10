@@ -156,6 +156,8 @@ const app = createApp({
   alibiChain: createChainReader(),
   passkeyRpId: env.PASSKEY_RP_ID,
   authenticate: authenticate(auth, env.BETTER_AUTH_URL),
+  authBaseUrl: env.BETTER_AUTH_URL,
+  demoAgentId: env.DEMO_AGENT_ID,
   rateLimit: { trustProxy: process.env.RENDER === "true" },
   shutdown: shutdown.signal,
   stamps,
