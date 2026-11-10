@@ -23,7 +23,7 @@ export type PayAction =
  * pay control anywhere. Once Keelson allowed the cart, those actions go through only on a page
  * whose largest amount is its total. On a checkout page, clicks by coordinate, keys and typed text
  * are refused always, as are saving a payment method, installments and credit. Checkout hosts
- * are written like the browser's allowlist: exact, or `_.example.com` for its subdomains.
+ * are written like the browser's allowlist: exact, or `*.example.com` for its subdomains.
  */
 export class PayGate {
   readonly #checkoutHosts: readonly string[];
@@ -80,7 +80,7 @@ export class PayGate {
     const host = url.hostname;
     return (
       this.#checkoutHosts.some((h) =>
-        h.startsWith("_.") ? host.endsWith(h.slice(1)) : h === host,
+        h.startsWith("*.") ? host.endsWith(h.slice(1)) : h === host,
       ) || CHECKOUT_PATH.test(url.pathname)
     );
   }
