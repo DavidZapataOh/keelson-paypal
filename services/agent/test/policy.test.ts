@@ -26,7 +26,7 @@ describe("the browser's host allowlist", () => {
 });
 
 describe("a wildcard entry, as KERNEL's allowlist writes it", () => {
-  const hosts = ["www.alfred.com", "_.paypal.com"];
+  const hosts = ["www.alfred.com", "*.paypal.com"];
   test.each([
     "https://www.paypal.com/checkoutnow",
     "https://c.paypal.com/x",

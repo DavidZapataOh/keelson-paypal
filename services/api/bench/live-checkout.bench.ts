@@ -101,6 +101,8 @@ try {
     }
     const quote = await quoteShopify(ALFRED, proposal);
     if (quote.total.minor > CEILING_MINOR) throw new Error(`the cart costs ${quote.total.display}`);
+    // The store's scripts can still navigate the page after it loads; capture once it is quiet.
+    await session.page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {});
     const skipped: string[] = [];
     const result = await checkout({
       keelson: h.app,

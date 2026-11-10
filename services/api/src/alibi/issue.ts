@@ -191,7 +191,9 @@ async function c3Of(
           eq(chainTxs.status, "confirmed"),
         ),
       );
-    if (tx?.hash) entry = { ...m.c3Proof, root_tx: toHex(tx.hash) };
+    // The recursive proof feeds the composed proof only; the Alibi carries the EVM one.
+    const { recursive_proof: _, ...c3 } = m.c3Proof;
+    if (tx?.hash) entry = { ...c3, root_tx: toHex(tx.hash) };
   }
   if (entry || m.sealedSalt === null) return entry;
   if (Date.now() - m.createdAt.getTime() < C3_GRACE_MS) {

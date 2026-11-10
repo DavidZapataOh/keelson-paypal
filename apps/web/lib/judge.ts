@@ -75,7 +75,8 @@ export interface Grade {
 }
 
 /** Opens a judge: an anonymous tenant signed in with a session cookie. */
-export const startJudge = () => post<{ user_id: string }>("/v1/judge/sessions");
+export const startJudge = (invite?: string) =>
+  post<{ user_id: string }>("/v1/judge/sessions", invite ? { invite } : undefined);
 export const tour = () => get<Tour>("/v1/judge/tour");
 export const disputeOf = (id: string) => get<DisputeStatus>(`/v1/disputes/${id}`);
 export const gradeOf = (agentId: string) => get<Grade>(`/v1/operators/${agentId}/grade`);
