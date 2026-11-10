@@ -36,6 +36,7 @@ import { registerChannel3Webhook } from "./routes/channel3-webhook.ts";
 import { type CompileSources, registerCompile } from "./routes/compile.ts";
 import { registerCountersign } from "./routes/countersign.ts";
 import { registerDisputes } from "./routes/disputes.ts";
+import { registerEngineProofs } from "./routes/engine-proofs.ts";
 import { registerEvents } from "./routes/events.ts";
 import { registerEvidence } from "./routes/evidence.ts";
 import { registerFeedback } from "./routes/feedback.ts";
@@ -73,10 +74,10 @@ const STREAMED_POSTS =
 
 /**
  * The public reads the verifier makes: an Alibi's receipt, a leaf's timestamps, a mandate's C3
- * proof and the registered-user roots.
+ * proof, a purchase's engine proof and the registered-user roots.
  */
 const PUBLIC_READS =
-  /^\/v1\/(alibis\/[^/]+\/receipt|timestamps\/[^/]+|anonymous-mandates\/[^/]+|anonymous-purchases\/[^/]+|user-set\/roots\/[^/]+)$/;
+  /^\/v1\/(alibis\/[^/]+\/receipt|timestamps\/[^/]+|anonymous-mandates\/[^/]+|anonymous-purchases\/[^/]+|engine-proofs\/[^/]+|user-set\/roots\/[^/]+)$/;
 
 export interface Deps {
   db: Db;
@@ -304,6 +305,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerTimestamps(app, deps);
   registerAlibis(app, deps);
   registerAnonymousMandates(app, deps);
+  registerEngineProofs(app, deps);
   registerDisputes(app, deps);
   registerPasskeys(app, deps);
   registerOperators(app, deps);

@@ -4,7 +4,7 @@ import "./telemetry.ts";
 import Anthropic from "@anthropic-ai/sdk";
 import { serve } from "@hono/node-server";
 import { createChainReader } from "@keelson/alibi/verify";
-import { createDb } from "@keelson/db";
+import { createDb, disputes, eq, purchases } from "@keelson/db";
 import { CertStore } from "@keelson/paypal";
 import { Render } from "@renderinc/sdk";
 import { identityToRecipient } from "age-encryption";
@@ -123,6 +123,25 @@ const disputeRun: RunDeps | undefined =
           : undefined,
       }
     : undefined;
+/** Proves the disputed purchase's engine evaluation in SP1, once per purchase, on the workflow. */
+const startEngineProof = async (disputeId: string) => {
+  if (!render) return;
+  const [row] = await db
+    .select({ purchaseId: disputes.purchaseId, input: purchases.engineInput })
+    .from(disputes)
+    .innerJoin(purchases, eq(purchases.id, disputes.purchaseId))
+    .where(eq(disputes.id, disputeId));
+  if (!row?.input) return;
+  const run = await render.workflows.startTask(
+    `${env.DISPUTE_WORKFLOW}/proveEngine`,
+    [row.purchaseId],
+    { idempotencyKey: `proveEngine:${row.purchaseId}` },
+  );
+  log.info(
+    { disputeId, purchaseId: row.purchaseId, taskRunId: run.taskRunId },
+    "engine proof started",
+  );
+};
 const startDisputeWorkflow =
   render || disputeRun
     ? async (disputeId: string, revision: string) => {
@@ -140,6 +159,9 @@ const startDisputeWorkflow =
             { idempotencyKey: `evaluateDispute:${disputeId}:${revision}` },
           );
           log.info({ disputeId, revision, taskRunId: run.taskRunId }, "dispute workflow started");
+          await startEngineProof(disputeId).catch((err: unknown) =>
+            log.warn({ err, disputeId }, "engine proof not started"),
+          );
         }
       }
     : undefined;

@@ -17,6 +17,7 @@ import { money, when } from "../lib/format";
 import { purchaseStatus } from "../lib/status";
 import type { Dispute, Purchase } from "../lib/types";
 import { useMandate } from "../lib/use-mandate";
+import { EngineProof } from "./engine-proof";
 import { ErrorNotice, Eyebrow } from "./notice";
 
 const PARTY = {
@@ -134,6 +135,7 @@ function DisputeCard({ id }: { id: string }) {
       {d.settlement?.refund_id ? (
         <p className="text-sm">Refund {d.settlement.refund_id} sent to you on PayPal.</p>
       ) : null}
+      <EngineProof purchaseId={d.purchase_id} />
       <p className="text-muted-foreground text-xs">PayPal still decides disputes.</p>
     </div>
   );

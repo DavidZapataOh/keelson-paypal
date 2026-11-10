@@ -25,6 +25,7 @@ import {
   tour as tourOf,
 } from "../../lib/judge";
 import { percent, type Scoreboard, scoreboard } from "../../lib/scoreboard";
+import { EngineProof } from "../engine-proof";
 import { LiabilityLegend, MandateCard } from "../mandate-card";
 import { ErrorNotice, Eyebrow } from "../notice";
 import { EnvironmentTable, HealthList } from "./environment";
@@ -566,6 +567,9 @@ function DisputeStep({ id, part }: { id: string | null; part: "dispute" | "verdi
           </>
         ) : null}
       </DataList>
+      <div className="max-w-xl">
+        <EngineProof purchaseId={d.purchase_id} />
+      </div>
     </div>
   );
 }

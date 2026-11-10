@@ -2337,6 +2337,104 @@ components:
         - root
         - size
         - created_at
+    EngineProof:
+      type: object
+      properties:
+        purchase_id:
+          type: string
+        status:
+          type: string
+          enum:
+            - proven
+            - proving
+          description: "`proving`: the purchase is disputed and its proof is being made.
+            `proven`: the proof is recorded on chain."
+        countersign_eval_hash:
+          type: string
+          pattern: ^0x[0-9a-f]{64}$
+          description: The `evalHash` both TEE legs signed.
+        countersign_digest:
+          type: string
+          pattern: ^0x[0-9a-f]{64}$
+          description: The EIP-712 digest of their countersign.
+        proof:
+          type:
+            - object
+            - "null"
+          properties:
+            eval_hash:
+              type: string
+              pattern: ^0x[0-9a-f]{64}$
+              description: The `evalHash` the engine program computed in the SP1 zkVM.
+            matches:
+              type: boolean
+              description: Whether `eval_hash` is the countersign's and the proof is of its
+                digest.
+            public_values:
+              type: string
+              description: "`abi.encode(evalHash, countersignDigest)`."
+            proof:
+              type: string
+              description: The SP1 Groth16 proof bytes, hex.
+            vkey:
+              type: string
+              pattern: ^0x[0-9a-f]{64}$
+              description: The engine program's SP1 verifying key.
+            sp1_version:
+              type: string
+            cycles:
+              type: integer
+            prove_ms:
+              type: integer
+            proof_bytes:
+              type: integer
+            verifier:
+              type: object
+              properties:
+                chain_id:
+                  type: integer
+                address:
+                  type: string
+              required:
+                - chain_id
+                - address
+              description: The `EngineProofVerifier` that verified the proof through
+                Succinct's SP1 verifier gateway; `verify(public_values, proof)`
+                checks it again in an `eth_call`, `proven(countersign_digest)`
+                returns the recorded `eval_hash`.
+            tx:
+              type: string
+              description: The `EngineProofVerifier.record` transaction.
+            explorer_url:
+              type:
+                - string
+                - "null"
+            gas_used:
+              type: string
+            proven_at:
+              type: string
+              format: date-time
+          required:
+            - eval_hash
+            - matches
+            - public_values
+            - proof
+            - vkey
+            - sp1_version
+            - cycles
+            - prove_ms
+            - proof_bytes
+            - verifier
+            - tx
+            - explorer_url
+            - gas_used
+            - proven_at
+      required:
+        - purchase_id
+        - status
+        - countersign_eval_hash
+        - countersign_digest
+        - proof
     DisputeStatus:
       type: object
       properties:
@@ -6085,6 +6183,37 @@ paths:
                 $ref: "#/components/schemas/UserSetRoot"
         "404":
           description: No such root
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/engine-proofs/{id}:
+    get:
+      tags:
+        - purchases
+      summary: SP1 proof of a purchase's engine evaluation
+      description: For a disputed purchase, an SP1 Groth16 proof that the engine's own
+        canonicalizer and Cedar evaluation, run again in the SP1 zkVM over the
+        purchase's stored inputs, give the `evalHash` both TEE legs signed, and
+        the transaction that verified it on chain through Succinct's SP1
+        verifier gateway. It holds only hashes and the proof, so it needs no
+        authentication.
+      parameters:
+        - schema:
+            type: string
+            pattern: ^[0-9A-HJKMNP-TV-Z]{26}$
+          required: true
+          name: id
+          in: path
+      responses:
+        "200":
+          description: The proof
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EngineProof"
+        "404":
+          description: No dispute over this purchase, or no inputs kept to prove it
           content:
             application/problem+json:
               schema:

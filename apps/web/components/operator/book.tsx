@@ -28,7 +28,7 @@ import {
 } from "ag-grid-enterprise";
 import { AgGridProvider, AgGridReact } from "ag-grid-react";
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ApiError } from "../../lib/api";
+import { ApiError, get } from "../../lib/api";
 import { VERIFY } from "../../lib/config";
 import {
   type CoverageDay,
@@ -39,6 +39,7 @@ import {
   type GridAnswer,
   gridQuery,
 } from "../../lib/operator";
+import type { EngineProofStatus } from "../engine-proof";
 
 const modules = [
   ClientSideRowModelModule,
@@ -394,7 +395,27 @@ function Book({ agentId }: { agentId: string }) {
           ] satisfies ColDef<Event>[],
           defaultColDef: { sortable: false, suppressHeaderMenuButton: true },
         },
-        getDetailRowData: (p) => p.successCallback(eventsOf(p.data)),
+        getDetailRowData: (p) => {
+          const events = eventsOf(p.data);
+          if (!p.data.disputeId) return p.successCallback(events);
+          // A disputed coverage's engine evaluation is proven again in SP1; add it once recorded.
+          get<EngineProofStatus>(`/v1/engine-proofs/${p.data.id}`)
+            .then((e) => {
+              if (e.proof) {
+                events.push({
+                  at: e.proof.proven_at,
+                  actor: "SP1 zkVM, verified on chain",
+                  event: e.proof.matches
+                    ? `Re-proved the engine evaluation: its evalHash matches the one both TEEs signed (Groth16, ${(e.proof.cycles / 1e6).toFixed(1)}M cycles)`
+                    : "The SP1 proof of the engine evaluation does not match the countersign",
+                  proof: e.proof.explorer_url,
+                  proofLabel: "Arbiscan",
+                });
+              }
+            })
+            .catch(() => {})
+            .finally(() => p.successCallback(events));
+        },
       }) satisfies Partial<IDetailCellRendererParams<CoverageRow, Event>>,
     [],
   );

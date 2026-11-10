@@ -13,6 +13,7 @@ import {
   fallback,
   type Hex,
   http,
+  parseAbi,
   parseEventLogs,
   type TransactionReceipt,
 } from "viem";
@@ -287,4 +288,58 @@ export function createChainReader(opts: ChainReaderOptions = {}): ChainReader {
       }
     },
   };
+}
+
+const engineProofVerifierAbi = parseAbi([
+  "function verify(bytes publicValues, bytes proof) view returns (bytes32 evalHash, bytes32 countersignDigest)",
+]);
+
+/** What `EngineProofVerifier.verify` answered for an SP1 proof of a countersign's evaluation. */
+export interface EngineProofAnswer {
+  /** The `evalHash` and countersign digest the proof commits to; null when the proof is rejected. */
+  proven: { evalHash: Hex; countersignDigest: Hex } | null;
+  rpc: string;
+}
+
+/**
+ * Checks an SP1 proof of the engine evaluation with `EngineProofVerifier.verify` in an `eth_call`,
+ * which verifies it through Succinct's SP1 verifier gateway for the engine program's key.
+ */
+export async function verifyEngineProof(
+  chainId: number,
+  verifier: Address,
+  publicValues: Hex,
+  proof: Hex,
+  opts: ChainReaderOptions = {},
+): Promise<EngineProofAnswer> {
+  const known = CHAINS[chainId];
+  if (!known) throw new ChainUnreachableError(`no RPC is known for chain ${chainId}`);
+  const chosen = opts.rpc?.[chainId];
+  const urls = chosen ? [chosen].flat() : known.rpcs;
+  const client = createPublicClient({
+    chain: known.chain,
+    transport: fallback(
+      urls.map((url) =>
+        http(url, {
+          retryCount: 0,
+          timeout: opts.timeoutMs ?? 10_000,
+          ...(opts.fetchFn ? { fetchFn: opts.fetchFn } : {}),
+        }),
+      ),
+    ),
+  });
+  try {
+    const [evalHash, countersignDigest] = await client.readContract({
+      address: verifier,
+      abi: engineProofVerifierAbi,
+      functionName: "verify",
+      args: [publicValues, proof],
+    });
+    return { proven: { evalHash, countersignDigest }, rpc: urls[0] as string };
+  } catch (err) {
+    if ((err as BaseError).walk?.((e) => e instanceof ContractFunctionRevertedError)) {
+      return { proven: null, rpc: urls[0] as string };
+    }
+    throw new ChainUnreachableError((err as Error).message);
+  }
 }

@@ -4,6 +4,7 @@ import { AgIncompleteDataMappingOverlay, AgNoDataOverlay } from "ag-studio-react
 import { use } from "react";
 import { VERIFY } from "../../lib/config";
 import type { MerchantDispute } from "../../lib/merchant";
+import { EngineProof } from "../engine-proof";
 import { LIABLE, OUTCOME, PAID_BY, RAIL } from "./labels";
 
 export interface DisputeDef {
@@ -104,6 +105,7 @@ export function DisputeClock(params: AgWidgetParams<DisputeDef>) {
           </Event>
         ) : null}
       </ol>
+      <EngineProof purchaseId={d.purchase_id} compact />
       <nav aria-label="Checks outside Keelson" className="flex flex-wrap gap-x-4 gap-y-1">
         {d.has_alibi ? (
           <a

@@ -28,6 +28,8 @@ export {
   type ChainReaderOptions,
   ChainUnreachableError,
   createChainReader,
+  type EngineProofAnswer,
+  verifyEngineProof,
 } from "./chain.ts";
 export { collapse, diffPointers, expand, pointers, UNBOUND, valueAt } from "./expand.ts";
 export type { Answers, FieldRow } from "./fields.ts";
