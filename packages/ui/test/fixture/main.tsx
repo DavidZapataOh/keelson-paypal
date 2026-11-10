@@ -3,7 +3,9 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "../../src/components/alert.tsx";
+import { Amount } from "../../src/components/amount.tsx";
 import { Badge } from "../../src/components/badge.tsx";
+import { BlockDiff } from "../../src/components/block-diff.tsx";
 import { Button } from "../../src/components/button.tsx";
 import {
   Card,
@@ -14,6 +16,8 @@ import {
   CardTitle,
 } from "../../src/components/card.tsx";
 import { Checkbox } from "../../src/components/checkbox.tsx";
+import { CopyValue } from "../../src/components/copy-value.tsx";
+import { DataItem, DataList } from "../../src/components/data-list.tsx";
 import {
   Dialog,
   DialogClose,
@@ -45,7 +49,8 @@ import {
   InputGroupInput,
   InputGroupText,
 } from "../../src/components/input-group.tsx";
-import { Liability, LiabilityMark } from "../../src/components/liability.tsx";
+import { Liability, LiabilityField, LiabilityMark } from "../../src/components/liability.tsx";
+import { Meter } from "../../src/components/meter.tsx";
 import { RadioGroup, RadioGroupItem } from "../../src/components/radio-group.tsx";
 import {
   Select,
@@ -77,6 +82,7 @@ import {
 } from "../../src/components/table.tsx";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../src/components/tabs.tsx";
 import { Textarea } from "../../src/components/textarea.tsx";
+import { Timeline, TimelineItem } from "../../src/components/timeline.tsx";
 import "./styles.css";
 
 const fields = [
@@ -181,6 +187,93 @@ function Showcase() {
         <p className="font-mono text-sm text-muted-foreground">
           alibi 01M6W3TTKRC43V70XQAT1QQK6V · leaf 84712997ee424ff5
         </p>
+      </section>
+
+      <section aria-labelledby="alibi" className="grid gap-6 md:grid-cols-[1fr_18rem]">
+        <Card className="gap-5">
+          <CardHeader>
+            <CardTitle id="alibi">Alibi · REI</CardTitle>
+            <CardDescription>Countersigned before payment. Anyone can verify it.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <Amount value={96.5} className="text-amount" />
+              <Status state="countersigned" reveal />
+            </div>
+            <div className="divide-y divide-border border-y">
+              <LiabilityField name="Total" value="$96.50 ≤ $100.00" kind="verified" />
+              <LiabilityField name="Merchant" value="REI" kind="verified" />
+              <LiabilityField name="Size" value="10" kind="attested" />
+              <LiabilityField name="Color" value="Slate" kind="yours" />
+            </div>
+            <Meter label="Mandate used" value={96.5} max={100} format={(n) => `$${n.toFixed(2)}`} />
+          </CardContent>
+          <CardFooter className="flex-wrap justify-between gap-3">
+            <CopyValue value="01M6W3V7ZCQ9R4H2K8T0XQAT1Q" label="Alibi ID" />
+            <Button size="sm" variant="outline" asChild>
+              <a href="#alibi">Verify this Alibi</a>
+            </Button>
+          </CardFooter>
+        </Card>
+        <div className="grid content-start gap-6">
+          <DataList layout="stacked">
+            <DataItem label="Agent">Shopper by Acme</DataItem>
+            <DataItem label="Countersigned">
+              <span className="font-mono text-sm tabular-nums">2026-11-09 14:02:09 UTC</span>
+            </DataItem>
+            <DataItem label="Log leaf">
+              <CopyValue value="84712997ee424ff5a1b2c3d4e5f60718" label="Log leaf" short />
+            </DataItem>
+          </DataList>
+          <Timeline aria-label="What happened">
+            <TimelineItem state="done" actor="You" time="2026-11-09T14:01:52Z">
+              signed the mandate
+            </TimelineItem>
+            <TimelineItem
+              state="done"
+              actor="Keelson"
+              time="2026-11-09T14:02:09Z"
+              proof={{ href: "https://sepolia.arbiscan.io", label: "Log anchor" }}
+            >
+              checked the cart and countersigned
+            </TimelineItem>
+            <TimelineItem state="current" actor="PayPal">
+              is capturing the payment
+            </TimelineItem>
+            <TimelineItem state="upcoming" actor="REI">
+              ships the order
+            </TimelineItem>
+          </Timeline>
+        </div>
+      </section>
+
+      <section aria-labelledby="block" className="space-y-3">
+        <h2 id="block" className="text-lg font-medium">
+          A blocked cart
+        </h2>
+        <BlockDiff field="Total" mandate="max $100.00" cart="$340.00" />
+        <DataList className="max-w-sm">
+          <DataItem label="Cart">
+            <Amount value={340} struck="Blocked, not charged" />
+          </DataItem>
+          <DataItem label="Refunded">
+            <Amount value={84} signed />
+          </DataItem>
+          <DataItem label="Bond slashed">
+            <Amount value={-95} />
+          </DataItem>
+        </DataList>
+        <Timeline aria-label="Blocked cart">
+          <TimelineItem state="done" actor="Your agent" time="2026-11-09T15:10:00Z">
+            asked to pay $340.00 at Nike
+          </TimelineItem>
+          <TimelineItem state="blocked" actor="Keelson" time="2026-11-09T15:10:01Z">
+            blocked it: $340.00 is over the $100.00 cap
+          </TimelineItem>
+          <TimelineItem state="failed" actor="PayPal" time="2026-11-09T15:12:30Z">
+            did not answer the refund request; retrying
+          </TimelineItem>
+        </Timeline>
       </section>
 
       <section aria-labelledby="form" className="space-y-4">

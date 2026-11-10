@@ -278,10 +278,16 @@ test("bundle size within budget", async () => {
   expect(fullJsGzip).toBeLessThan(BUDGET.fullJsGzip);
 });
 
-/** Resolves once no CSS animation or transition is running. */
+/** Resolves once every finite CSS animation and transition has finished. */
 async function settled(page: Page): Promise<void> {
   await page.waitForFunction(() =>
-    document.getAnimations().every((a) => a.playState !== "running"),
+    document
+      .getAnimations()
+      .every(
+        (a) =>
+          a.playState !== "running" ||
+          a.effect?.getTiming().iterations === Number.POSITIVE_INFINITY,
+      ),
   );
 }
 
