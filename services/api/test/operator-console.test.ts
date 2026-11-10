@@ -1,5 +1,7 @@
 import { randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
+import Anthropic from "@anthropic-ai/sdk";
 import { serve } from "@hono/node-server";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { bondPermitTypedData, keelsonBondVaultAbi, PYUSD_ARBITRUM_SEPOLIA } from "@keelson/chain";
@@ -26,6 +28,8 @@ import { coverageRows, filterSql } from "../src/routes/operator-console.ts";
 import { testAuthEnv, testDb, testKv } from "./setup.ts";
 
 const rpc = process.env.ARBITRUM_SEPOLIA_RPC_URL && process.env.KEELSON_FUNDER_KEYS;
+/** Grid queries reach Claude only in live runs: each one costs money. */
+const live = process.env.KEELSON_LIVE && process.env.ANTHROPIC_API_KEY;
 const IDENTITY = "0x8004A818BFB912233c491871b3d84c89A494BD9e" as const;
 const REGISTRY = `eip155:421614:${IDENTITY}`;
 
@@ -363,6 +367,7 @@ describe.skipIf(!rpc)(
         authenticate: authenticate(auth, baseURL),
         chains: { 421614: { client: fork.client as never, logs: fork.client as never } },
         relayer,
+        ...(live ? { anthropic: new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }) } : {}),
       });
       ownerCookie = await signIn(owner);
     });
@@ -481,7 +486,7 @@ describe.skipIf(!rpc)(
       expect(after.free - before.free).toBe(value);
     });
 
-    test("grid queries need the operator's session and a model", async () => {
+    test("grid queries need the operator's session", async () => {
       const body = JSON.stringify({
         prompt: "only slashes",
         gridState: {},
@@ -489,7 +494,41 @@ describe.skipIf(!rpc)(
       });
       const path = `/v1/operators/${AGENT_ID}/grid-query`;
       expect((await call(path, { method: "POST", body })).status).toBe(401);
-      expect((await call(path, { method: "POST", body, cookie: ownerCookie })).status).toBe(503);
+      if (!live) {
+        expect((await call(path, { method: "POST", body, cookie: ownerCookie })).status).toBe(503);
+      }
+    });
+
+    test.skipIf(!live)("Claude answers a sentence in the grid's own state schema", async () => {
+      // What AG Grid 36.3's getStructuredSchema() and getState() gave for the console's book.
+      const request = JSON.parse(
+        readFileSync(new URL("./grid-query-request.json", import.meta.url), "utf8"),
+      ) as { schema: unknown; gridState: unknown };
+      const started = performance.now();
+      const res = await call(`/v1/operators/${AGENT_ID}/grid-query`, {
+        method: "POST",
+        cookie: ownerCookie,
+        body: JSON.stringify({ ...request, prompt: "slashes over $20, largest first" }),
+      });
+      expect(res.status).toBe(200);
+      const answer = (await res.json()) as {
+        gridState: {
+          filter?: { filterModel: Record<string, { values?: string[] } | null> };
+          sort?: { sortModel: { colId: string; sort: string }[] };
+        };
+        explanation: string;
+        model: string;
+        costMicros: number;
+      };
+      console.log("grid query", {
+        ms: Math.round(performance.now() - started),
+        model: answer.model,
+        costMicros: answer.costMicros,
+        explanation: answer.explanation,
+      });
+      expect(answer.gridState.filter?.filterModel.liable?.values).toEqual(["operator"]);
+      expect(answer.gridState.filter?.filterModel.amount).toBeTruthy();
+      expect(answer.gridState.sort?.sortModel[0]).toMatchObject({ colId: "amount", sort: "desc" });
     });
   },
 );

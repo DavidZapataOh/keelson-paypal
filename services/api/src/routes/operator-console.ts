@@ -24,9 +24,10 @@ const OUTCOMES = ["paid", "queued", "claimable", "failed"] as const;
 const PAYERS = ["chain", "treasury", "violation-pool"] as const;
 const DISPUTE_STATES = ["OPEN", "ATTRIBUTED", "RESOLVED"] as const;
 
+const AGENT_ID = /^(0|[1-9]\d{0,19})$/;
 const AgentId = z
   .string()
-  .regex(/^(0|[1-9]\d{0,19})$/)
+  .regex(AGENT_ID)
   .refine((v) => BigInt(v) < 2n ** 64n, "agent ids are at most 2^64 - 1")
   .openapi({ description: "The operator's ERC-8004 agent id, a decimal integer." });
 
@@ -53,9 +54,11 @@ function requireOperator(
     if (!principal) {
       return problem(c, 401, "unauthorized", "Unauthorized", "An operator session is required.");
     }
-    const agentId = BigInt(c.req.param("agentId") ?? "-1");
-    const allowed = principal.kind === "user" ? await authority(agentId) : undefined;
+    const param = c.req.param("agentId") ?? "";
+    // The wallets first: a session without one costs no chain read.
     const wallets = principal.kind === "user" ? await walletsOf(deps.db, principal.subject) : [];
+    const allowed =
+      wallets.length > 0 && AGENT_ID.test(param) ? await authority(BigInt(param)) : undefined;
     const mine = wallets.filter((w) => allowed?.includes(w));
     if (mine.length === 0) {
       return problem(
@@ -142,10 +145,13 @@ const TextCondition = z.object({
 const NumberCondition = z.object({
   filterType: z.literal("number"),
   type: z.enum(COMPARE_OPS),
-  filter: z.number().finite().nullish(),
-  filterTo: z.number().finite().nullish(),
+  filter: z.number().min(-1e12).max(1e12).nullish(),
+  filterTo: z.number().min(-1e12).max(1e12).nullish(),
 });
-const DateTime = z.string().regex(/^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}:\d{2})?$/);
+const DateTime = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}:\d{2})?$/)
+  .refine((v) => !Number.isNaN(Date.parse(v.slice(0, 10))), "not a date");
 const DateCondition = z.object({
   filterType: z.literal("date"),
   type: z.enum(COMPARE_OPS),
@@ -355,13 +361,18 @@ export async function coverageRows(
     sql`p.created_at desc`,
     sql`p.id desc`,
   ];
-  // The latest dispute of each purchase: disputes are few, so one hash join beats a lookup per row.
+  // The latest dispute of each of the operator's purchases: disputes are few, so one hash join
+  // beats a lookup per row.
   const from = sql`
     from purchases p
     join mandates m on m.id = p.mandate_id
     left join (
-      select distinct on (purchase_id) id, purchase_id, state, reason, created_at from disputes
-      order by purchase_id, created_at desc
+      select distinct on (dd.purchase_id) dd.id, dd.purchase_id, dd.state, dd.reason, dd.created_at
+      from disputes dd
+      join purchases pp on pp.id = dd.purchase_id
+      join mandates mm on mm.id = pp.mandate_id
+      where mm.operator_agent_id = ${agentId.toString()}
+      order by dd.purchase_id, dd.created_at desc
     ) d on d.purchase_id = p.id
     left join verdicts v on v.dispute_id = d.id
     where ${sql.join(where, sql` and `)}`;
@@ -460,6 +471,28 @@ const GridAnswer = z
   })
   .openapi("GridAnswer");
 
+/** The grid state a query may change: what the coverage book's server-side row model supports. */
+const FEATURES = ["filter", "sort", "columnVisibility"];
+const ColumnId = z.enum(COLUMN_IDS);
+/** The model's answer, checked against the coverage book before it reaches the console. */
+const Answer = z.object({
+  gridState: z
+    .object({
+      filter: z
+        .object({ filterModel: z.partialRecord(ColumnId, z.union([ColumnFilter, z.null()])) })
+        .nullish(),
+      sort: z
+        .object({
+          sortModel: z.array(z.object({ colId: ColumnId, sort: z.enum(["asc", "desc"]) })),
+        })
+        .nullish(),
+      columnVisibility: z.object({ hiddenColIds: z.array(ColumnId) }).nullish(),
+    })
+    .strict(),
+  propertiesToIgnore: z.array(z.string().max(32)).max(8),
+  explanation: z.string().max(1_000),
+});
+
 // ---------------------------------------------------------------------------------------------
 
 const Me = z
@@ -477,7 +510,7 @@ const meRoute = createRoute({
   tags: ["operators"],
   summary: "The operators the session's wallet owns",
   description:
-    "The linked agents whose owner or agent wallet in the Identity registry is a wallet the session signed in with (EIP-4361).",
+    "The linked agents whose owner or agent wallet in the Identity registry is a wallet the session signed in with (EIP-4361). A wallet signs in if it owned a linked agent when the agent was linked; ownership is then read on chain on every operator route.",
   responses: {
     200: { description: "The operators", content: { "application/json": { schema: Me } } },
     ...problems,
@@ -687,6 +720,17 @@ export function registerOperatorConsole(
       return problem(c, 400, "malformed-body", "Malformed body", parsed.error.message);
     }
     const body = parsed.data;
+    const { $defs, ...stateSchema } = body.schema as { $defs?: unknown } & Record<string, unknown>;
+    const features = Object.keys((stateSchema.properties ?? {}) as Record<string, unknown>);
+    if (stateSchema.type !== "object" || features.some((f) => !FEATURES.includes(f))) {
+      return problem(
+        c,
+        422,
+        "not-grid-state",
+        "Not grid state",
+        `The schema may describe only ${FEATURES.join(", ")}.`,
+      );
+    }
     const budgetKey = `operator-${agentId}`;
     const turn = await reserve(deps.kv, budgetKey, "claude-opus-5-5", Buffer.byteLength(raw));
     if (!turn) {
@@ -698,29 +742,18 @@ export function registerOperatorConsole(
         "Today's query budget is spent; it resets at 00:00 UTC.",
       );
     }
+    // The full state schema compiles to a grammar larger than structured outputs take, so the
+    // schema goes in the prompt and the answer is checked here (AG Grid's AI Toolkit allows both).
     const schema = {
       type: "object",
       properties: {
-        gridState: body.schema,
-        propertiesToIgnore: {
-          type: "array",
-          items: {
-            type: "string",
-            enum: [
-              "aggregation",
-              "filter",
-              "sort",
-              "pivot",
-              "columnVisibility",
-              "columnSizing",
-              "rowGroup",
-            ],
-          },
-        },
+        gridState: stateSchema,
+        propertiesToIgnore: { type: "array", items: { type: "string", enum: FEATURES } },
         explanation: { type: "string" },
       },
       required: ["gridState", "propertiesToIgnore", "explanation"],
       additionalProperties: false,
+      ...($defs ? { $defs } : {}),
     };
     let message: Anthropic.Beta.BetaMessage;
     try {
@@ -732,14 +765,11 @@ export function registerOperatorConsole(
           messages: [
             {
               role: "user",
-              content: `Current grid state:\n${JSON.stringify(body.gridState)}\n\nRequest: ${body.prompt}`,
+              content: `Answer with one JSON object, and nothing else, valid against this JSON Schema:\n${JSON.stringify(schema)}\n\nCurrent grid state:\n${JSON.stringify(body.gridState)}\n\nRequest: ${body.prompt}`,
             },
           ],
           thinking: { type: "adaptive" },
-          output_config: {
-            effort: "low",
-            format: { type: "json_schema", schema },
-          },
+          output_config: { effort: "low" },
           ...(turn.model === "claude-haiku-5-5"
             ? {}
             : { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const }),
@@ -758,11 +788,17 @@ export function registerOperatorConsole(
     if (message.stop_reason !== "end_turn" || !text || text.type !== "text") {
       return problem(c, 502, "model-error", "Model error", "The model gave no grid state.");
     }
-    const answer = JSON.parse(text.text) as {
-      gridState: Record<string, unknown>;
-      propertiesToIgnore: string[];
-      explanation: string;
-    };
+    let json: unknown;
+    try {
+      json = JSON.parse(text.text.slice(text.text.indexOf("{"), text.text.lastIndexOf("}") + 1));
+    } catch {
+      json = undefined;
+    }
+    const checked = Answer.safeParse(json);
+    if (!checked.success) {
+      return problem(c, 502, "model-error", "Model error", "The model's answer is not grid state.");
+    }
+    const answer = checked.data;
     deps.log.info({ agentId, model: message.model, costMicros: cost }, "grid query answered");
     return c.json({ ...answer, model: message.model, costMicros: cost }, 200);
   }) as never);
@@ -774,7 +810,9 @@ export function operatorWallets(
 ): (userId: string, agentId: bigint) => Promise<Address[]> {
   const authority = agentAuthority(deps.chains);
   return async (userId, agentId) => {
+    const wallets = await walletsOf(deps.db, userId);
+    if (wallets.length === 0) return [];
     const allowed = await authority(agentId);
-    return (await walletsOf(deps.db, userId)).filter((w) => allowed?.includes(getAddress(w)));
+    return wallets.filter((w) => allowed?.includes(getAddress(w)));
   };
 }

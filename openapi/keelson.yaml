@@ -3820,10 +3820,14 @@ components:
                                 type:
                                   - number
                                   - "null"
+                                minimum: -1000000000000
+                                maximum: 1000000000000
                               filterTo:
                                 type:
                                   - number
                                   - "null"
+                                minimum: -1000000000000
+                                maximum: 1000000000000
                             required:
                               - filterType
                               - type
@@ -3911,10 +3915,14 @@ components:
                       type:
                         - number
                         - "null"
+                      minimum: -1000000000000
+                      maximum: 1000000000000
                     filterTo:
                       type:
                         - number
                         - "null"
+                      minimum: -1000000000000
+                      maximum: 1000000000000
                   required:
                     - filterType
                     - type
@@ -6742,7 +6750,9 @@ paths:
         - operators
       summary: The operators the session's wallet owns
       description: The linked agents whose owner or agent wallet in the Identity
-        registry is a wallet the session signed in with (EIP-4361).
+        registry is a wallet the session signed in with (EIP-4361). A wallet
+        signs in if it owned a linked agent when the agent was linked; ownership
+        is then read on chain on every operator route.
       responses:
         "200":
           description: The operators

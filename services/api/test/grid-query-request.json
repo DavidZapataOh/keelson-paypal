@@ -1,0 +1,612 @@
+{
+  "schema": {
+    "type": "object",
+    "required": ["filter", "sort", "columnVisibility"],
+    "additionalProperties": false,
+    "properties": {
+      "filter": {
+        "type": ["object", "null"],
+        "required": ["filterModel"],
+        "additionalProperties": false,
+        "properties": {
+          "filterModel": {
+            "type": "object",
+            "required": [
+              "createdAt",
+              "merchantId",
+              "amount",
+              "premiumBps",
+              "premium",
+              "state",
+              "disputeState",
+              "liable",
+              "outcome",
+              "paidBy",
+              "id"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "createdAt": {
+                "type": ["object", "null"],
+                "required": ["filterType", "operator", "conditions"],
+                "additionalProperties": false,
+                "properties": {
+                  "filterType": {
+                    "type": "string",
+                    "description": "Filter type identifier for date filters with multiple conditions",
+                    "enum": ["date"]
+                  },
+                  "operator": {
+                    "type": "string",
+                    "description": "Logical operator to combine multiple filter conditions. Must be included even with a single filter to adhere to the API.",
+                    "enum": ["AND", "OR"]
+                  },
+                  "conditions": {
+                    "type": "array",
+                    "description": "Array of filter conditions to be combined",
+                    "items": {
+                      "type": "object",
+                      "required": ["filterType", "type", "dateFrom", "dateTo"],
+                      "additionalProperties": false,
+                      "properties": {
+                        "filterType": {
+                          "type": "string",
+                          "description": "Filter type identifier for date filters",
+                          "enum": ["date"]
+                        },
+                        "type": {
+                          "type": "string",
+                          "description": "Date filter operation type",
+                          "enum": [
+                            "equals",
+                            "notEqual",
+                            "lessThan",
+                            "greaterThan",
+                            "inRange",
+                            "blank",
+                            "notBlank"
+                          ]
+                        },
+                        "dateFrom": {
+                          "type": ["string", "null"],
+                          "description": "Primary date filter value in YYYY-MM-DD HH:mm:ss format",
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"
+                        },
+                        "dateTo": {
+                          "type": ["string", "null"],
+                          "description": "Secondary date filter value for range operations in YYYY-MM-DD HH:mm:ss format",
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"
+                        }
+                      }
+                    },
+                    "minItems": 2,
+                    "maxItems": 2
+                  }
+                }
+              },
+              "merchantId": {
+                "type": ["object", "null"],
+                "required": ["filterType", "operator", "conditions"],
+                "additionalProperties": false,
+                "properties": {
+                  "filterType": {
+                    "type": "string",
+                    "description": "Filter type identifier for text filters with multiple conditions",
+                    "enum": ["text"]
+                  },
+                  "operator": {
+                    "type": "string",
+                    "description": "Logical operator to combine multiple filter conditions. Must be included even with a single filter to adhere to the API.",
+                    "enum": ["AND", "OR"]
+                  },
+                  "conditions": {
+                    "type": "array",
+                    "description": "Array of filter conditions to be combined",
+                    "items": {
+                      "type": "object",
+                      "required": ["filterType", "type", "filter", "filterTo"],
+                      "additionalProperties": false,
+                      "properties": {
+                        "filterType": {
+                          "type": "string",
+                          "description": "Filter type identifier for text filters",
+                          "enum": ["text"]
+                        },
+                        "type": {
+                          "type": "string",
+                          "description": "Text filter operation type",
+                          "enum": [
+                            "contains",
+                            "notContains",
+                            "equals",
+                            "notEqual",
+                            "startsWith",
+                            "endsWith",
+                            "blank",
+                            "notBlank"
+                          ]
+                        },
+                        "filter": {
+                          "type": ["string", "null"],
+                          "description": "Primary filter value"
+                        },
+                        "filterTo": {
+                          "type": ["string", "null"],
+                          "description": "Secondary filter value for range operations"
+                        }
+                      }
+                    },
+                    "minItems": 2,
+                    "maxItems": 2
+                  }
+                }
+              },
+              "amount": {
+                "type": ["object", "null"],
+                "required": ["filterType", "operator", "conditions"],
+                "additionalProperties": false,
+                "properties": {
+                  "filterType": {
+                    "type": "string",
+                    "description": "Filter type identifier for number filters with multiple conditions",
+                    "enum": ["number"]
+                  },
+                  "operator": {
+                    "type": "string",
+                    "description": "Logical operator to combine multiple filter conditions. Must be included even with a single filter to adhere to the API.",
+                    "enum": ["AND", "OR"]
+                  },
+                  "conditions": {
+                    "type": "array",
+                    "description": "Array of filter conditions to be combined",
+                    "items": {
+                      "type": "object",
+                      "required": ["filterType", "type", "filter", "filterTo"],
+                      "additionalProperties": false,
+                      "properties": {
+                        "filterType": {
+                          "type": "string",
+                          "description": "Filter type identifier for number filters",
+                          "enum": ["number"]
+                        },
+                        "type": {
+                          "type": "string",
+                          "description": "Number filter operation type",
+                          "enum": [
+                            "equals",
+                            "notEqual",
+                            "greaterThan",
+                            "greaterThanOrEqual",
+                            "lessThan",
+                            "lessThanOrEqual",
+                            "inRange",
+                            "blank",
+                            "notBlank"
+                          ]
+                        },
+                        "filter": {
+                          "type": ["number", "null"],
+                          "description": "Primary filter value"
+                        },
+                        "filterTo": {
+                          "type": ["number", "null"],
+                          "description": "Secondary filter value for range operations"
+                        }
+                      }
+                    },
+                    "minItems": 2,
+                    "maxItems": 2
+                  }
+                }
+              },
+              "premiumBps": {
+                "type": ["object", "null"],
+                "required": ["filterType", "operator", "conditions"],
+                "additionalProperties": false,
+                "properties": {
+                  "filterType": {
+                    "type": "string",
+                    "description": "Filter type identifier for number filters with multiple conditions",
+                    "enum": ["number"]
+                  },
+                  "operator": {
+                    "type": "string",
+                    "description": "Logical operator to combine multiple filter conditions. Must be included even with a single filter to adhere to the API.",
+                    "enum": ["AND", "OR"]
+                  },
+                  "conditions": {
+                    "type": "array",
+                    "description": "Array of filter conditions to be combined",
+                    "items": {
+                      "type": "object",
+                      "required": ["filterType", "type", "filter", "filterTo"],
+                      "additionalProperties": false,
+                      "properties": {
+                        "filterType": {
+                          "type": "string",
+                          "description": "Filter type identifier for number filters",
+                          "enum": ["number"]
+                        },
+                        "type": {
+                          "type": "string",
+                          "description": "Number filter operation type",
+                          "enum": [
+                            "equals",
+                            "notEqual",
+                            "greaterThan",
+                            "greaterThanOrEqual",
+                            "lessThan",
+                            "lessThanOrEqual",
+                            "inRange",
+                            "blank",
+                            "notBlank"
+                          ]
+                        },
+                        "filter": {
+                          "type": ["number", "null"],
+                          "description": "Primary filter value"
+                        },
+                        "filterTo": {
+                          "type": ["number", "null"],
+                          "description": "Secondary filter value for range operations"
+                        }
+                      }
+                    },
+                    "minItems": 2,
+                    "maxItems": 2
+                  }
+                }
+              },
+              "premium": {
+                "type": ["object", "null"],
+                "required": ["filterType", "operator", "conditions"],
+                "additionalProperties": false,
+                "properties": {
+                  "filterType": {
+                    "type": "string",
+                    "description": "Filter type identifier for number filters with multiple conditions",
+                    "enum": ["number"]
+                  },
+                  "operator": {
+                    "type": "string",
+                    "description": "Logical operator to combine multiple filter conditions. Must be included even with a single filter to adhere to the API.",
+                    "enum": ["AND", "OR"]
+                  },
+                  "conditions": {
+                    "type": "array",
+                    "description": "Array of filter conditions to be combined",
+                    "items": {
+                      "type": "object",
+                      "required": ["filterType", "type", "filter", "filterTo"],
+                      "additionalProperties": false,
+                      "properties": {
+                        "filterType": {
+                          "type": "string",
+                          "description": "Filter type identifier for number filters",
+                          "enum": ["number"]
+                        },
+                        "type": {
+                          "type": "string",
+                          "description": "Number filter operation type",
+                          "enum": [
+                            "equals",
+                            "notEqual",
+                            "greaterThan",
+                            "greaterThanOrEqual",
+                            "lessThan",
+                            "lessThanOrEqual",
+                            "inRange",
+                            "blank",
+                            "notBlank"
+                          ]
+                        },
+                        "filter": {
+                          "type": ["number", "null"],
+                          "description": "Primary filter value"
+                        },
+                        "filterTo": {
+                          "type": ["number", "null"],
+                          "description": "Secondary filter value for range operations"
+                        }
+                      }
+                    },
+                    "minItems": 2,
+                    "maxItems": 2
+                  }
+                }
+              },
+              "state": {
+                "type": ["object", "null"],
+                "required": ["filterType", "values"],
+                "additionalProperties": false,
+                "properties": {
+                  "filterType": {
+                    "type": "string",
+                    "description": "Filter type identifier for set filters",
+                    "enum": ["set"]
+                  },
+                  "values": {
+                    "type": "array",
+                    "description": "Array of values to include in the filter",
+                    "items": {
+                      "type": "string",
+                      "description": "Available values to filter by",
+                      "enum": [
+                        "COVERED",
+                        "CAPTURED",
+                        "DELIVERED",
+                        "SETTLED",
+                        "DISPUTED",
+                        "ATTRIBUTED",
+                        "SLASHED",
+                        "WARRANTY_PAID",
+                        "DEFENDED",
+                        "MERCHANT_LIABLE"
+                      ]
+                    }
+                  }
+                }
+              },
+              "disputeState": {
+                "type": ["object", "null"],
+                "required": ["filterType", "values"],
+                "additionalProperties": false,
+                "properties": {
+                  "filterType": {
+                    "type": "string",
+                    "description": "Filter type identifier for set filters",
+                    "enum": ["set"]
+                  },
+                  "values": {
+                    "type": "array",
+                    "description": "Array of values to include in the filter",
+                    "items": {
+                      "type": "string",
+                      "description": "Available values to filter by",
+                      "enum": ["OPEN", "ATTRIBUTED", "RESOLVED"]
+                    }
+                  }
+                }
+              },
+              "liable": {
+                "type": ["object", "null"],
+                "required": ["filterType", "values"],
+                "additionalProperties": false,
+                "properties": {
+                  "filterType": {
+                    "type": "string",
+                    "description": "Filter type identifier for set filters",
+                    "enum": ["set"]
+                  },
+                  "values": {
+                    "type": "array",
+                    "description": "Array of values to include in the filter",
+                    "items": {
+                      "type": "string",
+                      "description": "Available values to filter by",
+                      "enum": ["operator", "keelson", "merchant", "user"]
+                    }
+                  }
+                }
+              },
+              "outcome": {
+                "type": ["object", "null"],
+                "required": ["filterType", "values"],
+                "additionalProperties": false,
+                "properties": {
+                  "filterType": {
+                    "type": "string",
+                    "description": "Filter type identifier for set filters",
+                    "enum": ["set"]
+                  },
+                  "values": {
+                    "type": "array",
+                    "description": "Array of values to include in the filter",
+                    "items": {
+                      "type": "string",
+                      "description": "Available values to filter by",
+                      "enum": ["paid", "queued", "claimable", "failed"]
+                    }
+                  }
+                }
+              },
+              "paidBy": {
+                "type": ["object", "null"],
+                "required": ["filterType", "values"],
+                "additionalProperties": false,
+                "properties": {
+                  "filterType": {
+                    "type": "string",
+                    "description": "Filter type identifier for set filters",
+                    "enum": ["set"]
+                  },
+                  "values": {
+                    "type": "array",
+                    "description": "Array of values to include in the filter",
+                    "items": {
+                      "type": "string",
+                      "description": "Available values to filter by",
+                      "enum": ["chain", "treasury", "violation-pool"]
+                    }
+                  }
+                }
+              },
+              "id": {
+                "type": ["object", "null"],
+                "required": ["filterType", "operator", "conditions"],
+                "additionalProperties": false,
+                "properties": {
+                  "filterType": {
+                    "type": "string",
+                    "description": "Filter type identifier for text filters with multiple conditions",
+                    "enum": ["text"]
+                  },
+                  "operator": {
+                    "type": "string",
+                    "description": "Logical operator to combine multiple filter conditions. Must be included even with a single filter to adhere to the API.",
+                    "enum": ["AND", "OR"]
+                  },
+                  "conditions": {
+                    "type": "array",
+                    "description": "Array of filter conditions to be combined",
+                    "items": {
+                      "type": "object",
+                      "required": ["filterType", "type", "filter", "filterTo"],
+                      "additionalProperties": false,
+                      "properties": {
+                        "filterType": {
+                          "type": "string",
+                          "description": "Filter type identifier for text filters",
+                          "enum": ["text"]
+                        },
+                        "type": {
+                          "type": "string",
+                          "description": "Text filter operation type",
+                          "enum": [
+                            "contains",
+                            "notContains",
+                            "equals",
+                            "notEqual",
+                            "startsWith",
+                            "endsWith",
+                            "blank",
+                            "notBlank"
+                          ]
+                        },
+                        "filter": {
+                          "type": ["string", "null"],
+                          "description": "Primary filter value"
+                        },
+                        "filterTo": {
+                          "type": ["string", "null"],
+                          "description": "Secondary filter value for range operations"
+                        }
+                      }
+                    },
+                    "minItems": 2,
+                    "maxItems": 2
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "sort": {
+        "type": ["object", "null"],
+        "description": "Sort configuration for the grid",
+        "required": ["sortModel"],
+        "additionalProperties": false,
+        "properties": {
+          "sortModel": {
+            "type": "array",
+            "description": "Array of sort configurations",
+            "items": {
+              "type": "object",
+              "required": ["colId", "sort", "type"],
+              "additionalProperties": false,
+              "properties": {
+                "colId": {
+                  "type": "string",
+                  "description": "Column ID that supports sorting",
+                  "enum": [
+                    "createdAt",
+                    "merchantId",
+                    "amount",
+                    "premiumBps",
+                    "premium",
+                    "state",
+                    "disputeState",
+                    "liable",
+                    "outcome",
+                    "paidBy",
+                    "id"
+                  ]
+                },
+                "sort": {
+                  "type": "string",
+                  "description": "Sort direction: ascending or descending",
+                  "enum": ["asc", "desc"]
+                },
+                "type": {
+                  "type": "string",
+                  "description": "Sort type: default or absolute values",
+                  "enum": ["default", "absolute"]
+                }
+              }
+            }
+          }
+        }
+      },
+      "columnVisibility": {
+        "type": ["object", "null"],
+        "description": "Column visibility configuration for the grid",
+        "required": ["hiddenColIds"],
+        "additionalProperties": false,
+        "properties": {
+          "hiddenColIds": {
+            "type": "array",
+            "description": "Array of column IDs to hide",
+            "items": { "$ref": "#/$defs/allColumnIds" }
+          }
+        }
+      }
+    },
+    "$defs": {
+      "allColumnIds": {
+        "type": "string",
+        "description": "createdAt: When the purchase was made (UTC).\nmerchantId: The store's Keelson id, e.g. mrc_runfast.\namount: The purchase amount, in US dollars.\npremiumBps: The premium in basis points of the amount.\npremium: The premium Keelson charged on the coverage, in US dollars.\nstate: The purchase's lifecycle state.\ndisputeState: The PayPal dispute's state; blank if never disputed.\nliable: Who the signed verdict found liable. 'operator' rows are slashes.\noutcome: What happened to the verdict's payment.\npaidBy: Who paid the verdict.\nid",
+        "enum": [
+          "createdAt",
+          "merchantId",
+          "amount",
+          "premiumBps",
+          "premium",
+          "state",
+          "disputeState",
+          "liable",
+          "outcome",
+          "paidBy",
+          "id"
+        ]
+      }
+    }
+  },
+  "gridState": {
+    "version": "36.3.0",
+    "columnSizing": {
+      "columnSizingModel": [
+        { "colId": "createdAt", "flex": 1, "width": 190 },
+        { "colId": "merchantId", "flex": 1, "width": 120 },
+        { "colId": "amount", "flex": 1, "width": 120 },
+        { "colId": "premiumBps", "flex": 1, "width": 120 },
+        { "colId": "premium", "flex": 1, "width": 120 },
+        { "colId": "state", "flex": 1, "width": 120 },
+        { "colId": "disputeState", "flex": 1, "width": 120 },
+        { "colId": "liable", "flex": 1, "width": 120 },
+        { "colId": "outcome", "flex": 1, "width": 120 },
+        { "colId": "paidBy", "flex": 1, "width": 120 },
+        { "colId": "id", "flex": 1, "width": 260 }
+      ]
+    },
+    "columnOrder": {
+      "orderedColIds": [
+        "createdAt",
+        "merchantId",
+        "amount",
+        "premiumBps",
+        "premium",
+        "state",
+        "disputeState",
+        "liable",
+        "outcome",
+        "paidBy",
+        "id"
+      ]
+    },
+    "rowGroupExpansion": {
+      "expandedRowGroupIds": ["01M70ZR8Q4X2A8V9K3YB6T1N5C"],
+      "collapsedRowGroupIds": []
+    }
+  }
+}
