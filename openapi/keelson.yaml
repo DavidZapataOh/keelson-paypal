@@ -2008,6 +2008,68 @@ components:
         - leaf_hash
         - tlog_proof
         - timestamps
+    AnonymousMandate:
+      type: object
+      properties:
+        mandate_hash:
+          type: string
+          pattern: ^0x[0-9a-f]{64}$
+          description: The passkey challenge `M` the user signed.
+        mandate_commitment:
+          type: string
+          pattern: ^0x[0-9a-f]{64}$
+          description: "`C_m`, the commitment the mandate names."
+        user_set_root:
+          type: string
+          pattern: ^0x[0-9a-f]{64}$
+          description: The registered-user tree the signer is a leaf of when the proof was
+            made.
+        proof:
+          type: string
+          description: The UltraHonk proof bytes, standard base64.
+        public_inputs:
+          type: array
+          items:
+            type: string
+            pattern: ^0x[0-9a-f]{64}$
+          description: '`C_m, M mod r, user_set_root, SHA-256("keelson.finance")`: the
+            calldata of `verify(bytes,bytes32[])`.'
+        verifier:
+          type: object
+          properties:
+            chain_id:
+              type: integer
+            address:
+              type: string
+          required:
+            - chain_id
+            - address
+          description: "The deployed verifier that accepts the proof in an `eth_call`. It
+            checks the proof only: `public_inputs` must also be the
+            countersign's `C_m` and `M`, Keelson's RP ID hash, and a root `GET
+            /v1/user-set/roots/{root}` lists."
+      required:
+        - mandate_hash
+        - mandate_commitment
+        - user_set_root
+        - proof
+        - public_inputs
+    UserSetRoot:
+      type: object
+      properties:
+        root:
+          type: string
+          pattern: ^0x[0-9a-f]{64}$
+        size:
+          type: integer
+          description: Registered users when the tree had this root.
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - root
+        - size
+        - created_at
     DisputeStatus:
       type: object
       properties:
@@ -4344,6 +4406,68 @@ paths:
                 $ref: "#/components/schemas/AlibiReceipt"
         "404":
           description: No alibi with this id that the caller may read
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/anonymous-mandates/{mandateHash}:
+    get:
+      tags:
+        - mandates
+      summary: Proof that a registered user signed a mandate
+      description: "The C3 `anonymous_mandate` zero-knowledge proof of the mandate
+        whose passkey challenge is `mandateHash`, the `mandateHash` of its
+        countersigns: a passkey in Keelson's registered-user tree signed it, and
+        the mandate's commitment names that passkey. It shows neither the user
+        nor the key, so it needs no authentication. Verify it with bb.js against
+        the C3 key or with `eth_call` on `verifier`, and check `user_set_root`
+        with `GET /v1/user-set/roots/{root}`."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^0x[0-9a-f]{64}$
+          required: true
+          name: mandateHash
+          in: path
+      responses:
+        "200":
+          description: The proof
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnonymousMandate"
+        "404":
+          description: No proof for this mandate yet
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/user-set/roots/{root}:
+    get:
+      tags:
+        - mandates
+      summary: A root of the registered-user tree
+      description: "Whether `root` is, or was, the root of Keelson's registered-user
+        tree: the Poseidon2 Merkle tree of every registered passkey's
+        `user_key_hash`. A C3 proof under any root listed here was made by a
+        registered user, who is hidden among the `size` users of that root.
+        Roots stay valid after a passkey is removed."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^0x[0-9a-f]{64}$
+          required: true
+          name: root
+          in: path
+      responses:
+        "200":
+          description: The root
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserSetRoot"
+        "404":
+          description: No such root
           content:
             application/problem+json:
               schema:

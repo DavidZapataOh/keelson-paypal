@@ -1039,6 +1039,9 @@ importers:
       '@aws-sdk/client-kms':
         specifier: 'catalog:'
         version: 3.1164.0
+      '@aztec/bb.js':
+        specifier: 5.3.0
+        version: 5.3.0
       '@better-auth/drizzle-adapter':
         specifier: 1.7.17
         version: 1.7.17(@better-auth/core@1.7.17(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@4.6.7))(jose@6.2.15)(kysely@0.29.8)(nanostores@1.5.5))(@better-auth/utils@0.5.1)(drizzle-orm@0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.8)(pg@8.23.1))
@@ -1111,6 +1114,9 @@ importers:
       '@modelcontextprotocol/server':
         specifier: 2.4.0
         version: 2.4.0
+      '@noir-lang/noir_js':
+        specifier: 1.0.0
+        version: 1.0.0
       '@opentelemetry/api':
         specifier: 1.10.0
         version: 1.10.0
@@ -2847,6 +2853,18 @@ packages:
   '@noble/post-quantum@0.7.1':
     resolution: {integrity: sha512-+P9981IiAnVh+rmcubozzVwrEy3XsN/tMhTnvsjV9VDaYpOnNCqWqKo2FLWxbu92YHfjGIlE5XnW175UK+ln+Q==}
     engines: {node: '>= 20.19.0'}
+
+  '@noir-lang/acvm_js@1.0.0':
+    resolution: {integrity: sha512-PmDnDgnq+oKWbUpDbLFXy+c+QRzznUH+mzoojZ4KKVgkQ/AmQZdE1d9JLgsmRnPQfvMifCIKvKpSkBXqO2b91A==}
+
+  '@noir-lang/noir_js@1.0.0':
+    resolution: {integrity: sha512-LJKStl4X9MfPc0eAbGHV/AUy5zefil5n0+OVznpd4T9znwNbpAG6KsrcETyREzFEE5vehesCzR0IBOIAIngEaQ==}
+
+  '@noir-lang/noirc_abi@1.0.0':
+    resolution: {integrity: sha512-psK2i0oq1c1QhqgBIl77gJND0X8a5egj6Lloa85FhTt+R+M2QtiOle3jCwg64HSddCjKZe8OwlCDeqaa630RIg==}
+
+  '@noir-lang/types@1.0.0':
+    resolution: {integrity: sha512-+yq5igydWbkrprufpxjsdjFjrc7Led0lDshew2HcXW3NFtXmEhggtHNGOMh502iBFE1KOu6l+t91OG9FAMMWqA==}
 
   '@onkernel/sdk@0.142.0':
     resolution: {integrity: sha512-sb0hMY/Zc6blEDHbN5fyGENiBUficfnF26a99XWXp8INA+3nZ5fGJRNmn2ab6lSMHPUSKNDcFpabtrrtkPC9MQ==}
@@ -8023,6 +8041,21 @@ snapshots:
       '@noble/ciphers': 2.4.0
       '@noble/curves': 2.4.0
       '@noble/hashes': 2.4.0
+
+  '@noir-lang/acvm_js@1.0.0': {}
+
+  '@noir-lang/noir_js@1.0.0':
+    dependencies:
+      '@noir-lang/acvm_js': 1.0.0
+      '@noir-lang/noirc_abi': 1.0.0
+      '@noir-lang/types': 1.0.0
+      pako: 3.0.3
+
+  '@noir-lang/noirc_abi@1.0.0':
+    dependencies:
+      '@noir-lang/types': 1.0.0
+
+  '@noir-lang/types@1.0.0': {}
 
   '@onkernel/sdk@0.142.0': {}
 

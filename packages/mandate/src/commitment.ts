@@ -275,12 +275,24 @@ export async function userKeyHash(jwk: { x: string; y: string }): Promise<bigint
   return poseidon2([x >> 128n, x & LIMB, y >> 128n, y & LIMB]);
 }
 
+/** The preimage of `C_m` that the C1 and C3 circuits open, as field values. */
+export interface MandateOpening {
+  userKeyHash: bigint;
+  maxAmount: bigint;
+  currency: bigint;
+  categoryMask: bigint;
+  merchantRoot: bigint;
+  expiry: bigint;
+  operatorId: bigint;
+  nonce: bigint;
+  salt: bigint;
+}
+
 /**
- * `C_m = poseidon2([KEELSON_MANDATE, user_key_hash, max_amount, currency_num, category_mask,
- * merchant_root, expiry, operator_id, nonce, salt])`, with `nonce` and the 16-byte `salt` read
+ * The opening of `C_m` for `input` under the 16-byte `salt`, with `nonce` and `salt` read
  * big-endian. The mandate is validated with {@link parseMandate} first.
  */
-export async function mandateCommitment(input: Mandate, salt: Uint8Array): Promise<bigint> {
+export async function mandateOpening(input: Mandate, salt: Uint8Array): Promise<MandateOpening> {
   if (salt.length !== 16) throw new RangeError("salt must be 16 bytes");
   const m = parseMandate(input);
   const range = m.payment.constraints.find((c) => c.type === "payment.amount_range");
@@ -297,16 +309,35 @@ export async function mandateCommitment(input: Mandate, salt: Uint8Array): Promi
     userKeyHash(m.user.cred.jwk),
     merchantTree(merchants.allowed.map((x) => x.id)),
   ]);
+  return {
+    userKeyHash: userKey,
+    maxAmount: BigInt(range.max),
+    currency: BigInt(currencyNumeric(m.payment.currency)),
+    categoryMask: mandateCategoryMask(m),
+    merchantRoot: tree.root,
+    expiry: BigInt(m.exp),
+    operatorId,
+    nonce: base64urlToBigInt(m.nonce, 16),
+    salt: bytesToBigInt(salt),
+  };
+}
+
+/**
+ * `C_m = poseidon2([KEELSON_MANDATE, user_key_hash, max_amount, currency_num, category_mask,
+ * merchant_root, expiry, operator_id, nonce, salt])` of {@link mandateOpening}.
+ */
+export async function mandateCommitment(input: Mandate, salt: Uint8Array): Promise<bigint> {
+  const o = await mandateOpening(input, salt);
   return poseidon2([
     KEELSON_MANDATE,
-    userKey,
-    BigInt(range.max),
-    BigInt(currencyNumeric(m.payment.currency)),
-    mandateCategoryMask(m),
-    tree.root,
-    BigInt(m.exp),
-    operatorId,
-    base64urlToBigInt(m.nonce, 16),
-    bytesToBigInt(salt),
+    o.userKeyHash,
+    o.maxAmount,
+    o.currency,
+    o.categoryMask,
+    o.merchantRoot,
+    o.expiry,
+    o.operatorId,
+    o.nonce,
+    o.salt,
   ]);
 }
