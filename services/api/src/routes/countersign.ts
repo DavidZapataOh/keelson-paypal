@@ -36,6 +36,7 @@ import { merchantLeaf } from "@keelson/mandate";
 import type { Context } from "hono";
 import { hexToBytes } from "viem";
 import type { Deps } from "../app.ts";
+import { capturable } from "../hold/state.ts";
 import { requireClient } from "../middleware/auth.ts";
 import { drivePurchase, type PipelineDeps, viewOf } from "../pipeline/drive.ts";
 import { publishPurchase } from "../pipeline/events.ts";
@@ -503,6 +504,23 @@ export function registerCountersign(
         "mandate-not-active",
         "Mandate not active",
         "The mandate cannot countersign now.",
+      );
+    }
+
+    // A mandate whose merchant Keelson cannot capture for holds a budget only: the buyer pays
+    // its purchases at the store's own checkout.
+    if (
+      !body.live &&
+      deps.paypal &&
+      mandate.holdMode !== "per_purchase" &&
+      !capturable(deps.paypal, mandate)
+    ) {
+      return problem(
+        c,
+        422,
+        "merchant-not-capturable",
+        "Merchant not capturable",
+        "Keelson cannot capture for this mandate's merchant: countersign its purchases as live.",
       );
     }
 
