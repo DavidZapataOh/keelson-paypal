@@ -1360,11 +1360,11 @@ components:
           type: string
           minLength: 26
           maxLength: 26
-          description: "To buy the same cart again on purpose: the id of the latest
-            purchase of this cart under the mandate, from the `409
-            purchase-exists` answer or a purchase listing. Not needed once that
-            purchase failed or was denied, or was captured more than ten minutes
-            ago."
+          description: "Only when the user asked to buy the same cart again: the id of the
+            latest purchase of this cart under the mandate. Not needed once that
+            purchase was denied or failed before capture, or was captured more
+            than ten minutes ago. A retry after a lost answer never sends it:
+            the `409 purchase-exists` answer names the purchase already made."
       required:
         - authorizationId
         - closedMandate
