@@ -145,10 +145,14 @@ contract MandateViolationCourt {
         view
         returns (bool)
     {
-        (address signer,,) = ECDSA.tryRecover(digest, uint8(sig[64]), bytes32(sig[0:32]), bytes32(sig[32:64]));
+        address signer = _recover(digest, sig);
         (uint8 kind, uint40 registeredAt, uint40 expiresAt, uint40 revokedAt, bytes32 measurement) =
             teeVerifier.signers(signer);
         return kind == teeKind && revokedAt == 0 && registeredAt != 0 && registeredAt <= issuedAt
             && issuedAt < expiresAt && teeVerifier.allowedMeasurement(measurement);
+    }
+
+    function _recover(bytes32 digest, bytes calldata sig) internal pure returns (address signer) {
+        (signer,,) = ECDSA.tryRecover(digest, uint8(sig[64]), bytes32(sig[0:32]), bytes32(sig[32:64]));
     }
 }
