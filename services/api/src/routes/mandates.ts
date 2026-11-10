@@ -24,6 +24,7 @@ import {
   spcDetails,
 } from "@keelson/mandate";
 import type { SignedChallenge } from "@keelson/mandate/browser";
+import { POLICY_SET_HASH } from "@keelson/policy/hashes";
 import type { Deps } from "../app.ts";
 import { agentBond, agentCnf, termsConsent } from "../compile-sources.ts";
 import { passkeyJwk, SignatureError, verifyMandateSignature } from "../mandate-signature.ts";
@@ -32,6 +33,7 @@ import { purchaseView } from "../pipeline/drive.ts";
 import type { Principal } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 import { LegError, type MandateIssued } from "../tee/client.ts";
+import { unboundPolicy } from "../tee/engine-source.ts";
 import { PurchaseProgress } from "./purchases.ts";
 
 const Hex32 = z.string().regex(/^0x[0-9a-f]{64}$/);
@@ -209,7 +211,7 @@ const create = createRoute({
     409: { description: "The mandate is already stored", content: problemContent },
     422: {
       description:
-        "The mandate is invalid (`invalid-mandate`), or it binds an agent key, a bond or terms other than the ones `POST /v1/mandates/compile` fills: the named operator's registered `cnf` key, its bond vault with the 50 PYUSD minimum, and the current terms (`mandate-binding-mismatch`; `fields` names `agent.cnf`, `agent.bond` or `consent`)",
+        "The mandate is invalid (`invalid-mandate`), or it binds an agent key, a bond, an engine build, a policy set or terms other than the ones `POST /v1/mandates/compile` fills: the named operator's registered `cnf` key, its bond vault with the 50 PYUSD minimum, the engine version and TEE measurements of the build the legs run (or of another build admitted during a rotation), the current policy set hash and the current terms (`mandate-binding-mismatch`; `fields` names `agent.cnf`, `agent.bond`, `policy.engine`, `policy.version`, `policy.measurements`, `policy.policy_set_hash` or `consent`)",
       content: problemContent,
     },
     503: { description: "The TEE could not issue the mandate", content: problemContent },
@@ -390,6 +392,8 @@ export function registerMandates(
     const unbound = [
       ...(cnf && isDeepStrictEqual(m.agent.cnf, cnf) ? [] : ["agent.cnf"]),
       ...(bond && isDeepStrictEqual(m.agent.bond, bond) ? [] : ["agent.bond"]),
+      ...unboundPolicy(m.policy),
+      ...(m.policy.policy_set_hash === POLICY_SET_HASH ? [] : ["policy.policy_set_hash"]),
       ...(isDeepStrictEqual(m.consent, await termsConsent()) ? [] : ["consent"]),
     ];
     if (unbound.length > 0) {
@@ -398,7 +402,7 @@ export function registerMandates(
         422,
         "mandate-binding-mismatch",
         "Mandate binding mismatch",
-        `${unbound.join(", ")} must be what compiling fills: the operator's registered agent key and bond, and the current terms.`,
+        `${unbound.join(", ")} must be what compiling fills: the operator's registered agent key and bond, an engine build the legs are admitted to run, the current policy set and the current terms.`,
         { fields: unbound },
       );
     }
