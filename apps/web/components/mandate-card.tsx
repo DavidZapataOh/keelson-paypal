@@ -1,5 +1,5 @@
 import type { Card } from "@keelson/mandate/browser";
-import { Liability, type LiabilityKind } from "@keelson/ui/components/liability";
+import { Liability, LiabilityField, type LiabilityKind } from "@keelson/ui/components/liability";
 
 const KIND: Record<Card["rows"][number]["color"], LiabilityKind> = {
   green: "verified",
@@ -11,22 +11,16 @@ const KIND: Record<Card["rows"][number]["color"], LiabilityKind> = {
 export function MandateCard({ card }: { card: Card }) {
   return (
     <div className="grid gap-4">
-      <dl className="grid divide-y rounded-xl border bg-card">
+      <div className="divide-y rounded-lg border bg-card px-5">
         {card.rows.map((row) => (
-          <div
+          <LiabilityField
             key={row.field}
-            className="grid gap-x-6 gap-y-1.5 px-5 py-3.5 sm:grid-cols-[10rem_1fr_auto] sm:items-center"
-          >
-            <dt className="text-muted-foreground text-sm">{row.label}</dt>
-            <dd className="min-w-0 font-medium [overflow-wrap:anywhere]">
-              {row.values.join(", ")}
-            </dd>
-            <dd className="text-sm">
-              <Liability kind={KIND[row.color]} />
-            </dd>
-          </div>
+            name={row.label}
+            value={<span className="[overflow-wrap:anywhere]">{row.values.join(", ")}</span>}
+            kind={KIND[row.color]}
+          />
         ))}
-      </dl>
+      </div>
       {card.warnings.length > 0 ? (
         <ul className="grid gap-1.5 text-muted-foreground text-sm">
           {card.warnings.map((w) => (

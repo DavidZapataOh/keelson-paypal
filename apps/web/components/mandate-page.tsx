@@ -1,7 +1,9 @@
 "use client";
 
+import { Amount } from "@keelson/ui/components/amount";
 import { Button } from "@keelson/ui/components/button";
 import { Empty, EmptyDescription, EmptyHeader } from "@keelson/ui/components/empty";
+import { Meter } from "@keelson/ui/components/meter";
 import { Status } from "@keelson/ui/components/status";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -16,7 +18,8 @@ import { PayPalHold } from "./paypal-hold";
 
 export function MandatePage() {
   const id = useSearchParams().get("id");
-  const { mandate, error, pending, reload, signedIn, sessionPending } = useMandate(id);
+  const { mandate, error, pending, countersigned, reload, signedIn, sessionPending } =
+    useMandate(id);
   const [revoking, setRevoking] = useState(false);
 
   if (!sessionPending && !signedIn) {
@@ -38,8 +41,10 @@ export function MandatePage() {
     );
 
   const { budget } = mandate;
-  const spent = BigInt(budget.maxMinor) - BigInt(budget.remainingMinor);
-  const share = Number((spent * 1000n) / (BigInt(budget.maxMinor) || 1n)) / 10;
+  const max = Number(budget.maxMinor) / 100;
+  const left = Number(budget.remainingMinor) / 100;
+  const dollars = (n: number) =>
+    new Intl.NumberFormat("en-US", { style: "currency", currency: budget.currency }).format(n);
   const needsHold =
     (mandate.state === "SIGNED" || mandate.state === "HOLD_PENDING") &&
     mandate.hold?.mode !== "per_purchase";
@@ -59,19 +64,13 @@ export function MandatePage() {
         <Eyebrow>
           Mandate {mandate.id.slice(-8)} · {mandateLabel(mandate.state)}
         </Eyebrow>
-        <h1 id="budget" className="text-amount font-semibold tracking-[-0.035em]">
-          {money(budget.remainingMinor, budget.currency)}
-          <span className="font-normal text-muted-foreground text-xl tracking-normal">
-            {" "}
-            left of {money(budget.maxMinor, budget.currency)}
+        <h1 id="budget" className="grid gap-1">
+          <Amount value={left} currency={budget.currency} className="text-amount" />
+          <span className="font-normal text-base text-muted-foreground">
+            your agent may still spend
           </span>
         </h1>
-        <div
-          className="h-1.5 w-full max-w-md overflow-hidden rounded-full bg-border"
-          aria-hidden="true"
-        >
-          <div className="h-full bg-foreground" style={{ width: `${share}%` }} />
-        </div>
+        <Meter label="Spent" value={max - left} max={max} format={dollars} className="max-w-md" />
         <p className="text-muted-foreground text-sm">Valid until {when(mandate.expiresAt)}</p>
       </section>
 
@@ -144,12 +143,18 @@ export function MandatePage() {
                   className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1.5 px-5 py-4 hover:bg-accent/60"
                 >
                   <span className="font-medium">{p.merchantId}</span>
-                  <span className="tnum text-right font-mono">
-                    {money(p.amount.minor, p.amount.currency)}
-                  </span>
+                  <Amount
+                    value={Number(p.amount.minor) / 100}
+                    currency={p.amount.currency}
+                    className="text-right"
+                  />
                   <span className="text-muted-foreground text-sm">{when(p.createdAt)}</span>
                   <span className="justify-self-end">
-                    <Status state={purchaseStatus(p)} appearance="inline" />
+                    <Status
+                      state={purchaseStatus(p)}
+                      appearance="inline"
+                      reveal={countersigned.has(p.id) && purchaseStatus(p) === "countersigned"}
+                    />
                   </span>
                 </Link>
               </li>

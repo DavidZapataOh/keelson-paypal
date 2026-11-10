@@ -5,12 +5,12 @@
  */
 export const TERMS = `Keelson mandate terms, version 1.
 
-1. You authorize the agent named in this mandate to buy on your behalf only within the limits shown: the items, total, budget, stores, deadline and the other fields of the card.
-2. Keelson checks every cart against this mandate before payment. A cart outside it is not paid.
-3. Each field shows who answers if the agent gets it wrong: Keelson for green fields, the agent's operator from its bond for amber fields, and you for gray fields. Gray fields are not covered.
-4. PayPal holds the budget when you approve the hold and captures only the amount of each countersigned cart. What is left is released when the mandate ends or you revoke it.
-5. Merchant return and refund policies apply at capture. PayPal still decides disputes.
+1. You authorize the agent named in this mandate to buy for you only within what the card shows: the items, total, budget, stores, deadline and its other fields.
+2. Keelson checks every cart against this mandate before payment. A cart outside it is blocked and not paid.
+3. Each field shows who answers if the agent gets it wrong: Keelson for green fields; the agent's operator, from its bond and up to it, for amber fields; you for gray fields, which nobody covers.
+4. When you approve on PayPal, PayPal authorizes your budget, or each cart for a mandate with several stores. Keelson captures only the amount of a cart it countersigned. What is not spent is released when the mandate ends or you revoke it.
+5. Store return and refund policies still apply. PayPal decides disputes; Keelson brings the evidence and names the party at fault.
 6. Keelson is not insurance. It does not judge taste or preference.`;
 
 /** `sha256:` and the lowercase hex SHA-256 of the UTF-8 bytes of {@link TERMS}. */
-export const TERMS_HASH = "sha256:1f464c17f60af2fd0b8339ec4f344618d2ef3ed0faa456d5e1ffa29ef1f68bea";
+export const TERMS_HASH = "sha256:0c71fd831591ac606aed8279a6940bbecd1d45f2c5ad0cc7df833399be3e7afe";
