@@ -37,6 +37,8 @@ export interface Purchase {
   coverage?: { chainId: number; txHash: string | null };
   capture?: { id: string; invoiceId: string; status: string | null };
   failure?: { step: string; reason: string };
+  /** For a blocked cart, the mandate fields whose check failed. */
+  blocked?: string[];
   disputes: { id: string; state: "OPEN" | "ATTRIBUTED" | "RESOLVED" }[];
 }
 
@@ -55,6 +57,16 @@ export interface MandateView {
   } | null;
   card: Card | null;
   purchases: Purchase[];
+  /** Purchases of a several-store mandate waiting for the buyer's PayPal approval. */
+  pendingHolds: PendingHold[];
+}
+
+/** A purchase of a several-store mandate waiting for the buyer's PayPal approval. */
+export interface PendingHold {
+  requestId: string;
+  orderId: string;
+  merchant: string;
+  amountMinor: string;
 }
 
 export interface Compiled {

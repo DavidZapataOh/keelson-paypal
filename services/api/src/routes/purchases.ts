@@ -24,17 +24,22 @@ export const PurchaseProgress = z.object({
     .object({ step: z.string(), reason: z.string() })
     .optional()
     .openapi({ description: "The step that failed and why; nothing was captured." }),
+  blocked: z
+    .array(z.string())
+    .optional()
+    .openapi({ description: "For a `DENIED` cart, the mandate fields whose check failed." }),
 });
 
 export function progressOf(view: PurchaseView | undefined): z.infer<typeof PurchaseProgress> {
   if (!view) return {};
-  const { state, logIndex, coverage, capture, failure } = view;
+  const { state, logIndex, coverage, capture, failure, blocked } = view;
   return {
     state,
     ...(logIndex ? { logIndex } : {}),
     ...(coverage ? { coverage } : {}),
     ...(capture ? { capture } : {}),
     ...(failure ? { failure } : {}),
+    ...(blocked ? { blocked } : {}),
   };
 }
 
