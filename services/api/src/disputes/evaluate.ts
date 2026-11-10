@@ -1,4 +1,5 @@
 import { createChainReader, verifyAlibi } from "@keelson/alibi/verify";
+import { deploymentsFor, mandateViolationCourtAbi } from "@keelson/chain";
 import { type CurrencyCode, fromPayPalValue } from "@keelson/core";
 import {
   alibis,
@@ -70,6 +71,27 @@ async function anchorNow(tlog: LogConfig, chainId: number): Promise<Hex | undefi
 }
 
 /**
+ * Whether `MandateViolationCourt` holds a conviction of the coverage: a C2a proof that its cart
+ * violated the mandate, so the purchase has no valid proof of its mandate.
+ */
+export async function convicted(
+  client: PublicClient,
+  chainId: number,
+  coverageId: Hex,
+): Promise<boolean> {
+  const court = deploymentsFor(chainId).MandateViolationCourt;
+  if (!court) return false;
+  if (client.chain?.id !== chainId) throw new Error(`the chain client is not on chain ${chainId}`);
+  const [code] = await client.readContract({
+    address: court,
+    abi: mandateViolationCourtAbi,
+    functionName: "violations",
+    args: [coverageId],
+  });
+  return code !== 0;
+}
+
+/**
  * Attributes one stored dispute and stores the `Verdict` both legs signed. Run as often as it is
  * started: a dispute with a verdict answers that verdict, and every write is conditional.
  * A failed read or signature throws, so the run is retried; nothing defaults to a fact.
@@ -125,33 +147,36 @@ export async function evaluateDispute(deps: EvaluateDeps, disputeId: string): Pr
   if (!bundle?.anchor) throw new Error(`purchase ${p.id} has no anchored alibi`);
 
   const { payments, orders } = deps.paypal.paypal;
-  const [dispute, report, capture, order, trackers, sameCart, settlement] = await Promise.all([
-    getDispute(deps.paypal.paypal.fetch, disputeId),
-    verifyAlibi(bundle, {
-      chain: createChainReader(deps.rpcUrl ? { rpc: { [chainId]: deps.rpcUrl } } : {}),
-    }),
-    call(payments.getCapturedPayment({ captureId: p.paypalCaptureId })),
-    call(orders.getOrder({ id: p.paypalOrderId })),
-    listTrackers(deps.paypal.paypal.fetch, p.paypalCaptureId),
-    db
-      .select({ id: purchases.id })
-      .from(purchases)
-      .where(
-        and(
-          eq(purchases.mandateId, p.mandateId),
-          eq(purchases.cartHash, p.cartHash),
-          ne(purchases.id, p.id),
-          isNotNull(purchases.paypalCaptureId),
-        ),
-      )
-      .limit(1),
-    settlementOf(db, p.merchantId),
-  ]);
+  const cs = p.countersign;
+  const [dispute, report, capture, order, trackers, sameCart, settlement, violated] =
+    await Promise.all([
+      getDispute(deps.paypal.paypal.fetch, disputeId),
+      verifyAlibi(bundle, {
+        chain: createChainReader(deps.rpcUrl ? { rpc: { [chainId]: deps.rpcUrl } } : {}),
+      }),
+      call(payments.getCapturedPayment({ captureId: p.paypalCaptureId })),
+      call(orders.getOrder({ id: p.paypalOrderId })),
+      listTrackers(deps.paypal.paypal.fetch, p.paypalCaptureId),
+      db
+        .select({ id: purchases.id })
+        .from(purchases)
+        .where(
+          and(
+            eq(purchases.mandateId, p.mandateId),
+            eq(purchases.cartHash, p.cartHash),
+            ne(purchases.id, p.id),
+            isNotNull(purchases.paypalCaptureId),
+          ),
+        )
+        .limit(1),
+      settlementOf(db, p.merchantId),
+      convicted(deps.chain.client, chainId, cs.requestId as Hex),
+    ]);
   if (dispute.status === "RESOLVED") return { status: "resolved", disputeId };
   const { facts, failedFields } = disputeFacts({
     reads: { dispute, capture, order, trackers },
     bundle,
-    verified: report.verdict === "verified",
+    verified: report.verdict === "verified" && !violated,
     sameCartCountersigned: sameCart.length > 0,
   });
 
@@ -166,7 +191,6 @@ export async function evaluateDispute(deps: EvaluateDeps, disputeId: string): Pr
     : p.amountMinor;
   // biome-ignore lint/complexity/useMathMinMax: amounts are bigints.
   const minor = disputed < p.amountMinor ? disputed : p.amountMinor;
-  const cs = p.countersign;
   const issuedAt = Math.floor(Date.now() / 1000);
   const signed = await verdict2of2(deps, {
     facts: facts as unknown as Record<string, string | boolean>,
