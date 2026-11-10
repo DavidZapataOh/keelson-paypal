@@ -5,6 +5,13 @@ import { addresses } from "./addresses.ts";
 export const PYUSD_ARBITRUM_SEPOLIA: Address = "0x637A1259C6afd7E3AdF63993cA7E58BB438aB1B1";
 
 const PERMIT_TYPES = {
+  // Listed so that a serialized permit (`eth_signTypedData_v4`) carries its domain.
+  EIP712Domain: [
+    { name: "name", type: "string" },
+    { name: "version", type: "string" },
+    { name: "chainId", type: "uint256" },
+    { name: "verifyingContract", type: "address" },
+  ],
   Permit: [
     { name: "owner", type: "address" },
     { name: "spender", type: "address" },
@@ -33,7 +40,7 @@ export function bondPermitTypedData(
     domain: {
       name: "PayPal USD",
       version: "1",
-      chainId: 421614,
+      chainId: 421614n,
       verifyingContract: PYUSD_ARBITRUM_SEPOLIA,
     },
     types: PERMIT_TYPES,

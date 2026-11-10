@@ -40,7 +40,7 @@ const problems = {
  * Admits a session one of whose wallets (EIP-4361) is the agent's owner or agent wallet in the
  * Identity registry now. Sets `c.var.operatorWallets`.
  */
-export function requireOperator(
+function requireOperator(
   deps: Pick<Deps, "db">,
   authority: ReturnType<typeof agentAuthority>,
 ): MiddlewareHandler {
@@ -291,7 +291,10 @@ function conditionSql(col: Column, c: z.infer<typeof Condition>): SQL {
   }
 }
 
-/** The filter model as one SQL predicate. */
+/**
+ * The filter model as SQL predicates, one per column.
+ * @internal
+ */
 export function filterSql(model: Partial<Record<string, z.infer<typeof ColumnFilter>>>): SQL[] {
   return Object.entries(model).flatMap(([colId, f]) => {
     if (!f) return [];
@@ -327,7 +330,10 @@ const txUrl = (chainId: unknown, hash: unknown) =>
     ? `${CHAINS[Number(chainId) as keyof typeof CHAINS].explorer}/tx/0x${Buffer.from(hash as Buffer).toString("hex")}`
     : null;
 
-/** The operator's covered purchases, each with its latest dispute and that dispute's verdict. */
+/**
+ * The operator's covered purchases, each with its latest dispute and that dispute's verdict.
+ * @internal
+ */
 export async function coverageRows(
   db: Db,
   agentId: bigint,

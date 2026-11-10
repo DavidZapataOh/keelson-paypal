@@ -1,4 +1,4 @@
-import { hashDomain } from "viem";
+import { hashDomain, serializeTypedData } from "viem";
 import { expect, test } from "vitest";
 import { addresses, bondPermitTypedData } from "../src/index.ts";
 
@@ -10,17 +10,16 @@ test("the permit's domain is PYUSD's DOMAIN_SEPARATOR on Arbitrum Sepolia, and i
     deadline: 1n,
   });
   expect(
-    hashDomain({
-      domain: typed.domain,
-      types: {
-        EIP712Domain: [
-          { name: "name", type: "string" },
-          { name: "version", type: "string" },
-          { name: "chainId", type: "uint256" },
-          { name: "verifyingContract", type: "address" },
-        ],
-      },
-    }),
+    hashDomain({ domain: typed.domain ?? {}, types: typed.types } as Parameters<
+      typeof hashDomain
+    >[0]),
   ).toBe("0xf3ecc5aec9b5298246e45dbdcf197d113d30718459718fca6a79848cbabfacb2");
   expect(typed.message.spender).toBe(addresses[421614].KeelsonBondVault);
+  // What a wallet receives over eth_signTypedData_v4 names the domain it signs under.
+  const { domain } = JSON.parse(serializeTypedData(typed));
+  expect([domain.name, domain.version, String(domain.chainId)]).toEqual([
+    "PayPal USD",
+    "1",
+    "421614",
+  ]);
 });
