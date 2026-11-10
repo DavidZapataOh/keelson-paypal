@@ -35,8 +35,8 @@ import { createTee } from "./tee/config.ts";
 import { engineSource } from "./tee/engine-source.ts";
 import { startSignerRefresh } from "./tee/signers.ts";
 import { startStampWorker } from "./timestamps/worker.ts";
-import { awaitingC3, composable, proveAnonymousPurchase } from "./zk/c1c3.ts";
-import { C3_SALT_TTL_SECONDS, c3SaltKey, proveAnonymousMandate } from "./zk/c3.ts";
+import { composable, proveAnonymousPurchase } from "./zk/c1c3.ts";
+import { c3Prover } from "./zk/c3.ts";
 
 const FORCE_EXIT_MS = 10_000;
 
@@ -142,24 +142,10 @@ const startDisputeWorkflow =
         }
       }
     : undefined;
-// The proof needs more memory than this instance has: the workflow proves it, and reads the salt
-// from Valkey so that it never becomes a task argument. Without a workflow it is proved here.
-const proveC3 = render
-  ? async (mandateId: string, salt: string) => {
-      await kv.set(c3SaltKey(mandateId), salt, { EX: C3_SALT_TTL_SECONDS });
-      const run = await render.workflows.startTask(
-        `${env.DISPUTE_WORKFLOW}/proveAnonymousMandate`,
-        [mandateId],
-        { idempotencyKey: `proveAnonymousMandate:${mandateId}` },
-      );
-      log.info({ mandateId, taskRunId: run.taskRunId }, "C3 workflow started");
-    }
-  : async (mandateId: string, salt: string) => {
-      await proveAnonymousMandate({ db, log }, mandateId, salt);
-      for (const purchaseId of await awaitingC3(db, mandateId)) {
-        await proveAnonymousPurchase({ db, log }, purchaseId);
-      }
-    };
+const proveC3 = c3Prover(
+  { db, kv, log },
+  render && env.DISPUTE_WORKFLOW ? { render, slug: env.DISPUTE_WORKFLOW } : undefined,
+);
 // Composing takes about 2.8 GB: the workflow does it, only for a purchase with both recursive proofs.
 const proveC1C3 = async (purchaseId: string) => {
   if (!(await composable(db, purchaseId))) return;

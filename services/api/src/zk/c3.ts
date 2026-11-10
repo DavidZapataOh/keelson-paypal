@@ -12,12 +12,15 @@ import {
   userKeyHash,
   userSet,
 } from "@keelson/mandate";
+import type { Render } from "@renderinc/sdk";
 import type { Logger } from "pino";
+import type { RedisClientType } from "redis";
 import { passkeyJwk, SignatureError } from "../mandate-signature.ts";
 import { prove } from "./bb.ts";
+import { awaitingC3, proveAnonymousPurchase } from "./c1c3.ts";
 
 /** How long the API keeps a new mandate's salt for its C3 proof: past it, the proof is not made. */
-export const C3_SALT_TTL_SECONDS = 3600;
+const C3_SALT_TTL_SECONDS = 3600;
 
 /** The Valkey key of a new mandate's commitment salt, kept for its C3 proof. */
 export const c3SaltKey = (mandateId: string): string => `c3:salt:${mandateId}`;
@@ -122,4 +125,34 @@ export async function proveAnonymousMandate(
     "C3 proved",
   );
   return c3;
+}
+
+/**
+ * Starts the C3 proof of a mandate just stored. With a workflow, the proof needs more memory than
+ * the API instance has: the workflow task `proveAnonymousMandate` proves it and reads the salt from
+ * Valkey, so that it never becomes a task argument, and composes the purchases logged before it.
+ * Without one both happen in this process.
+ */
+export function c3Prover(
+  deps: { db: Db; kv: RedisClientType; log: Logger },
+  workflow?: { render: Render; slug: string },
+): (mandateId: string, salt: string) => Promise<void> {
+  const { db, kv, log } = deps;
+  if (!workflow) {
+    return async (mandateId, salt) => {
+      await proveAnonymousMandate({ db, log }, mandateId, salt);
+      for (const purchaseId of await awaitingC3(db, mandateId)) {
+        await proveAnonymousPurchase({ db, log }, purchaseId);
+      }
+    };
+  }
+  return async (mandateId, salt) => {
+    await kv.set(c3SaltKey(mandateId), salt, { EX: C3_SALT_TTL_SECONDS });
+    const run = await workflow.render.workflows.startTask(
+      `${workflow.slug}/proveAnonymousMandate`,
+      [mandateId],
+      { idempotencyKey: `proveAnonymousMandate:${mandateId}` },
+    );
+    log.info({ mandateId, taskRunId: run.taskRunId }, "C3 workflow started");
+  };
 }
