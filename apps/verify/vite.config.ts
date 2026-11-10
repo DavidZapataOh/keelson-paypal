@@ -2,9 +2,12 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
 
-/** The policy the deployed site serves (render.yaml); previews serve it too, so tests run under it. */
+/**
+ * The policy the deployed site serves (render.yaml); previews serve it too, so tests run under it.
+ * bb.js inlines its wasm as a `data:` URL and fetches it, hence `data:` in `connect-src`.
+ */
 export const CSP =
-  "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' https://api.keelson.finance https://log.keelson.finance https:; img-src 'self' blob: data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors https://keelson.finance";
+  "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' data: https://api.keelson.finance https://log.keelson.finance https:; img-src 'self' blob: data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors https://keelson.finance";
 
 /**
  * Cedar's package.json lists only its snippets as side-effectful, so the bundler would drop the

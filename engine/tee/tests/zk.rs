@@ -264,3 +264,22 @@ fn a_salt_that_does_not_open_leaves_the_allow_without_a_proof() {
     assert_eq!(out.countersign.decision, "1");
     assert!(out.c1.is_none());
 }
+
+#[cfg(unix)]
+#[test]
+fn a_bb_that_does_not_answer_is_abandoned_at_the_deadline() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = std::env::temp_dir().join(format!("keelson-zk-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let silent = dir.join("bb");
+    std::fs::write(&silent, "#!/bin/sh\nexec sleep 60\n").unwrap();
+    std::fs::set_permissions(&silent, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let prover = Prover::spawn(&silent).unwrap();
+    let d = demo();
+    let t = Instant::now();
+    let err = prover
+        .prove(&d.statement, &d.opening, &d.merchant)
+        .unwrap_err();
+    assert!(matches!(err, ProverError::Backend(_)), "{err}");
+    assert!(t.elapsed().as_secs() < 10);
+}

@@ -16,6 +16,7 @@ import {
   type CountersignRequest,
   LegError,
   type Observation,
+  type ZkProof,
 } from "./client.ts";
 import { activeSigner, type Leg, refreshLeg, revokeSigner, type TeeConfig } from "./signers.ts";
 
@@ -70,6 +71,7 @@ interface CoordinatedCountersign {
   signers: { tdx: Address; nitro: Address | null };
   trace: Json;
   observation: Observation;
+  c1?: ZkProof;
 }
 
 const DOMAIN_CHAIN = CHAIN_IDS.arbitrumSepolia;
@@ -333,7 +335,8 @@ export async function countersign2of2(
   }
   const first = await checked(deps, "a", a, req, want);
 
-  const { authorization_id: _read, ...forB } = req;
+  // Leg B has no root to open the salt with.
+  const { authorization_id: _read, sealed_salt: _salt, ...forB } = req;
   let b: Countersigned | undefined;
   if (await activeSigner(deps.db, 2)) {
     try {
@@ -370,6 +373,7 @@ export async function countersign2of2(
       signers: { tdx: first.signer, nitro: null },
       trace,
       observation: a.observation,
+      ...(a.c1 ? { c1: a.c1 } : {}),
     };
   }
 
@@ -387,5 +391,6 @@ export async function countersign2of2(
     signers: { tdx: first.signer, nitro: second.signer },
     trace,
     observation: a.observation,
+    ...(a.c1 ? { c1: a.c1 } : {}),
   };
 }

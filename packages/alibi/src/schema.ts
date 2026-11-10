@@ -128,6 +128,15 @@ export const alibiSchema = z.strictObject({
     ),
   }),
   channel3_observation: json.optional(),
+  /**
+   * Leg A's C1 `mandate_predicate` proof: UltraHonk for the EVM over `C_m, amount, currency,
+   * category, merchant_id, now, cart_hash, operator_id`, the countersign's fields.
+   */
+  zk: z
+    .strictObject({
+      c1: z.strictObject({ proof: base64, public_inputs: z.array(hex32).length(8) }),
+    })
+    .optional(),
   paypal: z.strictObject({
     order_id: z.string().min(1),
     authorization_id: z.string().min(1),

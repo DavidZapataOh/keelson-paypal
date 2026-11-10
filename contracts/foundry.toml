@@ -25,6 +25,7 @@ fs_permissions = [
   { access = "read", path = "../packages/mandate/test/vectors" },
   { access = "read", path = "../engine/tee/measurements.json" },
   { access = "read", path = "./lib/nitro-validator/out" },
+  { access = "read", path = "./out/MandatePredicateReferenceVerifier.sol" },
 ]
 
 [profile.ci]

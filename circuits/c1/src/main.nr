@@ -69,6 +69,8 @@ fn main(
     assert(now <= expiry, "expiry");
     assert(category < 64, "category");
     assert_eq((category_mask >> category as u64) & 1, 1, "category");
+    // Leaf 0 holds the zero value with a non-empty preimage, so 0 would open in every tree.
+    assert(merchant_id != 0, "merchant");
     let leaf = Poseidon2::hash([merchant_id, merchant.next, merchant.next_index], 3);
     assert_eq(merkle_root(leaf, merchant.index, merchant.path), merchant_root, "merchant");
 }
@@ -219,14 +221,18 @@ fn another_operator_fails() {
 
 #[test(should_fail_with = "merchant")]
 fn the_zero_leaf_does_not_open_as_a_merchant() {
-    let mut merchant = demo_membership();
-    merchant.index = 0;
+    // The zero leaf's preimage is (0, smallest merchant, 1): a path to it opens in every tree.
+    let mut path = vectors::PATH;
+    path[0] = Poseidon2::hash(
+        [vectors::MERCHANT_ID, vectors::NEXT, vectors::NEXT_INDEX],
+        3,
+    );
     main(
         vectors::C_M,
         vectors::AMOUNT,
         vectors::CURRENCY,
         vectors::CATEGORY,
-        vectors::MERCHANT_ID,
+        0,
         vectors::NOW,
         vectors::CART_HASH,
         vectors::OPERATOR_ID,
@@ -237,7 +243,7 @@ fn the_zero_leaf_does_not_open_as_a_merchant() {
         vectors::EXPIRY,
         vectors::NONCE,
         vectors::SALT,
-        merchant,
+        Membership { next: vectors::MERCHANT_ID, next_index: 1, index: 0, path },
     );
 }
 

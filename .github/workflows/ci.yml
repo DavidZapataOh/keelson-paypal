@@ -86,6 +86,7 @@ jobs:
               - circuits/**
               - engine/tee/zk/**
               - contracts/src/verifiers/**
+              - packages/alibi/src/verify/c1-vk.ts
 
   node:
     needs: changes
@@ -693,7 +694,7 @@ jobs:
       - name: The engine's program and key and the Solidity verifiers are what the circuit compiles to
         run: |
           circuits/c1/build.sh
-          git diff --exit-code engine/tee/zk contracts/src/verifiers
+          git diff --exit-code engine/tee/zk contracts/src/verifiers packages/alibi/src/verify/c1-vk.ts
       - name: bb proves and verifies the demo mandate
         run: |
           circuits/c1/prove.sh "$RUNNER_TEMP/c1-proof.json"

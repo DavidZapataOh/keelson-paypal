@@ -8,8 +8,9 @@
 
 use std::fmt;
 use std::io::Read as _;
-use std::path::Path;
-use std::sync::Mutex;
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, mpsc};
+use std::time::Duration;
 
 use acir::FieldElement;
 use acir::circuit::Program;
@@ -95,9 +96,30 @@ fn evm() -> ProofSystemSettings {
     }
 }
 
-/// Proves C1 with one `bb` process, one proof at a time.
+/// How long one `bb` call may take before its process is abandoned and a new one started.
+const BB_DEADLINE: Duration = Duration::from_secs(5);
+
+type Api = BarretenbergApi<PipeBackend>;
+type Job = Box<dyn FnOnce(&mut Api) + Send>;
+
+/// Starts `bb msgpack run` on a thread of its own that runs each job it is sent in turn. Dropping
+/// the sender ends the thread, and dropping the backend kills `bb`.
+fn start(bb: &Path) -> Result<mpsc::Sender<Job>, ProverError> {
+    let mut api = BarretenbergApi::new(PipeBackend::new(bb, None).map_err(bb_error)?);
+    let (tx, rx) = mpsc::channel::<Job>();
+    std::thread::spawn(move || {
+        for job in rx {
+            job(&mut api);
+        }
+    });
+    Ok(tx)
+}
+
+/// Proves C1 with one `bb` process, one proof at a time. A call that fails or outlives
+/// [`BB_DEADLINE`] abandons that process; the next call starts a new one.
 pub struct Prover {
-    bb: Mutex<BarretenbergApi<PipeBackend>>,
+    bb: PathBuf,
+    worker: Mutex<Option<mpsc::Sender<Job>>>,
     program: Program<FieldElement>,
     /// The ACIR program as `bb` reads it: msgpack, not gzipped.
     bytecode: Vec<u8>,
@@ -128,9 +150,9 @@ impl Prover {
         GzDecoder::new(gzipped.as_slice())
             .read_to_end(&mut bytecode)
             .expect("the embedded bytecode is gzipped");
-        let backend = PipeBackend::new(bb, None).map_err(bb_error)?;
         Ok(Self {
-            bb: Mutex::new(BarretenbergApi::new(backend)),
+            worker: Mutex::new(Some(start(bb)?)),
+            bb: bb.to_owned(),
             program,
             bytecode,
         })
@@ -156,12 +178,7 @@ impl Prover {
             bytecode: self.bytecode.clone(),
             verification_key: VERIFICATION_KEY.to_vec(),
         };
-        let out = self
-            .bb
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .circuit_prove(circuit, &witness, evm())
-            .map_err(bb_error)?;
+        let out = self.call(move |api| api.circuit_prove(circuit, &witness, evm()))?;
         Ok(C1Proof {
             proof: out.proof.concat(),
             public_inputs: out
@@ -175,18 +192,35 @@ impl Prover {
 
     /// Verifies `proof` against the embedded verification key with the same `bb`.
     pub fn verify(&self, proof: &C1Proof) -> Result<bool, ProverError> {
-        let out = self
-            .bb
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .circuit_verify(
-                VERIFICATION_KEY,
-                proof.public_inputs.iter().map(|f| f.to_vec()).collect(),
-                proof.proof.chunks(32).map(<[u8]>::to_vec).collect(),
-                evm(),
-            )
-            .map_err(bb_error)?;
+        let inputs = proof.public_inputs.iter().map(|f| f.to_vec()).collect();
+        let fields = proof.proof.chunks(32).map(<[u8]>::to_vec).collect();
+        let out =
+            self.call(move |api| api.circuit_verify(VERIFICATION_KEY, inputs, fields, evm()))?;
         Ok(out.verified)
+    }
+
+    /// Runs `f` on the `bb` worker, starting one when there is none, within [`BB_DEADLINE`].
+    fn call<T: Send + 'static>(
+        &self,
+        f: impl FnOnce(&mut Api) -> barretenberg_rs::Result<T> + Send + 'static,
+    ) -> Result<T, ProverError> {
+        let mut worker = self.worker.lock().unwrap_or_else(|e| e.into_inner());
+        let tx = match worker.as_ref() {
+            Some(tx) => tx.clone(),
+            None => worker.insert(start(&self.bb)?).clone(),
+        };
+        let (done, answer) = mpsc::sync_channel(1);
+        let sent = tx.send(Box::new(move |api: &mut Api| {
+            let _ = done.send(f(api));
+        }));
+        let out = match sent.map(|()| answer.recv_timeout(BB_DEADLINE)) {
+            Ok(Ok(Ok(out))) => return Ok(out),
+            Ok(Ok(Err(e))) => bb_error(e),
+            Ok(Err(_)) => ProverError::Backend(format!("no answer within {BB_DEADLINE:?}")),
+            Err(_) => ProverError::Backend("the bb worker is gone".into()),
+        };
+        *worker = None;
+        Err(out)
     }
 
     fn solve(&self, inputs: Vec<FieldElement>) -> Result<WitnessMap<FieldElement>, ProverError> {

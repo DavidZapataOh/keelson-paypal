@@ -183,6 +183,13 @@
       "when": 1794259310019,
       "tag": "0025_settlement_nonce",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1794272279391,
+      "tag": "0026_purchase_c1_proof",
+      "breakpoints": true
     }
   ]
 }

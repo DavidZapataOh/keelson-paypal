@@ -2,6 +2,8 @@ import { TimestampError, type TsaId, verifyTimestamp } from "@keelson/timestamp"
 import { fromBase64 } from "../../b64.ts";
 import { leafHashOf } from "../../codec.ts";
 import { type CheckDef, expect, pass } from "../check.ts";
+import { c1Statement, verifyC1 } from "../zk.ts";
+import { isBundle } from "./util.ts";
 
 /** Every RFC 3161 token stamps the leaf hash under a pinned TSA root; pending while none has. */
 export const timestamps: CheckDef = {
@@ -29,10 +31,32 @@ export const timestamps: CheckDef = {
   },
 };
 
-/** No zero-knowledge proof is carried yet, so the C1 claim is absent, never passed. */
+/**
+ * The C1 proof shows the mandate `mandateCommitment` commits to allows this countersign's amount,
+ * currency, category, merchant and time, without the mandate: its public inputs are the
+ * countersign's fields, it verifies with bb.js against the pinned key and, read on chain, the
+ * deployed verifier accepts it in an `eth_call`. Absent when the Alibi carries no proof.
+ */
 export const zk: CheckDef = {
   id: "zk.c1",
   step: 8,
-  reads: [],
-  run: () => ({ status: "absent", reads: [] }),
+  reads: ["/zk/c1", "/tee/countersign"],
+  async run(input, ctx) {
+    if (!isBundle(input) || !input.zk) return { status: "absent", reads: [] };
+    const { proof, public_inputs } = input.zk.c1;
+    const statement = c1Statement(input.tee.countersign);
+    expect(
+      public_inputs.every((p, i) => p === statement[i]),
+      "the proof is of another countersign",
+      ["/zk/c1/public_inputs", "/tee/countersign"],
+    );
+    expect(await verifyC1(proof, public_inputs), "the proof does not verify", ["/zk/c1/proof"]);
+    const detail: Record<string, string> = { verifier: "bb.js" };
+    const answer = await ctx.chain?.catch(() => undefined);
+    if (answer?.c1 !== undefined) {
+      expect(answer.c1, "the on-chain verifier rejects the proof", ["/zk/c1/proof"]);
+      detail.onchain = "verified";
+    }
+    return pass(detail);
+  },
 };
