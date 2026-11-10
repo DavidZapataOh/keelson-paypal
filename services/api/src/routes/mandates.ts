@@ -1,6 +1,18 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { fromHex, toHex } from "@keelson/core";
-import { createQueries, eq, mandates, passkey, sql, transition, user } from "@keelson/db";
+import {
+  createQueries,
+  desc,
+  disputes,
+  eq,
+  inArray,
+  mandates,
+  passkey,
+  purchases,
+  sql,
+  transition,
+  user,
+} from "@keelson/db";
 import {
   decodeMandate,
   hSd,
@@ -14,11 +26,15 @@ import type { SignedChallenge } from "@keelson/mandate/browser";
 import type { Deps } from "../app.ts";
 import { passkeyJwk, SignatureError, verifyMandateSignature } from "../mandate-signature.ts";
 import { requireSession } from "../middleware/auth.ts";
+import { purchaseView } from "../pipeline/drive.ts";
 import type { Principal } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 import { LegError, type MandateIssued } from "../tee/client.ts";
+import { PurchaseProgress } from "./purchases.ts";
 
 const Hex32 = z.string().regex(/^0x[0-9a-f]{64}$/);
+const MANDATES_SHOWN = 50;
+const PURCHASES_SHOWN = 100;
 
 const Assertion = z
   .object({
@@ -109,16 +125,59 @@ const HoldView = z
   })
   .openapi("MandateHold");
 
+const Budget = z
+  .object({
+    currency: z.string(),
+    maxMinor: z.string().regex(/^\d+$/),
+    remainingMinor: z.string().regex(/^\d+$/),
+  })
+  .openapi("MandateBudget", {
+    description: "The mandate's budget and what is left of it, in minor units.",
+  });
+
+const MandateSummary = z
+  .object({
+    id: z.string(),
+    state: MandateState,
+    budget: Budget,
+    merchantIds: z.array(z.string()),
+    holdMode: z.enum(["mandate", "per_purchase"]),
+    expiresAt: z.iso.datetime(),
+    createdAt: z.iso.datetime(),
+  })
+  .openapi("MandateSummary");
+
+const MandatePurchase = z
+  .object({
+    id: z.string().openapi({ description: "The purchase's ULID, which is also its Alibi id." }),
+    merchantId: z.string(),
+    amount: z.object({ currency: z.string(), minor: z.string() }),
+    createdAt: z.iso.datetime(),
+    ...PurchaseProgress.shape,
+    state: z.string(),
+    disputes: z
+      .array(z.object({ id: z.string(), state: z.enum(["OPEN", "ATTRIBUTED", "RESOLVED"]) }))
+      .openapi({
+        description: "PayPal disputes over the purchase; `GET /v1/disputes/{id}` has each.",
+      }),
+  })
+  .openapi("MandatePurchase");
+
 const MandateView = z
   .object({
     id: z.string(),
     state: MandateState,
     mandateHash: Hex32.nullable(),
+    budget: Budget,
+    expiresAt: z.iso.datetime(),
     hold: z.union([HoldView, z.null()]).openapi({
       description: "The PayPal hold of the mandate's budget, once its order exists.",
     }),
     card: z.union([Card, z.null()]).openapi({
       description: "The card rendered from the stored payload, before any checkout evidence.",
+    }),
+    purchases: z.array(MandatePurchase).openapi({
+      description: `The mandate's latest ${PURCHASES_SHOWN} purchases, newest first.`,
     }),
   })
   .openapi("Mandate");
@@ -167,7 +226,35 @@ const read = createRoute({
   },
 });
 
+const list = createRoute({
+  method: "get",
+  path: "/v1/mandates",
+  tags: ["mandates"],
+  summary: "List your mandates",
+  description: `The signed-in user's latest ${MANDATES_SHOWN} signed mandates, newest first.`,
+  middleware: [requireSession()],
+  responses: {
+    200: {
+      description: "The mandates",
+      content: {
+        "application/json": {
+          schema: z.object({ mandates: z.array(MandateSummary) }).openapi("Mandates"),
+        },
+      },
+    },
+    401: { description: "Not signed in", content: problemContent },
+  },
+});
+
 const TERMINAL = new Set(["EXHAUSTED", "EXPIRED", "REVOKED"]);
+
+const budgetOf = (
+  row: Pick<typeof mandates.$inferSelect, "currency" | "maxMinor" | "remainingMinor">,
+) => ({
+  currency: row.currency,
+  maxMinor: row.maxMinor.toString(),
+  remainingMinor: row.remainingMinor.toString(),
+});
 
 function holdView(row: typeof mandates.$inferSelect): z.infer<typeof HoldView> | null {
   if (!row.paypalOrderId) return null;
@@ -426,10 +513,54 @@ export function registerMandates(
     );
   });
 
+  app.openapi(list, async (c) => {
+    const userId = (c.get("principal") as Principal).subject;
+    const rows = await db
+      .select()
+      .from(mandates)
+      .where(eq(mandates.userId, userId))
+      .orderBy(desc(mandates.createdAt), desc(mandates.id))
+      .limit(MANDATES_SHOWN);
+    c.header("Cache-Control", "no-store");
+    return c.json(
+      {
+        mandates: rows.map((row) => ({
+          id: row.id,
+          state: row.state,
+          budget: budgetOf(row),
+          merchantIds: row.merchantIds,
+          holdMode: row.holdMode,
+          expiresAt: row.expiresAt.toISOString(),
+          createdAt: row.createdAt.toISOString(),
+        })),
+      },
+      200,
+    );
+  });
+
   app.openapi(read, async (c) => {
     const userId = (c.get("principal") as Principal).subject;
     const row = await queries.mandateById(c.req.valid("param").id);
     if (!row || row.userId !== userId) return problem(c, 404, "not-found", "Not found");
+    const bought = await db
+      .select()
+      .from(purchases)
+      .where(eq(purchases.mandateId, row.id))
+      .orderBy(desc(purchases.createdAt), desc(purchases.id))
+      .limit(PURCHASES_SHOWN);
+    const opened =
+      bought.length === 0
+        ? []
+        : await db
+            .select({ id: disputes.id, state: disputes.state, purchaseId: disputes.purchaseId })
+            .from(disputes)
+            .where(
+              inArray(
+                disputes.purchaseId,
+                bought.map((p) => p.id),
+              ),
+            );
+    c.header("Cache-Control", "no-store");
     const card =
       row.payloadSd && row.disclosures
         ? renderCard(row.payloadSd as object, row.disclosures, NO_EVIDENCE)
@@ -439,8 +570,21 @@ export function registerMandates(
         id: row.id,
         state: row.state,
         mandateHash: row.mandateHash ? toHex(row.mandateHash) : null,
+        budget: budgetOf(row),
+        expiresAt: row.expiresAt.toISOString(),
         hold: holdView(row),
         card,
+        purchases: bought.map((p) => {
+          const { mandateId: _, ...view } = purchaseView(p);
+          return {
+            ...view,
+            merchantId: p.merchantId,
+            createdAt: p.createdAt.toISOString(),
+            disputes: opened
+              .filter((d) => d.purchaseId === p.id)
+              .map((d) => ({ id: d.id, state: d.state })),
+          };
+        }),
       },
       200,
     );

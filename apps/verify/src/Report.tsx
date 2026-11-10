@@ -2,17 +2,17 @@ import type { Check, FieldRow, Report as VerifyReport } from "@keelson/alibi/ver
 import { CHECKS, STATUS, STEPS } from "./labels.ts";
 
 const TONE = {
-  pass: "text-pass",
+  pass: "text-ok",
   fail: "text-vermilion-deep",
-  warn: "text-amber",
-  mute: "text-ink-2",
+  warn: "text-warn",
+  mute: "text-muted-foreground",
 } as const;
 
 const DOT = {
-  pass: "bg-pass",
+  pass: "bg-ok",
   fail: "bg-vermilion",
-  warn: "bg-amber",
-  mute: "bg-line",
+  warn: "bg-warn",
+  mute: "bg-border",
 } as const;
 
 interface Banner {
@@ -105,8 +105,8 @@ function Row({ check }: { check: Check }) {
       <span className={`mt-1.5 size-2 rounded-full ${DOT[s.tone]}`} aria-hidden="true" />
       <div className="min-w-0">
         <p className="text-[15px]">{meta.label}</p>
-        {reason && <p className="mt-0.5 break-words text-sm text-ink-2">{reason}</p>}
-        {check.detail?.alert && <p className="mt-0.5 text-sm text-amber">{check.detail.alert}</p>}
+        {reason && <p className="mt-0.5 break-words text-sm text-muted-foreground">{reason}</p>}
+        {check.detail?.alert && <p className="mt-0.5 text-sm text-warn">{check.detail.alert}</p>}
         {check.blame && check.blame.length > 0 && (
           <p className="mt-1 font-mono text-xs text-vermilion-deep">
             Caused by {check.blame.join(", ")}
@@ -117,7 +117,7 @@ function Row({ check }: { check: Check }) {
         <p className={`text-sm ${TONE[s.tone]}`} data-status={check.status}>
           {s.text}
         </p>
-        <p className="font-mono text-xs text-ink-2">
+        <p className="font-mono text-xs text-muted-foreground">
           {meta.who} · {check.ms.toFixed(1)} ms
         </p>
       </div>
@@ -125,7 +125,7 @@ function Row({ check }: { check: Check }) {
   );
 }
 
-const COLOR = { green: "bg-pass", amber: "bg-amber", grey: "bg-line" } as const;
+const COLOR = { green: "bg-ok", amber: "bg-warn", grey: "bg-border" } as const;
 
 const shown = (v: unknown) => (v === undefined ? "—" : JSON.stringify(v));
 
@@ -133,9 +133,9 @@ const shown = (v: unknown) => (v === undefined ? "—" : JSON.stringify(v));
 function Fields({ fields }: { fields: FieldRow[] }) {
   return (
     <div className="mt-8">
-      <h3 className="font-mono text-xs uppercase tracking-wider text-ink-2">Fields</h3>
-      <table className="mt-1 w-full border-y border-line text-left text-sm">
-        <thead className="font-mono text-xs text-ink-2">
+      <h3 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">Fields</h3>
+      <table className="mt-1 w-full border-y border-border text-left text-sm">
+        <thead className="font-mono text-xs text-muted-foreground">
           <tr>
             <th className="py-2 font-normal">Field</th>
             <th className="py-2 font-normal">Observed</th>
@@ -143,7 +143,7 @@ function Fields({ fields }: { fields: FieldRow[] }) {
             <th className="py-2 text-right font-normal">Who answers</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-line">
+        <tbody className="divide-y divide-border">
           {fields.map((f) => (
             <tr key={f.id} data-field={f.id} data-color={f.color}>
               <td className="py-2">
@@ -181,21 +181,21 @@ export function Report({
   return (
     <section aria-labelledby="verdict">
       <div
-        className={`rounded-[14px] border border-line bg-bone-2 p-6 ${banner.tone === "fail" ? "border-vermilion" : ""}`}
+        className={`rounded-[14px] border border-border bg-bone-2 p-6 ${banner.tone === "fail" ? "border-vermilion" : ""}`}
         role="status"
         data-verdict={report?.verdict ?? "running"}
       >
         <h2 id="verdict" className={`text-2xl font-semibold tracking-tight ${TONE[banner.tone]}`}>
           {banner.title}
         </h2>
-        <p className="mt-1 text-ink-2">{banner.text}</p>
+        <p className="mt-1 text-muted-foreground">{banner.text}</p>
         {report?.mode === "degraded" && (
-          <p className="mt-3 inline-block rounded-md border border-amber px-2 py-0.5 text-sm text-amber">
+          <p className="mt-3 inline-block rounded-md border border-warn px-2 py-0.5 text-sm text-warn">
             Degraded: TDX leg only
           </p>
         )}
         {report && (
-          <p className="mt-3 font-mono text-xs text-ink-2">
+          <p className="mt-3 font-mono text-xs text-muted-foreground">
             {report.checks.length} checks in {report.ms.toFixed(0)} ms
             {report.rpc &&
               ` · chain read from ${new URL(report.rpc.url).host}${report.rpc.custom ? " (your RPC)" : ""}`}
@@ -209,10 +209,10 @@ export function Report({
           if (!inStep.length) return null;
           return (
             <li key={step}>
-              <h3 className="font-mono text-xs uppercase tracking-wider text-ink-2">
+              <h3 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
                 {step} · {STEPS[step]}
               </h3>
-              <ul className="mt-1 divide-y divide-line border-y border-line">
+              <ul className="mt-1 divide-y divide-border border-y border-border">
                 {inStep.map((c) => (
                   <Row key={c.id} check={c} />
                 ))}
@@ -226,14 +226,14 @@ export function Report({
 
       {report && report.unbound.length > 0 && (
         <div className="mt-8">
-          <h3 className="font-mono text-xs uppercase tracking-wider text-ink-2">
+          <h3 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
             Unverified metadata (Keelson Cloud's word)
           </h3>
-          <dl className="mt-1 divide-y divide-line border-y border-line">
+          <dl className="mt-1 divide-y divide-border border-y border-border">
             {report.unbound.map((u) => (
               <div key={u.pointer} className="flex justify-between gap-4 py-2.5 text-sm">
                 <dt className="font-mono">{u.pointer}</dt>
-                <dd className="break-all font-mono text-ink-2">{String(u.value)}</dd>
+                <dd className="break-all font-mono text-muted-foreground">{String(u.value)}</dd>
               </div>
             ))}
           </dl>

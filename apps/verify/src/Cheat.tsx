@@ -30,11 +30,11 @@ function Scalar({
   const commit = (next: string) => {
     if (next !== text) onEdit(path, coerce(value, next));
   };
-  const cls = `w-full rounded-md border bg-bone px-2 py-1 font-mono text-xs ${changed ? "border-vermilion" : "border-line"}`;
+  const cls = `w-full rounded-md border bg-bone px-2 py-1 font-mono text-xs ${changed ? "border-vermilion" : "border-border"}`;
   const name = path.split("/").at(-1);
   return (
     <div className="grid grid-cols-[minmax(6rem,12rem)_1fr] items-start gap-2 py-1">
-      <span className="truncate pt-1 font-mono text-xs text-ink-2" title={path}>
+      <span className="truncate pt-1 font-mono text-xs text-muted-foreground" title={path}>
         {name}
       </span>
       {text.length > 80 ? (
@@ -89,13 +89,13 @@ function Node({
     <details
       open={open}
       onToggle={(e) => setOpen(e.currentTarget.open)}
-      className="border-l border-line pl-3"
+      className="border-l border-border pl-3"
     >
       <summary
         className={`cursor-pointer py-1 font-mono text-xs ${touched ? "text-vermilion-deep" : ""}`}
       >
         {name}{" "}
-        <span className="text-ink-2">
+        <span className="text-muted-foreground">
           {Array.isArray(value) ? `[${entries.length}]` : `{${entries.length}}`}
         </span>
       </summary>
@@ -128,21 +128,21 @@ export default function Cheat({
 }) {
   const onEdit = (p: string, v: unknown) => onChange(setAt(edited, p, v));
   return (
-    <section aria-labelledby="cheat" className="rounded-[14px] border border-line p-6">
+    <section aria-labelledby="cheat" className="rounded-[14px] border border-border p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <h2 id="cheat" className="text-xl font-semibold tracking-tight">
           Try to cheat
         </h2>
         <button
           type="button"
-          className="rounded-md border border-line px-3 py-1 text-sm hover:border-graphite disabled:opacity-40"
+          className="rounded-md border border-border px-3 py-1 text-sm hover:border-graphite disabled:opacity-40"
           onClick={onReset}
           disabled={changed.length === 0}
         >
           Reset to the original
         </button>
       </div>
-      <p className="mt-1 text-sm text-ink-2">
+      <p className="mt-1 text-sm text-muted-foreground">
         Edit any field of this local copy and see which check catches it. Nothing you edit leaves
         the browser.
       </p>

@@ -91,7 +91,18 @@
     },
     "apps/verify": {
       "entry": ["src/main.tsx!", "vite.config.ts", "vitest.config.ts", "bench/*.bench.ts"],
-      "project": ["src/**/*.{ts,tsx}!", "test/**/*.ts", "bench/**/*.ts"]
+      "project": ["src/**/*.{ts,tsx}!", "test/**/*.ts", "bench/**/*.ts"],
+      "ignoreDependencies": ["@keelson/ui"]
+    },
+    "apps/web": {
+      "entry": [
+        "app/**/{page,layout}.tsx!",
+        "next.config.ts",
+        "postcss.config.mjs",
+        "vitest.config.ts",
+        "csp.ts!"
+      ],
+      "project": ["app/**/*.tsx!", "components/**/*.tsx!", "lib/**/*.ts!", "test/**/*.ts"]
     },
     "services/api": {
       "entry": ["src/server.ts!", "src/workflows.ts!", "scripts/*.ts", "bench/*.bench.ts"],
