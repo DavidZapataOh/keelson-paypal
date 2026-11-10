@@ -1,14 +1,16 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { type Db, eq, inArray, operators, type SQL, sql } from "@keelson/db";
+import { type Db, eq, inArray, operators, type SQL, type StoredAmber, sql } from "@keelson/db";
 import { CHAINS, isChainId } from "@keelson/relayer";
 import type { Context, MiddlewareHandler } from "hono";
 import { type Address, getAddress } from "viem";
+import { AMBER_FIELD } from "../amber.ts";
 import type { Deps } from "../app.ts";
 import { rateLimit } from "../middleware/rate-limit.ts";
 import { agentAuthority, OPERATOR_CHAIN, walletsOf } from "../operators/owners.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 import { COVERED } from "../risk.ts";
+import { syncAmber } from "./disputes.ts";
 import { costMicros, reserve, settle } from "./merchant-assistant.ts";
 import { DEMO_OPERATOR } from "./operators.ts";
 
@@ -23,6 +25,7 @@ const PARTIES = ["operator", "keelson", "merchant", "user"] as const;
 const OUTCOMES = ["paid", "queued", "claimable", "failed"] as const;
 const PAYERS = ["chain", "treasury", "violation-pool"] as const;
 const DISPUTE_STATES = ["OPEN", "ATTRIBUTED", "RESOLVED"] as const;
+const AMBER_STATES = ["none", "attested", "contradicted"] as const;
 
 const AGENT_ID = /^(0|[1-9]\d{0,19})$/;
 const AgentId = z
@@ -112,6 +115,11 @@ const COLUMNS: Record<string, Column> = {
   },
   outcome: { kind: "set", expr: "v.outcome", values: OUTCOMES },
   paidBy: { kind: "set", expr: "v.paid_by", values: PAYERS },
+  amber: {
+    kind: "set",
+    expr: "case when ac.coverage_id is not null then 'contradicted' when p.amber is not null then 'attested' else 'none' end",
+    values: AMBER_STATES,
+  },
 };
 const COLUMN_IDS = Object.keys(COLUMNS) as [string, ...string[]];
 
@@ -217,6 +225,25 @@ const CoverageRow = z
     paidBy: z.enum(PAYERS).nullable(),
     settlementTx: z.url().nullable(),
     settledAt: z.iso.datetime().nullable(),
+    amber: z.enum(AMBER_STATES).openapi({
+      description:
+        "`attested`: you signed an amber commitment of the item into the coverage. `contradicted`: `AmberContradictionCourt` convicted it with a C2b proof.",
+    }),
+    amberCommitment: z.string().nullable(),
+    amberField: z
+      .enum(AMBER_FIELD)
+      .nullable()
+      .openapi({ description: "The field the court found false." }),
+    amberClaimed: z
+      .string()
+      .nullable()
+      .openapi({ description: "What you attested of that field." }),
+    amberProvenAt: z.iso.datetime().nullable(),
+    amberWebFact: z
+      .string()
+      .nullable()
+      .openapi({ description: "The digest of the `WebFact` the proof opened." }),
+    amberTx: z.url().nullable(),
   })
   .openapi("CoverageRow");
 
@@ -336,6 +363,32 @@ const txUrl = (chainId: unknown, hash: unknown) =>
     ? `${CHAINS[Number(chainId) as keyof typeof CHAINS].explorer}/tx/0x${Buffer.from(hash as Buffer).toString("hex")}`
     : null;
 
+/** The amber columns of a book row: the attestation, and the court's conviction of it. */
+function amberColumns(r: Record<string, unknown>) {
+  const amber = r.amber as StoredAmber | null;
+  const field = r.amber_field == null ? null : (AMBER_FIELD[Number(r.amber_field) - 1] ?? null);
+  const claimed =
+    amber && field
+      ? {
+          size: amber.size,
+          color: amber.color,
+          unit_price: amber.unit_minor,
+          returns_free: String(amber.returns_free),
+        }[field]
+      : null;
+  return {
+    amber: field ? "contradicted" : amber ? "attested" : "none",
+    amberCommitment: amber?.commitment ?? null,
+    amberField: field,
+    amberClaimed: claimed,
+    amberProvenAt: iso(r.amber_at),
+    amberWebFact: r.web_fact_digest
+      ? `0x${Buffer.from(r.web_fact_digest as Buffer).toString("hex")}`
+      : null,
+    amberTx: txUrl(r.amber_chain, r.amber_tx),
+  } as const;
+}
+
 /**
  * The operator's covered purchases, each with its latest dispute and that dispute's verdict.
  * @internal
@@ -375,6 +428,7 @@ export async function coverageRows(
       order by dd.purchase_id, dd.created_at desc
     ) d on d.purchase_id = p.id
     left join verdicts v on v.dispute_id = d.id
+    left join amber_convictions ac on ac.purchase_id = p.id
     where ${sql.join(where, sql` and `)}`;
   const [result, counted] = await Promise.all([
     db.execute<Record<string, unknown>>(sql`
@@ -382,7 +436,8 @@ export async function coverageRows(
         p.coverage_tx_hash, d.id as dispute_id, d.state as dispute_state, d.reason,
         d.created_at as disputed_at, v.liable, v.rule_id, v.amount_minor as verdict_minor,
         v.created_at as verdict_at, v.outcome, v.paid_by, v.chain_id as verdict_chain,
-        v.tx_hash, v.settled_at
+        v.tx_hash, v.settled_at, p.amber, ac.field_id as amber_field, ac.proven_at as amber_at,
+        ac.web_fact_digest, ac.chain_id as amber_chain, ac.tx_hash as amber_tx
       ${from}
       order by ${sql.join(order, sql`, `)}
       offset ${request.startRow} limit ${request.endRow - request.startRow}
@@ -413,6 +468,7 @@ export async function coverageRows(
       paidBy: (r.paid_by as (typeof PAYERS)[number] | null) ?? null,
       settlementTx: txUrl(r.verdict_chain, r.tx_hash),
       settledAt: iso(r.settled_at),
+      ...amberColumns(r),
     };
   });
   return { rows, rowCount: Number(counted.rows[0]?.n ?? 0) };
@@ -448,6 +504,7 @@ Columns:
 - liable: who the signed verdict found at fault (operator, keelson, merchant, user).
 - outcome: what happened to the verdict's payment (paid, queued, claimable, failed).
 - paidBy: who paid it (chain: the bond or reserve on chain; violation-pool: the operator's pool deposit; treasury: Keelson's own funds).
+- amber: none, attested (the operator signed a commitment to the item's size, color, unit price and free returns into the coverage) or contradicted (AmberContradictionCourt convicted that attestation with a zero-knowledge proof of the store's own answer).
 "Slashes" or "incidents" are rows whose liable is operator. Amounts are filtered in dollars.
 Return the full new grid state: keep what the user did not ask to change, list unchanged top-level state properties in propertiesToIgnore, and explain the change in one plain sentence.`;
 
@@ -658,6 +715,7 @@ export function registerOperatorConsole(
 
   app.openapi(rowsRoute, async (c) => {
     const agentId = BigInt(c.req.valid("param").agentId);
+    await syncAmber(deps);
     const started = performance.now();
     try {
       const block = await coverageRows(db, agentId, c.req.valid("json"));
