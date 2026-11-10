@@ -42,15 +42,17 @@ const full = `${verifyUrl}/a/${demoAlibi.link}`;
     <aside class="judges" aria-labelledby="judges-title">
       <h3 id="judges-title">Judging Keelson?</h3>
       <p>
-        Everything runs on the PayPal sandbox and Arbitrum Sepolia, so no real money moves. Sign in
-        to the app with a passkey and sign a mandate; every purchase made under it carries an
-        Alibi you can check in the verifier.
+        Judge Mode opens a temporary account with one click, no keys, and walks you through the
+        live product in about five minutes: a mandate, the agent's purchase and the attack it
+        blocked, the Alibi, a dispute and its verdict, the merchant's and the operator's side.
+        Everything runs on the PayPal sandbox and Arbitrum Sepolia, so no real money moves.
       </p>
       <div class="actions">
-        <a class="btn btn-dark" href={appUrl}>
-          Open the app
+        <a class="btn btn-dark" href={`${appUrl}/judge/`}>
+          Start Judge Mode
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 12 12 4M5.5 4H12v6.5" /></svg>
         </a>
+        <a class="link" href={`${appUrl}/status/`}>Live status</a>
         <a class="link" href={verifyUrl}>Verify an Alibi</a>
         <a class="link" href={repoUrl}>Read the code</a>
       </div>

@@ -66,7 +66,7 @@ export async function admitJudgeCompile(kv: RedisClientType, userId: string): Pr
 
 /**
  * The newest real rows the tour walks through: the demo operator's latest mandate with a captured
- * purchase that has an Alibi, signed by one of Keelson's own test buyers (an `example.test`
+ * purchase that has an Alibi, preferring one where Keelson also blocked a cart (an agent run), signed by one of Keelson's own test buyers (an `example.test`
  * address the agent runs create) so no shopper's mandate is shown, the latest sandbox dispute with a verdict, and the latest finished
  * red-team campaign.
  */
@@ -78,7 +78,9 @@ export async function tourSeed(db: Db, agentId: bigint | undefined) {
     join alibis a on a.purchase_id = p.id
     join "user" u on u.id = m.user_id
     where p.state = 'CAPTURED' and not u.is_anonymous and u.email like '%@example.test' ${agentId === undefined ? sql`` : sql`and m.operator_agent_id = ${agentId.toString()}`}
-    order by p.created_at desc limit 1`)
+    -- An agent run's mandate, where Keelson also blocked an attacked cart, comes first.
+    order by exists (select 1 from purchases d where d.mandate_id = p.mandate_id and d.state = 'DENIED') desc,
+      p.created_at desc limit 1`)
     .then((r) => r.rows);
   const [dispute] = await db
     .select({ id: disputes.id })
