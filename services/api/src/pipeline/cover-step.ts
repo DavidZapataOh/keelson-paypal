@@ -126,7 +126,8 @@ export async function coverStep(
     // a submission whose process died before signing, so every attempt submits.
     const amount = cs.amount * PYUSD_PER_MINOR;
     const bps = await premiumFor(db, purchaseId, cs.agentId, row.premiumBps);
-    const amber = await fixAmber(db, purchaseId);
+    // A coverage first sent without an attestation keeps none, so every attempt signs the same.
+    const amber = await fixAmber(db, purchaseId, !(await relayer.get(CHAIN_ID, key)));
     const coverage: Coverage = {
       coverageId: cs.requestId,
       agentId: cs.agentId,

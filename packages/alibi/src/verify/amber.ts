@@ -12,6 +12,8 @@ import { arbitrumSepolia } from "viem/chains";
 import { c2bStatement, verifyC2b } from "./zk.ts";
 
 const CHAIN_ID = arbitrumSepolia.id;
+/** A block before Keelson's contracts were deployed on Arbitrum Sepolia: no search starts earlier. */
+const DEPLOYED_AFTER = 327_140_590n;
 /** Blocks searched after the purchase for its coverage: about seven hours of Arbitrum Sepolia. */
 const LOCK_WINDOW = 100_000n;
 /** Blocks searched from the first with the conviction's timestamp. */
@@ -19,6 +21,8 @@ const CONVICTION_WINDOW = 1_000n;
 
 /** What Arbitrum Sepolia holds of an Alibi's amber attestation, and the proof it was convicted with. */
 export interface AmberReading {
+  /** Whether `AmberContradictionCourt` is deployed; nothing else is read without it. */
+  court: boolean;
   /** The `amberCommitment` the coverage was locked with; zero for none, `null` when no lock was found. */
   commitment: Hex | null;
   conviction: {
@@ -44,7 +48,7 @@ function mintedAt(id: string): bigint {
 
 /** The first block at or after `t` (seconds), by binary search over block timestamps. */
 async function blockAt(client: PublicClient, t: bigint, latest: bigint): Promise<bigint> {
-  let lo = 0n;
+  let lo = DEPLOYED_AFTER;
   let hi = latest;
   while (lo < hi) {
     const mid = (lo + hi) / 2n;
@@ -70,7 +74,7 @@ export async function readAmber(
   const d = deploymentsFor(CHAIN_ID);
   const court = d.AmberContradictionCourt as Address | undefined;
   const vault = d.KeelsonBondVault as Address;
-  if (!court) throw new RangeError("AmberContradictionCourt is not deployed");
+  if (!court) return { commitment: null, conviction: null, court: false };
   const client =
     opts.client ??
     (createPublicClient({ chain: arbitrumSepolia, transport: http(opts.rpc) }) as PublicClient);
@@ -95,7 +99,7 @@ export async function readAmber(
     functionName: "violations",
     args: [coverageId],
   });
-  if (fieldId === 0) return { commitment, conviction: null };
+  if (fieldId === 0) return { court: true, commitment, conviction: null };
 
   const provenFrom = await blockAt(client, BigInt(provenAt), latest);
   const [proven] = await client.getContractEvents({
@@ -117,12 +121,13 @@ export async function readAmber(
     proofVerified: false,
     statementMatches: false,
   };
-  if (tx.to?.toLowerCase() !== court.toLowerCase()) return { commitment, conviction };
+  if (tx.to?.toLowerCase() !== court.toLowerCase()) return { court: true, commitment, conviction };
   const call = decodeFunctionData({ abi: amberContradictionCourtAbi, data: tx.input });
-  if (call.functionName !== "slashAmber") return { commitment, conviction };
+  if (call.functionName !== "slashAmber") return { court: true, commitment, conviction };
   const [c, , , fact, , calledField, proof] = call.args;
   const statement = c2bStatement(fact, c.amberCommitment, calledField);
   return {
+    court: true,
     commitment,
     conviction: {
       ...conviction,

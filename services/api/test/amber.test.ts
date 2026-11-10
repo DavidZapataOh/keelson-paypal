@@ -40,7 +40,9 @@ const product = {
   sku: "RF-TMP3",
   url: "https://store.keelson.finance/products/tempo-3",
   color: "blue",
+  price: { currency: "USD", minor: 12_900, display: "$129.00" },
   sizes: ["10", "11"],
+  returns_free: true,
 };
 const line = {
   sku: "RF-TMP3-11",
@@ -96,6 +98,15 @@ describe("amberOf", () => {
       undefined,
     );
     expect(amberOf("mrc_runfast", cart, { ...product, handle: "../admin" })).toBeUndefined();
+  });
+
+  test("attests nothing the agent's own capture of the product contradicts", () => {
+    const one = (l: Partial<typeof line>) => ({ ...cart, lines: [{ ...line, ...l }] });
+    expect(amberOf("mrc_runfast", one({ color: "red" }), product)).toBeUndefined();
+    expect(amberOf("mrc_runfast", one({ unit_minor: 11_900 }), product)).toBeUndefined();
+    expect(amberOf("mrc_runfast", one({ size: "12", sku: "RF-TMP3-12" }), product)).toBeUndefined();
+    expect(amberOf("mrc_runfast", one({ sku: "RF-OTHER-11" }), product)).toBeUndefined();
+    expect(amberOf("mrc_runfast", { ...cart, returns_free: false }, product)).toBeUndefined();
   });
 });
 
@@ -184,6 +195,13 @@ describe("fixAmber", () => {
     expect(BigInt(first?.commitment as string)).toBe(opened);
     expect(BigInt(first?.salt as string) < 1n << 248n).toBe(true);
     expect(await fixAmber(testDb, id)).toEqual(first);
+  });
+
+  test("a coverage first sent without one stays without one", async () => {
+    const id = await purchase("COUNTERSIGNED", { cart, product });
+    expect(await fixAmber(testDb, id, false)).toBeNull();
+    const [row] = await testDb.select().from(purchases).where(eq(purchases.id, id));
+    expect(row?.amber).toBeNull();
   });
 
   test("a cart it cannot attest leaves the coverage without one", async () => {
@@ -283,8 +301,9 @@ describe("amber in dispute data", () => {
 
   beforeAll(async () => {
     convicted = await purchase("SLASHED", {
+      // The agent read a red Tempo 3; the store's own answer says blue.
       cart: { ...cart, lines: [{ ...line, color: "red" }] },
-      product,
+      product: { ...product, color: "red" },
     });
     await fixAmber(testDb, convicted);
     attestedOnly = await purchase("COVERED", { cart, product });

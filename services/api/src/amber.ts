@@ -34,7 +34,15 @@ export function amberOf(
     lines?: { sku?: unknown; size?: unknown; color?: unknown; unit_minor?: unknown }[];
     returns_free?: unknown;
   } | null;
-  const p = product as { url?: unknown; handle?: unknown } | null;
+  const p = product as {
+    url?: unknown;
+    handle?: unknown;
+    sku?: unknown;
+    color?: unknown;
+    sizes?: unknown;
+    price?: { minor?: unknown };
+    returns_free?: unknown;
+  } | null;
   const line = c?.lines?.length === 1 ? c.lines[0] : undefined;
   if (!website || c?.merchant !== merchantId || !line || typeof p?.url !== "string") {
     return undefined;
@@ -42,6 +50,19 @@ export function amberOf(
   if (!fits(line.sku) || !fits(line.size) || !fits(line.color)) return undefined;
   if (!Number.isSafeInteger(line.unit_minor) || (line.unit_minor as number) < 0) return undefined;
   if (typeof c.returns_free !== "boolean" || typeof p.handle !== "string") return undefined;
+  // Only what the agent's own capture of the product says: the operator never attests a variant
+  // its agent saw otherwise, nor a SKU whose page does not exist.
+  if (
+    typeof p.sku !== "string" ||
+    line.sku !== `${p.sku}-${line.size}` ||
+    line.color !== p.color ||
+    line.unit_minor !== p.price?.minor ||
+    !Array.isArray(p.sizes) ||
+    !p.sizes.includes(line.size) ||
+    c.returns_free !== p.returns_free
+  ) {
+    return undefined;
+  }
   let page: URL;
   try {
     page = new URL(p.url);
@@ -69,9 +90,14 @@ const hex32 = (x: bigint) => `0x${x.toString(16).padStart(64, "0")}`;
 /**
  * The purchase's amber attestation, made from its evidence's `api.cart` and `api.product` items on
  * the first call and fixed on the purchase, so that every cover attempt signs the same
- * `amberCommitment`. `null` when the purchase's cart is not one {@link amberOf} attests.
+ * `amberCommitment`. `null` when the purchase's cart is not one {@link amberOf} attests, or when
+ * `attest` is false and none is fixed yet: an attempt already sent without one.
  */
-export async function fixAmber(db: Db, purchaseId: string): Promise<StoredAmber | null> {
+export async function fixAmber(
+  db: Db,
+  purchaseId: string,
+  attest = true,
+): Promise<StoredAmber | null> {
   const [row] = await db
     .select({
       amber: purchases.amber,
@@ -82,7 +108,7 @@ export async function fixAmber(db: Db, purchaseId: string): Promise<StoredAmber 
     .where(eq(purchases.id, purchaseId));
   if (!row) throw new Error(`purchase ${purchaseId} is unknown`);
   if (row.amber) return row.amber;
-  if (!row.evidenceRoot) return null;
+  if (!attest || !row.evidenceRoot) return null;
   const items = await db
     .select({ type: evidenceItems.type, bytes: evidenceItems.bytes })
     .from(evidenceItems)

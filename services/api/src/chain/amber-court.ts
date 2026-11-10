@@ -13,14 +13,16 @@ import {
 } from "viem";
 
 export const AMBER_CHAIN_ID = 421614;
-/** The block `AmberContradictionCourt` was deployed at, where the search for its events starts. */
-export const AMBER_COURT_DEPLOYED_AT = 0n;
+/** A block before `AmberContradictionCourt` was deployed, where the search for its events starts. */
+export const AMBER_COURT_DEPLOYED_AT = 327_211_576n;
 /** The block range of one `eth_getLogs` call. */
 const LOG_RANGE = 100_000n;
 /** About 5 s of Arbitrum blocks, so a block the RPC has not indexed yet is scanned on a later pass. */
 const CONFIRMATIONS = 20n;
 /** Reads of dispute data within this long of a scan reuse it. */
 const SCAN_EVERY_MS = 30_000;
+/** After a failed scan, how long reads wait before another. */
+const RETRY_AFTER_MS = 120_000;
 const BN254_FR_MODULUS =
   21888242871839275222246405745257275088548364400416034343698204186575808495617n;
 const ULID = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
@@ -103,6 +105,7 @@ async function scan(deps: AmberCourtDeps, court: Address): Promise<number> {
     });
     for (const e of events) {
       const coverageId = e.args.coverageId as Hex;
+      // A conviction never changes once made, so the latest state is the event's.
       const [tx, [fieldId, provenAt, digest]] = await Promise.all([
         client.getTransaction({ hash: e.transactionHash }),
         client.readContract({
@@ -110,7 +113,6 @@ async function scan(deps: AmberCourtDeps, court: Address): Promise<number> {
           abi: amberContradictionCourtAbi,
           functionName: "violations",
           args: [coverageId],
-          blockNumber: e.blockNumber,
         }),
       ]);
       await deps.db
@@ -134,28 +136,34 @@ async function scan(deps: AmberCourtDeps, court: Address): Promise<number> {
   return found;
 }
 
-let last: { at: number; run: Promise<void> } | undefined;
+let last: { at: number; run: Promise<void>; done: boolean } | undefined;
 
 /**
  * Brings `amber_convictions` up to the chain, at most once per {@link SCAN_EVERY_MS} however many
- * reads ask: one `eth_getBlockNumber` and one `eth_getLogs` per new range, and two reads per new
- * conviction. Resolves without scanning where the court is not deployed; a failed scan is logged
- * and the projection read as it stands.
+ * reads ask, and never two scans at once: one `eth_getBlockNumber` and one `eth_getLogs` per new
+ * range, and two reads per new conviction. Resolves without scanning where the court is not
+ * deployed; a failed scan is logged, the projection read as it stands, and the next waits
+ * {@link RETRY_AFTER_MS}.
  */
 export function syncAmberConvictions(deps: AmberCourtDeps): Promise<void> {
   const court = deploymentsFor(AMBER_CHAIN_ID).AmberContradictionCourt;
   if (!court) return Promise.resolve();
-  if (last && Date.now() - last.at < SCAN_EVERY_MS) return last.run;
-  const run = scan(deps, court).then(
-    (found) => {
-      if (found > 0) deps.log.info({ found }, "amber convictions projected");
-    },
-    (err: unknown) => {
-      // The next read scans again from the cursor.
-      last = undefined;
-      deps.log.warn({ err }, "amber court scan failed");
-    },
-  );
-  last = { at: Date.now(), run };
-  return run;
+  if (last && (!last.done || Date.now() < last.at)) return last.run;
+  const entry = { at: Number.POSITIVE_INFINITY, done: false, run: Promise.resolve() };
+  entry.run = scan(deps, court)
+    .then(
+      (found) => {
+        entry.at = Date.now() + SCAN_EVERY_MS;
+        if (found > 0) deps.log.info({ found }, "amber convictions projected");
+      },
+      (err: unknown) => {
+        entry.at = Date.now() + RETRY_AFTER_MS;
+        deps.log.warn({ err }, "amber court scan failed");
+      },
+    )
+    .finally(() => {
+      entry.done = true;
+    });
+  last = entry;
+  return entry.run;
 }

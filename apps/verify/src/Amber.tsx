@@ -88,6 +88,13 @@ export default function Amber({ alibiId, rpc }: { alibiId: string; rpc: string |
 
 function Reading({ amber, ms }: { amber: AmberReading; ms: number }) {
   const { commitment, conviction: v } = amber;
+  if (!amber.court) {
+    return (
+      <p className="mt-1 border-y border-border py-2.5 text-sm text-muted-foreground">
+        AmberContradictionCourt is not deployed on this chain yet.
+      </p>
+    );
+  }
   const attested = commitment !== null && !ZERO.test(commitment);
   return (
     <>
