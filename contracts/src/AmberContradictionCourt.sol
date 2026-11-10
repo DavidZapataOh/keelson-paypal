@@ -172,9 +172,9 @@ contract AmberContradictionCourt is IConvictions {
             && teeVerifier.allowedMeasurement(measurement);
     }
 
-    function _recover(bytes32 digest, bytes calldata sig) internal pure returns (address) {
-        (address signer, ECDSA.RecoverError err,) =
-            ECDSA.tryRecover(digest, uint8(sig[64]), bytes32(sig[0:32]), bytes32(sig[32:64]));
-        return err == ECDSA.RecoverError.NoError ? signer : address(0);
+    /// @dev A failed recovery returns the zero address, which no signer record holds.
+    function _recover(bytes32 digest, bytes calldata sig) internal pure returns (address signer) {
+        // slither-disable-next-line unused-return
+        (signer,,) = ECDSA.tryRecover(digest, uint8(sig[64]), bytes32(sig[0:32]), bytes32(sig[32:64]));
     }
 }

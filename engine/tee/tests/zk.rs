@@ -3,78 +3,19 @@
 //! vector `packages/mandate` writes, and of leg A's countersigns.
 
 mod common;
+mod zk_demo;
 
-use std::path::PathBuf;
-use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
 use acir::{AcirField, FieldElement};
 use common::*;
-use keelson_mandate::{mandate_opening, merchant_leaf, merchant_membership};
 use keelson_tee::wire::{Base64, Countersigned, ZkProof};
-use keelson_tee::zk::{C1Proof, Prover, ProverError, Statement};
+use keelson_tee::zk::{C1Proof, Prover, ProverError};
 use keelson_tee::{C1Status, Engine};
-use serde_json::Value;
-
-fn repo() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
-
-fn read(path: &str) -> Value {
-    serde_json::from_str(&std::fs::read_to_string(repo().join(path)).unwrap()).unwrap()
-}
-
-fn shared() -> &'static Arc<Prover> {
-    static PROVER: OnceLock<Arc<Prover>> = OnceLock::new();
-    PROVER.get_or_init(|| {
-        let bb = std::env::var("KEELSON_BB").expect("KEELSON_BB names the bb binary");
-        Arc::new(Prover::spawn(bb.as_ref()).unwrap())
-    })
-}
-
-fn prover() -> &'static Prover {
-    shared()
-}
-
-fn field(v: &Value) -> FieldElement {
-    FieldElement::try_from_str(v.as_str().unwrap()).unwrap()
-}
+use zk_demo::*;
 
 fn field_hex(f: &FieldElement) -> String {
     format!("0x{}", f.to_hex())
-}
-
-struct Demo {
-    statement: Statement,
-    opening: keelson_mandate::MandateOpening,
-    merchant: keelson_mandate::MembershipProof,
-    vector: Value,
-}
-
-fn demo() -> Demo {
-    let vector = read("packages/mandate/test/vectors/c1.json");
-    let mandate = read("packages/mandate/test/fixtures/demo-mandate.json");
-    let salt: [u8; 16] = std::array::from_fn(|i| i as u8 + 1);
-    let opening = mandate_opening(&mandate, salt).unwrap();
-    let merchant = merchant_membership(&opening.merchants, "mrc_runfast").unwrap();
-    let i = &vector["inputs"];
-    let int = |k: &str| i[k].as_str().unwrap().parse::<u64>().unwrap();
-    let statement = Statement {
-        c_m: opening.commitment(),
-        amount: int("amount"),
-        currency: int("currency") as u16,
-        category: int("category") as u8,
-        merchant_id: merchant_leaf("mrc_runfast").unwrap(),
-        now: int("now"),
-        cart_hash: field(&i["cart_hash"]),
-        operator_id: opening.operator_id,
-    };
-    Demo {
-        statement,
-        opening,
-        merchant,
-        vector,
-    }
 }
 
 #[test]
@@ -149,27 +90,6 @@ fn another_statement_does_not_verify() {
         .unwrap();
     proof.public_inputs[1][31] ^= 1;
     assert!(!prover().verify(&proof).unwrap_or(false));
-}
-
-/// The budget is 200 ms per proof, witness and `bb` included.
-#[test]
-fn proving_is_within_budget() {
-    let d = demo();
-    prover()
-        .prove(&d.statement, &d.opening, &d.merchant)
-        .unwrap();
-    let mut ms: Vec<f64> = (0..20)
-        .map(|_| {
-            let t = Instant::now();
-            prover()
-                .prove(&d.statement, &d.opening, &d.merchant)
-                .unwrap();
-            t.elapsed().as_secs_f64() * 1e3
-        })
-        .collect();
-    ms.sort_by(f64::total_cmp);
-    println!("C1 prove: p50 {:.1} ms, max {:.1} ms", ms[10], ms[19]);
-    assert!(ms[10] < 200.0, "p50 {:.1} ms", ms[10]);
 }
 
 const WAIT: Duration = Duration::from_secs(8);
