@@ -236,6 +236,17 @@ describe("countersigning the same cart again", { timeout: 120_000 }, () => {
     expect(retry.row?.state).toBe("FAILED");
   });
 
+  test("a live purchase records the store it is paid at; the store must be an origin", async () => {
+    const m = await heldMandate();
+    const { row } = await countersign(m, { live: { store: "https://www.alfred.com" } });
+    expect(row?.liveStore).toBe("https://www.alfred.com");
+    for (const store of ["https://www.alfred.com/cart", "http://www.alfred.com"]) {
+      const bad = await countersign(m, { live: { store } });
+      expect(bad.res.status).toBe(422);
+      expect(bad.row).toBeUndefined();
+    }
+  });
+
   test("only the client the operator linked countersigns under its mandates", async () => {
     const m = await heldMandate();
     const evidenceRoot = await evidence.upload(app, m.id, cart, agent);

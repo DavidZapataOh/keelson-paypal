@@ -12,7 +12,7 @@ import { type CheckDef, expect, pass } from "../check.ts";
 import { isBundle, UNDISCLOSED } from "./util.ts";
 
 /** The only items an Alibi opens: the PII-redacted public ones. */
-const DISCLOSED = new Set(["api.product", "api.cart", "channel3.observation"]);
+const DISCLOSED = new Set(["api.product", "api.cart", "channel3.observation", "tlsn.web_fact"]);
 
 /** The media type Keelson accepts for an item type; the leaf hides it until the item is opened. */
 const mediaTypeOf = (type: string) =>
@@ -52,7 +52,7 @@ export const evidence: CheckDef = {
       const item = m.items[d.index];
       expect(
         DISCLOSED.has(d.type) && !seen.has(d.type) && item?.type === d.type,
-        "an Alibi discloses only the public product, cart and Channel3 items, once each",
+        "an Alibi discloses only the public product, cart, Channel3 and WebFact items, once each",
         [at],
       );
       seen.add(d.type);

@@ -1,0 +1,157 @@
+import { randomBytes } from "node:crypto";
+import { decodeAlibi, leafHashOf } from "@keelson/alibi";
+import { alibis, eq, purchases, sql } from "@keelson/db";
+import { pino } from "pino";
+import { ulid } from "ulid";
+import { beforeAll, describe, expect, test } from "vitest";
+import { fixtures } from "../../../packages/alibi/test/fixtures.ts";
+import { createApp } from "../src/app.ts";
+import { drivePurchase, resumePurchases } from "../src/pipeline/drive.ts";
+import { channel3Mandate } from "./channel3.ts";
+import { testDb, testKv } from "./setup.ts";
+import { headerPrincipal } from "./tee-live.ts";
+
+const app = createApp({
+  db: testDb,
+  kv: testKv,
+  log: pino({ level: "silent" }),
+  authenticate: headerPrincipal,
+});
+const agent = "observer-agent";
+const asClient = (subject: string, scopes = ["countersign:write"]) => ({
+  "x-test-principal": JSON.stringify({ kind: "client", subject, scopes }),
+});
+const STORE = "https://www.alfred.com";
+const TX = "8MC585209K746392H";
+
+const record = (id: string, transactionId: string, headers = asClient(agent)) =>
+  app.request(`/v1/purchases/${id}/paypal-transaction`, {
+    method: "PUT",
+    headers: { "content-type": "application/json", ...headers },
+    body: JSON.stringify({ transactionId }),
+  });
+
+async function purchase(
+  mandateId: string,
+  state: "COUNTERSIGNED" | "LOGGED",
+  liveStore: string | null,
+  id = ulid(),
+) {
+  await testDb.insert(purchases).values({
+    id,
+    mandateId,
+    clientId: agent,
+    state,
+    liveStore,
+    merchantId: "mrc_alfred",
+    currency: "USD",
+    amountMinor: 295n,
+    cartHash: randomBytes(32),
+    countersign: { issuedAt: String(Math.floor(Date.now() / 1000)) },
+    logIndex:
+      state === "LOGGED" ? BigInt(Date.now()) * 1000n + BigInt(randomBytes(1)[0] ?? 0) : null,
+    updatedAt: sql`now() - interval '1 minute'`,
+  });
+  return id;
+}
+
+describe("live purchases", () => {
+  let mandateId: string;
+  beforeAll(async () => {
+    mandateId = await channel3Mandate();
+  });
+
+  test("a logged live purchase is neither covered nor captured, nor resumed", async () => {
+    const live = await purchase(mandateId, "LOGGED", STORE);
+    const view = await drivePurchase(
+      { db: testDb, kv: testKv, log: pino({ level: "silent" }) },
+      live,
+    );
+    expect(view.state).toBe("LOGGED");
+    expect(view.live).toEqual({ store: STORE, transactionId: null });
+    await resumePurchases({ db: testDb, kv: testKv, log: pino({ level: "silent" }) });
+    const [p] = await testDb.select().from(purchases).where(eq(purchases.id, live));
+    expect(p?.state).toBe("LOGGED");
+    expect(p?.coverageTxId).toBeNull();
+    expect(p?.failureReason).toBeNull();
+  });
+
+  test("the client that asked records the PayPal transaction id once", async () => {
+    const id = await purchase(mandateId, "LOGGED", STORE);
+    const res = await record(id, TX);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { live: unknown }).live).toEqual({
+      store: STORE,
+      transactionId: TX,
+    });
+    expect((await record(id, TX)).status).toBe(200);
+    const other = await record(id, "1AB23456CD789012E");
+    expect(other.status).toBe(409);
+    expect(((await other.json()) as { type: string }).type).toMatch(/transaction-recorded$/);
+  });
+
+  test("only a logged live purchase of the caller takes a transaction id", async () => {
+    const sandbox = await purchase(mandateId, "LOGGED", null);
+    expect((await record(sandbox, "2AB23456CD789012E")).status).toBe(409);
+    const pending = await purchase(mandateId, "COUNTERSIGNED", STORE);
+    expect((await record(pending, "3AB23456CD789012E")).status).toBe(409);
+    const live = await purchase(mandateId, "LOGGED", STORE);
+    expect((await record(live, "4AB23456CD789012E", asClient("another"))).status).toBe(404);
+    expect(
+      (await record(live, "4AB23456CD789012E", asClient(agent, ["evidence:write"]))).status,
+    ).toBe(403);
+    expect((await record(live, "not a paypal id")).status).toBe(422);
+  });
+});
+
+const f = fixtures[0];
+
+describe.skipIf(!f)("live Alibis are public", () => {
+  const b = f?.bundle as NonNullable<typeof f>["bundle"];
+  beforeAll(async () => {
+    const mandateId = await channel3Mandate();
+    const c = b.tee.countersign;
+    await testDb.insert(purchases).values({
+      id: b.alibi_id,
+      mandateId,
+      clientId: agent,
+      state: "LOGGED",
+      liveStore: STORE,
+      paypalTransactionId: "5MC585209K746392H",
+      merchantId: String(b.eval.context.merchant),
+      currency: "USD",
+      amountMinor: BigInt(c.amount),
+      cartHash: Buffer.from(c.cartHash.slice(2), "hex"),
+      logIndex: 7n,
+    });
+    const { timestamps: _t, anchor: _a, ...core } = b;
+    await testDb.insert(alibis).values({
+      purchaseId: b.alibi_id,
+      leafHash: Buffer.from(leafHashOf(b)),
+      bundle: {
+        ...core,
+        timestamps: [],
+        paypal: { ...core.paypal, capture_id: undefined, invoice_id: undefined },
+      },
+    });
+  });
+
+  test("anyone reads a live Alibi, with the PayPal transaction id", async () => {
+    const res = await app.request(`/v1/alibis/${b.alibi_id}`);
+    expect(res.status).toBe(200);
+    const bundle = decodeAlibi(new Uint8Array(await res.arrayBuffer()));
+    expect(bundle.paypal.transaction_id).toBe("5MC585209K746392H");
+  });
+
+  test("the live purchases list names the store, the amount and the transaction", async () => {
+    const res = await app.request("/v1/live-purchases");
+    expect(res.status).toBe(200);
+    const { purchases: list } = (await res.json()) as {
+      purchases: { id: string; store: string; transactionId: string; amount: unknown }[];
+    };
+    const row = list.find((p) => p.id === b.alibi_id);
+    expect(row).toMatchObject({ store: STORE, transactionId: "5MC585209K746392H" });
+    // A live purchase without an Alibi is not listed.
+    expect(list.every((p) => p.id === b.alibi_id)).toBe(true);
+  });
+});

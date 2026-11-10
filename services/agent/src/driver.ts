@@ -20,6 +20,7 @@ import type {
   BetaBrowserWaitInput,
 } from "@anthropic-ai/sdk/resources/beta";
 import type { BrowserContext, Locator, Page } from "playwright";
+import type { PayGate } from "./gate.ts";
 import { isAllowed, urlPolicy, withScheme } from "./policy.ts";
 
 /** The one tab the driver keeps; the tab-management members stay off. */
@@ -69,6 +70,8 @@ export interface StoreBrowserOptions {
   hosts: readonly string[];
   /** Transforms every page read before it reaches the model (spotlighting). */
   mark?: (text: string) => string;
+  /** Holds every action that could pay until Keelson countersigned the cart. */
+  gate?: PayGate;
 }
 
 /**
@@ -78,8 +81,9 @@ export interface StoreBrowserOptions {
  * host allowlist as `navigate`.
  */
 export class StoreBrowser extends BetaAbstractBrowserToolset20260801 {
-  readonly #page: Page;
+  #page: Page;
   readonly #mark: (text: string) => string;
+  readonly #gate: PayGate | undefined;
   #refused = 0;
   #dialogs: { kind: string; message: string }[] = [];
   /** Every page read as the model received it, in order. */
@@ -94,6 +98,7 @@ export class StoreBrowser extends BetaAbstractBrowserToolset20260801 {
     self.driver = this;
     this.#page = page;
     this.#mark = options.mark ?? ((text) => text);
+    this.#gate = options.gate;
   }
 
   /** Routes the context's requests through the allowlist and returns the driver for `page`. */
@@ -113,12 +118,24 @@ export class StoreBrowser extends BetaAbstractBrowserToolset20260801 {
       }
       return route.abort("blockedbyclient");
     });
-    page.on("dialog", (dialog) => {
-      browser.#dialogs.push({ kind: dialog.type(), message: dialog.message() });
-      dialog.dismiss().catch(() => {});
-    });
-    page.setDefaultTimeout(ACTION_TIMEOUT_MS);
-    page.setDefaultNavigationTimeout(NAVIGATION_TIMEOUT_MS);
+    const follow = (p: Page) => {
+      p.on("dialog", (dialog) => {
+        browser.#dialogs.push({ kind: dialog.type(), message: dialog.message() });
+        dialog.dismiss().catch(() => {});
+      });
+      // A payment window the page opens (PayPal's) becomes the tab until it closes.
+      p.on("popup", (popup) => {
+        const opener = browser.#page;
+        follow(popup);
+        browser.#page = popup;
+        popup.on("close", () => {
+          if (browser.#page === popup) browser.#page = opener;
+        });
+      });
+      p.setDefaultTimeout(ACTION_TIMEOUT_MS);
+      p.setDefaultNavigationTimeout(NAVIGATION_TIMEOUT_MS);
+    };
+    follow(page);
     return browser;
   }
 
@@ -146,7 +163,7 @@ export class StoreBrowser extends BetaAbstractBrowserToolset20260801 {
   }
 
   #ref(ref: string): Locator {
-    const id = /^ref_(e\d+)$/.exec(ref)?.[1];
+    const id = /^ref_((?:f\d+)?e\d+)$/.exec(ref)?.[1];
     if (!id) throw new ToolError(`Error: ${ref} is not a reference this page returned.`);
     return this.#page.locator(`aria-ref=${id}`);
   }
@@ -195,7 +212,7 @@ export class StoreBrowser extends BetaAbstractBrowserToolset20260801 {
   ): Promise<string> {
     const root = input.ref ? this.#ref(input.ref) : this.#page.locator("body");
     const snapshot = await root.ariaSnapshot({ mode: "ai", depth: input.depth ?? 15 });
-    let text = snapshot.replace(/\[ref=(e\d+)\]/g, "[ref_$1]");
+    let text = snapshot.replace(/\[ref=((?:f\d+)?e\d+)\]/g, "[ref_$1]");
     if (text.length > MAX_READ) {
       text = `${text.slice(0, MAX_READ)}\n(truncated at ${MAX_READ} characters: read a smaller depth or a ref)`;
     }
@@ -215,6 +232,10 @@ export class StoreBrowser extends BetaAbstractBrowserToolset20260801 {
     input: BetaBrowserLeftClickInput,
   ): Promise<void> {
     const target = await this.#target(input.target);
+    await this.#gate?.check(
+      this.#page,
+      "x" in target ? { kind: "point" } : { kind: "click", target },
+    );
     const modifiers = input.modifiers
       ? (chord(input.modifiers).split("+") as ("Alt" | "Control" | "Meta" | "Shift")[])
       : [];
@@ -232,6 +253,7 @@ export class StoreBrowser extends BetaAbstractBrowserToolset20260801 {
     input: BetaBrowserFormInputInput,
   ): Promise<void> {
     const locator = this.#ref(input.target.ref);
+    await this.#gate?.check(this.#page, { kind: "input", target: locator });
     const kind = await locator.evaluate((el) =>
       el instanceof HTMLSelectElement
         ? "select"
@@ -248,6 +270,7 @@ export class StoreBrowser extends BetaAbstractBrowserToolset20260801 {
     _ctx: BetaToolsetCallContext,
     input: BetaBrowserTypeInput,
   ): Promise<void> {
+    if (/[\r\n]/.test(input.text)) await this.#gate?.check(this.#page, { kind: "enter" });
     await this.#page.keyboard.type(input.text);
   }
 
@@ -255,6 +278,9 @@ export class StoreBrowser extends BetaAbstractBrowserToolset20260801 {
     _ctx: BetaToolsetCallContext,
     input: BetaBrowserKeyInput,
   ): Promise<void> {
+    if (/\b(enter|return|space)\b/i.test(input.text)) {
+      await this.#gate?.check(this.#page, { kind: "enter" });
+    }
     for (let i = 0; i < (input.repeat ?? 1); i++) {
       for (const k of input.text.split(" ").filter(Boolean)) {
         await this.#page.keyboard.press(chord(k));
