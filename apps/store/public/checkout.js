@@ -2,7 +2,14 @@
 const root = document.querySelector("[data-checkout]");
 const button = root.querySelector("paypal-button");
 const status = root.querySelector("[role=status]");
-const size = root.querySelector("#size");
+const marker = (step) => root.querySelector(`[data-step="${step}"]`);
+const size = () => root.querySelector('input[name="size"]:checked')?.value;
+
+root.addEventListener("change", (event) => {
+  if (event.target.name !== "size") return;
+  marker("size").toggleAttribute("data-done", true);
+  if (status.dataset.need === "size") status.textContent = "";
+});
 
 async function post(url, body) {
   const res = await fetch(url, {
@@ -16,7 +23,7 @@ async function post(url, body) {
 }
 
 const fail = (error) => {
-  status.textContent = `Payment failed: ${error?.message ?? error}. Please try again.`;
+  status.textContent = `The payment did not go through: ${error?.message ?? error}. Try again.`;
 };
 
 try {
@@ -31,6 +38,7 @@ try {
   } else {
     const session = sdk.createPayPalOneTimePaymentSession({
       async onApprove({ orderId }) {
+        marker("pay").toggleAttribute("data-done", true);
         status.textContent = "Completing your payment…";
         await post(`/api/orders/${encodeURIComponent(orderId)}/capture`);
         location.assign(`/orders/${encodeURIComponent(orderId)}`);
@@ -41,13 +49,21 @@ try {
       onError: fail,
     });
     button.addEventListener("click", () => {
+      const chosen = size();
+      if (!chosen) {
+        status.dataset.need = "size";
+        status.textContent = "Choose a size first.";
+        root.querySelector('input[name="size"]').focus();
+        return;
+      }
       status.textContent = "";
       // The order promise goes to start() unawaited so the popup opens on the click.
       const order = post("/api/orders", {
-        lines: [{ handle: root.dataset.handle, size: size.value, qty: 1 }],
+        lines: [{ handle: root.dataset.handle, size: chosen, qty: 1 }],
       }).then(({ id }) => ({ orderId: id }));
       session.start({ presentationMode: "auto" }, order).catch(fail);
     });
+    status.textContent = "";
     button.removeAttribute("hidden");
   }
 } catch (error) {

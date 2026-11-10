@@ -11,6 +11,8 @@
     "bench": "node bench/pages.bench.ts"
   },
   "dependencies": {
+    "@fontsource/barlow": "5.3.0",
+    "@fontsource/barlow-condensed": "5.3.0",
     "@hono/node-server": "2.1.6",
     "@keelson/core": "workspace:*",
     "@keelson/paypal": "workspace:*",

@@ -34,7 +34,7 @@ describe("pages", () => {
         },
       });
       expect(html).toContain("<paypal-button");
-      for (const size of p.sizes) expect(html).toContain(`<option value="${size}"`);
+      for (const size of p.sizes) expect(html).toContain(`name="size" value="${size}"`);
       expect(new TextEncoder().encode(html).length).toBeLessThanOrEqual(20_000);
     },
   );

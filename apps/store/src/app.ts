@@ -28,10 +28,36 @@ export interface StoreDeps {
 
 const PAYPAL = ["https://*.paypal.com", "https://*.paypalobjects.com", "https://*.venmo.com"];
 
-const ASSETS = {
-  "/store.css": "text/css; charset=utf-8",
-  "/checkout.js": "text/javascript; charset=utf-8",
-} as const;
+const ASSETS: Record<string, { file: URL; type: string }> = {
+  "/store.css": {
+    file: new URL("../public/store.css", import.meta.url),
+    type: "text/css; charset=utf-8",
+  },
+  "/checkout.js": {
+    file: new URL("../public/checkout.js", import.meta.url),
+    type: "text/javascript; charset=utf-8",
+  },
+  "/favicon.svg": {
+    file: new URL("../public/favicon.svg", import.meta.url),
+    type: "image/svg+xml",
+  },
+  "/fonts/barlow-400.woff2": {
+    file: new URL(import.meta.resolve("@fontsource/barlow/files/barlow-latin-400-normal.woff2")),
+    type: "font/woff2",
+  },
+  "/fonts/barlow-600.woff2": {
+    file: new URL(import.meta.resolve("@fontsource/barlow/files/barlow-latin-600-normal.woff2")),
+    type: "font/woff2",
+  },
+  "/fonts/barlow-condensed-700.woff2": {
+    file: new URL(
+      import.meta.resolve(
+        "@fontsource/barlow-condensed/files/barlow-condensed-latin-700-normal.woff2",
+      ),
+    ),
+    type: "font/woff2",
+  },
+};
 
 const CartRequest = z.strictObject({
   lines: z
@@ -58,10 +84,7 @@ const digest = (s: string) => createHash("sha256").update(s).digest();
 export function createApp(deps: StoreDeps): Hono<{ Variables: SecureHeadersVariables }> {
   const app = new Hono<{ Variables: SecureHeadersVariables }>();
   const assets = Object.fromEntries(
-    Object.keys(ASSETS).map((path) => [
-      path,
-      readFileSync(new URL(`../public${path}`, import.meta.url)),
-    ]),
+    Object.entries(ASSETS).map(([path, { file }]) => [path, readFileSync(file)]),
   );
   const tokenDigest = digest(deps.attackToken);
   const authorized = (c: Context) => {
@@ -106,11 +129,11 @@ export function createApp(deps: StoreDeps): Hono<{ Variables: SecureHeadersVaria
   app.use("/api/*", bodyLimit({ maxSize: 32 * 1024 }));
 
   app.get("/health", (c) => c.text("ok"));
-  for (const [path, type] of Object.entries(ASSETS)) {
+  for (const [path, { type }] of Object.entries(ASSETS)) {
     app.get(path, (c) =>
       c.body(assets[path] as Uint8Array<ArrayBuffer>, 200, {
         "content-type": type,
-        "cache-control": "public, max-age=300",
+        "cache-control": `public, max-age=${path.startsWith("/fonts/") ? 31_536_000 : 300}`,
       }),
     );
   }

@@ -12,8 +12,10 @@ export interface Product {
   title: string;
   category: "shoes" | "bundle";
   color: string;
-  /** The shoe's color in the illustration. */
-  hex: string;
+  /** Where the shoe is meant to run. */
+  terrain: "Road" | "Trail" | "Race" | "Race kit";
+  /** The illustration's upper, midsole and accent colors. */
+  paint: { upper: string; sole: string; accent: string };
   description: string;
   priceMinor: number;
   sizes: string[];
@@ -28,7 +30,8 @@ export const PRODUCTS: readonly Product[] = [
     title: "Tempo 3",
     category: "shoes",
     color: "blue",
-    hex: "#2f5bd3",
+    terrain: "Road",
+    paint: { upper: "#2f5bd3", sole: "#f4f3ef", accent: "#e4f23c" },
     description:
       "A responsive daily trainer with a nitrogen-infused foam midsole and an 8 mm drop, built for tempo runs and long miles alike.",
     priceMinor: 12900,
@@ -40,7 +43,8 @@ export const PRODUCTS: readonly Product[] = [
     title: "Trail Runner 2",
     category: "shoes",
     color: "green",
-    hex: "#2e7d4f",
+    terrain: "Trail",
+    paint: { upper: "#2e6b4a", sole: "#d9cfb8", accent: "#f08a24" },
     description:
       "A lightweight trail shoe with 4 mm lugs, a rock plate and a breathable mesh upper that drains fast after stream crossings.",
     priceMinor: 13900,
@@ -52,7 +56,8 @@ export const PRODUCTS: readonly Product[] = [
     title: "Carbon Elite",
     category: "shoes",
     color: "white",
-    hex: "#d9dde3",
+    terrain: "Race",
+    paint: { upper: "#eef0f2", sole: "#e4f23c", accent: "#16181b" },
     description:
       "Our race-day shoe: a full-length carbon plate in a 39 mm stack of PEBA foam, for 10K to marathon.",
     priceMinor: 24900,
@@ -64,7 +69,8 @@ export const PRODUCTS: readonly Product[] = [
     title: "Cloud Daily",
     category: "shoes",
     color: "grey",
-    hex: "#7b818c",
+    terrain: "Road",
+    paint: { upper: "#7b818c", sole: "#f4f3ef", accent: "#2f5bd3" },
     description:
       "Soft, stable and forgiving: a wide base and a plush heel for recovery days and first marathons.",
     priceMinor: 11900,
@@ -76,7 +82,8 @@ export const PRODUCTS: readonly Product[] = [
     title: "Ridge GTX",
     category: "shoes",
     color: "black",
-    hex: "#22252b",
+    terrain: "Trail",
+    paint: { upper: "#22252b", sole: "#3a3f47", accent: "#e4f23c" },
     description:
       "A waterproof trail shoe with a gusseted tongue and a sticky rubber outsole for winter and wet mountain routes.",
     priceMinor: 15900,
@@ -88,7 +95,8 @@ export const PRODUCTS: readonly Product[] = [
     title: "Pace Lite",
     category: "shoes",
     color: "red",
-    hex: "#c8382f",
+    terrain: "Road",
+    paint: { upper: "#c8382f", sole: "#f4f3ef", accent: "#16181b" },
     description:
       "A light, low-profile trainer for short intervals, strides and the track. 198 g in a men's 9.",
     priceMinor: 9900,
@@ -100,7 +108,8 @@ export const PRODUCTS: readonly Product[] = [
     title: "Premium Bundle",
     category: "bundle",
     color: "white",
-    hex: "#e0a526",
+    terrain: "Race kit",
+    paint: { upper: "#eef0f2", sole: "#e4f23c", accent: "#16181b" },
     description:
       "Carbon Elite race shoes with a race belt, two pairs of merino running socks and a reflective vest.",
     priceMinor: 34000,

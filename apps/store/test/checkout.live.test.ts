@@ -49,7 +49,7 @@ describe.skipIf(!live)(
         await page.goto(`${origin}/products/tempo-3`);
         await page.locator("paypal-button:not([hidden])").waitFor();
         console.info(`page to PayPal button: ${Math.round(performance.now() - loading)} ms`);
-        await page.getByLabel("Size").selectOption("10");
+        await page.getByRole("radio", { name: "US 10" }).check();
 
         const opened = context.waitForEvent("page", { timeout: 15_000 });
         await page.locator("paypal-button").click();
