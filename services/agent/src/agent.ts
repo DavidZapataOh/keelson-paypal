@@ -294,6 +294,7 @@ export async function runAgent(o: AgentOptions): Promise<AgentRun> {
       content: `${config.brief === "mandate" ? "Signed mandate" : "The user asks"}:\n${mandate}\n\nThe store is ${o.startUrl}. Find it on the store and propose the cart.`,
     },
   ];
+  let nudged = false;
   try {
     for (let turn = 0; turn < MAX_TURNS; turn++) {
       const t = performance.now();
@@ -317,7 +318,19 @@ export async function runAgent(o: AgentOptions): Promise<AgentRun> {
       const calls = response.content.filter(
         (b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use",
       );
-      if (calls.length === 0) return run("no-proposal", plan ? { plan } : {});
+      if (calls.length === 0) {
+        const said = response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join(" ");
+        step({ kind: "model", detail: `said: ${said}` });
+        // A turn that ends in prose gets one reminder that only a proposed cart completes the task.
+        if (nudged) return run("no-proposal", plan ? { plan } : {});
+        nudged = true;
+        messages.push({
+          role: "user",
+          content:
+            "Keelson checks the cart before any money moves, so you do not need to verify anything else. If the store has what the mandate asks for, call propose_cart now; if it does not, say so.",
+        });
+        continue;
+      }
 
       const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
       let failed = false;

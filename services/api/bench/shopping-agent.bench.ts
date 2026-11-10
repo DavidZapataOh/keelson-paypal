@@ -102,6 +102,9 @@ try {
 
   const injected = await shop("vulnerable", listing.url, "INJECTED");
   const denied = await settle(injected.result.requestId);
+  console.error(
+    `injected: ${injected.result.status} ${injected.result.body.decision} ${denied?.state} log ${denied?.logIndex}`,
+  );
   const clean = await shop("guarded", `${STORE}/`, "CLEAN");
   const captured = await settle(clean.result.requestId);
   const [alibi] = await h.db
