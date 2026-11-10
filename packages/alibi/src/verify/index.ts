@@ -21,6 +21,7 @@ import { diffPointers, expand, reads, UNBOUND, valueAt } from "./expand.ts";
 import { fieldsOf } from "./fields.ts";
 import { type Report, type VerifyOptions, verdictOf } from "./report.ts";
 
+export { type AmberReading, readAmber } from "./amber.ts";
 export {
   type ChainAnswer,
   type ChainQuery,
@@ -36,13 +37,16 @@ export { verdictOf } from "./report.ts";
 export {
   type AnonymousMandateProof,
   c1c3Statement,
+  c2bStatement,
   c3Statement,
   RP_ID_HASH,
   registeredUserSetRoot,
   verifyAnonymousMandate,
   verifyAnonymousPurchase,
   verifyC1C3,
+  verifyC2b,
   verifyC3,
+  type WebFactStatement,
 } from "./zk.ts";
 
 const CHECKS = [

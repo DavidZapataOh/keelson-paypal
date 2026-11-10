@@ -1,12 +1,21 @@
 import type { BarretenbergSync } from "@aztec/bb.js";
 import { deploymentsFor, registeredUserSetAbi } from "@keelson/chain";
 import { BN254_FR_MODULUS } from "@keelson/core/poseidon2";
-import { createPublicClient, type Hex, hexToBytes, http, numberToHex } from "viem";
+import {
+  createPublicClient,
+  encodeAbiParameters,
+  type Hex,
+  hexToBytes,
+  http,
+  keccak256,
+  numberToHex,
+} from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { fromBase64 } from "../b64.ts";
 import type { AlibiBundle } from "../schema.ts";
 import { C1_VERIFICATION_KEY } from "./c1-vk.ts";
 import { C1C3_VERIFICATION_KEY } from "./c1c3-vk.ts";
+import { C2B_VERIFICATION_KEY } from "./c2b-vk.ts";
 import { C3_VERIFICATION_KEY } from "./c3-vk.ts";
 
 /** The generator, the first point of the Aztec Ignition CRS (`crs.aztec.network/g1.dat`). */
@@ -57,10 +66,9 @@ export function c1Statement(c: AlibiBundle["tee"]["countersign"]): Hex[] {
 /** Verifies an UltraHonk proof (keccak transcript, ZK) against verification key `vk`. */
 async function verifyHonk(
   vk: string,
-  proof: string,
+  bytes: Uint8Array,
   publicInputs: readonly string[],
 ): Promise<boolean> {
-  const bytes = fromBase64(proof);
   if (bytes.length === 0 || bytes.length % 32 !== 0) return false;
   const fields: Uint8Array[] = [];
   for (let i = 0; i < bytes.length; i += 32) fields.push(bytes.subarray(i, i + 32));
@@ -85,7 +93,7 @@ async function verifyHonk(
 
 /** Verifies a C1 proof against the pinned verification key. */
 export function verifyC1(proof: string, publicInputs: readonly string[]): Promise<boolean> {
-  return verifyHonk(C1_VERIFICATION_KEY, proof, publicInputs);
+  return verifyHonk(C1_VERIFICATION_KEY, fromBase64(proof), publicInputs);
 }
 
 /** `SHA-256("keelson.finance")`, the RP ID hash every Keelson passkey assertion names. */
@@ -114,7 +122,7 @@ export function c3Statement(mandate: {
  * `public_inputs[0]`. Which passkey is not in the proof.
  */
 export function verifyC3(proof: string, publicInputs: readonly string[]): Promise<boolean> {
-  return verifyHonk(C3_VERIFICATION_KEY, proof, publicInputs);
+  return verifyHonk(C3_VERIFICATION_KEY, fromBase64(proof), publicInputs);
 }
 
 /** A C3 proof as `GET /v1/anonymous-mandates/{mandateHash}` serves it. */
@@ -188,7 +196,7 @@ export function c1c3Statement(c: AlibiBundle["tee"]["countersign"], userSetRoot:
  * commitment names, signed it.
  */
 export function verifyC1C3(proof: string, publicInputs: readonly string[]): Promise<boolean> {
-  return verifyHonk(C1C3_VERIFICATION_KEY, proof, publicInputs);
+  return verifyHonk(C1C3_VERIFICATION_KEY, fromBase64(proof), publicInputs);
 }
 
 /**
@@ -209,4 +217,45 @@ export async function verifyAnonymousPurchase(
     (await isRegisteredRoot(c1c3.user_set_root)) &&
     verifyC1C3(c1c3.proof, c1c3.public_inputs)
   );
+}
+
+/** What the C2b statement reads of a `WebFact`: the page it names and its range commitment. */
+export interface WebFactStatement {
+  hostHash: string;
+  urlPathHash: string;
+  rangeCommitment: string;
+}
+
+/**
+ * The public inputs `AmberContradictionCourt` gives C2b for a conviction: the halves of the
+ * `WebFact`'s range commitment, the coverage's `amberCommitment`, the page as
+ * `keccak256(abi.encode(hostHash, urlPathHash))` reduced modulo the field, and the field id.
+ */
+export function c2bStatement(
+  fact: WebFactStatement,
+  amberCommitment: string,
+  fieldId: number,
+): Hex[] {
+  const range = BigInt(fact.rangeCommitment);
+  const page = keccak256(
+    encodeAbiParameters(
+      [{ type: "bytes32" }, { type: "bytes32" }],
+      [fact.hostHash as Hex, fact.urlPathHash as Hex],
+    ),
+  );
+  return [
+    word(range >> 128n),
+    word(range & ((1n << 128n) - 1n)),
+    word(BigInt(amberCommitment)),
+    word(BigInt(page) % BN254_FR_MODULUS),
+    word(BigInt(fieldId)),
+  ];
+}
+
+/**
+ * Verifies a C2b `amber_contradiction` proof against the pinned key: the store's notarized answer
+ * for the attested SKU holds another value of field `publicInputs[4]` than the operator committed to.
+ */
+export function verifyC2b(proof: Hex, publicInputs: readonly string[]): Promise<boolean> {
+  return verifyHonk(C2B_VERIFICATION_KEY, hexToBytes(proof), publicInputs);
 }
