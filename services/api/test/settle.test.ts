@@ -1,5 +1,12 @@
 import { randomBytes } from "node:crypto";
-import { addresses, checkpointAnchorAbi, iPYUSDAbi, keelsonBondVaultAbi } from "@keelson/chain";
+import {
+  addresses,
+  checkpointAnchorAbi,
+  iPYUSDAbi,
+  keelsonBondVaultAbi,
+  keelsonReserveAbi,
+  payoutAddressTypedData,
+} from "@keelson/chain";
 import { KEELSON_TYPES, keelsonDomain } from "@keelson/core/eip712";
 import {
   chainTxs,
@@ -516,6 +523,127 @@ describe.skipIf(!rpc)(
         const [done] = await testDb.select().from(verdicts).where(eq(verdicts.disputeId, id));
         expect(done).toMatchObject({ outcome: "paid", paidBy: "treasury" });
         expect((await balance(merchant)) - before).toBe(400_000n);
+      });
+
+      test("pays the payee's payout address, as the vault and the reserve do", async () => {
+        const payee = privateKeyToAccount(generatePrivateKey());
+        const payout = privateKeyToAccount(generatePrivateKey()).address;
+        const deadline = (await client.getBlock()).timestamp + 600n;
+        const signature = await payee.signTypedData(
+          payoutAddressTypedData(
+            { merchant: payee.address, payout, nonce: 0n, deadline },
+            421614,
+            chain.KeelsonBondVault as Hex,
+          ),
+        );
+        const set = await deps.relayer?.submit({
+          chainId: 421614,
+          contract: "KeelsonBondVault",
+          functionName: "setPayoutAddress",
+          args: [payee.address, payout, 0n, deadline, signature],
+          key: `KeelsonBondVault.setPayoutAddress:${payee.address}`,
+        });
+        expect(set?.status).not.toBe("rejected");
+        const purchase = await newPurchase();
+        const now = Number((await client.getBlock()).timestamp);
+        const id = await storeVerdict({
+          liable: 2,
+          amount: 50_000n,
+          payee: payee.address,
+          deadline: now - 1,
+          purchase,
+        });
+        expect(await settleDispute(paying, id)).toMatchObject({
+          status: "settled",
+          outcome: "paid",
+        });
+        expect(await balance(payout)).toBe(50_000n);
+        expect(await balance(payee.address)).toBe(0n);
+      });
+
+      test("a degraded verdict, or one whose dispute PayPal resolved, is not paid", async () => {
+        const now = Number((await client.getBlock()).timestamp);
+        const degraded = await storeVerdict({
+          liable: 1,
+          amount: 10_000n,
+          payee: merchant,
+          deadline: now - 1,
+          degraded: true,
+          purchase: await newPurchase(),
+        });
+        const resolved = await storeVerdict({
+          liable: 2,
+          amount: 10_000n,
+          payee: merchant,
+          deadline: now - 1,
+          purchase: await newPurchase(),
+        });
+        await testDb
+          .update(disputes)
+          .set({ raw: { status: "RESOLVED" } })
+          .where(eq(disputes.id, resolved));
+        const before = await balance(treasury.address);
+        for (const id of [degraded, resolved]) {
+          expect(await settleDispute(paying, id)).toEqual({
+            status: "failed",
+            disputeId: id,
+            failure: "Expired",
+          });
+          const [v] = await testDb.select().from(verdicts).where(eq(verdicts.disputeId, id));
+          expect(v?.paidBy).toBeNull();
+        }
+        expect(await balance(treasury.address)).toBe(before);
+      });
+
+      test("two disputes on one coverage settled at once never overdraw it", async () => {
+        const [coverage, slashed, warranted] = await Promise.all([
+          client.readContract({
+            address: chain.KeelsonBondVault as Hex,
+            abi: keelsonBondVaultAbi,
+            functionName: "coverages",
+            args: [COVERAGE],
+          }),
+          client.readContract({
+            address: chain.KeelsonBondVault as Hex,
+            abi: keelsonBondVaultAbi,
+            functionName: "slashed",
+            args: [COVERAGE],
+          }),
+          client.readContract({
+            address: chain.KeelsonReserve as Hex,
+            abi: keelsonReserveAbi,
+            functionName: "warranted",
+            args: [COVERAGE],
+          }),
+        ]);
+        const committed = (await testDb.select().from(verdicts))
+          .filter((v) => v.paidBy === "treasury")
+          .reduce((sum, v) => sum + v.amountMinor * 10_000n, 0n);
+        const left = BigInt(coverage.amount) - slashed - warranted - committed;
+        // Each fits what is left, both do not.
+        const amount = ((left * 6n) / 10n / 10_000n) * 10_000n;
+        expect(amount * 2n).toBeGreaterThan(left);
+        const now = Number((await client.getBlock()).timestamp);
+        const ids = [
+          await storeVerdict({
+            liable: 2,
+            amount,
+            payee: merchant,
+            deadline: now - 1,
+            purchase: await newPurchase(),
+          }),
+          await storeVerdict({
+            liable: 2,
+            amount,
+            payee: merchant,
+            deadline: now - 1,
+            purchase: await newPurchase(),
+          }),
+        ];
+        const before = await balance(merchant);
+        const outs = await Promise.all(ids.map((id) => settleDispute(paying, id)));
+        expect(outs.map((o) => o.status).sort()).toEqual(["failed", "settled"]);
+        expect((await balance(merchant)) - before).toBe(amount);
       });
     });
 

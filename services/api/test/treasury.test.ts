@@ -67,17 +67,14 @@ describe("the treasury's PYUSD transfer", () => {
 });
 
 test("the treasury pays only for refusals of a verdict that still holds", () => {
-  for (const failure of [
-    "Expired",
-    "WarrantyWindowClosed",
-    "CoverageNotActive",
-    "InsufficientReserve",
-  ]) {
+  for (const failure of ["Expired", "WarrantyWindowClosed", "CoverageNotActive"]) {
     expect(TREASURY_PAYS.has(failure)).toBe(true);
   }
   for (const failure of [
     "AlreadySettled",
     "ExceedsCoverage",
+    // The reserve can be refilled and the verdict then paid on chain: the treasury would pay twice.
+    "InsufficientReserve",
     "InvalidVerdictSignature",
     "NotAnchored",
     "NotKeelsonLiable",

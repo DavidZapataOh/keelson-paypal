@@ -1,4 +1,11 @@
-import { addresses, iPYUSDAbi, keelsonBondVaultAbi, keelsonReserveAbi } from "@keelson/chain";
+import {
+  addresses,
+  checkpointAnchorAbi,
+  iPYUSDAbi,
+  keelsonBondVaultAbi,
+  keelsonReserveAbi,
+  type Verdict,
+} from "@keelson/chain";
 import { EXTERNAL } from "@keelson/relayer";
 import {
   type Address,
@@ -10,6 +17,8 @@ import {
   maxUint256,
   type PublicClient,
   stringToHex,
+  zeroAddress,
+  zeroHash,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { KEELSON_TREASURY } from "../merchants.ts";
@@ -23,13 +32,14 @@ const TRANSFER_WITH_AUTHORIZATION = keccak256(
 
 /**
  * Chain refusals after which Keelson's treasury pays the payee itself: the verdict holds, but its
- * window, its deadline or the reserve ran out before the chain paid. The others mean the verdict
- * cannot be paid as signed (bad signature, nothing covered, already paid) and the treasury stays out.
+ * deadline passed, or the coverage was released or its warranty window closed, before the chain
+ * paid; none of them can be undone, so the chain can never pay it later. The others mean the
+ * verdict cannot be paid as signed (bad signature, nothing covered, already paid) or may still be
+ * paid on chain (`InsufficientReserve`, until the reserve is refilled), and the treasury stays out.
  */
 export const TREASURY_PAYS: ReadonlySet<string> = new Set([
   "CoverageNotActive",
   "Expired",
-  "InsufficientReserve",
   "WarrantyWindowClosed",
 ]);
 
@@ -83,28 +93,53 @@ export function pyusdDomain(client: PublicClient): Promise<Hex> {
   });
 }
 
-/** What a coverage can still pay: its amount less what was slashed or paid as warranty from it. */
-export async function remainingCoverage(client: PublicClient, coverageId: Hex): Promise<bigint> {
+export type TreasuryCheck =
+  | { pays: true; recipient: Address; remaining: bigint }
+  | { pays: false; reason: string };
+
+/**
+ * What the chain would check had it reached the payment, read from it: the verdict was not settled
+ * on chain, its checkpoint is anchored, its coverage exists for its agent, and how much that
+ * coverage has left (its amount less what was slashed or paid as warranty from it). The recipient
+ * is the payee's payout address when it set one, as the vault and the reserve pay.
+ */
+export async function treasuryCheck(
+  client: PublicClient,
+  v: Verdict,
+  anchoredSize: bigint,
+): Promise<TreasuryCheck> {
   const deployed = addresses[CHAIN_ID];
-  const [coverage, slashed, warranted] = await Promise.all([
-    client.readContract({
-      address: deployed.KeelsonBondVault as Address,
-      abi: keelsonBondVaultAbi,
-      functionName: "coverages",
-      args: [coverageId],
-    }),
-    client.readContract({
-      address: deployed.KeelsonBondVault as Address,
-      abi: keelsonBondVaultAbi,
-      functionName: "slashed",
-      args: [coverageId],
-    }),
-    client.readContract({
-      address: deployed.KeelsonReserve as Address,
-      abi: keelsonReserveAbi,
-      functionName: "warranted",
-      args: [coverageId],
-    }),
-  ]);
-  return BigInt(coverage.amount) - slashed - warranted;
+  const vault = {
+    address: deployed.KeelsonBondVault as Address,
+    abi: keelsonBondVaultAbi,
+  } as const;
+  const reserve = { address: deployed.KeelsonReserve as Address, abi: keelsonReserveAbi } as const;
+  const [coverage, slashed, warranted, slashSettled, warrantySettled, origin, payout] =
+    await Promise.all([
+      client.readContract({ ...vault, functionName: "coverages", args: [v.coverageId] }),
+      client.readContract({ ...vault, functionName: "slashed", args: [v.coverageId] }),
+      client.readContract({ ...reserve, functionName: "warranted", args: [v.coverageId] }),
+      client.readContract({ ...vault, functionName: "settled", args: [v.disputeId] }),
+      client.readContract({ ...reserve, functionName: "settled", args: [v.disputeId] }),
+      client.readContract({ ...vault, functionName: "logOrigin" }),
+      client.readContract({ ...vault, functionName: "payoutAddress", args: [v.payee] }),
+    ]);
+  if (slashSettled || warrantySettled) return { pays: false, reason: "AlreadySettled" };
+  const root = await client.readContract({
+    address: deployed.CheckpointAnchor as Address,
+    abi: checkpointAnchorAbi,
+    functionName: "rootAt",
+    args: [origin, anchoredSize],
+  });
+  if (v.checkpointRoot === zeroHash || root !== v.checkpointRoot) {
+    return { pays: false, reason: "NotAnchored" };
+  }
+  if (coverage.status === 0 || BigInt(coverage.agentId) !== v.agentId) {
+    return { pays: false, reason: "UnknownCoverage" };
+  }
+  return {
+    pays: true,
+    recipient: payout === zeroAddress ? v.payee : payout,
+    remaining: BigInt(coverage.amount) - slashed - warranted,
+  };
 }

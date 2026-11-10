@@ -1,4 +1,5 @@
 import {
+  iPYUSDAbi,
   keelsonBondVaultAbi,
   keelsonReserveAbi,
   payWarrantyArgs,
@@ -30,11 +31,12 @@ import {
   PayPalError,
   verdictRefund,
 } from "@keelson/paypal";
-import { type Relayer, RelayerError, type TxRecord } from "@keelson/relayer";
+import { EXTERNAL, type Relayer, RelayerError, type TxRecord } from "@keelson/relayer";
 import type { Logger } from "pino";
 import {
   type Hex,
   hexToBytes,
+  isAddressEqual,
   type LocalAccount,
   type PublicClient,
   parseEventLogs,
@@ -42,7 +44,7 @@ import {
 } from "viem";
 import { settlementOf } from "../merchants.ts";
 import { call, type PayPalDeps } from "../paypal.ts";
-import { pyusdDomain, remainingCoverage, TREASURY_PAYS, treasuryTransfer } from "./treasury.ts";
+import { pyusdDomain, TREASURY_PAYS, treasuryCheck, treasuryTransfer } from "./treasury.ts";
 
 export interface SettleDeps {
   db: Db;
@@ -350,7 +352,7 @@ async function record(
       readyAt,
       ...(outcome === "queued" ? {} : { settledAt: new Date() }),
     })
-    .where(eq(verdicts.id, row.id));
+    .where(and(eq(verdicts.id, row.id), or(isNull(verdicts.paidBy), eq(verdicts.paidBy, "chain"))));
   deps.log.info(
     { disputeId: row.disputeId, outcome, txHash: hash, latencyMs: tx.latencyMs },
     "dispute settled on chain",
@@ -398,23 +400,7 @@ async function fromTreasury(deps: SettleDeps, row: Row): Promise<Settlement | un
   const { disputeId } = row;
   const failed: Settlement = { status: "failed", disputeId, failure: row.failure ?? "unknown" };
   if (row.paidBy !== "treasury") {
-    if (!TREASURY_PAYS.has(row.failure ?? "")) return failed;
-    if (row.rail === "pyusd" ? !deps.treasury || !deps.relayer : !deps.paypal) return failed;
-    const v = verdictOf(row.message);
-    const committed = await treasuryCommitted(deps.db, row);
-    if (v.amount > (await remainingCoverage(deps.chain.client, v.coverageId)) - committed) {
-      deps.log.error(
-        { disputeId, amount: v.amount.toString(), committed: committed.toString() },
-        "verdict exceeds what its coverage has left: the treasury does not pay it",
-      );
-      return failed;
-    }
-    const [taken] = await deps.db
-      .update(verdicts)
-      .set({ paidBy: "treasury" })
-      .where(and(eq(verdicts.id, row.id), eq(verdicts.outcome, "failed"), isNull(verdicts.paidBy)))
-      .returning({ id: verdicts.id });
-    if (!taken) throw new Error(`settlement of ${disputeId} was taken by another run`);
+    if (!(await treasuryMayPay(deps, row))) return failed;
     row.paidBy = "treasury";
   }
 
@@ -428,11 +414,12 @@ async function fromTreasury(deps: SettleDeps, row: Row): Promise<Settlement | un
       row.payoutStatus && PAYOUT_DONE.has(row.payoutStatus)
         ? row.payoutStatus
         : await payout(deps, deps.paypal, row);
-    if (PAYOUT_FAILED.has(status))
+    if (PAYOUT_FAILED.has(status)) {
+      deps.log.error({ disputeId, status }, "the treasury's payout failed: the merchant is unpaid");
       return { status: "failed", disputeId, failure: `payout ${status}` };
+    }
     if (status !== "SUCCESS") return { status: "pending", disputeId, waiting: "payout" };
   }
-  if (row.liable === OPERATOR && deps.relayer) await rateFault(deps, deps.relayer, row);
   await deps.db
     .update(verdicts)
     .set({
@@ -451,25 +438,71 @@ async function fromTreasury(deps: SettleDeps, row: Row): Promise<Settlement | un
     },
     "dispute settled by the treasury",
   );
+  // The merchant is paid: a rating that fails must not hold back the buyer's refund.
+  if (row.liable === OPERATOR && deps.relayer) await rateFault(deps, deps.relayer, row);
   return undefined;
 }
 
-/** PYUSD the treasury committed to other verdicts on the same coverage, which backs them all. */
-async function treasuryCommitted(db: Db, row: Row): Promise<bigint> {
-  const [sum] = await db
-    .select({ minor: sql<string>`coalesce(sum(${verdicts.amountMinor}), 0)` })
-    .from(verdicts)
-    .where(
-      and(
-        sql`${verdicts.message}->>'coverageId' = ${row.message.coverageId}`,
-        eq(verdicts.paidBy, "treasury"),
-        ne(verdicts.id, row.id),
-      ),
-    );
-  return BigInt(sum?.minor ?? 0) * PYUSD_PER_MINOR;
+/**
+ * Commits the treasury to pay a refused verdict, once, when it should: the chain refused it for
+ * good, the verdict is 2-of-2 (a degraded one would have waited out the veto window), the chain
+ * would have accepted it otherwise, PayPal has not resolved the dispute, and its coverage, less
+ * what the treasury already committed to other verdicts on it, still covers the amount. The check
+ * and the commit hold the coverage's lock, so two disputes on one coverage cannot both overdraw it.
+ */
+async function treasuryMayPay(deps: SettleDeps, row: Row): Promise<boolean> {
+  const { disputeId } = row;
+  if (!TREASURY_PAYS.has(row.failure ?? "")) return false;
+  if (row.rail === "pyusd" ? !deps.treasury || !deps.relayer : !deps.paypal) return false;
+  const refuse = (reason: string, extra: Record<string, unknown> = {}) => {
+    deps.log.error({ disputeId, reason, ...extra }, "the treasury does not pay this verdict");
+    return false;
+  };
+  if (!signaturesOf(row).nitro) return refuse("degraded");
+  if (row.anchoredSize === null) return refuse("NotAnchored");
+  const [dispute] = await deps.db
+    .select({ status: sql<string | null>`${disputes.raw}->>'status'` })
+    .from(disputes)
+    .where(eq(disputes.id, disputeId));
+  if (dispute?.status === "RESOLVED") return refuse("resolved");
+  const v = verdictOf(row.message);
+  const check = await treasuryCheck(deps.chain.client, v, row.anchoredSize);
+  if (!check.pays) return refuse(check.reason);
+  return deps.db.transaction(async (db) => {
+    await db.execute(sql`select pg_advisory_xact_lock(hashtext(${v.coverageId}))`);
+    const [sum] = await db
+      .select({ minor: sql<string>`coalesce(sum(${verdicts.amountMinor}), 0)` })
+      .from(verdicts)
+      .where(
+        and(
+          sql`${verdicts.message}->>'coverageId' = ${v.coverageId}`,
+          eq(verdicts.paidBy, "treasury"),
+          ne(verdicts.id, row.id),
+        ),
+      );
+    const committed = BigInt(sum?.minor ?? 0) * PYUSD_PER_MINOR;
+    if (v.amount > check.remaining - committed) {
+      return refuse("ExceedsCoverage", {
+        amount: v.amount.toString(),
+        remaining: check.remaining.toString(),
+        committed: committed.toString(),
+      });
+    }
+    const [taken] = await db
+      .update(verdicts)
+      .set({ paidBy: "treasury" })
+      .where(and(eq(verdicts.id, row.id), eq(verdicts.outcome, "failed"), isNull(verdicts.paidBy)))
+      .returning({ id: verdicts.id });
+    if (!taken) throw new Error(`settlement of ${disputeId} was taken by another run`);
+    return true;
+  });
 }
 
-/** Relays the treasury's EIP-3009 transfer of the verdict's amount to its payee. */
+/**
+ * Relays the treasury's EIP-3009 transfer of the verdict's amount to the payee's payout address
+ * (or the payee), and confirms from the receipt that PYUSD moved it: PYUSD ignores a nonce it
+ * already used instead of reverting.
+ */
 async function pyusdFromTreasury(
   deps: SettleDeps,
   relayer: Relayer,
@@ -477,12 +510,14 @@ async function pyusdFromTreasury(
   row: Row,
 ): Promise<TxRecord> {
   const v = verdictOf(row.message);
+  const check = await treasuryCheck(deps.chain.client, v, row.anchoredSize ?? 0n);
+  const to = check.pays ? check.recipient : v.payee;
   const args = await treasuryTransfer(treasury, await pyusdDomain(deps.chain.client), {
-    to: v.payee,
+    to,
     value: v.amount,
     nonce: `0x${Buffer.from(row.digest).toString("hex")}`,
   });
-  return confirmed(deps, row, () =>
+  const tx = await confirmed(deps, row, () =>
     relayer.submit({
       chainId: CHAIN_ID,
       contract: "PYUSD",
@@ -491,12 +526,25 @@ async function pyusdFromTreasury(
       key: `PYUSD.transferWithAuthorization:${v.disputeId}`,
     }),
   );
+  const receipt = await deps.chain.client.waitForTransactionReceipt({
+    hash: tx.hash as Hex,
+    timeout: RECEIPT_WAIT_MS,
+  });
+  const moved = parseEventLogs({ abi: iPYUSDAbi, logs: receipt.logs, eventName: "Transfer" }).some(
+    (e) =>
+      isAddressEqual(e.address, EXTERNAL[CHAIN_ID].PYUSD) &&
+      isAddressEqual(e.args.from, treasury.address) &&
+      isAddressEqual(e.args.to, to) &&
+      e.args.value === v.amount,
+  );
+  if (!moved) throw new Error(`${tx.hash} moved no PYUSD for ${row.disputeId}`);
+  return tx;
 }
 
 /**
  * Rates the operator `-1.00` (`"keelson"`/`"uncollected"`) on the ERC-8004 Reputation registry for
- * a fault its bond did not pay, once per verdict. The registry refuses feedback from an address the
- * operator approved; that refusal is logged and settlement goes on.
+ * a fault its bond did not pay, once per verdict. Best effort: the merchant is already paid, so a
+ * refusal (the registry refuses an address the operator approved) or an outage is logged.
  */
 async function rateFault(deps: SettleDeps, relayer: Relayer, row: Row): Promise<void> {
   const v = verdictOf(row.message);
@@ -512,16 +560,22 @@ async function rateFault(deps: SettleDeps, relayer: Relayer, row: Row): Promise<
     );
     deps.log.info({ disputeId: row.disputeId, txHash: tx.hash }, "uncollected fault rated");
   } catch (err) {
-    if (err instanceof RelayerError && err.code === "simulation-reverted") {
-      deps.log.error({ disputeId: row.disputeId, err }, "the registry refused the fault's rating");
-      return;
-    }
-    throw err;
+    deps.log.error({ disputeId: row.disputeId, err }, "the uncollected fault was not rated");
   }
 }
 
 async function fail(deps: SettleDeps, row: Row, failure: string): Promise<Settlement> {
-  await deps.db.update(verdicts).set({ outcome: "failed", failure }).where(eq(verdicts.id, row.id));
+  // A run that started before another settled the verdict must not undo it.
+  await deps.db
+    .update(verdicts)
+    .set({ outcome: "failed", failure })
+    .where(
+      and(
+        eq(verdicts.id, row.id),
+        or(isNull(verdicts.outcome), eq(verdicts.outcome, "queued")),
+        isNull(verdicts.paidBy),
+      ),
+    );
   deps.log.error({ disputeId: row.disputeId, failure }, "dispute cannot be settled on chain");
   return { status: "failed", disputeId: row.disputeId, failure };
 }
@@ -579,19 +633,34 @@ export async function resumeSettlements(deps: SettleDeps): Promise<number> {
             or(isNull(verdicts.payoutStatus), notInArray(verdicts.payoutStatus, [...PAYOUT_DONE])),
           ),
           and(isNull(verdicts.outcome), lte(verdicts.createdAt, sql`now() - interval '1 minute'`)),
-          and(
-            eq(verdicts.outcome, "failed"),
-            eq(verdicts.paidBy, "treasury"),
-            or(isNull(verdicts.payoutStatus), notInArray(verdicts.payoutStatus, [...PAYOUT_DONE])),
-          ),
         ),
       ),
     )
+    .orderBy(verdicts.createdAt)
     .limit(20);
+  // Apart, so treasury payments that keep failing never crowd out the chain's.
+  const owed = await deps.db
+    .select({ disputeId: verdicts.disputeId })
+    .from(verdicts)
+    .where(
+      and(
+        eq(verdicts.outcome, "failed"),
+        eq(verdicts.paidBy, "treasury"),
+        or(isNull(verdicts.payoutStatus), notInArray(verdicts.payoutStatus, [...PAYOUT_DONE])),
+      ),
+    )
+    .orderBy(verdicts.createdAt)
+    .limit(5);
   for (const { disputeId } of waiting) {
     await settleDispute(deps, disputeId).catch((err: unknown) =>
       deps.log.warn({ err, disputeId }, "settlement retry failed"),
     );
   }
-  return waiting.length;
+  for (const { disputeId } of owed) {
+    // The treasury owes the merchant: every failed attempt is an alert.
+    await settleDispute(deps, disputeId).catch((err: unknown) =>
+      deps.log.error({ err, disputeId }, "treasury payment retry failed"),
+    );
+  }
+  return waiting.length + owed.length;
 }
