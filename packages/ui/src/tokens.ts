@@ -73,3 +73,15 @@ export const fonts = {
   sans: '"Instrument Sans Variable", "Instrument Sans", system-ui, sans-serif',
   mono: '"Geist Mono Variable", "Geist Mono", ui-monospace, monospace',
 } as const;
+
+/** Motion, mirrored in `globals.css`. Only opacity and transform animate. */
+export const motion = {
+  "ease-out": "cubic-bezier(0.16, 1, 0.3, 1)",
+  "ease-in": "cubic-bezier(0.7, 0, 0.84, 0)",
+  "duration-state": "120ms",
+  "duration-reveal": "200ms",
+  "duration-exit": "150ms",
+} as const;
+
+/** Radii in px: chips, controls, cards and panels, overlays. */
+export const radius = { sm: 4, md: 6, lg: 10, xl: 14 } as const;
