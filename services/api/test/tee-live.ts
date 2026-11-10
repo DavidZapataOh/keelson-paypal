@@ -24,6 +24,7 @@ import { bytesToHex } from "viem";
 import cartBundle from "../../../engine/canon/tests/fixtures/bundle-340.json" with { type: "json" };
 import cartDemo from "../../../engine/canon/tests/fixtures/demo-shoes.json" with { type: "json" };
 import demo from "../../../packages/mandate/test/fixtures/demo-mandate.json" with { type: "json" };
+import { agentBond, agentCnf, termsConsent } from "../src/compile-sources.ts";
 import type { Principal } from "../src/principal.ts";
 import type { CountersignRequest, LegClient, MandateIssued } from "../src/tee/client.ts";
 import type { CountersignExpectation } from "../src/tee/coordinator.ts";
@@ -512,25 +513,40 @@ export interface SignedMandate {
   };
 }
 
-/** Who the mandate names as operator and bond vault, when not the demo fixture's. */
+/** The operator the mandate names, when not the demo fixture's. */
 export interface MandateAgent {
   agentId: bigint;
-  /** CAIP-10 account of the bond vault. */
-  vault: string;
 }
 
-/** The demo mandate for `sub` and a new agent key, signed with `passkey` after `edit`. */
+/** An agent's signing key and its public `cnf` JWK. */
+export interface AgentKey {
+  key: CryptoKey;
+  jwk: { kty: "EC"; crv: "P-256"; x: string; y: string };
+}
+
+async function newAgentKey(): Promise<AgentKey> {
+  const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, [
+    "sign",
+    "verify",
+  ]);
+  const { x, y } = await crypto.subtle.exportKey("jwk", pair.publicKey);
+  return { key: pair.privateKey, jwk: { kty: "EC", crv: "P-256", x: x as string, y: y as string } };
+}
+
+/** The agent this process buys as: the operators the harness seeds register its key as `cnf`. */
+export const testAgent = await newAgentKey();
+
+/**
+ * The demo mandate for `sub`, signed with `passkey` after `edit`. It binds what compiling fills:
+ * `agent`'s key as the operator's `cnf`, the operator's bond and the current terms.
+ */
 export async function signedMandate(
   passkey: Passkey,
   sub = `kls_usr_${randomBytes(8).toString("hex")}`,
   operator?: MandateAgent,
   edit: (m: Mandate) => void = () => {},
+  agent: AgentKey = testAgent,
 ): Promise<SignedMandate> {
-  const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, [
-    "sign",
-    "verify",
-  ]);
-  const agentJwk = await crypto.subtle.exportKey("jwk", pair.publicKey);
   const merchant = await authorizationPayee();
   const now = Math.floor(Date.now() / 1000);
   const m: Mandate = parseMandate({
@@ -551,13 +567,14 @@ export async function signedMandate(
       ),
     },
     agent: {
-      ...demo.agent,
-      cnf: { jwk: { kty: "EC", crv: "P-256", kid: "agt-01", x: agentJwk.x, y: agentJwk.y } },
-      ...(operator && {
-        operator: { ...demo.agent.operator, agent_id: operator.agentId.toString() },
-        bond: { ...demo.agent.bond, vault: operator.vault },
-      }),
+      operator: {
+        ...demo.agent.operator,
+        ...(operator && { agent_id: operator.agentId.toString() }),
+      },
+      cnf: await agentCnf({ cnfJwk: agent.jwk }),
+      bond: agentBond({ chainId: 421614 }),
     },
+    consent: await termsConsent(),
   });
   edit(m);
   const salt = randomBytes(16);
@@ -570,7 +587,7 @@ export async function signedMandate(
   const assertion = await passkey.assert(signing.challenge, signing.spc);
   return {
     sub,
-    key: pair.privateKey,
+    key: agent.key,
     salt,
     assertion,
     body: {
@@ -585,7 +602,7 @@ export async function signedMandate(
 
 /** Registers the demo mandate for a new user and a new agent key on leg A. */
 export async function registerMandate(leg: LegClient, passkey: Passkey): Promise<Agent> {
-  const signed = await signedMandate(passkey);
+  const signed = await signedMandate(passkey, undefined, undefined, undefined, await newAgentKey());
   const issued = await leg.registerMandate({
     sub: signed.sub,
     payload_sd: signed.body.payloadSd,
@@ -638,7 +655,10 @@ export async function expectation(
 
 export { toHex };
 
-/** A signed-in user whose passkey is the virtual one, and the operator the demo mandate names. */
+/**
+ * A signed-in user whose passkey is the virtual one, and the operator the demo mandate names, with
+ * {@link testAgent} as its agent.
+ */
 export async function seedUser(db: Db, passkey: Passkey, sub: string): Promise<void> {
   const x = Buffer.from(passkey.jwk.x, "base64url");
   const y = Buffer.from(passkey.jwk.y, "base64url");
@@ -668,7 +688,7 @@ export async function seedUser(db: Db, passkey: Passkey, sub: string): Promise<v
       chainId: 421614,
       agentRegistry: "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
       name: "Demo operator",
-      cnfJwk: {},
+      cnfJwk: testAgent.jwk,
     })
     .onConflictDoNothing();
 }

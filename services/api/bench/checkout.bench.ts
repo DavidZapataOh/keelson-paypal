@@ -93,10 +93,11 @@ const post = async (path: string, headers: Record<string, string>, body?: unknow
 };
 const evidence = new EvidenceUploader();
 
+let unseed = async () => {};
 try {
   await refreshLeg(db, "a", tee);
   await refreshLeg(db, "b", tee);
-  await seedDemoOperator(db);
+  unseed = await seedDemoOperator(db);
   const passkey = await SoftwarePasskey.create();
   const sub = `kls_usr_${randomBytes(8).toString("hex")}`;
   await seedUser(db, passkey, sub);
@@ -209,6 +210,7 @@ try {
 } finally {
   await evidence.close();
   await listener.close();
+  await unseed();
   await kv.close();
   await pool.end();
 }

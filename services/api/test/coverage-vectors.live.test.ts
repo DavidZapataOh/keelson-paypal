@@ -42,6 +42,7 @@ import {
   SpcPasskey,
   seedUser,
   signedMandate,
+  testAgent,
   VirtualPasskey,
 } from "./tee-live.ts";
 
@@ -99,7 +100,7 @@ describe.skipIf(!live)("coverage vectors (live legs, real passkeys)", { timeout:
         chainId: arbitrumSepolia.id,
         agentRegistry: "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
         name: "Demo operator",
-        cnfJwk: {},
+        cnfJwk: testAgent.jwk,
       })
       .onConflictDoNothing();
   }, 120_000);
@@ -125,10 +126,7 @@ describe.skipIf(!live)("coverage vectors (live legs, real passkeys)", { timeout:
    */
   async function capture(passkey: Passkey, legs = tee.client) {
     passkeys.push(passkey);
-    const signed = await signedMandate(passkey, undefined, {
-      agentId: AGENT_ID,
-      vault: `eip155:${arbitrumSepolia.id}:${VAULT}`,
-    });
+    const signed = await signedMandate(passkey, undefined, { agentId: AGENT_ID });
     let openMandate: string;
     if (mandateId === undefined) {
       await seedUser(testDb, passkey, signed.sub);

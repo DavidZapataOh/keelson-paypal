@@ -45,6 +45,7 @@ import {
   type Passkey,
   seedUser,
   signedMandate,
+  testAgent,
   VirtualPasskey,
 } from "./tee-live.ts";
 
@@ -97,7 +98,7 @@ describe.skipIf(!relayerKeys)(
           chainId: 421614,
           agentRegistry: "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
           name: "Demo operator",
-          cnfJwk: {},
+          cnfJwk: testAgent.jwk,
         })
         .onConflictDoNothing();
       const kms = new KMSClient({
@@ -147,10 +148,7 @@ describe.skipIf(!relayerKeys)(
     async function countersign() {
       const passkey = await VirtualPasskey.create();
       passkeys.push(passkey);
-      const signed = await signedMandate(passkey, undefined, {
-        agentId: AGENT_ID,
-        vault: `eip155:421614:${VAULT}`,
-      });
+      const signed = await signedMandate(passkey, undefined, { agentId: AGENT_ID });
       let openMandate: string;
       if (mandateId === undefined) {
         await seedUser(testDb, passkey, signed.sub);

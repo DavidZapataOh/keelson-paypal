@@ -1,5 +1,5 @@
 import { addresses } from "@keelson/chain";
-import type { Db } from "@keelson/db";
+import type { Db, operators } from "@keelson/db";
 import { type Mandate, TERMS_HASH } from "@keelson/mandate";
 import { calculateJwkThumbprint } from "jose";
 
@@ -16,6 +16,33 @@ export class SourceUnavailable extends Error {
 /** The smallest bond the operator holds for a mandate's amber fields: 50 PYUSD, in its 6-decimal units. */
 const BOND_MIN = 50_000_000;
 
+type Operator = typeof operators.$inferSelect;
+
+/** The operator's agent proof-of-possession key, or undefined while it registered no P-256 key. */
+export async function agentCnf(
+  row: Pick<Operator, "cnfJwk">,
+): Promise<Mandate["agent"]["cnf"] | undefined> {
+  const jwk = row.cnfJwk as { kty?: unknown; crv?: unknown; x?: unknown; y?: unknown };
+  if (
+    jwk?.kty !== "EC" ||
+    jwk.crv !== "P-256" ||
+    typeof jwk.x !== "string" ||
+    typeof jwk.y !== "string"
+  ) {
+    return undefined;
+  }
+  const key = { kty: "EC" as const, crv: "P-256" as const, x: jwk.x, y: jwk.y };
+  return { jwk: { ...key, kid: await calculateJwkThumbprint(key) } };
+}
+
+/** The bond the operator holds for a mandate, or undefined on a chain without a bond vault. */
+export function agentBond(row: Pick<Operator, "chainId">): Mandate["agent"]["bond"] | undefined {
+  const vault = addresses[row.chainId as keyof typeof addresses]?.KeelsonBondVault;
+  return vault
+    ? { vault: `eip155:${row.chainId}:${vault}`, asset: "PYUSD", min: BOND_MIN }
+    : undefined;
+}
+
 /**
  * The agent the app's mandates delegate to: the registered operator `agentId`, its agent's
  * proof-of-possession key and its bond vault. Unavailable until the operator registered a P-256
@@ -26,25 +53,13 @@ export function operatorAgent(db: Db, agentId: bigint): () => Promise<Mandate["a
     const row = await db.query.operators.findFirst({
       where: (o, { eq }) => eq(o.agentId, agentId),
     });
-    const jwk = row?.cnfJwk as
-      | { kty?: unknown; crv?: unknown; x?: unknown; y?: unknown }
-      | undefined;
-    const vault = row && addresses[row.chainId as keyof typeof addresses]?.KeelsonBondVault;
-    if (
-      !row ||
-      !vault ||
-      jwk?.kty !== "EC" ||
-      jwk.crv !== "P-256" ||
-      typeof jwk.x !== "string" ||
-      typeof jwk.y !== "string"
-    ) {
-      throw new SourceUnavailable("agent");
-    }
-    const key = { kty: "EC" as const, crv: "P-256" as const, x: jwk.x, y: jwk.y };
+    const cnf = row && (await agentCnf(row));
+    const bond = row && agentBond(row);
+    if (!row || !cnf || !bond) throw new SourceUnavailable("agent");
     return {
       operator: { agent_registry: row.agentRegistry, agent_id: agentId.toString() },
-      cnf: { jwk: { ...key, kid: await calculateJwkThumbprint(key) } },
-      bond: { vault: `eip155:${row.chainId}:${vault}`, asset: "PYUSD", min: BOND_MIN },
+      cnf,
+      bond,
     };
   };
 }

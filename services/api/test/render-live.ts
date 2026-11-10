@@ -153,7 +153,7 @@ export async function renderHarness() {
 
   await refreshLeg(db, "a", tee);
   await refreshLeg(db, "b", tee);
-  await seedDemoOperator(db);
+  const unseed = await seedDemoOperator(db);
 
   /** A new user's mandate of `maxMinor`, held on PayPal and approved by the sandbox buyer. */
   async function openHold(maxMinor: number): Promise<Hold> {
@@ -266,6 +266,7 @@ export async function renderHarness() {
       );
     }
     await evidence.close();
+    await unseed();
     await kv.close();
     await pool.end();
   }

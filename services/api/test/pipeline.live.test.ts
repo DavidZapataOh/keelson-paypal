@@ -36,7 +36,7 @@ import { EvidenceUploader } from "./evidence.ts";
 import { holdHarness, row, sandbox } from "./hold-live.ts";
 import { type LocalLog, startLocalLog } from "./log-live.ts";
 import { testDb, testDbUrl, testKv } from "./setup.ts";
-import { asAgent, carts, headerPrincipal, live, liveEnv } from "./tee-live.ts";
+import { asAgent, carts, headerPrincipal, live, liveEnv, testAgent } from "./tee-live.ts";
 
 const registry = JSON.parse(
   readFileSync(new URL("../../../contracts/deployments/421614.json", import.meta.url), "utf8"),
@@ -95,7 +95,7 @@ describe.skipIf(!keys)(
           chainId: 421614,
           agentRegistry: "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
           name: "Demo operator",
-          cnfJwk: {},
+          cnfJwk: testAgent.jwk,
         })
         .onConflictDoNothing();
       const kms = new KMSClient({
@@ -177,7 +177,7 @@ describe.skipIf(!keys)(
               : c,
           );
         },
-        { agentId: AGENT_ID, vault: `eip155:421614:${VAULT}` },
+        { agentId: AGENT_ID },
       );
       const held = await h.activate(s.sub, s.mid);
       opened.push(held.authorizationId);
@@ -398,7 +398,7 @@ describe.skipIf(!keys)(
 
     test("a mandate that is not ACTIVE countersigns nothing", async () => {
       const h = holdHarness(app, paypal);
-      const s = await h.signed(undefined, { agentId: AGENT_ID, vault: `eip155:421614:${VAULT}` });
+      const s = await h.signed(undefined, { agentId: AGENT_ID });
       const m = await testDb.select().from(mandates).where(eq(mandates.id, s.mid));
       expect(m[0]?.state).toBe("SIGNED");
       const { res, out } = await countersign(

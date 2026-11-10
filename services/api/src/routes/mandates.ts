@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { fromHex, toHex } from "@keelson/core";
 import {
@@ -24,6 +25,7 @@ import {
 } from "@keelson/mandate";
 import type { SignedChallenge } from "@keelson/mandate/browser";
 import type { Deps } from "../app.ts";
+import { agentBond, agentCnf, termsConsent } from "../compile-sources.ts";
 import { passkeyJwk, SignatureError, verifyMandateSignature } from "../mandate-signature.ts";
 import { requireSession } from "../middleware/auth.ts";
 import { purchaseView } from "../pipeline/drive.ts";
@@ -205,7 +207,11 @@ const create = createRoute({
     401: { description: "Not signed in, or the signature is invalid", content: problemContent },
     403: { description: "The passkey is not the signer's", content: problemContent },
     409: { description: "The mandate is already stored", content: problemContent },
-    422: { description: "The mandate is invalid", content: problemContent },
+    422: {
+      description:
+        "The mandate is invalid (`invalid-mandate`), or it binds an agent key, a bond or terms other than the ones `POST /v1/mandates/compile` fills: the named operator's registered `cnf` key, its bond vault with the 50 PYUSD minimum, and the current terms (`mandate-binding-mismatch`; `fields` names `agent.cnf`, `agent.bond` or `consent`)",
+      content: problemContent,
+    },
     503: { description: "The TEE could not issue the mandate", content: problemContent },
   },
 });
@@ -337,6 +343,23 @@ export function registerMandates(
     if (!operator) return invalid("agent.operator.agent_id is not a registered operator");
     if (operator.agentRegistry.toLowerCase() !== m.agent.operator.agent_registry.toLowerCase()) {
       return invalid(`agent.operator.agent_registry must be ${operator.agentRegistry}`);
+    }
+    const cnf = await agentCnf(operator);
+    const bond = agentBond(operator);
+    const unbound = [
+      ...(cnf && isDeepStrictEqual(m.agent.cnf, cnf) ? [] : ["agent.cnf"]),
+      ...(bond && isDeepStrictEqual(m.agent.bond, bond) ? [] : ["agent.bond"]),
+      ...(isDeepStrictEqual(m.consent, await termsConsent()) ? [] : ["consent"]),
+    ];
+    if (unbound.length > 0) {
+      return problem(
+        c,
+        422,
+        "mandate-binding-mismatch",
+        "Mandate binding mismatch",
+        `${unbound.join(", ")} must be what compiling fills: the operator's registered agent key and bond, and the current terms.`,
+        { fields: unbound },
+      );
     }
 
     const key = await db.query.passkey.findFirst({

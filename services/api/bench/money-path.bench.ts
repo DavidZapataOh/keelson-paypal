@@ -236,10 +236,11 @@ async function purchase(h: Hold, mode: Result["mode"], evidenceRoot: string): Pr
   };
 }
 
+let unseed = async () => {};
 try {
   await refreshLeg(db, "a", tee);
   await refreshLeg(db, "b", tee);
-  await seedDemoOperator(db);
+  unseed = await seedDemoOperator(db);
   const perHold = Math.ceil(PURCHASES / HOLDS);
   for (let i = 0; i < HOLDS; i++) holds.push(await openHold(perHold));
   // The evidence of every purchase is captured first, one browser page at a time, so the
@@ -316,6 +317,7 @@ try {
   }
   await evidence.close().catch(() => {});
   await listener.close();
+  await unseed();
   await kv.close();
   await pool.end();
 }

@@ -18,6 +18,7 @@ import { afterAll, beforeAll, expect, test } from "vitest";
 import demo from "../../../packages/mandate/test/fixtures/demo-mandate.json" with { type: "json" };
 import { createApp } from "../src/app.ts";
 import { createAuth } from "../src/auth.ts";
+import { operatorAgent, termsConsent } from "../src/compile-sources.ts";
 import { authenticate } from "../src/middleware/auth.ts";
 import { userPasskeys } from "../src/passkeys.ts";
 import { testAuthEnv, testDb, testKv } from "./setup.ts";
@@ -126,7 +127,14 @@ interface Posted {
   status: number;
   replayed: string | null;
   location: string | null;
-  body: { id?: string; mandateHash?: string; state?: string; type?: string; detail?: string };
+  body: {
+    id?: string;
+    mandateHash?: string;
+    state?: string;
+    type?: string;
+    detail?: string;
+    fields?: string[];
+  };
 }
 
 const secret = randomBytes(32).toString("base64url");
@@ -181,6 +189,17 @@ const helpers = betterAuth({
 
 const operatorId = BigInt(`0x${randomBytes(8).toString("hex")}`);
 let browser!: Browser;
+/** What `POST /v1/mandates/compile` fills: the operator's registered agent and the current terms. */
+let compiled!: Pick<Mandate, "agent" | "consent">;
+
+const newAgentJwk = async () => {
+  const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, [
+    "sign",
+    "verify",
+  ]);
+  const { x, y } = await crypto.subtle.exportKey("jwk", pair.publicKey);
+  return { kty: "EC", crv: "P-256", x: x as string, y: y as string };
+};
 
 beforeAll(async () => {
   await testDb.insert(operators).values({
@@ -188,8 +207,9 @@ beforeAll(async () => {
     chainId: 421614,
     agentRegistry: demo.agent.operator.agent_registry,
     name: "Test operator",
-    cnfJwk: demo.agent.cnf.jwk,
+    cnfJwk: await newAgentJwk(),
   });
+  compiled = { agent: await operatorAgent(testDb, operatorId)(), consent: await termsConsent() };
   // The full build: the headless shell has no Secure Payment Confirmation service. SPC is off by
   // default on Linux (`kSecurePaymentConfirmation` in content_features.cc), so it is enabled here.
   browser = await chromium.launch({
@@ -291,7 +311,8 @@ function mandateFor(
         jwk: { kty: "EC", crv: "P-256", ...s.jwk },
       },
     },
-    agent: { ...demo.agent, operator: { ...demo.agent.operator, agent_id: String(operatorId) } },
+    agent: structuredClone(compiled.agent),
+    consent: structuredClone(compiled.consent),
   });
   edit(m);
   return m;
@@ -478,6 +499,59 @@ test("the mandate must name the operator's agent registry", { timeout: 60_000 },
   expect(res.body.detail).toBe(
     `agent.operator.agent_registry must be ${demo.agent.operator.agent_registry}`,
   );
+});
+
+test("the mandate must bind the operator's agent key, its bond and the current terms", {
+  timeout: 60_000,
+}, async () => {
+  const s = await signer();
+  const other = await newAgentJwk();
+  const cases: [string[], (m: Mandate) => void][] = [
+    [["agent.cnf"], (m) => Object.assign(m.agent.cnf.jwk, { x: other.x, y: other.y })],
+    [["agent.cnf"], (m) => Object.assign(m.agent.cnf.jwk, { kid: "agt-01" })],
+    [["agent.bond"], (m) => Object.assign(m.agent.bond, { vault: demo.agent.bond.vault })],
+    [["agent.bond"], (m) => Object.assign(m.agent.bond, { min: demo.agent.bond.min })],
+    [["consent"], (m) => Object.assign(m.consent, { terms_hash: demo.consent.terms_hash })],
+    [
+      ["agent.cnf", "agent.bond", "consent"],
+      (m) =>
+        Object.assign(m, {
+          agent: { ...structuredClone(demo.agent), operator: m.agent.operator },
+          consent: structuredClone(demo.consent),
+        }),
+    ],
+  ];
+  for (const [fields, edit] of cases) {
+    const m = mandateFor(s, edit);
+    const res = await post(s.page, (await sign(s.page, m)).body);
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    expect(res.body.type).toBe(problemType("mandate-binding-mismatch"));
+    expect(res.body.fields).toEqual(fields);
+    expect(
+      await testDb.query.mandates.findFirst({ where: (t, { eq }) => eq(t.id, m.mid) }),
+    ).toBeUndefined();
+  }
+});
+
+test("an operator without a registered agent key cannot be named", {
+  timeout: 60_000,
+}, async () => {
+  const unbound = BigInt(`0x${randomBytes(8).toString("hex")}`);
+  await testDb.insert(operators).values({
+    agentId: unbound,
+    chainId: 421614,
+    agentRegistry: demo.agent.operator.agent_registry,
+    name: "Unbound operator",
+    cnfJwk: {},
+  });
+  const s = await signer();
+  const m = mandateFor(s, (m) => {
+    m.agent.operator.agent_id = String(unbound);
+  });
+  const res = await post(s.page, (await sign(s.page, m)).body);
+  expect(res.status).toBe(422);
+  expect(res.body.type).toBe(problemType("mandate-binding-mismatch"));
+  expect(res.body.fields).toEqual(["agent.cnf"]);
 });
 
 test("the server verifies and stores signed mandates (latency budget)", {
