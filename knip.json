@@ -79,6 +79,16 @@
       "entry": ["src/server.ts!", "public/checkout.js!", "bench/*.bench.ts"],
       "project": ["src/**/*.ts!", "public/**/*.js!", "test/**/*.ts", "bench/**/*.ts"]
     },
+    "packages/ui": {
+      "entry": [
+        "src/components/*.tsx!",
+        "src/lib/*.ts!",
+        "src/tokens.ts!",
+        "src/studio.ts!",
+        "test/fixture/*.{ts,tsx}"
+      ],
+      "project": ["src/**/*.{ts,tsx}!", "test/**/*.{ts,tsx}"]
+    },
     "apps/verify": {
       "entry": ["src/main.tsx!", "vite.config.ts", "vitest.config.ts", "bench/*.bench.ts"],
       "project": ["src/**/*.{ts,tsx}!", "test/**/*.ts", "bench/**/*.ts"]

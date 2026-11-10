@@ -1,0 +1,129 @@
+@import "tailwindcss";
+@import "@fontsource-variable/instrument-sans";
+@import "@fontsource-variable/geist-mono";
+
+@source "../components";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --color-graphite: #17181b;
+  --color-graphite-2: #1f2024;
+  --color-bone: #f2f0ea;
+  --color-bone-2: #e9e6de;
+  --color-vermilion: #ff4b1f;
+  --color-vermilion-deep: #b82e06;
+  --color-warm-gray: #8d8a83;
+
+  --font-sans: "Instrument Sans Variable", "Instrument Sans", system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, monospace;
+
+  --ease-reveal: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --default-transition-duration: 120ms;
+  --default-transition-timing-function: var(--ease-reveal);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-field-verified: var(--field-verified);
+  --color-field-attested: var(--field-attested);
+  --color-field-yours: var(--field-yours);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: 0.625rem;
+  --duration-reveal: 200ms;
+  --background: #f2f0ea;
+  --foreground: #17181b;
+  --card: #f2f0ea;
+  --card-foreground: #17181b;
+  --popover: #f2f0ea;
+  --popover-foreground: #17181b;
+  --primary: #17181b;
+  --primary-foreground: #f2f0ea;
+  --secondary: #e9e6de;
+  --secondary-foreground: #17181b;
+  --muted: #e9e6de;
+  --muted-foreground: #5f5c56;
+  --accent: #e9e6de;
+  --accent-foreground: #17181b;
+  --destructive: #b82e06;
+  --border: #d8d4c9;
+  --input: #8d8a83;
+  --ring: #b82e06;
+  --ok: #26704f;
+  --warn: #855a06;
+  --field-verified: #26704f;
+  --field-attested: #855a06;
+  --field-yours: #5f5c56;
+  color-scheme: light;
+}
+
+.dark {
+  --background: #17181b;
+  --foreground: #f2f0ea;
+  --card: #1f2024;
+  --card-foreground: #f2f0ea;
+  --popover: #1f2024;
+  --popover-foreground: #f2f0ea;
+  --primary: #f2f0ea;
+  --primary-foreground: #17181b;
+  --secondary: #1f2024;
+  --secondary-foreground: #f2f0ea;
+  --muted: #1f2024;
+  --muted-foreground: #a8a59e;
+  --accent: #2e3036;
+  --accent-foreground: #f2f0ea;
+  --destructive: #ff4b1f;
+  --border: #2e3036;
+  --input: #8d8a83;
+  --ring: #ff4b1f;
+  --ok: #4fbf8f;
+  --warn: #e0a526;
+  --field-verified: #4fbf8f;
+  --field-attested: #e0a526;
+  --field-yours: #a8a59e;
+  color-scheme: dark;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background font-sans text-foreground antialiased;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
