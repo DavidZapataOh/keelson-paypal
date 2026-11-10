@@ -13,6 +13,7 @@ import { apiAudience, createAuth } from "../src/auth.ts";
 import { authenticate } from "../src/middleware/auth.ts";
 import { testAuthEnv, testDb, testKv } from "./setup.ts";
 
+const APP = "https://app.keelson.test";
 const secret = randomBytes(32).toString("base64url");
 let app!: OpenAPIHono;
 
@@ -26,6 +27,7 @@ app = createApp({
   kv: testKv,
   log: pino({ level: "silent" }),
   auth,
+  appOrigin: APP,
   authenticate: authenticate(auth, baseURL),
 });
 
@@ -38,6 +40,7 @@ const helpers = betterAuth({
 
 let sessionHeaders!: Headers;
 let userHeaders!: Headers;
+let otherAdminHeaders!: Headers;
 
 beforeAll(async () => {
   const { test: utils } = await helpers.$context;
@@ -46,6 +49,9 @@ beforeAll(async () => {
   sessionHeaders = await utils.getAuthHeaders({ userId: admin.id });
   const user = await utils.saveUser(utils.createUser());
   userHeaders = await utils.getAuthHeaders({ userId: user.id });
+  const other = await utils.saveUser(utils.createUser());
+  await testDb.update(users).set({ role: "admin" }).where(sql`${users.id} = ${other.id}`);
+  otherAdminHeaders = await utils.getAuthHeaders({ userId: other.id });
 });
 
 afterAll(async () => {
@@ -90,6 +96,7 @@ const set = (id: string, headers: HeadersInit, scopes: unknown = SCOPES) =>
       ...Object.fromEntries(new Headers(headers)),
       "content-type": "application/json",
       "idempotency-key": crypto.randomUUID(),
+      origin: APP,
     },
     body: JSON.stringify({ scopes }),
   });
@@ -107,6 +114,33 @@ test("only a signed-in admin sets a client's client credentials scopes", async (
   const token = await (await issueToken(other)).json();
   const res = await set(client.id, { authorization: `Bearer ${token.access_token}` });
   expect(res.status).toBe(401);
+  const both = new Headers(sessionHeaders);
+  both.set("authorization", `Bearer ${token.access_token}`);
+  expect((await set(client.id, both)).status).toBe(401);
+});
+
+test("the admin's session counts only from the app's origin", async () => {
+  const client = await registerClient([]);
+  const res = await app.request(path(client.id), {
+    method: "POST",
+    headers: {
+      ...Object.fromEntries(sessionHeaders),
+      "content-type": "application/json",
+      "idempotency-key": crypto.randomUUID(),
+      origin: "https://evil.example",
+    },
+    body: JSON.stringify({ scopes: SCOPES }),
+  });
+  expect(res.status).toBe(403);
+});
+
+test("an admin configures a client another admin registered", async () => {
+  const client = await registerClient([]);
+  const res = await set(client.id, otherAdminHeaders);
+  expect(res.status).toBe(200);
+  expect(
+    (await issueToken(client, { resource: apiAudience, scope: SCOPES[0] as string })).status,
+  ).toBe(200);
 });
 
 test("scopes outside the provider's are refused", async () => {

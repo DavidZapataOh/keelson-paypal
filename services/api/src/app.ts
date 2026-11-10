@@ -235,7 +235,7 @@ export function createApp(deps: Deps): OpenAPIHono {
     const { auth } = deps;
     if (deps.appOrigin) app.use("/api/auth/*", cors({ origin: deps.appOrigin, credentials: true }));
     app.all("/api/auth/*", (c) => auth.handler(c.req.raw));
-    registerAdminClients(app, auth);
+    if (deps.appOrigin) registerAdminClients(app, auth, deps.appOrigin);
   }
   registerHealth(app);
   registerStatus(app, deps);
