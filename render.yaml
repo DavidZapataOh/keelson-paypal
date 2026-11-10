@@ -13,6 +13,7 @@ services:
       paths:
         - services/api/**
         - services/agent/**
+        - services/redteam/**
         - packages/**
         - package.json
         - pnpm-lock.yaml
@@ -104,12 +105,15 @@ services:
     runtime: node
     name: keelson-workflows
     region: oregon
-    buildCommand: npm install -g pnpm@12.16.1 && pnpm install --frozen-lockfile && pnpm turbo run build --filter=@keelson/api...
+    # Red-team attacks drive a headless Chromium installed into node_modules (PLAYWRIGHT_BROWSERS_PATH=0).
+    buildCommand: npm install -g pnpm@12.16.1 && pnpm install --frozen-lockfile && pnpm turbo run build --filter=@keelson/api... && pnpm --filter @keelson/api exec playwright install chromium-headless-shell
     startCommand: pnpm --filter @keelson/api workflows
     autoDeployTrigger: checksPass
     buildFilter:
       paths:
         - services/api/**
+        - services/agent/**
+        - services/redteam/**
         - packages/**
         - package.json
         - pnpm-lock.yaml
@@ -118,6 +122,7 @@ services:
         - tsconfig.base.json
         - .node-version
         - render.yaml
+        - engine/tee/measurements.json
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -161,6 +166,14 @@ services:
         sync: false
       - key: KEELSON_TREASURY_KEY
         sync: false
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: "0"
+      # The red team plants its attacks through the store's listing API.
+      - key: STORE_ATTACK_TOKEN
+        fromService:
+          type: web
+          name: keelson-store
+          envVarKey: STORE_ATTACK_TOKEN
 
   - type: web
     runtime: docker

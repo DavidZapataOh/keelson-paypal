@@ -112,6 +112,10 @@
       "entry": ["src/index.ts!", "scripts/*.ts"],
       "project": ["src/**/*.ts!", "scripts/**/*.ts", "test/**/*.ts"]
     },
+    "services/redteam": {
+      "entry": ["src/index.ts!"],
+      "project": ["src/**/*.ts!", "test/**/*.ts"]
+    },
     "services/monitor": {
       "entry": [".railway/railway.ts", "scripts/*.ts", "test/**/*.test.ts", "web/app.js"],
       "project": ["scripts/**/*.ts", "test/**/*.ts", "web/**/*.js"]
