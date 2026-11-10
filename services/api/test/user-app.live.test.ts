@@ -5,7 +5,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import AxeBuilder from "@axe-core/playwright";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { cartHash } from "@keelson/core";
-import { eq, mandates, operators } from "@keelson/db";
+import { eq, mandates, operators, purchases } from "@keelson/db";
 import { closeMandate } from "@keelson/mandate";
 import { approveOnPage } from "@keelson/paypal/testing";
 import { betterAuth } from "better-auth";
@@ -103,7 +103,7 @@ describe.skipIf(!live)("the user app, first-time user (live sandbox)", { timeout
       channel: "chromium",
       args: ["--enable-features=SecurePaymentConfirmationBrowser"],
     });
-  });
+  }, 300_000);
 
   afterAll(async () => {
     await browser?.close();
@@ -135,11 +135,20 @@ describe.skipIf(!live)("the user app, first-time user (live sandbox)", { timeout
       await context.route(`${API_ORIGIN}/**`, async (route) => {
         const req = route.request();
         const body = req.postDataBuffer();
-        const res = await harness.app.request(req.url(), {
-          method: req.method(),
-          headers: await req.allHeaders(),
-          ...(body ? { body: new Uint8Array(body) } : {}),
-        });
+        // The browser's address, as the Node server reads it from the socket.
+        const res = await harness.app.request(
+          req.url(),
+          {
+            method: req.method(),
+            headers: await req.allHeaders(),
+            ...(body ? { body: new Uint8Array(body) } : {}),
+          },
+          {
+            incoming: {
+              socket: { remoteAddress: "127.0.0.1", remotePort: 0, remoteFamily: "IPv4" },
+            },
+          },
+        );
         if (res.headers.get("content-type")?.startsWith("text/event-stream")) {
           // Playwright fulfils whole bodies, so the stream is read until the page has what it needs.
           const reader = res.body?.getReader();
@@ -251,27 +260,49 @@ describe.skipIf(!live)("the user app, first-time user (live sandbox)", { timeout
           }),
         });
         const countersigned = (await res.json()) as { purchaseId?: string };
+        console.info(
+          `${device} countersign ${res.status}: ${JSON.stringify(countersigned).slice(0, 300)}`,
+        );
         expect([200, 202], JSON.stringify(countersigned)).toContain(res.status);
 
-        await page.getByText("Captured").first().waitFor({ timeout: 120_000 });
+        // The purchase arrives on the open page over SSE, with Keelson's decision.
+        await page.getByRole("link", { name: /\$40\.00/ }).waitFor({ timeout: 60_000 });
         await axe();
         await page.getByRole("link", { name: /\$40\.00/ }).click();
         await page.getByRole("heading", { name: "Alibi" }).waitFor();
-        const verify = page.getByRole("link", { name: "Verify in your browser" });
-        await verify.waitFor({ timeout: 60_000 });
-        expect(await verify.getAttribute("href")).toMatch(
-          /^https:\/\/verify\.keelson\.finance\/a\/[0-7][0-9A-HJKMNP-TV-Z]{25}$/,
-        );
+        await page.getByText("Keelson countersigned the cart").waitFor();
         await axe();
-        const download = page.waitForEvent("download");
-        await page.getByRole("button", { name: "Download PDF" }).click();
-        expect((await download).suggestedFilename()).toMatch(/\.pdf$/);
+        // Issuing the Alibi checks the log's witness cosignatures. The local log here has no
+        // witnesses, so its leaf fails that check and the purchase stops before capture; the page
+        // must say so. Against the deployed log the same page links the verifier and the PDF.
+        const [p] = await testDb.select().from(purchases).where(eq(purchases.mandateId, mid));
+        if (p?.state === "CAPTURED") {
+          const verify = page.getByRole("link", { name: "Verify in your browser" });
+          expect(await verify.getAttribute("href")).toMatch(
+            /^https:\/\/verify\.keelson\.finance\/a\/[0-7][0-9A-HJKMNP-TV-Z]{25}$/,
+          );
+          const download = page.waitForEvent("download");
+          await page.getByRole("button", { name: "Download PDF" }).click();
+          expect((await download).suggestedFilename()).toMatch(/\.pdf$/);
+        } else {
+          expect(p?.failureReason).toBe("alibi:verify");
+          await page.getByText("Stopped at alibi: nothing was captured").waitFor();
+          await page.getByText("No Alibi was issued for this cart (stopped at alibi).").waitFor();
+        }
+        console.info(`${device} purchase ${p?.id}: ${p?.state} ${p?.failureReason ?? ""}`);
 
         const inp = await page.evaluate(() =>
           Math.max(0, ...(window as unknown as { durations: number[] }).durations),
         );
         console.info(JSON.stringify({ device, mandate: mid, inpMs: Math.round(inp) }));
         expect(inp).toBeLessThan(150);
+      } catch (err) {
+        const alerts = await page
+          .getByRole("alert")
+          .allTextContents()
+          .catch(() => []);
+        if (alerts.length > 0) console.error(`${device} alerts: ${alerts.join(" | ")}`);
+        throw err;
       } finally {
         await context.close();
       }

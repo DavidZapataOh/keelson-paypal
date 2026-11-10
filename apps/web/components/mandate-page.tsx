@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@keelson/ui/components/button";
+import { Empty, EmptyDescription, EmptyHeader } from "@keelson/ui/components/empty";
 import { Status } from "@keelson/ui/components/status";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -58,7 +59,7 @@ export function MandatePage() {
         <Eyebrow>
           Mandate {mandate.id.slice(-8)} · {mandateLabel(mandate.state)}
         </Eyebrow>
-        <h1 id="budget" className="tnum font-semibold text-4xl tracking-[-0.035em] sm:text-5xl">
+        <h1 id="budget" className="text-amount font-semibold tracking-[-0.035em]">
           {money(budget.remainingMinor, budget.currency)}
           <span className="font-normal text-muted-foreground text-xl tracking-normal">
             {" "}
@@ -125,11 +126,15 @@ export function MandatePage() {
           ) : null}
         </div>
         {mandate.purchases.length === 0 ? (
-          <p className="rounded-xl border border-dashed p-6 text-muted-foreground">
-            {mandate.state === "ACTIVE"
-              ? "No purchases yet. When your agent checks out, the cart shows here with Keelson's decision."
-              : "Purchases start once the hold is approved."}
-          </p>
+          <Empty className="border border-dashed">
+            <EmptyHeader>
+              <EmptyDescription>
+                {mandate.state === "ACTIVE"
+                  ? "No purchases yet. When your agent checks out, the cart shows here with Keelson's decision."
+                  : "Purchases start once the hold is approved."}
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : (
           <ul className="grid divide-y rounded-xl border">
             {mandate.purchases.map((p) => (
@@ -144,7 +149,7 @@ export function MandatePage() {
                   </span>
                   <span className="text-muted-foreground text-sm">{when(p.createdAt)}</span>
                   <span className="justify-self-end">
-                    <Status state={purchaseStatus(p)} />
+                    <Status state={purchaseStatus(p)} appearance="inline" />
                   </span>
                 </Link>
               </li>

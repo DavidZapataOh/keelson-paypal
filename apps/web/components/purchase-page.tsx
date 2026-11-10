@@ -139,6 +139,9 @@ export function PurchasePage() {
     );
   if (!p) return <ErrorNotice>No such purchase in this mandate.</ErrorNotice>;
   const logged = p.logIndex !== undefined;
+  // The Alibi is issued, and verified, when the leaf is logged: before a capture, and for a
+  // blocked cart too. A purchase that failed before its Alibi has none.
+  const sealed = !p.failure && (CAPTURED.has(p.state) || (p.state === "DENIED" && logged));
 
   return (
     <div className="grid gap-10 md:grid-cols-[1.1fr_1fr] md:gap-16">
@@ -151,7 +154,7 @@ export function PurchasePage() {
         </Link>
         <div className="grid gap-3">
           <Eyebrow>{p.merchantId}</Eyebrow>
-          <h1 className="tnum font-semibold text-5xl tracking-[-0.035em]">
+          <h1 className="text-amount font-semibold tracking-[-0.035em]">
             {money(p.amount.minor, p.amount.currency)}
           </h1>
           <div className="flex flex-wrap items-center gap-3 text-muted-foreground text-sm">
@@ -208,7 +211,7 @@ export function PurchasePage() {
             </div>
           ) : null}
         </dl>
-        {logged ? (
+        {sealed ? (
           <div className="grid gap-3">
             <Button asChild>
               <a href={`${VERIFY}/a/${p.id}`} target="_blank" rel="noopener">
@@ -242,9 +245,13 @@ export function PurchasePage() {
               everything else.
             </p>
           </div>
+        ) : p.failure ? (
+          <p className="text-muted-foreground text-sm">
+            No Alibi was issued for this cart (stopped at {p.failure.step}). Nothing was captured.
+          </p>
         ) : (
           <p className="text-muted-foreground text-sm" role="status">
-            The Alibi is sealed once the purchase is written to the log.
+            The Alibi is sealed once the cart is written to the log.
           </p>
         )}
         {fileError ? <ErrorNotice>{fileError}</ErrorNotice> : null}

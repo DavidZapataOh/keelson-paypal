@@ -1,20 +1,15 @@
+import { Alert, AlertDescription, AlertTitle } from "@keelson/ui/components/alert";
 import type { ReactNode } from "react";
 
-/** A system error: graphite with a Vermilion Deep border and "!", so it never reads as a block. */
+/** A system error: "!" and ERROR, never vermilion, so it never reads as a block. */
 export function ErrorNotice({ children }: { children: ReactNode }) {
   return (
-    <div
-      role="alert"
-      className="flex items-start gap-3 rounded-lg border border-vermilion-deep bg-graphite px-4 py-3 text-bone"
-    >
-      <span aria-hidden="true" className="font-bold font-mono">
-        !
-      </span>
-      <div className="grid gap-1 text-sm">
-        <span className="font-mono text-xs uppercase tracking-[0.14em]">Error</span>
-        <span>{children}</span>
-      </div>
-    </div>
+    <Alert variant="destructive" role="alert">
+      <AlertTitle className="font-mono text-xs uppercase tracking-[0.14em]">
+        <span aria-hidden="true">! </span>Error
+      </AlertTitle>
+      <AlertDescription>{children}</AlertDescription>
+    </Alert>
   );
 }
 
