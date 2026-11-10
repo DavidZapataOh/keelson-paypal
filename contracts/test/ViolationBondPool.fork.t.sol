@@ -128,6 +128,7 @@ contract ViolationBondPoolForkTest is ViolationBase {
     }
 
     function test_withdrawal_waitsAndStaysPayable() public {
+        Case memory k = _lockedCase("category", court.CATEGORY_NOT_ALLOWED());
         vm.prank(makeAddr("stranger"));
         vm.expectRevert(ViolationBondPool.NotAgentAuthority.selector);
         pool.requestWithdrawal(agentId, uint128(DEPOSIT), makeAddr("stranger"));
@@ -135,14 +136,15 @@ contract ViolationBondPoolForkTest is ViolationBase {
         address to = makeAddr("operator treasury");
         vm.prank(operator);
         pool.requestWithdrawal(agentId, uint128(DEPOSIT), to);
-        vm.warp(vm.getBlockTimestamp() + pool.withdrawalDelay() - 1);
+        uint256 unlockAt = vm.getBlockTimestamp() + pool.withdrawalDelay();
+        vm.warp(unlockAt - 1);
         vm.expectRevert(ViolationBondPool.NotReady.selector);
         pool.completeWithdrawal(agentId);
 
         // A conviction while the request waits is paid from it.
-        Case memory k = _convicted("category", court.CATEGORY_NOT_ALLOWED());
+        court.proveViolation(k.coverage, k.countersign, k.hSd, k.countersigs, k.code, k.proof);
         pool.payViolation(address(court), k.coverage);
-        vm.warp(vm.getBlockTimestamp() + pool.withdrawalDelay());
+        vm.warp(unlockAt);
         pool.completeWithdrawal(agentId);
         assertEq(pyusd.balanceOf(to), DEPOSIT - k.coverage.amount);
         assertEq(pool.deposits(agentId).balance, 0);
@@ -173,6 +175,7 @@ contract ViolationBondPoolForkTest is ViolationBase {
             IERC8004Identity(address(_identity())),
             address(this),
             vaultDelay,
+            vaultDelay,
             courts
         );
     }
@@ -180,6 +183,67 @@ contract ViolationBondPoolForkTest is ViolationBase {
     function test_onlyTheAdminListsCourts() public {
         vm.expectRevert();
         pool.setCourt(makeAddr("court"), true);
+    }
+
+    /// @dev What the vault slashed is not paid again: the pool pays only what the coverage has left.
+    function test_payout_isWhatTheVaultLeft() public {
+        Case memory k = _convicted("category", court.CATEGORY_NOT_ALLOWED());
+        _slash(_r00(k, 50e6, "PP-D-partial"));
+        pool.payViolation(address(court), k.coverage);
+        assertEq(pyusd.balanceOf(merchant), k.coverage.amount);
+        assertEq(pool.deposits(agentId).balance, DEPOSIT - (k.coverage.amount - 50e6));
+
+        Case memory full = _convicted("merchant", court.MERCHANT_NOT_ALLOWED());
+        _slash(_r00(full, uint96(full.coverage.amount), "PP-D-full"));
+        vm.expectRevert(ViolationBondPool.NothingLeft.selector);
+        pool.payViolation(address(court), full.coverage);
+    }
+
+    function test_maturedRequest_lapsesAfterItsWindow() public {
+        vm.prank(operator);
+        pool.requestWithdrawal(agentId, uint128(DEPOSIT), operator);
+        vm.warp(vm.getBlockTimestamp() + pool.withdrawalDelay() + pool.completionWindow() + 1);
+        vm.expectRevert(ViolationBondPool.NotReady.selector);
+        pool.completeWithdrawal(agentId);
+    }
+
+    function test_delistedCourt_paysOnlyWhatItConvictedBefore() public {
+        Case memory before = _convicted("category", court.CATEGORY_NOT_ALLOWED());
+        vm.warp(vm.getBlockTimestamp() + 1);
+        vm.prank(address(_timelock()));
+        pool.setCourt(address(court), false);
+        assertFalse(pool.isCourt(address(court)));
+        uint256 delistedAt = vm.getBlockTimestamp();
+        Case memory later = _lockedCase("merchant", court.MERCHANT_NOT_ALLOWED());
+        vm.warp(delistedAt + 1);
+        court.proveViolation(later.coverage, later.countersign, later.hSd, later.countersigs, later.code, later.proof);
+        vm.expectRevert(ViolationBondPool.NotConvicted.selector);
+        pool.payViolation(address(court), later.coverage);
+        pool.payViolation(address(court), before.coverage);
+        assertEq(pyusd.balanceOf(merchant), before.coverage.amount);
+    }
+
+    function _r00(Case memory k, uint96 amount, string memory dispute)
+        internal
+        view
+        returns (KeelsonTypes.Verdict memory)
+    {
+        return KeelsonTypes.Verdict({
+            disputeId: keccak256(abi.encode(dispute, k.coverage.coverageId)),
+            coverageId: k.coverage.coverageId,
+            agentId: agentId,
+            payee: merchant,
+            amount: amount,
+            ruleId: R00,
+            liable: OPERATOR,
+            fieldId: NO_FIELD,
+            evidenceHash: bytes32(0),
+            inputsHash: bytes32(0),
+            policySetHash: k.countersign.policySetHash,
+            checkpointRoot: checkpointRoot,
+            issuedAt: uint40(vm.getBlockTimestamp()),
+            deadline: uint40(vm.getBlockTimestamp() + 1 hours)
+        });
     }
 
     function _convicted(string memory name, uint8 code) internal returns (Case memory k) {

@@ -161,7 +161,12 @@ export function registerDisputes(app: OpenAPIHono, deps: Pick<Deps, "db">): void
               digest: `0x${Buffer.from(v.digest).toString("hex")}`,
               chain_id: v.chainId,
               message: v.message,
-              signatures: v.signatures,
+              // An operator's verdict is published once the chain or Keelson paid it: before, or
+              // when the violation pool paid instead, it could be used to slash the bond again.
+              signatures:
+                v.liable !== 1 || (v.settledAt && v.paidBy !== "violation-pool")
+                  ? v.signatures
+                  : [],
               facts: v.facts as Record<string, string | boolean>,
             }
           : null,

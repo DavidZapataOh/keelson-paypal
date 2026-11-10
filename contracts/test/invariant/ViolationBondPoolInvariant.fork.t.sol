@@ -71,6 +71,13 @@ contract ViolationBondPoolInvariantTest is ViolationBase {
         assertFalse(pool.paid(handler.unconvicted()));
     }
 
+    function invariant_poolAndVaultNeverPayMoreThanTheCoverage() public view {
+        for (uint256 i; i < handler.coverageCount(); ++i) {
+            KeelsonTypes.Coverage memory c = handler.coverageAt(i);
+            assertLe(handler.paidFor(c.coverageId) + vault.slashed(c.coverageId), c.amount);
+        }
+    }
+
     function invariant_noCoverageIsPaidMoreThanItsAmount() public view {
         uint256 cap;
         for (uint256 i; i < handler.coverageCount(); ++i) {

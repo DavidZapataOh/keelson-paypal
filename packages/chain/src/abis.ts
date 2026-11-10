@@ -2332,6 +2332,20 @@ export const iPoolVaultAbi = [
     outputs: [{ name: "", type: "address", internalType: "address" }],
     stateMutability: "view",
   },
+  {
+    type: "function",
+    name: "reserve",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "slashed",
+    inputs: [{ name: "coverageId", type: "bytes32", internalType: "bytes32" }],
+    outputs: [{ name: "", type: "uint96", internalType: "uint96" }],
+    stateMutability: "view",
+  },
 ] as const;
 
 export const iVerdictVerifierAbi = [
@@ -5689,7 +5703,8 @@ export const violationBondPoolAbi = [
       { name: "identity_", type: "address", internalType: "contract IERC8004Identity" },
       { name: "authority", type: "address", internalType: "address" },
       { name: "withdrawalDelay_", type: "uint40", internalType: "uint40" },
-      { name: "courts", type: "address[]", internalType: "address[]" },
+      { name: "completionWindow_", type: "uint40", internalType: "uint40" },
+      { name: "courts_", type: "address[]", internalType: "address[]" },
     ],
     stateMutability: "nonpayable",
   },
@@ -5720,6 +5735,23 @@ export const violationBondPoolAbi = [
     inputs: [{ name: "agentId", type: "uint256", internalType: "uint256" }],
     outputs: [],
     stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "completionWindow",
+    inputs: [],
+    outputs: [{ name: "", type: "uint40", internalType: "uint40" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "courts",
+    inputs: [{ name: "court", type: "address", internalType: "address" }],
+    outputs: [
+      { name: "listed", type: "bool", internalType: "bool" },
+      { name: "delistedAt", type: "uint40", internalType: "uint40" },
+    ],
+    stateMutability: "view",
   },
   {
     type: "function",
@@ -5907,6 +5939,7 @@ export const violationBondPoolAbi = [
       { name: "recipient", type: "address", indexed: false, internalType: "address" },
       { name: "amount", type: "uint256", indexed: false, internalType: "uint256" },
       { name: "code", type: "uint8", indexed: false, internalType: "uint8" },
+      { name: "evidenceDigest", type: "bytes32", indexed: false, internalType: "bytes32" },
     ],
     anonymous: false,
   },
@@ -5958,6 +5991,7 @@ export const violationBondPoolAbi = [
   { type: "error", name: "NotConvicted", inputs: [] },
   { type: "error", name: "NotCovered", inputs: [] },
   { type: "error", name: "NotReady", inputs: [] },
+  { type: "error", name: "NothingLeft", inputs: [] },
   { type: "error", name: "ReentrancyGuardReentrantCall", inputs: [] },
   {
     type: "error",

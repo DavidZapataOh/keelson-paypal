@@ -9,7 +9,8 @@ import {stdJson} from "forge-std/StdJson.sol";
 
 /// @notice Deploys the `ViolationBondPool` over the registry's PYUSD, `KeelsonBondVault` and ERC-8004 Identity, paying
 /// the convictions of the registry's `MandateViolationCourt`, governed by its AccessManager (setting courts is the
-/// admin's, the timelock). Its withdrawal delay is twice the vault's.
+/// admin's, the timelock). Its withdrawal delay is twice the vault's, and a matured request can be completed within
+/// the vault's delay.
 contract DeployViolationBondPool is KeelsonDeploy {
     using stdJson for string;
 
@@ -32,6 +33,7 @@ contract DeployViolationBondPool is KeelsonDeploy {
             IERC8004Identity(json.readAddress(".external.erc8004Identity")),
             json.readAddress(".contracts.AccessManager"),
             uint40(2 * json.readUint(".params.withdrawalDelay")),
+            uint40(json.readUint(".params.withdrawalDelay")),
             courts
         );
     }

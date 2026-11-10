@@ -4,6 +4,7 @@ pragma solidity 0.8.38;
 import {IConvictions} from "./interfaces/IConvictions.sol";
 import {IERC8004Identity} from "./interfaces/IERC8004Identity.sol";
 import {IKeelsonBondVault} from "./interfaces/IKeelsonBondVault.sol";
+import {IKeelsonReserve} from "./interfaces/IKeelsonReserve.sol";
 import {IPYUSD} from "./interfaces/IPYUSD.sol";
 import {KeelsonTypes} from "./libraries/KeelsonTypes.sol";
 import {AccessManaged} from "@openzeppelin/contracts/access/manager/AccessManaged.sol";
@@ -17,18 +18,30 @@ interface IPoolVault {
     function coverages(bytes32 coverageId) external view returns (IKeelsonBondVault.CoverageState memory);
     function payoutAddress(address merchant) external view returns (address);
     function params() external view returns (IKeelsonBondVault.Params memory);
+    function slashed(bytes32 coverageId) external view returns (uint96);
+    function reserve() external view returns (address);
 }
 
 /// @title ViolationBondPool
 /// @notice A PYUSD deposit an operator posts, per ERC-8004 `agentId`, next to its `KeelsonBondVault` bond, which pays
 /// the merchant of a coverage as soon as a listed court holds a conviction for it: no TEE and no Keelson signature in
-/// the payout. Each coverage is paid once, its coverage amount capped by the operator's deposit, to the merchant's
-/// payout address in the vault, or the merchant. Withdrawals wait at least the vault's own withdrawal delay, and what
-/// is waiting stays payable until it leaves. Courts are listed by the admin (the timelock), and only add the ways a
-/// violation can be proven; the payout path itself has no role.
+/// the payout. Each coverage is paid once: what its amount has left after the vault's slashes and the reserve's
+/// warranties, capped by the operator's deposit, to the merchant's payout address in the vault, or the merchant.
+/// Withdrawals wait longer than the vault's own withdrawal delay, must then complete within `completionWindow`, and
+/// what is waiting stays payable until it leaves. Courts are listed by the admin (the timelock); delisting one keeps
+/// paying the convictions it recorded before. The payout path itself has no role.
+/// @dev The vault cannot see the pool: whoever settles a dispute must not slash or warrant what the pool paid. The
+/// pool backs coverages whose dispute window ends within `withdrawalDelay` of their lock, which the vault's
+/// `disputeWindow`-long coverages do; a longer coverage may outlive a deposit withdrawn in the meantime.
 contract ViolationBondPool is AccessManaged, ReentrancyGuardTransient {
     using SafeERC20 for IPYUSD;
     using SafeCast for uint256;
+
+    struct Court {
+        bool listed;
+        /// @notice Convictions recorded before this time stay payable after the court is delisted.
+        uint40 delistedAt;
+    }
 
     struct Deposit {
         uint128 balance;
@@ -42,8 +55,10 @@ contract ViolationBondPool is AccessManaged, ReentrancyGuardTransient {
     IPoolVault public immutable vault;
     IERC8004Identity public immutable identity;
     uint40 public immutable withdrawalDelay;
+    /// @notice How long a matured withdrawal request can be completed; after it, it lapses.
+    uint40 public immutable completionWindow;
 
-    mapping(address court => bool) public isCourt;
+    mapping(address court => Court) public courts;
     mapping(uint256 agentId => Deposit) internal _deposits;
     /// @notice Whether a coverage's violation was paid, by any court.
     mapping(bytes32 coverageId => bool) public paid;
@@ -79,6 +94,8 @@ contract ViolationBondPool is AccessManaged, ReentrancyGuardTransient {
     error ConvictedTooLate();
     error NoDeposit();
     error DelayTooShort();
+    /// @notice The coverage's amount was already paid by the vault, the reserve or the pool.
+    error NothingLeft();
 
     constructor(
         IPYUSD pyusd_,
@@ -86,15 +103,17 @@ contract ViolationBondPool is AccessManaged, ReentrancyGuardTransient {
         IERC8004Identity identity_,
         address authority,
         uint40 withdrawalDelay_,
-        address[] memory courts
+        uint40 completionWindow_,
+        address[] memory courts_
     ) AccessManaged(authority) {
         if (withdrawalDelay_ <= vault_.params().withdrawalDelay) revert DelayTooShort();
         pyusd = pyusd_;
         vault = vault_;
         identity = identity_;
         withdrawalDelay = withdrawalDelay_;
-        for (uint256 i; i < courts.length; ++i) {
-            _setCourt(courts[i], true);
+        completionWindow = completionWindow_;
+        for (uint256 i; i < courts_.length; ++i) {
+            _setCourt(courts_[i], true);
         }
     }
 
@@ -121,10 +140,14 @@ contract ViolationBondPool is AccessManaged, ReentrancyGuardTransient {
         emit WithdrawalRequested(agentId, to, amount, unlockAt);
     }
 
-    /// @notice Pays a matured request, less what violations took meanwhile. Permissionless.
+    /// @notice Pays a matured request, less what violations took meanwhile, within `completionWindow` of maturing; a
+    /// request left longer lapses, so no standing request can race a payout. Permissionless.
     function completeWithdrawal(uint256 agentId) external nonReentrant {
         Deposit storage d = _deposits[agentId];
-        if (d.withdrawing == 0 || block.timestamp < d.unlockAt) revert NotReady();
+        if (
+            d.withdrawing == 0 || block.timestamp < d.unlockAt
+                || block.timestamp > uint256(d.unlockAt) + completionWindow
+        ) revert NotReady();
         uint128 amount = d.withdrawing < d.balance ? d.withdrawing : d.balance;
         address to = d.to;
         d.balance -= amount;
@@ -137,15 +160,19 @@ contract ViolationBondPool is AccessManaged, ReentrancyGuardTransient {
     /// coverage's dispute window. Permissionless; once per coverage.
     /// @param c The `Coverage` the vault locked, as its `coverageHash` holds it.
     function payViolation(address court, KeelsonTypes.Coverage calldata c) external nonReentrant {
-        if (!isCourt[court]) revert UnknownCourt();
+        Court memory listed = courts[court];
+        if (!listed.listed && listed.delistedAt == 0) revert UnknownCourt();
         if (paid[c.coverageId]) revert AlreadyPaid();
         bytes32 locked = vault.coverageHash(c.coverageId);
         if (locked == 0 || locked != KeelsonTypes.hash(c)) revert NotCovered();
         (uint8 code, uint40 provenAt, bytes32 evidence) = IConvictions(court).violations(c.coverageId);
-        if (code == 0) revert NotConvicted();
+        if (code == 0 || (!listed.listed && provenAt >= listed.delistedAt)) revert NotConvicted();
         if (provenAt > vault.coverages(c.coverageId).releaseAfter) revert ConvictedTooLate();
+        uint256 taken = uint256(vault.slashed(c.coverageId)) + IKeelsonReserve(vault.reserve()).warranted(c.coverageId);
+        if (taken >= c.amount) revert NothingLeft();
         Deposit storage d = _deposits[c.agentId];
-        uint128 amount = c.amount < d.balance ? c.amount : d.balance;
+        uint256 left = c.amount - taken;
+        uint128 amount = left < d.balance ? left.toUint128() : d.balance;
         if (amount == 0) revert NoDeposit();
 
         paid[c.coverageId] = true;
@@ -177,8 +204,17 @@ contract ViolationBondPool is AccessManaged, ReentrancyGuardTransient {
         return _deposits[agentId];
     }
 
+    /// @notice Whether the pool pays `court`'s convictions now.
+    function isCourt(address court) external view returns (bool) {
+        return courts[court].listed;
+    }
+
     function _setCourt(address court, bool listed) internal {
-        isCourt[court] = listed;
+        Court storage c = courts[court];
+        if (c.listed == listed) return;
+        c.listed = listed;
+        if (listed) c.delistedAt = 0;
+        else c.delistedAt = SafeCast.toUint40(block.timestamp);
         // forge-lint: disable-next-line(reentrancy-events)
         emit CourtSet(court, listed);
     }

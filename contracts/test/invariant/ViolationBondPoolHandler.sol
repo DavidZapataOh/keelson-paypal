@@ -23,6 +23,7 @@ contract ViolationBondPoolHandler is CommonBase, StdUtils {
     uint256 public withdrawn;
     uint256 public paidOut;
     mapping(bytes32 coverageId => uint256) public payouts;
+    mapping(bytes32 coverageId => uint256) public paidFor;
     bytes32 public unconvicted;
 
     constructor(
@@ -62,7 +63,11 @@ contract ViolationBondPoolHandler is CommonBase, StdUtils {
 
     function completeWithdrawal() external {
         ViolationBondPool.Deposit memory d = pool.deposits(agentId);
-        if (d.withdrawing == 0 || block.timestamp < d.unlockAt) return;
+        if (
+            d.withdrawing == 0 || block.timestamp < d.unlockAt || block.timestamp > d.unlockAt + pool.completionWindow()
+        ) {
+            return;
+        }
         uint256 before = pyusd.balanceOf(address(pool));
         pool.completeWithdrawal(agentId);
         withdrawn += before - pyusd.balanceOf(address(pool));
@@ -77,6 +82,7 @@ contract ViolationBondPoolHandler is CommonBase, StdUtils {
         uint256 before = pyusd.balanceOf(address(pool));
         try pool.payViolation(court, c) {
             payouts[c.coverageId] += 1;
+            paidFor[c.coverageId] += before - pyusd.balanceOf(address(pool));
             paidOut += before - pyusd.balanceOf(address(pool));
         } catch {}
     }
