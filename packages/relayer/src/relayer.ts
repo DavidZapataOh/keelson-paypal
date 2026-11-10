@@ -10,6 +10,7 @@ import {
   encodeFunctionData,
   fallback,
   type Hex,
+  type HttpTransportConfig,
   hexToBytes,
   http,
   keccak256,
@@ -19,6 +20,7 @@ import {
   TransactionNotFoundError,
   type TransactionReceipt,
   TransactionReceiptNotFoundError,
+  type Transport,
   toHex,
 } from "viem";
 import { sendRawTransactionSync } from "viem/actions";
@@ -103,6 +105,8 @@ export interface RelayerChainConfig {
   sequencerUrl?: string;
   /** Overrides of the chain's fee and balance limits. */
   settings?: Partial<Omit<ChainSettings, "chain">>;
+  /** Builds the transport to each URL; viem's `http` by default. */
+  transport?: (url: string, config?: HttpTransportConfig) => Transport;
 }
 
 export interface Relayer {
@@ -248,7 +252,10 @@ async function receiptOf(
  * receipt stands and the reconciler fills the block in.
  * https://docs.arbitrum.io/notices/transaction-submission-changes-notice
  */
-async function canonical(read: PublicClient, receipt: TransactionReceipt): Promise<TransactionReceipt> {
+async function canonical(
+  read: PublicClient,
+  receipt: TransactionReceipt,
+): Promise<TransactionReceipt> {
   if (receipt.blockHash && receipt.blockHash !== ZERO_HASH) return receipt;
   return (await receiptOf(read, receipt.transactionHash)) ?? receipt;
 }
@@ -280,17 +287,20 @@ export function createRelayer(opts: {
   for (const [key, cfg] of Object.entries(opts.chains) as [string, RelayerChainConfig][]) {
     const id = Number(key) as ChainId;
     const settings = { ...CHAINS[id], ...cfg.settings };
+    const transport = cfg.transport ?? http;
     contexts.set(id, {
       id,
       settings,
       account: cfg.account,
       read: createPublicClient({
         chain: settings.chain,
-        transport: fallback([cfg.rpcUrl, ...(cfg.fallbackRpcUrls ?? [])].map((url) => http(url))),
+        transport: fallback(
+          [cfg.rpcUrl, ...(cfg.fallbackRpcUrls ?? [])].map((url) => transport(url)),
+        ),
       }),
       seq: createPublicClient({
         chain: settings.chain,
-        transport: http(cfg.sequencerUrl ?? settings.sequencerUrl, {
+        transport: transport(cfg.sequencerUrl ?? settings.sequencerUrl, {
           timeout: SEND_TIMEOUT_MS + 1_000,
           retryCount: 0,
         }),

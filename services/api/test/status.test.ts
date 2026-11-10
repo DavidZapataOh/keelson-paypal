@@ -18,6 +18,7 @@ test("reports ok when both dependencies are up", async () => {
   expect(await res.json()).toEqual({
     status: "ok",
     dependencies: { db: "up", kv: "up" },
+    rpc: { calls: [] },
     version: "0.0.0",
   });
 });
