@@ -53,9 +53,9 @@ const DisputeStatus = z
           description:
             "The contract error that refused the settlement on chain: of a `failed` one, or of one Keelson's treasury paid instead.",
         }),
-        paid_by: z.enum(["chain", "treasury"]).nullable().openapi({
+        paid_by: z.enum(["chain", "treasury", "violation-pool"]).nullable().openapi({
           description:
-            "`chain`: the operator's bond or Keelson's reserve paid. `treasury`: the chain refused a verdict that still holds (its window or deadline had passed), so Keelson's treasury pays the payee itself, PYUSD on chain or a PayPal Payout; the settlement is paid once `outcome` is `paid`.",
+            "`chain`: the operator's bond or Keelson's reserve paid. `violation-pool`: the operator's `ViolationBondPool` deposit paid the merchant on a court's conviction, with no verdict. `treasury`: the chain refused a verdict that still holds (its window or deadline had passed), so Keelson's treasury pays the payee itself, PYUSD on chain or a PayPal Payout; the settlement is paid once `outcome` is `paid`.",
         }),
         refund_id: z.string().nullable().openapi({
           description:
@@ -170,7 +170,7 @@ export function registerDisputes(app: OpenAPIHono, deps: Pick<Deps, "db">): void
               rail: v.rail as "pyusd" | "paypal",
               outcome: v.outcome as "paid" | "queued" | "claimable" | "failed" | null,
               failure: v.failure,
-              paid_by: v.paidBy as "chain" | "treasury" | null,
+              paid_by: v.paidBy as "chain" | "treasury" | "violation-pool" | null,
               refund_id: v.refundId,
               tx_hash: txHash,
               explorer_url:

@@ -204,6 +204,13 @@
       "when": 1794293924714,
       "tag": "0028_operator_client",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1794295528312,
+      "tag": "0029_verdict_paid_by_violation_pool",
+      "breakpoints": true
     }
   ]
 }

@@ -2143,8 +2143,11 @@ components:
               enum:
                 - chain
                 - treasury
+                - violation-pool
                 - null
               description: "`chain`: the operator's bond or Keelson's reserve paid.
+                `violation-pool`: the operator's `ViolationBondPool` deposit
+                paid the merchant on a court's conviction, with no verdict.
                 `treasury`: the chain refused a verdict that still holds (its
                 window or deadline had passed), so Keelson's treasury pays the
                 payee itself, PYUSD on chain or a PayPal Payout; the settlement

@@ -33,5 +33,6 @@
   "c1_verify": 660000,
   "c1_verify_reference": 2300000,
   "c2a_verify": 700000,
-  "c2a_proveViolation": 950000
+  "c2a_proveViolation": 950000,
+  "pool_payViolation": 140000
 }

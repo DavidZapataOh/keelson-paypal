@@ -804,6 +804,20 @@ export const iCheckpointAnchorAbi = [
   { type: "error", name: "UnauthorizedCheckpoint", inputs: [] },
 ] as const;
 
+export const iConvictionsAbi = [
+  {
+    type: "function",
+    name: "violations",
+    inputs: [{ name: "coverageId", type: "bytes32", internalType: "bytes32" }],
+    outputs: [
+      { name: "code", type: "uint8", internalType: "uint8" },
+      { name: "provenAt", type: "uint40", internalType: "uint40" },
+      { name: "evidenceDigest", type: "bytes32", internalType: "bytes32" },
+    ],
+    stateMutability: "view",
+  },
+] as const;
+
 export const iCoveredVaultAbi = [
   {
     type: "function",
@@ -2258,6 +2272,64 @@ export const iPendingSlashesAbi = [
     name: "pendingSlashes",
     inputs: [{ name: "agentId", type: "uint256", internalType: "uint256" }],
     outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
+    stateMutability: "view",
+  },
+] as const;
+
+export const iPoolVaultAbi = [
+  {
+    type: "function",
+    name: "coverageHash",
+    inputs: [{ name: "coverageId", type: "bytes32", internalType: "bytes32" }],
+    outputs: [{ name: "", type: "bytes32", internalType: "bytes32" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "coverages",
+    inputs: [{ name: "coverageId", type: "bytes32", internalType: "bytes32" }],
+    outputs: [
+      {
+        name: "",
+        type: "tuple",
+        internalType: "struct IKeelsonBondVault.CoverageState",
+        components: [
+          { name: "amount", type: "uint96", internalType: "uint96" },
+          { name: "agentId", type: "uint64", internalType: "uint64" },
+          { name: "releaseAfter", type: "uint40", internalType: "uint40" },
+          { name: "status", type: "uint8", internalType: "enum IKeelsonBondVault.Status" },
+          { name: "degraded", type: "bool", internalType: "bool" },
+          { name: "pendingSlashes", type: "uint8", internalType: "uint8" },
+        ],
+      },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "params",
+    inputs: [],
+    outputs: [
+      {
+        name: "",
+        type: "tuple",
+        internalType: "struct IKeelsonBondVault.Params",
+        components: [
+          { name: "disputeWindow", type: "uint40", internalType: "uint40" },
+          { name: "vetoWindow", type: "uint40", internalType: "uint40" },
+          { name: "grace", type: "uint40", internalType: "uint40" },
+          { name: "withdrawalDelay", type: "uint40", internalType: "uint40" },
+          { name: "instantSlashCap", type: "uint96", internalType: "uint96" },
+        ],
+      },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "payoutAddress",
+    inputs: [{ name: "merchant", type: "address", internalType: "address" }],
+    outputs: [{ name: "", type: "address", internalType: "address" }],
     stateMutability: "view",
   },
 ] as const;
@@ -5606,6 +5678,303 @@ export const verdictVerifierAbi = [
   { type: "error", name: "UnknownBlock", inputs: [] },
   { type: "error", name: "WrongTeeKind", inputs: [] },
   { type: "error", name: "ZeroAddress", inputs: [] },
+] as const;
+
+export const violationBondPoolAbi = [
+  {
+    type: "constructor",
+    inputs: [
+      { name: "pyusd_", type: "address", internalType: "contract IPYUSD" },
+      { name: "vault_", type: "address", internalType: "contract IPoolVault" },
+      { name: "identity_", type: "address", internalType: "contract IERC8004Identity" },
+      { name: "authority", type: "address", internalType: "address" },
+      { name: "withdrawalDelay_", type: "uint40", internalType: "uint40" },
+      { name: "courts", type: "address[]", internalType: "address[]" },
+    ],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "authority",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "claim",
+    inputs: [{ name: "to", type: "address", internalType: "address" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "claimable",
+    inputs: [{ name: "account", type: "address", internalType: "address" }],
+    outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "completeWithdrawal",
+    inputs: [{ name: "agentId", type: "uint256", internalType: "uint256" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "deposit",
+    inputs: [
+      { name: "agentId", type: "uint256", internalType: "uint256" },
+      { name: "amount", type: "uint256", internalType: "uint256" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "deposits",
+    inputs: [{ name: "agentId", type: "uint256", internalType: "uint256" }],
+    outputs: [
+      {
+        name: "",
+        type: "tuple",
+        internalType: "struct ViolationBondPool.Deposit",
+        components: [
+          { name: "balance", type: "uint128", internalType: "uint128" },
+          { name: "withdrawing", type: "uint128", internalType: "uint128" },
+          { name: "unlockAt", type: "uint40", internalType: "uint40" },
+          { name: "to", type: "address", internalType: "address" },
+        ],
+      },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "identity",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "contract IERC8004Identity" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "isConsumingScheduledOp",
+    inputs: [],
+    outputs: [{ name: "", type: "bytes4", internalType: "bytes4" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "isCourt",
+    inputs: [{ name: "court", type: "address", internalType: "address" }],
+    outputs: [{ name: "", type: "bool", internalType: "bool" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "paid",
+    inputs: [{ name: "coverageId", type: "bytes32", internalType: "bytes32" }],
+    outputs: [{ name: "", type: "bool", internalType: "bool" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "payViolation",
+    inputs: [
+      { name: "court", type: "address", internalType: "address" },
+      {
+        name: "c",
+        type: "tuple",
+        internalType: "struct KeelsonTypes.Coverage",
+        components: [
+          { name: "coverageId", type: "bytes32", internalType: "bytes32" },
+          { name: "agentId", type: "uint256", internalType: "uint256" },
+          { name: "merchant", type: "address", internalType: "address" },
+          { name: "amount", type: "uint96", internalType: "uint96" },
+          { name: "premium", type: "uint96", internalType: "uint96" },
+          { name: "expiresAt", type: "uint40", internalType: "uint40" },
+          { name: "mandateHash", type: "bytes32", internalType: "bytes32" },
+          { name: "amberCommitment", type: "bytes32", internalType: "bytes32" },
+          { name: "userKeyHash", type: "bytes32", internalType: "bytes32" },
+        ],
+      },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "pyusd",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "contract IPYUSD" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "requestWithdrawal",
+    inputs: [
+      { name: "agentId", type: "uint256", internalType: "uint256" },
+      { name: "amount", type: "uint128", internalType: "uint128" },
+      { name: "to", type: "address", internalType: "address" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "setAuthority",
+    inputs: [{ name: "newAuthority", type: "address", internalType: "address" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "setCourt",
+    inputs: [
+      { name: "court", type: "address", internalType: "address" },
+      { name: "listed", type: "bool", internalType: "bool" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "vault",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "contract IPoolVault" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "withdrawalDelay",
+    inputs: [],
+    outputs: [{ name: "", type: "uint40", internalType: "uint40" }],
+    stateMutability: "view",
+  },
+  {
+    type: "event",
+    name: "AuthorityUpdated",
+    inputs: [{ name: "authority", type: "address", indexed: false, internalType: "address" }],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "Claimed",
+    inputs: [
+      { name: "account", type: "address", indexed: true, internalType: "address" },
+      { name: "to", type: "address", indexed: false, internalType: "address" },
+      { name: "amount", type: "uint256", indexed: false, internalType: "uint256" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "CourtSet",
+    inputs: [
+      { name: "court", type: "address", indexed: true, internalType: "address" },
+      { name: "listed", type: "bool", indexed: false, internalType: "bool" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "Deposited",
+    inputs: [
+      { name: "agentId", type: "uint256", indexed: true, internalType: "uint256" },
+      { name: "from", type: "address", indexed: true, internalType: "address" },
+      { name: "amount", type: "uint256", indexed: false, internalType: "uint256" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "PayoutFailed",
+    inputs: [
+      { name: "coverageId", type: "bytes32", indexed: true, internalType: "bytes32" },
+      { name: "recipient", type: "address", indexed: true, internalType: "address" },
+      { name: "amount", type: "uint256", indexed: false, internalType: "uint256" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "ViolationPaid",
+    inputs: [
+      { name: "coverageId", type: "bytes32", indexed: true, internalType: "bytes32" },
+      { name: "agentId", type: "uint256", indexed: true, internalType: "uint256" },
+      { name: "court", type: "address", indexed: true, internalType: "address" },
+      { name: "recipient", type: "address", indexed: false, internalType: "address" },
+      { name: "amount", type: "uint256", indexed: false, internalType: "uint256" },
+      { name: "code", type: "uint8", indexed: false, internalType: "uint8" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "WithdrawalCompleted",
+    inputs: [
+      { name: "agentId", type: "uint256", indexed: true, internalType: "uint256" },
+      { name: "to", type: "address", indexed: false, internalType: "address" },
+      { name: "amount", type: "uint256", indexed: false, internalType: "uint256" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "WithdrawalRequested",
+    inputs: [
+      { name: "agentId", type: "uint256", indexed: true, internalType: "uint256" },
+      { name: "to", type: "address", indexed: false, internalType: "address" },
+      { name: "amount", type: "uint256", indexed: false, internalType: "uint256" },
+      { name: "unlockAt", type: "uint40", indexed: false, internalType: "uint40" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "error",
+    name: "AccessManagedInvalidAuthority",
+    inputs: [{ name: "authority", type: "address", internalType: "address" }],
+  },
+  {
+    type: "error",
+    name: "AccessManagedRequiredDelay",
+    inputs: [
+      { name: "caller", type: "address", internalType: "address" },
+      { name: "delay", type: "uint32", internalType: "uint32" },
+    ],
+  },
+  {
+    type: "error",
+    name: "AccessManagedUnauthorized",
+    inputs: [{ name: "caller", type: "address", internalType: "address" }],
+  },
+  { type: "error", name: "AlreadyPaid", inputs: [] },
+  { type: "error", name: "ConvictedTooLate", inputs: [] },
+  { type: "error", name: "DelayTooShort", inputs: [] },
+  { type: "error", name: "ExceedsDeposit", inputs: [] },
+  { type: "error", name: "NoDeposit", inputs: [] },
+  { type: "error", name: "NotAgentAuthority", inputs: [] },
+  { type: "error", name: "NotConvicted", inputs: [] },
+  { type: "error", name: "NotCovered", inputs: [] },
+  { type: "error", name: "NotReady", inputs: [] },
+  { type: "error", name: "ReentrancyGuardReentrantCall", inputs: [] },
+  {
+    type: "error",
+    name: "SafeCastOverflowedUintDowncast",
+    inputs: [
+      { name: "bits", type: "uint8", internalType: "uint8" },
+      { name: "value", type: "uint256", internalType: "uint256" },
+    ],
+  },
+  {
+    type: "error",
+    name: "SafeERC20FailedOperation",
+    inputs: [{ name: "token", type: "address", internalType: "address" }],
+  },
+  { type: "error", name: "UnknownAgent", inputs: [] },
+  { type: "error", name: "UnknownCourt", inputs: [] },
+  { type: "error", name: "ZeroAmount", inputs: [] },
 ] as const;
 
 export const zKTranscriptLibAbi = [
