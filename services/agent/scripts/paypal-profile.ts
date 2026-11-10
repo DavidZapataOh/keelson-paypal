@@ -26,7 +26,9 @@ if (command === "open") {
   const browser = await chromium.connectOverCDP(created.cdp_ws_url);
   const page = browser.contexts()[0]?.pages()[0] ?? (await browser.contexts()[0]?.newPage());
   await page?.goto("https://www.paypal.com/signin");
-  console.log(JSON.stringify({ session: created.session_id, liveView: created.browser_live_view_url }));
+  console.log(
+    JSON.stringify({ session: created.session_id, liveView: created.browser_live_view_url }),
+  );
   process.exit(0);
 } else if (command === "save" && id) {
   await kernel.browsers.deleteByID(id);
