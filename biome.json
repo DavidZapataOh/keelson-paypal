@@ -101,7 +101,7 @@
       }
     },
     {
-      "includes": ["apps/landing/src/styles/global.css"],
+      "includes": ["apps/landing/src/styles/global.css", "services/mcp/view/alibi.css"],
       "linter": {
         "rules": {
           "complexity": {

@@ -57,6 +57,7 @@ jobs:
               - packages/**
               - services/api/**
               - services/agent/**
+              - services/mcp/**
               - services/monitor/**
               - apps/**
               - openapi/**

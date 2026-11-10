@@ -9,7 +9,7 @@ import {
 import { Button } from "@keelson/ui/components/button";
 import { Field, FieldDescription, FieldLabel } from "@keelson/ui/components/field";
 import { Textarea } from "@keelson/ui/components/textarea";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useId, useState } from "react";
 import { ApiError, get, post } from "../lib/api";
 import { authClient } from "../lib/auth";
@@ -43,7 +43,9 @@ export function NewMandate() {
   const router = useRouter();
   const session = authClient.useSession();
   const [step, setStep] = useState<Step>({ name: "loading" });
-  const [prompt, setPrompt] = useState("");
+  // An agent hands the user's request over in `?request=`; the user reviews it before compiling.
+  const handed = useSearchParams().get("request");
+  const [prompt, setPrompt] = useState(handed ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [confirming, setConfirming] = useState(false);
