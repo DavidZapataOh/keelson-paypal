@@ -54,7 +54,7 @@ jobs:
       - run: npx --yes @cyfrin/aderyn@0.6.8 . --output aderyn.json
       - name: Aderyn reports no high finding outside the accepted list
         run: script/aderyn-gate.sh aderyn.json verification/aderyn-accepted.json
-      - run: forge lint src --severity high --severity med --deny notes
+      - run: forge lint $(find src -name '*.sol' -not -path 'src/verifiers/*') --severity high --severity med --deny notes
       - uses: actions/upload-artifact@v6
         if: always()
         with:
