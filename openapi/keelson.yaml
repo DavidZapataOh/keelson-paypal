@@ -7338,7 +7338,19 @@ paths:
         signed in with a session cookie until the nightly reset after 12 hours.
         A judge reads the demo merchant's console (no changes), walks the tour,
         and can sign its own mandates with a passkey like any user. Five per
-        hour per address."
+        hour per address, and a cap a day over every address that a judge with
+        the invite is counted apart from."
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                invite:
+                  type: string
+                  maxLength: 256
+                  description: The invite from the hackathon's testing instructions.
       responses:
         "201":
           description: The judge, signed in (the session cookie is set)

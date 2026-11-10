@@ -6,7 +6,7 @@ import { DataItem, DataList } from "@keelson/ui/components/data-list";
 import { Status } from "@keelson/ui/components/status";
 import { Timeline, TimelineItem } from "@keelson/ui/components/timeline";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../../lib/api";
 import { authClient, SESSION_HINT } from "../../lib/auth";
 import { VERIFY } from "../../lib/config";
@@ -54,6 +54,16 @@ type Phase =
 /** Judge Mode: a temporary tenant and a guided walk through the live product. */
 export function JudgeMode() {
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
+  const invite = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    // The invite stays in memory only: it leaves the address bar and the history at once.
+    const url = new URL(location.href);
+    const code = url.searchParams.get("invite");
+    if (code === null) return;
+    invite.current = code;
+    url.searchParams.delete("invite");
+    history.replaceState(history.state, "", url);
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -73,17 +83,19 @@ export function JudgeMode() {
   if (phase.kind === "loading") {
     return <p className="py-16 text-muted-foreground">Opening Judge Mode…</p>;
   }
-  if (phase.kind === "welcome") return <Welcome {...phase} onStarted={load} />;
+  if (phase.kind === "welcome") return <Welcome {...phase} invite={invite} onStarted={load} />;
   return <Walkthrough tour={phase.tour} />;
 }
 
 function Welcome({
   signedIn,
   error,
+  invite,
   onStarted,
 }: {
   signedIn: boolean;
   error?: string;
+  invite: { current: string | undefined };
   onStarted: () => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
@@ -93,7 +105,8 @@ function Welcome({
     setProblem(undefined);
     try {
       if (signedIn) await authClient.signOut();
-      await startJudge();
+      await startJudge(invite.current);
+      invite.current = undefined;
       localStorage.setItem(SESSION_HINT, "1");
       localStorage.setItem(STEP_KEY, "0");
       localStorage.setItem(STARTED_KEY, String(Date.now()));

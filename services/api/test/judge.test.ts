@@ -464,3 +464,77 @@ describe("nightly reset", () => {
     );
   });
 });
+
+describe("invite", () => {
+  const invite = randomBytes(32).toString("base64url");
+  const lines: string[] = [];
+  const invited = createApp({
+    db: testDb,
+    kv: testKv,
+    log: pino({ level: "trace" }, { write: (line: string) => lines.push(line) }),
+    auth,
+    appOrigin: baseURL,
+    authenticate: authenticate(auth, baseURL),
+    demoAgentId: agentId,
+    rateLimit: { trustProxy: true },
+    judgeInvite: invite,
+  });
+  const today = () => new Date().toISOString().slice(0, 10);
+  const open = (target: OpenAPIHono, body?: unknown) =>
+    target.request("/v1/judge/sessions", {
+      method: "POST",
+      headers: {
+        origin: baseURL,
+        "idempotency-key": ulid(),
+        "x-forwarded-for": `10.8.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}, 10.255.0.1, 10.255.0.2`,
+        ...(body === undefined ? {} : { "content-type": "application/json" }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+
+  beforeAll(async () => {
+    await testKv.set(`judge:opened:${today()}`, "200");
+    await testKv.del(`judge:invited:${today()}`);
+  });
+  afterAll(async () => {
+    await testKv.del([`judge:opened:${today()}`, `judge:invited:${today()}`]);
+  });
+
+  test("a valid invite opens a judge past the daily cap", async () => {
+    const res = await open(invited, { invite });
+    expect(res.status).toBe(201);
+    expect(res.headers.getSetCookie().join()).toContain("better-auth.session_token=");
+    expect(await testKv.get(`judge:invited:${today()}`)).toBe("1");
+  });
+
+  test("a wrong invite gets no bypass", async () => {
+    const last = invite.endsWith("A") ? "B" : "A";
+    for (const wrong of [`${invite.slice(0, -1)}${last}`, "", invite.slice(1)]) {
+      expect((await open(invited, { invite: wrong })).status).toBe(429);
+    }
+    expect((await open(invited)).status).toBe(429);
+  });
+
+  test("without a configured invite, an invite changes nothing", async () => {
+    expect((await open(app, { invite })).status).toBe(429);
+    expect((await open(app)).status).toBe(429);
+  });
+
+  test("invited judges have a daily cap of their own", async () => {
+    await testKv.set(`judge:invited:${today()}`, "300");
+    expect((await open(invited, { invite })).status).toBe(429);
+  });
+
+  test("the invite is never logged", () => {
+    expect(lines.length).toBeGreaterThan(0);
+    expect(lines.join("\n")).not.toContain(invite);
+  });
+
+  test("crossing 80% of the daily cap logs an error", async () => {
+    lines.length = 0;
+    await testKv.set(`judge:opened:${today()}`, "159");
+    expect((await open(invited)).status).toBe(201);
+    const alerts = lines.map((l) => JSON.parse(l)).filter((l) => l.msg === "judge cap 80% used");
+    expect(alerts).toMatchObject([{ level: 50, used: 160, cap: 200 }]);
+  });
+});

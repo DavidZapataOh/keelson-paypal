@@ -51,3 +51,30 @@ describe.each(Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[])("signed out 
     });
   }
 });
+
+test("an invite link is forwarded once and leaves the address bar and the history", async () => {
+  const invite = "invite-from-the-testing-instructions";
+  const context = await browser.newContext(VIEWPORTS.desktop);
+  const bodies: unknown[] = [];
+  await context.route(`${API}/**`, async (route) => {
+    const request = route.request();
+    if (request.method() === "OPTIONS") return route.fulfill({ status: 204 });
+    if (request.url().endsWith("/v1/judge/sessions")) {
+      bodies.push(request.postDataJSON());
+      return route.fulfill({ status: 201, json: { user_id: "judge" } });
+    }
+    return route.fulfill({ status: 401, contentType: "application/problem+json", json: {} });
+  });
+  const page = await context.newPage();
+  await page.goto(`${site.base}/judge/?invite=${invite}`);
+  const start = page.getByRole("button", { name: "Start Judge Mode" });
+  await start.waitFor();
+  await page.waitForURL(`${site.base}/judge/`);
+  await start.click();
+  await expect.poll(() => bodies).toEqual([{ invite }]);
+  expect(page.url()).not.toContain(invite);
+  // The entry before Judge Mode is the blank tab: no history entry kept the invite.
+  await page.goBack();
+  expect(page.url()).toBe("about:blank");
+  await context.close();
+});
