@@ -148,7 +148,20 @@ export function productJson(p: Product, url: string, description: string = p.des
     sizes: p.sizes,
     return_days: RETURN_DAYS,
     returns_free: true,
+    // One object per size, keyed by the SKU a cart line carries: what a TLSNotary session anchored
+    // on `"sku":"<sku>"` commits to.
+    variants: p.sizes.map((size) => ({
+      sku: variantSku(p, size),
+      size,
+      color: p.color,
+      unit_minor: p.priceMinor,
+      returns_free: true,
+    })),
   };
+}
+
+function variantSku(p: Product, size: string): string {
+  return `${p.sku}-${size}`;
 }
 
 export interface LineRequest {
@@ -189,7 +202,7 @@ export function quote(requested: readonly LineRequest[]): Quote {
       merchant: MERCHANT_ID,
       currency: CURRENCY,
       lines: lines.map(({ product: p, size, qty }) => ({
-        sku: `${p.sku}-${size}`,
+        sku: variantSku(p, size),
         size,
         color: p.color,
         category: TAXONOMY[p.category],

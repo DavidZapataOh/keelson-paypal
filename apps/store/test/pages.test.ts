@@ -39,6 +39,13 @@ describe("pages", () => {
     },
   );
 
+  test("each size is a flat JSON object a TLSNotary range can commit to on its own", async () => {
+    const text = await (await req("/api/products/tempo-3")).text();
+    expect(text).toContain(
+      '{"sku":"RF-TMP3-11","size":"11","color":"blue","unit_minor":12900,"returns_free":true}',
+    );
+  });
+
   test("unknown products and pages are 404", async () => {
     expect((await req("/products/nope")).status).toBe(404);
     expect((await req("/api/products/nope")).status).toBe(404);
@@ -69,6 +76,13 @@ describe("pages", () => {
       sizes: p.sizes,
       return_days: 30,
       returns_free: true,
+      variants: p.sizes.map((size) => ({
+        sku: `${p.sku}-${size}`,
+        size,
+        color: p.color,
+        unit_minor: p.priceMinor,
+        returns_free: true,
+      })),
     });
     const all = (await (await req("/api/products")).json()) as { handle: string }[];
     expect(all.map((x) => x.handle)).toEqual(PRODUCTS.map((x) => x.handle));

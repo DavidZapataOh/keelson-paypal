@@ -30,7 +30,13 @@
       "project": ["src/**/*.ts!", "eval/**/*.ts", "test/**/*.ts"]
     },
     "packages/core": {
-      "entry": ["src/index.ts!", "src/poseidon2.ts!", "src/eip712.ts!", "bench/*.bench.ts"],
+      "entry": [
+        "src/index.ts!",
+        "src/poseidon2.ts!",
+        "src/eip712.ts!",
+        "src/amber.ts!",
+        "bench/*.bench.ts"
+      ],
       "project": ["src/**/*.ts!", "scripts/**/*.ts", "bench/**/*.ts", "test/**/*.ts"]
     },
     "packages/db": {
