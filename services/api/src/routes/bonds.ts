@@ -1,8 +1,17 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { type Address, encodeAbiParameters, type Hex, keccak256 } from "viem";
+import type { MiddlewareHandler } from "hono";
+import { type Address, encodeAbiParameters, getAddress, type Hex, keccak256 } from "viem";
 import type { Deps } from "../app.ts";
 import { requireClient, requirePrincipal } from "../middleware/auth.ts";
 import { relay, relayedResponses } from "../onchain/respond.ts";
+import { problem } from "../problem.ts";
+import { operatorWallets } from "./operator-console.ts";
+
+/** An `operators:write` client, or a signed-in user whose wallets the handler checks. */
+const clientOrOperatorSession: MiddlewareHandler = (c, next) =>
+  c.var.principal?.kind === "user" && !c.var.invalidToken
+    ? next()
+    : requireClient(["operators:write"])(c, next);
 
 const MAX_AGENT_ID = 2n ** 64n - 1n;
 const UINT = /^(0|[1-9]\d{0,77})$/;
@@ -76,8 +85,8 @@ const deposit = createRoute({
   tags: ["bonds"],
   summary: "Deposit PYUSD into an operator's bond, gasless",
   description:
-    "Relays `depositWithAuthorization` (EIP-3009) or `depositWithPermit` (EIP-2612) to the bond vault; Keelson pays the gas. The same authorization is sent once, whatever the idempotency key.",
-  middleware: [requireClient(["operators:write"])],
+    "Relays `depositWithAuthorization` (EIP-3009) or `depositWithPermit` (EIP-2612) to the bond vault; Keelson pays the gas. The same authorization is sent once, whatever the idempotency key. An `operators:write` client sends either; the operator's own session (EIP-4361, from the operator console) sends a permit whose `owner` is a wallet it signed in with that owns the agent.",
+  middleware: [clientOrOperatorSession],
   request: {
     params: z.object({ agentId: AgentId }),
     headers: idempotencyHeader,
@@ -120,10 +129,27 @@ const complete = createRoute({
   responses: relayedResponses,
 });
 
-export function registerBonds(app: OpenAPIHono, deps: Pick<Deps, "relayer">): void {
-  app.openapi(deposit, (c) => {
+export function registerBonds(
+  app: OpenAPIHono,
+  deps: Pick<Deps, "relayer" | "db" | "chains">,
+): void {
+  const walletsFor = operatorWallets(deps);
+  app.openapi(deposit, async (c) => {
     const agentId = BigInt(c.req.valid("param").agentId);
     const body = c.req.valid("json");
+    const principal = c.var.principal;
+    if (principal?.kind === "user") {
+      const wallets = await walletsFor(principal.subject, agentId);
+      if (body.kind !== "permit" || !wallets.includes(getAddress(body.owner))) {
+        return problem(
+          c,
+          403,
+          "not-operator",
+          "Not this operator",
+          "A session deposits only a permit signed by one of its wallets that owns the agent.",
+        ) as never;
+      }
+    }
     return relay(c, deps.relayer, (relayer) => {
       if (body.kind === "authorization") {
         const nonce = keccak256(

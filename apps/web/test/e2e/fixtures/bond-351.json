@@ -1,0 +1,5 @@
+{
+  "bond": { "free": "14216000", "locked": "214700000", "queued": "1000000", "slashCount": 0 },
+  "reputation": { "count": 511, "value": "100", "decimals": 2, "slashes": 0 },
+  "validation": { "count": 722, "averageResponse": 96 }
+}
