@@ -2,7 +2,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { paypalConfig } from "../../src/config.ts";
 import { createPayPal, type PayPal } from "../../src/sdk.ts";
 import { TokenCache } from "../../src/token.ts";
-import { createWebhook, deleteWebhook, listWebhooks } from "../../src/webhooks.ts";
+import {
+  createWebhook,
+  deleteWebhook,
+  listWebhookEvents,
+  listWebhooks,
+} from "../../src/webhooks.ts";
 
 const URL = "https://api.keelson.finance/webhooks/paypal";
 const EVENT_TYPES = [
@@ -44,5 +49,17 @@ describe("webhooks (sandbox)", () => {
     await deleteWebhook(paypal.fetch, created.id);
     createdId = undefined;
     expect((await listWebhooks(paypal.fetch)).map((w) => w.id)).not.toContain(created.id);
+  });
+});
+
+describe("webhook events (sandbox)", () => {
+  it("follows every page of the app's events", async () => {
+    const endTime = new Date();
+    const startTime = new Date(endTime.getTime() - 24 * 3600_000);
+    const all = await listWebhookEvents(paypal.fetch, { startTime, endTime, pageSize: 100 });
+    expect(all.length).toBeGreaterThan(2);
+    const pageSize = Math.max(2, Math.ceil(all.length / 20));
+    const paged = await listWebhookEvents(paypal.fetch, { startTime, endTime, pageSize });
+    expect(new Set(paged.map((e) => e.id))).toEqual(new Set(all.map((e) => e.id)));
   });
 });
