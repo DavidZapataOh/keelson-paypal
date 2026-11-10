@@ -24,7 +24,7 @@ paths = [
 ]
 
 [[allowlists]]
-description = "The C1 circuit's public artifacts: its compiled program, verification key, CRS points and the demo proof and inputs"
+description = "The C1 circuit's public artifacts: its compiled program, verification key and CRS points, and the demo proof and witness (the demo mandate's public fields with the fixed salt 0x01..0x10, no key)"
 paths = [
   '''engine/tee/zk/.*''',
   '''packages/alibi/src/verify/c1-vk\.ts''',
