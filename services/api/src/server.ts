@@ -35,7 +35,7 @@ import { createTee } from "./tee/config.ts";
 import { engineSource } from "./tee/engine-source.ts";
 import { startSignerRefresh } from "./tee/signers.ts";
 import { startStampWorker } from "./timestamps/worker.ts";
-import { C3_SALT_TTL_SECONDS, c3SaltKey, proveAnonymousMandate } from "./zk/c3.ts";
+import { c3Prover } from "./zk/c3.ts";
 
 const FORCE_EXIT_MS = 10_000;
 
@@ -141,21 +141,10 @@ const startDisputeWorkflow =
         }
       }
     : undefined;
-// The proof needs more memory than this instance has: the workflow proves it, and reads the salt
-// from Valkey so that it never becomes a task argument. Without a workflow it is proved here.
-const proveC3 = render
-  ? async (mandateId: string, salt: string) => {
-      await kv.set(c3SaltKey(mandateId), salt, { EX: C3_SALT_TTL_SECONDS });
-      const run = await render.workflows.startTask(
-        `${env.DISPUTE_WORKFLOW}/proveAnonymousMandate`,
-        [mandateId],
-        { idempotencyKey: `proveAnonymousMandate:${mandateId}` },
-      );
-      log.info({ mandateId, taskRunId: run.taskRunId }, "C3 workflow started");
-    }
-  : async (mandateId: string, salt: string) => {
-      await proveAnonymousMandate({ db, log }, mandateId, salt);
-    };
+const proveC3 = c3Prover(
+  { db, kv, log },
+  render && env.DISPUTE_WORKFLOW ? { render, slug: env.DISPUTE_WORKFLOW } : undefined,
+);
 const paypalEvents = startPayPalEventWorker({ db, kv, log, paypal, startDisputeWorkflow });
 const operators =
   env.KEELSON_OPERATOR_KEY && env.DEMO_AGENT_ID

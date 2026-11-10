@@ -5,6 +5,7 @@ import { appendFileSync } from "node:fs";
 import { cartHash } from "@keelson/core";
 import { createDb, eq, events, mandates, purchases } from "@keelson/db";
 import { closeMandate } from "@keelson/mandate";
+import { Render } from "@renderinc/sdk";
 import { ulid } from "ulid";
 import { bytesToHex, createPublicClient, type Hex, http, type PublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
@@ -19,6 +20,7 @@ import { call, createPayPalDeps } from "../src/paypal.ts";
 import { principalChannel } from "../src/principal.ts";
 import { createTee } from "../src/tee/config.ts";
 import { refreshLeg } from "../src/tee/signers.ts";
+import { c3Prover } from "../src/zk/c3.ts";
 import { EvidenceUploader } from "../test/evidence.ts";
 import { cartOf, demoOperator, seedDemoOperator } from "../test/pipeline-live.ts";
 import {
@@ -76,6 +78,13 @@ const teeEnv = {
   ARBITRUM_SEPOLIA_RPC_URL: env.ARBITRUM_SEPOLIA_RPC_URL,
 };
 const tee = createTee(teeEnv);
+// Each mandate's C3 proof is started as the server starts it: on the workflow when there is one.
+const proveAnonymousMandate = c3Prover(
+  { db, kv, log },
+  env.RENDER_API_KEY && env.DISPUTE_WORKFLOW
+    ? { render: new Render({ token: env.RENDER_API_KEY }), slug: env.DISPUTE_WORKFLOW }
+    : undefined,
+);
 const appWith = (t: typeof tee) =>
   createApp({
     db,
@@ -89,6 +98,7 @@ const appWith = (t: typeof tee) =>
     operators: operatorSigners(env.DEMO_AGENT_ID as bigint, env.KEELSON_OPERATOR_KEY as Hex),
     chains: { 421614: { client, logs: client } },
     paypal,
+    proveAnonymousMandate,
     requestTimeoutMs: 60_000,
   });
 const app = appWith(tee);
