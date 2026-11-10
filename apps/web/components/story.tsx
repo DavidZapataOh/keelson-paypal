@@ -37,23 +37,33 @@ export function Story() {
     if (!el || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     let rive: { cleanup(): void } | undefined;
     let cancelled = false;
-    void import("@rive-app/canvas-lite")
-      .then(({ Rive, RuntimeLoader, Layout, Fit }) => {
-        if (cancelled) return;
-        RuntimeLoader.setWasmUrl(WASM);
-        rive = new Rive({
-          src: SRC,
-          canvas: el,
-          artboard: scene.artboard,
-          stateMachines: "Loop",
-          autoplay: true,
-          layout: new Layout({ fit: Fit.Contain }),
-          onLoad: () => (el.dataset.ready = "true"),
-        });
-      })
-      .catch(() => {});
+    // The runtime loads once the story is on screen and the page is idle, never on the critical path.
+    const start = () =>
+      import("@rive-app/canvas-lite")
+        .then(({ Rive, RuntimeLoader, Layout, Fit }) => {
+          if (cancelled) return;
+          RuntimeLoader.setWasmUrl(WASM);
+          rive = new Rive({
+            src: SRC,
+            canvas: el,
+            artboard: scene.artboard,
+            stateMachines: "Loop",
+            autoplay: true,
+            layout: new Layout({ fit: Fit.Contain }),
+            onLoad: () => (el.dataset.ready = "true"),
+          });
+        })
+        .catch(() => {});
+    const seen = new IntersectionObserver((entries) => {
+      if (!entries.some((e) => e.isIntersecting)) return;
+      seen.disconnect();
+      const idle = window.requestIdleCallback ?? ((f: () => void) => setTimeout(f, 200));
+      idle(() => void start());
+    });
+    seen.observe(el);
     return () => {
       cancelled = true;
+      seen.disconnect();
       el.dataset.ready = "false";
       rive?.cleanup();
     };

@@ -7,3 +7,6 @@ export const authClient = createAuthClient({
   fetchOptions: { credentials: "include" },
   plugins: [passkeyClient()],
 });
+
+/** Set while this browser has a session, so the next visit skips the visitor's welcome. */
+export const SESSION_HINT = "keelson.session";

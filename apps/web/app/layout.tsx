@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { Header } from "../components/header";
+import { SESSION_HINT } from "../lib/auth";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -13,7 +14,16 @@ export const viewport: Viewport = { themeColor: "#f2f0ea", width: "device-width"
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Before paint: a browser that was signed in skips the visitor's welcome. */}
+        <script
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: a constant, first-paint script
+          dangerouslySetInnerHTML={{
+            __html: `try{if(localStorage.getItem("${SESSION_HINT}"))document.documentElement.dataset.session=""}catch(e){}`,
+          }}
+        />
+      </head>
       <body className="min-h-dvh">
         <a
           href="#main"

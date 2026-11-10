@@ -1,10 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { authClient } from "../lib/auth";
+import { useEffect } from "react";
+import { authClient, SESSION_HINT } from "../lib/auth";
 
 export function Header() {
-  const { data } = authClient.useSession();
+  const { data, isPending } = authClient.useSession();
+  useEffect(() => {
+    if (isPending) return;
+    if (data) localStorage.setItem(SESSION_HINT, "1");
+    else {
+      localStorage.removeItem(SESSION_HINT);
+      delete document.documentElement.dataset.session;
+    }
+  }, [data, isPending]);
   return (
     <header className="mx-auto flex h-16 w-full max-w-5xl items-center justify-between px-5 sm:px-8">
       <Link href="/" className="rounded-sm" aria-label="Keelson, home">

@@ -18,7 +18,9 @@ export function MandateCard({ card }: { card: Card }) {
             className="grid gap-x-6 gap-y-1.5 px-5 py-3.5 sm:grid-cols-[10rem_1fr_auto] sm:items-center"
           >
             <dt className="text-muted-foreground text-sm">{row.label}</dt>
-            <dd className="font-medium">{row.values.join(", ")}</dd>
+            <dd className="min-w-0 font-medium [overflow-wrap:anywhere]">
+              {row.values.join(", ")}
+            </dd>
             <dd className="text-sm">
               <Liability kind={KIND[row.color]} />
             </dd>
