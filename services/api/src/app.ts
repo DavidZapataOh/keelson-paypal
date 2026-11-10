@@ -50,6 +50,7 @@ import { registerPayPalWebhook } from "./routes/paypal-webhook.ts";
 import { registerPurchaseHolds } from "./routes/purchase-holds.ts";
 import { registerPurchaseTracking } from "./routes/purchase-tracking.ts";
 import { registerPurchases } from "./routes/purchases.ts";
+import { registerRedTeam } from "./routes/redteam.ts";
 import { registerRevoke } from "./routes/revoke.ts";
 import { registerStatus } from "./routes/status.ts";
 import { registerTee } from "./routes/tee.ts";
@@ -278,6 +279,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerMerchantsSettlement(app, deps);
   registerPurchaseTracking(app, deps);
   registerTransactions(app, deps);
+  registerRedTeam(app, deps);
   app.get("/openapi.json", (c) =>
     c.json(app.getOpenAPI31Document({ openapi: "3.1.0", info: apiInfo })),
   );

@@ -15,4 +15,5 @@ export {
 } from "./ledger.ts";
 export { type CampaignMandateOptions, campaignMandate } from "./mandate.ts";
 export { MUTATOR_MODEL } from "./mutator.ts";
+export { type Rate, type Row, type Scoreboard, score } from "./scoreboard.ts";
 export { holdout, TEMPLATES, templateHash } from "./seeds.ts";

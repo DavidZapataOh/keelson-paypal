@@ -1,6 +1,11 @@
 import type { Cart } from "@keelson/core";
 import type { Mandate } from "@keelson/mandate";
+import { type AttackPlan, failedAttack } from "../src/attack.ts";
+import { EVALUATOR, judge, keelson } from "../src/judge.ts";
+import { type Attack, append, GENESIS, type Header, type Line, summarize } from "../src/ledger.ts";
 import { campaignMandate } from "../src/mandate.ts";
+import { fallback } from "../src/mutator.ts";
+import { TEMPLATES } from "../src/seeds.ts";
 
 export const STORE = "https://store.keelson.finance";
 export const NOW = new Date("2026-11-10T12:00:00.000Z");
@@ -39,3 +44,83 @@ export function cart(...lines: [string, string, number][]): Cart {
 }
 
 export const url = (handle: string): string => `${STORE}/products/${handle}`;
+
+export const plan = (
+  seq: number,
+  backbone: "vulnerable" | "guarded" = "vulnerable",
+  split: "seen" | "holdout" = "seen",
+): AttackPlan => {
+  const t = TEMPLATES[seq % TEMPLATES.length] as (typeof TEMPLATES)[number];
+  return {
+    seq,
+    round: 1,
+    template: t.id,
+    class: t.class,
+    split,
+    mutation: fallback(t, seq),
+    backbone,
+  };
+};
+
+/** An attack whose agent proposed `lines`, priced and judged as the campaign does. */
+export function attack(
+  seq: number,
+  lines: [string, string, number][],
+  split: "seen" | "holdout" = "seen",
+): Attack {
+  const p = plan(seq, "vulnerable", split);
+  const c = cart(...lines);
+  const trace = keelson(mandate, c, NOW);
+  const proposal = lines.map(([h, size, qty]) => ({ product_url: url(h), size, qty }));
+  return {
+    kind: "attack",
+    ...p,
+    model: "claude-haiku-4-5",
+    agent: {
+      outcome: "proposed",
+      proposal,
+      turns: 2,
+      ms: 7000,
+      usage: { input: 2300, output: 420, cacheRead: 0, cacheWrite: 0, usd_micros: 4400 },
+      reads_sha256: "0".repeat(64),
+    },
+    quote: { cart: c },
+    trace,
+    verdict: judge({
+      class: p.class,
+      storeOrigin: STORE,
+      proposal,
+      cart: c,
+      decision: trace.decision,
+    }),
+  };
+}
+
+/** A chained ledger of `attacks`, or of a small fixed campaign. */
+export function ledger(attacks?: Attack[]): string[] {
+  const header: Header = {
+    kind: "header",
+    v: "keelson.redteam/1",
+    campaign: "test",
+    now: NOW.toISOString(),
+    store: STORE,
+    mandate: mandate as never,
+    evaluator: EVALUATOR as never,
+    config: {},
+    templates: [],
+    commit: "test",
+  };
+  attacks ??= [
+    attack(0, [["carbon-elite", "10", 1]]),
+    attack(1, [["trail-runner-2", "10", 1]]),
+    attack(2, [["tempo-3", "10", 1]]),
+    failedAttack(plan(3, "guarded"), "browser crashed"),
+  ];
+  const lines: Line[] = [header, ...attacks, summarize(attacks, 12_300)];
+  let prev = GENESIS;
+  return lines.map((l) => {
+    const out = append(prev, l);
+    prev = out.hash;
+    return out.line;
+  });
+}
