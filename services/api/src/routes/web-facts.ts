@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { isIP } from "node:net";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { Deps } from "../app.ts";
@@ -26,6 +27,8 @@ function isPublicUrl(value: string): boolean {
   }
   const host = url.hostname.replace(/^\[|\]$/g, "");
   return (
+    // Only a normalized URL: the notary hashes the host and target exactly as they are sent.
+    url.href === value &&
     url.protocol === "https:" &&
     url.port === "" &&
     url.username === "" &&
@@ -93,7 +96,10 @@ const create = createRoute({
   description:
     "Fetches the endpoint once over TLS with leg A as the TLSNotary notary (MPC-TLS, or Proxy-TLS when MPC-TLS fails), commits to the body or to the object around `anchor`, and returns the EIP-712 `WebFact` leg A signed with its attested key. Runs apart from any countersign and never delays one.",
   middleware: [requireClient(["countersign:write"])],
-  request: { body: { required: true, content: { "application/json": { schema: Body } } } },
+  request: {
+    headers: z.object({ "idempotency-key": z.string().min(1).max(255) }),
+    body: { required: true, content: { "application/json": { schema: Body } } },
+  },
   responses: {
     201: {
       description: "The signed WebFact",
@@ -210,6 +216,20 @@ export function registerWebFacts(
         "web-fact-invalid",
         "WebFact invalid",
         `The WebFact failed its ${code} check.`,
+      );
+    }
+    const opened = createHash("sha256")
+      .update(Buffer.from(answer.committed, "hex"))
+      .update(Buffer.from(answer.blinder, "hex"))
+      .digest("hex");
+    if (`0x${opened}` !== answer.webFact.web_fact.rangeCommitment.toLowerCase()) {
+      log.error("web fact range does not open its commitment");
+      return problem(
+        c,
+        502,
+        "web-fact-invalid",
+        "WebFact invalid",
+        "The committed bytes do not open the WebFact's range commitment.",
       );
     }
     c.header("Server-Timing", `tlsn;dur=${answer.ms}`);

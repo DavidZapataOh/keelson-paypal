@@ -528,8 +528,9 @@ impl Engine {
             .map_err(|_| bad("chain_id"))?;
         let binding = crate::report_data(&self.binding().map_err(EngineError::Signer)?, [0; 32])
             .map_err(EngineError::Signer)?;
+        // DNS names compare without case; the hash is over the lowercase name.
         let fact = WebFact {
-            hostHash: alloy_primitives::keccak256(server_name),
+            hostHash: alloy_primitives::keccak256(server_name.to_ascii_lowercase()),
             urlPathHash: alloy_primitives::keccak256(target),
             tCapture: U40::from(u64::try_from(now.unix_timestamp()).map_err(|_| bad("clock"))?),
             rangeCommitment: B256::new(commitment),

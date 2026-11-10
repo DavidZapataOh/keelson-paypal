@@ -39,6 +39,7 @@ use tlsn::verifier::{VerifierCommitStart, VerifierOutput};
 use tlsn::webpki::RootCertStore;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::compat::{FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
+use tokio_util::task::AbortOnDropHandle;
 
 pub use policy::Refusal;
 
@@ -108,7 +109,8 @@ where
 {
     let session = Session::new(io.compat());
     let (driver, mut handle) = session.split();
-    let driver = tokio::spawn(driver);
+    // Aborted with the session on any early return, so a stalled prover holds nothing.
+    let driver = AbortOnDropHandle::new(tokio::spawn(driver));
     let config = VerifierConfig::builder()
         .root_store(RootCertStore::mozilla())
         .build()
@@ -117,7 +119,12 @@ where
     let (verifier, mode) = match verifier.commit().await.map_err(tlsn_err)? {
         VerifierCommitStart::Mpc(v) => {
             let c = v.config();
-            if c.max_sent_data() > policy::MAX_SENT || c.max_recv_data() > policy::MAX_RECV {
+            if c.max_sent_data() > policy::MAX_SENT
+                || c.max_recv_data() > policy::MAX_RECV
+                || c.max_recv_data_online() > policy::MAX_RECV
+                || c.max_sent_records() > Some(policy::MAX_SENT_RECORDS)
+                || c.max_recv_records_online() > Some(policy::MAX_RECV_RECORDS_ONLINE)
+            {
                 v.reject(Some("limits")).await.map_err(tlsn_err)?;
                 return Err(Refusal::Request.into());
             }
@@ -216,7 +223,7 @@ fn check(output: VerifierOutput, mode: Mode) -> Result<Notarized, Refusal> {
     })
 }
 
-/// Dials `host` on port 443 at a public address.
+/// Dials `host` on port 443 at a public address, so neither party reaches a private network.
 async fn dial(host: &str) -> Result<tokio::net::TcpStream, Error> {
     let addrs = tokio::time::timeout(DIAL_TIMEOUT, tokio::net::lookup_host((host, 443)))
         .await
@@ -248,7 +255,10 @@ where
     if uri.scheme_str() != Some("https") || uri.port().is_some_and(|p| p.as_u16() != 443) {
         return Err(Error::Url);
     }
-    let host = uri.host().ok_or(Error::Url)?.to_owned();
+    let host = uri.host().ok_or(Error::Url)?.to_ascii_lowercase();
+    if host.ends_with('.') {
+        return Err(Error::Url);
+    }
     let target = uri.path_and_query().map_or("/", |p| p.as_str()).to_owned();
     let dns = DnsName::try_from(host.as_str()).map_err(|_| Error::Url)?;
     let tls = TlsClientConfig::builder()
@@ -259,7 +269,7 @@ where
 
     let session = Session::new(notary.compat());
     let (driver, mut handle) = session.split();
-    let driver = tokio::spawn(driver);
+    let driver = AbortOnDropHandle::new(tokio::spawn(driver));
     let prover = handle
         .new_prover(ProverConfig::builder().build().map_err(tlsn_err)?)
         .map_err(tlsn_err)?;
@@ -271,7 +281,7 @@ where
                 .build()
                 .map_err(tlsn_err)?;
             let prover = prover.commit(config).await.map_err(tlsn_err)?;
-            let server = tokio::net::TcpStream::connect((host.as_str(), 443)).await?;
+            let server = dial(&host).await?;
             let (conn, prover) = prover.connect(tls, server.compat()).map_err(tlsn_err)?;
             fetch(prover, conn, &host, &target).await?
         }
@@ -362,7 +372,7 @@ async fn fetch<S>(
 where
     S: futures::AsyncRead + futures::AsyncWrite + Send + Unpin + 'static,
 {
-    let task = tokio::spawn(prover.into_future());
+    let task = AbortOnDropHandle::new(tokio::spawn(prover.into_future()));
     let (mut sender, connection) =
         hyper::client::conn::http1::handshake(TokioIo::new(conn.compat()))
             .await

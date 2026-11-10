@@ -20,6 +20,9 @@ pub const PROTOCOL: &str = "keelson-notary";
 /// Longest a session may take, from the upgrade to the answer.
 pub const SESSION_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// How long the answer may take to reach the prover once the session is over.
+const ANSWER_TIMEOUT: Duration = Duration::from_secs(5);
+
 pub(crate) async fn notary(State(state): State<Arc<AppState>>, mut request: Request) -> Response {
     let upgrade = request.headers().get(header::UPGRADE);
     if !upgrade.is_some_and(|u| u.as_bytes().eq_ignore_ascii_case(PROTOCOL.as_bytes())) {
@@ -40,8 +43,7 @@ pub(crate) async fn notary(State(state): State<Arc<AppState>>, mut request: Requ
         let Ok(upgraded) = on_upgrade.await else {
             return;
         };
-        let _ =
-            tokio::time::timeout(SESSION_TIMEOUT, session(&state, TokioIo::new(upgraded))).await;
+        session(&state, TokioIo::new(upgraded)).await;
     });
     let mut response = StatusCode::SWITCHING_PROTOCOLS.into_response();
     let headers = response.headers_mut();
@@ -50,27 +52,55 @@ pub(crate) async fn notary(State(state): State<Arc<AppState>>, mut request: Requ
     response
 }
 
-async fn session<Io>(state: &AppState, io: Io)
+/// Runs the session on its own thread and runtime, so its seconds of MPC never hold the
+/// workers that serve countersigns; this task only relays bytes and signs the result.
+async fn session<Io>(state: &AppState, mut upgraded: Io)
 where
     Io: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + Unpin + 'static,
 {
-    // A session that fails takes its connection with it; there is nobody left to answer.
-    let Ok((notarized, mut io)) = keelson_tlsn::notarize(io).await else {
+    let (mut near, far) = tokio::io::duplex(1 << 16);
+    let (done, result) = tokio::sync::oneshot::channel();
+    let spawned = std::thread::Builder::new()
+        .name("notary".into())
+        .spawn(move || {
+            let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            else {
+                return;
+            };
+            // Dropping the runtime on a timeout aborts the session's tasks and closes `far`.
+            let out = runtime.block_on(async {
+                tokio::time::timeout(SESSION_TIMEOUT, keelson_tlsn::notarize(far)).await
+            });
+            let _ = done.send(out);
+        });
+    if spawned.is_err() {
         return;
-    };
-    let answer = match notarized {
-        Ok(n) => state
-            .engine()
-            .sign_web_fact(&n.server_name, &n.target, n.commitment, state.now())
-            .map_err(|e| e.code()),
-        Err(refusal) => Err(refusal.to_string()),
-    };
-    let bytes = match answer {
-        Ok(signed) => serde_json::to_vec(&signed),
-        Err(code) => serde_json::to_vec(&serde_json::json!({ "error": code })),
-    };
-    if let Ok(bytes) = bytes {
-        let _ = io.write_all(&bytes).await;
     }
-    let _ = io.shutdown().await;
+    let relay = tokio::spawn(async move {
+        let _ = tokio::io::copy_bidirectional(&mut upgraded, &mut near).await;
+    });
+    // A session that fails takes its connection with it; there is nobody left to answer.
+    if let Ok(Ok(Ok((notarized, mut far)))) = result.await {
+        let answer = match notarized {
+            Ok(n) => state
+                .engine()
+                .sign_web_fact(&n.server_name, &n.target, n.commitment, state.now())
+                .map_err(|e| e.code()),
+            Err(refusal) => Err(refusal.to_string()),
+        };
+        let bytes = match answer {
+            Ok(signed) => serde_json::to_vec(&signed),
+            Err(code) => serde_json::to_vec(&serde_json::json!({ "error": code })),
+        };
+        if let Ok(bytes) = bytes {
+            let _ = far.write_all(&bytes).await;
+        }
+        let _ = far.shutdown().await;
+    }
+    let abort = relay.abort_handle();
+    if tokio::time::timeout(ANSWER_TIMEOUT, relay).await.is_err() {
+        abort.abort();
+    }
 }

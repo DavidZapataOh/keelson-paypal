@@ -34,7 +34,7 @@ thiserror = "2"
 tlsn = { git = "https://github.com/tlsnotary/tlsn", tag = "v0.1.0-alpha.15", features = ["mozilla-certs"] }
 tokio = { version = "1.54.1", features = ["macros", "net", "time"] }
 tokio-rustls = { version = "0.26.6", optional = true, default-features = false, features = ["ring", "tls12"] }
-tokio-util = { version = "0.7.18", features = ["compat"] }
+tokio-util = { version = "0.7.18", features = ["compat", "rt"] }
 webpki-roots = { version = "1", optional = true }
 
 [dev-dependencies]

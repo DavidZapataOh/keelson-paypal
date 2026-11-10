@@ -11,6 +11,10 @@ pub const MAX_SENT: usize = 1 << 10;
 pub const MAX_RECV: usize = 1 << 14;
 /// Longest request target, in bytes.
 pub const MAX_PATH: usize = 1024;
+/// Most TLS records the prover may send in MPC-TLS.
+pub const MAX_SENT_RECORDS: usize = 8;
+/// Most TLS records the prover may receive while the session is online in MPC-TLS.
+pub const MAX_RECV_RECORDS_ONLINE: usize = 32;
 
 /// Request headers a public `GET` may carry; anything else (cookies, credentials) is refused.
 const ALLOWED_HEADERS: [&str; 5] = [
@@ -40,6 +44,13 @@ pub fn check_request(sent: &[u8], server_name: &str) -> Result<String, Refusal> 
     let text = std::str::from_utf8(sent).map_err(|_| Refusal::Request)?;
     let head = text.strip_suffix("\r\n\r\n").ok_or(Refusal::Request)?;
     let mut lines = head.split("\r\n");
+    // A bare CR or LF would let a lenient server read a second request or a hidden header.
+    if head
+        .split("\r\n")
+        .any(|l| l.bytes().any(|b| (b < 0x20 && b != b'\t') || b == 0x7f))
+    {
+        return Err(Refusal::Request);
+    }
     let target = lines
         .next()
         .and_then(|l| l.strip_prefix("GET "))
@@ -50,6 +61,9 @@ pub fn check_request(sent: &[u8], server_name: &str) -> Result<String, Refusal> 
     let mut hosts = 0;
     for line in lines {
         let (name, value) = line.split_once(':').ok_or(Refusal::Request)?;
+        if name.is_empty() || !name.bytes().all(is_token) {
+            return Err(Refusal::Request);
+        }
         let name = name.to_ascii_lowercase();
         if !ALLOWED_HEADERS.contains(&name.as_str()) {
             return Err(Refusal::Request);
@@ -68,6 +82,11 @@ pub fn check_request(sent: &[u8], server_name: &str) -> Result<String, Refusal> 
         return Err(Refusal::Request);
     }
     Ok(target.to_owned())
+}
+
+/// RFC 9110 `tchar`.
+fn is_token(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&b)
 }
 
 /// Where the body starts in a response whose status line and headers the prover revealed, the
@@ -160,13 +179,19 @@ pub fn is_public(ip: IpAddr) -> bool {
             if let Some(v4) = v6.to_ipv4_mapped() {
                 return is_public(IpAddr::V4(v4));
             }
-            let first = v6.segments()[0];
-            !(v6.is_loopback()
+            let s = v6.segments();
+            // IPv4-compatible, NAT64, 6to4 and Teredo addresses embed an IPv4 address.
+            let embeds_v4 = s[..6] == [0; 6]
+                || s[..6] == [0x64, 0xff9b, 0, 0, 0, 0]
+                || s[0] == 0x2002
+                || (s[0] == 0x2001 && s[1] == 0);
+            !(embeds_v4
+                || v6.is_loopback()
                 || v6.is_unspecified()
                 || v6.is_multicast()
-                || (first & 0xfe00) == 0xfc00
-                || (first & 0xffc0) == 0xfe80
-                || first == 0x2001 && v6.segments()[1] == 0x0db8)
+                || (s[0] & 0xfe00) == 0xfc00
+                || (s[0] & 0xffc0) == 0xfe80
+                || s[0] == 0x2001 && s[1] == 0x0db8)
         }
     }
 }

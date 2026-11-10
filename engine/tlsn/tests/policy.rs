@@ -36,6 +36,11 @@ fn credentials_and_other_methods_are_refused() {
         b"GET / HTTP/1.1\r\nhost: a.example\r\naccept-encoding: gzip\r\n\r\n",
         b"GET http://a.example/ HTTP/1.1\r\nhost: a.example\r\n\r\n",
         b"GET / HTTP/1.0\r\nhost: a.example\r\n\r\n",
+        // Bare line feeds a lenient server reads as a hidden header or a second request.
+        b"GET / HTTP/1.1\r\nhost: a.example\r\naccept: x\nCookie: s=1\r\n\r\n",
+        b"GET / HTTP/1.1\r\nhost: a.example\r\naccept: a\n\nGET /secret HTTP/1.1\nhost: a.example\r\n\r\n",
+        b"GET / HTTP/1.1\r\nhost: a.example\r\naccept: a\r\n\r\nGET /b HTTP/1.1\r\nhost: a.example\r\n\r\n",
+        b"GET / HTTP/1.1\r\nhost: a.example\r\nac cept: x\r\n\r\n",
     ] {
         assert_eq!(check_request(request, "a.example"), Err(Refusal::Request));
     }
@@ -91,6 +96,10 @@ fn only_public_addresses_are_dialed() {
         "fc00::1",
         "fe80::1",
         "::ffff:10.0.0.1",
+        "::10.0.0.1",
+        "64:ff9b::a00:1",
+        "2002:a00:1::",
+        "2001:0:4136:e378::1",
     ] {
         assert!(!is_public(ip.parse::<IpAddr>().unwrap()), "{ip}");
     }

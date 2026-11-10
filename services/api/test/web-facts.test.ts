@@ -1,5 +1,6 @@
 import { hashKeelson, keelsonDomain, reportData } from "@keelson/core/eip712";
 import { pino } from "pino";
+import { ulid } from "ulid";
 import { type Hex, keccak256, stringToHex } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { describe, expect, test } from "vitest";
@@ -25,7 +26,7 @@ const appWith = (prover?: string) =>
 const post = (app: ReturnType<typeof createApp>, body: unknown) =>
   app.request("/v1/observations/web-fact", {
     method: "POST",
-    headers: { "content-type": "application/json", ...agent },
+    headers: { "content-type": "application/json", "idempotency-key": ulid(), ...agent },
     body: JSON.stringify(body),
   });
 
@@ -43,6 +44,8 @@ describe("POST /v1/observations/web-fact", () => {
     "https://user:pass@store.keelson.finance/api/products/tempo-3",
     "https://localhost/products/x.js",
     "https://store.keelson.finance/api/products/tempo-3#x",
+    "https://Store.keelson.finance/api/products/tempo-3",
+    "https://store.keelson.finance/api/products/../products/tempo-3",
   ])("refuses %s", async (url) => {
     const res = await post(appWith("http://127.0.0.1:9"), { url });
     expect(res.status).toBe(422);

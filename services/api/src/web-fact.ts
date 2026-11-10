@@ -44,6 +44,7 @@ export async function verifyWebFact(
   verifyingContract: Address,
 ): Promise<void> {
   const f = signed.web_fact;
+  if (signed.chain_id !== 421614) throw new WebFactError("signature");
   const digest = hashKeelson(
     "WebFact",
     {

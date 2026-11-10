@@ -4194,6 +4194,14 @@ paths:
         or to the object around `anchor`, and returns the EIP-712 `WebFact` leg
         A signed with its attested key. Runs apart from any countersign and
         never delays one.
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
       requestBody:
         required: true
         content:
