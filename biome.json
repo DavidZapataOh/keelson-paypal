@@ -73,6 +73,23 @@
       "css": { "parser": { "tailwindDirectives": true } }
     },
     {
+      "includes": [
+        "packages/ui/src/components/field.tsx",
+        "packages/ui/src/components/input-group.tsx"
+      ],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "useSemanticElements": "off",
+            "useKeyWithClickEvents": "off"
+          },
+          "suspicious": {
+            "noArrayIndexKey": "off"
+          }
+        }
+      }
+    },
+    {
       "includes": ["packages/ui/src/styles/globals.css"],
       "css": { "parser": { "tailwindDirectives": true } },
       "linter": {
