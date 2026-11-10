@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "@fontsource-variable/instrument-sans";
 @import "@fontsource-variable/geist-mono";
+@import "tw-animate-css";
 
 @source "../components";
 
@@ -18,9 +19,37 @@
   --font-sans: "Instrument Sans Variable", "Instrument Sans", system-ui, sans-serif;
   --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, monospace;
 
-  --ease-reveal: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* Fixed rem scale for product UI, about 1.2 between steps. `ui` is the console body size. */
+  --text-ui: 0.8125rem;
+  --text-ui--line-height: 1.125rem;
+  --text-amount: 2.5rem;
+  --text-amount--line-height: 1;
+  --text-amount--letter-spacing: -0.03em;
+  --text-amount--font-weight: 600;
+
+  /* Only what floats casts a shadow; cards and panels sit on hairlines. */
+  --shadow-overlay: 0 16px 40px -12px rgb(23 24 27 / 0.28), 0 2px 6px -2px rgb(23 24 27 / 0.12);
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-reveal: var(--ease-out);
   --default-transition-duration: 120ms;
-  --default-transition-timing-function: var(--ease-reveal);
+  --default-transition-timing-function: var(--ease-out);
+
+  --animate-pulse-soft: pulse-soft 1.6s var(--ease-out) infinite;
+  --animate-reveal: reveal 200ms var(--ease-out);
+
+  @keyframes pulse-soft {
+    50% {
+      opacity: 0.5;
+    }
+  }
+  @keyframes reveal {
+    from {
+      opacity: 0;
+      transform: translateX(-4px);
+    }
+  }
 }
 
 @theme inline {
@@ -47,15 +76,18 @@
   --color-field-verified: var(--field-verified);
   --color-field-attested: var(--field-attested);
   --color-field-yours: var(--field-yours);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  /* 4 chips, 6 controls (as on the landing), 10 cards and panels, 14 overlays. */
+  --radius-sm: calc(var(--radius) - 6px);
+  --radius-md: calc(var(--radius) - 4px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 }
 
 :root {
   --radius: 0.625rem;
+  --duration-state: 120ms;
   --duration-reveal: 200ms;
+  --duration-exit: 150ms;
   --background: #f2f0ea;
   --foreground: #17181b;
   --card: #f2f0ea;
@@ -116,8 +148,15 @@
   body {
     @apply bg-background font-sans text-foreground antialiased;
   }
+  ::selection {
+    @apply bg-vermilion text-graphite;
+  }
+  :root {
+    scrollbar-color: var(--color-warm-gray) var(--background);
+  }
 }
 
+/* Reduced motion: nothing moves; state changes are instant and stay visible. */
 @media (prefers-reduced-motion: reduce) {
   *,
   ::before,

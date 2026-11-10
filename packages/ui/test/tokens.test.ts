@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
-import { brand, type Mode, themes } from "../src/tokens.ts";
+import { brand, type Mode, motion, radius, themes } from "../src/tokens.ts";
 
 const css = readFileSync(new URL("../src/styles/globals.css", import.meta.url), "utf8");
 
@@ -59,6 +59,30 @@ describe("globals.css mirrors tokens.ts", () => {
     [".dark", "dark"],
   ] as const)("%s holds the %s theme", (selector, mode) => {
     expect(declarations(selector)).toEqual(themes[mode]);
+  });
+});
+
+describe("motion and radius tokens", () => {
+  /** The value of `--name` in the CSS, from its first declaration. */
+  const value = (name: string) => css.match(new RegExp(`--${name}:\\s*([^;]+);`))?.[1]?.trim();
+
+  test("motion in globals.css equals tokens.ts", () => {
+    for (const [name, v] of Object.entries(motion)) expect(value(name), name).toBe(v);
+  });
+
+  test("radius steps: 4 chips, 6 controls, 10 cards, 14 overlays", () => {
+    const base = Number.parseFloat(value("radius") ?? "") * 16;
+    const offset = (step: string) => {
+      const m = value(`radius-${step}`)?.match(/calc\(var\(--radius\) ([+-]) (\d+)px\)/);
+      return m ? (m[1] === "-" ? -1 : 1) * Number(m[2]) : 0;
+    };
+    for (const [step, px] of Object.entries(radius)) expect(base + offset(step), step).toBe(px);
+  });
+
+  test("reduced motion stops every animation and transition", () => {
+    const block = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
+    expect(block).toMatch(/animation-duration:\s*0\.01ms !important/);
+    expect(block).toMatch(/transition-duration:\s*0\.01ms !important/);
   });
 });
 
