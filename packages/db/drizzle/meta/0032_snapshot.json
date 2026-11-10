@@ -1,5 +1,5 @@
 {
-  "id": "f73e91fe-d226-4af5-9247-dfab875e7104",
+  "id": "bf7c2348-3249-4249-a251-9763c1247144",
   "prevId": "a736d8be-350e-4acb-8f0d-4019896eaa95",
   "version": "7",
   "dialect": "postgresql",
@@ -3258,6 +3258,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "mandates_operator_agent_id_idx": {
+          "name": "mandates_operator_agent_id_idx",
+          "columns": [
+            {
+              "expression": "operator_agent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -3889,6 +3904,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "premium_bps": {
+          "name": "premium_bps",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
         "lease_until": {
           "name": "lease_until",
           "type": "timestamp with time zone",
@@ -3909,12 +3930,6 @@
         },
         "c1_proof": {
           "name": "c1_proof",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "c1c3_proof": {
-          "name": "c1c3_proof",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
@@ -4092,11 +4107,63 @@
           "name": "purchases_paypal_ref_salt_len",
           "value": "octet_length(\"purchases\".\"paypal_ref_salt\") = 32"
         },
+        "purchases_premium_bps_range": {
+          "name": "purchases_premium_bps_range",
+          "value": "\"purchases\".\"premium_bps\" between 0 and 10000"
+        },
         "purchases_capture_seq_range": {
           "name": "purchases_capture_seq_range",
           "value": "\"purchases\".\"capture_seq\" between 1 and 99"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.risk_calibrations": {
+      "name": "risk_calibrations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "char(26)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "body": {
+          "name": "body",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "risk_calibrations_created_at_idx": {
+          "name": "risk_calibrations_created_at_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.tee_signatures": {
