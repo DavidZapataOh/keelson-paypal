@@ -5,6 +5,7 @@ import {
   keelsonReserveAbi,
   keelsonValidationRegistryAbi,
   verdictVerifierAbi,
+  violationBondPoolAbi,
 } from "@keelson/chain";
 import { type Abi, type Address, parseAbi } from "viem";
 import type { ChainId } from "./chains.ts";
@@ -34,6 +35,7 @@ export const ALLOWLIST = {
   VerdictVerifier: ["reportEquivocation"],
   KeelsonValidationRegistry: ["recordCountersign", "recordOutcome"],
   KeelsonReputationReporter: ["rateCoverage"],
+  ViolationBondPool: ["payViolation", "claim", "completeWithdrawal"],
   PYUSD: ["transferWithAuthorization"],
   ReputationRegistry: ["giveFeedback"],
 } as const;
@@ -62,6 +64,7 @@ export const ABIS = {
   VerdictVerifier: verdictVerifierAbi,
   KeelsonValidationRegistry: keelsonValidationRegistryAbi,
   KeelsonReputationReporter: keelsonReputationReporterAbi,
+  ViolationBondPool: violationBondPoolAbi,
   // PaxosTokenV2's EIP-3009 transfer in its `bytes signature` form.
   PYUSD: parseAbi([
     "function transferWithAuthorization(address from, address to, uint256 value, uint256 validAfter, uint256 validBefore, bytes32 nonce, bytes signature)",

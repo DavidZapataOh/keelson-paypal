@@ -1,10 +1,14 @@
 import {
+  type Coverage,
+  deploymentsFor,
   iPYUSDAbi,
   keelsonBondVaultAbi,
   keelsonReserveAbi,
+  mandateViolationCourtAbi,
   payWarrantyArgs,
   slashArgs,
   type Verdict,
+  violationBondPoolAbi,
 } from "@keelson/chain";
 import type { CurrencyCode } from "@keelson/core";
 import {
@@ -34,6 +38,7 @@ import {
 import { EXTERNAL, type Relayer, RelayerError, type TxRecord } from "@keelson/relayer";
 import type { Logger } from "pino";
 import {
+  decodeFunctionData,
   type Hex,
   hexToBytes,
   isAddressEqual,
@@ -153,6 +158,9 @@ export async function settleDispute(deps: SettleDeps, disputeId: string): Promis
       row.liable === 3 ? "MERCHANT_LIABLE" : "DEFENDED",
     );
     return { status: "none", disputeId };
+  }
+  if (row.outcome === null && row.liable === OPERATOR && deps.relayer) {
+    if (await fromPool(deps, deps.relayer, row)) row = (await load(deps.db, disputeId)) as Row;
   }
   if (row.outcome === null || row.outcome === "queued") {
     if (!deps.relayer) return { status: "pending", disputeId, waiting: "chain" };
@@ -360,6 +368,224 @@ async function record(
   return outcome === "queued"
     ? { status: "pending", disputeId: row.disputeId, waiting: "veto" }
     : undefined;
+}
+
+/** Refusals of the pool that leave the verdict to the vault's slash. */
+const POOL_DECLINES = new Set([
+  "AlreadyPaid",
+  "ConvictedTooLate",
+  "NoDeposit",
+  "NotConvicted",
+  "NotCovered",
+  "NothingLeft",
+  "UnknownCourt",
+]);
+
+/**
+ * Pays an operator's fault from its `ViolationBondPool` deposit when `MandateViolationCourt`
+ * convicted the coverage: the pool pays the merchant on the conviction alone, with no verdict.
+ * Only when the pool pays exactly what the verdict says, to the verdict's payee, on the `pyusd`
+ * rail; otherwise the verdict goes to the vault's slash. A coverage the pool already paid is the
+ * pool's, never slashed again. Returns whether the pool settled it.
+ */
+async function fromPool(deps: SettleDeps, relayer: Relayer, row: Row): Promise<boolean> {
+  const d = deploymentsFor(CHAIN_ID);
+  const { ViolationBondPool: pool, MandateViolationCourt: court } = d;
+  if (!pool || !court || row.rail !== "pyusd") return false;
+  const coverageId = row.message.coverageId as Hex;
+  const owed = BigInt(row.message.amount as string);
+  const locked = await lockedCoverage(deps, row.purchaseId);
+  if (!locked) return false;
+  const { coverage, block } = locked;
+  const read = deps.chain.client;
+  const paid = () => poolPayment(deps, pool, coverageId, block);
+  if (
+    await read.readContract({
+      address: pool,
+      abi: violationBondPoolAbi,
+      functionName: "paid",
+      args: [coverageId],
+    })
+  ) {
+    return settledByPool(deps, row, await paid(), owed);
+  }
+  const [code] = await read.readContract({
+    address: court,
+    abi: mandateViolationCourtAbi,
+    functionName: "violations",
+    args: [coverageId],
+  });
+  if (code === 0 || !isAddressEqual(coverage.merchant, row.message.payee as Hex)) return false;
+  const [slashed, warranted, deposit] = await Promise.all([
+    read.readContract({
+      address: d.KeelsonBondVault as Hex,
+      abi: keelsonBondVaultAbi,
+      functionName: "slashed",
+      args: [coverageId],
+    }),
+    read.readContract({
+      address: d.KeelsonReserve as Hex,
+      abi: keelsonReserveAbi,
+      functionName: "warranted",
+      args: [coverageId],
+    }),
+    read.readContract({
+      address: pool,
+      abi: violationBondPoolAbi,
+      functionName: "deposits",
+      args: [coverage.agentId],
+    }),
+  ]);
+  // `payViolation` pays all the coverage has left, or nothing.
+  const left = coverage.amount - BigInt(slashed) - warranted;
+  if (left !== owed || deposit.balance < left) return false;
+  let tx: TxRecord | undefined;
+  try {
+    tx = await confirmed(deps, row, () =>
+      relayer.submit({
+        chainId: CHAIN_ID,
+        contract: "ViolationBondPool",
+        functionName: "payViolation",
+        args: [court, coverage],
+        key: `ViolationBondPool.payViolation:${coverageId}`,
+      }),
+    );
+  } catch (err) {
+    const name =
+      err instanceof RelayerError
+        ? (err.detail as { error?: { name?: string } } | undefined)?.error?.name
+        : err instanceof Reverted
+          ? err.reason
+          : undefined;
+    if (name !== "AlreadyPaid" && name && POOL_DECLINES.has(name)) {
+      deps.log.warn({ disputeId: row.disputeId, reason: name }, "the violation pool did not pay");
+      return false;
+    }
+    if (name !== "AlreadyPaid") throw err;
+  }
+  return settledByPool(
+    deps,
+    row,
+    tx ? await receiptPayment(deps, tx, coverageId) : await paid(),
+    owed,
+  );
+}
+
+/** The pool's payment of a coverage, from the receipt of the transaction that made it. */
+async function receiptPayment(
+  deps: SettleDeps,
+  tx: TxRecord,
+  coverageId: Hex,
+): Promise<PoolPayment | undefined> {
+  const hash = tx.hash as Hex;
+  const receipt = await deps.chain.client.waitForTransactionReceipt({
+    hash,
+    timeout: RECEIPT_WAIT_MS,
+  });
+  const events = parseEventLogs({
+    abi: violationBondPoolAbi,
+    logs: receipt.logs,
+    eventName: ["ViolationPaid", "PayoutFailed"],
+  }).filter((e) => e.args.coverageId === coverageId);
+  const paid = events.find((e) => e.eventName === "ViolationPaid");
+  if (paid?.eventName !== "ViolationPaid") return undefined;
+  return {
+    amount: paid.args.amount,
+    failed: events.some((e) => e.eventName === "PayoutFailed"),
+    txHash: hash,
+  };
+}
+
+interface PoolPayment {
+  amount: bigint;
+  failed: boolean;
+  txHash: Hex;
+}
+
+/** The pool's payment of a coverage, from its `ViolationPaid` log after the coverage's lock. */
+async function poolPayment(
+  deps: SettleDeps,
+  pool: Hex,
+  coverageId: Hex,
+  fromBlock: bigint,
+): Promise<PoolPayment | undefined> {
+  const [paid] = await deps.chain.client.getContractEvents({
+    address: pool,
+    abi: violationBondPoolAbi,
+    eventName: "ViolationPaid",
+    args: { coverageId },
+    fromBlock,
+  });
+  if (!paid?.transactionHash) return undefined;
+  const [failed] = await deps.chain.client.getContractEvents({
+    address: pool,
+    abi: violationBondPoolAbi,
+    eventName: "PayoutFailed",
+    args: { coverageId },
+    fromBlock: paid.blockNumber,
+    toBlock: paid.blockNumber,
+  });
+  return {
+    amount: paid.args.amount as bigint,
+    failed: failed !== undefined,
+    txHash: paid.transactionHash,
+  };
+}
+
+/**
+ * Records that the pool settled the verdict, when it paid at least the verdict's amount; a smaller
+ * payment leaves the verdict to the vault's slash. The pool paid, so a payment whose log cannot be
+ * read yet throws, to be retried: it never falls through to a second payment. Returns whether it
+ * recorded.
+ */
+async function settledByPool(
+  deps: SettleDeps,
+  row: Row,
+  payment: PoolPayment | undefined,
+  owed: bigint,
+): Promise<boolean> {
+  if (!payment)
+    throw new Error(`the pool paid ${row.message.coverageId} but its log is not readable yet`);
+  if (payment.amount < owed) return false;
+  const outcome = payment.failed ? "claimable" : "paid";
+  const updated = await deps.db
+    .update(verdicts)
+    .set({
+      outcome,
+      paidBy: "violation-pool",
+      txHash: Buffer.from(hexToBytes(payment.txHash)),
+      settledAt: new Date(),
+    })
+    .where(and(eq(verdicts.id, row.id), isNull(verdicts.paidBy), isNull(verdicts.outcome)))
+    .returning({ id: verdicts.id });
+  deps.log.info(
+    { disputeId: row.disputeId, outcome, txHash: payment.txHash, recorded: updated.length > 0 },
+    "dispute settled by the violation pool",
+  );
+  return true;
+}
+
+/** The `Coverage` the vault locked for a purchase and its block, read back from its `lockCoverage` call. */
+async function lockedCoverage(
+  deps: SettleDeps,
+  purchaseId: string,
+): Promise<{ coverage: Coverage; block: bigint } | undefined> {
+  const [p] = await deps.db
+    .select({ hash: purchases.coverageTxHash })
+    .from(purchases)
+    .where(eq(purchases.id, purchaseId));
+  if (!p?.hash) return undefined;
+  const tx = await deps.chain.client.getTransaction({
+    hash: `0x${Buffer.from(p.hash).toString("hex")}`,
+  });
+  try {
+    const call = decodeFunctionData({ abi: keelsonBondVaultAbi, data: tx.input });
+    return call.functionName === "lockCoverage" && tx.blockNumber !== null
+      ? { coverage: call.args[0] as Coverage, block: tx.blockNumber }
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** A relayed call that reverted on chain, with the contract's error. */
