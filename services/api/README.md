@@ -163,11 +163,14 @@ When the operator or Keelson is at fault:
    veto window; the settlement sweeper sends `executeSlash` once it closes. A refusal no retry can
    change (`Expired`, `CoverageNotActive`, `ExceedsCoverage`, `NotAnchored`,
    `WarrantyWindowClosed`, …) is stored as `failed` with the error's name.
-2. **Keelson's treasury pays what the chain refused** when the verdict still holds: refused with
-   `Expired`, `WarrantyWindowClosed`, `CoverageNotActive` or `InsufficientReserve`, the treasury pays
-   the verdict's amount, and only while the coverage (less what it already paid, on chain or from
-   the treasury) still covers it. On the `pyusd` rail it is the treasury's EIP-3009
-   `transferWithAuthorization` to the payee, relayed with the verdict's digest as its nonce, so
+2. **Keelson's treasury pays what the chain refused** when the verdict still holds: refused for
+   good with `Expired`, `WarrantyWindowClosed` or `CoverageNotActive`, a 2-of-2 verdict whose
+   checkpoint is anchored, whose coverage exists for its agent and whose dispute PayPal has not
+   resolved is paid its amount by the treasury, only while the coverage (less what it already paid,
+   on chain or from the treasury, checked under a per-coverage lock) still covers it.
+   `InsufficientReserve` is left to the chain, which pays once the reserve is refilled. On the
+   `pyusd` rail it is the treasury's EIP-3009 `transferWithAuthorization` to the payee's payout
+   address (or the payee), relayed with the verdict's digest as its nonce, so
    PYUSD moves it once; on the `paypal` rail it is the Payout of step 4. When the operator was at
    fault, the relayer rates it `-1.00` (`"keelson"`/`"uncollected"`) on the ERC-8004 Reputation
    registry. The settlement reads `paid_by: "treasury"` and the purchase moves to `WARRANTY_PAID`.
