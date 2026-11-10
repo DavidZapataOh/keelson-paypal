@@ -107,8 +107,8 @@ beforeAll(async () => {
   covered.push(...rows.map((r) => r.id));
 });
 
-/** A verdict with the operator at fault, paid from its bond. */
-async function slash(purchaseId: string): Promise<void> {
+/** A verdict with `liable` at fault (1, the operator, paid from its bond; 2, Keelson). */
+async function verdict(purchaseId: string, liable: 1 | 2 = 1): Promise<void> {
   const disputeId = `PP-D-${randomBytes(6).toString("hex")}`;
   await testDb.insert(disputes).values({
     id: disputeId,
@@ -116,20 +116,20 @@ async function slash(purchaseId: string): Promise<void> {
     state: "RESOLVED",
     reason: "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED",
     ruleId: 61,
-    liable: 1,
+    liable,
     raw: {},
   });
   await testDb.insert(verdicts).values({
     id: ulid(),
     disputeId,
-    liable: 1,
+    liable,
     ruleId: 61,
     amountMinor: 5n,
     currency: "USD",
     payee: "0x467D2beBb479D9B80Ab1c461243E05A2b82387d8",
     digest: randomBytes(32),
     chainId: 421614,
-    message: { ruleId: "61", liable: "1" },
+    message: { ruleId: "61", liable: String(liable) },
     signatures: [],
     facts: {},
     outcome: "paid",
@@ -143,6 +143,7 @@ type Body = ReturnType<typeof grade> & {
   computedAt: string;
   calibration: { id: string; campaigns: string[] };
   evidence: { coverages: number; incidents: Record<string, number> };
+  reserve: { warranties: number };
 };
 
 async function read(): Promise<Body> {
@@ -184,8 +185,9 @@ test("an operator's grade is the model on its recorded coverages under the red t
   expect(body.calibration).toMatchObject({ id, campaigns: ["01M72AKHZ75KJSNS17AA9BJTJY"] });
   expect(body.evidence).toEqual({
     coverages: recorded.released,
-    incidents: { total: 0, slashes: 0, warranties: 0, uncollected: 0, pending: 0 },
+    incidents: { total: 0, slashes: 0, pool: 0, uncollected: 0, pending: 0 },
   });
+  expect(body.reserve).toEqual({ warranties: 0 });
   // Unchanged record, unchanged grade: served without recomputing.
   expect((await read()).computedAt).toBe(body.computedAt);
 });
@@ -216,7 +218,7 @@ test("a verdict against the operator updates its grade, live", async () => {
     }
     if (grades.length === 1 && !slashed) {
       slashed = true;
-      await slash(covered[0] as string);
+      await verdict(covered[0] as string);
     }
   }
   await reader.cancel();
@@ -228,10 +230,21 @@ test("a verdict against the operator updates its grade, live", async () => {
   expect(after).toMatchObject((await expected(1, [])).g);
 });
 
-test("the nightly calibration reads the verdicts' loss ratios", async () => {
+test("Keelson's own faults go to the reserve's figure, not to the operator's grade", async () => {
+  const before = await read();
+  await verdict(covered[1] as string, 2);
+  const after = await read();
+  expect(after.computedAt).not.toBe(before.computedAt);
+  expect(after.reserve).toEqual({ warranties: 1 });
+  expect(after.evidence).toEqual(before.evidence);
+  expect(after.frequency).toEqual(before.frequency);
+  expect(after.premium).toEqual(before.premium);
+});
+
+test("the nightly calibration reads the operator faults' loss ratios", async () => {
   const c = await calibrate(testDb);
   expect(c?.prior.campaigns).toEqual(["01M72AKHZ75KJSNS17AA9BJTJY"]);
-  // The slash paid 5 cents of the first covered purchase.
+  // The slash paid 5 cents of the first covered purchase; the warranty is Keelson's.
   expect(c?.lossRatios).toEqual([Math.min(1, 5 / (recorded.amountsMinor[0] as number))]);
   const body = await read();
   expect(body.calibration.id).toBe(c?.id);

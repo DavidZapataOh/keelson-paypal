@@ -2660,22 +2660,35 @@ components:
                   type: integer
                 slashes:
                   type: integer
-                warranties:
+                  description: Paid from the operator's bond.
+                pool:
                   type: integer
+                  description: Paid from its `ViolationBondPool` deposit.
                 uncollected:
                   type: integer
+                  description: Paid by Keelson's treasury instead.
                 pending:
                   type: integer
-                  description: Verdicts not settled yet.
+                  description: Not settled yet.
               required:
                 - total
                 - slashes
-                - warranties
+                - pool
                 - uncollected
                 - pending
+              description: "Verdicts with the operator at fault: what the grade counts."
           required:
             - coverages
             - incidents
+        reserve:
+          type: object
+          properties:
+            warranties:
+              type: integer
+          required:
+            - warranties
+          description: Keelson's own faults on the operator's coverages, paid by its
+            reserve. Not in the grade.
         frequency:
           type: object
           properties:
@@ -2766,6 +2779,7 @@ components:
         - computedAt
         - calibration
         - evidence
+        - reserve
         - frequency
         - severity
         - loss
@@ -2774,9 +2788,9 @@ components:
         - computeMs
       description: An operator's trust grade, premium and minimum bond. Amounts are US
         cents. The red-team campaigns set the prior of the incident rate; the
-        operator's covered purchases and the verdicts against them update it in
-        closed form; a seeded Monte Carlo of the aggregate loss over the next 30
-        days prices the premium and the bond.
+        operator's covered purchases and the verdicts with it at fault update it
+        in closed form; a seeded Monte Carlo of the aggregate loss over the next
+        30 days prices the premium and the bond.
     Feedback:
       type: object
       properties:

@@ -26,8 +26,8 @@ import {
 import { ulid } from "ulid";
 import { ledgerLines } from "./routes/redteam.ts";
 
-/** Verdicts with the operator (1) or Keelson (2) at fault: what a coverage pays. */
-const AT_FAULT = [1, 2];
+/** A verdict with the operator at fault; Keelson's own faults (2) are its reserve's to price. */
+const OPERATOR = 1;
 /** Purchases whose coverage was locked and not released by a failure. */
 const COVERED = [
   "COVERED",
@@ -76,7 +76,7 @@ export async function calibrate(db: Db): Promise<Calibration | undefined> {
     .from(verdicts)
     .innerJoin(disputes, eq(disputes.id, verdicts.disputeId))
     .innerJoin(purchases, eq(purchases.id, disputes.purchaseId))
-    .where(inArray(verdicts.liable, AT_FAULT))
+    .where(eq(verdicts.liable, OPERATOR))
     .orderBy(desc(verdicts.createdAt))
     .limit(MAX_SAMPLE);
   const calibration = {
@@ -117,14 +117,17 @@ interface OperatorGrade extends Grade {
   };
   evidence: {
     coverages: number;
+    /** Verdicts with the operator at fault: what the grade counts. */
     incidents: {
       total: number;
       slashes: number;
-      warranties: number;
+      pool: number;
       uncollected: number;
       pending: number;
     };
   };
+  /** Keelson's own faults on the operator's coverages, paid by its reserve: not in the grade. */
+  reserve: { warranties: number };
   computeMs: number;
 }
 
@@ -142,16 +145,18 @@ async function fingerprint(db: Db, agentId: bigint) {
       incidents: sql<{
         total: number;
         slashes: number;
-        warranties: number;
+        pool: number;
         uncollected: number;
         pending: number;
+        warranties: number;
         last: string | null;
       }>`(select json_build_object(
-        'total', count(*),
-        'slashes', count(*) filter (where ${verdicts.liable} = 1 and ${verdicts.paidBy} in ('chain', 'violation-pool')),
-        'warranties', count(*) filter (where ${verdicts.liable} = 2),
+        'total', count(*) filter (where ${verdicts.liable} = 1),
+        'slashes', count(*) filter (where ${verdicts.liable} = 1 and ${verdicts.paidBy} = 'chain'),
+        'pool', count(*) filter (where ${verdicts.liable} = 1 and ${verdicts.paidBy} = 'violation-pool'),
         'uncollected', count(*) filter (where ${verdicts.liable} = 1 and ${verdicts.paidBy} = 'treasury'),
-        'pending', count(*) filter (where ${verdicts.paidBy} is null),
+        'pending', count(*) filter (where ${verdicts.liable} = 1 and ${verdicts.paidBy} is null),
+        'warranties', count(*) filter (where ${verdicts.liable} = 2),
         'last', max(greatest(${verdicts.createdAt}, ${verdicts.settledAt}))
       ) from ${verdicts}
         join ${disputes} on ${disputes.id} = ${verdicts.disputeId}
@@ -230,7 +235,7 @@ export async function gradeOf(db: Db, agentId: bigint): Promise<GradeResult> {
     `${agentId}:${calibration.id}`,
   );
   const computeMs = Math.round((performance.now() - t) * 10) / 10;
-  const { last: _last, ...incidents } = f.incidents;
+  const { last: _last, warranties, ...incidents } = f.incidents;
   const out: OperatorGrade = {
     v: "keelson.grade/1",
     agentId: String(agentId),
@@ -243,6 +248,7 @@ export async function gradeOf(db: Db, agentId: bigint): Promise<GradeResult> {
       kappa: calibration.prior.kappa,
     },
     evidence: { coverages: f.coverages, incidents },
+    reserve: { warranties },
     ...g,
     computeMs,
   };
