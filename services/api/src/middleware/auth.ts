@@ -2,6 +2,7 @@ import { isAPIError } from "better-auth/api";
 import { requestToResourceInput, verifyAccessTokenRequest } from "better-auth/oauth2";
 import type { Context, MiddlewareHandler } from "hono";
 import { type Auth, apiAudience } from "../auth.ts";
+import { judgeExpired } from "../judge.ts";
 import { problem } from "../problem.ts";
 
 declare module "hono" {
@@ -36,7 +37,11 @@ export function authenticate(auth: Auth, baseURL: string): MiddlewareHandler {
       }
     } else {
       const session = await auth.api.getSession({ headers: c.req.raw.headers });
-      if (session) c.set("principal", { kind: "user", subject: session.user.id });
+      // A judge's tenant ends 12 hours after it opened, whatever its sessions say.
+      const judge = session?.user as { isAnonymous?: boolean | null; createdAt: Date } | undefined;
+      if (session && !(judge?.isAnonymous && judgeExpired(judge.createdAt))) {
+        c.set("principal", { kind: "user", subject: session.user.id });
+      }
     }
     await next();
   };

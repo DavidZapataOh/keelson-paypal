@@ -239,6 +239,13 @@
       "when": 1794307334241,
       "tag": "0033_merchant_wallet",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1794310645085,
+      "tag": "0034_judge_mode",
+      "breakpoints": true
     }
   ]
 }
