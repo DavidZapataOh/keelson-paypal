@@ -9,7 +9,8 @@ import type { LiveStore } from "./live.ts";
 export const ALFRED: LiveStore = {
   origin: "https://www.alfred.com",
   merchant: "mrc_alfred",
-  category: "gpt:887",
+  // Media: the mandate's category table holds the top-level categories (Sheet Music is gpt:887).
+  category: "gpt:783",
   // Digital sheet music is final sale.
   returnDays: 0,
   returnsFree: false,
