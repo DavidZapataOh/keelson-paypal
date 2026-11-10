@@ -3,13 +3,13 @@ import { readdirSync, readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { chainTxs } from "@keelson/db";
+import { chainTxs, eq } from "@keelson/db";
 import { createRelayer } from "@keelson/relayer";
 import { pino } from "pino";
 import { ulid } from "ulid";
 import { bytesToHex, createPublicClient, type PublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
-import { afterEach, beforeAll, describe, expect, test } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "vitest";
 import {
   ARBITRUM_SEPOLIA_PUBLIC_RPC,
   arbitrumSepoliaRpcUrls,
@@ -89,12 +89,17 @@ describe("the coverage release sweep", { timeout: 60_000 }, () => {
     });
   };
 
+  const key = `KeelsonBondVault.lockCoverage:${bytesToHex(randomBytes(32))}`;
+  afterAll(async () => {
+    await testDb.delete(chainTxs).where(eq(chainTxs.key, key));
+  });
+
   beforeAll(async () => {
     // A lock whose coverage the vault never held: the sweep reads it and has nothing to release.
     await testDb.insert(chainTxs).values({
       id: ulid(),
       chainId: arbitrumSepolia.id,
-      key: `KeelsonBondVault.lockCoverage:${bytesToHex(randomBytes(32))}`,
+      key,
       contract: "KeelsonBondVault",
       function: "lockCoverage",
       sender: Buffer.alloc(20),
@@ -145,7 +150,16 @@ test("every Arbitrum Sepolia transport goes through the shared fallback", () => 
       else if (/\.(ts|tsx|mts)$/.test(entry.name)) {
         if (allowed.has(relative(root, path))) continue;
         const text = readFileSync(path, "utf8");
-        if (direct.some((re) => re.test(text))) offenders.push(relative(root, path));
+        // An alias of the env URL handed alone to `http` or to the Alibi chain reader.
+        const aliases = [
+          ...text.matchAll(/(\w+)\s*=\s*process\.env\.ARBITRUM_SEPOLIA_RPC_URL\b/g),
+        ].map((m) => m[1]);
+        const aliased = aliases.some((name) =>
+          new RegExp(`(?<!fallback\\(\\[)\\bhttp\\(${name}\\)|421614:\\s*${name}\\s*[},]`).test(
+            text,
+          ),
+        );
+        if (aliased || direct.some((re) => re.test(text))) offenders.push(relative(root, path));
       }
     }
   };

@@ -1,9 +1,11 @@
+import { arbitrumSepolia } from "viem/chains";
 import { type ChainAnswer, type ChainReader, createChainReader } from "../src/verify/index.ts";
 
 const rpc = process.env.ARBITRUM_SEPOLIA_RPC_URL;
 
 /** The chain reader of the live tests: the CI's RPC when it is set, else the public defaults. */
-export const liveChain = (): ChainReader => createChainReader(rpc ? { rpc: { 421614: rpc } } : {});
+export const liveChain = (): ChainReader =>
+  createChainReader(rpc ? { rpc: { 421614: [rpc, ...arbitrumSepolia.rpcUrls.default.http] } } : {});
 
 const keyOf = (v: unknown) =>
   JSON.stringify(v, (_k, x: unknown) => (typeof x === "bigint" ? x.toString() : x));
