@@ -48,7 +48,7 @@ import type { TeeConfig } from "../tee/signers.ts";
 import { rootKey } from "../zk/c3.ts";
 
 /** The item types an Alibi discloses: the PII-redacted public ones. */
-const DISCLOSED = ["api.product", "api.cart", "channel3.observation"] as const;
+const DISCLOSED = ["api.product", "api.cart", "channel3.observation", "tlsn.web_fact"] as const;
 const ENV: Readonly<Record<number, "s" | "p">> = { 421614: "s", 42161: "p" };
 const KIND = { 1: "tdx", 2: "nitro" } as const;
 
@@ -343,6 +343,7 @@ export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<vo
     },
     manifest: { public: evidence.manifest, disclosures: evidence.disclosures },
     ...(evidence.observation ? { channel3_observation: evidence.observation } : {}),
+    ...(evidence.webFact ? { web_fact: evidence.webFact } : {}),
     ...(c1 || c3
       ? {
           zk: {
@@ -398,7 +399,10 @@ export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<vo
   deps.log.info({ purchaseId, bytes: bytes.length }, "alibi issued");
 }
 
-/** The public manifest, the disclosures of the public items and the Channel3 observation. */
+/**
+ * The public manifest, the disclosures of the public items, the Channel3 observation and the
+ * WebFact.
+ */
 async function disclosures(db: Db, root: Buffer) {
   const [b] = await db.select().from(evidenceBundles).where(eq(evidenceBundles.root, root));
   if (!b) throw new AlibiIssueError("data", "the purchase's evidence bundle is not stored");
@@ -410,6 +414,7 @@ async function disclosures(db: Db, root: Buffer) {
       mediaType: evidenceItems.mediaType,
       contentHash: evidenceItems.contentHash,
       salt: evidenceItems.salt,
+      bytes: evidenceItems.bytes,
     })
     .from(evidenceItems)
     .where(and(eq(evidenceItems.root, root), inArray(evidenceItems.type, [...DISCLOSED])))
@@ -433,11 +438,14 @@ async function disclosures(db: Db, root: Buffer) {
       .where(eq(channel3Observations.contentHash, c3.contentHash));
     observation = o ? json(o.document) : undefined;
   }
+  const wf = items.find((i) => i.type === "tlsn.web_fact");
+  const webFact = wf?.bytes ? json(JSON.parse(Buffer.from(wf.bytes).toString())) : undefined;
   return {
     root,
     manifest: manifest as AlibiBundle["manifest"]["public"],
     disclosures: out,
     observation,
+    webFact,
     opened: items.map((i) => i.index),
   };
 }
@@ -455,6 +463,7 @@ export async function loadAlibi(db: Db, purchaseId: string): Promise<AlibiBundle
       leafHash: alibis.leafHash,
       captureId: purchases.paypalCaptureId,
       invoiceId: purchases.invoiceId,
+      transactionId: purchases.paypalTransactionId,
     })
     .from(alibis)
     .innerJoin(purchases, eq(purchases.id, alibis.purchaseId))
@@ -480,6 +489,7 @@ export async function loadAlibi(db: Db, purchaseId: string): Promise<AlibiBundle
       ...core.paypal,
       ...(row.captureId ? { capture_id: row.captureId } : {}),
       ...(row.invoiceId ? { invoice_id: row.invoiceId } : {}),
+      ...(row.transactionId ? { transaction_id: row.transactionId } : {}),
     },
   });
 }

@@ -1,4 +1,5 @@
 import { type Cart, cartHash, toHex } from "@keelson/core";
+import { buildManifest, itemRank, type SealedItem } from "@keelson/evidence";
 import { type Capture, captureEvidence } from "@keelson/evidence/capture";
 import { closeMandate } from "@keelson/mandate";
 import { ulid } from "ulid";
@@ -104,6 +105,10 @@ export async function checkout(o: {
   observation: string;
   /** The age recipient that seals unredacted originals (`KEELSON_EVIDENCE_AGE_RECIPIENT`). */
   recipient: string;
+  /** More public items for the evidence, read from the capture: observations of the product. */
+  observe?: (capture: Capture) => Promise<SealedItem[]>;
+  /** The buyer pays at this store's own checkout; Keelson logs the purchase only. */
+  live?: { store: string };
 }): Promise<CheckoutResult> {
   const timings: Record<string, number> = {};
   let t = performance.now();
@@ -115,6 +120,13 @@ export async function checkout(o: {
     recipient: o.recipient,
   });
   timings.capture = performance.now() - t;
+  if (o.observe) {
+    t = performance.now();
+    capture.items.push(...(await o.observe(capture)));
+    capture.items.sort((a, b) => itemRank(a.type) - itemRank(b.type));
+    capture.manifest = buildManifest(capture.items);
+    timings.observe = performance.now() - t;
+  }
 
   t = performance.now();
   const stored = await post(o.keelson, "/v1/evidence", o.headers, {
@@ -153,6 +165,7 @@ export async function checkout(o: {
       },
     },
     evidenceRoot,
+    ...(o.live ? { live: o.live } : {}),
   });
   timings.countersign = performance.now() - t;
   return {

@@ -119,6 +119,22 @@ const Body = z
     evidenceRoot: Hex32.openapi({
       description: "The root of the evidence stored with `POST /v1/evidence` for this mandate.",
     }),
+    live: z
+      .strictObject({
+        store: z
+          .url({ protocol: /^https$/ })
+          .max(MAX_STRING)
+          .refine(
+            (s) => new URL(s).origin === s,
+            "The store is an origin, such as https://shop.example.",
+          )
+          .openapi({ description: "The store's origin." }),
+      })
+      .optional()
+      .openapi({
+        description:
+          "Only when the buyer pays at the store's own checkout with their own PayPal account: Keelson countersigns and logs the purchase and issues its Alibi, and neither covers nor captures it. The agent's pay click waits for an ALLOW; the agent then records PayPal's transaction id with `PUT /v1/purchases/{id}/paypal-transaction`.",
+      }),
     repeatOf: z.string().length(26).optional().openapi({
       description:
         "Only when the user asked to buy the same cart again: the id of the latest purchase of this cart under the mandate. Not needed once that purchase was denied or failed before capture, or was captured more than ten minutes ago. A retry after a lost answer never sends it: the `409 purchase-exists` answer names the purchase already made.",
@@ -722,6 +738,7 @@ export function registerCountersign(
             paypalOrderId: orderId,
             paypalAuthorizationId: body.authorizationId,
             paypalRefSalt: randomBytes(32),
+            ...(body.live ? { liveStore: body.live.store } : {}),
             ...(c.var.principal?.kind === "client" ? { clientId: c.var.principal.subject } : {}),
           })
           .onConflictDoNothing({ target: purchases.id })
