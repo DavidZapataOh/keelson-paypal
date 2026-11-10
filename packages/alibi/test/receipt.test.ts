@@ -36,6 +36,7 @@ describe("receipts of real log leaves", () => {
         "anchor.tx": "pending",
         timestamps: "pending",
         "zk.c1": "absent",
+        "zk.c3": "absent",
         "evidence.manifest": "undisclosed",
         "paypal.ids": "undisclosed",
         "policy.replay": "undisclosed",

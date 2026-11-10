@@ -35,5 +35,7 @@
   "c2a_verify": 700000,
   "c2a_proveViolation": 950000,
   "pool_payViolation": 160000,
-  "c3_verify": 750000
+  "c3_verify": 750000,
+  "userSet_publish": 62000,
+  "userSet_verify": 760000
 }

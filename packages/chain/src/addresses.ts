@@ -26,6 +26,7 @@ export const addresses: Record<ChainId, Readonly<Record<string, Address>>> = {
     MandateViolationVerifier: "0x0e82f941A3F75FEe528753B24dBE16964eECAA48",
     NitroValidator: "0x3F09DAc4C09620329a0b292AF54B6f03378Fd74B",
     P384Verifier: "0x6fb8c2c0173425b8747900948E50d1f7A7baB3A2",
+    RegisteredUserSet: "0x1Ad48b9ff3A87Adec54855454c83029f66f2A0E5",
     TimelockController: "0xEDD241A9B8cf55765eDA7182483351555cf3E07e",
     VerdictVerifier: "0xe16E8767EC1DA59Ef0D9Bc7851637E4D22352d96",
     ViolationBondPool: "0x6187AC242Ef06884a2fC83bd8a6849379Ed1EF37",

@@ -3,6 +3,7 @@ pragma solidity 0.8.38;
 
 import {KeelsonBondVault} from "../src/KeelsonBondVault.sol";
 import {KeelsonReserve} from "../src/KeelsonReserve.sol";
+import {RegisteredUserSet} from "../src/RegisteredUserSet.sol";
 import {VerdictVerifier} from "../src/VerdictVerifier.sol";
 import {KeelsonRoles} from "../src/access/KeelsonRoles.sol";
 import {ForkTest} from "./utils/Fork.sol";
@@ -72,6 +73,19 @@ contract RolesLiveTest is ForkTest {
         assertEq(VerdictVerifier(verifier).authority(), address(manager), chain);
         assertEq(KeelsonBondVault(vault).authority(), address(manager), chain);
         assertEq(KeelsonReserve(reserve).authority(), address(manager), chain);
+
+        if (vm.keyExistsJson(json, ".contracts.RegisteredUserSet")) {
+            address users = json.readAddress(".contracts.RegisteredUserSet");
+            address relayer = json.readAddress(".relayer");
+            _assertRole(manager, users, RegisteredUserSet.publish.selector, KeelsonRoles.PUBLISHER_ROLE, chain);
+            _assertRole(manager, users, RegisteredUserSet.revoke.selector, KeelsonRoles.GUARDIAN_ROLE, chain);
+            _assertMember(manager, KeelsonRoles.PUBLISHER_ROLE, relayer, 0, chain);
+            for (uint256 j; j < outsiders.length; ++j) {
+                (bool publisher,) = manager.hasRole(KeelsonRoles.PUBLISHER_ROLE, outsiders[j]);
+                assertFalse(publisher, chain);
+            }
+            assertEq(RegisteredUserSet(users).authority(), address(manager), chain);
+        }
     }
 
     function _assertRole(AccessManager manager, address target, bytes4 selector, uint64 role, string memory chain)

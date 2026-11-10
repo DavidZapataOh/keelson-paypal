@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { toBase64 } from "../src/b64.ts";
+import { verifyAlibi } from "../src/verify/index.ts";
+import { OFFLINE } from "../src/verify/report.ts";
 import { c3Statement, RP_ID_HASH, verifyAnonymousMandate, verifyC3 } from "../src/verify/zk.ts";
 
 /** Proofs of the demo mandate's C3 statement, as `circuits/c3/prove.sh` writes them. */
@@ -14,6 +16,9 @@ const read = (type: string) =>
 const statement = JSON.parse(
   readFileSync(new URL("../../mandate/test/vectors/c3.json", import.meta.url), "utf8"),
 ) as { payment: { statement: Record<string, string> } };
+
+import { copy, fixtures } from "./fixtures.ts";
+
 const b64 = (hex: string) => toBase64(Buffer.from(hex.slice(2), "hex"));
 const word = (n: bigint): `0x${string}` => `0x${n.toString(16).padStart(64, "0")}`;
 
@@ -84,5 +89,51 @@ describe("verifyAnonymousMandate", () => {
     expect(await verifyAnonymousMandate({ ...c3, public_inputs: rp }, mandate, registered)).toBe(
       false,
     );
+  });
+});
+
+describe("zk.c3", () => {
+  const f = fixtures[0];
+  if (!f) throw new Error("no fixture");
+  const v = read("payment");
+  const s = statement.payment.statement;
+  const rootTx = `0x${"ab".repeat(32)}`;
+  /** The fixture with the demo mandate's commitment and hash in place of its own. */
+  const bundle = (proof = b64(v.proof)) => {
+    const b = copy(f.bundle);
+    b.tee.countersign.mandateCommitment = s.cm as string;
+    b.tee.countersign.mandateHash = s.mandateHash as string;
+    b.zk = { c3: { proof, public_inputs: v.publicInputs, root_tx: rootTx } };
+    return b;
+  };
+  const check = async (b: ReturnType<typeof bundle>) =>
+    (await verifyAlibi(b)).checks.find((c) => c.id === "zk.c3");
+
+  test("checks the proof offline and leaves the root to the chain", async () => {
+    const c = await check(bundle());
+    expect(c?.status, JSON.stringify(c)).toBe("pending");
+    expect(c?.reason).toBe(OFFLINE);
+    expect(c?.detail).toMatchObject({
+      verifier: "bb.js",
+      user_set_root: v.publicInputs[2],
+      root_tx: rootTx,
+      chain_id: String(f.bundle.tee.domain.chain_id),
+    });
+  });
+
+  test("fails a proof of another mandate", async () => {
+    const b = bundle();
+    b.tee.countersign.mandateHash = word(BigInt(s.mandateHash as string) + 1n);
+    const c = await check(b);
+    expect(c?.status).toBe("fail");
+    expect(c?.reason).toBe("the proof is of another mandate or RP");
+  });
+
+  test("fails a proof that does not verify", async () => {
+    const bytes = Buffer.from(v.proof.slice(2), "hex");
+    bytes[64] = (bytes[64] as number) ^ 1;
+    const c = await check(bundle(bytes.toString("base64")));
+    expect(c?.status).toBe("fail");
+    expect(c?.reason).toBe("the proof does not verify");
   });
 });
