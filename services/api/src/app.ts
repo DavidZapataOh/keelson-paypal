@@ -28,6 +28,7 @@ import { type RateLimitOptions, rateLimit } from "./middleware/rate-limit.ts";
 import type { OperatorSigners } from "./operators/signer.ts";
 import type { PayPalDeps } from "./paypal.ts";
 import { ProblemSchema, problem } from "./problem.ts";
+import { registerAdminClients } from "./routes/admin-clients.ts";
 import { registerAlibis } from "./routes/alibis.ts";
 import { registerBonds } from "./routes/bonds.ts";
 import { registerChannel3Webhook } from "./routes/channel3-webhook.ts";
@@ -241,6 +242,7 @@ export function createApp(deps: Deps): OpenAPIHono {
     const { auth } = deps;
     if (deps.appOrigin) app.use("/api/auth/*", cors({ origin: deps.appOrigin, credentials: true }));
     app.all("/api/auth/*", (c) => auth.handler(c.req.raw));
+    if (deps.appOrigin) registerAdminClients(app, auth, deps.appOrigin);
   }
   if (deps.authenticate) {
     registerMcp(
