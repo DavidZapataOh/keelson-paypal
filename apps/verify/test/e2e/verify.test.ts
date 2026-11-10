@@ -202,6 +202,35 @@ describe("the verifier in Chromium", () => {
     await page.close();
   });
 
+  test("opened from a receipt link, the page keeps its shape while the receipt loads", async () => {
+    const link = `${VERIFY_ORIGIN}/a/01M71DB3MZAX38NGP3NM8F48T6#PEcnLYqWw5d91wlYjOVd5sYkUkqz2uQJ-k6TBE0t5h0.758.421614`;
+    for (const viewport of [
+      { width: 1440, height: 900 },
+      { width: 412, height: 915 },
+    ]) {
+      const page = await browser.newPage({ viewport });
+      await page.route(`${VERIFY_ORIGIN}/**`, async (route) => {
+        const url = new URL(route.request().url());
+        const response = await route.fetch({
+          url: new URL(`${url.pathname}${url.search}`, base).href,
+        });
+        await route.fulfill({ response });
+      });
+      await page.addInitScript(() => {
+        const w = window as unknown as { cls: number };
+        w.cls = 0;
+        new PerformanceObserver((list) => {
+          for (const e of list.getEntries() as unknown as { value: number }[]) w.cls += e.value;
+        }).observe({ type: "layout-shift", buffered: true });
+      });
+      await page.goto(link);
+      await page.getByText("Public receipt verified").waitFor({ timeout: 30_000 });
+      const cls = await page.evaluate(() => (window as unknown as { cls: number }).cls);
+      expect(cls).toBeLessThan(0.1);
+      await page.close();
+    }
+  });
+
   test.each([
     ["a 50 MB file", "big.json", "application/json", Buffer.alloc(50 * 1024 * 1024, 0x20), /8 MB/],
     [
