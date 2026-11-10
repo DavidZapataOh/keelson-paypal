@@ -209,8 +209,6 @@ export async function reanchorAlibi(
 /**
  * Anchors every Alibi the latest stored anchor of its chain covers, then marks the stored
  * `CheckpointAnchored` events handled. Runs on each new anchor event and each reconcile.
- *
- * @internal
  */
 export async function anchorCovered(deps: AnchorDeps): Promise<number> {
   const chainId = 421614;

@@ -175,8 +175,6 @@ export async function recordValidations(deps: SweeperDeps): Promise<number> {
  * Rates the operator and records the validation's outcome of every coverage the vault released or
  * slashed, from the stored `CoverageReleased` and `Slashed` events not handled yet. An event is
  * handled once both calls are confirmed or refused for good.
- *
- * @internal
  */
 export async function recordOutcomes(deps: SweeperDeps): Promise<number> {
   const { db, relayer, log } = deps;

@@ -30,7 +30,7 @@ const VAULT_EVENTS = [
 ] as const;
 
 /** The events Keelson acts on: one `eth_getLogs` or subscription asks for all of them. */
-export const EVENTS: readonly AbiEvent[] = [
+const EVENTS: readonly AbiEvent[] = [
   ...keelsonBondVaultAbi.filter(
     (i): i is Extract<(typeof keelsonBondVaultAbi)[number], { type: "event" }> =>
       i.type === "event" && (VAULT_EVENTS as readonly string[]).includes(i.name),
@@ -41,6 +41,11 @@ export const EVENTS: readonly AbiEvent[] = [
   ),
 ];
 
+/**
+ * The vault and the anchor whose events are followed.
+ *
+ * @internal
+ */
 export const CONTRACTS: readonly Address[] = [
   addresses[CHAIN_ID].KeelsonBondVault as Address,
   addresses[CHAIN_ID].CheckpointAnchor as Address,
@@ -64,6 +69,8 @@ const plain = (args: Record<string, unknown>) =>
 /**
  * Stores `logs`, once each by `(chainId, txHash, logIndex)`. A log seen again takes its latest
  * block, and stays final once marked so. Returns the logs stored for the first time.
+ *
+ * @internal
  */
 export async function ingest(
   db: Pick<Db, "insert">,
@@ -123,7 +130,9 @@ export function ingestReceipt(
   return ingest(db, logs as unknown as EventLog[], { finalized: false });
 }
 
-/** Drops the logs a reorg removed, unless the reconciler already saw them final. */
+/** Drops the logs a reorg removed, unless the reconciler already saw them final. *
+ * @internal
+ */
 export async function retract(db: Db, logs: readonly EventLog[]): Promise<void> {
   for (const l of logs) {
     if (!l.transactionHash || l.logIndex === null) continue;
@@ -169,7 +178,9 @@ export function isFinal(db: Db, client: PublicClient) {
  */
 const MAX_RANGE = 10_000n;
 const MIN_RANGE = 50n;
-/** Where the first reconcile starts, below `finalized`: about a week of Arbitrum blocks. */
+/** Where the first reconcile starts, below `finalized`: about a week of Arbitrum blocks. *
+ * @internal
+ */
 export const BACKFILL_BLOCKS = 2_500_000n;
 /** No vault or anchor event is older than the anchor's deployment. */
 const DEPLOYED_AT = 327_211_576n;
@@ -272,6 +283,8 @@ const moveCursor = (db: Pick<Db, "insert">, block: bigint) =>
  * replaces what the live subscription stored for its blocks: logs a reorg removed are deleted,
  * the rest stored final, and the cursor moves past it in the same transaction. Returns the logs
  * stored for the first time.
+ *
+ * @internal
  */
 export async function reconcile(deps: ReconcileDeps): Promise<EventLog[]> {
   const head = await deps.logs.getBlock({ blockTag: "finalized" });
