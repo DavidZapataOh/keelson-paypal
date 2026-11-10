@@ -80,11 +80,14 @@ export async function listWebhookEvents(
     if (!next) return events;
     if (pages >= MAX_PAGES) throw new Error("too many pages of webhook events");
     const url = new URL(next);
-    if (url.pathname !== "/v1/notifications/webhooks-events") {
+    // PayPal's next link ends the path with a slash.
+    if (url.pathname.replace(/\/$/, "") !== "/v1/notifications/webhooks-events") {
       throw new Error(`unexpected next link ${url.pathname}`);
     }
     page = webhookEventList.parse(
-      await f<unknown>("GET", url.pathname, { query: Object.fromEntries(url.searchParams) }),
+      await f<unknown>("GET", "/v1/notifications/webhooks-events", {
+        query: Object.fromEntries(url.searchParams),
+      }),
     );
   }
 }
