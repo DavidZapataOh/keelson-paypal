@@ -5,6 +5,7 @@ import { pino } from "pino";
 import { createPublicClient, type Hex, http, parseUnits } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { describe, expect, test } from "vitest";
+import { CHAINS } from "../src/chains.ts";
 import { kmsAccount } from "../src/kms.ts";
 import { createRelayer } from "../src/relayer.ts";
 import { kms, live } from "./env.ts";
@@ -13,10 +14,7 @@ import { testDb, testDbUrl } from "./setup.ts";
 import { runChild } from "./spawn.ts";
 
 const rpcUrl = process.env.ARBITRUM_SEPOLIA_RPC_URL as string;
-const RELAYERS = [
-  "0xEd4Aa68f4e0c704422894b072deDa99807Fb2915",
-  "0x1f1645054EC4240b9f4BdCc1E14F380Bc827a7c8",
-] as const;
+const RELAYERS = [CHAINS[421614].sender, CHAINS[42161].sender] as const;
 const AMOUNT = parseUnits("0.01", 6);
 
 const pct = (sorted: number[], q: number) =>
@@ -42,6 +40,7 @@ describe.skipIf(!live || !kms)("live on Arbitrum Sepolia", { timeout: 600_000 },
 
   test("100 concurrent deposits from two processes land once each, gapless", async () => {
     const account = await kmsAccount({ keyId: kms?.keyId as string, client: kms?.client as never });
+    expect(account.address).toBe(CHAINS[421614].sender);
     const bond = async () =>
       (
         await client.readContract({
