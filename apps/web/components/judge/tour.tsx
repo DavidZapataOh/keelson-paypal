@@ -7,7 +7,7 @@ import { Status } from "@keelson/ui/components/status";
 import { Timeline, TimelineItem } from "@keelson/ui/components/timeline";
 import { cn } from "@keelson/ui/lib/utils";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../../lib/api";
 import { authClient, SESSION_HINT } from "../../lib/auth";
 import { VERIFY } from "../../lib/config";
@@ -55,6 +55,17 @@ type Phase =
 /** Judge Mode: a temporary tenant and a guided walk through the live product. */
 export function JudgeMode() {
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
+  const invite = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    // A fragment never reaches a server nor a Referer; the invite then leaves the address bar
+    // and the history, and stays in memory only.
+    const url = new URL(location.href);
+    const code = new URLSearchParams(url.hash.slice(1)).get("invite");
+    if (code === null) return;
+    invite.current = code;
+    url.hash = "";
+    history.replaceState(history.state, "", url);
+  }, []);
 
   const load = useCallback(async () => {
     // Without a session there is no tenant to read: the visitor starts one first.
@@ -84,6 +95,7 @@ export function JudgeMode() {
       pending={phase.kind === "loading"}
       signedIn={phase.kind === "welcome" && phase.signedIn}
       {...(phase.kind === "welcome" && phase.error ? { error: phase.error } : {})}
+      invite={invite}
       onStarted={load}
     />
   );
@@ -93,11 +105,13 @@ function Welcome({
   pending,
   signedIn,
   error,
+  invite,
   onStarted,
 }: {
   pending: boolean;
   signedIn: boolean;
   error?: string;
+  invite: { current: string | undefined };
   onStarted: () => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
@@ -108,7 +122,8 @@ function Welcome({
     setFailure("");
     try {
       if (signedIn) await authClient.signOut();
-      await startJudge();
+      await startJudge(invite.current);
+      invite.current = undefined;
       localStorage.setItem(SESSION_HINT, "1");
       localStorage.setItem(STEP_KEY, "0");
       localStorage.setItem(STARTED_KEY, String(Date.now()));
