@@ -343,7 +343,14 @@ export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<vo
     },
     manifest: { public: evidence.manifest, disclosures: evidence.disclosures },
     ...(evidence.observation ? { channel3_observation: evidence.observation } : {}),
-    ...(c1 || c3 ? { zk: { ...(c1 ? { c1 } : {}), ...(c3 ? { c3 } : {}) } } : {}),
+    ...(c1 || c3
+      ? {
+          zk: {
+            ...(c1 ? { c1: { proof: c1.proof, public_inputs: c1.public_inputs } } : {}),
+            ...(c3 ? { c3 } : {}),
+          },
+        }
+      : {}),
     paypal: {
       order_id: p.paypalOrderId,
       authorization_id: p.paypalAuthorizationId,

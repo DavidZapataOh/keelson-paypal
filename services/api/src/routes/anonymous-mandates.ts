@@ -1,6 +1,6 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { deploymentsFor } from "@keelson/chain";
-import { eq, mandates, userSetRoots } from "@keelson/db";
+import { eq, mandates, purchases, userSetRoots } from "@keelson/db";
 import { arbitrumSepolia } from "viem/chains";
 import type { Deps } from "../app.ts";
 import { ProblemSchema, problem } from "../problem.ts";
@@ -45,6 +45,38 @@ const anonymousRoute = createRoute({
       content: { "application/json": { schema: AnonymousMandateSchema } },
     },
     404: notFound("proof for this mandate yet"),
+  },
+});
+
+const AnonymousPurchaseSchema = z
+  .object({
+    user_set_root: Hex32,
+    proof: z.string().openapi({ description: "The UltraHonk proof bytes, standard base64." }),
+    public_inputs: z.array(Hex32).length(10).openapi({
+      description:
+        "C1's `C_m, amount, currency, category, merchant_id, now, cart_hash, operator_id`, then `M mod r` and `user_set_root`: the calldata of `verify(bytes,bytes32[])`.",
+    }),
+    verifier: z.object({ chain_id: z.number().int(), address: z.string() }).optional().openapi({
+      description:
+        "The deployed verifier that accepts the proof in an `eth_call`. It checks the proof only: `public_inputs` must also be the countersign's and the root one `GET /v1/user-set/roots/{root}` lists.",
+    }),
+  })
+  .openapi("AnonymousPurchase");
+
+const purchaseRoute = createRoute({
+  method: "get",
+  path: "/v1/anonymous-purchases/{id}",
+  tags: ["purchases"],
+  summary: "Proof that a purchase was within a mandate a registered user signed",
+  description:
+    "One zero-knowledge proof that composes the purchase's C1 proof (the countersigned cart satisfies the mandate) with its mandate's C3 proof (a registered user's passkey, the one the mandate names, signed it) by recursion. It shows neither the mandate nor the user. Its public inputs are the countersign's cart fields, `C_m` and `M`, which link the purchases of one mandate: anyone holding the purchase id can read it.",
+  request: { params: z.object({ id: z.string().regex(/^[0-9A-HJKMNP-TV-Z]{26}$/) }) },
+  responses: {
+    200: {
+      description: "The proof",
+      content: { "application/json": { schema: AnonymousPurchaseSchema } },
+    },
+    404: notFound("composed proof for this purchase yet"),
   },
 });
 
@@ -96,6 +128,28 @@ export function registerAnonymousMandates(app: OpenAPIHono, deps: Pick<Deps, "db
         user_set_root: row.c3Proof.public_inputs[2] as string,
         proof: row.c3Proof.proof,
         public_inputs: row.c3Proof.public_inputs,
+        ...(verifier ? { verifier: { chain_id: arbitrumSepolia.id, address: verifier } } : {}),
+      },
+      200,
+    );
+  });
+
+  app.openapi(purchaseRoute, async (c) => {
+    const { id } = c.req.valid("param");
+    const [row] = await db
+      .select({ c1c3: purchases.c1c3Proof })
+      .from(purchases)
+      .where(eq(purchases.id, id));
+    if (!row?.c1c3) {
+      return problem(c, 404, "not-found", "Not found", "This purchase has no composed proof yet.");
+    }
+    const verifier = deploymentsFor(arbitrumSepolia.id).AnonymousPurchaseVerifier;
+    c.header("Cache-Control", "public, max-age=3600, immutable");
+    return c.json(
+      {
+        user_set_root: row.c1c3.public_inputs[9] as string,
+        proof: row.c1c3.proof,
+        public_inputs: row.c1c3.public_inputs,
         ...(verifier ? { verifier: { chain_id: arbitrumSepolia.id, address: verifier } } : {}),
       },
       200,
