@@ -60,8 +60,10 @@ jobs:
       - name: Install the SP1 toolchain
         run: |
           curl -L https://sp1up.succinct.xyz | bash
-          ~/.sp1/bin/sp1up -v "$SP1_VERSION"
+          ~/.sp1/bin/sp1up -v "$SP1_VERSION" --c-toolchain
           echo "$HOME/.sp1/bin" >> "$GITHUB_PATH"
+          # Cedar's stack probe (stacker, through psm) assembles a RISC-V source for the program.
+          echo "CC_riscv64im_succinct_zkvm_elf=$(find ~/.sp1 -name riscv64-unknown-elf-gcc -type f | head -1)" >> "$GITHUB_ENV"
       - uses: actions/cache@v6
         with:
           path: |
