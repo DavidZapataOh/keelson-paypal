@@ -415,6 +415,9 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
           evidenceRoot: Hex32.describe("The root keelson.submit_evidence returned."),
           cart: CartSchema.describe("The cart keelson.submit_evidence returned, unchanged."),
           agentId: AgentId.optional(),
+          repeatOf: Ulid.optional().describe(
+            "Only to buy the same cart again on purpose: the purchase id Keelson named when it answered that this cart is already bought.",
+          ),
         }),
         outputSchema: z.object({
           purchaseId: z.string(),
@@ -427,7 +430,7 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
         annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
         ...scopes("countersign:write"),
       },
-      async ({ mandateId, evidenceRoot, cart, agentId }, ctx) => {
+      async ({ mandateId, evidenceRoot, cart, agentId, repeatOf }, ctx) => {
         const mandate = (await listMandates(agentId)).find((m) => m.id === mandateId);
         if (!mandate) throw new Error(`Mandate ${mandateId} is not active for this operator.`);
         if (mandate.holdMode !== "mandate" || mandate.authorizationId === null) {
@@ -457,6 +460,7 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
               },
             },
             evidenceRoot,
+            ...(repeatOf ? { repeatOf } : {}),
           }),
         );
         const signed = (await res.json()) as {

@@ -1356,6 +1356,15 @@ components:
           pattern: ^0x[0-9a-f]{64}$
           description: The root of the evidence stored with `POST /v1/evidence` for this
             mandate.
+        repeatOf:
+          type: string
+          minLength: 26
+          maxLength: 26
+          description: "To buy the same cart again on purpose: the id of the latest
+            purchase of this cart under the mandate, from the `409
+            purchase-exists` answer or a purchase listing. Not needed once that
+            purchase failed or was denied, or was captured more than ten minutes
+            ago."
       required:
         - authorizationId
         - closedMandate
@@ -3702,8 +3711,14 @@ paths:
       tags:
         - tee
       summary: Countersign a cart
-      description: Sends the cart to the TEE legs in order and returns the
-        countersignatures only when both agree. A DENY is countersigned too.
+      description: "Sends the cart to the TEE legs in order and returns the
+        countersignatures only when both agree. A DENY is countersigned too. A
+        cart is bought once per mandate: while a purchase of the same cart is in
+        flight, or for ten minutes after it was captured, another request for it
+        is answered `409 purchase-exists` with that purchase's id, whatever its
+        request id, evidence or `Idempotency-Key`. Retrying after a lost answer
+        is therefore safe; to buy the same cart again on purpose, name that
+        purchase in `repeatOf`."
       parameters:
         - schema:
             type: string
@@ -3756,14 +3771,16 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
         "404":
-          description: No such mandate
+          description: No such mandate of an operator this client linked
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
         "409":
           description: The mandate is not active, the evidence root is not stored for it
-            or already binds another purchase, or the request was already used
+            or already binds another purchase, the request was already used, or
+            the same cart is already being bought (`purchase-exists`, with its
+            `purchaseId`)
           content:
             application/problem+json:
               schema:
@@ -3833,11 +3850,12 @@ paths:
       tags:
         - evidence
       summary: Store sealed evidence
-      description: Stores what the agent saw at decision time for an active mandate.
-        The manifest is rebuilt from the items and must match, every item has
-        its own salt, no public item may still hold an email address or phone
-        number, and every `.original` must open with the evidence identity. A
-        countersign may only bind a stored root, once.
+      description: Stores what the agent saw at decision time for an active mandate of
+        an operator this client linked. The manifest is rebuilt from the items
+        and must match, every item has its own salt, no public item may still
+        hold an email address or phone number, and every `.original` must open
+        with the evidence identity. A countersign may only bind a stored root,
+        once.
       parameters:
         - schema:
             type: string
@@ -3866,7 +3884,7 @@ paths:
                 required:
                   - evidenceRoot
         "404":
-          description: No such mandate
+          description: No such mandate of an operator this client linked
           content:
             application/problem+json:
               schema:
@@ -4029,7 +4047,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Channel3Observation"
         "404":
-          description: No such mandate
+          description: No such mandate of an operator this client linked
           content:
             application/problem+json:
               schema:

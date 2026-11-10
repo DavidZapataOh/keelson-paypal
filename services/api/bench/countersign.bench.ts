@@ -18,6 +18,7 @@ import {
   expectation,
   headerPrincipal,
   registerMandate,
+  repeating,
   request,
   SoftwarePasskey,
   seedUser,
@@ -205,6 +206,7 @@ try {
       cart: r.cart,
       unit: r.unit,
       evidenceRoot: await evidence.upload(app, mandateId, r.cart, asAgent),
+      ...(await repeating(db, mandateId, r.cart, r.request_id)),
     };
   };
 

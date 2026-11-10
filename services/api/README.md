@@ -296,10 +296,22 @@ or another request, and, for a per-purchase mandate, one that is not a hold Keel
 
 ## Purchase pipeline
 
-`POST /v1/countersign` accepts a cart only for an `ACTIVE` mandate that is not being revoked, and
+`POST /v1/countersign` accepts a cart only for an `ACTIVE` mandate that is not being revoked, of
+an operator the calling client linked (`POST /v1/operators`; `POST /v1/evidence` and
+`POST /v1/observations/channel3` check the same, and all three answer `404` otherwise), and
 only against the authorization captures use now (the mandate's hold, or this request's own
-per-purchase hold). Every ALLOW then goes through one state machine, stored on its `purchases`
-row:
+per-purchase hold).
+
+A cart is bought once per mandate. While a purchase of the same cart (same cart hash) is in
+flight, or for 600 s after it was captured, another countersign of it answers
+`409 purchase-exists` with that purchase's `purchaseId` and `Location`, whatever its request id,
+evidence or `Idempotency-Key`: an agent that lost an answer and retries with new evidence gets
+the purchase it already made. The `Idempotency-Key` still replays the stored answer of the same
+request. To buy the same cart again on purpose, the agent names that purchase as `repeatOf`; a
+retry of that repeat names a purchase that is no longer the latest and gets the repeat back. A
+denied or failed purchase holds nothing back.
+
+Every ALLOW then goes through one state machine, stored on its `purchases` row:
 
 ```
 COUNTERSIGNED ──► LOGGED ──► COVERED ──► CAPTURED
@@ -356,8 +368,8 @@ Each step is a span when tracing is on (`OTEL_TRACES_EXPORTER=console`, or an OT
 `purchase.COUNTERSIGNED` (or `purchase.DENIED`), `purchase.LOGGED`, `purchase.COVERED` and
 `purchase.CAPTURED`, with `purchase.id` and `countersign.mode`, and the outbound calls (undici)
 and queries (pg) of each step nested under it. `bench/money-path.bench.ts` drives real sandbox
-purchases (`PURCHASES`, `CONCURRENCY`, `HOLDS`, `DEGRADED_EVERY`) and prints the waterfall from
-those spans as JSON.
+purchases (`PURCHASES`, `CONCURRENCY` mandates buying at once, `DEGRADED_EVERY`) and prints the
+waterfall from those spans as JSON.
 
 On the warm path a purchase makes these round trips, in this order:
 

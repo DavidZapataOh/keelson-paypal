@@ -4,8 +4,11 @@ import { mandates, operators, user } from "@keelson/db";
 import { ulid } from "ulid";
 import { testDb } from "./setup.ts";
 
-/** A mandate in `state`, with its user and operator. */
-export async function channel3Mandate(state: "ACTIVE" | "REVOKED" = "ACTIVE"): Promise<string> {
+/** A mandate in `state`, with its user and an operator `clientId` linked. */
+export async function channel3Mandate(
+  state: "ACTIVE" | "REVOKED" = "ACTIVE",
+  clientId: string | null = "observer-agent",
+): Promise<string> {
   const userId = `user-${ulid()}`;
   await testDb.insert(user).values({ id: userId, name: "Tester", email: `${userId}@example.test` });
   const [operator] = await testDb
@@ -16,6 +19,7 @@ export async function channel3Mandate(state: "ACTIVE" | "REVOKED" = "ACTIVE"): P
       agentRegistry: "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
       name: "op",
       cnfJwk: {},
+      clientId,
     })
     .returning();
   const id = ulid();

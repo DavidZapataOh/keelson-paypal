@@ -96,6 +96,18 @@ describe("POST /v1/observations/channel3", () => {
     expect((await post(app, { mandateId: revoked, url, agentView })).status).toBe(409);
   });
 
+  test("only the client its operator linked observes for a mandate", async () => {
+    const { channel3, attempts } = refusedChannel3();
+    const app = appWith(channel3);
+    const url = "https://www.shopwss.com/products/jl4201a";
+    for (const clientId of ["another-agent", null]) {
+      const mandateId = await channel3Mandate("ACTIVE", clientId);
+      const res = await post(app, { mandateId, url, agentView });
+      expect(res.status).toBe(404);
+    }
+    expect(attempts()).toBe(0);
+  });
+
   test("Channel3 unreachable still records the observation, after one attempt", async () => {
     const { channel3, attempts } = refusedChannel3();
     const app = appWith(channel3);

@@ -33,6 +33,7 @@ import {
   live,
   liveEnv,
   registerMandate,
+  repeating,
   SoftwarePasskey,
   seedUser,
   signedMandate,
@@ -150,6 +151,7 @@ describe.skipIf(!live)(
           cart: cart.cart,
           unit: cart.unit,
           evidenceRoot: await evidence.upload(appWith(), mandateId, cart.cart, asAgent),
+          ...(await repeating(testDb, mandateId, cart.cart, requestId)),
         }),
       });
       const out = (await res.json()) as Countersigned;

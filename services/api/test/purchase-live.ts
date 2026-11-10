@@ -15,7 +15,7 @@ import { holdHarness, sandbox } from "./hold-live.ts";
 import { startLocalLog } from "./log-live.ts";
 import { AGENT_ID, cartOf, demoOperator, kmsRelayer, seedDemoOperator } from "./pipeline-live.ts";
 import { testDb, testDbUrl, testKv } from "./setup.ts";
-import { asAgent, headerPrincipal, liveEnv } from "./tee-live.ts";
+import { asAgent, headerPrincipal, liveEnv, repeating } from "./tee-live.ts";
 
 const DRIVEN = ["COUNTERSIGNED", "LOGGED", "COVERED"];
 
@@ -107,6 +107,7 @@ export async function pipelineHarness(
       cart: cart.cart,
       unit: cart.unit,
       evidenceRoot: await evidence.upload(app, m.mid, cart.cart, asAgent),
+      ...(await repeating(testDb, m.mid, cart.cart, requestId)),
     };
     const started = performance.now();
     const res = await via.request("/v1/countersign", {
