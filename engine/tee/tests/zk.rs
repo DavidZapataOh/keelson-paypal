@@ -335,3 +335,58 @@ fn a_bb_that_does_not_answer_is_abandoned_at_the_deadline() {
     assert!(matches!(err, ProverError::Backend(_)), "{err}");
     assert!(t.elapsed().as_secs() < 10);
 }
+
+/// Over HTTP: the countersign is answered, then the prover thread proves it and the route
+/// serves the proof.
+#[tokio::test]
+async fn leg_a_serves_the_proof_after_answering_over_http() {
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode, header};
+    use http_body_util::BodyExt;
+    use keelson_tee::server::{AppState, router};
+    use sha2::{Digest, Sha256};
+    use tower::ServiceExt;
+
+    let issued = register();
+    let f = CartFixture::demo();
+    let mut r = countersign_request(&issued, &f, request_id(6), None);
+    r.sealed_salt = Some(issued.sealed_salt.clone());
+    let state = AppState::new(
+        leg_a().with_prover(shared().clone()),
+        Sha256::digest("t").into(),
+    )
+    .with_clock(|| at(NOW + 10));
+    let app = router(std::sync::Arc::new(state));
+    let send = |req: Request<Body>| {
+        let app = app.clone();
+        async move {
+            let res = app.oneshot(req).await.unwrap();
+            let status = res.status();
+            (status, res.into_body().collect().await.unwrap().to_bytes())
+        }
+    };
+    let (status, body) = send(
+        Request::post("/v1/countersign")
+            .header(header::AUTHORIZATION, "Bearer t")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(serde_json::to_vec(&r).unwrap()))
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let out: Countersigned = serde_json::from_slice(&body).unwrap();
+    let (status, body) = send(
+        Request::get(format!("/v1/c1/{}", r.request_id))
+            .header(header::AUTHORIZATION, "Bearer t")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let proof: ZkProof = serde_json::from_slice(&body).unwrap();
+    assert_eq!(
+        proof.public_inputs[0].0,
+        out.countersign.mandate_commitment.0
+    );
+    assert!(prover().verify(&c1_of(C1Status::Ready(proof))).unwrap());
+}

@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.38;
 
+import {IKeelsonBondVault} from "./interfaces/IKeelsonBondVault.sol";
 import {IVerdictVerifier} from "./interfaces/IVerdictVerifier.sol";
 import {KeelsonTypes} from "./libraries/KeelsonTypes.sol";
+import {PasskeyAssertion} from "./libraries/PasskeyAssertion.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
@@ -10,6 +12,8 @@ import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 interface ICoveredVault {
     /// @notice EIP-712 struct hash of each locked `Coverage`; 0 for none.
     function coverageHash(bytes32 coverageId) external view returns (bytes32);
+
+    function coverages(bytes32 coverageId) external view returns (IKeelsonBondVault.CoverageState memory);
 }
 
 /// @notice bb's UltraHonk verifier of the C2a `mandate_violation` circuit.
@@ -75,12 +79,14 @@ contract MandateViolationCourt {
 
     /// @notice Convicts the coverage `c` of the violation `violationCode` of its mandate.
     /// @param cs The countersign `c` was locked with.
+    /// @param hSd The mandate's `H_sd`, which with `cs.mandateCommitment` gives the `mandateHash` the user signed.
     /// @param countersigs `tdx ‖ nitro`, or the TDX signature alone for a coverage locked while Nitro was down.
     /// @param proof C2a over `C_m, amount, currency, category, merchant_id, cart_ts, violation_code`, read from `cs`
     /// with `cart_ts` its `issuedAt`.
     function proveViolation(
         KeelsonTypes.Coverage calldata c,
         KeelsonTypes.Countersign calldata cs,
+        bytes32 hSd,
         bytes calldata countersigs,
         uint8 violationCode,
         bytes calldata proof
@@ -92,7 +98,12 @@ contract MandateViolationCourt {
         if (
             cs.requestId != c.coverageId || cs.agentId != c.agentId || cs.mandateHash != c.mandateHash
                 || cs.decision != ALLOW || uint256(cs.amount) * PYUSD_PER_MINOR != c.amount
+                || PasskeyAssertion.mandateChallenge(hSd, cs.mandateCommitment) != c.mandateHash
         ) revert CountersignMismatch();
+        // One TDX signature counts only for a coverage the vault locked on one.
+        if (countersigs.length != 2 * SIGNATURE_LENGTH && !vault.coverages(c.coverageId).degraded) {
+            revert InvalidCountersignature();
+        }
 
         bytes32 digest = teeVerifier.hashTypedData(KeelsonTypes.hash(cs));
         if (!_countersigned(digest, countersigs, cs.issuedAt)) revert InvalidCountersignature();
@@ -126,15 +137,15 @@ contract MandateViolationCourt {
     }
 
     /// @dev Whether a `teeKind` signer registered by `issuedAt`, still in that registration and never revoked, under a
-    /// measurement still allowed, signed `digest`. Malformed and high-S signatures recover nobody.
+    /// measurement still allowed, signed `digest`. Malformed and high-S signatures recover the zero address, which is
+    /// never registered. A signer that lapsed and registered again keeps only its latest registration, and a revoked
+    /// signer or a disallowed measurement convicts nothing.
     function _signedAt(bytes32 digest, bytes calldata sig, uint8 teeKind, uint40 issuedAt)
         internal
         view
         returns (bool)
     {
-        (address signer, ECDSA.RecoverError err,) =
-            ECDSA.tryRecover(digest, uint8(sig[64]), bytes32(sig[0:32]), bytes32(sig[32:64]));
-        if (err != ECDSA.RecoverError.NoError) return false;
+        (address signer,,) = ECDSA.tryRecover(digest, uint8(sig[64]), bytes32(sig[0:32]), bytes32(sig[32:64]));
         (uint8 kind, uint40 registeredAt, uint40 expiresAt, uint40 revokedAt, bytes32 measurement) =
             teeVerifier.signers(signer);
         return kind == teeKind && revokedAt == 0 && registeredAt != 0 && registeredAt <= issuedAt

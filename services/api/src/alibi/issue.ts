@@ -129,6 +129,9 @@ async function issuerOf(tee: IssueDeps["tee"], thumbprint: string): Promise<JWK>
 
 const json = (v: unknown) => v as Record<string, Json>;
 
+/** How long a purchase's Alibi waits for leg A's C1 proof before it is issued without one. */
+const C1_GRACE_MS = 60_000;
+
 type C1Proof = NonNullable<(typeof purchases.$inferSelect)["c1Proof"]>;
 
 /**
@@ -141,7 +144,17 @@ async function c1Of(
   provable: boolean,
 ): Promise<C1Proof | null> {
   if (p.c1Proof || !provable || !deps.tee) return p.c1Proof ?? null;
-  const proof = await deps.tee.client.a.c1(p.id);
+  let proof: C1Proof | null;
+  try {
+    proof = await deps.tee.client.a.c1(p.id);
+  } catch (err) {
+    // The proof is optional; past the grace the Alibi is issued without it so the purchase is
+    // captured.
+    const age = Date.now() - Number(p.countersign?.issuedAt ?? 0) * 1000;
+    if (age < C1_GRACE_MS) throw err;
+    deps.log.warn({ err, purchaseId: p.id }, "alibi issued without its C1 proof");
+    return null;
+  }
   if (proof) {
     await deps.db.update(purchases).set({ c1Proof: proof }).where(eq(purchases.id, p.id));
   }

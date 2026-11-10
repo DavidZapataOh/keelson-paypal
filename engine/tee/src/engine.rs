@@ -847,7 +847,12 @@ impl Engine {
         }
         while order.len() >= C1_KEPT {
             if let Some(old) = order.pop_front() {
-                slots.remove(&old);
+                if matches!(
+                    slots.remove(&old),
+                    Some(C1Slot::Queued(_) | C1Slot::Proving)
+                ) {
+                    eprintln!("keelson-engine: C1 proof of request {old} dropped unproved");
+                }
             }
         }
         order.push_back(request_id.clone());
@@ -872,9 +877,12 @@ impl Engine {
                 _ => return,
             }
         };
-        let proof = self.prove_job(&job).map_err(|e| {
-            eprintln!("keelson-engine: no C1 proof for request {request_id}: {e}");
-        });
+        // A panic in the prover must not leave the slot proving until it is evicted.
+        let proof = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.prove_job(&job)))
+            .unwrap_or_else(|_| Err("the prover panicked".to_owned()))
+            .map_err(|e| {
+                eprintln!("keelson-engine: no C1 proof for request {request_id}: {e}");
+            });
         let mut guard = self
             .c1
             .slots

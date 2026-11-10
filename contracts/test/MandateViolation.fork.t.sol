@@ -77,13 +77,13 @@ contract MandateViolationForkTest is SlashBase {
         Case memory k = _case("category", court.CATEGORY_NOT_ALLOWED());
         k.countersigs = _signCountersign(tdxKey, k.countersign);
         _lockCase(k);
-        court.proveViolation(k.coverage, k.countersign, k.countersigs, k.code, k.proof);
+        court.proveViolation(k.coverage, k.countersign, k.hSd, k.countersigs, k.code, k.proof);
         assertEq(_code(k), k.code);
     }
 
     function test_gas_proveViolation() public {
         Case memory k = _lockedCase("merchant", court.MERCHANT_NOT_ALLOWED());
-        court.proveViolation(k.coverage, k.countersign, k.countersigs, k.code, k.proof);
+        court.proveViolation(k.coverage, k.countersign, k.hSd, k.countersigs, k.code, k.proof);
         uint256 gas = vm.lastCallGas().gasTotalUsed;
         emit log_named_uint("proveViolation", gas);
         GasBudget.check("c2a_proveViolation", gas);
@@ -116,7 +116,7 @@ contract MandateViolationForkTest is SlashBase {
 
     function test_secondConviction_isRejected() public {
         Case memory k = _lockedCase("amount", court.AMOUNT_OVER_MAX());
-        court.proveViolation(k.coverage, k.countersign, k.countersigs, k.code, k.proof);
+        court.proveViolation(k.coverage, k.countersign, k.hSd, k.countersigs, k.code, k.proof);
         _expectRevert(k, MandateViolationCourt.AlreadyProven.selector);
     }
 
@@ -162,6 +162,31 @@ contract MandateViolationForkTest is SlashBase {
         k.countersign.amount = locked.amount - 1;
         k.countersigs = _countersign(k.countersign);
         _expectRevert(k, MandateViolationCourt.CountersignMismatch.selector);
+    }
+
+    function test_tdxSignatureAlone_isRejectedForA2of2Coverage() public {
+        Case memory k = _lockedCase("amount", court.AMOUNT_OVER_MAX());
+        k.countersigs = _signCountersign(tdxKey, k.countersign);
+        _expectRevert(k, MandateViolationCourt.InvalidCountersignature.selector);
+    }
+
+    /// @dev A countersign that copies the coverage's public fields but commits to another mandate: its `C_m` does not
+    /// give the `mandateHash` the user signed.
+    function test_countersignOfAnotherMandate_isRejected() public {
+        Case memory k = _lockedCase("amount", court.AMOUNT_OVER_MAX());
+        k.countersign.mandateCommitment = keccak256("a mandate the user never signed");
+        k.countersigs = _countersign(k.countersign);
+        _expectRevert(k, MandateViolationCourt.CountersignMismatch.selector);
+        k.hSd = keccak256("another payload");
+        _expectRevert(k, MandateViolationCourt.CountersignMismatch.selector);
+    }
+
+    function test_disallowedMeasurement_isRejected() public {
+        Case memory k = _lockedCase("amount", court.AMOUNT_OVER_MAX());
+        (,,,, bytes32 measurement) = verdictVerifier.signers(vm.addr(nitroKey));
+        vm.prank(_json().readAddress(".contracts.GuardianSafe"));
+        verdictVerifier.disallowMeasurement(measurement);
+        _expectRevert(k, MandateViolationCourt.InvalidCountersignature.selector);
     }
 
     function test_alteredCountersign_isRejected() public {
@@ -218,7 +243,7 @@ contract MandateViolationForkTest is SlashBase {
         assertFalse(
             verdictVerifier.verify2of2(verdictVerifier.hashTypedData(KeelsonTypes.hash(k.countersign)), k.countersigs)
         );
-        court.proveViolation(k.coverage, k.countersign, k.countersigs, k.code, k.proof);
+        court.proveViolation(k.coverage, k.countersign, k.hSd, k.countersigs, k.code, k.proof);
         assertEq(_code(k), k.code);
     }
 
@@ -230,7 +255,7 @@ contract MandateViolationForkTest is SlashBase {
         vm.expectEmit(address(court));
         emit MandateViolationCourt.MandateViolationProven(k.coverage.coverageId, agentId, code, digest);
         vm.prank(makeAddr("user"));
-        court.proveViolation(k.coverage, k.countersign, k.countersigs, code, k.proof);
+        court.proveViolation(k.coverage, k.countersign, k.hSd, k.countersigs, code, k.proof);
         (uint8 recorded,, bytes32 against) = court.violations(k.coverage.coverageId);
         assertEq(recorded, code);
         assertEq(against, digest);
@@ -276,7 +301,7 @@ contract MandateViolationForkTest is SlashBase {
 
     function _expectRevert(Case memory k, bytes4 selector) internal {
         vm.expectRevert(selector);
-        court.proveViolation(k.coverage, k.countersign, k.countersigs, k.code, k.proof);
+        court.proveViolation(k.coverage, k.countersign, k.hSd, k.countersigs, k.code, k.proof);
     }
 
     function _lockedCase(string memory name, uint8 code) internal returns (Case memory k) {

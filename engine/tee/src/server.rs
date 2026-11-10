@@ -36,6 +36,8 @@ const PROBLEM_BASE: &str = "https://keelson.finance/problems/";
 /// What the routes share: the engine and the hash of the bearer token it accepts.
 pub struct AppState {
     engine: Engine,
+    /// Leg A's prover thread, started with the first ALLOW to prove.
+    c1_queue: std::sync::OnceLock<std::sync::mpsc::SyncSender<String>>,
     token_hash: [u8; 32],
     clock: fn() -> OffsetDateTime,
     #[cfg(feature = "tdx")]
@@ -51,6 +53,7 @@ impl AppState {
     pub fn new(engine: Engine, token_hash: [u8; 32]) -> Self {
         Self {
             engine,
+            c1_queue: std::sync::OnceLock::new(),
             token_hash,
             clock: OffsetDateTime::now_utc,
             #[cfg(feature = "tdx")]
@@ -335,10 +338,28 @@ async fn countersign(
     .await?;
     // The answer goes out now; the proof follows on `GET /v1/c1/{request_id}`.
     if out.countersign.decision == "1" && engine.engine.proves_c1() {
-        tokio::task::spawn_blocking(move || engine.engine.prove_c1(&id));
+        let queue = engine.c1_queue.get_or_init(|| {
+            let (tx, rx) = std::sync::mpsc::sync_channel::<String>(C1_QUEUE);
+            let prover = engine.clone();
+            std::thread::spawn(move || {
+                for id in rx {
+                    prover.engine.prove_c1(&id);
+                }
+            });
+            tx
+        });
+        // A full queue leaves the proof queued; it is then never made and served as none.
+        if queue.try_send(id.clone()).is_err() {
+            eprintln!("keelson-engine: C1 queue full, request {id} is not proved");
+        }
     }
     Ok(out)
 }
+
+/// ALLOWs waiting for their C1 proof on leg A's prover thread, one proof at a time.
+const C1_QUEUE: usize = 256;
+/// How often `GET /v1/c1/{request_id}` looks again at a proof still being made.
+const C1_POLL: std::time::Duration = std::time::Duration::from_millis(20);
 
 /// How long `GET /v1/c1/{request_id}` waits for a proof still being made: past the prover's own
 /// deadline.
@@ -353,14 +374,20 @@ async fn c1(
     let Ok(id) = request_id.parse::<ulid::Ulid>() else {
         return Err(Problem::new(StatusCode::NOT_FOUND, "no_proof"));
     };
-    match tokio::task::spawn_blocking(move || state.engine.c1(&id.to_string(), C1_WAIT)).await {
-        Ok(C1Status::Ready(proof)) => Ok(Json(proof)),
-        Ok(C1Status::None) => Err(Problem::new(StatusCode::NOT_FOUND, "no_proof")),
-        Ok(C1Status::Pending) => Err(Problem::new(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "proof_pending",
-        )),
-        Err(_) => Err(Problem::new(StatusCode::INTERNAL_SERVER_ERROR, "internal")),
+    let id = id.to_string();
+    let deadline = tokio::time::Instant::now() + C1_WAIT;
+    loop {
+        match state.engine.c1(&id, std::time::Duration::ZERO) {
+            C1Status::Ready(proof) => return Ok(Json(proof)),
+            C1Status::None => return Err(Problem::new(StatusCode::NOT_FOUND, "no_proof")),
+            C1Status::Pending if tokio::time::Instant::now() >= deadline => {
+                return Err(Problem::new(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "proof_pending",
+                ));
+            }
+            C1Status::Pending => tokio::time::sleep(C1_POLL).await,
+        }
     }
 }
 

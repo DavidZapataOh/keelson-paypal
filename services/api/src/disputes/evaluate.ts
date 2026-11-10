@@ -74,11 +74,7 @@ async function anchorNow(tlog: LogConfig, chainId: number): Promise<Hex | undefi
  * Whether `MandateViolationCourt` holds a conviction of the coverage: a C2a proof that its cart
  * violated the mandate, so the purchase has no valid proof of its mandate.
  */
-export async function convicted(
-  client: PublicClient,
-  chainId: number,
-  coverageId: Hex,
-): Promise<boolean> {
+async function convicted(client: PublicClient, chainId: number, coverageId: Hex): Promise<boolean> {
   const court = deploymentsFor(chainId).MandateViolationCourt;
   if (!court) return false;
   if (client.chain?.id !== chainId) throw new Error(`the chain client is not on chain ${chainId}`);
