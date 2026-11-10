@@ -6,6 +6,8 @@ export class KeelsonError extends Error {
     readonly status: number,
     readonly type: string | undefined,
     message: string,
+    /** The purchase a `purchase-exists` problem names. */
+    readonly purchaseId?: string,
   ) {
     super(message);
     this.name = "KeelsonError";
@@ -24,10 +26,16 @@ export async function call(
     type?: string;
     title?: string;
     detail?: string;
+    purchaseId?: string;
   };
   const type = problem.type?.split("/").at(-1);
   const reason = [problem.title ?? `HTTP ${res.status}`, problem.detail].filter(Boolean).join(": ");
-  throw new KeelsonError(res.status, type, `${reason} (${res.status}${type ? ` ${type}` : ""})`);
+  throw new KeelsonError(
+    res.status,
+    type,
+    `${reason} (${res.status}${type ? ` ${type}` : ""})`,
+    problem.purchaseId,
+  );
 }
 
 /** A JSON body sent with a fresh idempotency key. */

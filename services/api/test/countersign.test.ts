@@ -112,18 +112,19 @@ describe("countersigning the same cart again", { timeout: 120_000 }, () => {
   async function countersign(
     m: { id: string; authorizationId: string },
     extra: Record<string, unknown> = {},
+    requestId = ulid(),
+    principal = agent,
   ) {
-    const requestId = ulid();
     const res = await app.request("/v1/countersign", {
       method: "POST",
-      headers: { "content-type": "application/json", "idempotency-key": ulid(), ...agent },
+      headers: { "content-type": "application/json", "idempotency-key": ulid(), ...principal },
       body: JSON.stringify({
         authorizationId: m.authorizationId,
         closedMandate: closed(m.id, requestId),
         cart,
         unit,
-        evidenceRoot: await evidence.upload(app, m.id, cart, agent),
         ...extra,
+        evidenceRoot: extra.evidenceRoot ?? (await evidence.upload(app, m.id, cart, agent)),
       }),
     });
     const body = (await res.json()) as { type?: string; purchaseId?: string };
@@ -165,8 +166,10 @@ describe("countersigning the same cart again", { timeout: 120_000 }, () => {
     await prior(m.id, "SETTLED", 11);
     await prior(m.id, "DENIED");
     await prior(m.id, "FAILED");
-    const { res, row } = await countersign(m);
-    expect(res.status).not.toBe(409);
+    const { res, body, row } = await countersign(m);
+    expect(res.status).toBe(503);
+    expect(body.type).toMatch(/\/tee-unavailable$/);
+    expect(row?.state).toBe("FAILED");
     expect(row?.cartHash.equals(hash)).toBe(true);
   });
 
@@ -182,7 +185,7 @@ describe("countersigning the same cart again", { timeout: 120_000 }, () => {
       cartHash: randomBytes(32),
     });
     const { res, row } = await countersign(m);
-    expect(res.status).not.toBe(409);
+    expect(res.status).toBe(503);
     expect(row).toBeDefined();
   });
 
@@ -197,7 +200,7 @@ describe("countersigning the same cart again", { timeout: 120_000 }, () => {
     expect(stale.row).toBeUndefined();
 
     const again = await countersign(m, { repeatOf: latest });
-    expect(again.res.status).not.toBe(409);
+    expect(again.res.status).toBe(503);
     expect(again.row).toBeDefined();
   });
 
@@ -208,5 +211,57 @@ describe("countersigning the same cart again", { timeout: 120_000 }, () => {
     const retry = await countersign(m, { repeatOf: first });
     expect(retry.res.status).toBe(409);
     expect(retry.body.purchaseId).toBe(repeat);
+  });
+
+  test("a capture that failed after it was sent holds the cart back like a capture", async () => {
+    const m = await heldMandate();
+    const first = await prior(m.id, "FAILED");
+    await testDb
+      .update(purchases)
+      .set({ failureReason: "capture:amount-mismatch" })
+      .where(eq(purchases.id, first));
+    const { res, body } = await countersign(m);
+    expect(res.status).toBe(409);
+    expect(body.purchaseId).toBe(first);
+  });
+
+  test("retrying a failed request while another purchase of the cart is in flight is refused", async () => {
+    const m = await heldMandate();
+    const failed = await countersign(m);
+    expect(failed.row?.state).toBe("FAILED");
+    const other = await prior(m.id, "COUNTERSIGNED");
+    const retry = await countersign(m, {}, failed.row?.id);
+    expect(retry.res.status).toBe(409);
+    expect(retry.body.purchaseId).toBe(other);
+    expect(retry.row?.state).toBe("FAILED");
+  });
+
+  test("only the client the operator linked countersigns under its mandates", async () => {
+    const m = await heldMandate();
+    const evidenceRoot = await evidence.upload(app, m.id, cart, agent);
+    for (const subject of ["another-client", null]) {
+      if (subject === null) {
+        await testDb
+          .update(operators)
+          .set({ clientId: null })
+          .where(
+            eq(
+              operators.agentId,
+              (await testDb.select().from(mandates).where(eq(mandates.id, m.id)))[0]
+                ?.operatorAgentId as bigint,
+            ),
+          );
+      }
+      const caller = {
+        "x-test-principal": JSON.stringify({
+          kind: "client",
+          subject: subject ?? CLIENT,
+          scopes: ["countersign:write", "evidence:write"],
+        }),
+      };
+      const { res, row } = await countersign(m, { evidenceRoot }, ulid(), caller);
+      expect(res.status).toBe(404);
+      expect(row).toBeUndefined();
+    }
   });
 });

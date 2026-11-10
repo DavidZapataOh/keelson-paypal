@@ -416,7 +416,7 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
           cart: CartSchema.describe("The cart keelson.submit_evidence returned, unchanged."),
           agentId: AgentId.optional(),
           repeatOf: Ulid.optional().describe(
-            "Only to buy the same cart again on purpose: the purchase id Keelson named when it answered that this cart is already bought.",
+            "Only when the user explicitly asked to buy this same cart again: the id of the purchase of it this tool last returned. Never on a retry.",
           ),
         }),
         outputSchema: z.object({
@@ -441,35 +441,44 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
         const requestId = ulid();
         const total = cart.lines.reduce((sum, l) => sum + BigInt(l.qty) * BigInt(l.unit_minor), 0n);
         const value = toPayPalValue({ currency: cart.currency as CurrencyCode, minor: total });
-        const res = await call(
-          keelson,
-          "/v1/countersign",
-          post({
-            authorizationId: mandate.authorizationId,
-            closedMandate: await closeMandate(
-              mandate.openMandate,
-              { requestId, cartHash: `sha256:${toHex(cartHash(cart as Cart)).slice(2)}` },
-              agentKey,
-            ),
-            cart,
-            unit: {
-              amount: {
-                currency_code: cart.currency,
-                value,
-                breakdown: { item_total: { currency_code: cart.currency, value } },
-              },
-            },
-            evidenceRoot,
-            ...(repeatOf ? { repeatOf } : {}),
-          }),
-        );
-        const signed = (await res.json()) as {
+        let signed: {
           purchaseId?: string;
-          decision: "allow" | "deny";
-          mode: "2of2" | "degraded";
+          decision?: "allow" | "deny";
+          mode?: "2of2" | "degraded";
           state?: string;
           logIndex?: string;
         };
+        try {
+          const res = await call(
+            keelson,
+            "/v1/countersign",
+            post({
+              authorizationId: mandate.authorizationId,
+              closedMandate: await closeMandate(
+                mandate.openMandate,
+                { requestId, cartHash: `sha256:${toHex(cartHash(cart as Cart)).slice(2)}` },
+                agentKey,
+              ),
+              cart,
+              unit: {
+                amount: {
+                  currency_code: cart.currency,
+                  value,
+                  breakdown: { item_total: { currency_code: cart.currency, value } },
+                },
+              },
+              evidenceRoot,
+              ...(repeatOf ? { repeatOf } : {}),
+            }),
+          );
+          signed = (await res.json()) as typeof signed;
+        } catch (err) {
+          // A retry after a lost answer: the purchase already made of this cart is the answer.
+          if (!(err instanceof KeelsonError && err.type === "purchase-exists" && err.purchaseId)) {
+            throw err;
+          }
+          signed = { purchaseId: err.purchaseId };
+        }
         const purchaseId = signed.purchaseId ?? requestId;
         let p: Purchase | undefined;
         const until = Date.now() + SETTLE_MS;
@@ -479,18 +488,21 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
           await new Promise((r) => setTimeout(r, 1000));
         }
         const state = p?.state ?? signed.state ?? "COUNTERSIGNED";
+        const decision = signed.decision ?? (state === "DENIED" ? "deny" : "allow");
+        const mode = signed.mode ?? p?.mode ?? "2of2";
+        const made = signed.decision === undefined ? " already" : "";
         return answer(
           {
             purchaseId,
-            decision: signed.decision,
-            mode: signed.mode,
+            decision,
+            mode,
             state,
             logIndex: p?.logIndex ?? signed.logIndex ?? null,
             failure: p?.failure ?? null,
           },
-          signed.decision === "allow"
-            ? `Keelson countersigned purchase ${purchaseId} (${signed.mode}); it is ${state}.`
-            : `Keelson denied the cart; purchase ${purchaseId} is ${state}. Do not retry the same cart.`,
+          decision === "allow"
+            ? `Keelson${made} countersigned purchase ${purchaseId} (${mode}); it is ${state}.`
+            : `Keelson${made} denied the cart; purchase ${purchaseId} is ${state}. Do not retry the same cart.`,
         );
       },
     );

@@ -22,6 +22,7 @@ import {
   gt,
   inArray,
   isNull,
+  like,
   mandates,
   ne,
   operators,
@@ -120,7 +121,7 @@ const Body = z
     }),
     repeatOf: z.string().length(26).optional().openapi({
       description:
-        "To buy the same cart again on purpose: the id of the latest purchase of this cart under the mandate, from the `409 purchase-exists` answer or a purchase listing. Not needed once that purchase failed or was denied, or was captured more than ten minutes ago.",
+        "Only when the user asked to buy the same cart again: the id of the latest purchase of this cart under the mandate. Not needed once that purchase was denied or failed before capture, or was captured more than ten minutes ago. A retry after a lost answer never sends it: the `409 purchase-exists` answer names the purchase already made.",
     }),
   })
   .openapi("CountersignRequest");
@@ -215,8 +216,10 @@ const REPEAT_WINDOW_SEC = 600;
 
 /**
  * The purchase a new purchase of the cart hashed `hash` under the mandate would repeat, other than
- * `except`: the latest one still in flight or captured in the last ten minutes. A countersign
+ * `except`: the latest one still in flight, or captured (or failed at capture) in the last ten
+ * minutes. A countersign
  * for the same cart goes ahead only when it names this purchase as `repeatOf`.
+ * @internal
  */
 export async function latestOfCart(
   db: Pick<Db, "select">,
@@ -235,6 +238,12 @@ export async function latestOfCart(
         or(
           inArray(purchases.state, [...IN_FLIGHT]),
           gt(purchases.capturedAt, sql`now() - make_interval(secs => ${REPEAT_WINDOW_SEC})`),
+          // A capture that failed after it was sent may still hold the money, until reconciled.
+          and(
+            eq(purchases.state, "FAILED"),
+            like(purchases.failureReason, "capture:%"),
+            gt(purchases.updatedAt, sql`now() - make_interval(secs => ${REPEAT_WINDOW_SEC})`),
+          ),
         ),
       ),
     )
@@ -291,7 +300,7 @@ function legStatus(
  * reserve twice. Only one of several concurrent retries wins.
  */
 async function redrive(
-  db: Db,
+  db: Pick<Db, "select" | "update">,
   id: string,
   mandateId: string,
   want: CountersignExpectation,
@@ -717,7 +726,15 @@ export function registerCountersign(
           })
           .onConflictDoNothing({ target: purchases.id })
           .returning({ id: purchases.id });
-        return { inserted };
+        // Taken into evaluation under the same lock, so the next holder sees it in flight.
+        const driven =
+          inserted.length > 0
+            ? await transition(tx, "purchases", purchaseId, "PROPOSED", "EVALUATING")
+            : await redrive(tx, purchaseId, mandate.id, want, body.cart, evidenceRoot, {
+                orderId,
+                authorizationId: body.authorizationId,
+              });
+        return { driven };
       })
       .catch((err: unknown) => {
         // A unique violation here is the evidence root: the id conflict is already ignored.
@@ -733,19 +750,11 @@ export function registerCountersign(
         409,
         "purchase-exists",
         "Purchase exists",
-        `Purchase ${claim.exists} of this cart is in flight or was captured in the last ten minutes. To buy the cart again on purpose, send that id as repeatOf.`,
+        `Purchase ${claim.exists} of this cart is in flight or was captured in the last ten minutes; it is the answer to this request.`,
         { purchaseId: claim.exists },
       );
     }
-    const { inserted } = claim;
-    const driven =
-      inserted.length > 0
-        ? await transition(db, "purchases", purchaseId, "PROPOSED", "EVALUATING")
-        : await redrive(db, purchaseId, mandate.id, want, body.cart, evidenceRoot, {
-            orderId,
-            authorizationId: body.authorizationId,
-          });
-    if (!driven) {
+    if (!claim.driven) {
       return problem(
         c,
         409,

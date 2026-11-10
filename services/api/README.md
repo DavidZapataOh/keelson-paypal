@@ -303,13 +303,16 @@ only against the authorization captures use now (the mandate's hold, or this req
 per-purchase hold).
 
 A cart is bought once per mandate. While a purchase of the same cart (same cart hash) is in
-flight, or for 600 s after it was captured, another countersign of it answers
+flight, or for 600 s after it was captured or failed at capture, another countersign of it answers
 `409 purchase-exists` with that purchase's `purchaseId` and `Location`, whatever its request id,
 evidence or `Idempotency-Key`: an agent that lost an answer and retries with new evidence gets
 the purchase it already made. The `Idempotency-Key` still replays the stored answer of the same
-request. To buy the same cart again on purpose, the agent names that purchase as `repeatOf`; a
-retry of that repeat names a purchase that is no longer the latest and gets the repeat back. A
-denied or failed purchase holds nothing back.
+request. To buy the same cart again because the user asked to, the agent names that purchase as
+`repeatOf`; a retry of that repeat names a purchase that is no longer the latest and gets the
+repeat back. A purchase denied, or failed before capture, holds nothing back. The check, the new
+purchase and its move into evaluation (or a retry's) commit together under an advisory lock per
+mandate and cart. `keelson.request_countersign` answers a `purchase-exists` with the purchase
+already made.
 
 Every ALLOW then goes through one state machine, stored on its `purchases` row:
 
