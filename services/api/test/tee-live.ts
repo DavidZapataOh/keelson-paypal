@@ -27,6 +27,7 @@ import {
   SPC_INSTRUMENT,
   type SpcDetails,
 } from "@keelson/mandate";
+import { POLICY_SET_HASH } from "@keelson/policy/hashes";
 import { isoCBOR } from "@simplewebauthn/server/helpers";
 import type { MiddlewareHandler } from "hono";
 import { type Browser, type CDPSession, chromium, type Page } from "playwright";
@@ -39,6 +40,7 @@ import { agentBond, agentCnf, termsConsent } from "../src/compile-sources.ts";
 import type { Principal } from "../src/principal.ts";
 import type { CountersignRequest, LegClient, MandateIssued } from "../src/tee/client.ts";
 import type { CountersignExpectation } from "../src/tee/coordinator.ts";
+import { engineSource } from "../src/tee/engine-source.ts";
 
 export const live = process.env.KEELSON_LIVE === "1";
 
@@ -557,7 +559,8 @@ export const testAgent: AgentKey = process.env.KEELSON_AGENT_KEY
 
 /**
  * The demo mandate for `sub`, signed with `passkey` after `edit`. It binds what compiling fills:
- * `agent`'s key as the operator's `cnf`, the operator's bond and the current terms.
+ * `agent`'s key as the operator's `cnf`, the operator's bond, the engine build, the policy set and
+ * the current terms.
  */
 export async function signedMandate(
   passkey: Passkey,
@@ -593,6 +596,7 @@ export async function signedMandate(
       cnf: await agentCnf({ cnfJwk: agent.jwk }),
       bond: agentBond({ chainId: 421614 }),
     },
+    policy: { ...(await engineSource()), policy_set_hash: POLICY_SET_HASH },
     consent: await termsConsent(),
   });
   edit(m);

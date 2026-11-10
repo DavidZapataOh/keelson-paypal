@@ -7,6 +7,7 @@ import { serve } from "@hono/node-server";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { operators } from "@keelson/db";
 import { type Mandate, parseMandate } from "@keelson/mandate";
+import { POLICY_SET_HASH } from "@keelson/policy/hashes";
 import { cose, decodeCredentialPublicKey, isoBase64URL } from "@simplewebauthn/server/helpers";
 import { betterAuth } from "better-auth";
 import { testUtils } from "better-auth/plugins";
@@ -21,6 +22,7 @@ import { createAuth } from "../src/auth.ts";
 import { operatorAgent, termsConsent } from "../src/compile-sources.ts";
 import { authenticate } from "../src/middleware/auth.ts";
 import { userPasskeys } from "../src/passkeys.ts";
+import { engineSource } from "../src/tee/engine-source.ts";
 import { testAuthEnv, testDb, testKv } from "./setup.ts";
 
 const pageScript = `
@@ -189,8 +191,8 @@ const helpers = betterAuth({
 
 const operatorId = BigInt(`0x${randomBytes(8).toString("hex")}`);
 let browser!: Browser;
-/** What `POST /v1/mandates/compile` fills: the operator's registered agent and the current terms. */
-let compiled!: Pick<Mandate, "agent" | "consent">;
+/** What `POST /v1/mandates/compile` fills: the operator's agent, the engine build and the terms. */
+let compiled!: Pick<Mandate, "agent" | "policy" | "consent">;
 
 const newAgentJwk = async () => {
   const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, [
@@ -209,7 +211,11 @@ beforeAll(async () => {
     name: "Test operator",
     cnfJwk: await newAgentJwk(),
   });
-  compiled = { agent: await operatorAgent(testDb, operatorId)(), consent: await termsConsent() };
+  compiled = {
+    agent: await operatorAgent(testDb, operatorId)(),
+    policy: { ...(await engineSource()), policy_set_hash: POLICY_SET_HASH },
+    consent: await termsConsent(),
+  };
   // The full build: the headless shell has no Secure Payment Confirmation service. SPC is off by
   // default on Linux (`kSecurePaymentConfirmation` in content_features.cc), so it is enabled here.
   browser = await chromium.launch({
@@ -312,6 +318,7 @@ function mandateFor(
       },
     },
     agent: structuredClone(compiled.agent),
+    policy: structuredClone(compiled.policy),
     consent: structuredClone(compiled.consent),
   });
   edit(m);
@@ -534,6 +541,38 @@ test("the mandate must bind the operator's agent key, its bond and the current t
   }
 });
 
+test("the mandate must name the engine build the legs run and the current policy set", {
+  timeout: 60_000,
+}, async () => {
+  const s = await signer();
+  const cases: [string[], (m: Mandate) => void][] = [
+    [["policy.engine"], (m) => Object.assign(m.policy, { engine: "other-engine" })],
+    [["policy.version"], (m) => Object.assign(m.policy, { version: demo.policy.version })],
+    [
+      ["policy.measurements"],
+      (m) => Object.assign(m.policy, { measurements: m.policy.measurements.toReversed() }),
+    ],
+    [
+      ["policy.policy_set_hash"],
+      (m) => Object.assign(m.policy, { policy_set_hash: demo.policy.policy_set_hash }),
+    ],
+    [
+      ["policy.version", "policy.measurements", "policy.policy_set_hash"],
+      (m) => Object.assign(m, { policy: structuredClone(demo.policy) }),
+    ],
+  ];
+  for (const [fields, edit] of cases) {
+    const m = mandateFor(s, edit);
+    const res = await post(s.page, (await sign(s.page, m)).body);
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    expect(res.body.type).toBe(problemType("mandate-binding-mismatch"));
+    expect(res.body.fields).toEqual(fields);
+    expect(
+      await testDb.query.mandates.findFirst({ where: (t, { eq }) => eq(t.id, m.mid) }),
+    ).toBeUndefined();
+  }
+});
+
 test("an operator without a registered agent key cannot be named", {
   timeout: 60_000,
 }, async () => {
@@ -685,8 +724,8 @@ test("the mandate must name the signer", { timeout: 60_000 }, async () => {
 test("a payload changed after signing is rejected", { timeout: 60_000 }, async () => {
   const s = await signer();
   const signed = await sign(s.page, mandateFor(s));
-  const payloadSd = structuredClone(signed.body.payloadSd) as { policy: { version: string } };
-  payloadSd.policy.version = "9.9.9";
+  const payloadSd = structuredClone(signed.body.payloadSd) as { exp: number };
+  payloadSd.exp -= 60;
   const res = await post(s.page, { ...signed.body, payloadSd });
   expect(res.status).toBe(401);
   expect(res.body.type).toBe(problemType("invalid-signature"));
