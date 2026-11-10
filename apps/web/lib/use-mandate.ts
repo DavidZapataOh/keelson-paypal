@@ -53,7 +53,7 @@ export function useMandate(id: string | null) {
     [load],
   );
   const userId = session.data?.user.id;
-  useEvents(userId && id ? userChannel(userId, `mandate:${id}`) : undefined, onEvent);
+  useEvents(userId && id ? userChannel(userId, `mandate:${id}`) : undefined, onEvent, load);
 
   return {
     mandate,
