@@ -1,0 +1,30 @@
+{
+  "forkBlock": 327794389,
+  "treeSize": 764,
+  "cartTs": 1794293073,
+  "verdict": {
+    "disputeId": "0x8f5d7f4be585ca13694e333c6ece393df0f160ed6b152c833afb446eee2a3406",
+    "coverageId": "0xc2c5f7800c8563c821f46920eae5ea726fd62e993f455d4c4f6ac27fb8309b5d",
+    "agentId": "351",
+    "payee": "0x467d2bebb479d9b80ab1c461243e05a2b82387d8",
+    "amount": "10000000",
+    "ruleId": "0",
+    "liable": "1",
+    "fieldId": "255",
+    "evidenceHash": "0x04173b68c3aed372a2f38b7a459495110b46832159a8aedd5399af4582ac432c",
+    "inputsHash": "0x08916ed54f20919f7fd8e029f2de4b1ca461e9c16b8b701f1eee8dabde5d019a",
+    "policySetHash": "0x76e3a5959eddc084b99b80a7376d85eeb86f005a7ce447420ac67c3e80902123",
+    "checkpointRoot": "0x93cc3fa602985fec1adbeaead9f6caab3ea091a791c3b6978b7dfa771cf9dda1",
+    "issuedAt": "1794292953",
+    "deadline": "1794379353"
+  },
+  "digest": "0x4b139b23023d77a05bcf6085f85f6b17de374245548a8f9ec51422b432b43db4",
+  "signatures": {
+    "tdx": "0xb7331f2f2dfd4dfda140dee294219b36e041696c8858d860e8771e2200312d7d5b16806837518be9b7f1b43e5d23d326d711073c3f53409d2ca5e1d0dcc478341b",
+    "nitro": "0x44d86a792eabf490d5d90ee7ffeddc0266cc639879e60badea5800ad8277e65c10c46cbd297d394ebe8b909b43f83a8c63c0a706ee8d4589ad778dcdb17a31931b"
+  },
+  "signers": {
+    "tdx": "0xf5afd447c51ad8ef1134942713c30d0332c68001",
+    "nitro": "0x22100771d77a328a3ae089472ff53e9b666d798c"
+  }
+}
