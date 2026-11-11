@@ -1,7 +1,8 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
+import { registerWorker } from "../lib/push";
 import { Header } from "./header";
 
 /** Routes that draw their own chrome: the onboarding steps and the app. */
@@ -23,10 +24,18 @@ const OWN_CHROME = new Set([
   "/sign-in/",
   "/passkeys/",
   "/embed/approve/",
+  "/activity/",
+  "/alerts/",
+  "/alerts/confirm/",
+  "/alerts/unsubscribe/",
 ]);
 
 export function Chrome({ children }: { children: ReactNode }) {
   const path = usePathname();
+  // The worker shows phone approvals; it is registered once the app has loaded.
+  useEffect(() => {
+    void registerWorker()?.catch(() => {});
+  }, []);
   if (OWN_CHROME.has(path.endsWith("/") ? path : `${path}/`)) return <>{children}</>;
   return (
     <>

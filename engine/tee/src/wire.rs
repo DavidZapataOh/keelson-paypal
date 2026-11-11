@@ -10,7 +10,7 @@ use alloy_primitives::Address;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use keelson_canon::{Cart, PayPalUnit};
-use keelson_core::eip712::Countersign;
+use keelson_core::eip712::{CardAuthorization, Countersign};
 use keelson_mandate::Jwk;
 use keelson_policy::FieldId;
 use serde::de::Error as _;
@@ -486,6 +486,91 @@ impl From<&keelson_core::eip712::Verdict> for VerdictJson {
 #[serde(deny_unknown_fields)]
 pub struct VerdictSigned {
     pub verdict: VerdictJson,
+    pub chain_id: u64,
+    /// The EIP-712 signing hash.
+    pub digest: Hex32,
+    /// `r ‖ s ‖ v`.
+    pub signature: Hex65,
+    pub signer: Address,
+    pub tee: TeeKind,
+}
+
+/// A card network authorization, as the card issuer reported it in its real-time request.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CardNetworkAuthorization {
+    /// The issuer's authorization id, such as Stripe's `iauth_…`.
+    pub id: String,
+    /// The amount the merchant asks to hold, in minor units of `currency`.
+    pub amount_minor: i64,
+    /// ISO 4217 alphabetic code.
+    pub currency: String,
+    /// The merchant category code (ISO 18245), four digits.
+    pub mcc: String,
+    pub merchant_name: String,
+    /// ISO 3166-1 alpha-2.
+    pub merchant_country: String,
+    /// The acquirer's id for the merchant.
+    pub network_id: String,
+}
+
+/// A card authorization to check against the ALLOW its card was issued under.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CardAuthorizeRequest {
+    /// This leg's ALLOW the card was issued under.
+    pub countersign: CountersignJson,
+    /// This leg's signature over it.
+    pub signature: Hex65,
+    /// The chain of the countersign's EIP-712 domain; the engine's own chain when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chain_id: Option<u64>,
+    /// The mandate the countersign names, as registered.
+    pub payload_sd: Value,
+    pub disclosures: Vec<String>,
+    pub authorization: CardNetworkAuthorization,
+}
+
+/// A `CardAuthorization` message in the JSON form of viem typed data.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CardAuthorizationJson {
+    pub request_id: Hex32,
+    pub countersign_digest: Hex32,
+    pub authorization_hash: Hex32,
+    pub merchant_hash: Hex32,
+    pub mcc: String,
+    pub country: Hex<2>,
+    pub amount: String,
+    pub currency: String,
+    pub decision: String,
+    pub failed_mask: String,
+    pub issued_at: String,
+}
+
+impl From<&CardAuthorization> for CardAuthorizationJson {
+    fn from(a: &CardAuthorization) -> Self {
+        Self {
+            request_id: Hex(a.requestId.0),
+            countersign_digest: Hex(a.countersignDigest.0),
+            authorization_hash: Hex(a.authorizationHash.0),
+            merchant_hash: Hex(a.merchantHash.0),
+            mcc: a.mcc.to_string(),
+            country: Hex(a.country.0),
+            amount: a.amount.to_string(),
+            currency: a.currency.to_string(),
+            decision: a.decision.to_string(),
+            failed_mask: a.failedMask.to_string(),
+            issued_at: a.issuedAt.to_string(),
+        }
+    }
+}
+
+/// A signed `CardAuthorization`: `decision` 1 approves the card authorization, 2 declines it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CardAuthorized {
+    pub authorization: CardAuthorizationJson,
     pub chain_id: u64,
     /// The EIP-712 signing hash.
     pub digest: Hex32,

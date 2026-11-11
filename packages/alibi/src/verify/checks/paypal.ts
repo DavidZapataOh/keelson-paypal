@@ -17,6 +17,10 @@ export const paypal: CheckDef = {
   run(input) {
     if (!isBundle(input)) return UNDISCLOSED;
     const p = input.paypal;
+    if (p === undefined) {
+      expect(input.card !== undefined, "neither a PayPal nor a card payment", ["/paypal", "/card"]);
+      return { status: "absent" };
+    }
     const c = input.tee.countersign;
     const ctx = input.eval.context;
     expect(

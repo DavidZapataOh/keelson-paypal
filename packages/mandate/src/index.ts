@@ -84,6 +84,7 @@ export {
   verifyKeyBinding,
   verifyOpenMandate,
 } from "./credentials.ts";
+export { ANY_MERCHANT, MCC_LABELS, MCC_TABLE, onCardRail, storesFor } from "./mcc.ts";
 export {
   ANY_ITEM,
   CATEGORY_TABLE,

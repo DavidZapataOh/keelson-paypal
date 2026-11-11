@@ -158,21 +158,71 @@ export const alibiSchema = z.strictObject({
         .optional(),
     })
     .optional(),
-  paypal: z.strictObject({
-    order_id: z.string().min(1),
-    authorization_id: z.string().min(1),
-    custom_id: z.string(),
-    ref_salt: hex32,
-    capture_id: z.string().optional(),
-    invoice_id: z.string().optional(),
-    /** The payee's PayPal merchant id, which the invoice id's digest binds. */
-    merchant_id: z.string().optional(),
-    /**
-     * A live purchase only: the PayPal transaction of the buyer's own payment at the store, as
-     * PayPal reported it to the buyer. Not signed.
-     */
-    transaction_id: z.string().optional(),
-  }),
+  /** A card purchase: the single-use card, every card authorization and the settled capture. */
+  card: z
+    .strictObject({
+      issuer: z.string().min(1),
+      /** The issuer's card token; the card number is never kept. */
+      card_token: z.string().min(1),
+      last_four: z.string().regex(/^[0-9]{4}$/),
+      /** The salt of the leaf's payment commitment, which opens to the issuer and card token. */
+      ref_salt: hex32,
+      /** The issuer-side controls the card was issued with. */
+      controls: json,
+      /**
+       * Each card network authorization of the card, with both legs' signed EIP-712
+       * `CardAuthorization`. Reported by the issuer; the legs' signatures are the evidence.
+       */
+      authorizations: z.array(
+        z.strictObject({
+          id: z.string().min(1),
+          amount_minor: decimal,
+          currency: z.string().length(3),
+          mcc: z.string().regex(/^[0-9]{4}$/),
+          merchant_name: z.string(),
+          merchant_country: z.string(),
+          /** The acquirer's id for the merchant, which the legs' `merchantHash` commits to. */
+          network_id: z.string(),
+          approved: z.boolean(),
+          verdicts: z.array(
+            z.strictObject({
+              kind: teeKind,
+              authorization: z.record(z.string(), z.string()),
+              digest: hex32,
+              signature: hex(65),
+              signer: address,
+            }),
+          ),
+        }),
+      ),
+      /** The capture the card network settled, as the issuer reported it. Not signed. */
+      settlement: z
+        .strictObject({
+          transaction_token: z.string(),
+          settled_minor: decimal,
+          settled_at: z.string(),
+        })
+        .optional(),
+    })
+    .optional(),
+  /** A PayPal purchase: its order, authorization, capture and invoice. */
+  paypal: z
+    .strictObject({
+      order_id: z.string().min(1),
+      authorization_id: z.string().min(1),
+      custom_id: z.string(),
+      ref_salt: hex32,
+      capture_id: z.string().optional(),
+      invoice_id: z.string().optional(),
+      /** The payee's PayPal merchant id, which the invoice id's digest binds. */
+      merchant_id: z.string().optional(),
+      /**
+       * A live purchase only: the PayPal transaction of the buyer's own payment at the store, as
+       * PayPal reported it to the buyer. Not signed.
+       */
+      transaction_id: z.string().optional(),
+    })
+    .optional(),
 });
 
 /** What the public log already publishes about one Alibi. */

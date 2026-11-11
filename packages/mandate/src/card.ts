@@ -9,6 +9,7 @@ import {
   fieldColors,
 } from "./colors.ts";
 import { mandateCommitment } from "./commitment.ts";
+import { ANY_MERCHANT, MCC_LABELS } from "./mcc.ts";
 import { ANY_ITEM, CATEGORY_TABLE, type Mandate } from "./schema.ts";
 import { buildSdPayload, decodeMandate } from "./sd.ts";
 import { type SpcDetails, spcDetails } from "./spc.ts";
@@ -47,6 +48,7 @@ const LABELS: Record<FieldId, string> = {
   currency: "Currency",
   budget: "Budget",
   merchant: "Merchant",
+  card: "Paid with",
   deadline: "Buy by",
   quantity: "Quantity",
   agent: "Agent",
@@ -118,12 +120,25 @@ function values(m: Mandate): Partial<Record<FieldId, string[]>> {
     if (c.type === "payment.amount_range") out.total = [money(m, c.max)];
     else if (c.type === "payment.budget") out.budget = [money(m, c.max)];
     else if (c.type === "payment.execution_date") out.deadline = [c.not_after];
+    else if (c.type === "payment.card_controls") {
+      out.card = [
+        "PayPal · Keelson single-use card, issued only after Keelson allows the cart",
+        "Capped at the allowed total, and only at the stores above",
+        "Each card authorization is checked again by both enclaves",
+      ];
+    }
   }
   for (const c of m.checkout.constraints) {
     if (c.type === "checkout.allowed_merchants") {
-      out.merchant = c.allowed.map(
-        (x) => `${x.name} (${host(x.website)}, PayPal ${x.paypal_merchant_id})`,
-      );
+      out.merchant = c.allowed.map((x) => {
+        if (m.payment.rail === "paypal") {
+          return `${x.name} (${host(x.website ?? "")}, PayPal ${x.paypal_merchant_id})`;
+        }
+        // Everything before " (" is the store's name, as the app's chips read it.
+        const codes = (x.mcc ?? []).map((k) => `${MCC_LABELS[k] ?? "MCC"} ${k}`).join(", ");
+        const store = x.id === ANY_MERCHANT ? "Any store" : x.name;
+        return `${store} · card (${x.country}: ${codes})`;
+      });
     } else if (c.type === "checkout.line_items") {
       out.quantity = [String(c.items.reduce((n, i) => n + i.quantity, 0))];
       out.items = c.items.map((i) =>

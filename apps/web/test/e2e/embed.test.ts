@@ -1,9 +1,13 @@
+import { generateKeyPairSync, randomBytes } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import AxeBuilder from "@axe-core/playwright";
 import { type Browser, type BrowserContext, chromium, type Page } from "playwright";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import demo from "../../../../packages/mandate/test/fixtures/demo-mandate.json" with {
+  type: "json",
+};
 
 const out = fileURLToPath(new URL("../../out", import.meta.url));
 const API = "https://api.keelson.finance";
@@ -33,9 +37,11 @@ const later = (ms: number) => new Date(Date.now() + ms).toISOString();
 const REASON =
   "I am the shopping agent on this demo platform. You asked me to find and buy running shoes under $120 at RunFast; I compare the pairs, then check out only what you approve here.";
 
-const view = (state = "PENDING", mandateId: string | null = null) => ({
+const view = (state = "PENDING", mandateId: string | null = null, signer: unknown = null) => ({
   ref: REF,
   origin: HOST,
+  signer,
+  matchNumber: 42,
   request: {
     code: "BCDF-GHJK",
     kind: "connect",
@@ -73,14 +79,81 @@ interface Api {
   mandateId: string | null;
   opened: number;
   declined: number;
+  /** Who the frame signs for, once it signed in or a Keelson window linked the user. */
+  signer: {
+    passkeys: { credentialId: string; payment: boolean }[];
+    credentialId: string | null;
+  } | null;
+  /** The client data of every ceremony the frame answered, by route. */
+  ceremonies: Record<string, Record<string, unknown>>;
+  /** The passkey the frame created. */
+  jwk?: { kty: "EC"; crv: "P-256"; x: string; y: string };
+  /** The mandate the frame stored. */
+  stored?: { payloadSd: Record<string, unknown>; assertion: { credentialId: string } };
 }
+
+/** A P-256 passkey for the virtual authenticator, and its public JWK for the mandate. */
+function passkeyPair() {
+  const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const jwk = publicKey.export({ format: "jwk" }) as { x: string; y: string };
+  return {
+    id: randomBytes(16).toString("base64url"),
+    pkcs8: privateKey.export({ format: "der", type: "pkcs8" }).toString("base64"),
+    jwk: { kty: "EC" as const, crv: "P-256" as const, x: jwk.x, y: jwk.y },
+  };
+}
+
+/** The draft the API returns for the platform's embed, naming `cred`. */
+function draftFor(cred: { id: string; jwk: unknown }) {
+  const now = Math.floor(Date.now() / 1000);
+  return {
+    mandateDraft: {
+      ...structuredClone(demo),
+      mid: "01M7MANDATE000000000000000",
+      iat: now,
+      nbf: now,
+      exp: now + 86_400,
+      user: { ...demo.user, cred: { id: cred.id, rp_id: "keelson.finance", jwk: cred.jwk } },
+      embed: { top_origin: HOST },
+    },
+    card: { rows: [] },
+    ambiguous: [],
+    check: { status: "skipped", discrepancies: null },
+  };
+}
+
+const clientDataOf = (body: { response?: { clientDataJSON?: string } } | undefined) =>
+  JSON.parse(
+    Buffer.from(body?.response?.clientDataJSON ?? "", "base64url").toString("utf8"),
+  ) as Record<string, unknown>;
+
+/** The Permissions-Policy the production approval page sends. */
+const PAGE_PERMISSIONS =
+  "publickey-credentials-get=(self), publickey-credentials-create=(self), payment=(self), camera=(), microphone=(), geolocation=(), clipboard-read=()";
 
 /**
  * A browser where `HOST` (or `EVIL`) is an agent platform page with the SDK, Keelson's API serves
  * the exported embed page with `frame-ancestors` for `HOST` only, and the app serves the export.
  */
-async function world(opts: { hostOrigin?: string; overlay?: boolean; ancestors?: string } = {}) {
-  const api: Api = { state: "PENDING", mandateId: null, opened: 0, declined: 0 };
+async function world(
+  opts: {
+    hostOrigin?: string;
+    overlay?: boolean;
+    ancestors?: string;
+    /** The host page's own Permissions-Policy: what it can delegate to Keelson's frame. */
+    hostPermissions?: string;
+    /** A passkey already on this device's authenticator. */
+    passkey?: ReturnType<typeof passkeyPair>;
+  } = {},
+) {
+  const api: Api = {
+    state: "PENDING",
+    mandateId: null,
+    opened: 0,
+    declined: 0,
+    signer: null,
+    ceremonies: {},
+  };
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const hostOrigin = opts.hostOrigin ?? HOST;
   const hostPage = `<!doctype html><html lang="en"><head><title>Host</title>
@@ -96,7 +169,17 @@ window.mounted = Keelson.mount(document.getElementById("slot"), { url: ${JSON.st
 setInterval(() => parent.postMessage({ source: "keelson", version: 1, type: "approved", requestId: "x", mandateId: "forged" }, "*"), 200);
 </script></body></html>`;
   await context.route(`${hostOrigin}/`, (r) =>
-    r.fulfill({ contentType: "text/html", body: hostPage }),
+    r.fulfill({
+      contentType: "text/html",
+      body: hostPage,
+      // A host delegates the features to Keelson's frame and keeps them itself: a frame gets a
+      // feature only where its parent has it.
+      headers: {
+        "permissions-policy":
+          opts.hostPermissions ??
+          `publickey-credentials-get=(self "${API}"), publickey-credentials-create=(self "${API}"), payment=(self "${API}")`,
+      },
+    }),
   );
   await context.route(`${EVIL}/forge`, (r) => r.fulfill({ contentType: "text/html", body: forge }));
   const serve = async (r: Parameters<Parameters<BrowserContext["route"]>[1]>[0], path: string) => {
@@ -119,7 +202,7 @@ setInterval(() => parent.postMessage({ source: "keelson", version: 1, type: "app
         body: await readFile(file),
         headers: {
           "content-security-policy": `frame-ancestors ${opts.ancestors ?? HOST}`,
-          "permissions-policy": "publickey-credentials-get=(), payment=()",
+          "permissions-policy": PAGE_PERMISSIONS,
         },
       });
     }
@@ -144,8 +227,78 @@ setInterval(() => parent.postMessage({ source: "keelson", version: 1, type: "app
     if (url.pathname === "/v1/embed/request") {
       return r.fulfill({
         contentType: "application/json",
-        body: JSON.stringify(view(api.state, api.mandateId)),
+        body: JSON.stringify(view(api.state, api.mandateId, api.signer)),
       });
+    }
+    const json = (body: unknown, status = 200) =>
+      r.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
+    const posted = req.postDataJSON() as Record<string, unknown> | undefined;
+    if (url.pathname === "/v1/embed/sign-in/options") {
+      return json({
+        challenge: randomBytes(32).toString("base64url"),
+        rpId: "keelson.finance",
+        userVerification: "required",
+        timeout: 60_000,
+        allowCredentials: [],
+      });
+    }
+    if (url.pathname === "/v1/embed/sign-in") {
+      api.ceremonies.signIn = clientDataOf(posted as never);
+      api.signer = {
+        passkeys: [{ credentialId: String(posted?.id), payment: false }],
+        credentialId: String(posted?.id),
+      };
+      return json(api.signer);
+    }
+    if (url.pathname === "/v1/embed/links") {
+      return json({ nonce: `kel_${"c".repeat(43)}`, expires_in: 600 }, 201);
+    }
+    if (url.pathname === "/v1/embed/links/claim") {
+      if (posted?.grant !== `keg_${"d".repeat(43)}`) return json({}, 401);
+      api.signer = { passkeys: [], credentialId: null };
+      return json(api.signer);
+    }
+    if (url.pathname === "/v1/embed/passkeys/options") {
+      return json({
+        challenge: randomBytes(32).toString("base64url"),
+        rp: { id: "keelson.finance", name: "Keelson" },
+        user: { id: randomBytes(16).toString("base64url"), name: "Ada", displayName: "Ada" },
+        pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+        timeout: 60_000,
+        attestation: "none",
+        excludeCredentials: [],
+        authenticatorSelection: { residentKey: "required", userVerification: "required" },
+      });
+    }
+    if (url.pathname === "/v1/embed/passkeys") {
+      api.ceremonies.create = clientDataOf(posted as never);
+      const response = posted?.response as { publicKey?: string } | undefined;
+      const spki = Buffer.from(response?.publicKey ?? "", "base64url");
+      // The last 64 bytes of a P-256 SPKI are x and y.
+      const point = spki.subarray(spki.length - 64);
+      const id = String(posted?.id);
+      api.signer = { passkeys: [{ credentialId: id, payment: false }], credentialId: id };
+      api.jwk = {
+        kty: "EC",
+        crv: "P-256",
+        x: point.subarray(0, 32).toString("base64url"),
+        y: point.subarray(32).toString("base64url"),
+      };
+      return json(api.signer, 201);
+    }
+    if (url.pathname === "/v1/embed/draft") {
+      const id = api.signer?.credentialId ?? "";
+      return json(draftFor({ id, jwk: api.jwk ?? opts.passkey?.jwk }));
+    }
+    if (url.pathname === "/v1/embed/mandates") {
+      const body = posted as unknown as NonNullable<Api["stored"]> & {
+        assertion: { clientDataJSON: string };
+      };
+      api.stored = body;
+      api.ceremonies.sign = clientDataOf({ response: body.assertion });
+      api.state = "APPROVED";
+      api.mandateId = "01M7MANDATE000000000000000";
+      return json({ id: api.mandateId, state: "ACTIVE" }, 201);
     }
     if (url.pathname === "/v1/embed/deny") {
       api.declined += 1;
@@ -155,6 +308,31 @@ setInterval(() => parent.postMessage({ source: "keelson", version: 1, type: "app
     return r.abort("connectionrefused");
   });
   const page = await context.newPage();
+  const cdp = await context.newCDPSession(page);
+  await cdp.send("WebAuthn.enable");
+  const { authenticatorId } = await cdp.send("WebAuthn.addVirtualAuthenticator", {
+    options: {
+      protocol: "ctap2",
+      transport: "internal",
+      hasResidentKey: true,
+      hasUserVerification: true,
+      isUserVerified: true,
+      automaticPresenceSimulation: true,
+    },
+  });
+  if (opts.passkey) {
+    await cdp.send("WebAuthn.addCredential", {
+      authenticatorId,
+      credential: {
+        credentialId: Buffer.from(opts.passkey.id, "base64url").toString("base64"),
+        isResidentCredential: true,
+        rpId: "keelson.finance",
+        privateKey: opts.passkey.pkcs8,
+        userHandle: randomBytes(16).toString("base64"),
+        signCount: 0,
+      },
+    });
+  }
   await page.goto(`${hostOrigin}/`);
   return { context, page, api };
 }
@@ -206,8 +384,151 @@ describe("the embedded approval", () => {
     await context.close();
   });
 
-  test("Allow waits until it has been visible, then opens Keelson's own window with the lowered limits", async () => {
+  test("Allow waits until it has been visible; signing in and signing happen in the frame, with no window", async () => {
+    const passkey = passkeyPair();
+    const { context, page, api } = await world({ passkey });
+    const frame = frameOf(page);
+    const allow = frame.getByRole("button", { name: "Allow $120.00" });
+    await allow.waitFor();
+    expect(await allow.getAttribute("aria-disabled")).toBe("true");
+    await frame.getByLabel("Most in total").fill("9000");
+    const lowered = frame.getByRole("button", { name: "Allow $90.00" });
+    await lowered.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(600);
+    await expect.poll(() => lowered.getAttribute("aria-disabled")).toBe("false");
+    let windows = 0;
+    context.on("page", () => {
+      windows += 1;
+    });
+    await lowered.click();
+    // The passkey that signs in tells who signs; the mandate then drafts for the limits chosen.
+    const sign = frame.getByRole("button", { name: "Sign $90.00 with passkey" });
+    await sign.waitFor();
+    expect(api.ceremonies.signIn).toMatchObject({
+      type: "webauthn.get",
+      origin: API,
+      crossOrigin: true,
+      topOrigin: HOST,
+    });
+    await expect.poll(() => sign.getAttribute("aria-disabled"), { timeout: 20_000 }).toBe("false");
+    await shot(page, "confirm");
+    await sign.click();
+    await frame.getByRole("heading", { name: "Approved" }).waitFor({ timeout: 20_000 });
+    expect(api.ceremonies.sign).toMatchObject({
+      type: "webauthn.get",
+      origin: API,
+      crossOrigin: true,
+      topOrigin: HOST,
+    });
+    expect(api.stored?.payloadSd.embed).toEqual({ top_origin: HOST });
+    expect(api.stored?.assertion.credentialId).toBe(passkey.id);
+    await expect
+      .poll(() => events(page))
+      .toContainEqual({
+        source: "keelson",
+        version: 1,
+        type: "approved",
+        requestId: REF,
+        mandateId: "01M7MANDATE000000000000000",
+      });
+    expect(windows).toBe(0);
+    await shot(page, "approved-in-frame");
+    await context.close();
+  });
+
+  test("a new user signs in once in a Keelson window, then creates the passkey and signs in the frame", async () => {
     const { context, page, api } = await world();
+    const frame = frameOf(page);
+    await settled(page);
+    const link = frame.getByRole("button", { name: /New to Keelson/ });
+    await link.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(600);
+    const popupWaiter = context.waitForEvent("page");
+    await link.click();
+    const popup = await popupWaiter;
+    await expect.poll(() => popup.url()).toContain(`${APP}/connect/`);
+    const opened = new URL(popup.url());
+    expect(Object.fromEntries(opened.searchParams)).toMatchObject({
+      c: "BCDF-GHJK",
+      embed: REF,
+      via: "frame",
+      link: `kel_${"c".repeat(43)}`,
+    });
+    await frame.getByText("Sign in to Keelson in the window, then come back here").waitFor();
+    // A grant from any page other than the window this frame opened is ignored.
+    await page.evaluate(
+      ([api, grant]) =>
+        (document.querySelector("#slot iframe") as HTMLIFrameElement).contentWindow?.postMessage(
+          { type: "keelson:linked", grant },
+          api,
+        ),
+      [API, `keg_${"d".repeat(43)}`] as const,
+    );
+    await page.waitForTimeout(800);
+    expect(api.signer).toBeNull();
+    // The user signs in there and confirms; the window hands the grant to its opener, this frame.
+    await popup.evaluate(
+      ([api, grant]) => window.opener.postMessage({ type: "keelson:linked", grant }, api),
+      [API, `keg_${"d".repeat(43)}`] as const,
+    );
+    const create = frame.getByRole("button", { name: "Create passkey" });
+    await create.waitFor({ timeout: 6_000 });
+    // It arms, like Allow, only once seen whole.
+    await create.scrollIntoViewIfNeeded();
+    await expect
+      .poll(() => create.getAttribute("aria-disabled"), { timeout: 10_000 })
+      .toBe("false");
+    await shot(page, "create");
+    await create.click();
+    const sign = frame.getByRole("button", { name: "Sign $120.00 with passkey" });
+    await sign.waitFor();
+    expect(api.ceremonies.create).toMatchObject({
+      type: "webauthn.create",
+      origin: API,
+      crossOrigin: true,
+      topOrigin: HOST,
+    });
+    await expect.poll(() => sign.getAttribute("aria-disabled"), { timeout: 20_000 }).toBe("false");
+    await sign.click();
+    await frame.getByRole("heading", { name: "Approved" }).waitFor({ timeout: 20_000 });
+    expect(api.ceremonies.sign).toMatchObject({ crossOrigin: true, topOrigin: HOST });
+    await context.close();
+  });
+
+  test("where the page cannot create a passkey in a frame, the Keelson window finishes", async () => {
+    const { context, page, api } = await world({
+      hostPermissions: `publickey-credentials-get=("${API}"), publickey-credentials-create=()`,
+    });
+    const frame = frameOf(page);
+    await settled(page);
+    const link = frame.getByRole("button", { name: /New to Keelson/ });
+    await link.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(600);
+    const first = context.waitForEvent("page");
+    await link.click();
+    const window_ = await first;
+    await expect.poll(() => window_.url()).toContain(`${APP}/connect/`);
+    await window_.evaluate(
+      ([api, grant]) => window.opener.postMessage({ type: "keelson:linked", grant }, api),
+      [API, `keg_${"d".repeat(43)}`] as const,
+    );
+    const create = frame.getByRole("button", { name: "Create passkey" });
+    await expect.poll(() => create.getAttribute("aria-disabled"), { timeout: 6_000 }).toBe("false");
+    await create.click();
+    await frame.getByText(/cannot create a passkey here/).waitFor();
+    const second = context.waitForEvent("page");
+    await frame.getByRole("button", { name: "Continue in Keelson" }).click();
+    const signing = new URL((await second).url());
+    expect(`${signing.origin}${signing.pathname}`).toBe(`${APP}/connect/`);
+    expect(signing.searchParams.get("link")).toBeNull();
+    await shot(page, "create-elsewhere");
+    await context.close();
+  });
+
+  test("where the page delegates no passkey to the frame, Allow opens Keelson's own window with the lowered limits", async () => {
+    const { context, page, api } = await world({
+      hostPermissions: "publickey-credentials-get=(), publickey-credentials-create=(), payment=()",
+    });
     const frame = frameOf(page);
     const allow = frame.getByRole("button", { name: "Allow $120.00" });
     await allow.waitFor();

@@ -17,7 +17,7 @@ import { loadAlibi, publicCopy } from "../alibi/issue.ts";
 import type { Deps } from "../app.ts";
 import type { Principal } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
-import { publicDenial } from "./purchases.ts";
+import { publicCard, publicDenial } from "./purchases.ts";
 
 const Id = z
   .string()
@@ -157,7 +157,8 @@ const verifyRoute = createRoute({
  * What the principal may read of the Alibi: all of it when it is the mandate's user or the client
  * that uploaded the evidence; its public copy when it is the Alibi of a live purchase whose PayPal
  * transaction is recorded, or of a live cart denied in one of Keelson's own test runs
- * ({@link publicDenial}); nothing otherwise.
+ * ({@link publicDenial}), or a card purchase the live purchases list ({@link publicCard}); nothing
+ * otherwise.
  */
 async function access(
   deps: Pick<Deps, "db" | "demoAgentId">,
@@ -165,15 +166,15 @@ async function access(
   b: AlibiBundle,
 ): Promise<"full" | "public" | null> {
   if (principal && (await isOwner(deps, principal, b))) return "full";
-  if (b.paypal.transaction_id !== undefined) return "public";
-  const denial = publicDenial(deps.demoAgentId);
-  if (!denial) return null;
+  if (b.paypal?.transaction_id !== undefined) return "public";
+  const shown = b.card ? publicCard(deps.demoAgentId) : publicDenial(deps.demoAgentId);
+  if (!shown) return null;
   const [p] = await deps.db
     .select({ id: purchases.id })
     .from(purchases)
     .innerJoin(mandates, eq(mandates.id, purchases.mandateId))
     .innerJoin(user, eq(user.id, mandates.userId))
-    .where(and(eq(purchases.id, b.alibi_id), denial));
+    .where(and(eq(purchases.id, b.alibi_id), shown));
   return p ? "public" : null;
 }
 
@@ -188,16 +189,23 @@ async function isOwner(deps: Pick<Deps, "db">, principal: Principal, b: AlibiBun
   }
   if (!principal.scopes?.includes("alibis:read")) return false;
   const [row] = await deps.db
-    .select({ uploadedBy: evidenceBundles.uploadedBy, clientId: purchases.clientId })
+    .select({
+      uploadedBy: evidenceBundles.uploadedBy,
+      clientId: purchases.clientId,
+      userId: mandates.userId,
+    })
     .from(purchases)
+    .innerJoin(mandates, eq(mandates.id, purchases.mandateId))
     .innerJoin(
       evidenceBundles,
       eq(evidenceBundles.root, Buffer.from(b.tee.countersign.evidenceRoot.slice(2), "hex")),
     )
     .where(eq(purchases.id, b.alibi_id));
+  // An app acting for a user reads only that user's Alibis.
   return (
     row?.uploadedBy === principal.subject &&
-    (row.clientId === null || row.clientId === principal.subject)
+    (row.clientId === null || row.clientId === principal.subject) &&
+    (principal.user === undefined || principal.user === row.userId)
   );
 }
 

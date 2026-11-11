@@ -1,14 +1,17 @@
 "use client";
 
 import { Button } from "@keelson/ui/components/button";
+import { CopyValue } from "@keelson/ui/components/copy-value";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@keelson/ui/components/tabs";
 import { Check, Copy, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { type FormEvent, useEffect, useId, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useId, useState } from "react";
 import { ApiError, get, post } from "../lib/api";
 import { authClient } from "../lib/auth";
 import { API } from "../lib/config";
 import { CONNECT_PROMPT, type ConnectionView } from "../lib/connections";
+import { LINKED } from "../lib/embed";
 import { Approval, type Chosen } from "./approval";
 import { ErrorNotice } from "./notice";
 import { OnboardingFrame } from "./onboarding/frame";
@@ -16,30 +19,30 @@ import { Welcome } from "./welcome";
 
 const CODE = /^[BCDFGHJKLMNPQRSTVWXZ]{4}-?[BCDFGHJKLMNPQRSTVWXZ]{4}$/i;
 
-/** The prompt to paste into the agent, with a copy button that says it copied. */
-function PromptBlock() {
+/** Text to paste somewhere else, in mono on graphite, with a copy button that says it copied. */
+function CodeBlock({ text, label, noun }: { text: string; label: string; noun: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="relative grid gap-2">
       <section
         // biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region must take keyboard focus (WCAG 2.1.1)
         tabIndex={0}
-        aria-label="Prompt for your agent"
-        className="max-h-56 overflow-y-auto rounded-xl bg-graphite px-4 py-3.5 pr-12"
+        aria-label={label}
+        className="max-h-56 overflow-auto rounded-xl bg-graphite px-4 py-3.5 pr-12 outline-none focus-visible:ring-4 focus-visible:ring-foreground/15"
       >
-        <pre className="whitespace-pre-wrap font-mono text-[13px] text-bone leading-relaxed">
-          {CONNECT_PROMPT}
+        <pre className="whitespace-pre-wrap break-words font-mono text-[13px] text-bone leading-relaxed">
+          {text}
         </pre>
       </section>
       <button
         type="button"
         onClick={async () => {
-          await navigator.clipboard.writeText(CONNECT_PROMPT);
+          await navigator.clipboard.writeText(text);
           setCopied(true);
           setTimeout(() => setCopied(false), 1800);
         }}
-        className="absolute top-2.5 right-2.5 grid size-9 place-items-center rounded-lg bg-bone/10 text-bone transition-colors hover:bg-bone/20"
-        aria-label={copied ? "Copied" : "Copy the prompt"}
+        className="absolute top-2.5 right-2.5 grid size-9 place-items-center rounded-lg bg-bone/10 text-bone transition-colors hover:bg-bone/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bone/60"
+        aria-label={copied ? "Copied" : `Copy the ${noun}`}
       >
         {copied ? (
           <Check className="size-4" aria-hidden="true" />
@@ -48,13 +51,171 @@ function PromptBlock() {
         )}
       </button>
       <span role="status" className="sr-only">
-        {copied ? "Prompt copied" : ""}
+        {copied ? `${noun[0]?.toUpperCase()}${noun.slice(1)} copied` : ""}
       </span>
     </div>
   );
 }
 
-/** First run: the prompt for the agent, then the code it shows, which opens its request. */
+const MCP_URL = "https://api.keelson.finance/mcp";
+const CLAUDE_CODE = `claude mcp add --transport http keelson ${MCP_URL}`;
+const CURSOR_JSON = JSON.stringify({ mcpServers: { keelson: { url: MCP_URL } } }, null, 2);
+
+/** A menu path or a value the user picks, set apart from the sentence around it. */
+function Ui({ children }: { children: ReactNode }) {
+  return <span className="whitespace-nowrap font-medium text-foreground">{children}</span>;
+}
+
+/** The server URL as the host's form asks for it, with its copy button. */
+function ServerUrl() {
+  return (
+    <CopyValue
+      value={MCP_URL}
+      label="the server URL"
+      className="mt-2 w-full justify-between rounded-lg border bg-card py-1 pr-1 pl-3 text-[13px] text-foreground"
+    />
+  );
+}
+
+interface Host {
+  id: string;
+  name: string;
+  steps: ReactNode[];
+  note: ReactNode;
+}
+
+const HOSTS: Host[] = [
+  {
+    id: "claude",
+    name: "Claude",
+    steps: [
+      <>
+        In claude.ai or Claude Desktop, open <Ui>Customize → Connectors</Ui>, select <Ui>Add</Ui>,
+        then <Ui>Add custom connector</Ui>.
+      </>,
+      <>
+        Name it Keelson, paste the server URL and select <Ui>Continue</Ui>.
+        <ServerUrl />
+      </>,
+      <>
+        Keep the sign-in settings marked <Ui>Detected</Ui>. If it asks for an OAuth client, pick{" "}
+        <Ui>Register automatically</Ui>. Select <Ui>Add</Ui>, then <Ui>Connect</Ui>, and sign in to
+        Keelson.
+      </>,
+    ],
+    note: (
+      <>
+        Connectors start off in a new chat: turn Keelson on in each chat from{" "}
+        <Ui>+ → Connectors</Ui>.
+      </>
+    ),
+  },
+  {
+    id: "chatgpt",
+    name: "ChatGPT",
+    steps: [
+      <>
+        On chatgpt.com, open <Ui>Plugins</Ui>, select <Ui>+</Ui>, then{" "}
+        <Ui>Add custom MCP server</Ui>.
+      </>,
+      <>
+        Name it Keelson and paste the server URL under <Ui>Connection</Ui>.
+        <ServerUrl />
+      </>,
+      <>
+        Set authentication to <Ui>OAuth</Ui>, not “No authentication”. Accept the risk notice,
+        select <Ui>Create as a plugin</Ui> and sign in to Keelson.
+      </>,
+    ],
+    note: (
+      <>
+        Web only, in a Business, Enterprise or Edu workspace that allows custom MCP servers. In a
+        chat, type <Ui>@</Ui> and pick Keelson for each message that needs it.
+      </>
+    ),
+  },
+  {
+    id: "cursor",
+    name: "Cursor",
+    steps: [
+      <>
+        Add Keelson to <Ui>~/.cursor/mcp.json</Ui>, or to <Ui>.cursor/mcp.json</Ui> in one project.
+        <div className="mt-2">
+          <CodeBlock text={CURSOR_JSON} label="Cursor configuration" noun="configuration" />
+        </div>
+      </>,
+      <>
+        Cursor registers itself with Keelson and opens the sign-in in your browser. Sign in to
+        Keelson.
+      </>,
+    ],
+    note: <>Keelson then appears in Cursor's MCP settings with its tools.</>,
+  },
+  {
+    id: "claude-code",
+    name: "Claude Code",
+    steps: [
+      <>
+        In a terminal, add the server.
+        <div className="mt-2">
+          <CodeBlock text={CLAUDE_CODE} label="Claude Code command" noun="command" />
+        </div>
+      </>,
+      <>
+        In Claude Code, run <Ui>/mcp</Ui>, pick keelson and sign in to Keelson.
+      </>,
+    ],
+    note: <>Claude Code opens approval pages in your browser for you; you still pick the number.</>,
+  },
+];
+
+/** Where the agent runs, as tabs: the exact steps to add Keelson's MCP server there. */
+function HostSteps() {
+  return (
+    <Tabs defaultValue="claude" className="gap-0">
+      <TabsList
+        aria-label="Your agent's app"
+        className="grid h-auto w-full grid-cols-4 rounded-xl bg-bone-2 p-1"
+      >
+        {HOSTS.map((h) => (
+          <TabsTrigger
+            key={h.id}
+            value={h.id}
+            className="h-10 rounded-lg px-1.5 text-[13px] text-muted-foreground data-[state=active]:border-transparent data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-[0_1px_2px_rgb(23_24_27/0.08),0_4px_12px_-6px_rgb(23_24_27/0.25)] focus-visible:ring-2 focus-visible:ring-foreground/40 sm:text-sm"
+          >
+            {h.name}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+      {HOSTS.map((h) => (
+        <TabsContent key={h.id} value={h.id} className="pt-5">
+          <ol className="grid gap-4">
+            {h.steps.map((step, i) => (
+              <li
+                // biome-ignore lint/suspicious/noArrayIndexKey: the steps are fixed and ordered
+                key={i}
+                className="grid grid-cols-[1.5rem_1fr] gap-x-3 text-pretty text-[15px] text-muted-foreground leading-snug"
+              >
+                <span
+                  aria-hidden="true"
+                  className="grid size-6 place-items-center rounded-full bg-foreground/[0.07] font-mono text-[11px] text-foreground tabular-nums"
+                >
+                  {i + 1}
+                </span>
+                <div className="min-w-0 pt-0.5">{step}</div>
+              </li>
+            ))}
+          </ol>
+          <p className="mt-4 rounded-lg bg-bone-2/70 px-3 py-2.5 text-pretty text-[13px] text-muted-foreground leading-snug">
+            {h.note}
+          </p>
+        </TabsContent>
+      ))}
+    </Tabs>
+  );
+}
+
+/** First run: where to add Keelson, the prompt for the agent, then the code it shows. */
 function ConnectAgent() {
   const router = useRouter();
   const [code, setCode] = useState("");
@@ -106,10 +267,18 @@ function ConnectAgent() {
         Connect your agent
       </h1>
       <p className="mt-3 text-pretty text-lg text-muted-foreground leading-snug">
-        Paste this into your agent. It asks; you approve here.
+        Add Keelson where your agent runs, then paste the prompt. It asks; you approve here.
       </p>
       <div className="mt-6">
-        <PromptBlock />
+        <HostSteps />
+      </div>
+      <h2 className="mt-8 font-semibold text-base">Then paste this into your agent</h2>
+      <p className="mt-1 text-pretty text-muted-foreground text-sm leading-snug">
+        Signed in, your agent's app can ask you for a mandate and buy within the ones you approve
+        for it, nothing more. Every mandate waits for your passkey here.
+      </p>
+      <div className="mt-3">
+        <CodeBlock text={CONNECT_PROMPT} label="Prompt for your agent" noun="prompt" />
       </div>
     </OnboardingFrame>
   );
@@ -249,7 +418,107 @@ function embedReturn(params: URLSearchParams) {
   if (until) initial.until = until;
   const back = new URL("/embed/approve", API);
   back.search = new URLSearchParams({ r: ref, mode: via, step: "done" }).toString();
-  return { initial, back: back.toString() };
+  const link = params.get("link");
+  return {
+    initial,
+    ref,
+    back: back.toString(),
+    ...(link && LINK.test(link) ? { link } : {}),
+  };
+}
+
+const LINK = /^kel_[A-Za-z0-9_-]{43}$/;
+
+/**
+ * Opened by an embedded approval for a user it does not know yet. Once signed in here, the user
+ * confirms the platform it names; the grant goes back only to the frame that opened this
+ * window, on Keelson's own origin, which then creates their passkey if they have none and signs.
+ */
+function LinkEmbed({
+  request,
+  nonce,
+  embedRef,
+  back,
+}: {
+  request: ConnectionView;
+  nonce: string;
+  embedRef: string;
+  back: string;
+}) {
+  const [link, setLink] = useState<{ origin: string } | null>();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  useEffect(() => {
+    post<{ origin: string; ref: string }>("/v1/embed/links/inspect", { nonce })
+      .then((l) => setLink(l.ref === embedRef ? { origin: l.origin } : null))
+      .catch(() => setLink(null));
+  }, [nonce, embedRef]);
+  // The frame that opened this window is on the API's origin; any other opener gets nothing.
+  const opener = typeof window === "undefined" ? null : window.opener;
+  const host = link ? new URL(link.origin).host : "";
+  const confirm = async () => {
+    if (!link || !opener) return;
+    setBusy(true);
+    setError(undefined);
+    try {
+      const { grant } = await post<{ grant: string }>("/v1/embed/links/confirm", {
+        nonce,
+        ref: embedRef,
+      });
+      (opener as Window).postMessage({ type: LINKED, grant }, new URL(API).origin);
+      location.replace(back);
+    } catch (e) {
+      setBusy(false);
+      setError(e instanceof Error ? e.message : "The approval could not be linked.");
+    }
+  };
+  if (link === undefined) {
+    return (
+      <p role="status" className="flex items-center gap-2 p-8 text-muted-foreground">
+        <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+        Reading the request
+      </p>
+    );
+  }
+  if (link === null || !opener) {
+    return (
+      <Closed
+        title="This link is no longer valid"
+        line="Go back to the app that asked and open Keelson from its approval again."
+      />
+    );
+  }
+  return (
+    <OnboardingFrame
+      step="Agent"
+      stage={<span className="size-3 rounded-full bg-graphite" aria-hidden="true" />}
+      action={
+        <Button
+          size="lg"
+          onClick={confirm}
+          disabled={busy}
+          className="h-13 w-full rounded-xl text-base"
+        >
+          {busy ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
+          Continue on {host}
+        </Button>
+      }
+    >
+      <h1 className="text-balance font-semibold text-[1.75rem] leading-[1.1] tracking-[-0.025em] sm:text-[2rem]">
+        Approve on {host}
+      </h1>
+      <p className="mt-3 text-pretty text-lg text-muted-foreground leading-snug">
+        {request.name}, run by {request.agent.operator}, asked for your approval in Keelson's panel
+        on {host}. Continue only if you were there. Keelson's panel then asks for your passkey, or
+        creates one if you have none, and nothing is approved until you sign. This window closes.
+      </p>
+      {error ? (
+        <div className="mt-6">
+          <ErrorNotice>{error}</ErrorNotice>
+        </div>
+      ) : null}
+    </OnboardingFrame>
+  );
 }
 
 /** `/connect?c=XXXX-XXXX`: an agent's request, approved here with a passkey or rejected. */
@@ -332,6 +601,12 @@ export function ConnectPage() {
         title="Already approved"
         line="This code was used. Your agents page shows the grant."
       />
+    );
+  }
+  // A link only names who signs; the frame that asked signs, with no number to match.
+  if (embed?.link) {
+    return (
+      <LinkEmbed request={request} nonce={embed.link} embedRef={embed.ref} back={embed.back} />
     );
   }
   const match = request.match;

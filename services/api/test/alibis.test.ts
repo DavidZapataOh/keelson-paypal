@@ -78,8 +78,8 @@ describe.skipIf(!f)("alibi routes", () => {
       currency: "USD",
       amountMinor: BigInt(c.amount),
       cartHash: Buffer.from(c.cartHash.slice(2), "hex"),
-      invoiceId: b.paypal.invoice_id ?? null,
-      paypalCaptureId: b.paypal.capture_id ?? null,
+      invoiceId: b.paypal?.invoice_id ?? null,
+      paypalCaptureId: b.paypal?.capture_id ?? null,
     });
     const hash = Buffer.from(leafHashOf(b));
     for (const t of b.timestamps) {

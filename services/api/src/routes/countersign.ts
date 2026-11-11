@@ -31,6 +31,7 @@ import {
   like,
   mandates,
   ne,
+  notInArray,
   operators,
   or,
   purchaseHolds,
@@ -40,13 +41,23 @@ import {
 } from "@keelson/db";
 import { decodeMandate, merchantLeaf } from "@keelson/mandate";
 import type { Context } from "hono";
+import { ulid } from "ulid";
 import { hexToBytes } from "viem";
 import type { Deps } from "../app.ts";
+import { cartChecks } from "../cart-checks.ts";
 import { deviceAuthorization, grantOf, requestOnce } from "../connections.ts";
+import { approvedMandate, closeForHost, isDelegated, notAnotherApps } from "../delegated.ts";
 import { capturable, merchantWebsite } from "../hold/state.ts";
 import { MERCHANTS } from "../merchants.ts";
-import { requireClient } from "../middleware/auth.ts";
-import { drivePurchase, type PipelineDeps, viewOf } from "../pipeline/drive.ts";
+import { requireAgent } from "../middleware/auth.ts";
+import { money, notify, purchaseAlert, requestAlert } from "../notify/notifier.ts";
+import {
+  drivePurchase,
+  type FieldCheck,
+  fieldChecks,
+  type PipelineDeps,
+  viewOf,
+} from "../pipeline/drive.ts";
 import { publishPurchase } from "../pipeline/events.ts";
 import { logStep } from "../pipeline/log-step.ts";
 import { principalKey } from "../principal.ts";
@@ -105,13 +116,30 @@ export const CartSchema = z
 
 const Body = z
   .object({
-    authorizationId: z.string().min(1).max(64).openapi({
+    authorizationId: z.string().min(1).max(64).optional().openapi({
       description:
-        "The PayPal authorization that holds the mandate's funds, or this request's own hold when the mandate holds each purchase separately; leg A reads it.",
+        "The PayPal authorization that holds the mandate's funds, or this request's own hold when the mandate holds each purchase separately; leg A reads it. Absent for a card mandate, whose purchase is paid with a single-use card issued after the ALLOW.",
     }),
-    closedMandate: z.string().min(1).max(131_072).openapi({
-      description: "The open mandate closed by the agent's key binding over the request and cart.",
+    closedMandate: z.string().min(1).max(131_072).optional().openapi({
+      description:
+        "The open mandate closed by the agent's key binding over the request and cart. Required, except of an app acting for a user under a mandate of Keelson's hosted operator, which sends `mandateId` instead.",
     }),
+    mandateId: z
+      .string()
+      .regex(/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/)
+      .optional()
+      .openapi({
+        description:
+          "Only for an app acting for a user (`purchases:write`) under a mandate of Keelson's hosted operator that the user approved for it: Keelson closes the mandate with the hosted operator's key over `requestId` and this cart.",
+      }),
+    requestId: z
+      .string()
+      .regex(/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/)
+      .optional()
+      .openapi({
+        description:
+          "With `mandateId`: the request ULID the closed mandate binds, and the purchase's id; a new one when left out.",
+      }),
     cart: CartSchema,
     unit: z
       .record(z.string(), z.unknown())
@@ -155,6 +183,14 @@ const Body = z
       description:
         "Only when the user asked to buy the same cart again: the id of the latest purchase of this cart under the mandate. Not needed once that purchase was denied or failed before capture, or was captured more than ten minutes ago. A retry after a lost answer never sends it: the `409 purchase-exists` answer names the purchase already made.",
     }),
+  })
+  .refine((b) => (b.closedMandate === undefined) !== (b.mandateId === undefined), {
+    message: "Send closedMandate, or mandateId when Keelson closes the mandate.",
+    path: ["closedMandate"],
+  })
+  .refine((b) => b.requestId === undefined || b.mandateId !== undefined, {
+    message: "requestId goes with mandateId; a closed mandate carries its own.",
+    path: ["requestId"],
   })
   .openapi("CountersignRequest");
 
@@ -209,8 +245,8 @@ const route = createRoute({
   tags: ["tee"],
   summary: "Countersign a cart",
   description:
-    "Sends the cart to the TEE legs in order and returns the countersignatures only when both agree. A DENY is countersigned too. A cart is bought once per mandate: while a purchase of the same cart is in flight, or for ten minutes after it was captured, another request for it is answered `409 purchase-exists` with that purchase's id, whatever its request id, evidence or `Idempotency-Key`. Retrying after a lost answer is therefore safe; to buy the same cart again on purpose, name that purchase in `repeatOf`.",
-  middleware: [requireClient(["countersign:write"])],
+    "Sends the cart to the TEE legs in order and returns the countersignatures only when both agree. A DENY is countersigned too. An app acting for a user (`purchases:write`) countersigns only under a mandate that user approved for it; under a mandate of Keelson's hosted operator it sends `mandateId` and Keelson closes the mandate with that operator's key over the request id and this cart, and nothing else. A cart is bought once per mandate: while a purchase of the same cart is in flight, or for ten minutes after it was captured, another request for it is answered `409 purchase-exists` with that purchase's id, whatever its request id, evidence or `Idempotency-Key`. Retrying after a lost answer is therefore safe; to buy the same cart again on purpose, name that purchase in `repeatOf`.",
+  middleware: [requireAgent("purchases:write")],
   request: {
     headers: z.object({ "idempotency-key": z.string().min(1).max(255) }),
     body: { required: true, content: { "application/json": { schema: Body } } },
@@ -238,7 +274,8 @@ const route = createRoute({
       content: problemContent,
     },
     404: {
-      description: "No such mandate of an operator this client linked",
+      description:
+        "No such mandate of an operator this client linked, or that the user approved for this app",
       content: problemContent,
     },
     413: { description: "A leg refused the request as too large", content: problemContent },
@@ -253,7 +290,8 @@ const route = createRoute({
       content: problemContent,
     },
     503: {
-      description: "A leg needed to sign, or PayPal, is unavailable",
+      description:
+        "A leg needed to sign, or PayPal, is unavailable, or the hosted operator's key is not configured",
       content: problemContent,
     },
   },
@@ -359,7 +397,7 @@ async function redrive(
   want: CountersignExpectation,
   cart: { merchant: string; currency: string },
   evidenceRoot: Buffer,
-  hold: { orderId: string; authorizationId: string },
+  hold: { orderId: string | null; authorizationId: string | null },
 ): Promise<boolean> {
   const [row] = await db.select().from(purchases).where(eq(purchases.id, id));
   if (!row) return false;
@@ -526,11 +564,19 @@ export function registerCountersign(
     | "operators"
     | "chains"
     | "paypal"
+    | "cards"
     | "appOrigin"
+    | "demoAgentId"
+    | "hostedAgentKey"
+    | "notifier"
   >,
 ): void {
   const { db, kv, log, tee } = deps;
-  const pipeline: PipelineDeps = { ...deps, chain: deps.chains?.[421614] };
+  const pipeline: PipelineDeps = {
+    ...deps,
+    chain: deps.chains?.[421614],
+    cardIssuer: deps.cards?.issuer,
+  };
   const appOrigin = deps.appOrigin ?? "https://app.keelson.finance";
 
   /**
@@ -540,10 +586,11 @@ export function registerCountersign(
   async function askOnce(
     c: Context,
     mandate: typeof mandates.$inferSelect,
-    cart: { merchant: string; currency: string },
+    cart: Cart,
     total: bigint,
     hash: Buffer,
     overMinor: bigint | null,
+    checks: FieldCheck[],
   ) {
     const clientId = c.var.principal?.subject as string;
     const [open] = await db
@@ -584,20 +631,22 @@ export function registerCountersign(
         ),
       );
     if (pending >= MAX_OPEN_ONCE) return undefined;
-    return {
-      approval: await requestOnce(
-        { db, kv, appOrigin },
-        {
-          mandate,
-          clientId,
-          merchantId: cart.merchant,
-          currency: cart.currency,
-          amountMinor: total,
-          cartHash: hash,
-          overMinor,
-        },
-      ),
-    };
+    const approval = await requestOnce(
+      { db, kv, appOrigin },
+      {
+        mandate,
+        clientId,
+        merchantId: cart.merchant,
+        currency: cart.currency,
+        amountMinor: total,
+        cartHash: hash,
+        cart,
+        checks,
+        overMinor,
+      },
+    );
+    notify(deps.notifier, (n) => requestAlert(n, approval.request_id));
+    return { approval };
   }
 
   app.openapi(route, async (c) => {
@@ -619,16 +668,32 @@ export function registerCountersign(
         "channel3: sources are added by Keelson from the stored observation, never by the agent.",
       );
     }
+    const principal = c.var.principal as NonNullable<typeof c.var.principal>;
+    const delegated = isDelegated(principal) ? principal : undefined;
     let ids: { requestId: string; mid: string };
-    try {
-      ids = readClosedMandate(body.closedMandate);
-    } catch (err) {
-      const detail = err instanceof Error ? err.message : "The closed mandate does not parse.";
-      return problem(c, 422, "invalid-closed-mandate", "Invalid closed mandate", detail);
+    if (body.mandateId !== undefined) {
+      // Only an app acting for a user has its mandate closed by Keelson.
+      if (!delegated) {
+        return problem(
+          c,
+          422,
+          "invalid-closed-mandate",
+          "Invalid closed mandate",
+          "Close the mandate with your agent's key and send it as closedMandate.",
+        );
+      }
+      ids = { requestId: body.requestId ?? ulid(), mid: body.mandateId };
+    } else {
+      try {
+        ids = readClosedMandate(body.closedMandate as string);
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : "The closed mandate does not parse.";
+        return problem(c, 422, "invalid-closed-mandate", "Invalid closed mandate", detail);
+      }
     }
 
     const window = Math.floor(Date.now() / 1000 / RATE_WINDOW_SEC);
-    const caller = principalKey(c.var.principal as NonNullable<typeof c.var.principal>);
+    const caller = principalKey(principal);
     const key = `rl:countersign:${caller}:${ids.mid}:${window}`;
     try {
       const [count] = await kv.multi().incr(key).expire(key, RATE_WINDOW_SEC, "NX").exec();
@@ -646,16 +711,55 @@ export function registerCountersign(
       // The store being down does not stop a countersign; the legs bound replays themselves.
     }
 
-    const [found] = await db
-      .select({ mandate: mandates, clientId: operators.clientId })
-      .from(mandates)
-      .innerJoin(operators, eq(operators.agentId, mandates.operatorAgentId))
-      .where(eq(mandates.id, ids.mid));
-    // The same answer for an unknown mandate and another client's, so neither is disclosed.
-    if (!found?.clientId || found.clientId !== c.var.principal?.subject) {
-      return problem(c, 404, "not-found", "Not found");
+    // The same answer for an unknown mandate and another client's or user's, so none is disclosed.
+    const mandate = delegated
+      ? await approvedMandate(db, delegated, ids.mid)
+      : await db
+          .select({ mandate: mandates, clientId: operators.clientId })
+          .from(mandates)
+          .innerJoin(operators, eq(operators.agentId, mandates.operatorAgentId))
+          .where(and(eq(mandates.id, ids.mid), notAnotherApps(principal.subject)))
+          .then(([found]) =>
+            found?.clientId && found.clientId === principal.subject ? found.mandate : undefined,
+          );
+    if (!mandate) return problem(c, 404, "not-found", "Not found");
+    // Keelson closes only mandates of its hosted operator, with that operator's key.
+    const hostedKey =
+      body.mandateId !== undefined && mandate.operatorAgentId === deps.demoAgentId
+        ? deps.hostedAgentKey
+        : undefined;
+    if (body.mandateId !== undefined && mandate.operatorAgentId !== deps.demoAgentId) {
+      return problem(
+        c,
+        422,
+        "invalid-closed-mandate",
+        "Invalid closed mandate",
+        "This mandate names your own operator: close it with your agent's key and send it as closedMandate.",
+      );
     }
-    const { mandate } = found;
+    if (body.mandateId !== undefined && !hostedKey) {
+      return problem(
+        c,
+        503,
+        "hosted-key-unavailable",
+        "Hosted operator unavailable",
+        "Keelson's hosted operator cannot countersign now.",
+      );
+    }
+    const card = mandate.rail === "card";
+    if (
+      card ? body.authorizationId !== undefined || body.live : body.authorizationId === undefined
+    ) {
+      return problem(
+        c,
+        422,
+        "invalid-request",
+        "Invalid request",
+        card
+          ? "A card mandate's purchase is paid with the card issued after the ALLOW: send no authorizationId and no live store."
+          : "authorizationId is required: the PayPal authorization that holds the funds.",
+      );
+    }
     // A countersign is only worth something against a live hold.
     if (
       mandate.state !== "ACTIVE" ||
@@ -694,6 +798,7 @@ export function registerCountersign(
     // A mandate whose merchant Keelson cannot capture for holds a budget only: the buyer pays
     // its purchases at the store's own checkout.
     if (
+      !card &&
       !body.live &&
       deps.paypal &&
       mandate.holdMode !== "per_purchase" &&
@@ -714,7 +819,11 @@ export function registerCountersign(
     let held: typeof purchaseHolds.$inferSelect | undefined;
     let holdsAuthorization: boolean;
     let orderId: string | null;
-    if (mandate.holdMode === "per_purchase") {
+    if (card) {
+      // The user's budget is held on PayPal; each card charge is captured from that hold.
+      holdsAuthorization = mandate.holdMode === "mandate" && mandate.paypalAuthorizationId !== null;
+      orderId = mandate.paypalOrderId;
+    } else if (mandate.holdMode === "per_purchase") {
       [held] = await db
         .select()
         .from(purchaseHolds)
@@ -1014,7 +1123,15 @@ export function registerCountersign(
     // one-time approval, although the mandate would allow it.
     if (answered?.askAbove != null && total > answered.askAbove) {
       const asked = MERCHANTS.some((m) => m.id === body.cart.merchant)
-        ? await askOnce(c, mandate, body.cart, total, hashOfCart, null)
+        ? await askOnce(c, mandate, body.cart as Cart, total, hashOfCart, null, [
+            ...cartChecks(mandate, body.cart as Cart),
+            {
+              field: "askAbove",
+              mandate: money(answered.askAbove, body.cart.currency),
+              cart: money(total, body.cart.currency),
+              pass: false,
+            },
+          ])
         : undefined;
       if (!asked) {
         return problem(
@@ -1060,6 +1177,28 @@ export function registerCountersign(
         if (await stoppedSince(tx, mandate.userId, mandate.createdAt)) {
           return { revoked: true as const };
         }
+        // A card's charge is collected from the hold after the fact, so the budget a card
+        // mandate's live cards may still charge is checked here too, one cart at a time.
+        if (card) {
+          await tx.execute(
+            sql`select pg_advisory_xact_lock(hashtext(${`card-budget:${mandate.id}`}))`,
+          );
+          const [{ committed } = { committed: "0" }] = await tx
+            // A settled card purchase counts what the network settled; any other, its cart.
+            .select({
+              committed: sql<string>`coalesce(sum(coalesce((select pc.settled_minor from purchase_cards pc where pc.purchase_id = ${purchases.id}), ${purchases.amountMinor})), 0)::text`,
+            })
+            .from(purchases)
+            .where(
+              and(
+                eq(purchases.mandateId, mandate.id),
+                eq(purchases.rail, "card"),
+                ne(purchases.id, purchaseId),
+                notInArray(purchases.state, ["PROPOSED", "DENIED", "FAILED"]),
+              ),
+            );
+          if (BigInt(committed) + total > mandate.maxMinor) return { overBudget: true as const };
+        }
         // Serializes the purchases of one cart under one mandate, so two retries cannot both pass.
         await tx.execute(
           sql`select pg_advisory_xact_lock(hashtext(${`purchase:${mandate.id}:${want.cartHash}`}))`,
@@ -1076,8 +1215,9 @@ export function registerCountersign(
             amountMinor: total,
             cartHash: Buffer.from(want.cartHash.slice(2), "hex"),
             evidenceRoot,
+            rail: mandate.rail,
             paypalOrderId: orderId,
-            paypalAuthorizationId: body.authorizationId,
+            paypalAuthorizationId: body.authorizationId ?? mandate.paypalAuthorizationId,
             paypalRefSalt: randomBytes(32),
             ...(body.live ? { liveStore: body.live.store } : {}),
             ...(c.var.principal?.kind === "client" ? { clientId: c.var.principal.subject } : {}),
@@ -1090,7 +1230,7 @@ export function registerCountersign(
             ? await transition(tx, "purchases", purchaseId, "PROPOSED", "EVALUATING")
             : await redrive(tx, purchaseId, mandate.id, want, body.cart, evidenceRoot, {
                 orderId,
-                authorizationId: body.authorizationId,
+                authorizationId: body.authorizationId ?? mandate.paypalAuthorizationId,
               });
         return { driven };
       })
@@ -1101,6 +1241,15 @@ export function registerCountersign(
         throw err;
       });
     if (claim === null) return evidenceUsed(c);
+    if ("overBudget" in claim) {
+      return problem(
+        c,
+        409,
+        "budget-committed",
+        "Budget committed",
+        "The mandate's live and settled card purchases already commit its budget.",
+      );
+    }
     if ("revoked" in claim) {
       return problem(
         c,
@@ -1150,19 +1299,51 @@ export function registerCountersign(
       }
     }
 
+    // Signed only once the purchase is claimed: over this request and the cart sent to the legs.
+    let closedMandate = body.closedMandate as string;
+    if (hostedKey) {
+      try {
+        closedMandate = await closeForHost(
+          mandate.openMandate as string,
+          ids.requestId,
+          body.cart as Cart,
+          hostedKey,
+        );
+      } catch (err) {
+        log.error(
+          { err, mandateId: mandate.id },
+          "the hosted operator could not close the mandate",
+        );
+        await failPurchase(db, purchaseId, "hosted-key-unavailable");
+        return problem(
+          c,
+          503,
+          "hosted-key-unavailable",
+          "Hosted operator unavailable",
+          "Keelson's hosted operator cannot countersign now.",
+        );
+      }
+    }
+
     try {
       const out = await span("purchase.COUNTERSIGNED", { "purchase.id": purchaseId }, async (s) => {
         const out = await countersign2of2(
           { db, kv, log, tee, verifyingContract: VERIFYING_CONTRACT },
           {
             request_id: ids.requestId,
-            closed_mandate: body.closedMandate,
+            closed_mandate: closedMandate,
             sub: mandate.userId,
             cart: body.cart,
             unit: body.unit,
             evidence: evidenceSources,
             evidence_root: body.evidenceRoot as `0x${string}`,
-            authorization_id: body.authorizationId,
+            // Leg A reads the hold of a card mandate too: it backs the budget the cards spend.
+            ...(body.authorizationId || mandate.paypalAuthorizationId
+              ? {
+                  authorization_id: (body.authorizationId ??
+                    mandate.paypalAuthorizationId) as string,
+                }
+              : {}),
             ...(mandate.sealedSalt
               ? { sealed_salt: Buffer.from(mandate.sealedSalt).toString("base64") }
               : {}),
@@ -1218,7 +1399,20 @@ export function registerCountersign(
       const asked =
         outside === undefined
           ? undefined
-          : await askOnce(c, mandate, body.cart, total, hashOfCart, outside.overMinor);
+          : await askOnce(
+              c,
+              mandate,
+              body.cart as Cart,
+              total,
+              hashOfCart,
+              outside.overMinor,
+              fieldChecks(out.trace, body.cart.currency),
+            );
+      // A cart paused for the user is announced as a request; one simply refused, once logged.
+      if (!allow && !asked) {
+        const blocked = () => notify(deps.notifier, (n) => purchaseAlert(n, purchaseId, "blocked"));
+        driving.then(blocked, blocked);
+      }
       c.header("Keelson-Countersign-Mode", out.mode);
       if (pending) c.header("Location", `/v1/purchases/${purchaseId}`);
       return c.json(

@@ -8,20 +8,23 @@ import { CopyValue } from "@keelson/ui/components/copy-value";
 import { DataItem, DataList } from "@keelson/ui/components/data-list";
 import { Status } from "@keelson/ui/components/status";
 import { Timeline, TimelineItem } from "@keelson/ui/components/timeline";
-import { Check, ChevronRight, MessageSquareWarning, X } from "lucide-react";
+import { Check, ChevronRight, Loader2, MessageSquareWarning, TriangleAlert, X } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { get } from "../lib/api";
+import { cardStore } from "../lib/card";
 import { API, VERIFY } from "../lib/config";
 import { DISPUTE_KINDS, kindOf } from "../lib/dispute-kinds";
 import { major, money, when } from "../lib/format";
-import { purchaseStatus } from "../lib/status";
+import { purchaseStatus, unknownOutcome } from "../lib/status";
 import type { Dispute, Purchase } from "../lib/types";
 import { useMandate } from "../lib/use-mandate";
 import { AnonymousProof } from "./anonymous-proof";
 import { AppShell } from "./app-shell";
 import { RiveMoment } from "./brand";
+import { CardLeg } from "./card-leg";
+import { ChargebackSheet } from "./chargeback-sheet";
 import { CheckoutBreakdown } from "./checkout-breakdown";
 import { DisputeSheet } from "./dispute-sheet";
 import { ErrorNotice } from "./notice";
@@ -77,8 +80,9 @@ function Steps({ p }: { p: Purchase }) {
   const amount = money(p.amount.minor, p.amount.currency);
   // The timeline closes on the outcome once nothing is still moving.
   const settled = p.disputes.every((d) => d.state === "RESOLVED");
-  const outcome =
-    blocked || p.failure
+  const outcome = unknownOutcome(p)
+    ? undefined
+    : blocked || p.failure
       ? "nothing was paid"
       : paid && settled
         ? p.disputes.length > 0
@@ -103,11 +107,24 @@ function Steps({ p }: { p: Purchase }) {
           countersigned the cart
         </TimelineItem>
       )}
-      {blocked ? null : p.failure ? (
+      {blocked || !p.card ? null : (
+        <TimelineItem state={p.card.state === "PAUSED" ? "current" : "done"} actor="Keelson">
+          {p.card.state === "PAUSED"
+            ? `issued a single-use card •••• ${p.card.lastFour}, funded by your PayPal hold; it opens once the Alibi is sealed`
+            : `issued a single-use card •••• ${p.card.lastFour}, funded by your PayPal hold and capped at ${amount}`}
+        </TimelineItem>
+      )}
+      {blocked ? null : unknownOutcome(p) ? (
+        <TimelineItem state="current" actor="PayPal">
+          has not confirmed whether it captured {amount}
+        </TimelineItem>
+      ) : p.failure ? (
         <TimelineItem state="failed" actor="Keelson">
           stopped at {p.failure.step}: nothing was captured{" "}
           <span className="font-mono text-muted-foreground text-xs">{p.failure.reason}</span>
         </TimelineItem>
+      ) : p.card ? (
+        <CardSteps p={p} card={p.card} paid={paid} />
       ) : paid ? (
         <TimelineItem state="done" actor="PayPal">
           captured {amount}
@@ -129,6 +146,51 @@ function Steps({ p }: { p: Purchase }) {
         </TimelineItem>
       ) : null}
     </Timeline>
+  );
+}
+
+/** The card network's charges on a card purchase's card, and the capture once it settles. */
+function CardSteps({
+  p,
+  card,
+  paid,
+}: {
+  p: Purchase;
+  card: NonNullable<Purchase["card"]>;
+  paid: boolean;
+}) {
+  const approved = card.authorizations.find((a) => a.approved);
+  const declined = card.authorizations.filter((a) => !a.approved).length;
+  return (
+    <>
+      {approved ? (
+        <TimelineItem state="done" actor="Card network" time={approved.at}>
+          {approved.merchantName} charged {money(approved.amountMinor, approved.currency)}; both
+          enclaves approved it in {approved.latencyMs} ms
+        </TimelineItem>
+      ) : (
+        <TimelineItem state={card.state === "OPEN" ? "current" : "upcoming"} actor="Card network">
+          the store charges the card at checkout
+        </TimelineItem>
+      )}
+      {declined > 0 ? (
+        <TimelineItem state="blocked" actor="Keelson">
+          declined {declined === 1 ? "one other charge" : `${declined} other charges`} on the card
+        </TimelineItem>
+      ) : null}
+      {card.settledMinor ? (
+        <TimelineItem state="done" actor="Card network">
+          settled {money(card.settledMinor, p.amount.currency)}
+        </TimelineItem>
+      ) : null}
+      {card.settledMinor ? (
+        <TimelineItem state={paid ? "done" : "current"} actor="PayPal">
+          {paid
+            ? `collected ${money(card.settledMinor, p.amount.currency)} from your hold`
+            : `collects ${money(card.settledMinor, p.amount.currency)} from your hold`}
+        </TimelineItem>
+      ) : null}
+    </>
   );
 }
 
@@ -214,9 +276,12 @@ export function PurchasePage() {
 
 function Receipt() {
   const params = useSearchParams();
-  const { mandate, error } = useMandate(params.get("mandate"));
+  const { mandate, error, reload } = useMandate(params.get("mandate"));
+  const [checking, setChecking] = useState(false);
+  const [checkedAt, setCheckedAt] = useState<number>();
   const [fileError, setFileError] = useState<string>();
   const [disputing, setDisputing] = useState(false);
+  const [filed, setFiled] = useState(false);
   if (error) return <ErrorNotice>{error}</ErrorNotice>;
   const p = mandate?.purchases.find((x) => x.id === params.get("id"));
   if (!mandate)
@@ -231,7 +296,7 @@ function Receipt() {
   // blocked cart too. A purchase that failed before its Alibi has none.
   const sealed = !p.failure && (CAPTURED.has(p.state) || (p.state === "DENIED" && logged));
   const blocked = p.state === "DENIED";
-  const store = storeName(mandate.card, p.merchantId);
+  const store = p.card ? cardStore(p) : storeName(mandate.card, p.merchantId);
 
   return (
     <div className="grid items-start gap-6 lg:grid-cols-[1fr_400px]">
@@ -261,10 +326,56 @@ function Receipt() {
             value={major(p.amount.minor, p.amount.currency)}
             currency={p.amount.currency}
             className="text-[3rem]"
-            {...(p.failure || blocked ? { struck: "Not paid" } : {})}
+            {...((p.failure && !unknownOutcome(p)) || blocked ? { struck: "Not paid" } : {})}
           />
         </h1>
         <CheckoutBreakdown amount={p.amount} layout="ledger" />
+
+        {unknownOutcome(p) ? (
+          <section
+            aria-labelledby="unknown"
+            className="grid gap-4 rounded-3xl border border-warn/35 bg-warn/[0.07] p-5 sm:p-6"
+          >
+            <div className="flex gap-4">
+              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-warn text-bone">
+                <TriangleAlert className="size-5" aria-hidden="true" />
+              </span>
+              <div className="grid gap-1.5">
+                <h2 id="unknown" className="text-pretty font-semibold text-lg leading-snug">
+                  We don't know the outcome yet — PayPal may already have charged you.
+                </h2>
+                <p className="text-pretty font-medium text-warn">
+                  Don't start this purchase again.
+                </p>
+                <p className="text-pretty text-muted-foreground text-sm">
+                  The capture was sent to PayPal and no answer came back. Keelson keeps asking
+                  PayPal; this page changes as soon as it answers.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 sm:pl-14">
+              <Button
+                variant="outline"
+                className="rounded-xl"
+                disabled={checking}
+                onClick={async () => {
+                  setChecking(true);
+                  await reload();
+                  setCheckedAt(Date.now());
+                  setChecking(false);
+                }}
+              >
+                {checking ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
+                Check again
+              </Button>
+              <span role="status" className="text-muted-foreground text-sm">
+                {checkedAt
+                  ? `Still unknown at ${new Intl.DateTimeFormat("en-US", { timeStyle: "medium" }).format(checkedAt)}.`
+                  : ""}
+              </span>
+            </div>
+          </section>
+        ) : null}
 
         {blocked ? (
           <div className="flex gap-4 rounded-3xl border border-vermilion/35 bg-vermilion/[0.06] p-5">
@@ -281,7 +392,11 @@ function Receipt() {
           </div>
         ) : null}
 
-        {!blocked && CAPTURED.has(p.state) && p.disputes.length === 0 ? (
+        {!blocked &&
+        CAPTURED.has(p.state) &&
+        p.disputes.length === 0 &&
+        !filed &&
+        !p.card?.chargebacks?.length ? (
           <button
             type="button"
             onClick={() => setDisputing(true)}
@@ -300,6 +415,7 @@ function Receipt() {
           </button>
         ) : null}
 
+        {p.card ? <CardLeg card={p.card} currency={p.amount.currency} /> : null}
         <div className="rounded-3xl border bg-card p-5 sm:p-6">
           <h2 className="mb-4 font-semibold text-lg">What happened</h2>
           <Steps p={p} />
@@ -335,7 +451,17 @@ function Receipt() {
         {p.disputes.map((d) => (
           <DisputeCard key={d.id} id={d.id} />
         ))}
-        {mandate.card ? (
+        {p.card ? (
+          <ChargebackSheet
+            open={disputing}
+            onOpenChange={setDisputing}
+            purchaseId={p.id}
+            onFiled={async () => {
+              setFiled(true);
+              await reload();
+            }}
+          />
+        ) : mandate.card ? (
           <DisputeSheet
             open={disputing}
             onOpenChange={setDisputing}
@@ -366,6 +492,7 @@ function Receipt() {
               <CopyValue value={p.capture.id} label="PayPal capture id" />
             </DataItem>
           ) : null}
+          {p.card ? <DataItem label="Card">•••• {p.card.lastFour}, single use</DataItem> : null}
           {p.mode ? (
             <DataItem label="Countersigned by">
               {p.mode === "2of2" ? "Both attested engines" : "One attested engine (degraded)"}
@@ -406,6 +533,10 @@ function Receipt() {
               everything else.
             </p>
           </div>
+        ) : unknownOutcome(p) ? (
+          <p className="text-muted-foreground text-sm">
+            The Alibi is issued once PayPal confirms the capture.
+          </p>
         ) : p.failure ? (
           <p className="text-muted-foreground text-sm">
             No Alibi was issued for this cart (stopped at {p.failure.step}). Nothing was captured.

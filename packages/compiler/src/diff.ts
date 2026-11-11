@@ -9,11 +9,13 @@ import {
 } from "@keelson/mandate";
 import { CompileError, DRAFT_FIELDS, type Draft, type DraftField, parseDraft } from "./draft.ts";
 
-/** A merchant of the directory that draft merchant names resolve against. */
-export type Merchant = Extract<
-  Mandate["checkout"]["constraints"][number],
-  { type: "checkout.allowed_merchants" }
->["allowed"][number];
+/** A merchant of the directory: a PayPal merchant, named by its website and PayPal id. */
+export interface Merchant {
+  id: string;
+  name: string;
+  website: string;
+  paypal_merchant_id: string;
+}
 
 /** The mandate fields that come from the system, never from a model. */
 export interface SystemFields {
@@ -226,7 +228,7 @@ function resolve(name: string, directory: readonly Merchant[]): Merchant | undef
     (m) =>
       m.id === n ||
       m.name.toLowerCase() === n.toLowerCase() ||
-      (h !== undefined && h === host(m.website)),
+      (h !== undefined && m.website !== undefined && h === host(m.website)),
   );
 }
 

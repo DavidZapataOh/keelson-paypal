@@ -41,6 +41,30 @@ type origin struct {
 	LogPolicy torchwood.Policy
 	// Verifier is the log's Ed25519 key.
 	Verifier note.Verifier
+	// Retired are the Ed25519 keys the log signed with before Verifier.
+	Retired []RetiredKey
+}
+
+// RetiredKey is a key an origin signed with until its tree reached UntilSize
+// leaves. A view saved under it is still followed; a checkpoint it signs for
+// a larger tree proves nothing.
+type RetiredKey struct {
+	Verifier  note.Verifier
+	UntilSize uint64
+}
+
+// retiredKeys are the keys each origin moved from, with the size it had
+// reached when it moved, as in @keelson/log's LOG_VKEY_HISTORY.
+var retiredKeys = map[string][]struct {
+	vkey      string
+	untilSize uint64
+}{
+	"log.keelson.finance/alibi/2026-1": {
+		{"log.keelson.finance/alibi/2026-1+2e11a7ea+AfBrbrDNyb9uyXNtg3PXXnVxKQBcMGqa1OlCtxlttUBX", 796},
+	},
+	"log.keelson.finance/alibi-live/2026-1": {
+		{"log.keelson.finance/alibi-live/2026-1+2cbeb917+AUYYGFiA5vhiLgoStIMQMZCqkg5QPBseIXyURpLLwvph", 0},
+	},
 }
 
 type config struct {
@@ -156,6 +180,13 @@ func newOrigin(name, logURL string, policyText []byte) (*origin, error) {
 	}
 	if o.Verifier == nil {
 		return nil, fmt.Errorf("%s: the policy has no Ed25519 log key", name)
+	}
+	for _, r := range retiredKeys[name] {
+		v, err := note.NewVerifier(r.vkey)
+		if err != nil {
+			return nil, fmt.Errorf("%s: retired key: %w", name, err)
+		}
+		o.Retired = append(o.Retired, RetiredKey{Verifier: v, UntilSize: r.untilSize})
 	}
 	if o.LogPolicy, err = torchwood.ParsePolicy([]byte(logs.String() + "quorum none\n")); err != nil {
 		return nil, fmt.Errorf("%s: %w", name, err)

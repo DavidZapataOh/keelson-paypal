@@ -7,6 +7,7 @@ import {
   inArray,
   isNull,
   mandates,
+  or,
   purchaseHolds,
   purchases,
   sql,
@@ -67,7 +68,12 @@ async function inFlight(db: Db, mandateId: string, now: Date): Promise<boolean> 
       and(
         eq(purchases.mandateId, mandateId),
         inArray(purchases.state, [...IN_FLIGHT]),
-        gt(purchases.updatedAt, new Date(now.getTime() - IN_FLIGHT_MS)),
+        or(
+          gt(purchases.updatedAt, new Date(now.getTime() - IN_FLIGHT_MS)),
+          // A card charge is collected from the hold when the network settles it, which can take
+          // days: the hold stays until every covered card purchase is collected or closed.
+          and(eq(purchases.rail, "card"), eq(purchases.state, "COVERED")),
+        ),
       ),
     )
     .limit(1);
@@ -121,20 +127,33 @@ async function releasePurchaseHolds(deps: HoldDeps, mandateId: string): Promise<
     );
   let voided = false;
   for (const h of held) {
-    const authorizations = new Set(h.paypalAuthorizationId ? [h.paypalAuthorizationId] : []);
-    if (h.state === "PENDING") {
-      for (const id of await orderAuthorizations(deps.paypal, h.paypalOrderId)) {
-        authorizations.add(id);
-      }
-    }
-    for (const id of authorizations) {
-      if (await voidAuthorization(deps.paypal, id)) voided = true;
-    }
-    await deps.db
-      .update(purchaseHolds)
-      .set({ state: "VOIDED", updatedAt: sql`now()` })
-      .where(and(eq(purchaseHolds.requestId, h.requestId), eq(purchaseHolds.state, h.state)));
+    if (await releasePurchaseHold(deps, h)) voided = true;
   }
+  return voided;
+}
+
+/**
+ * Voids one per-purchase hold: its stored authorization and, while it is pending, any its order
+ * has at PayPal, then marks it `VOIDED`. Resolves to whether PayPal voided anything.
+ */
+export async function releasePurchaseHold(
+  deps: Pick<HoldDeps, "db" | "paypal">,
+  h: typeof purchaseHolds.$inferSelect,
+): Promise<boolean> {
+  let voided = false;
+  const authorizations = new Set(h.paypalAuthorizationId ? [h.paypalAuthorizationId] : []);
+  if (h.state === "PENDING") {
+    for (const id of await orderAuthorizations(deps.paypal, h.paypalOrderId)) {
+      authorizations.add(id);
+    }
+  }
+  for (const id of authorizations) {
+    if (await voidAuthorization(deps.paypal, id)) voided = true;
+  }
+  await deps.db
+    .update(purchaseHolds)
+    .set({ state: "VOIDED", updatedAt: sql`now()` })
+    .where(and(eq(purchaseHolds.requestId, h.requestId), eq(purchaseHolds.state, h.state)));
   return voided;
 }
 
@@ -334,6 +353,18 @@ interface Reconciled {
   resource: unknown;
 }
 
+/** What a hold ends with when PayPal no longer has its order or authorization. */
+const NOT_FOUND = "NOT_FOUND";
+
+/**
+ * Resolves to `undefined` when PayPal answers 404 for an order or authorization it no longer
+ * keeps, such as a sandbox order never approved; rethrows anything else.
+ */
+function absent(err: unknown): undefined {
+  if (err instanceof PayPalError && err.status === 404) return undefined;
+  throw err;
+}
+
 /**
  * Re-reads a mandate's hold from PayPal with authenticated GETs and applies only what the re-read
  * shows: a pending hold whose authorization was created becomes `ACTIVE` (after the same checks
@@ -395,7 +426,11 @@ export async function reconcileHold(deps: HoldDeps, mandateId: string): Promise<
     if (!row.paypalAuthorizationId) return { effect: "unchanged", resource: null };
     const auth = await call(
       paypal.payments.getAuthorizedPayment({ authorizationId: row.paypalAuthorizationId }),
-    );
+    ).catch(absent);
+    if (!auth) {
+      if (row.voidedAt !== null) return { effect: "unchanged", resource: null };
+      return ended(NOT_FOUND, null);
+    }
     const status = auth.status ?? "";
     if (GONE.has(status) && row.voidedAt === null) {
       return ended(status, auth);
@@ -404,7 +439,8 @@ export async function reconcileHold(deps: HoldDeps, mandateId: string): Promise<
   }
 
   if (!row.paypalOrderId) return { effect: "unchanged", resource: null };
-  const order = await call(paypal.orders.getOrder({ id: row.paypalOrderId }));
+  const order = await call(paypal.orders.getOrder({ id: row.paypalOrderId })).catch(absent);
+  if (!order) return ended(NOT_FOUND, null);
   const authorization = order.purchaseUnits?.[0]?.payments?.authorizations?.[0];
   const status: string | undefined =
     authorization?.status ?? (order.status === "VOIDED" ? "VOIDED" : undefined);

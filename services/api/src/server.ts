@@ -1,17 +1,21 @@
 // Loads reflect-metadata before anything pulls in @keelson/attest (see tee/attest.ts).
+import { LithicIssuer } from "./cards/issuer.ts";
 import "./tee/attest.ts";
 import "./telemetry.ts";
 import Anthropic from "@anthropic-ai/sdk";
 import { serve } from "@hono/node-server";
+import { agentKey } from "@keelson/agent/keelson";
 import { createChainReader } from "@keelson/alibi/verify";
 import { createDb } from "@keelson/db";
 import { CertStore } from "@keelson/paypal";
 import { Render } from "@renderinc/sdk";
 import { identityToRecipient } from "age-encryption";
 import { pino } from "pino";
+import { Resend } from "resend";
 import { createPublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { anchorCovered } from "./alibi/anchors.ts";
+import { newestAlibi, warmAlibiVerifier } from "./alibi/warm.ts";
 import { createApp } from "./app.ts";
 import { createAuth } from "./auth.ts";
 import { projectAmberConvictions } from "./chain/amber-court.ts";
@@ -28,9 +32,11 @@ import { type RunDeps, runDispute } from "./disputes/run.ts";
 import { treasuryFromKey } from "./disputes/treasury.ts";
 import { parseEnv } from "./env.ts";
 import { startHoldMaintenance } from "./hold/maintenance.ts";
+import { startUnfundedExpiry } from "./hosted-caps.ts";
 import { createKv } from "./kv.ts";
 import { createLogger } from "./logger.ts";
 import { authenticate } from "./middleware/auth.ts";
+import type { Notifier } from "./notify/notifier.ts";
 import { relayerFromEnv } from "./onchain/relayer.ts";
 import { recordOutcomes, startValidationSweeper } from "./onchain/validations.ts";
 import { operatorSigners } from "./operators/signer.ts";
@@ -165,11 +171,48 @@ const proveC1C3 = c1c3Prover(
   { db, log },
   render && env.DISPUTE_WORKFLOW ? { render, slug: env.DISPUTE_WORKFLOW } : undefined,
 );
-const paypalEvents = startPayPalEventWorker({ db, kv, log, paypal, startDisputeWorkflow });
+const notifier: Notifier = {
+  db,
+  log,
+  appOrigin: env.APP_ORIGIN,
+  apiOrigin: new URL(env.BETTER_AUTH_URL).origin,
+  verifyOrigin: env.VERIFY_ORIGIN,
+  secret: env.BETTER_AUTH_SECRET,
+  ...(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY && env.VAPID_SUBJECT
+    ? {
+        vapid: {
+          subject: env.VAPID_SUBJECT,
+          publicKey: env.VAPID_PUBLIC_KEY,
+          privateKey: env.VAPID_PRIVATE_KEY,
+        },
+      }
+    : {}),
+  ...(env.RESEND_API_KEY ? { resend: new Resend(env.RESEND_API_KEY) } : {}),
+};
+const paypalEvents = startPayPalEventWorker({
+  db,
+  kv,
+  log,
+  paypal,
+  startDisputeWorkflow,
+  notifier,
+});
 const operators =
   env.KEELSON_OPERATOR_KEY && env.DEMO_AGENT_ID
     ? operatorSigners(env.DEMO_AGENT_ID, env.KEELSON_OPERATOR_KEY)
     : undefined;
+const cards = env.LITHIC_API_KEY
+  ? {
+      issuer: new LithicIssuer(env.LITHIC_API_KEY),
+      asaSecret: env.LITHIC_ASA_SECRET,
+      webhookSecret: env.LITHIC_WEBHOOK_SECRET,
+    }
+  : undefined;
+// Keelson's hosted operator closes, with its own cnf key, the mandates of apps that have no
+// operator of their own (see delegated.ts).
+const hostedAgentKey = env.KEELSON_AGENT_KEY
+  ? (await agentKey(env.KEELSON_AGENT_KEY)).privateKey
+  : undefined;
 const app = createApp({
   db,
   kv,
@@ -181,12 +224,19 @@ const app = createApp({
   // The public RPCs the browser verifier uses: a report never names the API's keyed RPC URL.
   alibiChain: createChainReader(),
   passkeyRpId: env.PASSKEY_RP_ID,
-  authenticate: authenticate(auth, env.BETTER_AUTH_URL, kv),
+  authenticate: authenticate(auth, env.BETTER_AUTH_URL, db),
   authBaseUrl: env.BETTER_AUTH_URL,
   demoAgentId: env.DEMO_AGENT_ID,
+  ...(hostedAgentKey ? { hostedAgentKey } : {}),
+  hostedCaps: {
+    perUserMinor: env.HOSTED_CAP_PER_USER_MINOR,
+    knownPerUserMinor: env.HOSTED_CAP_KNOWN_PER_USER_MINOR,
+    totalMinor: env.HOSTED_CAP_TOTAL_MINOR,
+  },
   judgeInvite: env.JUDGE_INVITE_CODE,
   rateLimit: { trustProxy: process.env.RENDER === "true" },
   shutdown: shutdown.signal,
+  notifier,
   stamps,
   chains,
   paypal,
@@ -194,6 +244,7 @@ const app = createApp({
   proveAnonymousMandate: proveC3,
   proveAnonymousPurchase: proveC1C3,
   ...(env.PAYPAL_WEBHOOK_ID ? { paypalWebhook: { webhookId: env.PAYPAL_WEBHOOK_ID, certs } } : {}),
+  ...(cards ? { cards } : {}),
   ...(operators ? { operators } : {}),
   ...(relayer ? { relayer } : {}),
   ...(env.CHANNEL3_API_KEY ? { channel3: createChannel3(env.CHANNEL3_API_KEY) } : {}),
@@ -219,6 +270,10 @@ const app = createApp({
 });
 
 const stopRefresh = tee ? startSignerRefresh({ db, log, tee }) : undefined;
+void warmAlibiVerifier(() => newestAlibi(db)).then(
+  (ms) => log.info({ ms }, "alibi verifier warmed"),
+  (err: unknown) => log.warn({ err }, "alibi verifier not warmed"),
+);
 const stopSweeper = tee ? startPurchaseSweeper({ db, log }) : undefined;
 const stopResumer = startPipelineResumer({
   db,
@@ -230,13 +285,26 @@ const stopResumer = startPipelineResumer({
   relayer,
   stamps,
   chain: chains[arbitrumSepolia.id],
+  cardIssuer: cards?.issuer,
   proveAnonymousPurchase: proveC1C3,
+  notifier,
   ...(env.LOG_URL && env.LOG_WRITE_TOKEN
     ? { tlog: { url: env.LOG_URL, token: env.LOG_WRITE_TOKEN } }
     : {}),
 });
 const stopHolds = startHoldMaintenance({ db, kv, log, paypal });
-const poller = startPayPalPoller({ db, kv, log, paypal, paypalEvents, startDisputeWorkflow });
+const stopUnfunded = env.DEMO_AGENT_ID
+  ? startUnfundedExpiry({ db, kv, log, paypal }, env.DEMO_AGENT_ID)
+  : undefined;
+const poller = startPayPalPoller({
+  db,
+  kv,
+  log,
+  paypal,
+  paypalEvents,
+  startDisputeWorkflow,
+  notifier,
+});
 const stopReconciler = relayer?.startReconciler();
 const sweeperDeps = relayer
   ? { db, log, relayer, operators, chain: chains[arbitrumSepolia.id] }
@@ -294,6 +362,7 @@ process.once("SIGTERM", () => {
   stopSettlements?.();
   stopResumer();
   stopHolds();
+  stopUnfunded?.();
   stopReconciler?.();
   stopValidations?.();
   stopRpcReport();

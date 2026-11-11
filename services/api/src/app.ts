@@ -17,29 +17,38 @@ import type { RedisClientType } from "redis";
 import { ulid } from "ulid";
 import { type Address, BaseError, HttpRequestError, TimeoutError } from "viem";
 import type { Auth } from "./auth.ts";
+import type { CardIssuer } from "./cards/issuer.ts";
 import type { ChainReaders } from "./chain/reader.ts";
 import type { Channel3Lookup } from "./channel3/client.ts";
+import type { HostedCaps } from "./hosted-caps.ts";
 import type { LogConfig } from "./log/append.ts";
 import { requestLogger } from "./logger.ts";
 import { registerMcp } from "./mcp.ts";
 import { requireClient } from "./middleware/auth.ts";
 import { idempotency } from "./middleware/idempotency.ts";
 import { type RateLimitOptions, rateLimit } from "./middleware/rate-limit.ts";
+import type { Notifier } from "./notify/notifier.ts";
 import type { OperatorSigners } from "./operators/signer.ts";
 import type { PayPalDeps } from "./paypal.ts";
 import { ProblemSchema, problem } from "./problem.ts";
+import { registerActivity } from "./routes/activity.ts";
 import { registerAdminClients } from "./routes/admin-clients.ts";
+import { registerAgentDocs } from "./routes/agent-docs.ts";
 import { registerAgents } from "./routes/agents.ts";
+import { registerAlerts } from "./routes/alerts.ts";
 import { registerAlibis } from "./routes/alibis.ts";
 import { registerAnonymousMandates } from "./routes/anonymous-mandates.ts";
 import { registerBonds } from "./routes/bonds.ts";
+import { registerCardWebhooks } from "./routes/card-webhooks.ts";
 import { registerChannel3Webhook } from "./routes/channel3-webhook.ts";
+import { registerChargebacks } from "./routes/chargebacks.ts";
 import { type CompileSources, registerCompile } from "./routes/compile.ts";
 import { registerConnections } from "./routes/connections.ts";
 import { registerCountersign } from "./routes/countersign.ts";
 import { registerDisputes } from "./routes/disputes.ts";
 import { registerEmbed } from "./routes/embed.ts";
 import { noFraming, registerEmbedPage } from "./routes/embed-page.ts";
+import { registerEmbedSigning } from "./routes/embed-signing.ts";
 import { registerEvents } from "./routes/events.ts";
 import { registerEvidence } from "./routes/evidence.ts";
 import { registerFeedback } from "./routes/feedback.ts";
@@ -77,10 +86,11 @@ import type { StampWorker } from "./timestamps/worker.ts";
 /**
  * POST routes that stream their response, that read, or that an RFC 8628 client polls without an
  * `Idempotency-Key`: none changes anything a retry repeats. Embed tokens and sessions are never
- * stored for a replay; declining is a compare-and-set on a pending request.
+ * stored for a replay; declining is a compare-and-set on a pending request. Mail clients post the
+ * RFC 8058 one-click unsubscribe with no header of ours, and it is idempotent.
  */
 const STREAMED_POSTS =
-  /^\/v1\/(merchants\/[^/]+\/assistant|operators\/[^/]+\/(coverages\/rows|grid-query)|connections\/token|connections\/embed|embed\/(sessions|deny))$/;
+  /^\/v1\/(merchants\/[^/]+\/assistant|operators\/[^/]+\/(coverages\/rows|grid-query)|connections\/token|connections\/embed|embed\/(sessions|deny)|alerts\/unsubscribe)$/;
 
 /**
  * The public reads the verifier makes: an Alibi when it is public, an Alibi's receipt, a leaf's
@@ -103,8 +113,18 @@ export interface Deps {
   storeOrigin?: string;
   /** Lets a Judge Mode session past the daily cap over every address; unset, no invite does. */
   judgeInvite?: string | undefined;
-  /** The operator MCP tool calls act for when they name none. */
+  /**
+   * Keelson's hosted operator: the operator MCP tool calls act for when they name none, and the
+   * one an app acting for a user goes through when it has no operator of its own.
+   */
   demoAgentId?: bigint | undefined;
+  /**
+   * The hosted operator's private `cnf` key; the API closes delegated apps' mandates of that
+   * operator with it, and nothing else (see `delegated.ts`). Their countersigns answer 503 without it.
+   */
+  hostedAgentKey?: CryptoKey;
+  /** What the hosted operator's bond backs for apps it does not know; uncapped without it. */
+  hostedCaps?: HostedCaps;
   /** Browser origin of the public verifier, allowed to read public Alibis, receipts and timestamps without credentials. */
   verifyOrigin?: string;
   /** Reads the anchor and signer registry for `POST /v1/alibis/verify`; it verifies offline without it. */
@@ -144,6 +164,15 @@ export interface Deps {
   paypal?: PayPalDeps;
   /** The webhook PayPal delivers to; the PayPal webhook answers 503 without it. */
   paypalWebhook?: { webhookId: string; certs: CertStore; now?: () => Date };
+  /**
+   * The card issuer of card purchases and the secrets it signs its real-time authorization
+   * requests and its events with; card purchases fail before logging without it.
+   */
+  cards?: {
+    issuer: CardIssuer;
+    asaSecret?: string | undefined;
+    webhookSecret?: string | undefined;
+  };
   /** Applies stored PayPal events; woken when a delivery is stored. */
   paypalEvents?: { wake(): void };
   /**
@@ -167,6 +196,8 @@ export interface Deps {
   shutdown?: AbortSignal;
   /** The markup of the app's embedded approval page; `/embed/approve` is not served without it. */
   embedPage?: () => Promise<string>;
+  /** Sends phone and email alerts; nothing is sent without it and the alert routes answer 503. */
+  notifier?: Notifier;
 }
 
 /**
@@ -301,6 +332,7 @@ export function createApp(deps: Deps): OpenAPIHono {
     );
   }
   registerHealth(app);
+  registerAgentDocs(app);
   registerStatus(app, deps);
   registerEvents(app, deps);
   registerMandates(app, deps);
@@ -310,8 +342,11 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerConnections(app, deps);
   registerMandateRequests(app, deps);
   registerEmbed(app, deps);
+  registerEmbedSigning(app, deps);
   if (deps.embedPage) registerEmbedPage(app, deps, deps.embedPage);
   registerAgents(app, deps);
+  registerActivity(app, deps);
+  registerAlerts(app, deps);
   registerOAuthConsent(app, deps);
   registerCompile(app, deps);
   registerCountersign(app, deps);
@@ -321,6 +356,8 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerWebFacts(app, deps);
   registerChannel3Webhook(app, deps);
   registerPayPalWebhook(app, deps);
+  registerCardWebhooks(app, deps);
+  registerChargebacks(app, deps);
   registerTee(app, deps);
   registerTimestamps(app, deps);
   registerAlibis(app, deps);

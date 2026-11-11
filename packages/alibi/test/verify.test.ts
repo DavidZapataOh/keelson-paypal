@@ -6,6 +6,9 @@ import type { AlibiBundle } from "../src/schema.ts";
 import { verifyAlibi } from "../src/verify/index.ts";
 import { copy, fixtures } from "./fixtures.ts";
 
+/** The PayPal section of a PayPal purchase's bundle. */
+const paypalOf = (b: AlibiBundle) => b.paypal as NonNullable<AlibiBundle["paypal"]>;
+
 const realFetch = globalThis.fetch;
 beforeAll(() => {
   globalThis.fetch = () => {
@@ -194,7 +197,7 @@ describe.each(fixtures.map((f) => [f.id, f] as const))("alibi %s", (_, f) => {
       "the order id",
       "paypal.ids",
       (x) => {
-        x.paypal.order_id += "X";
+        paypalOf(x).order_id += "X";
       },
       "/paypal/order_id",
     ],
@@ -202,7 +205,7 @@ describe.each(fixtures.map((f) => [f.id, f] as const))("alibi %s", (_, f) => {
       "the PayPal ref salt",
       "paypal.ids",
       (x) => {
-        x.paypal.ref_salt = flipHex(x.paypal.ref_salt);
+        paypalOf(x).ref_salt = flipHex(paypalOf(x).ref_salt);
       },
       "/paypal/ref_salt",
     ],
@@ -247,12 +250,12 @@ describe.each(fixtures.map((f) => [f.id, f] as const))("alibi %s", (_, f) => {
       "/timestamps/0/token",
     ],
   ];
-  if (b.paypal.invoice_id) {
+  if (paypalOf(b).invoice_id) {
     cases.push([
       "the invoice id of another alibi",
       "paypal.ids",
       (x) => {
-        x.paypal.invoice_id = (x.paypal.invoice_id as string).replace(
+        paypalOf(x).invoice_id = (paypalOf(x).invoice_id as string).replace(
           x.alibi_id,
           fixtures.find((o) => o.id !== x.alibi_id)?.id ?? "01M00000000000000000000000",
         );

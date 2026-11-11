@@ -45,4 +45,17 @@ export const post = <T>(path: string, body?: unknown, headers: Record<string, st
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
 
-export const del = (path: string) => send<void>(path, { method: "DELETE" });
+export const del = (path: string, body?: unknown) =>
+  send<void>(path, {
+    method: "DELETE",
+    ...(body === undefined
+      ? {}
+      : { headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+  });
+
+export const put = <T>(path: string, body: unknown) =>
+  send<T>(path, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });

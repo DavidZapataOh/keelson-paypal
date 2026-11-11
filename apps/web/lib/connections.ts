@@ -27,6 +27,22 @@ export interface ConnectionView {
     until: string;
   } | null;
   mandateId: string | null;
+  /** For `once`: the cart the agent tried, as it saw it. */
+  cart: {
+    merchant: { id: string; name: string };
+    currency: string;
+    totalMinor: string;
+    lines: {
+      sku: string;
+      size: string | null;
+      color: string | null;
+      category: string;
+      qty: number;
+      unitMinor: string;
+    }[];
+  } | null;
+  /** For `once`: each mandate field against the cart; the failing ones are why it paused. */
+  checks: { field: string; mandate: string | null; cart: string | null; pass: boolean }[] | null;
   /** The three numbers to pick the agent's from, until the user did; null when none is needed. */
   match: { options: number[]; matched: boolean } | null;
   expiresAt: string;
@@ -35,6 +51,8 @@ export interface ConnectionView {
 
 export interface AgentRow {
   agentId: string;
+  /** The app acting through Keelson's own agent, which many apps share; null for an agent's own operator. */
+  clientId: string | null;
   name: string;
   operator: string;
   connected: boolean;
@@ -64,8 +82,8 @@ export interface PendingApproval {
 
 /** The prompt a user pastes into their agent to connect it to Keelson. */
 export const CONNECT_PROMPT = `Connect to Keelson so you can buy for me within limits I approve.
-Use Keelson's MCP server at https://api.keelson.finance/mcp with your operator's Keelson client credentials, then call keelson.request_mandate with your name, why you need to buy, and the limits you need.
-Show me the link and the two-digit number it returns, then poll keelson.get_request as its answer says. Do not buy anything before I approve, and do not ask again if I decline.`;
+Use Keelson's MCP server at https://api.keelson.finance/mcp, signed in as me, then call keelson.request_mandate with your name, why you need to buy, and the limits you need.
+Show me the link it returns, and its two-digit number if it has one, then poll keelson.get_request as its answer says. Do not buy anything before I approve, and do not ask again if I decline.`;
 
 /** "in 14 min", "in 2 h", "in 3 days" until `iso`. */
 export function untilIn(iso: string, now = Date.now()): string {

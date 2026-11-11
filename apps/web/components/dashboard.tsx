@@ -1,12 +1,13 @@
 "use client";
 
 import { Skeleton } from "@keelson/ui/components/skeleton";
-import { ArrowUpRight, ChevronRight, Hand, Plus, ShieldCheck } from "lucide-react";
+import { ArrowUpRight, ChevronRight, CreditCard, Hand, Plus, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { get, post } from "../lib/api";
 import { authClient } from "../lib/auth";
+import { cardStore } from "../lib/card";
 import { VERIFY } from "../lib/config";
 import type { AgentRow, PendingApproval } from "../lib/connections";
 import { useEvents, userChannel } from "../lib/events";
@@ -110,7 +111,16 @@ function Row({ p, store, mandateId }: { p: Purchase; store: string; mandateId: s
       >
         <Mark kind={kind} />
         <span className="grid min-w-0 flex-1 leading-tight">
-          <span className="truncate font-medium">{store}</span>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate font-medium">{store}</span>
+            {p.card ? (
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-px font-mono text-[11px] text-muted-foreground">
+                <CreditCard className="size-3" aria-hidden="true" />
+                {p.card.lastFour}
+                <span className="sr-only"> single-use card</span>
+              </span>
+            ) : null}
+          </span>
           <span className="truncate text-muted-foreground text-sm">
             {SAY[kind]}
             {kind === "blocked"
@@ -256,7 +266,7 @@ function Focus({
                     setStopping(true);
                     await post(`/v1/mandates/${mandate.id}/revoke`).catch(() => {});
                     setStopping(false);
-                    reload();
+                    void reload();
                   }}
                   className="grid size-14 place-items-center rounded-full bg-bone-2 transition-transform duration-200 hover:-translate-y-0.5"
                 >
@@ -330,7 +340,7 @@ function Focus({
               Keelson blocked {blocked.length} {blocked.length === 1 ? "cart" : "carts"}
             </span>
             <span className="truncate text-muted-foreground text-sm">
-              {store(latestBlock.merchantId)} ·{" "}
+              {latestBlock.card ? cardStore(latestBlock) : store(latestBlock.merchantId)} ·{" "}
               {latestBlock.reasons?.length
                 ? ""
                 : `${money(latestBlock.amount.minor, latestBlock.amount.currency)} · `}
@@ -386,7 +396,12 @@ function Focus({
                     {shown
                       .filter((p) => day(p.createdAt) === d)
                       .map((p) => (
-                        <Row key={p.id} p={p} store={store(p.merchantId)} mandateId={mandate.id} />
+                        <Row
+                          key={p.id}
+                          p={p}
+                          store={p.card ? cardStore(p) : store(p.merchantId)}
+                          mandateId={mandate.id}
+                        />
                       ))}
                   </ul>
                 </div>

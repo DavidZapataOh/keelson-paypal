@@ -8,7 +8,7 @@ export type ChainId = (typeof chainIds)[number];
 export const addresses: Record<ChainId, Readonly<Record<string, Address>>> = {
   421614: {
     AccessManager: "0x57c30a4a175978673bAD2B2B2D3667966cd58314",
-    AmberContradictionCourt: "0x04B0b3E7f07548d4FA5E873ec8Dd946FE7Da19Be",
+    AmberContradictionCourt: "0x7dA4BA7bdbb118848A04a92d7F85951a184fF3fA",
     AmberContradictionReferenceVerifier: "0x87F47494Fdc0F6e4f2f01Ab7c40538F5164EcA8A",
     AmberContradictionVerifier: "0x378b1DBdf260460c93DDec38F0245E95f36A2414",
     AnonymousMandateReferenceVerifier: "0x07639DbF0E01E4c134B51Dc6210968600b499c6B",
@@ -25,6 +25,7 @@ export const addresses: Record<ChainId, Readonly<Record<string, Address>>> = {
     KeelsonReputationReporter: "0x0D736293957C481626553Bec31e46913A21FBc25",
     KeelsonReserve: "0xd10Cb524B3C5EC3c60A420e8900e4f8C5aB88972",
     KeelsonValidationRegistry: "0x2405d211CaAdFbB193287882fAb76e8A5D41f714",
+    LogBond: "0xA2d1f66a7D071D58E5fc06851b842Bf64aEd7EEb",
     LogBondTestOrigin: "0xb8B9cF2EA599b033feA6016FC44502c31F5A1488",
     MandatePredicateReferenceVerifier: "0x7D82a52d7e5Cb71D594B2F826d769FF64b26B046",
     MandatePredicateVerifier: "0x3940A0D26f0Fbac6e9d43Fe8b3F69B8bd6CDA2a0",

@@ -43,6 +43,7 @@ import {
   verifyCredential,
 } from "../src/credentials.ts";
 import { CONTROL_OR_FORMAT } from "../src/generated/unicode.ts";
+import { ANY_MERCHANT } from "../src/mcc.ts";
 import {
   ANY_ITEM,
   CATEGORY_TABLE,
@@ -791,6 +792,22 @@ async function commitmentVectors() {
   };
   // biome-ignore lint/suspicious/noExplicitAny: these cases build mandates outside the schema
   const loose = (m: Mandate) => m as any;
+  /** The demo mandate on the card rail: any coffee shop or bakery in the US. */
+  const toCard = (m: Mandate) => {
+    m.payment.rail = "card";
+    m.payment.constraints = m.payment.constraints.map((c) =>
+      c.type === "payment.allowed_payees"
+        ? { type: "payment.card_controls", single_use: true, mcc_table: "v1" }
+        : c,
+    );
+    for (const c of m.checkout.constraints)
+      if (c.type === "checkout.allowed_merchants")
+        c.allowed = [{ id: ANY_MERCHANT, name: "Any store", mcc: ["5814", "5462"], country: "US" }];
+  };
+  const cardMerchant = (m: Mandate, edit: (x: Merchant) => void) => {
+    toCard(m);
+    merchants(m, edit);
+  };
   const parseCases: [string, (m: Mandate) => void][] = [
     ["demo", () => {}],
     // Several issues at once: both sides report the first in schema order, an object's
@@ -908,6 +925,99 @@ async function commitmentVectors() {
       "error/any-item-and-other-line",
       (m) => anyLines(m, [{ id: "sku-road-9" }], [{ id: ANY_ITEM, title: "Shoes" }]),
     ],
+    ["ok/card", toCard],
+    [
+      "ok/card-named-merchant",
+      (m) =>
+        cardMerchant(m, (x) => {
+          x.id = "mrc_corner_cafe";
+          x.name = "Corner Cafe";
+          x.website = "https://cafe.example";
+        }),
+    ],
+    [
+      "ok/card-two-merchants",
+      (m) => {
+        toCard(m);
+        for (const c of m.checkout.constraints)
+          if (c.type === "checkout.allowed_merchants")
+            c.allowed = [
+              { id: "mrc_a", name: "A", mcc: ["5814"], country: "US" },
+              { id: "mrc_b", name: "B", mcc: ["5411"], country: "CA" },
+            ];
+      },
+    ],
+    ["error/card-unknown-rail", (m) => (loose(m).payment.rail = "cash")],
+    [
+      "error/card-without-controls",
+      (m) => {
+        toCard(m);
+        m.payment.constraints = m.payment.constraints.filter(
+          (c) => c.type !== "payment.card_controls",
+        );
+      },
+    ],
+    [
+      "error/card-with-payees",
+      (m) => {
+        toCard(m);
+        m.payment.constraints.push({
+          type: "payment.allowed_payees",
+          allowed: [{ paypal_merchant_id: "MERCH7XK2Q9LD" }],
+        });
+      },
+    ],
+    [
+      "error/paypal-with-card-controls",
+      (m) =>
+        m.payment.constraints.push({
+          type: "payment.card_controls",
+          single_use: true,
+          mcc_table: "v1",
+        }),
+    ],
+    [
+      "error/card-controls-not-single-use",
+      (m) => {
+        toCard(m);
+        for (const c of m.payment.constraints)
+          if (c.type === "payment.card_controls") (c as { single_use: boolean }).single_use = false;
+      },
+    ],
+    [
+      "error/card-controls-unknown-table",
+      (m) => {
+        toCard(m);
+        for (const c of m.payment.constraints)
+          if (c.type === "payment.card_controls") (c as { mcc_table: string }).mcc_table = "v2";
+      },
+    ],
+    ["error/card-unknown-mcc", (m) => cardMerchant(m, (x) => (x.mcc = ["5814", "7995"]))],
+    ["error/card-no-mcc", (m) => cardMerchant(m, (x) => (x.mcc = []))],
+    ["error/card-missing-mcc", (m) => cardMerchant(m, (x) => delete x.mcc)],
+    ["error/card-missing-country", (m) => cardMerchant(m, (x) => delete x.country)],
+    ["error/card-lowercase-country", (m) => cardMerchant(m, (x) => (x.country = "us"))],
+    ["error/card-long-country", (m) => cardMerchant(m, (x) => (x.country = "USA"))],
+    [
+      "error/card-paypal-merchant-id",
+      (m) => cardMerchant(m, (x) => (x.paypal_merchant_id = "MERCH7XK2Q9LD")),
+    ],
+    [
+      "error/card-any-merchant-with-another",
+      (m) => {
+        toCard(m);
+        for (const c of m.checkout.constraints)
+          if (c.type === "checkout.allowed_merchants")
+            c.allowed.push({ id: "mrc_a", name: "A", mcc: ["5814"], country: "US" });
+      },
+    ],
+    ["error/paypal-any-merchant", (m) => merchants(m, (x) => (x.id = ANY_MERCHANT))],
+    ["error/paypal-merchant-with-mcc", (m) => merchants(m, (x) => (x.mcc = ["5814"]))],
+    ["error/paypal-merchant-without-website", (m) => merchants(m, (x) => delete x.website)],
+    [
+      "error/paypal-merchant-without-paypal-id",
+      (m) => merchants(m, (x) => delete x.paypal_merchant_id),
+    ],
     [
       "error/any-item-without-category",
       (m) => {
@@ -918,6 +1028,15 @@ async function commitmentVectors() {
       },
     ],
   ];
+  {
+    const m = clone(demo) as unknown as Mandate;
+    toCard(m);
+    push(
+      "mandateCommitment/card",
+      { op: "mandateCommitment", mandate: m, salt: hex(salt) },
+      fieldOr(await attempt(() => mandateCommitment(clone(m), salt))),
+    );
+  }
   const embedded = (top_origin: unknown) => (m: Mandate) => {
     (m as unknown as { embed: unknown }).embed = { top_origin };
   };
