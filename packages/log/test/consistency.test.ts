@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { hexToBytes } from "@noble/hashes/utils.js";
 import { describe, expect, test } from "vitest";
-import { LOG_ORIGINS, LOG_VKEYS, verifyCheckpoint, verifyConsistency } from "../src/index.ts";
+import { LOG_ORIGINS, verifyCheckpointOfOrigin, verifyConsistency } from "../src/index.ts";
 
 interface Vector {
   ok: boolean;
@@ -34,7 +34,7 @@ describe("RFC 9162 consistency proofs", () => {
   });
 
   test("proofs from the sandbox log reach its witnessed checkpoint", () => {
-    const cp = verifyCheckpoint(checkpoint, LOG_VKEYS[LOG_ORIGINS[421614] as string] ?? []);
+    const cp = verifyCheckpointOfOrigin(checkpoint, LOG_ORIGINS[421614] as string);
     expect(vectors.sandboxConsistency.length).toBeGreaterThan(0);
     for (const v of vectors.sandboxConsistency) {
       expect(BigInt(v.size2)).toBe(cp.size);

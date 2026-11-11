@@ -30,6 +30,7 @@ import {
 import type { SignedChallenge } from "@keelson/mandate/browser";
 import { POLICY_SET_HASH } from "@keelson/policy/hashes";
 import type { Deps } from "../app.ts";
+import { Amount, breakdowns, withBreakdown } from "../checkout.ts";
 import { agentBond, agentCnf, termsConsent } from "../compile-sources.ts";
 import {
   type Connection,
@@ -179,7 +180,7 @@ const MandatePurchase = z
   .object({
     id: z.string().openapi({ description: "The purchase's ULID, which is also its Alibi id." }),
     merchantId: z.string(),
-    amount: z.object({ currency: z.string(), minor: z.string() }),
+    amount: Amount,
     createdAt: z.iso.datetime(),
     ...PurchaseProgress.shape,
     state: z.string(),
@@ -370,6 +371,7 @@ export function registerMandates(
     if (body.commitment !== m.zk.commitment) {
       return invalid("commitment differs from zk.commitment");
     }
+    if (m.embed) return invalid("embed is only set by the embedded approval that signs it");
     const now = Date.now();
     if (m.exp * 1000 <= now) return invalid("exp has passed");
     if (m.nbf * 1000 > now) return invalid("nbf is in the future");
@@ -761,6 +763,10 @@ export function registerMandates(
       .from(purchaseHolds)
       .where(and(eq(purchaseHolds.mandateId, row.id), eq(purchaseHolds.state, "PENDING")))
       .orderBy(asc(purchaseHolds.createdAt));
+    const parts = await breakdowns(
+      db,
+      bought.map((p) => p.evidenceRoot),
+    );
     c.header("Cache-Control", "no-store");
     const card =
       row.payloadSd && row.disclosures
@@ -776,7 +782,7 @@ export function registerMandates(
         hold: holdView(row),
         card,
         purchases: bought.map((p) => {
-          const { mandateId: _, ...view } = purchaseView(p);
+          const { mandateId: _, ...view } = withBreakdown(purchaseView(p), p.evidenceRoot, parts);
           return {
             ...view,
             merchantId: p.merchantId,
