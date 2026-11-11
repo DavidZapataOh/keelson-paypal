@@ -355,7 +355,10 @@ function signedOf(m: Map<unknown, unknown>): Signed {
  * settlement) with an empty unprotected header, whose payload's legs signed one EIP-712 digest and
  * whose COSE signature is by the leg its mode names.
  */
-export function parseStatementLeaf(leaf: Uint8Array): ParsedStatement {
+export function parseStatementLeaf(
+  leaf: Uint8Array,
+  opts: { verify?: boolean } = {},
+): ParsedStatement {
   if (leaf.length > MAX_LEAF_BYTES) fail("leaf.size", `${leaf.length} bytes`);
   let s: Sign1;
   let header: Map<number, unknown>;
@@ -487,6 +490,7 @@ export function parseStatementLeaf(leaf: Uint8Array): ParsedStatement {
   const alibiId = cwt.get(2) as string;
   if (ulidOfRequestId(requestId) !== alibiId) fail("leaf.field", "sub is not the request id");
   if (asUint(cwt.get(6), "iat") !== BigInt(iat)) fail("leaf.field", "iat");
+  if (opts.verify === false) return { ...parsed, alibiId, signer: getAddress(hex(kid)) };
   const expected = statementSigner(signed);
   if (hex(kid).toLowerCase() !== expected.signer.toLowerCase()) {
     fail("leaf.signer", `the statement is signed by ${hex(kid)}, not the ${expected.kind} leg`);

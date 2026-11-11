@@ -60,13 +60,10 @@ describe("Alibi bundle v2", () => {
     }
   });
 
-  test.each(["leaf", "tee", "leaf_view", "timestamps"])(
-    "refuses a v2 bundle carrying v1's %s",
-    (key) => {
-      const b = { ...v2Bundle(), [key]: "x" };
-      expect(() => encodeAny(b as never)).toThrow(AlibiFormatError);
-    },
-  );
+  test.each(["leaf", "tee", "leaf_view"])("refuses a v2 bundle carrying v1's %s", (key) => {
+    const b = { ...v2Bundle(), [key]: "x" };
+    expect(() => encodeAny(b as never)).toThrow(AlibiFormatError);
+  });
 
   test("refuses a statement with an unprotected label other than 394 and 270", () => {
     const b = v2Bundle();

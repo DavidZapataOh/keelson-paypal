@@ -1,0 +1,664 @@
+{
+  "01M6ZWZJHWRRHQEYNJAT7NMSV8/bundle": [
+    {
+      "id": "bundle.format",
+      "status": "pass",
+      "reads": [""],
+      "reason": null
+    },
+    {
+      "id": "leaf.view",
+      "status": "pass",
+      "reads": ["/leaf", "/leaf_view"],
+      "reason": null
+    },
+    {
+      "id": "qr.leaf",
+      "status": "absent",
+      "reads": ["/leaf", "/anchor/anchored_size", "/anchor/chain_id"],
+      "reason": null
+    },
+    {
+      "id": "mandate.challenge",
+      "status": "pass",
+      "reads": ["/mandate/payload_sd", "/tee/countersign/mandateHash"],
+      "reason": null
+    },
+    {
+      "id": "mandate.passkey",
+      "status": "pass",
+      "reads": ["/mandate/user_auth", "/mandate/payload_sd/user/cred", "/mandate/payload_sd/embed"],
+      "reason": null
+    },
+    {
+      "id": "mandate.credentials",
+      "status": "pass",
+      "reads": ["/mandate"],
+      "reason": null
+    },
+    {
+      "id": "tee.attestation.tdx",
+      "status": "pass",
+      "reads": ["/tee/attestations"],
+      "reason": null
+    },
+    {
+      "id": "tee.attestation.nitro",
+      "status": "pass",
+      "reads": ["/tee/attestations"],
+      "reason": null
+    },
+    {
+      "id": "tee.countersign",
+      "status": "pass",
+      "reads": ["/tee"],
+      "reason": null
+    },
+    {
+      "id": "tee.registry",
+      "status": "pending",
+      "reads": ["/tee/attestations", "/tee/countersign/issuedAt"],
+      "reason": "the chain was not read (offline)"
+    },
+    {
+      "id": "policy.replay",
+      "status": "pass",
+      "reads": ["/eval", "/mandate"],
+      "reason": null
+    },
+    {
+      "id": "log.policy",
+      "status": "pass",
+      "reads": ["/policy"],
+      "reason": null
+    },
+    {
+      "id": "log.inclusion",
+      "status": "pass",
+      "reads": ["/tlog_proof", "/leaf"],
+      "reason": null
+    },
+    {
+      "id": "log.witnesses",
+      "status": "pass",
+      "reads": ["/tlog_proof"],
+      "reason": null
+    },
+    {
+      "id": "anchor.consistency",
+      "status": "pass",
+      "reads": ["/anchor"],
+      "reason": null
+    },
+    {
+      "id": "anchor.root",
+      "status": "pending",
+      "reads": [
+        "/anchor/anchored_root",
+        "/anchor/anchored_size",
+        "/anchor/contract",
+        "/tlog_proof"
+      ],
+      "reason": "the chain was not read (offline)"
+    },
+    {
+      "id": "anchor.tx",
+      "status": "pending",
+      "reads": ["/anchor/tx_hash", "/anchor/block_number", "/tlog_proof"],
+      "reason": "the chain was not read (offline)"
+    },
+    {
+      "id": "timestamps",
+      "status": "pass",
+      "reads": ["/timestamps"],
+      "reason": null
+    },
+    {
+      "id": "zk.c1",
+      "status": "absent",
+      "reads": [],
+      "reason": null
+    },
+    {
+      "id": "zk.c3",
+      "status": "absent",
+      "reads": [],
+      "reason": null
+    },
+    {
+      "id": "evidence.manifest",
+      "status": "pass",
+      "reads": ["/manifest"],
+      "reason": null
+    },
+    {
+      "id": "evidence.web_fact",
+      "status": "absent",
+      "reads": ["/web_fact"],
+      "reason": null
+    },
+    {
+      "id": "evidence.checkout",
+      "status": "absent",
+      "reads": ["/checkout"],
+      "reason": null
+    },
+    {
+      "id": "evidence.conversion",
+      "status": "absent",
+      "reads": ["/conversion"],
+      "reason": null
+    },
+    {
+      "id": "paypal.ids",
+      "status": "pass",
+      "reads": ["/paypal"],
+      "reason": null
+    },
+    {
+      "id": "card.authorizations",
+      "status": "absent",
+      "reads": ["/card"],
+      "reason": null
+    }
+  ],
+  "01M6ZWZJHWRRHQEYNJAT7NMSV8/receipt": [
+    {
+      "id": "bundle.format",
+      "status": "pass",
+      "reads": [""],
+      "reason": null
+    },
+    {
+      "id": "leaf.view",
+      "status": "pass",
+      "reads": ["/leaf", "/leaf_view"],
+      "reason": null
+    },
+    {
+      "id": "qr.leaf",
+      "status": "absent",
+      "reads": ["/leaf", "/anchor/anchored_size", "/anchor/chain_id"],
+      "reason": null
+    },
+    {
+      "id": "mandate.challenge",
+      "status": "undisclosed",
+      "reads": ["/mandate/payload_sd", "/tee/countersign/mandateHash"],
+      "reason": null
+    },
+    {
+      "id": "mandate.passkey",
+      "status": "undisclosed",
+      "reads": ["/mandate/user_auth", "/mandate/payload_sd/user/cred", "/mandate/payload_sd/embed"],
+      "reason": null
+    },
+    {
+      "id": "mandate.credentials",
+      "status": "undisclosed",
+      "reads": ["/mandate"],
+      "reason": null
+    },
+    {
+      "id": "tee.attestation.tdx",
+      "status": "undisclosed",
+      "reads": ["/tee/attestations"],
+      "reason": null
+    },
+    {
+      "id": "tee.attestation.nitro",
+      "status": "undisclosed",
+      "reads": ["/tee/attestations"],
+      "reason": null
+    },
+    {
+      "id": "tee.countersign",
+      "status": "undisclosed",
+      "reads": ["/tee"],
+      "reason": null
+    },
+    {
+      "id": "tee.registry",
+      "status": "undisclosed",
+      "reads": ["/tee/attestations", "/tee/countersign/issuedAt"],
+      "reason": null
+    },
+    {
+      "id": "policy.replay",
+      "status": "undisclosed",
+      "reads": ["/eval", "/mandate"],
+      "reason": null
+    },
+    {
+      "id": "log.policy",
+      "status": "undisclosed",
+      "reads": ["/policy"],
+      "reason": null
+    },
+    {
+      "id": "log.inclusion",
+      "status": "pass",
+      "reads": ["/tlog_proof", "/leaf"],
+      "reason": null
+    },
+    {
+      "id": "log.witnesses",
+      "status": "pass",
+      "reads": ["/tlog_proof"],
+      "reason": null
+    },
+    {
+      "id": "anchor.consistency",
+      "status": "pass",
+      "reads": ["/anchor"],
+      "reason": null
+    },
+    {
+      "id": "anchor.root",
+      "status": "pending",
+      "reads": [
+        "/anchor/anchored_root",
+        "/anchor/anchored_size",
+        "/anchor/contract",
+        "/tlog_proof"
+      ],
+      "reason": "the chain was not read (offline)"
+    },
+    {
+      "id": "anchor.tx",
+      "status": "pending",
+      "reads": ["/anchor/tx_hash", "/anchor/block_number", "/tlog_proof"],
+      "reason": "the chain was not read (offline)"
+    },
+    {
+      "id": "timestamps",
+      "status": "pass",
+      "reads": ["/timestamps"],
+      "reason": null
+    },
+    {
+      "id": "zk.c1",
+      "status": "absent",
+      "reads": [],
+      "reason": null
+    },
+    {
+      "id": "zk.c3",
+      "status": "absent",
+      "reads": [],
+      "reason": null
+    },
+    {
+      "id": "evidence.manifest",
+      "status": "undisclosed",
+      "reads": ["/manifest"],
+      "reason": null
+    },
+    {
+      "id": "evidence.web_fact",
+      "status": "undisclosed",
+      "reads": ["/web_fact", "/cart", "/mandate/payload_sd"],
+      "reason": null
+    },
+    {
+      "id": "evidence.checkout",
+      "status": "undisclosed",
+      "reads": ["/checkout", "/cart", "/tee/countersign/amount", "/tee/countersign/currency"],
+      "reason": null
+    },
+    {
+      "id": "evidence.conversion",
+      "status": "undisclosed",
+      "reads": [
+        "/conversion",
+        "/fx_reference",
+        "/tee/countersign/amount",
+        "/tee/countersign/currency"
+      ],
+      "reason": null
+    },
+    {
+      "id": "paypal.ids",
+      "status": "undisclosed",
+      "reads": ["/paypal"],
+      "reason": null
+    },
+    {
+      "id": "card.authorizations",
+      "status": "undisclosed",
+      "reads": ["/card"],
+      "reason": null
+    }
+  ],
+  "01M6ZX07MFWDDDW4199FDJHWEG/bundle": [
+    {
+      "id": "bundle.format",
+      "status": "pass",
+      "reads": [""],
+      "reason": null
+    },
+    {
+      "id": "leaf.view",
+      "status": "pass",
+      "reads": ["/leaf", "/leaf_view"],
+      "reason": null
+    },
+    {
+      "id": "qr.leaf",
+      "status": "absent",
+      "reads": ["/leaf", "/anchor/anchored_size", "/anchor/chain_id"],
+      "reason": null
+    },
+    {
+      "id": "mandate.challenge",
+      "status": "pass",
+      "reads": ["/mandate/payload_sd", "/tee/countersign/mandateHash"],
+      "reason": null
+    },
+    {
+      "id": "mandate.passkey",
+      "status": "pass",
+      "reads": ["/mandate/user_auth", "/mandate/payload_sd/user/cred", "/mandate/payload_sd/embed"],
+      "reason": null
+    },
+    {
+      "id": "mandate.credentials",
+      "status": "pass",
+      "reads": ["/mandate"],
+      "reason": null
+    },
+    {
+      "id": "tee.attestation.tdx",
+      "status": "pass",
+      "reads": ["/tee/attestations"],
+      "reason": null
+    },
+    {
+      "id": "tee.attestation.nitro",
+      "status": "absent",
+      "reads": ["/tee/attestations"],
+      "reason": null
+    },
+    {
+      "id": "tee.countersign",
+      "status": "pass",
+      "reads": ["/tee"],
+      "reason": null
+    },
+    {
+      "id": "tee.registry",
+      "status": "pending",
+      "reads": ["/tee/attestations", "/tee/countersign/issuedAt"],
+      "reason": "the chain was not read (offline)"
+    },
+    {
+      "id": "policy.replay",
+      "status": "pass",
+      "reads": ["/eval", "/mandate"],
+      "reason": null
+    },
+    {
+      "id": "log.policy",
+      "status": "pass",
+      "reads": ["/policy"],
+      "reason": null
+    },
+    {
+      "id": "log.inclusion",
+      "status": "pass",
+      "reads": ["/tlog_proof", "/leaf"],
+      "reason": null
+    },
+    {
+      "id": "log.witnesses",
+      "status": "pass",
+      "reads": ["/tlog_proof"],
+      "reason": null
+    },
+    {
+      "id": "anchor.consistency",
+      "status": "pass",
+      "reads": ["/anchor"],
+      "reason": null
+    },
+    {
+      "id": "anchor.root",
+      "status": "pending",
+      "reads": [
+        "/anchor/anchored_root",
+        "/anchor/anchored_size",
+        "/anchor/contract",
+        "/tlog_proof"
+      ],
+      "reason": "the chain was not read (offline)"
+    },
+    {
+      "id": "anchor.tx",
+      "status": "pending",
+      "reads": ["/anchor/tx_hash", "/anchor/block_number", "/tlog_proof"],
+      "reason": "the chain was not read (offline)"
+    },
+    {
+      "id": "timestamps",
+      "status": "pass",
+      "reads": ["/timestamps"],
+      "reason": null
+    },
+    {
+      "id": "zk.c1",
+      "status": "absent",
+      "reads": [],
+      "reason": null
+    },
+    {
+      "id": "zk.c3",
+      "status": "absent",
+      "reads": [],
+      "reason": null
+    },
+    {
+      "id": "evidence.manifest",
+      "status": "pass",
+      "reads": ["/manifest"],
+      "reason": null
+    },
+    {
+      "id": "evidence.web_fact",
+      "status": "absent",
+      "reads": ["/web_fact"],
+      "reason": null
+    },
+    {
+      "id": "evidence.checkout",
+      "status": "absent",
+      "reads": ["/checkout"],
+      "reason": null
+    },
+    {
+      "id": "evidence.conversion",
+      "status": "absent",
+      "reads": ["/conversion"],
+      "reason": null
+    },
+    {
+      "id": "paypal.ids",
+      "status": "pass",
+      "reads": ["/paypal"],
+      "reason": null
+    },
+    {
+      "id": "card.authorizations",
+      "status": "absent",
+      "reads": ["/card"],
+      "reason": null
+    }
+  ],
+  "01M6ZX07MFWDDDW4199FDJHWEG/receipt": [
+    {
+      "id": "bundle.format",
+      "status": "pass",
+      "reads": [""],
+      "reason": null
+    },
+    {
+      "id": "leaf.view",
+      "status": "pass",
+      "reads": ["/leaf", "/leaf_view"],
+      "reason": null
+    },
+    {
+      "id": "qr.leaf",
+      "status": "absent",
+      "reads": ["/leaf", "/anchor/anchored_size", "/anchor/chain_id"],
+      "reason": null
+    },
+    {
+      "id": "mandate.challenge",
+      "status": "undisclosed",
+      "reads": ["/mandate/payload_sd", "/tee/countersign/mandateHash"],
+      "reason": null
+    },
+    {
+      "id": "mandate.passkey",
+      "status": "undisclosed",
+      "reads": ["/mandate/user_auth", "/mandate/payload_sd/user/cred", "/mandate/payload_sd/embed"],
+      "reason": null
+    },
+    {
+      "id": "mandate.credentials",
+      "status": "undisclosed",
+      "reads": ["/mandate"],
+      "reason": null
+    },
+    {
+      "id": "tee.attestation.tdx",
+      "status": "undisclosed",
+      "reads": ["/tee/attestations"],
+      "reason": null
+    },
+    {
+      "id": "tee.attestation.nitro",
+      "status": "undisclosed",
+      "reads": ["/tee/attestations"],
+      "reason": null
+    },
+    {
+      "id": "tee.countersign",
+      "status": "undisclosed",
+      "reads": ["/tee"],
+      "reason": null
+    },
+    {
+      "id": "tee.registry",
+      "status": "undisclosed",
+      "reads": ["/tee/attestations", "/tee/countersign/issuedAt"],
+      "reason": null
+    },
+    {
+      "id": "policy.replay",
+      "status": "undisclosed",
+      "reads": ["/eval", "/mandate"],
+      "reason": null
+    },
+    {
+      "id": "log.policy",
+      "status": "undisclosed",
+      "reads": ["/policy"],
+      "reason": null
+    },
+    {
+      "id": "log.inclusion",
+      "status": "pass",
+      "reads": ["/tlog_proof", "/leaf"],
+      "reason": null
+    },
+    {
+      "id": "log.witnesses",
+      "status": "pass",
+      "reads": ["/tlog_proof"],
+      "reason": null
+    },
+    {
+      "id": "anchor.consistency",
+      "status": "pass",
+      "reads": ["/anchor"],
+      "reason": null
+    },
+    {
+      "id": "anchor.root",
+      "status": "pending",
+      "reads": [
+        "/anchor/anchored_root",
+        "/anchor/anchored_size",
+        "/anchor/contract",
+        "/tlog_proof"
+      ],
+      "reason": "the chain was not read (offline)"
+    },
+    {
+      "id": "anchor.tx",
+      "status": "pending",
+      "reads": ["/anchor/tx_hash", "/anchor/block_number", "/tlog_proof"],
+      "reason": "the chain was not read (offline)"
+    },
+    {
+      "id": "timestamps",
+      "status": "pass",
+      "reads": ["/timestamps"],
+      "reason": null
+    },
+    {
+      "id": "zk.c1",
+      "status": "absent",
+      "reads": [],
+      "reason": null
+    },
+    {
+      "id": "zk.c3",
+      "status": "absent",
+      "reads": [],
+      "reason": null
+    },
+    {
+      "id": "evidence.manifest",
+      "status": "undisclosed",
+      "reads": ["/manifest"],
+      "reason": null
+    },
+    {
+      "id": "evidence.web_fact",
+      "status": "undisclosed",
+      "reads": ["/web_fact", "/cart", "/mandate/payload_sd"],
+      "reason": null
+    },
+    {
+      "id": "evidence.checkout",
+      "status": "undisclosed",
+      "reads": ["/checkout", "/cart", "/tee/countersign/amount", "/tee/countersign/currency"],
+      "reason": null
+    },
+    {
+      "id": "evidence.conversion",
+      "status": "undisclosed",
+      "reads": [
+        "/conversion",
+        "/fx_reference",
+        "/tee/countersign/amount",
+        "/tee/countersign/currency"
+      ],
+      "reason": null
+    },
+    {
+      "id": "paypal.ids",
+      "status": "undisclosed",
+      "reads": ["/paypal"],
+      "reason": null
+    },
+    {
+      "id": "card.authorizations",
+      "status": "undisclosed",
+      "reads": ["/card"],
+      "reason": null
+    }
+  ]
+}

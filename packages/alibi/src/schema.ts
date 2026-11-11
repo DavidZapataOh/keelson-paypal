@@ -305,9 +305,9 @@ const transparentStatement = base64.superRefine((b64, ctx) => {
     if (receipts !== undefined && (!Array.isArray(receipts) || receipts.length > 1)) {
       ctx.addIssue({ code: "custom", message: "at most one receipt" });
     }
-    const tokens = s.unprotected.get(TST_CTT);
-    if (tokens !== undefined && (!Array.isArray(tokens) || tokens.length > 4)) {
-      ctx.addIssue({ code: "custom", message: "at most four RFC 3161 tokens" });
+    const token = s.unprotected.get(TST_CTT);
+    if (token !== undefined && !(token instanceof Uint8Array)) {
+      ctx.addIssue({ code: "custom", message: "3161-ctt is one DER token in a byte string" });
     }
   } catch (err) {
     ctx.addIssue({ code: "custom", message: (err as Error).message });
@@ -329,6 +329,8 @@ export const alibiSchemaV2 = z.strictObject({
   tlog_proof: z.string(),
   anchor: anchor.optional(),
   policy: z.strictObject({ origin: z.string(), text: z.string() }),
+  /** Further RFC 3161 tokens over the statement's signature, beyond the one in label 270. */
+  timestamps: timestamps.optional(),
   /** The legs' evidence: an RFC 9999 JSON collection. */
   attestation: z.strictObject({
     __cmwc_t: z.string(),

@@ -1,4 +1,5 @@
-import { hexToBytes } from "@noble/hashes/utils.js";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 
 /** The public host every origin is served under. */
 export const LOG_HOST = "log.keelson.finance";
@@ -76,6 +77,24 @@ export const LOG_WITNESSES: Readonly<Record<string, { vkeys: readonly string[]; 
     [`${LOG_HOST}/alibi/2026-1`]: { vkeys: OWN_WITNESSES, quorum: 2 },
     [`${LOG_HOST}/alibi-live/2026-1`]: { vkeys: OWN_WITNESSES, quorum: 2 },
   };
+
+/**
+ * The Ed25519 keys (hex) each origin signs RFC 9942 receipts with: pinned when leg A first serves
+ * them, never removed, so every receipt keeps verifying.
+ */
+export const LOG_RECEIPT_KEYS: Readonly<Record<string, readonly string[]>> = {};
+
+/** The pinned receipt keys of every origin, by hex SHA-256 key id. */
+export function receiptKeyMap(): Map<string, Uint8Array> {
+  const out = new Map<string, Uint8Array>();
+  for (const keys of Object.values(LOG_RECEIPT_KEYS)) {
+    for (const k of keys) {
+      const pub = hexToBytes(k);
+      out.set(bytesToHex(sha256(pub)), pub);
+    }
+  }
+  return out;
+}
 
 export interface AppendResult {
   index: bigint;
