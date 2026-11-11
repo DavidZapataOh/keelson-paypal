@@ -10161,7 +10161,7 @@ paths:
     get:
       tags:
         - alibis
-      summary: An alibi as a PDF/A-3b
+      summary: An Alibi as a PDF/A-3b
       description: A one-page PDF/A-3b summary of the Alibi with a QR to its verify
         page and the bundle embedded as `<id>.alibi`. Same readers, and the same
         public copy, as the bundle.
@@ -10169,9 +10169,9 @@ paths:
         - schema:
             type: string
             pattern: ^[0-7][0-9A-HJKMNP-TV-Z]{25}$
-            description: "The alibi id: the purchase's ULID."
+            description: "The Alibi id: the purchase's ULID."
           required: true
-          description: "The alibi id: the purchase's ULID."
+          description: "The Alibi id: the purchase's ULID."
           name: id
           in: path
       responses:
@@ -10185,7 +10185,7 @@ paths:
         "304":
           description: The PDF has not changed
         "404":
-          description: No alibi with this id that the caller may read
+          description: No Alibi with this id that the caller may read
           content:
             application/problem+json:
               schema:
@@ -10194,7 +10194,7 @@ paths:
     get:
       tags:
         - alibis
-      summary: An alibi bundle
+      summary: An Alibi bundle
       description: "The purchase's Alibi: its RFC 8785 bundle, readable by the
         mandate's user or, with `alibis:read`, by the client that uploaded the
         purchase's evidence; the Alibi of a live purchase, once its PayPal
@@ -10207,9 +10207,9 @@ paths:
         - schema:
             type: string
             pattern: ^[0-7][0-9A-HJKMNP-TV-Z]{25}$
-            description: "The alibi id: the purchase's ULID."
+            description: "The Alibi id: the purchase's ULID."
           required: true
-          description: "The alibi id: the purchase's ULID."
+          description: "The Alibi id: the purchase's ULID."
           name: id
           in: path
       responses:
@@ -10223,7 +10223,7 @@ paths:
         "304":
           description: The bundle has not changed
         "404":
-          description: No alibi with this id that the caller may read
+          description: No Alibi with this id that the caller may read
           content:
             application/problem+json:
               schema:
@@ -10232,7 +10232,7 @@ paths:
     post:
       tags:
         - alibis
-      summary: Verify an alibi
+      summary: Verify an Alibi
       description: Runs the browser verifier's algorithm on an Alibi bundle against
         the pinned trust roots and a public Arbitrum RPC. No authentication; the
         bundle is not stored.
@@ -10272,16 +10272,16 @@ paths:
     get:
       tags:
         - alibis
-      summary: The public receipt of an alibi
+      summary: The public receipt of an Alibi
       description: "What the public log already publishes about an Alibi: its leaf,
         inclusion proof, anchor and timestamps. No authentication."
       parameters:
         - schema:
             type: string
             pattern: ^[0-7][0-9A-HJKMNP-TV-Z]{25}$
-            description: "The alibi id: the purchase's ULID."
+            description: "The Alibi id: the purchase's ULID."
           required: true
-          description: "The alibi id: the purchase's ULID."
+          description: "The Alibi id: the purchase's ULID."
           name: id
           in: path
       responses:
@@ -10292,7 +10292,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/AlibiReceipt"
         "404":
-          description: No alibi with this id that the caller may read
+          description: No Alibi with this id that the caller may read
           content:
             application/problem+json:
               schema:
