@@ -51,6 +51,16 @@
       "entry": ["src/index.ts!", "src/capture/index.ts!", "scripts/*.ts", "bench/*.bench.ts"],
       "project": ["src/**/*.ts!", "scripts/**/*.ts", "bench/**/*.ts", "test/**/*.ts"]
     },
+    "packages/interop": {
+      "entry": ["src/index.ts!", "scripts/*.ts", "bench/*.bench.ts", "conformance/*.ts"],
+      "project": [
+        "src/**/*.ts!",
+        "scripts/**/*.ts",
+        "test/**/*.ts",
+        "bench/**/*.ts",
+        "conformance/**/*.ts"
+      ]
+    },
     "packages/log": {
       "entry": ["src/index.ts!", "scripts/*.ts"],
       "project": ["src/**/*.ts!", "scripts/**/*.ts", "test/**/*.ts"]
