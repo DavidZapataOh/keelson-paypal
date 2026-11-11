@@ -64,8 +64,13 @@ https://app.keelson.finance/judge opens a temporary tenant with one click (no ke
 | Claude (Anthropic API)                                                      | Production                    |
 | Agent browser (Kernel)                                                      | Production                    |
 | Demo store (RunFast)                                                        | Ours, PayPal sandbox checkout |
+| Card issuer (Lithic), for card mandates                                     | Sandbox: no real money moves  |
 
 `JUDGE_LIVE_ORIGIN=https://app.keelson.finance pnpm --filter @keelson/web exec vitest run test/e2e/judge.live.test.ts` runs the judge's journey on production from a clean browser; `.github/workflows/judge-journey.yml` runs it every hour and opens an issue when it fails.
+
+## Card purchases
+
+A mandate signed for "Any store (card)" pays merchants that take cards rather than PayPal, with the same guarantees. Its budget is held on PayPal like any mandate. After both legs allow a cart, Keelson issues a single-use Lithic card capped at the countersigned amount, limited to the merchant category codes and country the mandate allows, and opens it once the purchase is logged and covered. The card number goes from Lithic's hosted page to the agent's browser only (`GET /v1/purchases/{id}/card`). Each authorization the card network sends reaches `POST /webhooks/lithic/asa` (Lithic Auth Stream Access), and both legs check it against their own ALLOW (`POST /v1/card/authorize` on each leg); anything but two verified approvals is declined. The settled charge is collected from the PayPal hold, and the Alibi carries the card, every authorization with both legs' signed answers, and the settlement. A chargeback goes through Lithic's Disputes API with the Alibi as evidence. Lithic's sandbox plays the card network: `LITHIC_API_KEY=… pnpm --filter @keelson/api exec node scripts/card-demo.ts` buys a coffee at a test merchant end to end against the deployed app and API.
 
 ## MCP server
 
