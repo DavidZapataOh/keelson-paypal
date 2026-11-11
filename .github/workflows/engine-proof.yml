@@ -55,25 +55,37 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: "1.24"
-      - name: Install protoc
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - name: Install protoc and a RISC-V assembler
+        # Cedar's stack probe (stacker, through psm) assembles a RISC-V source for the program. SP1's own
+        # C toolchain needs a newer glibc than this image, so Ubuntu's cross compiler assembles it.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler gcc-riscv64-unknown-elf
+          echo "CC_riscv64im_succinct_zkvm_elf=riscv64-unknown-elf-gcc" >> "$GITHUB_ENV"
       - name: Install the SP1 toolchain
         run: |
           curl -L https://sp1up.succinct.xyz | bash
-          ~/.sp1/bin/sp1up -v "$SP1_VERSION" --c-toolchain
+          ~/.sp1/bin/sp1up -v "$SP1_VERSION"
           echo "$HOME/.sp1/bin" >> "$GITHUB_PATH"
-          # Cedar's stack probe (stacker, through psm) assembles a RISC-V source for the program.
-          echo "CC_riscv64im_succinct_zkvm_elf=$(find ~/.sp1 -name riscv64-unknown-elf-gcc -type f | head -1)" >> "$GITHUB_ENV"
-      - uses: actions/cache@v6
+      - uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             engine/zkvm/target
-          key: zkvm-${{ hashFiles('engine/zkvm/Cargo.lock') }}
+          key: zkvm-${{ hashFiles('engine/zkvm/Cargo.lock') }}-${{ github.sha }}
           restore-keys: zkvm-
       - name: Build the program and the prover
         run: cargo build --release --locked -p keelson-engine-proof
+      # The prover's dependencies take most of the build: keep them even when the program fails.
+      - uses: actions/cache/save@v6
+        if: always()
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            engine/zkvm/target
+          key: zkvm-${{ hashFiles('engine/zkvm/Cargo.lock') }}-${{ github.sha }}
       - name: Program size
         run: |
           elf=$(find target -path '*riscv64im-succinct-zkvm-elf/release/keelson-engine-program' | head -1)
