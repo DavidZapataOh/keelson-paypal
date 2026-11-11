@@ -28,15 +28,21 @@ export function authenticate(auth: Auth, baseURL: string, kv?: RedisClientType):
           jwksUrl,
           verifyOptions: { issuer, audience: apiAudience, typ: "at+jwt", requiredClaims: ["azp"] },
         });
-        // A token the user granted before stopping every agent is refused, though it verifies.
-        if (
-          kv &&
-          typeof payload.sub === "string" &&
-          (await tokenStopped(kv, payload.sub, payload.iat))
-        ) {
+        const user = delegatedUser(payload);
+        // A token the user granted before stopping every agent, or disconnecting this app, is
+        // refused though it verifies; so is every such token while that cannot be checked.
+        let stopped: boolean;
+        try {
+          stopped =
+            kv !== undefined &&
+            user !== undefined &&
+            (await tokenStopped(kv, user, payload.azp as string, payload.iat));
+        } catch {
+          return revocationUnknown(c);
+        }
+        if (stopped) {
           c.set("invalidToken", true);
         } else {
-          const user = delegatedUser(payload);
           c.set("principal", {
             kind: "client",
             subject: payload.azp as string,
@@ -62,6 +68,17 @@ export function authenticate(auth: Auth, baseURL: string, kv?: RedisClientType):
     }
     await next();
   };
+}
+
+function revocationUnknown(c: Context): Response {
+  c.header("Retry-After", "5");
+  return problem(
+    c,
+    503,
+    "revocation-unavailable",
+    "Revocation unavailable",
+    "Whether this access token was revoked cannot be checked now. Try again shortly.",
+  );
 }
 
 function invalidToken(c: Context): Response {

@@ -70,9 +70,23 @@ export function registerMcp(
             },
           });
           const user = delegatedUser(payload);
-          // A token the user granted before stopping every agent is refused, though it verifies.
-          if (user !== undefined && (await tokenStopped(deps.kv, user, payload.iat))) {
-            throw new OAuthError(OAuthErrorCode.InvalidToken, "The access token was revoked.");
+          // A token the user granted before stopping every agent, or disconnecting this app, is
+          // refused though it verifies; so is every such token while that cannot be checked.
+          if (user !== undefined) {
+            const stopped = await tokenStopped(
+              deps.kv,
+              user,
+              payload.azp as string,
+              payload.iat,
+            ).catch(() => {
+              throw new OAuthError(
+                OAuthErrorCode.ServerError,
+                "Whether this access token was revoked cannot be checked now.",
+              );
+            });
+            if (stopped) {
+              throw new OAuthError(OAuthErrorCode.InvalidToken, "The access token was revoked.");
+            }
           }
           return {
             token,
