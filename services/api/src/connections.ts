@@ -83,6 +83,14 @@ export async function openRequest(db: Db, userCode: string): Promise<Connection 
   return row;
 }
 
+/** Whether the user still has to pick the agent's number before the request opens. */
+export const unmatched = (request: Connection): boolean =>
+  request.matchNumber !== null && request.matchedAt === null;
+
+/** The kind the agent reads: a request under a mandate for standing limits is a change of it. */
+export const kindOf = (request: Connection): "connect" | "once" | "change" =>
+  request.kind === "connect" && request.parentMandateId !== null ? "change" : request.kind;
+
 /** What a mandate grants, read the way a request asks for it. */
 export interface Grant {
   currency: string;
@@ -135,7 +143,11 @@ interface OnceDeps {
   kv: RedisClientType;
 }
 
-/** What an agent polls to learn the user's answer: the RFC 8628 authorization response. */
+/**
+ * What an agent polls to learn the user's answer: the RFC 8628 authorization response, with the
+ * request's id (`GET /v1/connections/requests/{id}` reads it without spending the device code) and,
+ * when the user must pick it, the number to show beside the link.
+ */
 export interface DeviceAuthorization {
   device_code: string;
   user_code: string;
@@ -143,22 +155,113 @@ export interface DeviceAuthorization {
   verification_uri_complete: string;
   expires_in: number;
   interval: number;
+  request_id: string;
+  match_number?: number;
 }
 
 export function deviceAuthorization(
   appOrigin: string,
-  userCode: string,
+  request: { id: string; userCode: string; matchNumber?: number | null },
   deviceCode: string,
 ): DeviceAuthorization {
   const verification = `${appOrigin.replace(/\/$/, "")}/connect`;
   return {
     device_code: deviceCode,
-    user_code: userCode,
+    user_code: request.userCode,
     verification_uri: verification,
-    verification_uri_complete: `${verification}?c=${userCode}`,
+    verification_uri_complete: `${verification}?c=${request.userCode}`,
     expires_in: REQUEST_TTL_SEC,
     interval: POLL_INTERVAL_SEC,
+    request_id: request.id,
+    ...(request.matchNumber == null ? {} : { match_number: request.matchNumber }),
   };
+}
+
+/** A two-digit number, 10 to 99, for the user to match against the agent's. */
+export const newMatchNumber = (): number => randomInt(10, 100);
+
+/**
+ * The three numbers the approval page offers for a request: its number and two others, the same
+ * on every read so that reloading tells nothing, in ascending order so that the position does not.
+ */
+export function matchOptions(requestId: string, matchNumber: number): number[] {
+  const out = new Set([matchNumber]);
+  for (let i = 0; out.size < 3; i++) {
+    const h = createHash("sha256").update(`${requestId}:${i}`).digest();
+    out.add(10 + (h.readUInt32BE(0) % 90));
+  }
+  return [...out].sort((a, b) => a - b);
+}
+
+/** How the user knows the agent of a mandate: the name it asked with, else its operator's. */
+async function agentName(db: Db, mandateId: string, operatorAgentId: bigint): Promise<string> {
+  const [operator] = await db
+    .select({ name: operators.name })
+    .from(operators)
+    .where(eq(operators.agentId, operatorAgentId));
+  const [named] = await db
+    .select({ name: agentConnections.name })
+    .from(agentConnections)
+    .where(and(eq(agentConnections.mandateId, mandateId), eq(agentConnections.state, "APPROVED")));
+  return named?.name ?? operator?.name ?? "Your agent";
+}
+
+/**
+ * Asks the mandate's user for new standing limits in place of the mandate's, with the agent's note
+ * as its reason: a `connect` request under the mandate, which the user may lower and approves with
+ * a passkey. Approving it replaces the mandate. Announced on the user's `agents` channel.
+ */
+export async function requestChange(
+  deps: OnceDeps & { appOrigin: string },
+  input: {
+    mandate: { id: string; userId: string; operatorAgentId: bigint };
+    clientId: string;
+    note: string;
+    grant: Grant & { askAboveMinor: bigint | null };
+  },
+): Promise<DeviceAuthorization> {
+  const { db } = deps;
+  const name = await agentName(db, input.mandate.id, input.mandate.operatorAgentId);
+  const device = newDeviceCode();
+  const id = ulid();
+  const expiresAt = new Date(Date.now() + REQUEST_TTL_SEC * 1000);
+  const { grant } = input;
+  const userCode = await withFreshUserCode((userCode) =>
+    db.insert(agentConnections).values({
+      id,
+      kind: "connect",
+      clientId: input.clientId,
+      operatorAgentId: input.mandate.operatorAgentId,
+      name,
+      reason: input.note,
+      userCode,
+      deviceCodeHash: device.hash,
+      currency: grant.currency,
+      perPurchaseMinor: grant.perPurchaseMinor,
+      totalMinor: grant.totalMinor,
+      askAboveMinor: grant.askAboveMinor,
+      merchantIds: grant.merchantIds,
+      notAfter: grant.notAfter,
+      parentMandateId: input.mandate.id,
+      userId: input.mandate.userId,
+      expiresAt,
+    }),
+  );
+  await publishEvent(
+    deps,
+    principalChannel({ kind: "user", subject: input.mandate.userId }, "agents"),
+    input.mandate.id,
+    {
+      type: "change.requested",
+      userCode,
+      name,
+      note: input.note,
+      currency: grant.currency,
+      totalMinor: grant.totalMinor.toString(),
+      expiresAt: expiresAt.toISOString(),
+    },
+  );
+  return deviceAuthorization(deps.appOrigin, { id, userCode }, device.code);
 }
 
 /**
@@ -180,22 +283,13 @@ export async function requestOnce(
   },
 ): Promise<DeviceAuthorization> {
   const { db } = deps;
-  const [operator] = await db
-    .select({ name: operators.name })
-    .from(operators)
-    .where(eq(operators.agentId, input.mandate.operatorAgentId));
-  const [named] = await db
-    .select({ name: agentConnections.name })
-    .from(agentConnections)
-    .where(
-      and(eq(agentConnections.mandateId, input.mandate.id), eq(agentConnections.state, "APPROVED")),
-    );
-  const name = named?.name ?? operator?.name ?? "Your agent";
+  const name = await agentName(db, input.mandate.id, input.mandate.operatorAgentId);
   const device = newDeviceCode();
   const expiresAt = new Date(Date.now() + REQUEST_TTL_SEC * 1000);
+  const id = ulid();
   const userCode = await withFreshUserCode((userCode) =>
     db.insert(agentConnections).values({
-      id: ulid(),
+      id,
       kind: "once",
       clientId: input.clientId,
       operatorAgentId: input.mandate.operatorAgentId,
@@ -229,5 +323,5 @@ export async function requestOnce(
       expiresAt: expiresAt.toISOString(),
     },
   );
-  return deviceAuthorization(deps.appOrigin, userCode, device.code);
+  return deviceAuthorization(deps.appOrigin, { id, userCode }, device.code);
 }

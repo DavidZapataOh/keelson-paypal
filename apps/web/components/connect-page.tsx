@@ -5,7 +5,7 @@ import { Check, Copy, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, useEffect, useId, useState } from "react";
-import { ApiError, get } from "../lib/api";
+import { ApiError, get, post } from "../lib/api";
 import { authClient } from "../lib/auth";
 import { API } from "../lib/config";
 import { CONNECT_PROMPT, type ConnectionView } from "../lib/connections";
@@ -139,6 +139,88 @@ function Closed({ title, line }: { title: string; line: string }) {
   );
 }
 
+/**
+ * Before a request opens: the user picks the two-digit number their agent shows beside the link,
+ * out of three. A link someone else relayed has no agent of theirs showing it, so a wrong pick
+ * denies the request.
+ */
+function NumberMatch({
+  request,
+  onMatched,
+  onMismatch,
+}: {
+  request: ConnectionView;
+  onMatched: () => void;
+  onMismatch: (line: string) => void;
+}) {
+  const [busy, setBusy] = useState<number>();
+  const [error, setError] = useState<string>();
+  const pick = async (number: number) => {
+    setBusy(number);
+    setError(undefined);
+    try {
+      await post(`/v1/connections/${request.code}/match`, { number });
+      onMatched();
+    } catch (e) {
+      if (e instanceof ApiError && e.slug === "number-mismatch") onMismatch(e.message);
+      else setError(e instanceof Error ? e.message : "It could not be checked. Try again.");
+      setBusy(undefined);
+    }
+  };
+  return (
+    <OnboardingFrame
+      step="Agent"
+      stageLabel="Your agent's number"
+      stage={
+        <div className="grid w-full max-w-[400px] justify-items-center gap-4 text-center">
+          <span className="grid size-24 place-items-center rounded-3xl bg-card font-mono font-semibold text-4xl tabular-nums shadow-[0_12px_30px_-16px_rgb(23_24_27/0.45)]">
+            ??
+          </span>
+          <p className="text-pretty text-muted-foreground">
+            {request.name} shows a two-digit number next to the link it gave you.
+          </p>
+        </div>
+      }
+      action={
+        <fieldset className="grid gap-2">
+          <legend className="sr-only">Pick the number {request.name} shows</legend>
+          <div className="grid grid-cols-3 gap-2">
+            {(request.match?.options ?? []).map((n) => (
+              <Button
+                key={n}
+                type="button"
+                size="lg"
+                variant="outline"
+                disabled={busy !== undefined}
+                onClick={() => pick(n)}
+                className="h-16 rounded-2xl font-mono font-semibold text-2xl tabular-nums"
+              >
+                {busy === n ? <Loader2 className="size-5 animate-spin" aria-hidden="true" /> : n}
+              </Button>
+            ))}
+          </div>
+          <p className="text-center text-muted-foreground text-sm">
+            Not sure? Look at your agent's last message. Don't guess.
+          </p>
+        </fieldset>
+      }
+    >
+      <h1 className="text-balance font-semibold text-[1.75rem] leading-[1.1] tracking-[-0.025em] sm:text-[2rem]">
+        Which number does {request.name} show?
+      </h1>
+      <p className="mt-3 text-pretty text-lg text-muted-foreground leading-snug">
+        Picking it confirms you're answering your own agent, not a link someone forwarded you. A
+        wrong pick cancels the request.
+      </p>
+      {error ? (
+        <div className="mt-6">
+          <ErrorNotice>{error}</ErrorNotice>
+        </div>
+      ) : null}
+    </OnboardingFrame>
+  );
+}
+
 const EMBED_REF = /^[0-9A-HJKMNP-TV-Z]{26}$/;
 
 /**
@@ -178,6 +260,7 @@ export function ConnectPage() {
   const session = authClient.useSession();
   const [request, setRequest] = useState<ConnectionView | null>();
   const [error, setError] = useState<string>();
+  const [mismatch, setMismatch] = useState<string>();
 
   useEffect(() => {
     if (!code || !session.data) return;
@@ -229,6 +312,9 @@ export function ConnectPage() {
       />
     );
   }
+  if (mismatch) {
+    return <Closed title="That's not your agent's number" line={mismatch} />;
+  }
   if (request.state === "EXPIRED") {
     return (
       <Closed
@@ -245,6 +331,16 @@ export function ConnectPage() {
       <Closed
         title="Already approved"
         line="This code was used. Your agents page shows the grant."
+      />
+    );
+  }
+  const match = request.match;
+  if (match && !match.matched) {
+    return (
+      <NumberMatch
+        request={request}
+        onMatched={() => setRequest({ ...request, match: { ...match, matched: true } })}
+        onMismatch={setMismatch}
       />
     );
   }

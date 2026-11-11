@@ -8,6 +8,8 @@ export class KeelsonError extends Error {
     message: string,
     /** The purchase a `purchase-exists` problem names. */
     readonly purchaseId?: string,
+    /** The problem's members, e.g. the `approval` of an `approval-required`. */
+    readonly problem: Record<string, unknown> = {},
   ) {
     super(message);
     this.name = "KeelsonError";
@@ -27,6 +29,7 @@ export async function call(
     title?: string;
     detail?: string;
     purchaseId?: string;
+    [member: string]: unknown;
   };
   const type = problem.type?.split("/").at(-1);
   const reason = [problem.title ?? `HTTP ${res.status}`, problem.detail].filter(Boolean).join(": ");
@@ -35,6 +38,7 @@ export async function call(
     type,
     `${reason} (${res.status}${type ? ` ${type}` : ""})`,
     problem.purchaseId,
+    problem,
   );
 }
 

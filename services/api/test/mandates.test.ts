@@ -897,8 +897,9 @@ describe("approving an agent's request with a passkey", () => {
     });
   });
 
-  const request = () =>
-    storeRequest(
+  // The user picked the agent's number, as the approval page asks first.
+  const request = async () => {
+    const stored = await storeRequest(
       { db: testDb },
       {
         clientId,
@@ -915,6 +916,12 @@ describe("approving an agent's request with a passkey", () => {
         },
       },
     );
+    await testDb
+      .update(agentConnections)
+      .set({ matchedAt: new Date() })
+      .where(eq(agentConnections.id, stored.id));
+    return stored;
+  };
 
   const draft = async (page: Page, code: string) => {
     const res = await api(page, `/v1/connections/${code}/draft`, {
