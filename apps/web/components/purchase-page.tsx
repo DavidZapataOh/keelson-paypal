@@ -173,9 +173,16 @@ function CardSteps({
           declined {declined === 1 ? "one other charge" : `${declined} other charges`} on the card
         </TimelineItem>
       ) : null}
-      {paid ? (
+      {card.settledMinor ? (
         <TimelineItem state="done" actor="Card network">
-          settled {money(card.settledMinor ?? p.amount.minor, p.amount.currency)}
+          settled {money(card.settledMinor, p.amount.currency)}
+        </TimelineItem>
+      ) : null}
+      {card.settledMinor ? (
+        <TimelineItem state={paid ? "done" : "current"} actor="PayPal">
+          {paid
+            ? `collected ${money(card.settledMinor, p.amount.currency)} from your hold`
+            : `collects ${money(card.settledMinor, p.amount.currency)} from your hold`}
         </TimelineItem>
       ) : null}
     </>

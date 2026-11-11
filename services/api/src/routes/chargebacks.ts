@@ -88,85 +88,94 @@ export function registerChargebacks(
     }
     const issuer = deps.cards?.issuer;
     if (!issuer) return problem(c, 503, "cards-unconfigured", "Cards unconfigured");
-    const { card, purchase } = row;
-    if (!SETTLED.has(purchase.state) || !card.transactionToken || card.settledMinor === null) {
-      return problem(
-        c,
-        409,
-        "not-settled",
-        "Not settled",
-        "A chargeback is filed over the card network's settled transaction.",
-      );
+    // One filing at a time per purchase: the issuer must not get two chargebacks for one charge.
+    const lock = `chargeback:${id}`;
+    if ((await deps.kv.set(lock, "1", { NX: true, PX: 30_000 })) !== "OK") {
+      return problem(c, 409, "chargeback-open", "Chargeback open", "A chargeback is being filed.");
     }
-    const amount = body.amountMinor ? BigInt(body.amountMinor) : card.settledMinor;
-    if (amount > card.settledMinor) {
-      return problem(c, 422, "invalid-amount", "Invalid amount", "Above what was settled.");
-    }
-    const [open] = await db
-      .select({ id: cardChargebacks.id })
-      .from(cardChargebacks)
-      .where(
-        and(
-          eq(cardChargebacks.purchaseId, id),
-          sql`${cardChargebacks.status} not in ('CASE_WON', 'CASE_CLOSED')`,
-        ),
-      );
-    if (open) {
-      return problem(
-        c,
-        409,
-        "chargeback-open",
-        "Chargeback open",
-        `Chargeback ${open.id} is open.`,
-      );
-    }
-    let filed: { token: string; status: string };
     try {
-      filed = await issuer.chargeback({
-        transactionToken: card.transactionToken,
-        amountMinor: amount,
-        reason: body.reason,
-        note: body.note,
-      });
-    } catch (err) {
-      deps.log.warn({ err, purchaseId: id }, "chargeback not filed");
-      return problem(c, 503, "issuer-unavailable", "The card issuer did not take the chargeback");
-    }
-    const [stored] = await db
-      .insert(cardChargebacks)
-      .values({
-        id: filed.token,
-        purchaseId: id,
-        reason: body.reason,
-        amountMinor: amount,
-        status: filed.status,
-      })
-      .returning();
-    // The Alibi is the cardholder's evidence: the mandate the user signed and both enclaves'
-    // approvals of the cart and of the charge.
-    let evidenceUploaded = false;
-    try {
-      const bundle = await loadAlibi(db, id);
-      if (bundle) {
-        await issuer.attachEvidence(filed.token, `alibi-${id}.pdf`, await renderAlibiPdf(bundle));
-        evidenceUploaded = true;
-        await db
-          .update(cardChargebacks)
-          .set({ evidenceUploaded: true })
-          .where(eq(cardChargebacks.id, filed.token));
+      const { card, purchase } = row;
+      if (!SETTLED.has(purchase.state) || !card.transactionToken || card.settledMinor === null) {
+        return problem(
+          c,
+          409,
+          "not-settled",
+          "Not settled",
+          "A chargeback is filed over the card network's settled transaction.",
+        );
       }
-    } catch (err) {
-      deps.log.warn({ err, purchaseId: id }, "chargeback evidence not attached");
+      const amount = body.amountMinor ? BigInt(body.amountMinor) : card.settledMinor;
+      if (amount > card.settledMinor) {
+        return problem(c, 422, "invalid-amount", "Invalid amount", "Above what was settled.");
+      }
+      const [open] = await db
+        .select({ id: cardChargebacks.id })
+        .from(cardChargebacks)
+        .where(
+          and(
+            eq(cardChargebacks.purchaseId, id),
+            sql`${cardChargebacks.status} not in ('CASE_WON', 'CASE_CLOSED')`,
+          ),
+        );
+      if (open) {
+        return problem(
+          c,
+          409,
+          "chargeback-open",
+          "Chargeback open",
+          `Chargeback ${open.id} is open.`,
+        );
+      }
+      let filed: { token: string; status: string };
+      try {
+        filed = await issuer.chargeback({
+          transactionToken: card.transactionToken,
+          amountMinor: amount,
+          reason: body.reason,
+          note: body.note,
+        });
+      } catch (err) {
+        deps.log.warn({ err, purchaseId: id }, "chargeback not filed");
+        return problem(c, 503, "issuer-unavailable", "The card issuer did not take the chargeback");
+      }
+      const [stored] = await db
+        .insert(cardChargebacks)
+        .values({
+          id: filed.token,
+          purchaseId: id,
+          reason: body.reason,
+          amountMinor: amount,
+          status: filed.status,
+        })
+        .returning();
+      // The Alibi is the cardholder's evidence: the mandate the user signed and both enclaves'
+      // approvals of the cart and of the charge.
+      let evidenceUploaded = false;
+      try {
+        const bundle = await loadAlibi(db, id);
+        if (bundle) {
+          await issuer.attachEvidence(filed.token, `alibi-${id}.pdf`, await renderAlibiPdf(bundle));
+          evidenceUploaded = true;
+          await db
+            .update(cardChargebacks)
+            .set({ evidenceUploaded: true })
+            .where(eq(cardChargebacks.id, filed.token));
+        }
+      } catch (err) {
+        deps.log.warn({ err, purchaseId: id }, "chargeback evidence not attached");
+      }
+      await db
+        .update(purchases)
+        .set({ state: "DISPUTED", updatedAt: sql`now()` })
+        .where(and(eq(purchases.id, id), eq(purchases.state, purchase.state)));
+      await publishPurchase(deps, id, { type: "purchase.chargeback", chargebackId: filed.token });
+      return c.json(
+        chargebackView({ ...(stored as typeof cardChargebacks.$inferSelect), evidenceUploaded }),
+        201,
+      );
+    } finally {
+      await deps.kv.del(lock);
     }
-    await db
-      .update(purchases)
-      .set({ state: "DISPUTED", updatedAt: sql`now()` })
-      .where(and(eq(purchases.id, id), eq(purchases.state, purchase.state)));
-    await publishPurchase(deps, id, { type: "purchase.chargeback", chargebackId: filed.token });
-    return c.json(
-      chargebackView({ ...(stored as typeof cardChargebacks.$inferSelect), evidenceUploaded }),
-      201,
-    );
   });
 }
 

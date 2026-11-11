@@ -244,12 +244,7 @@ function Rules() {
         assertion,
       });
       rememberPasskey(assertion.credentialId);
-      // A card mandate holds nothing on PayPal: each purchase gets its own card.
-      router.replace(
-        c.mandateDraft.payment.rail === "card"
-          ? `/mandate/?id=${created.id}`
-          : `/new/?hold=${created.id}`,
-      );
+      router.replace(`/new/?hold=${created.id}`);
     } catch (e) {
       setError(message(e));
       setBusy(false);
@@ -313,10 +308,10 @@ function Rules() {
         <div className="flex gap-3 rounded-2xl bg-card px-4 py-3 text-sm">
           <CreditCard className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <p className="text-muted-foreground">
-            <span className="font-medium text-foreground">Paid with a single-use card.</span>{" "}
-            Keelson issues one only after both enclaves allow the cart, capped at its total. When
-            the store charges it, both enclaves check the charge again. Test mode: no real money
-            moves.
+            <span className="font-medium text-foreground">Paid with a single-use card.</span> Your
+            budget is held on PayPal. Keelson issues a card only after both enclaves allow the cart,
+            capped at its total, and both check the store's charge again; the charge is then
+            collected from your hold. Test mode: no real money moves.
           </p>
         </div>
       ) : null}

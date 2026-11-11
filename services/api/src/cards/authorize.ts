@@ -15,7 +15,7 @@ import {
   type StoredCardVerdict,
 } from "@keelson/db";
 import type { Logger } from "pino";
-import { type Address, getAddress, type Hex, recoverAddress } from "viem";
+import { type Address, getAddress, type Hex, keccak256, recoverAddress, toHex } from "viem";
 import { countersignOf } from "../pipeline/leaf.ts";
 import type { CardAuthorized, CardNetworkAuthorization } from "../tee/client.ts";
 import { VERIFYING_CONTRACT } from "../tee/config.ts";
@@ -23,6 +23,11 @@ import type { TeeConfig } from "../tee/signers.ts";
 
 /** How long each leg may take: both answer in parallel, inside the issuer's few seconds. */
 export const LEG_DEADLINE_MS = 1_500;
+/**
+ * How long after the issuer's request a decision may still approve: past it the issuer has been
+ * told to decline, so a late approval is stored as the decline the network saw.
+ */
+export const DECIDE_DEADLINE_MS = 2_200;
 
 /** The issuer's answer: `APPROVED`, or the reason a merchant is told. */
 export type CardResult =
@@ -42,6 +47,8 @@ export interface CardVetoDeps {
 /** A card network authorization of one card, as the issuer's real-time request reported it. */
 export interface NetworkAuthorization extends CardNetworkAuthorization {
   cardToken: string;
+  /** The issuer's transaction the request belongs to; `id` is the request's own. */
+  transactionToken: string;
 }
 
 export interface CardDecision {
@@ -55,6 +62,7 @@ const bit = (name: keyof typeof CARD_BITS) => 1 << CARD_BITS[name];
 /** What a merchant is told about a declined authorization, from the reasons the legs gave. */
 export function resultOf(failedMask: number, reason: string | null): CardResult {
   if (failedMask === 0 && reason === null) return "APPROVED";
+  if (reason === "timeout") return "SUSPECTED_FRAUD";
   if (failedMask & (bit("mcc") | bit("country") | bit("merchant"))) return "UNAUTHORIZED_MERCHANT";
   if (failedMask & bit("amount")) return "INSUFFICIENT_FUNDS";
   if (failedMask & bit("used")) return "VELOCITY_EXCEEDED";
@@ -88,9 +96,19 @@ async function approves(
   signer: Address,
   requestId: Hex,
   countersignDigest: Hex,
+  n: CardNetworkAuthorization,
 ): Promise<boolean> {
   const a = out.authorization;
   if (a.requestId !== requestId || a.countersignDigest !== countersignDigest) return false;
+  // The answer is for this request: its id, amount, merchant code and country.
+  if (
+    a.authorizationHash !== keccak256(toHex(n.id)) ||
+    a.amount !== String(n.amount_minor) ||
+    a.mcc !== String(Number(n.mcc)) ||
+    a.country !== toHex(n.merchant_country)
+  ) {
+    return false;
+  }
   const digest = cardAuthorizationDigest(messageOf(a), keelsonDomain(421614, VERIFYING_CONTRACT));
   if (digest !== out.digest) return false;
   const recovered = await recoverAddress({ hash: digest, signature: out.signature });
@@ -108,6 +126,7 @@ export async function decide(
   deps: CardVetoDeps,
   n: NetworkAuthorization,
   receivedAt: number,
+  deadline = receivedAt + DECIDE_DEADLINE_MS,
 ): Promise<CardDecision> {
   const { db } = deps;
   const [seen] = await db.select().from(cardAuthorizations).where(eq(cardAuthorizations.id, n.id));
@@ -190,8 +209,14 @@ export async function decide(
       a.status === "fulfilled" &&
       b.status === "fulfilled" &&
       nitro !== null &&
-      (await approves(a.value, stored.signers.tdx, stored.countersign.requestId, stored.digest)) &&
-      (await approves(b.value, nitro, stored.countersign.requestId, stored.digest));
+      (await approves(
+        a.value,
+        stored.signers.tdx,
+        stored.countersign.requestId,
+        stored.digest,
+        n,
+      )) &&
+      (await approves(b.value, nitro, stored.countersign.requestId, stored.digest, n));
     if (!both && failedMask === 0) {
       reason =
         a.status === "rejected" || b.status === "rejected" ? "leg-unavailable" : "unverified";
@@ -201,12 +226,14 @@ export async function decide(
       }
     }
   }
+  if (reason === null && failedMask === 0 && performance.now() > deadline) reason = "timeout";
   const approved = reason === null && failedMask === 0;
   const insert = (approve: boolean, mask: number) =>
     db
       .insert(cardAuthorizations)
       .values({
         id: n.id,
+        transactionToken: n.transactionToken,
         purchaseId: row.purchase.id,
         amountMinor: BigInt(n.amount_minor),
         currency: n.currency,
@@ -232,11 +259,11 @@ export async function decide(
     if ((e.cause?.code ?? e.code) !== "23505") throw err;
     return decideUsed();
   }
-  if (inserted.length === 0) return decide(deps, n, receivedAt);
+  if (inserted.length === 0) return decide(deps, n, receivedAt, deadline);
   async function decideUsed(): Promise<CardDecision> {
     const mask = failedMask | bit("used");
     const again = await insert(false, mask);
-    if (again.length === 0) return decide(deps, n, receivedAt);
+    if (again.length === 0) return decide(deps, n, receivedAt, deadline);
     return { approved: false, result: resultOf(mask, reason), failedMask: mask };
   }
   if (approved) {

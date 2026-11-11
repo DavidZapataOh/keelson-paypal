@@ -312,7 +312,8 @@ export async function commitCapture(
     if (!p) throw new Error(`no purchase ${purchaseId}`);
     const [m] = await tx
       .update(mandates)
-      .set({ remainingMinor: sql`${mandates.remainingMinor} - ${p.amountMinor}` })
+      // What was captured: the countersigned amount, or less when a card charge settled for less.
+      .set({ remainingMinor: sql`${mandates.remainingMinor} - ${capture.amount.minor}` })
       .where(eq(mandates.id, p.mandateId))
       .returning({
         id: mandates.id,

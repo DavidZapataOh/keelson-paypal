@@ -31,6 +31,7 @@ import {
   like,
   mandates,
   ne,
+  notInArray,
   operators,
   or,
   purchaseHolds,
@@ -727,8 +728,9 @@ export function registerCountersign(
     let holdsAuthorization: boolean;
     let orderId: string | null;
     if (card) {
-      holdsAuthorization = true;
-      orderId = null;
+      // The user's budget is held on PayPal; each card charge is captured from that hold.
+      holdsAuthorization = mandate.holdMode === "mandate" && mandate.paypalAuthorizationId !== null;
+      orderId = mandate.paypalOrderId;
     } else if (mandate.holdMode === "per_purchase") {
       [held] = await db
         .select()
@@ -743,7 +745,7 @@ export function registerCountersign(
       holdsAuthorization = mandate.paypalAuthorizationId === body.authorizationId;
       orderId = mandate.paypalOrderId;
     }
-    if (!holdsAuthorization || (!card && orderId === null)) {
+    if (!holdsAuthorization || orderId === null) {
       return problem(
         c,
         422,
@@ -1071,6 +1073,25 @@ export function registerCountersign(
           )
           .for("share");
         if (!live) return { revoked: true as const };
+        // A card's charge is collected from the hold after the fact, so the budget a card
+        // mandate's live cards may still charge is checked here too, one cart at a time.
+        if (card) {
+          await tx.execute(
+            sql`select pg_advisory_xact_lock(hashtext(${`card-budget:${mandate.id}`}))`,
+          );
+          const [{ committed } = { committed: "0" }] = await tx
+            .select({ committed: sql<string>`coalesce(sum(${purchases.amountMinor}), 0)::text` })
+            .from(purchases)
+            .where(
+              and(
+                eq(purchases.mandateId, mandate.id),
+                eq(purchases.rail, "card"),
+                ne(purchases.id, purchaseId),
+                notInArray(purchases.state, ["PROPOSED", "DENIED", "FAILED"]),
+              ),
+            );
+          if (BigInt(committed) + total > mandate.maxMinor) return { overBudget: true as const };
+        }
         // Serializes the purchases of one cart under one mandate, so two retries cannot both pass.
         await tx.execute(
           sql`select pg_advisory_xact_lock(hashtext(${`purchase:${mandate.id}:${want.cartHash}`}))`,
@@ -1089,7 +1110,7 @@ export function registerCountersign(
             evidenceRoot,
             rail: mandate.rail,
             paypalOrderId: orderId,
-            paypalAuthorizationId: body.authorizationId ?? null,
+            paypalAuthorizationId: body.authorizationId ?? mandate.paypalAuthorizationId,
             paypalRefSalt: randomBytes(32),
             ...(body.live ? { liveStore: body.live.store } : {}),
             ...(c.var.principal?.kind === "client" ? { clientId: c.var.principal.subject } : {}),
@@ -1102,7 +1123,7 @@ export function registerCountersign(
             ? await transition(tx, "purchases", purchaseId, "PROPOSED", "EVALUATING")
             : await redrive(tx, purchaseId, mandate.id, want, body.cart, evidenceRoot, {
                 orderId,
-                authorizationId: body.authorizationId ?? null,
+                authorizationId: body.authorizationId ?? mandate.paypalAuthorizationId,
               });
         return { driven };
       })
@@ -1113,6 +1134,15 @@ export function registerCountersign(
         throw err;
       });
     if (claim === null) return evidenceUsed(c);
+    if ("overBudget" in claim) {
+      return problem(
+        c,
+        409,
+        "budget-committed",
+        "Budget committed",
+        "The mandate's live and settled card purchases already commit its budget.",
+      );
+    }
     if ("revoked" in claim) {
       return problem(
         c,

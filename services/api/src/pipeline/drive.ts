@@ -26,7 +26,7 @@ import type { TeeConfig } from "../tee/signers.ts";
 import type { StampWorker } from "../timestamps/worker.ts";
 import { span } from "../tracing.ts";
 import { CAPTURE_WINDOW_SEC, captureStep } from "./capture-step.ts";
-import { issueCardStep, openCardStep } from "./card-step.ts";
+import { captureCardStep, issueCardStep, openCardStep } from "./card-step.ts";
 import { coverStep } from "./cover-step.ts";
 import { publishPurchase } from "./events.ts";
 import { logStep } from "./log-step.ts";
@@ -514,6 +514,11 @@ export async function drivePurchase(deps: PipelineDeps, purchaseId: string): Pro
       if (opened.kind === "final") await fail(deps, purchaseId, "COVERED", opened.reason);
       else if (opened.kind === "done") {
         await publishPurchase(deps, purchaseId, { type: "purchase.card_open" });
+        // Once the network settled the card's charge, it is collected from the PayPal hold.
+        const collected = await run(deps, purchaseId, "capture", () =>
+          captureCardStep(deps, purchaseId),
+        );
+        if (collected.kind === "final") await fail(deps, purchaseId, "COVERED", collected.reason);
       }
       return (await viewOf(deps.db, purchaseId)) as PurchaseView;
     }
@@ -549,8 +554,9 @@ export async function resumePurchases(deps: PipelineDeps): Promise<number> {
         inArray(purchases.state, [...DRIVEN]),
         // A live purchase has nothing left to drive once logged.
         or(isNull(purchases.liveStore), eq(purchases.state, "COUNTERSIGNED")),
-        // Nor a card purchase once its card is open: the card network captures it.
-        sql`not (${purchases.state} = 'COVERED' and exists (select 1 from purchase_cards pc where pc.purchase_id = ${purchases.id} and pc.state <> 'PAUSED'))`,
+        // Nor a card purchase whose open card waits for a charge; once the charge settled, its
+        // collection from the PayPal hold is driven again.
+        sql`not (${purchases.state} = 'COVERED' and exists (select 1 from purchase_cards pc where pc.purchase_id = ${purchases.id} and pc.state <> 'PAUSED' and pc.settled_minor is null))`,
         or(
           lt(purchases.leaseUntil, sql`now()`),
           and(

@@ -1,12 +1,12 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import { and, eq, inArray, purchaseCards, purchases, sql } from "@keelson/db";
+import { and, cardAuthorizations, eq, inArray, purchaseCards, purchases, sql } from "@keelson/db";
 import type { Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import type { Deps } from "../app.ts";
 import { type CardResult, decide } from "../cards/authorize.ts";
 import { alpha2, type CardIssuer } from "../cards/issuer.ts";
-import { rateLimit } from "../middleware/rate-limit.ts";
+import { captureCardStep } from "../pipeline/card-step.ts";
 import { publishPurchase } from "../pipeline/events.ts";
 import { problem } from "../problem.ts";
 import { span } from "../tracing.ts";
@@ -16,7 +16,10 @@ import { applyChargeback } from "./chargebacks.ts";
 const ANSWER_DEADLINE_MS = 2_500;
 
 const AsaRequest = z.looseObject({
+  /** The transaction the request belongs to; several requests may share it. */
   token: z.string().min(1).max(256),
+  /** This request's own id, which the issuer repeats when it retries it. */
+  event_token: z.string().min(1).max(256).optional(),
   status: z.string(),
   amounts: z.looseObject({
     cardholder: z.looseObject({ amount: z.number().int(), currency: z.string() }),
@@ -45,8 +48,10 @@ const TransactionEvent = z.looseObject({
   settled_amount: z.number().int().optional(),
 });
 
-/** The authorizations a card may be approved for: purchases, not refunds or balance checks. */
+/** The authorizations a card may be approved for: purchases, not balance checks. */
 const PURCHASES = new Set(["AUTHORIZATION", "FINANCIAL_AUTHORIZATION"]);
+/** A merchant's refund to the card: money in, approved without a check. */
+const CREDITS = new Set(["CREDIT_AUTHORIZATION", "FINANCIAL_CREDIT_AUTHORIZATION"]);
 
 /**
  * The card issuer's real-time authorization requests (Lithic Auth Stream Access) and its card
@@ -55,16 +60,11 @@ const PURCHASES = new Set(["AUTHORIZATION", "FINANCIAL_AUTHORIZATION"]);
  */
 export function registerCardWebhooks(
   app: OpenAPIHono,
-  deps: Pick<Deps, "db" | "kv" | "log" | "tee" | "cards" | "rateLimit">,
+  deps: Pick<Deps, "db" | "kv" | "log" | "tee" | "cards" | "paypal">,
 ): void {
   const limit = bodyLimit({
     maxSize: 64 * 1024,
     onError: (c) => problem(c, 413, "payload-too-large", "Payload too large"),
-  });
-  const limited = rateLimit(deps.kv, {
-    name: "card-webhook",
-    anonymousLimit: 600,
-    trustProxy: deps.rateLimit?.trustProxy ?? false,
   });
 
   /** The issuer's verified body, or `undefined` when it is not signed with `secret`. */
@@ -92,6 +92,9 @@ export function registerCardWebhooks(
       }
       const parsed = AsaRequest.safeParse(raw);
       const decline = (result: CardResult) => c.json({ result }, 200);
+      if (parsed.success && CREDITS.has(parsed.data.status)) {
+        return c.json({ result: "APPROVED" }, 200);
+      }
       if (!parsed.success || !PURCHASES.has(parsed.data.status)) return decline("SUSPECTED_FRAUD");
       const r = parsed.data;
       s.setAttribute("card.authorization", r.token);
@@ -102,7 +105,8 @@ export function registerCardWebhooks(
         decide(
           deps,
           {
-            id: r.token,
+            id: r.event_token ?? r.token,
+            transactionToken: r.token,
             cardToken: r.card.token,
             amount_minor: r.amounts.cardholder.amount,
             currency: r.amounts.cardholder.currency,
@@ -132,7 +136,9 @@ export function registerCardWebhooks(
     }),
   );
 
-  app.post("/webhooks/lithic", limit, limited, async (c) => {
+  // Verified before anything else, and not rate limited: a limit counting the proxy's address
+  // would let unsigned requests crowd out the issuer's.
+  app.post("/webhooks/lithic", limit, async (c) => {
     const issuer = deps.cards?.issuer;
     const secret = deps.cards?.webhookSecret;
     if (!issuer || !secret) return problem(c, 503, "cards-unconfigured", "Cards unconfigured");
@@ -166,7 +172,7 @@ export function registerCardWebhooks(
  * transaction captures the purchase, a voided or expired one closes the card and fails it.
  */
 export async function applyTransaction(
-  deps: Pick<Deps, "db" | "kv" | "log" | "cards">,
+  deps: Pick<Deps, "db" | "kv" | "log" | "cards" | "paypal">,
   t: { cardToken: string; transactionToken: string; status: string; settledMinor: number },
 ): Promise<void> {
   const { db } = deps;
@@ -175,29 +181,43 @@ export async function applyTransaction(
     .from(purchaseCards)
     .where(eq(purchaseCards.cardToken, t.cardToken));
   if (!card) return;
-  if (t.status === "SETTLED" && t.settledMinor > 0) {
-    const captured = await db.transaction(async (tx) => {
-      await tx
-        .update(purchaseCards)
-        .set({
-          state: "CLOSED",
-          transactionToken: t.transactionToken,
-          settledMinor: BigInt(t.settledMinor),
-          settledAt: sql`now()`,
-        })
-        .where(and(eq(purchaseCards.purchaseId, card.purchaseId), eq(purchaseCards.state, "USED")));
-      return tx
-        .update(purchases)
-        .set({ state: "CAPTURED", capturedAt: sql`now()`, updatedAt: sql`now()` })
-        .where(and(eq(purchases.id, card.purchaseId), eq(purchases.state, "COVERED")))
-        .returning({ id: purchases.id });
-    });
-    if (captured.length > 0) {
-      await publishPurchase(deps, card.purchaseId, {
-        type: "purchase.captured",
-        rail: "card",
-        settledMinor: String(t.settledMinor),
-      });
+  const [approval] = await db
+    .select({ amountMinor: cardAuthorizations.amountMinor })
+    .from(cardAuthorizations)
+    .where(
+      and(
+        eq(cardAuthorizations.purchaseId, card.purchaseId),
+        eq(cardAuthorizations.transactionToken, t.transactionToken),
+        eq(cardAuthorizations.approved, true),
+      ),
+    );
+  // Only the transaction both legs approved captures the purchase, and for no more than they
+  // approved: anything else is the merchant's to answer for through a chargeback.
+  const matches = approval !== undefined && BigInt(t.settledMinor) <= approval.amountMinor;
+  if (t.status === "SETTLED" && !matches) {
+    deps.log.error(
+      { purchaseId: card.purchaseId, transaction: t.transactionToken, settled: t.settledMinor },
+      "card settlement does not match the approved authorization",
+    );
+  }
+  if (t.status === "SETTLED" && t.settledMinor > 0 && matches) {
+    await db
+      .update(purchaseCards)
+      .set({
+        state: "CLOSED",
+        transactionToken: t.transactionToken,
+        settledMinor: BigInt(t.settledMinor),
+        settledAt: sql`now()`,
+      })
+      .where(and(eq(purchaseCards.purchaseId, card.purchaseId), eq(purchaseCards.state, "USED")));
+    // The network paid the merchant: the charge is collected from the user's PayPal hold. A
+    // capture PayPal does not answer now is retried by the pipeline resumer.
+    const out = await captureCardStep(deps, card.purchaseId);
+    if (out.kind === "final") {
+      deps.log.error(
+        { purchaseId: card.purchaseId, reason: out.reason },
+        "card charge not collected",
+      );
     }
   } else if (t.status === "VOIDED" || t.status === "EXPIRED") {
     await db

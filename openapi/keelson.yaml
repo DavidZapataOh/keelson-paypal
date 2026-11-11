@@ -6199,7 +6199,7 @@ paths:
       description: Verifies the passkey assertion over `M =
         SHA-256("keelson/mandate-challenge/v1" || 0x00 || H_sd || C_m)` and
         stores the mandate as `SIGNED`, or `ACTIVE` when it allows several
-        merchants or pays with single-use cards.
+        merchants.
       parameters:
         - schema:
             type: string

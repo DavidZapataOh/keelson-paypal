@@ -181,6 +181,8 @@ export const alibiSchema = z.strictObject({
           mcc: z.string().regex(/^[0-9]{4}$/),
           merchant_name: z.string(),
           merchant_country: z.string(),
+          /** The acquirer's id for the merchant, which the legs' `merchantHash` commits to. */
+          network_id: z.string(),
           approved: z.boolean(),
           verdicts: z.array(
             z.strictObject({

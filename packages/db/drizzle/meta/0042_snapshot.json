@@ -1,5 +1,5 @@
 {
-  "id": "fc2d0a24-6ad3-4b40-8483-69a79cac6a9e",
+  "id": "7daba89b-db3c-48e2-8e75-57d3ad59652e",
   "prevId": "73d4b31f-3fe5-4430-8f04-d44a9cb4296d",
   "version": "7",
   "dialect": "postgresql",
@@ -2098,6 +2098,12 @@
           "primaryKey": true,
           "notNull": true
         },
+        "transaction_token": {
+          "name": "transaction_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "purchase_id": {
           "name": "purchase_id",
           "type": "char(26)",
@@ -2245,6 +2251,118 @@
         "card_authorizations_approved_signed": {
           "name": "card_authorizations_approved_signed",
           "value": "not \"card_authorizations\".\"approved\" or (\"card_authorizations\".\"tdx\" is not null and \"card_authorizations\".\"nitro\" is not null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.card_chargebacks": {
+      "name": "card_chargebacks",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "purchase_id": {
+          "name": "purchase_id",
+          "type": "char(26)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount_minor": {
+          "name": "amount_minor",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "resolution": {
+          "name": "resolution",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recovered_minor": {
+          "name": "recovered_minor",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "evidence_uploaded": {
+          "name": "evidence_uploaded",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "card_chargebacks_one_open_idx": {
+          "name": "card_chargebacks_one_open_idx",
+          "columns": [
+            {
+              "expression": "purchase_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"card_chargebacks\".\"status\" not in ('CASE_WON', 'CASE_CLOSED')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "card_chargebacks_purchase_id_purchases_id_fk": {
+          "name": "card_chargebacks_purchase_id_purchases_id_fk",
+          "tableFrom": "card_chargebacks",
+          "tableTo": "purchases",
+          "columnsFrom": ["purchase_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "card_chargebacks_amount_positive": {
+          "name": "card_chargebacks_amount_positive",
+          "value": "\"card_chargebacks\".\"amount_minor\" > 0"
+        },
+        "card_chargebacks_reason_valid": {
+          "name": "card_chargebacks_reason_valid",
+          "value": "\"card_chargebacks\".\"reason\" in ('not_received', 'not_as_described', 'unauthorized')"
         }
       },
       "isRLSEnabled": false

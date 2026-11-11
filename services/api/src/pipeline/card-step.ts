@@ -1,3 +1,4 @@
+import { type CurrencyCode, fromPayPalValue, type Money, toPayPalValue } from "@keelson/core";
 import {
   and,
   type Db,
@@ -10,9 +11,13 @@ import {
   sql,
 } from "@keelson/db";
 import { decodeMandate, type Mandate } from "@keelson/mandate";
+import { PayPalError } from "@keelson/paypal";
 import type { Logger } from "pino";
 import type { CardIssuer } from "../cards/issuer.ts";
+import { holdOf } from "../hold/state.ts";
+import { call, PayPalUnavailableError } from "../paypal.ts";
 import type { CountersignJson } from "../tee/client.ts";
+import { type CaptureDeps, commitCapture, findCapture, invoiceFor } from "./capture-step.ts";
 import { done, final, type Outcome, retry } from "./outcome.ts";
 
 export interface CardStepDeps {
@@ -188,3 +193,90 @@ export async function closeExpiredCards(deps: CardStepDeps): Promise<number> {
   }
   return closed;
 }
+
+/**
+ * Collects a settled card charge from the user's PayPal hold: captures exactly what the card
+ * network settled, once, under the purchase's invoice id. A capture an earlier attempt made is
+ * found on the order and recorded instead of being sent again. Unlike a PayPal purchase there is
+ * no capture window: the network already paid the merchant, and the hold stays authorized until
+ * the mandate ends.
+ */
+export async function captureCardStep(
+  deps: CaptureDeps,
+  purchaseId: string,
+): Promise<Outcome<{ captureId: string; status: string }>> {
+  const { db, log, paypal } = deps;
+  const [row] = await db
+    .select({ purchase: purchases, card: purchaseCards })
+    .from(purchases)
+    .innerJoin(purchaseCards, eq(purchaseCards.purchaseId, purchases.id))
+    .where(eq(purchases.id, purchaseId));
+  if (!row) return final("capture:no-card");
+  const { purchase: p, card } = row;
+  if (p.state === "CAPTURED" && p.paypalCaptureId) {
+    return done({ captureId: p.paypalCaptureId, status: p.captureStatus ?? "COMPLETED" });
+  }
+  if (p.state !== "COVERED") return final(`capture:state-${p.state}`);
+  if (card.settledMinor === null) return retry("capture:not-settled");
+  if (!p.paypalOrderId) return final("capture:no-order");
+  if (!paypal) return retry("capture:paypal-unavailable");
+  const amount: Money = { currency: p.currency as CurrencyCode, minor: card.settledMinor };
+  const invoice = await invoiceFor({ db, paypal }, purchaseId);
+  if (!invoice) return final("capture:invoice-exhausted");
+  try {
+    const found = await findCapture(paypal, p.paypalOrderId, invoice.invoiceId);
+    if (found) {
+      if (found.amount.minor !== amount.minor) return final("capture:DUPLICATE_INVOICE_ID");
+      await commitCapture(deps, purchaseId, found);
+      return done({ captureId: found.id, status: found.status });
+    }
+    const [m] = await db.select().from(mandates).where(eq(mandates.id, p.mandateId));
+    if (!m || (m.state !== "ACTIVE" && m.state !== "EXHAUSTED")) {
+      return final(`capture:mandate-${m?.state ?? "missing"}`);
+    }
+    if (amount.minor > m.remainingMinor) return final("capture:budget-exceeded");
+    const authorizationId = (await holdOf(db, p.mandateId))?.authorizationId;
+    if (!authorizationId) return final("capture:no-authorization");
+    const finalCapture = amount.minor === m.remainingMinor;
+    const res = await call(
+      paypal.paypal.payments.captureAuthorizedPayment({
+        authorizationId,
+        paypalRequestId: invoice.requestId,
+        prefer: "return=representation",
+        body: {
+          amount: { currencyCode: amount.currency, value: toPayPalValue(amount) },
+          invoiceId: invoice.invoiceId,
+          finalCapture,
+        },
+      }),
+    );
+    if (!res.id || !res.amount?.currencyCode || !res.amount.value) {
+      return retry("capture:malformed-response");
+    }
+    const captured = fromPayPalValue(res.amount.currencyCode as CurrencyCode, res.amount.value);
+    if (captured.minor !== amount.minor) {
+      log.error({ purchaseId, captureId: res.id }, "PayPal captured another amount");
+      return final("capture:amount-mismatch");
+    }
+    log.info({ purchaseId, captureId: res.id, status: res.status }, "card capture.sent");
+    await commitCapture(deps, purchaseId, {
+      id: res.id,
+      status: res.status ?? "PENDING",
+      amount: captured,
+      invoiceId: invoice.invoiceId,
+      final: finalCapture,
+    });
+    return done({ captureId: res.id, status: res.status ?? "PENDING" });
+  } catch (err) {
+    if (err instanceof PayPalError && !TRANSIENT.has(err.status)) {
+      return final(`capture:${err.details[0]?.issue ?? `HTTP_${err.status}`}`);
+    }
+    if (err instanceof PayPalError || err instanceof PayPalUnavailableError) {
+      return retry("capture:paypal-unavailable");
+    }
+    throw err;
+  }
+}
+
+/** PayPal answers these for the caller or the moment, never for the capture itself. */
+const TRANSIENT = new Set([401, 408, 409, 429]);

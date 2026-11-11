@@ -23,6 +23,7 @@ import { createApp } from "../src/app.ts";
 import { type CardVetoDeps, decide, type NetworkAuthorization } from "../src/cards/authorize.ts";
 import { bondClaimMinor, chargebackRecovered } from "../src/cards/chargeback.ts";
 import type { CardIssuer } from "../src/cards/issuer.ts";
+import { applyTransaction } from "../src/routes/card-webhooks.ts";
 import { applyChargeback } from "../src/routes/chargebacks.ts";
 import type { CardAuthorized, CardAuthorizeRequest, CountersignJson } from "../src/tee/client.ts";
 import { VERIFYING_CONTRACT } from "../src/tee/config.ts";
@@ -196,8 +197,12 @@ async function cardPurchase(state: "OPEN" | "PAUSED" = "OPEN") {
   return { id, cardToken };
 }
 
-const coffee = (cardToken: string, over: Partial<NetworkAuthorization> = {}) => ({
+const coffee = (
+  cardToken: string,
+  over: Partial<NetworkAuthorization> = {},
+): NetworkAuthorization => ({
   id: `auth-${ulid()}`,
+  transactionToken: `txn-${ulid()}`,
   cardToken,
   amount_minor: 450,
   currency: "USD",
@@ -263,6 +268,60 @@ describe("the card authorization veto", () => {
     const other = await cardPurchase();
     const forged = await decide(deps, coffee(other.cardToken), performance.now());
     expect(forged.approved).toBe(false);
+  });
+
+  test("declines an approval that comes after the issuer was answered", async () => {
+    answers = { a: () => ({ mask: 0 }), b: () => ({ mask: 0 }) };
+    const { id, cardToken } = await cardPurchase();
+    const late = await decide(deps, coffee(cardToken), performance.now(), performance.now() - 1);
+    expect(late).toEqual({ approved: false, result: "SUSPECTED_FRAUD", failedMask: 0 });
+    const [card] = await testDb
+      .select()
+      .from(purchaseCards)
+      .where(eq(purchaseCards.purchaseId, id));
+    expect(card?.state).toBe("OPEN");
+  });
+
+  test("a second request on the same transaction is a second use", async () => {
+    answers = { a: () => ({ mask: 0 }), b: () => ({ mask: 0 }) };
+    const { cardToken } = await cardPurchase();
+    const first = coffee(cardToken);
+    expect((await decide(deps, first, performance.now())).approved).toBe(true);
+    const more = await decide(
+      deps,
+      coffee(cardToken, { transactionToken: first.transactionToken, amount_minor: 100 }),
+      performance.now(),
+    );
+    expect(more.result).toBe("VELOCITY_EXCEEDED");
+  });
+
+  test("only the approved transaction, for no more than approved, settles the card", async () => {
+    answers = { a: () => ({ mask: 0 }), b: () => ({ mask: 0 }) };
+    const { id, cardToken } = await cardPurchase();
+    const n = coffee(cardToken);
+    await decide(deps, n, performance.now());
+    const card = async () =>
+      (await testDb.select().from(purchaseCards).where(eq(purchaseCards.purchaseId, id)))[0];
+    const base = { db: testDb, kv: testKv, log };
+    for (const [transactionToken, settledMinor] of [
+      ["txn-other", 450],
+      [n.transactionToken, 451],
+    ] as const) {
+      await applyTransaction(base, {
+        cardToken,
+        transactionToken,
+        status: "SETTLED",
+        settledMinor,
+      });
+      expect((await card())?.settledMinor).toBeNull();
+    }
+    await applyTransaction(base, {
+      cardToken,
+      transactionToken: n.transactionToken,
+      status: "SETTLED",
+      settledMinor: 450,
+    });
+    expect(await card()).toMatchObject({ state: "CLOSED", settledMinor: 450n });
   });
 
   test("declines a card that is not open, and a card Keelson did not issue", async () => {
@@ -361,7 +420,7 @@ describe("POST /webhooks/lithic/asa", () => {
     expect(await res2.json()).toEqual({ result: "VELOCITY_EXCEEDED" });
   });
 
-  test("declines a refund or a balance inquiry", async () => {
+  test("declines a balance inquiry and approves a refund to the card", async () => {
     const body = asa("card-x").replace('"AUTHORIZATION"', '"BALANCE_INQUIRY"');
     const res = await app.request("/webhooks/lithic/asa", {
       method: "POST",
@@ -369,6 +428,13 @@ describe("POST /webhooks/lithic/asa", () => {
       body,
     });
     expect(await res.json()).toEqual({ result: "SUSPECTED_FRAUD" });
+    const credit = asa("card-x").replace('"AUTHORIZATION"', '"CREDIT_AUTHORIZATION"');
+    const ok = await app.request("/webhooks/lithic/asa", {
+      method: "POST",
+      headers: sign(credit),
+      body: credit,
+    });
+    expect(await ok.json()).toEqual({ result: "APPROVED" });
   });
 });
 

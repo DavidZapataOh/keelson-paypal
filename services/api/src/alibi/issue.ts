@@ -572,6 +572,7 @@ async function cardSection(
       mcc: a.mcc,
       merchant_name: a.merchantName,
       merchant_country: a.merchantCountry,
+      network_id: a.networkId,
       approved: a.approved,
       verdicts: [a.tdx, a.nitro].flatMap((v) =>
         v

@@ -61,13 +61,16 @@ export const purchaseCards = pgTable(
 
 /**
  * Each card network authorization of a purchase card, as the issuer's real-time request reported
- * it, and both legs' signed answers. Keyed by the issuer's authorization token, which its retries
+ * it, and both legs' signed answers. Keyed by the issuer's id of the request, which its retries
  * repeat.
  */
 export const cardAuthorizations = pgTable(
   "card_authorizations",
   {
+    /** The issuer's id of this authorization request, unique per request. */
     id: text().primaryKey(),
+    /** The issuer's transaction the request belongs to, which its settlement names. */
+    transactionToken: text().notNull(),
     purchaseId: char({ length: 26 })
       .notNull()
       .references(() => purchases.id),
