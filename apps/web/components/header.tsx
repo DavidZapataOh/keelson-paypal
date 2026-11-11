@@ -38,6 +38,9 @@ export function Header() {
           <Link href="/new/" className="rounded-md px-3 py-2.5 font-medium hover:bg-accent">
             New mandate
           </Link>
+          <Link href="/passkeys/" className="rounded-md px-3 py-2.5 font-medium hover:bg-accent">
+            Passkeys
+          </Link>
           <button
             type="button"
             onClick={() => authClient.signOut().then(() => location.assign("/"))}

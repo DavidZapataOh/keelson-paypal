@@ -1,9 +1,8 @@
 "use client";
 
-import { passkeyRegistrationOptions, rememberPaymentPasskey } from "@keelson/mandate/browser";
 import { Button } from "@keelson/ui/components/button";
 import { useState } from "react";
-import { authClient } from "../lib/auth";
+import { addPasskey } from "../lib/passkeys";
 import { ErrorNotice, Eyebrow } from "./notice";
 
 /** One decision: create the passkey that signs mandates. */
@@ -14,14 +13,12 @@ export function PasskeySetup({ onDone }: { onDone: () => void }) {
   const add = async () => {
     setBusy(true);
     setError(undefined);
-    const opts = await passkeyRegistrationOptions();
-    const res = await authClient.passkey.addPasskey({ name: "Keelson", ...opts });
+    const res = await addPasskey("Keelson");
     setBusy(false);
-    if (res.error || !res.data) {
-      setError(res.error?.message ?? "The passkey was not created. Try again.");
+    if (!res.ok) {
+      setError(res.message);
       return;
     }
-    if (opts.authenticatorAttachment === "platform") rememberPaymentPasskey(res.data.credentialID);
     onDone();
   };
 

@@ -1,19 +1,16 @@
 "use client";
 
-import {
-  type PasskeyRef,
-  prepareSigning,
-  type Signing,
-  signMandate,
-} from "@keelson/mandate/browser";
+import { prepareSigning, type Signing, signMandate } from "@keelson/mandate/browser";
 import { Button } from "@keelson/ui/components/button";
 import { Field, FieldDescription, FieldLabel } from "@keelson/ui/components/field";
 import { Textarea } from "@keelson/ui/components/textarea";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useId, useState } from "react";
 import { ApiError, get, post } from "../lib/api";
 import { authClient } from "../lib/auth";
 import { deviceId } from "../lib/device";
+import { devicePasskey, type Passkey, rememberPasskey } from "../lib/passkeys";
 import type { Compiled } from "../lib/types";
 import { LiabilityLegend, MandateCard } from "./mandate-card";
 import { ErrorNotice, Eyebrow } from "./notice";
@@ -43,6 +40,7 @@ export function NewMandate() {
   const router = useRouter();
   const session = authClient.useSession();
   const [step, setStep] = useState<Step>({ name: "loading" });
+  const [onDevice, setOnDevice] = useState(true);
   // An agent hands the user's request over in `?request=`; the user reviews it before compiling.
   const handed = useSearchParams().get("request");
   const [prompt, setPrompt] = useState(handed ?? "");
@@ -57,8 +55,11 @@ export function NewMandate() {
       router.replace("/");
       return;
     }
-    get<{ passkeys: PasskeyRef[] }>("/v1/passkeys")
-      .then((r) => setStep(r.passkeys.length > 0 ? { name: "write" } : { name: "passkey" }))
+    get<{ passkeys: Passkey[] }>("/v1/passkeys")
+      .then((r) => {
+        setOnDevice(devicePasskey(r.passkeys) !== undefined);
+        setStep(r.passkeys.length > 0 ? { name: "write" } : { name: "passkey" });
+      })
       .catch((e) => setError(message(e)));
   }, [session.isPending, session.data, router]);
 
@@ -67,9 +68,12 @@ export function NewMandate() {
     setBusy(true);
     setError(undefined);
     try {
+      // The mandate names the passkey that signs it: one known to be on this device, if any.
+      const { passkeys } = await get<{ passkeys: Passkey[] }>("/v1/passkeys");
+      const credentialId = devicePasskey(passkeys)?.credentialId;
       const compiled = await post<Compiled>(
         "/v1/mandates/compile",
-        { prompt, mode: "autonomous" },
+        { prompt, mode: "autonomous", ...(credentialId ? { credentialId } : {}) },
         { "keelson-device": deviceId() },
       );
       setStep({ name: "review", compiled });
@@ -89,12 +93,13 @@ export function NewMandate() {
     }
   };
 
-  const sign = async (signing: Signing) => {
+  const sign = async (compiled: Compiled, signing: Signing) => {
     setBusy(true);
     setError(undefined);
     try {
-      const { passkeys } = await get<{ passkeys: PasskeyRef[] }>("/v1/passkeys");
-      const assertion = await signMandate(signing.challenge, passkeys, { spc: signing.spc });
+      const { passkeys } = await get<{ passkeys: Passkey[] }>("/v1/passkeys");
+      const named = passkeys.filter((p) => p.credentialId === compiled.mandateDraft.user.cred.id);
+      const assertion = await signMandate(signing.challenge, named, { spc: signing.spc });
       const created = await post<{ id: string }>("/v1/mandates", {
         payloadSd: signing.payloadSd,
         disclosures: signing.disclosures,
@@ -102,6 +107,7 @@ export function NewMandate() {
         salt: signing.salt,
         assertion,
       });
+      rememberPasskey(assertion.credentialId);
       router.push(`/mandate/?id=${created.id}`);
     } catch (err) {
       setError(message(err));
@@ -119,7 +125,16 @@ export function NewMandate() {
       </p>
     );
   }
-  if (step.name === "passkey") return <PasskeySetup onDone={() => setStep({ name: "write" })} />;
+  if (step.name === "passkey") {
+    return (
+      <PasskeySetup
+        onDone={() => {
+          setOnDevice(true);
+          setStep({ name: "write" });
+        }}
+      />
+    );
+  }
 
   if (step.name === "write") {
     return (
@@ -163,6 +178,15 @@ export function NewMandate() {
         >
           {busy ? "Reading your request…" : "Review the mandate"}
         </Button>
+        {onDevice ? null : (
+          <p className="text-muted-foreground text-sm">
+            Signing on a new device?{" "}
+            <Link href="/passkeys/" className="underline underline-offset-4 hover:text-foreground">
+              Add a passkey for it
+            </Link>{" "}
+            first, or sign with a passkey you already have.
+          </p>
+        )}
         {error ? <ErrorNotice>{error}</ErrorNotice> : null}
       </form>
     );
@@ -211,7 +235,7 @@ export function NewMandate() {
           signing={signing}
           compiled={compiled}
           busy={busy}
-          onSign={() => sign(signing)}
+          onSign={() => sign(compiled, signing)}
         />
       ) : null}
       {error ? <ErrorNotice>{error}</ErrorNotice> : null}
