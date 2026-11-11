@@ -34,7 +34,11 @@ fn a_record_is_stored_once_and_read_back() {
 #[test]
 fn records_survive_a_restart() {
     let dir = Dir::new("restart");
-    assert!(FileRecords::open(&dir.0).unwrap().insert_new("hold\0mid", vec![4, 5]));
+    assert!(
+        FileRecords::open(&dir.0)
+            .unwrap()
+            .insert_new("hold\0mid", vec![4, 5])
+    );
 
     let reopened = FileRecords::open(&dir.0).unwrap();
     assert_eq!(reopened.get("hold\0mid"), Some(vec![4, 5]));

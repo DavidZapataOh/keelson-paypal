@@ -30,6 +30,7 @@ use time::{Duration, OffsetDateTime, UtcOffset};
 
 use crate::budget::{Budget, Claimed, Replay};
 use crate::checkpoint::{CheckpointError, verify_checkpoint};
+use crate::logsign::{LogSigner, SignError, SignRequest, Signed};
 use crate::paypal::{HoldKind, PayPalDeny, paypal_check};
 use crate::wire::{
     self, Base64, CheckpointRequest, CheckpointSigned, CountersignRequest, Countersigned, Hex,
@@ -149,6 +150,8 @@ pub enum EngineError {
     Signer(Error),
     /// The checkpoint is not one the engine signs.
     Checkpoint(CheckpointError),
+    /// The log checkpoint was not signed.
+    Log(SignError),
 }
 
 impl EngineError {
@@ -169,6 +172,7 @@ impl EngineError {
             Self::PayPal => "paypal".into(),
             Self::Signer(_) => "signer".into(),
             Self::Checkpoint(e) => e.code().into(),
+            Self::Log(e) => e.code().into(),
         }
     }
 }
@@ -208,6 +212,10 @@ pub struct Engine {
     users: Option<Arc<dyn UserRecords>>,
     prover: Option<Arc<Prover>>,
     c1: C1Proofs,
+    log: Option<Arc<LogSigner>>,
+    /// The Alibi origins' log keys leg A holds, `(origin, Ed25519 key)`: leg A's own, or on leg B
+    /// the ones its boot message carried with a KMS chain that verified.
+    tee_log_keys: Vec<(&'static str, [u8; 32])>,
 }
 
 /// What leg A needs to prove C1 for an ALLOW it already answered.
@@ -290,7 +298,63 @@ impl Engine {
             users: None,
             prover: None,
             c1: C1Proofs::default(),
+            log: None,
+            tee_log_keys: Vec::new(),
         }
+    }
+
+    /// Sets the checkpoint signer of the Alibi origins, which leg A holds.
+    pub fn with_log_signer(mut self, log: Arc<LogSigner>) -> Self {
+        self.tee_log_keys = log
+            .keys()
+            .iter()
+            .map(|k| (k.origin, k.public_key()))
+            .collect();
+        self.log = Some(log);
+        self
+    }
+
+    /// Sets the log keys leg A holds, for a leg that verifies checkpoints but does not sign them.
+    pub fn with_tee_log_keys(mut self, keys: Vec<(&'static str, [u8; 32])>) -> Self {
+        self.tee_log_keys = keys;
+        self
+    }
+
+    /// Signs the RA-TLS binding digest of [`crate::ratls::binding_digest`] with the attested
+    /// signer.
+    pub fn sign_tls_binding(&self, digest: &[u8; 32]) -> Result<[u8; 65], Error> {
+        self.signer.sign_tls_binding(digest)
+    }
+
+    /// The log keys this engine trusts for the Alibi origins.
+    pub fn tee_log_keys(&self) -> &[(&'static str, [u8; 32])] {
+        &self.tee_log_keys
+    }
+
+    /// The checkpoint signer, on leg A.
+    pub fn log_signer(&self) -> Option<&LogSigner> {
+        self.log.as_deref()
+    }
+
+    /// Signs a log checkpoint that extends the last one signed for its origin, or the origin's
+    /// on-chain anchor `floor` when the leg has signed none.
+    pub fn sign_log(
+        &self,
+        r: &SignRequest,
+        floor: Option<(u64, [u8; 32])>,
+    ) -> Result<Signed, EngineError> {
+        let (Some(log), Some(root)) = (&self.log, &self.root) else {
+            return Err(EngineError::NoRoot);
+        };
+        log.sign(root, floor, r).map_err(EngineError::Log)
+    }
+
+    /// Whether signing a checkpoint of `origin` needs its on-chain anchor first.
+    pub fn log_needs_floor(&self, origin: &str) -> Result<bool, EngineError> {
+        let (Some(log), Some(root)) = (&self.log, &self.root) else {
+            return Ok(false);
+        };
+        log.needs_floor(root, origin).map_err(EngineError::Log)
     }
 
     /// Sets the captured amounts leg A counts against each budget.
@@ -484,7 +548,7 @@ impl Engine {
         now: OffsetDateTime,
     ) -> Result<CheckpointSigned, EngineError> {
         let chain_id = r.chain_id.unwrap_or(self.config.chain_id);
-        let c = verify_checkpoint(r.signed_note.as_bytes(), chain_id, now)
+        let c = verify_checkpoint(r.signed_note.as_bytes(), chain_id, now, &self.tee_log_keys)
             .map_err(EngineError::Checkpoint)?;
         let domain = keelson_core::domain(chain_id, self.config.verifying_contract)
             .map_err(|_| bad("chain_id"))?;
