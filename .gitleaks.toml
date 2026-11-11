@@ -93,3 +93,10 @@ description = "A public SP1 Groth16 proof of the committed countersign vector: p
 paths = [
   '''contracts/test/vectors/engine-proof\.json''',
 ]
+
+[[allowlists]]
+description = "Throwaway keys of the SCITT statement and receipt golden vectors (0x01..01, 0x02..02, 0x03..03 and a hashed test seed), never deployed"
+paths = [
+  '''internal/scitt/testdata/.*\.json''',
+  '''internal/alibilog/testdata/statement-v2/.*\.json''',
+]
