@@ -248,4 +248,117 @@ contract ValidationRegistryForkTest is Erc8004Base {
         vm.expectRevert(IKeelsonValidationRegistry.UnknownValidation.selector);
         validation.getValidationStatus(keccak256("unknown"));
     }
+
+    /// @dev A cart the coverage does not hold, above or below its amount.
+    function test_allow_largerAmountIsNotCovered() public {
+        Vector memory v = _locked(WEBAUTHN);
+        KeelsonTypes.Countersign memory c = v.countersign;
+        c.amount += 1;
+        bytes memory sigs = _sign2of2(c);
+        vm.expectRevert(IKeelsonValidationRegistry.NotCovered.selector);
+        validation.recordCountersign(c, sigs, "");
+    }
+
+    function test_allow_coverageOfALowerAgentIsNotCovered() public {
+        Vector memory v = _locked(WEBAUTHN);
+        KeelsonTypes.Countersign memory c = v.countersign;
+        c.agentId = agentId - 1;
+        bytes memory sigs = _sign2of2(c);
+        vm.expectRevert(IKeelsonValidationRegistry.NotCovered.selector);
+        validation.recordCountersign(c, sigs, "");
+    }
+
+    /// @dev A request id the vault never locked, even for agent 0 and an empty cart, which match an empty coverage.
+    function test_allow_unknownCoverageOfAgentZeroIsNotCovered() public {
+        KeelsonTypes.Countersign memory c = _vector(WEBAUTHN).countersign;
+        c.requestId = keccak256("never locked");
+        c.agentId = 0;
+        c.amount = 0;
+        bytes memory sigs = _sign2of2(c);
+        vm.expectRevert(IKeelsonValidationRegistry.NotCovered.selector);
+        validation.recordCountersign(c, sigs, "");
+    }
+
+    /// @dev One ALLOW per coverage: another countersign under the same request id is refused.
+    function test_allow_secondCountersignForACoverageExists() public {
+        Vector memory v = _locked(WEBAUTHN);
+        _record(v);
+        KeelsonTypes.Countersign memory c = v.countersign;
+        c.evalHash = keccak256("another evaluation");
+        bytes memory sigs = _sign2of2(c);
+        vm.expectRevert(IKeelsonValidationRegistry.ValidationExists.selector);
+        validation.recordCountersign(c, sigs, "");
+    }
+
+    /// @dev Only a DENY moves from degraded to 2-of-2: a degraded ALLOW stays as it was locked.
+    function test_allow_degradedIsNotUpgraded() public {
+        Vector memory v = _locked(DEGRADED);
+        bytes32 requestHash = _record(v);
+        bytes memory sigs = _sign2of2(v.countersign);
+        vm.expectRevert(IKeelsonValidationRegistry.ValidationExists.selector);
+        validation.recordCountersign(v.countersign, sigs, "");
+        _assertStatus(requestHash, 100, "degraded", v.countersign.evalHash);
+    }
+
+    function test_deny_degradedTwiceExists() public {
+        KeelsonTypes.Countersign memory c = _deny();
+        bytes memory tdx = _signCountersign(tdxKey, c);
+        bytes memory request = _operatorRequest(c);
+        validation.recordCountersign(c, tdx, request);
+        vm.expectRevert(IKeelsonValidationRegistry.ValidationExists.selector);
+        validation.recordCountersign(c, tdx, request);
+    }
+
+    /// @dev Decision 0 is neither ALLOW nor DENY, even with the operator's request.
+    function test_zeroDecisionIsInvalid() public {
+        KeelsonTypes.Countersign memory c = _deny();
+        c.decision = 0;
+        bytes memory sigs = _sign2of2(c);
+        bytes memory request = _operatorRequest(c);
+        vm.expectRevert(IKeelsonValidationRegistry.InvalidCountersign.selector);
+        validation.recordCountersign(c, sigs, request);
+    }
+
+    /// @dev The agent's ERC-8004 wallet may ask for a DENY as its owner can; once a wallet is set, a stranger still
+    /// cannot.
+    function test_deny_agentWalletIsAnAuthority() public {
+        (address wallet, uint256 walletKey) = makeAddrAndKey("erc8004 agent wallet");
+        _setAgentWallet(wallet, walletKey);
+        KeelsonTypes.Countersign memory c = _deny();
+        bytes memory sigs = _sign2of2(c);
+        (, uint256 strangerKey) = makeAddrAndKey("erc8004 stranger");
+        bytes memory byStranger = _validationRequest(strangerKey, c);
+        bytes memory byWallet = _validationRequest(walletKey, c);
+        vm.expectRevert(IKeelsonValidationRegistry.NotAgentAuthority.selector);
+        validation.recordCountersign(c, sigs, byStranger);
+
+        bytes32 requestHash = validation.recordCountersign(c, sigs, byWallet);
+        _assertStatus(requestHash, 0, "2of2", c.evalHash);
+    }
+
+    /// @dev Two 100s average to 100, and a filter matches a validator or a tag only when it is exactly that one.
+    function test_summary_filters() public {
+        Vector memory payment = _locked(PAYMENT);
+        Vector memory webauthn = _locked(WEBAUTHN);
+        _record(payment);
+        _record(webauthn);
+        (uint64 count, uint8 avg) = validation.getSummary(agentId, _validators(), "");
+        assertEq(count, 2);
+        assertEq(avg, 100);
+
+        address[] memory above = new address[](1);
+        above[0] = address(type(uint160).max);
+        (count,) = validation.getSummary(agentId, above, "");
+        assertEq(count, 0);
+        (count,) = validation.getSummary(agentId, above, "slashed");
+        assertEq(count, 0);
+
+        _release(webauthn);
+        validation.recordOutcome(webauthn.coverage.coverageId);
+        (count, avg) = validation.getSummary(agentId, _validators(), "2of2");
+        assertEq(count, 1);
+        assertEq(avg, 100);
+        (count,) = validation.getSummary(agentId, _validators(), "settled");
+        assertEq(count, 1);
+    }
 }

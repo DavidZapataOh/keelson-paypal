@@ -40,6 +40,7 @@ describe("receipts of real log leaves", () => {
         "evidence.manifest": "undisclosed",
         "evidence.web_fact": "undisclosed",
         "evidence.checkout": "undisclosed",
+        "evidence.conversion": "undisclosed",
         "paypal.ids": "undisclosed",
         "card.authorizations": "undisclosed",
         "policy.replay": "undisclosed",

@@ -77,14 +77,19 @@ export function authenticate(
 /** An OpenAPI security requirement: scheme name to the scopes it needs. */
 export type SecurityRequirement = Record<string, string[]>;
 
-const requirements = new WeakMap<MiddlewareHandler, SecurityRequirement[]>();
+// Route modules build their guards as they load, and some load while this module is still
+// loading (an import cycle through the routes): a hoisted `var`, filled on first use, is there
+// for them where a `const` would not be initialized yet.
+// biome-ignore lint/style/noVar: see above
+var requirements: WeakMap<MiddlewareHandler, SecurityRequirement[]> | undefined;
 
 /** The OpenAPI security requirements a guard enforces, any one of which admits the request. */
 export function securityOf(guard: MiddlewareHandler): SecurityRequirement[] | undefined {
-  return requirements.get(guard);
+  return requirements?.get(guard);
 }
 
 function documented(guard: MiddlewareHandler, security: SecurityRequirement[]): MiddlewareHandler {
+  requirements ??= new WeakMap();
   requirements.set(guard, security);
   return guard;
 }
