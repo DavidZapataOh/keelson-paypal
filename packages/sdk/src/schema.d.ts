@@ -1702,7 +1702,7 @@ export interface operations {
           "application/problem+json": components["schemas"]["Problem"];
         };
       };
-      /** @description The request is invalid, the purchase unit's amount does not reconcile with the cart (`invalid-amount`), the authorization is not this purchase's hold, the cart is not the one held for this request, the evidence holds another cart or another checkout amount, its Channel3 observation is not usable, its WebFact is not this purchase's, or a live store is not the website the mandate allows */
+      /** @description The request is invalid, the purchase unit's amount does not reconcile with the cart (`invalid-amount`), the authorization is not this purchase's hold, the cart is not the one held for this request, the evidence holds another cart or another checkout amount or reference rates Keelson did not issue, its Channel3 observation is not usable, its WebFact is not this purchase's, or a live store is not the website the mandate allows */
       422: {
         headers: {
           [name: string]: unknown;

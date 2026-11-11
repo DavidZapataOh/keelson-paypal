@@ -724,7 +724,7 @@ class Item(BaseModel):
 class EvidenceManifest(BaseModel):
     v: V
     root: Annotated[str, Field(pattern="^0x[0-9a-f]{64}$")]
-    items: Annotated[list[Item], Field(max_length=24, min_length=1)]
+    items: Annotated[list[Item], Field(max_length=26, min_length=1)]
 
 
 class Item1(BaseModel):
@@ -737,7 +737,7 @@ class Item1(BaseModel):
 class EvidenceUpload(BaseModel):
     mandateId: Annotated[str, Field(max_length=26, min_length=26)]
     manifest: EvidenceManifest
-    items: Annotated[list[Item1], Field(max_length=24, min_length=1)]
+    items: Annotated[list[Item1], Field(max_length=26, min_length=1)]
 
 
 class ChainId(Enum):
