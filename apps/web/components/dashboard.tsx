@@ -216,6 +216,7 @@ function Focus({ id }: { id: string }) {
 
   return (
     <div className="grid gap-6">
+      <h1 className="sr-only">Home</h1>
       <div className="grid items-center gap-8 lg:grid-cols-[1fr_400px]">
         <div className="grid gap-6">
           <div className="grid gap-1">
@@ -357,7 +358,7 @@ function Focus({ id }: { id: string }) {
               </Link>
             }
           >
-            <WhoAnswers card={mandate.card} className="[&>li]:bg-bone-2/60 [&>li]:shadow-none" />
+            <WhoAnswers card={mandate.card} className="[&>li]:animate-none [&>li]:bg-bone-2/60 [&>li]:shadow-none" />
           </Panel>
         ) : null}
       </div>
