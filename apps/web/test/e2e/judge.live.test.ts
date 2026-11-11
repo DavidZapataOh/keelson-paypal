@@ -43,6 +43,21 @@ test.runIf(ORIGIN)(
       await verifier.getByRole("button").first().waitFor({ timeout: 60_000 });
       mark("alibi");
 
+      await next(page, "Anonymous, and still accountable");
+      await page
+        .frameLocator('iframe[title="Anonymous proof verifier"]')
+        .locator("[data-anonymous=pass]")
+        .waitFor({ timeout: 60_000 });
+      mark("anonymous");
+
+      await next(page, "Catch the log lying");
+      await page.getByText("Bond slashed").first().waitFor();
+      await page
+        .getByRole("link", { name: /Arbiscan/ })
+        .first()
+        .waitFor();
+      mark("equivocation");
+
       await next(page, "A dispute arrives");
       await page.getByText("PayPal dispute", { exact: true }).waitFor();
       mark("dispute");

@@ -12,7 +12,7 @@ import { merchantLeaf } from "@keelson/mandate";
 import { getAddress, type Hex, recoverAddress } from "viem";
 import type { AlibiBundle } from "../../schema.ts";
 import { type CheckDef, expect, pass } from "../check.ts";
-import { isBundle, UNDISCLOSED } from "./util.ts";
+import { isBundle, paypalDenial, UNDISCLOSED } from "./util.ts";
 
 const SECP256K1_HALF_N = 0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0n;
 const KINDS = { "2of2": ["tdx", "nitro"], degraded: ["tdx"] } as const;
@@ -58,28 +58,35 @@ export const countersign: CheckDef = {
       "evalHash in the countersignature is not the hash of this trace",
       ["/eval", "/tee/countersign/evalHash"],
     );
-    const ctx = trace.context;
-    expect(
-      String(ctx.total_minor) === c.amount,
-      "amount in the countersignature is not the trace's",
-      ["/tee/countersign/amount", "/eval/context/total_minor"],
-    );
-    expect(
-      currencyNumeric(ctx.currency as CurrencyCode) === Number(c.currency),
-      "currency in the countersignature is not the trace's",
-      ["/tee/countersign/currency", "/eval/context/currency"],
-    );
-    const merchant = await merchantLeaf(String(ctx.merchant));
-    expect(
-      `0x${merchant.toString(16).padStart(64, "0")}` === c.merchantId,
-      "merchantId in the countersignature is not the trace's merchant",
-      ["/tee/countersign/merchantId", "/eval/context/merchant"],
-    );
-    const decision = trace.decision === "allow" ? Decision.ALLOW : Decision.DENY;
-    expect(Number(c.decision) === decision, "decision in the countersignature is not the trace's", [
-      "/tee/countersign/decision",
-      "/eval/decision",
-    ]);
+    // A DENY leg A gave on its PayPal read has no context: the message alone carries the cart.
+    const denial = paypalDenial(trace, c);
+    if (denial === undefined) {
+      const ctx = trace.context;
+      expect(
+        String(ctx.total_minor) === c.amount,
+        "amount in the countersignature is not the trace's",
+        ["/tee/countersign/amount", "/eval/context/total_minor"],
+      );
+      expect(
+        currencyNumeric(ctx.currency as CurrencyCode) === Number(c.currency),
+        "currency in the countersignature is not the trace's",
+        ["/tee/countersign/currency", "/eval/context/currency"],
+      );
+      const merchant = await merchantLeaf(String(ctx.merchant));
+      expect(
+        `0x${merchant.toString(16).padStart(64, "0")}` === c.merchantId,
+        "merchantId in the countersignature is not the trace's merchant",
+        ["/tee/countersign/merchantId", "/eval/context/merchant"],
+      );
+      const decision = trace.decision === "allow" ? Decision.ALLOW : Decision.DENY;
+      expect(
+        Number(c.decision) === decision,
+        "decision in the countersignature is not the trace's",
+        ["/tee/countersign/decision", "/eval/decision"],
+      );
+    } else {
+      expect(Number(c.decision) === Decision.DENY, "decision", ["/tee/countersign/decision"]);
+    }
     const digest = countersignDigest(message(c), {
       name: d.name,
       version: d.version,

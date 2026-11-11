@@ -1,6 +1,10 @@
+// Loads reflect-metadata before @keelson/alibi/verify pulls in @keelson/attest (see tee/attest.ts).
+import "../src/tee/attest.ts";
 import { randomBytes } from "node:crypto";
 import { decodeAlibi, leafHashOf } from "@keelson/alibi";
-import { alibis, eq, purchases, sql } from "@keelson/db";
+import { extractAlibi } from "@keelson/alibi/extract";
+import { verifyAlibi } from "@keelson/alibi/verify";
+import { alibis, eq, mandates, purchases, sql, user } from "@keelson/db";
 import { pino } from "pino";
 import { ulid } from "ulid";
 import { beforeAll, describe, expect, test } from "vitest";
@@ -110,8 +114,11 @@ const f = fixtures[0];
 
 describe.skipIf(!f)("live Alibis are public", () => {
   const b = f?.bundle as NonNullable<typeof f>["bundle"];
+  let owner: string;
   beforeAll(async () => {
     const mandateId = await channel3Mandate();
+    const [m] = await testDb.select().from(mandates).where(eq(mandates.id, mandateId));
+    owner = m?.userId as string;
     const c = b.tee.countersign;
     await testDb.insert(purchases).values({
       id: b.alibi_id,
@@ -145,6 +152,41 @@ describe.skipIf(!f)("live Alibis are public", () => {
     expect(bundle.paypal.transaction_id).toBe("5MC585209K746392H");
   });
 
+  test("the public copy withholds the user's login id and risk data, and verifies", async () => {
+    const names = (ds: string[]) =>
+      ds.map((d) => JSON.parse(Buffer.from(d, "base64url").toString())[1]);
+    expect(names(b.mandate.disclosures)).toContain("app_login_id");
+    const res = await app.request(`/v1/alibis/${b.alibi_id}`);
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    const pub = decodeAlibi(bytes);
+    for (const shown of [pub.mandate.disclosures, pub.mandate.sd_jwt.split("~").slice(3, -1)]) {
+      expect(names(shown)).not.toContain("app_login_id");
+      expect(names(shown)).not.toContain("risk_data");
+    }
+    const login = b.mandate.disclosures.find((d) => names([d])[0] === "app_login_id") as string;
+    const email = JSON.parse(Buffer.from(login, "base64url").toString())[2] as string;
+    expect(Buffer.from(bytes).toString()).not.toContain(email);
+    const risk = b.mandate.disclosures.find((d) => names([d])[0] === "risk_data") as string;
+    const { ip, device_fp } = JSON.parse(Buffer.from(risk, "base64url").toString())[2];
+    for (const value of [ip, device_fp]) expect(Buffer.from(bytes).toString()).not.toContain(value);
+    const pdf = await app.request(`/v1/alibis/${b.alibi_id}.pdf`);
+    expect(pdf.status).toBe(200);
+    const embedded = decodeAlibi(await extractAlibi(new Uint8Array(await pdf.arrayBuffer())));
+    expect(names(embedded.mandate.disclosures)).not.toContain("app_login_id");
+    expect(names(embedded.mandate.disclosures)).not.toContain("risk_data");
+    const report = await verifyAlibi(pub);
+    expect(report.checks.filter((c) => c.status === "fail")).toEqual([]);
+  });
+
+  test("the mandate's user still reads the whole Alibi", async () => {
+    const res = await app.request(`/v1/alibis/${b.alibi_id}`, {
+      headers: { "x-test-principal": JSON.stringify({ kind: "user", subject: owner }) },
+    });
+    expect(res.status).toBe(200);
+    const full = decodeAlibi(new Uint8Array(await res.arrayBuffer()));
+    expect(full.mandate.disclosures).toEqual(b.mandate.disclosures);
+  });
+
   test("the live purchases list names the store, the amount and the transaction", async () => {
     const res = await app.request("/v1/live-purchases");
     expect(res.status).toBe(200);
@@ -153,7 +195,105 @@ describe.skipIf(!f)("live Alibis are public", () => {
     };
     const row = list.find((p) => p.id === b.alibi_id);
     expect(row).toMatchObject({ store: STORE, transactionId: "5MC585209K746392H" });
+    expect(row).toMatchObject({ decision: "allow", blocked: [] });
     // A live purchase without an Alibi is not listed.
-    expect(list.every((p) => p.id === b.alibi_id)).toBe(true);
+    expect(list.filter((p) => p.id !== b.alibi_id && p.transactionId)).toEqual([]);
+  });
+});
+
+const g = fixtures[1];
+
+describe.skipIf(!g)("denied live carts", () => {
+  const b = g?.bundle as NonNullable<typeof g>["bundle"];
+  let demo: ReturnType<typeof createApp>;
+  let mandateId: string;
+  beforeAll(async () => {
+    mandateId = await channel3Mandate();
+    const [m] = await testDb.select().from(mandates).where(eq(mandates.id, mandateId));
+    demo = createApp({
+      db: testDb,
+      kv: testKv,
+      log: pino({ level: "silent" }),
+      authenticate: headerPrincipal,
+      demoAgentId: m?.operatorAgentId,
+    });
+  });
+  const insert = async (
+    liveStore: string | null,
+    state: "DENIED" | "LOGGED",
+    mandate = mandateId,
+  ) => {
+    const id = ulid();
+    const c = b.tee.countersign;
+    await testDb.insert(purchases).values({
+      id,
+      mandateId: mandate,
+      clientId: agent,
+      state,
+      liveStore,
+      merchantId: String(b.eval.context.merchant),
+      currency: "USD",
+      amountMinor: BigInt(c.amount),
+      cartHash: Buffer.from(c.cartHash.slice(2), "hex"),
+      evalTrace: {
+        fields: [
+          { id: "budget", pass: false },
+          { id: "merchant", pass: true },
+        ],
+      },
+      logIndex: BigInt(Date.now()) * 1000n + BigInt(randomBytes(1)[0] ?? 0),
+    });
+    const { timestamps: _t, anchor: _a, ...core } = b;
+    await testDb.insert(alibis).values({
+      purchaseId: id,
+      leafHash: randomBytes(32),
+      bundle: {
+        ...core,
+        alibi_id: id,
+        timestamps: [],
+        paypal: { ...core.paypal, capture_id: undefined, invoice_id: undefined },
+      },
+    });
+    return id;
+  };
+  const listed = async () =>
+    (
+      (await (await demo.request("/v1/live-purchases")).json()) as {
+        purchases: { id: string; decision: string; transactionId: unknown; blocked: string[] }[];
+      }
+    ).purchases;
+
+  test("a live cart the demo operator ran and Keelson denied is public and listed with why", async () => {
+    const id = await insert(STORE, "DENIED");
+    expect((await demo.request(`/v1/alibis/${id}`)).status).toBe(200);
+    expect((await listed()).find((p) => p.id === id)).toMatchObject({
+      decision: "deny",
+      transactionId: null,
+      blocked: ["budget"],
+    });
+  });
+
+  test("other denied carts, a real user's and unpaid live purchases stay private", async () => {
+    const sandbox = await insert(null, "DENIED");
+    const unpaid = await insert(STORE, "LOGGED");
+    const another = await insert(STORE, "DENIED", await channel3Mandate());
+    // A real user's mandate under the demo operator.
+    const real = await channel3Mandate();
+    const [demoMandate] = await testDb.select().from(mandates).where(eq(mandates.id, mandateId));
+    const [realMandate] = await testDb
+      .update(mandates)
+      .set({ operatorAgentId: demoMandate?.operatorAgentId as bigint })
+      .where(eq(mandates.id, real))
+      .returning();
+    await testDb
+      .update(user)
+      .set({ email: `${ulid()}@gmail.com` })
+      .where(eq(user.id, realMandate?.userId as string));
+    const person = await insert(STORE, "DENIED", real);
+    for (const id of [sandbox, unpaid, another, person]) {
+      expect((await demo.request(`/v1/alibis/${id}`)).status).toBe(404);
+    }
+    const ids = (await listed()).map((p) => p.id);
+    expect(ids.some((id) => [sandbox, unpaid, another, person].includes(id))).toBe(false);
   });
 });

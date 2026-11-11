@@ -1,5 +1,5 @@
 {
-  "id": "45ad86f3-7035-418c-9bd0-ac24011016b8",
+  "id": "d367d664-37b2-4b6d-965e-6f11729a1e41",
   "prevId": "4dc1512d-95af-4f37-b9f7-6e4e20fe8782",
   "version": "7",
   "dialect": "postgresql",
@@ -72,105 +72,6 @@
         "alibis_leaf_hash_len": {
           "name": "alibis_leaf_hash_len",
           "value": "octet_length(\"alibis\".\"leaf_hash\") = 32"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.amber_convictions": {
-      "name": "amber_convictions",
-      "schema": "",
-      "columns": {
-        "coverage_id": {
-          "name": "coverage_id",
-          "type": "bytea",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "purchase_id": {
-          "name": "purchase_id",
-          "type": "char(26)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "chain_id": {
-          "name": "chain_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "field_id": {
-          "name": "field_id",
-          "type": "smallint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "proven_at": {
-          "name": "proven_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "web_fact_digest": {
-          "name": "web_fact_digest",
-          "type": "bytea",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "tx_hash": {
-          "name": "tx_hash",
-          "type": "bytea",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "block_number": {
-          "name": "block_number",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "proof": {
-          "name": "proof",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "amber_convictions_purchase_id_idx": {
-          "name": "amber_convictions_purchase_id_idx",
-          "columns": [
-            {
-              "expression": "purchase_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "amber_convictions_coverage_id_len": {
-          "name": "amber_convictions_coverage_id_len",
-          "value": "octet_length(\"amber_convictions\".\"coverage_id\") = 32"
-        },
-        "amber_convictions_field_id_range": {
-          "name": "amber_convictions_field_id_range",
-          "value": "\"amber_convictions\".\"field_id\" between 1 and 4"
         }
       },
       "isRLSEnabled": false
@@ -1689,6 +1590,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
+        },
+        "user_credential": {
+          "name": "user_credential",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -4151,12 +4058,6 @@
         },
         "c1c3_proof": {
           "name": "c1c3_proof",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "amber": {
-          "name": "amber",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false

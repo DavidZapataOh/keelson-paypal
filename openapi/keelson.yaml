@@ -379,6 +379,51 @@ components:
           items:
             type: string
           description: For a `DENIED` cart, the mandate fields whose check failed.
+        reasons:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              mandate:
+                type:
+                  - string
+                  - "null"
+              cart:
+                type:
+                  - string
+                  - "null"
+            required:
+              - field
+              - mandate
+              - cart
+          description: For a `DENIED` cart, each failed field with what the mandate
+            allowed and what the cart had, as text.
+        checks:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              mandate:
+                type:
+                  - string
+                  - "null"
+              cart:
+                type:
+                  - string
+                  - "null"
+              pass:
+                type: boolean
+            required:
+              - field
+              - mandate
+              - cart
+              - pass
+          description: For a purchase the engine checked, each mandate field with what the
+            mandate allowed, what the cart had and whether it held.
         live:
           type: object
           properties:
@@ -1360,6 +1405,51 @@ components:
           items:
             type: string
           description: For a `DENIED` cart, the mandate fields whose check failed.
+        reasons:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              mandate:
+                type:
+                  - string
+                  - "null"
+              cart:
+                type:
+                  - string
+                  - "null"
+            required:
+              - field
+              - mandate
+              - cart
+          description: For a `DENIED` cart, each failed field with what the mandate
+            allowed and what the cart had, as text.
+        checks:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              mandate:
+                type:
+                  - string
+                  - "null"
+              cart:
+                type:
+                  - string
+                  - "null"
+              pass:
+                type: boolean
+            required:
+              - field
+              - mandate
+              - cart
+              - pass
+          description: For a purchase the engine checked, each mandate field with what the
+            mandate allowed, what the cart had and whether it held.
         live:
           type: object
           properties:
@@ -1428,14 +1518,16 @@ components:
               type: string
               maxLength: 256
               format: uri
-              description: The store's origin.
+              description: "The store's origin: the origin of the website the mandate allows
+                for the cart's merchant."
           required:
             - store
           additionalProperties: false
           description: "Only when the buyer pays at the store's own checkout with their
             own PayPal account: Keelson countersigns and logs the purchase and
-            issues its Alibi, and neither covers nor captures it. The agent's
-            pay click waits for an ALLOW; the agent then records PayPal's
+            issues its Alibi, and neither covers nor captures it. Its Alibi is
+            public once the PayPal transaction is recorded. The agent's pay
+            click waits for an ALLOW; the agent then records PayPal's
             transaction id with `PUT /v1/purchases/{id}/paypal-transaction`."
         repeatOf:
           type: string
@@ -1528,8 +1620,22 @@ components:
           required:
             - currency
             - minor
-        transactionId:
+        decision:
           type: string
+          enum:
+            - allow
+            - deny
+        transactionId:
+          type:
+            - string
+            - "null"
+          description: The PayPal transaction the store was paid by; `null` for a DENY.
+        blocked:
+          type: array
+          items:
+            type: string
+          description: For a DENY, the mandate fields whose check failed, or leg A's
+            reason when it denied on its read of the PayPal hold.
         logIndex:
           type: string
         createdAt:
@@ -1539,7 +1645,9 @@ components:
         - store
         - merchant
         - amount
+        - decision
         - transactionId
+        - blocked
         - logIndex
         - createdAt
     Purchase:
@@ -1617,6 +1725,51 @@ components:
           items:
             type: string
           description: For a `DENIED` cart, the mandate fields whose check failed.
+        reasons:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              mandate:
+                type:
+                  - string
+                  - "null"
+              cart:
+                type:
+                  - string
+                  - "null"
+            required:
+              - field
+              - mandate
+              - cart
+          description: For a `DENIED` cart, each failed field with what the mandate
+            allowed and what the cart had, as text.
+        checks:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              mandate:
+                type:
+                  - string
+                  - "null"
+              cart:
+                type:
+                  - string
+                  - "null"
+              pass:
+                type: boolean
+            required:
+              - field
+              - mandate
+              - cart
+              - pass
+          description: For a purchase the engine checked, each mandate field with what the
+            mandate allowed, what the cart had and whether it held.
         live:
           type: object
           properties:
@@ -2317,6 +2470,11 @@ components:
             checks the proof only: `public_inputs` must also be the
             countersign's and the root one `GET /v1/user-set/roots/{root}`
             lists."
+        root_tx:
+          type: string
+          pattern: ^0x[0-9a-f]{64}$
+          description: The Arbitrum Sepolia transaction that published `user_set_root` to
+            `RegisteredUserSet`, once it is confirmed.
       required:
         - user_set_root
         - proof
@@ -2715,13 +2873,27 @@ components:
           items:
             type: object
             properties:
+              id:
+                type: string
               credentialId:
                 type: string
+              name:
+                type:
+                  - string
+                  - "null"
+              createdAt:
+                type:
+                  - string
+                  - "null"
+                format: date-time
               payment:
                 type: boolean
                 description: Registered with the SPC `payment` extension, so SPC can use it.
             required:
+              - id
               - credentialId
+              - name
+              - createdAt
               - payment
       required:
         - passkeys
@@ -3425,6 +3597,130 @@ components:
         - nonce
         - deadline
         - ownerSignature
+    LogBond:
+      type: object
+      properties:
+        chainId:
+          type: number
+        address:
+          type: string
+        origin:
+          type: string
+        test:
+          type: boolean
+          description: A test origin's bond, slashed by the equivocation drill.
+        key:
+          type: string
+          description: The Ed25519 log key the bond pins, hex.
+        owner:
+          type: string
+        verifier:
+          type: string
+          description: The Ed25519 verifier the bond calls.
+        canonical:
+          type: boolean
+          description: Whether the bond calls the registry's `Ed25519Verifier` over PYUSD.
+            A bond on another verifier or token proves nothing.
+        beneficiary:
+          type: string
+          description: Who receives a slash, less the bounty.
+        bountyBps:
+          type: number
+        completionWindowSeconds:
+          type: number
+        balanceMinor:
+          type: string
+        withdrawalDelaySeconds:
+          type: number
+        withdrawal:
+          type:
+            - object
+            - "null"
+          properties:
+            amountMinor:
+              type: string
+            unlockAt:
+              type: string
+            to:
+              type: string
+          required:
+            - amountMinor
+            - unlockAt
+            - to
+        equivocation:
+          $ref: "#/components/schemas/LogEquivocation"
+        explorerUrl:
+          type: string
+      required:
+        - chainId
+        - address
+        - origin
+        - test
+        - key
+        - owner
+        - verifier
+        - canonical
+        - beneficiary
+        - bountyBps
+        - completionWindowSeconds
+        - balanceMinor
+        - withdrawalDelaySeconds
+        - withdrawal
+        - equivocation
+        - explorerUrl
+    LogEquivocation:
+      type:
+        - object
+        - "null"
+      properties:
+        prover:
+          type: string
+        amountMinor:
+          type: string
+          description: The whole bond slashed, PYUSD base units.
+        bountyMinor:
+          type: string
+          description: The prover's bounty out of it; the rest went to the bond's
+            beneficiary.
+        provenAt:
+          type: string
+        size:
+          type: string
+          description: The tree size both checkpoints state.
+        rootA:
+          type: string
+        rootB:
+          type: string
+        noteA:
+          type:
+            - string
+            - "null"
+          description: The first signed checkpoint, as submitted; null until its
+            transaction is found.
+        noteB:
+          type:
+            - string
+            - "null"
+        txHash:
+          type:
+            - string
+            - "null"
+        explorerUrl:
+          type:
+            - string
+            - "null"
+      required:
+        - prover
+        - amountMinor
+        - bountyMinor
+        - provenAt
+        - size
+        - rootA
+        - rootB
+        - noteA
+        - noteB
+        - txHash
+        - explorerUrl
     PayoutAddress:
       type: object
       properties:
@@ -3668,6 +3964,80 @@ components:
         - explorer_url
         - has_alibi
         - amber
+    MerchantOrder:
+      type: object
+      properties:
+        purchase_id:
+          type: string
+          description: Also the id of the purchase's Alibi.
+        created_at:
+          type: string
+          format: date-time
+        state:
+          type: string
+          description: "`DENIED` when Keelson blocked the cart."
+        amount_minor:
+          type: string
+        currency:
+          type: string
+        agent_id:
+          type: string
+          description: The ERC-8004 agent that made the purchase.
+        has_alibi:
+          type: boolean
+        blocked:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              cart:
+                type:
+                  - string
+                  - "null"
+            required:
+              - field
+              - cart
+          description: For a blocked cart, each mandate field whose check failed and what
+            the cart had. The mandate's own bound stays with the buyer.
+        dispute:
+          type:
+            - object
+            - "null"
+          properties:
+            dispute_id:
+              type: string
+            state:
+              type: string
+              enum:
+                - OPEN
+                - ATTRIBUTED
+                - RESOLVED
+            liable:
+              type:
+                - string
+                - "null"
+              enum:
+                - operator
+                - keelson
+                - merchant
+                - user
+                - null
+          required:
+            - dispute_id
+            - state
+            - liable
+      required:
+        - purchase_id
+        - created_at
+        - state
+        - amount_minor
+        - currency
+        - agent_id
+        - has_alibi
+        - blocked
+        - dispute
     MerchantEvaluations:
       type: object
       properties:
@@ -4488,6 +4858,22 @@ components:
             - created_at
             - card
             - purchases
+        anonymous_purchase:
+          type:
+            - object
+            - "null"
+          properties:
+            id:
+              type: string
+            alibi_fragment:
+              type:
+                - string
+                - "null"
+          required:
+            - id
+            - alibi_fragment
+          description: The newest test purchase whose C1 and C3 proofs are composed into
+            one anonymous proof, served at `GET /v1/anonymous-purchases/{id}`.
         dispute_id:
           type:
             - string
@@ -4500,6 +4886,7 @@ components:
         - merchant_id
         - agent_id
         - mandate
+        - anonymous_purchase
         - dispute_id
         - campaign_id
     JudgeTourPurchase:
@@ -4761,11 +5148,32 @@ paths:
                     required:
                       - db
                       - kv
+                  rpc:
+                    type: object
+                    properties:
+                      calls:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            provider:
+                              type: string
+                            method:
+                              type: string
+                            calls:
+                              type: integer
+                          required:
+                            - provider
+                            - method
+                            - calls
+                    required:
+                      - calls
                   version:
                     type: string
                 required:
                   - status
                   - dependencies
+                  - rpc
                   - version
   /v1/events:
     get:
@@ -5486,7 +5894,9 @@ paths:
         "422":
           description: The request is invalid, the authorization is not this purchase's
             hold, the cart is not the one held for this request, the evidence
-            holds another cart, or its Channel3 observation is not usable
+            holds another cart, its Channel3 observation is not usable, its
+            WebFact is not this purchase's, or a live store is not the website
+            the mandate allows
           content:
             application/problem+json:
               schema:
@@ -5514,10 +5924,11 @@ paths:
       tags:
         - purchases
       summary: Live purchases
-      description: "Purchases the shopping agent made with real money at real stores'
-        own checkouts, newest first: each has a public Alibi and the PayPal
-        transaction it paid. Keelson countersigned and logged them; it covers
-        none of them."
+      description: Purchases the shopping agent made with real money at real stores'
+        own checkouts, and the carts Keelson denied there before the payment for
+        Keelson's own test users, newest first. Each has a public Alibi; a paid
+        one names the PayPal transaction it paid. Keelson countersigned and
+        logged them; it covers none of them.
       responses:
         "200":
           description: The live purchases
@@ -6032,8 +6443,8 @@ paths:
         - alibis
       summary: An alibi as a PDF/A-3b
       description: A one-page PDF/A-3b summary of the Alibi with a QR to its verify
-        page and the bundle embedded as `<id>.alibi`. Same readers as the
-        bundle.
+        page and the bundle embedded as `<id>.alibi`. Same readers, and the same
+        public copy, as the bundle.
       parameters:
         - schema:
             type: string
@@ -6067,8 +6478,11 @@ paths:
       description: "The purchase's Alibi: its RFC 8785 bundle, readable by the
         mandate's user or, with `alibis:read`, by the client that uploaded the
         purchase's evidence; the Alibi of a live purchase, once its PayPal
-        transaction is recorded, by anyone. It grows as timestamps, the capture
-        and the on-chain anchor arrive; earlier sections never change."
+        transaction is recorded, by anyone. Anyone else gets its public copy,
+        whose mandate withholds the user's login id and risk data: their salted
+        digests stay in the signed payload, so the copy verifies the same. It
+        grows as timestamps, the capture and the on-chain anchor arrive; earlier
+        sections never change."
       parameters:
         - schema:
             type: string
@@ -6304,6 +6718,50 @@ paths:
                 $ref: "#/components/schemas/Passkeys"
         "401":
           description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/passkeys/{id}:
+    delete:
+      tags:
+        - passkeys
+      summary: Remove one of the signed-in user's passkeys
+      description: The passkey can no longer sign in or sign mandates, and the user's
+        other sessions end. It takes a sign-in within the last 10 minutes. A
+        user keeps at least one passkey, so the last one is not removed, and a
+        passkey stays while a mandate it signed is still being proved.
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 256
+          required: true
+          name: id
+          in: path
+      responses:
+        "204":
+          description: Removed
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The session is older than 10 minutes
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: No such passkey of this user
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: The user's last passkey, or one whose mandate is still being proved
           content:
             application/problem+json:
               schema:
@@ -7021,6 +7479,36 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+  /v1/log/bonds:
+    get:
+      tags:
+        - log
+      summary: Log equivocation bonds
+      description: The PYUSD bonds on the log keys, on Arbitrum Sepolia. Two
+        checkpoints signed by a bond's key that state different roots for one
+        size pay its whole balance to whoever submits them
+        (`LogBond.proveEquivocation`). Each bond reports its balance and, once
+        slashed, the equivocation and its transaction.
+      responses:
+        "200":
+          description: Every deployed bond
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bonds:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/LogBond"
+                required:
+                  - bonds
+        "503":
+          description: This server does not read Arbitrum Sepolia
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
   /v1/merchants/payout-address:
     post:
       tags:
@@ -7241,6 +7729,48 @@ paths:
                       $ref: "#/components/schemas/MerchantDispute"
                 required:
                   - disputes
+        "401":
+          description: No session
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The session is not this merchant's
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/merchants/{merchantId}/orders:
+    get:
+      tags:
+        - merchants
+      summary: The agent purchases at a merchant
+      description: "The latest 100 purchases agents asked Keelson to countersign at
+        the merchant, newest first: the ones it allowed and the ones it blocked,
+        with the dispute over each."
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 64
+          required: true
+          name: merchantId
+          in: path
+      responses:
+        "200":
+          description: The orders
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  orders:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/MerchantOrder"
+                required:
+                  - orders
         "401":
           description: No session
           content:

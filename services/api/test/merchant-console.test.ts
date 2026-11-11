@@ -7,6 +7,7 @@ import {
   alibis,
   attacks,
   disputes,
+  eq,
   mandates,
   merchantSettlement,
   operators,
@@ -270,6 +271,50 @@ describe("merchant console reads", () => {
 
   test("a merchant reads only its own path", async () => {
     expect((await get("/v1/merchants/mrc_other/disputes", merchantCookie)).status).toBe(403);
+  });
+
+  test("orders list allowed and blocked carts, with what the cart had but not the mandate's bound", async () => {
+    const [bought] = await testDb.select().from(purchases).where(eq(purchases.id, purchaseId));
+    const blockedId = ulid();
+    await testDb.insert(purchases).values({
+      id: blockedId,
+      mandateId: (bought as typeof purchases.$inferSelect).mandateId,
+      merchantId: "mrc_runfast",
+      currency: "USD",
+      amountMinor: 34_000n,
+      cartHash: randomBytes(32),
+      state: "DENIED",
+      evalTrace: {
+        decision: "deny",
+        fields: [{ id: "total", field: "total", pass: false, bound: 10_000, observed: 34_000 }],
+      },
+    });
+    try {
+      const res = await get("/v1/merchants/mrc_runfast/orders", merchantCookie);
+      expect(res.status).toBe(200);
+      const { orders } = (await res.json()) as { orders: Record<string, unknown>[] };
+      expect(orders.find((o) => o.purchase_id === blockedId)).toEqual({
+        purchase_id: blockedId,
+        created_at: expect.any(String),
+        state: "DENIED",
+        amount_minor: "34000",
+        currency: "USD",
+        agent_id: expect.any(String),
+        has_alibi: false,
+        blocked: [{ field: "total", cart: "$340.00" }],
+        dispute: null,
+      });
+      expect(orders.find((o) => o.purchase_id === purchaseId)).toMatchObject({
+        state: "SLASHED",
+        has_alibi: true,
+        blocked: [],
+        dispute: { dispute_id: disputeId, state: "RESOLVED", liable: "operator" },
+      });
+      expect(JSON.stringify(orders)).not.toContain("$100.00");
+      expect((await get("/v1/merchants/mrc_other/orders", merchantCookie)).status).toBe(403);
+    } finally {
+      await testDb.delete(purchases).where(eq(purchases.id, blockedId));
+    }
   });
 
   test("evaluations flatten purchases and this merchant's attacks, field by field", async () => {

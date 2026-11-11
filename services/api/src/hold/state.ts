@@ -79,6 +79,16 @@ export function allowedPayees(row: MandateRow): string[] {
     : [];
 }
 
+/** The website the signed mandate names for the merchant, or `undefined` when it names none. */
+export function merchantWebsite(row: MandateRow, merchantId: string): string | undefined {
+  if (!row.payloadSd || !row.disclosures) return undefined;
+  const m = decodeMandate(row.payloadSd as Record<string, unknown>, row.disclosures);
+  const merchants = m.checkout.constraints.find((c) => c.type === "checkout.allowed_merchants");
+  return merchants?.type === "checkout.allowed_merchants"
+    ? merchants.allowed.find((x) => x.id === merchantId)?.website
+    : undefined;
+}
+
 /**
  * Whether Keelson can capture a hold for the mandate: its one allowed merchant is the account
  * whose credentials capture, and the mandate allows paying that account.

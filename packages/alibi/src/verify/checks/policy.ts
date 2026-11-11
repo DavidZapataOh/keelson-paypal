@@ -2,7 +2,7 @@ import { fromHex, type Json, jcs } from "@keelson/core";
 import type { Trace } from "@keelson/policy";
 import { type CheckDef, expect, pass } from "../check.ts";
 import { openMandate } from "./mandate.ts";
-import { isBundle, UNDISCLOSED } from "./util.ts";
+import { isBundle, paypalDenial, UNDISCLOSED } from "./util.ts";
 
 /** Shown when the replay agrees on `decision` and `fired` but not on every byte. */
 const REPLAY_ALERT =
@@ -64,6 +64,9 @@ export const replay: CheckDef = {
         "/tee/countersign/cartHash",
       ],
     );
+    // Leg A denied on its PayPal read before any policy ran: there is nothing to replay.
+    const denial = paypalDenial(trace, c);
+    if (denial !== undefined) return pass({ paypal: denial });
     let claims: Record<string, unknown>;
     try {
       claims = (await openMandate(input)).claims;

@@ -105,6 +105,23 @@ cast call 0x049621749722D0660d5026456F25192fBD9A57ab "rootAt(bytes32,uint64)(byt
 The signed note of each anchor is the `signedNote` argument of its transaction, and the
 `CheckpointAnchored` event carries its `keccak256`.
 
+## Bonds
+
+A `LogBond` ([contracts](../../contracts#deployments)) puts PYUSD behind an origin's Ed25519 key:
+two checkpoints of the origin signed by the key, with different roots for the same size, pay the
+whole bond to whoever submits them to `proveEquivocation`. The contract verifies both signatures
+on chain. A split view the monitor publishes (`GET /equivocations/<id>`, kind `same-size`) is
+exactly that pair:
+
+```sh
+cast send <bond> "proveEquivocation(bytes,bytes)" "$(printf %s "$a" | xxd -p | tr -d '\n' | sed 's/^/0x/')" \
+  "$(printf %s "$b" | xxd -p | tr -d '\n' | sed 's/^/0x/')" --rpc-url https://sepolia-rollup.arbitrum.io/rpc
+```
+
+`GET https://api.keelson.finance/v1/log/bonds` lists every bond with its balance and, once slashed,
+the two checkpoints and the transaction. The conformance origin's bond was slashed by a drill with
+its tree and a fork of it at size 8.
+
 ## Hosting
 
 The service runs on Render with its log on a persistent disk, behind Cloudflare. The write
@@ -206,18 +223,20 @@ Postgres (`DATABASE_URL`).
 
 ## Run
 
-| Variable                                        |                                                                                                  |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `LOG_DATA_DIR`                                  | Directory of the logs; each origin uses `<dir>/<origin path>`                                    |
-| `LOG_POLICY_DIR`                                | Witness policies, `<origin path, / as ->.policy`, and `sigsum-seasalp.policy` (image: `policy/`) |
-| `PORT`                                          | Public listener, read-only (default `10000`)                                                     |
-| `LOG_PRIVATE_ADDR`                              | Write listener, `POST /<origin path>/add` (default `:8081`)                                      |
-| `DATABASE_URL`                                  | Postgres with the API's `tee_signers` and `purchases`, read only                                 |
-| `KEELSON_VERIFYING_CONTRACT`                    | `verifyingContract` of the `Countersign` EIP-712 domain                                          |
-| `LOG_WRITE_TOKEN_SHA256`                        | Hex SHA-256 of the bearer token the API writes with                                              |
-| `LOG_SIGNER_KEY_SANDBOX`, `LOG_SIGNER_KEY_LIVE` | Ed25519 note signer keys                                                                         |
-| `LOG_MLDSA_SEED_SANDBOX`, `LOG_MLDSA_SEED_LIVE` | Base64 32-byte ML-DSA-44 seeds                                                                   |
-| `SIGSUM_SUBMIT_KEY`                             | OpenSSH Ed25519 key that co-logs checkpoints in Sigsum; unset, co-logging is off                 |
+| Variable                                          |                                                                                                  |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `LOG_DATA_DIR`                                    | Directory of the logs; each origin uses `<dir>/<origin path>`                                    |
+| `LOG_POLICY_DIR`                                  | Witness policies, `<origin path, / as ->.policy`, and `sigsum-seasalp.policy` (image: `policy/`) |
+| `PORT`                                            | Public listener, read-only (default `10000`)                                                     |
+| `LOG_PRIVATE_ADDR`                                | Write listener, `POST /<origin path>/add` (default `:8081`)                                      |
+| `DATABASE_URL`                                    | Postgres with the API's `tee_signers` and `purchases`, read only                                 |
+| `KEELSON_VERIFYING_CONTRACT`                      | `verifyingContract` of the `Countersign` EIP-712 domain                                          |
+| `LOG_WRITE_TOKEN_SHA256`                          | Hex SHA-256 of the bearer token the API writes with                                              |
+| `LOG_SIGNER_KEY_SANDBOX`, `LOG_SIGNER_KEY_LIVE`   | Ed25519 note signer keys, for an origin whose key the log holds                                  |
+| `LOG_SIGNER_VKEY_SANDBOX`, `LOG_SIGNER_VKEY_LIVE` | The origin's Ed25519 verifier key when leg A holds it; the log then has leg A sign over RA-TLS   |
+| `LOG_REMOTE_SIGNER_URL`, `KEELSON_TEE_TOKEN`      | Leg A's RA-TLS address (`https://<app id>-8443s.<gateway domain>`) and the legs' bearer token    |
+| `LOG_MLDSA_SEED_SANDBOX`, `LOG_MLDSA_SEED_LIVE`   | Base64 32-byte ML-DSA-44 seeds                                                                   |
+| `SIGSUM_SUBMIT_KEY`                               | OpenSSH Ed25519 key that co-logs checkpoints in Sigsum; unset, co-logging is off                 |
 
 `KEELSON_VERIFYING_CONTRACT` must equal the API's `verifyingContract`; when the contract is
 deployed, both change together, or every leaf is refused with `countersign.digest`.

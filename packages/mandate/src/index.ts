@@ -70,6 +70,7 @@ export {
   type OpenMandateParams,
   type OpenMandateVerifyOptions,
   type P256PublicJwk,
+  readOpenMandate,
   type SaltGenerator,
   USER_CREDENTIAL_TYP,
   USER_CREDENTIAL_VCT,
@@ -99,9 +100,12 @@ export {
   type Disclosed,
   decodeDisclosed,
   decodeMandate,
+  isPersonalDisclosure,
   type MerchantView,
   merchantDisclosures,
+  PERSONAL_CLAIMS,
   SD_FIELDS,
+  withholdPersonal,
 } from "./sd.ts";
 export {
   RP_ID,

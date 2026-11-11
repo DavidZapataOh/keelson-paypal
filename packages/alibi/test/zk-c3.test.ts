@@ -109,6 +109,11 @@ describe("zk.c3", () => {
   const check = async (b: ReturnType<typeof bundle>) =>
     (await verifyAlibi(b)).checks.find((c) => c.id === "zk.c3");
 
+  // The first verification in a worker loads Cedar's WASM policy engine and the attestation
+  // verifiers: ~0.3 s here, several seconds on a busy CI runner. Paid once here, so each test
+  // below measures its own check.
+  beforeAll(() => verifyAlibi(f.bundle), 30_000);
+
   test("checks the proof offline and leaves the root to the chain", async () => {
     const c = await check(bundle());
     expect(c?.status, JSON.stringify(c)).toBe("pending");

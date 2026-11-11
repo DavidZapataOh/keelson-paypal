@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
-import { Header } from "../components/header";
+import { Chrome } from "../components/chrome";
 import { SESSION_HINT } from "../lib/auth";
 import "./globals.css";
 
@@ -31,10 +31,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         >
           Skip to content
         </a>
-        <Header />
-        <main id="main" className="mx-auto w-full max-w-5xl px-5 pt-6 pb-24 sm:px-8">
-          {children}
-        </main>
+        <Chrome>{children}</Chrome>
       </body>
     </html>
   );

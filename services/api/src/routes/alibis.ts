@@ -11,12 +11,13 @@ import {
 } from "@keelson/alibi";
 import { renderAlibiPdf } from "@keelson/alibi/pdf";
 import { verifyAlibi } from "@keelson/alibi/verify";
-import { eq, evidenceBundles, mandates, purchases } from "@keelson/db";
+import { and, eq, evidenceBundles, mandates, purchases, user } from "@keelson/db";
 import type { Context } from "hono";
-import { loadAlibi } from "../alibi/issue.ts";
+import { loadAlibi, publicCopy } from "../alibi/issue.ts";
 import type { Deps } from "../app.ts";
 import type { Principal } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
+import { publicDenial } from "./purchases.ts";
 
 const Id = z
   .string()
@@ -34,7 +35,7 @@ const bundleRoute = createRoute({
   tags: ["alibis"],
   summary: "An alibi bundle",
   description:
-    "The purchase's Alibi: its RFC 8785 bundle, readable by the mandate's user or, with `alibis:read`, by the client that uploaded the purchase's evidence; the Alibi of a live purchase, once its PayPal transaction is recorded, by anyone. It grows as timestamps, the capture and the on-chain anchor arrive; earlier sections never change.",
+    "The purchase's Alibi: its RFC 8785 bundle, readable by the mandate's user or, with `alibis:read`, by the client that uploaded the purchase's evidence; the Alibi of a live purchase, once its PayPal transaction is recorded, by anyone. Anyone else gets its public copy, whose mandate withholds the user's login id and risk data: their salted digests stay in the signed payload, so the copy verifies the same. It grows as timestamps, the capture and the on-chain anchor arrive; earlier sections never change.",
   request: { params: z.object({ id: Id }) },
   responses: {
     200: {
@@ -52,7 +53,7 @@ const pdfRoute = createRoute({
   tags: ["alibis"],
   summary: "An alibi as a PDF/A-3b",
   description:
-    "A one-page PDF/A-3b summary of the Alibi with a QR to its verify page and the bundle embedded as `<id>.alibi`. Same readers as the bundle.",
+    "A one-page PDF/A-3b summary of the Alibi with a QR to its verify page and the bundle embedded as `<id>.alibi`. Same readers, and the same public copy, as the bundle.",
   request: { params: z.object({ id: Id }) },
   responses: {
     200: {
@@ -153,12 +154,30 @@ const verifyRoute = createRoute({
 });
 
 /**
- * Whether the principal is the mandate's user or the client that uploaded the evidence. The
- * Alibi of a live purchase is public.
+ * What the principal may read of the Alibi: all of it when it is the mandate's user or the client
+ * that uploaded the evidence; its public copy when it is the Alibi of a live purchase whose PayPal
+ * transaction is recorded, or of a live cart denied in one of Keelson's own test runs
+ * ({@link publicDenial}); nothing otherwise.
  */
-async function mayRead(deps: Pick<Deps, "db">, principal: Principal | undefined, b: AlibiBundle) {
-  if (b.paypal.transaction_id !== undefined) return true;
-  if (!principal) return false;
+async function access(
+  deps: Pick<Deps, "db" | "demoAgentId">,
+  principal: Principal | undefined,
+  b: AlibiBundle,
+): Promise<"full" | "public" | null> {
+  if (principal && (await isOwner(deps, principal, b))) return "full";
+  if (b.paypal.transaction_id !== undefined) return "public";
+  const denial = publicDenial(deps.demoAgentId);
+  if (!denial) return null;
+  const [p] = await deps.db
+    .select({ id: purchases.id })
+    .from(purchases)
+    .innerJoin(mandates, eq(mandates.id, purchases.mandateId))
+    .innerJoin(user, eq(user.id, mandates.userId))
+    .where(and(eq(purchases.id, b.alibi_id), denial));
+  return p ? "public" : null;
+}
+
+async function isOwner(deps: Pick<Deps, "db">, principal: Principal, b: AlibiBundle) {
   if (principal.kind === "user") {
     const [row] = await deps.db
       .select({ userId: mandates.userId })
@@ -199,16 +218,21 @@ async function send(
   const etag = etagOf(bundle, kind);
   c.header("ETag", etag);
   c.header("Cache-Control", "private, no-cache");
+  c.header("Vary", "Cookie, Authorization", { append: true });
   for (const [k, v] of Object.entries(headers)) c.header(k, v);
   if (c.req.header("if-none-match") === etag) return c.body(null, 304);
   c.header("Content-Type", kind === "pdf" ? "application/pdf" : ALIBI_MEDIA_TYPE);
   return c.body((await body()) as Uint8Array<ArrayBuffer>, 200);
 }
 
-export function registerAlibis(app: OpenAPIHono, deps: Pick<Deps, "db" | "alibiChain">): void {
+export function registerAlibis(
+  app: OpenAPIHono,
+  deps: Pick<Deps, "db" | "alibiChain" | "demoAgentId">,
+): void {
   const readable = async (c: Context, id: string) => {
     const b = await loadAlibi(deps.db, id);
-    return b && (await mayRead(deps, c.get("principal"), b)) ? b : null;
+    const level = b && (await access(deps, c.get("principal"), b));
+    return level === "full" ? b : level === "public" ? publicCopy(b as AlibiBundle) : null;
   };
   const missing = (c: Context) =>
     problem(c, 404, "alibi-not-found", "Not found", "No alibi with this id.");

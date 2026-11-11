@@ -9,6 +9,7 @@ export {
   type Step,
   type Usage,
 } from "./agent.ts";
+export { type Money, minorDigits, pageLocale, readAmounts } from "./amounts.ts";
 export {
   CheckoutError,
   type CheckoutResult,
@@ -38,6 +39,7 @@ export {
   paypalTransactionId,
   quoteShopify,
   runCheckout,
+  shopifyCart,
 } from "./live.ts";
 export { ALFRED, LIVE_ITEM, liveMandate } from "./live-store.ts";
 export { isAllowed } from "./policy.ts";

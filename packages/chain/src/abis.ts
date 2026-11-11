@@ -834,6 +834,20 @@ export const dstackEventsAbi = [
   },
 ] as const;
 
+export const ed25519VerifierAbi = [
+  {
+    type: "function",
+    name: "verify",
+    inputs: [
+      { name: "key", type: "bytes32", internalType: "bytes32" },
+      { name: "message", type: "bytes", internalType: "bytes" },
+      { name: "signature", type: "bytes", internalType: "bytes" },
+    ],
+    outputs: [{ name: "", type: "bool", internalType: "bool" }],
+    stateMutability: "view",
+  },
+] as const;
+
 export const errorsAbi = [
   { type: "error", name: "ConsistencyCheckFailed", inputs: [] },
   { type: "error", name: "GeminiChallengeInSubgroup", inputs: [] },
@@ -926,6 +940,16 @@ export const iAnonymousMandateVerifierAbi = [
       { name: "publicInputs", type: "bytes32[]", internalType: "bytes32[]" },
     ],
     outputs: [{ name: "", type: "bool", internalType: "bool" }],
+    stateMutability: "view",
+  },
+] as const;
+
+export const iArbBlockNumberAbi = [
+  {
+    type: "function",
+    name: "arbBlockNumber",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
     stateMutability: "view",
   },
 ] as const;
@@ -1344,6 +1368,20 @@ export const iERC8004ValidationAbi = [
       { name: "tag", type: "string", indexed: false, internalType: "string" },
     ],
     anonymous: false,
+  },
+] as const;
+
+export const iEd25519VerifierAbi = [
+  {
+    type: "function",
+    name: "verify",
+    inputs: [
+      { name: "key", type: "bytes32", internalType: "bytes32" },
+      { name: "message", type: "bytes", internalType: "bytes" },
+      { name: "signature", type: "bytes", internalType: "bytes" },
+    ],
+    outputs: [{ name: "", type: "bool", internalType: "bool" }],
+    stateMutability: "view",
   },
 ] as const;
 
@@ -2345,6 +2383,220 @@ export const iKeelsonValidationRegistryAbi = [
   { type: "error", name: "OutcomeRecorded", inputs: [] },
   { type: "error", name: "UnknownValidation", inputs: [] },
   { type: "error", name: "ValidationExists", inputs: [] },
+] as const;
+
+export const iLogBondAbi = [
+  {
+    type: "function",
+    name: "beneficiary",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "bountyBps",
+    inputs: [],
+    outputs: [{ name: "", type: "uint16", internalType: "uint16" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "checkpoint",
+    inputs: [{ name: "note", type: "bytes", internalType: "bytes" }],
+    outputs: [
+      { name: "size", type: "uint64", internalType: "uint64" },
+      { name: "root", type: "bytes32", internalType: "bytes32" },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "completeWithdrawal",
+    inputs: [],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "completionWindow",
+    inputs: [],
+    outputs: [{ name: "", type: "uint40", internalType: "uint40" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "deposit",
+    inputs: [{ name: "amount", type: "uint256", internalType: "uint256" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "equivocation",
+    inputs: [],
+    outputs: [
+      {
+        name: "",
+        type: "tuple",
+        internalType: "struct ILogBond.Equivocation",
+        components: [
+          { name: "prover", type: "address", internalType: "address" },
+          { name: "amount", type: "uint128", internalType: "uint128" },
+          { name: "bounty", type: "uint128", internalType: "uint128" },
+          { name: "provenAt", type: "uint40", internalType: "uint40" },
+          { name: "size", type: "uint64", internalType: "uint64" },
+          { name: "l2Block", type: "uint64", internalType: "uint64" },
+          { name: "rootA", type: "bytes32", internalType: "bytes32" },
+          { name: "rootB", type: "bytes32", internalType: "bytes32" },
+        ],
+      },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "key",
+    inputs: [],
+    outputs: [{ name: "", type: "bytes32", internalType: "bytes32" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "origin",
+    inputs: [],
+    outputs: [{ name: "", type: "bytes32", internalType: "bytes32" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "owner",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "proveEquivocation",
+    inputs: [
+      { name: "noteA", type: "bytes", internalType: "bytes" },
+      { name: "noteB", type: "bytes", internalType: "bytes" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  { type: "function", name: "release", inputs: [], outputs: [], stateMutability: "nonpayable" },
+  {
+    type: "function",
+    name: "requestWithdrawal",
+    inputs: [
+      { name: "amount", type: "uint128", internalType: "uint128" },
+      { name: "to", type: "address", internalType: "address" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "slashed",
+    inputs: [],
+    outputs: [{ name: "", type: "bool", internalType: "bool" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "token",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "contract IERC20" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "verifier",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "contract IEd25519Verifier" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "withdrawal",
+    inputs: [],
+    outputs: [
+      {
+        name: "",
+        type: "tuple",
+        internalType: "struct ILogBond.Withdrawal",
+        components: [
+          { name: "amount", type: "uint128", internalType: "uint128" },
+          { name: "unlockAt", type: "uint40", internalType: "uint40" },
+          { name: "to", type: "address", internalType: "address" },
+        ],
+      },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "withdrawalDelay",
+    inputs: [],
+    outputs: [{ name: "", type: "uint40", internalType: "uint40" }],
+    stateMutability: "view",
+  },
+  {
+    type: "event",
+    name: "Deposited",
+    inputs: [
+      { name: "from", type: "address", indexed: true, internalType: "address" },
+      { name: "amount", type: "uint256", indexed: false, internalType: "uint256" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "EquivocationProven",
+    inputs: [
+      { name: "prover", type: "address", indexed: true, internalType: "address" },
+      { name: "size", type: "uint64", indexed: false, internalType: "uint64" },
+      { name: "rootA", type: "bytes32", indexed: false, internalType: "bytes32" },
+      { name: "rootB", type: "bytes32", indexed: false, internalType: "bytes32" },
+      { name: "amount", type: "uint256", indexed: false, internalType: "uint256" },
+      { name: "bounty", type: "uint256", indexed: false, internalType: "uint256" },
+      { name: "noteHashA", type: "bytes32", indexed: false, internalType: "bytes32" },
+      { name: "noteHashB", type: "bytes32", indexed: false, internalType: "bytes32" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "WithdrawalCompleted",
+    inputs: [
+      { name: "to", type: "address", indexed: true, internalType: "address" },
+      { name: "amount", type: "uint256", indexed: false, internalType: "uint256" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "WithdrawalRequested",
+    inputs: [
+      { name: "to", type: "address", indexed: true, internalType: "address" },
+      { name: "amount", type: "uint256", indexed: false, internalType: "uint256" },
+      { name: "unlockAt", type: "uint40", indexed: false, internalType: "uint40" },
+    ],
+    anonymous: false,
+  },
+  { type: "error", name: "AlreadySlashed", inputs: [] },
+  { type: "error", name: "InvalidBeneficiary", inputs: [] },
+  { type: "error", name: "InvalidBounty", inputs: [] },
+  {
+    type: "error",
+    name: "InvalidNote",
+    inputs: [{ name: "which", type: "uint8", internalType: "uint8" }],
+  },
+  { type: "error", name: "NotEquivocation", inputs: [] },
+  { type: "error", name: "NotOwner", inputs: [] },
+  { type: "error", name: "NotReady", inputs: [] },
+  { type: "error", name: "ZeroAmount", inputs: [] },
 ] as const;
 
 export const iMandateViolationVerifierAbi = [
@@ -4857,6 +5109,249 @@ export const keelsonValidationRegistryAbi = [
   { type: "error", name: "ValidationExists", inputs: [] },
 ] as const;
 
+export const logBondAbi = [
+  {
+    type: "constructor",
+    inputs: [
+      { name: "token_", type: "address", internalType: "contract IERC20" },
+      { name: "verifier_", type: "address", internalType: "contract IEd25519Verifier" },
+      { name: "owner_", type: "address", internalType: "address" },
+      { name: "origin_", type: "bytes32", internalType: "bytes32" },
+      { name: "key_", type: "bytes32", internalType: "bytes32" },
+      { name: "withdrawalDelay_", type: "uint40", internalType: "uint40" },
+      { name: "completionWindow_", type: "uint40", internalType: "uint40" },
+      { name: "beneficiary_", type: "address", internalType: "address" },
+      { name: "bountyBps_", type: "uint16", internalType: "uint16" },
+    ],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "beneficiary",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "bountyBps",
+    inputs: [],
+    outputs: [{ name: "", type: "uint16", internalType: "uint16" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "checkpoint",
+    inputs: [{ name: "note", type: "bytes", internalType: "bytes" }],
+    outputs: [
+      { name: "size", type: "uint64", internalType: "uint64" },
+      { name: "root", type: "bytes32", internalType: "bytes32" },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "completeWithdrawal",
+    inputs: [],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "completionWindow",
+    inputs: [],
+    outputs: [{ name: "", type: "uint40", internalType: "uint40" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "deposit",
+    inputs: [{ name: "amount", type: "uint256", internalType: "uint256" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "equivocation",
+    inputs: [],
+    outputs: [
+      {
+        name: "",
+        type: "tuple",
+        internalType: "struct ILogBond.Equivocation",
+        components: [
+          { name: "prover", type: "address", internalType: "address" },
+          { name: "amount", type: "uint128", internalType: "uint128" },
+          { name: "bounty", type: "uint128", internalType: "uint128" },
+          { name: "provenAt", type: "uint40", internalType: "uint40" },
+          { name: "size", type: "uint64", internalType: "uint64" },
+          { name: "l2Block", type: "uint64", internalType: "uint64" },
+          { name: "rootA", type: "bytes32", internalType: "bytes32" },
+          { name: "rootB", type: "bytes32", internalType: "bytes32" },
+        ],
+      },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "key",
+    inputs: [],
+    outputs: [{ name: "", type: "bytes32", internalType: "bytes32" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "origin",
+    inputs: [],
+    outputs: [{ name: "", type: "bytes32", internalType: "bytes32" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "owner",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "proveEquivocation",
+    inputs: [
+      { name: "noteA", type: "bytes", internalType: "bytes" },
+      { name: "noteB", type: "bytes", internalType: "bytes" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  { type: "function", name: "release", inputs: [], outputs: [], stateMutability: "nonpayable" },
+  {
+    type: "function",
+    name: "requestWithdrawal",
+    inputs: [
+      { name: "amount", type: "uint128", internalType: "uint128" },
+      { name: "to", type: "address", internalType: "address" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "slashed",
+    inputs: [],
+    outputs: [{ name: "", type: "bool", internalType: "bool" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "token",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "contract IERC20" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "verifier",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "contract IEd25519Verifier" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "withdrawal",
+    inputs: [],
+    outputs: [
+      {
+        name: "",
+        type: "tuple",
+        internalType: "struct ILogBond.Withdrawal",
+        components: [
+          { name: "amount", type: "uint128", internalType: "uint128" },
+          { name: "unlockAt", type: "uint40", internalType: "uint40" },
+          { name: "to", type: "address", internalType: "address" },
+        ],
+      },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "withdrawalDelay",
+    inputs: [],
+    outputs: [{ name: "", type: "uint40", internalType: "uint40" }],
+    stateMutability: "view",
+  },
+  {
+    type: "event",
+    name: "Deposited",
+    inputs: [
+      { name: "from", type: "address", indexed: true, internalType: "address" },
+      { name: "amount", type: "uint256", indexed: false, internalType: "uint256" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "EquivocationProven",
+    inputs: [
+      { name: "prover", type: "address", indexed: true, internalType: "address" },
+      { name: "size", type: "uint64", indexed: false, internalType: "uint64" },
+      { name: "rootA", type: "bytes32", indexed: false, internalType: "bytes32" },
+      { name: "rootB", type: "bytes32", indexed: false, internalType: "bytes32" },
+      { name: "amount", type: "uint256", indexed: false, internalType: "uint256" },
+      { name: "bounty", type: "uint256", indexed: false, internalType: "uint256" },
+      { name: "noteHashA", type: "bytes32", indexed: false, internalType: "bytes32" },
+      { name: "noteHashB", type: "bytes32", indexed: false, internalType: "bytes32" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "WithdrawalCompleted",
+    inputs: [
+      { name: "to", type: "address", indexed: true, internalType: "address" },
+      { name: "amount", type: "uint256", indexed: false, internalType: "uint256" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "WithdrawalRequested",
+    inputs: [
+      { name: "to", type: "address", indexed: true, internalType: "address" },
+      { name: "amount", type: "uint256", indexed: false, internalType: "uint256" },
+      { name: "unlockAt", type: "uint40", indexed: false, internalType: "uint40" },
+    ],
+    anonymous: false,
+  },
+  { type: "error", name: "AlreadySlashed", inputs: [] },
+  { type: "error", name: "InvalidBeneficiary", inputs: [] },
+  { type: "error", name: "InvalidBounty", inputs: [] },
+  {
+    type: "error",
+    name: "InvalidNote",
+    inputs: [{ name: "which", type: "uint8", internalType: "uint8" }],
+  },
+  { type: "error", name: "NotEquivocation", inputs: [] },
+  { type: "error", name: "NotOwner", inputs: [] },
+  { type: "error", name: "NotReady", inputs: [] },
+  { type: "error", name: "ReentrancyGuardReentrantCall", inputs: [] },
+  {
+    type: "error",
+    name: "SafeCastOverflowedUintDowncast",
+    inputs: [
+      { name: "bits", type: "uint8", internalType: "uint8" },
+      { name: "value", type: "uint256", internalType: "uint256" },
+    ],
+  },
+  {
+    type: "error",
+    name: "SafeERC20FailedOperation",
+    inputs: [{ name: "token", type: "address", internalType: "address" }],
+  },
+  { type: "error", name: "ZeroAmount", inputs: [] },
+] as const;
+
 export const mandateViolationCourtAbi = [
   {
     type: "constructor",
@@ -5172,6 +5667,86 @@ export const relationsLibAbi = [
     stateMutability: "pure",
   },
   { type: "error", name: "ValueGeFieldOrder", inputs: [] },
+] as const;
+
+export const sCL_EIP6565Abi = [
+  {
+    type: "function",
+    name: "BasePointMultiply",
+    inputs: [{ name: "scalar", type: "uint256", internalType: "uint256" }],
+    outputs: [
+      { name: "x", type: "uint256", internalType: "uint256" },
+      { name: "y", type: "uint256", internalType: "uint256" },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "BasePointMultiply_Edwards",
+    inputs: [{ name: "scalar", type: "uint256", internalType: "uint256" }],
+    outputs: [
+      { name: "x", type: "uint256", internalType: "uint256" },
+      { name: "y", type: "uint256", internalType: "uint256" },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "HashInternal",
+    inputs: [
+      { name: "r", type: "uint256", internalType: "uint256" },
+      { name: "KpubC", type: "uint256", internalType: "uint256" },
+      { name: "m", type: "string", internalType: "string" },
+    ],
+    outputs: [{ name: "k", type: "uint256", internalType: "uint256" }],
+    stateMutability: "pure",
+  },
+  {
+    type: "function",
+    name: "Verify",
+    inputs: [
+      { name: "m", type: "string", internalType: "string" },
+      { name: "r", type: "uint256", internalType: "uint256" },
+      { name: "s", type: "uint256", internalType: "uint256" },
+      { name: "extKpub", type: "uint256[5]", internalType: "uint256[5]" },
+    ],
+    outputs: [{ name: "flag", type: "bool", internalType: "bool" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "Verify_LE",
+    inputs: [
+      { name: "m", type: "string", internalType: "string" },
+      { name: "r", type: "uint256", internalType: "uint256" },
+      { name: "s", type: "uint256", internalType: "uint256" },
+      { name: "extKpub", type: "uint256[5]", internalType: "uint256[5]" },
+    ],
+    outputs: [{ name: "flag", type: "bool", internalType: "bool" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "ecPow128",
+    inputs: [
+      { name: "X", type: "uint256", internalType: "uint256" },
+      { name: "Y", type: "uint256", internalType: "uint256" },
+      { name: "ZZ", type: "uint256", internalType: "uint256" },
+      { name: "ZZZ", type: "uint256", internalType: "uint256" },
+    ],
+    outputs: [
+      { name: "x128", type: "uint256", internalType: "uint256" },
+      { name: "y128", type: "uint256", internalType: "uint256" },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "edCompress",
+    inputs: [{ name: "Kpub", type: "uint256[2]", internalType: "uint256[2]" }],
+    outputs: [{ name: "KPubC", type: "uint256", internalType: "uint256" }],
+    stateMutability: "pure",
+  },
 ] as const;
 
 export const tdxOutputAbi = [{ type: "error", name: "QuoteNotTdx", inputs: [] }] as const;

@@ -89,6 +89,13 @@ const Tour = z
         purchases: z.array(TourPurchase),
       })
       .nullable(),
+    anonymous_purchase: z
+      .object({ id: z.string(), alibi_fragment: z.string().nullable() })
+      .nullable()
+      .openapi({
+        description:
+          "The newest test purchase whose C1 and C3 proofs are composed into one anonymous proof, served at `GET /v1/anonymous-purchases/{id}`.",
+      }),
     dispute_id: z.string().nullable(),
     campaign_id: z.string().nullable(),
   })
@@ -243,12 +250,35 @@ export function registerJudge(
         };
       }
     }
+    let anonymous: z.infer<typeof Tour>["anonymous_purchase"] = null;
+    if (seed.anonymousPurchaseId) {
+      const [p] = await db
+        .select({
+          id: purchases.id,
+          anchoredSize: purchases.anchoredSize,
+          chainId: purchases.chainId,
+          leafHash: alibis.leafHash,
+        })
+        .from(purchases)
+        .innerJoin(alibis, eq(alibis.purchaseId, purchases.id))
+        .where(eq(purchases.id, seed.anonymousPurchaseId));
+      if (p) {
+        anonymous = {
+          id: p.id,
+          alibi_fragment:
+            p.anchoredSize !== null && p.chainId !== null
+              ? `${Buffer.from(p.leafHash).toString("base64url")}.${p.anchoredSize}.${p.chainId}`
+              : null,
+        };
+      }
+    }
     c.header("Cache-Control", "no-store");
     return c.json(
       {
         merchant_id: (MERCHANTS[0] as (typeof MERCHANTS)[number]).id,
         agent_id: deps.demoAgentId?.toString() ?? null,
         mandate,
+        anonymous_purchase: anonymous,
         dispute_id: seed.disputeId,
         campaign_id: seed.campaignId,
       },

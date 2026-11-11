@@ -44,6 +44,8 @@ impl UserRecords for FileRecords {
             .and_then(|mut file| file.write_all(&record).and_then(|()| file.sync_all()))
             .and_then(|()| fs::hard_link(&staged, &path));
         let _ = fs::remove_file(&staged);
-        written.is_ok()
+        // The link is durable only once the directory entry is: a record must survive a crash
+        // that follows the answer it was written for.
+        written.is_ok() && fs::File::open(&self.dir).and_then(|d| d.sync_all()).is_ok()
     }
 }

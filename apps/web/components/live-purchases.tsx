@@ -1,20 +1,75 @@
 "use client";
 
+import { Amount } from "@keelson/ui/components/amount";
+import { Button } from "@keelson/ui/components/button";
 import { CopyValue } from "@keelson/ui/components/copy-value";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@keelson/ui/components/empty";
 import { Skeleton } from "@keelson/ui/components/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@keelson/ui/components/table";
+import { Status } from "@keelson/ui/components/status";
 import { useEffect, useState } from "react";
 import { VERIFY } from "../lib/config";
-import { money, when } from "../lib/format";
-import { alibiUrl, type LivePurchase, livePurchases } from "../lib/live";
+import { when } from "../lib/format";
+import { alibiUrl, type LivePurchase, livePurchases, reasonOf } from "../lib/live";
 import { ErrorNotice } from "./notice";
+
+const host = (origin: string) => new URL(origin).hostname.replace(/^www\./, "");
+
+function Entry({ p }: { p: LivePurchase }) {
+  const denied = p.decision === "deny";
+  return (
+    <li className="grid gap-x-8 gap-y-3 px-5 py-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-6">
+      <div className="grid min-w-0 gap-2">
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <Amount
+            value={Number(p.amount.minor) / 100}
+            currency={p.amount.currency}
+            className="text-xl"
+            {...(denied ? { struck: "Not paid" } : {})}
+          />
+          <span className="text-muted-foreground">at</span>
+          <a
+            href={p.store}
+            target="_blank"
+            rel="noopener"
+            className="font-medium underline decoration-border underline-offset-4 hover:decoration-foreground"
+          >
+            {host(p.store)}
+          </a>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground text-sm">
+          <Status state={denied ? "blocked" : "countersigned"} />
+          <time dateTime={p.createdAt}>{when(p.createdAt)}</time>
+          <span className="tabular-nums">Log entry {p.logIndex}</span>
+        </div>
+        {denied ? (
+          <p className="text-sm">
+            {p.blocked.length > 0 ? `${p.blocked.map(reasonOf).join(". ")}. ` : ""}
+            <span className="text-muted-foreground">
+              The agent's pay click was held; nothing was charged.
+            </span>
+          </p>
+        ) : p.transactionId ? (
+          <p className="flex flex-wrap items-center gap-x-2 text-sm">
+            <span className="text-muted-foreground">Paid through PayPal, transaction</span>
+            <CopyValue value={p.transactionId} label="PayPal transaction id" />
+          </p>
+        ) : null}
+      </div>
+      <div className="flex items-center gap-2">
+        <Button asChild size="sm" variant="outline">
+          <a href={`${VERIFY}/a/${p.id}`} target="_blank" rel="noopener">
+            Verify the Alibi
+          </a>
+        </Button>
+        <Button asChild size="sm" variant="ghost">
+          <a href={alibiUrl(p.id)} download={`${p.id}.alibi`}>
+            Download
+          </a>
+        </Button>
+      </div>
+    </li>
+  );
+}
 
 export function LivePurchases() {
   const [list, setList] = useState<LivePurchase[]>();
@@ -27,60 +82,37 @@ export function LivePurchases() {
   }, []);
 
   if (error) return <ErrorNotice>{error}</ErrorNotice>;
-  if (!list) return <Skeleton className="h-40 rounded-lg" aria-busy="true" />;
+  if (!list) {
+    return (
+      <div className="grid gap-px overflow-hidden rounded-xl border" aria-busy="true">
+        <Skeleton className="h-28 rounded-none" />
+        <Skeleton className="h-28 rounded-none" />
+      </div>
+    );
+  }
   if (list.length === 0) {
-    return <p className="text-muted-foreground">No live purchase has been made yet.</p>;
+    return (
+      <Empty className="border border-dashed">
+        <EmptyHeader>
+          <EmptyTitle>No live purchase yet</EmptyTitle>
+          <EmptyDescription>
+            When the agent pays at a real store, the purchase shows here with its PayPal transaction
+            and its Alibi. A cart Keelson blocks before the payment shows here too.
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    );
   }
   return (
-    <div className="rounded-lg border bg-card">
-      <Table label="Live purchases">
-        <caption className="sr-only">
-          Each live purchase with its store, amount, PayPal transaction and public Alibi
-        </caption>
-        <TableHeader>
-          <TableRow>
-            <TableHead scope="col">Date</TableHead>
-            <TableHead scope="col">Store</TableHead>
-            <TableHead scope="col" className="text-right">
-              Amount
-            </TableHead>
-            <TableHead scope="col">PayPal transaction</TableHead>
-            <TableHead scope="col">Alibi</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {list.map((p) => (
-            <TableRow key={p.id}>
-              <TableCell className="whitespace-nowrap">{when(p.createdAt)}</TableCell>
-              <TableCell>
-                <a href={p.store} target="_blank" rel="noopener" className="underline">
-                  {new URL(p.store).hostname}
-                </a>
-              </TableCell>
-              <TableCell className="text-right tabular-nums">
-                {money(p.amount.minor, p.amount.currency)}
-              </TableCell>
-              <TableCell>
-                <CopyValue value={p.transactionId} label="PayPal transaction id" />
-              </TableCell>
-              <TableCell className="whitespace-nowrap">
-                <a
-                  href={`${VERIFY}/a/${p.id}`}
-                  target="_blank"
-                  rel="noopener"
-                  className="underline"
-                >
-                  Verify
-                </a>
-                {" · "}
-                <a href={alibiUrl(p.id)} download={`${p.id}.alibi`} className="underline">
-                  Download
-                </a>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+    <section aria-labelledby="live-list" className="grid gap-3">
+      <h2 id="live-list" className="sr-only">
+        Live purchases and blocked carts
+      </h2>
+      <ol className="grid divide-y rounded-xl border bg-card">
+        {list.map((p) => (
+          <Entry key={p.id} p={p} />
+        ))}
+      </ol>
+    </section>
   );
 }

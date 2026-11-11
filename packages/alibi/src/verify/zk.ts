@@ -1,7 +1,11 @@
 import type { BarretenbergSync } from "@aztec/bb.js";
 import { deploymentsFor, registeredUserSetAbi } from "@keelson/chain";
+import { CURRENCIES } from "@keelson/core";
 import { BN254_FR_MODULUS } from "@keelson/core/poseidon2";
+import { LEAF_PREFIX } from "@keelson/log";
+import { CATEGORY_TABLE } from "@keelson/mandate";
 import {
+  bytesToHex,
   createPublicClient,
   encodeAbiParameters,
   type Hex,
@@ -11,8 +15,9 @@ import {
   numberToHex,
 } from "viem";
 import { arbitrumSepolia } from "viem/chains";
-import { fromBase64 } from "../b64.ts";
-import type { AlibiBundle } from "../schema.ts";
+import { fromBase64, fromBase64url } from "../b64.ts";
+import { isBundle } from "../codec.ts";
+import type { AlibiBundle, AlibiReceipt } from "../schema.ts";
 import { C1_VERIFICATION_KEY } from "./c1-vk.ts";
 import { C1C3_VERIFICATION_KEY } from "./c1c3-vk.ts";
 import { C2B_VERIFICATION_KEY } from "./c2b-vk.ts";
@@ -217,6 +222,85 @@ export async function verifyAnonymousPurchase(
     (await isRegisteredRoot(c1c3.user_set_root)) &&
     verifyC1C3(c1c3.proof, c1c3.public_inputs)
   );
+}
+
+/** A composed proof as `GET /v1/anonymous-purchases/{id}` serves it. */
+export interface AnonymousPurchase extends AnonymousMandateProof {
+  verifier?: { chain_id: number; address: string };
+  /** The transaction that published `user_set_root` to `RegisteredUserSet`. */
+  root_tx?: string;
+}
+
+const leafWord = (b64url: string): Hex => bytesToHex(fromBase64url(b64url));
+
+/**
+ * The public inputs of the composed proof that Alibi `input` fixes, `undefined` where it carries
+ * none: a bundle fixes all of C1's statement and `M`; a receipt's leaf fixes `C_m`, the time, the
+ * cart, the operator and `M`. The root is the proof's own, checked against `RegisteredUserSet`.
+ */
+export function anonymousPurchaseStatement(input: AlibiBundle | AlibiReceipt): (Hex | undefined)[] {
+  if (isBundle(input)) {
+    return [...c1c3Statement(input.tee.countersign, word(0n)).slice(0, 9), undefined];
+  }
+  const text = new TextDecoder().decode(fromBase64(input.leaf));
+  const leaf = JSON.parse(text.slice(LEAF_PREFIX.length)) as Record<string, string>;
+  const at = Date.parse(leaf.issued_at as string) / 1000;
+  return [
+    leafWord(leaf.mandate_commitment as string),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    word(BigInt(at)),
+    word(BigInt(leafWord(leaf.cart_hash as string)) % BN254_FR_MODULUS),
+    word(BigInt(leaf.agent_id as string)),
+    word(BigInt(leafWord(leaf.mandate_hash as string)) % BN254_FR_MODULUS),
+    undefined,
+  ];
+}
+
+/**
+ * Which public inputs of a composed proof Alibi `input` fixes, and which of those differ: a proof
+ * with none mismatched is of the purchase the Alibi records.
+ */
+export function bindAnonymousPurchase(
+  input: AlibiBundle | AlibiReceipt,
+  publicInputs: readonly string[],
+): { bound: number[]; mismatched: number[] } {
+  const expected = anonymousPurchaseStatement(input);
+  const bound: number[] = [];
+  const mismatched: number[] = [];
+  for (const [i, x] of expected.entries()) {
+    if (x !== undefined) bound.push(i);
+    if (publicInputs[i] === undefined || (x !== undefined && x !== publicInputs[i])) {
+      mismatched.push(i);
+    }
+  }
+  return { bound, mismatched };
+}
+
+/** What a composed proof's public inputs state, in product terms. */
+export function anonymousPurchaseFacts(publicInputs: readonly string[]): {
+  amount: { currency: string | undefined; minor: bigint };
+  category: string | undefined;
+  merchantId: string;
+  at: Date;
+  operatorId: string;
+  userSetRoot: string;
+} {
+  const n = (i: number) => BigInt(publicInputs[i] as string);
+  const numeric = Number(n(2));
+  return {
+    amount: {
+      currency: Object.entries(CURRENCIES).find(([, c]) => c.numeric === numeric)?.[0],
+      minor: n(1),
+    },
+    category: CATEGORY_TABLE.ids[Number(n(3))],
+    merchantId: publicInputs[4] as string,
+    at: new Date(Number(n(5)) * 1000),
+    operatorId: n(7).toString(),
+    userSetRoot: publicInputs[9] as string,
+  };
 }
 
 /** What the C2b statement reads of a `WebFact`: the page it names and its range commitment. */

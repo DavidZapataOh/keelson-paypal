@@ -16,6 +16,7 @@ export class ApiError extends Error {
 
 export async function send<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API}${path}`, { ...init, credentials: "include" });
+  if (res.status === 204) return undefined as T;
   if (res.ok) return (await res.json()) as T;
   const body = (await res.json().catch(() => ({}))) as {
     type?: string;
@@ -43,3 +44,5 @@ export const post = <T>(path: string, body?: unknown, headers: Record<string, st
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
+
+export const del = (path: string) => send<void>(path, { method: "DELETE" });
