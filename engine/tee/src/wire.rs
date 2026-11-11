@@ -531,9 +531,9 @@ pub struct CardAuthorizeRequest {
     pub authorization: CardNetworkAuthorization,
 }
 
-/// The EIP-712 `CardAuthorization`, with integers as decimal strings.
+/// A `CardAuthorization` message in the JSON form of viem typed data.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CardAuthorizationJson {
     pub request_id: Hex32,
     pub countersign_digest: Hex32,
