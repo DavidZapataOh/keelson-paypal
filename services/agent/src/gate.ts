@@ -1,5 +1,6 @@
 import { ToolError } from "@anthropic-ai/sdk/helpers/beta/toolsets";
 import type { Locator, Page } from "playwright";
+import { type Money, minorDigits, pageLocales, readPage } from "./amounts.ts";
 
 /** Names of the controls that commit a payment, on a store's checkout or on PayPal. */
 const PAY =
@@ -21,23 +22,41 @@ export type PayAction =
  * Holds every action that could commit a payment until Keelson countersigned the cart: any action
  * on a checkout page (a checkout host such as PayPal, or a store's `/checkout`) and a click on a
  * pay control anywhere. Once Keelson allowed the cart, those actions go through only on a page
- * whose largest amount is its total. On a checkout page, clicks by coordinate, keys and typed text
+ * whose largest amount in the cart's currency, read in the page's own locale, is its total, and
+ * only while the store's own cart (when it serves one) is that total too. Whatever the gate cannot
+ * read, it holds. On a checkout page, clicks by coordinate, keys and typed text
  * are refused always, as are saving a payment method, installments and credit. Checkout hosts
  * are written like the browser's allowlist: exact, or `*.example.com` for its subdomains.
  */
 export class PayGate {
   readonly #checkoutHosts: readonly string[];
-  #total: string | undefined;
+  readonly #cart: (() => Promise<Money | undefined>) | undefined;
+  #total: Money | undefined;
   /** Actions refused so far. */
   refused = 0;
+  /**
+   * Each page where a pay action was held for its total: the locale it was read in and the
+   * amounts it showed in the cart's currency. Nothing else of the page.
+   */
+  readonly held: {
+    locale: string | null;
+    amounts: string[];
+    unsure?: string;
+    cart?: string;
+  }[] = [];
 
-  constructor(o: { checkoutHosts: readonly string[] }) {
+  /**
+   * `cart` reads the store's own cart (Shopify's `/cart.js`), the structured total a pay action
+   * is checked against besides the page's text; undefined when it cannot be read.
+   */
+  constructor(o: { checkoutHosts: readonly string[]; cart?: () => Promise<Money | undefined> }) {
     this.#checkoutHosts = o.checkoutHosts;
+    this.#cart = o.cart;
   }
 
-  /** Opens the gate for the countersigned total, in minor units. */
-  allow(total: { minor: number; currency: string }): void {
-    this.#total = (total.minor / 100).toFixed(2);
+  /** Opens the gate for the countersigned total. */
+  allow(total: Money): void {
+    this.#total = total;
   }
 
   get open(): boolean {
@@ -110,17 +129,37 @@ export class PayGate {
         "this action can pay, and Keelson has not countersigned the cart. Paying waits for its 2-of-2 countersignature; do not try another way to pay.",
       );
     }
-    const shown = await page
-      .locator("body")
-      // biome-ignore lint/performance/useDomNodeTextContent: the amounts as the buyer sees them on the page.
-      .innerText()
-      .catch(() => "");
-    const amounts = [...shown.matchAll(/\$\s?(\d{1,3}(?:,\d{3})*\.\d{2})/g)].map((m) =>
-      Number((m[1] as string).replaceAll(",", "")),
-    );
-    if (!amounts.includes(Number(total)) || Math.max(...amounts) > Number(total)) {
+    const lang = await page.evaluate(() => document.documentElement.lang).catch(() => "");
+    // Every frame's text: a total drawn inside a frame is on the page the buyer sees.
+    const text = (
+      await Promise.all(
+        page
+          .frames()
+          // biome-ignore lint/performance/useDomNodeTextContent: the amounts as the buyer sees them on the page.
+          .map((f) => f.evaluate(() => document.body?.innerText ?? "").catch(() => "")),
+      )
+    ).join("\n");
+    const read = readPage(text, pageLocales(lang, page.url()), total.currency);
+    const cart = this.#cart ? await this.#cart().catch(() => undefined) : undefined;
+    const digits = minorDigits(total.currency);
+    const show = (m: number) => `${total.currency} ${(m / 10 ** digits).toFixed(digits)}`;
+    const cartOk = !this.#cart || (cart?.currency === total.currency && cart.minor === total.minor);
+    if (
+      read.unsure !== undefined ||
+      !read.minor.includes(total.minor) ||
+      Math.max(...read.minor) > total.minor ||
+      !cartOk
+    ) {
+      this.held.push({
+        locale: read.locale || null,
+        amounts: read.minor.map(show),
+        ...(read.unsure ? { unsure: read.unsure } : {}),
+        ...(this.#cart ? { cart: cart ? show(cart.minor) : "unread" } : {}),
+      });
       this.#refuse(
-        `Keelson countersigned a total of ${total}, and this page does not show it as its largest amount. Pay only for the countersigned cart.`,
+        read.unsure !== undefined
+          ? `this page's amounts cannot be read for sure (${read.unsure}). Paying waits.`
+          : `Keelson countersigned ${show(total.minor)}; this page or the store's cart does not show it as the total. Pay only for the countersigned cart.`,
       );
     }
   }

@@ -100,9 +100,12 @@ export {
   type Disclosed,
   decodeDisclosed,
   decodeMandate,
+  isPersonalDisclosure,
   type MerchantView,
   merchantDisclosures,
+  PERSONAL_CLAIMS,
   SD_FIELDS,
+  withholdPersonal,
 } from "./sd.ts";
 export {
   RP_ID,

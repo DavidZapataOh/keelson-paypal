@@ -4,6 +4,7 @@ import type { SealedItem } from "@keelson/evidence";
 import type { Capture } from "@keelson/evidence/capture";
 import type { BrowserContext, Page } from "playwright";
 import type { ProposedCart, Step, Usage } from "./agent.ts";
+import { type Money, minorDigits } from "./amounts.ts";
 import { CheckoutError, type Keelson, type Quote } from "./checkout.ts";
 import { StoreBrowser } from "./driver.ts";
 import type { PayGate } from "./gate.ts";
@@ -78,7 +79,10 @@ export async function quoteShopify(store: LiveStore, proposal: ProposedCart): Pr
     if (!variant.available || !offer.in_stock) {
       throw new CheckoutError("the proposed variant is not available");
     }
-    if (Math.round(offer.price * 100) !== variant.price) {
+    // Shopify's `.js` writes hundredths of the currency's unit; the cart counts its minor units.
+    const digits = minorDigits(offer.currency_code);
+    const unit = (variant.price * 10 ** digits) / 100;
+    if (!Number.isInteger(unit) || Math.round(offer.price * 10 ** digits) !== unit) {
       throw new CheckoutError("the store's product endpoints disagree on the price");
     }
     if (currency !== undefined && currency !== offer.currency_code) {
@@ -92,7 +96,7 @@ export async function quoteShopify(store: LiveStore, proposal: ProposedCart): Pr
       color: null,
       category: store.category,
       qty: line.qty,
-      unit_minor: variant.price,
+      unit_minor: unit,
     });
   }
   const cart: Cart = {
@@ -105,7 +109,11 @@ export async function quoteShopify(store: LiveStore, proposal: ProposedCart): Pr
   const minor = lines.reduce((sum, l) => sum + l.qty * l.unit_minor, 0);
   return {
     cart,
-    total: { currency: cart.currency, minor, display: (minor / 100).toFixed(2) },
+    total: {
+      currency: cart.currency,
+      minor,
+      display: (minor / 10 ** minorDigits(cart.currency)).toFixed(minorDigits(cart.currency)),
+    },
     products,
   };
 }
@@ -264,7 +272,10 @@ export async function runCheckout(o: {
     product_url: l.product_url,
     variant: l.size,
     qty: l.qty,
-    unit: ((o.quote.cart.lines[i]?.unit_minor ?? 0) / 100).toFixed(2),
+    unit: (
+      (o.quote.cart.lines[i]?.unit_minor ?? 0) /
+      10 ** minorDigits(o.quote.cart.currency)
+    ).toFixed(minorDigits(o.quote.cart.currency)),
   }));
   const messages: Anthropic.Beta.BetaMessageParam[] = [
     {
@@ -375,4 +386,25 @@ export async function paypalTransactionId(
   } finally {
     await tab.close();
   }
+}
+
+/**
+ * The store's own cart, as the browser's Shopify session holds it (`/cart.js`): the structured
+ * total the pay-click gate checks besides the page's text. Shopify writes money in hundredths of
+ * the currency's unit, whatever its minor units. Undefined when the cart cannot be read.
+ */
+export function shopifyCart(
+  context: Pick<BrowserContext, "request">,
+  origin: string,
+): () => Promise<Money | undefined> {
+  return async () => {
+    const res = await context.request.get(`${origin}/cart.js`, {
+      headers: { accept: "application/json" },
+    });
+    if (!res.ok()) return undefined;
+    const cart = (await res.json()) as { currency?: string; total_price?: number };
+    if (typeof cart.currency !== "string" || !Number.isInteger(cart.total_price)) return undefined;
+    const minor = ((cart.total_price as number) * 10 ** minorDigits(cart.currency)) / 100;
+    return Number.isInteger(minor) ? { currency: cart.currency, minor } : undefined;
+  };
 }

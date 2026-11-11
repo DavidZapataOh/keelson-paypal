@@ -7,14 +7,18 @@ import { chainTxs, eq } from "@keelson/db";
 import { createRelayer } from "@keelson/relayer";
 import { pino } from "pino";
 import { ulid } from "ulid";
-import { bytesToHex, createPublicClient, type PublicClient } from "viem";
+import { bytesToHex, createPublicClient, http, type PublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "vitest";
 import {
   ARBITRUM_SEPOLIA_PUBLIC_RPC,
   arbitrumSepoliaRpcUrls,
   arbitrumSepoliaTransport,
+  computeUnits,
+  counted,
+  rpcCalls,
   rpcTransport,
+  startRpcReport,
 } from "../src/chain/rpc.ts";
 import { releasableLocks, releaseCoverages } from "../src/onchain/validations.ts";
 import { testDb, testKv } from "./setup.ts";
@@ -203,4 +207,40 @@ test("every Arbitrum Sepolia transport goes through the shared fallback", () => 
   };
   for (const dir of dirs) walk(join(root, dir));
   expect(offenders).toEqual([]);
+});
+
+test("every request is counted by provider host and method, without the key", async () => {
+  const primary = await endpoint(200, blockNumber());
+  const host = new URL(primary.url).host;
+  const before = rpcCalls().find((c) => c.provider === host && c.method === "eth_blockNumber");
+  const c = client([primary.url]);
+  await c.getBlockNumber({ cacheTime: 0 });
+  await c.getBlockNumber({ cacheTime: 0 });
+  const after = rpcCalls().find((c) => c.provider === host && c.method === "eth_blockNumber");
+  expect((after?.calls ?? 0) - (before?.calls ?? 0)).toBe(2);
+  expect(JSON.stringify(rpcCalls())).not.toContain("secret-key");
+});
+
+test("the hourly report warns when a provider's monthly projection passes the budget", async () => {
+  const primary = await endpoint(200, blockNumber());
+  const lines: { level: string; obj: Record<string, unknown> }[] = [];
+  const log = {
+    info: (obj: Record<string, unknown>) => lines.push({ level: "info", obj }),
+    warn: (obj: Record<string, unknown>) => lines.push({ level: "warn", obj }),
+  } as unknown as Parameters<typeof startRpcReport>[0];
+  const stop = startRpcReport(log, { budget: 1_000, intervalMs: 100 });
+  try {
+    // Labeled as Alchemy, sent to the local endpoint.
+    const transport = counted("https://arb-sepolia.g.alchemy.com/", http(primary.url));
+    const alchemy = createPublicClient({ chain: arbitrumSepolia, transport });
+    await alchemy.getBlockNumber({ cacheTime: 0 });
+    await client([primary.url]).getBlockNumber({ cacheTime: 0 });
+    await new Promise((r) => setTimeout(r, 150));
+  } finally {
+    stop();
+  }
+  const warned = lines.filter((l) => l.level === "warn").map((l) => l.obj.provider);
+  // The public and local hosts have no compute-unit budget.
+  expect(warned).toEqual(["arb-sepolia.g.alchemy.com"]);
+  expect(computeUnits("eth_getLogs", 2)).toBe(120);
 });

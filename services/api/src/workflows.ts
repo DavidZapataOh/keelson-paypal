@@ -5,10 +5,15 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createDb, operators } from "@keelson/db";
 import { task } from "@renderinc/sdk/workflows";
 import { pino } from "pino";
-import { createPublicClient, http } from "viem";
+import { createPublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { z } from "zod";
-import { arbitrumSepoliaTransport } from "./chain/rpc.ts";
+import {
+  ARBITRUM_SEPOLIA_PUBLIC_RPC,
+  arbitrumSepoliaTransport,
+  POLLING_INTERVAL_MS,
+  rpcTransport,
+} from "./chain/rpc.ts";
 import { type RunDeps, runDispute } from "./disputes/run.ts";
 import { treasuryFromKey } from "./disputes/treasury.ts";
 import { resetJudges } from "./judge.ts";
@@ -65,8 +70,12 @@ async function connect(): Promise<RunDeps> {
       client: createPublicClient({
         chain: arbitrumSepolia,
         transport: arbitrumSepoliaTransport(env.ARBITRUM_SEPOLIA_RPC_URL),
+        pollingInterval: POLLING_INTERVAL_MS,
       }),
-      logs: createPublicClient({ chain: arbitrumSepolia, transport: http() }),
+      logs: createPublicClient({
+        chain: arbitrumSepolia,
+        transport: rpcTransport([ARBITRUM_SEPOLIA_PUBLIC_RPC]),
+      }),
     },
     rpcUrl: env.ARBITRUM_SEPOLIA_RPC_URL,
     tlog: { url: env.LOG_URL, token: env.LOG_WRITE_TOKEN },

@@ -182,7 +182,7 @@ test("signed in on a phone: the bond card, the grade's reasons and the book pass
   await page.getByTestId("grade").waitFor();
   await page.getByTestId("coverage-grid").locator(".ag-row").first().waitFor();
   await page.waitForLoadState("networkidle");
-  expect(await page.getByRole("region", { name: "Bond" }).isVisible()).toBe(true);
+  expect(await page.getByRole("region", { name: "Bond", exact: true }).isVisible()).toBe(true);
   expect(await axe(page)).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,

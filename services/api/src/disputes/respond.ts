@@ -4,7 +4,7 @@ import { and, type Db, disputeResponses, disputes, eq, purchases, verdicts } fro
 import { acceptClaim, getDispute, provideEvidence, sendMessage } from "@keelson/paypal";
 import type { Logger } from "pino";
 import { ulid } from "ulid";
-import { loadAlibi } from "../alibi/issue.ts";
+import { loadAlibi, publicCopy } from "../alibi/issue.ts";
 import { call, type PayPalDeps } from "../paypal.ts";
 import { type Draft, draftResponse } from "./drafter.ts";
 import {
@@ -106,7 +106,8 @@ export async function respondToDispute(deps: RespondDeps, disputeId: string): Pr
     if (plan.action !== "contest") throw new Error("unreachable");
     const bundle = await loadAlibi(db, row.purchaseId);
     if (!bundle) throw new Error(`purchase ${row.purchaseId} has no alibi`);
-    const pdf = await renderAlibiPdf(bundle);
+    // PayPal and the drafting model get the Alibi without the user's login id and risk data.
+    const pdf = await renderAlibiPdf(publicCopy(bundle));
     const amount = dispute.dispute_amount;
     const drafted = await draftResponse(deps.anthropic, {
       plan,
