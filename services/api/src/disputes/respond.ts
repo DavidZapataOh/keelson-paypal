@@ -54,12 +54,16 @@ export async function respondToDispute(deps: RespondDeps, disputeId: string): Pr
       failure: verdicts.failure,
       purchaseId: disputes.purchaseId,
       orderId: purchases.paypalOrderId,
+      rail: purchases.rail,
     })
     .from(verdicts)
     .innerJoin(disputes, eq(disputes.id, verdicts.disputeId))
     .innerJoin(purchases, eq(purchases.id, disputes.purchaseId))
     .where(eq(verdicts.disputeId, disputeId));
   if (!row) return { status: "unattributed", disputeId };
+  // A card purchase's dispute is its chargeback, which the card network decides: there is no
+  // PayPal case to answer.
+  if (row.rail === "card") return { status: "resolved", disputeId };
 
   const { fetch } = deps.paypal.paypal;
   const dispute = await getDispute(fetch, disputeId);

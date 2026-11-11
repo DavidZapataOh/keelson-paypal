@@ -1,9 +1,19 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { renderAlibiPdf } from "@keelson/alibi/pdf";
-import { and, cardChargebacks, eq, mandates, purchaseCards, purchases, sql } from "@keelson/db";
+import {
+  and,
+  cardChargebacks,
+  disputes,
+  eq,
+  mandates,
+  purchaseCards,
+  purchases,
+  sql,
+} from "@keelson/db";
 import { loadAlibi } from "../alibi/issue.ts";
 import type { Deps } from "../app.ts";
 import {
+  CHARGEBACK_REASONS,
   chargebackOpen,
   chargebackRecovered,
   chargebackView,
@@ -143,16 +153,27 @@ export function registerChargebacks(
         deps.log.warn({ err, purchaseId: id }, "chargeback not filed");
         return problem(c, 503, "issuer-unavailable", "The card issuer did not take the chargeback");
       }
-      const [stored] = await db
-        .insert(cardChargebacks)
-        .values({
+      // The chargeback is the purchase's dispute: once the card network decides it, Keelson
+      // attributes it and the agent's bond pays what the chargeback did not return.
+      const stored = await db.transaction(async (tx) => {
+        const [inserted] = await tx
+          .insert(cardChargebacks)
+          .values({
+            id: filed.token,
+            purchaseId: id,
+            reason: body.reason,
+            amountMinor: amount,
+            status: filed.status,
+          })
+          .returning();
+        await tx.insert(disputes).values({
           id: filed.token,
           purchaseId: id,
-          reason: body.reason,
-          amountMinor: amount,
-          status: filed.status,
-        })
-        .returning();
+          reason: CHARGEBACK_REASONS[body.reason].issuer,
+          raw: { rail: "card", reason: body.reason, amount_minor: amount.toString() },
+        });
+        return inserted;
+      });
       // The Alibi is the cardholder's evidence: the mandate the user signed and both enclaves'
       // approvals of the cart and of the charge.
       let evidenceUploaded = false;
@@ -184,9 +205,12 @@ export function registerChargebacks(
   });
 }
 
-/** Records the issuer's news about a chargeback: its status, its resolution, what it returned. */
+/**
+ * Records the issuer's news about a chargeback: its status, its resolution, what it returned. Once
+ * the card network decided it, the dispute is attributed.
+ */
 export async function applyChargeback(
-  deps: Pick<Deps, "db" | "log" | "paypal">,
+  deps: Pick<Deps, "db" | "log" | "paypal" | "startDisputeWorkflow">,
   d: { token: string; status: string; resolution: string | null },
 ): Promise<void> {
   const [row] = await deps.db.select().from(cardChargebacks).where(eq(cardChargebacks.id, d.token));
@@ -213,4 +237,6 @@ export async function applyChargeback(
       `Refund of chargeback ${d.token} on your card purchase.`,
     );
   }
+  // Once the card network decided it, Keelson attributes the dispute.
+  if (!chargebackOpen(d.status)) await deps.startDisputeWorkflow?.(d.token, d.status);
 }
