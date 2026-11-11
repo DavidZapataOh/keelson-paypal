@@ -13,6 +13,7 @@ mod issue;
 mod schema;
 mod sd;
 mod spc;
+mod status;
 mod strict;
 mod unicode;
 mod webauthn;
@@ -43,6 +44,7 @@ pub use spc::{
     EMBED_ORIGIN, RP_ID, SPC_INSTRUMENT_DISPLAY_NAME, SPC_INSTRUMENT_ICON, SPC_PAYEE_NAME,
     SPC_PAYEE_ORIGIN, SpcDetails, spc_details,
 };
+pub use status::{STATUS_SIZE, STATUS_URI, StatusRef};
 pub use webauthn::{Assertion, Expected, WebAuthnError, verify_assertion};
 
 /// An element of the BN254 scalar field.

@@ -73,6 +73,7 @@ fn open_mandate_params(p: &Value) -> OpenMandateParams {
         },
         aud: str(&p["aud"]),
         nonce: str(&p["nonce"]),
+        status: None,
     }
 }
 

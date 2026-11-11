@@ -78,7 +78,8 @@ impl Jwk {
         json!({ "kty": "EC", "crv": "P-256", "x": self.x, "y": self.y })
     }
 
-    pub(crate) fn verifying_key(&self) -> Result<VerifyingKey, Error> {
+    /// The P-256 key this JWK names.
+    pub fn verifying_key(&self) -> Result<VerifyingKey, Error> {
         let (x, y) = (coordinate(&self.x)?, coordinate(&self.y)?);
         let point = [&[0x04][..], &x, &y].concat();
         VerifyingKey::from_sec1_bytes(&point).map_err(|_| invalid("JWK is not a P-256 point"))
@@ -132,6 +133,8 @@ pub struct VerifiedCredential {
     pub user_auth: Option<Value>,
     /// The user credential an open mandate is chained to.
     pub user_credential: Option<Box<VerifiedCredential>>,
+    /// An open mandate's entry in the status list.
+    pub status: Option<crate::StatusRef>,
 }
 
 /// A 32-byte coordinate in canonical unpadded base64url: exactly 43 characters, zero pad bits.
@@ -331,6 +334,7 @@ fn verify_user_credential(
         claims,
         user_auth: None,
         user_credential: None,
+        status: None,
     })
 }
 
@@ -436,6 +440,10 @@ fn verify_open_mandate(
         claims: delegate.clone(),
         user_auth: claims.get("user_auth").cloned(),
         user_credential: Some(Box::new(user_credential)),
+        status: signed
+            .get("status")
+            .map(crate::StatusRef::from_claim)
+            .transpose()?,
     })
 }
 

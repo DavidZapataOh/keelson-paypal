@@ -196,6 +196,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/v1/card/settlement", post(card_settlement))
         .route("/v1/statements/bridge", post(bridge_statement))
         .route("/v1/exports/sign", post(sign_export))
+        .route("/v1/status/sign", post(sign_status))
         .route(
             "/v1/statements/card-authorization",
             post(card_authorization_statement),
@@ -283,6 +284,7 @@ impl From<EngineError> for Problem {
             }
             EngineError::Log(SignError::Records) => StatusCode::INTERNAL_SERVER_ERROR,
             EngineError::Log(SignError::NoFloor) => StatusCode::SERVICE_UNAVAILABLE,
+            EngineError::Status(_) => StatusCode::CONFLICT,
         };
         let latest = match &e {
             EngineError::Log(SignError::NotExtending { latest }) => *latest,
@@ -370,6 +372,8 @@ struct Health {
     statements: u8,
     /// `1`: mandates may carry decoy digests, resolved by the salts a request presents.
     decoys: u8,
+    /// `1`: a mandate with a status list entry is checked against the list on every countersign.
+    status_list: u8,
     signer: Address,
     boot_epoch: u64,
     oci_digest: String,
@@ -410,6 +414,7 @@ async fn health(State(state): State<Arc<AppState>>) -> Json<Health> {
         tee: engine.config().tee_kind,
         statements: 1,
         decoys: 1,
+        status_list: 1,
         signer: engine.signer(),
         boot_epoch: engine.boot_epoch(),
         oci_digest: engine.config().oci_digest.clone(),
@@ -656,6 +661,15 @@ async fn sign_export(
 ) -> Result<Json<crate::wire::ExportSigned>, Problem> {
     let request: crate::wire::ExportRequest = parse(body)?;
     blocking(move || state.engine.sign_export(&request)).await
+}
+
+async fn sign_status(
+    State(state): State<Arc<AppState>>,
+    body: Result<Bytes, BytesRejection>,
+) -> Result<Json<crate::wire::StatusSigned>, Problem> {
+    let request: crate::wire::StatusSignRequest = parse(body)?;
+    let now = (state.clock)();
+    blocking(move || state.engine.sign_status(&request, now)).await
 }
 
 async fn bridge_statement(

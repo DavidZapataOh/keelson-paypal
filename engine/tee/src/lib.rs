@@ -27,6 +27,7 @@ mod records;
 mod report_data;
 pub mod server;
 mod signer;
+pub mod status;
 #[cfg(feature = "tdx")]
 pub mod tdx;
 pub mod wire;

@@ -119,6 +119,7 @@ fn issues_credentials_the_verifiers_accept() {
             },
             aud: str(&p["aud"]),
             nonce: str(&p["nonce"]),
+            status: None,
         },
         &holder,
         &mut replay(&l2["salts"]),
