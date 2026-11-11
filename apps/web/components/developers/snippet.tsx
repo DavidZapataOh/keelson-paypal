@@ -12,15 +12,16 @@ export function Snippet({ code, label }: { code: string; label: string }) {
     return () => clearTimeout(t);
   }, [copied]);
   return (
-    <div className="relative min-w-0 rounded-xl bg-graphite text-bone">
-      <pre className="whitespace-pre-wrap break-all px-4 py-3.5 pr-12 font-mono text-[13px] leading-relaxed">
+    // The button has a column of its own, so it never covers code; long lines wrap.
+    <div className="grid min-w-0 grid-cols-[1fr_auto] items-start gap-2 rounded-xl bg-graphite py-2 pr-2 pl-4 text-bone">
+      <pre className="min-w-0 whitespace-pre-wrap py-1.5 font-mono text-[13px] leading-relaxed [overflow-wrap:anywhere]">
         <code>{code}</code>
       </pre>
       <button
         type="button"
         aria-label={copied ? `${label} copied` : `Copy ${label}`}
         onClick={() => navigator.clipboard.writeText(code).then(() => setCopied(true))}
-        className="absolute top-2 right-2 grid size-8 place-items-center rounded-lg bg-graphite text-bone/70 shadow-[-12px_0_12px_var(--color-graphite)] hover:text-bone"
+        className="grid size-8 place-items-center rounded-lg bg-bone/10 text-bone/80 hover:bg-bone/20 hover:text-bone"
       >
         {copied ? (
           <Check className="size-4" aria-hidden="true" />

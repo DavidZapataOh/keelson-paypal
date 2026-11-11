@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@keelson/ui/components/button";
-import { Check, ExternalLink, FileJson, Sparkles } from "lucide-react";
+import { BookOpen, Check, ExternalLink, FileJson, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { get } from "../../lib/api";
@@ -10,7 +10,7 @@ import type { AgentRow } from "../../lib/connections";
 import { useEvents, userChannel } from "../../lib/events";
 import { AppShell } from "../app-shell";
 import { Snippet } from "./snippet";
-import { type Language, STEPS, type Step } from "./steps";
+import { DOCS, type Language, STEPS, type Step } from "./steps";
 
 const COLLECTION =
   "https://raw.githubusercontent.com/DavidZapataOh/keelson-paypal/main/openapi/postman/keelson.postman_collection.json";
@@ -83,7 +83,7 @@ export function DevelopersPage() {
               From an empty folder to a purchase you can verify, on the PayPal sandbox.
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <div
               role="radiogroup"
               aria-label="Language"
@@ -101,6 +101,12 @@ export function DevelopersPage() {
                 </button>
               ))}
             </div>
+            <Button asChild variant="outline" size="lg" className="rounded-xl">
+              <a href={DOCS} target="_blank" rel="noopener">
+                <BookOpen aria-hidden="true" />
+                Full docs
+              </a>
+            </Button>
             <Button
               variant="outline"
               size="lg"
@@ -134,7 +140,19 @@ export function DevelopersPage() {
                 </div>
                 <div className="grid min-w-0 gap-2.5 pb-8">
                   <div className="grid gap-0.5 pt-1">
-                    <h2 className="font-semibold">{s.title}</h2>
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+                      <h2 className="font-semibold">{s.title}</h2>
+                      <a
+                        href={s.docs}
+                        target="_blank"
+                        rel="noopener"
+                        aria-label={`${s.title} in the docs`}
+                        className="inline-flex items-center gap-1 text-muted-foreground text-sm underline-offset-4 hover:text-foreground hover:underline"
+                      >
+                        Docs
+                        <ExternalLink className="size-3.5" aria-hidden="true" />
+                      </a>
+                    </div>
                     <p className="text-pretty text-muted-foreground text-sm">{s.body}</p>
                   </div>
                   <Snippet code={s.code[language]} label={`${s.title} code`} />

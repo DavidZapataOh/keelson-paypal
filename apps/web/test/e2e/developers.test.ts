@@ -101,7 +101,7 @@ describe("the developers page", () => {
     const { context, page } = await open({ signedIn: false });
     expect(await page.getByRole("list", { name: "Steps" }).getByRole("listitem").count()).toBe(5);
     expect(await done(page)).toBe(0);
-    await page.getByRole("link", { name: "Sign in" }).waitFor();
+    await page.getByRole("link", { name: "Sign in", exact: true }).waitFor();
     await axe(page);
     await context.close();
   });
@@ -140,12 +140,45 @@ describe("the developers page", () => {
     await context.close();
   });
 
-  test("on a phone the steps stack without scrolling sideways", async () => {
-    const { context, page } = await open({ signedIn: false }, devices["Pixel 7"]);
+  test.each([
+    ["desktop", { viewport: { width: 1440, height: 900 } }],
+    ["phone", devices["Pixel 7"]],
+    ["a 390 px window", { viewport: { width: 390, height: 844 } }],
+  ])("on %s no code line is clipped and no copy button covers code", async (_, device) => {
+    const { context, page } = await open({ signedIn: false }, device);
+    for (const language of ["TypeScript", "Python"]) {
+      await page.getByRole("button", { name: language, exact: true }).click();
+      const blocks = await page.locator("pre").evaluateAll((pres) =>
+        pres.map((pre) => {
+          const button = pre.parentElement?.querySelector("button")?.getBoundingClientRect();
+          const box = pre.getBoundingClientRect();
+          return {
+            clipped: pre.scrollWidth > pre.clientWidth + 1,
+            covered: Boolean(button && button.left < box.right - 1 && button.top < box.bottom),
+          };
+        }),
+      );
+      expect(blocks.length).toBeGreaterThan(5);
+      expect(blocks.filter((b) => b.clipped || b.covered)).toEqual([]);
+    }
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - window.innerWidth,
     );
     expect(overflow).toBeLessThanOrEqual(0);
+    await context.close();
+  });
+
+  test("one shell, and the full docs linked from the header and every step", async () => {
+    const { context, page } = await open({ signedIn: true });
+    expect(await page.locator("main").count()).toBe(1);
+    expect(await page.getByRole("link", { name: "Full docs" }).getAttribute("href")).toBe(
+      "https://docs.keelson.finance",
+    );
+    const steps = page.getByRole("link", { name: / in the docs$/ });
+    expect(await steps.count()).toBe(5);
+    for (const href of await steps.evaluateAll((as) => as.map((a) => a.getAttribute("href")))) {
+      expect(href).toMatch(/^https:\/\/docs\.keelson\.finance\/sdk\//);
+    }
     await context.close();
   });
 });
