@@ -1,10 +1,9 @@
 "use client";
 
-import { passkeyRegistrationOptions, rememberPaymentPasskey } from "@keelson/mandate/browser";
 import { Button } from "@keelson/ui/components/button";
 import { Fingerprint, Loader2 } from "lucide-react";
 import { useState } from "react";
-import { authClient } from "../lib/auth";
+import { addPasskey } from "../lib/passkeys";
 import { RiveMoment } from "./brand";
 import { ErrorNotice } from "./notice";
 import { OnboardingFrame } from "./onboarding/frame";
@@ -18,14 +17,12 @@ export function PasskeySetup({ onDone, onBack }: { onDone: () => void; onBack: (
   const add = async () => {
     setBusy(true);
     setError(undefined);
-    const opts = await passkeyRegistrationOptions();
-    const res = await authClient.passkey.addPasskey({ name: "Keelson", ...opts });
+    const res = await addPasskey("Keelson");
     setBusy(false);
-    if (res.error || !res.data) {
-      setError(res.error?.message ?? "The passkey was not created. Try again.");
+    if (!res.ok) {
+      setError(res.message);
       return;
     }
-    if (opts.authenticatorAttachment === "platform") rememberPaymentPasskey(res.data.credentialID);
     setMade(true);
     setTimeout(onDone, matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 1400);
   };

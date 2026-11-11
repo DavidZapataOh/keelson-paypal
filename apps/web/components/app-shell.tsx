@@ -1,6 +1,6 @@
 "use client";
 
-import { Home, LogOut, Plus, Radio, Scale, Trophy } from "lucide-react";
+import { Home, KeyRound, LogOut, Plus, Radio, Scale, Trophy } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
@@ -15,6 +15,7 @@ const NAV = [
   { href: "/disputes/", label: "Disputes", icon: Scale },
   { href: "/live/", label: "Live", icon: Radio },
   { href: "/scoreboard/", label: "Scoreboard", icon: Trophy },
+  { href: "/passkeys/", label: "Passkeys", icon: KeyRound },
 ] as const;
 
 /** The signed-in app: a sidebar on desktop, a tab bar on a phone. */
