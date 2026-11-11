@@ -1062,7 +1062,16 @@ export function EmbedApproval() {
               </button>
             ) : (
               <p className="text-center text-muted-foreground text-xs">
-                You confirm with your passkey in Keelson.
+                You confirm with your passkey in Keelson
+                {view.matchNumber !== null ? (
+                  <>
+                    . When it asks for your agent's number, pick{" "}
+                    <span className="font-mono font-medium text-foreground tnum">
+                      {view.matchNumber}
+                    </span>
+                  </>
+                ) : null}
+                .
               </p>
             )}
           </>
