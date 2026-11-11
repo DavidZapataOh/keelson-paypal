@@ -9,7 +9,7 @@
  * and the hold with the sandbox buyer. Everything else is the script, over MCP only.
  *
  *   KEELSON_API       the API origin; https://api.keelson.finance by default
- *   PRODUCT_URL       the product to buy; the store's Trail Runner 2 by default
+ *   PRODUCT_URL       the product to buy; the store's Pace Lite by default
  *   SIZE              its size; 10 by default
  */
 import { createHash, randomBytes } from "node:crypto";
@@ -20,7 +20,7 @@ import { chromium } from "playwright";
 
 const api = process.env.KEELSON_API ?? "https://api.keelson.finance";
 const productUrl =
-  process.env.PRODUCT_URL ?? "https://store.keelson.finance/products/trail-runner-2";
+  process.env.PRODUCT_URL ?? "https://store.keelson.finance/products/pace-lite";
 const size = process.env.SIZE ?? "10";
 
 const step = (what: string) => console.log(`\n▸ ${what}`);
@@ -137,8 +137,9 @@ const asked = await tool("keelson.request_mandate", {
   name: "Keelson smoke",
   reason:
     "A smoke test of a host signed in as you: it buys one pair of the store's running shoes within these limits, and nothing else.",
-  perPurchaseMinor: 20_000,
-  totalMinor: 20_000,
+  // A loopback host is one Keelson does not know: within the hosted operator's lower cap.
+  perPurchaseMinor: 10_000,
+  totalMinor: 10_000,
   until: new Date(Date.now() + 86_400_000).toISOString(),
 });
 if (asked.matchNumber !== null)
