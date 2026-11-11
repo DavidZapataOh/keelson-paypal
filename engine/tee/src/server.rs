@@ -23,8 +23,8 @@ use crate::logsign::SignError;
 #[cfg(feature = "tdx")]
 use crate::logsign::{SignRequest, Signed};
 use crate::wire::{
-    CheckpointRequest, CheckpointSigned, CountersignRequest, Countersigned, MandateIssued,
-    RegisterMandate, VerdictRequest, VerdictSigned, ZkProof,
+    CardAuthorizeRequest, CardAuthorized, CheckpointRequest, CheckpointSigned, CountersignRequest,
+    Countersigned, MandateIssued, RegisterMandate, VerdictRequest, VerdictSigned, ZkProof,
 };
 use crate::{Engine, EngineError, TeeKind};
 
@@ -181,6 +181,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         )
         .route("/v1/mandates/register", post(register))
         .route("/v1/verdict", post(verdict))
+        .route("/v1/card/authorize", post(card_authorize))
         .layer(DefaultBodyLimit::max(BODY_LIMIT));
     #[cfg(feature = "tdx")]
     let (open, protected) = if state.attestation.is_some() {
@@ -600,6 +601,16 @@ async fn verdict(
 ) -> Result<Json<VerdictSigned>, Problem> {
     let request: VerdictRequest = parse(body)?;
     blocking(move || state.engine.sign_verdict(&request)).await
+}
+
+/// A card issuer's authorization of a single-use card, checked against the ALLOW it was issued
+/// under. The card issuer waits about two seconds for the answer, so nothing here goes out.
+async fn card_authorize(
+    State(state): State<Arc<AppState>>,
+    body: Result<Bytes, BytesRejection>,
+) -> Result<Json<CardAuthorized>, Problem> {
+    let request: CardAuthorizeRequest = parse(body)?;
+    blocking(move || state.engine.authorize_card(&request, (state.clock)())).await
 }
 
 async fn register(
