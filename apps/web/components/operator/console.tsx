@@ -1,13 +1,13 @@
 "use client";
 
-import { Badge } from "@keelson/ui/components/badge";
-import { Button } from "@keelson/ui/components/button";
-import { cn } from "@keelson/ui/lib/utils";
+import { Radio, ShieldCheck, Trophy } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "../../lib/api";
 import { authClient, SESSION_HINT } from "../../lib/auth";
 import { CHAIN_ID, injectedWallet, me, type OperatorSelf, signIn } from "../../lib/operator";
+import { AppShell, type NavItem } from "../app-shell";
+import { ConsoleSignIn } from "../console-sign-in";
 import { Standing } from "./standing";
 
 // AG Grid renders only in the browser; the static export ships the console's shell.
@@ -16,19 +16,18 @@ const CoverageBook = dynamic(() => import("./book"), {
   loading: () => <p className="py-8 text-muted-foreground text-sm">Loading the coverage book…</p>,
 });
 
+const NAV: NavItem[] = [
+  { href: "/operator/", label: "Console", icon: ShieldCheck },
+  { href: "/live/", label: "Live", icon: Radio },
+  { href: "/scoreboard/", label: "Scoreboard", icon: Trophy },
+];
+
 type Phase =
   | { kind: "loading" }
   | { kind: "signed-out"; reason?: string }
   | { kind: "ready"; self: OperatorSelf; agentId: string };
 
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
-
-/** The page's host, read after hydration so the static first paint and the client agree. */
-function Host() {
-  const [host, setHost] = useState("");
-  useEffect(() => setHost(location.host), []);
-  return <>{host}</>;
-}
 
 function SignIn({
   pending,
@@ -41,7 +40,6 @@ function SignIn({
 }) {
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string>();
-  const error = failure ?? reason;
   async function go() {
     const wallet = injectedWallet();
     if (!wallet) {
@@ -68,45 +66,21 @@ function SignIn({
     }
   }
   return (
-    <section
-      aria-labelledby="sign-in"
-      className={cn("mx-auto grid max-w-md gap-5 py-16", pending && "pending-session")}
-    >
-      <Badge variant="outline" className="w-fit font-mono">
-        Arbitrum Sepolia · PayPal sandbox
-      </Badge>
-      <h1 id="sign-in" className="text-balance font-semibold text-4xl tracking-[-0.03em]">
-        Operator console
-      </h1>
-      <p className="text-pretty text-lg text-muted-foreground">
-        Your agent's bond, its trust grade and premium, and every purchase the bond covers. Sign in
-        with the wallet that owns your agent.
-      </p>
-      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-[10px] border p-4 text-sm">
-        <dt className="text-muted-foreground">You sign</dt>
-        <dd>A Sign-In with Ethereum message (EIP-4361)</dd>
-        <dt className="text-muted-foreground">For</dt>
-        <dd className="font-mono">
-          <Host />
-        </dd>
-        <dt className="text-muted-foreground">Chain</dt>
-        <dd className="font-mono">{CHAIN_ID}</dd>
-        <dt className="text-muted-foreground">Valid for</dt>
-        <dd>10 minutes, once</dd>
-      </dl>
-      <Button size="lg" onClick={go} disabled={busy || pending}>
-        {busy ? "Waiting for your wallet…" : "Sign in with wallet"}
-      </Button>
-      <p role="status" className="min-h-6 text-destructive text-sm">
-        {error}
-      </p>
-    </section>
+    <ConsoleSignIn
+      title="Operator console"
+      line="Sign in with the wallet that owns your agent."
+      chainId={CHAIN_ID}
+      pending={pending}
+      busy={busy}
+      error={failure || reason}
+      onSignIn={go}
+    />
   );
 }
 
 /**
  * The operator console: sign-in with the agent owner's wallet, the bond and grade, the gasless
- * deposit, and the coverage book in AG Grid.
+ * top-up, and the coverage book in AG Grid.
  */
 export function OperatorConsole() {
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
@@ -138,26 +112,38 @@ export function OperatorConsole() {
     // A visitor's view is the static first paint; a browser with a session hides it
     // (html[data-session]) until the session is read.
     return (
-      <SignIn
-        pending={phase.kind === "loading"}
-        {...(phase.kind === "signed-out" && phase.reason ? { reason: phase.reason } : {})}
-        onSignedIn={(s) => void open(s)}
-      />
+      <AppShell nav={NAV} account={null}>
+        <SignIn
+          pending={phase.kind === "loading"}
+          {...(phase.kind === "signed-out" && phase.reason ? { reason: phase.reason } : {})}
+          onSignedIn={(s) => void open(s)}
+        />
+      </AppShell>
     );
   }
   const { self, agentId } = phase;
   const operator = self.operators.find((o) => o.agentId === agentId);
   const wallet = self.wallets[0] as `0x${string}`;
   return (
-    <div className="ml-[calc(50%-50vw)] grid w-screen gap-8 px-5 pb-16 sm:px-8">
-      <div className="mx-auto grid w-full max-w-[1440px] gap-8">
-        <header className="flex flex-wrap items-center gap-x-5 gap-y-2">
-          <h1 className="font-semibold text-2xl tracking-tight">{operator?.name}</h1>
+    <AppShell
+      nav={NAV}
+      wide
+      account={{
+        name: operator?.name ?? `Agent #${agentId}`,
+        detail: short(wallet),
+        onSignOut: () => authClient.signOut().then(() => setPhase({ kind: "signed-out" })),
+      }}
+    >
+      <div className="grid gap-8">
+        <header className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <h1 className="font-semibold text-[1.75rem] leading-[1.1] tracking-[-0.025em]">
+            {operator?.name}
+          </h1>
           {self.operators.length > 1 ? (
             <label className="flex items-center gap-2 text-sm">
               <span className="text-muted-foreground">Agent</span>
               <select
-                className="h-8 rounded-md border bg-background px-2 font-mono"
+                className="h-9 rounded-lg border bg-card px-2 font-mono"
                 value={agentId}
                 onChange={(e) => setPhase({ ...phase, agentId: e.target.value })}
               >
@@ -169,25 +155,14 @@ export function OperatorConsole() {
               </select>
             </label>
           ) : (
-            <span className="font-mono text-muted-foreground text-sm">Agent #{agentId}</span>
+            <span className="rounded-md bg-bone-2 px-2 py-1 font-mono text-muted-foreground text-xs">
+              Agent #{agentId}
+            </span>
           )}
-          <Badge variant="outline" className="font-mono">
-            Arbitrum Sepolia
-          </Badge>
-          <span className="ml-auto font-mono text-muted-foreground text-sm" title={wallet}>
-            {short(wallet)}
-          </span>
-          <button
-            type="button"
-            className="text-muted-foreground text-sm hover:text-foreground"
-            onClick={() => authClient.signOut().then(() => setPhase({ kind: "signed-out" }))}
-          >
-            Sign out
-          </button>
         </header>
         <Standing key={`standing-${agentId}`} agentId={agentId} owner={wallet} />
         <CoverageBook key={`book-${agentId}`} agentId={agentId} />
       </div>
-    </div>
+    </AppShell>
   );
 }

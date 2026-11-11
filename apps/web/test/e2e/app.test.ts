@@ -591,7 +591,7 @@ test("the first paint is the welcome, before any script or session read", async 
 const VISITOR_VIEWS = [
   ["merchant/", "Merchant console", "Checking your session"],
   ["operator/", "Operator console", "Checking your session"],
-  ["judge/", "Judge Keelson in five minutes", "Opening Judge Mode"],
+  ["judge/", "Judge Mode", "Opening Judge Mode"],
 ] as const;
 
 test.each(VISITOR_VIEWS)(

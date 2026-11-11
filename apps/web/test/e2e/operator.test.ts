@@ -103,8 +103,9 @@ const COVERED = {
   settledAt: null,
 };
 
-test("signed in: grade, premium and bond; the coverage book with its history; the exact permit, signed", async () => {
-  const context = await browser.newContext(VIEWPORTS.desktop);
+/** Answers the API as it answered for operator 351, and records what the console sent. */
+async function signedInContext(kind: keyof typeof VIEWPORTS) {
+  const context = await browser.newContext(VIEWPORTS[kind]);
   const requests: { path: string; body: unknown }[] = [];
   const { signed } = await installWallet(context, owner, async ({ data }) =>
     // balanceOf and nonces: 5 PYUSD and nonce 0.
@@ -169,6 +170,28 @@ test("signed in: grade, premium and bond; the coverage book with its history; th
         return route.abort("connectionrefused");
     }
   });
+  return { context, requests, signed };
+}
+
+test("signed in on a phone: the bond card, the grade's reasons and the book pass axe", async () => {
+  const { context } = await signedInContext("mobile");
+  const page = await context.newPage();
+  await page.goto(`${site.base}/operator/`);
+  await page.getByRole("button", { name: "Sign in with wallet" }).click();
+  await page.getByRole("heading", { level: 1, name: "Keelson demo operator" }).waitFor();
+  await page.getByTestId("grade").waitFor();
+  await page.getByTestId("coverage-grid").locator(".ag-row").first().waitFor();
+  await page.waitForLoadState("networkidle");
+  expect(await page.getByRole("region", { name: "Bond" }).isVisible()).toBe(true);
+  expect(await axe(page)).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  await context.close();
+});
+
+test("signed in: grade, premium and bond; the coverage book with its history; the exact permit, signed", async () => {
+  const { context, requests, signed } = await signedInContext("desktop");
   const page = await context.newPage();
   await page.goto(`${site.base}/operator/`);
   await page.getByRole("button", { name: "Sign in with wallet" }).click();
@@ -216,7 +239,7 @@ test("signed in: grade, premium and bond; the coverage book with its history; th
   await page.waitForLoadState("networkidle");
   await page.waitForTimeout(500);
   expect(await axe(page)).toEqual([]);
-  await page.getByRole("button", { name: "Deposit PYUSD" }).click();
+  await page.getByRole("button", { name: "Top up" }).click();
   await page.getByLabel("Amount").fill("1.25");
   await page.getByText("In your wallet: 5 PYUSD").waitFor();
   await page.getByRole("button", { name: "Review the permit" }).click();
