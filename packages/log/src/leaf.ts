@@ -131,6 +131,14 @@ export function paypalRefCommit(salt: Uint8Array, orderId: string, authorization
   return `0x${bytesToHex(sha256(input))}`;
 }
 
+/**
+ * `SHA-256(salt ‖ issuer ‖ 0x00 ‖ card_token)`: the `paypal_ref_commit` of a purchase paid with a
+ * single-use card, committing to the issuer and its card token instead of a PayPal order.
+ */
+export function cardRefCommit(salt: Uint8Array, issuer: string, cardToken: string): Hex {
+  return paypalRefCommit(salt, issuer, cardToken);
+}
+
 /** Builds the leaf fields from the coordinator's output, as it returned them. */
 export function leafFromCountersign(
   c: Countersign,
