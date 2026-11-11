@@ -213,8 +213,7 @@ async function build(
       const l3 = agent
         ? await closeVi(chain, f, cjwt, agent, { nonce, iat, networkAud: NETWORK, merchantAud })
         : null;
-      const { refs: _, ...l2 } = chain;
-      return { format: "vi", version: "0.1", ...common, ...l2, l3 };
+      return { format: "vi", version: "0.1", ...common, ...chain, checkout_jwt: cjwt, l3 };
     }
     case "ucp": {
       const checkout = ucpCheckout(f);

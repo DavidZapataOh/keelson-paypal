@@ -25,6 +25,7 @@
     "@keelson/alibi": "workspace:*",
     "@keelson/core": "workspace:*",
     "@keelson/evidence": "workspace:*",
+    "@keelson/interop": "workspace:*",
     "@keelson/mandate": "workspace:*",
     "@keelson/policy": "workspace:*",
     "@modelcontextprotocol/ext-apps": "2.0.4",

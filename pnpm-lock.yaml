@@ -1353,6 +1353,9 @@ importers:
       '@keelson/evidence':
         specifier: workspace:*
         version: link:../../packages/evidence
+      '@keelson/interop':
+        specifier: workspace:*
+        version: link:../../packages/interop
       '@keelson/mandate':
         specifier: workspace:*
         version: link:../../packages/mandate

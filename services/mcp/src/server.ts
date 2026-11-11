@@ -12,6 +12,19 @@ import {
   toPayPalValue,
 } from "@keelson/core";
 import { buildManifest, canonicalBytes, MEDIA_TYPES, type SealedItem } from "@keelson/evidence";
+import {
+  type Ap2Open,
+  closeAp2,
+  closeVi,
+  type EcPublicJwk,
+  ecdsaVerifier,
+  purchaseFacts,
+  type Signer,
+  signAgentRequest,
+  signerOf,
+  TAP_TAGS,
+  type ViChain,
+} from "@keelson/interop";
 import { closeMandate } from "@keelson/mandate";
 import { POLICY_SET_HASH, POLICY_SET_SRC } from "@keelson/policy";
 import {
@@ -1328,6 +1341,102 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
           verifyUrl: url,
         },
         `The Alibi is ${report.verdict}. Anyone can check it in the browser at ${url}.`,
+      );
+    },
+  );
+
+  /** The agent key as the mandate's `cnf` names it, when this server holds that key. */
+  const agentSigner = async (bundle: AlibiBundle): Promise<Signer | undefined> => {
+    const jwk = (bundle.mandate.payload_sd as { agent?: { cnf?: { jwk?: EcPublicJwk } } }).agent
+      ?.cnf?.jwk;
+    if (!o.agentKey || !jwk) return undefined;
+    const probe = new TextEncoder().encode(bundle.alibi_id);
+    const alg = { name: "ECDSA", hash: "SHA-256" };
+    const signature = await crypto.subtle.sign(alg, o.agentKey, probe);
+    const { verify } = await ecdsaVerifier(jwk);
+    if (!(await verify(probe, new Uint8Array(signature)))) return undefined;
+    return signerOf(o.agentKey, jwk, jwk.kid);
+  };
+
+  server.registerTool(
+    "keelson.export_alibi",
+    {
+      title: "Export an Alibi to an industry format",
+      description:
+        "A purchase's mandate and Alibi in AP2 v0.2 (ap2), Mastercard Verifiable Intent v0.1 (vi), UCP 2026-08-25 (ucp), ACP 2026-04-17 Delegate Payment (acp), Visa TAP / Web Bot Auth headers (tap) or the Visa 4.1.23 / CE3.0 Agentic Evidence Pack (visa). Keelson signs as the trusted surface; the closed mandates and the TAP signature are signed with the agent's own key, here when this server holds it.",
+      inputSchema: z.object({
+        purchaseId: Ulid,
+        format: z.enum(["ap2", "vi", "ucp", "acp", "tap", "visa"]),
+        aud: z.string().max(2048).optional(),
+        nonce: z.string().max(256).optional(),
+      }),
+      outputSchema: z.object({
+        format: z.string(),
+        closedBy: z.enum(["keelson", "agent"]).nullable(),
+        export: z.record(z.string(), z.unknown()),
+      }),
+      annotations: { readOnlyHint: true, openWorldHint: true },
+      ...scopes("alibis:read"),
+    },
+    async ({ purchaseId, format, aud, nonce }) => {
+      const query = new URLSearchParams({ ...(aud ? { aud } : {}), ...(nonce ? { nonce } : {}) });
+      const res = await call(keelson, `/v1/alibis/${purchaseId}/exports/${format}?${query}`);
+      const body = (await res.json()) as Record<string, unknown>;
+      const open =
+        format === "ap2"
+          ? body.closed === null
+          : format === "vi"
+            ? body.l3 === null
+            : format === "tap" && !(body.headers as Record<string, string>).Signature;
+      let closedBy: "keelson" | "agent" | null = open
+        ? null
+        : ["ap2", "vi", "tap"].includes(format)
+          ? "keelson"
+          : null;
+      const alibi = open ? await readAlibi(purchaseId) : null;
+      const agent = alibi && (await agentSigner(alibi.bundle));
+      if (alibi && agent) {
+        const f = purchaseFacts(alibi.bundle);
+        const iat = f.issuedAt;
+        const n = nonce ?? purchaseId;
+        const merchantAud = aud ?? f.merchant.website ?? f.merchant.id;
+        if (format === "ap2") {
+          body.closed = await closeAp2(
+            body.open as Ap2Open,
+            f,
+            body.checkout_jwt as string,
+            agent,
+            { nonce: n, iat, merchantAud, paymentAud: "https://www.paypal.com" },
+          );
+        } else if (format === "vi") {
+          body.l3 = await closeVi(
+            body as unknown as ViChain,
+            f,
+            body.checkout_jwt as string,
+            agent,
+            { nonce: n, iat, networkAud: "https://www.paypal.com", merchantAud },
+          );
+        } else {
+          const r = body.request as { method: string; url: string };
+          const headers = body.headers as Record<string, string>;
+          const fields = await signAgentRequest(
+            new Request(r.url, { method: r.method, headers }),
+            agent,
+            { tag: TAP_TAGS.pay, created: iat, nonce: n, withAlibi: true },
+          );
+          body.headers = {
+            ...headers,
+            "Signature-Input": fields.signatureInput,
+            Signature: fields.signature,
+          };
+        }
+        closedBy = "agent";
+      }
+      return answer(
+        { format, closedBy, export: body },
+        closedBy === null && open
+          ? `The ${format} export of ${purchaseId}: Keelson signed the open mandates; the agent closes them with its own key.`
+          : `The ${format} export of ${purchaseId}.`,
       );
     },
   );

@@ -144,6 +144,7 @@ test("a client with client credentials lists the tools, each with an output sche
     "keelson.check_cart",
     "keelson.compile_mandate",
     "keelson.confirm_mandate",
+    "keelson.export_alibi",
     "keelson.get_alibi",
     "keelson.get_purchase",
     "keelson.get_request",
