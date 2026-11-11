@@ -14,7 +14,7 @@ import {
   verifyCredential,
 } from "../src/credentials.ts";
 import { type Mandate, parseMandate } from "../src/schema.ts";
-import { buildSdPayload } from "../src/sd.ts";
+import { buildSdPayload, withholdPersonal } from "../src/sd.ts";
 import demo from "./fixtures/demo-mandate.json" with { type: "json" };
 
 const ES256 = { name: "ECDSA", namedCurve: "P-256" } as const;
@@ -383,6 +383,46 @@ describe("open mandate (L2)", () => {
     const { token, disclosures, opts } = await openMandate();
     const login = disclosures.find(isLogin);
     await rejects(token.replace(`~${login}~`, "~"), opts).toThrow(/digest/);
+  });
+
+  it("accepts a public presentation that withholds only the login id and risk data", async () => {
+    const { token, opts } = await openMandate();
+    const shown = withholdPersonal(token);
+    expect(shown).not.toContain("app_login_id");
+    expect(token.split("~").length - shown.split("~").length).toBe(2);
+    await rejects(shown, opts).toThrow(/digest/);
+    const v = await verifyCredential(shown, OPEN_MANDATE_TYP, issuer.publicKey, {
+      ...opts,
+      personalWithheld: true,
+    });
+    expect(v.mandate.user.app_login_id).toBeUndefined();
+    expect(v.mandate.risk_data).toBeUndefined();
+    expect(v.mandate.user.sub).toBe(demo.user.sub);
+    expect(JSON.stringify(v.claims)).not.toContain(demo.user.app_login_id);
+    const full = await verifyCredential(token, OPEN_MANDATE_TYP, issuer.publicKey, {
+      ...opts,
+      personalWithheld: true,
+    });
+    expect(full.mandate.user.app_login_id).toBe(demo.user.app_login_id);
+  });
+
+  it("withholding personal claims still rejects any other withheld disclosure", async () => {
+    const { token, opts } = await openMandate();
+    const lenient = { ...opts, personalWithheld: true };
+    const parts = (t: string) => t.split("~");
+    const drop = (t: string, name: string) =>
+      parts(t)
+        .filter((d, i) => {
+          if (i < 3 || d === "" || d.includes(".")) return true;
+          return JSON.parse(Buffer.from(d, "base64url").toString())[1] !== name;
+        })
+        .join("~");
+    for (const name of ["sub", "cred", "prompt_summary", "prompt_hash", "max"]) {
+      await rejects(drop(withholdPersonal(token), name), lenient).toThrow();
+      await rejects(drop(token, name), lenient).toThrow();
+    }
+    const isItem = (v: unknown) => (v as { id?: unknown })?.id === "sku-trail-10";
+    await rejects(without(withholdPersonal(token), isItem), lenient).toThrow(/digest/);
   });
 
   it("rejects a wrong audience or nonce", async () => {

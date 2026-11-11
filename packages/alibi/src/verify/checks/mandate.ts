@@ -68,6 +68,8 @@ export function openMandate(b: AlibiBundle): Promise<VerifiedOpenMandate> {
         expectedNonce: String(nonce),
         now: Number(b.tee.countersign.issuedAt),
         maxSkewSec: 300,
+        // A public Alibi withholds the user's login id and risk data; their digests stay signed.
+        personalWithheld: true,
       });
     })();
     opened.set(b, open);

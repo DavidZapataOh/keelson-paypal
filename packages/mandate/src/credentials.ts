@@ -13,10 +13,10 @@ import { compactVerify, decodeJwt, decodeProtectedHeader, importJWK } from "jose
 import { type Mandate, parseMandate } from "./schema.ts";
 import { assertSdAlg, decodeMandate, sdHasher } from "./sd.ts";
 import {
-  assertDigestsResolved,
   assertStrictJson,
   assertStrictJwt,
   decodeStrictJson,
+  undisclosedDigests,
 } from "./strict.ts";
 
 /** `typ` of the user credential, an SD-JWT VC. */
@@ -85,7 +85,10 @@ export interface VerifiedCredential {
 
 /** An open mandate that {@link verifyCredential} accepted. */
 export interface VerifiedOpenMandate extends VerifiedCredential {
-  /** The delegate payload without its `cnf`, parsed as a mandate. */
+  /**
+   * The delegate payload without its `cnf`, parsed as a mandate. With `personalWithheld`,
+   * `user.app_login_id` and `risk_data` are absent when the presentation withholds them.
+   */
   mandate: Mandate;
   /** The passkey assertion, checked for shape only. */
   userAuth: UserAuth;
@@ -100,6 +103,11 @@ export interface OpenMandateVerifyOptions {
   now: number;
   /** Clock skew tolerated on `iat`, `nbf` and `exp`, in seconds. */
   maxSkewSec: number;
+  /**
+   * Accept a presentation that withholds the `PERSONAL_CLAIMS` disclosures of the mandate,
+   * as a public Alibi does; every other digest must still be resolved.
+   */
+  personalWithheld?: boolean;
 }
 
 /** What {@link closeMandate} binds the open mandate to. */
@@ -421,12 +429,27 @@ export async function verifyOpenMandate(
     .map((d) => Disclosure.fromEncodeSync(d, { hasher: sdHasher, alg: "sha-256" }))
     .find((d) => d._digest === slot);
   if (!disclosure) throw new RangeError("delegate payload is not disclosed");
-  assertDigestsResolved(signed, rest.slice(0, -1));
   const delegate = delegates[0] as Record<string, unknown>;
   const { cnf, ...rawMandate } = delegate;
+  const user = rawMandate.user as Record<string, unknown> | undefined;
+  const withheld = {
+    login: opts.personalWithheld === true && user !== undefined && !("app_login_id" in user),
+    risk: opts.personalWithheld === true && !("risk_data" in rawMandate),
+  };
+  const missing = undisclosedDigests(signed, rest.slice(0, -1));
+  // Each withheld object claim leaves exactly one unresolved digest, so no other claim is.
+  if (missing.elements > 0 || missing.claims !== Number(withheld.login) + Number(withheld.risk)) {
+    throw new RangeError("undisclosed digest");
+  }
   jwkOf(cnf);
   validateJwtPayload(delegate, time);
-  const mandate = parseMandate(rawMandate);
+  const mandate = parseMandate({
+    ...rawMandate,
+    ...(withheld.login ? { user: { ...user, app_login_id: "withheld" } } : {}),
+    ...(withheld.risk ? { risk_data: { device_fp: "", ip: "" } } : {}),
+  });
+  if (withheld.login) delete (mandate.user as Partial<Mandate["user"]>).app_login_id;
+  if (withheld.risk) delete (mandate as Partial<Mandate>).risk_data;
   if (jcs(cnf as Json) !== jcs({ jwk: mandate.agent.cnf.jwk })) {
     throw new RangeError("cnf differs from agent.cnf");
   }
