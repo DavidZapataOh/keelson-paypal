@@ -24,7 +24,7 @@ import { PasskeySetup } from "./passkey-setup";
 const NO_EVIDENCE = { merchantSignedCheckout: false, zkTlsFields: new Set<never>() };
 const HOUR = 3_600_000;
 
-const day = (iso: string) =>
+export const day = (iso: string) =>
   new Intl.DateTimeFormat("en-US", {
     weekday: "short",
     month: "short",
@@ -34,7 +34,7 @@ const day = (iso: string) =>
   }).format(new Date(iso));
 
 /** What the user grants: never above what the agent asked. */
-interface Chosen {
+export interface Chosen {
   perPurchase: number;
   total: number;
   askAbove: number | null;
@@ -42,13 +42,39 @@ interface Chosen {
   until: string;
 }
 
-function asked(c: ConnectionView): Chosen {
+export function asked(c: ConnectionView): Chosen {
   return {
     perPurchase: Number(c.limits.perPurchaseMinor),
     total: Number(c.limits.totalMinor),
     askAbove: c.limits.askAboveMinor === null ? null : Number(c.limits.askAboveMinor),
     merchants: c.limits.merchants.map((m) => m.id),
     until: c.limits.until,
+  };
+}
+
+/** `want` lowered to what `c` asked: a limit chosen elsewhere is never raised here. */
+function lowered(c: ConnectionView, want: Partial<Chosen>): Chosen {
+  const a = asked(c);
+  const below = (v: number | undefined, max: number) =>
+    v !== undefined && Number.isSafeInteger(v) && v > 0 ? Math.min(v, max) : max;
+  const perPurchase = below(want.perPurchase, a.perPurchase);
+  const total = below(want.total, a.total);
+  const until =
+    want.until &&
+    Date.parse(want.until) < Date.parse(a.until) &&
+    Date.parse(want.until) > Date.now()
+      ? new Date(want.until).toISOString()
+      : a.until;
+  const merchants = want.merchants?.filter((m) => a.merchants.includes(m));
+  return {
+    perPurchase: Math.min(perPurchase, total),
+    total,
+    askAbove:
+      a.askAbove === null
+        ? null
+        : Math.min(below(want.askAbove ?? undefined, a.askAbove), perPurchase),
+    merchants: merchants?.length ? merchants : a.merchants,
+    until,
   };
 }
 
@@ -60,7 +86,7 @@ function message(e: unknown): string {
 }
 
 /** A sentence of the grant with its value chip and what Keelson does past it. */
-function Clause({
+export function Clause({
   consequence,
   children,
   control,
@@ -92,7 +118,7 @@ function Clause({
   );
 }
 
-function Value({ children }: { children: ReactNode }) {
+export function Value({ children }: { children: ReactNode }) {
   return (
     <span className="mx-0.5 inline-block rounded-md bg-graphite px-1.5 py-0.5 font-medium text-bone text-sm tnum">
       {children}
@@ -101,7 +127,7 @@ function Value({ children }: { children: ReactNode }) {
 }
 
 /** A slider that only goes down from what was asked. */
-function Lower({
+export function Lower({
   label,
   value,
   max,
@@ -160,11 +186,14 @@ export function Chip({ children }: { children: ReactNode }) {
  */
 export function Approval({
   request,
+  initial,
   onApproved,
   onDeclined,
   continueLabel,
 }: {
   request: ConnectionView;
+  /** Limits the user already lowered, for example in an agent platform's embedded approval. */
+  initial?: Partial<Chosen>;
   onApproved?: (mandateId: string) => void;
   onDeclined?: () => void;
   /** Where approval leads when `onApproved` takes over, e.g. "Back to Inspector". */
@@ -172,7 +201,9 @@ export function Approval({
 }) {
   const once = request.kind === "once";
   const { currency } = request.limits;
-  const [chosen, setChosen] = useState<Chosen>(() => asked(request));
+  const [chosen, setChosen] = useState<Chosen>(() =>
+    initial ? lowered(request, initial) : asked(request),
+  );
   const [signing, setSigning] = useState<{ for: Chosen; signing: Signing; compiled: Compiled }>();
   const [phase, setPhase] = useState<"review" | "passkey" | "signing" | "approved" | "declined">(
     "review",

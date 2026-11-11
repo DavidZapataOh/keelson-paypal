@@ -12,6 +12,7 @@ import { display, PRODUCTS, product, productJson, QuoteError, quote } from "./ca
 import { deleteListing, getListing, ListingRequest, putListing } from "./listings.ts";
 import { captureOrder, createOrder, storeOrder } from "./orders.ts";
 import { catalogPage, notFoundPage, orderPage, productPage } from "./pages.ts";
+import { type PlatformDeps, registerPlatform } from "./platform.ts";
 
 export interface StoreDeps {
   paypal: PayPal;
@@ -24,6 +25,8 @@ export interface StoreDeps {
   /** The store's public origin, e.g. `https://store.keelson.finance`. */
   origin: string;
   log: Logger;
+  /** The demo agent platform that embeds Keelson's approval; not served without it. */
+  platform?: Omit<PlatformDeps, "kv" | "log">;
 }
 
 const PAYPAL = ["https://*.paypal.com", "https://*.paypalobjects.com", "https://*.venmo.com"];
@@ -107,6 +110,7 @@ export function createApp(deps: StoreDeps): Hono<{ Variables: SecureHeadersVaria
       "request",
     );
   });
+  if (deps.platform) registerPlatform(app, { ...deps.platform, kv: deps.kv, log: deps.log });
   app.use(
     secureHeaders({
       contentSecurityPolicy: {

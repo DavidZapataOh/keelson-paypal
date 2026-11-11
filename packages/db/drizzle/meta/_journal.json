@@ -281,6 +281,13 @@
       "when": 1794373166112,
       "tag": "0039_chain_events",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1794375789089,
+      "tag": "0040_embed_origins",
+      "breakpoints": true
     }
   ]
 }

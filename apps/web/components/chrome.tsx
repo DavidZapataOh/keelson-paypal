@@ -22,6 +22,7 @@ const OWN_CHROME = new Set([
   "/consent/",
   "/sign-in/",
   "/passkeys/",
+  "/embed/approve/",
 ]);
 
 export function Chrome({ children }: { children: ReactNode }) {

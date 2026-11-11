@@ -8,6 +8,10 @@ const config: NextConfig = {
   transpilePackages: ["@keelson/ui"],
   reactStrictMode: true,
   poweredByHeader: false,
+  // Absolute asset URLs let the API serve the embedded approval's markup from its own origin.
+  ...(process.env.NEXT_PUBLIC_ASSET_ORIGIN
+    ? { assetPrefix: process.env.NEXT_PUBLIC_ASSET_ORIGIN }
+    : {}),
 };
 
 export default config;

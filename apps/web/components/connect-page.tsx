@@ -7,8 +7,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, useEffect, useId, useState } from "react";
 import { ApiError, get } from "../lib/api";
 import { authClient } from "../lib/auth";
+import { API } from "../lib/config";
 import { CONNECT_PROMPT, type ConnectionView } from "../lib/connections";
-import { Approval } from "./approval";
+import { Approval, type Chosen } from "./approval";
 import { ErrorNotice } from "./notice";
 import { OnboardingFrame } from "./onboarding/frame";
 import { Welcome } from "./welcome";
@@ -138,9 +139,42 @@ function Closed({ title, line }: { title: string; line: string }) {
   );
 }
 
+const EMBED_REF = /^[0-9A-HJKMNP-TV-Z]{26}$/;
+
+/**
+ * Opened by an agent platform's embedded approval (`embed`, `via`): the limits the user lowered
+ * there, and where to return once answered. The return is always the API's own embed page, so no
+ * parameter here can send the user elsewhere.
+ */
+function embedReturn(params: URLSearchParams) {
+  const ref = params.get("embed") ?? "";
+  const via = params.get("via");
+  if (!EMBED_REF.test(ref) || (via !== "frame" && via !== "popup")) return undefined;
+  const int = (k: string) => {
+    const v = Number(params.get(k));
+    return Number.isSafeInteger(v) && v > 0 ? v : undefined;
+  };
+  const merchants = params.get("m")?.split(",").filter(Boolean);
+  const until = params.get("u") ?? undefined;
+  const initial: Partial<Chosen> = {};
+  const pp = int("pp");
+  const tt = int("tt");
+  const aa = int("aa");
+  if (pp) initial.perPurchase = pp;
+  if (tt) initial.total = tt;
+  if (aa) initial.askAbove = aa;
+  if (merchants?.length) initial.merchants = merchants;
+  if (until) initial.until = until;
+  const back = new URL("/embed/approve", API);
+  back.search = new URLSearchParams({ r: ref, mode: via, step: "done" }).toString();
+  return { initial, back: back.toString() };
+}
+
 /** `/connect?c=XXXX-XXXX`: an agent's request, approved here with a passkey or rejected. */
 export function ConnectPage() {
-  const code = useSearchParams().get("c");
+  const params = useSearchParams();
+  const code = params.get("c");
+  const embed = embedReturn(params);
   const session = authClient.useSession();
   const [request, setRequest] = useState<ConnectionView | null>();
   const [error, setError] = useState<string>();
@@ -211,6 +245,18 @@ export function ConnectPage() {
       <Closed
         title="Already approved"
         line="This code was used. Your agents page shows the grant."
+      />
+    );
+  }
+  if (embed) {
+    const done = () => location.replace(embed.back);
+    return (
+      <Approval
+        request={request}
+        initial={embed.initial}
+        onApproved={done}
+        onDeclined={done}
+        continueLabel={`Returning to ${request.agent.operator}`}
       />
     );
   }

@@ -28,6 +28,19 @@ const app = createApp({
   attackToken: required("STORE_ATTACK_TOKEN"),
   origin: required("STORE_ORIGIN"),
   log,
+  ...(process.env.KEELSON_CLIENT_ID &&
+  process.env.KEELSON_CLIENT_SECRET &&
+  process.env.PLATFORM_ORIGIN
+    ? {
+        platform: {
+          api: process.env.KEELSON_API_URL ?? "https://api.keelson.finance",
+          app: process.env.KEELSON_APP_URL ?? "https://app.keelson.finance",
+          origin: process.env.PLATFORM_ORIGIN,
+          clientId: process.env.KEELSON_CLIENT_ID,
+          clientSecret: process.env.KEELSON_CLIENT_SECRET,
+        },
+      }
+    : {}),
 });
 
 const server = serve({ fetch: app.fetch, port: Number(process.env.PORT ?? 3000) }, (info) =>
