@@ -114,7 +114,7 @@ jobs:
         run: |
           set -euo pipefail
           render() { curl -fsS --retry 5 --retry-all-errors -H "Authorization: Bearer $RENDER_API_KEY" "$@"; }
-          cmd='cd services/api && pnpm exec playwright install chromium >/dev/null && PURCHASES=10 CONCURRENCY=2 DEGRADED_EVERY=5 node bench/money-path.bench.ts'
+          cmd='cd services/api && pnpm exec playwright install chromium >/dev/null && PURCHASES=10 CONCURRENCY=2 node bench/money-path.bench.ts'
           job=$(render -X POST -H "content-type: application/json" \
             -d "$(jq -n --arg c "$cmd" '{startCommand: $c}')" \
             "https://api.render.com/v1/services/$SERVICE/jobs" | jq -r .id)
