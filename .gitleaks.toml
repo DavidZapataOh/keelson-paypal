@@ -58,3 +58,10 @@ description = "A public Alibi receipt and the composed proof of a sandbox purcha
 paths = [
   '''packages/alibi/test/fixtures/01M73AGWP5EJSW35XE6Q090MCH\.(receipt|anonymous\.json)''',
 ]
+
+[[allowlists]]
+description = "Ed25519 public keys: RFC 8032's test keys and the log's published verifier keys"
+paths = [
+  '''contracts/test/Ed25519Verifier\.t\.sol''',
+  '''contracts/test/LogBond\.fork\.t\.sol''',
+]
