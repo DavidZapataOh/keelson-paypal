@@ -1,9 +1,11 @@
 import { isAPIError } from "better-auth/api";
 import { requestToResourceInput, verifyAccessTokenRequest } from "better-auth/oauth2";
 import type { Context, MiddlewareHandler } from "hono";
+import type { RedisClientType } from "redis";
 import { type Auth, apiAudience, tokenScopes } from "../auth.ts";
 import { judgeExpired } from "../judge.ts";
 import { problem } from "../problem.ts";
+import { tokenStopped } from "../stopped.ts";
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -16,7 +18,7 @@ declare module "hono" {
  * header is sent, from a session cookie. Never rejects: route guards decide what a missing
  * principal or an invalid token means.
  */
-export function authenticate(auth: Auth, baseURL: string): MiddlewareHandler {
+export function authenticate(auth: Auth, baseURL: string, kv?: RedisClientType): MiddlewareHandler {
   const issuer = `${baseURL.replace(/\/$/, "")}/api/auth`;
   const jwksUrl = `${issuer}/jwks`;
   return async (c, next) => {
@@ -26,11 +28,20 @@ export function authenticate(auth: Auth, baseURL: string): MiddlewareHandler {
           jwksUrl,
           verifyOptions: { issuer, audience: apiAudience, typ: "at+jwt", requiredClaims: ["azp"] },
         });
-        c.set("principal", {
-          kind: "client",
-          subject: payload.azp as string,
-          scopes: tokenScopes(payload),
-        });
+        // A token the user granted before stopping every agent is refused, though it verifies.
+        if (
+          kv &&
+          typeof payload.sub === "string" &&
+          (await tokenStopped(kv, payload.sub, payload.iat))
+        ) {
+          c.set("invalidToken", true);
+        } else {
+          c.set("principal", {
+            kind: "client",
+            subject: payload.azp as string,
+            scopes: tokenScopes(payload),
+          });
+        }
       } catch (err) {
         if (!isAPIError(err)) throw err;
         c.set("invalidToken", true);
