@@ -182,6 +182,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/v1/mandates/register", post(register))
         .route("/v1/verdict", post(verdict))
         .route("/v1/card/authorize", post(card_authorize))
+        .route(
+            "/v1/statements/card-authorization",
+            post(card_authorization_statement),
+        )
         .layer(DefaultBodyLimit::max(BODY_LIMIT));
     #[cfg(feature = "tdx")]
     let (open, protected) = if state.attestation.is_some() {
@@ -610,6 +614,14 @@ async fn verdict(
 
 /// A card issuer's authorization of a single-use card, checked against the ALLOW it was issued
 /// under. The card issuer waits about two seconds for the answer, so nothing here goes out.
+async fn card_authorization_statement(
+    State(state): State<Arc<AppState>>,
+    body: Result<Bytes, BytesRejection>,
+) -> Result<Json<crate::wire::StatementSigned>, Problem> {
+    let request: crate::wire::CardStatementRequest = parse(body)?;
+    blocking(move || state.engine.card_authorization_statement(&request)).await
+}
+
 async fn card_authorize(
     State(state): State<Arc<AppState>>,
     body: Result<Bytes, BytesRejection>,

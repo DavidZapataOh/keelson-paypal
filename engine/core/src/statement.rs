@@ -331,3 +331,15 @@ pub fn pay_ref(salt: &[u8; 32], order_id: &str, authorization_id: &str) -> [u8; 
     h.update(authorization_id.as_bytes());
     h.finalize().into()
 }
+
+/// `SHA-256("keelson/card-ref/v1" ‖ 0x00 ‖ salt ‖ issuer ‖ 0x00 ‖ card_token)`: the card a card
+/// statement commits to (the TypeScript `cardRefCommit`).
+pub fn card_ref(salt: &[u8; 32], issuer: &str, card_token: &str) -> [u8; 32] {
+    let mut h = Sha256::new();
+    h.update(b"keelson/card-ref/v1\0");
+    h.update(salt);
+    h.update(issuer.as_bytes());
+    h.update([0]);
+    h.update(card_token.as_bytes());
+    h.finalize().into()
+}

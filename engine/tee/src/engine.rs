@@ -912,6 +912,85 @@ impl Engine {
         Ok(Some(statement(protected, payload, sig)))
     }
 
+    /// A card network authorization decision as a SCITT statement: this leg's own signature must
+    /// be in it, the other leg's must be over the same decision, and the signer is the last leg
+    /// that decided (leg B in 2of2, leg A alone). The card it commits to is the one the settlement
+    /// statement later shows leg A read from the issuer.
+    pub fn card_authorization_statement(
+        &self,
+        r: &wire::CardStatementRequest,
+    ) -> Result<wire::StatementSigned, EngineError> {
+        use keelson_core::statement::{
+            CARD_AUTHORIZATION_CONTENT_TYPE, CardAuthorizationClaims, LegSignature, Mode,
+            card_authorization_claims_bytes, card_ref, protected_header, statement, to_be_signed,
+        };
+        within(&r.issuer, MAX_STRING, "issuer")?;
+        within(&r.card_token, MAX_STRING, "card_token")?;
+        let chain_id = r.chain_id.unwrap_or(self.config.chain_id);
+        let domain = keelson_core::domain(chain_id, self.config.verifying_contract)
+            .map_err(|_| bad("chain_id"))?;
+        let a = card_authorization_of(&r.authorization)?;
+        let digest: [u8; 32] = alloy_sol_types::SolStruct::eip712_signing_hash(&a, &domain).0;
+        let own = match (self.config.tee_kind, r.signatures.nitro) {
+            (TeeKind::Tdx, None) => r.signatures.tdx,
+            (TeeKind::Nitro, Some(n)) => n,
+            _ => return Err(bad("card.mode")),
+        };
+        if crate::recover_address(&digest, &own.0) != Some(self.signer.address()) {
+            return Err(bad("card.unknown"));
+        }
+        let tdx = crate::recover_address(&digest, &r.signatures.tdx.0).ok_or(bad("card.digest"))?;
+        let mut legs = vec![LegSignature {
+            kind: TeeKind::Tdx.into(),
+            signer: tdx.into_array(),
+            signature: r.signatures.tdx.0,
+            measurement: r.measurements.tdx.0,
+        }];
+        if let Some(n) = r.signatures.nitro {
+            legs.push(LegSignature {
+                kind: TeeKind::Nitro.into(),
+                signer: self.signer.address().into_array(),
+                signature: n.0,
+                measurement: r.measurements.nitro.ok_or(bad("measurements"))?.0,
+            });
+        }
+        let claims = CardAuthorizationClaims {
+            authorization: &a,
+            card_ref: card_ref(&r.ref_salt.0, &r.issuer, &r.card_token),
+            parent: r.parent.0,
+            chain_id,
+            verifying_contract: self.config.verifying_contract.into_array(),
+            mode: if legs.len() == 2 {
+                Mode::TwoOfTwo
+            } else {
+                Mode::Degraded
+            },
+            legs: &legs,
+        };
+        let payload = card_authorization_claims_bytes(&claims);
+        let alibi_id = Ulid::from_bytes(
+            a.requestId.0[16..]
+                .try_into()
+                .map_err(|_| bad("request_id"))?,
+        );
+        if a.requestId.0[..16].iter().any(|b| *b != 0) {
+            return Err(bad("request_id"));
+        }
+        let protected = protected_header(
+            self.signer.address().into_array(),
+            &alibi_id.to_string(),
+            a.issuedAt.to::<u64>(),
+            CARD_AUTHORIZATION_CONTENT_TYPE,
+        );
+        let sig = self
+            .signer
+            .sign_statement(&to_be_signed(&protected, &payload))
+            .map_err(EngineError::Signer)?;
+        Ok(wire::StatementSigned {
+            statement: Base64(statement(protected, payload, sig)),
+        })
+    }
+
     pub fn countersign_with(
         &self,
         r: &CountersignRequest,
@@ -1714,4 +1793,24 @@ fn random_salt() -> [u8; 16] {
     let mut salt = [0; 16];
     getrandom::fill(&mut salt).expect("the OS RNG is available");
     salt
+}
+
+fn card_authorization_of(
+    j: &wire::CardAuthorizationJson,
+) -> Result<CardAuthorization, EngineError> {
+    let n = |s: &str, what: &'static str| s.parse::<u64>().map_err(|_| bad(what));
+    Ok(CardAuthorization {
+        requestId: B256::new(j.request_id.0),
+        countersignDigest: B256::new(j.countersign_digest.0),
+        authorizationHash: B256::new(j.authorization_hash.0),
+        merchantHash: B256::new(j.merchant_hash.0),
+        mcc: u16::try_from(n(&j.mcc, "mcc")?).map_err(|_| bad("mcc"))?,
+        country: alloy_primitives::FixedBytes(j.country.0),
+        amount: n(&j.amount, "amount")?,
+        currency: u16::try_from(n(&j.currency, "currency")?).map_err(|_| bad("currency"))?,
+        decision: u8::try_from(n(&j.decision, "decision")?).map_err(|_| bad("decision"))?,
+        failedMask: u32::try_from(n(&j.failed_mask, "failed_mask")?)
+            .map_err(|_| bad("failed_mask"))?,
+        issuedAt: U40::from(n(&j.issued_at, "issued_at")?),
+    })
 }

@@ -409,3 +409,103 @@ fn a_removed_spend_record_spends_the_budget() {
     assert_eq!(out.countersign.decision, "2");
     assert_ne!(common::mask(&out) & BIT_BUDGET, 0);
 }
+
+mod statement {
+    use super::*;
+    use coset::{CoseSign1, TaggedCborSerializable};
+    use keelson_tee::TeeKind;
+    use keelson_tee::wire::{CardStatementRequest, Hex, LegMeasurements, LegSignatures};
+
+    fn ask(a: &CardAuthorized, nitro: Option<Hex<65>>) -> CardStatementRequest {
+        CardStatementRequest {
+            authorization: a.authorization.clone(),
+            signatures: LegSignatures {
+                tdx: a.signature,
+                nitro,
+            },
+            measurements: LegMeasurements {
+                tdx: Hex([0x11; 32]),
+                nitro: Some(Hex([0x22; 32])),
+            },
+            parent: Hex([0x44; 32]),
+            issuer: "lithic".into(),
+            card_token: "card_token_1".into(),
+            ref_salt: Hex([0x33; 32]),
+            chain_id: None,
+        }
+    }
+
+    fn kid(statement: &[u8]) -> Vec<u8> {
+        CoseSign1::from_tagged_slice(statement)
+            .unwrap()
+            .protected
+            .header
+            .key_id
+    }
+
+    #[test]
+    fn leg_a_signs_its_decision_as_a_statement() {
+        let f = allowed(to_card);
+        let ok = f
+            .engine
+            .authorize_card(
+                &request(&f, network("iauth_9", 9400, "5661", "US")),
+                at(NOW + 20),
+            )
+            .unwrap();
+        let s = f
+            .engine
+            .card_authorization_statement(&ask(&ok, None))
+            .unwrap();
+        assert_eq!(kid(&s.statement.0), ok.signer.to_vec());
+        let decline = f
+            .engine
+            .authorize_card(
+                &request(&f, network("iauth_10", 500, "5941", "US")),
+                at(NOW + 21),
+            )
+            .unwrap();
+        assert_eq!(decline.authorization.decision, "2");
+        assert!(
+            f.engine
+                .card_authorization_statement(&ask(&decline, None))
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn refuses_a_signature_this_leg_did_not_make() {
+        let f = allowed(to_card);
+        let mut ok = f
+            .engine
+            .authorize_card(
+                &request(&f, network("iauth_11", 9400, "5661", "US")),
+                at(NOW + 20),
+            )
+            .unwrap();
+        ok.signature.0[7] ^= 1;
+        let err = f
+            .engine
+            .card_authorization_statement(&ask(&ok, None))
+            .unwrap_err();
+        assert_eq!(err, EngineError::BadRequest("card.unknown"));
+    }
+
+    #[test]
+    fn leg_a_is_not_the_signer_of_a_two_leg_decision() {
+        let f = allowed(to_card);
+        let ok = f
+            .engine
+            .authorize_card(
+                &request(&f, network("iauth_12", 9400, "5661", "US")),
+                at(NOW + 20),
+            )
+            .unwrap();
+        let err = f
+            .engine
+            .card_authorization_statement(&ask(&ok, Some(ok.signature)))
+            .unwrap_err();
+        assert_eq!(err, EngineError::BadRequest("card.mode"));
+        let _ = TeeKind::Nitro;
+    }
+}

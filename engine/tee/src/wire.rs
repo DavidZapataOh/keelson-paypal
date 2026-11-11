@@ -617,3 +617,36 @@ pub struct CardAuthorized {
     pub signer: Address,
     pub tee: TeeKind,
 }
+
+/// Asks a leg to sign a card network authorization decision both legs already signed as its own
+/// SCITT statement, linked to the purchase leaf.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CardStatementRequest {
+    pub authorization: CardAuthorizationJson,
+    pub signatures: LegSignatures,
+    pub measurements: LegMeasurements,
+    /// The purchase leaf's RFC 6962 hash.
+    pub parent: Hex32,
+    pub issuer: String,
+    pub card_token: String,
+    pub ref_salt: Hex32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chain_id: Option<u64>,
+}
+
+/// Each leg's `r ‖ s ‖ v`; `nitro` is absent when only leg A decided.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LegSignatures {
+    pub tdx: Hex65,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nitro: Option<Hex65>,
+}
+
+/// A signed statement.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StatementSigned {
+    pub statement: Base64,
+}
