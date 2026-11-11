@@ -104,7 +104,7 @@ const route = createRoute({
   tags: ["purchases"],
   summary: "A purchase",
   description:
-    "The purchase's state: its log index, its coverage and its capture once each is recorded. Readable by the mandate's owner and by the client that asked for the countersign.",
+    "The purchase's state: its log index, its coverage and its capture once each is recorded. Readable by the mandate's owner and by the client that asked for the countersign; an app acting for a user, only for that user.",
   middleware: [requirePrincipal()],
   request: { params: z.object({ id: z.string().regex(/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/) }) },
   responses: {
@@ -311,12 +311,14 @@ export function registerPurchases(app: OpenAPIHono, deps: Pick<Deps, "db" | "dem
       .from(purchases)
       .innerJoin(mandates, eq(mandates.id, purchases.mandateId))
       .where(eq(purchases.id, c.req.valid("param").id));
+    // An app acting for a user reads only the purchases it asked for, for that user.
     const mine =
       row !== undefined &&
       principal !== undefined &&
       (principal.kind === "user"
         ? principal.subject === row.userId
-        : principal.subject === row.purchase.clientId);
+        : principal.subject === row.purchase.clientId &&
+          (principal.user === undefined || principal.user === row.userId));
     if (!row || !mine) return problem(c, 404, "not-found", "Not found");
     const p = row.purchase;
     const parts = await breakdowns(deps.db, [p.evidenceRoot]);

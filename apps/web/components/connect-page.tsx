@@ -274,8 +274,8 @@ function ConnectAgent() {
       </div>
       <h2 className="mt-8 font-semibold text-base">Then paste this into your agent</h2>
       <p className="mt-1 text-pretty text-muted-foreground text-sm leading-snug">
-        Signed in, your agent's app can read your purchases' Alibis. To buy, the agent also uses its
-        own Keelson client from its operator.
+        Signed in, your agent's app can ask you for a mandate and buy within the ones you approve
+        for it, nothing more. Every mandate waits for your passkey here.
       </p>
       <div className="mt-3">
         <CodeBlock text={CONNECT_PROMPT} label="Prompt for your agent" noun="prompt" />
