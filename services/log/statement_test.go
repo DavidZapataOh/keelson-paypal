@@ -297,3 +297,46 @@ func TestAdmitsOneBridgePerV1Leaf(t *testing.T) {
 		t.Fatalf("bridge: %d %v", status, res)
 	}
 }
+
+func TestProvesAnEarlierLeafAtTheLatestCheckpoint(t *testing.T) {
+	first, leaf, c := loadStatement(t, "allow-degraded")
+	l, key := receiptKeyed(t, first.Inputs.VerifyingContract)
+	activateLegs(t, l, first)
+	purchase(t, l.db, first.Inputs.AlibiID, ptr("degraded"))
+	if status, res := l.add(t, sandbox, testToken, leaf, c); status != http.StatusOK {
+		t.Fatalf("%d %v", status, res)
+	}
+	second, leaf2, c2 := loadStatement(t, "allow-2of2")
+	activateLegs(t, l, second)
+	purchase(t, l.db, second.Inputs.AlibiID, ptr("2of2"))
+	if status, res := l.add(t, sandbox, testToken, leaf2, c2); status != http.StatusOK {
+		t.Fatalf("%d %v", status, res)
+	}
+	req, _ := http.NewRequest(http.MethodGet, l.private.URL+"/"+sandbox+"/proof?index=0", nil)
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var out map[string]string
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil || res.StatusCode != http.StatusOK {
+		t.Fatalf("%d %v %v", res.StatusCode, out, err)
+	}
+	if !strings.HasPrefix(out["proof"], "c2sp.org/tlog-proof@v1\nindex 0\n") || out["receipt"] == "" {
+		t.Fatalf("proof %q receipt %q", out["proof"], out["receipt"])
+	}
+	_ = key
+	for _, q := range []string{"index=2", "index=x", ""} {
+		req, _ := http.NewRequest(http.MethodGet, l.private.URL+"/"+sandbox+"/proof?"+q, nil)
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != http.StatusBadRequest {
+			t.Errorf("%q: %d", q, res.StatusCode)
+		}
+	}
+}

@@ -1,7 +1,15 @@
 import { readFileSync } from "node:fs";
 import { type Keelson, quoteCart } from "@keelson/agent/checkout";
 import { type OperatorMandate, operatorMandates } from "@keelson/agent/keelson";
-import { ALIBI_MEDIA_TYPE, type AlibiBundle, decodeAlibi, verifyUrl } from "@keelson/alibi";
+import {
+  ALIBI_MEDIA_TYPE,
+  ALIBI_MEDIA_TYPE_V2,
+  type AlibiBundle,
+  type AlibiBundleV2,
+  decodeAny,
+  statementOf,
+  verifyUrl,
+} from "@keelson/alibi";
 import {
   type Cart,
   type CurrencyCode,
@@ -14,6 +22,7 @@ import {
 import { buildManifest, canonicalBytes, MEDIA_TYPES, type SealedItem } from "@keelson/evidence";
 import { closeMandate } from "@keelson/mandate";
 import { POLICY_SET_HASH, POLICY_SET_SRC } from "@keelson/policy";
+import { decodeSign1, protectedHeader, TST_CTT } from "@keelson/scitt";
 import {
   RESOURCE_MIME_TYPE,
   registerAppResource,
@@ -139,6 +148,10 @@ const AlibiCard = z.object({
   failure: z.object({ step: z.string(), reason: z.string() }).nullable(),
   verifyUrl: z.string().nullable(),
   issuedAt: z.string().nullable(),
+  /** `scitt`: an IETF SCITT transparent statement (RFC 9943); `v1`: Keelson's own envelope. */
+  envelope: z.enum(["scitt", "v1"]).nullable(),
+  /** Where the transparent statement is served, for a `scitt` Alibi. */
+  statementUrl: z.string().nullable(),
 });
 type AlibiCard = z.infer<typeof AlibiCard>;
 
@@ -273,9 +286,50 @@ function opensUrls(server: McpServer, ctx: ServerContext): boolean {
 }
 
 const LIABILITY = { green: "verified", amber: "attested" } as const;
+const API_ORIGIN = "https://api.keelson.finance";
+
+/** How an Alibi is enveloped: what the card says of its format, statement and issue time. */
+export interface Envelope {
+  envelope: "scitt" | "v1";
+  statementUrl: string | null;
+  issuedAt: string | null;
+  timestamps: number;
+}
+
+/**
+ * The envelope of an Alibi: a v2 Alibi is a SCITT transparent statement served at its `.cose`
+ * URL, issued at its CWT `iat`, with label 270's token counted among its timestamps.
+ *
+ * @internal
+ */
+export function envelopeOf(
+  alibi: AlibiBundle | AlibiBundleV2,
+  apiOrigin: string = API_ORIGIN,
+): Envelope {
+  if (alibi.type !== ALIBI_MEDIA_TYPE_V2) {
+    const v1 = alibi as AlibiBundle;
+    return {
+      envelope: "v1",
+      statementUrl: null,
+      issuedAt: (v1.leaf_view.issued_at as string | undefined) ?? null,
+      timestamps: v1.timestamps.length,
+    };
+  }
+  const v2 = alibi as AlibiBundleV2;
+  const sign1 = decodeSign1(statementOf(v2));
+  const iat = (protectedHeader(sign1).get(15) as Map<number, unknown>).get(6);
+  return {
+    envelope: "scitt",
+    statementUrl: `${apiOrigin}/v1/alibis/${v2.alibi_id}.cose`,
+    issuedAt:
+      iat === undefined ? null : new Date(Number(iat) * 1000).toISOString().replace(".000Z", "Z"),
+    timestamps: (v2.timestamps?.length ?? 0) + (sign1.unprotected.has(TST_CTT) ? 1 : 0),
+  };
+}
 
 /** The card of a purchase, with what its Alibi proves once Keelson issued it. */
-function cardOf(p: Purchase, alibi: AlibiBundle | null): AlibiCard {
+function cardOf(p: Purchase, alibi: AlibiBundle | AlibiBundleV2 | null): AlibiCard {
+  const env = alibi ? envelopeOf(alibi) : null;
   const context = (alibi?.eval.context ?? {}) as {
     merchant?: string;
     variants?: { sku: string; size?: string | null }[];
@@ -301,7 +355,7 @@ function cardOf(p: Purchase, alibi: AlibiBundle | null): AlibiCard {
       pass: f.pass,
     })),
     logIndex: p.logIndex ?? null,
-    timestamps: alibi?.timestamps.length ?? 0,
+    timestamps: env?.timestamps ?? 0,
     anchor: alibi?.anchor
       ? {
           chainId: alibi.anchor.chain_id,
@@ -312,7 +366,9 @@ function cardOf(p: Purchase, alibi: AlibiBundle | null): AlibiCard {
     capture: p.capture ? { id: p.capture.id, status: p.capture.status } : null,
     failure: p.failure ?? null,
     verifyUrl: alibi ? verifyUrl(alibi) : null,
-    issuedAt: (alibi?.leaf_view.issued_at as string | undefined) ?? null,
+    issuedAt: env?.issuedAt ?? null,
+    envelope: env?.envelope ?? null,
+    statementUrl: env?.statementUrl ?? null,
   };
 }
 
@@ -1246,13 +1302,13 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
 
   const readAlibi = async (
     id: string,
-  ): Promise<{ bytes: Uint8Array<ArrayBuffer>; bundle: AlibiBundle } | null> => {
+  ): Promise<{ bytes: Uint8Array<ArrayBuffer>; bundle: AlibiBundle | AlibiBundleV2 } | null> => {
     try {
       const res = await call(keelson, `/v1/alibis/${id}`, {
-        headers: { accept: ALIBI_MEDIA_TYPE },
+        headers: { accept: `${ALIBI_MEDIA_TYPE}, ${ALIBI_MEDIA_TYPE_V2}` },
       });
       const bytes = new Uint8Array(await res.arrayBuffer());
-      return { bytes, bundle: decodeAlibi(bytes) };
+      return { bytes, bundle: decodeAny(bytes) as AlibiBundle | AlibiBundleV2 };
     } catch (err) {
       if (err instanceof KeelsonError && err.status === 404) return null;
       throw err;
@@ -1309,7 +1365,10 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
       if (!alibi) throw new Error(`Purchase ${purchaseId} has no Alibi yet.`);
       const res = await call(keelson, "/v1/alibis/verify", {
         method: "POST",
-        headers: { "content-type": ALIBI_MEDIA_TYPE, "idempotency-key": crypto.randomUUID() },
+        headers: {
+          "content-type": alibi.bundle.type,
+          "idempotency-key": crypto.randomUUID(),
+        },
         body: alibi.bytes,
       });
       const report = (await res.json()) as {

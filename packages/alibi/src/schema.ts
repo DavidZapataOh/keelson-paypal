@@ -76,6 +76,8 @@ const mandateSection = z.strictObject({
   payload_sd: json,
   user_auth: json,
   issuer_jwk: json,
+  /** The salts of the payload's decoy digests (RFC 9901 section 4.2.5), when it carries any. */
+  decoy_salts: z.array(z.string()).optional(),
 });
 
 const manifestSection = z.strictObject({
@@ -195,6 +197,22 @@ const paypalSection = z
   })
   .optional();
 
+const conversionSection = z.strictObject({
+  v: z.literal("keelson.conversion/1"),
+  merchant: z.strictObject({ currency: z.string(), value: z.string() }),
+  buyer: z.strictObject({ currency: z.string(), value: z.string() }),
+  rate: z.string(),
+  reference: z.strictObject({
+    rate: z.string(),
+    provider: z.string(),
+    source: z.string(),
+    as_of: z.string(),
+  }),
+  spread_bps: z.int().nonnegative(),
+  max_spread_bps: z.int().nonnegative(),
+  locale: z.string(),
+});
+
 export const alibiSchema = z.strictObject({
   type: z.literal(ALIBI_MEDIA_TYPE),
   alibi_id: ulid,
@@ -258,23 +276,7 @@ export const alibiSchema = z.strictObject({
    * charged the buyer at its rate, and the reference rate the evidence binds, with the spread
    * between them. Reported by the agent from PayPal's checkout. Not signed.
    */
-  conversion: z
-    .strictObject({
-      v: z.literal("keelson.conversion/1"),
-      merchant: z.strictObject({ currency: z.string(), value: z.string() }),
-      buyer: z.strictObject({ currency: z.string(), value: z.string() }),
-      rate: z.string(),
-      reference: z.strictObject({
-        rate: z.string(),
-        provider: z.string(),
-        source: z.string(),
-        as_of: z.string(),
-      }),
-      spread_bps: z.int().nonnegative(),
-      max_spread_bps: z.int().nonnegative(),
-      locale: z.string(),
-    })
-    .optional(),
+  conversion: conversionSection.optional(),
   zk: zkSection,
   /** A card purchase: the single-use card, every card authorization and the settled capture. */
   card: cardSection,
@@ -344,6 +346,8 @@ export const alibiSchemaV2 = z.strictObject({
   statement: transparentStatement,
   /** c2sp.org/tlog-proof@v1 of the same leaf, its checkpoint carrying the witness cosignatures. */
   tlog_proof: z.string(),
+  /** A bridge statement's v1 leaf, standard base64: the leaf its claims name as their predecessor. */
+  predecessor: base64.optional(),
   anchor: anchor.optional(),
   policy: z.strictObject({ origin: z.string(), text: z.string() }),
   /** Further RFC 3161 tokens over the statement's signature, beyond the one in label 270. */
@@ -361,6 +365,8 @@ export const alibiSchemaV2 = z.strictObject({
   channel3_observation: json.optional(),
   web_fact: json.optional(),
   checkout: json.optional(),
+  fx_reference: json.optional(),
+  conversion: conversionSection.optional(),
   zk: zkSection,
   card: cardSectionV2,
   paypal: paypalSection,

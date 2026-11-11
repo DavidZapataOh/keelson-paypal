@@ -64,6 +64,7 @@ import { publishPurchase } from "../pipeline/events.ts";
 import { logStep } from "../pipeline/log-step.ts";
 import { principalKey } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
+import { currentStatusToken } from "../status-list.ts";
 import { stoppedSince } from "../stop.ts";
 import { LegError } from "../tee/client.ts";
 import { VERIFYING_CONTRACT } from "../tee/config.ts";
@@ -523,7 +524,9 @@ function outsideMandate(
   try {
     const grant =
       m.payloadSd && m.disclosures
-        ? grantOf(decodeMandate(m.payloadSd as Record<string, unknown>, m.disclosures))
+        ? grantOf(
+            decodeMandate(m.payloadSd as Record<string, unknown>, m.disclosures, m.decoySalts),
+          )
         : undefined;
     if (grant && grant.perPurchaseMinor < cap) cap = grant.perPurchaseMinor;
   } catch {
@@ -1370,8 +1373,13 @@ export function registerCountersign(
             ...(mandate.sealedSalt
               ? { sealed_salt: Buffer.from(mandate.sealedSalt).toString("base64") }
               : {}),
+            ...(mandate.decoySalts.length > 0 ? { decoy_salts: mandate.decoySalts } : {}),
+            ...(mandate.statusIdx !== null && tee
+              ? { status_list: await currentStatusToken({ db, log, tee }) }
+              : {}),
           },
           want,
+          await paypalRefSaltOf(db, purchaseId),
         );
         s.setAttribute("countersign.mode", out.mode);
         if (out.countersign.decision !== "1") s.updateName("purchase.DENIED");
@@ -1384,6 +1392,7 @@ export function registerCountersign(
         decision: Number(out.countersign.decision),
         failedFieldsMask: Number(out.countersign.failedFieldsMask),
         countersignMode: out.mode,
+        statement: out.statement ? Buffer.from(out.statement, "base64") : null,
         evalTrace: out.trace,
         engineInput: {
           cart: body.cart,
@@ -1476,4 +1485,15 @@ export function registerCountersign(
       throw err;
     }
   });
+}
+
+/** The salt of a PayPal purchase's payment reference; a card purchase commits through its card statements. */
+async function paypalRefSaltOf(db: Db, purchaseId: string): Promise<`0x${string}` | undefined> {
+  const [p] = await db
+    .select({ salt: purchases.paypalRefSalt, rail: purchases.rail })
+    .from(purchases)
+    .where(eq(purchases.id, purchaseId));
+  return p?.salt && p.rail === "paypal"
+    ? (`0x${Buffer.from(p.salt).toString("hex")}` as const)
+    : undefined;
 }

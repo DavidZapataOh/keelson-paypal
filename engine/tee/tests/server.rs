@@ -80,6 +80,29 @@ async fn health_is_open() {
         health["issuer"],
         json!({ "kty": "EC", "crv": "P-256", "x": issuer.x, "y": issuer.y })
     );
+    for (field, value) in [("statements", 1), ("decoys", 1), ("status_list", 1)] {
+        assert_eq!(health[field], value, "{field}");
+    }
+    assert_eq!(health["clock"], "unverified");
+}
+
+#[tokio::test]
+async fn health_says_the_tdx_clock_is_verified_with_secure_time() {
+    let hash = Sha256::digest(TOKEN).into();
+    let secure = router(Arc::new(
+        AppState::new(leg_a(), hash)
+            .with_clock(clock)
+            .with_secure_time(true),
+    ));
+    let (_, body) = send(
+        &secure,
+        Request::get("/v1/health").body(Body::empty()).unwrap(),
+    )
+    .await;
+    assert_eq!(
+        serde_json::from_slice::<Value>(&body).unwrap()["clock"],
+        "verified"
+    );
 }
 
 #[tokio::test]

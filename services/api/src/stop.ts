@@ -33,6 +33,7 @@ import { type Notifier, notify, stopAlert } from "./notify/notifier.ts";
 import type { PayPalDeps } from "./paypal.ts";
 import { principalChannel } from "./principal.ts";
 import { REVOCABLE, revokeMandate } from "./routes/revoke.ts";
+import type { TeeConfig } from "./tee/signers.ts";
 
 export interface StopDeps {
   db: Db;
@@ -41,6 +42,7 @@ export interface StopDeps {
   paypal?: PayPalDeps;
   tlog?: LogConfig;
   notifier?: Notifier;
+  tee?: TeeConfig;
 }
 
 type Money = { currency: string; minor: string }[];

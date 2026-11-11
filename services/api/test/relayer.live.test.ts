@@ -22,7 +22,6 @@ import {
   createPublicClient,
   type Hex,
   hexToBytes,
-  http,
   type PublicClient,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";

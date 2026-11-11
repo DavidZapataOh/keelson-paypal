@@ -70,6 +70,7 @@ export function openMandate(b: AlibiBundle): Promise<VerifiedOpenMandate> {
         maxSkewSec: 300,
         // A public Alibi withholds the user's login id and risk data; their digests stay signed.
         personalWithheld: true,
+        decoySalts: b.mandate.decoy_salts ?? [],
       });
     })();
     opened.set(b, open);

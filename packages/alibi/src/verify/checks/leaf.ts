@@ -13,15 +13,16 @@ const rfc3339 = (unix: string) =>
 
 /**
  * The leaf bytes are the log's prefix and the RFC 8785 form of `leaf_view`, and every value the
- * leaf states is the one the section carrying it holds.
+ * leaf states is the one the section carrying it holds. For a bridge, the leaf is its v1 leaf.
  */
 export const leaf: CheckDef = {
   id: "leaf.view",
   step: 0,
   reads: ["/leaf", "/leaf_view"],
   run(input, ctx) {
-    if (ctx.view) return { status: "absent", reads: [] };
-    const bytes = leafBytesOf(input);
+    // A v2 leaf is the statement, except that a bridge's preimages are its v1 leaf's.
+    if (ctx.view && !ctx.view.predecessor) return { status: "absent", reads: [] };
+    const bytes = ctx.view?.predecessor ?? leafBytesOf(input);
     const text = decoder.decode(bytes);
     expect(text.startsWith(LEAF_PREFIX), "the leaf does not start with the log's prefix", [
       "/leaf",

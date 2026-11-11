@@ -138,6 +138,7 @@ export async function proveAnonymousMandate(
     columns: {
       payloadSd: true,
       disclosures: true,
+      decoySalts: true,
       userAuth: true,
       commitment: true,
       mandateHash: true,
@@ -152,7 +153,7 @@ export async function proveAnonymousMandate(
   const started = performance.now();
   const users = await currentUserSet(db);
   const { inputs } = await c3Inputs({
-    mandate: decodeMandate(row.payloadSd, row.disclosures),
+    mandate: decodeMandate(row.payloadSd, row.disclosures, row.decoySalts),
     salt: Uint8Array.from(Buffer.from(salt.replace(/^0x/, ""), "hex")),
     payloadSd: row.payloadSd,
     assertion: row.userAuth as C3Assertion,

@@ -39,6 +39,7 @@ fn registers_the_demo_mandate() {
         expected_nonce: mid.into(),
         now: NOW,
         max_skew_sec: 60,
+        decoy_salts: vec![],
     };
     let l2 = verify_credential(&out.open_mandate, OPEN_MANDATE_TYP, &issuer, Some(&opts)).unwrap();
     assert_eq!(l2.claims["mid"], json!(mid));

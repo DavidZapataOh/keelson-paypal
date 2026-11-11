@@ -43,6 +43,9 @@ pub struct AppState {
     c1_queue: std::sync::OnceLock<std::sync::mpsc::SyncSender<String>>,
     token_hash: [u8; 32],
     clock: fn() -> OffsetDateTime,
+    /// The CVM booted with dstack's `secure_time`: its clock was set from NTS (RFC 8915) before
+    /// any key was released. The compose that sets it is part of the measurement.
+    secure_time: bool,
     #[cfg(feature = "tdx")]
     attestation: Option<std::sync::RwLock<Attested>>,
     #[cfg(feature = "tdx")]
@@ -74,6 +77,7 @@ impl AppState {
             c1_queue: std::sync::OnceLock::new(),
             token_hash,
             clock: OffsetDateTime::now_utc,
+            secure_time: false,
             #[cfg(feature = "tdx")]
             attestation: None,
             #[cfg(feature = "tdx")]
@@ -177,6 +181,12 @@ impl AppState {
         self.clock = clock;
         self
     }
+
+    /// Says the CVM booted with an authenticated clock (dstack `secure_time`).
+    pub fn with_secure_time(mut self, secure_time: bool) -> Self {
+        self.secure_time = secure_time;
+        self
+    }
 }
 
 /// The routes of one leg. `GET /v1/health` and `GET /v1/attestation` are open; every other route
@@ -196,6 +206,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/v1/card/settlement", post(card_settlement))
         .route("/v1/statements/bridge", post(bridge_statement))
         .route("/v1/exports/sign", post(sign_export))
+        .route("/v1/status/sign", post(sign_status))
         .route(
             "/v1/statements/card-authorization",
             post(card_authorization_statement),
@@ -283,6 +294,7 @@ impl From<EngineError> for Problem {
             }
             EngineError::Log(SignError::Records) => StatusCode::INTERNAL_SERVER_ERROR,
             EngineError::Log(SignError::NoFloor) => StatusCode::SERVICE_UNAVAILABLE,
+            EngineError::Status(_) => StatusCode::CONFLICT,
         };
         let latest = match &e {
             EngineError::Log(SignError::NotExtending { latest }) => *latest,
@@ -368,6 +380,13 @@ struct Health {
     tee: TeeKind,
     /// 1: countersigns answer with the purchase's SCITT statement when asked.
     statements: u8,
+    /// `1`: mandates may carry decoy digests, resolved by the salts a request presents.
+    decoys: u8,
+    /// `1`: a mandate with a status list entry is checked against the list on every countersign.
+    status_list: u8,
+    /// On the TDX leg: `verified` when its clock was set from authenticated time at boot.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    clock: Option<&'static str>,
     signer: Address,
     boot_epoch: u64,
     oci_digest: String,
@@ -407,6 +426,13 @@ async fn health(State(state): State<Arc<AppState>>) -> Json<Health> {
     Json(Health {
         tee: engine.config().tee_kind,
         statements: 1,
+        decoys: 1,
+        status_list: 1,
+        clock: (engine.config().tee_kind == TeeKind::Tdx).then_some(if state.secure_time {
+            "verified"
+        } else {
+            "unverified"
+        }),
         signer: engine.signer(),
         boot_epoch: engine.boot_epoch(),
         oci_digest: engine.config().oci_digest.clone(),
@@ -653,6 +679,15 @@ async fn sign_export(
 ) -> Result<Json<crate::wire::ExportSigned>, Problem> {
     let request: crate::wire::ExportRequest = parse(body)?;
     blocking(move || state.engine.sign_export(&request)).await
+}
+
+async fn sign_status(
+    State(state): State<Arc<AppState>>,
+    body: Result<Bytes, BytesRejection>,
+) -> Result<Json<crate::wire::StatusSigned>, Problem> {
+    let request: crate::wire::StatusSignRequest = parse(body)?;
+    let now = (state.clock)();
+    blocking(move || state.engine.sign_status(&request, now)).await
 }
 
 async fn bridge_statement(

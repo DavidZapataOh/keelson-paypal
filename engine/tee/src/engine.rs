@@ -14,7 +14,7 @@ use keelson_core::{AcirField, currency_numeric};
 use keelson_mandate::{
     ClosedMandateVerifyOptions, EMBED_ORIGIN, Expected, Fr, Jwk, OpenMandateParams,
     OpenMandateVerifyOptions, PasskeyCredential, RP_ID, USER_CREDENTIAL_TYP, UserAuth,
-    UserCredentialParams, WebAuthnError, decode_mandate, h_sd, issue_open_mandate,
+    UserCredentialParams, WebAuthnError, decode_mandate_with_decoys, h_sd, issue_open_mandate,
     issue_user_credential, mandate_challenge, mandate_commitment, mandate_opening, merchant_leaf,
     merchant_membership, spc_details, verify_assertion, verify_closed_mandate, verify_credential,
 };
@@ -68,6 +68,8 @@ const MAX_SUB: usize = 128;
 const MAX_STRING: usize = 256;
 /// Longest credential or presentation, in bytes.
 const MAX_TOKEN: usize = 128 * 1024;
+/// Longest status list token a countersign may carry, in bytes.
+const MAX_STATUS_TOKEN: usize = 16 * 1024;
 /// Longest serialized `payload_sd`, in bytes.
 const MAX_PAYLOAD: usize = 128 * 1024;
 /// Most disclosures a mandate comes with.
@@ -152,6 +154,8 @@ pub enum EngineError {
     Checkpoint(CheckpointError),
     /// The log checkpoint was not signed.
     Log(SignError),
+    /// The status list refused: `status_not_extending`, `status_stale` or `mandate_revoked`.
+    Status(&'static str),
 }
 
 impl EngineError {
@@ -173,6 +177,7 @@ impl EngineError {
             Self::Signer(_) => "signer".into(),
             Self::Checkpoint(e) => e.code().into(),
             Self::Log(e) => e.code().into(),
+            Self::Status(code) => (*code).into(),
         }
     }
 }
@@ -217,6 +222,8 @@ pub struct Engine {
     /// The Alibi origins' log keys leg A holds, `(origin, Ed25519 key)`: leg A's own, or on leg B
     /// the ones its boot message carried with a KMS chain that verified.
     tee_log_keys: Vec<(&'static str, [u8; 32])>,
+    /// The record the latest signed status list was found at, where the next search starts.
+    status_at: Mutex<usize>,
 }
 
 /// What leg A needs to prove C1 for an ALLOW it already answered.
@@ -263,6 +270,8 @@ struct Authenticated {
     mandate_hash: [u8; 32],
     commitment: [u8; 32],
     user_key: Jwk,
+    /// The open mandate's entry in the status list.
+    status: Option<keelson_mandate::StatusRef>,
 }
 
 impl Engine {
@@ -302,6 +311,7 @@ impl Engine {
             c1: C1Proofs::default(),
             log: None,
             tee_log_keys: Vec::new(),
+            status_at: Mutex::new(0),
         }
     }
 
@@ -439,7 +449,8 @@ impl Engine {
     ) -> Result<MandateIssued, EngineError> {
         let root = self.root.as_ref().ok_or(EngineError::NoRoot)?;
         check_register(r)?;
-        let m = decode_mandate(&r.payload_sd, &r.disclosures).map_err(|_| bad("mandate"))?;
+        let m = decode_mandate_with_decoys(&r.payload_sd, &r.disclosures, &r.decoy_salts)
+            .map_err(|_| bad("mandate"))?;
         if m["user"]["sub"] != r.sub.as_str() {
             return Err(bad("sub"));
         }
@@ -511,6 +522,10 @@ impl Engine {
                 },
                 aud: OPEN_MANDATE_AUD.into(),
                 nonce: m["mid"].as_str().unwrap_or_default().into(),
+                status: r.status_idx.map(|idx| keelson_mandate::StatusRef {
+                    idx,
+                    uri: keelson_mandate::STATUS_URI.into(),
+                }),
             },
             &holder,
             &mut random_salt,
@@ -708,7 +723,8 @@ impl Engine {
         if !self.signer.signed(&digest, &r.signature.0) {
             return Err(bad("signature"));
         }
-        let m = decode_mandate(&r.payload_sd, &r.disclosures).map_err(|_| bad("mandate"))?;
+        let m = decode_mandate_with_decoys(&r.payload_sd, &r.disclosures, &r.decoy_salts)
+            .map_err(|_| bad("mandate"))?;
         let cm = commitment(&m).ok_or(bad("mandate"))?;
         let h = h_sd(&r.payload_sd).map_err(|_| bad("mandate"))?;
         let mandate_hash = mandate_challenge(&h, &Fr::from_be_bytes_reduce(&cm));
@@ -1252,6 +1268,94 @@ impl Engine {
         })
     }
 
+    /// Signs the status list token over `r.lst` with the credential issuer key, on leg A only,
+    /// and only when the list keeps every bit the last one it signed for `r.uri` sets. The token
+    /// is recorded as the current one a countersign must present.
+    pub fn sign_status(
+        &self,
+        r: &wire::StatusSignRequest,
+        now: OffsetDateTime,
+    ) -> Result<wire::StatusSigned, EngineError> {
+        use crate::status::{DurableStatus, decode_list, extends, sign_token};
+        let root = self.root.as_ref().ok_or(EngineError::NoRoot)?;
+        let users = self.users.as_ref().ok_or(EngineError::NotReady)?;
+        let issuer = self.issuer.as_ref().ok_or(EngineError::NoRoot)?;
+        if r.uri != keelson_mandate::STATUS_URI {
+            return Err(bad("status.uri"));
+        }
+        let bits = decode_list(&r.lst).ok_or(bad("status.lst"))?;
+        let records = DurableStatus {
+            root,
+            users: users.as_ref(),
+        };
+        let mut at = self
+            .status_at
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let latest = records.latest(&r.uri, *at);
+        if latest.as_ref().is_some_and(|l| !extends(&l.bits, &bits)) {
+            return Err(EngineError::Status("status_not_extending"));
+        }
+        let n = latest.as_ref().map_or(0, |l| l.n + 1);
+        let kid = URL_SAFE_NO_PAD.encode(issuer.thumbprint());
+        let token = sign_token(
+            &root.issuer_key(),
+            &kid,
+            &r.uri,
+            &r.lst,
+            now.unix_timestamp(),
+        );
+        if !records.append(&r.uri, n, &token, &bits) {
+            return Err(EngineError::Busy);
+        }
+        *at = n;
+        Ok(wire::StatusSigned { token })
+    }
+
+    /// Requires a fresh status list token, signed by the issuer, in which the mandate's bit is
+    /// clear; leg A also requires it to be the last token it signed for the list.
+    fn check_status(
+        &self,
+        status: &keelson_mandate::StatusRef,
+        token: Option<&str>,
+        now: i64,
+    ) -> Result<(), EngineError> {
+        use crate::status::{DurableStatus, StatusError, check_token, token_digest};
+        let token = token.ok_or(bad("status_list"))?;
+        if token.len() > MAX_STATUS_TOKEN {
+            return Err(EngineError::TooLarge("status_list"));
+        }
+        let issuer = self
+            .issuer
+            .as_ref()
+            .ok_or(EngineError::NoRoot)?
+            .verifying_key()
+            .map_err(|_| EngineError::NoRoot)?;
+        match check_token(token, &issuer, status, now) {
+            Err(StatusError::Revoked) => return Err(EngineError::Status("mandate_revoked")),
+            Err(StatusError::Invalid) => return Err(bad("status_list")),
+            Ok(()) => {}
+        }
+        if let (Some(root), Some(users)) = (&self.root, &self.users) {
+            let records = DurableStatus {
+                root,
+                users: users.as_ref(),
+            };
+            let mut at = self
+                .status_at
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let latest = records
+                .latest(&status.uri, *at)
+                .ok_or(EngineError::Status("status_stale"))?;
+            *at = latest.n;
+            if latest.token != token_digest(token) {
+                return Err(EngineError::Status("status_stale"));
+            }
+        }
+        Ok(())
+    }
+
     /// Signs a standard export with leg A's credential-issuer key (compact ES256 JWS), only when
     /// the statement it carries was logged under this leg's own receipt key, its signatures hold,
     /// `keelson.facts` is the statement's, and its profile's bound pointers hold their facts.
@@ -1378,6 +1482,9 @@ impl Engine {
         }
         let cart_hash = cart_hash(&r.cart).map_err(|_| bad("cart"))?;
         let a = self.authenticate(r, now_s, &cart_hash)?;
+        if let Some(status) = &a.status {
+            self.check_status(status, r.status_list.as_deref(), now_s)?;
+        }
         // Bind the request id to its whole input before anything is evaluated or reserved.
         // The record holds the reservation and expires with the countersign; dropping the claim
         // without an answer removes both.
@@ -1775,6 +1882,7 @@ impl Engine {
                 expected_nonce: nonce.clone(),
                 now: now_s,
                 max_skew_sec: MAX_SKEW_SEC,
+                decoy_salts: r.decoy_salts.clone(),
             },
             request_id: r.request_id.to_string(),
             cart_hash: sha256_tag(cart_hash),
@@ -1787,6 +1895,7 @@ impl Engine {
                 _ => auth("open_mandate"),
             })?;
         let open = closed.open;
+        let status = open.status.clone();
         let mut claims = open.claims;
         if claims.get("mid").and_then(Value::as_str) != Some(nonce.as_str()) {
             return Err(auth("open_nonce"));
@@ -1821,6 +1930,7 @@ impl Engine {
             mandate_hash,
             commitment,
             user_key,
+            status,
         })
     }
 

@@ -13,7 +13,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { purchases } from "./purchases.ts";
-import { createdAt, updatedAt } from "./types.ts";
+import { bytea, createdAt, updatedAt } from "./types.ts";
 
 /** One leg's signed `CardAuthorization`, as the leg returned it. */
 export interface StoredCardVerdict {
@@ -88,6 +88,9 @@ export const cardAuthorizations = pgTable(
     reason: text(),
     tdx: jsonb().$type<StoredCardVerdict>(),
     nitro: jsonb().$type<StoredCardVerdict>(),
+    /** The decision's SCITT statement, signed by the last leg that decided, and its log receipt. */
+    statement: bytea(),
+    receipt: bytea(),
     /** From the issuer's request reaching the API to the answer leaving it. */
     latencyMs: integer().notNull(),
     createdAt: createdAt(),
@@ -102,6 +105,28 @@ export const cardAuthorizations = pgTable(
     // A single-use card approves one authorization.
     uniqueIndex("card_authorizations_one_approved_idx").on(t.purchaseId).where(sql`${t.approved}`),
   ],
+);
+
+/**
+ * A card settlement both legs signed from the issuer's own answer, logged as its own statement:
+ * the amount the hold is collected for.
+ */
+export const cardSettlements = pgTable(
+  "card_settlements",
+  {
+    purchaseId: char({ length: 26 })
+      .notNull()
+      .references(() => purchases.id),
+    transactionToken: text().notNull(),
+    /** The issuer's transaction and card, exactly as leg A read them. */
+    transaction: bytea().notNull(),
+    card: bytea().notNull(),
+    settledMinor: bigint({ mode: "bigint" }).notNull(),
+    statement: bytea().notNull(),
+    receipt: bytea(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("card_settlements_transaction_idx").on(t.purchaseId, t.transactionToken)],
 );
 
 /**

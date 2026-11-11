@@ -1,7 +1,7 @@
 import { LEAF_PREFIX, receiptKeyMap } from "@keelson/log";
 import { type EarStatus, earClaims } from "@keelson/scitt";
 import { fromBase64 } from "../b64.ts";
-import type { AlibiBundle, AlibiReceipt, AnyAlibi } from "../schema.ts";
+import type { AlibiBundle, AlibiBundleV2, AlibiReceipt, AnyAlibi } from "../schema.ts";
 import { type Context, runCheck } from "./check.ts";
 import { anchor } from "./checks/anchor.ts";
 import { nitro, tdx } from "./checks/attestation.ts";
@@ -102,20 +102,27 @@ const CHECKS = [
 ];
 
 /** The one chain read of a verification, started before any offline check runs. */
-function chainRead(input: AlibiBundle | AlibiReceipt, opts: VerifyOptions) {
+function chainRead(
+  input: AlibiBundle | AlibiReceipt,
+  opts: VerifyOptions,
+  view: StatementView | null,
+) {
   if (!opts.chain) return null;
   const { chain } = opts;
+  const bridgeSigner = view?.parsed?.kind === "bridge" ? view.parsed.signer : undefined;
   const read = (async () => {
     const chainId = chainIdOf(input);
     if (chainId === undefined) throw new Error("the Alibi names no chain");
-    return chain.read(chainId, queryOf(input, chainId));
+    return chain.read(chainId, queryOf(input, chainId, bridgeSigner));
   })();
   read.catch(() => {});
   return read;
 }
 
 function modeOf(input: AlibiBundle | AlibiReceipt, view: StatementView | null): Report["mode"] {
-  if (view?.parsed?.kind === "purchase") return view.parsed.claims.mode;
+  if (view?.parsed?.kind === "purchase" || view?.parsed?.kind === "bridge") {
+    return view.parsed.claims.mode;
+  }
   if (isBundle(input)) return input.tee.mode;
   try {
     const text = new TextDecoder().decode(fromBase64(input.leaf));
@@ -149,6 +156,17 @@ function prepare(input: AnyAlibi): {
 }
 
 /**
+ * An Alibi in the v1 shape: a v2 bundle's countersign, legs and attestations read from its
+ * statement and evidence collection, its leaf the registered statement. For reading its facts;
+ * never encoded or verified as a v1 Alibi.
+ */
+export function v1Shape(input: AlibiBundle | AlibiBundleV2): AlibiBundle;
+export function v1Shape(input: AnyAlibi): AlibiBundle | AlibiReceipt;
+export function v1Shape(input: AnyAlibi): AlibiBundle | AlibiReceipt {
+  return prepare(input).legacy;
+}
+
+/**
  * Verifies an Alibi bundle, or the public receipt of one, of either version, against the pinned
  * trust roots and, when `opts.chain` is given, one read of the chain. Each check reports on its
  * own; for a receipt the checks that need a section it does not carry are `undisclosed`.
@@ -159,7 +177,7 @@ export async function verifyAlibi(input: AnyAlibi, opts: VerifyOptions = {}): Pr
   const ctx: Context = {
     now: opts.now ?? new Date(),
     expect: opts.expect,
-    chain: chainRead(legacy, opts),
+    chain: chainRead(legacy, opts, view),
     view,
     receiptKeys: opts.receiptKeys ?? receiptKeyMap(),
   };

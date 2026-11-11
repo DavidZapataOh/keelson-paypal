@@ -39,9 +39,10 @@ export async function prepareSigning(
   salt: Uint8Array,
   evidence: Omit<Evidence, "ambiguous">,
   ambiguous: readonly FieldId[],
+  opts: { decoys?: boolean } = {},
 ): Promise<Signing> {
   const card = await import("./card.ts");
-  return card.prepareSigning(m, salt, evidence, ambiguous);
+  return card.prepareSigning(m, salt, evidence, ambiguous, opts);
 }
 
 /** The WebAuthn assertion fields the server verifies, base64url-encoded as in `AuthenticationResponseJSON`. */

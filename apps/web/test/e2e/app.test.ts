@@ -9,6 +9,8 @@ import { buildSdPayload, parseMandate, renderCard } from "@keelson/mandate";
 import { type Browser, type BrowserContext, chromium, devices, type Page } from "playwright";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { parse } from "yaml";
+import { statementOf } from "../../../../packages/alibi/src/codec.ts";
+import { v2Bundle } from "../../../../packages/alibi/test/v2.ts";
 import { CSP } from "../../csp";
 
 // Serves the static export, which turbo builds before the tests, as the static site does.
@@ -209,6 +211,13 @@ async function signedIn(
         ? SESSION()
         : await answer(url.pathname, req.postData());
     if (value === undefined) return route.abort("connectionrefused");
+    if (value instanceof Uint8Array) {
+      return route.fulfill({
+        headers,
+        contentType: "application/scitt-statement+cose",
+        body: Buffer.from(value),
+      });
+    }
     return route.fulfill({ headers, contentType: "application/json", body: JSON.stringify(value) });
   });
   const page = await context.newPage();
@@ -419,6 +428,26 @@ describe("signing and going live", () => {
         .getByRole("button", { name: "Running shoes, size 10" })
         .getAttribute("aria-pressed"),
     ).toBe("true");
+    await context.close();
+  });
+
+  test("a revoked mandate says it is listed publicly, with its status list entry", async () => {
+    const id = "01M7MANDATE000000000000009";
+    const status = { uri: "https://api.keelson.finance/status/v1/mandates/2026-1", idx: 4242 };
+    let revoked = false;
+    const { context, page } = await signedIn("desktop", `/mandate/?id=${id}`, async (path) =>
+      path === `/v1/mandates/${id}`
+        ? { ...(await viewIn(id, revoked ? "REVOKED" : "ACTIVE")), status: { ...status, revoked } }
+        : undefined,
+    );
+    await page.getByText("Active", { exact: true }).waitFor();
+    revoked = true;
+    await page.reload();
+    await page.getByText("Revoked · listed publicly").waitFor();
+    const entry = page.getByRole("link", { name: "status list entry 4242" });
+    expect(await entry.getAttribute("href")).toBe(status.uri);
+    const { violations } = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+    expect(violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
     await context.close();
   });
 
@@ -671,6 +700,7 @@ describe("receipts and disputes", () => {
       `/purchase/?mandate=${id}&id=01M7PURCHASE00000000000010`,
       (path) => {
         if (path === `/v1/mandates/${id}`) return viewIn(id, "ACTIVE", [paid()]);
+        if (path === "/v1/alibis/01M7PURCHASE00000000000010.cose") return statementOf(v2Bundle());
         if (path === "/v1/purchases/01M7PURCHASE00000000000010/chargeback") {
           filed = true;
           return filedBack;
@@ -681,11 +711,60 @@ describe("receipts and disputes", () => {
     await page.getByRole("button", { name: /Not what you asked for/ }).click();
     await page.getByRole("heading", { name: "Charge it back" }).waitFor();
     expect(await page.getByText("Visa 10.4 · Mastercard 4837").count()).toBe(1);
+    expect(
+      await page
+        .getByRole("dialog")
+        .getByText("01M7PURCHASE00000000000010.cose, inside the PDF")
+        .count(),
+    ).toBe(1);
     await page.getByRole("button", { name: "File the chargeback" }).click();
     const list = page.getByRole("list", { name: "Chargebacks" });
     await list.waitFor();
     expect(await list.getByText(/Alibi attached as evidence/).count()).toBe(1);
     expect(await list.getByText(/bond can still pay at most \$0\.00/).count()).toBe(1);
+    await context.close();
+  });
+
+  test("a SCITT Alibi shows its statement, where the log holds it, and downloads it", async () => {
+    const cose = statementOf(v2Bundle());
+    const { context, page } = await signedIn(
+      "desktop",
+      `/purchase/?mandate=${id}&id=${bought.id}`,
+      (path) =>
+        path === `/v1/mandates/${id}`
+          ? viewIn(id, "ACTIVE", [bought])
+          : path === `/v1/alibis/${bought.id}.cose`
+            ? cose
+            : undefined,
+    );
+    const panel = page.locator("[data-standards]");
+    await panel.waitFor();
+    expect(await panel.getByText("IETF SCITT transparent statement").count()).toBe(1);
+    expect(await panel.getByText("Entry 1 of 4").count()).toBe(1);
+    const [file] = await Promise.all([
+      page.waitForEvent("download"),
+      panel.getByRole("button", { name: "Download statement (.cose)" }).click(),
+    ]);
+    expect(file.suggestedFilename()).toBe(`${bought.id}.cose`);
+    expect(new Uint8Array(await readFile((await file.path()) as string))).toEqual(cose);
+    expect(await panel.getByRole("link", { name: "Verify anywhere" }).getAttribute("href")).toMatch(
+      new RegExp(
+        `^https://verify\\.keelson\\.finance/a/${bought.id}#[A-Za-z0-9_-]{43}\\.0\\.421614$`,
+      ),
+    );
+    const { violations } = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+    expect(violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
+    await context.close();
+  });
+
+  test("a v1 Alibi shows no SCITT panel", async () => {
+    const { context, page } = await signedIn(
+      "desktop",
+      `/purchase/?mandate=${id}&id=${bought.id}`,
+      (path) => (path === `/v1/mandates/${id}` ? viewIn(id, "ACTIVE", [bought]) : undefined),
+    );
+    await page.getByRole("link", { name: "Verify in your browser" }).waitFor();
+    expect(await page.locator("[data-standards]").count()).toBe(0);
     await context.close();
   });
 
@@ -1114,8 +1193,10 @@ test("a blocked cart shows, field by field, what the mandate allowed against the
   await page.getByText("blocked the cart before payment").waitFor();
   const lines = page.locator('[data-slot="block-diff"]');
   expect(await lines.count()).toBe(2);
-  expect(await lines.nth(0).innerText()).toMatch(/Mandate \$100\.00[\s\S]*Cart \$340\.00/);
-  expect(await lines.nth(1).innerText()).toMatch(/Mandate Running shoes[\s\S]*Cart Trail sandals/);
+  expect(await lines.nth(0).textContent()).toMatch(/Mandate \$100\.00[\s\S]*Cart \$340\.00/);
+  expect(await lines.nth(1).textContent()).toMatch(
+    /Mandate Running shoes[\s\S]*Cart Trail sandals/,
+  );
   await context.close();
 });
 

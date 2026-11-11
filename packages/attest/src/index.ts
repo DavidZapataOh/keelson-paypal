@@ -3,6 +3,7 @@ export { type AttestCode, AttestError } from "./errors.ts";
 export { type DstackEvent, replayRtmr3 } from "./eventlog.ts";
 export { nitroMeasurement, tdxMeasurement } from "./measurement.ts";
 export { isDebugMode, type NitroPcrs, type NitroResult, verifyNitro } from "./nitro.ts";
+export { appraiseTd, deviceIdOf, TDX_DEVICES, TDX_POLICY } from "./policy.ts";
 export {
   type AttestedBinding,
   type AttestedBlock,

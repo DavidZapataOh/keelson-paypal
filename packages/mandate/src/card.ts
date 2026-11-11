@@ -168,8 +168,13 @@ function values(m: Mandate): Partial<Record<FieldId, string[]>> {
  * Renders the card the user signs. It is built only from the payload and its disclosures, which must
  * resolve every digest, so what the card shows is what the signed hash commits to.
  */
-export function renderCard(payloadSd: object, disclosures: string[], evidence: Evidence): Card {
-  const m = decodeMandate(payloadSd, disclosures);
+export function renderCard(
+  payloadSd: object,
+  disclosures: string[],
+  evidence: Evidence,
+  decoySalts: readonly string[] = [],
+): Card {
+  const m = decodeMandate(payloadSd, disclosures, decoySalts);
   const colors = fieldColors(m, evidence);
   const shown = values(m);
   const rows: CardRow[] = [];
@@ -201,6 +206,8 @@ export interface Signing {
   salt: string;
   /** The passkey challenge `M`. */
   challenge: Uint8Array;
+  /** The salts of the payload's decoy digests: the `decoy_salts` of `POST /v1/mandates`. */
+  decoySalts: string[];
   card: Card;
   spc: SpcDetails;
 }
@@ -212,19 +219,23 @@ export interface Signing {
  *
  * `ambiguous` lists the fields the compiler could not settle, as `POST /v1/mandates/compile`
  * returns them; the card shows them gray, answered by the user. Pass `[]` only for a mandate the
- * user wrote field by field.
+ * user wrote field by field. With `decoys`, the payload is padded with decoy digests (RFC 9901
+ * section 4.2.5), which only the returned `decoySalts` resolve.
  */
 export async function prepareSigning(
   m: Mandate,
   salt: Uint8Array,
   evidence: Omit<Evidence, "ambiguous">,
   ambiguous: readonly FieldId[],
+  opts: { decoys?: boolean } = {},
 ): Promise<Signing> {
   const cm = await mandateCommitment(m, salt);
   const commitment = `0x${cm.toString(16).padStart(64, "0")}`;
   const bound: Mandate = { ...m, zk: { commitment } };
-  const { payloadSd, disclosures } = await buildSdPayload(bound, () =>
-    crypto.getRandomValues(new Uint8Array(16)),
+  const { payloadSd, disclosures, decoySalts } = await buildSdPayload(
+    bound,
+    () => crypto.getRandomValues(new Uint8Array(16)),
+    opts,
   );
   const h = hashSd(payloadSd);
   return {
@@ -235,7 +246,13 @@ export async function prepareSigning(
     commitment,
     salt: `0x${Array.from(salt, (b) => b.toString(16).padStart(2, "0")).join("")}`,
     challenge: mandateChallenge(h, cm),
-    card: renderCard(payloadSd, disclosures, { ...evidence, ambiguous: new Set(ambiguous) }),
+    decoySalts,
+    card: renderCard(
+      payloadSd,
+      disclosures,
+      { ...evidence, ambiguous: new Set(ambiguous) },
+      decoySalts,
+    ),
     spc: spcDetails(bound),
   };
 }

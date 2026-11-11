@@ -25,6 +25,7 @@ import {
   mandateChallenge,
   RP_ID,
   renderCard,
+  STATUS_URI,
   spcDetails,
 } from "@keelson/mandate";
 import type { SignedChallenge } from "@keelson/mandate/browser";
@@ -49,7 +50,9 @@ import { requireSession } from "../middleware/auth.ts";
 import { cardViewOf, purchaseView } from "../pipeline/drive.ts";
 import { type Principal, principalChannel } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
+import { drawStatusIdx } from "../status-list.ts";
 import { LegError, type MandateIssued } from "../tee/client.ts";
+import { bothLegs } from "../tee/coordinator.ts";
 import { unboundPolicy } from "../tee/engine-source.ts";
 import { PurchaseProgress } from "./purchases.ts";
 import { REVOCABLE, revokeMandate } from "./revoke.ts";
@@ -78,6 +81,14 @@ export const CreateMandate = z
     disclosures: z.array(z.string()).max(1024).openapi({
       description: "Every disclosure of the payload; each digest must resolve.",
     }),
+    decoySalts: z
+      .array(z.string().regex(/^[A-Za-z0-9_-]{22}$/))
+      .max(512)
+      .optional()
+      .openapi({
+        description:
+          "The salts of the payload's decoy digests (RFC 9901 section 4.2.5); every other digest resolves to a disclosure. Accepted once both TEEs resolve decoys.",
+      }),
     commitment: Hex32.openapi({ description: "`C_m`; must equal the payload's `zk.commitment`." }),
     salt: z
       .string()
@@ -227,6 +238,19 @@ const MandateView = z
       description:
         "Purchase holds of a several-store mandate still waiting for the buyer's PayPal approval, oldest first. Later changes arrive as `mandate.purchase_hold` events.",
     }),
+    status: z
+      .union([
+        z.object({
+          uri: z.string(),
+          idx: z.int(),
+          revoked: z.boolean(),
+        }),
+        z.null(),
+      ])
+      .openapi({
+        description:
+          "The mandate's entry in the public status list (draft-ietf-oauth-status-list-21): `revoked` once its revocation is requested, which the list carries from its next signing.",
+      }),
   })
   .openapi("Mandate");
 
@@ -396,7 +420,7 @@ export async function storeMandate(
 
   let m: Mandate;
   try {
-    m = decodeMandate(body.payloadSd, body.disclosures);
+    m = decodeMandate(body.payloadSd, body.disclosures, body.decoySalts);
   } catch (err) {
     return invalid(err instanceof Error ? err.message : "The mandate does not decode.");
   }
@@ -595,13 +619,29 @@ export async function storeMandate(
   }
 
   let issued: MandateIssued | undefined;
+  const decoySalts = body.decoySalts ?? [];
+  let statusIdx: number | null = null;
   if (deps.tee) {
     if (!body.salt) return invalid("salt is required");
+    const legs = await bothLegs({ tee: deps.tee });
+    // A mandate gets its status list entry once both legs check the list.
+    if (legs.status_list) statusIdx = await drawStatusIdx(deps.db);
+    if (decoySalts.length > 0 && !legs.decoys) {
+      return problem(
+        c,
+        409,
+        "decoys-unsupported",
+        "Decoys not supported yet",
+        "The TEEs do not resolve decoy digests yet: sign the mandate without them.",
+      );
+    }
     try {
       issued = await deps.tee.client.a.registerMandate({
         sub: userId,
         payload_sd: body.payloadSd,
         disclosures: body.disclosures,
+        ...(decoySalts.length > 0 ? { decoy_salts: decoySalts } : {}),
+        ...(statusIdx === null ? {} : { status_idx: statusIdx }),
         assertion: {
           authenticatorData: assertion.authenticatorData,
           clientDataJSON: assertion.clientDataJSON,
@@ -658,6 +698,8 @@ export async function storeMandate(
         commitment: Buffer.from(fromHex(body.commitment)),
         payloadSd: body.payloadSd,
         disclosures: body.disclosures,
+        decoySalts,
+        statusIdx,
         userAuth: assertion,
         credentialId: key.credentialID,
         ...(issued
@@ -852,7 +894,7 @@ export function registerMandates(app: OpenAPIHono, deps: MandateDeps): void {
     c.header("Cache-Control", "no-store");
     const card =
       row.payloadSd && row.disclosures
-        ? renderCard(row.payloadSd as object, row.disclosures, NO_EVIDENCE)
+        ? renderCard(row.payloadSd as object, row.disclosures, NO_EVIDENCE, row.decoySalts)
         : null;
     const cards = new Map(
       await Promise.all(
@@ -885,6 +927,10 @@ export function registerMandates(app: OpenAPIHono, deps: MandateDeps): void {
           };
         }),
         pendingHolds: waiting.map((h) => ({ ...h, amountMinor: h.amountMinor.toString() })),
+        status:
+          row.statusIdx === null
+            ? null
+            : { uri: STATUS_URI, idx: row.statusIdx, revoked: row.revokeRequestedAt !== null },
       },
       200,
     );

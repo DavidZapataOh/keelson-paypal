@@ -352,11 +352,19 @@ const liveRoute = createRoute({
  */
 async function payeeInvalid(db: Db, mandateId: string, payee: string): Promise<string | undefined> {
   const [m] = await db
-    .select({ payloadSd: mandates.payloadSd, disclosures: mandates.disclosures })
+    .select({
+      payloadSd: mandates.payloadSd,
+      disclosures: mandates.disclosures,
+      decoySalts: mandates.decoySalts,
+    })
     .from(mandates)
     .where(eq(mandates.id, mandateId));
   if (!m?.payloadSd || !m.disclosures) return "the mandate is not signed";
-  const allowed = decodeMandate(m.payloadSd, m.disclosures).payment.constraints.flatMap((k) =>
+  const allowed = decodeMandate(
+    m.payloadSd,
+    m.disclosures,
+    m.decoySalts,
+  ).payment.constraints.flatMap((k) =>
     k.type === "payment.allowed_payees" ? k.allowed.map((a) => a.paypal_merchant_id) : [],
   );
   // A mandate that names no PayPal merchant id (a store whose id is not known yet) binds none.

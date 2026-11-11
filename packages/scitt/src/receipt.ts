@@ -179,3 +179,27 @@ export function verifyReceipt(
   if (!verifyEd25519(s, key, root)) throw new ScittReceiptError("signature", "bad signature");
   return { treeSize, leafIndex, root, kid: bytesToHex(kid) };
 }
+
+/**
+ * Where a transparent statement's first receipt places it: the tree size and leaf index its
+ * inclusion proof states, read without verifying anything; `null` when it carries none.
+ */
+export function receiptPosition(
+  transparent: Uint8Array,
+): { treeSize: bigint; leafIndex: bigint } | null {
+  try {
+    const receipts = decodeSign1(transparent).unprotected.get(RECEIPTS);
+    if (!Array.isArray(receipts) || !(receipts[0] instanceof Uint8Array)) return null;
+    const proofs = (decodeSign1(receipts[0]).unprotected.get(VDP) as Map<number, unknown>)?.get(
+      INCLUSION,
+    );
+    const content =
+      Array.isArray(proofs) && proofs[0] instanceof Uint8Array ? decodeStrict(proofs[0]) : null;
+    if (!Array.isArray(content)) return null;
+    const treeSize = asBig(content[0]);
+    const leafIndex = asBig(content[1]);
+    return treeSize === null || leafIndex === null ? null : { treeSize, leafIndex };
+  } catch {
+    return null;
+  }
+}

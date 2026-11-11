@@ -167,7 +167,7 @@ async function clientMandate(c: Context, db: Deps["db"], id: string) {
 
 const decoded = (m: typeof mandates.$inferSelect) =>
   m.payloadSd && m.disclosures
-    ? decodeMandate(m.payloadSd as Record<string, unknown>, m.disclosures)
+    ? decodeMandate(m.payloadSd as Record<string, unknown>, m.disclosures, m.decoySalts)
     : undefined;
 
 export function registerMandateRequests(
@@ -201,9 +201,8 @@ export function registerMandateRequests(
     const until = limits.until ? new Date(limits.until) : grant.notAfter;
     // Unless the agent asks for more, the new mandate holds what is left of this one, not its total.
     const total = BigInt(limits.totalMinor ?? mandate.remainingMinor);
-    const perPurchase = BigInt(
-      limits.perPurchaseMinor ?? (grant.perPurchaseMinor < total ? grant.perPurchaseMinor : total),
-    );
+    let perPurchase = BigInt(limits.perPurchaseMinor ?? grant.perPurchaseMinor);
+    if (limits.perPurchaseMinor === undefined && perPurchase > total) perPurchase = total;
     const [answered] = await db
       .select({ askAbove: agentConnections.askAboveMinor })
       .from(agentConnections)

@@ -196,3 +196,23 @@ describe("RFC 9942 receipts", () => {
     expect(validateCddl("rfc9942.cddl", "Receipt_For_Inclusion", receiptFor(2))).toBe(true);
   });
 });
+
+describe("receiptPosition", () => {
+  test("reads the tree size and leaf index of the first receipt, and null without one", async () => {
+    const { receiptPosition, encodeSign1, decodeSign1, RECEIPTS } = await import("../src/index.ts");
+    const { signEs256k } = await import("../src/testing.ts");
+    const { encode } = await import("../src/cbor.ts");
+    const statement = signEs256k(
+      encode(new Map([[1, -47]])),
+      new Uint8Array([1]),
+      new Uint8Array(32).fill(1),
+    );
+    const bare = encodeSign1(statement);
+    expect(receiptPosition(bare)).toBeNull();
+    const withReceipt = encodeSign1({
+      ...decodeSign1(bare),
+      unprotected: new Map([[RECEIPTS, [receiptFor(2)]]]),
+    });
+    expect(receiptPosition(withReceipt)).toEqual({ treeSize: 7n, leafIndex: 2n });
+  });
+});

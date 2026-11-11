@@ -1,13 +1,14 @@
 import type { Json } from "@keelson/core";
 import { countersignDigest, type KeelsonChainId, keelsonDomain } from "@keelson/core/eip712";
 import {
+  LEAF_PREFIX,
   type LegSignature,
   leafHash,
   type ParsedStatement,
   parseStatementLeaf,
 } from "@keelson/log";
 import { decodeSign1, readCollection, type Sign1, TST_CTT } from "@keelson/scitt";
-import { toBase64, toBase64url } from "../b64.ts";
+import { fromBase64, toBase64, toBase64url } from "../b64.ts";
 import { registeredOf, statementOf, versionOf } from "../codec.ts";
 import {
   ALIBI_MEDIA_TYPE,
@@ -27,6 +28,8 @@ export interface StatementView {
   /** The claims, read without verifying any signature; `scitt.statement` verifies them. */
   parsed: ParsedStatement | null;
   parseError?: string;
+  /** A bridge bundle's v1 leaf. */
+  predecessor?: Uint8Array;
 }
 
 const UINTS = [
@@ -51,15 +54,27 @@ export function statementView(input: AnyAlibi): StatementView | null {
   const v2 = input as AlibiBundleV2 | AlibiReceiptV2;
   const registered = registeredOf(v2);
   const transparent = decodeSign1(statementOf(v2));
+  const base = {
+    input: v2,
+    registered,
+    transparent,
+    ...("predecessor" in v2 && v2.predecessor ? { predecessor: fromBase64(v2.predecessor) } : {}),
+  };
   try {
-    return {
-      input: v2,
-      registered,
-      transparent,
-      parsed: parseStatementLeaf(registered, { verify: false }),
-    };
+    return { ...base, parsed: parseStatementLeaf(registered, { verify: false }) };
   } catch (err) {
-    return { input: v2, registered, transparent, parsed: null, parseError: (err as Error).message };
+    return { ...base, parsed: null, parseError: (err as Error).message };
+  }
+}
+
+/** The body of a bridge's v1 leaf: the v1 `leaf_view` its preimage checks read. */
+function predecessorView(view: StatementView): Record<string, Json> {
+  const text = new TextDecoder().decode(view.predecessor ?? new Uint8Array());
+  if (!text.startsWith(LEAF_PREFIX)) return {};
+  try {
+    return JSON.parse(text.slice(LEAF_PREFIX.length)) as Record<string, Json>;
+  } catch {
+    return {};
   }
 }
 
@@ -100,7 +115,9 @@ export function legacyOf(input: AnyAlibi, view: StatementView | null): AlibiBund
     };
   }
   const b = view.input;
-  if (p?.kind !== "purchase") throw new TypeError(view.parseError ?? "not a purchase statement");
+  if (p?.kind !== "purchase" && p?.kind !== "bridge") {
+    throw new TypeError(view.parseError ?? "not a purchase statement");
+  }
   const c = p.claims;
   const countersign = Object.fromEntries(
     Object.entries(c.countersign).map(([k, v]) => [k, UINTS.includes(k) ? String(v) : v]),
@@ -110,27 +127,37 @@ export function legacyOf(input: AnyAlibi, view: StatementView | null): AlibiBund
     keelsonDomain(c.chainId as KeelsonChainId, c.verifyingContract),
   );
   const legs = c.legs as LegSignature[];
-  const { statement: _, attestation: __, type: ___, timestamps: ____, ...rest } = b;
+  const {
+    statement: _,
+    attestation: __,
+    type: ___,
+    timestamps: ____,
+    predecessor: _____,
+    ...rest
+  } = b;
   return {
     ...rest,
     type: ALIBI_MEDIA_TYPE,
     leaf,
-    leaf_view: {
-      agent_id: countersign.agentId,
-      alibi_id: b.alibi_id,
-      cart_hash: hexToB64url(c.countersign.cartHash),
-      countersign_digest: hexToB64url(digest),
-      eval_hash: hexToB64url(c.countersign.evalHash),
-      evidence_root: hexToB64url(c.countersign.evidenceRoot),
-      issued_at: rfc3339(Number(c.countersign.issuedAt)),
-      mandate_commitment: hexToB64url(c.countersign.mandateCommitment),
-      mandate_hash: hexToB64url(c.countersign.mandateHash),
-      measurements: legs.map((l) => hexToB64url(l.measurement)),
-      mode: c.mode,
-      ...(c.payRef ? { paypal_ref_commit: hexToB64url(c.payRef) } : {}),
-      policy_set_hash: hexToB64url(c.countersign.policySetHash),
-      tee_sigs: legs.map((l) => hexToB64url(l.signature)),
-    } as Record<string, Json>,
+    leaf_view:
+      p.kind === "bridge"
+        ? predecessorView(view)
+        : ({
+            agent_id: countersign.agentId,
+            alibi_id: b.alibi_id,
+            cart_hash: hexToB64url(c.countersign.cartHash),
+            countersign_digest: hexToB64url(digest),
+            eval_hash: hexToB64url(c.countersign.evalHash),
+            evidence_root: hexToB64url(c.countersign.evidenceRoot),
+            issued_at: rfc3339(Number(c.countersign.issuedAt)),
+            mandate_commitment: hexToB64url(c.countersign.mandateCommitment),
+            mandate_hash: hexToB64url(c.countersign.mandateHash),
+            measurements: legs.map((l) => hexToB64url(l.measurement)),
+            mode: c.mode,
+            ...("payRef" in c && c.payRef ? { paypal_ref_commit: hexToB64url(c.payRef) } : {}),
+            policy_set_hash: hexToB64url(c.countersign.policySetHash),
+            tee_sigs: legs.map((l) => hexToB64url(l.signature)),
+          } as Record<string, Json>),
     timestamps,
     tee: {
       domain: {

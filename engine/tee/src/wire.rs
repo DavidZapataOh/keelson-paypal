@@ -137,6 +137,12 @@ pub struct RegisterMandate {
     pub sub: String,
     pub payload_sd: Value,
     pub disclosures: Vec<String>,
+    /// The salts of the mandate's decoy digests (RFC 9901 section 4.2.5); empty without decoys.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub decoy_salts: Vec<String>,
+    /// The mandate's index in the status list; the open mandate then carries its `status`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status_idx: Option<u32>,
     /// The passkey assertion over `M`, made on the engine's configured origin.
     pub assertion: Assertion,
     /// The salt that opens `zk.commitment`.
@@ -253,6 +259,12 @@ pub struct CountersignRequest {
     /// Asks for the purchase's SCITT signed statement alongside the countersign.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub statement: Option<StatementRequest>,
+    /// The salts of the mandate's decoy digests (RFC 9901 section 4.2.5); empty without decoys.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub decoy_salts: Vec<String>,
+    /// The current status list token, for a mandate that has an entry in it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status_list: Option<String>,
 }
 
 /// What a leg needs, beyond the countersign, to sign the purchase's statement.
@@ -566,6 +578,9 @@ pub struct CardAuthorizeRequest {
     /// The mandate the countersign names, as registered.
     pub payload_sd: Value,
     pub disclosures: Vec<String>,
+    /// The salts of the mandate's decoy digests (RFC 9901 section 4.2.5); empty without decoys.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub decoy_salts: Vec<String>,
     pub authorization: CardNetworkAuthorization,
 }
 
@@ -738,4 +753,19 @@ pub struct ExportRequest {
 #[serde(deny_unknown_fields)]
 pub struct ExportSigned {
     pub jws: String,
+}
+
+/// Asks leg A to sign the status list (`POST /v1/status/sign`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StatusSignRequest {
+    pub uri: String,
+    /// The list (draft-ietf-oauth-status-list-21 section 4.1): base64url of the ZLIB bytes.
+    pub lst: String,
+}
+
+/// The signed status list token, `application/statuslist+jwt`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StatusSigned {
+    pub token: String,
 }

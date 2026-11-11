@@ -25,9 +25,10 @@ export const card: CheckDef = {
       "/card",
       "/paypal",
     ]);
-    // In v2 the card statements commit to the card (`card.statements`); the purchase statement cannot.
+    // In v2 the card statements commit to the card (`card.statements`); the purchase statement
+    // cannot. A bridged v1 card purchase still has its v1 leaf's commitment.
     expect(
-      view !== null ||
+      (view !== null && !view.predecessor) ||
         b64urlOfHex(cardRefCommit(fromHex(k.ref_salt), k.issuer, k.card_token)) ===
           input.leaf_view.paypal_ref_commit,
       "the leaf's payment commitment does not open to this card",

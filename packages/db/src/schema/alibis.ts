@@ -14,6 +14,8 @@ export const alibis = pgTable(
     bundle: jsonb().notNull(),
     /** The bundle's `anchor` section, set once an on-chain anchor covers the leaf. */
     anchor: jsonb(),
+    /** A v1 Alibi's v2 bundle: its bridge statement, with receipt, and the v1 sections. */
+    bridgeBundle: jsonb(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

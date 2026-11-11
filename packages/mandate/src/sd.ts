@@ -95,15 +95,64 @@ function disclosureFrame(m: Mandate): DisclosureFrame<SdClaims> {
   } as DisclosureFrame<SdClaims>;
 }
 
+/** The sizes a padded `_sd` list or SD array grows to (RFC 9901 section 4.2.5). */
+const DECOY_BUCKETS = [4, 8, 16, 32, 64] as const;
+/** The most digests a mandate may carry, as the engine bounds its disclosures. */
+const MAX_DIGESTS = 512;
+
+/** The digest a decoy salt stands for: SHA-256 over the ASCII of its base64url form. */
+export function decoyDigest(salt: string): string {
+  return uint8ArrayToBase64Url(sdHasher(salt, "sha-256"));
+}
+
+/**
+ * Pads every `_sd` list and every array of `{"...": digest}` elements of `payload` with decoy
+ * digests up to the next of {@link DECOY_BUCKETS}, never past {@link MAX_DIGESTS} in all. A `_sd`
+ * list is sorted after; an array's decoys go to random positions. Returns the decoy salts.
+ */
+function padWithDecoys(payload: object, total: number, salt: () => string): string[] {
+  const salts: string[] = [];
+  const decoy = () => {
+    const s = salt();
+    salts.push(s);
+    return decoyDigest(s);
+  };
+  const target = (n: number) => DECOY_BUCKETS.find((b) => b >= n) ?? n;
+  const room = (n: number) => Math.max(0, Math.min(target(n) - n, MAX_DIGESTS - total));
+  const walk = (v: unknown): void => {
+    if (v === null || typeof v !== "object") return;
+    if (Array.isArray(v)) {
+      for (const item of v) walk(item);
+      const sd = v.filter((x) => x !== null && typeof x === "object" && "..." in x).length;
+      if (sd === 0) return;
+      for (let i = room(sd); i > 0; i--, total++) {
+        const at = (salt().charCodeAt(0) * 31 + i) % (v.length + 1);
+        v.splice(at, 0, { "...": decoy() });
+      }
+      return;
+    }
+    const o = v as Record<string, unknown>;
+    for (const item of Object.values(o)) walk(item);
+    if (Array.isArray(o._sd) && o._sd.length > 0) {
+      for (let i = room(o._sd.length); i > 0; i--, total++) o._sd.push(decoy());
+      o._sd.sort();
+    }
+  };
+  walk(payload);
+  return salts;
+}
+
 /**
  * Builds `payload_SD`: the mandate with the {@link SD_FIELDS} replaced by digests (RFC 9901
  * section 4.2), plus the top-level `cnf` that makes the agent key the delegate holder key. Each
- * salt is the base64url encoding of one 16-byte `randomSalt()`.
+ * salt is the base64url encoding of one 16-byte `randomSalt()`. With `decoys`, every `_sd` list
+ * and SD array is padded with decoy digests, which only the returned `decoySalts` resolve.
  */
 export async function buildSdPayload(
   input: Mandate,
   randomSalt: () => Uint8Array,
-): Promise<{ payloadSd: object; disclosures: string[] }> {
+  opts: { decoys?: boolean } = {},
+): Promise<{ payloadSd: object; disclosures: string[]; decoySalts: string[] }> {
   const m = parseMandate(input);
   const salt = () => {
     const s = randomSalt();
@@ -116,7 +165,9 @@ export async function buildSdPayload(
     { hasher: sdHasher, alg: "sha-256" },
     salt,
   );
-  return { payloadSd: packedClaims, disclosures: disclosures.map((d) => d.encode()) };
+  const encoded = disclosures.map((d) => d.encode());
+  const decoySalts = opts.decoys ? padWithDecoys(packedClaims, encoded.length, salt) : [];
+  return { payloadSd: packedClaims, disclosures: encoded, decoySalts };
 }
 
 /** A value with any object member possibly absent, as selective disclosure leaves it. */
@@ -186,11 +237,16 @@ export function decodeDisclosed(payloadSd: object, disclosures: string[]): Discl
 
 /**
  * {@link decodeDisclosed} for a fully disclosed mandate: every digest in `payloadSd` and in the
- * disclosures must be resolved, and the result is parsed with {@link parseMandate}.
+ * disclosures must be resolved by a disclosure or by one of `decoySalts`, and the result is
+ * parsed with {@link parseMandate}.
  */
-export function decodeMandate(payloadSd: object, disclosures: string[]): Mandate {
+export function decodeMandate(
+  payloadSd: object,
+  disclosures: string[],
+  decoySalts: readonly string[] = [],
+): Mandate {
   const m = decodeDisclosed(payloadSd, disclosures);
-  assertDigestsResolved(payloadSd, disclosures);
+  assertDigestsResolved(payloadSd, disclosures, decoySalts);
   return parseMandate(m);
 }
 

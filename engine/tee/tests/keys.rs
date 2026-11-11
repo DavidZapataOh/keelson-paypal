@@ -119,6 +119,7 @@ fn issues_credentials_the_verifiers_accept() {
             },
             aud: str(&p["aud"]),
             nonce: str(&p["nonce"]),
+            status: None,
         },
         &holder,
         &mut replay(&l2["salts"]),
@@ -136,6 +137,7 @@ fn issues_credentials_the_verifiers_accept() {
             expected_nonce: str(&o["expectedNonce"]),
             now: o["now"].as_i64().unwrap(),
             max_skew_sec: o["maxSkewSec"].as_i64().unwrap(),
+            decoy_salts: vec![],
         }),
     )
     .unwrap();

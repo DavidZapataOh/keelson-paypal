@@ -65,6 +65,7 @@ pub fn currency_numeric(code: &str) -> Result<u16, Error> {
 }
 
 /// The ISO 4217 alphabetic code of a supported currency's numeric code.
+#[cfg(feature = "statement")]
 pub fn currency_code(numeric: u16) -> Option<&'static str> {
     CURRENCIES
         .iter()
