@@ -181,12 +181,12 @@
   },
   {
     "detector": "abi-encode-packed-hash-collision",
-    "location": "src/AmberContradictionCourt.sol:200",
+    "location": "src/AmberContradictionCourt.sol:198",
     "reason": "Every argument but the bytes32 salt is a string literal or a fixed-length value (a 32-byte hash, a 66-character hex string), so no two inputs share one packed encoding."
   },
   {
     "detector": "abi-encode-packed-hash-collision",
-    "location": "src/AmberContradictionCourt.sol:217",
+    "location": "src/AmberContradictionCourt.sol:215",
     "reason": "Every argument but the bytes32 salt is a string literal or a fixed-length value (a 32-byte hash, a 66-character hex string), so no two inputs share one packed encoding."
   }
 ]
