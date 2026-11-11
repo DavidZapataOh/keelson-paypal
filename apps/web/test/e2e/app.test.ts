@@ -431,6 +431,26 @@ describe("signing and going live", () => {
     await context.close();
   });
 
+  test("a revoked mandate says it is listed publicly, with its status list entry", async () => {
+    const id = "01M7MANDATE000000000000009";
+    const status = { uri: "https://api.keelson.finance/status/v1/mandates/2026-1", idx: 4242 };
+    let revoked = false;
+    const { context, page } = await signedIn("desktop", `/mandate/?id=${id}`, async (path) =>
+      path === `/v1/mandates/${id}`
+        ? { ...(await viewIn(id, revoked ? "REVOKED" : "ACTIVE")), status: { ...status, revoked } }
+        : undefined,
+    );
+    await page.getByText("Active", { exact: true }).waitFor();
+    revoked = true;
+    await page.reload();
+    await page.getByText("Revoked · listed publicly").waitFor();
+    const entry = page.getByRole("link", { name: "status list entry 4242" });
+    expect(await entry.getAttribute("href")).toBe(status.uri);
+    const { violations } = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+    expect(violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
+    await context.close();
+  });
+
   test("a signed mandate asks for the PayPal hold, then says the agent is live", async () => {
     const id = "01M7MANDATE000000000000001";
     let state = "SIGNED";

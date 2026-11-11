@@ -22,16 +22,26 @@ export interface Capabilities {
   statements: boolean;
   /** It resolves decoy digests by the salts a request presents. */
   decoys: boolean;
+  /** It checks a mandate's status list entry, and leg A signs the list. */
+  status_list: boolean;
 }
 
 /** The {@link Capabilities} a leg's `/v1/health` reports. */
 export function capabilitiesOf(health: unknown): Capabilities {
   const h = (health ?? {}) as Record<string, unknown>;
-  return { statements: h.statements === 1, decoys: h.decoys === 1 };
+  return {
+    statements: h.statements === 1,
+    decoys: h.decoys === 1,
+    status_list: h.status_list === 1,
+  };
 }
 
 /** What no leg is known to do: the answer for a leg that cannot be reached. */
-export const NO_CAPABILITIES: Capabilities = { statements: false, decoys: false };
+export const NO_CAPABILITIES: Capabilities = {
+  statements: false,
+  decoys: false,
+  status_list: false,
+};
 
 /**
  * The `statement` field of a countersign request, or `undefined` for a leg that does not sign

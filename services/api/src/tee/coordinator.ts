@@ -117,7 +117,11 @@ export async function legSupportsStatements(
 /** What both legs do: a feature is used only once each leg reports it. */
 export async function bothLegs(deps: { tee: Pick<TeeConfig, "client"> }): Promise<Capabilities> {
   const [a, b] = await Promise.all([legCapabilities(deps, "a"), legCapabilities(deps, "b")]);
-  return { statements: a.statements && b.statements, decoys: a.decoys && b.decoys };
+  return {
+    statements: a.statements && b.statements,
+    decoys: a.decoys && b.decoys,
+    status_list: a.status_list && b.status_list,
+  };
 }
 
 /** The 32-byte measurement of a `tdx:<hex>` or `nitro:<hex>` id. */

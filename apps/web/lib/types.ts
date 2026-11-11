@@ -119,6 +119,8 @@ export interface MandateView {
   purchases: Purchase[];
   /** Purchases of a several-store mandate waiting for the buyer's PayPal approval. */
   pendingHolds: PendingHold[];
+  /** The mandate's entry in the public status list, when it has one. */
+  status?: { uri: string; idx: number; revoked: boolean } | null;
 }
 
 /** A purchase of a several-store mandate waiting for the buyer's PayPal approval. */

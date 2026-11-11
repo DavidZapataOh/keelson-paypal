@@ -250,6 +250,24 @@ components:
           description: Purchase holds of a several-store mandate still waiting for the
             buyer's PayPal approval, oldest first. Later changes arrive as
             `mandate.purchase_hold` events.
+        status:
+          anyOf:
+            - type: object
+              properties:
+                uri:
+                  type: string
+                idx:
+                  type: integer
+                revoked:
+                  type: boolean
+              required:
+                - uri
+                - idx
+                - revoked
+            - type: "null"
+          description: "The mandate's entry in the public status list
+            (draft-ietf-oauth-status-list-21): `revoked` once its revocation is
+            requested, which the list carries from its next signing."
       required:
         - id
         - state
@@ -261,6 +279,7 @@ components:
         - card
         - purchases
         - pendingHolds
+        - status
     MandateHold:
       type: object
       properties:
@@ -6795,6 +6814,29 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Capabilities"
+  /status/v1/mandates/2026-1:
+    get:
+      tags:
+        - mandates
+      summary: The mandate status list
+      description: "The Token Status List (draft-ietf-oauth-status-list-21) of every
+        mandate that carries a `status` claim: one bit per mandate, set once it
+        is revoked or its user stopped their agents. Signed by the TEE that
+        issues mandates, with the issuer key the open mandates name; it never
+        clears a bit. Both TEEs check it on every countersign."
+      responses:
+        "200":
+          description: The current status list token
+          content:
+            application/statuslist+jwt:
+              schema:
+                type: string
+        "404":
+          description: No list is published yet
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
   /status:
     get:
       tags:

@@ -184,7 +184,7 @@ const LIVE = [...REVOCABLE];
 
 export function registerAgents(
   app: OpenAPIHono,
-  deps: Pick<Deps, "db" | "kv" | "log" | "paypal" | "tlog" | "notifier" | "demoAgentId">,
+  deps: Pick<Deps, "db" | "kv" | "log" | "paypal" | "tlog" | "notifier" | "demoAgentId" | "tee">,
 ): void {
   const { db } = deps;
 

@@ -70,6 +70,8 @@ export interface OpenMandateParams {
   nonce: string;
   /** Defaults to now, in seconds since the epoch. */
   iat?: number;
+  /** The mandate's entry in Keelson's status list (draft-ietf-oauth-status-list-21). */
+  status?: { idx: number; uri: string };
 }
 
 /** Draws the 16 bytes of a disclosure salt. */
@@ -336,6 +338,7 @@ export async function issueOpenMandate(
       nonce,
       sd_hash: sdHash(userCredential),
       user_auth: userAuth,
+      ...(params.status ? { status: { status_list: params.status } } : {}),
     },
   }).sign(es256Signer(signer));
   const holderKey = (await importJWK(holderJwk, "ES256")) as CryptoKey;

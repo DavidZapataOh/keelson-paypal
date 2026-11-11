@@ -118,4 +118,14 @@ export {
   type SpcDetails,
   spcDetails,
 } from "./spc.ts";
+export {
+  checkMandateStatus,
+  decodeStatusList,
+  encodeStatusList,
+  STATUS_LIST_TYP,
+  STATUS_SIZE,
+  STATUS_URI,
+  statusBits,
+  statusOf,
+} from "./status.ts";
 export { TERMS, TERMS_HASH } from "./terms.ts";

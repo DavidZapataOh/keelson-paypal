@@ -25,6 +25,7 @@ import {
   mandateChallenge,
   RP_ID,
   renderCard,
+  STATUS_URI,
   spcDetails,
 } from "@keelson/mandate";
 import type { SignedChallenge } from "@keelson/mandate/browser";
@@ -49,6 +50,7 @@ import { requireSession } from "../middleware/auth.ts";
 import { cardViewOf, purchaseView } from "../pipeline/drive.ts";
 import { type Principal, principalChannel } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
+import { drawStatusIdx } from "../status-list.ts";
 import { LegError, type MandateIssued } from "../tee/client.ts";
 import { bothLegs } from "../tee/coordinator.ts";
 import { unboundPolicy } from "../tee/engine-source.ts";
@@ -236,6 +238,19 @@ const MandateView = z
       description:
         "Purchase holds of a several-store mandate still waiting for the buyer's PayPal approval, oldest first. Later changes arrive as `mandate.purchase_hold` events.",
     }),
+    status: z
+      .union([
+        z.object({
+          uri: z.string(),
+          idx: z.int(),
+          revoked: z.boolean(),
+        }),
+        z.null(),
+      ])
+      .openapi({
+        description:
+          "The mandate's entry in the public status list (draft-ietf-oauth-status-list-21): `revoked` once its revocation is requested, which the list carries from its next signing.",
+      }),
   })
   .openapi("Mandate");
 
@@ -605,9 +620,13 @@ export async function storeMandate(
 
   let issued: MandateIssued | undefined;
   const decoySalts = body.decoySalts ?? [];
+  let statusIdx: number | null = null;
   if (deps.tee) {
     if (!body.salt) return invalid("salt is required");
-    if (decoySalts.length > 0 && !(await bothLegs({ tee: deps.tee })).decoys) {
+    const legs = await bothLegs({ tee: deps.tee });
+    // A mandate gets its status list entry once both legs check the list.
+    if (legs.status_list) statusIdx = await drawStatusIdx(deps.db);
+    if (decoySalts.length > 0 && !legs.decoys) {
       return problem(
         c,
         409,
@@ -622,6 +641,7 @@ export async function storeMandate(
         payload_sd: body.payloadSd,
         disclosures: body.disclosures,
         ...(decoySalts.length > 0 ? { decoy_salts: decoySalts } : {}),
+        ...(statusIdx === null ? {} : { status_idx: statusIdx }),
         assertion: {
           authenticatorData: assertion.authenticatorData,
           clientDataJSON: assertion.clientDataJSON,
@@ -679,6 +699,7 @@ export async function storeMandate(
         payloadSd: body.payloadSd,
         disclosures: body.disclosures,
         decoySalts,
+        statusIdx,
         userAuth: assertion,
         credentialId: key.credentialID,
         ...(issued
@@ -906,6 +927,10 @@ export function registerMandates(app: OpenAPIHono, deps: MandateDeps): void {
           };
         }),
         pendingHolds: waiting.map((h) => ({ ...h, amountMinor: h.amountMinor.toString() })),
+        status:
+          row.statusIdx === null
+            ? null
+            : { uri: STATUS_URI, idx: row.statusIdx, revoked: row.revokeRequestedAt !== null },
       },
       200,
     );

@@ -78,6 +78,7 @@ import { registerPurchases } from "./routes/purchases.ts";
 import { registerRedTeam } from "./routes/redteam.ts";
 import { registerRevoke } from "./routes/revoke.ts";
 import { registerStatus } from "./routes/status.ts";
+import { registerStatusList } from "./routes/status-list.ts";
 import { registerTee } from "./routes/tee.ts";
 import { registerTimestamps } from "./routes/timestamps.ts";
 import { registerTransactions } from "./routes/transactions.ts";
@@ -336,6 +337,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   }
   registerHealth(app);
   registerEngineCapabilities(app, deps);
+  registerStatusList(app, deps);
   registerAgentDocs(app);
   registerStatus(app, deps);
   registerEvents(app, deps);

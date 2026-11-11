@@ -64,6 +64,7 @@ import { publishPurchase } from "../pipeline/events.ts";
 import { logStep } from "../pipeline/log-step.ts";
 import { principalKey } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
+import { currentStatusToken } from "../status-list.ts";
 import { stoppedSince } from "../stop.ts";
 import { LegError } from "../tee/client.ts";
 import { VERIFYING_CONTRACT } from "../tee/config.ts";
@@ -1373,6 +1374,9 @@ export function registerCountersign(
               ? { sealed_salt: Buffer.from(mandate.sealedSalt).toString("base64") }
               : {}),
             ...(mandate.decoySalts.length > 0 ? { decoy_salts: mandate.decoySalts } : {}),
+            ...(mandate.statusIdx !== null && tee
+              ? { status_list: await currentStatusToken({ db, log, tee }) }
+              : {}),
           },
           want,
           await paypalRefSaltOf(db, purchaseId),

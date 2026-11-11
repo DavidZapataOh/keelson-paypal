@@ -213,6 +213,8 @@ const HealthSchema = z.looseObject({
   statements: z.number().optional(),
   /** 1 on a leg that resolves decoy digests by their salts. */
   decoys: z.number().optional(),
+  /** 1 on a leg that checks the mandate status list. */
+  status_list: z.number().optional(),
 });
 type Health = z.infer<typeof HealthSchema>;
 
@@ -318,6 +320,8 @@ export interface CountersignRequest {
   statement?: StatementAsk;
   /** The mandate's decoy salts; sent only when it has any, to legs that resolve them. */
   decoy_salts?: string[];
+  /** The current status list token, for a mandate with a status list entry. */
+  status_list?: string;
 }
 
 /** The body of `POST /v1/mandates/register` on leg A. */
@@ -331,6 +335,8 @@ interface RegisterMandate {
   user_credential?: string;
   /** The mandate's decoy salts; sent only when it has any, to legs that resolve them. */
   decoy_salts?: string[];
+  /** The mandate's index in the status list, once both legs check it. */
+  status_idx?: number;
 }
 
 interface ChainBlock {
@@ -476,6 +482,14 @@ export class LegClient {
 
   async cardSettlement(req: CardSettlementRequest): Promise<CardSettled> {
     return this.parse(CardSettledSchema, await this.call("POST", "/v1/card/settlement", req));
+  }
+
+  /** `POST /v1/status/sign` on leg A: the status list token over `lst`. */
+  async signStatus(req: { uri: string; lst: string }): Promise<{ token: string }> {
+    return this.parse(
+      z.strictObject({ token: z.string() }),
+      await this.call("POST", "/v1/status/sign", req),
+    );
   }
 
   async bridge(req: BridgeRequest): Promise<StatementSigned> {

@@ -16,6 +16,16 @@ import {
 } from "../src/credentials.ts";
 import { type Mandate, parseMandate } from "../src/schema.ts";
 import { buildSdPayload, withholdPersonal } from "../src/sd.ts";
+import {
+  checkMandateStatus,
+  decodeStatusList,
+  encodeStatusList,
+  STATUS_LIST_TYP,
+  STATUS_SIZE,
+  STATUS_URI,
+  statusBits,
+  statusOf,
+} from "../src/status.ts";
 import demo from "./fixtures/demo-mandate.json" with { type: "json" };
 
 const ES256 = { name: "ECDSA", namedCurve: "P-256" } as const;
@@ -627,5 +637,57 @@ describe("open mandate with decoy digests", () => {
     expect(readOpenMandate(token, decoySalts)).toEqual(m);
     // An agent reads its grant without the salts: the decoys are skipped.
     expect(readOpenMandate(token)).toEqual(m);
+  });
+});
+
+describe("status list", () => {
+  const sign = async (lst: string, now: number) =>
+    new CompactSign(
+      new TextEncoder().encode(
+        JSON.stringify({
+          sub: STATUS_URI,
+          iat: now,
+          exp: now + 900,
+          ttl: 300,
+          status_list: { bits: 1, lst },
+        }),
+      ),
+    )
+      .setProtectedHeader({ alg: "ES256", typ: STATUS_LIST_TYP })
+      .sign(issuer.privateKey);
+
+  it("a list round-trips and stays under a kilobyte when nothing is revoked", async () => {
+    const bits = statusBits([0, 9, STATUS_SIZE - 1]);
+    const lst = await encodeStatusList(bits);
+    expect(await decodeStatusList(lst)).toEqual(bits);
+    expect((await encodeStatusList(statusBits([]))).length).toBeLessThan(1024);
+    expect(() => statusBits([STATUS_SIZE])).toThrow("status index");
+  });
+
+  it("an open mandate's bit says whether it is revoked", async () => {
+    const { token, payloadSd, disclosures, m } = await openMandate();
+    const listed = await issueOpenMandate(
+      {
+        userCredential: l1,
+        payloadSd,
+        disclosures,
+        userAuth: await assertion(passkey, randomSalt()),
+        aud: AUD,
+        nonce: m.nonce,
+        status: { idx: 77, uri: STATUS_URI },
+      },
+      holder.privateKey,
+    );
+    expect(statusOf(listed)).toEqual({ idx: 77, uri: STATUS_URI });
+    expect(statusOf(token)).toBeNull();
+    const now = Math.floor(Date.now() / 1000);
+    const valid = await sign(await encodeStatusList(statusBits([76, 78])), now);
+    const revoked = await sign(await encodeStatusList(statusBits([77])), now);
+    expect(await checkMandateStatus(listed, valid, issuer.publicKey, now)).toBe("valid");
+    expect(await checkMandateStatus(listed, revoked, issuer.publicKey, now)).toBe("revoked");
+    await expect(checkMandateStatus(listed, revoked, issuer.publicKey, now + 901)).rejects.toThrow(
+      "expired",
+    );
+    await expect(checkMandateStatus(listed, revoked, holder.publicKey, now)).rejects.toThrow();
   });
 });

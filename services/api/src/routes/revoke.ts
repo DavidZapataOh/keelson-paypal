@@ -7,6 +7,7 @@ import { requireSession } from "../middleware/auth.ts";
 import { paypalProblem } from "../paypal.ts";
 import type { Principal } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
+import { publishStatusList } from "../status-list.ts";
 
 const problemContent = { "application/problem+json": { schema: ProblemSchema } };
 
@@ -45,7 +46,7 @@ const route = createRoute({
   },
 });
 
-type RevokeDeps = Pick<Deps, "db" | "kv" | "log" | "paypal">;
+type RevokeDeps = Pick<Deps, "db" | "kv" | "log" | "paypal"> & { tee?: Deps["tee"] };
 
 /** The mandate states a revoke can still end. */
 export const REVOCABLE = ["SIGNED", "HOLD_PENDING", "ACTIVE"] as const;
@@ -64,6 +65,12 @@ export async function revokeMandate(
     .update(mandates)
     .set({ revokeRequestedAt: sql`coalesce(${mandates.revokeRequestedAt}, now())` })
     .where(eq(mandates.id, row.id));
+  // The public status list says so too; the next countersign signs it again if this fails.
+  if (deps.tee && row.statusIdx !== null) {
+    await publishStatusList({ db, log: deps.log, tee: deps.tee }).catch((err: unknown) =>
+      deps.log.warn({ err, mandateId: row.id }, "status list not signed after a revoke"),
+    );
+  }
   // Carts paused under it can no longer be approved.
   await db
     .update(agentConnections)
