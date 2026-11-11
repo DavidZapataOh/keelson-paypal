@@ -25,6 +25,10 @@ export function serverTiming(timings: Record<string, number>): string {
     .join(", ");
 }
 
+/**
+ * Reads a `Server-Timing` header back into its metrics, as clients of the API do.
+ * @internal
+ */
 export function parseServerTiming(header: string): Record<string, number> {
   const out: Record<string, number> = {};
   for (const entry of header.split(",")) {
@@ -55,6 +59,7 @@ interface Step {
 /**
  * Times each `purchase.<state>` span with what ran inside it, and keeps the totals in Valkey for
  * an hour, keyed by the purchase, for `Server-Timing` on the purchase's answers.
+ * @internal
  */
 export class PurchaseTimings implements SpanProcessor {
   /** The step span each open span runs under, by span id. */
