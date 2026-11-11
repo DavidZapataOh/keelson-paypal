@@ -5,8 +5,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { addresses, engineProofVerifierAbi } from "@keelson/chain";
-import { type Db, type EngineProof, type EngineProved, eq, mandates, purchases } from "@keelson/db";
-import type { Relayer } from "@keelson/relayer";
+import {
+  and,
+  type Db,
+  type EngineProof,
+  type EngineProved,
+  eq,
+  isNull,
+  mandates,
+  purchases,
+} from "@keelson/db";
+import { type Relayer, RelayerError } from "@keelson/relayer";
 import type { Logger } from "pino";
 import { type Address, bytesToHex, type Hex, type PublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
@@ -40,6 +49,8 @@ const WAIT_TIMEOUT_MS = 35 * 60 * 1000;
 /** The free run of the program that checks a dispute's input before a proof of it is paid for. */
 const EXECUTE_TIMEOUT_MS = 5 * 60 * 1000;
 const RECORD_WAIT_MS = 120_000;
+/** What `purchases.engine_request` holds while a run checks and requests a proof. */
+const REQUEST_CLAIM = "requesting";
 const RECORD_ATTEMPTS = 2;
 
 /** The `CountersignInput` the SP1 program reads, as JSON. */
@@ -155,7 +166,10 @@ async function executeInput(
       maxBuffer: 16 * 1024 * 1024,
       env: { PATH: process.env.PATH, HOME: process.env.HOME, RUST_LOG: "warn" },
     });
-    return JSON.parse(stdout);
+    // The SP1 logger writes to stdout too: the result is the last JSON line.
+    const line = stdout.split("\n").findLast((l) => l.startsWith("{"));
+    if (!line) throw new Error("the engine prover printed no result");
+    return JSON.parse(line);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -210,6 +224,14 @@ async function requestProof(db: Db, purchaseId: string, input: CountersignInput)
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+}
+
+/** Gives up a claim on purchase `purchaseId` that no request was made under. */
+async function releaseClaim(db: Db, purchaseId: string): Promise<void> {
+  await db
+    .update(purchases)
+    .set({ engineRequest: null })
+    .where(and(eq(purchases.id, purchaseId), eq(purchases.engineRequest, REQUEST_CLAIM)));
 }
 
 /** Waits for network request `requestId` to prove `input`, and verifies the proof here. */
@@ -286,16 +308,36 @@ export async function proveEngine(
   // A proof paid for by an earlier run that did not get recorded is recorded, not bought again.
   let proved = existing?.proved?.vkey === ENGINE_PROVER.vkey ? existing.proved : undefined;
   if (!proved) {
-    // A request an earlier run made is waited for again, never made twice; one that failed for
-    // good is cleared by hand once its explorer page shows it was not paid for.
-    let requestId = existing?.request as Hex | null | undefined;
-    if (!requestId) {
+    // The purchase is claimed before anything is paid, so two runs never both request a proof. A
+    // run that finds a request waits for it again; one that finds a claim but no request stops,
+    // since a run that died while requesting may have paid: the claim is cleared by hand once the
+    // requester's explorer page shows no request for it.
+    const [claimed] = await db
+      .update(purchases)
+      .set({ engineRequest: REQUEST_CLAIM })
+      .where(and(eq(purchases.id, purchaseId), isNull(purchases.engineRequest)))
+      .returning({ id: purchases.id });
+    let requestId: Hex;
+    if (claimed) {
       // A mismatch here would repeat on every paid attempt, so it is caught before paying.
-      const executed = await executeInput(input);
+      const executed = await executeInput(input).catch(async (err: unknown) => {
+        await releaseClaim(db, purchaseId);
+        throw err;
+      });
       if (executed.eval_hash !== evalHash || executed.countersign_digest !== digest) {
+        await releaseClaim(db, purchaseId);
         throw new Error(`purchase ${purchaseId}: its engine input does not give its countersign`);
       }
       requestId = await requestProof(db, purchaseId, input);
+    } else {
+      const [row] = await db
+        .select({ request: purchases.engineRequest })
+        .from(purchases)
+        .where(eq(purchases.id, purchaseId));
+      if (!row?.request || row.request === REQUEST_CLAIM) {
+        throw new Error(`purchase ${purchaseId}: another run is requesting its engine proof`);
+      }
+      requestId = row.request as Hex;
     }
     log.info({ purchaseId, requestId }, "engine proof requested");
     proved = await waitProof(input, requestId);
@@ -320,26 +362,31 @@ export async function proveEngine(
   // here. The relayer key makes it find the transaction already sent rather than send another.
   let tx: Hex | undefined;
   for (let attempt = 1; !tx; attempt++) {
-    let record = await relayer.submit({
-      chainId: ENGINE_PROOF_CHAIN_ID,
-      contract: "EngineProofVerifier",
-      functionName: "record",
-      args: [proved.public_values as Hex, proved.proof as Hex],
-      key: `EngineProofVerifier.record:${digest}`,
-    });
-    const deadline = Date.now() + RECORD_WAIT_MS;
-    while (record.status === "pending" && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 500));
-      record = (await relayer.getById(record.id)) ?? record;
+    let outcome: string;
+    try {
+      let record = await relayer.submit({
+        chainId: ENGINE_PROOF_CHAIN_ID,
+        contract: "EngineProofVerifier",
+        functionName: "record",
+        args: [proved.public_values as Hex, proved.proof as Hex],
+        key: `EngineProofVerifier.record:${digest}`,
+      });
+      const deadline = Date.now() + RECORD_WAIT_MS;
+      while (record.status === "pending" && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 500));
+        record = (await relayer.getById(record.id)) ?? record;
+      }
+      if (record.status === "confirmed" && record.hash) tx = record.hash as Hex;
+      outcome = `${record.status}${record.errorCode ? ` (${record.errorCode})` : ""}`;
+    } catch (err) {
+      // A rejected submission, such as one another prover's record makes revert, is checked
+      // against the chain like any other that did not confirm.
+      if (!(err instanceof RelayerError)) throw err;
+      outcome = `rejected (${err.code})`;
     }
-    tx =
-      record.status === "confirmed" && record.hash
-        ? (record.hash as Hex)
-        : await recordedBy(chain, verifier, digest, evalHash);
+    tx ??= await recordedBy(chain, verifier, digest, evalHash);
     if (!tx && attempt === RECORD_ATTEMPTS) {
-      throw new Error(
-        `engine proof of ${purchaseId} is ${record.status}${record.errorCode ? ` (${record.errorCode})` : ""}`,
-      );
+      throw new Error(`engine proof of ${purchaseId} is ${outcome}`);
     }
   }
   const receipt = await chain.getTransactionReceipt({ hash: tx });

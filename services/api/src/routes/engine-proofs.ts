@@ -4,7 +4,7 @@ import { CHAINS, isChainId } from "@keelson/relayer";
 import type { Deps } from "../app.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 
-/** The `proveEngine` workflow task's single 50-minute attempt, plus the queue. */
+/** The `proveEngine` workflow task's single one-hour attempt, plus the queue. */
 const PROVING_MS = 3_600_000;
 
 const Hex32 = z.string().regex(/^0x[0-9a-f]{64}$/);
