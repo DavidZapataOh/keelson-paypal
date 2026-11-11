@@ -228,7 +228,8 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("connecting an agent on %s", (ki
           problem: 409,
           type: "https://api.keelson.finance/problems/number-mismatch",
           title: "Not your agent's number",
-          detail: "The number does not match the one Claude Code shows, so this request was denied.",
+          detail:
+            "The number does not match the one Claude Code shows, so this request was denied.",
         };
       }
       return undefined;
