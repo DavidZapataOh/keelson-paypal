@@ -6050,8 +6050,8 @@ paths:
         - alibis
       summary: An alibi as a PDF/A-3b
       description: A one-page PDF/A-3b summary of the Alibi with a QR to its verify
-        page and the bundle embedded as `<id>.alibi`. Same readers as the
-        bundle.
+        page and the bundle embedded as `<id>.alibi`. Same readers, and the same
+        public copy, as the bundle.
       parameters:
         - schema:
             type: string
@@ -6085,8 +6085,11 @@ paths:
       description: "The purchase's Alibi: its RFC 8785 bundle, readable by the
         mandate's user or, with `alibis:read`, by the client that uploaded the
         purchase's evidence; the Alibi of a live purchase, once its PayPal
-        transaction is recorded, by anyone. It grows as timestamps, the capture
-        and the on-chain anchor arrive; earlier sections never change."
+        transaction is recorded, by anyone. Anyone else gets its public copy,
+        whose mandate withholds the user's login id and risk data: their salted
+        digests stay in the signed payload, so the copy verifies the same. It
+        grows as timestamps, the capture and the on-chain anchor arrive; earlier
+        sections never change."
       parameters:
         - schema:
             type: string
