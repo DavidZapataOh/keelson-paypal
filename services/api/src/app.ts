@@ -31,6 +31,7 @@ import type { PayPalDeps } from "./paypal.ts";
 import { ProblemSchema, problem } from "./problem.ts";
 import { registerActivity } from "./routes/activity.ts";
 import { registerAdminClients } from "./routes/admin-clients.ts";
+import { registerAgentDocs } from "./routes/agent-docs.ts";
 import { registerAgents } from "./routes/agents.ts";
 import { registerAlerts } from "./routes/alerts.ts";
 import { registerAlibis } from "./routes/alibis.ts";
@@ -307,6 +308,7 @@ export function createApp(deps: Deps): OpenAPIHono {
     );
   }
   registerHealth(app);
+  registerAgentDocs(app);
   registerStatus(app, deps);
   registerEvents(app, deps);
   registerMandates(app, deps);

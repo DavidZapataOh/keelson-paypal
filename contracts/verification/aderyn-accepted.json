@@ -111,27 +111,27 @@
   },
   {
     "detector": "reentrancy-state-change",
-    "location": "src/AmberContradictionCourt.sol:105",
+    "location": "src/AmberContradictionCourt.sol:129",
     "reason": "The calls before the write are views (compiled to STATICCALL) to immutable contracts: the vault, the VerdictVerifier and the C2b verifier. No state can change during them."
   },
   {
     "detector": "reentrancy-state-change",
-    "location": "src/AmberContradictionCourt.sol:113",
+    "location": "src/AmberContradictionCourt.sol:133",
     "reason": "The calls before the write are views (compiled to STATICCALL) to immutable contracts: the vault, the VerdictVerifier and the C2b verifier. No state can change during them."
   },
   {
     "detector": "reentrancy-state-change",
-    "location": "src/AmberContradictionCourt.sol:116",
+    "location": "src/AmberContradictionCourt.sol:138",
     "reason": "The calls before the write are views (compiled to STATICCALL) to immutable contracts: the vault, the VerdictVerifier and the C2b verifier. No state can change during them."
   },
   {
     "detector": "reentrancy-state-change",
-    "location": "src/AmberContradictionCourt.sol:123",
+    "location": "src/AmberContradictionCourt.sol:144",
     "reason": "The calls before the write are views (compiled to STATICCALL) to immutable contracts: the vault, the VerdictVerifier and the C2b verifier. No state can change during them."
   },
   {
     "detector": "reentrancy-state-change",
-    "location": "src/AmberContradictionCourt.sol:135",
+    "location": "src/AmberContradictionCourt.sol:157",
     "reason": "The calls before the write are views (compiled to STATICCALL) to immutable contracts: the vault, the VerdictVerifier and the C2b verifier. No state can change during them."
   },
   {
@@ -178,5 +178,15 @@
     "detector": "reentrancy-state-change",
     "location": "src/LogBond.sol:149",
     "reason": "The calls before the write are views (STATICCALL) to the immutable Ed25519 verifier and the token's balanceOf, inside nonReentrant; the transfers come after every write."
+  },
+  {
+    "detector": "abi-encode-packed-hash-collision",
+    "location": "src/AmberContradictionCourt.sol:198",
+    "reason": "Every argument but the bytes32 salt is a string literal or a fixed-length value (a 32-byte hash, a 66-character hex string), so no two inputs share one packed encoding."
+  },
+  {
+    "detector": "abi-encode-packed-hash-collision",
+    "location": "src/AmberContradictionCourt.sol:215",
+    "reason": "Every argument but the bytes32 salt is a string literal or a fixed-length value (a 32-byte hash, a 66-character hex string), so no two inputs share one packed encoding."
   }
 ]
