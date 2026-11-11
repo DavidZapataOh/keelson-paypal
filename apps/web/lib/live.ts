@@ -1,12 +1,19 @@
 import { API } from "./config";
 
-/** A purchase the agent made with real money at a real store, as `GET /v1/live-purchases` lists it. */
+/**
+ * A purchase the agent made with real money at a real store, or a cart Keelson denied there
+ * before the payment, as `GET /v1/live-purchases` lists it.
+ */
 export interface LivePurchase {
   id: string;
   store: string;
   merchant: string;
   amount: { currency: string; minor: string };
-  transactionId: string;
+  decision: "allow" | "deny";
+  /** The PayPal transaction the store was paid by; `null` for a DENY. */
+  transactionId: string | null;
+  /** For a DENY, the mandate fields that failed, or leg A's PayPal reason. */
+  blocked: string[];
   logIndex: string;
   createdAt: string;
 }
@@ -19,3 +26,23 @@ export async function livePurchases(): Promise<LivePurchase[]> {
 
 /** The public Alibi file of a live purchase. */
 export const alibiUrl = (id: string) => `${API}/v1/alibis/${id}`;
+
+const REASONS: Readonly<Record<string, string>> = {
+  amount: "Over the per-purchase cap",
+  budget: "Over the mandate's budget",
+  "paypal.insufficient": "Over the budget held on PayPal",
+  "paypal.expired": "The PayPal hold had expired",
+  "paypal.currency": "Another currency than the PayPal hold",
+  currency: "Another currency than the mandate",
+  merchant: "A store the mandate does not allow",
+  quantity: "More of an item than the mandate allows",
+  category: "A category the mandate does not allow",
+  variant: "An item the mandate does not name",
+  returns: "Returns shorter than the mandate asks",
+  window: "Outside the mandate's dates",
+};
+
+/** Why Keelson denied a live cart, in words. */
+export const reasonOf = (id: string) =>
+  REASONS[id] ??
+  (id.startsWith("paypal.") ? "The PayPal hold did not cover it" : id.replaceAll("_", " "));

@@ -1,8 +1,21 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { alibis, and, desc, eq, isNotNull, isNull, mandates, purchases } from "@keelson/db";
+import {
+  alibis,
+  and,
+  desc,
+  eq,
+  isNotNull,
+  isNull,
+  like,
+  mandates,
+  or,
+  purchases,
+  type SQL,
+  user,
+} from "@keelson/db";
 import type { Deps } from "../app.ts";
 import { requireClient, requirePrincipal } from "../middleware/auth.ts";
-import { type PurchaseView, purchaseView } from "../pipeline/drive.ts";
+import { failedFields, type PurchaseView, purchaseView } from "../pipeline/drive.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 
 /** How far the purchase got after its countersign. */
@@ -133,11 +146,42 @@ const LivePurchase = z
     store: z.string(),
     merchant: z.string(),
     amount: z.object({ currency: z.string(), minor: z.string() }),
-    transactionId: z.string(),
+    decision: z.enum(["allow", "deny"]),
+    transactionId: z.string().nullable().openapi({
+      description: "The PayPal transaction the store was paid by; `null` for a DENY.",
+    }),
+    blocked: z.array(z.string()).openapi({
+      description:
+        "For a DENY, the mandate fields whose check failed, or leg A's reason when it denied on its read of the PayPal hold.",
+    }),
     logIndex: z.string(),
     createdAt: z.string(),
   })
   .openapi("LivePurchase");
+
+/**
+ * The live carts Keelson denied whose Alibi is public: Keelson's own demo operator ran them for
+ * one of its test users, whose addresses are on the reserved `example.test` domain (RFC 2606). An
+ * Alibi carries the user's mandate, so a real user's DENY is never published.
+ */
+export function publicDenial(demoAgentId: bigint | undefined): SQL | undefined {
+  return demoAgentId === undefined
+    ? undefined
+    : and(
+        isNotNull(purchases.liveStore),
+        eq(purchases.state, "DENIED"),
+        eq(mandates.operatorAgentId, demoAgentId),
+        like(user.email, "%@example.test"),
+      );
+}
+
+/** Why a DENY was given: the failed mandate fields, or leg A's PayPal reason. */
+function denyReasons(trace: unknown): string[] {
+  const fields = failedFields(trace);
+  if (fields.length > 0) return fields;
+  const errors = (trace as { errors?: unknown[] } | null)?.errors;
+  return Array.isArray(errors) ? errors.filter((e): e is string => typeof e === "string") : [];
+}
 
 const liveRoute = createRoute({
   method: "get",
@@ -145,7 +189,7 @@ const liveRoute = createRoute({
   tags: ["purchases"],
   summary: "Live purchases",
   description:
-    "Purchases the shopping agent made with real money at real stores' own checkouts, newest first: each has a public Alibi and the PayPal transaction it paid. Keelson countersigned and logged them; it covers none of them.",
+    "Purchases the shopping agent made with real money at real stores' own checkouts, and the carts Keelson denied there before the payment for Keelson's own test users, newest first. Each has a public Alibi; a paid one names the PayPal transaction it paid. Keelson countersigned and logged them; it covers none of them.",
   responses: {
     200: {
       description: "The live purchases",
@@ -156,13 +200,20 @@ const liveRoute = createRoute({
   },
 });
 
-export function registerPurchases(app: OpenAPIHono, deps: Pick<Deps, "db">): void {
+export function registerPurchases(app: OpenAPIHono, deps: Pick<Deps, "db" | "demoAgentId">): void {
   app.openapi(liveRoute, async (c) => {
     const rows = await deps.db
       .select({ purchase: purchases })
       .from(purchases)
       .innerJoin(alibis, eq(alibis.purchaseId, purchases.id))
-      .where(and(isNotNull(purchases.liveStore), isNotNull(purchases.paypalTransactionId)))
+      .innerJoin(mandates, eq(mandates.id, purchases.mandateId))
+      .innerJoin(user, eq(user.id, mandates.userId))
+      .where(
+        and(
+          isNotNull(purchases.liveStore),
+          or(isNotNull(purchases.paypalTransactionId), publicDenial(deps.demoAgentId)),
+        ),
+      )
       .orderBy(desc(purchases.createdAt))
       .limit(100);
     c.header("Cache-Control", "public, max-age=60");
@@ -173,7 +224,9 @@ export function registerPurchases(app: OpenAPIHono, deps: Pick<Deps, "db">): voi
           store: p.liveStore as string,
           merchant: p.merchantId,
           amount: { currency: p.currency, minor: p.amountMinor.toString() },
-          transactionId: p.paypalTransactionId as string,
+          decision: p.state === "DENIED" ? ("deny" as const) : ("allow" as const),
+          transactionId: p.paypalTransactionId,
+          blocked: p.state === "DENIED" ? denyReasons(p.evalTrace) : [],
           logIndex: String(p.logIndex),
           createdAt: p.createdAt.toISOString(),
         })),

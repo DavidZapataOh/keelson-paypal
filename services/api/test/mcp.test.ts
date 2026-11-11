@@ -3,7 +3,16 @@ import type { AddressInfo } from "node:net";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { serve } from "@hono/node-server";
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import { mandates, operators, sql, user as users } from "@keelson/db";
+import { leafHashOf } from "@keelson/alibi";
+import {
+  alibis,
+  evidenceBundles,
+  mandates,
+  operators,
+  purchases,
+  sql,
+  user as users,
+} from "@keelson/db";
 import { ALIBI_VIEW_URI } from "@keelson/mcp";
 import {
   Client,
@@ -15,6 +24,7 @@ import { testUtils } from "better-auth/plugins";
 import { pino } from "pino";
 import { ulid } from "ulid";
 import { afterAll, beforeAll, expect, test } from "vitest";
+import { fixtures } from "../../../packages/alibi/test/fixtures.ts";
 import { createApp } from "../src/app.ts";
 import { apiAudience, createAuth } from "../src/auth.ts";
 import { authenticate } from "../src/middleware/auth.ts";
@@ -287,4 +297,67 @@ test("confirming finds the held mandate of the operator the client linked, throu
   expect(refused.isError).toBe(true);
   await client.close();
   await other.close();
+});
+
+test.skipIf(!fixtures[0])("verifying an Alibi returns the API verifier's report", async () => {
+  const b = fixtures[0]?.bundle as NonNullable<(typeof fixtures)[0]>["bundle"];
+  const c = b.tee.countersign;
+  const creds = await registerClient(["alibis:read"]);
+  const owner = `kls_usr_${randomBytes(8).toString("hex")}`;
+  const mandateId = ulid();
+  await testDb.insert(users).values({ id: owner, name: "Tester", email: `${owner}@example.test` });
+  await testDb
+    .insert(operators)
+    .values({
+      agentId: BigInt(c.agentId),
+      chainId: 421614,
+      agentRegistry: "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+      name: "op",
+      cnfJwk: {},
+    })
+    .onConflictDoNothing();
+  await testDb.insert(mandates).values({
+    id: mandateId,
+    userId: owner,
+    operatorAgentId: BigInt(c.agentId),
+    state: "ACTIVE",
+    currency: "USD",
+    maxMinor: 10_000n,
+    remainingMinor: 10_000n,
+    merchantIds: ["store"],
+    expiresAt: new Date(Date.now() + 86_400_000),
+  });
+  await testDb.insert(evidenceBundles).values({
+    root: Buffer.from(c.evidenceRoot.slice(2), "hex"),
+    mandateId,
+    manifest: b.manifest.public,
+    uploadedBy: creds.id,
+  });
+  await testDb.insert(purchases).values({
+    id: b.alibi_id,
+    mandateId,
+    clientId: creds.id,
+    state: "CAPTURED",
+    merchantId: String(b.eval.context.merchant),
+    currency: "USD",
+    amountMinor: BigInt(c.amount),
+    cartHash: Buffer.from(c.cartHash.slice(2), "hex"),
+  });
+  const { timestamps: _t, anchor: _a, ...core } = b;
+  await testDb.insert(alibis).values({
+    purchaseId: b.alibi_id,
+    leafHash: Buffer.from(leafHashOf(b)),
+    bundle: { ...core, timestamps: [], paypal: { ...core.paypal, capture_id: undefined } },
+  });
+
+  const client = await connect(["alibis:read"], creds);
+  const result = await client.callTool({
+    name: "keelson.verify_alibi",
+    arguments: { purchaseId: b.alibi_id },
+  });
+  expect(result.isError, JSON.stringify(result.content)).toBeFalsy();
+  const report = result.structuredContent as { verdict: string; checks: { id: string }[] };
+  expect(report.verdict).toEqual(expect.any(String));
+  expect(report.checks.map((x) => x.id)).toContain("tee.countersign");
+  await client.close();
 });

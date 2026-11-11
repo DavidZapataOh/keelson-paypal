@@ -344,6 +344,7 @@ export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<vo
       issuer_jwk: json(issuerJwk),
     },
     manifest: { public: evidence.manifest, disclosures: evidence.disclosures },
+    ...(evidence.cart ? { cart: evidence.cart } : {}),
     ...(evidence.observation ? { channel3_observation: evidence.observation } : {}),
     ...(evidence.webFact ? { web_fact: evidence.webFact } : {}),
     ...(c1 || c3
@@ -402,8 +403,8 @@ export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<vo
 }
 
 /**
- * The public manifest, the disclosures of the public items, the Channel3 observation and the
- * WebFact.
+ * The public manifest, the disclosures of the public items, the cart, the Channel3 observation
+ * and the WebFact.
  */
 async function disclosures(db: Db, root: Buffer) {
   const [b] = await db.select().from(evidenceBundles).where(eq(evidenceBundles.root, root));
@@ -442,10 +443,13 @@ async function disclosures(db: Db, root: Buffer) {
   }
   const wf = items.find((i) => i.type === "tlsn.web_fact");
   const webFact = wf?.bytes ? json(JSON.parse(Buffer.from(wf.bytes).toString())) : undefined;
+  const ct = items.find((i) => i.type === "api.cart");
+  const cart = ct?.bytes ? json(JSON.parse(Buffer.from(ct.bytes).toString())) : undefined;
   return {
     root,
     manifest: manifest as AlibiBundle["manifest"]["public"],
     disclosures: out,
+    cart,
     observation,
     webFact,
     opened: items.map((i) => i.index),
@@ -485,6 +489,7 @@ export async function loadAlibi(db: Db, purchaseId: string): Promise<AlibiBundle
   const core = row.bundle as AlibiBundle;
   return alibiSchema.parse({
     ...core,
+    ...(core.cart === undefined ? await cartOf(db, core) : {}),
     ...(row.anchor ? { anchor: row.anchor } : {}),
     timestamps: tokens.map((t) => ({ tsa: t.tsa, token: toBase64(t.token as Uint8Array) })),
     paypal: {
@@ -494,6 +499,21 @@ export async function loadAlibi(db: Db, purchaseId: string): Promise<AlibiBundle
       ...(row.transactionId ? { transaction_id: row.transactionId } : {}),
     },
   });
+}
+
+/** The disclosed cart of an Alibi issued before its bundle carried one. */
+async function cartOf(db: Db, b: AlibiBundle): Promise<{ cart?: Record<string, Json> }> {
+  if (!b.manifest.disclosures.some((d) => d.type === "api.cart")) return {};
+  const [item] = await db
+    .select({ bytes: evidenceItems.bytes })
+    .from(evidenceItems)
+    .where(
+      and(
+        eq(evidenceItems.root, Buffer.from(b.tee.countersign.evidenceRoot.slice(2), "hex")),
+        eq(evidenceItems.type, "api.cart"),
+      ),
+    );
+  return item?.bytes ? { cart: json(JSON.parse(Buffer.from(item.bytes).toString())) } : {};
 }
 
 function userAuthOf(stored: unknown): Record<string, string> {
