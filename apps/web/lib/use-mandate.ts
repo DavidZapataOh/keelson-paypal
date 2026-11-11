@@ -20,9 +20,9 @@ export function useMandate(id: string | null) {
   // The live view of the agent's browser while it shops under this mandate.
   const [liveView, setLiveView] = useState<string>();
 
-  const load = useCallback(() => {
+  const load = useCallback(async () => {
     if (!id) return;
-    get<MandateView>(`/v1/mandates/${encodeURIComponent(id)}`)
+    await get<MandateView>(`/v1/mandates/${encodeURIComponent(id)}`)
       .then((m) => {
         setMandate(m);
         setError(undefined);
@@ -31,7 +31,7 @@ export function useMandate(id: string | null) {
   }, [id]);
 
   useEffect(() => {
-    if (session.data) load();
+    if (session.data) void load();
   }, [session.data, load]);
 
   const onEvent = useCallback(
@@ -46,7 +46,7 @@ export function useMandate(id: string | null) {
         const id = e.purchaseId;
         setCountersigned((all) => new Set(all).add(id));
       }
-      load();
+      void load();
     },
     [load],
   );
