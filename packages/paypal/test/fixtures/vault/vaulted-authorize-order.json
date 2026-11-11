@@ -1,0 +1,34 @@
+{
+  "id": "8K832279M55989614",
+  "intent": "AUTHORIZE",
+  "status": "COMPLETED",
+  "paymentSource": {
+    "paypal": {
+      "emailAddress": "buyer@example.com",
+      "accountId": "XQHSN372NGSP2",
+      "storedCredential": {
+        "paymentInitiator": "MERCHANT",
+        "usage": "SUBSEQUENT",
+        "usagePattern": "UNSCHEDULED_PREPAID"
+      }
+    }
+  },
+  "purchaseUnits": [
+    {
+      "referenceId": "default",
+      "amount": { "currencyCode": "USD", "value": "100.00" },
+      "payee": { "merchantId": "Q7C9N6S4YRQXG" },
+      "payments": {
+        "authorizations": [
+          {
+            "status": "CREATED",
+            "id": "7X550106NA4440028",
+            "amount": { "currencyCode": "USD", "value": "100.00" },
+            "expirationTime": "2022-01-29T21:20:49Z",
+            "createTime": "2021-12-29T21:20:49Z"
+          }
+        ]
+      }
+    }
+  ]
+}

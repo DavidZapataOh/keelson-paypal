@@ -15,5 +15,6 @@ export { eventResourceId } from "./schemas/webhooks.ts";
 export { createPayPal, type PayPal } from "./sdk.ts";
 export { TokenCache } from "./token.ts";
 export { listTrackers, markDelivered, type TrackerRef } from "./tracking.ts";
+export * from "./vault.ts";
 export * from "./webhook-verify.ts";
 export * from "./webhooks.ts";
