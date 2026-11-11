@@ -144,7 +144,26 @@ jobs:
         with:
           node-version-file: .node-version
           cache: pnpm
-      - run: sudo apt-get update && sudo apt-get install -y poppler-utils zbar-tools
+      # The runners' DNS fails now and then: the .debs are cached per runner image, and fetched with retries.
+      - id: image
+        run: echo "version=$ImageVersion" >> "$GITHUB_OUTPUT"
+      - id: debs
+        uses: actions/cache@v6
+        with:
+          path: ~/debs
+          key: debs-poppler-utils-zbar-tools-${{ runner.os }}-${{ runner.arch }}-${{ steps.image.outputs.version }}
+      - if: steps.debs.outputs.cache-hit != 'true'
+        run: |
+          apt=(-o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o APT::Update::Error-Mode=any)
+          for attempt in 1 2 3; do
+            sudo apt-get "${apt[@]}" update && break
+            [ "$attempt" = 3 ] && exit 1
+            sleep 30
+          done
+          sudo apt-get clean
+          sudo apt-get "${apt[@]}" install -y --download-only poppler-utils zbar-tools
+          mkdir -p ~/debs && cp /var/cache/apt/archives/*.deb ~/debs/
+      - run: sudo dpkg -i ~/debs/*.deb
       - run: pnpm install --frozen-lockfile
       - run: pnpm turbo run build --filter=@keelson/alibi...
       - name: The Alibi PDFs embed their bundle, render the same twice and their QR decodes
