@@ -1,4 +1,5 @@
 import { DEFAULT_BASE_URL } from "./auth.ts";
+import { resolveAuth } from "./credentials.ts";
 import { KeelsonError } from "./errors.ts";
 import {
   type APIResponse,
@@ -45,16 +46,11 @@ export class Keelson {
         if (options.auth === null) {
           throw new KeelsonError("This client has no credentials; pass `auth`.");
         }
-        provider ??= Keelson.resolveAuth(this.baseUrl);
+        provider ??= resolveAuth(this.baseUrl);
         return provider;
       },
     };
   }
-
-  /** Overridden by the credentials module to read the environment and the saved login. */
-  static resolveAuth: (baseUrl: string) => AuthProvider = () => {
-    throw new KeelsonError("No Keelson credentials. Run `npx keelson login`.");
-  };
 
   /** Calls any operation of the API. Resources use it; it is public for what they do not cover. */
   request<T = unknown>(
