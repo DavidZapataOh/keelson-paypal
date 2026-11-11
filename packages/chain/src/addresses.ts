@@ -22,7 +22,7 @@ export const addresses: Record<ChainId, Readonly<Record<string, Address>>> = {
     KeelsonReputationReporter: "0x0D736293957C481626553Bec31e46913A21FBc25",
     KeelsonReserve: "0xd10Cb524B3C5EC3c60A420e8900e4f8C5aB88972",
     KeelsonValidationRegistry: "0x2405d211CaAdFbB193287882fAb76e8A5D41f714",
-    LogBondConformance: "0xf4D32f462F215891f4D2ED1dD21159Aa8B94dF82",
+    LogBondDrill: "0x404F9AB1257cA4E9D11D0F4FB19349f7E54B365D",
     MandatePredicateReferenceVerifier: "0x7D82a52d7e5Cb71D594B2F826d769FF64b26B046",
     MandatePredicateVerifier: "0x3940A0D26f0Fbac6e9d43Fe8b3F69B8bd6CDA2a0",
     MandateViolationCourt: "0xdfFCB5DE6f65A10DC9191e31e16AF68E7995ca26",

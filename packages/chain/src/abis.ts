@@ -2153,6 +2153,20 @@ export const iKeelsonValidationRegistryAbi = [
 export const iLogBondAbi = [
   {
     type: "function",
+    name: "beneficiary",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "bountyBps",
+    inputs: [],
+    outputs: [{ name: "", type: "uint16", internalType: "uint16" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
     name: "checkpoint",
     inputs: [{ name: "note", type: "bytes", internalType: "bytes" }],
     outputs: [
@@ -2167,6 +2181,13 @@ export const iLogBondAbi = [
     inputs: [],
     outputs: [],
     stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "completionWindow",
+    inputs: [],
+    outputs: [{ name: "", type: "uint40", internalType: "uint40" }],
+    stateMutability: "view",
   },
   {
     type: "function",
@@ -2187,6 +2208,7 @@ export const iLogBondAbi = [
         components: [
           { name: "prover", type: "address", internalType: "address" },
           { name: "amount", type: "uint128", internalType: "uint128" },
+          { name: "bounty", type: "uint128", internalType: "uint128" },
           { name: "provenAt", type: "uint40", internalType: "uint40" },
           { name: "size", type: "uint64", internalType: "uint64" },
           { name: "l2Block", type: "uint64", internalType: "uint64" },
@@ -2302,6 +2324,7 @@ export const iLogBondAbi = [
       { name: "rootA", type: "bytes32", indexed: false, internalType: "bytes32" },
       { name: "rootB", type: "bytes32", indexed: false, internalType: "bytes32" },
       { name: "amount", type: "uint256", indexed: false, internalType: "uint256" },
+      { name: "bounty", type: "uint256", indexed: false, internalType: "uint256" },
       { name: "noteHashA", type: "bytes32", indexed: false, internalType: "bytes32" },
       { name: "noteHashB", type: "bytes32", indexed: false, internalType: "bytes32" },
     ],
@@ -2327,6 +2350,7 @@ export const iLogBondAbi = [
     anonymous: false,
   },
   { type: "error", name: "AlreadySlashed", inputs: [] },
+  { type: "error", name: "InvalidBounty", inputs: [] },
   {
     type: "error",
     name: "InvalidNote",
@@ -4858,8 +4882,25 @@ export const logBondAbi = [
       { name: "origin_", type: "bytes32", internalType: "bytes32" },
       { name: "key_", type: "bytes32", internalType: "bytes32" },
       { name: "withdrawalDelay_", type: "uint40", internalType: "uint40" },
+      { name: "completionWindow_", type: "uint40", internalType: "uint40" },
+      { name: "beneficiary_", type: "address", internalType: "address" },
+      { name: "bountyBps_", type: "uint16", internalType: "uint16" },
     ],
     stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "beneficiary",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "bountyBps",
+    inputs: [],
+    outputs: [{ name: "", type: "uint16", internalType: "uint16" }],
+    stateMutability: "view",
   },
   {
     type: "function",
@@ -4880,6 +4921,13 @@ export const logBondAbi = [
   },
   {
     type: "function",
+    name: "completionWindow",
+    inputs: [],
+    outputs: [{ name: "", type: "uint40", internalType: "uint40" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
     name: "deposit",
     inputs: [{ name: "amount", type: "uint256", internalType: "uint256" }],
     outputs: [],
@@ -4897,6 +4945,7 @@ export const logBondAbi = [
         components: [
           { name: "prover", type: "address", internalType: "address" },
           { name: "amount", type: "uint128", internalType: "uint128" },
+          { name: "bounty", type: "uint128", internalType: "uint128" },
           { name: "provenAt", type: "uint40", internalType: "uint40" },
           { name: "size", type: "uint64", internalType: "uint64" },
           { name: "l2Block", type: "uint64", internalType: "uint64" },
@@ -5012,6 +5061,7 @@ export const logBondAbi = [
       { name: "rootA", type: "bytes32", indexed: false, internalType: "bytes32" },
       { name: "rootB", type: "bytes32", indexed: false, internalType: "bytes32" },
       { name: "amount", type: "uint256", indexed: false, internalType: "uint256" },
+      { name: "bounty", type: "uint256", indexed: false, internalType: "uint256" },
       { name: "noteHashA", type: "bytes32", indexed: false, internalType: "bytes32" },
       { name: "noteHashB", type: "bytes32", indexed: false, internalType: "bytes32" },
     ],
@@ -5037,6 +5087,7 @@ export const logBondAbi = [
     anonymous: false,
   },
   { type: "error", name: "AlreadySlashed", inputs: [] },
+  { type: "error", name: "InvalidBounty", inputs: [] },
   {
     type: "error",
     name: "InvalidNote",

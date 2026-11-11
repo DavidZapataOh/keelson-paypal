@@ -37,12 +37,15 @@ contract LogBondForkTest is ForkTest {
     bytes32 internal constant CONFORMANCE_KEY = 0xcee7c0b53e0c733a1a8d44870133fa7cf17187a502c7cf37e429eea5a8d565d5;
     bytes32 internal constant SANDBOX_KEY = 0xf06b6eb0cdc9bf6ec9736d8373d75e757129005c306a9ad4e942b7196db54057;
     uint40 internal constant DELAY = 1 days;
+    uint40 internal constant WINDOW = 1 hours;
+    uint16 internal constant BOUNTY_BPS = 1000;
 
     IPyusd internal pyusd;
     IEd25519Verifier internal ed;
     LogBond internal bond;
     address internal owner = makeAddr("owner");
     address internal prover = makeAddr("prover");
+    address internal beneficiary = makeAddr("beneficiary");
 
     function setUp() public {
         string memory json = _jsonOf(421_614);
@@ -58,7 +61,7 @@ contract LogBondForkTest is ForkTest {
     }
 
     function _bond(bytes32 origin, bytes32 key) internal returns (LogBond) {
-        return new LogBond(IERC20(address(pyusd)), ed, owner, origin, key, DELAY);
+        return new LogBond(IERC20(address(pyusd)), ed, owner, origin, key, DELAY, WINDOW, beneficiary, BOUNTY_BPS);
     }
 
     function _case(uint256 i) internal view returns (Case memory c) {
@@ -89,16 +92,19 @@ contract LogBondForkTest is ForkTest {
     }
 
     function test_deployScriptLinksTheVerifier() public {
-        vm.setEnv("LOG_BOND_NAME", "LogBondConformance");
+        vm.setEnv("LOG_BOND_NAME", "LogBondDrill");
         vm.setEnv("LOG_BOND_ORIGIN", "log.keelson.finance/conformance/2026-1");
         vm.setEnv("LOG_BOND_KEY", vm.toString(CONFORMANCE_KEY));
         vm.setEnv("LOG_BOND_OWNER", vm.toString(owner));
         vm.setEnv("LOG_BOND_NOTE", vm.toString(_note(CONFORMANCE_16)));
         DeployLogBond script = new DeployLogBond();
         LogBond deployed = script.run();
-        assertEq(address(deployed), script.predict("LogBondConformance"));
+        assertEq(address(deployed), script.predict("LogBondDrill"));
         assertEq(deployed.owner(), owner);
         assertEq(deployed.withdrawalDelay(), 7 days);
+        assertEq(deployed.completionWindow(), 1 days);
+        assertEq(deployed.beneficiary(), vm.parseJsonAddress(_json(), ".contracts.KeelsonReserve"));
+        assertEq(deployed.bountyBps(), 1000);
         (uint64 size,) = deployed.checkpoint(_note(FORK_8));
         assertEq(size, 8);
     }
@@ -111,7 +117,12 @@ contract LogBondForkTest is ForkTest {
         bond.checkpoint(_note(SANDBOX));
     }
 
-    function test_twoViewsOfOneSizeTakeTheWholeBond() public {
+    function test_refusesABountyAboveTheBond() public {
+        vm.expectRevert(ILogBond.InvalidBounty.selector);
+        new LogBond(IERC20(address(pyusd)), ed, owner, bytes32(0), CONFORMANCE_KEY, DELAY, WINDOW, beneficiary, 10_001);
+    }
+
+    function test_twoViewsOfOneSizeSlashTheWholeBond() public {
         bytes memory a = _note(CONFORMANCE_8);
         bytes memory b = _note(FORK_8);
         vm.prank(owner);
@@ -119,18 +130,20 @@ contract LogBondForkTest is ForkTest {
 
         vm.expectEmit(address(bond));
         emit ILogBond.EquivocationProven(
-            prover, 8, _case(CONFORMANCE_8).root, _case(FORK_8).root, 40e6, keccak256(a), keccak256(b)
+            prover, 8, _case(CONFORMANCE_8).root, _case(FORK_8).root, 40e6, 4e6, keccak256(a), keccak256(b)
         );
         uint256 gasBefore = gasleft();
         _prove(a, b);
         GasBudget.check("logBond_proveEquivocation", gasBefore - gasleft());
 
-        assertEq(pyusd.balanceOf(prover), 40e6, "the pending withdrawal was slashed too");
+        assertEq(pyusd.balanceOf(prover), 4e6, "the bounty");
+        assertEq(pyusd.balanceOf(beneficiary), 36e6, "the rest, the pending withdrawal included");
         assertEq(pyusd.balanceOf(address(bond)), 0);
         assertTrue(bond.slashed());
         ILogBond.Equivocation memory e = bond.equivocation();
         assertEq(e.prover, prover);
         assertEq(e.amount, 40e6);
+        assertEq(e.bounty, 4e6);
         assertEq(e.size, 8);
         assertEq(e.rootA, _case(CONFORMANCE_8).root);
         assertEq(e.rootB, _case(FORK_8).root);
@@ -203,6 +216,16 @@ contract LogBondForkTest is ForkTest {
         vm.stopPrank();
         assertEq(pyusd.balanceOf(owner) - before, 40e6, "capped at what the bond holds");
         assertEq(bond.withdrawal().amount, 0);
+    }
+
+    /// @dev An unlocked request is not a standing option to leave: it lapses after the completion window.
+    function test_anUnlockedWithdrawalLapses() public {
+        vm.startPrank(owner);
+        bond.requestWithdrawal(10e6, owner);
+        vm.warp(block.timestamp + DELAY + WINDOW + 1);
+        vm.expectRevert(ILogBond.NotReady.selector);
+        bond.completeWithdrawal();
+        vm.stopPrank();
     }
 
     function _blankLine(bytes memory note) internal pure returns (uint256 i) {

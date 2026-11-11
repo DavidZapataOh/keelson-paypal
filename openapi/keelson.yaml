@@ -3336,6 +3336,17 @@ components:
         verifier:
           type: string
           description: The Ed25519 verifier the bond calls.
+        canonical:
+          type: boolean
+          description: Whether the bond calls the registry's `Ed25519Verifier` over PYUSD.
+            A bond on another verifier or token proves nothing.
+        beneficiary:
+          type: string
+          description: Who receives a slash, less the bounty.
+        bountyBps:
+          type: number
+        completionWindowSeconds:
+          type: number
         balanceMinor:
           type: string
         withdrawalDelaySeconds:
@@ -3367,6 +3378,10 @@ components:
         - key
         - owner
         - verifier
+        - canonical
+        - beneficiary
+        - bountyBps
+        - completionWindowSeconds
         - balanceMinor
         - withdrawalDelaySeconds
         - withdrawal
@@ -3381,7 +3396,11 @@ components:
           type: string
         amountMinor:
           type: string
-          description: PYUSD base units paid to the prover.
+          description: The whole bond slashed, PYUSD base units.
+        bountyMinor:
+          type: string
+          description: The prover's bounty out of it; the rest went to the bond's
+            beneficiary.
         provenAt:
           type: string
         size:
@@ -3412,6 +3431,7 @@ components:
       required:
         - prover
         - amountMinor
+        - bountyMinor
         - provenAt
         - size
         - rootA

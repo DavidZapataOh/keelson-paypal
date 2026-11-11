@@ -10,12 +10,18 @@ export interface LogBond {
   key: string;
   owner: string;
   verifier: string;
+  /** Whether the bond calls the registry's Ed25519 verifier over PYUSD. */
+  canonical: boolean;
+  beneficiary: string;
+  bountyBps: number;
+  completionWindowSeconds: number;
   balanceMinor: string;
   withdrawalDelaySeconds: number;
   withdrawal: { amountMinor: string; unlockAt: string; to: string } | null;
   equivocation: {
     prover: string;
     amountMinor: string;
+    bountyMinor: string;
     provenAt: string;
     size: string;
     rootA: string;

@@ -8,7 +8,8 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 
 /// @notice Deploys the `Ed25519Verifier` (and the SCL library it links) and a `LogBond` on one log origin over the
-/// registry's PYUSD, owned by the treasury, with a withdrawal delay of seven days.
+/// registry's PYUSD: withdrawals wait seven days and lapse a day after, and a slash pays a 10% bounty to the prover and
+/// the rest to the registry's `KeelsonReserve`, the warranty pool that pays for Keelson's own faults.
 /// @dev `LOG_BOND_NAME` is the registry name (`LogBond` for the sandbox origin, `LogBondConformance` for the drill
 /// origin), `LOG_BOND_ORIGIN` the origin string, `LOG_BOND_KEY` the hex Ed25519 key, `LOG_BOND_OWNER` the owner and
 /// `LOG_BOND_NOTE` a checkpoint the log published, which the deployed bond must open.
@@ -18,6 +19,8 @@ contract DeployLogBond is KeelsonDeploy {
     string internal constant VERIFIER = "Ed25519Verifier";
     string internal constant SCL = "SCL_EIP6565";
     uint40 internal constant WITHDRAWAL_DELAY = 7 days;
+    uint40 internal constant COMPLETION_WINDOW = 1 days;
+    uint16 internal constant BOUNTY_BPS = 1000;
 
     function run() external returns (LogBond bond) {
         vm.startBroadcast(_owner());
@@ -37,7 +40,10 @@ contract DeployLogBond is KeelsonDeploy {
             vm.envAddress("LOG_BOND_OWNER"),
             keccak256(bytes(vm.envString("LOG_BOND_ORIGIN"))),
             vm.envBytes32("LOG_BOND_KEY"),
-            WITHDRAWAL_DELAY
+            WITHDRAWAL_DELAY,
+            COMPLETION_WINDOW,
+            _registry().readAddress(".contracts.KeelsonReserve"),
+            BOUNTY_BPS
         );
     }
 

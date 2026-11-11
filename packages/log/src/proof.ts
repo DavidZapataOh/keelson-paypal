@@ -118,6 +118,20 @@ function parseNote(signed: string) {
 }
 
 /**
+ * Ed25519 as the Go `crypto/ed25519` package and the on-chain `Ed25519Verifier` check it: noble
+ * checks the cofactored equation, so `R` must also have no torsion component, or a signature only
+ * this client accepts could not be proven anywhere else.
+ */
+function verifyEd25519(sig: Uint8Array, message: Uint8Array, key: Uint8Array): boolean {
+  if (sig.length !== 64 || !ed25519.verify(sig, message, key, { zip215: false })) return false;
+  try {
+    return ed25519.Point.fromBytes(sig.subarray(0, 32)).isTorsionFree();
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Verifies a signed checkpoint and requires a valid signature from every vkey, each named
  * after the checkpoint's origin.
  */
@@ -130,7 +144,7 @@ export function verifyCheckpoint(signed: string, vkeys: readonly string[]): Veri
     const ok = sigs.some(({ name, sig }) => {
       if (name !== vkey.name || !equal(sig.subarray(0, 4), vkey.hash)) return false;
       if (vkey.alg === 0x01) {
-        return ed25519.verify(sig.subarray(4), encoder.encode(text), vkey.key, { zip215: false });
+        return verifyEd25519(sig.subarray(4), encoder.encode(text), vkey.key);
       }
       if (sig.length !== 4 + 8 + 2420 || lines.length !== 4) return false;
       const time = new DataView(sig.buffer, sig.byteOffset + 4, 8).getBigUint64(0);
@@ -180,7 +194,7 @@ export function verifyCosignatures(
       if (!equal(sig.subarray(0, 4), vkey.hash)) continue;
       const time = new DataView(sig.buffer, sig.byteOffset + 4, 8).getBigUint64(0);
       const msg = encoder.encode(`cosignature/v1\ntime ${time}\n${text}`);
-      if (!ed25519.verify(sig.subarray(12), msg, vkey.key, { zip215: false })) continue;
+      if (!verifyEd25519(sig.subarray(12), msg, vkey.key)) continue;
       if (time > latest) continue;
       cosigners.push(vkey.name);
       times.push(time);

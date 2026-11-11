@@ -15,10 +15,12 @@ interface IArbSys {
 
 /// @title LogBond
 /// @notice A bond on one transparency log's Ed25519 key. Two checkpoints of the log that both carry a valid signature
-/// of the key and state different roots for the same size are proof that the log showed two histories; whoever submits
-/// them takes the whole bond, once. The notes are c2sp.org/tlog-checkpoint signed notes (c2sp.org/signed-note).
-/// @dev No admin and no upgrade path. The owner can only withdraw, after `withdrawalDelay`, and what is waiting to
-/// leave stays in the bond until it does.
+/// of the key and state different roots for the same size are proof that the log showed two histories; they slash the
+/// whole bond, once: a bounty to whoever submits them, the rest to the beneficiary. The notes are c2sp.org/tlog-checkpoint
+/// signed notes (c2sp.org/signed-note).
+/// @dev No admin and no upgrade path. The owner can only withdraw, after `withdrawalDelay` and within
+/// `completionWindow`, and what is waiting to leave stays in the bond until it does. Whoever holds the key can always
+/// prove an equivocation of its own, so the bounty is what it can take back that way.
 contract LogBond is ILogBond, ReentrancyGuardTransient {
     using SafeERC20 for IERC20;
     using SafeCast for uint256;
@@ -42,6 +44,9 @@ contract LogBond is ILogBond, ReentrancyGuardTransient {
     bytes32 public immutable origin;
     bytes32 public immutable key;
     uint40 public immutable withdrawalDelay;
+    uint40 public immutable completionWindow;
+    address public immutable beneficiary;
+    uint16 public immutable bountyBps;
 
     Withdrawal internal _withdrawal;
     Equivocation internal _equivocation;
@@ -58,14 +63,21 @@ contract LogBond is ILogBond, ReentrancyGuardTransient {
         address owner_,
         bytes32 origin_,
         bytes32 key_,
-        uint40 withdrawalDelay_
+        uint40 withdrawalDelay_,
+        uint40 completionWindow_,
+        address beneficiary_,
+        uint16 bountyBps_
     ) {
+        if (bountyBps_ > 10_000) revert InvalidBounty();
         token = token_;
         verifier = verifier_;
         owner = owner_;
         origin = origin_;
         key = key_;
         withdrawalDelay = withdrawalDelay_;
+        completionWindow = completionWindow_;
+        beneficiary = beneficiary_;
+        bountyBps = bountyBps_;
     }
 
     modifier onlyOwner() {
@@ -113,7 +125,9 @@ contract LogBond is ILogBond, ReentrancyGuardTransient {
     /// @inheritdoc ILogBond
     function completeWithdrawal() external nonReentrant onlyOwner {
         Withdrawal memory w = _withdrawal;
-        if (w.amount == 0 || block.timestamp < w.unlockAt) revert NotReady();
+        if (w.amount == 0 || block.timestamp < w.unlockAt || block.timestamp > w.unlockAt + completionWindow) {
+            revert NotReady();
+        }
         delete _withdrawal;
         uint256 balance = token.balanceOf(address(this));
         uint256 amount = w.amount < balance ? w.amount : balance;
@@ -129,9 +143,11 @@ contract LogBond is ILogBond, ReentrancyGuardTransient {
         if (a.size != b.size || a.root == b.root) revert NotEquivocation();
 
         uint256 amount = token.balanceOf(address(this));
+        uint256 bounty = amount * bountyBps / 10_000;
         _equivocation = Equivocation({
             prover: msg.sender,
             amount: amount.toUint128(),
+            bounty: bounty.toUint128(),
             provenAt: block.timestamp.toUint40(),
             size: a.size,
             l2Block: _l2Block(),
@@ -141,8 +157,9 @@ contract LogBond is ILogBond, ReentrancyGuardTransient {
         delete _withdrawal;
         // The calls before are static calls to the verifier and the token.
         // forge-lint: disable-next-line(reentrancy-events)
-        emit EquivocationProven(msg.sender, a.size, a.root, b.root, amount, keccak256(noteA), keccak256(noteB));
-        token.safeTransfer(msg.sender, amount);
+        emit EquivocationProven(msg.sender, a.size, a.root, b.root, amount, bounty, keccak256(noteA), keccak256(noteB));
+        if (bounty > 0) token.safeTransfer(msg.sender, bounty);
+        if (amount > bounty) token.safeTransfer(beneficiary, amount - bounty);
     }
 
     /// @dev Opens `note` as a checkpoint of the origin with a valid signature of the key: the text is the origin line,

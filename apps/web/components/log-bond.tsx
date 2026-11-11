@@ -66,10 +66,19 @@ function LogBondCard({ bond }: { bond: LogBond }) {
             {bond.address.slice(0, 6)}…{bond.address.slice(-4)} ↗
           </a>
         </DataItem>
+        <DataItem label="On a slash">
+          {bond.bountyBps / 100}% to the prover, the rest to Keelson&apos;s reserve
+        </DataItem>
         <DataItem label="Withdrawal delay">
           {Math.round(bond.withdrawalDelaySeconds / 86_400)} days
         </DataItem>
       </DataList>
+      {!bond.canonical ? (
+        <ErrorNotice>
+          This bond does not call Keelson&apos;s Ed25519 verifier over PYUSD, so a slash of it
+          proves nothing.
+        </ErrorNotice>
+      ) : null}
       {e ? (
         <div className="grid gap-4">
           <Timeline>
@@ -87,10 +96,12 @@ function LogBondCard({ bond }: { bond: LogBond }) {
               time={e.provenAt}
               {...(e.explorerUrl ? { proof: { href: e.explorerUrl, label: "Arbiscan" } } : {})}
             >
-              verified both Ed25519 signatures on chain and paid {pyusd(e.amountMinor)} to{" "}
+              verified both Ed25519 signatures on chain and slashed {pyusd(e.amountMinor)}:{" "}
+              {pyusd(e.bountyMinor)} to the prover{" "}
               <span className="font-mono text-xs">
                 {e.prover.slice(0, 6)}…{e.prover.slice(-4)}
               </span>
+              , the rest to Keelson&apos;s reserve
             </TimelineItem>
           </Timeline>
           {e.noteA && e.noteB ? (

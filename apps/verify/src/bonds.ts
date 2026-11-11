@@ -17,6 +17,7 @@ const RPCS = [
   "https://sepolia-rollup.arbitrum.io/rpc",
   "https://arbitrum-sepolia-rpc.publicnode.com",
 ];
+const PYUSD = "0x637A1259C6afd7E3AdF63993cA7E58BB438aB1B1";
 const ORIGINS = ["log.keelson.finance/alibi/2026-1", "log.keelson.finance/conformance/2026-1"];
 
 export interface BondView {
@@ -24,9 +25,12 @@ export interface BondView {
   origin: string;
   key: Hex;
   balance: bigint;
+  /** Whether the bond calls the registry's `Ed25519Verifier` over PYUSD. */
+  canonical: boolean;
   slash: {
     prover: Address;
     amount: bigint;
+    bounty: bigint;
     size: bigint;
     rootA: Hex;
     rootB: Hex;
@@ -53,10 +57,11 @@ export async function readBonds(rpc?: string): Promise<BondView[]> {
   return Promise.all(
     bonds.map(async (address) => {
       const c = { address, abi: logBondAbi } as const;
-      const [origin, key, token, e] = await Promise.all([
+      const [origin, key, token, verifier, e] = await Promise.all([
         client.readContract({ ...c, functionName: "origin" }),
         client.readContract({ ...c, functionName: "key" }),
         client.readContract({ ...c, functionName: "token" }),
+        client.readContract({ ...c, functionName: "verifier" }),
         client.readContract({ ...c, functionName: "equivocation" }),
       ]);
       const balance = await client.readContract({
@@ -85,6 +90,7 @@ export async function readBonds(rpc?: string): Promise<BondView[]> {
         slash = {
           prover: e.prover,
           amount: e.amount,
+          bounty: e.bounty,
           size: e.size,
           rootA: e.rootA,
           rootB: e.rootB,
@@ -98,6 +104,7 @@ export async function readBonds(rpc?: string): Promise<BondView[]> {
         origin: ORIGINS.find((o) => keccak256(stringToBytes(o)) === origin) ?? origin,
         key,
         balance,
+        canonical: verifier === addresses[421614].Ed25519Verifier && token === PYUSD,
         slash,
       };
     }),

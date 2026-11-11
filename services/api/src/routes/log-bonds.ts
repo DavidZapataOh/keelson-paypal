@@ -18,6 +18,7 @@ import { ProblemSchema } from "../problem.ts";
 const CHAIN_ID = 421614;
 const EXPLORER = "https://sepolia.arbiscan.io";
 /** The test origin whose bond the equivocation drill slashes; nothing trusts it. */
+const PYUSD = "0x637A1259C6afd7E3AdF63993cA7E58BB438aB1B1";
 const CONFORMANCE_ORIGIN = "log.keelson.finance/conformance/2026-1";
 const ORIGINS = [LOG_ORIGINS[CHAIN_ID] as string, CONFORMANCE_ORIGIN];
 
@@ -34,7 +35,10 @@ const pyusdAbi = [
 const Equivocation = z
   .object({
     prover: z.string(),
-    amountMinor: z.string().openapi({ description: "PYUSD base units paid to the prover." }),
+    amountMinor: z.string().openapi({ description: "The whole bond slashed, PYUSD base units." }),
+    bountyMinor: z.string().openapi({
+      description: "The prover's bounty out of it; the rest went to the bond's beneficiary.",
+    }),
     provenAt: z.string(),
     size: z.string().openapi({ description: "The tree size both checkpoints state." }),
     rootA: z.string(),
@@ -60,6 +64,13 @@ const Bond = z
     key: z.string().openapi({ description: "The Ed25519 log key the bond pins, hex." }),
     owner: z.string(),
     verifier: z.string().openapi({ description: "The Ed25519 verifier the bond calls." }),
+    canonical: z.boolean().openapi({
+      description:
+        "Whether the bond calls the registry's `Ed25519Verifier` over PYUSD. A bond on another verifier or token proves nothing.",
+    }),
+    beneficiary: z.string().openapi({ description: "Who receives a slash, less the bounty." }),
+    bountyBps: z.number(),
+    completionWindowSeconds: z.number(),
     balanceMinor: z.string(),
     withdrawalDelaySeconds: z.number(),
     withdrawal: z
@@ -100,6 +111,7 @@ async function equivocationOf(
   e: {
     prover: Address;
     amount: bigint;
+    bounty: bigint;
     provenAt: number;
     size: bigint;
     l2Block: bigint;
@@ -115,16 +127,24 @@ async function equivocationOf(
     toBlock: e.l2Block,
   });
   const txHash = found[0]?.transactionHash ?? null;
+  const event = found[0]?.args;
   let notes: [string, string] | null = null;
-  if (txHash) {
+  if (txHash && event) {
+    // A slash sent through another contract has other calldata: the notes then stay unknown, and
+    // notes are shown only when they hash to what the event recorded.
     const tx = await logs.getTransaction({ hash: txHash });
-    const { args } = decodeFunctionData({ abi: logBondAbi, data: tx.input });
-    const [a, b] = args as readonly [Hex, Hex];
-    notes = [hexToString(a), hexToString(b)];
+    try {
+      const { args } = decodeFunctionData({ abi: logBondAbi, data: tx.input });
+      const [a, b] = args as readonly [Hex, Hex];
+      if (keccak256(a) === event.noteHashA && keccak256(b) === event.noteHashB) {
+        notes = [hexToString(a), hexToString(b)];
+      }
+    } catch {}
   }
   return {
     prover: getAddress(e.prover),
     amountMinor: e.amount.toString(),
+    bountyMinor: e.bounty.toString(),
     provenAt: new Date(e.provenAt * 1000).toISOString(),
     size: e.size.toString(),
     rootA: e.rootA,
@@ -155,22 +175,39 @@ export function registerLogBonds(app: OpenAPIHono, deps: Pick<Deps, "chains">): 
               | "owner"
               | "verifier"
               | "withdrawalDelay"
+              | "completionWindow"
+              | "beneficiary"
+              | "bountyBps"
               | "withdrawal"
               | "equivocation",
           >(
             functionName: F,
           ) => reader.client.readContract({ address, abi: logBondAbi, functionName, blockNumber });
-          const [token, origin, key, owner, verifier, delay, withdrawal, equivocation] =
-            await Promise.all([
-              read("token"),
-              read("origin"),
-              read("key"),
-              read("owner"),
-              read("verifier"),
-              read("withdrawalDelay"),
-              read("withdrawal"),
-              read("equivocation"),
-            ]);
+          const [
+            token,
+            origin,
+            key,
+            owner,
+            verifier,
+            delay,
+            window,
+            beneficiary,
+            bountyBps,
+            withdrawal,
+            equivocation,
+          ] = await Promise.all([
+            read("token"),
+            read("origin"),
+            read("key"),
+            read("owner"),
+            read("verifier"),
+            read("withdrawalDelay"),
+            read("completionWindow"),
+            read("beneficiary"),
+            read("bountyBps"),
+            read("withdrawal"),
+            read("equivocation"),
+          ]);
           const balance = await reader.client.readContract({
             address: token,
             abi: pyusdAbi,
@@ -178,7 +215,20 @@ export function registerLogBonds(app: OpenAPIHono, deps: Pick<Deps, "chains">): 
             args: [address],
             blockNumber,
           });
-          return { origin, key, owner, verifier, delay, withdrawal, equivocation, balance };
+          return {
+            token,
+            origin,
+            key,
+            owner,
+            verifier,
+            delay,
+            window,
+            beneficiary,
+            bountyBps,
+            withdrawal,
+            equivocation,
+            balance,
+          };
         });
         const e = value.equivocation;
         let equivocation: Equivocation | null = null;
@@ -201,6 +251,11 @@ export function registerLogBonds(app: OpenAPIHono, deps: Pick<Deps, "chains">): 
           key: value.key,
           owner: getAddress(value.owner),
           verifier: getAddress(value.verifier),
+          canonical:
+            value.verifier === addresses[CHAIN_ID].Ed25519Verifier && value.token === PYUSD,
+          beneficiary: getAddress(value.beneficiary),
+          bountyBps: value.bountyBps,
+          completionWindowSeconds: value.window,
           balanceMinor: value.balance.toString(),
           withdrawalDelaySeconds: value.delay,
           withdrawal:

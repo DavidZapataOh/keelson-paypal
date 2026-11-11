@@ -50,6 +50,11 @@ export function Bonds({ rpc }: { rpc?: string | undefined }) {
                     : `Bonded: ${pyusd(b.balance)}`}
                 </p>
               </div>
+              {!b.canonical && (
+                <p className="text-sm text-warn">
+                  Not Keelson's Ed25519 verifier over PYUSD: a slash of it proves nothing.
+                </p>
+              )}
               <p className="font-mono text-xs text-muted-foreground">
                 key {short(b.key)} ·{" "}
                 <a
@@ -78,13 +83,14 @@ export function Bonds({ rpc }: { rpc?: string | undefined }) {
               {b.slash?.notes && (
                 <div className="grid gap-2 sm:grid-cols-2">
                   {b.slash.notes.map((n, i) => (
-                    <pre
-                      key={n}
-                      className="overflow-x-auto rounded-md border border-border p-2 font-mono text-[11px] leading-relaxed"
-                      aria-label={`Signed checkpoint ${i ? "B" : "A"}`}
-                    >
-                      {n}
-                    </pre>
+                    <figure key={n} className="space-y-1">
+                      <figcaption className="text-xs text-muted-foreground">
+                        Signed checkpoint {i ? "B" : "A"}
+                      </figcaption>
+                      <pre className="overflow-x-auto rounded-md border border-border p-2 font-mono text-[11px] leading-relaxed">
+                        {n}
+                      </pre>
+                    </figure>
                   ))}
                 </div>
               )}

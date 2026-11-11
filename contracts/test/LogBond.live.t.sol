@@ -40,7 +40,7 @@ contract LogBondLiveTest is ForkTest {
     function test_TheDrillSlashedTheConformanceBond() public {
         string memory json = _jsonOf(421_614);
         vm.createSelectFork(vm.envString(json.readString(".rpcEnv")));
-        LogBond bond = LogBond(json.readAddress(".contracts.LogBondConformance"));
+        LogBond bond = LogBond(json.readAddress(".contracts.LogBondDrill"));
         string memory vectors = vm.readFile(string.concat(vm.projectRoot(), "/test/vectors/checkpoints.json"));
         ILogBond.Equivocation memory e = bond.equivocation();
         assertTrue(bond.slashed());
@@ -48,6 +48,7 @@ contract LogBondLiveTest is ForkTest {
         assertEq(e.rootA, vectors.readBytes32(".cases[1].root"));
         assertEq(e.rootB, vectors.readBytes32(".cases[3].root"));
         assertGt(e.amount, 0);
+        assertEq(e.bounty, e.amount / 10);
         assertGt(e.l2Block, 0);
     }
 }

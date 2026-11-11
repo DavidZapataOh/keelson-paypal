@@ -109,6 +109,18 @@ contract Ed25519VerifierTest is Test {
         assertFalse(ed.verify(key, "", _sig(r, bytes32(_le(bytes32(s + L))))));
     }
 
+    /// @dev `R = rB + T` with `T` of order 8: the cofactored equation holds, the cofactorless one this verifier
+    /// checks (as Go's `crypto/ed25519` does) does not.
+    function test_refusesATorsionedR() public view {
+        assertFalse(
+            ed.verify(
+                0xea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c,
+                hex"6c6f672e6578616d706c652f310a380a414141414141414141414141414141414141414141414141414141414141414141414141414141414141413d0a",
+                hex"b15bf26424d1b69dd33b7a9e57db5de4a2aadea4a2a051efd9bfd6af74165d2be49befbc4da5c46abbd57a9283e84a8279d496d9e0b0ca92eb61c39401291209"
+            )
+        );
+    }
+
     /// @dev y = 2 has no x on the curve; y = 1 is the identity.
     function test_refusesKeysThatAreNotUsablePoints() public view {
         bytes memory sig = new bytes(64);
