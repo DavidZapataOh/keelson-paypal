@@ -13,6 +13,8 @@
   "depositWithAuthorization_first": "117434",
   "depositWithAuthorization_later": "83234",
   "depositWithPermit_first": "140037",
+  "engine_record_tx": "273257",
+  "engine_verify": "221541",
   "executeSlash": "133901",
   "lockCoverageBatch_perCoverage": "1320",
   "lockCoverage_coverage_2of2_payment": "167350",

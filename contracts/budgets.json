@@ -38,5 +38,7 @@
   "c3_verify": 750000,
   "c1c3_verify": 820000,
   "userSet_publish": 62000,
-  "userSet_verify": 760000
+  "userSet_verify": 760000,
+  "engine_verify": 230000,
+  "engine_record_tx": 285000
 }

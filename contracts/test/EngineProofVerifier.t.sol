@@ -4,6 +4,7 @@ pragma solidity 0.8.38;
 import {EngineProofVerifier} from "../src/EngineProofVerifier.sol";
 import {GasBudget} from "./utils/GasBudget.sol";
 import {ISP1Verifier} from "@sp1-contracts/ISP1Verifier.sol";
+import {Verifier as Groth16Verifier} from "@sp1-contracts/v6.1.0/Groth16Verifier.sol";
 import {SP1Verifier} from "@sp1-contracts/v6.1.0/SP1VerifierGroth16.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 import {Test} from "forge-std/Test.sol";
@@ -57,13 +58,13 @@ contract EngineProofVerifierTest is Test {
 
     function test_rejects_aChangedEvalHash() public {
         bytes memory changed = bytes.concat(bytes32(uint256(evalHash) ^ 1), digest);
-        vm.expectRevert(SP1Verifier.InvalidProof.selector);
+        vm.expectRevert(Groth16Verifier.ProofInvalid.selector);
         verifier.verify(changed, proof);
     }
 
     function test_rejects_aChangedDigest() public {
         bytes memory changed = bytes.concat(evalHash, bytes32(uint256(digest) ^ 1));
-        vm.expectRevert(SP1Verifier.InvalidProof.selector);
+        vm.expectRevert(Groth16Verifier.ProofInvalid.selector);
         verifier.record(changed, proof);
     }
 
