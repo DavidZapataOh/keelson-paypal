@@ -20,6 +20,7 @@ import {
   inArray,
   isNull,
   lte,
+  mandates,
   ne,
   notInArray,
   or,
@@ -159,6 +160,12 @@ const digestOf = (row: Row) => new Uint8Array(row.digest);
 export async function settleDispute(deps: SettleDeps, disputeId: string): Promise<Settlement> {
   let row = await load(deps.db, disputeId);
   if (!row) return { status: "unattributed", disputeId };
+  // A chargeback that returned everything leaves the bond nothing to pay: the card network
+  // made the user whole at the merchant's expense.
+  if (row.rail === "card" && row.amountMinor === 0n) {
+    await transition(deps.db, "purchases", row.purchaseId, "ATTRIBUTED", "MERCHANT_LIABLE");
+    return { status: "none", disputeId };
+  }
   if (row.liable !== OPERATOR && row.liable !== KEELSON) {
     await transition(
       deps.db,
@@ -192,7 +199,7 @@ export async function settleDispute(deps: SettleDeps, disputeId: string): Promis
     return { status: "pending", disputeId, waiting: "finality" };
   await refund(deps, row);
 
-  if (row.rail === "paypal" && row.outcome === "paid") {
+  if ((row.rail === "paypal" || row.rail === "card") && row.outcome === "paid") {
     if (!deps.paypal) return { status: "pending", disputeId, waiting: "payout" };
     const status =
       row.payoutStatus && PAYOUT_DONE.has(row.payoutStatus)
@@ -259,6 +266,8 @@ async function load(db: Db, disputeId: string): Promise<Row | undefined> {
  * then refused would leave the merchant out of pocket.
  */
 async function refund(deps: SettleDeps, row: Row): Promise<void> {
+  // A card purchase's user is paid by payout; its capture is not this dispute's to refund.
+  if (row.rail === "card") return;
   if (!row.refundId && deps.paypal && row.captureId) await refundBuyer(deps, deps.paypal, row);
 }
 
@@ -853,8 +862,12 @@ async function payout(deps: SettleDeps, paypal: PayPalDeps, row: Row): Promise<s
   const { fetch } = paypal.paypal;
   let batchId = row.payoutBatchId;
   if (!batchId) {
-    const { paypalReceiver } = await settlementOf(deps.db, row.merchantId);
-    if (!paypalReceiver) throw new Error(`merchant ${row.merchantId} has no PayPal receiver`);
+    // A card purchase's user is paid what the chargeback did not return; a merchant, its claim.
+    const paypalReceiver =
+      row.rail === "card"
+        ? await userReceiver(deps.db, paypal, row.purchaseId)
+        : (await settlementOf(deps.db, row.merchantId)).paypalReceiver;
+    if (!paypalReceiver) throw new Error(`purchase ${row.purchaseId} has no PayPal receiver`);
     const ref = ids.encodeVerdictRef(row.id, digestOf(row));
     const created = await createPayout(fetch, {
       senderBatchId: `ks-${ref}`,
@@ -864,7 +877,10 @@ async function payout(deps: SettleDeps, paypal: PayPalDeps, row: Row): Promise<s
           receiver: paypalReceiver,
           recipientType: paypalReceiver.includes("@") ? "EMAIL" : "PAYPAL_ID",
           senderItemId: ref,
-          note: `Keelson settlement of dispute ${row.disputeId}.`,
+          note:
+            row.rail === "card"
+              ? `Keelson refund for card chargeback ${row.disputeId}.`
+              : `Keelson settlement of dispute ${row.disputeId}.`,
         },
       ],
     });
@@ -876,6 +892,27 @@ async function payout(deps: SettleDeps, paypal: PayPalDeps, row: Row): Promise<s
   await deps.db.update(verdicts).set({ payoutStatus: status }).where(eq(verdicts.id, row.id));
   deps.log.info({ disputeId: row.disputeId, batchId, status }, "settlement payout");
   return status;
+}
+
+/**
+ * The PayPal account that paid a card purchase: the payer of its mandate's hold, which the
+ * user approved on PayPal.
+ *
+ * @internal
+ */
+export async function userReceiver(
+  db: Db,
+  paypal: PayPalDeps,
+  purchaseId: string,
+): Promise<string | null> {
+  const [row] = await db
+    .select({ orderId: mandates.paypalOrderId })
+    .from(purchases)
+    .innerJoin(mandates, eq(mandates.id, purchases.mandateId))
+    .where(eq(purchases.id, purchaseId));
+  if (!row?.orderId) return null;
+  const order = await call(paypal.paypal.orders.getOrder({ id: row.orderId }));
+  return order.payer?.emailAddress ?? null;
 }
 
 /**

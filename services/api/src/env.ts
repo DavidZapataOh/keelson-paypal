@@ -41,6 +41,19 @@ const schema = z
       .custom<`0x${string}`>((v) => typeof v === "string" && /^0x[0-9a-fA-F]{64}$/.test(v))
       .optional(),
     DEMO_AGENT_ID: z.coerce.bigint().positive().optional(),
+    /**
+     * The private P-256 JWK of the `cnf` key `DEMO_AGENT_ID` names: the API closes the mandates of
+     * apps that act for a user through Keelson's hosted operator with it (see `delegated.ts`).
+     */
+    KEELSON_AGENT_KEY: z.string().min(1).optional(),
+    /**
+     * What the hosted operator's bond backs for apps that registered themselves (see
+     * `hosted-caps.ts`), in minor units: one user's exposure to apps it does not know, one user's
+     * to all of them (known hosts included), and every user's funded exposure.
+     */
+    HOSTED_CAP_PER_USER_MINOR: z.coerce.bigint().positive().default(10_000n),
+    HOSTED_CAP_KNOWN_PER_USER_MINOR: z.coerce.bigint().positive().default(50_000n),
+    HOSTED_CAP_TOTAL_MINOR: z.coerce.bigint().positive().default(100_000n),
     /** Lets a Judge Mode session past the daily cap; the app forwards it from `/judge/?invite=`. */
     JUDGE_INVITE_CODE: z.string().min(32).optional(),
     /** Keelson's treasury key: it pays in PYUSD the verdicts the chain refuses although they hold. */
@@ -61,6 +74,12 @@ const schema = z
     CHANNEL3_API_KEY: z.string().min(1).optional(),
     PROVER_URL: z.url().optional(),
     CHANNEL3_WEBHOOK_SECRET: z.string().startsWith("whsec_").optional(),
+    /** The Lithic sandbox key that issues card purchases' single-use cards. */
+    LITHIC_API_KEY: z.string().min(1).optional(),
+    /** The HMAC secret Lithic signs Auth Stream Access requests with. */
+    LITHIC_ASA_SECRET: z.string().min(1).optional(),
+    /** The secret of the Lithic event subscription card transactions are delivered to. */
+    LITHIC_WEBHOOK_SECRET: z.string().min(1).optional(),
     TSA_DIGICERT_URL: z.url().optional(),
     TSA_SIGSTORE_URL: z.url().optional(),
     TSA_FREETSA_URL: z.url().optional(),
@@ -106,6 +125,14 @@ const schema = z
   .refine((env) => (env.KEELSON_OPERATOR_KEY === undefined) === (env.DEMO_AGENT_ID === undefined), {
     message: "KEELSON_OPERATOR_KEY and DEMO_AGENT_ID are set together",
     path: ["KEELSON_OPERATOR_KEY"],
+  })
+  .refine((env) => env.KEELSON_AGENT_KEY === undefined || env.DEMO_AGENT_ID !== undefined, {
+    message: "KEELSON_AGENT_KEY needs DEMO_AGENT_ID",
+    path: ["KEELSON_AGENT_KEY"],
+  })
+  .refine((env) => env.HOSTED_CAP_KNOWN_PER_USER_MINOR >= env.HOSTED_CAP_PER_USER_MINOR, {
+    message: "HOSTED_CAP_KNOWN_PER_USER_MINOR is at least HOSTED_CAP_PER_USER_MINOR",
+    path: ["HOSTED_CAP_KNOWN_PER_USER_MINOR"],
   })
   .refine(
     (env) =>

@@ -1,6 +1,15 @@
 import { countersignDigest, keelsonDomain } from "@keelson/core/eip712";
-import { and, type Db, eq, inArray, purchases, teeSignatures, teeSigners } from "@keelson/db";
-import { leafBytes, leafFromCountersign, paypalRefCommit } from "@keelson/log";
+import {
+  and,
+  type Db,
+  eq,
+  inArray,
+  purchaseCards,
+  purchases,
+  teeSignatures,
+  teeSigners,
+} from "@keelson/db";
+import { cardRefCommit, leafBytes, leafFromCountersign, paypalRefCommit } from "@keelson/log";
 import { type Address, getAddress, type Hex, recoverAddress, toHex } from "viem";
 import type { CountersignJson } from "../tee/client.ts";
 import { VERIFYING_CONTRACT } from "../tee/config.ts";
@@ -81,7 +90,7 @@ export async function countersignOf(db: Db, purchaseId: string): Promise<StoredC
 
 /**
  * The Alibi leaf of a purchase: its countersign, the measurements its signers were admitted with
- * and the commitment to its PayPal order and authorization.
+ * and the commitment to its PayPal order and authorization, or to its single-use card.
  */
 export async function purchaseLeaf(
   db: Db,
@@ -91,13 +100,22 @@ export async function purchaseLeaf(
   const [p] = await db
     .select({
       salt: purchases.paypalRefSalt,
+      rail: purchases.rail,
       orderId: purchases.paypalOrderId,
       authorizationId: purchases.paypalAuthorizationId,
+      issuer: purchaseCards.issuer,
+      cardToken: purchaseCards.cardToken,
     })
     .from(purchases)
+    .leftJoin(purchaseCards, eq(purchaseCards.purchaseId, purchases.id))
     .where(eq(purchases.id, purchaseId));
-  if (!p?.salt || !p.orderId || !p.authorizationId) {
-    throw new Error(`purchase ${purchaseId} has no PayPal reference`);
+  let ref: Hex;
+  if (p?.salt && p.rail === "card" && p.issuer && p.cardToken) {
+    ref = cardRefCommit(p.salt, p.issuer, p.cardToken);
+  } else if (p?.salt && p.rail === "paypal" && p.orderId && p.authorizationId) {
+    ref = paypalRefCommit(p.salt, p.orderId, p.authorizationId);
+  } else {
+    throw new Error(`purchase ${purchaseId} has no payment reference`);
   }
   const addresses = [out.signers.tdx, out.signers.nitro].filter((a) => a !== null);
   const signers = await db
@@ -122,7 +140,7 @@ export async function purchaseLeaf(
       out.mode,
       out.signatures,
       { tdx, nitro: measurementOf(out.signers.nitro) },
-      paypalRefCommit(p.salt, p.orderId, p.authorizationId),
+      ref,
     ),
   );
 }

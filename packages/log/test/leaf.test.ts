@@ -5,6 +5,7 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 import type { Hex } from "viem";
 import { describe, expect, test } from "vitest";
 import {
+  cardRefCommit,
   LEAF_PREFIX,
   type LeafMode,
   leafBytes,
@@ -141,6 +142,10 @@ describe("alibi leaf", () => {
 
   test("the PayPal reference commitment separates the two ids", () => {
     expect(paypalRefCommit(salt, "AB", "C")).not.toBe(paypalRefCommit(salt, "A", "BC"));
+    // A card commitment never equals a PayPal one over the same strings.
+    expect(cardRefCommit(salt, "lithic", "card")).not.toBe(paypalRefCommit(salt, "lithic", "card"));
+    expect(cardRefCommit(salt, "lithic", "card")).toMatch(/^0x[0-9a-f]{64}$/);
+    expect(() => cardRefCommit(salt, "lithic", "a\0b")).toThrow();
     expect(() => paypalRefCommit(new Uint8Array(31), "A", "B")).toThrow();
   });
 

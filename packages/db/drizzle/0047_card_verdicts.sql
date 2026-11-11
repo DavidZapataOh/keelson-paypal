@@ -1,0 +1,2 @@
+ALTER TABLE "verdicts" DROP CONSTRAINT "verdicts_rail_valid";--> statement-breakpoint
+ALTER TABLE "verdicts" ADD CONSTRAINT "verdicts_rail_valid" CHECK ("verdicts"."rail" in ('pyusd', 'paypal', 'card'));

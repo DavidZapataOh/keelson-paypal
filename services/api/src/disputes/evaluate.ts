@@ -4,11 +4,13 @@ import { type CurrencyCode, fromPayPalValue } from "@keelson/core";
 import {
   alibis,
   and,
+  cardChargebacks,
   type Db,
   disputes,
   eq,
   isNotNull,
   ne,
+  purchaseCards,
   purchases,
   transition,
   verdicts,
@@ -21,14 +23,15 @@ import { ulid } from "ulid";
 import type { Hex, PublicClient } from "viem";
 import { type AnchorDeps, reanchorAlibi, recordAnchor } from "../alibi/anchors.ts";
 import { loadAlibi } from "../alibi/issue.ts";
+import { bondClaimMinor, chargebackOpen } from "../cards/chargeback.ts";
 import { catchUp } from "../chain/events.ts";
 import { arbitrumSepoliaRpcUrls } from "../chain/rpc.ts";
 import type { LogConfig } from "../log/append.ts";
-import { payeeFor, settlementOf } from "../merchants.ts";
+import { KEELSON_TREASURY, payeeFor, settlementOf } from "../merchants.ts";
 import { call, type PayPalDeps } from "../paypal.ts";
 import type { TeeConfig } from "../tee/signers.ts";
 import { verdict2of2 } from "../tee/verdict.ts";
-import { disputeFacts } from "./facts.ts";
+import { cardDisputeFacts, disputeFacts } from "./facts.ts";
 
 export interface EvaluateDeps {
   db: Db;
@@ -44,7 +47,9 @@ export interface EvaluateDeps {
 
 export type Evaluation =
   | { status: "attributed"; disputeId: string; ruleId: number; liable: number; digest: Hex }
-  | { status: "resolved" | "unknown"; disputeId: string };
+  | { status: "resolved" | "unknown"; disputeId: string }
+  /** A card purchase's chargeback is still being decided: the bond waits for its outcome. */
+  | { status: "waiting"; disputeId: string };
 
 /** PYUSD base units per US cent. */
 const PYUSD_PER_MINOR = 10_000n;
@@ -89,6 +94,25 @@ async function convicted(client: PublicClient, chainId: number, coverageId: Hex)
   return code !== 0;
 }
 
+/** Has the purchase's leaf anchored under a witnessed checkpoint, before its proof is judged. */
+async function anchorLeaf(deps: EvaluateDeps, purchaseId: string, chainId: number): Promise<void> {
+  const anchorDeps: AnchorDeps = { ...deps, tlog: deps.tlog };
+  if ((await reanchorAlibi(anchorDeps, purchaseId)) === "not_covered") {
+    const tx = await anchorNow(deps.tlog, chainId);
+    if (tx) await recordAnchor(deps, chainId, tx);
+    // An anchor another process sent reaches the stored events with the subscription, a second
+    // or so after its block; without one, the blocks past the cursor are read every few seconds.
+    const logs = deps.chain.logs;
+    const until = Date.now() + ANCHOR_VISIBLE_MS;
+    for (let i = 0; (await reanchorAlibi(anchorDeps, purchaseId)) === "not_covered"; i++) {
+      if (Date.now() > until)
+        throw new Error(`no anchor covers the leaf of purchase ${purchaseId} yet`);
+      if (!tx && logs && i % 5 === 0) await catchUp({ db: deps.db, logs, log: deps.log });
+      await new Promise((r) => setTimeout(r, 1_000));
+    }
+  }
+}
+
 /**
  * Attributes one stored dispute and stores the `Verdict` both legs signed. Run as often as it is
  * started: a dispute with a verdict answers that verdict, and every write is conditional.
@@ -121,28 +145,23 @@ export async function evaluateDispute(deps: EvaluateDeps, disputeId: string): Pr
   if (row.state === "RESOLVED") return { status: "resolved", disputeId };
   const p = row.purchase;
   const chainId = p.chainId ?? 421614;
+  if (p.rail === "card") {
+    const [chargeback] = await db
+      .select({ id: cardChargebacks.id })
+      .from(cardChargebacks)
+      .where(eq(cardChargebacks.purchaseId, p.id));
+    if (chargeback?.id === disputeId) {
+      return evaluateCardDispute(deps, disputeId, p, Boolean(row.anchored));
+    }
+    // A PayPal dispute of a card purchase already charged back is the same loss twice: the
+    // chargeback answers for it, and PayPal decides this one on its own.
+    if (chargeback) return { status: "resolved", disputeId };
+  }
   if (!p.paypalCaptureId || !p.paypalOrderId || !p.countersign) {
     throw new Error(`purchase ${p.id} was not captured under a countersign`);
   }
 
-  // The leaf must be under an anchored checkpoint before its proof is judged.
-  if (!row.anchored) {
-    const anchorDeps: AnchorDeps = { ...deps, tlog: deps.tlog };
-    if ((await reanchorAlibi(anchorDeps, p.id)) === "not_covered") {
-      const tx = await anchorNow(deps.tlog, chainId);
-      if (tx) await recordAnchor(deps, chainId, tx);
-      // An anchor another process sent reaches the stored events with the subscription, a second
-      // or so after its block; without one, the blocks past the cursor are read every few seconds.
-      const logs = deps.chain.logs;
-      const until = Date.now() + ANCHOR_VISIBLE_MS;
-      for (let i = 0; (await reanchorAlibi(anchorDeps, p.id)) === "not_covered"; i++) {
-        if (Date.now() > until)
-          throw new Error(`no anchor covers the leaf of purchase ${p.id} yet`);
-        if (!tx && logs && i % 5 === 0) await catchUp({ db: deps.db, logs, log: deps.log });
-        await new Promise((r) => setTimeout(r, 1_000));
-      }
-    }
-  }
+  if (!row.anchored) await anchorLeaf(deps, p.id, chainId);
   const bundle = await loadAlibi(db, p.id);
   if (!bundle?.anchor) throw new Error(`purchase ${p.id} has no anchored alibi`);
 
@@ -241,5 +260,112 @@ export async function evaluateDispute(deps: EvaluateDeps, disputeId: string): Pr
   // A concurrent run stored its verdict first: that one stands.
   if (!inserted) return evaluateDispute(deps, disputeId);
   deps.log.info({ disputeId, purchaseId: p.id, ruleId, liable }, "dispute attributed");
+  return { status: "attributed", disputeId, ruleId, liable, digest: signed.digest };
+}
+
+/**
+ * Attributes a card purchase's dispute, its chargeback, once the card network decided it: the
+ * legs judge it by the attribution table on the chargeback, the settlement and the Alibi, and the
+ * verdict may make the agent's bond pay only what the user lost less what the chargeback
+ * returned. The bond pays Keelson's treasury, which pays the user.
+ */
+async function evaluateCardDispute(
+  deps: EvaluateDeps,
+  disputeId: string,
+  p: typeof purchases.$inferSelect,
+  anchored: boolean,
+): Promise<Evaluation> {
+  const { db } = deps;
+  const chainId = p.chainId ?? 421614;
+  const [chargeback] = await db
+    .select()
+    .from(cardChargebacks)
+    .where(eq(cardChargebacks.id, disputeId));
+  const [card] = await db.select().from(purchaseCards).where(eq(purchaseCards.purchaseId, p.id));
+  if (!chargeback || !card?.settledMinor || !p.countersign) {
+    throw new Error(`purchase ${p.id} has no settled card or no chargeback ${disputeId}`);
+  }
+  if (chargebackOpen(chargeback.status)) return { status: "waiting", disputeId };
+  if (!anchored) await anchorLeaf(deps, p.id, chainId);
+  const bundle = await loadAlibi(db, p.id);
+  if (!bundle?.anchor) throw new Error(`purchase ${p.id} has no anchored alibi`);
+  const cs = p.countersign;
+  const [report, sameCart, all, violated] = await Promise.all([
+    verifyAlibi(bundle, {
+      chain: createChainReader(
+        deps.rpcUrl ? { rpc: { [chainId]: arbitrumSepoliaRpcUrls(deps.rpcUrl) } } : {},
+      ),
+    }),
+    db
+      .select({ id: purchases.id })
+      .from(purchases)
+      .where(
+        and(
+          eq(purchases.mandateId, p.mandateId),
+          eq(purchases.cartHash, p.cartHash),
+          ne(purchases.id, p.id),
+          isNotNull(purchases.capturedAt),
+        ),
+      )
+      .limit(1),
+    db.select().from(cardChargebacks).where(eq(cardChargebacks.purchaseId, p.id)),
+    convicted(deps.chain.client, chainId, cs.requestId as Hex),
+  ]);
+  const { facts, failedFields } = cardDisputeFacts({
+    chargeback,
+    settledMinor: card.settledMinor,
+    bundle,
+    verified: report.verdict === "verified" && !violated,
+    sameCartCountersigned: sameCart.length > 0,
+  });
+  // biome-ignore lint/complexity/useMathMinMax: amounts are bigints.
+  const loss = chargeback.amountMinor < p.amountMinor ? chargeback.amountMinor : p.amountMinor;
+  const minor = bondClaimMinor(loss, all);
+  const issuedAt = Math.floor(Date.now() / 1000);
+  const signed = await verdict2of2(deps, {
+    facts: facts as unknown as Record<string, string | boolean>,
+    input: {
+      paypal_dispute_id: disputeId,
+      coverage_id: cs.requestId as Hex,
+      agent_id: cs.agentId as string,
+      payee: KEELSON_TREASURY,
+      amount: String(minor * PYUSD_PER_MINOR),
+      failed_fields: failedFields,
+      evidence_hash: cs.evidenceRoot as Hex,
+      checkpoint_root: bundle.anchor.anchored_root as Hex,
+      issued_at: issuedAt,
+      deadline: issuedAt + VERDICT_TTL_S,
+    },
+    chain_id: chainId,
+  });
+  const ruleId = Number(signed.message.ruleId);
+  const liable = Number(signed.message.liable);
+  const inserted = await db.transaction(async (tx) => {
+    const stored = await tx
+      .insert(verdicts)
+      .values({
+        id: ulid(),
+        disputeId,
+        liable,
+        ruleId,
+        amountMinor: minor,
+        currency: p.currency,
+        payee: KEELSON_TREASURY,
+        rail: "card",
+        digest: Buffer.from(signed.digest.slice(2), "hex"),
+        chainId: signed.chainId,
+        message: signed.message,
+        signatures: signed.signatures,
+        facts,
+      })
+      .onConflictDoNothing({ target: verdicts.disputeId })
+      .returning({ id: verdicts.id });
+    if (stored.length === 0) return false;
+    await transition(tx, "disputes", disputeId, "OPEN", "ATTRIBUTED", { ruleId, liable });
+    await transition(tx, "purchases", p.id, "DISPUTED", "ATTRIBUTED");
+    return true;
+  });
+  if (!inserted) return evaluateDispute(deps, disputeId);
+  deps.log.info({ disputeId, purchaseId: p.id, ruleId, liable, minor }, "card dispute attributed");
   return { status: "attributed", disputeId, ruleId, liable, digest: signed.digest };
 }

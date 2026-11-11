@@ -34,7 +34,11 @@ export const verdicts = pgTable(
     signatures: jsonb().$type<{ tee: number; signer: string; signature: string }[]>().notNull(),
     /** The facts the legs attributed, whose hash is the message's `inputsHash`. */
     facts: jsonb().notNull(),
-    /** `pyusd` pays the merchant on chain; `paypal` pays Keelson's treasury, which sends a PayPal Payout. */
+    /**
+     * `pyusd` pays the merchant on chain; `paypal` pays Keelson's treasury, which sends the
+     * merchant a PayPal Payout; `card` pays Keelson's treasury, which sends the user of a card
+     * purchase a PayPal Payout of what the card network did not return.
+     */
     rail: text().notNull().default("pyusd"),
     /** The buyer's refund under the verdict's `ksv1.` reference. */
     refundId: text(),
@@ -64,7 +68,7 @@ export const verdicts = pgTable(
   (t) => [
     check("verdicts_digest_len", sql`octet_length(${t.digest}) = 32`),
     check("verdicts_tx_hash_len", sql`octet_length(${t.txHash}) = 32`),
-    check("verdicts_rail_valid", sql`${t.rail} in ('pyusd', 'paypal')`),
+    check("verdicts_rail_valid", sql`${t.rail} in ('pyusd', 'paypal', 'card')`),
     check("verdicts_outcome_valid", sql`${t.outcome} in ('paid', 'queued', 'claimable', 'failed')`),
     check("verdicts_paid_by_valid", sql`${t.paidBy} in ('chain', 'treasury', 'violation-pool')`),
   ],

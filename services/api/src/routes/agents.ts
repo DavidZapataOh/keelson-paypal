@@ -8,6 +8,8 @@ import {
   inArray,
   isNull,
   mandates,
+  oauthConsent,
+  oauthRefreshToken,
   operators,
   purchases,
   sql,
@@ -27,6 +29,10 @@ const AgentId = z.object({ agentId: z.string().regex(/^(0|[1-9]\d{0,77})$/) });
 const AgentRow = z
   .object({
     agentId: z.string(),
+    clientId: z.string().nullable().openapi({
+      description:
+        "The app acting through Keelson's hosted operator, which many apps share: disconnect it alone with `?client=`. Null for an agent's own operator, and for the hosted operator's mandates no app holds (`Unknown app`).",
+    }),
     name: z.string(),
     operator: z.string(),
     connected: z.boolean(),
@@ -105,10 +111,11 @@ const disconnect = createRoute({
   tags: ["agents"],
   summary: "Disconnect an agent",
   description:
-    "Revokes every live mandate of yours that names the agent and ends its connections. Keelson refuses its countersigns from now on; purchases already countersigned may still be captured.",
+    "Revokes every live mandate of yours that names the agent and ends its connections. Keelson refuses its countersigns from now on; purchases already countersigned may still be captured.\n\nWith `client`, only that app, of the apps acting through the agent: the mandates you approved for it, its requests, its OAuth grant and refresh tokens, and the access tokens it holds for you. Apps acting through Keelson's hosted operator are disconnected this way; without `client`, the hosted operator ends only your mandates of it that no app holds (its `Unknown app` row).",
   middleware: [requireSession()],
   request: {
     params: AgentId,
+    query: z.object({ client: z.string().min(1).max(255).optional() }),
     headers: z.object({ "idempotency-key": z.string().min(1).max(255) }),
   },
   responses: {
@@ -177,12 +184,74 @@ const LIVE = [...REVOCABLE];
 
 export function registerAgents(
   app: OpenAPIHono,
-  deps: Pick<Deps, "db" | "kv" | "log" | "paypal" | "tlog" | "notifier">,
+  deps: Pick<Deps, "db" | "kv" | "log" | "paypal" | "tlog" | "notifier" | "demoAgentId">,
 ): void {
   const { db } = deps;
 
-  /** Stops the user's live mandates (of one agent, or all) and ends the matching connections. */
-  async function stop(userId: string, agentId?: bigint): Promise<number> {
+  /** The user's mandates of the hosted operator that no app was approved for. */
+  const orphan = sql`not exists (select 1 from ${agentConnections} where ${agentConnections.mandateId} = ${mandates.id} and ${agentConnections.state} = 'APPROVED')`;
+
+  /**
+   * Stops the user's live mandates (of one agent, or all) and ends the matching connections; with
+   * `clientId`, only those of that app acting through the agent, whose OAuth grant ends too. With
+   * `orphans`, only the agent's mandates no app was approved for, and no app's connection.
+   */
+  async function stop(
+    userId: string,
+    agentId?: bigint,
+    clientId?: string,
+    orphans = false,
+  ): Promise<number> {
+    const ofApp = orphans
+      ? orphan
+      : clientId === undefined
+        ? undefined
+        : sql`exists (select 1 from ${agentConnections} where ${agentConnections.mandateId} = ${mandates.id} and ${agentConnections.state} = 'APPROVED' and ${agentConnections.clientId} = ${clientId})`;
+    const app = orphans
+      ? sql`false`
+      : clientId === undefined
+        ? undefined
+        : eq(agentConnections.clientId, clientId);
+    // An app's grant ends before its connections do: an access token refreshed until then was
+    // issued before they ended, which refuses it by its issue time (see stopped.ts).
+    if (clientId !== undefined) {
+      await db
+        .update(oauthRefreshToken)
+        .set({ revoked: new Date() })
+        .where(
+          and(
+            eq(oauthRefreshToken.userId, userId),
+            eq(oauthRefreshToken.clientId, clientId),
+            isNull(oauthRefreshToken.revoked),
+          ),
+        );
+      await db
+        .delete(oauthConsent)
+        .where(and(eq(oauthConsent.userId, userId), eq(oauthConsent.clientId, clientId)));
+    }
+    await db
+      .update(agentConnections)
+      .set({ disconnectedAt: new Date() })
+      .where(
+        and(
+          eq(agentConnections.userId, userId),
+          isNull(agentConnections.disconnectedAt),
+          agentId === undefined ? undefined : eq(agentConnections.operatorAgentId, agentId),
+          app,
+        ),
+      );
+    // Pending one-time approvals for this user would only be refused later; decline them now.
+    await db
+      .update(agentConnections)
+      .set({ state: "DENIED", decidedAt: new Date() })
+      .where(
+        and(
+          eq(agentConnections.userId, userId),
+          eq(agentConnections.state, "PENDING"),
+          agentId === undefined ? undefined : eq(agentConnections.operatorAgentId, agentId),
+          app,
+        ),
+      );
     // Every countersign stops at once; the holds are released one by one after. A second pass
     // catches a mandate stored while the first one ran.
     const flag = () =>
@@ -194,6 +263,7 @@ export function registerAgents(
             eq(mandates.userId, userId),
             inArray(mandates.state, LIVE),
             agentId === undefined ? undefined : eq(mandates.operatorAgentId, agentId),
+            ofApp,
           ),
         )
         .returning();
@@ -208,27 +278,6 @@ export function registerAgents(
         deps.log.warn({ err, mandateId: row.id }, "hold not voided on revoke; the sweeper retries");
       }
     }
-    await db
-      .update(agentConnections)
-      .set({ disconnectedAt: new Date() })
-      .where(
-        and(
-          eq(agentConnections.userId, userId),
-          isNull(agentConnections.disconnectedAt),
-          agentId === undefined ? undefined : eq(agentConnections.operatorAgentId, agentId),
-        ),
-      );
-    // Pending one-time approvals for this user would only be refused later; decline them now.
-    await db
-      .update(agentConnections)
-      .set({ state: "DENIED", decidedAt: new Date() })
-      .where(
-        and(
-          eq(agentConnections.userId, userId),
-          eq(agentConnections.state, "PENDING"),
-          agentId === undefined ? undefined : eq(agentConnections.operatorAgentId, agentId),
-        ),
-      );
     await publishEvent(
       deps,
       principalChannel({ kind: "user", subject: userId }, "agents"),
@@ -236,6 +285,7 @@ export function registerAgents(
       {
         type: agentId === undefined ? "agents.frozen" : "agent.disconnected",
         revoked: rows.length,
+        ...(clientId === undefined ? {} : { clientId }),
       },
     );
     return rows.length;
@@ -244,7 +294,13 @@ export function registerAgents(
   app.openapi(list, async (c) => {
     const userId = (c.get("principal") as Principal).subject;
     const owned = await db
-      .select({ mandate: mandates, operator: operators })
+      .select({
+        mandate: mandates,
+        operator: operators,
+        clientId: sql<
+          string | null
+        >`(select ${agentConnections.clientId} from ${agentConnections} where ${agentConnections.mandateId} = ${mandates.id} and ${agentConnections.state} = 'APPROVED' limit 1)`,
+      })
       .from(mandates)
       .innerJoin(operators, eq(operators.agentId, mandates.operatorAgentId))
       .where(eq(mandates.userId, userId))
@@ -276,16 +332,25 @@ export function registerAgents(
     const lastBuy = new Map(bought.map((b) => [b.mandateId, new Date(b.at)]));
 
     const agents = new Map<string, z.infer<typeof AgentRow> & { at: number }>();
+    // Apps acting through the hosted operator share it: each is its own row.
     const touch = (
       operator: typeof operators.$inferSelect,
       at: Date,
+      clientId: string | null,
       name?: string,
       live?: boolean,
     ) => {
       const id = operator.agentId.toString();
-      const row = agents.get(id) ?? {
+      const app = operator.agentId === deps.demoAgentId ? clientId : null;
+      const key = app === null ? id : `${id}:${app}`;
+      const row = agents.get(key) ?? {
         agentId: id,
-        name: name ?? operator.name,
+        clientId: app,
+        name:
+          name ??
+          (operator.agentId === deps.demoAgentId && clientId === null
+            ? "Unknown app"
+            : operator.name),
         operator: operator.name,
         connected: false,
         mandate: null,
@@ -298,23 +363,30 @@ export function registerAgents(
         row.at = at.getTime();
         row.lastActivityAt = at.toISOString();
       }
-      agents.set(id, row);
+      agents.set(key, row);
       return row;
     };
     for (const { connection, operator } of connected) {
       touch(
         operator,
         connection.decidedAt ?? connection.createdAt,
+        connection.clientId,
         connection.name,
         !connection.disconnectedAt,
       );
     }
-    for (const { mandate, operator } of owned) {
+    for (const { mandate, operator, clientId } of owned) {
       const live =
         LIVE.includes(mandate.state as (typeof LIVE)[number]) &&
         !mandate.revokeRequestedAt &&
         mandate.expiresAt > new Date();
-      const row = touch(operator, lastBuy.get(mandate.id) ?? mandate.createdAt, undefined, live);
+      const row = touch(
+        operator,
+        lastBuy.get(mandate.id) ?? mandate.createdAt,
+        clientId,
+        undefined,
+        live,
+      );
       if (
         live &&
         (!row.mandate || (row.mandate.state !== "ACTIVE" && mandate.state === "ACTIVE"))
@@ -386,21 +458,38 @@ export function registerAgents(
   app.openapi(disconnect, async (c) => {
     const userId = (c.get("principal") as Principal).subject;
     const agentId = BigInt(c.req.valid("param").agentId);
-    const [mine] = await db
-      .select({ id: sql<number>`1` })
-      .from(mandates)
-      .where(and(eq(mandates.userId, userId), eq(mandates.operatorAgentId, agentId)))
-      .limit(1);
-    const [linked] = mine
-      ? [mine]
-      : await db
-          .select({ id: sql<number>`1` })
-          .from(agentConnections)
-          .where(
-            and(eq(agentConnections.userId, userId), eq(agentConnections.operatorAgentId, agentId)),
-          )
-          .limit(1);
+    const { client } = c.req.valid("query");
+    // The hosted operator acts for many apps: without one named, only what no app holds ends.
+    const orphans = client === undefined && agentId === deps.demoAgentId;
+    const [mine] =
+      client === undefined
+        ? await db
+            .select({ id: sql<number>`1` })
+            .from(mandates)
+            .where(
+              and(
+                eq(mandates.userId, userId),
+                eq(mandates.operatorAgentId, agentId),
+                orphans ? orphan : undefined,
+              ),
+            )
+            .limit(1)
+        : [];
+    const [linked] =
+      mine || orphans
+        ? [mine]
+        : await db
+            .select({ id: sql<number>`1` })
+            .from(agentConnections)
+            .where(
+              and(
+                eq(agentConnections.userId, userId),
+                eq(agentConnections.operatorAgentId, agentId),
+                client === undefined ? undefined : eq(agentConnections.clientId, client),
+              ),
+            )
+            .limit(1);
     if (!linked) return problem(c, 404, "not-found", "Not found");
-    return c.json({ revoked: await stop(userId, agentId) }, 200);
+    return c.json({ revoked: await stop(userId, agentId, client, orphans) }, 200);
   });
 }

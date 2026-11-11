@@ -89,10 +89,15 @@ type Part = keyof typeof WORDS;
 
 const SPACED = /^[\p{Script=Latin}\p{Script=Cyrillic}\p{Script=Greek}]/u;
 
-/** Where in `label` each part's words last end, or -1. */
-function lastEnd(label: string, part: Part): number {
+/**
+ * Where in `label` any of `words` last ends, or -1. Words of scripts without spaces are matched
+ * anywhere; the others only as whole words.
+ *
+ * @internal
+ */
+export function wordEnd(label: string, words: readonly string[]): number {
   let end = -1;
-  for (const word of WORDS[part]) {
+  for (const word of words) {
     const pattern = SPACED.test(word)
       ? new RegExp(`(?<!\\p{L})${word}(?!\\p{L})`, "giu")
       : new RegExp(word, "gu");
@@ -100,6 +105,12 @@ function lastEnd(label: string, part: Part): number {
   }
   return end;
 }
+
+const lastEnd = (label: string, part: Part) => wordEnd(label, WORDS[part]);
+
+/** Where in `label` a tax or shipping word last ends, or -1. @internal */
+export const partEnd = (label: string): number =>
+  Math.max(lastEnd(label.toLowerCase(), "tax"), lastEnd(label.toLowerCase(), "shipping"));
 
 /**
  * The part of a checkout a page's label names: tax, shipping or neither. When a label names both,

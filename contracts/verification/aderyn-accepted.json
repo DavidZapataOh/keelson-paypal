@@ -111,31 +111,6 @@
   },
   {
     "detector": "reentrancy-state-change",
-    "location": "src/AmberContradictionCourt.sol:129",
-    "reason": "The calls before the write are views (compiled to STATICCALL) to immutable contracts: the vault, the VerdictVerifier and the C2b verifier. No state can change during them."
-  },
-  {
-    "detector": "reentrancy-state-change",
-    "location": "src/AmberContradictionCourt.sol:133",
-    "reason": "The calls before the write are views (compiled to STATICCALL) to immutable contracts: the vault, the VerdictVerifier and the C2b verifier. No state can change during them."
-  },
-  {
-    "detector": "reentrancy-state-change",
-    "location": "src/AmberContradictionCourt.sol:138",
-    "reason": "The calls before the write are views (compiled to STATICCALL) to immutable contracts: the vault, the VerdictVerifier and the C2b verifier. No state can change during them."
-  },
-  {
-    "detector": "reentrancy-state-change",
-    "location": "src/AmberContradictionCourt.sol:144",
-    "reason": "The calls before the write are views (compiled to STATICCALL) to immutable contracts: the vault, the VerdictVerifier and the C2b verifier. No state can change during them."
-  },
-  {
-    "detector": "reentrancy-state-change",
-    "location": "src/AmberContradictionCourt.sol:157",
-    "reason": "The calls before the write are views (compiled to STATICCALL) to immutable contracts: the vault, the VerdictVerifier and the C2b verifier. No state can change during them."
-  },
-  {
-    "detector": "reentrancy-state-change",
     "location": "src/ViolationBondPool.sol:110",
     "reason": "The calls before the write are views (compiled to STATICCALL): the ERC-8004 Identity, the vault, the reserve and a court the timelock listed. PYUSD moves only after every write, and each function that moves it is nonReentrant."
   },
@@ -180,13 +155,28 @@
     "reason": "The calls before the write are views (STATICCALL) to the immutable Ed25519 verifier and the token's balanceOf, inside nonReentrant; the transfers come after every write."
   },
   {
-    "detector": "abi-encode-packed-hash-collision",
-    "location": "src/AmberContradictionCourt.sol:198",
-    "reason": "Every argument but the bytes32 salt is a string literal or a fixed-length value (a 32-byte hash, a 66-character hex string), so no two inputs share one packed encoding."
+    "detector": "reentrancy-state-change",
+    "location": "src/AmberContradictionCourt.sol:135",
+    "reason": "The calls before the write are views (compiled to STATICCALL) to immutable contracts: the vault, the VerdictVerifier and the C2b verifier. No state can change during them."
   },
   {
-    "detector": "abi-encode-packed-hash-collision",
-    "location": "src/AmberContradictionCourt.sol:215",
-    "reason": "Every argument but the bytes32 salt is a string literal or a fixed-length value (a 32-byte hash, a 66-character hex string), so no two inputs share one packed encoding."
+    "detector": "reentrancy-state-change",
+    "location": "src/AmberContradictionCourt.sol:139",
+    "reason": "The calls before the write are views (compiled to STATICCALL) to immutable contracts: the vault, the VerdictVerifier and the C2b verifier. No state can change during them."
+  },
+  {
+    "detector": "reentrancy-state-change",
+    "location": "src/AmberContradictionCourt.sol:144",
+    "reason": "The calls before the write are views (compiled to STATICCALL) to immutable contracts: the vault, the VerdictVerifier and the C2b verifier. No state can change during them."
+  },
+  {
+    "detector": "reentrancy-state-change",
+    "location": "src/AmberContradictionCourt.sol:150",
+    "reason": "The calls before the write are views (compiled to STATICCALL) to immutable contracts: the vault, the VerdictVerifier and the C2b verifier. No state can change during them."
+  },
+  {
+    "detector": "reentrancy-state-change",
+    "location": "src/AmberContradictionCourt.sol:163",
+    "reason": "The calls before the write are views (compiled to STATICCALL) to immutable contracts: the vault, the VerdictVerifier and the C2b verifier. No state can change during them."
   }
 ]

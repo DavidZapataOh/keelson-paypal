@@ -64,12 +64,17 @@ https://app.keelson.finance/judge opens a temporary tenant with one click (no ke
 | Claude (Anthropic API)                                                      | Production                    |
 | Agent browser (Kernel)                                                      | Production                    |
 | Demo store (RunFast)                                                        | Ours, PayPal sandbox checkout |
+| Card issuer (Lithic), for card mandates                                     | Sandbox: no real money moves  |
 
 `JUDGE_LIVE_ORIGIN=https://app.keelson.finance pnpm --filter @keelson/web exec vitest run test/e2e/judge.live.test.ts` runs the judge's journey on production from a clean browser; `.github/workflows/judge-journey.yml` runs it every hour and opens an issue when it fails.
 
+## Card purchases
+
+A mandate signed for "Any store (PayPal card)" pays merchants that take cards rather than PayPal, with the same guarantees: it is paid with PayPal through a Keelson single-use card. Its budget is held on PayPal like any mandate, and every charge is collected from that hold. After both legs allow a cart, Keelson issues a single-use Lithic card capped at the countersigned amount, limited to the merchant category codes and country the mandate allows, and opens it once the purchase is logged and covered. The card number goes from Lithic's hosted page to the agent's browser only (`GET /v1/purchases/{id}/card`). Each authorization the card network sends reaches `POST /webhooks/lithic/asa` (Lithic Auth Stream Access), and both legs check it against their own ALLOW (`POST /v1/card/authorize` on each leg); anything but two verified approvals is declined. The settled charge is collected from the PayPal hold, and the Alibi carries the card, every authorization with both legs' signed answers, and the settlement. A chargeback goes through Lithic's Disputes API with the Alibi as evidence. Lithic's sandbox plays the card network: `LITHIC_API_KEY=… pnpm --filter @keelson/api exec node scripts/card-demo.ts` buys a coffee at a test merchant end to end against the deployed app and API.
+
 ## MCP server
 
-Keelson's MCP server is served by the API at `https://api.keelson.finance/mcp` (Streamable HTTP, stateless). It is an OAuth 2.1 protected resource: clients find the authorization server at `/.well-known/oauth-protected-resource` and get a token with the client credentials grant for the resource `https://api.keelson.finance`; each tool asks for the scope its API calls need. `keelson.get_alibi` renders the Alibi as an MCP App.
+Keelson's MCP server is served by the API at `https://api.keelson.finance/mcp` (Streamable HTTP, stateless). It is an OAuth 2.1 protected resource: clients find the authorization server at `/.well-known/oauth-protected-resource`. An agent's own client gets a token with the client credentials grant for the resource `https://api.keelson.finance`; a host acting for a user (claude.ai, ChatGPT, Cursor) registers itself and gets one with the authorization code grant, and buys under the mandates the user approves for it (see [the API's README](services/api/README.md#apps-acting-for-a-user)). Each tool asks for the scope its API calls need. `keelson.get_alibi` renders the Alibi as an MCP App.
 
 Closing a mandate for a countersign takes the agent's own key, which Keelson never holds, so `keelson.request_countersign` is offered by the STDIO server, run as the agent's process. For Claude Desktop, after `pnpm install && pnpm build`, add to `claude_desktop_config.json`:
 

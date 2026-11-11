@@ -1,11 +1,13 @@
 "use client";
 
+import { MCC_LABELS } from "@keelson/mandate/browser";
 import { Amount } from "@keelson/ui/components/amount";
 import { Button } from "@keelson/ui/components/button";
 import { CopyValue } from "@keelson/ui/components/copy-value";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@keelson/ui/components/empty";
 import { Skeleton } from "@keelson/ui/components/skeleton";
 import { Status } from "@keelson/ui/components/status";
+import { CreditCard } from "lucide-react";
 import { useEffect, useState } from "react";
 import { VERIFY } from "../lib/config";
 import { major, when } from "../lib/format";
@@ -28,14 +30,18 @@ function Entry({ p }: { p: LivePurchase }) {
             {...(denied ? { struck: "Not paid" } : {})}
           />
           <span className="text-muted-foreground">at</span>
-          <a
-            href={p.store}
-            target="_blank"
-            rel="noopener"
-            className="font-medium underline decoration-border underline-offset-4 hover:decoration-foreground"
-          >
-            {host(p.store)}
-          </a>
+          {p.store ? (
+            <a
+              href={p.store}
+              target="_blank"
+              rel="noopener"
+              className="font-medium underline decoration-border underline-offset-4 hover:decoration-foreground"
+            >
+              {host(p.store)}
+            </a>
+          ) : (
+            <span className="font-medium">{p.card?.merchantName ?? "a card merchant"}</span>
+          )}
         </div>
         <CheckoutBreakdown amount={p.amount} />
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground text-sm">
@@ -48,6 +54,20 @@ function Entry({ p }: { p: LivePurchase }) {
             {p.blocked.length > 0 ? `${p.blocked.map(reasonOf).join(". ")}. ` : ""}
             <span className="text-muted-foreground">
               The agent's pay click was held; nothing was charged.
+            </span>
+          </p>
+        ) : p.card ? (
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+            <CreditCard className="size-4" aria-hidden="true" />
+            <span>
+              Single-use card •••• {p.card.lastFour}
+              {p.card.mcc ? ` at ${MCC_LABELS[p.card.mcc] ?? `MCC ${p.card.mcc}`}` : ""}
+            </span>
+            <span className="text-muted-foreground">
+              {p.card.approved > 0 ? "both enclaves approved the charge" : "not charged yet"}
+              {p.card.declined > 0
+                ? `; ${p.card.declined} other ${p.card.declined === 1 ? "charge" : "charges"} declined`
+                : ""}
             </span>
           </p>
         ) : p.transactionId ? (
@@ -99,7 +119,8 @@ export function LivePurchases() {
           <EmptyTitle>No live purchase yet</EmptyTitle>
           <EmptyDescription>
             When the agent pays at a real store, the purchase shows here with its PayPal transaction
-            and its Alibi. A cart Keelson blocks before the payment shows here too.
+            or its single-use card, and its Alibi. A cart Keelson blocks before the payment shows
+            here too.
           </EmptyDescription>
         </EmptyHeader>
       </Empty>

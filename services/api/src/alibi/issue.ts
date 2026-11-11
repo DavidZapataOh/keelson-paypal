@@ -14,6 +14,7 @@ import {
   alibis,
   and,
   asc,
+  cardAuthorizations,
   chainTxs,
   channel3Observations,
   type Db,
@@ -23,6 +24,7 @@ import {
   evidenceItems,
   inArray,
   mandates,
+  purchaseCards,
   purchaseHolds,
   purchases,
   teeSigners,
@@ -46,6 +48,7 @@ import { getAddress } from "viem";
 import { countersignOf, purchaseLeaf } from "../pipeline/leaf.ts";
 import { VERIFYING_CONTRACT } from "../tee/config.ts";
 import type { TeeConfig } from "../tee/signers.ts";
+import { mark, span } from "../tracing.ts";
 import { rootKey } from "../zk/c3.ts";
 
 /** The item types an Alibi discloses: the PII-redacted public ones. */
@@ -236,9 +239,18 @@ export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<vo
     throw new AlibiIssueError("leaf", "the logged leaf is not the purchase's");
   }
   const [p] = await db.select().from(purchases).where(eq(purchases.id, purchaseId));
-  if (!p?.evalTrace || !p.paypalRefSalt || !p.paypalOrderId || !p.paypalAuthorizationId) {
-    throw new AlibiIssueError("data", `purchase ${purchaseId} has no trace or PayPal reference`);
+  const paidByCard = p?.rail === "card";
+  if (
+    !p?.evalTrace ||
+    !p.paypalRefSalt ||
+    (!paidByCard && (!p.paypalOrderId || !p.paypalAuthorizationId))
+  ) {
+    throw new AlibiIssueError("data", `purchase ${purchaseId} has no trace or payment reference`);
   }
+  const [card] = paidByCard
+    ? await db.select().from(purchaseCards).where(eq(purchaseCards.purchaseId, purchaseId))
+    : [];
+  if (paidByCard && !card) throw new AlibiIssueError("data", `purchase ${purchaseId} has no card`);
   const [m] = await db.select().from(mandates).where(eq(mandates.id, p.mandateId));
   if (!m?.openMandate || !m.payloadSd || !m.disclosures || !m.userAuth || !m.mandateHash) {
     throw new AlibiIssueError("data", `mandate ${p.mandateId} is not signed`);
@@ -274,15 +286,17 @@ export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<vo
     ?.issuerJwkThumbprint;
   if (!thumbprint) throw new AlibiIssueError("issuer", "the TDX attestation binds no issuer");
   const [issuerJwk, policyText, evidence, c1, c3] = await Promise.all([
-    issuerOf(deps.tee, thumbprint),
-    policyOf(origin),
-    disclosures(db, Buffer.from(c.evidenceRoot.slice(2), "hex")),
-    c1Of(deps, p, c.decision === "1" && m.sealedSalt !== null),
-    c3Of(deps, m, chainId),
+    span("alibi.issuer", {}, () => issuerOf(deps.tee, thumbprint)),
+    span("alibi.policy", {}, () => policyOf(origin)),
+    span("alibi.evidence", {}, () => disclosures(db, Buffer.from(c.evidenceRoot.slice(2), "hex"))),
+    span("alibi.c1", {}, () => c1Of(deps, p, c.decision === "1" && m.sealedSalt !== null)),
+    span("alibi.c3", {}, () => c3Of(deps, m, chainId)),
   ]);
 
-  let customId: string;
-  if (m.holdMode === "per_purchase") {
+  let customId = "";
+  if (paidByCard) {
+    // A card purchase holds nothing on PayPal.
+  } else if (m.holdMode === "per_purchase") {
     const [h] = await db
       .select()
       .from(purchaseHolds)
@@ -363,13 +377,26 @@ export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<vo
           },
         }
       : {}),
-    paypal: {
-      order_id: p.paypalOrderId,
-      authorization_id: p.paypalAuthorizationId,
-      custom_id: customId,
-      ref_salt: toHex(p.paypalRefSalt),
-      merchant_id: merchantId,
-    },
+    ...(card
+      ? {
+          card: {
+            issuer: card.issuer,
+            card_token: card.cardToken,
+            last_four: card.lastFour,
+            ref_salt: toHex(p.paypalRefSalt),
+            controls: json(card.controls),
+            authorizations: [],
+          },
+        }
+      : {
+          paypal: {
+            order_id: p.paypalOrderId as string,
+            authorization_id: p.paypalAuthorizationId as string,
+            custom_id: customId,
+            ref_salt: toHex(p.paypalRefSalt),
+            merchant_id: merchantId,
+          },
+        }),
   };
   let bytes: Uint8Array;
   try {
@@ -380,7 +407,11 @@ export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<vo
   if (bytes.length > MAX_ALIBI_BYTES) {
     throw new AlibiIssueError("size", `the bundle is ${bytes.length} bytes`);
   }
-  const report = await verifyAlibi(bundle);
+  const report = await span("alibi.verify", {}, () => {
+    // Each check's span ends when it settles: the checks run together.
+    const started = Date.now();
+    return verifyAlibi(bundle, { onCheck: (c) => mark(`alibi.check.${c.id}`, started) });
+  });
   const failed = report.checks.filter((c) => c.status === "fail");
   if (failed.length > 0) {
     throw new AlibiIssueError(
@@ -503,13 +534,75 @@ export async function loadAlibi(db: Db, purchaseId: string): Promise<AlibiBundle
     ...(core.cart === undefined ? await cartOf(db, core) : {}),
     ...(row.anchor ? { anchor: row.anchor } : {}),
     timestamps: tokens.map((t) => ({ tsa: t.tsa, token: toBase64(t.token as Uint8Array) })),
-    paypal: {
-      ...core.paypal,
-      ...(row.captureId ? { capture_id: row.captureId } : {}),
-      ...(row.invoiceId ? { invoice_id: row.invoiceId } : {}),
-      ...(row.transactionId ? { transaction_id: row.transactionId } : {}),
-    },
+    ...(core.paypal
+      ? {
+          paypal: {
+            ...core.paypal,
+            ...(row.captureId ? { capture_id: row.captureId } : {}),
+            ...(row.invoiceId ? { invoice_id: row.invoiceId } : {}),
+            ...(row.transactionId ? { transaction_id: row.transactionId } : {}),
+          },
+        }
+      : {}),
+    ...(core.card ? { card: await cardSection(db, purchaseId, core.card) } : {}),
   });
+}
+
+const LEG: Readonly<Record<number, "tdx" | "nitro">> = { 1: "tdx", 2: "nitro" };
+
+/**
+ * A card purchase's card section as it stands now: the card as issued, every card network
+ * authorization with both legs' signed answers, and the capture once the issuer settled it.
+ */
+async function cardSection(
+  db: Db,
+  purchaseId: string,
+  issued: NonNullable<AlibiBundle["card"]>,
+): Promise<NonNullable<AlibiBundle["card"]>> {
+  const [card] = await db
+    .select()
+    .from(purchaseCards)
+    .where(eq(purchaseCards.purchaseId, purchaseId));
+  const auths = await db
+    .select()
+    .from(cardAuthorizations)
+    .where(eq(cardAuthorizations.purchaseId, purchaseId))
+    .orderBy(asc(cardAuthorizations.createdAt));
+  return {
+    ...issued,
+    authorizations: auths.map((a) => ({
+      id: a.id,
+      amount_minor: a.amountMinor.toString(),
+      currency: a.currency,
+      mcc: a.mcc,
+      merchant_name: a.merchantName,
+      merchant_country: a.merchantCountry,
+      network_id: a.networkId,
+      approved: a.approved,
+      verdicts: [a.tdx, a.nitro].flatMap((v) =>
+        v
+          ? [
+              {
+                kind: LEG[v.tee] ?? "tdx",
+                authorization: v.authorization,
+                digest: v.digest,
+                signature: v.signature,
+                signer: getAddress(v.signer),
+              },
+            ]
+          : [],
+      ),
+    })),
+    ...(card?.transactionToken && card.settledMinor !== null && card.settledAt
+      ? {
+          settlement: {
+            transaction_token: card.transactionToken,
+            settled_minor: card.settledMinor.toString(),
+            settled_at: card.settledAt.toISOString(),
+          },
+        }
+      : {}),
+  };
 }
 
 /** The disclosed cart of an Alibi issued before its bundle carried one. */

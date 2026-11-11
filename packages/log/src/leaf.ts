@@ -169,6 +169,26 @@ export function paypalRefCommit(salt: Uint8Array, orderId: string, authorization
   return `0x${bytesToHex(sha256(input))}`;
 }
 
+const CARD_REF = encoder.encode("keelson/card-ref/v1\0");
+
+/**
+ * `SHA-256("keelson/card-ref/v1" ‖ 0x00 ‖ salt ‖ issuer ‖ 0x00 ‖ card_token)`: the
+ * `paypal_ref_commit` of a purchase paid with a single-use card, committing to the issuer and its
+ * card token instead of a PayPal order. The tag keeps it apart from any PayPal commitment.
+ */
+export function cardRefCommit(salt: Uint8Array, issuer: string, cardToken: string): Hex {
+  if (salt.length !== 32) throw new RangeError("salt must be 32 bytes");
+  const name = encoder.encode(issuer);
+  const token = encoder.encode(cardToken);
+  if (name.includes(0) || token.includes(0)) throw new TypeError("card ids never contain NUL");
+  const input = new Uint8Array(CARD_REF.length + 32 + name.length + 1 + token.length);
+  input.set(CARD_REF, 0);
+  input.set(salt, CARD_REF.length);
+  input.set(name, CARD_REF.length + 32);
+  input.set(token, CARD_REF.length + 33 + name.length);
+  return `0x${bytesToHex(sha256(input))}`;
+}
+
 /** Builds the leaf fields from the coordinator's output, as it returned them. */
 export function leafFromCountersign(
   c: Countersign,

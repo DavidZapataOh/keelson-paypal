@@ -164,6 +164,28 @@
     "expected": "0x6e0bc31651ab6bac3fb6597d543051597ee5a8ca7914c5878dede93a9de15bfc"
   },
   {
+    "name": "CardAuthorization/421614",
+    "input": {
+      "chainId": 421614,
+      "verifyingContract": "0x0000000000000000000000000000000000000001",
+      "primaryType": "CardAuthorization",
+      "message": {
+        "requestId": "0x0000000000000000000000000000000000000000000000000101010101010101",
+        "countersignDigest": "0x0000000000000000000000000000000000000000000000000202020202020202",
+        "authorizationHash": "0x0000000000000000000000000000000000000000000000000303030303030303",
+        "merchantHash": "0x0000000000000000000000000000000000000000000000000404040404040404",
+        "mcc": "35",
+        "country": "0x5553",
+        "amount": "7000000",
+        "currency": "56",
+        "decision": "63",
+        "failedMask": "10000000",
+        "issuedAt": "11000000"
+      }
+    },
+    "expected": "0xa43d8e82b629593d4a0dfe86182aa9126fde1c525d8c3398d7ee1a5ce7f372e6"
+  },
+  {
     "name": "WebFact/421614",
     "input": {
       "chainId": 421614,
@@ -342,6 +364,28 @@
       }
     },
     "expected": "0xddb1c45e50996428abb3a50490af46de9793a80068a6bd94ae2329d9c90c8e24"
+  },
+  {
+    "name": "CardAuthorization/42161",
+    "input": {
+      "chainId": 42161,
+      "verifyingContract": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+      "primaryType": "CardAuthorization",
+      "message": {
+        "requestId": "0x0000000000000000000000000000000000000000000000000101010101010101",
+        "countersignDigest": "0x0000000000000000000000000000000000000000000000000202020202020202",
+        "authorizationHash": "0x0000000000000000000000000000000000000000000000000303030303030303",
+        "merchantHash": "0x0000000000000000000000000000000000000000000000000404040404040404",
+        "mcc": "65535",
+        "country": "0xffff",
+        "amount": "18446744073709551615",
+        "currency": "65535",
+        "decision": "255",
+        "failedMask": "4294967295",
+        "issuedAt": "1099511627775"
+      }
+    },
+    "expected": "0xf34c03b6f2203912acfc0eee9ac819b60c99c88c770e5e6b9d079fe0bb287e26"
   },
   {
     "name": "WebFact/42161",

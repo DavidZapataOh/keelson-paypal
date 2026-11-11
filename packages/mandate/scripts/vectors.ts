@@ -43,9 +43,9 @@ import {
   verifyCredential,
 } from "../src/credentials.ts";
 import { CONTROL_OR_FORMAT } from "../src/generated/unicode.ts";
+import { ANY_MERCHANT } from "../src/mcc.ts";
 import {
   ANY_ITEM,
-  ANY_MERCHANT,
   CATEGORY_TABLE,
   isMerchantId,
   type Mandate,

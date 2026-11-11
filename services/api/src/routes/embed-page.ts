@@ -16,8 +16,7 @@ export const noFraming: MiddlewareHandler = async (c, next) => {
 
 /**
  * The embed page's policy. Its HTML and scripts are the app's static export, loaded from the
- * app's origin; it calls only this API. It never asks for a passkey or a payment: the mandate is
- * signed in a top-level Keelson window, so those features are off here whatever the host allows.
+ * app's origin; it calls only this API. The mandate's Poseidon2 commitment runs in a worker.
  * @internal
  */
 export function embedPolicy(appOrigin: string, ancestor: string | undefined): string {
@@ -25,10 +24,11 @@ export function embedPolicy(appOrigin: string, ancestor: string | undefined): st
     "default-src 'none'",
     // A static export has no per-request nonce; its inline bootstrap needs 'unsafe-inline'.
     `script-src 'unsafe-inline' 'wasm-unsafe-eval' ${appOrigin}`,
+    `worker-src blob: ${appOrigin}`,
     `style-src 'unsafe-inline' ${appOrigin}`,
     `font-src ${appOrigin}`,
     `img-src data: ${appOrigin}`,
-    `connect-src 'self' ${appOrigin}`,
+    `connect-src 'self' data: ${appOrigin}`,
     "base-uri 'none'",
     "object-src 'none'",
     "form-action 'none'",
@@ -36,8 +36,12 @@ export function embedPolicy(appOrigin: string, ancestor: string | undefined): st
   ].join("; ");
 }
 
+/**
+ * The passkey and payment features are this page's alone, and only where the host delegates them
+ * with the frame's `allow`; nothing the page loads gets them.
+ */
 const PERMISSIONS =
-  "publickey-credentials-get=(), publickey-credentials-create=(), payment=(), camera=(), microphone=(), geolocation=(), clipboard-read=()";
+  "publickey-credentials-get=(self), publickey-credentials-create=(self), payment=(self), camera=(), microphone=(), geolocation=(), clipboard-read=()";
 
 /**
  * `GET /embed/approve?r=<ref>`: the approval an agent platform frames. Only the origin the

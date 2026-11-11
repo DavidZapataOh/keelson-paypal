@@ -68,7 +68,7 @@ describe("re-quoting a checkout once its address is known", () => {
   });
 
   test("gives nothing for a page it could not read for sure", () => {
-    expect(requote(base, page("Item $2.95 Tax $0.18 Total $3.13 or €2.90"))).toBeUndefined();
+    expect(requote(base, page("Item $2.95 Tax $0.18 Total $3.13\n$15\n99"))).toBeUndefined();
   });
 
   test("a page shown twice, in two frames, counts each part once", () => {
@@ -109,6 +109,7 @@ describe("re-quoting a checkout once its address is known", () => {
           ];
           const read = page(lines.join("\n"), locale, currency);
           expect(read.unsure, lines.join(" | ")).toBeUndefined();
+          expect(read.totals, lines.join(" | ")).toContain(items + tax + shipping);
           const next = requote(checkoutTotal(currency, { items }), read);
           expect(next, lines.join(" | ")).toEqual(
             checkoutTotal(currency, { items, tax, shipping }),

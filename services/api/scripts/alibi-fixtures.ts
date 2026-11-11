@@ -158,7 +158,7 @@ try {
     console.log(`${mode} ${requestId} ${res.status} ${state}`);
     for (let i = 0; i < 120; i++) {
       const b = await loadAlibi(db, requestId);
-      if (b && b.timestamps.length >= 2 && b.paypal.capture_id) {
+      if (b && b.timestamps.length >= 2 && b.paypal?.capture_id) {
         const report = await verifyAlibi(b);
         const failed = report.checks.filter((c) => c.status === "fail");
         console.log(`${requestId} ${report.verdict} ${JSON.stringify(failed)}`);

@@ -257,7 +257,7 @@ describe("MCP authorization (OAuth 2.1, RFC 7591, RFC 7636, RFC 9728, RFC 9396)"
     const unlinked = await consentRead((await authorize(params)).search.slice(1));
     expect(await unlinked.json()).toMatchObject({
       spending: null,
-      spendingError: expect.stringContaining("not linked"),
+      spendingError: expect.stringContaining("No registered agent operator"),
     });
 
     const agentId = BigInt(`0x${randomBytes(10).toString("hex")}`);

@@ -11,6 +11,7 @@ import { ApiError, get, post } from "../lib/api";
 import { authClient } from "../lib/auth";
 import { API } from "../lib/config";
 import { CONNECT_PROMPT, type ConnectionView } from "../lib/connections";
+import { LINKED } from "../lib/embed";
 import { Approval, type Chosen } from "./approval";
 import { ErrorNotice } from "./notice";
 import { OnboardingFrame } from "./onboarding/frame";
@@ -273,8 +274,8 @@ function ConnectAgent() {
       </div>
       <h2 className="mt-8 font-semibold text-base">Then paste this into your agent</h2>
       <p className="mt-1 text-pretty text-muted-foreground text-sm leading-snug">
-        Signed in, your agent's app can read your purchases' Alibis. To buy, the agent also uses its
-        own Keelson client from its operator.
+        Signed in, your agent's app can ask you for a mandate and buy within the ones you approve
+        for it, nothing more. Every mandate waits for your passkey here.
       </p>
       <div className="mt-3">
         <CodeBlock text={CONNECT_PROMPT} label="Prompt for your agent" noun="prompt" />
@@ -417,7 +418,107 @@ function embedReturn(params: URLSearchParams) {
   if (until) initial.until = until;
   const back = new URL("/embed/approve", API);
   back.search = new URLSearchParams({ r: ref, mode: via, step: "done" }).toString();
-  return { initial, back: back.toString() };
+  const link = params.get("link");
+  return {
+    initial,
+    ref,
+    back: back.toString(),
+    ...(link && LINK.test(link) ? { link } : {}),
+  };
+}
+
+const LINK = /^kel_[A-Za-z0-9_-]{43}$/;
+
+/**
+ * Opened by an embedded approval for a user it does not know yet. Once signed in here, the user
+ * confirms the platform it names; the grant goes back only to the frame that opened this
+ * window, on Keelson's own origin, which then creates their passkey if they have none and signs.
+ */
+function LinkEmbed({
+  request,
+  nonce,
+  embedRef,
+  back,
+}: {
+  request: ConnectionView;
+  nonce: string;
+  embedRef: string;
+  back: string;
+}) {
+  const [link, setLink] = useState<{ origin: string } | null>();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  useEffect(() => {
+    post<{ origin: string; ref: string }>("/v1/embed/links/inspect", { nonce })
+      .then((l) => setLink(l.ref === embedRef ? { origin: l.origin } : null))
+      .catch(() => setLink(null));
+  }, [nonce, embedRef]);
+  // The frame that opened this window is on the API's origin; any other opener gets nothing.
+  const opener = typeof window === "undefined" ? null : window.opener;
+  const host = link ? new URL(link.origin).host : "";
+  const confirm = async () => {
+    if (!link || !opener) return;
+    setBusy(true);
+    setError(undefined);
+    try {
+      const { grant } = await post<{ grant: string }>("/v1/embed/links/confirm", {
+        nonce,
+        ref: embedRef,
+      });
+      (opener as Window).postMessage({ type: LINKED, grant }, new URL(API).origin);
+      location.replace(back);
+    } catch (e) {
+      setBusy(false);
+      setError(e instanceof Error ? e.message : "The approval could not be linked.");
+    }
+  };
+  if (link === undefined) {
+    return (
+      <p role="status" className="flex items-center gap-2 p-8 text-muted-foreground">
+        <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+        Reading the request
+      </p>
+    );
+  }
+  if (link === null || !opener) {
+    return (
+      <Closed
+        title="This link is no longer valid"
+        line="Go back to the app that asked and open Keelson from its approval again."
+      />
+    );
+  }
+  return (
+    <OnboardingFrame
+      step="Agent"
+      stage={<span className="size-3 rounded-full bg-graphite" aria-hidden="true" />}
+      action={
+        <Button
+          size="lg"
+          onClick={confirm}
+          disabled={busy}
+          className="h-13 w-full rounded-xl text-base"
+        >
+          {busy ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
+          Continue on {host}
+        </Button>
+      }
+    >
+      <h1 className="text-balance font-semibold text-[1.75rem] leading-[1.1] tracking-[-0.025em] sm:text-[2rem]">
+        Approve on {host}
+      </h1>
+      <p className="mt-3 text-pretty text-lg text-muted-foreground leading-snug">
+        {request.name}, run by {request.agent.operator}, asked for your approval in Keelson's panel
+        on {host}. Continue only if you were there. Keelson's panel then asks for your passkey, or
+        creates one if you have none, and nothing is approved until you sign. This window closes.
+      </p>
+      {error ? (
+        <div className="mt-6">
+          <ErrorNotice>{error}</ErrorNotice>
+        </div>
+      ) : null}
+    </OnboardingFrame>
+  );
 }
 
 /** `/connect?c=XXXX-XXXX`: an agent's request, approved here with a passkey or rejected. */
@@ -500,6 +601,12 @@ export function ConnectPage() {
         title="Already approved"
         line="This code was used. Your agents page shows the grant."
       />
+    );
+  }
+  // A link only names who signs; the frame that asked signs, with no number to match.
+  if (embed?.link) {
+    return (
+      <LinkEmbed request={request} nonce={embed.link} embedRef={embed.ref} back={embed.back} />
     );
   }
   const match = request.match;
