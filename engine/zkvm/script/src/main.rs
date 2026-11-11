@@ -87,7 +87,7 @@ struct NetworkRequest {
 /// How long provers have to bid before the request is cancelled.
 const AUCTION_TIMEOUT: Duration = Duration::from_secs(120);
 /// Seconds the auction stays open before it settles, so that more than one prover can bid.
-const MIN_AUCTION_PERIOD: u64 = 10;
+const MIN_AUCTION_PERIOD: u64 = 30;
 /// How long the winning prover has to fulfil the request; an unfulfilled request is not refunded.
 const NETWORK_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 
