@@ -110,8 +110,8 @@ function Steps({ p }: { p: Purchase }) {
       {blocked || !p.card ? null : (
         <TimelineItem state={p.card.state === "PAUSED" ? "current" : "done"} actor="Keelson">
           {p.card.state === "PAUSED"
-            ? `issued a single-use card •••• ${p.card.lastFour}; it opens once the Alibi is sealed`
-            : `issued a single-use card •••• ${p.card.lastFour}, capped at ${amount}`}
+            ? `issued a single-use card •••• ${p.card.lastFour}, funded by your PayPal hold; it opens once the Alibi is sealed`
+            : `issued a single-use card •••• ${p.card.lastFour}, funded by your PayPal hold and capped at ${amount}`}
         </TimelineItem>
       )}
       {blocked ? null : unknownOutcome(p) ? (

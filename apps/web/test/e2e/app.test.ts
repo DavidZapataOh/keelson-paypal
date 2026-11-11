@@ -282,13 +282,13 @@ describe.each(Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[])("rules on %s
     });
     await page.getByRole("heading", { level: 1, name: "What may your agent buy?" }).waitFor();
     await page.getByRole("button", { name: "Coffee beans, whole" }).click();
-    await page.getByRole("radio", { name: "Any store (card)" }).check({ force: true });
-    await page.getByText("Paid with a single-use card.").waitFor();
+    await page.getByRole("radio", { name: "Any store (PayPal card)" }).check({ force: true });
+    await page.getByText("Paid with PayPal · Keelson single-use card.").waitFor();
     await page.getByRole("button", { name: "Review rules" }).click();
     await page.getByRole("button", { name: "Sign · up to $100.00" }).waitFor({ timeout: 30_000 });
     expect(await page.getByText("Any store · card").first().isVisible()).toBe(true);
     const answers = page.getByRole("list", { name: "Who answers for each part" });
-    expect(await answers.getByText(/Payment card/).count()).toBe(1);
+    expect(await answers.getByText(/Paid with/).count()).toBe(1);
     const { violations } = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
     expect(violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
     await context.close();
@@ -604,9 +604,11 @@ describe("receipts and disputes", () => {
       );
       const charges = page.getByRole("list", { name: "Charges on this card" });
       await charges.waitFor();
-      expect(await page.getByRole("heading", { name: "Paid with a single-use card" }).count()).toBe(
-        1,
-      );
+      expect(
+        await page
+          .getByRole("heading", { name: "Paid with PayPal · Keelson single-use card" })
+          .count(),
+      ).toBe(1);
       expect(await charges.getByRole("listitem").count()).toBe(3);
       expect(await charges.getByText("Both enclaves approved the charge").count()).toBe(1);
       expect(

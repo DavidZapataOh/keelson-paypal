@@ -94,8 +94,8 @@ async function userSignsAndHolds(): Promise<string> {
   await page.getByRole("heading", { name: "What may your agent buy?" }).waitFor();
   await page.getByRole("button", { name: "Coffee beans, whole" }).click();
   await page.getByRole("button", { name: "$25", exact: true }).click();
-  await page.getByRole("radio", { name: "Any store (card)" }).check({ force: true });
-  await page.getByText("Paid with a single-use card.").waitFor();
+  await page.getByRole("radio", { name: "Any store (PayPal card)" }).check({ force: true });
+  await page.getByText("Paid with PayPal · Keelson single-use card.").waitFor();
   await shot(page, "01-builder-card");
   await page.getByRole("button", { name: "Review rules" }).click();
   const create = page.getByRole("button", { name: "Create passkey" });

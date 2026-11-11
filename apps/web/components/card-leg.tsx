@@ -118,11 +118,10 @@ export function CardLeg({ card, currency }: { card: PurchaseCard; currency: stri
         <div className="grid min-w-0 gap-0.5">
           <h2 id="card-leg" className="flex items-center gap-2 font-semibold text-lg">
             <CreditCard className="size-4" aria-hidden="true" />
-            Paid with a single-use card
+            Paid with PayPal · Keelson single-use card
           </h2>
           <p className="text-muted-foreground text-sm">
-            Issued by {card.issuer === "lithic" ? "Lithic" : card.issuer} after the ALLOW · test
-            mode
+            Funded by your PayPal hold, issued after the ALLOW · test mode
           </p>
         </div>
       </div>
