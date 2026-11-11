@@ -7,22 +7,31 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
     }
   },
   "files": [
     "dist",
-    "schemas"
+    "schemas",
+    "bindings.json"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "vendor": "node scripts/vendor.ts"
+    "vendor": "node scripts/vendor.ts",
+    "bindings": "node scripts/bindings-json.ts"
   },
   "dependencies": {
     "@keelson/alibi": "workspace:*",
     "@keelson/core": "workspace:*",
-    "@keelson/mandate": "workspace:*"
+    "@keelson/mandate": "workspace:*",
+    "@noble/hashes": "catalog:",
+    "@sd-jwt/core": "0.24.3",
+    "jose": "6.2.15"
   },
   "devDependencies": {
     "@types/node": "26.6.6",

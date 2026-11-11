@@ -45,12 +45,32 @@ export interface PurchaseFacts {
   breakdown?: { items: number; tax: number; shipping: number; discount: number };
   mandateHash: `0x${string}`;
   cartHash: `0x${string}`;
+  /** The countersigned agent id, decimal. */
+  agentId: string;
+  /** The countersigned merchant id hash. */
+  merchantIdHash: `0x${string}`;
   mandate: Disclosed<Mandate>;
   /** The open mandate as the enclave issued it. */
   l2: string;
   userAuth: UserAuth;
   personal?: { appLoginId?: string; deviceFp?: string; ip?: string };
   env: "sandbox" | "live";
+}
+
+/** The facts of a purchase's logged statement, as the issuer compares them before it signs. */
+export interface StatementFacts {
+  request_id: string;
+  mandate_hash: string;
+  cart_hash: string;
+  /** Decimal. */
+  agent_id: string;
+  merchant_id: string;
+  amount_minor: number;
+  /** ISO 4217 numeric. */
+  currency: number;
+  decision: "allow" | "deny";
+  /** Seconds since the epoch. */
+  issued_at: number;
 }
 
 interface CardSection {
@@ -171,10 +191,29 @@ export function purchaseFacts(b: AlibiBundle): PurchaseFacts {
       : {}),
     mandateHash: cs.mandateHash as `0x${string}`,
     cartHash: cs.cartHash as `0x${string}`,
+    agentId: cs.agentId,
+    merchantIdHash: cs.merchantId as `0x${string}`,
     mandate,
     l2: b.mandate.sd_jwt,
     userAuth: b.mandate.user_auth as unknown as UserAuth,
     ...(Object.keys(personal).length ? { personal } : {}),
     env: b.tee.domain.chain_id === ARBITRUM_ONE ? "live" : "sandbox",
+  };
+}
+
+/** The facts the issuer binds an export to. */
+export function statementFacts(f: PurchaseFacts): StatementFacts {
+  const numeric = CURRENCIES[f.currency as CurrencyCode]?.numeric;
+  if (numeric === undefined) throw new RangeError(`unsupported currency ${f.currency}`);
+  return {
+    request_id: f.requestId,
+    mandate_hash: f.mandateHash,
+    cart_hash: f.cartHash,
+    agent_id: f.agentId,
+    merchant_id: f.merchantIdHash,
+    amount_minor: f.totalMinor,
+    currency: numeric,
+    decision: f.decision,
+    issued_at: f.issuedAt,
   };
 }

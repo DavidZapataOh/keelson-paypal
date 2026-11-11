@@ -773,6 +773,15 @@ importers:
       '@keelson/mandate':
         specifier: workspace:*
         version: link:../mandate
+      '@noble/hashes':
+        specifier: 'catalog:'
+        version: 2.4.0
+      '@sd-jwt/core':
+        specifier: 0.24.3
+        version: 0.24.3
+      jose:
+        specifier: 6.2.15
+        version: 6.2.15
     devDependencies:
       '@types/node':
         specifier: 26.6.6
