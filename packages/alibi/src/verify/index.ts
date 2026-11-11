@@ -5,6 +5,7 @@ import { type Context, runCheck } from "./check.ts";
 import { anchor } from "./checks/anchor.ts";
 import { nitro, tdx } from "./checks/attestation.ts";
 import { anchorRoot, anchorTx, chainIdOf, queryOf, registry } from "./checks/chain.ts";
+import { checkout } from "./checks/checkout.ts";
 import { countersign } from "./checks/countersign.ts";
 import { evidence } from "./checks/evidence.ts";
 import { format } from "./checks/format.ts";
@@ -82,6 +83,7 @@ const CHECKS = [
   zkC3,
   evidence,
   webFact,
+  checkout,
   paypal,
 ];
 

@@ -8,6 +8,7 @@ import {
   numeric,
   pgTable,
   primaryKey,
+  smallint,
   text,
   timestamp,
 } from "drizzle-orm/pg-core";
@@ -56,6 +57,13 @@ export const agentConnections = pgTable(
     userId: text().references(() => user.id, { onDelete: "cascade" }),
     /** The mandate the user signed to approve. */
     mandateId: char({ length: 26 }).references(() => mandates.id),
+    /**
+     * The two-digit number the agent shows beside its link, which the user picks out of three
+     * before the request opens. Null when the request comes from the user's own session.
+     */
+    matchNumber: smallint(),
+    /** When the user picked the agent's number, or the agent's embedded approval opened it. */
+    matchedAt: timestamp({ withTimezone: true }),
     /** Seconds the agent waits between polls; raised by 5 on each `slow_down`. */
     pollInterval: integer().notNull().default(5),
     polledAt: timestamp({ withTimezone: true }),
@@ -72,6 +80,10 @@ export const agentConnections = pgTable(
     check(
       "agent_connections_limits",
       sql`${t.perPurchaseMinor} > 0 and ${t.perPurchaseMinor} <= ${t.totalMinor} and (${t.askAboveMinor} is null or ${t.askAboveMinor} between 1 and ${t.perPurchaseMinor})`,
+    ),
+    check(
+      "agent_connections_match_number",
+      sql`${t.matchNumber} is null or ${t.matchNumber} between 10 and 99`,
     ),
     check(
       "agent_connections_approved",

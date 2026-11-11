@@ -339,6 +339,8 @@ components:
               type: string
             minor:
               type: string
+            breakdown:
+              $ref: "#/components/schemas/CheckoutBreakdown"
           required:
             - currency
             - minor
@@ -479,6 +481,25 @@ components:
         - createdAt
         - state
         - disputes
+    CheckoutBreakdown:
+      type: object
+      properties:
+        items:
+          type: string
+        tax:
+          type: string
+        shipping:
+          type: string
+        discount:
+          type: string
+      required:
+        - items
+        - tax
+        - shipping
+        - discount
+      description: "What the countersigned total is made of, in minor units: the
+        items, plus tax and shipping, less discounts. Absent for purchases
+        countersigned without it."
     PendingPurchaseHold:
       type: object
       properties:
@@ -590,7 +611,8 @@ components:
         amountMinor:
           type: string
           pattern: ^[1-9]\d{0,17}$
-          description: The cart total, in minor units.
+          description: The checkout total the purchase is countersigned for, tax and
+            shipping included, in minor units.
         cartHash:
           type: string
           pattern: ^0x[0-9a-f]{64}$
@@ -670,6 +692,16 @@ components:
           type: integer
         interval:
           type: integer
+        request_id:
+          type: string
+          description: "The request's id: `GET /v1/connections/requests/{id}` reads its
+            state without spending the device code."
+        match_number:
+          type: integer
+          minimum: 10
+          maximum: 99
+          description: "Show it beside the link: the user picks it out of three before the
+            request opens, so a link relayed by someone else does not."
       required:
         - device_code
         - user_code
@@ -677,6 +709,7 @@ components:
         - verification_uri_complete
         - expires_in
         - interval
+        - request_id
       description: RFC 8628 §3.2. Show `user_code` and `verification_uri` to the user,
         then poll `POST /v1/connections/token` every `interval` seconds.
     ConnectionRequest:
@@ -807,6 +840,10 @@ components:
           enum:
             - connect
             - once
+            - change
+          description: "`connect`: standing limits. `once`: one cart its mandate does not
+            allow. `change`: new limits that replace `parent`, whose hold is
+            released."
         state:
           type: string
           enum:
@@ -887,17 +924,41 @@ components:
               type: string
             perPurchaseMinor:
               type: string
+            totalMinor:
+              type: string
             remainingMinor:
+              type: string
+            until:
               type: string
           required:
             - mandateId
             - perPurchaseMinor
+            - totalMinor
             - remainingMinor
+            - until
         mandateId:
           type:
             - string
             - "null"
+        match:
+          type:
+            - object
+            - "null"
+          properties:
+            options:
+              type: array
+              items:
+                type: integer
+            matched:
+              type: boolean
+          required:
+            - options
+            - matched
+          description: "When the user must pick the agent's number before approving: three
+            numbers, one the agent shows. Null when the request needs no match."
         expiresAt:
+          type: string
+        createdAt:
           type: string
       required:
         - code
@@ -909,7 +970,59 @@ components:
         - limits
         - parent
         - mandateId
+        - match
         - expiresAt
+        - createdAt
+    ConnectionRequestState:
+      type: object
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+          enum:
+            - connect
+            - once
+            - change
+        state:
+          type: string
+          enum:
+            - PENDING
+            - APPROVED
+            - DENIED
+            - EXPIRED
+        mandateId:
+          type:
+            - string
+            - "null"
+          description: The mandate the user signed.
+        parentMandateId:
+          type:
+            - string
+            - "null"
+        userCode:
+          type: string
+        approvalUrl:
+          type: string
+        matchNumber:
+          type:
+            - integer
+            - "null"
+        expiresAt:
+          type: string
+        interval:
+          type: integer
+      required:
+        - id
+        - kind
+        - state
+        - mandateId
+        - parentMandateId
+        - userCode
+        - approvalUrl
+        - matchNumber
+        - expiresAt
+        - interval
     ConnectionDraft:
       type: object
       properties:
@@ -946,6 +1059,152 @@ components:
           minLength: 1
       required:
         - limits
+    MandateChangeRequest:
+      type: object
+      properties:
+        note:
+          type: string
+          minLength: 10
+          maxLength: 280
+          description: Why the agent needs more room, in one line the user reads verbatim,
+            e.g. 'Needs $40 more for shipping'.
+        limits:
+          type: object
+          properties:
+            perPurchaseMinor:
+              type: integer
+              exclusiveMinimum: 0
+              maximum: 9007199254740991
+            totalMinor:
+              type: integer
+              exclusiveMinimum: 0
+              maximum: 9007199254740991
+            until:
+              type: string
+              format: date-time
+            askAboveMinor:
+              type: integer
+              exclusiveMinimum: 0
+              maximum: 9007199254740991
+          description: The limits asked for; the mandate's own where left out.
+      required:
+        - note
+    CartCheck:
+      type: object
+      properties:
+        canAttempt:
+          type: boolean
+          description: Whether a countersign of this cart would pass the mandate as it
+            stands now.
+        needsApproval:
+          type: boolean
+          description: "The cart passes, and is above the user's ask-me amount: the
+            countersign pauses it for their one-time approval."
+        blockers:
+          type: array
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+                example: field:total
+              field:
+                type:
+                  - string
+                  - "null"
+              message:
+                type: string
+              next:
+                type: string
+                description: What the agent does about it.
+            required:
+              - code
+              - field
+              - message
+              - next
+        checks:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              mandate:
+                type:
+                  - string
+                  - "null"
+              cart:
+                type:
+                  - string
+                  - "null"
+              pass:
+                type: boolean
+            required:
+              - field
+              - mandate
+              - cart
+              - pass
+      required:
+        - canAttempt
+        - needsApproval
+        - blockers
+        - checks
+    Cart:
+      type: object
+      properties:
+        merchant:
+          type: string
+          minLength: 1
+          maxLength: 256
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              sku:
+                type: string
+                maxLength: 256
+              size:
+                type:
+                  - string
+                  - "null"
+                maxLength: 256
+              color:
+                type:
+                  - string
+                  - "null"
+                maxLength: 256
+              category:
+                type: string
+                maxLength: 256
+              qty:
+                type: integer
+                exclusiveMinimum: 0
+              unit_minor:
+                type: integer
+                minimum: 0
+            required:
+              - sku
+              - category
+              - qty
+              - unit_minor
+          minItems: 1
+          maxItems: 32
+        return_days:
+          type: integer
+          minimum: 0
+        returns_free:
+          type: boolean
+      required:
+        - merchant
+        - currency
+        - lines
+        - return_days
+        - returns_free
     EmbedOrigins:
       type: object
       properties:
@@ -1702,6 +1961,14 @@ components:
             - device_fp
             - ip
           additionalProperties: false
+        embed:
+          type: object
+          properties:
+            top_origin:
+              type: string
+          required:
+            - top_origin
+          additionalProperties: false
       required:
         - v
         - mid
@@ -1938,12 +2205,16 @@ components:
           type: integer
         interval:
           type: integer
+        request_id:
+          type: string
+          description: Read the request's state with `GET /v1/connections/requests/{id}`.
       required:
         - user_code
         - verification_uri
         - verification_uri_complete
         - expires_in
         - interval
+        - request_id
       description: "On a deny for a cart over the mandate's amount or outside its
         merchants: the user was asked to approve this cart once. Poll `POST
         /v1/connections/token` with its `device_code`; the answer is a
@@ -1969,7 +2240,14 @@ components:
         unit:
           type: object
           additionalProperties: {}
-          description: The PayPal purchase unit the cart is checked against.
+          description: "The PayPal purchase unit the cart is checked against: `{amount}`,
+            the checkout total the buyer pays as a PayPal Orders v2 amount,
+            whose `breakdown` has the `item_total` of the cart's lines and, when
+            the checkout charges them, `tax_total`, `shipping` and `discount`.
+            Keelson countersigns `amount.value`, which must be `item_total +
+            tax_total + shipping − discount`, and checks it against the
+            mandate's budget. `handling`, `insurance` and `shipping_discount`
+            are refused: fold them into `shipping`."
         evidence:
           type: object
           additionalProperties:
@@ -2019,62 +2297,6 @@ components:
         - cart
         - unit
         - evidenceRoot
-    Cart:
-      type: object
-      properties:
-        merchant:
-          type: string
-          minLength: 1
-          maxLength: 256
-        currency:
-          type: string
-          minLength: 3
-          maxLength: 3
-        lines:
-          type: array
-          items:
-            type: object
-            properties:
-              sku:
-                type: string
-                maxLength: 256
-              size:
-                type:
-                  - string
-                  - "null"
-                maxLength: 256
-              color:
-                type:
-                  - string
-                  - "null"
-                maxLength: 256
-              category:
-                type: string
-                maxLength: 256
-              qty:
-                type: integer
-                exclusiveMinimum: 0
-              unit_minor:
-                type: integer
-                minimum: 0
-            required:
-              - sku
-              - category
-              - qty
-              - unit_minor
-          minItems: 1
-          maxItems: 32
-        return_days:
-          type: integer
-          minimum: 0
-        returns_free:
-          type: boolean
-      required:
-        - merchant
-        - currency
-        - lines
-        - return_days
-        - returns_free
     LivePurchase:
       type: object
       properties:
@@ -2092,6 +2314,8 @@ components:
               type: string
             minor:
               type: string
+            breakdown:
+              $ref: "#/components/schemas/CheckoutBreakdown"
           required:
             - currency
             - minor
@@ -2147,6 +2371,8 @@ components:
               type: string
             minor:
               type: string
+            breakdown:
+              $ref: "#/components/schemas/CheckoutBreakdown"
           required:
             - currency
             - minor
@@ -2307,7 +2533,7 @@ components:
               - salt
               - bytes
           minItems: 1
-          maxItems: 22
+          maxItems: 24
       required:
         - mandateId
         - manifest
@@ -2341,7 +2567,7 @@ components:
               - media_type
               - leaf
           minItems: 1
-          maxItems: 22
+          maxItems: 24
       required:
         - v
         - root
@@ -6507,6 +6733,108 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+  /v1/connections/{code}/match:
+    post:
+      tags:
+        - connections
+      summary: Pick the agent's number
+      description: The user picks the number the agent shows beside its link out of
+        the three the request offers. The right one opens the request; a wrong
+        one denies it, since the link may not be the user's agent's.
+      parameters:
+        - schema:
+            type: string
+            minLength: 8
+            maxLength: 16
+          required: true
+          name: code
+          in: path
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                number:
+                  type: integer
+                  minimum: 10
+                  maximum: 99
+              required:
+                - number
+      responses:
+        "200":
+          description: Matched
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  matched:
+                    type: boolean
+                    enum:
+                      - true
+                required:
+                  - matched
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: No open request with this code
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Not the agent's number (`number-mismatch`); the request is denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/connections/requests/{id}:
+    get:
+      tags:
+        - connections
+      summary: Read your request's state
+      description: "The state of a request this client made, as often as needed:
+        reading it changes nothing and does not spend the device code. Wait
+        `interval` seconds between reads."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^[0-7][0-9A-HJKMNP-TV-Z]{25}$
+          required: true
+          name: id
+          in: path
+      responses:
+        "200":
+          description: The request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectionRequestState"
+        "401":
+          description: No valid access token
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: No such request of this client
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
   /v1/connections/{code}/draft:
     post:
       tags:
@@ -6609,6 +6937,130 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "503":
           description: The operator's agent key or bond is not set
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/mandates/{id}/changes:
+    post:
+      tags:
+        - mandates
+      summary: Ask the user to change a mandate
+      description: The agent asks its user for different limits, with a one-line note
+        the user reads verbatim. The user may lower what is asked and approves
+        with a passkey; the new mandate then replaces this one, whose hold is
+        released. Nothing changes until the user signs. Poll `GET
+        /v1/connections/requests/{id}` for the answer.
+      parameters:
+        - schema:
+            type: string
+            pattern: ^[0-7][0-9A-HJKMNP-TV-Z]{25}$
+          required: true
+          name: id
+          in: path
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MandateChangeRequest"
+      responses:
+        "201":
+          description: The user was asked; show the link and poll
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  request_id:
+                    type: string
+                  user_code:
+                    type: string
+                  verification_uri_complete:
+                    type: string
+                  expires_in:
+                    type: integer
+                  interval:
+                    type: integer
+                required:
+                  - request_id
+                  - user_code
+                  - verification_uri_complete
+                  - expires_in
+                  - interval
+        "401":
+          description: No valid access token
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: No such mandate of an operator this client linked
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: The mandate has ended, or a change of it is already waiting for the
+            user (`change-pending`, with its `requestId`)
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: The limits are invalid
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/mandates/{id}/check:
+    post:
+      tags:
+        - mandates
+      summary: Check a cart against a mandate
+      description: "A dry run: what a countersign of this cart would find, field by
+        field, from the same policy set the TEE legs run, with nothing signed,
+        reserved or logged. The countersign stays the only decision."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^[0-7][0-9A-HJKMNP-TV-Z]{25}$
+          required: true
+          name: id
+          in: path
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cart:
+                  $ref: "#/components/schemas/Cart"
+              required:
+                - cart
+      responses:
+        "200":
+          description: The check
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CartCheck"
+        "401":
+          description: No valid access token
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: No such mandate of an operator this client linked
           content:
             application/problem+json:
               schema:
@@ -7086,11 +7538,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
         "422":
-          description: The request is invalid, the authorization is not this purchase's
-            hold, the cart is not the one held for this request, the evidence
-            holds another cart, its Channel3 observation is not usable, its
-            WebFact is not this purchase's, or a live store is not the website
-            the mandate allows
+          description: The request is invalid, the purchase unit's amount does not
+            reconcile with the cart (`invalid-amount`), the authorization is not
+            this purchase's hold, the cart is not the one held for this request,
+            the evidence holds another cart or another checkout amount, its
+            Channel3 observation is not usable, its WebFact is not this
+            purchase's, or a live store is not the website the mandate allows
           content:
             application/problem+json:
               schema:
@@ -7325,7 +7778,7 @@ paths:
               - integer
               - "null"
             minimum: 0
-            maximum: 21
+            maximum: 23
           required: true
           name: index
           in: path

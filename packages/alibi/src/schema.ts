@@ -132,6 +132,11 @@ export const alibiSchema = z.strictObject({
   channel3_observation: json.optional(),
   /** The store's product endpoint notarized with TLSNotary: the disclosed `tlsn.web_fact` item. */
   web_fact: json.optional(),
+  /**
+   * The disclosed `api.checkout` item: the PayPal amount the legs evaluated, the checkout total
+   * the countersign names and its breakdown into items, tax, shipping and discount.
+   */
+  checkout: json.optional(),
   zk: z
     .strictObject({
       /**

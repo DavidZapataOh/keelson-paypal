@@ -1,6 +1,6 @@
 {
-  "id": "6f99fd4f-fd66-4c32-a15f-9aa7e916213c",
-  "prevId": "323f36dc-3fa9-4b78-a774-5ea9760de0fa",
+  "id": "68bc8723-4ab4-48c9-9f26-f1e90a901692",
+  "prevId": "2de0142e-e838-49de-8077-d6aad1287396",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3063,6 +3063,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "match_number": {
+          "name": "match_number",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "matched_at": {
+          "name": "matched_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "poll_interval": {
           "name": "poll_interval",
           "type": "integer",
@@ -3230,6 +3242,10 @@
         "agent_connections_limits": {
           "name": "agent_connections_limits",
           "value": "\"agent_connections\".\"per_purchase_minor\" > 0 and \"agent_connections\".\"per_purchase_minor\" <= \"agent_connections\".\"total_minor\" and (\"agent_connections\".\"ask_above_minor\" is null or \"agent_connections\".\"ask_above_minor\" between 1 and \"agent_connections\".\"per_purchase_minor\")"
+        },
+        "agent_connections_match_number": {
+          "name": "agent_connections_match_number",
+          "value": "\"agent_connections\".\"match_number\" is null or \"agent_connections\".\"match_number\" between 10 and 99"
         },
         "agent_connections_approved": {
           "name": "agent_connections_approved",
@@ -4937,31 +4953,6 @@
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
-        },
-        "engine_proved": {
-          "name": "engine_proved",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "engine_request": {
-          "name": "engine_request",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "engine_attempted_at": {
-          "name": "engine_attempted_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "engine_resumes": {
-          "name": "engine_resumes",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
         },
         "amber": {
           "name": "amber",

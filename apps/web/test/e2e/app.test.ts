@@ -511,6 +511,36 @@ describe("receipts and disputes", () => {
     await context.close();
   });
 
+  test("a receipt lists the parts of a total with tax and shipping", async () => {
+    const taxed = {
+      ...bought,
+      amount: {
+        currency: "USD",
+        minor: "9612",
+        breakdown: { items: "8900", tax: "712", shipping: "500", discount: "500" },
+      },
+    };
+    const { context, page } = await signedIn(
+      "mobile",
+      `/purchase/?mandate=${id}&id=${bought.id}`,
+      (path) => (path === `/v1/mandates/${id}` ? viewIn(id, "ACTIVE", [taxed]) : undefined),
+    );
+    const ledger = page.getByRole("region", { name: "Checkout total" });
+    await ledger.waitFor();
+    const labels = await ledger.locator("dt").allTextContents();
+    const figures = await ledger.locator("dd .sr-only").allTextContents();
+    expect(labels.map((l, i) => `${l} ${figures[i]}`)).toEqual([
+      "Items $89.00",
+      "Tax $7.12",
+      "Shipping $5.00",
+      "Discount −$5.00",
+      "Total $96.12",
+    ]);
+    const { violations } = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+    expect(violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
+    await context.close();
+  });
+
   test("the disputes list shows every dispute, and says so when there is none", async () => {
     const disputed = { ...bought, disputes: [{ id: "PP-D-1234", state: "OPEN" }] };
     for (const [purchases, expectText] of [

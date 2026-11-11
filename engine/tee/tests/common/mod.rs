@@ -193,15 +193,34 @@ pub fn assertion(passkey: &SigningKey, challenge: &[u8; 32]) -> Assertion {
 
 /// [`assertion`] made on `origin`.
 pub fn assertion_on(origin: &str, passkey: &SigningKey, challenge: &[u8; 32]) -> Assertion {
-    let mut authenticator_data = Sha256::digest("keelson.finance").to_vec();
-    authenticator_data.extend_from_slice(&[0x05, 0, 0, 0, 1]);
-    let client_data_json = json!({
+    signed_client_data(
+        &json!({
+            "type": "webauthn.get",
+            "challenge": b64u(challenge),
+            "origin": origin,
+            "crossOrigin": false,
+        }),
+        passkey,
+    )
+}
+
+/// The client data of an assertion over `challenge` made in a frame on `origin` whose top-level
+/// origin is `top`, as Chromium writes it.
+pub fn framed_client_data(origin: &str, top: &str, challenge: &[u8; 32]) -> Value {
+    json!({
         "type": "webauthn.get",
         "challenge": b64u(challenge),
         "origin": origin,
-        "crossOrigin": false,
+        "crossOrigin": true,
+        "topOrigin": top,
     })
-    .to_string();
+}
+
+/// A user-verified assertion of `client_data` by `passkey`.
+pub fn signed_client_data(client_data: &Value, passkey: &SigningKey) -> Assertion {
+    let mut authenticator_data = Sha256::digest("keelson.finance").to_vec();
+    authenticator_data.extend_from_slice(&[0x05, 0, 0, 0, 1]);
+    let client_data_json = client_data.to_string();
     let signed = [&authenticator_data[..], &Sha256::digest(&client_data_json)].concat();
     let signature: P256Signature = passkey.sign(&signed);
     Assertion {
@@ -232,6 +251,18 @@ pub fn mandate_on(
     passkey: &SigningKey,
     edit: impl FnOnce(&mut Value),
 ) -> RegisterMandate {
+    mandate_signed(sub, passkey, edit, |challenge| {
+        assertion_on(origin, passkey, challenge)
+    })
+}
+
+/// [`mandate_with`] confirmed with the assertion `sign` makes over its challenge.
+pub fn mandate_signed(
+    sub: &str,
+    passkey: &SigningKey,
+    edit: impl FnOnce(&mut Value),
+    sign: impl FnOnce(&[u8; 32]) -> Assertion,
+) -> RegisterMandate {
     let base = register_request();
     let mut m = decode_mandate(&base.payload_sd, &base.disclosures).unwrap();
     edit(&mut m);
@@ -247,7 +278,7 @@ pub fn mandate_on(
         sub: sub.into(),
         payload_sd,
         disclosures: Vec::new(),
-        assertion: assertion_on(origin, passkey, &challenge),
+        assertion: sign(&challenge),
         salt: base.salt,
         user_credential: None,
     }
