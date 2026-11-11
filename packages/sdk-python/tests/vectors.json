@@ -1,0 +1,355 @@
+{
+  "cart": {
+    "merchant": "mrc_runfast",
+    "currency": "USD",
+    "lines": [
+      {
+        "sku": "RF-CLD",
+        "size": "10",
+        "category": "shoes",
+        "qty": 1,
+        "unit_minor": 11900
+      }
+    ],
+    "return_days": 30,
+    "returns_free": true
+  },
+  "product": {
+    "handle": "cloud-daily",
+    "price": {
+      "minor": 11900,
+      "display": "$119.00"
+    },
+    "rating": 4.5
+  },
+  "observation": "Cloud Daily, size 10, $119.00 — in stock.",
+  "canonical": {
+    "product": "7b2268616e646c65223a22636c6f75642d6461696c79222c227072696365223a7b22646973706c6179223a22243131392e3030222c226d696e6f72223a31313930307d2c22726174696e67223a342e357d"
+  },
+  "cartHash": "sha256:57273b2c7f476b139cbda430b56895e4169bea7a7f770a17ad24c40ee2523551",
+  "manifest": {
+    "v": "keelson.manifest/1",
+    "root": "0x08709638c41cb3cf638097895dac96921c0779369c03f5d878b1616cf3fd3215",
+    "items": [
+      {
+        "type": "api.product",
+        "media_type": "application/json",
+        "leaf": "0xada1ee3a77d4b2ff0d41c64161fa8a7320fe5f6e8d229887f0131628a4628326"
+      },
+      {
+        "type": "api.cart",
+        "media_type": "application/json",
+        "leaf": "0xa0318a3da980de967f07e99c92e39d2255e9cf23c1935a675e5a7a58f7e76129"
+      },
+      {
+        "type": "llm.observation",
+        "media_type": "text/plain; charset=utf-8",
+        "leaf": "0xf2b93f1c9df6f09c2a28c260ce5fd960d9f3c8102c7061e710dc5f13fbbe65c1"
+      }
+    ]
+  },
+  "close": {
+    "open": "eyJhbGciOiJFUzI1NiJ9.eyJpc3MiOiJhIn0.c2ln~WyJhIl0~~eyJhbGciOiJFUzI1NiJ9.eyJfc2RfYWxnIjoic2hhLTI1NiIsImlzcyI6ImIifQ.c2ln~WyJiIl0~",
+    "requestId": "01JC3XQ7ZK8M4N6P9R2T5V7W0Y",
+    "iat": 1800000000,
+    "jwk": {
+      "key_ops": [
+        "sign"
+      ],
+      "ext": true,
+      "kty": "EC",
+      "x": "-YIxSdwXuRgUF9Fn81xLUjtmm0CXuGnYFlCPJGp4vbk",
+      "y": "9TQdVAaefE64wYepCkAfkIZFjhE5ekfotx8akGwzDgQ",
+      "crv": "P-256",
+      "d": "tuY-4SzO_Q_YZziCebZYPh0fKgwUIH_K1Oki9qynl1A"
+    },
+    "keyBinding": "eyJ0eXAiOiJrYitqd3QiLCJhbGciOiJFUzI1NiJ9.eyJpYXQiOjE4MDAwMDAwMDAsImF1ZCI6ImtlZWxzb24uZmluYW5jZS9jb3VudGVyc2lnbiIsIm5vbmNlIjoiMDFKQzNYUTdaSzhNNE42UDlSMlQ1VjdXMFkiLCJzZF9oYXNoIjoiMzkyR2JzRXhkZmxIVFFMbXI4b1BDWklIcnhmbGVOZnZBcm5yZEJtMGxMWSIsImNhcnRfaGFzaCI6InNoYTI1Njo1NzI3M2IyYzdmNDc2YjEzOWNiZGE0MzBiNTY4OTVlNDE2OWJlYTdhN2Y3NzBhMTdhZDI0YzQwZWUyNTIzNTUxIn0"
+  },
+  "tools": [
+    {
+      "name": "keelson_request_mandate",
+      "readOnly": false,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "How the user knows this agent, e.g. 'Claude Code'."
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 100,
+            "maxLength": 1000,
+            "description": "Why you ask, in at least 100 characters; the user reads it before approving."
+          },
+          "perPurchaseMinor": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Most one purchase may cost, in cents."
+          },
+          "totalMinor": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Most all purchases may cost together, in cents."
+          },
+          "until": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the mandate ends; keep it short."
+          },
+          "askAboveMinor": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Above this the user approves each purchase, in cents."
+          }
+        },
+        "required": [
+          "name",
+          "reason",
+          "perPurchaseMinor",
+          "totalMinor",
+          "until"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "keelson_get_request",
+      "readOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+            "description": "The `requestId` a write tool returned."
+          }
+        },
+        "required": [
+          "requestId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "keelson_request_mandate_change",
+      "readOnly": false,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "mandateId": {
+            "type": "string",
+            "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+          },
+          "note": {
+            "type": "string",
+            "minLength": 10,
+            "maxLength": 280,
+            "description": "Why, in one line the user reads."
+          },
+          "perPurchaseMinor": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "totalMinor": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "until": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "mandateId",
+          "note"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "keelson_confirm_mandate",
+      "readOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "mandateId": {
+            "type": "string",
+            "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+          }
+        },
+        "required": [
+          "mandateId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "keelson_submit_evidence",
+      "readOnly": false,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "mandateId": {
+            "type": "string",
+            "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+          },
+          "lines": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 10,
+            "items": {
+              "type": "object",
+              "properties": {
+                "productUrl": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "The product page on the store."
+                },
+                "size": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 32
+                },
+                "qty": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 5
+                }
+              },
+              "required": [
+                "productUrl",
+                "size",
+                "qty"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "observation": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100000,
+            "description": "What the agent read on the store that led to this cart, verbatim. No personal data."
+          }
+        },
+        "required": [
+          "mandateId",
+          "lines",
+          "observation"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "keelson_check_cart",
+      "readOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "mandateId": {
+            "type": "string",
+            "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+          },
+          "cart": {
+            "type": "object",
+            "description": "The cart keelson_submit_evidence returned, unchanged.",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "mandateId",
+          "cart"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "keelson_request_countersign",
+      "readOnly": false,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "mandateId": {
+            "type": "string",
+            "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+          },
+          "evidenceRoot": {
+            "type": "string",
+            "pattern": "^0x[0-9a-f]{64}$",
+            "description": "The root keelson_submit_evidence returned."
+          },
+          "cart": {
+            "type": "object",
+            "description": "The cart keelson_submit_evidence returned, unchanged.",
+            "additionalProperties": true
+          },
+          "repeatOf": {
+            "type": "string",
+            "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+            "description": "Only when the user explicitly asked to buy this same cart again: the purchase of it you got last. Never on a retry."
+          }
+        },
+        "required": [
+          "mandateId",
+          "evidenceRoot",
+          "cart"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "keelson_get_purchase",
+      "readOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "purchaseId": {
+            "type": "string",
+            "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+          }
+        },
+        "required": [
+          "purchaseId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "keelson_verify_alibi",
+      "readOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "purchaseId": {
+            "type": "string",
+            "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+          }
+        },
+        "required": [
+          "purchaseId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "keelson_get_trust_grade",
+      "readOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "pattern": "^\\d{1,20}$",
+            "description": "The operator's ERC-8004 agent id."
+          }
+        },
+        "required": [
+          "agentId"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

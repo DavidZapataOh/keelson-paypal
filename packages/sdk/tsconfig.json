@@ -3,7 +3,8 @@
   "compilerOptions": {
     "noEmit": true,
     "types": ["node"],
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true
   },
   "include": ["src", "test", "scripts", "examples"]
 }

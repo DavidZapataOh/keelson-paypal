@@ -12,12 +12,11 @@ export class APIError extends KeelsonError {
   readonly detail: string | undefined;
   /** Every member of the problem, e.g. `purchaseId` or `approval`. */
   readonly problem: Readonly<Record<string, unknown>>;
+  readonly status: number;
+  /** The `X-Request-Id` the API gave the call, for support. */
+  readonly requestId: string | null;
 
-  constructor(
-    readonly status: number,
-    problem: Record<string, unknown>,
-    readonly requestId: string | null,
-  ) {
+  constructor(status: number, problem: Record<string, unknown>, requestId: string | null) {
     const type =
       typeof problem.type === "string"
         ? problem.type.split("/").at(-1)
@@ -34,6 +33,8 @@ export class APIError extends KeelsonError {
     super(
       `${[title ?? `HTTP ${status}`, detail].filter(Boolean).join(": ")} (${status}${type ? ` ${type}` : ""})`,
     );
+    this.status = status;
+    this.requestId = requestId;
     this.type = type;
     this.title = title;
     this.detail = detail;
@@ -109,26 +110,29 @@ export class APIConnectionTimeoutError extends APIConnectionError {
  */
 export class OutcomeUnknownError extends KeelsonError {
   override name = "OutcomeUnknownError";
-  constructor(
-    /** The request id the countersign carried, which is also the purchase's id. */
-    readonly requestId: string,
-    options?: { cause?: unknown },
-  ) {
+  /** The request id the countersign carried, which is also the purchase's id. */
+  readonly requestId: string;
+
+  constructor(requestId: string, options?: { cause?: unknown }) {
     super(
       `The countersign of ${requestId} was sent and its outcome is unknown. Do not send it again; call purchases.waitFor("${requestId}").`,
       options,
     );
+    this.requestId = requestId;
   }
 }
 
 /** The user denied the mandate request, or it expired before they answered. */
 export class MandateRequestClosedError extends KeelsonError {
   override name = "MandateRequestClosedError";
-  constructor(readonly state: "DENIED" | "EXPIRED") {
+  readonly state: "DENIED" | "EXPIRED";
+
+  constructor(state: "DENIED" | "EXPIRED") {
     super(
       state === "DENIED"
         ? "The user declined the mandate request. Do not ask again unless they ask you to."
         : "The mandate request expired before the user answered.",
     );
+    this.state = state;
   }
 }

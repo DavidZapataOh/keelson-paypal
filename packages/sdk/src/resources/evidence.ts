@@ -4,7 +4,11 @@ import { type EvidenceSources, manifestOf, sealedItems } from "../seal.ts";
 const b64 = (b: Uint8Array) => Buffer.from(b).toString("base64");
 
 export class Evidence {
-  constructor(private readonly keelson: Keelson) {}
+  private readonly keelson: Keelson;
+
+  constructor(keelson: Keelson) {
+    this.keelson = keelson;
+  }
 
   /**
    * Seals what the agent saw when it chose the cart: each item gets its own salt, and only the

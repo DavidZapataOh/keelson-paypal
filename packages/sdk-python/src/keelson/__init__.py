@@ -40,6 +40,8 @@ from ._login import LOGIN_SCOPES, login
 from ._money import minor_of
 from ._sandbox import SANDBOX_STORE, quote
 from ._seal import manifest_of, sealed_items
+from ._tools import KeelsonTool, tools
+from ._verify import verify_alibi
 from .resources.events import ServerEvent
 from .resources.mandates import Mandate, MandateRequest
 from .resources.purchases import CountersignResult
@@ -65,6 +67,7 @@ __all__ = [
     "InternalServerError",
     "Keelson",
     "KeelsonError",
+    "KeelsonTool",
     "Mandate",
     "MandateRequest",
     "MandateRequestClosedError",
@@ -91,5 +94,7 @@ __all__ = [
     "sealed_items",
     "static_token",
     "stored_login",
+    "tools",
+    "verify_alibi",
     "write_credentials",
 ]

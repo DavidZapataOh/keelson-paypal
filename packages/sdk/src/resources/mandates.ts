@@ -40,7 +40,11 @@ function requestOf(d: DeviceAuthorization): MandateRequest {
 }
 
 export class Mandates {
-  constructor(private readonly keelson: Keelson) {}
+  private readonly keelson: Keelson;
+
+  constructor(keelson: Keelson) {
+    this.keelson = keelson;
+  }
 
   /**
    * Asks the user to let the agent spend within limits. They approve on Keelson's page with a

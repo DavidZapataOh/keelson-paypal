@@ -2,7 +2,11 @@ import type { Keelson } from "../client.ts";
 import type { ConnectionRequestState } from "../types.ts";
 
 export class Requests {
-  constructor(private readonly keelson: Keelson) {}
+  private readonly keelson: Keelson;
+
+  constructor(keelson: Keelson) {
+    this.keelson = keelson;
+  }
 
   /** A mandate request's state; reading it changes nothing. */
   async retrieve(requestId: string): Promise<ConnectionRequestState> {

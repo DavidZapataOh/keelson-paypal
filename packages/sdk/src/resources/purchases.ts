@@ -39,10 +39,13 @@ export interface CountersignResult {
 const PENDING = new Set(["PROPOSED", "EVALUATING", "COUNTERSIGNED", "LOGGED", "COVERED"]);
 
 export class Purchases {
-  constructor(
-    private readonly keelson: Keelson,
-    private readonly agentKey: () => Promise<CryptoKey | undefined>,
-  ) {}
+  private readonly keelson: Keelson;
+  private readonly agentKey: () => Promise<CryptoKey | undefined>;
+
+  constructor(keelson: Keelson, agentKey: () => Promise<CryptoKey | undefined>) {
+    this.keelson = keelson;
+    this.agentKey = agentKey;
+  }
 
   /**
    * Asks Keelson's two TEEs to countersign the cart under the mandate, with the sealed evidence.

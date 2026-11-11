@@ -4,7 +4,11 @@ import type { AlibiReceipt, AlibiReport } from "../types.ts";
 const ALIBI = "application/vnd.keelson.alibi.v1+json";
 
 export class Alibis {
-  constructor(private readonly keelson: Keelson) {}
+  private readonly keelson: Keelson;
+
+  constructor(keelson: Keelson) {
+    this.keelson = keelson;
+  }
 
   /** The purchase's Alibi as issued: RFC 8785 JSON bytes, ready for `verifyAlibi`. */
   async retrieve(purchaseId: string): Promise<Uint8Array> {

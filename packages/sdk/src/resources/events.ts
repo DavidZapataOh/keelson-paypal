@@ -36,7 +36,11 @@ async function* parse(body: ReadableStream<Uint8Array>): AsyncGenerator<ServerEv
 }
 
 export class Events {
-  constructor(private readonly keelson: Keelson) {}
+  private readonly keelson: Keelson;
+
+  constructor(keelson: Keelson) {
+    this.keelson = keelson;
+  }
 
   /**
    * Live events of a channel: `public:<name>`, or your own namespace. Reconnects after a drop and

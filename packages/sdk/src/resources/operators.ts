@@ -2,7 +2,11 @@ import type { Keelson } from "../client.ts";
 import type { Operator, TrustGrade } from "../types.ts";
 
 export class Operators {
-  constructor(private readonly keelson: Keelson) {}
+  private readonly keelson: Keelson;
+
+  constructor(keelson: Keelson) {
+    this.keelson = keelson;
+  }
 
   /** Links your ERC-8004 agent to this OAuth client, so mandates can name it. */
   async link(o: {
