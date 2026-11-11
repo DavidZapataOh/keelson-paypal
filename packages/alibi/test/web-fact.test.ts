@@ -19,16 +19,47 @@ const binding = {
   issuerJwkThumbprint: `0x${"44".repeat(32)}`,
 } as const;
 const URL_ = "https://www.alfred.com/products/the-change-00-ps-0004070.oembed";
-const committed = new TextEncoder().encode('{"offer_id":44631538991240,"price":2.95}');
+const offer = (o: Record<string, unknown> = {}) =>
+  new TextEncoder().encode(
+    JSON.stringify({
+      title: "Default Title",
+      offer_id: 44631538991240,
+      sku: "00-PS-0004070",
+      price: 2.95,
+      currency_code: "USD",
+      in_stock: true,
+      ...o,
+    }),
+  );
+const committed = offer();
 const blinder = new Uint8Array(16).fill(5);
+const ISSUED_AT = 1_794_300_060;
+const LINE = /not a line of the cart/;
+const TIME = /not notarized for this purchase/;
+const cart = {
+  merchant: "mrc_alfred",
+  currency: "USD",
+  lines: [
+    {
+      sku: "00-PS-0004070",
+      size: null,
+      color: null,
+      category: "gpt:783",
+      qty: 2,
+      unit_minor: 295,
+    },
+  ],
+  return_days: 0,
+  returns_free: false,
+};
 
-async function signedDoc() {
+async function signedDoc(bytes = committed, tCapture = 1_794_300_000) {
   const url = new URL(URL_);
   const fact = {
     hostHash: keccak256(stringToHex(url.hostname)),
     urlPathHash: keccak256(stringToHex(`${url.pathname}${url.search}`)),
-    tCapture: 1_794_300_000,
-    rangeCommitment: toHex(sha256(new Uint8Array([...committed, ...blinder]))),
+    tCapture,
+    rangeCommitment: toHex(sha256(new Uint8Array([...bytes, ...blinder]))),
     attId: reportData(
       { ...binding, chainId: 421614n, bootEpoch: 7n },
       `0x${"00".repeat(32)}`,
@@ -43,8 +74,8 @@ async function signedDoc() {
     signature: await account.sign({ hash: digest }),
     signer: account.address,
     mode: "mpc",
-    range: [10, 10 + committed.length],
-    committed: toHex(committed),
+    range: [10, 10 + bytes.length],
+    committed: toHex(bytes),
     blinder: toHex(blinder),
   };
 }
@@ -52,14 +83,17 @@ async function signedDoc() {
 const bundleWith = (
   doc: Record<string, unknown>,
   hash = toHex(sha256(new TextEncoder().encode(jcs(doc as Json)))),
+  withCart: Record<string, unknown> | undefined = cart,
 ) =>
   ({
     type: "application/vnd.keelson.alibi.v1+json",
     tee: {
       domain: { name: "Keelson", version: "1", chain_id: 421614, verifying_contract: VERIFYING },
+      countersign: { issuedAt: String(ISSUED_AT) },
       attestations: [{ kind: "tdx", signer: account.address, binding }],
     },
     manifest: { disclosures: [{ type: "tlsn.web_fact", content_hash: hash }] },
+    ...(withCart ? { cart: withCart } : {}),
     web_fact: doc,
   }) as unknown as AlibiBundle;
 
@@ -102,6 +136,34 @@ describe("the store's product endpoint, notarized", () => {
   ])("a tampered %s fails", async (_, tamper) => {
     const doc = tamper(await signedDoc());
     await expect(run(bundleWith(doc))).rejects.toThrow();
+  });
+
+  test("a WebFact whose offer names the line by its variant id passes", async () => {
+    const byId = { ...cart, lines: [{ ...cart.lines[0], sku: "44631538991240" }] };
+    const doc = await signedDoc(offer({ sku: "" }));
+    expect(await run(bundleWith(doc, undefined, byId))).toMatchObject({ status: "pass" });
+  });
+
+  test.each([
+    ["another product", () => signedDoc(offer({ offer_id: 1, sku: "00-PS-0009999" })), LINE],
+    ["another price", () => signedDoc(offer({ price: 0.99 })), LINE],
+    ["another currency", () => signedDoc(offer({ currency_code: "EUR" })), LINE],
+    ["a price as text", () => signedDoc(offer({ price: "2.95" })), LINE],
+    [
+      "bytes that are not an offer",
+      () => signedDoc(new TextEncoder().encode('"offer_id":1')),
+      /not one offer/,
+    ],
+    ["a stale notarization", () => signedDoc(committed, ISSUED_AT - 901), TIME],
+    ["a notarization after the countersign", () => signedDoc(committed, ISSUED_AT + 61), TIME],
+  ])("a WebFact of %s fails", async (_, doc, reason) => {
+    await expect(run(bundleWith(await doc()))).rejects.toThrow(reason);
+  });
+
+  test("a WebFact without the cart it is for fails", async () => {
+    await expect(run(bundleWith(await signedDoc(), undefined, null as never))).rejects.toThrow(
+      /cart/,
+    );
   });
 
   test("a document that is not the disclosed item fails", async () => {
