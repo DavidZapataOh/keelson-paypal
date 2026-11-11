@@ -1,7 +1,7 @@
+import type { Db } from "@keelson/db";
 import { isAPIError } from "better-auth/api";
 import { requestToResourceInput, verifyAccessTokenRequest } from "better-auth/oauth2";
 import type { Context, MiddlewareHandler } from "hono";
-import type { RedisClientType } from "redis";
 import { type Auth, apiAudience, delegatedUser, tokenScopes } from "../auth.ts";
 import { judgeExpired } from "../judge.ts";
 import { problem } from "../problem.ts";
@@ -18,7 +18,11 @@ declare module "hono" {
  * header is sent, from a session cookie. Never rejects: route guards decide what a missing
  * principal or an invalid token means.
  */
-export function authenticate(auth: Auth, baseURL: string, kv?: RedisClientType): MiddlewareHandler {
+export function authenticate(
+  auth: Auth,
+  baseURL: string,
+  revocations?: Pick<Db, "execute">,
+): MiddlewareHandler {
   const issuer = `${baseURL.replace(/\/$/, "")}/api/auth`;
   const jwksUrl = `${issuer}/jwks`;
   return async (c, next) => {
@@ -34,9 +38,9 @@ export function authenticate(auth: Auth, baseURL: string, kv?: RedisClientType):
         let stopped: boolean;
         try {
           stopped =
-            kv !== undefined &&
+            revocations !== undefined &&
             user !== undefined &&
-            (await tokenStopped(kv, user, payload.azp as string, payload.iat));
+            (await tokenStopped(revocations, user, payload.azp as string, payload.iat));
         } catch {
           return revocationUnknown(c);
         }

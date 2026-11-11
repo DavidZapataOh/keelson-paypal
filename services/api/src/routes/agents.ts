@@ -21,7 +21,6 @@ import { requireSession } from "../middleware/auth.ts";
 import { type Principal, principalChannel } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 import { stopAgents, userStops } from "../stop.ts";
-import { stoppedKey } from "../stopped.ts";
 import { REVOCABLE, revokeMandate } from "./revoke.ts";
 
 const problemContent = { "application/problem+json": { schema: ProblemSchema } };
@@ -123,7 +122,6 @@ const disconnect = createRoute({
     200: { description: "Disconnected", content: { "application/json": { schema: Revoked } } },
     401: { description: "Not signed in", content: problemContent },
     404: { description: "No agent of yours with this id", content: problemContent },
-    503: { description: "The app's access tokens cannot be revoked now", content: problemContent },
   },
 });
 
@@ -200,6 +198,46 @@ export function registerAgents(
         ? undefined
         : sql`exists (select 1 from ${agentConnections} where ${agentConnections.mandateId} = ${mandates.id} and ${agentConnections.state} = 'APPROVED' and ${agentConnections.clientId} = ${clientId})`;
     const app = clientId === undefined ? undefined : eq(agentConnections.clientId, clientId);
+    // An app's grant ends before its connections do: an access token refreshed until then was
+    // issued before they ended, which refuses it by its issue time (see stopped.ts).
+    if (clientId !== undefined) {
+      await db
+        .update(oauthRefreshToken)
+        .set({ revoked: new Date() })
+        .where(
+          and(
+            eq(oauthRefreshToken.userId, userId),
+            eq(oauthRefreshToken.clientId, clientId),
+            isNull(oauthRefreshToken.revoked),
+          ),
+        );
+      await db
+        .delete(oauthConsent)
+        .where(and(eq(oauthConsent.userId, userId), eq(oauthConsent.clientId, clientId)));
+    }
+    await db
+      .update(agentConnections)
+      .set({ disconnectedAt: new Date() })
+      .where(
+        and(
+          eq(agentConnections.userId, userId),
+          isNull(agentConnections.disconnectedAt),
+          agentId === undefined ? undefined : eq(agentConnections.operatorAgentId, agentId),
+          app,
+        ),
+      );
+    // Pending one-time approvals for this user would only be refused later; decline them now.
+    await db
+      .update(agentConnections)
+      .set({ state: "DENIED", decidedAt: new Date() })
+      .where(
+        and(
+          eq(agentConnections.userId, userId),
+          eq(agentConnections.state, "PENDING"),
+          agentId === undefined ? undefined : eq(agentConnections.operatorAgentId, agentId),
+          app,
+        ),
+      );
     // Every countersign stops at once; the holds are released one by one after. A second pass
     // catches a mandate stored while the first one ran.
     const flag = () =>
@@ -225,44 +263,6 @@ export function registerAgents(
         // The sweeper voids a hold whose revoke is requested; countersigns are already refused.
         deps.log.warn({ err, mandateId: row.id }, "hold not voided on revoke; the sweeper retries");
       }
-    }
-    await db
-      .update(agentConnections)
-      .set({ disconnectedAt: new Date() })
-      .where(
-        and(
-          eq(agentConnections.userId, userId),
-          isNull(agentConnections.disconnectedAt),
-          agentId === undefined ? undefined : eq(agentConnections.operatorAgentId, agentId),
-          app,
-        ),
-      );
-    // Pending one-time approvals for this user would only be refused later; decline them now.
-    await db
-      .update(agentConnections)
-      .set({ state: "DENIED", decidedAt: new Date() })
-      .where(
-        and(
-          eq(agentConnections.userId, userId),
-          eq(agentConnections.state, "PENDING"),
-          agentId === undefined ? undefined : eq(agentConnections.operatorAgentId, agentId),
-          app,
-        ),
-      );
-    if (clientId !== undefined) {
-      await db
-        .update(oauthRefreshToken)
-        .set({ revoked: new Date() })
-        .where(
-          and(
-            eq(oauthRefreshToken.userId, userId),
-            eq(oauthRefreshToken.clientId, clientId),
-            isNull(oauthRefreshToken.revoked),
-          ),
-        );
-      await db
-        .delete(oauthConsent)
-        .where(and(eq(oauthConsent.userId, userId), eq(oauthConsent.clientId, clientId)));
     }
     await publishEvent(
       deps,
@@ -463,20 +463,6 @@ export function registerAgents(
           )
           .limit(1);
     if (!linked) return problem(c, 404, "not-found", "Not found");
-    if (client !== undefined) {
-      // The app's access tokens are refused first: if they cannot be, nothing is disconnected.
-      try {
-        await deps.kv.set(stoppedKey(userId, client), String(Math.floor(Date.now() / 1000)));
-      } catch {
-        return problem(
-          c,
-          503,
-          "revocation-unavailable",
-          "Revocation unavailable",
-          "The app's access tokens cannot be revoked now, so it was not disconnected. Try again shortly.",
-        );
-      }
-    }
     return c.json({ revoked: await stop(userId, agentId, client) }, 200);
   });
 }

@@ -695,7 +695,7 @@ describe("the hosted operator's caps for apps Keelson does not know", () => {
   });
 
   test("an unknown app asks one user for no more than the per-user cap, counting what is left on its mandates", async () => {
-    const { CAPPED, ask } = await hostedWithCaps();
+    const { CAPPED, capped, ask } = await hostedWithCaps();
     const a = await newUser();
     const host = await registered(["https://unknown.example/callback"]);
     const over = await ask(asHost(host, a), 30_001);
@@ -710,6 +710,18 @@ describe("the hosted operator's caps for apps Keelson does not know", () => {
     const other = await registered(["https://other.example/callback"]);
     expect((await ask(asHost(other, a), 10_001)).status).toBe(422);
     expect((await ask(asHost(other, a), 10_000)).status).toBe(201);
+    // Only in the cap's currency, so that the caps add up.
+    const eur = await capped.request("/v1/connections", {
+      method: "POST",
+      headers: {
+        "idempotency-key": ulid(),
+        "content-type": "application/json",
+        ...asHost(other, a),
+      },
+      body: JSON.stringify({ ...askBody, limits: { ...askBody.limits, currency: "EUR" } }),
+    });
+    expect(eur.status).toBe(422);
+    expect(((await eur.json()) as { detail: string }).detail).toContain("USD only");
     // A host with no registration at all is as unknown.
     expect((await ask(asHost(newHost(), a), 10_001)).status).toBe(422);
   });
@@ -867,8 +879,8 @@ describe("disconnecting one app acting through the hosted operator", () => {
       [],
     );
     // Its access tokens issued before now are refused; the other app's are not.
-    expect(await tokenStopped(testKv, a, x, before)).toBe(true);
-    expect(await tokenStopped(testKv, a, y, before)).toBe(false);
+    expect(await tokenStopped(testDb, a, x, before)).toBe(true);
+    expect(await tokenStopped(testDb, a, y, before)).toBe(false);
 
     expect((await evidence(asHost(y, a), my.id)).status).toBe(201);
     expect((await evidence(asHost(x, a), mx.id)).status).toBe(404);

@@ -4,14 +4,22 @@ import type { AddressInfo } from "node:net";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { serve } from "@hono/node-server";
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import { agentConnections, eq, mandates, operators, purchases, teeSigners } from "@keelson/db";
+import {
+  agentConnections,
+  createDb,
+  type Db,
+  eq,
+  mandates,
+  operators,
+  purchases,
+  teeSigners,
+} from "@keelson/db";
 import { buildManifest, canonicalBytes, MEDIA_TYPES, type SealedItem } from "@keelson/evidence";
 import { buildSdPayload, parseMandate } from "@keelson/mandate";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { betterAuth } from "better-auth";
 import { testUtils } from "better-auth/plugins";
 import { pino } from "pino";
-import { createClient, type RedisClientType } from "redis";
 import { ulid } from "ulid";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import demo from "../../../packages/mandate/test/fixtures/demo-mandate.json" with { type: "json" };
@@ -56,7 +64,7 @@ app = createApp({
   auth,
   appOrigin: baseURL,
   authBaseUrl: baseURL,
-  authenticate: authenticate(auth, baseURL, testKv),
+  authenticate: authenticate(auth, baseURL, testDb),
   demoAgentId: HOSTED,
   hostedAgentKey: hosted.privateKey,
   // Every user here is new, so only the per-user cap ever binds.
@@ -651,21 +659,14 @@ test("disconnecting one host refuses its access and refresh tokens, on the API a
   expect((await refresh(two, t2.refresh_token as string)).status).toBe(200);
 });
 
-describe("when the revocation store is down", () => {
-  // A real client whose connection is gone: every command fails at once, as with Valkey down.
-  let down!: RedisClientType;
-  beforeAll(async () => {
-    down = createClient({
-      url: process.env.REDIS_URL,
-      disableOfflineQueue: true,
-    }) as RedisClientType;
-    await down.connect();
-    down.destroy();
-  });
-  const appWith = (kv: RedisClientType, revocations: RedisClientType) =>
+describe("when revocations cannot be read", () => {
+  // A real pool to a port nothing listens on: every query fails at once, as with Postgres down.
+  const down = createDb("postgres://postgres:keelson@127.0.0.1:9/keelson");
+  afterAll(() => down.pool.end());
+  const appWith = (db: Db, revocations: Db) =>
     createApp({
-      db: testDb,
-      kv,
+      db,
+      kv: testKv,
       log: pino({ level: "silent" }),
       auth,
       appOrigin: baseURL,
@@ -674,9 +675,9 @@ describe("when the revocation store is down", () => {
       demoAgentId: HOSTED,
     });
 
-  test("a host's access token is refused on the API, whatever else works", async () => {
+  test("a host's access token is refused on the API", async () => {
     const { access_token } = await grant(await registerHost(), await newUser());
-    const res = await appWith(testKv, down).request(
+    const res = await appWith(testDb, down.db).request(
       "/v1/connections",
       bearer(access_token, { name: "Claude", reason: REASON, limits: { currency: "USD" } }),
     );
@@ -700,10 +701,9 @@ describe("when the revocation store is down", () => {
         },
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
       });
-    const res = await call(appWith(down, down));
-    expect(res.status).toBe(503);
-    // Down between the API's check and MCP's own, the token is refused there too.
-    const late = await call(appWith(down, testKv));
+    expect((await call(appWith(down.db, down.db))).status).toBe(503);
+    // Unreadable between the API's check and MCP's own, the token is refused there too.
+    const late = await call(appWith(down.db, testDb));
     expect(late.status).toBe(500);
     expect(await late.json()).toMatchObject({
       error: "server_error",

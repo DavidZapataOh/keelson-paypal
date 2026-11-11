@@ -457,13 +457,13 @@ describe("revoking where the money moves", { timeout: 120_000 }, () => {
     const [revoked] = await testDb.select().from(mandates).where(eq(mandates.id, missed));
     expect(revoked?.revokeRequestedAt).not.toBeNull();
     // Access tokens the user granted before the stop are refused; later ones are not.
-    expect(await tokenStopped(testKv, sub, "any-app", Math.floor(Date.now() / 1000) - 5)).toBe(
+    expect(await tokenStopped(testDb, sub, "any-app", Math.floor(Date.now() / 1000) - 5)).toBe(
       true,
     );
-    expect(await tokenStopped(testKv, sub, "any-app", Math.floor(Date.now() / 1000) + 5)).toBe(
+    expect(await tokenStopped(testDb, sub, "any-app", Math.floor(Date.now() / 1000) + 5)).toBe(
       false,
     );
-    expect(await tokenStopped(testKv, await newUser(), "any-app", 0)).toBe(false);
+    expect(await tokenStopped(testDb, await newUser(), "any-app", 0)).toBe(false);
 
     const listed = await (await app.request("/v1/agents/stops", { headers: asUser(sub) })).json();
     expect(listed.stops[0]).toMatchObject({ id: stopped.id, revoked: 2 });

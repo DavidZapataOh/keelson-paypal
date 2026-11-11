@@ -25,7 +25,7 @@ import { tokenStopped } from "./stopped.ts";
  */
 export function registerMcp(
   app: OpenAPIHono,
-  deps: Pick<Deps, "kv" | "auth" | "authBaseUrl" | "appOrigin" | "storeOrigin" | "demoAgentId"> &
+  deps: Pick<Deps, "db" | "auth" | "authBaseUrl" | "appOrigin" | "storeOrigin" | "demoAgentId"> &
     Pick<Required<Deps>, "authenticate">,
   limit: Parameters<OpenAPIHono["use"]>[1],
 ): void {
@@ -74,7 +74,7 @@ export function registerMcp(
           // refused though it verifies; so is every such token while that cannot be checked.
           if (user !== undefined) {
             const stopped = await tokenStopped(
-              deps.kv,
+              deps.db,
               user,
               payload.azp as string,
               payload.iat,

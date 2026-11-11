@@ -426,7 +426,7 @@ only once every check of the countersign has passed. Without it those countersig
 **What the hosted bond backs.** A host Keelson knows, by its registered redirect URIs (Claude,
 ChatGPT, Cursor, and the loopback `http://localhost:{port}/callback` of native apps such as Claude
 Code; `src/hosted-caps.ts`), gets the standard limits. Any other host acting through the hosted
-operator is capped, per currency, over what its live mandates have left: one user's together may
+operator asks in USD only and is capped over what its live mandates have left: one user's together may
 not pass `HOSTED_CAP_PER_USER_MINOR` (default `10000`), and all users' together may not pass
 `HOSTED_CAP_TOTAL_MINOR` (default `100000`). A request, a change or a consent over a cap answers
 `422 hosted-cap`; the approval measures it again under an advisory lock, so concurrent approvals
@@ -437,9 +437,11 @@ agent (`POST /v1/agents/stop`) revokes the user's refresh tokens and consents an
 access token issued before it, on the API and on `/mcp`. Disconnecting one host
 (`POST /v1/agents/{agentId}/disconnect?client={clientId}`, one row per host on the agents page)
 does the same for that host only: its mandates, requests, consent and refresh tokens end, and its
-access tokens issued before then are refused. Whether a token was revoked is read from Valkey;
-while Valkey cannot answer, every token a user granted a host is refused (`503
-revocation-unavailable` on the API, `500 server_error` from `/mcp`).
+access tokens issued before then are refused. Whether a token was revoked is read from Postgres
+(`agent_stops` and `agent_connections.disconnected_at`), and grants end before either is written,
+so a token refreshed meanwhile is refused too. While that cannot be read, every token a user
+granted a host is refused (`503 revocation-unavailable` on the API, `500 server_error` from
+`/mcp`).
 
 ## Risk model
 

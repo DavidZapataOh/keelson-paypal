@@ -7621,12 +7621,6 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
-        "503":
-          description: The app's access tokens cannot be revoked now
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
   /v1/activity:
     get:
       tags:
