@@ -194,12 +194,18 @@ export const credentials: CheckDef = {
       "the open mandate carries another passkey assertion",
       ["/mandate/user_auth", "/mandate/sd_jwt"],
     );
-    const presented = new Set(token.split("~"));
-    for (const [i, d] of input.mandate.disclosures.entries()) {
-      expect(presented.has(d), "a disclosure is not the open mandate's", [
-        `/mandate/disclosures/${i}`,
-      ]);
-    }
+    // The mandate's disclosures are exactly those the open mandate presents after its key binding,
+    // but for the delegate payload itself.
+    const parts = token.split("~");
+    const presented = parts.slice(parts.indexOf("") + 2, -1).filter((d) => {
+      const value = JSON.parse(decoder.decode(fromBase64url(d))).at(-1) as { v?: unknown };
+      return value?.v !== "keelson.mandate.1";
+    });
+    expect(
+      jcs([...presented].sort()) === jcs([...input.mandate.disclosures].sort()),
+      "the disclosures are not the open mandate's",
+      ["/mandate/disclosures", "/mandate/sd_jwt"],
+    );
     return pass();
   },
 };

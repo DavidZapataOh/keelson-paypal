@@ -12,9 +12,8 @@ import {
 import { renderAlibiPdf } from "@keelson/alibi/pdf";
 import { verifyAlibi } from "@keelson/alibi/verify";
 import { and, eq, evidenceBundles, mandates, purchases, user } from "@keelson/db";
-import { isPersonalDisclosure, withholdPersonal } from "@keelson/mandate";
 import type { Context } from "hono";
-import { loadAlibi } from "../alibi/issue.ts";
+import { loadAlibi, publicCopy } from "../alibi/issue.ts";
 import type { Deps } from "../app.ts";
 import type { Principal } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
@@ -36,7 +35,7 @@ const bundleRoute = createRoute({
   tags: ["alibis"],
   summary: "An alibi bundle",
   description:
-    "The purchase's Alibi: its RFC 8785 bundle, readable by the mandate's user or, with `alibis:read`, by the client that uploaded the purchase's evidence; the Alibi of a live purchase, once its PayPal transaction is recorded, by anyone. It grows as timestamps, the capture and the on-chain anchor arrive; earlier sections never change.",
+    "The purchase's Alibi: its RFC 8785 bundle, readable by the mandate's user or, with `alibis:read`, by the client that uploaded the purchase's evidence; the Alibi of a live purchase, once its PayPal transaction is recorded, by anyone. Anyone else gets its public copy, whose mandate withholds the user's login id and risk data: their salted digests stay in the signed payload, so the copy verifies the same. It grows as timestamps, the capture and the on-chain anchor arrive; earlier sections never change.",
   request: { params: z.object({ id: Id }) },
   responses: {
     200: {
@@ -54,7 +53,7 @@ const pdfRoute = createRoute({
   tags: ["alibis"],
   summary: "An alibi as a PDF/A-3b",
   description:
-    "A one-page PDF/A-3b summary of the Alibi with a QR to its verify page and the bundle embedded as `<id>.alibi`. Same readers as the bundle.",
+    "A one-page PDF/A-3b summary of the Alibi with a QR to its verify page and the bundle embedded as `<id>.alibi`. Same readers, and the same public copy, as the bundle.",
   request: { params: z.object({ id: Id }) },
   responses: {
     200: {
@@ -200,21 +199,6 @@ async function isOwner(deps: Pick<Deps, "db">, principal: Principal, b: AlibiBun
     row?.uploadedBy === principal.subject &&
     (row.clientId === null || row.clientId === principal.subject)
   );
-}
-
-/**
- * The public copy of an Alibi: the mandate presented without the user's login id and risk data.
- * Their digests stay in the signed payload, so the copy verifies as the original does.
- */
-function publicCopy(b: AlibiBundle): AlibiBundle {
-  return {
-    ...b,
-    mandate: {
-      ...b.mandate,
-      sd_jwt: withholdPersonal(b.mandate.sd_jwt),
-      disclosures: b.mandate.disclosures.filter((d) => !isPersonalDisclosure(d)),
-    },
-  };
 }
 
 const etagOf = (bundle: Uint8Array, kind: string) =>

@@ -2,6 +2,7 @@
 import "../src/tee/attest.ts";
 import { randomBytes } from "node:crypto";
 import { decodeAlibi, leafHashOf } from "@keelson/alibi";
+import { extractAlibi } from "@keelson/alibi/extract";
 import { verifyAlibi } from "@keelson/alibi/verify";
 import { alibis, eq, mandates, purchases, sql, user } from "@keelson/db";
 import { pino } from "pino";
@@ -165,9 +166,14 @@ describe.skipIf(!f)("live Alibis are public", () => {
     const login = b.mandate.disclosures.find((d) => names([d])[0] === "app_login_id") as string;
     const email = JSON.parse(Buffer.from(login, "base64url").toString())[2] as string;
     expect(Buffer.from(bytes).toString()).not.toContain(email);
+    const risk = b.mandate.disclosures.find((d) => names([d])[0] === "risk_data") as string;
+    const { ip, device_fp } = JSON.parse(Buffer.from(risk, "base64url").toString())[2];
+    for (const value of [ip, device_fp]) expect(Buffer.from(bytes).toString()).not.toContain(value);
     const pdf = await app.request(`/v1/alibis/${b.alibi_id}.pdf`);
     expect(pdf.status).toBe(200);
-    expect(Buffer.from(await pdf.arrayBuffer()).toString("latin1")).not.toContain(login);
+    const embedded = decodeAlibi(await extractAlibi(new Uint8Array(await pdf.arrayBuffer())));
+    expect(names(embedded.mandate.disclosures)).not.toContain("app_login_id");
+    expect(names(embedded.mandate.disclosures)).not.toContain("risk_data");
     const report = await verifyAlibi(pub);
     expect(report.checks.filter((c) => c.status === "fail")).toEqual([]);
   });

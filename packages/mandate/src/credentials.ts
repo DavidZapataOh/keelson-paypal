@@ -433,8 +433,9 @@ export async function verifyOpenMandate(
   const { cnf, ...rawMandate } = delegate;
   const user = rawMandate.user as Record<string, unknown> | undefined;
   const withheld = {
-    login: opts.personalWithheld === true && user !== undefined && !("app_login_id" in user),
-    risk: opts.personalWithheld === true && !("risk_data" in rawMandate),
+    login:
+      opts.personalWithheld === true && user !== undefined && !Object.hasOwn(user, "app_login_id"),
+    risk: opts.personalWithheld === true && !Object.hasOwn(rawMandate, "risk_data"),
   };
   const missing = undisclosedDigests(signed, rest.slice(0, -1));
   // Each withheld object claim leaves exactly one unresolved digest, so no other claim is.

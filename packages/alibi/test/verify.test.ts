@@ -80,6 +80,14 @@ describe.each(fixtures.map((f) => [f.id, f] as const))("alibi %s", (_, f) => {
     await fails(pub, "mandate.credentials", "/mandate/sd_jwt", "digest");
   });
 
+  test("a copy whose disclosures leave out one the open mandate presents fails", async () => {
+    const pub = copy(b);
+    pub.mandate.disclosures = pub.mandate.disclosures.filter(
+      (d) => JSON.parse(new TextDecoder().decode(fromBase64url(d)))[1] !== "max",
+    );
+    await fails(pub, "mandate.credentials", "/mandate/disclosures");
+  });
+
   test("its receipt verifies what the log publishes and discloses nothing else", async () => {
     const report = await verifyAlibi(receiptOf(b));
     const status = Object.fromEntries(report.checks.map((c) => [c.id, c.status]));
