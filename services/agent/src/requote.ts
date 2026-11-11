@@ -105,6 +105,8 @@ function lastEnd(label: string, part: Part): number {
  * The part of a checkout a page's label names: tax, shipping or neither. When a label names both,
  * as a line with no amount of its own ("Shipping Free") followed by the next one's label does, the
  * word nearest the amount decides.
+ *
+ * @internal
  */
 export function partOf(label: string): Part | undefined {
   const text = label.normalize("NFKC").toLowerCase();
