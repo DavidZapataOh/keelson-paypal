@@ -60,8 +60,16 @@ paths = [
 ]
 
 [[allowlists]]
-description = "Ed25519 public keys: RFC 8032's test keys and the log's published verifier keys"
+description = "Ed25519 public keys and signatures: RFC 8032's test vectors and the log's published verifier keys"
+condition = "AND"
 paths = [
   '''contracts/test/Ed25519Verifier\.t\.sol''',
   '''contracts/test/LogBond\.fork\.t\.sol''',
+]
+regexes = [
+  '''d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a''',
+  '''3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c''',
+  '''ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c''',
+  '''cee7c0b53e0c733a1a8d44870133fa7cf17187a502c7cf37e429eea5a8d565d5''',
+  '''f06b6eb0cdc9bf6ec9736d8373d75e757129005c306a9ad4e942b7196db54057''',
 ]
