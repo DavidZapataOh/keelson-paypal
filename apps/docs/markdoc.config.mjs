@@ -4,6 +4,8 @@ import { component, defineMarkdocConfig, nodes } from "@astrojs/markdoc/config";
 // Spreading `nodes.fence` would also carry its transform, which hands the code over as a slot.
 export default defineMarkdocConfig({
   nodes: {
+    // Pages render inside our own <article>; Markdoc's would nest a second one.
+    document: { ...nodes.document, render: null },
     fence: {
       attributes: {
         ...nodes.fence.attributes,

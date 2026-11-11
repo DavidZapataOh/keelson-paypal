@@ -8,7 +8,7 @@ interface Props {
 const { entry } = Astro.props;
 const { title, description, estimate } = entry.data;
 ---
-<Shell title={title} description={description} current={href(entry.id)}>
+<Shell title={title} description={description} current={href(entry.id)} home={entry.id === "index"}>
   <article class="doc" data-pagefind-body>
     <header class="doc-head">
       <h1>{title}</h1>

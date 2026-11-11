@@ -3,8 +3,28 @@
 *::after {
   box-sizing: border-box;
 }
+html {
+  -webkit-text-size-adjust: 100%;
+  text-rendering: optimizeLegibility;
+}
 body {
   margin: 0;
+  font-family: var(--sans);
+  color: var(--ink);
+  background: var(--ground);
+  -webkit-font-smoothing: antialiased;
+}
+img {
+  display: block;
+  max-width: 100%;
+}
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+kbd {
+  font-family: var(--mono);
 }
 .skip {
   position: absolute;
@@ -13,4 +33,128 @@ body {
 .skip:focus {
   left: 1rem;
   top: 1rem;
+  z-index: 100;
+}
+.frame {
+  display: grid;
+  grid-template-columns: var(--nav-w) minmax(0, 1fr);
+}
+.frame-home {
+  grid-template-columns: minmax(0, 1fr);
+}
+.sidenav ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.main {
+  min-width: 0;
+}
+
+/* Synced code panel */
+.walk {
+  display: grid;
+  grid-template-columns: minmax(0, var(--steps-w)) minmax(0, 1fr);
+  gap: var(--walk-gap);
+  align-items: start;
+}
+.walk-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 45vh;
+  counter-reset: step;
+}
+.step {
+  counter-increment: step;
+}
+.step-title::before {
+  content: counter(step);
+}
+.walk-files {
+  position: sticky;
+  top: var(--sticky-top);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - var(--sticky-top) - 1.5rem);
+  overflow: hidden;
+}
+.files-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+}
+.copy {
+  margin-left: auto;
+  background: none;
+  border: 0;
+}
+.files-body {
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+.pane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+.pane[hidden] {
+  display: none;
+}
+.astro-code {
+  --astro-code-background: transparent;
+}
+.pane pre,
+.codeblock pre,
+.inline-code pre {
+  margin: 0;
+  overflow: auto;
+  font: var(--code-font);
+  flex: 1;
+}
+.pane pre {
+  counter-reset: line;
+  padding: 1rem 0;
+}
+.pane .line {
+  display: inline-block;
+  min-width: 100%;
+  padding-right: 1.25rem;
+  transition: background-color var(--reveal) var(--ease);
+}
+.pane .line::before {
+  counter-increment: line;
+  content: counter(line);
+  display: inline-block;
+  width: 3rem;
+  padding-right: 1rem;
+  text-align: right;
+  color: var(--line-number);
+}
+.inline-code {
+  display: none;
+}
+@media (max-width: 64rem) {
+  .frame {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .sidenav {
+    display: none;
+  }
+  .walk {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .walk-files {
+    display: none;
+  }
+  .walk-steps {
+    padding-bottom: 0;
+  }
+  .inline-code {
+    display: block;
+  }
 }

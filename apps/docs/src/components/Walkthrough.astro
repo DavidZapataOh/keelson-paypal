@@ -1,1 +1,74 @@
-<slot />
+<div class="walk" data-walk><slot /></div>
+<script>
+  const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const range = (el: HTMLElement) => (el.dataset.lines ?? "").split("-").map(Number);
+
+  for (const walk of document.querySelectorAll<HTMLElement>("[data-walk]")) {
+    const steps = [...walk.querySelectorAll<HTMLElement>("[data-step]")];
+    const panes = [...walk.querySelectorAll<HTMLElement>("[data-pane]")];
+    const tabs = walk.querySelector<HTMLElement>("[data-tabs]");
+    if (!tabs || panes.length === 0) continue;
+
+    const show = (name: string) => {
+      for (const t of tabs.querySelectorAll<HTMLElement>('[role="tab"]')) t.setAttribute("aria-selected", String(t.dataset.tab === name));
+      for (const p of panes) p.hidden = p.dataset.pane !== name;
+    };
+    for (const [i, p] of panes.entries()) {
+      const tab = document.createElement("button");
+      tab.type = "button";
+      tab.setAttribute("role", "tab");
+      tab.id = `${walk.id || "walk"}-tab-${i}`;
+      tab.dataset.tab = p.dataset.pane;
+      tab.textContent = p.dataset.pane ?? "";
+      p.setAttribute("role", "tabpanel");
+      p.setAttribute("aria-labelledby", tab.id);
+      tab.addEventListener("click", () => show(tab.dataset.tab ?? ""));
+      tabs.append(tab);
+    }
+
+    const activate = (step: HTMLElement) => {
+      for (const s of steps) s.toggleAttribute("data-active", s === step);
+      const name = step.dataset.file ?? "";
+      show(name);
+      for (const l of walk.querySelectorAll(".is-hl")) l.classList.remove("is-hl");
+      const pane = panes.find((p) => p.dataset.pane === name);
+      const [a, b] = range(step);
+      if (!pane || !a) return;
+      const lines = [...pane.querySelectorAll<HTMLElement>(".line")];
+      lines.forEach((l, i) => l.classList.toggle("is-hl", i + 1 >= a && i + 1 <= (b || a)));
+      pane.querySelector("pre")?.scrollTo({ top: Math.max(0, (lines[a - 1]?.offsetTop ?? 0) - 48), behavior: reduced() ? "auto" : "smooth" });
+    };
+
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) if (e.isIntersecting) activate(e.target as HTMLElement);
+    }, { rootMargin: "-35% 0px -60% 0px" });
+    for (const s of steps) io.observe(s);
+    if (steps[0]) activate(steps[0]);
+
+    walk.querySelector("[data-copy]")?.addEventListener("click", async (event) => {
+      const button = event.currentTarget as HTMLElement;
+      const text = panes.find((p) => !p.hidden)?.querySelector("pre")?.textContent ?? "";
+      await navigator.clipboard.writeText(text);
+      button.textContent = "Copied";
+      setTimeout(() => (button.textContent = "Copy"), 1200);
+    });
+
+    // Narrow screens hide the shared panel; each step carries its own lines instead.
+    for (const s of steps) {
+      const [a, b] = range(s);
+      const source = panes.find((p) => p.dataset.pane === s.dataset.file)?.querySelector("pre");
+      if (!a || !source) continue;
+      const pre = source.cloneNode(true) as HTMLElement;
+      pre.removeAttribute("tabindex");
+      for (const [i, l] of [...pre.querySelectorAll(".line")].entries()) {
+        if (i + 1 >= a && i + 1 <= (b || a)) continue;
+        if (l.nextSibling?.nodeType === Node.TEXT_NODE) l.nextSibling.remove();
+        l.remove();
+      }
+      const box = document.createElement("div");
+      box.className = "inline-code";
+      box.append(pre);
+      s.querySelector(".step-body")?.append(box);
+    }
+  }
+</script>

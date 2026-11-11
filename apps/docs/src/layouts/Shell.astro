@@ -2,48 +2,83 @@
 import "@fontsource-variable/instrument-sans";
 import "@fontsource-variable/geist-mono";
 import "../styles/base.css";
+import "../styles/theme.css";
 import Search from "../components/Search.astro";
+import live from "../data/live.json";
 import { nav } from "../lib/docs";
 
 interface Props {
   title: string;
   description: string;
   current: string;
+  home?: boolean;
 }
-const { title, description, current } = Astro.props;
+const { title, description, current, home = false } = Astro.props;
 const sections = await nav();
+const operational = live.status === "ok";
 ---
 <!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{title === "Keelson documentation" ? title : `${title} · Keelson docs`}</title>
+    <title>{home ? title : `${title} · Keelson docs`}</title>
     <meta name="description" content={description} />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt" />
+    <script is:inline>
+      {
+        const stored = localStorage.getItem("keelson-docs-theme");
+        const dark = stored ? stored === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+      }
+    </script>
   </head>
   <body>
     <a class="skip" href="#main">Skip to content</a>
     <header class="topbar">
-      <a class="brand" href="/"><img src="/keelson.svg" alt="Keelson" width="86" height="26" /><span>Docs</span></a>
-      <Search />
-      <a class="top-link" href="https://app.keelson.finance/judge">Judge Mode</a>
-    </header>
-    <div class="frame">
-      <nav class="sidenav" aria-label="Documentation">
+      <a class="brand" href="/"><img src="/keelson.svg" alt="Keelson" width="86" height="26" /><span class="brand-sub">Docs</span></a>
+      <nav class="topnav" aria-label="Sections">
         {sections.map((s) => (
-          <div class="nav-group">
-            <p class="nav-label">{s.section}</p>
-            <ul>
-              {s.items.map((i) => (
-                <li><a href={i.href} aria-current={i.href === current ? "page" : undefined}>{i.title}</a></li>
-              ))}
-            </ul>
-          </div>
+          <a href={s.items[0]?.href} aria-current={s.items.some((i) => i.href === current) && !home ? "true" : undefined}>{s.section}</a>
         ))}
       </nav>
+      <div class="top-tools">
+        <Search />
+        <button class="theme-toggle" type="button" aria-label="Switch between light and dark" data-theme-toggle>
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="8" /><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor" /></svg>
+        </button>
+        <a class="top-link" href="https://app.keelson.finance/judge">Judge Mode</a>
+      </div>
+    </header>
+    <div class:list={["frame", { "frame-home": home }]}>
+      {!home && (
+        <nav class="sidenav" aria-label="Documentation">
+          {sections.map((s) => (
+            <div class="nav-group">
+              <p class="nav-label">{s.section}</p>
+              <ul>
+                {s.items.map((i) => (
+                  <li><a href={i.href} aria-current={i.href === current ? "page" : undefined}>{i.title}</a></li>
+                ))}
+              </ul>
+            </div>
+          ))}
+          <a class="nav-status" href="https://app.keelson.finance/status">
+            <span class:list={["dot", { down: !operational }]} aria-hidden="true"></span>
+            {operational ? "All systems operational" : "Degraded service"}
+            <small>Log size {live.log.size.toLocaleString("en-US")}</small>
+          </a>
+        </nav>
+      )}
       <main id="main" class="main"><slot /></main>
     </div>
+    <script>
+      document.querySelector("[data-theme-toggle]")?.addEventListener("click", () => {
+        const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+        document.documentElement.dataset.theme = next;
+        localStorage.setItem("keelson-docs-theme", next);
+      });
+    </script>
   </body>
 </html>
