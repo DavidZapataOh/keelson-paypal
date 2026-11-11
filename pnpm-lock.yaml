@@ -767,6 +767,9 @@ importers:
       '@keelson/core':
         specifier: workspace:*
         version: link:../core
+      '@keelson/scitt':
+        specifier: workspace:*
+        version: link:../scitt
       '@noble/curves':
         specifier: 2.4.0
         version: 2.4.0
@@ -776,6 +779,9 @@ importers:
       '@noble/post-quantum':
         specifier: 0.7.1
         version: 0.7.1
+      cbor2:
+        specifier: 2.4.1
+        version: 2.4.1
       viem:
         specifier: 'catalog:'
         version: 2.57.16(typescript@7.0.2)(zod@4.6.7)

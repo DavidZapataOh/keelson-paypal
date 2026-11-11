@@ -180,4 +180,4 @@ export function verifyReceipt(
   return { treeSize, leafIndex, root, kid: bytesToHex(kid) };
 }
 
-export { ScittFormatError };
+

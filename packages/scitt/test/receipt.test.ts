@@ -13,7 +13,7 @@ import {
   verifyReceipt,
 } from "../src/receipt.ts";
 import { sigStructure } from "../src/sign1.ts";
-import { signEd25519 } from "../src/testing.ts";
+import { ed25519PublicKey, signEd25519 } from "../src/testing.ts";
 import { hasCddl, validateCddl } from "./cddl.ts";
 
 const vectors = new URL("./vectors/merkle/", import.meta.url);
@@ -64,7 +64,7 @@ function tree(entries: Uint8Array[]) {
 
 const ORIGIN = "log.keelson.finance/alibi/2026-1";
 const secret = sha256(new TextEncoder().encode("keelson receipt test key"));
-const publicKey = signEd25519.publicKey(secret);
+const publicKey = ed25519PublicKey(secret);
 const kid = sha256(publicKey);
 const keys = new Map([[bytesToHex(kid), publicKey]]);
 const entries = Array.from({ length: 7 }, (_, i) => new TextEncoder().encode(`entry ${i}`));

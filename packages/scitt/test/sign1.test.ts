@@ -14,7 +14,7 @@ import {
   verifyEs256k,
   verifyEs256kMessage,
 } from "../src/sign1.ts";
-import { signEd25519, signEs256k } from "../src/testing.ts";
+import { ed25519PublicKey, signEd25519, signEs256k } from "../src/testing.ts";
 
 const dir = new URL("./vectors/", import.meta.url);
 const json = (path: string) => JSON.parse(readFileSync(new URL(path, dir), "utf8"));
@@ -118,7 +118,7 @@ describe("COSE_Sign1 with ES256K and Ed25519", () => {
     const edSk = sha256(new TextEncoder().encode("receipt key"));
     const s = signEd25519(hexToBytes("a10132"), payload, edSk, { detached: true });
     expect(s.payload).toBeNull();
-    const key = signEd25519.publicKey(edSk);
+    const key = ed25519PublicKey(edSk);
     expect(verifyEd25519(s, key, payload)).toBe(true);
     expect(verifyEd25519(s, key, new Uint8Array(32))).toBe(false);
   });

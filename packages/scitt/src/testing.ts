@@ -34,4 +34,7 @@ export function signEd25519(
     signature: ed25519.sign(sigStructure(protectedBytes, payload), secretKey),
   };
 }
-signEd25519.publicKey = (secretKey: Uint8Array): Uint8Array => ed25519.getPublicKey(secretKey);
+/** The Ed25519 public key of a secret key. For tests and vectors only. */
+export function ed25519PublicKey(secretKey: Uint8Array): Uint8Array {
+  return ed25519.getPublicKey(secretKey);
+}

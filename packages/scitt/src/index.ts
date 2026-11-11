@@ -20,3 +20,18 @@ export {
   verifyEs256k,
   verifyEs256kMessage,
 } from "./sign1.ts";
+export {
+  buildReceipt,
+  leafHash,
+  RECEIPTS,
+  RFC9162_SHA256,
+  receiptProtected,
+  rootFromInclusion,
+  type ScittReceiptCode,
+  ScittReceiptError,
+  TST_CTT,
+  type VerifiedReceipt,
+  VDP,
+  VDS,
+  verifyReceipt,
+} from "./receipt.ts";
