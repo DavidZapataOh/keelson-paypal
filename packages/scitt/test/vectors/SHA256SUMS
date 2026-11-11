@@ -1,0 +1,11 @@
+cb4cad0b8d68bb33e8db82bf33e0aca7d1bbfc03e486752dd87abff6850fa6d1  ./cose-wg/sign-fail-01.json
+ae40d945b904b92b856b26db3c1c81aa57169b363667283fcc822c8aa06bf069  ./cose-wg/sign-fail-02.json
+0f0f2eedaa4274bdb4934bc19df53b78d85820dee29c1dea0cf99e06daf3a5f5  ./cose-wg/sign-fail-03.json
+4cc4ce329750d723e1cd17c4d1ef92aeabe723386d045c2ca7275b0ff542153a  ./cose-wg/sign-fail-04.json
+ba93671b1fc937535dfe8d6f0051aad5a27bbd54522b5b605c24d697a12ef3f6  ./cose-wg/sign-fail-06.json
+ff887d921633c8a05737aac4312a7e074858ff848d6b06e85b27c312ebeb48a0  ./cose-wg/sign-fail-07.json
+d3b0fb02f6ef8cfa2b69f22c4467d437f58da8943af4d5439225fb67641f6fe8  ./cose-wg/sign-pass-01.json
+503690ab89d97daa2e22808f2248c4934cef0f747799625e7687dd6b14f858c3  ./cose-wg/sign-pass-02.json
+509d60bde2cba0b8ef1e4b06b85b5d00fea4e5ced2026e607fa76f99b83eb7f2  ./cose-wg/sign-pass-03.json
+43db761c0a2eae71fb0755d355d5130e28ce64a5b07846cf27e7072082597a81  ./wycheproof/ecdsa_secp256k1_sha256_test.json
+ea80ffebac085e21cb9d3e903e7fa2b448d96702da5b31f061d0b83b430b74b3  ./wycheproof/ed25519_test.json

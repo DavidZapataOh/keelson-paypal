@@ -1,0 +1,22 @@
+export {
+  decodeLoose,
+  decodeStrict,
+  encode,
+  type ScittFormatCode,
+  ScittFormatError,
+} from "./cbor.ts";
+export {
+  ALG_ED25519,
+  ALG_ES256K,
+  addressOf,
+  COSE_SIGN1_TAG,
+  decodeSign1,
+  encodeSign1,
+  protectedHeader,
+  type Sign1,
+  sigStructure,
+  verifyEd25519,
+  verifyEd25519Message,
+  verifyEs256k,
+  verifyEs256kMessage,
+} from "./sign1.ts";
