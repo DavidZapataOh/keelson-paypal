@@ -3,6 +3,7 @@ import { disputes, eq, purchases } from "@keelson/db";
 import { CHAINS, isChainId } from "@keelson/relayer";
 import type { Deps } from "../app.ts";
 import { ProblemSchema, problem } from "../problem.ts";
+import { REQUEST_CLAIM } from "../zk/engine.ts";
 
 /** The `proveEngine` workflow task's single one-hour attempt, plus the queue. */
 const PROVING_MS = 3_600_000;
@@ -14,7 +15,7 @@ const EngineProofSchema = z
     purchase_id: z.string(),
     status: z.enum(["proven", "proving", "failed"]).openapi({
       description:
-        "`proving`: the purchase is disputed and its proof is being made. `proven`: the proof is recorded on chain. `failed`: no proof was recorded within the workflow's time.",
+        "`proving`: the purchase is disputed and its proof is being made. `proven`: the proof is recorded on chain. `failed`: no proof was recorded within the workflow's time and none was paid for; a paid one stays `proving` until it is recorded.",
     }),
     countersign_eval_hash: Hex32.openapi({ description: "The `evalHash` both TEE legs signed." }),
     countersign_digest: Hex32.openapi({ description: "The EIP-712 digest of their countersign." }),
@@ -78,6 +79,8 @@ export function registerEngineProofs(app: OpenAPIHono, deps: Pick<Deps, "db">): 
         digest: purchases.countersignDigest,
         input: purchases.engineInput,
         proof: purchases.engineProof,
+        proved: purchases.engineProved,
+        request: purchases.engineRequest,
         disputeId: disputes.id,
         disputedAt: disputes.createdAt,
       })
@@ -91,8 +94,14 @@ export function registerEngineProofs(app: OpenAPIHono, deps: Pick<Deps, "db">): 
     const evalHash = row.countersign.evalHash as string;
     const digest = `0x${Buffer.from(row.digest).toString("hex")}`;
     const p = row.proof;
+    // A paid request or proof is finished by the engine proof sweep, however long it took.
+    const resumable =
+      row.proved !== null || (row.request !== null && row.request !== REQUEST_CLAIM);
     const failed =
-      !p && row.disputedAt !== null && Date.now() - row.disputedAt.getTime() > PROVING_MS;
+      !p &&
+      !resumable &&
+      row.disputedAt !== null &&
+      Date.now() - row.disputedAt.getTime() > PROVING_MS;
     c.header("Cache-Control", p ? "public, max-age=3600" : "no-store");
     return c.json(
       {

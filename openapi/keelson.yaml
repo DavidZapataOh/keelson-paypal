@@ -2983,7 +2983,8 @@ components:
             - failed
           description: "`proving`: the purchase is disputed and its proof is being made.
             `proven`: the proof is recorded on chain. `failed`: no proof was
-            recorded within the workflow's time."
+            recorded within the workflow's time and none was paid for; a paid
+            one stays `proving` until it is recorded."
         countersign_eval_hash:
           type: string
           pattern: ^0x[0-9a-f]{64}$

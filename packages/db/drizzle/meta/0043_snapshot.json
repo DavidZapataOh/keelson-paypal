@@ -1,5 +1,5 @@
 {
-  "id": "37b32f43-8f0b-4487-916a-45fee293c085",
+  "id": "f7e12569-cee5-4cfd-8b9d-08a28b061d2e",
   "prevId": "323f36dc-3fa9-4b78-a774-5ea9760de0fa",
   "version": "7",
   "dialect": "postgresql",
@@ -53,8 +53,12 @@
           "name": "alibis_purchase_id_purchases_id_fk",
           "tableFrom": "alibis",
           "tableTo": "purchases",
-          "columnsFrom": ["purchase_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "purchase_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -64,7 +68,9 @@
         "alibis_leaf_hash_unique": {
           "name": "alibis_leaf_hash_unique",
           "nullsNotDistinct": false,
-          "columns": ["leaf_hash"]
+          "columns": [
+            "leaf_hash"
+          ]
         }
       },
       "policies": {},
@@ -285,8 +291,12 @@
           "name": "attacks_campaign_red_team_campaigns_id_fk",
           "tableFrom": "attacks",
           "tableTo": "red_team_campaigns",
-          "columnsFrom": ["campaign"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "campaign"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -294,8 +304,12 @@
           "name": "attacks_purchase_id_purchases_id_fk",
           "tableFrom": "attacks",
           "tableTo": "purchases",
-          "columnsFrom": ["purchase_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "purchase_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -476,8 +490,12 @@
           "name": "account_user_id_user_id_fk",
           "tableFrom": "account",
           "tableTo": "user",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -720,8 +738,12 @@
           "name": "oauth_access_token_client_id_oauth_client_client_id_fk",
           "tableFrom": "oauth_access_token",
           "tableTo": "oauth_client",
-          "columnsFrom": ["client_id"],
-          "columnsTo": ["client_id"],
+          "columnsFrom": [
+            "client_id"
+          ],
+          "columnsTo": [
+            "client_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -729,8 +751,12 @@
           "name": "oauth_access_token_session_id_session_id_fk",
           "tableFrom": "oauth_access_token",
           "tableTo": "session",
-          "columnsFrom": ["session_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "session_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -738,8 +764,12 @@
           "name": "oauth_access_token_user_id_user_id_fk",
           "tableFrom": "oauth_access_token",
           "tableTo": "user",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -747,8 +777,12 @@
           "name": "oauth_access_token_refresh_id_oauth_refresh_token_id_fk",
           "tableFrom": "oauth_access_token",
           "tableTo": "oauth_refresh_token",
-          "columnsFrom": ["refresh_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "refresh_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -758,7 +792,9 @@
         "oauth_access_token_token_unique": {
           "name": "oauth_access_token_token_unique",
           "nullsNotDistinct": false,
-          "columns": ["token"]
+          "columns": [
+            "token"
+          ]
         }
       },
       "policies": {},
@@ -1011,8 +1047,12 @@
           "name": "oauth_client_user_id_user_id_fk",
           "tableFrom": "oauth_client",
           "tableTo": "user",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1022,7 +1062,9 @@
         "oauth_client_client_id_unique": {
           "name": "oauth_client_client_id_unique",
           "nullsNotDistinct": false,
-          "columns": ["client_id"]
+          "columns": [
+            "client_id"
+          ]
         }
       },
       "policies": {},
@@ -1147,8 +1189,12 @@
           "name": "oauth_client_resource_client_id_oauth_client_client_id_fk",
           "tableFrom": "oauth_client_resource",
           "tableTo": "oauth_client",
-          "columnsFrom": ["client_id"],
-          "columnsTo": ["client_id"],
+          "columnsFrom": [
+            "client_id"
+          ],
+          "columnsTo": [
+            "client_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1156,8 +1202,12 @@
           "name": "oauth_client_resource_resource_id_oauth_resource_identifier_fk",
           "tableFrom": "oauth_client_resource",
           "tableTo": "oauth_resource",
-          "columnsFrom": ["resource_id"],
-          "columnsTo": ["identifier"],
+          "columnsFrom": [
+            "resource_id"
+          ],
+          "columnsTo": [
+            "identifier"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1264,8 +1314,12 @@
           "name": "oauth_consent_client_id_oauth_client_client_id_fk",
           "tableFrom": "oauth_consent",
           "tableTo": "oauth_client",
-          "columnsFrom": ["client_id"],
-          "columnsTo": ["client_id"],
+          "columnsFrom": [
+            "client_id"
+          ],
+          "columnsTo": [
+            "client_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1273,8 +1327,12 @@
           "name": "oauth_consent_user_id_user_id_fk",
           "tableFrom": "oauth_consent",
           "tableTo": "user",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1465,8 +1523,12 @@
           "name": "oauth_refresh_token_client_id_oauth_client_client_id_fk",
           "tableFrom": "oauth_refresh_token",
           "tableTo": "oauth_client",
-          "columnsFrom": ["client_id"],
-          "columnsTo": ["client_id"],
+          "columnsFrom": [
+            "client_id"
+          ],
+          "columnsTo": [
+            "client_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1474,8 +1536,12 @@
           "name": "oauth_refresh_token_session_id_session_id_fk",
           "tableFrom": "oauth_refresh_token",
           "tableTo": "session",
-          "columnsFrom": ["session_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "session_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -1483,8 +1549,12 @@
           "name": "oauth_refresh_token_user_id_user_id_fk",
           "tableFrom": "oauth_refresh_token",
           "tableTo": "user",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1494,7 +1564,9 @@
         "oauth_refresh_token_token_unique": {
           "name": "oauth_refresh_token_token_unique",
           "nullsNotDistinct": false,
-          "columns": ["token"]
+          "columns": [
+            "token"
+          ]
         }
       },
       "policies": {},
@@ -1606,7 +1678,9 @@
         "oauth_resource_identifier_unique": {
           "name": "oauth_resource_identifier_unique",
           "nullsNotDistinct": false,
-          "columns": ["identifier"]
+          "columns": [
+            "identifier"
+          ]
         }
       },
       "policies": {},
@@ -1734,8 +1808,12 @@
           "name": "passkey_user_id_user_id_fk",
           "tableFrom": "passkey",
           "tableTo": "user",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1822,8 +1900,12 @@
           "name": "session_user_id_user_id_fk",
           "tableFrom": "session",
           "tableTo": "user",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1833,7 +1915,9 @@
         "session_token_unique": {
           "name": "session_token_unique",
           "nullsNotDistinct": false,
-          "columns": ["token"]
+          "columns": [
+            "token"
+          ]
         }
       },
       "policies": {},
@@ -1917,7 +2001,9 @@
         "user_email_unique": {
           "name": "user_email_unique",
           "nullsNotDistinct": false,
-          "columns": ["email"]
+          "columns": [
+            "email"
+          ]
         }
       },
       "policies": {},
@@ -2076,8 +2162,12 @@
           "name": "wallet_address_user_id_user_id_fk",
           "tableFrom": "wallet_address",
           "tableTo": "user",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2302,7 +2392,11 @@
       "compositePrimaryKeys": {
         "chain_events_pk": {
           "name": "chain_events_pk",
-          "columns": ["chain_id", "tx_hash", "log_index"]
+          "columns": [
+            "chain_id",
+            "tx_hash",
+            "log_index"
+          ]
         }
       },
       "uniqueConstraints": {},
@@ -2525,7 +2619,10 @@
         "chain_txs_chain_id_key_unique": {
           "name": "chain_txs_chain_id_key_unique",
           "nullsNotDistinct": false,
-          "columns": ["chain_id", "key"]
+          "columns": [
+            "chain_id",
+            "key"
+          ]
         }
       },
       "policies": {},
@@ -2569,7 +2666,10 @@
       "compositePrimaryKeys": {
         "relayer_nonces_pk": {
           "name": "relayer_nonces_pk",
-          "columns": ["chain_id", "address"]
+          "columns": [
+            "chain_id",
+            "address"
+          ]
         }
       },
       "uniqueConstraints": {},
@@ -2783,8 +2883,12 @@
           "name": "channel3_observations_mandate_id_mandates_id_fk",
           "tableFrom": "channel3_observations",
           "tableTo": "mandates",
-          "columnsFrom": ["mandate_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "mandate_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2792,8 +2896,12 @@
           "name": "channel3_observations_purchase_id_purchases_id_fk",
           "tableFrom": "channel3_observations",
           "tableTo": "purchases",
-          "columnsFrom": ["purchase_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "purchase_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -2803,12 +2911,16 @@
         "channel3_observations_purchaseId_unique": {
           "name": "channel3_observations_purchaseId_unique",
           "nullsNotDistinct": false,
-          "columns": ["purchase_id"]
+          "columns": [
+            "purchase_id"
+          ]
         },
         "channel3_observations_contentHash_unique": {
           "name": "channel3_observations_contentHash_unique",
           "nullsNotDistinct": false,
-          "columns": ["content_hash"]
+          "columns": [
+            "content_hash"
+          ]
         }
       },
       "policies": {},
@@ -3039,8 +3151,12 @@
           "name": "agent_connections_operator_agent_id_operators_agent_id_fk",
           "tableFrom": "agent_connections",
           "tableTo": "operators",
-          "columnsFrom": ["operator_agent_id"],
-          "columnsTo": ["agent_id"],
+          "columnsFrom": [
+            "operator_agent_id"
+          ],
+          "columnsTo": [
+            "agent_id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -3048,8 +3164,12 @@
           "name": "agent_connections_parent_mandate_id_mandates_id_fk",
           "tableFrom": "agent_connections",
           "tableTo": "mandates",
-          "columnsFrom": ["parent_mandate_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "parent_mandate_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -3057,8 +3177,12 @@
           "name": "agent_connections_user_id_user_id_fk",
           "tableFrom": "agent_connections",
           "tableTo": "user",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3066,8 +3190,12 @@
           "name": "agent_connections_mandate_id_mandates_id_fk",
           "tableFrom": "agent_connections",
           "tableTo": "mandates",
-          "columnsFrom": ["mandate_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "mandate_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -3077,12 +3205,16 @@
         "agent_connections_user_code_unique": {
           "name": "agent_connections_user_code_unique",
           "nullsNotDistinct": false,
-          "columns": ["user_code"]
+          "columns": [
+            "user_code"
+          ]
         },
         "agent_connections_device_code_hash_unique": {
           "name": "agent_connections_device_code_hash_unique",
           "nullsNotDistinct": false,
-          "columns": ["device_code_hash"]
+          "columns": [
+            "device_code_hash"
+          ]
         }
       },
       "policies": {},
@@ -3140,8 +3272,12 @@
           "name": "embed_origins_client_id_oauth_client_client_id_fk",
           "tableFrom": "embed_origins",
           "tableTo": "oauth_client",
-          "columnsFrom": ["client_id"],
-          "columnsTo": ["client_id"],
+          "columnsFrom": [
+            "client_id"
+          ],
+          "columnsTo": [
+            "client_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3149,7 +3285,10 @@
       "compositePrimaryKeys": {
         "embed_origins_client_id_origin_pk": {
           "name": "embed_origins_client_id_origin_pk",
-          "columns": ["client_id", "origin"]
+          "columns": [
+            "client_id",
+            "origin"
+          ]
         }
       },
       "uniqueConstraints": {},
@@ -3222,8 +3361,12 @@
           "name": "dispute_responses_dispute_id_disputes_id_fk",
           "tableFrom": "dispute_responses",
           "tableTo": "disputes",
-          "columnsFrom": ["dispute_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "dispute_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -3233,7 +3376,12 @@
         "dispute_responses_once": {
           "name": "dispute_responses_once",
           "nullsNotDistinct": false,
-          "columns": ["dispute_id", "action", "stage", "due_date"]
+          "columns": [
+            "dispute_id",
+            "action",
+            "stage",
+            "due_date"
+          ]
         }
       },
       "policies": {},
@@ -3330,8 +3478,12 @@
           "name": "disputes_purchase_id_purchases_id_fk",
           "tableFrom": "disputes",
           "tableTo": "purchases",
-          "columnsFrom": ["purchase_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "purchase_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -3505,8 +3657,12 @@
           "name": "evidence_access_root_evidence_bundles_root_fk",
           "tableFrom": "evidence_access",
           "tableTo": "evidence_bundles",
-          "columnsFrom": ["root"],
-          "columnsTo": ["root"],
+          "columnsFrom": [
+            "root"
+          ],
+          "columnsTo": [
+            "root"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3580,8 +3736,12 @@
           "name": "evidence_bundles_mandate_id_mandates_id_fk",
           "tableFrom": "evidence_bundles",
           "tableTo": "mandates",
-          "columnsFrom": ["mandate_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "mandate_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -3650,8 +3810,12 @@
           "name": "evidence_items_root_evidence_bundles_root_fk",
           "tableFrom": "evidence_items",
           "tableTo": "evidence_bundles",
-          "columnsFrom": ["root"],
-          "columnsTo": ["root"],
+          "columnsFrom": [
+            "root"
+          ],
+          "columnsTo": [
+            "root"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3659,7 +3823,10 @@
       "compositePrimaryKeys": {
         "evidence_items_root_index_pk": {
           "name": "evidence_items_root_index_pk",
-          "columns": ["root", "index"]
+          "columns": [
+            "root",
+            "index"
+          ]
         }
       },
       "uniqueConstraints": {},
@@ -3777,8 +3944,12 @@
           "name": "purchase_holds_mandate_id_mandates_id_fk",
           "tableFrom": "purchase_holds",
           "tableTo": "mandates",
-          "columnsFrom": ["mandate_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "mandate_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -3788,12 +3959,16 @@
         "purchase_holds_paypal_order_id_unique": {
           "name": "purchase_holds_paypal_order_id_unique",
           "nullsNotDistinct": false,
-          "columns": ["paypal_order_id"]
+          "columns": [
+            "paypal_order_id"
+          ]
         },
         "purchase_holds_paypal_authorization_id_unique": {
           "name": "purchase_holds_paypal_authorization_id_unique",
           "nullsNotDistinct": false,
-          "columns": ["paypal_authorization_id"]
+          "columns": [
+            "paypal_authorization_id"
+          ]
         }
       },
       "policies": {},
@@ -4046,8 +4221,12 @@
           "name": "mandates_user_id_user_id_fk",
           "tableFrom": "mandates",
           "tableTo": "user",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -4055,8 +4234,12 @@
           "name": "mandates_operator_agent_id_operators_agent_id_fk",
           "tableFrom": "mandates",
           "tableTo": "operators",
-          "columnsFrom": ["operator_agent_id"],
-          "columnsTo": ["agent_id"],
+          "columnsFrom": [
+            "operator_agent_id"
+          ],
+          "columnsTo": [
+            "agent_id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -4066,22 +4249,30 @@
         "mandates_mandate_hash_unique": {
           "name": "mandates_mandate_hash_unique",
           "nullsNotDistinct": false,
-          "columns": ["mandate_hash"]
+          "columns": [
+            "mandate_hash"
+          ]
         },
         "mandates_paypal_order_id_unique": {
           "name": "mandates_paypal_order_id_unique",
           "nullsNotDistinct": false,
-          "columns": ["paypal_order_id"]
+          "columns": [
+            "paypal_order_id"
+          ]
         },
         "mandates_paypal_authorization_id_unique": {
           "name": "mandates_paypal_authorization_id_unique",
           "nullsNotDistinct": false,
-          "columns": ["paypal_authorization_id"]
+          "columns": [
+            "paypal_authorization_id"
+          ]
         },
         "mandates_paypal_parent_authorization_id_unique": {
           "name": "mandates_paypal_parent_authorization_id_unique",
           "nullsNotDistinct": false,
-          "columns": ["paypal_parent_authorization_id"]
+          "columns": [
+            "paypal_parent_authorization_id"
+          ]
         }
       },
       "policies": {},
@@ -4226,7 +4417,10 @@
         "operators_agent_registry_agent_id_unique": {
           "name": "operators_agent_registry_agent_id_unique",
           "nullsNotDistinct": false,
-          "columns": ["agent_registry", "agent_id"]
+          "columns": [
+            "agent_registry",
+            "agent_id"
+          ]
         }
       },
       "policies": {},
@@ -4437,8 +4631,12 @@
           "name": "paypal_events_purchase_id_purchases_id_fk",
           "tableFrom": "paypal_events",
           "tableTo": "purchases",
-          "columnsFrom": ["purchase_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "purchase_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -4446,8 +4644,12 @@
           "name": "paypal_events_mandate_id_mandates_id_fk",
           "tableFrom": "paypal_events",
           "tableTo": "mandates",
-          "columnsFrom": ["mandate_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "mandate_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -4455,8 +4657,12 @@
           "name": "paypal_events_dispute_id_disputes_id_fk",
           "tableFrom": "paypal_events",
           "tableTo": "disputes",
-          "columnsFrom": ["dispute_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "dispute_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -4466,7 +4672,9 @@
         "paypal_events_transmission_id_unique": {
           "name": "paypal_events_transmission_id_unique",
           "nullsNotDistinct": false,
-          "columns": ["transmission_id"]
+          "columns": [
+            "transmission_id"
+          ]
         }
       },
       "policies": {},
@@ -4742,6 +4950,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "engine_attempted_at": {
+          "name": "engine_attempted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "amber": {
           "name": "amber",
           "type": "jsonb",
@@ -4856,8 +5070,12 @@
           "name": "purchases_mandate_id_mandates_id_fk",
           "tableFrom": "purchases",
           "tableTo": "mandates",
-          "columnsFrom": ["mandate_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "mandate_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -4867,37 +5085,52 @@
         "purchases_evidence_root_unique": {
           "name": "purchases_evidence_root_unique",
           "nullsNotDistinct": false,
-          "columns": ["evidence_root"]
+          "columns": [
+            "evidence_root"
+          ]
         },
         "purchases_countersign_digest_unique": {
           "name": "purchases_countersign_digest_unique",
           "nullsNotDistinct": false,
-          "columns": ["countersign_digest"]
+          "columns": [
+            "countersign_digest"
+          ]
         },
         "purchases_invoice_id_unique": {
           "name": "purchases_invoice_id_unique",
           "nullsNotDistinct": false,
-          "columns": ["invoice_id"]
+          "columns": [
+            "invoice_id"
+          ]
         },
         "purchases_paypal_capture_id_unique": {
           "name": "purchases_paypal_capture_id_unique",
           "nullsNotDistinct": false,
-          "columns": ["paypal_capture_id"]
+          "columns": [
+            "paypal_capture_id"
+          ]
         },
         "purchases_log_index_unique": {
           "name": "purchases_log_index_unique",
           "nullsNotDistinct": false,
-          "columns": ["log_index"]
+          "columns": [
+            "log_index"
+          ]
         },
         "purchases_paypal_transaction_id_unique": {
           "name": "purchases_paypal_transaction_id_unique",
           "nullsNotDistinct": false,
-          "columns": ["paypal_transaction_id"]
+          "columns": [
+            "paypal_transaction_id"
+          ]
         },
         "purchases_mandate_id_capture_seq_unique": {
           "name": "purchases_mandate_id_capture_seq_unique",
           "nullsNotDistinct": false,
-          "columns": ["mandate_id", "capture_seq"]
+          "columns": [
+            "mandate_id",
+            "capture_seq"
+          ]
         }
       },
       "policies": {},
@@ -5030,7 +5263,10 @@
       "compositePrimaryKeys": {
         "tee_signatures_request_id_signer_pk": {
           "name": "tee_signatures_request_id_signer_pk",
-          "columns": ["request_id", "signer"]
+          "columns": [
+            "request_id",
+            "signer"
+          ]
         }
       },
       "uniqueConstraints": {},
@@ -5285,7 +5521,10 @@
       "compositePrimaryKeys": {
         "timestamps_hash_tsa_pk": {
           "name": "timestamps_hash_tsa_pk",
-          "columns": ["hash", "tsa"]
+          "columns": [
+            "hash",
+            "tsa"
+          ]
         }
       },
       "uniqueConstraints": {},
@@ -5522,8 +5761,12 @@
           "name": "verdicts_dispute_id_disputes_id_fk",
           "tableFrom": "verdicts",
           "tableTo": "disputes",
-          "columnsFrom": ["dispute_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "dispute_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -5533,12 +5776,16 @@
         "verdicts_dispute_id_unique": {
           "name": "verdicts_dispute_id_unique",
           "nullsNotDistinct": false,
-          "columns": ["dispute_id"]
+          "columns": [
+            "dispute_id"
+          ]
         },
         "verdicts_digest_unique": {
           "name": "verdicts_digest_unique",
           "nullsNotDistinct": false,
-          "columns": ["digest"]
+          "columns": [
+            "digest"
+          ]
         }
       },
       "policies": {},
@@ -5571,17 +5818,32 @@
     "public.chain_tx_status": {
       "name": "chain_tx_status",
       "schema": "public",
-      "values": ["simulating", "pending", "confirmed", "reverted", "dropped", "rejected"]
+      "values": [
+        "simulating",
+        "pending",
+        "confirmed",
+        "reverted",
+        "dropped",
+        "rejected"
+      ]
     },
     "public.attack_outcome": {
       "name": "attack_outcome",
       "schema": "public",
-      "values": ["BLOCKED", "SUCCEEDED", "NO_EFFECT"]
+      "values": [
+        "BLOCKED",
+        "SUCCEEDED",
+        "NO_EFFECT"
+      ]
     },
     "public.dispute_state": {
       "name": "dispute_state",
       "schema": "public",
-      "values": ["OPEN", "ATTRIBUTED", "RESOLVED"]
+      "values": [
+        "OPEN",
+        "ATTRIBUTED",
+        "RESOLVED"
+      ]
     },
     "public.mandate_state": {
       "name": "mandate_state",

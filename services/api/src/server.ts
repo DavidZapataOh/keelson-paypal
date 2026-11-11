@@ -39,7 +39,12 @@ import { startPayPalEventWorker } from "./paypal/worker.ts";
 import { createPayPalDeps } from "./paypal.ts";
 import { appEmbedPage } from "./routes/embed-page.ts";
 import { closeServer } from "./shutdown.ts";
-import { startPipelineResumer, startPurchaseSweeper, startSettlementSweeper } from "./sweeper.ts";
+import {
+  startEngineProofSweeper,
+  startPipelineResumer,
+  startPurchaseSweeper,
+  startSettlementSweeper,
+} from "./sweeper.ts";
 import { createTee } from "./tee/config.ts";
 import { engineSource } from "./tee/engine-source.ts";
 import { startSignerRefresh } from "./tee/signers.ts";
@@ -277,6 +282,22 @@ const stopSettlements = relayer
     })
   : undefined;
 
+const stopEngineProofs =
+  render && env.DISPUTE_WORKFLOW
+    ? startEngineProofSweeper({
+        db,
+        log,
+        async start(purchaseId, key) {
+          const run = await render.workflows.startTask(
+            `${env.DISPUTE_WORKFLOW}/proveEngine`,
+            [purchaseId],
+            { idempotencyKey: key },
+          );
+          log.info({ purchaseId, taskRunId: run.taskRunId }, "engine proof resumed");
+        },
+      })
+    : undefined;
+
 const anchorDeps =
   env.LOG_URL && env.LOG_WRITE_TOKEN
     ? {
@@ -314,6 +335,7 @@ process.once("SIGTERM", () => {
   stopRefresh?.();
   stopSweeper?.();
   stopSettlements?.();
+  stopEngineProofs?.();
   stopResumer();
   stopHolds();
   stopReconciler?.();

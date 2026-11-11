@@ -11,8 +11,12 @@ import {
   type EngineProof,
   type EngineProved,
   eq,
+  isNotNull,
   isNull,
+  lt,
   mandates,
+  ne,
+  or,
   purchases,
 } from "@keelson/db";
 import { type Relayer, RelayerError } from "@keelson/relayer";
@@ -50,8 +54,12 @@ const WAIT_TIMEOUT_MS = 35 * 60 * 1000;
 const EXECUTE_TIMEOUT_MS = 5 * 60 * 1000;
 const RECORD_WAIT_MS = 120_000;
 /** What `purchases.engine_request` holds while a run checks and requests a proof. */
-const REQUEST_CLAIM = "requesting";
+export const REQUEST_CLAIM = "requesting";
 const RECORD_ATTEMPTS = 2;
+/** The `proveEngine` workflow task's timeout: no run holds a purchase it attempted longer ago. */
+export const ENGINE_RUN_MS = 60 * 60 * 1000;
+/** How long a run holds its claim: the prover's download, the free check and the request. */
+const CLAIM_MS = EXECUTE_TIMEOUT_MS + REQUEST_TIMEOUT_MS + 60_000;
 
 /** The `CountersignInput` the SP1 program reads, as JSON. */
 interface CountersignInput {
@@ -234,6 +242,14 @@ async function releaseClaim(db: Db, purchaseId: string): Promise<void> {
     .where(and(eq(purchases.id, purchaseId), eq(purchases.engineRequest, REQUEST_CLAIM)));
 }
 
+/** Marks purchase `purchaseId` as held by this run, so the sweep leaves it until the run is over. */
+async function attempted(db: Db, purchaseId: string): Promise<void> {
+  await db
+    .update(purchases)
+    .set({ engineAttemptedAt: new Date() })
+    .where(eq(purchases.id, purchaseId));
+}
+
 /** Waits for network request `requestId` to prove `input`, and verifies the proof here. */
 async function waitProof(input: CountersignInput, requestId: Hex): Promise<EngineProved> {
   const dir = await mkdtemp(join(tmpdir(), "engine-proof-"));
@@ -307,6 +323,7 @@ export async function proveEngine(
 
   // A proof paid for by an earlier run that did not get recorded is recorded, not bought again.
   let proved = existing?.proved?.vkey === ENGINE_PROVER.vkey ? existing.proved : undefined;
+  if (proved) await attempted(db, purchaseId);
   if (!proved) {
     // The purchase is claimed before anything is paid, so two runs never both request a proof. A
     // run that finds a request waits for it again; one that finds a claim but no request stops,
@@ -314,7 +331,7 @@ export async function proveEngine(
     // requester's explorer page shows no request for it.
     const [claimed] = await db
       .update(purchases)
-      .set({ engineRequest: REQUEST_CLAIM })
+      .set({ engineRequest: REQUEST_CLAIM, engineAttemptedAt: new Date() })
       .where(and(eq(purchases.id, purchaseId), isNull(purchases.engineRequest)))
       .returning({ id: purchases.id });
     let requestId: Hex;
@@ -338,6 +355,7 @@ export async function proveEngine(
         throw new Error(`purchase ${purchaseId}: another run is requesting its engine proof`);
       }
       requestId = row.request as Hex;
+      await attempted(db, purchaseId);
     }
     log.info({ purchaseId, requestId }, "engine proof requested");
     proved = await waitProof(input, requestId);
@@ -402,4 +420,64 @@ export async function proveEngine(
   await db.update(purchases).set({ engineProof: proof }).where(eq(purchases.id, purchaseId));
   log.info({ purchaseId, tx, gasUsed: proof.gas_used }, "engine proof recorded");
   return proof;
+}
+
+/** A purchase whose paid request or proof a new run can finish without paying again. */
+const resumable = and(
+  isNull(purchases.engineProof),
+  or(
+    isNotNull(purchases.engineProved),
+    and(isNotNull(purchases.engineRequest), ne(purchases.engineRequest, REQUEST_CLAIM)),
+  ),
+);
+
+/**
+ * Starts `proveEngine` again for every purchase whose proof was paid for, or requested, by a run
+ * that is over without recording it. The new run waits for the stored request or records the
+ * stored proof, so it never pays again. A claim with no request that outlived its run may have
+ * paid, so it is never started again: it is returned as `stuck` and logged as an error, for an
+ * operator to clear once the requester's explorer page shows whether a request was made.
+ */
+export async function sweepEngineProofs(
+  deps: { db: Db; log: Logger; start: (purchaseId: string, key: string) => Promise<void> },
+  now: Date = new Date(),
+): Promise<{ resumed: string[]; stuck: string[] }> {
+  const { db, log, start } = deps;
+  const over = new Date(now.getTime() - ENGINE_RUN_MS);
+  const stalled = await db
+    .select({ id: purchases.id })
+    .from(purchases)
+    .where(and(resumable, lt(purchases.engineAttemptedAt, over)));
+  // One start per hour: the run marks the purchase as soon as it begins, and a run that failed
+  // before that is started again in the next hour.
+  const window = Math.floor(now.getTime() / ENGINE_RUN_MS);
+  const resumed: string[] = [];
+  for (const { id } of stalled) {
+    try {
+      await start(id, `proveEngine:${id}:resume:${window}`);
+      resumed.push(id);
+    } catch (err) {
+      log.warn({ err, purchaseId: id }, "engine proof not resumed");
+    }
+  }
+  const stuck = (
+    await db
+      .select({ id: purchases.id })
+      .from(purchases)
+      .where(
+        and(
+          isNull(purchases.engineProof),
+          isNull(purchases.engineProved),
+          eq(purchases.engineRequest, REQUEST_CLAIM),
+          lt(purchases.engineAttemptedAt, new Date(now.getTime() - CLAIM_MS)),
+        ),
+      )
+  ).map((r) => r.id);
+  for (const purchaseId of stuck) {
+    log.error(
+      { purchaseId },
+      "engine proof claim outlived its run: check the requester for a paid request before clearing it",
+    );
+  }
+  return { resumed, stuck };
 }

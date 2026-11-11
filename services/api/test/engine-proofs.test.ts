@@ -5,7 +5,7 @@ import { ulid } from "ulid";
 import { beforeAll, describe, expect, test } from "vitest";
 import vector from "../../../engine/tee/tests/vectors/countersign-allow.json" with { type: "json" };
 import { createApp } from "../src/app.ts";
-import { engineInputOf } from "../src/zk/engine.ts";
+import { engineInputOf, sweepEngineProofs } from "../src/zk/engine.ts";
 import { testDb, testKv } from "./setup.ts";
 
 const log = pino({ level: "silent" });
@@ -164,5 +164,95 @@ describe("GET /v1/engine-proofs/{id}", () => {
   test("is 404 for an undisputed purchase and an unknown one", async () => {
     expect((await app.request(`/v1/engine-proofs/${undisputed}`)).status).toBe(404);
     expect((await app.request(`/v1/engine-proofs/${ulid()}`)).status).toBe(404);
+  });
+});
+
+describe("engine proof sweep", () => {
+  const now = new Date();
+  const minutesAgo = (m: number) => new Date(now.getTime() - m * 60_000);
+  const { chain_id, verifier, tx, gas_used, proven_at, ...proved } = proof;
+
+  async function stalled(set: Partial<typeof purchases.$inferInsert>): Promise<string> {
+    const id = ulid();
+    await storePurchase(id, `0x${randomBytes(32).toString("hex")}`);
+    await testDb.update(purchases).set(set).where(eq(purchases.id, id));
+    return id;
+  }
+
+  async function sweep() {
+    const started: { purchaseId: string; key: string }[] = [];
+    const result = await sweepEngineProofs(
+      {
+        db: testDb,
+        log,
+        start: async (purchaseId, key) => {
+          started.push({ purchaseId, key });
+        },
+      },
+      now,
+    );
+    return { ...result, started: started.map((s) => s.purchaseId), keys: started };
+  }
+
+  test("resumes a stored request whose run is gone, by waiting for it", async () => {
+    const id = await stalled({
+      engineRequest: `0x${"ab".repeat(32)}`,
+      engineAttemptedAt: minutesAgo(61),
+    });
+    const { resumed, started, keys } = await sweep();
+    expect(resumed).toContain(id);
+    expect(started).toContain(id);
+    expect(keys.find((k) => k.purchaseId === id)?.key).toMatch(new RegExp(`^proveEngine:${id}:`));
+  });
+
+  test("resumes a paid proof that was never recorded", async () => {
+    const id = await stalled({ engineProved: proved, engineAttemptedAt: minutesAgo(90) });
+    expect((await sweep()).started).toContain(id);
+  });
+
+  test("leaves a run that may still hold the purchase, and a recorded proof", async () => {
+    const running = await stalled({
+      engineRequest: `0x${"cd".repeat(32)}`,
+      engineAttemptedAt: minutesAgo(30),
+    });
+    const recorded = await stalled({
+      engineRequest: `0x${"ef".repeat(32)}`,
+      engineProved: proved,
+      engineProof: proof,
+      engineAttemptedAt: minutesAgo(600),
+    });
+    const { started } = await sweep();
+    expect(started).not.toContain(running);
+    expect(started).not.toContain(recorded);
+  });
+
+  test("never requests again for a bare claim, and flags one older than the request window", async () => {
+    const stuck = await stalled({ engineRequest: "requesting", engineAttemptedAt: minutesAgo(20) });
+    const fresh = await stalled({ engineRequest: "requesting", engineAttemptedAt: minutesAgo(2) });
+    const result = await sweep();
+    expect(result.started).not.toContain(stuck);
+    expect(result.started).not.toContain(fresh);
+    expect(result.stuck).toContain(stuck);
+    expect(result.stuck).not.toContain(fresh);
+    const [row] = await testDb
+      .select({ request: purchases.engineRequest })
+      .from(purchases)
+      .where(eq(purchases.id, stuck));
+    expect(row?.request).toBe("requesting");
+  });
+
+  test("keeps a disputed purchase proving while its proof can still be resumed", async () => {
+    await testDb
+      .update(purchases)
+      .set({ engineProof: null, engineRequest: `0x${"ab".repeat(32)}` })
+      .where(eq(purchases.id, disputed));
+    await testDb
+      .update(disputes)
+      .set({ createdAt: new Date(Date.now() - 8 * 3_600_000) })
+      .where(eq(disputes.purchaseId, disputed));
+    const body = (await (await app.request(`/v1/engine-proofs/${disputed}`)).json()) as {
+      status: string;
+    };
+    expect(body.status).toBe("proving");
   });
 });

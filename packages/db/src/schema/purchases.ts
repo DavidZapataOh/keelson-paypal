@@ -138,6 +138,11 @@ export const purchases = pgTable(
      */
     engineRequest: text(),
     /**
+     * When a run last claimed or resumed this purchase's engine proof; the engine proof sweep
+     * resumes it only once no run can still hold it.
+     */
+    engineAttemptedAt: timestamp({ withTimezone: true }),
+    /**
      * What the operator attested about the item the coverage backs, fixed by the first cover
      * attempt: the product page, the amber fields, the salt and their `amberCommitment`.
      */
