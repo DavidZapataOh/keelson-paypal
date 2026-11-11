@@ -40,10 +40,21 @@ const items = [
   },
 ] as const;
 
-const pair = (await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, [
-  "sign",
-  "verify",
-])) as CryptoKeyPair;
+// A test key, fixed so the vectors are the same on every run.
+const jwk = {
+  kty: "EC",
+  crv: "P-256",
+  x: "JrAfWsb8MsZtTq5MMorFci0dPpnGXEh05PdgVV-5mfA",
+  y: "UyCtE_QUg2dMzkn4-64sxVXOTuNRmI36q795lVKz2v4",
+  d: "xXfaHcH4eIARMTj59sz1LDlyGYocsUXs9Ejb3WNd8cA",
+};
+const privateKey = await crypto.subtle.importKey(
+  "jwk",
+  jwk,
+  { name: "ECDSA", namedCurve: "P-256" },
+  false,
+  ["sign"],
+);
 const jwt = (payload: object) =>
   `${Buffer.from('{"alg":"ES256"}').toString("base64url")}.${Buffer.from(JSON.stringify(payload)).toString("base64url")}.c2ln`;
 const open = `${jwt({ iss: "a" })}~WyJhIl0~~${jwt({ _sd_alg: "sha-256", iss: "b" })}~WyJiIl0~`;
@@ -52,7 +63,7 @@ const iat = 1_800_000_000;
 const closed = await closeMandate(
   open,
   { requestId, cartHash: `sha256:${toHex(cartHash(cart)).slice(2)}`, iat },
-  pair.privateKey,
+  privateKey,
 );
 
 const vectors = {
@@ -66,7 +77,7 @@ const vectors = {
     open,
     requestId,
     iat,
-    jwk: await crypto.subtle.exportKey("jwk", pair.privateKey),
+    jwk,
     keyBinding: closed.slice(open.length).split(".").slice(0, 2).join("."),
   },
   tools: tools(new Keelson({ auth: null })).map((t) => ({

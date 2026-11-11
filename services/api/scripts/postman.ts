@@ -30,21 +30,25 @@ const collection = await new Promise<{
 }>((resolve, reject) =>
   Converter.convert(
     { type: "string", data: spec },
+    // Schema placeholders, not random examples, so the collection is the same on every run.
     {
       folderStrategy: "Tags",
-      requestParametersResolution: "Example",
+      requestParametersResolution: "Schema",
+      exampleParametersResolution: "Schema",
       includeAuthInfoInExample: false,
     },
-    (err: Error | null, result: { result: boolean; reason?: string; output: { data: never }[] }) =>
-      err || !result.result
-        ? reject(err ?? new Error(result.reason))
-        : resolve(result.output[0]?.data as never),
+    (err, result) =>
+      err || !result?.result
+        ? reject(new Error(err?.message ?? result?.reason ?? "conversion failed"))
+        : resolve(result.output?.[0]?.data as never),
   ),
 );
 
 const kv = (key: string, value: string) => ({ key, value, type: "string" });
+// The converter names each collection with a random id; Postman assigns one on import.
+const { _postman_id: _id, ...info } = collection.info;
 collection.info = {
-  ...collection.info,
+  ...info,
   name: "Keelson API (PayPal sandbox)",
   description:
     "The operations an app or an operator's agent calls on Keelson: ask for a mandate, seal evidence, countersign a cart, and read and verify the Alibi. Sign in with Get New Access Token (OAuth 2.0 with PKCE). Payments run on the PayPal sandbox; no real money moves.",
@@ -99,7 +103,7 @@ collection.event = [
 ];
 const strip = (items: Item[]): Item[] =>
   items.map((i) => {
-    if (i.item) return { ...i, item: strip(i.item) };
+    if (i.item) return { name: i.name, item: strip(i.item) };
     const { auth: _, ...request } = i.request as Record<string, unknown> & { auth?: unknown };
     // Requests inherit the collection's OAuth; the converter's own headers for the key are dropped.
     const header = ((request.header as { key: string }[] | undefined) ?? []).filter(
@@ -112,7 +116,12 @@ const strip = (items: Item[]): Item[] =>
         (_, a?: string, b?: string) => `{{${variableFor(url.path, (a ?? b) as string)}}}`,
       ),
     );
-    return { ...i, request: { ...request, header, url: { ...url, path, variable: [] } } };
+    // Example responses are generated, not recorded; they are left out.
+    return {
+      name: i.name,
+      request: { ...request, header, url: { ...url, path, variable: [] } },
+      response: [],
+    };
   });
 collection.item = strip(collection.item);
 writeFileSync(
