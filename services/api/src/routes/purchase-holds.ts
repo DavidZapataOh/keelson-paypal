@@ -25,6 +25,7 @@ import type { Deps } from "../app.ts";
 import { publishEvent } from "../events.ts";
 import { voidAuthorization } from "../hold/maintenance.ts";
 import { allowedPayees, type MandateRow } from "../hold/state.ts";
+import { fundingCapError } from "../hosted-caps.ts";
 import { MERCHANTS } from "../merchants.ts";
 import { requireClient, requireSession } from "../middleware/auth.ts";
 import { call, type PayPalDeps, paypalProblem } from "../paypal.ts";
@@ -104,7 +105,7 @@ const create = createRoute({
     },
     422: {
       description:
-        "The cart is outside the mandate, its open cart holds with this one exceed the remaining budget, Keelson cannot capture for it, or PayPal refused",
+        "The cart is outside the mandate, its open cart holds with this one exceed the remaining budget, Keelson cannot capture for it, PayPal refused, or the hold would pass the hosted operator's total cap (`hosted-cap`)",
       content: problemContent,
     },
     503: { description: "PayPal is unavailable", content: problemContent },
@@ -192,7 +193,7 @@ function holdDigest(
 
 export function registerPurchaseHolds(
   app: OpenAPIHono,
-  deps: Pick<Deps, "db" | "kv" | "log" | "appOrigin" | "paypal">,
+  deps: Pick<Deps, "db" | "kv" | "log" | "appOrigin" | "paypal" | "demoAgentId" | "hostedCaps">,
 ): void {
   const { db } = deps;
   const queries = createQueries(db);
@@ -361,15 +362,20 @@ export function registerPurchaseHolds(
     // The budget is checked again under the mandate's row lock, so concurrent holds cannot
     // together exceed it.
     const inserted = await db.transaction(async (tx) => {
+      const [again] = await tx
+        .select({ requestId: purchaseHolds.requestId })
+        .from(purchaseHolds)
+        .where(eq(purchaseHolds.requestId, hold.requestId));
+      // The hosted operator's lock is taken before the mandate's row, as approvals take them.
+      if (again === undefined) {
+        const over = await fundingCapError(tx, deps, mandate.id, amount.minor);
+        if (over) return over;
+      }
       const [locked] = await tx
         .select({ remainingMinor: mandates.remainingMinor })
         .from(mandates)
         .where(eq(mandates.id, mandate.id))
         .for("update");
-      const [again] = await tx
-        .select({ requestId: purchaseHolds.requestId })
-        .from(purchaseHolds)
-        .where(eq(purchaseHolds.requestId, hold.requestId));
       if (
         again === undefined &&
         (await openHolds(tx, mandate.id)) + amount.minor > (locked?.remainingMinor ?? 0n)
@@ -383,6 +389,9 @@ export function registerPurchaseHolds(
         .returning({ requestId: purchaseHolds.requestId });
     });
     if (inserted === null) return overBudget();
+    if (typeof inserted === "string") {
+      return problem(c, 422, "hosted-cap", "Over the hosted operator's cap", inserted);
+    }
     if (inserted.length === 0) {
       // A concurrent request for the same request id created the same order first.
       const now = await stored();

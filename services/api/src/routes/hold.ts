@@ -18,6 +18,7 @@ import {
   type MandateRow,
   publishHold,
 } from "../hold/state.ts";
+import { fundingCapError } from "../hosted-caps.ts";
 import { requireSession } from "../middleware/auth.ts";
 import { call, type PayPalDeps, paypalProblem } from "../paypal.ts";
 import type { Principal } from "../principal.ts";
@@ -99,7 +100,8 @@ const hold = createRoute({
       content: problemContent,
     },
     422: {
-      description: "Keelson cannot capture for the mandate's merchant, or PayPal refused",
+      description:
+        "Keelson cannot capture for the mandate's merchant, PayPal refused, or the hold would pass the hosted operator's total cap (`hosted-cap`)",
       content: problemContent,
     },
     503: { description: "PayPal is unavailable", content: problemContent },
@@ -165,7 +167,7 @@ function expiresAt(authorizedAt: Date | null): string {
 
 export function registerHold(
   app: OpenAPIHono,
-  deps: Pick<Deps, "db" | "kv" | "log" | "appOrigin" | "paypal">,
+  deps: Pick<Deps, "db" | "kv" | "log" | "appOrigin" | "paypal" | "demoAgentId" | "hostedCaps">,
 ): void {
   const { db } = deps;
   const queries = createQueries(db);
@@ -229,11 +231,18 @@ export function registerHold(
           );
         }
         const orderId = await createOrder(paypal, row);
-        if (
-          await transition(db, "mandates", row.id, "SIGNED", "HOLD_PENDING", {
+        // Measured with the move, so concurrent holds cannot together pass the hosted total cap.
+        const moved = await db.transaction(async (tx) => {
+          const over = await fundingCapError(tx, deps, row.id, row.remainingMinor);
+          if (over) return over;
+          return transition(tx, "mandates", row.id, "SIGNED", "HOLD_PENDING", {
             paypalOrderId: orderId,
-          })
-        ) {
+          });
+        });
+        if (typeof moved === "string") {
+          return problem(c, 422, "hosted-cap", "Over the hosted operator's cap", moved);
+        }
+        if (moved) {
           await publishHold(deps, row, { state: "HOLD_PENDING", orderId });
           return pending(orderId);
         }

@@ -69,7 +69,7 @@ https://app.keelson.finance/judge opens a temporary tenant with one click (no ke
 
 ## MCP server
 
-Keelson's MCP server is served by the API at `https://api.keelson.finance/mcp` (Streamable HTTP, stateless). It is an OAuth 2.1 protected resource: clients find the authorization server at `/.well-known/oauth-protected-resource` and get a token with the client credentials grant for the resource `https://api.keelson.finance`; each tool asks for the scope its API calls need. `keelson.get_alibi` renders the Alibi as an MCP App.
+Keelson's MCP server is served by the API at `https://api.keelson.finance/mcp` (Streamable HTTP, stateless). It is an OAuth 2.1 protected resource: clients find the authorization server at `/.well-known/oauth-protected-resource`. An agent's own client gets a token with the client credentials grant for the resource `https://api.keelson.finance`; a host acting for a user (claude.ai, ChatGPT, Cursor) registers itself and gets one with the authorization code grant, and buys under the mandates the user approves for it (see [the API's README](services/api/README.md#apps-acting-for-a-user)). Each tool asks for the scope its API calls need. `keelson.get_alibi` renders the Alibi as an MCP App.
 
 Closing a mandate for a countersign takes the agent's own key, which Keelson never holds, so `keelson.request_countersign` is offered by the STDIO server, run as the agent's process. For Claude Desktop, after `pnpm install && pnpm build`, add to `claude_desktop_config.json`:
 
