@@ -73,6 +73,12 @@ contract AmberContradictionCourt is IConvictions {
         21888242871839275222246405745257275088548364400416034343698204186575808495617;
     /// @dev `"digest":"` ‖ 66 characters of `0x`-prefixed lowercase hex ‖ `"`.
     uint256 internal constant DIGEST_MEMBER_LENGTH = 77;
+    bytes10 internal constant DIGEST_KEY = '"digest":"';
+    /// @dev The evidence item leaf's fields, as `@keelson/evidence` encodes them; fixed-size, so the packing is
+    /// injective.
+    bytes24 internal constant EVIDENCE_ITEM_DST = "keelson/evidence-item/v1";
+    bytes13 internal constant WEB_FACT_TYPE = "tlsn.web_fact";
+    bytes16 internal constant WEB_FACT_MEDIA_TYPE = "application/json";
 
     IAmberVault public immutable vault;
     IVerdictVerifier public immutable teeVerifier;
@@ -174,9 +180,9 @@ contract AmberContradictionCourt is IConvictions {
         returns (uint8 code, uint40 provenAt, bytes32 evidenceDigest)
     {
         Conviction memory v = _convictions[coverageId];
-        // slither-disable-next-line incorrect-equality
-        if (v.fieldId == 0 || block.timestamp <= payableAt(coverageId)) return (0, 0, 0);
-        return (v.fieldId, v.provenAt, v.webFactDigest);
+        if (v.fieldId != 0 && block.timestamp > payableAt(coverageId)) {
+            (code, provenAt, evidenceDigest) = (v.fieldId, v.provenAt, v.webFactDigest);
+        }
     }
 
     /// @notice The conviction of a coverage as recorded, payable or not.
@@ -198,22 +204,21 @@ contract AmberContradictionCourt is IConvictions {
         bytes32 leaf = sha256(
             abi.encodePacked(
                 bytes1(0x00),
-                "keelson/evidence-item/v1",
+                EVIDENCE_ITEM_DST,
                 item.salt,
-                "tlsn.web_fact",
+                WEB_FACT_TYPE,
                 bytes1(0x00),
-                "application/json",
+                WEB_FACT_MEDIA_TYPE,
                 bytes1(0x00),
                 sha256(item.document)
             )
         );
         (bytes32 computed, bool ok) = RFC6962.rootFromInclusion(item.index, item.size, leaf, item.path);
         if (!ok || computed != root) return false;
-        if (item.digestAt > item.document.length || item.document.length - item.digestAt < DIGEST_MEMBER_LENGTH) {
-            return false;
-        }
-        return keccak256(item.document[item.digestAt:item.digestAt + DIGEST_MEMBER_LENGTH])
-            == keccak256(abi.encodePacked('"digest":"', Strings.toHexString(uint256(factDigest), 32), '"'));
+        uint256 o = item.digestAt;
+        if (o > item.document.length || item.document.length - o < DIGEST_MEMBER_LENGTH) return false;
+        return bytes10(item.document[o:o + 10]) == DIGEST_KEY && item.document[o + 76] == bytes1(0x22)
+            && keccak256(item.document[o + 10:o + 76]) == keccak256(bytes(Strings.toHexString(uint256(factDigest), 32)));
     }
 
     /// @dev Whether a `teeKind` signer registered by `time`, still in that registration and never revoked, under a

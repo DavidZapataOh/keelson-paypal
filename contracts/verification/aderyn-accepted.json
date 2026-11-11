@@ -156,17 +156,12 @@
   },
   {
     "detector": "reentrancy-state-change",
-    "location": "src/AmberContradictionCourt.sol:129",
+    "location": "src/AmberContradictionCourt.sol:135",
     "reason": "The calls before the write are views (compiled to STATICCALL) to immutable contracts: the vault, the VerdictVerifier and the C2b verifier. No state can change during them."
   },
   {
     "detector": "reentrancy-state-change",
-    "location": "src/AmberContradictionCourt.sol:133",
-    "reason": "The calls before the write are views (compiled to STATICCALL) to immutable contracts: the vault, the VerdictVerifier and the C2b verifier. No state can change during them."
-  },
-  {
-    "detector": "reentrancy-state-change",
-    "location": "src/AmberContradictionCourt.sol:138",
+    "location": "src/AmberContradictionCourt.sol:139",
     "reason": "The calls before the write are views (compiled to STATICCALL) to immutable contracts: the vault, the VerdictVerifier and the C2b verifier. No state can change during them."
   },
   {
@@ -176,17 +171,12 @@
   },
   {
     "detector": "reentrancy-state-change",
-    "location": "src/AmberContradictionCourt.sol:157",
+    "location": "src/AmberContradictionCourt.sol:150",
     "reason": "The calls before the write are views (compiled to STATICCALL) to immutable contracts: the vault, the VerdictVerifier and the C2b verifier. No state can change during them."
   },
   {
-    "detector": "abi-encode-packed-hash-collision",
-    "location": "src/AmberContradictionCourt.sol:199",
-    "reason": "The evidence item leaf of @keelson/evidence: a fixed-length salt and content hash between constant, NUL-terminated strings, so the packed encoding is injective."
-  },
-  {
-    "detector": "abi-encode-packed-hash-collision",
-    "location": "src/AmberContradictionCourt.sol:216",
-    "reason": "Constant strings around a fixed-length 66-character hex digest: one encoding per digest."
+    "detector": "reentrancy-state-change",
+    "location": "src/AmberContradictionCourt.sol:163",
+    "reason": "The calls before the write are views (compiled to STATICCALL) to immutable contracts: the vault, the VerdictVerifier and the C2b verifier. No state can change during them."
   }
 ]

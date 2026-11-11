@@ -20,8 +20,8 @@ contract DeployAmberContradictionCourt is HonkVerifierDeploy {
     string internal constant PREFIX = "AmberContradiction";
     string internal constant COURT = "AmberContradictionCourt";
     /// @notice The court that binds the `WebFact` to the purchase's countersigned evidence.
-    string internal constant VERSION = "AmberContradictionCourt/2";
-    string internal constant PREVIOUS = "AmberContradictionCourt";
+    string internal constant VERSION = "AmberContradictionCourt/3";
+    string internal constant PREVIOUS = "AmberContradictionCourt/2";
 
     function run() external returns (AmberContradictionCourt court) {
         vm.startBroadcast(_owner());
