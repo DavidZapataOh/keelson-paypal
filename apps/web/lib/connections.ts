@@ -51,6 +51,8 @@ export interface ConnectionView {
 
 export interface AgentRow {
   agentId: string;
+  /** The app acting through Keelson's own agent, which many apps share; null for an agent's own operator. */
+  clientId: string | null;
   name: string;
   operator: string;
   connected: boolean;
