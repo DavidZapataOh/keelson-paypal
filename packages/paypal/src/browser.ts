@@ -101,6 +101,60 @@ export async function approveHold(o: ApproveHoldOptions): Promise<"ready" | "ine
   return "ready";
 }
 
+export interface SaveWalletOptions {
+  /** The API origin. Requests carry the session cookie. */
+  api: string;
+  /** Where the `<paypal-button>` is appended. */
+  container: HTMLElement;
+  /** PayPal is saved: the API answered with the saved PayPal. */
+  onSaved: (wallet: { email: string | null; createdAt: string }) => void;
+  /** The buyer closed PayPal without saving. */
+  onCancel?: () => void;
+  onError?: (error: unknown) => void;
+}
+
+/**
+ * Appends a `<paypal-button>` that saves PayPal for the user's holds, on the SDK's save payment
+ * session: Keelson creates the setup token, the buyer approves it in PayPal and Keelson exchanges
+ * it for the payment token it keeps.
+ */
+export async function saveWallet(o: SaveWalletOptions): Promise<"ready" | "ineligible"> {
+  const { clientId, environment } = await json<PayPalClient>(
+    await fetch(`${o.api}/v1/paypal/client`, { credentials: "include" }),
+  );
+  const paypal = await loadCoreSdkScript({ environment });
+  if (!paypal) throw new Error("The PayPal JavaScript SDK did not load.");
+  const sdk = await paypal.createInstance({
+    clientId,
+    components: ["paypal-payments"],
+    pageType: "checkout",
+  });
+  const methods = await sdk.findEligibleMethods({ currencyCode: "USD" });
+  if (!methods.isEligible("paypal")) return "ineligible";
+
+  const fail = (error: unknown) => {
+    if (!o.onError) throw error;
+    o.onError(error);
+  };
+  const session = sdk.createPayPalSavePaymentSession({
+    onApprove: ({ vaultSetupToken }) =>
+      post<{ email: string | null; createdAt: string }>(`${o.api}/v1/paypal/wallet`, {
+        setupToken: vaultSetupToken,
+      }).then(o.onSaved, fail),
+    onCancel: () => o.onCancel?.(),
+    onError: fail,
+  });
+  const button = document.createElement("paypal-button");
+  button.addEventListener("click", () => {
+    const token = post<{ setupToken: string }>(`${o.api}/v1/paypal/wallet/setup-token`).then(
+      ({ setupToken }) => ({ vaultSetupToken: setupToken }),
+    );
+    session.start({ presentationMode: "auto" }, token).catch(fail);
+  });
+  o.container.append(button);
+  return "ready";
+}
+
 /** The order and authorization calls of a mandate's hold. */
 export function mandateHold(
   api: string,
