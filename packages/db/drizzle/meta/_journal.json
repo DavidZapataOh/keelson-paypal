@@ -288,6 +288,13 @@
       "when": 1794375573380,
       "tag": "0040_amber",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1794378640639,
+      "tag": "0041_embed_origins",
+      "breakpoints": true
     }
   ]
 }

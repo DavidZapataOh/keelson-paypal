@@ -18,7 +18,7 @@ hold="${2:-}"
 : "${KEELSON_TEE_TOKEN_SHA256:?}" "${KEELSON_ISSUER_JWK:?}"
 
 # Without leg A's log keys the enclave cannot verify the checkpoints leg A signs.
-: "${TEE_A_URL:?leg A's URL, to read its log keys}"
+: "${TEE_A_URL:?the URL of leg A, to read its log keys}"
 log_keys="$(curl -fsS "$TEE_A_URL/v1/health" | jq -c '[.log_keys // [] | .[] | select(.signature_chain) | {origin, public_key, signature_chain}]')"
 
 id="$(instance_id)"
