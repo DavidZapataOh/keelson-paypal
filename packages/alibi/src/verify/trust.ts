@@ -48,3 +48,8 @@ export const TEE_BUILDS: readonly {
 /** The origin a passkey assertion over a mandate must come from, and its RP ID. */
 export const MANDATE_ORIGIN = "https://app.keelson.finance";
 export const MANDATE_RP_ID = "keelson.finance";
+/**
+ * The origin of the approval agent platforms frame: a mandate with `embed` is signed there, in a
+ * frame whose top-level origin is `embed.top_origin`.
+ */
+export const MANDATE_EMBED_ORIGIN = "https://api.keelson.finance";

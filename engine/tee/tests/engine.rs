@@ -7,7 +7,8 @@ use base64::Engine as _;
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use keelson_mandate::decode_mandate;
 use keelson_mandate::{
-    OPEN_MANDATE_TYP, OpenMandateVerifyOptions, USER_CREDENTIAL_TYP, verify_credential,
+    EMBED_ORIGIN, OPEN_MANDATE_TYP, OpenMandateVerifyOptions, USER_CREDENTIAL_TYP,
+    verify_credential,
 };
 use keelson_tee::wire::{Base64, CountersignRequest, Countersigned, RegisterMandate};
 use keelson_tee::{BIT_CANON, Engine, EngineError, MANDATE_SALT_PURPOSE, Root, SealAad, TeeKind};
@@ -333,6 +334,101 @@ fn registers_only_on_the_configured_origin() {
         .register_mandate(&register_request(), at(NOW))
         .unwrap_err();
     assert_eq!(err.code(), "auth.webauthn_origin");
+}
+
+const PLATFORM: &str = "https://agents.example.com";
+
+/// A mandate for `PLATFORM`'s embed, confirmed with the client data `client` gives its challenge.
+fn embedded(client: impl FnOnce(&[u8; 32]) -> Value) -> RegisterMandate {
+    let passkey = other_passkey();
+    mandate_signed(
+        &sub(),
+        &passkey,
+        |m| m["embed"] = json!({ "top_origin": PLATFORM }),
+        |challenge| signed_client_data(&client(challenge), &passkey),
+    )
+}
+
+#[test]
+fn registers_and_countersigns_a_mandate_signed_in_a_frame() {
+    let r = embedded(|c| framed_client_data(EMBED_ORIGIN, PLATFORM, c));
+    let a = Engine::booted_at(config(None), Some(root()), at(NOW - 1_000))
+        .with_captured(Arc::new(Captured {
+            mandate_hash: expected_mandate_hash(&r),
+            minor: 0,
+        }))
+        .with_user_records(Arc::new(Records::default()));
+    let issued = a.register_mandate(&r, at(NOW)).unwrap();
+    assert_eq!(issued.mandate_hash.0, expected_mandate_hash(&r));
+    // Both legs check the assertion again, from the open mandate, before they countersign.
+    let req = countersign_request(&issued, &CartFixture::demo(), request_id(7), None);
+    let x = a.countersign(&req, at(NOW + 10)).unwrap();
+    let mut rb = req.clone();
+    rb.observation = Some(x.observation.clone());
+    let y = leg_b().countersign(&rb, at(NOW + 10)).unwrap();
+    assert_eq!(x.countersign.decision, "1");
+    assert_eq!(y.digest.0, x.digest.0);
+}
+
+#[test]
+fn refuses_a_framed_assertion_that_does_not_match_the_embed() {
+    let cases: [(&str, RegisterMandate, &str); 6] = [
+        (
+            "another platform framed it",
+            embedded(|c| framed_client_data(EMBED_ORIGIN, "https://evil.example", c)),
+            "auth.webauthn_cross_origin",
+        ),
+        (
+            "signed at the top level",
+            embedded(|c| {
+                let mut d = framed_client_data(EMBED_ORIGIN, PLATFORM, c);
+                d["crossOrigin"] = json!(false);
+                d.as_object_mut().unwrap().remove("topOrigin");
+                d
+            }),
+            "auth.webauthn_cross_origin",
+        ),
+        (
+            "no topOrigin",
+            embedded(|c| {
+                let mut d = framed_client_data(EMBED_ORIGIN, PLATFORM, c);
+                d.as_object_mut().unwrap().remove("topOrigin");
+                d
+            }),
+            "auth.webauthn_cross_origin",
+        ),
+        (
+            "crossOrigin is not true",
+            embedded(|c| {
+                let mut d = framed_client_data(EMBED_ORIGIN, PLATFORM, c);
+                d["crossOrigin"] = json!("true");
+                d
+            }),
+            "auth.webauthn_cross_origin",
+        ),
+        (
+            "framed on the app, not the approval page",
+            embedded(|c| framed_client_data(ORIGIN, PLATFORM, c)),
+            "auth.webauthn_origin",
+        ),
+        (
+            "a framed assertion for a mandate without embed",
+            {
+                let passkey = other_passkey();
+                mandate_signed(
+                    &sub(),
+                    &passkey,
+                    |_| {},
+                    |c| signed_client_data(&framed_client_data(ORIGIN, PLATFORM, c), &passkey),
+                )
+            },
+            "auth.webauthn_cross_origin",
+        ),
+    ];
+    for (name, r, code) in cases {
+        let err = leg_a().register_mandate(&r, at(NOW)).unwrap_err();
+        assert_eq!(err.code(), code, "{name}");
+    }
 }
 
 #[test]

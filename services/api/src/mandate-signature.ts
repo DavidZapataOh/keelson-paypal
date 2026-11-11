@@ -50,10 +50,11 @@ function decodeBounded(s: string, max: number, name: string): Uint8Array {
  * caller: the salt behind `C_m` never reaches the server. User verification is required, and the
  * client data may come from WebAuthn (`webauthn.get`) or Secure Payment Confirmation
  * (`payment.get`). The signature counter must increase unless the authenticator reports zero.
- * Cross-origin (framed) assertions, token binding, attested credential data and extensions are
- * refused, and input sizes are bounded. For `payment.get`, the payment data the browser
- * showed must be `spc`, the SPC details derived from the mandate (SPC section "Verifying an
- * Authentication Assertion").
+ * The assertion is cross-origin exactly when `expectedTopOrigin` is given: made in Keelson's approval
+ * framed by that top-level origin, the mandate's `embed.top_origin`. Token binding, attested
+ * credential data and extensions are refused, and input sizes are bounded. For `payment.get`, the
+ * payment data the browser showed must be `spc`, the SPC details derived from the mandate (SPC
+ * section "Verifying an Authentication Assertion").
  */
 export async function verifyMandateSignature(args: {
   payloadSd: object;
@@ -61,6 +62,8 @@ export async function verifyMandateSignature(args: {
   assertion: SignedChallenge;
   passkey: Passkey;
   expectedOrigin: string;
+  /** The embedding page's origin, for an assertion made in a frame. */
+  expectedTopOrigin?: string | undefined;
   expectedRpId: string;
   spc: SpcDetails;
 }): Promise<{ M: Uint8Array; newCounter: number }> {
@@ -113,6 +116,7 @@ export async function verifyMandateSignature(args: {
 interface CollectedClientData {
   type?: unknown;
   crossOrigin?: unknown;
+  topOrigin?: unknown;
   payment?: {
     paymentEntitiesLogos?: unknown;
     rpId?: unknown;
@@ -124,9 +128,32 @@ interface CollectedClientData {
   };
 }
 
+/**
+ * Whether the assertion's framing is the expected one (WebAuthn Level 3 section 7.2, steps 11 and
+ * 12): at the top level `crossOrigin` is absent or `false` and `topOrigin` absent; in a frame
+ * `crossOrigin` is `true` and `topOrigin` is the embedding page's origin.
+ */
+export function framedAs(
+  data: { crossOrigin?: unknown; topOrigin?: unknown },
+  top?: string,
+): boolean {
+  if (top === undefined) {
+    return (
+      (!Object.hasOwn(data, "crossOrigin") || data.crossOrigin === false) &&
+      !Object.hasOwn(data, "topOrigin")
+    );
+  }
+  return data.crossOrigin === true && data.topOrigin === top;
+}
+
 function checkClientData(
   clientDataJSON: Uint8Array,
-  expected: { expectedOrigin: string; expectedRpId: string; spc: SpcDetails },
+  expected: {
+    expectedOrigin: string;
+    expectedTopOrigin?: string | undefined;
+    expectedRpId: string;
+    spc: SpcDetails;
+  },
 ): void {
   let data: CollectedClientData;
   try {
@@ -137,10 +164,7 @@ function checkClientData(
   if (typeof data !== "object" || data === null || Array.isArray(data)) {
     throw new SignatureError("clientDataJSON is not a JSON object");
   }
-  if (
-    (Object.hasOwn(data, "crossOrigin") && data.crossOrigin !== false) ||
-    Object.hasOwn(data, "topOrigin")
-  ) {
+  if (!framedAs(data, expected.expectedTopOrigin)) {
     throw new SignatureError("cross-origin assertion");
   }
   if (Object.hasOwn(data, "tokenBinding"))
@@ -151,7 +175,7 @@ function checkClientData(
   const logos = p?.paymentEntitiesLogos;
   if (
     p?.rpId !== expected.expectedRpId ||
-    p.topOrigin !== expected.expectedOrigin ||
+    p.topOrigin !== (expected.expectedTopOrigin ?? expected.expectedOrigin) ||
     p.payeeName !== spc.payeeName ||
     p.payeeOrigin !== spc.payeeOrigin ||
     p.total?.currency !== spc.total.currency ||

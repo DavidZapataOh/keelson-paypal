@@ -11,6 +11,12 @@ export interface SpcDetails {
 /** The WebAuthn RP ID every passkey is scoped to. */
 export const RP_ID = "keelson.finance";
 
+/**
+ * The origin of the approval page agent platforms frame. A passkey assertion made in it is
+ * cross-origin, and its mandate names the top-level page in `embed.top_origin`.
+ */
+export const EMBED_ORIGIN = "https://api.keelson.finance";
+
 /** The SPC payee: Keelson, at its RP ID domain (SPC requires an https payee origin). */
 export const SPC_PAYEE_ORIGIN: string = `https://${RP_ID}`;
 

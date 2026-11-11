@@ -362,6 +362,7 @@ export function registerMandates(
     if (body.commitment !== m.zk.commitment) {
       return invalid("commitment differs from zk.commitment");
     }
+    if (m.embed) return invalid("embed is only set by the embedded approval that signs it");
     const now = Date.now();
     if (m.exp * 1000 <= now) return invalid("exp has passed");
     if (m.nbf * 1000 > now) return invalid("nbf is in the future");

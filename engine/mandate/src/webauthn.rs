@@ -39,6 +39,10 @@ pub struct Expected {
     pub challenge: [u8; 32],
     /// The origin the page that signed is served from.
     pub origin: String,
+    /// The top-level origin when that page was framed, from the mandate's `embed.top_origin`:
+    /// the assertion must then be cross-origin with this `topOrigin`. `None` for a page that
+    /// signed at the top level.
+    pub top_origin: Option<String>,
     pub rp_id: String,
     /// The passkey's P-256 public key, SEC1 uncompressed (`0x04 || x || y`).
     pub public_key_sec1: Vec<u8>,
@@ -55,8 +59,9 @@ pub enum WebAuthnError {
     Type,
     Challenge,
     Origin,
-    /// The assertion was made in a cross-origin iframe: `crossOrigin` is other than `false`,
-    /// or `topOrigin` is present.
+    /// The framing differs from what is expected: a top-level assertion has `crossOrigin` other
+    /// than `false` or a `topOrigin`; a framed one has `crossOrigin` other than `true` or another
+    /// `topOrigin`.
     CrossOrigin,
     /// `tokenBinding` is present; no Keelson client uses token binding.
     TokenBinding,
@@ -102,8 +107,9 @@ impl std::error::Error for WebAuthnError {}
 
 /// Verifies a passkey assertion over `expected.challenge` (WebAuthn Level 3 section 7.2, with
 /// the changes of Secure Payment Confirmation section 9.1 for `payment.get`). User presence and
-/// user verification are required; cross-origin assertions, token binding, attested credential
-/// data and extensions are refused; the ES256 signature is ASN.1 DER. The signature counter is
+/// user verification are required; an assertion is cross-origin exactly when
+/// `expected.top_origin` is set, and then from a frame under that top-level origin; token
+/// binding, attested credential data and extensions are refused; the ES256 signature is ASN.1 DER. The signature counter is
 /// left to the caller, which holds the stored value.
 pub fn verify_assertion(a: &Assertion, expected: &Expected) -> Result<(), WebAuthnError> {
     let client_data_json = decode_bounded(&a.client_data_json, MAX_CLIENT_DATA_JSON)
@@ -166,8 +172,14 @@ fn check_client_data(bytes: &[u8], expected: &Expected) -> Result<(), WebAuthnEr
     if c.get("origin").and_then(Value::as_str) != Some(expected.origin.as_str()) {
         return Err(WebAuthnError::Origin);
     }
-    let cross_origin = c.get("crossOrigin").is_some_and(|v| v != false);
-    if cross_origin || c.get("topOrigin").is_some() {
+    let framed = match &expected.top_origin {
+        None => c.get("crossOrigin").is_none_or(|v| v == false) && !c.contains_key("topOrigin"),
+        Some(top) => {
+            c.get("crossOrigin") == Some(&Value::Bool(true))
+                && c.get("topOrigin").and_then(Value::as_str) == Some(top.as_str())
+        }
+    };
+    if !framed {
         return Err(WebAuthnError::CrossOrigin);
     }
     if c.contains_key("tokenBinding") {
@@ -181,9 +193,10 @@ fn check_client_data(bytes: &[u8], expected: &Expected) -> Result<(), WebAuthnEr
 
 fn check_payment(p: &Value, expected: &Expected) -> Result<(), WebAuthnError> {
     let spc = &expected.spc;
+    let top = expected.top_origin.as_ref().unwrap_or(&expected.origin);
     let checks: [(&'static str, &Value, &str); 8] = [
         ("rpId", &p["rpId"], &expected.rp_id),
-        ("topOrigin", &p["topOrigin"], &expected.origin),
+        ("topOrigin", &p["topOrigin"], top),
         ("payeeName", &p["payeeName"], &spc.payee_name),
         ("payeeOrigin", &p["payeeOrigin"], &spc.payee_origin),
         ("total.currency", &p["total"]["currency"], &spc.currency),
