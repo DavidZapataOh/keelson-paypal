@@ -163,7 +163,7 @@ export async function renderAlibiPdf(b: AlibiBundle): Promise<Uint8Array> {
     label("Card");
     value(
       [
-        `Single-use card ending ${b.card.last_four}, issued by ${b.card.issuer} after the ALLOW`,
+        `Paid with PayPal · Keelson single-use card ending ${b.card.last_four}, issued after the ALLOW`,
         approved
           ? `Authorization ${approved.id}: ${approved.merchant_name}, MCC ${approved.mcc}, approved by both legs`
           : "No authorization approved yet",

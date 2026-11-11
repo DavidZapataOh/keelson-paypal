@@ -48,7 +48,7 @@ const LABELS: Record<FieldId, string> = {
   currency: "Currency",
   budget: "Budget",
   merchant: "Merchant",
-  card: "Payment card",
+  card: "Paid with",
   deadline: "Buy by",
   quantity: "Quantity",
   agent: "Agent",
@@ -122,7 +122,7 @@ function values(m: Mandate): Partial<Record<FieldId, string[]>> {
     else if (c.type === "payment.execution_date") out.deadline = [c.not_after];
     else if (c.type === "payment.card_controls") {
       out.card = [
-        "A single-use virtual card, issued only after Keelson allows the cart",
+        "PayPal · Keelson single-use card, issued only after Keelson allows the cart",
         "Capped at the allowed total, and only at the stores above",
         "Each card authorization is checked again by both enclaves",
       ];

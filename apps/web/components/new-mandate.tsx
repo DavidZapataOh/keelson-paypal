@@ -308,9 +308,11 @@ function Rules() {
         <div className="flex gap-3 rounded-2xl bg-card px-4 py-3 text-sm">
           <CreditCard className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <p className="text-muted-foreground">
-            <span className="font-medium text-foreground">Paid with a single-use card.</span> Your
-            budget is held on PayPal. Keelson issues a card only after both enclaves allow the cart,
-            capped at its total, and both check the store's charge again; the charge is then
+            <span className="font-medium text-foreground">
+              Paid with PayPal · Keelson single-use card.
+            </span>{" "}
+            Your budget is held on PayPal. Keelson issues a card only after both enclaves allow the
+            cart, capped at its total, and both check the store's charge again; the charge is then
             collected from your hold. Test mode: no real money moves.
           </p>
         </div>
@@ -455,7 +457,7 @@ function Rules() {
             options={[
               { id: "one", label: "One store" },
               { id: "any", label: "Any store" },
-              { id: "card", label: "Any store (card)" },
+              { id: "card", label: "Any store (PayPal card)" },
             ]}
           />
           {anyStore === "one" ? (
