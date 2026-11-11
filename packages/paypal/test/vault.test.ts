@@ -13,7 +13,7 @@ import {
   walletSetupTokenRequest,
 } from "../src/vault.ts";
 
-// PayPal's documented samples, in the SDK's shape; Task 21 replaces them with recorded sandbox answers.
+// PayPal sandbox answers as the SDK returns them, sanitized (ids, email and payer replaced).
 const fixture = <T>(name: string): T =>
   JSON.parse(readFileSync(new URL(`fixtures/vault/${name}.json`, import.meta.url), "utf8")) as T;
 
@@ -91,8 +91,8 @@ describe("vaultedHoldOrder", () => {
 describe("savedWallet", () => {
   it("reads the token, the PayPal customer and the email", () => {
     expect(savedWallet(fixture<PaymentTokenResponse>("payment-token"))).toEqual({
-      vaultId: "jwgvx42",
-      customerId: "ROaPMoZUa5",
+      vaultId: "8gk43s4",
+      customerId: "kh4Wd1FbMx",
       email: "buyer@example.com",
     });
   });
