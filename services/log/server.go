@@ -153,7 +153,7 @@ func (o *origin) appendOnce(ctx context.Context, leaf []byte) (*appendResult, er
 	if err != nil {
 		return nil, err
 	}
-	return o.appendClaimed(ctx, l.AlibiID, leaf)
+	return o.appendClaimed(ctx, claimOf(l), leaf)
 }
 
 // appendClaimed appends the leaf under claim, which no other leaf may hold.

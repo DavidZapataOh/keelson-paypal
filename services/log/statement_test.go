@@ -26,6 +26,7 @@ type statementVector struct {
 		Countersign       json.RawMessage `json:"countersign"`
 		VerifyingContract string          `json:"verifying_contract"`
 		Mode              string          `json:"mode"`
+		BridgeSigner      string          `json:"bridge_signer"`
 		Legs              []struct {
 			Kind        string `json:"kind"`
 			Signer      string `json:"signer"`
@@ -46,8 +47,10 @@ func loadStatement(t *testing.T, name string) (statementVector, []byte, alibilog
 		t.Fatal(err)
 	}
 	var c alibilog.Countersign
-	if err := json.Unmarshal(v.Inputs.Countersign, &c); err != nil {
-		t.Fatal(err)
+	if len(v.Inputs.Countersign) > 0 {
+		if err := json.Unmarshal(v.Inputs.Countersign, &c); err != nil {
+			t.Fatal(err)
+		}
 	}
 	leaf, _ := hex.DecodeString(v.StatementHex)
 	return v, leaf, c
@@ -191,5 +194,106 @@ func TestServesTheReceiptKeys(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("the key set %v does not hold the receipt key", set)
+	}
+}
+
+func activateLegs(t *testing.T, l *testLog, v statementVector) {
+	t.Helper()
+	for _, leg := range v.Inputs.Legs {
+		kind := map[string]int{"tdx": teeTDX, "nitro": teeNitro}[leg.Kind]
+		activate(t, l.db, kind, leg.Signer, leg.Kind+":"+strings.TrimPrefix(leg.Measurement, "0x"))
+	}
+}
+
+func TestAdmitsCardStatementsAfterTheirPurchase(t *testing.T) {
+	v, purchaseLeaf, c := loadStatement(t, "card-2of2")
+	l, _ := receiptKeyed(t, v.Inputs.VerifyingContract)
+	activateLegs(t, l, v)
+	purchase(t, l.db, v.Inputs.AlibiID, ptr("2of2"))
+	_, approve, _ := loadStatement(t, "card-auth-approve")
+	_, decline, _ := loadStatement(t, "card-auth-decline")
+	_, settlement, _ := loadStatement(t, "card-settlement")
+
+	if status, res := l.add(t, sandbox, testToken, approve, c); res["code"] != "card.parent" {
+		t.Fatalf("a decision before its purchase: %d %v", status, res)
+	}
+	for _, step := range []struct {
+		name string
+		leaf []byte
+	}{{"purchase", purchaseLeaf}, {"approve", approve}, {"decline", decline}, {"settlement", settlement}} {
+		if status, res := l.add(t, sandbox, testToken, step.leaf, c); status != http.StatusOK {
+			t.Fatalf("%s: %d %v", step.name, status, res)
+		}
+	}
+	// The same bytes again are the same leaf; another settlement of the same transaction is not.
+	if status, _ := l.add(t, sandbox, testToken, settlement, c); status != http.StatusOK {
+		t.Fatalf("a retried settlement: %d", status)
+	}
+	other := bytes.Clone(settlement)
+	other[len(other)-1] ^= 1
+	if _, res := l.add(t, sandbox, testToken, other, c); res["code"] != "leaf.signature" {
+		t.Fatalf("a re-signed settlement: %v", res)
+	}
+	foreign := c
+	foreign.MandateHash[0] ^= 1
+	_, decline2, _ := loadStatement(t, "card-auth-decline")
+	if _, res := l.add(t, sandbox, testToken, decline2, foreign); res["code"] != "countersign.digest" {
+		t.Fatalf("a decision under another countersign: %v", res)
+	}
+}
+
+// v1Fixture is a real v1 Alibi's leaf, countersign and legs, from the verifier's fixtures.
+func v1Fixture(t *testing.T, id string) ([]byte, alibilog.Countersign, []struct{ kind, signer, measurement string }) {
+	t.Helper()
+	raw, err := os.ReadFile("../../packages/alibi/test/fixtures/" + id + ".alibi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b struct {
+		Leaf string `json:"leaf"`
+		Tee  struct {
+			Countersign  json.RawMessage `json:"countersign"`
+			Attestations []struct {
+				Kind        string `json:"kind"`
+				Signer      string `json:"signer"`
+				Measurement string `json:"measurement"`
+			} `json:"attestations"`
+		} `json:"tee"`
+	}
+	if err := json.Unmarshal(raw, &b); err != nil {
+		t.Fatal(err)
+	}
+	leaf, _ := base64.StdEncoding.DecodeString(b.Leaf)
+	var c alibilog.Countersign
+	if err := json.Unmarshal(b.Tee.Countersign, &c); err != nil {
+		t.Fatal(err)
+	}
+	var legs []struct{ kind, signer, measurement string }
+	for _, a := range b.Tee.Attestations {
+		legs = append(legs, struct{ kind, signer, measurement string }{a.Kind, a.Signer, a.Measurement})
+	}
+	return leaf, c, legs
+}
+
+func TestAdmitsOneBridgePerV1Leaf(t *testing.T) {
+	b, bridge, _ := loadStatement(t, "bridge-degraded")
+	v1, c, legs := v1Fixture(t, b.Inputs.AlibiID)
+	l, _ := receiptKeyed(t, b.Inputs.VerifyingContract)
+	for _, leg := range legs {
+		activate(t, l.db, map[string]int{"tdx": teeTDX, "nitro": teeNitro}[leg.kind], leg.signer, leg.measurement)
+	}
+	purchase(t, l.db, b.Inputs.AlibiID, ptr("degraded"))
+	if _, res := l.add(t, sandbox, testToken, bridge, c); res["code"] != "bridge.parent" {
+		t.Fatalf("a bridge before its v1 leaf: %v", res)
+	}
+	if status, res := l.add(t, sandbox, testToken, v1, c); status != http.StatusOK {
+		t.Fatalf("v1 leaf: %d %v", status, res)
+	}
+	if _, res := l.add(t, sandbox, testToken, bridge, c); res["code"] != "bridge.signer" {
+		t.Fatalf("a bridge by a signer that is not an active TDX signer: %v", res)
+	}
+	activate(t, l.db, teeTDX, b.Inputs.BridgeSigner, "tdx:"+strings.Repeat("ab", 32))
+	if status, res := l.add(t, sandbox, testToken, bridge, c); status != http.StatusOK {
+		t.Fatalf("bridge: %d %v", status, res)
 	}
 }

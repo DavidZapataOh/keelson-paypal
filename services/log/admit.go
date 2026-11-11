@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/DavidZapataOh/keelson-paypal/internal/alibilog"
 )
@@ -25,17 +26,27 @@ func (o *origin) admit(ctx context.Context, reg registry, leaf []byte, c alibilo
 	if err != nil {
 		return err
 	}
-	if l.Kind != alibilog.KindPurchase {
-		return refuse("leaf.kind")
-	}
 	if l.Version == 2 && (l.ChainID != o.chainID || l.VerifyingContract != o.verifyingContract) {
 		return refuse("countersign.digest")
 	}
-	if alibilog.Digest(c, o.chainID, o.verifyingContract) != l.CountersignDigest {
-		return refuse("countersign.digest")
+	purchaseDigest := alibilog.Digest(c, o.chainID, o.verifyingContract)
+	switch l.Kind {
+	case alibilog.KindPurchase, alibilog.KindBridge:
+		if purchaseDigest != l.CountersignDigest {
+			return refuse("countersign.digest")
+		}
+		if l.Matches(c) != nil {
+			return refuse("countersign.fields")
+		}
+	case alibilog.KindCardAuthorization:
+		if l.Authorization.CountersignDigest != purchaseDigest {
+			return refuse("countersign.digest")
+		}
 	}
-	if l.Matches(c) != nil {
-		return refuse("countersign.fields")
+	if l.Kind != alibilog.KindPurchase {
+		if err := o.admitLinked(ctx, reg, l); err != nil {
+			return err
+		}
 	}
 
 	kinds := []int{teeTDX, teeNitro}[:len(l.TeeSigs)]
@@ -69,6 +80,45 @@ func (o *origin) admit(ctx context.Context, reg registry, leaf []byte, c alibilo
 		return refuse("countersign.mode")
 	}
 	return nil
+}
+
+// admitLinked checks what links a card or bridge statement to its purchase: the purchase leaf the
+// log already holds, and, for a bridge, that leg A's current signer signed it.
+func (o *origin) admitLinked(ctx context.Context, reg registry, l *alibilog.Leaf) error {
+	logged, ok, err := o.claims.get(l.AlibiID)
+	if err != nil {
+		return err
+	}
+	switch l.Kind {
+	case alibilog.KindBridge:
+		if !ok || *l.Predecessor != logged {
+			return refuse("bridge.parent")
+		}
+		if _, active, err := reg.Active(ctx, teeTDX, l.StatementSigner, time.Now()); err != nil {
+			return err
+		} else if !active {
+			return refuse("bridge.signer")
+		}
+	default:
+		if !ok || *l.Parent != logged {
+			return refuse("card.parent")
+		}
+	}
+	return nil
+}
+
+// claimOf is the key a leaf is claimed under: one purchase leaf and one bridge per purchase, one
+// decision per card network authorization, one settlement per issuer transaction.
+func claimOf(l *alibilog.Leaf) string {
+	switch l.Kind {
+	case alibilog.KindBridge:
+		return "bridge-" + l.AlibiID
+	case alibilog.KindCardAuthorization:
+		return "card-" + l.AlibiID + "-" + hex.EncodeToString(l.Authorization.AuthorizationHash[:])
+	case alibilog.KindCardSettlement:
+		return "settlement-" + l.AlibiID + "-" + hex.EncodeToString(l.Settlement.TransactionHash[:])
+	}
+	return l.AlibiID
 }
 
 func measurementID(kind int, m [32]byte) string {
