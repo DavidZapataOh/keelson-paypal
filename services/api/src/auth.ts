@@ -71,6 +71,21 @@ export const OAUTH_SCOPES = [
   "offline_access",
 ] as const;
 
+/** What each scope grants, as the OpenAPI document and the consent page describe it. */
+export const SCOPE_DESCRIPTIONS: Record<(typeof OAUTH_SCOPES)[number], string> = {
+  "countersign:write": "Countersign carts as the operator's own agent",
+  "evidence:write": "Seal and store evidence",
+  "evidence:disclose": "Disclose stored evidence items",
+  "evidence:decrypt": "Decrypt sealed evidence originals",
+  "alibis:read": "Read and verify Alibis",
+  "disputes:read": "Read disputes and their attribution",
+  "operators:write": "Link and manage operators",
+  "merchants:write": "Manage a merchant's settings",
+  "mandates:request": "Ask the user for a mandate or a change of one",
+  "purchases:write": "Check and countersign carts for the user",
+  offline_access: "Stay connected with a refresh token",
+};
+
 /**
  * What a token a user delegated to an app (an MCP host) may do, whatever that app's registration
  * holds, and only for that user: read their Alibis, ask them for a mandate or a change of one,

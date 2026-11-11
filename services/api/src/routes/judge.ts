@@ -22,6 +22,7 @@ const Started = z
 const start = createRoute({
   method: "post",
   path: "/v1/judge/sessions",
+  operationId: "openJudgeSession",
   tags: ["judge"],
   summary: "Open a Judge Mode session",
   description:
@@ -104,6 +105,7 @@ const Tour = z
 const tour = createRoute({
   method: "get",
   path: "/v1/judge/tour",
+  operationId: "getJudgeTour",
   tags: ["judge"],
   summary: "What the Judge Mode tour shows",
   description:

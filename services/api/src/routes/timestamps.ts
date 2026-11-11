@@ -19,6 +19,7 @@ const StampSchema = z
 const route = createRoute({
   method: "get",
   path: "/v1/timestamps/{hash}",
+  operationId: "getTimestamps",
   tags: ["timestamps"],
   summary: "RFC 3161 timestamps of a hash",
   description:

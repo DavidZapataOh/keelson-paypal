@@ -170,6 +170,7 @@ interface StoredDraft {
 const route = createRoute({
   method: "get",
   path: "/v1/disputes/{id}",
+  operationId: "getDispute",
   tags: ["Disputes"],
   summary: "A dispute's attribution",
   description:

@@ -32,6 +32,7 @@ const notFound = {
 const bundleRoute = createRoute({
   method: "get",
   path: "/v1/alibis/{id}",
+  operationId: "getAlibi",
   tags: ["alibis"],
   summary: "An alibi bundle",
   description:
@@ -50,6 +51,7 @@ const bundleRoute = createRoute({
 const pdfRoute = createRoute({
   method: "get",
   path: "/v1/alibis/{id}.pdf",
+  operationId: "getAlibiPdf",
   tags: ["alibis"],
   summary: "An alibi as a PDF/A-3b",
   description:
@@ -79,6 +81,7 @@ const ReceiptSchema = z
 const receiptRoute = createRoute({
   method: "get",
   path: "/v1/alibis/{id}/receipt",
+  operationId: "getAlibiReceipt",
   tags: ["alibis"],
   summary: "The public receipt of an alibi",
   description:
@@ -126,6 +129,7 @@ const ReportSchema = z
 const verifyRoute = createRoute({
   method: "post",
   path: "/v1/alibis/verify",
+  operationId: "verifyAlibi",
   tags: ["alibis"],
   summary: "Verify an alibi",
   description:

@@ -106,6 +106,7 @@ const problemContent = { "application/problem+json": { schema: ProblemSchema } }
 const create = createRoute({
   method: "post",
   path: "/v1/observations/channel3",
+  operationId: "observeChannel3",
   tags: ["evidence"],
   summary: "Observe a product through Channel3",
   description:
@@ -140,6 +141,7 @@ const create = createRoute({
 const read = createRoute({
   method: "get",
   path: "/v1/observations/channel3/{id}",
+  operationId: "getChannel3Observation",
   tags: ["evidence"],
   summary: "Read a Channel3 observation",
   description:

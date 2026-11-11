@@ -141,6 +141,7 @@ const Purchase = z
 const route = createRoute({
   method: "get",
   path: "/v1/purchases/{id}",
+  operationId: "getPurchase",
   tags: ["purchases"],
   summary: "A purchase",
   description:
@@ -162,6 +163,7 @@ const Id = z.string().regex(/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/);
 const transactionRoute = createRoute({
   method: "put",
   path: "/v1/purchases/{id}/paypal-transaction",
+  operationId: "recordPayPalTransaction",
   tags: ["purchases"],
   summary: "Record a live purchase's PayPal transaction",
   description:
@@ -273,6 +275,7 @@ function denyReasons(trace: unknown): string[] {
 const liveRoute = createRoute({
   method: "get",
   path: "/v1/live-purchases",
+  operationId: "listLivePurchases",
   tags: ["purchases"],
   summary: "Live purchases",
   description:
@@ -476,6 +479,7 @@ const CARD_EMBED_TTL_SEC = 60;
 const cardRoute = createRoute({
   method: "get",
   path: "/v1/purchases/{id}/card",
+  operationId: "getPurchaseCard",
   tags: ["purchases"],
   summary: "The single-use card of a card purchase",
   description:

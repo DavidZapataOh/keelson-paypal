@@ -84,6 +84,7 @@ const Bond = z
 const route = createRoute({
   method: "get",
   path: "/v1/log/bonds",
+  operationId: "listLogBonds",
   tags: ["log"],
   summary: "Log equivocation bonds",
   description:
