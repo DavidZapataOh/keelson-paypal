@@ -4025,6 +4025,9 @@ components:
         - unbound
         - changed
         - ms
+    AlibiEar:
+      type: object
+      additionalProperties: {}
     AlibiReceipt:
       type: object
       properties:
@@ -10190,6 +10193,39 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+  /v1/alibis/{id}.cose:
+    get:
+      tags:
+        - alibis
+      summary: An alibi as an IETF SCITT transparent statement
+      description: The Alibi's COSE_Sign1 signed statement (RFC 9943) with its log
+        receipt (RFC 9942, label 394) and, once stamped, its RFC 3161 token (RFC
+        9921, label 270). A v1 Alibi's is the bridge statement that carries its
+        countersigned facts, once there is one. The statement holds no personal
+        data; anyone may read it.
+      parameters:
+        - schema:
+            type: string
+            pattern: ^[0-7][0-9A-HJKMNP-TV-Z]{25}$
+            description: "The alibi id: the purchase's ULID."
+          required: true
+          description: "The alibi id: the purchase's ULID."
+          name: id
+          in: path
+      responses:
+        "200":
+          description: The transparent statement
+          content:
+            application/scitt-statement+cose:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: No alibi with this id that the caller may read
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
   /v1/alibis/{id}:
     get:
       tags:
@@ -10261,13 +10297,25 @@ paths:
             schema:
               type: string
               format: binary
+          application/vnd.keelson.alibi.v2+json:
+            schema:
+              type: string
+              format: binary
+          application/scitt-statement+cose:
+            schema:
+              type: string
+              format: binary
       responses:
         "200":
-          description: The report
+          description: "The report; with `Accept: application/eat-ucs+json`, the same
+            appraisal as an EAT Attestation Result (draft-ietf-rats-ear)"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AlibiReport"
+            application/eat-ucs+json:
+              schema:
+                $ref: "#/components/schemas/AlibiEar"
         "400":
           description: Not an Alibi bundle; `pointer` names the failing value
           content:

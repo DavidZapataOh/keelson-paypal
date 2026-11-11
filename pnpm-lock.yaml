@@ -1202,6 +1202,9 @@ importers:
       '@keelson/relayer':
         specifier: workspace:*
         version: link:../../packages/relayer
+      '@keelson/scitt':
+        specifier: workspace:*
+        version: link:../../packages/scitt
       '@keelson/timestamp':
         specifier: workspace:*
         version: link:../../packages/timestamp

@@ -3,7 +3,8 @@ import type { TsaId } from "@keelson/timestamp";
 import type { Logger } from "pino";
 import type { StampWorker } from "./worker.ts";
 
-export type StampKind = "leaf" | "channel3";
+/** `statement`: SHA-256 of the CBOR byte string of a v2 statement's signature (RFC 9921). */
+export type StampKind = "leaf" | "channel3" | "statement";
 
 /** The two independent TSAs every hash is stamped by. */
 const PRIMARIES: TsaId[] = ["digicert", "sigstore"];

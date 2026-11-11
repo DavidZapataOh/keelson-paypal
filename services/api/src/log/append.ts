@@ -11,6 +11,7 @@ import {
   parseStatementLeaf,
   verifyProof,
 } from "@keelson/log";
+import { decodeSign1, statementImprint } from "@keelson/scitt";
 import type { Logger } from "pino";
 import { enqueueStamp } from "../timestamps/queue.ts";
 import type { StampWorker } from "../timestamps/worker.ts";
@@ -55,8 +56,8 @@ function stated(leaf: Uint8Array): { alibiId: string; mode: string } {
  * another purchase, or whose mode is not the one the purchase was countersigned in, is refused
  * before the log is called. The index is recorded only once the log's leaf hash is the leaf's and
  * its proof verifies against a checkpoint both origin keys signed. Appending the same leaf again
- * returns the same index. The leaf hash is then queued for its RFC 3161 timestamps, which the
- * append never waits for.
+ * returns the same index. The leaf hash, or a statement's signature, is then queued for its
+ * RFC 3161 timestamps, which the append never waits for.
  *
  * @internal
  */
@@ -105,7 +106,12 @@ export async function appendLeaf(
     )
     .returning({ id: purchases.id });
   if (updated.length === 0) throw new LogError("rejected", "purchase.logged");
-  enqueueStamp(deps, result.leafHash, "leaf");
+  if (leaf[0] === 0xd2) {
+    // A v2 Alibi's RFC 3161 tokens cover the statement's signature (RFC 9921), not the leaf.
+    enqueueStamp(deps, statementImprint(decodeSign1(leaf).signature), "statement");
+  } else {
+    enqueueStamp(deps, result.leafHash, "leaf");
+  }
   return result;
 }
 

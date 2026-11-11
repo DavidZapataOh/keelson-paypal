@@ -4,15 +4,19 @@ import {
   ALIBI_MEDIA_TYPE,
   ALIBI_MEDIA_TYPE_V2,
   type AlibiBundle,
+  type AlibiBundleV2,
   AlibiFormatError,
-  decodeAlibi,
-  encodeAlibi,
+  type AnyAlibi,
+  decodeAny,
+  decodeStatementFile,
   encodeAny,
-  encodeReceipt,
+  RECEIPT_MEDIA_TYPE_V2,
   receiptOf,
+  STATEMENT_MEDIA_TYPE,
+  statementOf,
 } from "@keelson/alibi";
 import { renderAlibiPdf } from "@keelson/alibi/pdf";
-import { verifyAlibi } from "@keelson/alibi/verify";
+import { earOf, v1Shape, verifyAlibi } from "@keelson/alibi/verify";
 import { and, eq, evidenceBundles, mandates, purchases, user } from "@keelson/db";
 import type { Context } from "hono";
 import { loadBridge } from "../alibi/bridge.ts";
@@ -90,6 +94,23 @@ const ReceiptSchema = z
   })
   .openapi("AlibiReceipt");
 
+const coseRoute = createRoute({
+  method: "get",
+  path: "/v1/alibis/{id}.cose",
+  tags: ["alibis"],
+  summary: "An alibi as an IETF SCITT transparent statement",
+  description:
+    "The Alibi's COSE_Sign1 signed statement (RFC 9943) with its log receipt (RFC 9942, label 394) and, once stamped, its RFC 3161 token (RFC 9921, label 270). A v1 Alibi's is the bridge statement that carries its countersigned facts, once there is one. The statement holds no personal data; anyone may read it.",
+  request: { params: z.object({ id: Id }) },
+  responses: {
+    200: {
+      description: "The transparent statement",
+      content: { [STATEMENT_MEDIA_TYPE]: { schema: z.string().openapi({ format: "binary" }) } },
+    },
+    404: notFound,
+  },
+});
+
 const receiptRoute = createRoute({
   method: "get",
   path: "/v1/alibis/{id}/receipt",
@@ -147,11 +168,24 @@ const verifyRoute = createRoute({
   request: {
     body: {
       required: true,
-      content: { [ALIBI_MEDIA_TYPE]: { schema: z.string().openapi({ format: "binary" }) } },
+      content: {
+        [ALIBI_MEDIA_TYPE]: { schema: z.string().openapi({ format: "binary" }) },
+        [ALIBI_MEDIA_TYPE_V2]: { schema: z.string().openapi({ format: "binary" }) },
+        [STATEMENT_MEDIA_TYPE]: { schema: z.string().openapi({ format: "binary" }) },
+      },
     },
   },
   responses: {
-    200: { description: "The report", content: { "application/json": { schema: ReportSchema } } },
+    200: {
+      description:
+        "The report; with `Accept: application/eat-ucs+json`, the same appraisal as an EAT Attestation Result (draft-ietf-rats-ear)",
+      content: {
+        "application/json": { schema: ReportSchema },
+        "application/eat-ucs+json": {
+          schema: z.record(z.string(), z.unknown()).openapi("AlibiEar"),
+        },
+      },
+    },
     400: {
       description: "Not an Alibi bundle; `pointer` names the failing value",
       content: { "application/problem+json": { schema: ProblemSchema } },
@@ -177,8 +211,9 @@ const verifyRoute = createRoute({
 async function access(
   deps: Pick<Deps, "db" | "demoAgentId">,
   principal: Principal | undefined,
-  b: AlibiBundle,
+  stored: AlibiBundle | AlibiBundleV2,
 ): Promise<"full" | "public" | null> {
+  const b = v1Shape(stored);
   if (principal && (await isOwner(deps, principal, b))) return "full";
   if (b.paypal?.transaction_id !== undefined) return "public";
   const shown = b.card ? publicCard(deps.demoAgentId) : publicDenial(deps.demoAgentId);
@@ -223,6 +258,10 @@ async function isOwner(deps: Pick<Deps, "db">, principal: Principal, b: AlibiBun
   );
 }
 
+/** The media type of an EAT Attestation Result (draft-ietf-rats-ear). */
+const EAR_MEDIA_TYPE = "application/eat-ucs+json";
+const isV2 = (b: AlibiBundle | AlibiBundleV2): b is AlibiBundleV2 => b.type === ALIBI_MEDIA_TYPE_V2;
+
 const etagOf = (bundle: Uint8Array, kind: string) =>
   `"${kind}-${createHash("sha256").update(bundle).digest("hex")}"`;
 
@@ -260,8 +299,12 @@ export function registerAlibis(
   };
   const readable = async (c: Context, id: string) => {
     const { b, level } = await levelOf(c, id);
-    return level === "full" ? b : level === "public" ? publicCopy(b as AlibiBundle) : null;
+    return level === "full" ? b : level === "public" && b ? publicCopy(b) : null;
   };
+  /** The Alibi's v2 form: itself when issued as v2, else its bridge once there is one. */
+  const asV2 = async (id: string, b: AlibiBundle | AlibiBundleV2) =>
+    isV2(b) ? b : await loadBridge(deps.db, id);
+  const kindOf = (b: AlibiBundle | AlibiBundleV2) => (isV2(b) ? "alibi2" : "alibi");
   const missing = (c: Context) =>
     problem(c, 404, "alibi-not-found", "Not found", "No alibi with this id.");
 
@@ -271,39 +314,59 @@ export function registerAlibis(
     const id = c.req.param("file").slice(0, 26);
     const b = await readable(c, id);
     if (!b) return missing(c);
-    return send(c, encodeAlibi(b), "pdf", () => renderAlibiPdf(b), {
+    return send(c, encodeAny(b), "pdf", () => renderAlibiPdf(b), {
       "Content-Disposition": `attachment; filename="${id}.pdf"`,
+    });
+  });
+
+  app.openAPIRegistry.registerPath(coseRoute);
+  app.get("/v1/alibis/:file{[0-7][0-9A-HJKMNP-TV-Z]{25}\\.cose}", async (c) => {
+    const id = c.req.param("file").slice(0, 26);
+    const b = await loadAlibi(deps.db, id);
+    const v2 = b && (await asV2(id, b));
+    if (!v2) return missing(c);
+    c.header("Cache-Control", "public, max-age=60");
+    return c.body(statementOf(v2) as Uint8Array<ArrayBuffer>, 200, {
+      "Content-Type": STATEMENT_MEDIA_TYPE,
     });
   });
 
   app.openapi(bundleRoute, (async (c: Context) => {
     const { id } = c.req.param() as { id: string };
-    if (c.req.query("version") === "2") {
-      const { level } = await levelOf(c, id);
-      const v2 = level ? await loadBridge(deps.db, id) : null;
-      if (!v2) return missing(c);
-      const bytes = encodeAny(level === "full" ? v2 : publicCopy(v2));
-      return send(c, bytes, "alibi2", () => bytes);
-    }
-    const b = await readable(c, id);
-    if (!b) return missing(c);
-    const bytes = encodeAlibi(b);
-    return send(c, bytes, "alibi", () => bytes);
+    const { b, level } = await levelOf(c, id);
+    if (!b || !level) return missing(c);
+    const chosen = c.req.query("version") === "2" ? await asV2(id, b) : b;
+    if (!chosen) return missing(c);
+    const served = level === "full" ? chosen : publicCopy(chosen);
+    const bytes = encodeAny(served);
+    return send(c, bytes, kindOf(served), () => bytes);
   }) as never);
 
   app.openapi(verifyRoute, (async (c: Context) => {
-    if (c.req.header("content-type")?.split(";")[0]?.trim() !== ALIBI_MEDIA_TYPE) {
+    const type = c.req.header("content-type")?.split(";")[0]?.trim();
+    if (
+      type !== ALIBI_MEDIA_TYPE &&
+      type !== ALIBI_MEDIA_TYPE_V2 &&
+      type !== STATEMENT_MEDIA_TYPE
+    ) {
       return problem(
         c,
         415,
         "unsupported-media-type",
         "Unsupported media type",
-        `Send ${ALIBI_MEDIA_TYPE}.`,
+        `Send ${ALIBI_MEDIA_TYPE}, ${ALIBI_MEDIA_TYPE_V2} or ${STATEMENT_MEDIA_TYPE}.`,
       );
     }
-    let bundle: AlibiBundle;
+    const body = new Uint8Array(await c.req.arrayBuffer());
+    let input: AnyAlibi;
     try {
-      bundle = decodeAlibi(new Uint8Array(await c.req.arrayBuffer()));
+      if (type === STATEMENT_MEDIA_TYPE) {
+        const statement = decodeStatementFile(body);
+        if (!statement) throw new AlibiFormatError("schema", "not a Keelson SCITT statement");
+        input = statement;
+      } else {
+        input = decodeAny(body);
+      }
     } catch (err) {
       if (!(err instanceof AlibiFormatError)) throw err;
       return problem(c, 400, "alibi-malformed", "Malformed Alibi", err.message, {
@@ -311,7 +374,16 @@ export function registerAlibis(
         ...(err.pointer === undefined ? {} : { pointer: err.pointer }),
       });
     }
-    const report = await verifyAlibi(bundle, { chain: deps.alibiChain ?? null });
+    const now = new Date();
+    const report = await verifyAlibi(input, { now, chain: deps.alibiChain ?? null });
+    if (
+      c.req
+        .header("accept")
+        ?.split(",")
+        .some((a) => a.trim().startsWith(EAR_MEDIA_TYPE))
+    ) {
+      return c.body(JSON.stringify(earOf(report, now)), 200, { "Content-Type": EAR_MEDIA_TYPE });
+    }
     return c.json({ reference: REFERENCE, ...report }, 200);
   }) as never);
 
@@ -320,8 +392,9 @@ export function registerAlibis(
     const b = await loadAlibi(deps.db, id);
     if (!b) return missing(c);
     c.header("Cache-Control", "public, max-age=60");
-    return c.body(encodeReceipt(receiptOf(b)) as Uint8Array<ArrayBuffer>, 200, {
-      "Content-Type": "application/json",
+    const receipt = isV2(b) ? receiptOf(b) : receiptOf(b as AlibiBundle);
+    return c.body(encodeAny(receipt) as Uint8Array<ArrayBuffer>, 200, {
+      "Content-Type": isV2(b) ? RECEIPT_MEDIA_TYPE_V2 : "application/json",
     });
   }) as never);
 }
