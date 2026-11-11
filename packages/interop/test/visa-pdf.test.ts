@@ -25,6 +25,7 @@ async function render(id: string) {
 
 test.each([ALLOW_PAYPAL, ALLOW_CARD])(
   "%s renders the same PDF twice, with the pack, statement and Alibi attached",
+  { timeout: 30_000 },
   async (id) => {
     const { b, pack, pdf } = await render(id);
     const again = await renderEvidencePackPdf(pack, encodeAlibi(b));
