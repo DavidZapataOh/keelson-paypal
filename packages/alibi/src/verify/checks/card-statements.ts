@@ -23,7 +23,8 @@ export const cardStatements: CheckDef = {
     if (!view) return { status: "absent", reads: [] };
     if (!("attestation" in view.input)) return { status: "undisclosed", reads: [] };
     const card = view.input.card as CardV2 | undefined;
-    if (!card) return { status: "absent", reads: [] };
+    // A bridged v1 card purchase's decisions were never statements; `card.authorizations` checks them.
+    if (!card || view.parsed?.kind === "bridge") return { status: "absent", reads: [] };
     const parent = `0x${bytesToHex(leafHash(view.registered))}`;
     const cardRef = cardRefCommit(
       fromHex(card.ref_salt),

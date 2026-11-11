@@ -18,7 +18,9 @@ export const cmw: CheckDef = {
     expect(view.input.attestation.__cmwc_t === TEE_LEGS_COLLECTION, "collection type", [
       "/attestation",
     ]);
-    const legs = view.parsed?.kind === "purchase" ? view.parsed.claims.legs.map((l) => l.kind) : [];
+    const p = view.parsed;
+    const legs =
+      p?.kind === "purchase" || p?.kind === "bridge" ? p.claims.legs.map((l) => l.kind) : [];
     expect(
       [...records.keys()].join() === legs.join() &&
         [...records.values()].every((r) => r.type === TEE_EVIDENCE_TYPE && r.ind === 4),

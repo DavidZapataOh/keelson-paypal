@@ -102,20 +102,27 @@ const CHECKS = [
 ];
 
 /** The one chain read of a verification, started before any offline check runs. */
-function chainRead(input: AlibiBundle | AlibiReceipt, opts: VerifyOptions) {
+function chainRead(
+  input: AlibiBundle | AlibiReceipt,
+  opts: VerifyOptions,
+  view: StatementView | null,
+) {
   if (!opts.chain) return null;
   const { chain } = opts;
+  const bridgeSigner = view?.parsed?.kind === "bridge" ? view.parsed.signer : undefined;
   const read = (async () => {
     const chainId = chainIdOf(input);
     if (chainId === undefined) throw new Error("the Alibi names no chain");
-    return chain.read(chainId, queryOf(input, chainId));
+    return chain.read(chainId, queryOf(input, chainId, bridgeSigner));
   })();
   read.catch(() => {});
   return read;
 }
 
 function modeOf(input: AlibiBundle | AlibiReceipt, view: StatementView | null): Report["mode"] {
-  if (view?.parsed?.kind === "purchase") return view.parsed.claims.mode;
+  if (view?.parsed?.kind === "purchase" || view?.parsed?.kind === "bridge") {
+    return view.parsed.claims.mode;
+  }
   if (isBundle(input)) return input.tee.mode;
   try {
     const text = new TextDecoder().decode(fromBase64(input.leaf));
@@ -159,7 +166,7 @@ export async function verifyAlibi(input: AnyAlibi, opts: VerifyOptions = {}): Pr
   const ctx: Context = {
     now: opts.now ?? new Date(),
     expect: opts.expect,
-    chain: chainRead(legacy, opts),
+    chain: chainRead(legacy, opts, view),
     view,
     receiptKeys: opts.receiptKeys ?? receiptKeyMap(),
   };

@@ -344,6 +344,8 @@ export const alibiSchemaV2 = z.strictObject({
   statement: transparentStatement,
   /** c2sp.org/tlog-proof@v1 of the same leaf, its checkpoint carrying the witness cosignatures. */
   tlog_proof: z.string(),
+  /** A bridge statement's v1 leaf, standard base64: the leaf its claims name as their predecessor. */
+  predecessor: base64.optional(),
   anchor: anchor.optional(),
   policy: z.strictObject({ origin: z.string(), text: z.string() }),
   /** Further RFC 3161 tokens over the statement's signature, beyond the one in label 270. */
