@@ -101,6 +101,14 @@ collection.event = [
     },
   },
 ];
+function withoutMadeUpKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withoutMadeUpKeys);
+  if (!value || typeof value !== "object") return value;
+  const entries = Object.entries(value);
+  if (entries.length > 0 && entries.every(([k]) => /^key_\d+$/.test(k))) return {};
+  return Object.fromEntries(entries.map(([k, v]) => [k, withoutMadeUpKeys(v)]));
+}
+
 const strip = (items: Item[]): Item[] =>
   items.map((i) => {
     if (i.item) return { name: i.name, item: strip(i.item) };
@@ -116,6 +124,9 @@ const strip = (items: Item[]): Item[] =>
         (_, a?: string, b?: string) => `{{${variableFor(url.path, (a ?? b) as string)}}}`,
       ),
     );
+    // A free-form object's example gets a random number of made-up keys; it is shown empty.
+    const body = request.body as { raw?: string } | undefined;
+    if (body?.raw) body.raw = JSON.stringify(withoutMadeUpKeys(JSON.parse(body.raw)), null, 2);
     // Example responses are generated, not recorded; they are left out.
     return {
       name: i.name,

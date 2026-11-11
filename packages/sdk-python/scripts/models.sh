@@ -15,4 +15,5 @@ uv run --group dev datamodel-codegen \
   --disable-timestamp \
   --use-double-quotes \
   --custom-file-header '"""Models generated from openapi/keelson.public.json; do not edit."""'
+uv run --group dev ruff check -q --fix --select UP006,UP035,F401 src/keelson/_models.py
 uv run --group dev ruff format -q src/keelson/_models.py
