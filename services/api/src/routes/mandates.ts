@@ -375,6 +375,10 @@ export async function storeMandate(
   if (body.commitment !== m.zk.commitment) {
     return invalid("commitment differs from zk.commitment");
   }
+  // Every verifier, the Alibi's included, reads embed in clear.
+  if (!isDeepStrictEqual((body.payloadSd as { embed?: unknown }).embed, m.embed)) {
+    return invalid("embed must be in clear in payloadSd");
+  }
   if (m.embed?.top_origin !== embed?.origin) {
     return invalid(
       embed

@@ -107,6 +107,8 @@ describe("embed origins", () => {
       "https://a.example.com;sandbox",
       "https://a,b.example.com",
       "https://192.168.1.2",
+      "https://agents.example.com:0",
+      "https://agents.example.com:0443",
       "https://localhost",
       "https://app.keelson.finance",
     ]) {

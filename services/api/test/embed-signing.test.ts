@@ -208,15 +208,37 @@ const call = (frame: Frame, path: string, body?: unknown): Promise<Call> =>
     [path, body] as const,
   );
 
-/** Links the session to `userId` as the Keelson window does, then creates a passkey in the frame. */
-async function createPasskey(frame: Frame, userId: string): Promise<string> {
-  const link = await call(frame, "/v1/embed/links");
-  expect(link.status).toBe(201);
-  const confirmed = await send("/v1/embed/links/confirm", asUser(userId), {
-    nonce: link.body.nonce,
-  });
+/** The frame's embed ref, as its session reads it. */
+const refOf = (frame: Frame) =>
+  frame.evaluate(() =>
+    fetch("/v1/embed/request", {
+      headers: { "keelson-embed": (window as unknown as { session: string }).session },
+    })
+      .then((r) => r.json())
+      .then((v: { ref: string }) => v.ref),
+  );
+
+/**
+ * What the Keelson window does for `userId`: it reads and confirms the frame's link, and hands the
+ * grant to the frame, which claims it.
+ */
+async function link(frame: Frame, userId: string): Promise<Call> {
+  const ref = await refOf(frame);
+  const minted = await call(frame, "/v1/embed/links");
+  expect(minted.status).toBe(201);
+  const { nonce } = minted.body;
+  const read = await send("/v1/embed/links/inspect", asUser(userId), { nonce });
+  expect(await read.json()).toEqual({ origin: HOST, ref });
+  const confirmed = await send("/v1/embed/links/confirm", asUser(userId), { nonce, ref });
   expect(confirmed.status).toBe(200);
-  expect(await confirmed.json()).toEqual({ origin: HOST });
+  const { grant, origin } = (await confirmed.json()) as { grant: string; origin: string };
+  expect(origin).toBe(HOST);
+  return call(frame, "/v1/embed/links/claim", { grant });
+}
+
+/** Links the session to `userId`, then creates a passkey in the frame. */
+async function createPasskey(frame: Frame, userId: string): Promise<string> {
+  expect((await link(frame, userId)).status).toBe(200);
   const options = await call(frame, "/v1/embed/passkeys/options", { platform: false });
   expect(options.status).toBe(200);
   await frame.evaluate((o) => {
@@ -438,7 +460,7 @@ describe("the embedded approval refuses", () => {
     }
   });
 
-  test("a link spent twice, and a passkey without a linked user", async () => {
+  test("a link spent twice, for another request, or claimed by another session", async () => {
     const userId = await newUser();
     const { session } = await embedded();
     const f = await framed(HOST, session);
@@ -446,10 +468,49 @@ describe("the embedded approval refuses", () => {
       expect((await call(f.frame, "/v1/embed/passkeys/options", { platform: false })).status).toBe(
         401,
       );
-      const link = await call(f.frame, "/v1/embed/links");
-      expect((await send("/v1/embed/links/confirm", {}, link.body)).status).toBe(401);
-      expect((await send("/v1/embed/links/confirm", asUser(userId), link.body)).status).toBe(200);
-      expect((await send("/v1/embed/links/confirm", asUser(userId), link.body)).status).toBe(404);
+      const ref = await refOf(f.frame);
+      const { nonce } = (await call(f.frame, "/v1/embed/links")).body;
+      expect((await send("/v1/embed/links/confirm", {}, { nonce, ref })).status).toBe(401);
+      const other = { nonce, ref: "01M7EMBEDREF00000000000000" };
+      expect((await send("/v1/embed/links/confirm", asUser(userId), other)).status).toBe(404);
+      const confirmed = await send("/v1/embed/links/confirm", asUser(userId), { nonce, ref });
+      expect(confirmed.status).toBe(200);
+      expect((await send("/v1/embed/links/confirm", asUser(userId), { nonce, ref })).status).toBe(
+        404,
+      );
+      // The platform holds a session of its own for the same request: the grant is not its.
+      const { grant } = (await confirmed.json()) as { grant: string };
+      const theirs = await embedded();
+      const stolen = await send(
+        "/v1/embed/links/claim",
+        { "keelson-embed": theirs.session },
+        { grant },
+      );
+      expect(stolen.status).toBe(401);
+      // Nor, once tried, the frame's: a grant is spent on its first claim.
+      expect((await call(f.frame, "/v1/embed/links/claim", { grant })).status).toBe(401);
+      expect((await call(f.frame, "/v1/embed/passkeys/options", { platform: false })).status).toBe(
+        401,
+      );
+    } finally {
+      await f.ctx.close();
+    }
+  });
+
+  test("a passkey created in the frame for a user who already has one", async () => {
+    const userId = await newUser();
+    const first = await embedded();
+    const f = await framed(HOST, first.session);
+    try {
+      await createPasskey(f.frame, userId);
+      const { session } = await embedded();
+      const frame = await f.reframe(HOST, session);
+      const linked = await link(frame, userId);
+      expect(linked.status).toBe(200);
+      expect((linked.body.passkeys as unknown[]).length).toBe(1);
+      expect((await call(frame, "/v1/embed/passkeys/options", { platform: false })).status).toBe(
+        401,
+      );
     } finally {
       await f.ctx.close();
     }

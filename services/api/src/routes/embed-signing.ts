@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { agentConnections, type Db, eq, passkey, sql } from "@keelson/db";
-import { RP_ID } from "@keelson/mandate";
+import { EMBED_ORIGIN, RP_ID } from "@keelson/mandate";
 import {
   generateAuthenticationOptions,
   generateRegistrationOptions,
@@ -14,10 +14,13 @@ import type { Deps } from "../app.ts";
 import { paymentExtension, pubKeyCredParams } from "../auth.ts";
 import {
   bindUser,
+  claimGrant,
   confirmLink,
+  EMBED_GRANT_TTL_SEC,
   EMBED_LINK_TTL_SEC,
   type Embed,
   type EmbedUser,
+  linkEmbed,
   mintLink,
   sessionEmbed,
   sessionUser,
@@ -128,13 +131,13 @@ const routes = {
       401: { description: "No live embed session", content: problemContent },
     },
   }),
-  linkConfirm: createRoute({
+  linkInspect: createRoute({
     method: "post",
-    path: "/v1/embed/links/confirm",
+    path: "/v1/embed/links/inspect",
     tags: ["embed"],
-    summary: "Confirm a link from the Keelson window",
+    summary: "Read a link in the Keelson window",
     description:
-      "The signed-in user binds the embedded approval that opened this window to their account. The frame then creates a passkey or signs there.",
+      "The agent platform and the request an unspent link was opened for, so the window can show the user which page they are about to link before they confirm.",
     middleware: [requireSession()],
     request: {
       body: {
@@ -144,13 +147,76 @@ const routes = {
     },
     responses: {
       200: {
-        description: "Linked",
+        description: "The link",
         content: {
-          "application/json": { schema: z.object({ origin: z.string() }).openapi("EmbedLinked") },
+          "application/json": {
+            schema: z.object({ origin: z.string(), ref: z.string() }).openapi("EmbedLink"),
+          },
         },
       },
       401: { description: "Not signed in", content: problemContent },
       404: { description: "The link is unknown, spent or expired", content: problemContent },
+    },
+  }),
+  linkConfirm: createRoute({
+    method: "post",
+    path: "/v1/embed/links/confirm",
+    tags: ["embed"],
+    summary: "Confirm a link from the Keelson window",
+    description:
+      "The signed-in user confirms the embedded approval that opened this window, named by its `ref`. The answer is a single-use grant the window hands only to that frame, its opener on Keelson's origin; the frame claims it with `POST /v1/embed/links/claim`. The frame may create a passkey only for a user who has none.",
+    middleware: [requireSession()],
+    request: {
+      body: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: z.object({ nonce: z.string().max(64), ref: z.string().max(26) }),
+          },
+        },
+      },
+    },
+    responses: {
+      200: {
+        description: "The grant for the frame",
+        content: {
+          "application/json": {
+            schema: z
+              .object({ origin: z.string(), grant: z.string(), expires_in: z.int() })
+              .openapi("EmbedLinked"),
+          },
+        },
+      },
+      401: { description: "Not signed in", content: problemContent },
+      404: {
+        description: "The link is unknown, spent, expired or for another request",
+        content: problemContent,
+      },
+    },
+  }),
+  linkClaim: createRoute({
+    method: "post",
+    path: "/v1/embed/links/claim",
+    tags: ["embed"],
+    summary: "Claim a link's grant in the embedded approval",
+    description:
+      "The frame redeems the grant its Keelson window handed it. It works once, and only for the session that opened the link; the session then signs for that user.",
+    request: {
+      headers: sessionHeaders,
+      body: {
+        required: true,
+        content: { "application/json": { schema: z.object({ grant: z.string().max(64) }) } },
+      },
+    },
+    responses: {
+      200: {
+        description: "Who the frame signs for",
+        content: { "application/json": { schema: EmbedSigner } },
+      },
+      401: {
+        description: "No live embed session, or the grant is not this session's",
+        content: problemContent,
+      },
     },
   }),
   registerOptions: createRoute({
@@ -295,7 +361,6 @@ export function registerEmbedSigning(
     | "kv"
     | "log"
     | "appOrigin"
-    | "authBaseUrl"
     | "passkeyRpId"
     | "rateLimit"
     | "compileSources"
@@ -305,8 +370,8 @@ export function registerEmbedSigning(
 ): void {
   const { db, kv } = deps;
   const rpId = deps.passkeyRpId ?? RP_ID;
-  /** The approval's own origin, where the API serves it. */
-  const frameOrigin = new URL(deps.authBaseUrl ?? "https://api.keelson.finance").origin;
+  /** The approval's own origin, the one both legs and the Alibi verifier expect. */
+  const frameOrigin = EMBED_ORIGIN;
 
   const noSession = (c: Context) =>
     problem(c, 401, "embed-session-invalid", "No embed session", "Open the embed again.");
@@ -394,20 +459,52 @@ export function registerEmbedSigning(
     return c.json({ nonce, expires_in: EMBED_LINK_TTL_SEC }, 201, { "cache-control": "no-store" });
   });
 
+  const noLink = (c: Context) =>
+    problem(c, 404, "link-invalid", "Link expired", "Go back to the app and try again.");
+
+  app.openapi(routes.linkInspect, async (c) => {
+    const embed = await linkEmbed(kv, c.req.valid("json").nonce);
+    if (!embed) return noLink(c);
+    return c.json({ origin: embed.origin, ref: embed.ref }, 200, { "cache-control": "no-store" });
+  });
+
   app.openapi(routes.linkConfirm, async (c) => {
     const userId = (c.get("principal") as Principal).subject;
-    const embed = await confirmLink(kv, c.req.valid("json").nonce, userId);
-    if (!embed) {
-      return problem(c, 404, "link-invalid", "Link expired", "Go back to the app and try again.");
+    const { nonce, ref } = c.req.valid("json");
+    if ((await linkEmbed(kv, nonce))?.ref !== ref) return noLink(c);
+    const mayCreate = (await userPasskeys(db, userId)).length === 0;
+    const linked = await confirmLink(kv, nonce, { userId, mayCreate });
+    if (!linked) return noLink(c);
+    return c.json(
+      { origin: linked.embed.origin, grant: linked.grant, expires_in: EMBED_GRANT_TTL_SEC },
+      200,
+      { "cache-control": "no-store" },
+    );
+  });
+
+  app.openapi(routes.linkClaim, async (c) => {
+    const session = c.req.header(EMBED_SESSION_HEADER) as string;
+    if (!(await opened(c))) return noSession(c);
+    const bound = await claimGrant(kv, session, c.req.valid("json").grant);
+    if (!bound) {
+      return problem(
+        c,
+        401,
+        "grant-invalid",
+        "Link not accepted",
+        "Open the Keelson window again.",
+      );
     }
-    return c.json({ origin: embed.origin }, 200);
+    return c.json(await signer(bound), 200, { "cache-control": "no-store" });
   });
 
   app.openapi(routes.registerOptions, async (c) => {
     const session = c.req.header(EMBED_SESSION_HEADER) as string;
     if (!(await opened(c))) return noSession(c);
     const bound = await sessionUser(kv, session);
-    if (!bound) return noUser(c);
+    // Only a user a Keelson window linked, who had no passkey then and has none now.
+    if (!bound?.mayCreate) return noUser(c);
+    if ((await userPasskeys(db, bound.userId)).length > 0) return noUser(c);
     const account = await db.query.user.findFirst({
       where: (row, { eq: is }) => is(row.id, bound.userId),
     });
@@ -448,7 +545,7 @@ export function registerEmbedSigning(
     const embed = await opened(c);
     if (!embed) return noSession(c);
     const bound = await sessionUser(kv, session);
-    if (!bound) return noUser(c);
+    if (!bound?.mayCreate) return noUser(c);
     const ceremony = await takeCeremony(kv, session);
     const body = c.req.valid("json");
     const refused = (detail: string) =>
@@ -481,6 +578,11 @@ export function registerEmbedSigning(
       return refused("Passkeys must use ES256.");
     }
     const transports = (body.response.transports as string[] | undefined)?.join(",") ?? "";
+    if ((await userPasskeys(db, bound.userId)).length > 0) return noUser(c);
+    const taken = await db.query.passkey.findFirst({
+      where: (row, { eq: is }) => is(row.credentialID, info.credential.id),
+    });
+    if (taken) return refused("This passkey is already registered.");
     await db.insert(passkey).values({
       id: randomBytes(24).toString("base64url"),
       userId: bound.userId,
@@ -494,7 +596,7 @@ export function registerEmbedSigning(
       aaguid: info.aaguid,
       payment: ceremony.payment === true,
     });
-    const next = { userId: bound.userId, credentialId: info.credential.id };
+    const next: EmbedUser = { userId: bound.userId, credentialId: info.credential.id };
     await bindUser(kv, session, next);
     return c.json(await signer(next), 201, { "cache-control": "no-store" });
   });

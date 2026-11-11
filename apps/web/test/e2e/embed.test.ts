@@ -246,6 +246,11 @@ setInterval(() => parent.postMessage({ source: "keelson", version: 1, type: "app
     if (url.pathname === "/v1/embed/links") {
       return json({ nonce: `kel_${"c".repeat(43)}`, expires_in: 600 }, 201);
     }
+    if (url.pathname === "/v1/embed/links/claim") {
+      if (posted?.grant !== `keg_${"d".repeat(43)}`) return json({}, 401);
+      api.signer = { passkeys: [], credentialId: null };
+      return json(api.signer);
+    }
     if (url.pathname === "/v1/embed/passkeys/options") {
       return json({
         challenge: randomBytes(32).toString("base64url"),
@@ -443,11 +448,29 @@ describe("the embedded approval", () => {
       link: `kel_${"c".repeat(43)}`,
     });
     await frame.getByText("Sign in to Keelson in the window, then come back here").waitFor();
-    // The user signs in there and links this approval; they have no passkey yet.
-    api.signer = { passkeys: [], credentialId: null };
+    // A grant from any page other than the window this frame opened is ignored.
+    await page.evaluate(
+      ([api, grant]) =>
+        (document.querySelector("#slot iframe") as HTMLIFrameElement).contentWindow?.postMessage(
+          { type: "keelson:linked", grant },
+          api,
+        ),
+      [API, `keg_${"d".repeat(43)}`] as const,
+    );
+    await page.waitForTimeout(800);
+    expect(api.signer).toBeNull();
+    // The user signs in there and confirms; the window hands the grant to its opener, this frame.
+    await popup.evaluate(
+      ([api, grant]) => window.opener.postMessage({ type: "keelson:linked", grant }, api),
+      [API, `keg_${"d".repeat(43)}`] as const,
+    );
     const create = frame.getByRole("button", { name: "Create passkey" });
     await create.waitFor({ timeout: 6_000 });
-    await expect.poll(() => create.getAttribute("aria-disabled")).toBe("false");
+    // It arms, like Allow, only once seen whole.
+    await create.scrollIntoViewIfNeeded();
+    await expect
+      .poll(() => create.getAttribute("aria-disabled"), { timeout: 10_000 })
+      .toBe("false");
     await shot(page, "create");
     await create.click();
     const sign = frame.getByRole("button", { name: "Sign $120.00 with passkey" });
@@ -476,8 +499,12 @@ describe("the embedded approval", () => {
     await page.waitForTimeout(600);
     const first = context.waitForEvent("page");
     await link.click();
-    (await first).close();
-    api.signer = { passkeys: [], credentialId: null };
+    const window_ = await first;
+    await expect.poll(() => window_.url()).toContain(`${APP}/connect/`);
+    await window_.evaluate(
+      ([api, grant]) => window.opener.postMessage({ type: "keelson:linked", grant }, api),
+      [API, `keg_${"d".repeat(43)}`] as const,
+    );
     const create = frame.getByRole("button", { name: "Create passkey" });
     await expect.poll(() => create.getAttribute("aria-disabled"), { timeout: 6_000 }).toBe("false");
     await create.click();

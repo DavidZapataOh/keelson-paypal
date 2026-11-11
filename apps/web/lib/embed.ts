@@ -10,7 +10,7 @@ import type { ConnectionView } from "./connections";
 import type { Compiled } from "./types";
 
 /** The Keelson app, where a user without a passkey here signs in, top-level. */
-const APP_ORIGIN = process.env.NEXT_PUBLIC_APP_ORIGIN ?? "https://app.keelson.finance";
+export const APP_ORIGIN = process.env.NEXT_PUBLIC_APP_ORIGIN ?? "https://app.keelson.finance";
 
 /** Who the frame signs for: the user's passkeys, and the one used in this frame. */
 export interface EmbedSigner {
@@ -42,6 +42,9 @@ const VERSION = 1;
 
 /** The popup tells its opener, the frame on this same origin, that the user answered. */
 export const DONE = "keelson:done";
+
+/** The Keelson window hands its opener, the frame on the API's origin, the link's grant. */
+export const LINKED = "keelson:linked";
 
 /** Posts `event` to `peer`, delivered only if `peer` is at exactly `origin`. */
 export function post(peer: Window | null, origin: string, event: HostEvent): void {
@@ -101,6 +104,9 @@ export const signIn = (session: string, response: AuthenticationResponseJSON) =>
 
 export const startLink = (session: string) =>
   send<{ nonce: string; expires_in: number }>(session, "/v1/embed/links");
+
+export const claimLink = (session: string, grant: string) =>
+  send<EmbedSigner>(session, "/v1/embed/links/claim", { grant });
 
 export const passkeyOptions = (session: string, platform: boolean) =>
   send<PublicKeyCredentialCreationOptionsJSON>(session, "/v1/embed/passkeys/options", {

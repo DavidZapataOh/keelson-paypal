@@ -24,7 +24,7 @@ const sessionKey = (session: string) => `embed:ses:${digest(session)}`;
 
 /** An https origin with a DNS hostname: no wildcard, IP literal or CSP separator can pass. */
 const ORIGIN =
-  /^https:\/\/(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9](?::\d{1,5})?$/;
+  /^https:\/\/(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9](?::[1-9]\d{0,4})?$/;
 
 /**
  * A serialized https origin, or undefined: a DNS hostname and optional port, with no path,
@@ -105,18 +105,23 @@ export async function sessionEmbed(
 
 /** How long a passkey ceremony the frame started may wait for its answer. */
 const EMBED_CEREMONY_TTL_SEC = 300;
+/** How long a grant the Keelson window hands the frame may wait to be claimed. */
+export const EMBED_GRANT_TTL_SEC = EMBED_CEREMONY_TTL_SEC;
 /** How long a link the frame opened in a Keelson window may wait for the user. */
 export const EMBED_LINK_TTL_SEC = 600;
 
 const userKey = (sessionDigest: string) => `embed:usr:${sessionDigest}`;
 const ceremonyKey = (session: string) => `embed:cer:${digest(session)}`;
 const linkKey = (nonce: string) => `embed:lnk:${digest(nonce)}`;
+const grantKey = (grant: string) => `embed:grt:${digest(grant)}`;
 
 /** Who a frame's session signs for, once a passkey or a Keelson window said so. */
 export interface EmbedUser {
   userId: string;
   /** The passkey the user signed in with in the frame, so present on this device. */
   credentialId?: string;
+  /** Linked from a Keelson window for a user with no passkey: the frame may create one. */
+  mayCreate?: boolean;
 }
 
 /** A WebAuthn ceremony the frame started, answered once. */
@@ -137,14 +142,14 @@ export async function sessionUser(
 }
 
 /** Binds the session to `user` for as long as the session lives. */
-export function bindUser(kv: RedisClientType, session: string, user: EmbedUser): Promise<void> {
-  return bindDigest(kv, digest(session), user);
-}
-
-async function bindDigest(kv: RedisClientType, sessionDigest: string, user: EmbedUser) {
-  const ttl = await kv.ttl(`embed:ses:${sessionDigest}`);
+export async function bindUser(
+  kv: RedisClientType,
+  session: string,
+  user: EmbedUser,
+): Promise<void> {
+  const ttl = await kv.ttl(sessionKey(session));
   if (ttl <= 0) return;
-  await kv.set(userKey(sessionDigest), JSON.stringify(user), { EX: ttl });
+  await kv.set(userKey(digest(session)), JSON.stringify(user), { EX: ttl });
 }
 
 /** Starts a ceremony for the session, replacing any it had. */
@@ -166,8 +171,8 @@ export async function takeCeremony(
 }
 
 /**
- * A single-use nonce for the Keelson window the frame opens: the user who signs in there and
- * confirms binds this session, and only this one, to their account.
+ * A single-use nonce for the Keelson window the frame opens. The user who signs in there and
+ * confirms gets a grant for this session; the frame alone receives it, from that window.
  */
 export async function mintLink(kv: RedisClientType, session: string): Promise<string> {
   const nonce = `kel_${randomBytes(32).toString("base64url")}`;
@@ -175,19 +180,48 @@ export async function mintLink(kv: RedisClientType, session: string): Promise<st
   return nonce;
 }
 
-/** Spends a link for `userId`: the session it names is bound to them. */
+/** The embed a link was minted for, while it is unspent. */
+export async function linkEmbed(kv: RedisClientType, nonce: string): Promise<Embed | undefined> {
+  if (!nonce.startsWith("kel_") || nonce.length > 64) return undefined;
+  const sessionDigest = await kv.get(linkKey(nonce));
+  const ref = sessionDigest ? await kv.get(`embed:ses:${sessionDigest}`) : null;
+  return ref ? readEmbed(kv, ref) : undefined;
+}
+
+/**
+ * Spends a link for `userId`, returning a single-use grant that binds the link's session to
+ * them once that session claims it. `mayCreate` says whether the frame may create their passkey.
+ */
 export async function confirmLink(
   kv: RedisClientType,
   nonce: string,
-  userId: string,
-): Promise<Embed | undefined> {
-  if (!nonce.startsWith("kel_") || nonce.length > 64) return undefined;
-  const sessionDigest = await kv.getDel(linkKey(nonce));
-  const ref = sessionDigest ? await kv.get(`embed:ses:${sessionDigest}`) : null;
-  const embed = ref ? await readEmbed(kv, ref) : undefined;
-  if (!sessionDigest || !embed) return undefined;
-  await bindDigest(kv, sessionDigest, { userId });
-  return embed;
+  user: { userId: string; mayCreate: boolean },
+): Promise<{ embed: Embed; grant: string } | undefined> {
+  const embed = await linkEmbed(kv, nonce);
+  const sessionDigest = embed ? await kv.getDel(linkKey(nonce)) : null;
+  if (!embed || !sessionDigest) return undefined;
+  const grant = `keg_${randomBytes(32).toString("base64url")}`;
+  await kv.set(grantKey(grant), JSON.stringify({ sessionDigest, ...user }), {
+    EX: EMBED_CEREMONY_TTL_SEC,
+  });
+  return { embed, grant };
+}
+
+/** Binds `session` to the user a grant names, if the grant was made for this session. */
+export async function claimGrant(
+  kv: RedisClientType,
+  session: string,
+  grant: string,
+): Promise<EmbedUser | undefined> {
+  if (!grant.startsWith("keg_") || grant.length > 64) return undefined;
+  const raw = await kv.getDel(grantKey(grant));
+  const g = raw
+    ? (JSON.parse(raw) as { sessionDigest: string; userId: string; mayCreate: boolean })
+    : undefined;
+  if (!g || g.sessionDigest !== digest(session)) return undefined;
+  const user: EmbedUser = { userId: g.userId, mayCreate: g.mayCreate };
+  await bindUser(kv, session, user);
+  return user;
 }
 
 /** The https origins `clientId` registered for embedding. */

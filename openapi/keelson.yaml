@@ -1067,8 +1067,14 @@ components:
       properties:
         origin:
           type: string
+        grant:
+          type: string
+        expires_in:
+          type: integer
       required:
         - origin
+        - grant
+        - expires_in
     Agent:
       type: object
       properties:
@@ -6859,14 +6865,14 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
-  /v1/embed/links/confirm:
+  /v1/embed/links/inspect:
     post:
       tags:
         - embed
-      summary: Confirm a link from the Keelson window
-      description: The signed-in user binds the embedded approval that opened this
-        window to their account. The frame then creates a passkey or signs
-        there.
+      summary: Read a link in the Keelson window
+      description: The agent platform and the request an unspent link was opened for,
+        so the window can show the user which page they are about to link before
+        they confirm.
       requestBody:
         required: true
         content:
@@ -6881,7 +6887,52 @@ paths:
                 - nonce
       responses:
         "200":
-          description: Linked
+          description: The link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbedLink"
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: The link is unknown, spent or expired
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/embed/links/confirm:
+    post:
+      tags:
+        - embed
+      summary: Confirm a link from the Keelson window
+      description: The signed-in user confirms the embedded approval that opened this
+        window, named by its `ref`. The answer is a single-use grant the window
+        hands only to that frame, its opener on Keelson's origin; the frame
+        claims it with `POST /v1/embed/links/claim`. The frame may create a
+        passkey only for a user who has none.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nonce:
+                  type: string
+                  maxLength: 64
+                ref:
+                  type: string
+                  maxLength: 26
+              required:
+                - nonce
+                - ref
+      responses:
+        "200":
+          description: The grant for the frame
           content:
             application/json:
               schema:
@@ -6893,7 +6944,47 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
         "404":
-          description: The link is unknown, spent or expired
+          description: The link is unknown, spent, expired or for another request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/embed/links/claim:
+    post:
+      tags:
+        - embed
+      summary: Claim a link's grant in the embedded approval
+      description: The frame redeems the grant its Keelson window handed it. It works
+        once, and only for the session that opened the link; the session then
+        signs for that user.
+      parameters:
+        - schema:
+            type: string
+            maxLength: 64
+          required: false
+          name: keelson-embed
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                grant:
+                  type: string
+                  maxLength: 64
+              required:
+                - grant
+      responses:
+        "200":
+          description: Who the frame signs for
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbedSigner"
+        "401":
+          description: No live embed session, or the grant is not this session's
           content:
             application/problem+json:
               schema:

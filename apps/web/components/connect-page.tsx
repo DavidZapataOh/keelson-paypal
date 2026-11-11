@@ -9,6 +9,7 @@ import { ApiError, get, post } from "../lib/api";
 import { authClient } from "../lib/auth";
 import { API } from "../lib/config";
 import { CONNECT_PROMPT, type ConnectionView } from "../lib/connections";
+import { LINKED } from "../lib/embed";
 import { Approval, type Chosen } from "./approval";
 import { ErrorNotice } from "./notice";
 import { OnboardingFrame } from "./onboarding/frame";
@@ -170,6 +171,7 @@ function embedReturn(params: URLSearchParams) {
   const link = params.get("link");
   return {
     initial,
+    ref,
     back: back.toString(),
     ...(link && LINK.test(link) ? { link } : {}),
   };
@@ -178,32 +180,64 @@ function embedReturn(params: URLSearchParams) {
 const LINK = /^kel_[A-Za-z0-9_-]{43}$/;
 
 /**
- * Opened by an embedded approval for a user it does not know yet: once signed in here, the user
- * links their account to that approval, which then creates their passkey if they have none and
- * signs there.
+ * Opened by an embedded approval for a user it does not know yet. Once signed in here, the user
+ * confirms the platform it names; the grant goes back only to the frame that opened this
+ * window, on Keelson's own origin, which then creates their passkey if they have none and signs.
  */
 function LinkEmbed({
   request,
   nonce,
+  embedRef,
   back,
 }: {
   request: ConnectionView;
   nonce: string;
+  embedRef: string;
   back: string;
 }) {
+  const [link, setLink] = useState<{ origin: string } | null>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  useEffect(() => {
+    post<{ origin: string; ref: string }>("/v1/embed/links/inspect", { nonce })
+      .then((l) => setLink(l.ref === embedRef ? { origin: l.origin } : null))
+      .catch(() => setLink(null));
+  }, [nonce, embedRef]);
+  // The frame that opened this window is on the API's origin; any other opener gets nothing.
+  const opener = typeof window === "undefined" ? null : window.opener;
+  const host = link ? new URL(link.origin).host : "";
   const confirm = async () => {
+    if (!link || !opener) return;
     setBusy(true);
     setError(undefined);
     try {
-      await post("/v1/embed/links/confirm", { nonce });
+      const { grant } = await post<{ grant: string }>("/v1/embed/links/confirm", {
+        nonce,
+        ref: embedRef,
+      });
+      (opener as Window).postMessage({ type: LINKED, grant }, new URL(API).origin);
       location.replace(back);
     } catch (e) {
       setBusy(false);
       setError(e instanceof Error ? e.message : "The approval could not be linked.");
     }
   };
+  if (link === undefined) {
+    return (
+      <p role="status" className="flex items-center gap-2 p-8 text-muted-foreground">
+        <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+        Reading the request
+      </p>
+    );
+  }
+  if (link === null || !opener) {
+    return (
+      <Closed
+        title="This link is no longer valid"
+        line="Go back to the app that asked and open Keelson from its approval again."
+      />
+    );
+  }
   return (
     <OnboardingFrame
       step="Agent"
@@ -216,16 +250,17 @@ function LinkEmbed({
           className="h-13 w-full rounded-xl text-base"
         >
           {busy ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
-          Continue to {request.agent.operator}
+          Continue on {host}
         </Button>
       }
     >
       <h1 className="text-balance font-semibold text-[1.75rem] leading-[1.1] tracking-[-0.025em] sm:text-[2rem]">
-        Finish in {request.agent.operator}
+        Approve on {host}
       </h1>
       <p className="mt-3 text-pretty text-lg text-muted-foreground leading-snug">
-        {request.name} asked for your approval there. Continue, and approve it there with your
-        passkey. This window closes.
+        {request.name}, run by {request.agent.operator}, asked for your approval in Keelson's panel
+        on {host}. Continue only if you were there. Keelson's panel then asks for your passkey, or
+        creates one if you have none, and nothing is approved until you sign. This window closes.
       </p>
       {error ? (
         <div className="mt-6">
@@ -315,7 +350,9 @@ export function ConnectPage() {
     );
   }
   if (embed?.link) {
-    return <LinkEmbed request={request} nonce={embed.link} back={embed.back} />;
+    return (
+      <LinkEmbed request={request} nonce={embed.link} embedRef={embed.ref} back={embed.back} />
+    );
   }
   if (embed) {
     const done = () => location.replace(embed.back);

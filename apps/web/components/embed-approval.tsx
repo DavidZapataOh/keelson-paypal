@@ -21,7 +21,9 @@ import {
 import { untilIn } from "../lib/connections";
 import { deviceId } from "../lib/device";
 import {
+  APP_ORIGIN,
   approveEmbed,
+  claimLink,
   DONE,
   declineEmbed,
   draftEmbed,
@@ -30,6 +32,7 @@ import {
   type EmbedView,
   framePasskeys,
   type HostEvent,
+  LINKED,
   openEmbed,
   passkeyOptions,
   post,
@@ -353,15 +356,6 @@ export function EmbedApproval() {
         const v = await readEmbed(session);
         if (stop) return;
         if (settle(v)) return;
-        if (linking && v.signer) {
-          ctx.current.popup?.close();
-          setPhase(
-            v.signer.passkeys.length > 0
-              ? { at: "confirm", signing: false }
-              : { at: "create", busy: false },
-          );
-          return;
-        }
         if (ctx.current.popup?.closed) {
           setPhase({ at: "review" });
           setError("The Keelson window closed before you answered. Nothing was approved.");
@@ -370,12 +364,25 @@ export function EmbedApproval() {
     };
     const t = setInterval(check, POLL_MS);
     const onMessage = (e: MessageEvent) => {
-      if (
-        e.origin === location.origin &&
-        e.source === ctx.current.popup &&
-        (e.data as { type?: string } | null)?.type === DONE
-      ) {
-        void check();
+      if (e.source !== ctx.current.popup) return;
+      const data = e.data as { type?: string; grant?: unknown } | null;
+      if (e.origin === location.origin && data?.type === DONE) void check();
+      // Only the window this frame opened, on the app's origin, can hand it the link's grant.
+      if (linking && e.origin === APP_ORIGIN && data?.type === LINKED) {
+        if (typeof data.grant !== "string") return;
+        claimLink(session, data.grant)
+          .then((who) => {
+            setSigner(who);
+            setPhase(
+              who.passkeys.length > 0
+                ? { at: "confirm", signing: false }
+                : { at: "create", busy: false },
+            );
+          })
+          .catch(() => {
+            setPhase({ at: "review" });
+            setError("Keelson could not link the window. Try again.");
+          });
       }
     };
     window.addEventListener("message", onMessage);
@@ -464,7 +471,8 @@ export function EmbedApproval() {
     return () => removeEventListener("resize", check);
   }, []);
 
-  const reviewing = (phase.at === "review" || phase.at === "confirm") && fits;
+  const reviewing =
+    (phase.at === "review" || phase.at === "confirm" || phase.at === "create") && fits;
   const summary = useRef<HTMLParagraphElement>(null);
   const { visible, armed } = useArmed([allow, summary], reviewing, phase.at);
 
@@ -599,7 +607,7 @@ export function EmbedApproval() {
 
   const create = async () => {
     const { session } = ctx.current;
-    if (phase.at !== "create" || phase.busy || !creation || !session) return;
+    if (!armed || phase.at !== "create" || phase.busy || !creation || !session) return;
     if (!framePasskeys("create")) {
       setPhase({ at: "elsewhere", why: "This page cannot create a passkey here." });
       return;
@@ -947,25 +955,25 @@ export function EmbedApproval() {
           </div>
         ) : phase.at === "create" ? (
           <div className="grid gap-2">
-            <p className="text-pretty text-sm leading-snug">
+            {grant}
+            <p className="text-pretty text-muted-foreground text-sm leading-snug">
               Create the passkey that signs for you. It stays on this device, and Keelson asks for
               it before anything is approved.
             </p>
             <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-2">
               {back}
-              <Button
-                size="lg"
-                className="h-12 rounded-xl text-[15px]"
-                onClick={create}
-                aria-disabled={!creation || phase.busy}
-              >
-                {phase.busy || !creation ? (
-                  <Loader2 className="animate-spin" aria-hidden="true" />
-                ) : (
-                  <KeyRound aria-hidden="true" />
-                )}
-                {phase.busy ? "Waiting for your device" : "Create passkey"}
-              </Button>
+              {armedButton(
+                <>
+                  {phase.busy || !creation ? (
+                    <Loader2 className="animate-spin" aria-hidden="true" />
+                  ) : (
+                    <KeyRound aria-hidden="true" />
+                  )}
+                  {phase.busy ? "Waiting for your device" : "Create passkey"}
+                </>,
+                create,
+                !creation || phase.busy,
+              )}
             </div>
           </div>
         ) : phase.at === "confirm" ? (
