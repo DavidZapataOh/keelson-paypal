@@ -26,7 +26,7 @@ const ENGINE_PROVER = {
 /** The chain `EngineProofVerifier` records proofs on. */
 const ENGINE_PROOF_CHAIN_ID = arbitrumSepolia.id;
 /** The block `EngineProofVerifier` was deployed at, where its `EngineProven` history starts. */
-const ENGINE_PROOF_FROM_BLOCK = 328_028_156n;
+const ENGINE_PROOF_FROM_BLOCK = 328_153_386n;
 
 /** How long a Groth16 proof may take on the workflow instance. */
 const PROVE_TIMEOUT_MS = 3 * 60 * 60 * 1000;
