@@ -57,6 +57,11 @@ abstract contract Erc8004Base is SlashBase {
 
     /// @dev The operator's `ValidationRequest` for a DENY.
     function _operatorRequest(KeelsonTypes.Countersign memory c) internal view returns (bytes memory) {
+        return _validationRequest(operatorKey, c);
+    }
+
+    /// @dev A `ValidationRequest` for a DENY, signed by `key`.
+    function _validationRequest(uint256 key, KeelsonTypes.Countersign memory c) internal view returns (bytes memory) {
         bytes32 requestHash = verdictVerifier.hashTypedData(KeelsonTypes.hash(c));
         bytes32 digest = keccak256(
             abi.encodePacked(
@@ -65,7 +70,7 @@ abstract contract Erc8004Base is SlashBase {
                 keccak256(abi.encode(validation.VALIDATION_REQUEST_TYPEHASH(), requestHash))
             )
         );
-        (uint8 sv, bytes32 r, bytes32 s) = vm.sign(operatorKey, digest);
+        (uint8 sv, bytes32 r, bytes32 s) = vm.sign(key, digest);
         return abi.encodePacked(r, s, sv);
     }
 
