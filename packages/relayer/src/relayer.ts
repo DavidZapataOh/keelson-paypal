@@ -1,5 +1,5 @@
 import { deploymentsFor } from "@keelson/chain";
-import { and, chainTxs, type Db, eq, inArray, purchases, sql } from "@keelson/db";
+import { and, chainTxs, type Db, eq, inArray, isNull, or, purchases, sql } from "@keelson/db";
 import type { Logger } from "pino";
 import { ulid } from "ulid";
 import {
@@ -10,6 +10,7 @@ import {
   encodeFunctionData,
   fallback,
   type Hex,
+  type HttpTransportConfig,
   hexToBytes,
   http,
   keccak256,
@@ -19,6 +20,7 @@ import {
   TransactionNotFoundError,
   type TransactionReceipt,
   TransactionReceiptNotFoundError,
+  type Transport,
   toHex,
 } from "viem";
 import { sendRawTransactionSync } from "viem/actions";
@@ -39,6 +41,8 @@ const MAX_RESIGNS = 3;
 const BASE_FEE_TTL_MS = 250;
 const BALANCE_TTL_MS = 10_000;
 const DUPLICATE_WAIT_MS = 5_000;
+/** How long a sent call waits for the block of a partial receipt; the reconciler fills it in later. */
+const CANONICAL_RECEIPT_WAIT_MS = 1_500;
 /** How long a send refused as `nonce too high` waits for predecessors still in flight before resynchronizing. */
 const PREDECESSOR_WAIT_MS = 5_000;
 /** A `simulating` row older than this lost its process before signing anything. */
@@ -103,6 +107,8 @@ export interface RelayerChainConfig {
   sequencerUrl?: string;
   /** Overrides of the chain's fee and balance limits. */
   settings?: Partial<Omit<ChainSettings, "chain">>;
+  /** Builds the transport to each URL; viem's `http` by default. */
+  transport?: (url: string, config?: HttpTransportConfig) => Transport;
 }
 
 export interface Relayer {
@@ -242,6 +248,21 @@ async function receiptOf(
   }
 }
 
+/**
+ * Arbitrum's sequencer may answer `eth_sendRawTransactionSync` at execution, before the block is
+ * sealed, with a zero `blockHash`; the node's receipt carries the block. Without it the partial
+ * receipt stands and the reconciler fills the block in.
+ * https://docs.arbitrum.io/notices/transaction-submission-changes-notice
+ */
+async function canonical(
+  read: PublicClient,
+  receipt: TransactionReceipt,
+): Promise<TransactionReceipt> {
+  if (receipt.blockHash && receipt.blockHash !== ZERO_HASH) return receipt;
+  const late = sleep(CANONICAL_RECEIPT_WAIT_MS).then(() => undefined);
+  return (await Promise.race([receiptOf(read, receipt.transactionHash), late])) ?? receipt;
+}
+
 /** Only viem's short message: the full one carries the request URL, which embeds the provider's key. */
 function brief(err: unknown): string {
   if (err instanceof BaseError) return err.shortMessage;
@@ -269,17 +290,20 @@ export function createRelayer(opts: {
   for (const [key, cfg] of Object.entries(opts.chains) as [string, RelayerChainConfig][]) {
     const id = Number(key) as ChainId;
     const settings = { ...CHAINS[id], ...cfg.settings };
+    const transport = cfg.transport ?? http;
     contexts.set(id, {
       id,
       settings,
       account: cfg.account,
       read: createPublicClient({
         chain: settings.chain,
-        transport: fallback([cfg.rpcUrl, ...(cfg.fallbackRpcUrls ?? [])].map((url) => http(url))),
+        transport: fallback(
+          [cfg.rpcUrl, ...(cfg.fallbackRpcUrls ?? [])].map((url) => transport(url)),
+        ),
       }),
       seq: createPublicClient({
         chain: settings.chain,
-        transport: http(cfg.sequencerUrl ?? settings.sequencerUrl, {
+        transport: transport(cfg.sequencerUrl ?? settings.sequencerUrl, {
           timeout: SEND_TIMEOUT_MS + 1_000,
           retryCount: 0,
         }),
@@ -531,7 +555,7 @@ export function createRelayer(opts: {
             throwOnReceiptRevert: false,
           });
           ctx.balance = undefined;
-          return finish(stored, receipt, startedAt);
+          return finish(stored, await canonical(ctx.read, receipt), startedAt);
         } catch (err) {
           failure = classify(err);
           log.warn({ id: row.id, nonce, failure, err: brief(err) }, "relayer send failed");
@@ -823,7 +847,13 @@ export function createRelayer(opts: {
         and(
           eq(chainTxs.chainId, ctx.id),
           inArray(chainTxs.status, ["confirmed", "reverted"]),
-          sql`${chainTxs.confirmedAt} > now() - interval '2 minutes'`,
+          or(
+            sql`${chainTxs.confirmedAt} > now() - interval '2 minutes'`,
+            and(
+              isNull(chainTxs.blockHash),
+              sql`${chainTxs.confirmedAt} > now() - interval '1 day'`,
+            ),
+          ),
         ),
       )
       .limit(200);

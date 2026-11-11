@@ -7,6 +7,7 @@ import type { Relayer } from "@keelson/relayer";
 import type { RedisClientType } from "redis";
 import { type Address, keccak256, stringToBytes } from "viem";
 import type { ChainReaders } from "../chain/reader.ts";
+import { rpcCalls } from "../chain/rpc.ts";
 import type { LogConfig } from "../log/append.ts";
 import type { PayPalDeps } from "../paypal.ts";
 import type { TeeConfig } from "../tee/signers.ts";
@@ -78,6 +79,12 @@ const route = createRoute({
                   anchoredAgeMs: z.number().int().optional(),
                 })
                 .optional(),
+            }),
+            /** The chain RPC requests this process sent since it started. */
+            rpc: z.object({
+              calls: z.array(
+                z.object({ provider: z.string(), method: z.string(), calls: z.number().int() }),
+              ),
             }),
             version: z.string(),
           }),
@@ -300,6 +307,7 @@ export function registerStatus(
           ...(webhooks ? { webhooks } : {}),
           ...(anchor ? { anchor } : {}),
         },
+        rpc: { calls: rpcCalls() },
         version,
       },
       200,

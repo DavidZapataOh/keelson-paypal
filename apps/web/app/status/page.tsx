@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { EnvironmentTable } from "../../components/judge/environment";
 import { StatusPage } from "../../components/judge/status";
+import { LogBonds } from "../../components/log-bond";
 import { Eyebrow } from "../../components/notice";
 
 export const metadata: Metadata = {
@@ -24,6 +25,18 @@ export default function Page() {
         </p>
       </div>
       <StatusPage />
+      <section aria-labelledby="bonds-title" className="grid gap-4">
+        <div className="grid max-w-prose gap-2">
+          <h2 id="bonds-title" className="font-semibold text-xl tracking-tight">
+            Bonds on the log
+          </h2>
+          <p className="text-pretty text-muted-foreground">
+            Two checkpoints of the log, signed by its key, with different roots for one size pay the
+            bond to whoever submits them. The contract verifies the signatures on chain.
+          </p>
+        </div>
+        <LogBonds />
+      </section>
       <section aria-labelledby="env-title" className="grid gap-4">
         <h2 id="env-title" className="font-semibold text-xl tracking-tight">
           Where each piece runs

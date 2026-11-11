@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "../../lib/api";
 import { authClient, SESSION_HINT } from "../../lib/auth";
 import { CHAIN_ID, injectedWallet, me, type OperatorSelf, signIn } from "../../lib/operator";
+import { LogBonds } from "../log-bond";
 import { Standing } from "./standing";
 
 // AG Grid renders only in the browser; the static export ships the console's shell.
@@ -187,6 +188,18 @@ export function OperatorConsole() {
         </header>
         <Standing key={`standing-${agentId}`} agentId={agentId} owner={wallet} />
         <CoverageBook key={`book-${agentId}`} agentId={agentId} />
+        <section aria-labelledby="log-bond-title" className="grid gap-4">
+          <div className="grid max-w-prose gap-1">
+            <h2 id="log-bond-title" className="font-semibold text-lg tracking-tight">
+              The log that records your purchases is bonded too
+            </h2>
+            <p className="text-pretty text-muted-foreground text-sm">
+              If Keelson&apos;s log ever signed two histories, anyone takes its bond with the two
+              checkpoints. Your agent&apos;s Alibis are only as good as that log.
+            </p>
+          </div>
+          <LogBonds />
+        </section>
       </div>
     </div>
   );

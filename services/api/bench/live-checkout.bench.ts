@@ -16,6 +16,7 @@ import {
   quoteShopify,
   runAgent,
   runCheckout,
+  shopifyCart,
 } from "@keelson/agent";
 import { decodeAlibi } from "@keelson/alibi";
 import { verifyAlibi } from "@keelson/alibi/verify";
@@ -85,7 +86,7 @@ try {
     liveMandate(m, MAX_MINOR, process.env.ALFRED_PAYPAL_MERCHANT_ID ?? "unknown");
     mandate = structuredClone(m);
   });
-  const session = await openSession({ hosts: ALFRED.hosts, profile: PROFILE });
+  const session = await openSession({ hosts: ALFRED.hosts, profile: PROFILE, locale: "en-US" });
   try {
     let proposal: ProposedCart;
     let agent: Awaited<ReturnType<typeof runAgent>> | undefined;
@@ -140,7 +141,10 @@ try {
       live: { store: ALFRED.origin },
     });
     const allowed = result.status < 300 && result.body.decision === "allow";
-    const gate = new PayGate({ checkoutHosts: ALFRED.checkoutHosts });
+    const gate = new PayGate({
+      checkoutHosts: ALFRED.checkoutHosts,
+      cart: shopifyCart(session.context, ALFRED.origin),
+    });
     if (allowed) gate.allow(quote.total);
 
     const paying = RUN === "blocked" || allowed;
@@ -206,6 +210,8 @@ try {
         ms: run.ms,
         usd: run.usage.usd,
         refusedByGate: gate.refused,
+        // Only the amounts read on each page where a pay action was held.
+        heldAmounts: gate.held,
       },
       transactionId,
       recorded,
