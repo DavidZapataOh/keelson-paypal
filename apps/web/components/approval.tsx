@@ -140,7 +140,7 @@ function CartDiff({ request }: { request: ConnectionView }) {
             </span>
           </li>
         ))}
-        <li className="mt-1 flex justify-between gap-3 border-foreground/10 border-t pt-2 font-medium">
+        <li className="mt-1 flex justify-between gap-3 border-foreground/15 border-t pt-2 font-medium">
           <span>{cart.merchant.name}</span>
           <span className="tnum">{money(BigInt(cart.totalMinor), cart.currency)}</span>
         </li>
@@ -149,13 +149,13 @@ function CartDiff({ request }: { request: ConnectionView }) {
         <caption className="sr-only">Each field of your mandate against the cart</caption>
         <thead>
           <tr className="text-left text-muted-foreground text-xs uppercase tracking-[0.08em]">
-            <th scope="col" className="w-[34%] pb-1.5 font-normal">
+            <th scope="col" className="w-1/3 pb-2 font-normal">
               Field
             </th>
-            <th scope="col" className="pb-1.5 font-normal">
+            <th scope="col" className="pb-2 font-normal">
               Mandate
             </th>
-            <th scope="col" className="pb-1.5 font-normal">
+            <th scope="col" className="pb-2 font-normal">
               Cart
             </th>
           </tr>

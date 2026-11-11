@@ -114,7 +114,7 @@ function EmailAlerts({ onChange }: { onChange: () => void }) {
         </div>
       ) : null}
 
-      <form onSubmit={save} className="grid gap-2 sm:grid-cols-[1fr_auto]">
+      <form onSubmit={save} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
         <label htmlFor={id} className="sr-only">
           Email address for alerts
         </label>
