@@ -4,7 +4,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { useSessionHint } from "../header";
 
-export const STEPS = ["PayPal", "Rules", "Sign", "Agent"] as const;
+const STEPS = ["PayPal", "Rules", "Sign", "Agent"] as const;
 export type Step = (typeof STEPS)[number];
 
 function Progress({ current, complete }: { current: Step; complete: boolean }) {
