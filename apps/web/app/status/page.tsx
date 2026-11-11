@@ -31,8 +31,9 @@ export default function Page() {
             Bonds on the log
           </h2>
           <p className="text-pretty text-muted-foreground">
-            Two checkpoints of the log, signed by its key, with different roots for one size pay the
-            bond to whoever submits them. The contract verifies the signatures on chain.
+            Two checkpoints of the log, signed by its key, with different roots for one size slash
+            its bond: a bounty to whoever submits them, the rest to Keelson&apos;s reserve. The
+            contract verifies the signatures on chain.
           </p>
         </div>
         <LogBonds />
