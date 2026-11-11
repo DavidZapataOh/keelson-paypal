@@ -1,0 +1,48 @@
+{
+  "name": "@keelson/context",
+  "version": "0.1.0",
+  "description": "Keelson Context Plugin: Keelson's API and SDKs as context for AI coding assistants, over MCP",
+  "license": "Apache-2.0",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DavidZapataOh/keelson-paypal.git",
+    "directory": "packages/context"
+  },
+  "homepage": "https://keelson.finance",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/server.d.ts",
+      "default": "./dist/server.js"
+    }
+  },
+  "bin": {
+    "keelson-context": "./dist/stdio.js"
+  },
+  "files": [
+    "dist",
+    "context"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-context.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node scripts/copy-context.ts && vitest run"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.4.0",
+    "yaml": "2.9.1",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.4.0",
+    "@types/node": "26.6.6",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
