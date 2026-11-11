@@ -11,7 +11,7 @@ Two legs run the same engine:
 
 `Engine::register_mandate` takes the mandate the user signed with their passkey and the salt of its commitment. It recomputes `C_m` and requires it to equal `zk.commitment`, computes the challenge `M`, and verifies the passkey assertion over `M` on the engine's configured origin and the RP ID `keelson.finance`. It then issues the user credential (when the request has none) and the open mandate, and returns the salt sealed to the user and `M`.
 
-The first registration of a `sub` binds it to its passkey in a sealed user record. Later registrations for that `sub` must use the same passkey, or present a user credential issued for that `sub` and the new passkey; otherwise they fail with `auth.sub_bound`. Which `sub` the first registration belongs to is taken from the caller. The record store must be one the caller cannot delete from, since a lost record lets the `sub` be bound again.
+A user may sign with any of their passkeys. Which passkeys belong to a `sub` is the caller's to say, as WebAuthn leaves it to the relying party: the API registers a passkey to a user only after a fresh sign-in with PayPal or with one of their passkeys, and sends leg A a mandate only when its `user.cred` is one of them. Leg A verifies the assertion against that credential and issues a user credential per passkey, all with the `sub`'s one holder key. A registration that presents a user credential must be for the same `sub`, holder key and passkey, or it fails with `auth.open_user_credential`.
 
 ## Countersign a cart
 
@@ -134,7 +134,7 @@ Registering refuses a mandate whose `exp` has passed (`mandate_expired`) or whos
 
 ## Errors
 
-Refusals carry no signature and one of these stable codes: `auth.closed_*`, `auth.open_*`, `auth.webauthn_*`, `auth.sub_bound`, `clock_skew`, `no_root`, `not_ready`, `commitment_mismatch`, `replay`, `busy`, `bad_request`, `payload_too_large`, `mandate_expired`, `mandate_not_yet_valid`, `paypal`, `signer`, and for checkpoints `checkpoint_format`, `checkpoint_origin`, `checkpoint_chain`, `checkpoint_log_signature` and `checkpoint_quorum`.
+Refusals carry no signature and one of these stable codes: `auth.closed_*`, `auth.open_*`, `auth.webauthn_*`, `clock_skew`, `no_root`, `not_ready`, `commitment_mismatch`, `replay`, `busy`, `bad_request`, `payload_too_large`, `mandate_expired`, `mandate_not_yet_valid`, `paypal`, `signer`, and for checkpoints `checkpoint_format`, `checkpoint_origin`, `checkpoint_chain`, `checkpoint_log_signature` and `checkpoint_quorum`.
 
 ## HTTP
 
@@ -207,7 +207,7 @@ Built with the cargo feature `nitro`, `keelson-engine --platform nitro --listen 
 
 ## Records
 
-On `--platform tdx` the user records (each `sub`'s passkey binding and the PayPal order holding each mandate) are kept by `FileRecords`, one sealed file per record, in `KEELSON_DATA_DIR` (`/data` by default). The image ships `/data` owned by the engine's user, and the compose file mounts a named volume there, which lives on the CVM's encrypted disk. A restart or redeploy of the same app keeps the records. A file that was altered or moved does not open under its `sub` or mandate, and the request that depends on it fails with `auth.sub_bound` or a `paypal.hold_mismatch` denial.
+On `--platform tdx` the user records (the PayPal order holding each mandate) are kept by `FileRecords`, one sealed file per record, in `KEELSON_DATA_DIR` (`/data` by default). The image ships `/data` owned by the engine's user, and the compose file mounts a named volume there, which lives on the CVM's encrypted disk. A restart or redeploy of the same app keeps the records. A file that was altered or moved does not open under its mandate, and the request that depends on it fails with a `paypal.hold_mismatch` denial.
 
 ## Sealing
 

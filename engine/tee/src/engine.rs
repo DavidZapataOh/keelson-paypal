@@ -43,12 +43,9 @@ use crate::{
 
 /// The seal purpose of a mandate's commitment salt; the record is `M`.
 pub const MANDATE_SALT_PURPOSE: &str = "keelson/seal/mandate-salt/v1";
-/// The seal purpose of a user's record, which binds their `sub` to their passkey.
-pub const USER_PASSKEY_PURPOSE: &str = "keelson/seal/user-passkey/v1";
 /// The sealing purpose of the record that binds a mandate to the PayPal order holding its funds.
 const MANDATE_HOLD_PURPOSE: &str = "keelson/seal/mandate-hold-order/v1";
 const ARBITRUM_ONE: u64 = 42_161;
-const USER_PASSKEY_RECORD: &[u8] = b"passkey";
 
 /// `iss` of the user credential.
 const ISSUER: &str = "https://keelson.finance";
@@ -375,7 +372,6 @@ impl Engine {
         now: OffsetDateTime,
     ) -> Result<MandateIssued, EngineError> {
         let root = self.root.as_ref().ok_or(EngineError::NoRoot)?;
-        let users = self.users.as_ref().ok_or(EngineError::NotReady)?;
         check_register(r)?;
         let m = decode_mandate(&r.payload_sd, &r.disclosures).map_err(|_| bad("mandate"))?;
         if m["user"]["sub"] != r.sub.as_str() {
@@ -412,13 +408,6 @@ impl Engine {
         if let Some(l1) = &r.user_credential {
             self.check_user_credential(l1, &r.sub, &jwk_of(&holder), &passkey)?;
         }
-        bind_passkey(
-            root,
-            users.as_ref(),
-            &r.sub,
-            &passkey,
-            r.user_credential.is_some(),
-        )?;
         let iat = now.unix_timestamp();
         let user_credential = match &r.user_credential {
             Some(l1) => l1.clone(),
@@ -1139,10 +1128,6 @@ fn within(s: &str, max: usize, what: &'static str) -> Result<(), EngineError> {
 
 fn check_register(r: &RegisterMandate) -> Result<(), EngineError> {
     within(&r.sub, MAX_SUB, "sub")?;
-    // The user records also hold mandate bindings under keys that contain a NUL.
-    if r.sub.contains('\0') {
-        return Err(bad("sub"));
-    }
     if r.disclosures.len() > MAX_DISCLOSURES {
         return Err(EngineError::TooLarge("disclosures"));
     }
@@ -1263,30 +1248,6 @@ fn bind_hold(
         }
     };
     bound.then_some(()).ok_or(PayPalDeny::HoldMismatch)
-}
-
-/// Binds `sub` to `passkey` on its first registration, in a record sealed to `sub`. Later
-/// registrations must use that passkey, unless they present a user credential issued for `sub`
-/// and this passkey (`vouched`).
-fn bind_passkey(
-    root: &Root,
-    users: &dyn UserRecords,
-    sub: &str,
-    passkey: &Jwk,
-    vouched: bool,
-) -> Result<(), EngineError> {
-    let aad = SealAad {
-        purpose: USER_PASSKEY_PURPOSE,
-        sub: Some(sub),
-        record: USER_PASSKEY_RECORD,
-    };
-    let key = sec1(&json!({ "x": passkey.x, "y": passkey.y }));
-    let holds = |blob: Vec<u8>| root.unseal(&aad, &blob).is_ok_and(|bound| bound == key);
-    let bound = match users.get(sub) {
-        Some(blob) => vouched || holds(blob),
-        None => users.insert_new(sub, root.seal(&aad, &key)) || users.get(sub).is_some_and(holds),
-    };
-    bound.then_some(()).ok_or_else(|| auth("sub_bound"))
 }
 
 /// Verifies the passkey assertion over `M` against the mandate's `user.cred`, on the RP ID
