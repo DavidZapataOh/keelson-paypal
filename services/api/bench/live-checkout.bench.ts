@@ -176,7 +176,7 @@ try {
       }
     }
     const alibiRes = await fetch(`${API_URL}/v1/alibis/${result.requestId}`);
-    // A DENY's Alibi is the mandate owner's, not public: it is read where Keelson keeps it.
+    // The Alibi may not be issued yet when the API is asked: it is then read where Keelson keeps it.
     const bundle =
       alibiRes.status === 200
         ? decodeAlibi(new Uint8Array(await alibiRes.arrayBuffer()))

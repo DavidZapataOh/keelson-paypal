@@ -139,6 +139,20 @@ describe.each(fixtures.map((f) => [f.id, f] as const))("alibi %s", (_, f) => {
       "/manifest/disclosures/0/salt",
     ],
     [
+      "a cart that is not the disclosed one",
+      "evidence.manifest",
+      (x) => {
+        x.cart = {
+          merchant: "mrc_runfast",
+          currency: "USD",
+          lines: [{ sku: "X", category: "gpt:1", qty: 1, unit_minor: 1 }],
+          return_days: 0,
+          returns_free: false,
+        };
+      },
+      "/cart",
+    ],
+    [
       "the order id",
       "paypal.ids",
       (x) => {
