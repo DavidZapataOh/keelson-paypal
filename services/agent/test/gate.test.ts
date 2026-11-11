@@ -44,6 +44,9 @@ const PAGES: Record<string, string> = {
     "<p>The Change US$2,95</p><p>Impuestos US$0,18</p><p>Total US$3,13</p><button>Pagar ahora</button>",
     "es",
   ),
+  "/checkouts/cn/framed": page(
+    `<p>Item $2.95 USD</p><iframe srcdoc="<p>Total $5.90 USD</p>"></iframe><button>Pay now</button>`,
+  ),
   "/checkouts/cn/nolang": page("<p>Total $2.95 USD</p><button>Pay now</button>", ""),
   "/checkouts/cn/more": page("<h1>Checkout</h1><p>Total $4.99 USD</p><button>Pay now</button>"),
   "/checkouts/cn/frame": page(
@@ -223,5 +226,12 @@ describe("the pay-click gate", () => {
     expect(gate.held[0]?.cart).toBe("USD 5.90");
     cart = { currency: "USD", minor: 295 };
     expect((await click({ type: "ref", ref: await ref("Pay now") })).is_error).toBeFalsy();
+  });
+
+  test("a larger total inside a frame is seen", async () => {
+    gate.allow({ minor: 295, currency: "USD" });
+    await open("/checkouts/cn/framed");
+    expect((await click({ type: "ref", ref: await ref("Pay now") })).is_error).toBe(true);
+    expect(gate.held[0]?.amounts).toContain("USD 5.90");
   });
 });

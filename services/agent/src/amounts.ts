@@ -80,8 +80,19 @@ function shape(locale: string, currency: string): Shape {
         .formatToParts(1)
         .find((p) => p.type === "currency")?.value ?? "",
     ).trim();
-  const plain = new Intl.NumberFormat(locale, { useGrouping: false });
-  const digits = [...Array(10).keys()].map((d) => plain.format(d));
+  // The currency's name as the locale writes it after a number: 円, US dollars, euros.
+  const names = () =>
+    [1, 2].map((n) =>
+      flat(
+        new Intl.NumberFormat(locale, { style: "currency", currency, currencyDisplay: "name" })
+          .formatToParts(n)
+          .filter((p) => p.type === "currency")
+          .map((p) => p.value)
+          .join(""),
+      ).trim(),
+    );
+  const numerals = new Intl.NumberFormat(locale, { useGrouping: false });
+  const digits = [...Array(10).keys()].map((d) => numerals.format(d));
   const s: Shape = {
     digits,
     group: flat(parts.find((p) => p.type === "group")?.value ?? ""),
@@ -98,9 +109,9 @@ function shape(locale: string, currency: string): Shape {
     secondary:
       integers.length > 2 ? (integers.at(-2)?.length ?? 3) : (integers.at(-1)?.length ?? 3),
     fraction,
-    marks: [...new Set([mark("symbol"), mark("code"), currency, ...spelled(currency)])].filter(
-      Boolean,
-    ),
+    marks: [
+      ...new Set([mark("symbol"), mark("code"), currency, ...spelled(currency), ...names()]),
+    ].filter(Boolean),
     narrow: mark("narrowSymbol"),
   };
   shapes.set(key, s);
@@ -115,12 +126,29 @@ const MARK_BEFORE = /(?<!\p{L})(\p{Lu}{0,3}\p{Sc}|\p{Lu}{3}) ?$/u;
 const MARK_AFTER = /^ ?(\p{Lu}{0,3}\p{Sc}|\p{Lu}{3})(?!\p{L})/u;
 
 /** The text as one line of plain characters: compatibility forms folded (NFKC), bidi marks gone. */
-function plain(text: string, s: Shape): string {
-  let t = flat(text.normalize("NFKC"));
-  s.digits.forEach((d, i) => {
-    if (d !== String(i)) t = t.replaceAll(d, String(i));
-  });
-  return t;
+/** Every decimal digit Unicode has (Arabic-Indic, Devanagari, Thai, …), as its value 0 to 9. */
+const DIGITS: ReadonlyMap<string, string> = new Map(
+  Intl.supportedValuesOf("numberingSystem").flatMap((nu) => {
+    try {
+      const f = new Intl.NumberFormat(`en-u-nu-${nu}`, { useGrouping: false });
+      if (f.resolvedOptions().numberingSystem !== nu) return [];
+      return [...Array(10).keys()].map((d) => [f.format(d), String(d)] as const);
+    } catch {
+      return [];
+    }
+  }),
+);
+
+/**
+ * The text as one line of plain characters: compatibility forms folded (NFKC), format characters
+ * gone (zero-width spaces, joiners, soft hyphens, bidi marks), and every script's digits written
+ * 0 to 9, whatever numbering the locale uses.
+ */
+function plain(text: string): string {
+  return flat(text.normalize("NFKC").replace(/\p{Cf}/gu, "")).replace(
+    /\p{Nd}/gu,
+    (c) => DIGITS.get(c) ?? c,
+  );
 }
 
 interface Reading {
@@ -131,7 +159,7 @@ interface Reading {
 
 function read(text: string, locale: string, currency: string): Reading {
   const s = shape(locale, currency);
-  const t = plain(text, s);
+  const t = plain(text);
   const marks = s.marks.map((m) => m.normalize("NFKC"));
   const code = new RegExp(`(?<!\\p{L})${currency}(?!\\p{L})`, "u");
   if (s.narrow && !marks.includes(s.narrow) && code.test(t)) marks.push(s.narrow.normalize("NFKC"));
@@ -167,10 +195,14 @@ function read(text: string, locale: string, currency: string): Reading {
       return { minor, unsure: "cents apart from their amount" };
     }
   }
-  // Every number written next to a currency mark must be read whole, and as this currency.
+  // Every number written next to a currency mark must be read whole, and as this currency; and a
+  // number with a separator in it, shaped like an amount wherever its mark is, must be read too.
   for (const run of t.matchAll(RUN)) {
     const from = run.index;
     const to = from + run[0].length;
+    if (!spans.has(`${from}:${to}`) && /[.,'\u2019\u066b\u066c]/u.test(run[0])) {
+      return { minor, unsure: "a number like an amount not read" };
+    }
     const before = MARK_BEFORE.exec(t.slice(Math.max(0, from - 5), from))?.[1];
     const after = MARK_AFTER.exec(t.slice(to, to + 5))?.[1];
     const near = [before, after].filter((x): x is string => x !== undefined);

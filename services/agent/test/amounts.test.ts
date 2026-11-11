@@ -206,3 +206,35 @@ describe("what the gate cannot read for sure, it reports as unsure", () => {
     });
   });
 });
+
+describe("a larger total the reader cannot place makes the page unsure", () => {
+  const unsure = (text: string, locale: string, currency = "USD") =>
+    readPage(text, [locale], currency).unsure;
+
+  test.each([
+    ["Arabic-Indic digits in an English page", "Item $15.00 Total $١٬٠١٥٫٠٠", "en"],
+    ["Devanagari digits in a page Intl formats with Latin ones", "वस्तु ₹15.00 कुल ₹१,०१५.००", "hi"],
+    ["a total in words", "Item $15.00 Total: 1,015.00 dollars", "en"],
+    ["a total under a currency header", "Item $15.00\nOrder total (USD)\n1,015.00", "en"],
+    ["a total with a lowercase code", "Item $15.00 Total usd 1,015.00", "en"],
+    ["a total behind a dash", "Item $15.00 Total: $  —  1,015.00", "en"],
+    ["rupees written Rs.", "Item ₹15.00 Total Rs. 1,015.00", "en-IN", "INR"],
+    ["francs written Fr.", "CHF 15.00 Total Fr. 1’015.00", "de-CH", "CHF"],
+    ["a total in zloty on a dollar page", "Item $15.00 Total: 1 015,00 zł", "en"],
+  ])("%s", (_, text, locale, currency = "USD") => {
+    expect(unsure(text, locale, currency)).toBeDefined();
+  });
+
+  test.each([
+    ["a zero-width space", "Subtotal $15.00 Total $1\u200b,015.00"],
+    ["a word joiner", "Subtotal $15.00 Total $\u20601,015.00"],
+    ["a soft hyphen", "Subtotal $15.00 Total $1\u00ad,015.00"],
+  ])("a total with %s inside is read whole", (_, text) => {
+    expect(readPage(text, ["en"], "USD")).toEqual({ locale: "en", minor: [1500, 101_500] });
+  });
+
+  test("yen written 円 is read as yen, and a larger one is not missed", () => {
+    expect(readPage("合計 1,500円", ["ja"], "JPY")).toEqual({ locale: "ja", minor: [1500] });
+    expect(readPage("商品 ¥1,500 合計 101,500 円（税込）", ["ja"], "JPY").minor).toContain(101_500);
+  });
+});

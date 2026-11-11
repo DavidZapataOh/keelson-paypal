@@ -129,13 +129,16 @@ export class PayGate {
         "this action can pay, and Keelson has not countersigned the cart. Paying waits for its 2-of-2 countersignature; do not try another way to pay.",
       );
     }
-    const { lang, text } = await page
-      .evaluate(() => ({
-        lang: document.documentElement.lang,
-        // biome-ignore lint/performance/useDomNodeTextContent: the amounts as the buyer sees them on the page.
-        text: document.body.innerText,
-      }))
-      .catch(() => ({ lang: "", text: "" }));
+    const lang = await page.evaluate(() => document.documentElement.lang).catch(() => "");
+    // Every frame's text: a total drawn inside a frame is on the page the buyer sees.
+    const text = (
+      await Promise.all(
+        page
+          .frames()
+          // biome-ignore lint/performance/useDomNodeTextContent: the amounts as the buyer sees them on the page.
+          .map((f) => f.evaluate(() => document.body?.innerText ?? "").catch(() => "")),
+      )
+    ).join("\n");
     const read = readPage(text, pageLocales(lang, page.url()), total.currency);
     const cart = this.#cart ? await this.#cart().catch(() => undefined) : undefined;
     const digits = minorDigits(total.currency);
