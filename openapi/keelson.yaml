@@ -2624,13 +2624,27 @@ components:
           items:
             type: object
             properties:
+              id:
+                type: string
               credentialId:
                 type: string
+              name:
+                type:
+                  - string
+                  - "null"
+              createdAt:
+                type:
+                  - string
+                  - "null"
+                format: date-time
               payment:
                 type: boolean
                 description: Registered with the SPC `payment` extension, so SPC can use it.
             required:
+              - id
               - credentialId
+              - name
+              - createdAt
               - payment
       required:
         - passkeys
@@ -6176,6 +6190,42 @@ paths:
                 $ref: "#/components/schemas/Passkeys"
         "401":
           description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/passkeys/{id}:
+    delete:
+      tags:
+        - passkeys
+      summary: Remove one of the signed-in user's passkeys
+      description: The passkey can no longer sign in or sign mandates. A user keeps at
+        least one passkey, so the last one is not removed.
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 256
+          required: true
+          name: id
+          in: path
+      responses:
+        "204":
+          description: Removed
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: No such passkey of this user
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: The user's last passkey
           content:
             application/problem+json:
               schema:

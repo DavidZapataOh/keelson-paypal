@@ -4,12 +4,19 @@ import { fileURLToPath } from "node:url";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { serve } from "@hono/node-server";
 import type { OpenAPIHono } from "@hono/zod-openapi";
+import { eq, session as sessionTable } from "@keelson/db";
 import { cose, decodeCredentialPublicKey } from "@simplewebauthn/server/helpers";
 import { betterAuth } from "better-auth";
 import { testUtils } from "better-auth/plugins";
 import { build } from "esbuild";
 import { pino } from "pino";
-import { type Browser, type BrowserContext, chromium, type Page } from "playwright";
+import {
+  type Browser,
+  type BrowserContext,
+  type CDPSession,
+  chromium,
+  type Page,
+} from "playwright";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { createApp } from "../src/app.ts";
 import { createAuth } from "../src/auth.ts";
@@ -29,6 +36,10 @@ window.keelson = {
   signInWithPasskey: async () => result(await authClient.signIn.passkey({ autoFill: false })),
   signOut: async () => result(await authClient.signOut()),
   getSession: async () => result(await authClient.getSession()),
+  api: async (method, path) => {
+    const res = await fetch(path, { method });
+    return { status: res.status, body: res.status === 204 ? null : await res.json() };
+  },
   // Skips the client library so the authenticator can be offered an algorithm the server never offers.
   registerWithAlgorithm: async (alg) => {
     const options = await (await fetch("/api/auth/passkey/generate-register-options")).json();
@@ -57,6 +68,7 @@ interface SessionData {
   session: { userId: string };
 }
 
+const problemType = (slug: string) => `https://api.keelson.finance/problems/${slug}`;
 const secret = randomBytes(32).toString("base64url");
 let app!: OpenAPIHono;
 const server = serve({ fetch: (req) => app.fetch(req), port: 0, hostname: "localhost" });
@@ -113,6 +125,42 @@ afterAll(async () => {
 });
 
 const call = <T>(name: string) => page.evaluate<Result<T>>(`window.keelson.${name}()`);
+const api = <T>(method: string, path: string) =>
+  page.evaluate<{ status: number; body: T }>(
+    `window.keelson.api(${JSON.stringify(method)}, ${JSON.stringify(path)})`,
+  );
+
+interface PasskeyView {
+  id: string;
+  credentialId: string;
+  name: string | null;
+  createdAt: string | null;
+  payment: boolean;
+}
+
+/** Makes every session of `userId` older than the window a new passkey needs. */
+async function ageSessions(userId: string) {
+  await testDb
+    .update(sessionTable)
+    .set({ createdAt: new Date(Date.now() - 11 * 60_000) })
+    .where(eq(sessionTable.userId, userId));
+}
+
+/** Replaces the page's authenticator with a new, empty one: another device. */
+async function anotherDevice(cdp: CDPSession, authenticatorId: string) {
+  await cdp.send("WebAuthn.removeVirtualAuthenticator", { authenticatorId });
+  return (
+    await cdp.send("WebAuthn.addVirtualAuthenticator", {
+      options: {
+        protocol: "ctap2",
+        transport: "internal",
+        hasResidentKey: true,
+        hasUserVerification: true,
+        isUserVerified: true,
+      },
+    })
+  ).authenticatorId;
+}
 
 /** Opens the test page as a new signed-in user, with a virtual platform authenticator attached. */
 async function signedInPage() {
@@ -186,4 +234,92 @@ test("registration rejects passkeys that are not ES256", { timeout: 60_000 }, as
   );
   expect(control.status).toBe(200);
   expect(await userPasskeys(testDb, user.id)).toHaveLength(1);
+});
+
+test("another passkey needs a fresh sign-in, and then signs in on its own", {
+  timeout: 60_000,
+}, async () => {
+  const { user, cdp, authenticatorId } = await signedInPage();
+  expect((await call("addPasskey")).error).toBeNull();
+
+  // An older session cannot add a second passkey.
+  await ageSessions(user.id);
+  const stale = await call("addPasskey");
+  expect(stale.error?.status).toBe(403);
+  expect(await userPasskeys(testDb, user.id)).toHaveLength(1);
+
+  // Signing in again with the first passkey makes the session fresh.
+  expect((await call<SessionData>("signInWithPasskey")).error).toBeNull();
+  const device = await anotherDevice(cdp, authenticatorId);
+  expect((await call("addPasskey")).error).toBeNull();
+  const [first, second] = await userPasskeys(testDb, user.id);
+  expect(second?.credentialID).not.toBe(first?.credentialID);
+
+  expect((await call("signOut")).error).toBeNull();
+  expect((await call<SessionData>("signInWithPasskey")).error).toBeNull();
+  expect((await call<SessionData>("getSession")).data?.user.id).toBe(user.id);
+  const { credentials } = await cdp.send("WebAuthn.getCredentials", { authenticatorId: device });
+  expect(credentials).toHaveLength(1);
+});
+
+test("the first passkey needs no fresh sign-in", { timeout: 60_000 }, async () => {
+  const { user } = await signedInPage();
+  await ageSessions(user.id);
+  expect((await call("addPasskey")).error).toBeNull();
+  expect(await userPasskeys(testDb, user.id)).toHaveLength(1);
+});
+
+test("a user lists and removes passkeys but keeps the last one", { timeout: 60_000 }, async () => {
+  const { user, cdp, authenticatorId } = await signedInPage();
+  expect((await call("addPasskey")).error).toBeNull();
+  await anotherDevice(cdp, authenticatorId);
+  expect((await call("addPasskey")).error).toBeNull();
+
+  const listed = await api<{ passkeys: PasskeyView[] }>("GET", "/v1/passkeys");
+  expect(listed.status).toBe(200);
+  const [first, second] = listed.body.passkeys;
+  expect(listed.body.passkeys).toHaveLength(2);
+  expect(first?.name).toBe("Test passkey");
+  expect(Date.parse(first?.createdAt ?? "")).toBeLessThanOrEqual(
+    Date.parse(second?.createdAt ?? ""),
+  );
+
+  // Better Auth's own delete endpoint is closed; the API's checks the last passkey.
+  const direct = await page.evaluate<number>(
+    `fetch("/api/auth/passkey/delete-passkey", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: ${JSON.stringify(first?.id)} }) }).then((r) => r.status)`,
+  );
+  expect(direct).toBe(404);
+
+  const removed = await api("DELETE", `/v1/passkeys/${first?.id}`);
+  expect(removed.status).toBe(204);
+  const last = await api<{ type: string }>("DELETE", `/v1/passkeys/${second?.id}`);
+  expect(last.status).toBe(409);
+  expect(last.body.type).toBe(problemType("last-passkey"));
+  expect((await userPasskeys(testDb, user.id)).map((p) => p.id)).toEqual([second?.id]);
+
+  const unknown = await api<{ type: string }>("DELETE", `/v1/passkeys/${first?.id}`);
+  expect(unknown.status).toBe(404);
+});
+
+test("concurrent removals leave one passkey", { timeout: 60_000 }, async () => {
+  const { user, cdp, authenticatorId } = await signedInPage();
+  expect((await call("addPasskey")).error).toBeNull();
+  await anotherDevice(cdp, authenticatorId);
+  expect((await call("addPasskey")).error).toBeNull();
+  const ids = (await userPasskeys(testDb, user.id)).map((p) => p.id);
+
+  const statuses = await Promise.all(ids.map((id) => api("DELETE", `/v1/passkeys/${id}`)));
+  expect(statuses.map((r) => r.status).sort()).toEqual([204, 409]);
+  expect(await userPasskeys(testDb, user.id)).toHaveLength(1);
+});
+
+test("a user cannot remove another user's passkey", { timeout: 60_000 }, async () => {
+  const { user: owner } = await signedInPage();
+  expect((await call("addPasskey")).error).toBeNull();
+  const [theirs] = await userPasskeys(testDb, owner.id);
+
+  await signedInPage();
+  const res = await api("DELETE", `/v1/passkeys/${theirs?.id}`);
+  expect(res.status).toBe(404);
+  expect(await userPasskeys(testDb, owner.id)).toHaveLength(1);
 });

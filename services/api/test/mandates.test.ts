@@ -359,7 +359,7 @@ test("a mandate signed through SPC is verified and stored as SIGNED", {
 }, async () => {
   const s = await signer();
   const m = mandateFor(s);
-  expect(await passkeys(s.page)).toEqual({
+  expect(await passkeys(s.page)).toMatchObject({
     passkeys: [{ credentialId: s.credentialId, payment: true }],
   });
   const signed = await sign(s.page, m);
@@ -671,7 +671,7 @@ const passkeys = (page: Page) =>
 test("a security key registers and signs with plain WebAuthn", { timeout: 60_000 }, async () => {
   const s = await signer("usb");
   expect(s.transports).toContain("usb");
-  expect(await passkeys(s.page)).toEqual({
+  expect(await passkeys(s.page)).toMatchObject({
     passkeys: [{ credentialId: s.credentialId, payment: false }],
   });
   const signed = await sign(s.page, mandateFor(s));
