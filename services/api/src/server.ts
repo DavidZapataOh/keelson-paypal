@@ -37,6 +37,7 @@ import { operatorSigners } from "./operators/signer.ts";
 import { startPayPalPoller } from "./paypal/poll.ts";
 import { startPayPalEventWorker } from "./paypal/worker.ts";
 import { createPayPalDeps } from "./paypal.ts";
+import { appEmbedPage } from "./routes/embed-page.ts";
 import { closeServer } from "./shutdown.ts";
 import { startPipelineResumer, startPurchaseSweeper, startSettlementSweeper } from "./sweeper.ts";
 import { createTee } from "./tee/config.ts";
@@ -175,6 +176,7 @@ const app = createApp({
   log,
   auth,
   appOrigin: env.APP_ORIGIN,
+  ...(env.APP_ORIGIN ? { embedPage: appEmbedPage(env.APP_ORIGIN) } : {}),
   verifyOrigin: env.VERIFY_ORIGIN,
   // The public RPCs the browser verifier uses: a report never names the API's keyed RPC URL.
   alibiChain: createChainReader(),

@@ -946,6 +946,56 @@ components:
           minLength: 1
       required:
         - limits
+    EmbedOrigins:
+      type: object
+      properties:
+        origins:
+          type: array
+          items:
+            type: string
+            maxLength: 255
+          minItems: 1
+          maxItems: 5
+          example:
+            - https://agents.example.com
+      required:
+        - origins
+    EmbedUrl:
+      type: object
+      properties:
+        url:
+          type: string
+        ref:
+          type: string
+        expires_in:
+          type: integer
+      required:
+        - url
+        - ref
+        - expires_in
+    EmbedSession:
+      type: object
+      properties:
+        session:
+          type: string
+        embed:
+          $ref: "#/components/schemas/EmbedRequest"
+      required:
+        - session
+        - embed
+    EmbedRequest:
+      type: object
+      properties:
+        ref:
+          type: string
+        origin:
+          type: string
+        request:
+          $ref: "#/components/schemas/Connection"
+      required:
+        - ref
+        - origin
+        - request
     Agent:
       type: object
       properties:
@@ -6458,6 +6508,180 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "503":
           description: The operator's agent key or bond is not set
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/embed/origins:
+    put:
+      tags:
+        - embed
+      summary: Set the origins that may frame approvals
+      description: Replaces the https origins this client's agent platform may embed
+        Keelson's approval in. Each becomes the page's `frame-ancestors` for
+        that client's requests, and the only origin the frame talks to with
+        `postMessage`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmbedOrigins"
+      responses:
+        "200":
+          description: The origins now allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbedOrigins"
+        "401":
+          description: No valid access token
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: An origin is not a bare https origin
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/connections/embed:
+    post:
+      tags:
+        - embed
+      summary: Embed the approval of a request
+      description: For a pending request this client made, a URL to frame in the agent
+        platform's page at `origin`, one of the client's embed origins. The
+        URL's fragment carries a single-use token the frame redeems within five
+        minutes; mint another to frame it again. The user approves in a Keelson
+        window the frame opens, with a passkey; poll `POST
+        /v1/connections/token` as usual for the answer.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                device_code:
+                  type: string
+                  maxLength: 256
+                origin:
+                  type: string
+                  maxLength: 255
+              required:
+                - device_code
+                - origin
+      responses:
+        "201":
+          description: Frame `url`; it opens to the request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbedUrl"
+        "401":
+          description: No valid access token
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The origin is not one of this client's
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: No pending request with this device code
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/embed/sessions:
+    post:
+      tags:
+        - embed
+      summary: Open the embedded approval
+      description: The frame spends its token, once, for a session it keeps in memory
+        and sends in `Keelson-Embed`. No cookie is read or set.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+                  maxLength: 64
+              required:
+                - token
+      responses:
+        "201":
+          description: The session and the request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbedSession"
+        "401":
+          description: The token is unknown, spent or expired
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/embed/request:
+    get:
+      tags:
+        - embed
+      summary: Read the embedded request
+      parameters:
+        - schema:
+            type: string
+            maxLength: 64
+          required: false
+          name: keelson-embed
+          in: header
+      responses:
+        "200":
+          description: The request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbedRequest"
+        "401":
+          description: No live embed session
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/embed/deny:
+    post:
+      tags:
+        - embed
+      summary: Decline the embedded request
+      parameters:
+        - schema:
+            type: string
+            maxLength: 64
+          required: false
+          name: keelson-embed
+          in: header
+      responses:
+        "200":
+          description: Declined
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbedRequest"
+        "401":
+          description: No live embed session
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: The request is no longer pending
           content:
             application/problem+json:
               schema:

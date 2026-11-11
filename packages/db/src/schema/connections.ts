@@ -7,10 +7,11 @@ import {
   integer,
   numeric,
   pgTable,
+  primaryKey,
   text,
   timestamp,
 } from "drizzle-orm/pg-core";
-import { user } from "./auth.ts";
+import { oauthClient, user } from "./auth.ts";
 import { mandates } from "./mandates.ts";
 import { operators } from "./operators.ts";
 import { bytea, createdAt } from "./types.ts";
@@ -82,5 +83,28 @@ export const agentConnections = pgTable(
     ),
     index("agent_connections_user_id_operator_idx").on(t.userId, t.operatorAgentId),
     index("agent_connections_mandate_id_idx").on(t.mandateId),
+  ],
+);
+
+/**
+ * The origins an OAuth client's agent platform may frame Keelson's approval in: each is the
+ * `frame-ancestors` of the embed page for the requests that client makes.
+ */
+export const embedOrigins = pgTable(
+  "embed_origins",
+  {
+    clientId: text()
+      .notNull()
+      .references(() => oauthClient.clientId, { onDelete: "cascade" }),
+    /** A serialized https origin: scheme, host and port only. */
+    origin: text().notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.clientId, t.origin] }),
+    check(
+      "embed_origins_https",
+      sql`${t.origin} ~ '^https://([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z][a-z0-9-]{0,61}[a-z0-9](:[0-9]{1,5})?$'`,
+    ),
   ],
 );

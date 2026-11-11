@@ -122,7 +122,7 @@ const Approved = z
   })
   .openapi("ConnectionApproved");
 
-const ConnectionView = z
+export const ConnectionView = z
   .object({
     code: z.string(),
     kind: z.enum(["connect", "once"]),
@@ -305,6 +305,77 @@ const draft = createRoute({
     503: { description: "The operator's agent key or bond is not set", content: problemContent },
   },
 });
+
+/** A request as the approval pages read it. */
+export async function connectionView(
+  db: Deps["db"],
+  request: Connection,
+  operator: typeof operators.$inferSelect,
+): Promise<z.infer<typeof ConnectionView>> {
+  const parent = request.parentMandateId
+    ? await db.query.mandates.findFirst({
+        where: (m, { eq: is }) => is(m.id, request.parentMandateId as string),
+      })
+    : undefined;
+  const bond = agentBond(operator);
+  const expired = request.state === "PENDING" && request.expiresAt.getTime() <= Date.now();
+  return {
+    code: request.userCode,
+    kind: request.kind,
+    state: expired ? ("EXPIRED" as const) : request.state,
+    name: request.name,
+    reason: request.reason,
+    agent: {
+      agentId: operator.agentId.toString(),
+      operator: operator.name,
+      bond: bond ? { asset: bond.asset, min: bond.min, vault: bond.vault } : null,
+    },
+    limits: {
+      currency: request.currency,
+      perPurchaseMinor: request.perPurchaseMinor.toString(),
+      totalMinor: request.totalMinor.toString(),
+      askAboveMinor: request.askAboveMinor?.toString() ?? null,
+      merchants: request.merchantIds.map((id) => ({
+        id,
+        name: MERCHANTS.find((m) => m.id === id)?.name ?? id,
+      })),
+      until: request.notAfter.toISOString(),
+    },
+    parent: parent
+      ? {
+          mandateId: parent.id,
+          perPurchaseMinor: parent.maxMinor.toString(),
+          remainingMinor: parent.remainingMinor.toString(),
+        }
+      : null,
+    mandateId: request.mandateId,
+    expiresAt: request.expiresAt.toISOString(),
+  };
+}
+
+/**
+ * Denies a pending request and tells the agent's client; false when it was no longer pending.
+ * `userId` is who said no, when known.
+ */
+export async function denyRequest(
+  deps: Pick<Deps, "db" | "kv" | "log">,
+  request: Connection,
+  userId: string | null,
+): Promise<boolean> {
+  const [denied] = await deps.db
+    .update(agentConnections)
+    .set({ state: "DENIED", ...(userId ? { userId } : {}), decidedAt: new Date() })
+    .where(and(eq(agentConnections.id, request.id), eq(agentConnections.state, "PENDING")))
+    .returning({ id: agentConnections.id });
+  if (!denied) return false;
+  await publishEvent(
+    deps,
+    principalChannel({ kind: "client", subject: request.clientId }, "connections"),
+    request.id,
+    { type: "connection.denied", userCode: request.userCode },
+  );
+  return true;
+}
 
 /** The fields of `chosen` above what `request` asked for. */
 function raised(
@@ -551,49 +622,7 @@ export function registerConnections(
     ) {
       return problem(c, 404, "not-found", "Not found");
     }
-    const { request, operator } = row;
-    const parent = request.parentMandateId
-      ? await db.query.mandates.findFirst({
-          where: (m, { eq: is }) => is(m.id, request.parentMandateId as string),
-        })
-      : undefined;
-    const bond = agentBond(operator);
-    const expired = request.state === "PENDING" && request.expiresAt.getTime() <= Date.now();
-    return c.json(
-      {
-        code: request.userCode,
-        kind: request.kind,
-        state: expired ? ("EXPIRED" as const) : request.state,
-        name: request.name,
-        reason: request.reason,
-        agent: {
-          agentId: operator.agentId.toString(),
-          operator: operator.name,
-          bond: bond ? { asset: bond.asset, min: bond.min, vault: bond.vault } : null,
-        },
-        limits: {
-          currency: request.currency,
-          perPurchaseMinor: request.perPurchaseMinor.toString(),
-          totalMinor: request.totalMinor.toString(),
-          askAboveMinor: request.askAboveMinor?.toString() ?? null,
-          merchants: request.merchantIds.map((id) => ({
-            id,
-            name: MERCHANTS.find((m) => m.id === id)?.name ?? id,
-          })),
-          until: request.notAfter.toISOString(),
-        },
-        parent: parent
-          ? {
-              mandateId: parent.id,
-              perPurchaseMinor: parent.maxMinor.toString(),
-              remainingMinor: parent.remainingMinor.toString(),
-            }
-          : null,
-        mandateId: request.mandateId,
-        expiresAt: request.expiresAt.toISOString(),
-      },
-      200,
-    );
+    return c.json(await connectionView(db, row.request, row.operator), 200);
   });
 
   app.openapi(deny, async (c) => {
@@ -603,18 +632,8 @@ export function registerConnections(
     if (!request || (request.userId !== null && request.userId !== userId)) {
       return problem(c, 404, "not-found", "Not found");
     }
-    const [denied] = await db
-      .update(agentConnections)
-      .set({ state: "DENIED", userId, decidedAt: new Date() })
-      .where(and(eq(agentConnections.id, request.id), eq(agentConnections.state, "PENDING")))
-      .returning({ id: agentConnections.id });
-    if (!denied) return problem(c, 404, "not-found", "Not found");
-    await publishEvent(
-      deps,
-      principalChannel({ kind: "client", subject: request.clientId }, "connections"),
-      request.id,
-      { type: "connection.denied", userCode: request.userCode },
-    );
+    if (!(await denyRequest(deps, request, userId)))
+      return problem(c, 404, "not-found", "Not found");
     return c.json({ state: "DENIED" as const }, 200);
   });
 
