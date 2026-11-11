@@ -15,6 +15,7 @@ import { Resend } from "resend";
 import { createPublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { anchorCovered } from "./alibi/anchors.ts";
+import { newestAlibi, warmAlibiVerifier } from "./alibi/warm.ts";
 import { createApp } from "./app.ts";
 import { createAuth } from "./auth.ts";
 import { projectAmberConvictions } from "./chain/amber-court.ts";
@@ -269,6 +270,10 @@ const app = createApp({
 });
 
 const stopRefresh = tee ? startSignerRefresh({ db, log, tee }) : undefined;
+void warmAlibiVerifier(() => newestAlibi(db)).then(
+  (ms) => log.info({ ms }, "alibi verifier warmed"),
+  (err: unknown) => log.warn({ err }, "alibi verifier not warmed"),
+);
 const stopSweeper = tee ? startPurchaseSweeper({ db, log }) : undefined;
 const stopResumer = startPipelineResumer({
   db,
