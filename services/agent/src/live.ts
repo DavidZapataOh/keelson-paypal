@@ -4,6 +4,7 @@ import type { SealedItem } from "@keelson/evidence";
 import type { Capture } from "@keelson/evidence/capture";
 import type { BrowserContext, Page } from "playwright";
 import type { ProposedCart, Step, Usage } from "./agent.ts";
+import { type Money, minorDigits } from "./amounts.ts";
 import { CheckoutError, type Keelson, type Quote } from "./checkout.ts";
 import { StoreBrowser } from "./driver.ts";
 import type { PayGate } from "./gate.ts";
@@ -375,4 +376,25 @@ export async function paypalTransactionId(
   } finally {
     await tab.close();
   }
+}
+
+/**
+ * The store's own cart, as the browser's Shopify session holds it (`/cart.js`): the structured
+ * total the pay-click gate checks besides the page's text. Shopify writes money in hundredths of
+ * the currency's unit, whatever its minor units. Undefined when the cart cannot be read.
+ */
+export function shopifyCart(
+  context: Pick<BrowserContext, "request">,
+  origin: string,
+): () => Promise<Money | undefined> {
+  return async () => {
+    const res = await context.request.get(`${origin}/cart.js`, {
+      headers: { accept: "application/json" },
+    });
+    if (!res.ok()) return undefined;
+    const cart = (await res.json()) as { currency?: string; total_price?: number };
+    if (typeof cart.currency !== "string" || !Number.isInteger(cart.total_price)) return undefined;
+    const minor = ((cart.total_price as number) * 10 ** minorDigits(cart.currency)) / 100;
+    return Number.isInteger(minor) ? { currency: cart.currency, minor } : undefined;
+  };
 }

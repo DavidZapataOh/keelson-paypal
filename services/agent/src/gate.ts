@@ -1,5 +1,6 @@
 import { ToolError } from "@anthropic-ai/sdk/helpers/beta/toolsets";
 import type { Locator, Page } from "playwright";
+import { type Money, minorDigits, pageLocale, readAmounts } from "./amounts.ts";
 
 /** Names of the controls that commit a payment, on a store's checkout or on PayPal. */
 const PAY =
@@ -21,24 +22,35 @@ export type PayAction =
  * Holds every action that could commit a payment until Keelson countersigned the cart: any action
  * on a checkout page (a checkout host such as PayPal, or a store's `/checkout`) and a click on a
  * pay control anywhere. Once Keelson allowed the cart, those actions go through only on a page
- * whose largest amount is its total. On a checkout page, clicks by coordinate, keys and typed text
+ * whose largest amount in the cart's currency, read in the page's own locale, is its total, and
+ * only while the store's own cart (when it serves one) is that total too. Whatever the gate cannot
+ * read, it holds. On a checkout page, clicks by coordinate, keys and typed text
  * are refused always, as are saving a payment method, installments and credit. Checkout hosts
  * are written like the browser's allowlist: exact, or `*.example.com` for its subdomains.
  */
 export class PayGate {
   readonly #checkoutHosts: readonly string[];
-  #total: { minor: number; currency: string } | undefined;
+  readonly #cart: (() => Promise<Money | undefined>) | undefined;
+  #total: Money | undefined;
   /** Actions refused so far. */
   refused = 0;
-  /** The amounts read on each page where a pay action was held for its total: nothing else of it. */
-  readonly held: string[][] = [];
+  /**
+   * Each page where a pay action was held for its total: the locale it was read in and the
+   * amounts it showed in the cart's currency. Nothing else of the page.
+   */
+  readonly held: { locale: string | null; amounts: string[]; cart?: string }[] = [];
 
-  constructor(o: { checkoutHosts: readonly string[] }) {
+  /**
+   * `cart` reads the store's own cart (Shopify's `/cart.js`), the structured total a pay action
+   * is checked against besides the page's text; undefined when it cannot be read.
+   */
+  constructor(o: { checkoutHosts: readonly string[]; cart?: () => Promise<Money | undefined> }) {
     this.#checkoutHosts = o.checkoutHosts;
+    this.#cart = o.cart;
   }
 
-  /** Opens the gate for the countersigned total, in minor units. */
-  allow(total: { minor: number; currency: string }): void {
+  /** Opens the gate for the countersigned total. */
+  allow(total: Money): void {
     this.#total = total;
   }
 
@@ -112,54 +124,30 @@ export class PayGate {
         "this action can pay, and Keelson has not countersigned the cart. Paying waits for its 2-of-2 countersignature; do not try another way to pay.",
       );
     }
-    const shown = await page
-      .locator("body")
-      // biome-ignore lint/performance/useDomNodeTextContent: the amounts as the buyer sees them on the page.
-      .innerText()
-      .catch(() => "");
-    const amounts = pageAmounts(shown);
-    const same = amounts.filter((a) => a.currency === total.currency).map((a) => a.minor);
-    if (!same.includes(total.minor) || Math.max(...same) > total.minor) {
-      this.held.push(amounts.map((a) => `${a.currency} ${(a.minor / 100).toFixed(2)}`));
+    const { lang, text } = await page
+      .evaluate(() => ({
+        lang: document.documentElement.lang,
+        // biome-ignore lint/performance/useDomNodeTextContent: the amounts as the buyer sees them on the page.
+        text: document.body.innerText,
+      }))
+      .catch(() => ({ lang: "", text: "" }));
+    const locale = pageLocale(lang, page.url());
+    const minor = locale ? readAmounts(text, locale, total.currency).minor : [];
+    const cart = this.#cart ? await this.#cart().catch(() => undefined) : undefined;
+    const show = (m: number) =>
+      `${total.currency} ${(m / 10 ** minorDigits(total.currency)).toFixed(minorDigits(total.currency))}`;
+    const cartOk = !this.#cart || (cart?.currency === total.currency && cart.minor === total.minor);
+    if (!locale || !minor.includes(total.minor) || Math.max(...minor) > total.minor || !cartOk) {
+      this.held.push({
+        locale: locale ?? null,
+        amounts: minor.map(show),
+        ...(this.#cart ? { cart: cart ? `${cart.currency} ${cart.minor}` : "unread" } : {}),
+      });
       this.#refuse(
-        `Keelson countersigned a total of ${total.currency} ${(total.minor / 100).toFixed(2)}, and this page does not show it as its largest amount. Pay only for the countersigned cart.`,
+        !locale
+          ? "this page names no locale its amounts can be read in. Paying waits."
+          : `Keelson countersigned ${show(total.minor)}; this page or the store's cart does not show it as the total. Pay only for the countersigned cart.`,
       );
     }
   }
-}
-
-/** Currency marks as stores and PayPal write them, and the ISO 4217 code each one means. */
-const MARKS: Record<string, string> = {
-  US$: "USD",
-  USD: "USD",
-  $: "USD",
-  "€": "EUR",
-  EUR: "EUR",
-  "£": "GBP",
-  GBP: "GBP",
-};
-const MARK = "US\\$|USD|EUR|GBP|\\$|€|£";
-const NUMBER = "\\d{1,3}(?:[., ]\\d{3})+(?:[.,]\\d{2})?|\\d+(?:[.,]\\d{2})?";
-const AMOUNT = new RegExp(
-  `(${MARK}) ?(${NUMBER})(?![\\d])|(?<![\\d.,])(${NUMBER}) ?(${MARK})`,
-  "g",
-);
-
-/** Minor units of a number written with `.` or `,` for decimals and either one, or a space, for thousands. */
-function minorOf(text: string): number {
-  const cents = /[.,](\d{2})$/.exec(text);
-  const whole = (cents ? text.slice(0, -3) : text).replace(/[., ]/g, "");
-  return Number(whole) * 100 + (cents ? Number(cents[1]) : 0);
-}
-
-/**
- * Every amount the text writes with a currency mark: `$2.95`, `US$2,95`, `2,95 US$`, `$2.95 USD`,
- * `1.234,56 €`, with any kind of space. A number without a mark is not an amount.
- */
-export function pageAmounts(text: string): { currency: string; minor: number }[] {
-  const flat = text.replace(/[\u00a0\u202f\u2009]/g, " ");
-  return [...flat.matchAll(AMOUNT)].map((m) => ({
-    currency: MARKS[(m[1] ?? m[4]) as string] as string,
-    minor: minorOf((m[2] ?? m[3]) as string),
-  }));
 }

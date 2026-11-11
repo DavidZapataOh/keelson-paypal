@@ -1,38 +1,160 @@
+import fc from "fast-check";
 import { describe, expect, test } from "vitest";
-import { pageAmounts } from "../src/gate.ts";
+import { minorDigits, pageLocale, readAmounts } from "../src/amounts.ts";
 
-const usd = (minor: number) => ({ currency: "USD", minor });
+/** Every language ICU formats numbers for, with the regions and numbering systems that change how. */
+function locales(): string[] {
+  const names = new Intl.DisplayNames(["en"], { type: "language", fallback: "none" });
+  const letters = "abcdefghijklmnopqrstuvwxyz";
+  const languages: string[] = [];
+  for (const a of letters) {
+    for (const b of letters) {
+      const code = `${a}${b}`;
+      if (names.of(code) && Intl.NumberFormat.supportedLocalesOf(code).length) languages.push(code);
+    }
+  }
+  const regional = [
+    "en-US",
+    "en-GB",
+    "en-IN",
+    "en-CA",
+    "en-CH",
+    "en-ZA",
+    "de-DE",
+    "de-CH",
+    "de-AT",
+    "fr-FR",
+    "fr-CA",
+    "fr-CH",
+    "es-ES",
+    "es-MX",
+    "es-CO",
+    "es-AR",
+    "pt-BR",
+    "pt-PT",
+    "it-IT",
+    "it-CH",
+    "nl-NL",
+    "nl-BE",
+    "ja-JP",
+    "zh-CN",
+    "zh-TW",
+    "zh-HK",
+    "ko-KR",
+    "ar-EG",
+    "ar-SA",
+    "ar-AE",
+    "ar-MA",
+    "fa-IR",
+    "hi-IN",
+    "bn-BD",
+    "bn-IN",
+    "mr-IN",
+    "ne-NP",
+    "ur-PK",
+    "th-TH",
+    "my-MM",
+    "ru-RU",
+    "uk-UA",
+    "pl-PL",
+    "tr-TR",
+    "he-IL",
+    "id-ID",
+    "vi-VN",
+    "sv-SE",
+    "nb-NO",
+    "da-DK",
+  ];
+  const numbering = [
+    "ar-EG-u-nu-arab",
+    "fa-IR-u-nu-arabext",
+    "hi-IN-u-nu-deva",
+    "bn-BD-u-nu-beng",
+    "th-TH-u-nu-thai",
+    "mr-IN-u-nu-deva",
+    "my-MM-u-nu-mymr",
+    "en-US-u-nu-fullwide",
+  ];
+  return [...new Set([...languages, ...regional, ...numbering])];
+}
 
-describe("amounts as stores and PayPal write them", () => {
-  test.each([
-    ["Total $2.95", [usd(295)]],
-    ["Total USD $2.95", [usd(295)]],
-    ["$2.95 USD", [usd(295)]],
-    ["Pagar 2,95 US$", [usd(295)]],
-    ["Total US$2,95", [usd(295)]],
-    ["Total US$ 2,95", [usd(295)]],
-    ["2,95 US$", [usd(295)]],
-    ["US$ 2,95", [usd(295)]],
-    ["USD 2.95", [usd(295)]],
-    ["2,95 $", [usd(295)]],
-    ["$1,234.56", [usd(123_456)]],
-    ["1.234,56 US$", [usd(123_456)]],
-    ["$5", [usd(500)]],
-    ["Total 2,95 €", [{ currency: "EUR", minor: 295 }]],
-  ])("%s", (text, want) => {
-    const got = pageAmounts(text);
-    expect(got.length).toBeGreaterThan(0);
-    expect([...new Map(got.map((a) => [`${a.currency}${a.minor}`, a])).values()]).toEqual(want);
+const LOCALES = locales();
+const CURRENCIES = ["USD", "EUR", "JPY", "KWD", "BRL", "INR", "EGP", "GBP", "CHF", "MXN"];
+
+describe("reading amounts in any locale", () => {
+  test("covers the ICU languages and the numbering systems that change digits", () => {
+    expect(LOCALES.length).toBeGreaterThan(150);
   });
 
-  test("text without a currency carries no amount", () => {
-    expect(pageAmounts("Revisar pedido 2,95 · 3 items · 2026")).toEqual([]);
-  });
-
-  test("a line price and a larger total are both read", () => {
-    const minors = pageAmounts("The Change US$2,95\nImpuestos US$0,18\nTotal US$3,13").map(
-      (a) => a.minor,
+  test("every locale reads back, to the minor unit, what it formats in each currency", () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom(...LOCALES),
+        fc.constantFrom(...CURRENCIES),
+        fc.integer({ min: 0, max: 99_999_999 }),
+        fc.constantFrom("symbol", "code", "narrowSymbol"),
+        (locale, currency, minor, display) => {
+          const digits = minorDigits(currency);
+          const text = new Intl.NumberFormat(locale, {
+            style: "currency",
+            currency,
+            currencyDisplay: display as "symbol",
+          }).format(minor / 10 ** digits);
+          // The narrow symbol is read only next to the ISO code, as checkouts write "$2.95 USD".
+          const shown = display === "narrowSymbol" ? `${text} ${currency}` : `Total ${text}`;
+          const read = readAmounts(shown, locale, currency).minor;
+          expect(read, `${locale} ${shown}`).toContain(minor);
+          expect(Math.max(...read), `${locale} ${shown}`).toBe(minor);
+        },
+      ),
+      { numRuns: 20_000 },
     );
-    expect(Math.max(...minors)).toBe(313);
+  });
+
+  test("an amount in another currency does not count", () => {
+    for (const locale of ["en-US", "es-CO", "de-DE", "ja-JP", "ar-EG"]) {
+      const eur = new Intl.NumberFormat(locale, { style: "currency", currency: "EUR" }).format(9.5);
+      expect(readAmounts(`Total ${eur}`, locale, "USD").minor, locale).toEqual([]);
+    }
+    // In Canada "$" is the Canadian dollar; a US dollar amount is written US$.
+    expect(readAmounts("Total $2.95", "en-CA", "USD").minor).toEqual([]);
+    expect(readAmounts("Total US$2.95", "en-CA", "USD").minor).toEqual([295]);
+  });
+
+  test("a bare narrow symbol is not read without the currency's code on the page", () => {
+    expect(readAmounts("Total $2,95", "es-CO", "USD").minor).toEqual([]);
+    expect(readAmounts("Total $2,95 USD", "es-CO", "USD").minor).toEqual([295]);
+    expect(readAmounts("Total $2.95 USD", "en-US", "USD").minor).toEqual([295]);
+  });
+
+  test("a number written another locale's way is not read in part", () => {
+    expect(readAmounts("Total $2.95 USD", "es-CO", "USD").minor).toEqual([]);
+  });
+
+  test("the locale decides 1.234 from 1,234", () => {
+    expect(readAmounts("US$1.234", "es-ES", "USD").minor).toEqual([123_400]);
+    expect(readAmounts("US$1,234", "en-US", "USD").minor).toEqual([123_400]);
+    expect(readAmounts("US$1,23", "en-US", "USD").minor).toEqual([]);
+    expect(readAmounts("1,23 US$", "es-ES", "USD").minor).toEqual([123]);
+  });
+
+  test("currencies keep their own minor units", () => {
+    expect(readAmounts("￥1,234", "ja-JP", "JPY").minor).toEqual([1234]);
+    expect(readAmounts("KWD 1.234", "en-US", "KWD").minor).toEqual([1234]);
+    expect(readAmounts("₹12,34,567.00", "en-IN", "INR").minor).toEqual([123_456_700]);
+  });
+
+  test("a number with no currency mark is not an amount", () => {
+    expect(readAmounts("Pedido 2,95 · 3 artículos · 2026", "es-ES", "USD").minor).toEqual([]);
+  });
+});
+
+describe("the page's locale", () => {
+  test("is its html lang, else PayPal's locale.x; none or an unknown one is undefined", () => {
+    expect(pageLocale("es", "https://www.paypal.com/pay")).toBe("es");
+    expect(pageLocale("", "https://www.paypal.com/checkoutnow?locale.x=de_DE")).toBe("de-DE");
+    expect(pageLocale("pt-BR", "https://x.example/?locale.x=en_US")).toBe("pt-BR");
+    expect(pageLocale("", "https://www.alfred.com/cart")).toBeUndefined();
+    expect(pageLocale("not a tag!", "https://x.example/")).toBeUndefined();
   });
 });
