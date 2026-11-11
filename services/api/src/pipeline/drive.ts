@@ -64,7 +64,7 @@ export function failedFields(trace: unknown): string[] {
 }
 
 /** A failed mandate field, its bound and the cart's value, as the buyer reads them. */
-export interface BlockReason {
+interface BlockReason {
   field: string;
   mandate: string | null;
   cart: string | null;
