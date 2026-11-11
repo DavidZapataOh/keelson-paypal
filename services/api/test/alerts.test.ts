@@ -284,6 +284,61 @@ describe("email alerts", () => {
     await testDb.insert(alertEmails).values({ userId: sub, address, confirmedAt: new Date() });
   }
 
+  test("an app acting for the user asks for a mandate: the user is alerted at once", async () => {
+    const sub = await newUser();
+    await confirmed(sub);
+    const host = `host-${ulid()}`;
+    await testDb.insert(operators).values({
+      agentId: BigInt(`0x${randomBytes(10).toString("hex")}`),
+      chainId: 421614,
+      agentRegistry: "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+      name: "Anthropic Labs",
+      cnfJwk: {},
+      clientId: host,
+    });
+    const res = await app.request("/v1/connections", {
+      method: "POST",
+      headers: {
+        "idempotency-key": ulid(),
+        "content-type": "application/json",
+        "x-test-principal": JSON.stringify({
+          kind: "client",
+          subject: host,
+          user: sub,
+          scopes: ["mandates:request"],
+        }),
+      },
+      body: JSON.stringify({
+        name: "Claude",
+        reason:
+          "I am Claude, buying the running shoes you asked for in this chat. I compare prices at RunFast and check out only what you named.",
+        limits: {
+          currency: "USD",
+          perPurchaseMinor: 5_000,
+          totalMinor: 10_000,
+          merchants: ["mrc_runfast"],
+          until: new Date(Date.now() + 2 * 86_400_000).toISOString(),
+        },
+      }),
+    });
+    const body = (await res.json()) as { request_id: string };
+    expect(res.status, JSON.stringify(body)).toBe(201);
+    const { request_id } = body;
+    const mail = await vi.waitFor(async () => {
+      const [row] = await testDb
+        .select()
+        .from(sentEmails)
+        .where(eq(sentEmails.subjectId, request_id));
+      if (!row) throw new Error("not yet");
+      return row;
+    });
+    expect(mail).toMatchObject({
+      userId: sub,
+      event: "connection.requested",
+      subject: "Claude asks to spend up to $100.00",
+    });
+  });
+
   test("a blocked cart is emailed with its Alibi link and log index, and kept in the trail", async () => {
     const sub = await newUser();
     await confirmed(sub);
