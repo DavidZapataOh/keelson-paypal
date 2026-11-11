@@ -297,6 +297,7 @@ describe.each(Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[])("home on %s"
               state: "DENIED",
               mode: "2of2",
               blocked: ["total"],
+              reasons: [{ field: "total", mandate: "$100.00", cart: "$340.00" }],
               disputes: [],
             },
           ],
@@ -311,7 +312,7 @@ describe.each(Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[])("home on %s"
     expect(await activity.getByRole("link").count()).toBe(2);
     await activity.getByRole("tab", { name: /Blocked/ }).click();
     expect(await activity.getByRole("link").count()).toBe(1);
-    expect(await activity.getByText("over your cap").count()).toBe(1);
+    expect(await activity.getByText("Cart $340.00 · max $100.00").count()).toBe(1);
     expect(await page.getByRole("list", { name: "Who answers for each part" }).count()).toBe(1);
     const { violations } = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
     expect(violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target).join(",")}`)).toEqual([]);
@@ -671,6 +672,10 @@ test("a blocked cart shows, field by field, what the mandate allowed against the
             state: "DENIED",
             mode: "2of2",
             blocked: ["total", "items"],
+            reasons: [
+              { field: "total", mandate: "$100.00", cart: "$340.00" },
+              { field: "items", mandate: "Running shoes", cart: "Trail sandals" },
+            ],
             disputes: [],
           },
         ],
@@ -684,8 +689,8 @@ test("a blocked cart shows, field by field, what the mandate allowed against the
   await page.getByText("blocked the cart before payment").waitFor();
   const lines = page.locator('[data-slot="block-diff"]');
   expect(await lines.count()).toBe(2);
-  expect(await lines.nth(0).innerText()).toMatch(/Mandate ≤ \$100\.00[\s\S]*Cart \$340\.00/);
-  expect(await lines.nth(1).innerText()).toMatch(/Mandate Running shoes[\s\S]*Cart not as signed/);
+  expect(await lines.nth(0).innerText()).toMatch(/Mandate \$100\.00[\s\S]*Cart \$340\.00/);
+  expect(await lines.nth(1).innerText()).toMatch(/Mandate Running shoes[\s\S]*Cart Trail sandals/);
   await context.close();
 });
 

@@ -48,18 +48,77 @@ export interface PurchaseView {
   capture?: { id: string; invoiceId: string; status: string | null };
   failure?: { step: string; reason: string };
   blocked?: string[];
+  /** For a `DENIED` cart, each failed field with what the mandate allowed and what the cart had. */
+  reasons?: BlockReason[];
   /** A purchase the buyer pays at the store's own checkout: the store and PayPal's transaction. */
   live?: { store: string; transactionId: string | null };
 }
 
 type Row = typeof purchases.$inferSelect;
 
-/** The mandate fields whose check failed, from the engine's evaluation trace. */
-function failedFields(trace: unknown): string[] {
-  const fields = (trace as { fields?: { id?: unknown; pass?: unknown }[] } | null)?.fields;
-  if (!Array.isArray(fields)) return [];
-  return fields.flatMap((f) => (typeof f.id === "string" && f.pass === false ? [f.id] : []));
+/** A failed mandate field, its bound and the cart's value, as the buyer reads them. */
+export interface BlockReason {
+  field: string;
+  mandate: string | null;
+  cart: string | null;
 }
+
+interface FieldTrace {
+  field?: unknown;
+  pass?: unknown;
+  observed?: unknown;
+  bound?: unknown;
+}
+
+const MONEY_FIELDS = new Set(["total", "budget"]);
+
+const day = (ms: number) =>
+  new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: "UTC" }).format(ms);
+
+/** A Cedar JSON value from the engine's trace, as text (`keelson.eval/1`). */
+function shown(field: string, value: unknown, currency: string): string | null {
+  if (value === null || value === undefined) return null;
+  if (MONEY_FIELDS.has(field) && typeof value === "number") {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(value / 100);
+  }
+  if (field === "deadline") {
+    const ms =
+      typeof value === "number" ? value : (value as { expires_at_ms?: unknown }).expires_at_ms;
+    return typeof ms === "number" ? day(ms) : null;
+  }
+  if (Array.isArray(value)) {
+    const parts = value.map((v) => shown(field, v, currency)).filter((v) => v !== null);
+    return parts.length > 0 ? parts.join("; ") : null;
+  }
+  if (typeof value === "object") {
+    const parts = Object.entries(value as Record<string, unknown>)
+      .filter(([k]) => k !== "sku" && !k.startsWith("__"))
+      .map(([k, v]) => `${k.replaceAll("_", " ")} ${String(v)}`);
+    return parts.length > 0 ? parts.join(", ") : null;
+  }
+  if (typeof value === "boolean") return value ? "yes" : "no";
+  return String(value);
+}
+
+/** The failed fields of the engine's evaluation trace, one per mandate field. */
+function blockReasons(trace: unknown, currency: string): BlockReason[] {
+  const fields = (trace as { fields?: FieldTrace[] } | null)?.fields;
+  if (!Array.isArray(fields)) return [];
+  const seen = new Set<string>();
+  return fields.flatMap((f) => {
+    if (f.pass !== false || typeof f.field !== "string" || seen.has(f.field)) return [];
+    seen.add(f.field);
+    return [
+      {
+        field: f.field,
+        mandate: shown(f.field, f.bound, currency),
+        cart: shown(f.field, f.observed, currency),
+      },
+    ];
+  });
+}
+
+const denied = (reasons: BlockReason[]) => ({ blocked: reasons.map((r) => r.field), reasons });
 
 export function purchaseView(p: Row): PurchaseView {
   const failure = p.state === "FAILED" && p.failureReason ? p.failureReason : undefined;
@@ -85,7 +144,7 @@ export function purchaseView(p: Row): PurchaseView {
     ...(failure
       ? { failure: rest.length > 0 ? { step, reason: rest.join(":") } : { step, reason: failure } }
       : {}),
-    ...(p.state === "DENIED" ? { blocked: failedFields(p.evalTrace) } : {}),
+    ...(p.state === "DENIED" ? denied(blockReasons(p.evalTrace, p.currency)) : {}),
     ...(p.liveStore !== null
       ? { live: { store: p.liveStore, transactionId: p.paypalTransactionId } }
       : {}),

@@ -28,6 +28,15 @@ export const PurchaseProgress = z.object({
     .array(z.string())
     .optional()
     .openapi({ description: "For a `DENIED` cart, the mandate fields whose check failed." }),
+  reasons: z
+    .array(
+      z.object({ field: z.string(), mandate: z.string().nullable(), cart: z.string().nullable() }),
+    )
+    .optional()
+    .openapi({
+      description:
+        "For a `DENIED` cart, each failed field with what the mandate allowed and what the cart had, as text.",
+    }),
   live: z.object({ store: z.string(), transactionId: z.string().nullable() }).optional().openapi({
     description:
       "A purchase the buyer pays at the store's own checkout: the store's origin and the PayPal transaction id once the agent recorded it. Never covered nor captured.",
@@ -36,7 +45,7 @@ export const PurchaseProgress = z.object({
 
 export function progressOf(view: PurchaseView | undefined): z.infer<typeof PurchaseProgress> {
   if (!view) return {};
-  const { state, logIndex, coverage, capture, failure, blocked, live } = view;
+  const { state, logIndex, coverage, capture, failure, blocked, reasons, live } = view;
   return {
     state,
     ...(logIndex ? { logIndex } : {}),
@@ -44,6 +53,7 @@ export function progressOf(view: PurchaseView | undefined): z.infer<typeof Purch
     ...(capture ? { capture } : {}),
     ...(failure ? { failure } : {}),
     ...(blocked ? { blocked } : {}),
+    ...(reasons ? { reasons } : {}),
     ...(live ? { live } : {}),
   };
 }
