@@ -238,6 +238,9 @@ const TOTAL = [
   "pagas",
   "pagarás",
   "a pagar",
+  "due",
+  "balance due",
+  "amount due",
   "total a pagar",
   "importe total",
   "valor total",
@@ -365,9 +368,19 @@ function markBefore(t: string, at: number, marks: readonly string[]): string | u
 }
 
 /** The mark of `marks` the text starts with at `at`, unless written onto the next number ("$2.95"). */
-function markAfter(t: string, at: number, marks: readonly string[]): string | undefined {
+function markAfter(
+  t: string,
+  at: number,
+  marks: readonly string[],
+  lone: boolean,
+): string | undefined {
   const post = t.slice(at, at + 40).replace(/^ /, "");
-  return marks.find((m) => post.startsWith(m) && !/^[\p{L}\p{Sc}\d]/u.test(post.slice(m.length)));
+  return marks.find(
+    (m) =>
+      post.startsWith(m) &&
+      !/^[\p{L}\p{Sc}\d]/u.test(post.slice(m.length)) &&
+      !(lone && /^\p{Lu}{3}$/u.test(m) && /^ [\p{Sc}\d]/u.test(post.slice(m.length))),
+  );
 }
 
 /** A generic mark before or after a number, unless written onto the number on its other side. */
@@ -376,6 +389,7 @@ function generic(
   from: number,
   to: number,
   side: "before" | "after",
+  lone = false,
 ): string | undefined {
   if (side === "before") {
     const m = MARK_BEFORE.exec(t.slice(Math.max(0, from - 5), from));
@@ -386,7 +400,11 @@ function generic(
   const m = MARK_AFTER.exec(t.slice(to, to + 5));
   const mark = m?.[1];
   if (mark === undefined || TAX_LABELS.has(mark)) return undefined;
-  return /\d/.test(t[to + (m?.[0].length ?? 0)] ?? "") ? undefined : mark;
+  const rest = t.slice(to + (m?.[0].length ?? 0));
+  if (/^\d/.test(rest) || (lone && /^\p{Lu}{3}$/u.test(mark) && /^ [\p{Sc}\d]/u.test(rest))) {
+    return undefined;
+  }
+  return mark;
 }
 
 /**
@@ -428,7 +446,10 @@ function scanPlain(t: string, locale: string, currency: string): Token[] {
     let from = run.index;
     let to = from + run[0].length;
     const before = markBefore(t, from, own) ?? generic(t, from, to, "before");
-    const after = markAfter(t, to, own) ?? generic(t, from, to, "after");
+    // A code after a number with no mark before it, and before another amount ("Visa 4242 USD
+    // $2.95"), is that amount's.
+    const lone = before === undefined;
+    const after = markAfter(t, to, own, lone) ?? generic(t, from, to, "after", lone);
     // A mark the token before already wrote after its number ("$2.95 USD 4242") is not this one's.
     const ownBefore =
       before !== undefined && t.lastIndexOf(before, from) >= claimed ? before : undefined;
@@ -458,8 +479,14 @@ function scanPlain(t: string, locale: string, currency: string): Token[] {
       return o.narrow === m || o.marks.includes(m);
     };
     let kind: Token["kind"];
-    if (found.length === 0) kind = RUN_SEPARATOR.test(run[0]) ? "loose" : "plain";
-    else if (sure && other === undefined) kind = "target";
+    if (found.length === 0) {
+      // "490 dollars", "500 yen", "Rs. 490": a currency the reader does not name may be this one.
+      const named =
+        /^ ?(?:dollars?|dólar(?:es)?|pesos?|yen|euros?|rupees?|reais|real|won)\b/iu.test(
+          t.slice(to, to + 12),
+        ) || /\bRs\.? ?$/u.test(t.slice(Math.max(0, from - 4), from));
+      kind = RUN_SEPARATOR.test(run[0]) || named ? "loose" : "plain";
+    } else if (sure && other === undefined) kind = "target";
     else if (
       other !== undefined &&
       !sure &&
@@ -512,12 +539,11 @@ export interface PageReading {
    */
   loose: number[];
   /**
-   * Amounts in another currency but money the page labels as not charged (a balance), in that
-   * currency's whole units, and whether the page labels each its total or charge: a conversion of
-   * the total ("Pagarás $10.231 COP") or of a part of it. `currency` is undefined when only a sign
-   * names it.
+   * Amounts in another currency, in that currency's whole units, and whether the page labels each
+   * its total or charge (a conversion of the total, "Pagarás $10.231 COP") or money it is not
+   * charged (a balance). `currency` is undefined when only a sign names it.
    */
-  conversions: { currency?: string; units: number; total: boolean }[];
+  conversions: { currency?: string; units: number; total: boolean; aside: boolean }[];
   /** The rates the page writes from the currency (`1 USD = 3.468,14 COP`), by currency. */
   rates: Record<string, number>;
   /** Why the page cannot be read for sure; undefined when it can. */
@@ -575,6 +601,7 @@ function read(text: string, locale: string, currency: string): Omit<PageReading,
   const loose: number[] = [];
   const conversions: PageReading["conversions"] = [];
   const rates: Record<string, number> = {};
+  const rated = new Set<Token>();
   let unsure: string | undefined;
   for (const [i, token] of tokens.entries()) {
     if (token.kind === "target") {
@@ -592,7 +619,10 @@ function read(text: string, locale: string, currency: string): Omit<PageReading,
         next.currency
       ) {
         const rate = rateOf(next.number);
-        if (rate !== undefined) rates[next.currency] = rate;
+        if (rate === undefined || (rates[next.currency] ?? rate) !== rate) {
+          unsure ??= "a rate not read for sure";
+        } else rates[next.currency] = rate;
+        rated.add(next);
         continue;
       }
       minor.push(value);
@@ -601,15 +631,12 @@ function read(text: string, locale: string, currency: string): Omit<PageReading,
     } else if (token.kind === "loose") {
       if (token.values.length > 0) loose.push(Math.max(...token.values));
       // A number with a separator no locale writes so may still be an amount: count it whole.
-      else if (/[.,\u066b]/u.test(token.number)) loose.push(ceiling(token.number, fraction));
-    } else if (token.kind === "other" && token.context !== "aside") {
-      // The number of a rate ("1 USD = 3.468,14 COP") is no amount.
-      if (
-        tokens[i - 1]?.kind === "target" &&
-        /^ ?= ?$/.test(t.slice(tokens[i - 1]?.to, token.from))
-      ) {
-        continue;
+      else if (/[.,\u066b]|\d \d\d$/u.test(token.number)) {
+        loose.push(ceiling(token.number, fraction));
       }
+    } else if (token.kind === "other") {
+      // The number of a rate ("1 USD = 3.468,14 COP") is no amount.
+      if (rated.has(token)) continue;
       const value = units(token.number, token.currency);
       if (value === undefined) {
         unsure ??= "an amount in another currency not read whole";
@@ -619,6 +646,7 @@ function read(text: string, locale: string, currency: string): Omit<PageReading,
         ...(token.currency ? { currency: token.currency } : {}),
         units: value,
         total: token.context === "total",
+        aside: token.context === "aside",
       });
     }
   }
@@ -684,18 +712,26 @@ export function readPage(text: string, locales: readonly string[], currency: str
 /**
  * Whether a page charges `minor` of its currency and nothing more: read for sure, labeling exactly
  * that amount as its total or charge, and showing no larger amount the buyer may be charged,
- * whether of the currency or a number that may be. An amount in another currency counts only at
- * the rate the page writes for it (`1 USD = 3.468,14 COP`): labeled the total, it must be `minor`
- * converted, within 1%; on another line, no more than that. A balance in any currency does not
- * count.
+ * whether of the currency or a number that may be. A page shows amounts in other currencies only
+ * where it `converts` the total to the buyer's currency (PayPal), and each counts only at the rate
+ * the page writes for it (`1 USD = 3.468,14 COP`): labeled the total, it must be `minor`
+ * converted, within 1%; on another line, no more than that; a balance does not count.
  */
-export function charges(page: PageReading, minor: number, currency: string): boolean {
+export function charges(
+  page: PageReading,
+  minor: number,
+  currency: string,
+  converts = false,
+): boolean {
   const whole = minor / 10 ** minorDigits(currency);
   return (
     page.unsure === undefined &&
     page.totals.includes(minor) &&
     Math.max(...page.minor, ...page.loose) <= minor &&
-    page.conversions.every(({ currency: c, units, total }) => {
+    (converts || Object.keys(page.rates).length === 0) &&
+    page.conversions.every(({ currency: c, units, total, aside }) => {
+      if (!converts) return false;
+      if (aside) return true;
       const rate = c === undefined ? undefined : page.rates[c];
       if (rate === undefined) return false;
       const converted = whole * rate;

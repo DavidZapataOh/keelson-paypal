@@ -52,22 +52,10 @@ const VOCABULARY = new Set(
     .map((w) => fold(w)),
 );
 const ISO: ReadonlySet<string> = new Set(Intl.supportedValuesOf("currency"));
-/** ISO codes that are also names or words a page may write in capitals (BOB, RON, ALL). */
-const NAMES: ReadonlySet<string> = new Set([
-  "BOB",
-  "RON",
-  "ALL",
-  "TOP",
-  "PEN",
-  "SOS",
-  "TRY",
-  "MAD",
-  "CUP",
-  "GEL",
-  "NIO",
-  "MOP",
-  "BAM",
-]);
+/** The currency codes a label keeps; any other three capitals may be a name (ANG, BOB, RON). */
+const CODES: ReadonlySet<string> = new Set(
+  "USD EUR GBP COP MXN BRL ARS CLP JPY CNY INR KRW CAD AUD CHF".split(" "),
+);
 
 function fold(word: string): string {
   return word.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase();
@@ -77,7 +65,7 @@ function fold(word: string): string {
 function keep(word: string): string {
   const bare = word.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
   if (bare === "") return word;
-  if ((ISO.has(bare) && !NAMES.has(bare)) || VOCABULARY.has(fold(bare))) return word;
+  if (CODES.has(bare) || VOCABULARY.has(fold(bare))) return word;
   if (/^[\d.,'’ ]+$/u.test(bare)) return "#";
   return "▪";
 }
@@ -105,12 +93,12 @@ const mark = (m: string) =>
  */
 function amountOf(token: Token): string {
   const digits = token.number.replace(/\D/g, "").length;
-  // A sign names money; a code alone ("1.023.456 USD" may be an ID) only with cents or few digits.
+  // A sign names money; a code alone ("4242 USD" may be a card's last digits) only with cents.
   const sign = token.marks.some((m) => /\p{Sc}/u.test(m));
   const code = token.marks.some((m) => ISO.has(m));
   const money =
     token.kind !== "plain" &&
-    (sign || (code && (digits <= 4 || /[.,٫]\d\d$/u.test(token.number)))) &&
+    (sign || (code && /[.,٫]\d\d$/u.test(token.number))) &&
     [0, 2, 3].some((f) => values(token.number, f).length > 0);
   let out = token.text;
   for (const m of token.marks) out = out.replace(m, mark(m));

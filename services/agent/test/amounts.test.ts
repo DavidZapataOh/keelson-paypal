@@ -367,9 +367,9 @@ describe("PayPal's review page for a buyer whose account converts the total", ()
       fc.property(page, (o) => {
         const text = review({ ...o, total: usdTotal(o.usd) });
         const read = readPage(text, [o.locale], "USD");
-        expect(charges(read, o.usd, "USD"), text).toBe(true);
-        expect(charges(read, o.usd + 1, "USD"), text).toBe(false);
-        if (o.usd > 1) expect(charges(read, o.usd - 1, "USD"), text).toBe(false);
+        expect(charges(read, o.usd, "USD", true), text).toBe(true);
+        expect(charges(read, o.usd + 1, "USD", true), text).toBe(false);
+        if (o.usd > 1) expect(charges(read, o.usd - 1, "USD", true), text).toBe(false);
       }),
       { numRuns: 5_000 },
     );
@@ -379,14 +379,20 @@ describe("PayPal's review page for a buyer whose account converts the total", ()
     fc.assert(
       fc.property(page, fc.integer({ min: 1, max: 1_000_000 }), (o, more) => {
         const onlyCop = review({ ...o, total: `$${converted(o)} COP` });
-        expect(charges(readPage(onlyCop, [o.locale], "USD"), o.usd, "USD"), onlyCop).toBe(false);
+        expect(charges(readPage(onlyCop, [o.locale], "USD"), o.usd, "USD", true), onlyCop).toBe(
+          false,
+        );
         // A converted charge the rate does not account for, or no rate to check it against.
         const off = review({ ...o, total: usdTotal(o.usd), pay: converted(o) * 2 + 2 });
-        expect(charges(readPage(off, [o.locale], "USD"), o.usd, "USD"), off).toBe(false);
+        expect(charges(readPage(off, [o.locale], "USD"), o.usd, "USD", true), off).toBe(false);
         const unrated = review({ ...o, total: usdTotal(o.usd), rateLine: false });
-        expect(charges(readPage(unrated, [o.locale], "USD"), o.usd, "USD"), unrated).toBe(false);
+        expect(charges(readPage(unrated, [o.locale], "USD"), o.usd, "USD", true), unrated).toBe(
+          false,
+        );
         const larger = `${review({ ...o, total: usdTotal(o.usd) })}\nCargo ${usdTotal(o.usd + more)}`;
-        expect(charges(readPage(larger, [o.locale], "USD"), o.usd, "USD"), larger).toBe(false);
+        expect(charges(readPage(larger, [o.locale], "USD"), o.usd, "USD", true), larger).toBe(
+          false,
+        );
       }),
       { numRuns: 5_000 },
     );
@@ -454,5 +460,41 @@ describe("pages an independent review found paid more than the countersigned tot
 
   test("3 minor digits read two ways hold", () => {
     expect(charges(readPage("Total KWD 1.234", ["en"], "KWD"), 1234, "KWD")).toBe(false);
+  });
+});
+
+describe("pages a second review found paid more than the countersigned total", () => {
+  const pays = (text: string, converts: boolean, locale = "en", currency = "USD") =>
+    charges(readPage(text, [locale], currency), 1000, currency, converts);
+
+  test.each([
+    ["a total after '=' in another currency", "Total $10.00 USD = 4,900.00 MXN"],
+    ["a code before it", "Total $10.00 USD = MXN 4,900.00"],
+    ["an item after '='", "Item $10.00 USD = 490.00 AUD\nTotal $10.00 USD"],
+    [
+      "two rates that disagree",
+      "Total $10.00 USD\n1 USD = 17.00 MXN\n1 USD = 490.00 MXN\nTotal 4,900.00 MXN",
+    ],
+    ["a balance due in another currency", "Total $10.00 USD\nBalance due 490.00 AUD"],
+    ["a rupee amount written Rs.", "Total ₹10.00\nShipping Rs. 490", "en-IN", "INR"],
+    ["yen written as a word", "合計 ¥1,000\n送料 5000 yen", "ja", "JPY"],
+    ["dollars written as a word", "Total $10.00 USD\nShipping 490 dollars"],
+    ["cents set apart", "Total $10.00 USD\nFee 490 00"],
+  ])("%s is held, on PayPal too", (_, text, locale = "en", currency = "USD") => {
+    expect(charges(readPage(text, [locale], currency), 1000, currency, true)).toBe(false);
+  });
+
+  test("a store's checkout showing any rate or other currency is held", () => {
+    const paypal = "Total $10.00 USD\nTasa: 1 USD = 3.468,14 COP\nPagarás $34.681 COP";
+    expect(pays(paypal, true, "es")).toBe(true);
+    expect(pays(paypal, false, "es")).toBe(false);
+    expect(pays("Total $10.00 USD\nAvailable at checkout: 490.00 CAD", false)).toBe(false);
+  });
+
+  test("a code between a card's last digits and the amount names the amount", () => {
+    expect(readPage("Visa •••• 4242 USD $10.00\nTotal USD $10.00", ["en"], "USD")).toMatchObject({
+      minor: [1000, 1000],
+      totals: [1000],
+    });
   });
 });

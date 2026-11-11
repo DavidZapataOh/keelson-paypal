@@ -11,6 +11,11 @@ const PAY =
 /** Offers the buyer never takes: saving a payment method, installments or credit. */
 const NEVER =
   /\b(save (?:paypal|my|your|card|this|payment)|for (?:future|faster)|remember (?:me|this)|pay (?:in \d|later|monthly|over time)|paypal credit|installments?)\b/i;
+/**
+ * PayPal's hosts, whose review page may show the total converted to the buyer's currency at the
+ * rate PayPal writes on it.
+ */
+const PAYPAL_HOSTS = ["paypal.com", "*.paypal.com"];
 /** A store's checkout, on its own host: Shopify's `/checkouts/…`, and the usual `/checkout`. */
 const CHECKOUT_PATH = /\/checkouts?(?:\/|$)/;
 
@@ -38,6 +43,7 @@ export type PayAction =
  */
 export class PayGate {
   readonly #checkoutHosts: readonly string[];
+  readonly #convertHosts: readonly string[];
   readonly #cart: (() => Promise<Money | undefined>) | undefined;
   #total: CheckoutTotal | undefined;
   #requote: CheckoutTotal | undefined;
@@ -63,8 +69,13 @@ export class PayGate {
    * discounts and before tax and shipping: the structured amount a pay action is checked against
    * besides the page's text; undefined when it cannot be read.
    */
-  constructor(o: { checkoutHosts: readonly string[]; cart?: () => Promise<Money | undefined> }) {
+  constructor(o: {
+    checkoutHosts: readonly string[];
+    cart?: () => Promise<Money | undefined>;
+    convertHosts?: readonly string[];
+  }) {
     this.#checkoutHosts = o.checkoutHosts;
+    this.#convertHosts = o.convertHosts ?? PAYPAL_HOSTS;
     this.#cart = o.cart;
   }
 
@@ -118,15 +129,14 @@ export class PayGate {
     return { name: read.name.replace(/\s+/g, " "), checked: read.checked };
   }
 
+  static #matches(hosts: readonly string[], host: string): boolean {
+    return hosts.some((h) => (h.startsWith("*.") ? host.endsWith(h.slice(1)) : h === host));
+  }
+
   #onCheckout(page: Page): boolean {
     const url = URL.parse(page.url());
     if (!url) return false;
-    const host = url.hostname;
-    return (
-      this.#checkoutHosts.some((h) =>
-        h.startsWith("*.") ? host.endsWith(h.slice(1)) : h === host,
-      ) || CHECKOUT_PATH.test(url.pathname)
-    );
+    return PayGate.#matches(this.#checkoutHosts, url.hostname) || CHECKOUT_PATH.test(url.pathname);
   }
 
   #refuse(reason: string): never {
@@ -171,7 +181,8 @@ export class PayGate {
     const cartOk =
       !this.#cart ||
       (cart?.currency === total.currency && cart.minor === total.items - total.discount);
-    if (!charges(read, total.minor, total.currency) || !cartOk) {
+    const converts = PayGate.#matches(this.#convertHosts, URL.parse(page.url())?.hostname ?? "");
+    if (!charges(read, total.minor, total.currency, converts) || !cartOk) {
       // A re-quote is the page's largest amount, which it must label its total, with nothing
       // that may be the currency above it.
       const top = Math.max(...read.minor);

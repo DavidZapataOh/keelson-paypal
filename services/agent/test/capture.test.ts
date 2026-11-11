@@ -40,7 +40,7 @@ describe("what the gate logs of a held page", () => {
         region: "",
       },
       {
-        amount: "1 USD",
+        amount: "# USD",
         kind: "target",
         context: "aside",
         label: "Tasa de conversión:",
@@ -124,10 +124,14 @@ describe("numbers next to capitals that are no currency", () => {
     "IBAN DE89 370 400 USD Total $2.95 USD",
     "ID CC 1.023.456 USD Total $2.95 USD",
     "BOB SMITH Total $2.95 USD",
+    "ANG LEE Total $2.95 USD",
+    "Visa •••• 4242 USD $2.95 Total $2.95 USD",
+    "Mastercard ending 5454 USD 2.95 Total $2.95 USD",
+    "Cuenta 1234 COP Total $2.95 USD",
   ])("%s keeps no identifier", (text) => {
     const log = JSON.stringify(sanitize([row(text)], "es", "USD"));
-    for (const secret of text.match(/[\d.,' -]{3,}\d|SMITH|BOB|DE89/g) ?? []) {
-      if (secret.trim() === "2.95") continue;
+    for (const secret of text.match(/[\d.,' -]{3,}\d|SMITH|BOB|ANG|LEE|DE89/g) ?? []) {
+      if (["2.95", "$2.95"].includes(secret.trim())) continue;
       expect(log, secret).not.toContain(secret.trim());
     }
     expect(log).toContain("$2.95 USD");
