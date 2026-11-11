@@ -6,7 +6,6 @@ export type Fact = keyof StatementFacts;
 
 /** How a fact is stated in a standard's payload. */
 export type Transform =
-  | "Identity"
   | "Minor"
   | "Major"
   | "UpperCurrency"
@@ -18,7 +17,8 @@ export interface BindingRow {
   /** RFC 6901 pointer into the payload. */
   pointer: string;
   fact: Fact;
-  transform: Transform;
+  /** Absent: the payload states the fact as `keelson.facts` does. */
+  transform?: Transform;
 }
 
 /** What the issuer signs for one export profile: its JWS `typ` and the values it binds. */
@@ -58,7 +58,7 @@ export const EXPORT_BINDINGS: Record<string, Profile> = {
     rows: [
       { pointer: "/pack/transaction/amount_minor", fact: "amount_minor", transform: "Minor" },
       { pointer: "/pack/transaction/currency", fact: "currency", transform: "UpperCurrency" },
-      { pointer: "/pack/transaction/decision", fact: "decision", transform: "Identity" },
+      { pointer: "/pack/transaction/decision", fact: "decision" },
     ],
   },
   "acp.allowance/1": {
@@ -84,19 +84,6 @@ export class BindingError extends Error {
   }
 }
 
-const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-
-/** The low 128 bits of a 32-byte request id, as a ULID. */
-function ulidOf(requestId: string): string {
-  let n = BigInt(requestId) & ((1n << 128n) - 1n);
-  let out = "";
-  for (let i = 0; i < 26; i++) {
-    out = CROCKFORD[Number(n & 31n)] + out;
-    n >>= 5n;
-  }
-  return out;
-}
-
 function alphaOf(numeric: number): CurrencyCode {
   const code = (Object.keys(CURRENCIES) as CurrencyCode[]).find(
     (c) => CURRENCIES[c].numeric === numeric,
@@ -105,22 +92,24 @@ function alphaOf(numeric: number): CurrencyCode {
   return code;
 }
 
-/** A fact's value as `t` states it. */
-export function transform(t: Transform, value: unknown, facts: StatementFacts): unknown {
+/** A fact's value as `t` states it; with no `t`, the fact itself. */
+export function transform(
+  t: Transform | undefined,
+  value: unknown,
+  facts: StatementFacts,
+): unknown {
   switch (t) {
-    case "Identity":
-    case "Minor":
+    case undefined:
+    case "UlidOfRequest":
       return value;
-    case "Major": {
-      const scale = 10 ** CURRENCIES[alphaOf(facts.currency)].exponent;
-      return Number(value) / scale;
-    }
+    case "Minor":
+      return Number(value);
+    case "Major":
+      return Number(value) / 10 ** CURRENCIES[alphaOf(Number(facts.currency))].exponent;
     case "UpperCurrency":
       return alphaOf(Number(value));
     case "LowerCurrency":
       return alphaOf(Number(value)).toLowerCase();
-    case "UlidOfRequest":
-      return ulidOf(String(value));
     case "StatusOfDecision":
       return value === "allow" ? "Success" : "Error";
   }

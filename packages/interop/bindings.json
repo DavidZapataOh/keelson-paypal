@@ -68,8 +68,7 @@
       },
       {
         "pointer": "/pack/transaction/decision",
-        "fact": "decision",
-        "transform": "Identity"
+        "fact": "decision"
       }
     ]
   },

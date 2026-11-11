@@ -164,7 +164,7 @@ export async function verifyUcp(
         () =>
           facts !== undefined &&
           totals?.[0]?.type === "total" &&
-          totals[0].amount === facts.amount_minor &&
+          totals[0].amount === Number(facts.amount_minor) &&
           x.checkout.currency === transform("UpperCurrency", facts.currency, facts),
       ),
     },

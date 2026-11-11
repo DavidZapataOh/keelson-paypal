@@ -119,7 +119,7 @@ export async function verifyAcp(
       ok: holds(
         () =>
           facts !== undefined &&
-          x.allowance.max_amount >= facts.amount_minor &&
+          x.allowance.max_amount >= Number(facts.amount_minor) &&
           x.allowance.currency === transform("LowerCurrency", facts.currency, facts) &&
           x.metadata.keelson_alibi_sha256 ===
             bytesToHex(sha256(base64url.decode(x.alibi.statement))) &&

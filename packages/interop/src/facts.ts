@@ -1,5 +1,6 @@
 import type { AlibiBundle } from "@keelson/alibi";
 import { type Cart, CURRENCIES, type CurrencyCode, fromPayPalAmount } from "@keelson/core";
+import { ulidOfRequestId } from "@keelson/log";
 import { type Disclosed, decodeDisclosed, type Mandate, type UserAuth } from "@keelson/mandate";
 
 /** One purchased line, in minor units of the purchase currency. */
@@ -61,15 +62,17 @@ export interface PurchaseFacts {
 
 /** The facts of a purchase's logged statement, as the issuer compares them before it signs. */
 export interface StatementFacts {
+  /** The countersigned request id as a ULID. */
   request_id: string;
   mandate_hash: string;
   cart_hash: string;
   /** Decimal. */
   agent_id: string;
   merchant_id: string;
-  amount_minor: number;
-  /** ISO 4217 numeric. */
-  currency: number;
+  /** Decimal. */
+  amount_minor: string;
+  /** ISO 4217 numeric, decimal. */
+  currency: string;
   decision: "allow" | "deny";
   /** Seconds since the epoch. */
   issued_at: number;
@@ -210,13 +213,13 @@ export function statementFacts(f: PurchaseFacts): StatementFacts {
   const numeric = CURRENCIES[f.currency as CurrencyCode]?.numeric;
   if (numeric === undefined) throw new RangeError(`unsupported currency ${f.currency}`);
   return {
-    request_id: f.requestId,
+    request_id: ulidOfRequestId(f.requestId),
     mandate_hash: f.mandateHash,
     cart_hash: f.cartHash,
     agent_id: f.agentId,
     merchant_id: f.merchantIdHash,
-    amount_minor: f.totalMinor,
-    currency: numeric,
+    amount_minor: String(f.totalMinor),
+    currency: String(numeric),
     decision: f.decision,
     issued_at: f.issuedAt,
   };

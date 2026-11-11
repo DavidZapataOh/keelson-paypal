@@ -21,13 +21,13 @@ describe("statementFacts", () => {
   test("projects the countersigned facts as leg A compares them", () => {
     const cs = alibi(ALLOW_PAYPAL).tee.countersign;
     expect(facts).toEqual({
-      request_id: cs.requestId,
+      request_id: ALLOW_PAYPAL,
       mandate_hash: cs.mandateHash,
       cart_hash: cs.cartHash,
       agent_id: "351",
       merchant_id: cs.merchantId,
-      amount_minor: 100,
-      currency: 840,
+      amount_minor: "100",
+      currency: "840",
       decision: "allow",
       issued_at: 1794219430,
     });
@@ -46,7 +46,7 @@ describe("checkBinding", () => {
   });
 
   test("refuses a fact that differs from the statement's", () => {
-    const payload = bound({ ...facts, amount_minor: 101 });
+    const payload = bound({ ...facts, amount_minor: "101" });
     expect(codeOf(() => checkBinding("JWT", payload, facts, statement))).toBe("export.facts");
   });
 
@@ -64,19 +64,14 @@ describe("checkBinding", () => {
 
 describe("transforms", () => {
   test("map a fact to the form each standard states it in", () => {
-    expect(transform("Minor", 10000, facts)).toBe(10000);
-    expect(transform("Major", 10000, facts)).toBe(100);
-    expect(transform("UpperCurrency", 840, facts)).toBe("USD");
-    expect(transform("LowerCurrency", 840, facts)).toBe("usd");
+    expect(transform("Minor", "10000", facts)).toBe(10000);
+    expect(transform("Major", "10000", facts)).toBe(100);
+    expect(transform("UpperCurrency", "840", facts)).toBe("USD");
+    expect(transform("LowerCurrency", "840", facts)).toBe("usd");
+    expect(transform(undefined, "allow", facts)).toBe("allow");
     expect(transform("StatusOfDecision", "deny", facts)).toBe("Error");
     expect(transform("StatusOfDecision", "allow", facts)).toBe("Success");
-    expect(
-      transform(
-        "UlidOfRequest",
-        "0x0000000000000000000000000000000001a1bfcfca3cc623777ab2568f5a6768",
-        facts,
-      ),
-    ).toBe("01M6ZWZJHWRRHQEYNJAT7NMSV8");
+    expect(transform("UlidOfRequest", ALLOW_PAYPAL, facts)).toBe("01M6ZWZJHWRRHQEYNJAT7NMSV8");
   });
 });
 
@@ -85,4 +80,12 @@ test("bindings.json is the table, for the engine", () => {
   expect(json).toEqual(
     Object.entries(EXPORT_BINDINGS).map(([profile, { typ, rows }]) => ({ profile, typ, rows })),
   );
+});
+
+test("the table is the one the enclave issuer enforces, row for row", () => {
+  const engine = JSON.parse(
+    readFileSync(new URL("../../../engine/tee/src/export_bindings.json", import.meta.url), "utf8"),
+  );
+  const ours = JSON.parse(readFileSync(new URL("../bindings.json", import.meta.url), "utf8"));
+  expect(ours).toEqual(engine);
 });

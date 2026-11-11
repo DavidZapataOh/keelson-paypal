@@ -285,7 +285,7 @@ export async function verifyEvidencePack(
       ok: holds(
         () =>
           facts !== undefined &&
-          p.transaction.amount_minor === facts.amount_minor &&
+          p.transaction.amount_minor === Number(facts.amount_minor) &&
           p.transaction.currency === transform("UpperCurrency", facts.currency, facts) &&
           p.transaction.decision === facts.decision,
       ),

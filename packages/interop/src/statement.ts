@@ -1,4 +1,4 @@
-import { parseStatementLeaf } from "@keelson/log";
+import { parseStatementLeaf, ulidOfRequestId } from "@keelson/log";
 import { decodeSign1, encodeSign1, leafHash, RECEIPTS, verifyReceipt } from "@keelson/scitt";
 import { base64url } from "jose";
 import type { StatementFacts } from "./facts.ts";
@@ -63,13 +63,13 @@ export function verifyStatement(
   }
   const c = parsed.claims.countersign;
   return {
-    request_id: c.requestId.toLowerCase(),
+    request_id: ulidOfRequestId(c.requestId),
     mandate_hash: c.mandateHash.toLowerCase(),
     cart_hash: c.cartHash.toLowerCase(),
     agent_id: String(c.agentId),
     merchant_id: c.merchantId.toLowerCase(),
-    amount_minor: Number(c.amount),
-    currency: Number(c.currency),
+    amount_minor: String(c.amount),
+    currency: String(c.currency),
     decision: Number(c.decision) === 1 ? "allow" : "deny",
     issued_at: Number(c.issuedAt),
   };
