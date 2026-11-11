@@ -192,10 +192,10 @@ async function demoCompiled() {
 async function signedIn(
   kind: keyof typeof VIEWPORTS,
   path: string,
-  answer: (path: string, body: string | null) => unknown,
+  answer: (path: string, body: string | null) => unknown | Promise<unknown>,
 ) {
   const context = await browser.newContext(VIEWPORTS[kind]);
-  await context.route("https://api.keelson.finance/**", (route) => {
+  await context.route("https://api.keelson.finance/**", async (route) => {
     const req = route.request();
     const url = new URL(req.url());
     const headers = {
@@ -205,7 +205,9 @@ async function signedIn(
     };
     if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers });
     const value =
-      url.pathname === "/api/auth/get-session" ? SESSION() : answer(url.pathname, req.postData());
+      url.pathname === "/api/auth/get-session"
+        ? SESSION()
+        : await answer(url.pathname, req.postData());
     if (value === undefined) return route.abort("connectionrefused");
     return route.fulfill({ headers, contentType: "application/json", body: JSON.stringify(value) });
   });
@@ -232,8 +234,10 @@ describe.each(Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[])("rules on %s
     await page.getByLabel("Store name").fill("RunFast");
     // The radios are visually hidden behind their segmented labels.
     await page.getByRole("radio", { name: "Today" }).check({ force: true });
+    // Let the pressed chips finish their color transition before measuring contrast.
+    await page.waitForTimeout(300);
     const { violations } = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
-    expect(violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
+    expect(violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target).join(",")}`)).toEqual([]);
 
     await page.getByRole("button", { name: "Review rules" }).click();
     await page.getByRole("heading", { level: 1, name: "Check it, then sign" }).waitFor();
@@ -331,6 +335,112 @@ describe.each(Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[])("home on %s"
   });
 });
 
+/** A mandate view in `state`, built on the demo card. */
+async function viewIn(id: string, state: string, purchases: unknown[] = []) {
+  const { card } = await demoCompiled();
+  return {
+    id,
+    state,
+    mandateHash: null,
+    budget: { currency: "USD", maxMinor: "10000", remainingMinor: "10000" },
+    expiresAt: later(),
+    hold: null,
+    card,
+    purchases,
+    pendingHolds: [],
+  };
+}
+
+describe("signing and going live", () => {
+  test("a buyer without a passkey creates one before signing, and can go back", async () => {
+    const compiled = await demoCompiled();
+    const { context, page } = await signedIn("desktop", "/new/", (path) => {
+      if (path === "/v1/passkeys") return { passkeys: [] };
+      if (path === "/v1/mandates/compile") return compiled;
+      return undefined;
+    });
+    await page.getByRole("button", { name: "Running shoes, size 10" }).click();
+    await page.getByRole("button", { name: "Review rules" }).click();
+    await page.getByRole("button", { name: "Sign · up to $100.00" }).click({ timeout: 30_000 });
+    await page.getByRole("heading", { level: 1, name: "Sign with Face ID" }).waitFor();
+    expect(await page.getByRole("button", { name: "Create passkey" }).isEnabled()).toBe(true);
+    await page.getByRole("button", { name: "Back" }).click();
+    await page.getByRole("heading", { level: 1, name: "Check it, then sign" }).waitFor();
+    await context.close();
+  });
+
+  test("a signed mandate asks for the PayPal hold, then says the agent is live", async () => {
+    const id = "01M7MANDATE000000000000001";
+    let state = "SIGNED";
+    const { context, page } = await signedIn("desktop", `/new/?hold=${id}`, (path) =>
+      path === `/v1/mandates/${id}` ? viewIn(id, state) : undefined,
+    );
+    await page.getByRole("heading", { level: 1, name: "Hold $100.00 on PayPal" }).waitFor();
+    const { violations } = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+    expect(violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
+    state = "ACTIVE";
+    await page.reload();
+    await page.getByRole("heading", { level: 1, name: "Your agent is live" }).waitFor();
+    expect(await page.getByRole("list", { name: "All steps done" }).count()).toBe(1);
+    expect(await page.getByRole("link", { name: "Go home" }).getAttribute("href")).toBe("/");
+    await context.close();
+  });
+});
+
+describe("home actions", () => {
+  const id = "01M7MANDATE000000000000002";
+  const summary = (state: string) => ({
+    mandates: [
+      {
+        id,
+        state,
+        budget: { currency: "USD", maxMinor: "10000", remainingMinor: "10000" },
+        merchantIds: ["mrc_runfast"],
+        holdMode: "mandate",
+        expiresAt: later(),
+        createdAt: new Date().toISOString(),
+      },
+    ],
+  });
+
+  test("a mandate waiting for its hold shows the setup step that is left", async () => {
+    const { context, page } = await signedIn("mobile", "/", async (path) => {
+      if (path === "/v1/mandates") return summary("SIGNED");
+      if (path === `/v1/mandates/${id}`) return viewIn(id, "SIGNED");
+      return undefined;
+    });
+    const setup = page.getByRole("link", { name: /Finish setup · 3 of 4/ });
+    await setup.waitFor();
+    expect(await setup.getAttribute("href")).toBe(`/new/?hold=${id}`);
+    expect(await page.getByRole("button", { name: "Stop your agent" }).count()).toBe(0);
+    await context.close();
+  });
+
+  test("stopping the agent takes a held key, not a tap", async () => {
+    let revoked = 0;
+    const { context, page } = await signedIn("desktop", "/", async (path) => {
+      if (path === "/v1/mandates") return summary("ACTIVE");
+      if (path === `/v1/mandates/${id}`) return viewIn(id, revoked ? "REVOKED" : "ACTIVE");
+      if (path === `/v1/mandates/${id}/revoke`) {
+        revoked++;
+        return { id, state: "REVOKED" };
+      }
+      return undefined;
+    });
+    const stop = page.getByRole("button", { name: "Stop your agent" });
+    await stop.click();
+    await page.waitForTimeout(300);
+    expect(revoked).toBe(0);
+    await stop.focus();
+    await page.keyboard.down("Space");
+    await page.waitForTimeout(1_400);
+    await page.keyboard.up("Space");
+    await expect.poll(() => revoked).toBe(1);
+    await stop.waitFor({ state: "detached" });
+    await context.close();
+  });
+});
+
 test("keyboard focus is visible", async () => {
   const { context, page } = await visit("desktop");
   await page.keyboard.press("Tab");
@@ -361,7 +471,7 @@ test("the welcome stays inside its budgets", async () => {
   };
   const js = await gz(".js");
   const css = await gz(".css");
-  const riv = (await stat(join(out, "rive/seal.riv"))).size;
+  const riv = (await stat(join(out, "rive/states.riv"))).size;
 
   const { context, page } = await visit("mobile");
   const lcp = await page.evaluate(
@@ -378,7 +488,7 @@ test("the welcome stays inside its budgets", async () => {
     JSON.stringify({
       firstLoadJsGzip: js,
       cssGzip: css,
-      sealRiv: riv,
+      statesRiv: riv,
       lcpMsLocal: Math.round(lcp),
     }),
   );

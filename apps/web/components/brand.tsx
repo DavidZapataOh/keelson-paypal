@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 
 const WASM = "/rive/rive.wasm";
 
@@ -21,13 +21,23 @@ export function SplitK({
 }
 
 export type Seal = "open" | "closing" | "closed";
+export type Moment = "Seal" | "Passkey" | "Live" | "Blocked" | "Refund";
 
 /**
- * The seal closing on a mandate (Rive, lite runtime, loaded on demand). With reduced motion or
- * without the runtime, the closed Split K stands in.
+ * One of the app's state moments (Rive, lite runtime, loaded on demand), played once when `play`
+ * turns on. With reduced motion or without the runtime, `still` stands in.
  */
-export function RiveSeal({ seal, className }: { seal: Seal; className?: string }) {
-  const play = seal === "closing";
+export function RiveMoment({
+  artboard,
+  play,
+  still,
+  className,
+}: {
+  artboard: Moment;
+  play: boolean;
+  still: ReactNode;
+  className?: string | undefined;
+}) {
   const canvas = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -40,9 +50,10 @@ export function RiveSeal({ seal, className }: { seal: Seal; className?: string }
         if (cancelled) return;
         RuntimeLoader.setWasmUrl(WASM);
         rive = new Rive({
-          src: "/rive/seal.riv",
+          src: "/rive/states.riv",
           canvas: el,
-          stateMachines: "Seal",
+          artboard,
+          stateMachines: "Play",
           autoplay: true,
           layout: new Layout({ fit: Fit.Contain }),
           onLoad: () => {
@@ -56,20 +67,35 @@ export function RiveSeal({ seal, className }: { seal: Seal; className?: string }
       el.dataset.ready = "false";
       rive?.cleanup();
     };
-  }, [play]);
+  }, [play, artboard]);
 
   return (
     <span className={`relative grid place-items-center ${className ?? ""}`}>
       <canvas
         ref={canvas}
-        width={160}
-        height={160}
+        width={320}
+        height={320}
+        data-moment={artboard}
         className="peer absolute inset-0 size-full opacity-0 data-[ready=true]:opacity-100"
       />
-      <SplitK
-        stem="#F2F0EA"
-        className={`size-[46%] transition-opacity duration-200 peer-data-[ready=true]:opacity-0 ${seal === "open" ? "opacity-25" : ""}`}
-      />
+      <span className="contents peer-data-[ready=true]:[&>*]:opacity-0">{still}</span>
     </span>
+  );
+}
+
+/** The seal on the mandate card: faint while open, closing once Keelson has read it. */
+export function RiveSeal({ seal, className }: { seal: Seal; className?: string }) {
+  return (
+    <RiveMoment
+      artboard="Seal"
+      play={seal === "closing"}
+      className={className}
+      still={
+        <SplitK
+          stem="#F2F0EA"
+          className={`size-[46%] transition-opacity duration-200 ${seal === "open" ? "opacity-25" : ""}`}
+        />
+      }
+    />
   );
 }

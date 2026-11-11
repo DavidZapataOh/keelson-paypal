@@ -2,13 +2,17 @@
 
 import { passkeyRegistrationOptions, rememberPaymentPasskey } from "@keelson/mandate/browser";
 import { Button } from "@keelson/ui/components/button";
+import { Fingerprint, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { authClient } from "../lib/auth";
-import { ErrorNotice, Eyebrow } from "./notice";
+import { RiveMoment } from "./brand";
+import { ErrorNotice } from "./notice";
+import { OnboardingFrame } from "./onboarding/frame";
 
-/** One decision: create the passkey that signs mandates. */
-export function PasskeySetup({ onDone }: { onDone: () => void }) {
+/** One decision before the first signature: create the passkey that signs for you. */
+export function PasskeySetup({ onDone, onBack }: { onDone: () => void; onBack: () => void }) {
   const [busy, setBusy] = useState(false);
+  const [made, setMade] = useState(false);
   const [error, setError] = useState<string>();
 
   const add = async () => {
@@ -22,29 +26,53 @@ export function PasskeySetup({ onDone }: { onDone: () => void }) {
       return;
     }
     if (opts.authenticatorAttachment === "platform") rememberPaymentPasskey(res.data.credentialID);
-    onDone();
+    setMade(true);
+    setTimeout(onDone, matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 1400);
   };
 
   return (
-    <div className="grid max-w-xl gap-6">
-      <div className="grid gap-3">
-        <Eyebrow>Before your first mandate</Eyebrow>
-        <h1 className="text-balance font-semibold text-3xl tracking-[-0.03em]">
-          Create the passkey that signs for you
-        </h1>
-        <p className="text-pretty text-muted-foreground">
-          Your mandate is only valid with your signature. The passkey stays on your device; Keelson
-          keeps only its public key, so nobody can sign a mandate in your name.
-        </p>
-      </div>
-      <ul className="grid gap-2 text-sm">
-        <li>Face ID, Touch ID, Windows Hello, your phone or a security key.</li>
-        <li>On Chrome, your browser can show the total and the payee as you sign.</li>
-      </ul>
-      <Button size="lg" onClick={add} disabled={busy} className="sm:w-fit">
-        {busy ? "Waiting for your device…" : "Create passkey"}
-      </Button>
-      {error ? <ErrorNotice>{error}</ErrorNotice> : null}
-    </div>
+    <OnboardingFrame
+      step="Sign"
+      stage={
+        <RiveMoment
+          artboard="Passkey"
+          play={made}
+          className="size-56 sm:size-72"
+          still={
+            <span className="grid size-28 place-items-center rounded-[28px] bg-card shadow-[0_18px_40px_-24px_rgb(23_24_27/0.45)]">
+              <Fingerprint className="size-14" strokeWidth={1.5} aria-hidden="true" />
+            </span>
+          }
+        />
+      }
+      action={
+        <div className="grid grid-cols-[auto_1fr] gap-2">
+          <Button size="lg" variant="outline" onClick={onBack} className="h-13 rounded-xl">
+            Back
+          </Button>
+          <Button
+            size="lg"
+            onClick={add}
+            disabled={busy || made}
+            className="h-13 rounded-xl text-base"
+          >
+            {busy ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
+            {made ? "Passkey ready" : busy ? "Waiting for your device" : "Create passkey"}
+          </Button>
+        </div>
+      }
+    >
+      <h1 className="text-balance font-semibold text-[1.75rem] leading-[1.1] tracking-[-0.025em] sm:text-[2rem]">
+        Sign with Face ID
+      </h1>
+      <p className="mt-3 text-pretty text-lg text-muted-foreground leading-snug">
+        Your passkey signs your rules. It never leaves this device.
+      </p>
+      {error ? (
+        <div className="mt-6">
+          <ErrorNotice>{error}</ErrorNotice>
+        </div>
+      ) : null}
+    </OnboardingFrame>
   );
 }
