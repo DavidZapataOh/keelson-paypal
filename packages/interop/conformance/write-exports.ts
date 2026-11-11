@@ -4,6 +4,7 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { exportAp2 } from "../src/ap2.ts";
+import { exportUcp } from "../src/ucp.ts";
 import {
   ALLOW_CARD,
   ALLOW_PAYPAL,
@@ -37,5 +38,12 @@ for (const id of [ALLOW_PAYPAL, DENY_PAYPAL, ALLOW_CARD]) {
       2,
     )}\n`,
   );
+  if (f.decision === "allow" && f.lines) {
+    const ucp = await exportUcp(f, refFor(id), { issuer, agent }, { now: NOW });
+    writeFileSync(
+      new URL(`${id}.ucp-checkout.json`, out),
+      `${JSON.stringify(ucp.checkout, null, 2)}\n`,
+    );
+  }
 }
-console.log("wrote 3 exports");
+console.log("wrote the exports");

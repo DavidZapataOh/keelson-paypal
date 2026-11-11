@@ -183,6 +183,48 @@ jobs:
         shell: bash
         run: node bench/pdf.bench.ts | tee -a "$GITHUB_STEP_SUMMARY"
 
+  # The standards exports, checked with each standard's own reference verifier or schema tool.
+  interop-conformance:
+    needs: changes
+    if: needs.changes.outputs.ts == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - id: ucp-schema
+        uses: actions/cache@v6
+        with:
+          path: ~/.cargo/bin/ucp-schema
+          key: ucp-schema-1.4.1-${{ runner.os }}-${{ runner.arch }}
+      - if: steps.ucp-schema.outputs.cache-hit != 'true'
+        run: cargo install ucp-schema --version 1.4.1 --locked
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run build --filter=@keelson/interop^...
+      - name: AP2 v0.2.0 SDK and Verifiable Intent verify_chain accept the exports
+        working-directory: packages/interop
+        run: pnpm conformance | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: ucp-schema 1.4.1 validates the UCP checkouts
+        working-directory: packages/interop
+        shell: bash
+        run: |
+          for f in conformance/out/*.ucp-checkout.json; do
+            ~/.cargo/bin/ucp-schema validate "$f" --schema vendor/ucp/shopping/checkout.json --response --op read \
+              --schema-local-base vendor/ucp --schema-remote-base https://ucp.dev/schemas/ --json | tee -a "$GITHUB_STEP_SUMMARY"
+          done
+      - name: The evidence pack PDFs embed their files and render the same twice
+        working-directory: packages/interop
+        env:
+          VISA_PDF_OUT: ${{ runner.temp }}/visa-pdf
+        run: pnpm exec vitest run test/visa-pdf.test.ts
+      - name: veraPDF validates every evidence pack PDF as PDF/A-3b
+        shell: bash
+        run: packages/alibi/scripts/verapdf.sh "$RUNNER_TEMP"/visa-pdf/*.pdf | tee -a "$GITHUB_STEP_SUMMARY"
+
   # Every tampering class and every field of the real Alibis, verified against Arbitrum Sepolia.
   alibi-live:
     needs: changes

@@ -71,7 +71,7 @@ def ap2(e: dict) -> list[str]:
 
 def main() -> int:
     failed = False
-    for path in sorted(Path(__file__).with_name("out").glob("*.json")):
+    for path in sorted(Path(__file__).with_name("out").glob("*[0-9A-Z].json")):
         e = json.loads(path.read_text())
         violations = ap2(e)
         status = json.loads(
