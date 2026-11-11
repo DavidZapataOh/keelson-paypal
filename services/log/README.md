@@ -176,8 +176,6 @@ event from the portal: the API answers it `204`.
 
 ## Leaf
 
-## Leaf
-
 ```
 leaf = "keelson.finance/alibi/v1\n" || JCS(object)
 leaf_hash = SHA-256(0x00 || leaf)
