@@ -14,11 +14,11 @@ side.
 
 | PayPal object                         | Field                      | Limit                               | What it carries                                                                       |
 | ------------------------------------- | -------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------- |
-| Order (Orders v2), `purchase_units[]` | `custom_id`                | 127 characters                      | `ks-custom`: the mandate or purchase and a digest binding it                          |
+| Order (Orders v2), `purchase_units[]` | `custom_id`                | 255 characters                      | `ks-custom`: the mandate or purchase and a digest binding it                          |
 | Order, `purchase_units[]`             | `reference_id`             |                                     | The mandate id, or the purchase's request id                                          |
-| Order, `purchase_units[]`             | `description`              | 127 characters                      | A human-readable line naming the mandate, and for a single purchase the verifier link |
+| Order, `purchase_units[]`             | `description`              |                                     | A human-readable line naming the mandate, and for a single purchase the verifier link |
 | Capture (Payments v2)                 | `invoice_id`               | 127 characters, unique per merchant | `ks-invoice`: the purchase, its sequence on the hold and a digest                     |
-| Refund (Payments v2)                  | `custom_id`                |                                     | `ks-verdict`: the verdict that ordered it                                             |
+| Refund (Payments v2)                  | `custom_id`                | 127 characters                      | `ks-verdict`: the verdict that ordered it                                             |
 | Payout item (Payouts v1)              | `sender_item_id`           | 63 characters                       | `ks-verdict`                                                                          |
 | Every create call                     | `PayPal-Request-Id` header |                                     | Derived from the signed object, so a retry is the same operation                      |
 
