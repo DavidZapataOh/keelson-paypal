@@ -462,13 +462,23 @@ end `FAILED` with `cover:operator-unavailable` before anything is sent.
 
 ### Latency of a purchase
 
-Each step is a span when tracing is on (`OTEL_TRACES_EXPORTER=console`, or an OTLP endpoint):
-`purchase.COUNTERSIGNED` (or `purchase.DENIED`), `purchase.LOGGED`, `purchase.COVERED` and
-`purchase.CAPTURED`, with `purchase.id` and `countersign.mode`, and the outbound calls (undici)
-and queries (pg) of each step nested under it. `bench/money-path.bench.ts` drives real sandbox
-purchases (`PURCHASES`, `CONCURRENCY` mandates buying at once, `DEGRADED_EVERY`) and prints the
-waterfall from those spans as JSON. Its agent is the demo operator's own OAuth client
-(`KEELSON_CLIENT_ID`, `KEELSON_CLIENT_SECRET`), with access tokens from the deployed API.
+Each step is a span: `purchase.COUNTERSIGNED` (or `purchase.DENIED`), `purchase.LOGGED`,
+`purchase.COVERED` and `purchase.CAPTURED`, with `purchase.id` and `countersign.mode`, and the
+outbound calls (undici) and queries (pg) of each step nested under it.
+
+The purchase's readers get those durations as [`Server-Timing`](https://www.w3.org/TR/server-timing/):
+the answer to the countersign carries the steps done before it, and `GET /v1/purchases/{id}` the
+steps done so far, kept in Valkey for an hour. The metrics are `step.<state>`, `db.<state>` (the
+step's Postgres time), `out.<host>` (its outbound calls) and `int.<name>` (work inside it). Nobody
+else gets the header: not another user, not a 401 or 404. With an OTLP exporter configured
+(`OTEL_EXPORTER_OTLP_ENDPOINT` or `OTEL_TRACES_EXPORTER`) the spans go there instead, and the
+header is not sent.
+
+`bench/money-path.bench.ts` drives real sandbox purchases (`PURCHASES`, `CONCURRENCY` mandates
+buying at once) through the public API and prints the waterfall from those headers as JSON. Its
+agent is the demo operator's own OAuth client (`KEELSON_CLIENT_ID`, `KEELSON_CLIENT_SECRET`), with
+access tokens from the deployed API. Purchases with a leg down are measured by the in-process live
+tests (`tamper.live`, `coverage.live`).
 
 On the warm path a purchase makes these round trips, in this order:
 
