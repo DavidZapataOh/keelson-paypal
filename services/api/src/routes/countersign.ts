@@ -36,7 +36,7 @@ import { merchantLeaf } from "@keelson/mandate";
 import type { Context } from "hono";
 import { hexToBytes } from "viem";
 import type { Deps } from "../app.ts";
-import { capturable } from "../hold/state.ts";
+import { capturable, merchantWebsite } from "../hold/state.ts";
 import { requireClient } from "../middleware/auth.ts";
 import { drivePurchase, type PipelineDeps, viewOf } from "../pipeline/drive.ts";
 import { publishPurchase } from "../pipeline/events.ts";
@@ -129,12 +129,15 @@ const Body = z
             (s) => new URL(s).origin === s,
             "The store is an origin, such as https://shop.example.",
           )
-          .openapi({ description: "The store's origin." }),
+          .openapi({
+            description:
+              "The store's origin: the origin of the website the mandate allows for the cart's merchant.",
+          }),
       })
       .optional()
       .openapi({
         description:
-          "Only when the buyer pays at the store's own checkout with their own PayPal account: Keelson countersigns and logs the purchase and issues its Alibi, and neither covers nor captures it. The agent's pay click waits for an ALLOW; the agent then records PayPal's transaction id with `PUT /v1/purchases/{id}/paypal-transaction`.",
+          "Only when the buyer pays at the store's own checkout with their own PayPal account: Keelson countersigns and logs the purchase and issues its Alibi, and neither covers nor captures it. Its Alibi is public once the PayPal transaction is recorded, or as soon as it is issued for a DENY. The agent's pay click waits for an ALLOW; the agent then records PayPal's transaction id with `PUT /v1/purchases/{id}/paypal-transaction`.",
       }),
     repeatOf: z.string().length(26).optional().openapi({
       description:
@@ -208,7 +211,7 @@ const route = createRoute({
     413: { description: "A leg refused the request as too large", content: problemContent },
     422: {
       description:
-        "The request is invalid, the authorization is not this purchase's hold, the cart is not the one held for this request, the evidence holds another cart, or its Channel3 observation is not usable",
+        "The request is invalid, the authorization is not this purchase's hold, the cart is not the one held for this request, the evidence holds another cart, its Channel3 observation is not usable, or a live store is not the website the mandate allows",
       content: problemContent,
     },
     429: { description: "Too many countersigns for this mandate", content: problemContent },
@@ -505,6 +508,25 @@ export function registerCountersign(
         "Mandate not active",
         "The mandate cannot countersign now.",
       );
+    }
+
+    // The agent pays a live purchase at the store, so the store is the one the user allowed.
+    if (body.live) {
+      let website: string | undefined;
+      try {
+        website = merchantWebsite(mandate, body.cart.merchant);
+      } catch {
+        website = undefined;
+      }
+      if (website === undefined || new URL(website).origin !== body.live.store) {
+        return problem(
+          c,
+          422,
+          "store-not-allowed",
+          "Store not allowed",
+          "The store is not the website the mandate allows for the cart's merchant.",
+        );
+      }
     }
 
     // A mandate whose merchant Keelson cannot capture for holds a budget only: the buyer pays
