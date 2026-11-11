@@ -81,9 +81,10 @@ export async function judge(o: { cache?: string } = {}): Promise<User> {
     });
   }
   const save = async () => {
+    at ??= Date.now();
     const { credentials } = await cdp.send("WebAuthn.getCredentials", { authenticatorId });
     const entry: Cached = {
-      at: (at ??= Date.now()),
+      at: at ?? Date.now(),
       storageState: await context.storageState(),
       credentials,
     };

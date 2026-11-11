@@ -113,7 +113,10 @@ export function storedLogin(o: { path?: string } = {}): AuthProvider {
         return c.accessToken;
       }
       const shared = refreshing.get(path);
-      if (shared) return (handedOut = await shared);
+      if (shared) {
+        handedOut = await shared;
+        return handedOut;
+      }
       const refresh = withLock(path, async () => {
         // Another process may have refreshed while this one waited for the lock.
         const now = await readCredentials(path);
