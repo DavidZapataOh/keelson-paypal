@@ -33,8 +33,8 @@ const CURSOR_KEY = `relayer:outcomes:${CHAIN_ID}`;
 const ALLOW = 1;
 const DENY = 2;
 const ACTIVE = 1;
-/** Coverages are looked for among locks confirmed this recently. */
-const RELEASABLE_FOR = "2 days";
+/** Coverages are looked for among locks confirmed this recently: past a degraded lock's 72 h window. */
+const RELEASABLE_FOR = "4 days";
 /** Reverts that no later state changes: the outcome is recorded, or there is no validation to update. */
 const FINAL = new Set(["AlreadyRated", "OutcomeRecorded", "UnknownValidation"]);
 
@@ -345,7 +345,7 @@ export async function releasableLocks(db: Db, limit: number): Promise<Hex[]> {
         eq(chainTxs.status, "confirmed"),
         like(chainTxs.key, `${LOCK_KEY}%`),
         sql`${chainTxs.confirmedAt} > now() - ${RELEASABLE_FOR}::interval`,
-        sql`not exists (select 1 from ${chainTxs} r where r.status = 'confirmed' and r.key = ${RELEASE_KEY} || substr(${chainTxs.key}, ${LOCK_KEY.length + 1}))`,
+        sql`not exists (select 1 from ${chainTxs} r where r.chain_id = ${chainTxs.chainId} and r.status = 'confirmed' and r.key = ${RELEASE_KEY} || substr(${chainTxs.key}, ${LOCK_KEY.length + 1}))`,
       ),
     )
     .orderBy(asc(chainTxs.confirmedAt))
