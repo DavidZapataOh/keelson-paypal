@@ -151,10 +151,10 @@ function Welcome({
           Judge Keelson in five minutes, on the live system.
         </h1>
         <p className="max-w-prose text-pretty text-lg text-muted-foreground">
-          One click opens a temporary tenant with no keys and no sign-up. Ten steps walk you through
-          a real mandate, the agent run that bought under it, its Alibi, a PayPal dispute and its
-          verdict, then the merchant&apos;s and the operator&apos;s side. Every number comes from
-          production records on PayPal sandbox and Arbitrum Sepolia.
+          One click opens a temporary tenant with no keys and no sign-up. Eleven steps walk you
+          through a real mandate, the agent run that bought under it, its Alibi, a PayPal dispute
+          and its verdict, then the merchant&apos;s and the operator&apos;s side. Every number comes
+          from production records on PayPal sandbox and Arbitrum Sepolia.
         </p>
         <div className="flex flex-wrap items-center gap-4">
           <Button size="lg" onClick={start} disabled={busy || pending}>
