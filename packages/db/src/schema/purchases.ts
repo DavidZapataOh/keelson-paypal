@@ -115,6 +115,11 @@ export const purchases = pgTable(
      * countersign's `evalHash`, and the `EngineProofVerifier.record` transaction that verified it.
      */
     engineProof: jsonb().$type<EngineProof>(),
+    /**
+     * A paid and verified engine proof not yet recorded on chain, so that recording it again
+     * never pays for another one.
+     */
+    engineProved: jsonb().$type<EngineProved>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -142,6 +147,12 @@ export const purchases = pgTable(
 );
 
 /** An SP1 proof of a purchase's engine evaluation, as `purchases.engine_proof` stores it. */
+/** An engine proof as the prover returns it, before it is recorded. */
+export type EngineProved = Omit<
+  EngineProof,
+  "chain_id" | "verifier" | "tx" | "gas_used" | "proven_at"
+>;
+
 export interface EngineProof {
   vkey: string;
   public_values: string;

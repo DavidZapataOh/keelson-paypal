@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { addresses, engineProofVerifierAbi } from "@keelson/chain";
-import { type Db, type EngineProof, eq, mandates, purchases } from "@keelson/db";
+import { type Db, type EngineProof, type EngineProved, eq, mandates, purchases } from "@keelson/db";
 import type { Relayer } from "@keelson/relayer";
 import type { Logger } from "pino";
 import { type Address, bytesToHex, type Hex, type PublicClient } from "viem";
@@ -137,10 +137,8 @@ async function prover(): Promise<string> {
   return path;
 }
 
-type Proved = Omit<EngineProof, "chain_id" | "verifier" | "tx" | "gas_used" | "proven_at">;
-
 /** Proves `input` to a Groth16 proof on the Succinct Prover Network, paid by `NETWORK_PRIVATE_KEY`. */
-async function proveInput(input: CountersignInput): Promise<Proved> {
+async function proveInput(input: CountersignInput): Promise<EngineProved> {
   if (!process.env.NETWORK_PRIVATE_KEY) throw new Error("NETWORK_PRIVATE_KEY is not set");
   const dir = await mkdtemp(join(tmpdir(), "engine-proof-"));
   try {
@@ -150,14 +148,18 @@ async function proveInput(input: CountersignInput): Promise<Proved> {
     await run(await prover(), ["prove", inputPath, outPath], {
       timeout: PROVE_TIMEOUT_MS,
       maxBuffer: 64 * 1024 * 1024,
+      // Only what the prover needs: the workflow's other keys stay out of its environment.
       env: {
-        ...process.env,
+        PATH: process.env.PATH,
+        HOME: process.env.HOME,
+        TMPDIR: process.env.TMPDIR,
+        NETWORK_PRIVATE_KEY: process.env.NETWORK_PRIVATE_KEY,
         SP1_PROVER: "network",
         ENGINE_PROOF_MAX_COST: ENGINE_PROOF_MAX_COST.toString(),
         RUST_LOG: "warn",
       },
     });
-    return JSON.parse(await readFile(outPath, "utf8")) as Proved;
+    return JSON.parse(await readFile(outPath, "utf8")) as EngineProved;
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -204,7 +206,7 @@ export async function proveEngine(
 ): Promise<EngineProof> {
   const { db, log, relayer, chain } = deps;
   const [existing] = await db
-    .select({ proof: purchases.engineProof })
+    .select({ proof: purchases.engineProof, proved: purchases.engineProved })
     .from(purchases)
     .where(eq(purchases.id, purchaseId));
   if (existing?.proof) return existing.proof;
@@ -212,15 +214,20 @@ export async function proveEngine(
   const verifier = addresses[ENGINE_PROOF_CHAIN_ID].EngineProofVerifier;
   if (!verifier) throw new Error("EngineProofVerifier is not deployed");
 
-  const proved = await proveInput(input);
-  if (proved.vkey !== ENGINE_PROVER.vkey) throw new Error(`engine prover vkey ${proved.vkey}`);
-  if (proved.eval_hash !== evalHash || proved.countersign_digest !== digest) {
-    throw new Error(`purchase ${purchaseId}: the proof is not of its countersign`);
+  // A proof paid for by an earlier run that did not get recorded is recorded, not bought again.
+  let proved = existing?.proved;
+  if (!proved) {
+    proved = await proveInput(input);
+    if (proved.vkey !== ENGINE_PROVER.vkey) throw new Error(`engine prover vkey ${proved.vkey}`);
+    if (proved.eval_hash !== evalHash || proved.countersign_digest !== digest) {
+      throw new Error(`purchase ${purchaseId}: the proof is not of its countersign`);
+    }
+    await db.update(purchases).set({ engineProved: proved }).where(eq(purchases.id, purchaseId));
+    log.info(
+      { purchaseId, cycles: proved.cycles, proveMs: proved.prove_ms, network: proved.network },
+      "engine evaluation proved",
+    );
   }
-  log.info(
-    { purchaseId, cycles: proved.cycles, proveMs: proved.prove_ms, network: proved.network },
-    "engine evaluation proved",
-  );
 
   // The relayer key makes a retry find the transaction already sent rather than send another.
   let record = await relayer.submit({

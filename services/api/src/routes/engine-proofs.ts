@@ -4,8 +4,8 @@ import { CHAINS, isChainId } from "@keelson/relayer";
 import type { Deps } from "../app.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 
-/** The `proveEngine` workflow task's timeout times its two attempts, plus the queue. */
-const PROVING_MS = 7 * 3_600_000;
+/** The `proveEngine` workflow task's single 45-minute attempt, plus the queue. */
+const PROVING_MS = 3_600_000;
 
 const Hex32 = z.string().regex(/^0x[0-9a-f]{64}$/);
 
