@@ -15,8 +15,12 @@ interface Entry<T> {
  */
 export class AttestationCache {
   readonly #entries = new Map<string, Entry<unknown>>();
+  readonly #max: number;
 
-  constructor(readonly max = 64) {}
+  /** Keeps at most `max` verifications, dropping the least recently stored. */
+  constructor(max = 64) {
+    this.#max = max;
+  }
 
   /** The key of `evidence` verified against `measurements`. */
   static key(evidence: unknown, measurements: readonly string[]): string {
@@ -36,7 +40,7 @@ export class AttestationCache {
     this.#entries.delete(key);
     this.#entries.set(key, { value, validity });
     for (const oldest of this.#entries.keys()) {
-      if (this.#entries.size <= this.max) break;
+      if (this.#entries.size <= this.#max) break;
       this.#entries.delete(oldest);
     }
   }

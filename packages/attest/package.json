@@ -20,7 +20,8 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "bench": "node bench/browser.bench.ts"
+    "bench": "node bench/browser.bench.ts",
+    "bench:cache": "node bench/cache.bench.ts"
   },
   "dependencies": {
     "@abraham/reflection": "0.13.0",
