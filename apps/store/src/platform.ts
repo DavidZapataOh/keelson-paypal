@@ -101,6 +101,12 @@ export function registerPlatform(
     },
     // The Keelson window answers this page through its opener.
     crossOriginOpenerPolicy: "same-origin-allow-popups",
+    // The user signs in Keelson's frame: its passkey and payment prompts are delegated to it alone.
+    permissionsPolicy: {
+      publickeyCredentialsGet: [deps.api],
+      payment: [deps.api],
+      ...({ publickeyCredentialsCreate: [deps.api] } as object),
+    },
   });
 
   // The page is served only on the origin registered with Keelson; the frame refuses any other.

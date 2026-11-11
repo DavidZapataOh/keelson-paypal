@@ -26,10 +26,11 @@ export function stats(xs: number[]): Stats {
 }
 
 /**
- * The per-step waterfall of the purchases in `spans`: the duration of each `purchase.<state>`
- * span, each outbound call made inside one by host, and the Postgres time each step spends.
+ * The per-step waterfall of the purchases in `spans`, or of purchase `only`: the duration of each
+ * `purchase.<state>` span, each outbound call made inside one by host, and the Postgres time each
+ * step spends.
  */
-export function waterfall(spans: ReadableSpan[]) {
+export function waterfall(spans: ReadableSpan[], only?: string) {
   const byId = new Map(spans.map((s) => [s.spanContext().spanId, s]));
   /** The purchase step a span runs under, if any. */
   const stepOf = (s: ReadableSpan): ReadableSpan | undefined => {
@@ -44,6 +45,7 @@ export function waterfall(spans: ReadableSpan[]) {
   const outbound = new Map<string, number[]>();
   const db = new Map<string, Map<string, number>>();
   for (const s of spans) {
+    if (only !== undefined && stepOf(s)?.attributes["purchase.id"] !== only) continue;
     if (s.name.startsWith("purchase.")) {
       steps.set(s.name, [...(steps.get(s.name) ?? []), ms(s)]);
       continue;

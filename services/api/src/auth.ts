@@ -20,10 +20,12 @@ import { ownsLinkedOperator } from "./operators/owners.ts";
 export const apiAudience = "https://api.keelson.finance";
 
 /** ES256 only: mandate signatures are verified with P-256 on chain. */
-const pubKeyCredParams = [{ type: "public-key", alg: cose.COSEALG.ES256 }];
+export const pubKeyCredParams = [{ type: "public-key", alg: cose.COSEALG.ES256 }];
 
 /** The Secure Payment Confirmation `payment` extension, which the WebAuthn typings lack. */
-const paymentExtension = { payment: { isPayment: true } } as AuthenticationExtensionsClientInputs;
+export const paymentExtension = {
+  payment: { isPayment: true },
+} as AuthenticationExtensionsClientInputs;
 
 /** Verification-table prefix marking a registration challenge issued with `paymentExtension`. */
 const PAYMENT_CEREMONY = "passkey-payment:";

@@ -29,6 +29,7 @@ import {
 } from "@keelson/mandate";
 import type { SignedChallenge } from "@keelson/mandate/browser";
 import { POLICY_SET_HASH } from "@keelson/policy/hashes";
+import type { Context } from "hono";
 import type { Deps } from "../app.ts";
 import { Amount, breakdowns, withBreakdown } from "../checkout.ts";
 import { agentBond, agentCnf, termsConsent } from "../compile-sources.ts";
@@ -40,6 +41,7 @@ import {
   openRequest,
   unmatched,
 } from "../connections.ts";
+import { clientEmbedOrigins } from "../embed.ts";
 import { publishEvent } from "../events.ts";
 import { hostedCapError } from "../hosted-caps.ts";
 import { passkeyJwk, SignatureError, verifyMandateSignature } from "../mandate-signature.ts";
@@ -68,7 +70,7 @@ const Assertion = z
     description: "A WebAuthn or Secure Payment Confirmation assertion, base64url fields.",
   });
 
-const CreateMandate = z
+export const CreateMandate = z
   .object({
     payloadSd: z.record(z.string(), z.unknown()).openapi({
       description: "The SD-JWT payload with its `_sd` digests, as signed.",
@@ -109,7 +111,7 @@ const MandateState = z.enum([
   "REVOKED",
 ]);
 
-const CreatedMandate = z
+export const CreatedMandate = z
   .object({
     id: z.string(),
     mandateHash: Hex32,
@@ -338,401 +340,447 @@ function isUniqueViolation(err: unknown): boolean {
   return false;
 }
 
-export function registerMandates(
-  app: OpenAPIHono,
-  deps: Pick<
-    Deps,
-    | "db"
-    | "kv"
-    | "log"
-    | "appOrigin"
-    | "passkeyRpId"
-    | "tee"
-    | "proveAnonymousMandate"
-    | "paypal"
-    | "demoAgentId"
-    | "hostedCaps"
-  >,
-): void {
+/** Where a mandate signed in an embedded approval was signed, as its embed session says. */
+export interface SignedIn {
+  /** The agent platform's origin, the frame's top-level origin. */
+  origin: string;
+  /** The origin of the approval page the platform frames. */
+  frameOrigin: string;
+  clientId: string;
+  connectionId: string;
+}
+
+type MandateDeps = Pick<
+  Deps,
+  | "db"
+  | "kv"
+  | "log"
+  | "appOrigin"
+  | "passkeyRpId"
+  | "tee"
+  | "proveAnonymousMandate"
+  | "paypal"
+  | "demoAgentId"
+  | "hostedCaps"
+>;
+
+/**
+ * Verifies and stores a mandate `userId` signed, answering `body.connection` when given. A
+ * mandate signed in an embedded approval (`embed`) must name that approval's platform in
+ * `embed.top_origin`, still one of its client's embed origins, and its assertion must come from
+ * that frame; any other mandate has no `embed` and was signed at the top level in the app.
+ */
+export async function storeMandate(
+  c: Context,
+  deps: MandateDeps,
+  userId: string,
+  body: z.infer<typeof CreateMandate>,
+  embed?: SignedIn,
+) {
   const { db } = deps;
   const queries = createQueries(db);
+  const origin = deps.appOrigin;
+  if (origin === undefined) throw new Error("appOrigin is required to verify mandates");
+  const invalid = (detail: string) => problem(c, 422, "invalid-mandate", "Invalid mandate", detail);
+  const notOwned = () =>
+    problem(
+      c,
+      403,
+      "credential-not-owned",
+      "Credential not owned",
+      "The mandate must be signed with one of your passkeys, the one it names.",
+    );
 
-  app.openapi(create, async (c) => {
-    const origin = deps.appOrigin;
-    if (origin === undefined) throw new Error("appOrigin is required to verify mandates");
-    const userId = (c.get("principal") as Principal).subject;
-    const body = c.req.valid("json");
-    const invalid = (detail: string) =>
-      problem(c, 422, "invalid-mandate", "Invalid mandate", detail);
-    const notOwned = () =>
-      problem(
-        c,
-        403,
-        "credential-not-owned",
-        "Credential not owned",
-        "The mandate must be signed with one of your passkeys, the one it names.",
-      );
+  let m: Mandate;
+  try {
+    m = decodeMandate(body.payloadSd, body.disclosures);
+  } catch (err) {
+    return invalid(err instanceof Error ? err.message : "The mandate does not decode.");
+  }
+  if (body.commitment !== m.zk.commitment) {
+    return invalid("commitment differs from zk.commitment");
+  }
+  // Every verifier, the Alibi's included, reads embed in clear.
+  if (!isDeepStrictEqual((body.payloadSd as { embed?: unknown }).embed, m.embed)) {
+    return invalid("embed must be in clear in payloadSd");
+  }
+  if (m.embed?.top_origin !== embed?.origin) {
+    return invalid(
+      embed
+        ? `embed.top_origin must be ${embed.origin}, the page this approval is framed in`
+        : "embed is only set by the embedded approval that signs it",
+    );
+  }
+  if (embed && !(await clientEmbedOrigins(db, embed.clientId)).includes(embed.origin)) {
+    return problem(
+      c,
+      403,
+      "origin-not-allowed",
+      "Origin not allowed",
+      "The agent platform no longer lists this origin for its embeds.",
+    );
+  }
+  const now = Date.now();
+  if (m.exp * 1000 <= now) return invalid("exp has passed");
+  if (m.nbf * 1000 > now) return invalid("nbf is in the future");
+  const rpId = deps.passkeyRpId ?? RP_ID;
+  if (m.user.cred.rp_id !== rpId) return invalid(`user.cred.rp_id must be ${rpId}`);
+  const budget = m.payment.constraints.find((x) => x.type === "payment.budget");
+  const merchants = m.checkout.constraints.find((x) => x.type === "checkout.allowed_merchants");
+  if (budget?.type !== "payment.budget" || merchants?.type !== "checkout.allowed_merchants") {
+    return invalid("mandate lacks a budget or allowed merchants");
+  }
+  const agentId = AGENT_ID.test(m.agent.operator.agent_id)
+    ? BigInt(m.agent.operator.agent_id)
+    : undefined;
+  const operator =
+    agentId === undefined
+      ? undefined
+      : await db.query.operators.findFirst({ where: (row, { eq }) => eq(row.agentId, agentId) });
+  if (!operator) return invalid("agent.operator.agent_id is not a registered operator");
+  if (operator.agentRegistry.toLowerCase() !== m.agent.operator.agent_registry.toLowerCase()) {
+    return invalid(`agent.operator.agent_registry must be ${operator.agentRegistry}`);
+  }
+  const key = await db.query.passkey.findFirst({
+    where: (row, { eq }) => eq(row.credentialID, body.assertion.credentialId),
+  });
+  if (!key || key.userId !== userId) return notOwned();
+  let jwk: { x: string; y: string };
+  try {
+    jwk = passkeyJwk(key);
+  } catch {
+    return notOwned();
+  }
+  if (
+    m.user.sub !== userId ||
+    m.user.cred.id !== key.credentialID ||
+    m.user.cred.jwk.x !== jwk.x ||
+    m.user.cred.jwk.y !== jwk.y
+  ) {
+    return notOwned();
+  }
 
-    let m: Mandate;
-    try {
-      m = decodeMandate(body.payloadSd, body.disclosures);
-    } catch (err) {
-      return invalid(err instanceof Error ? err.message : "The mandate does not decode.");
-    }
-    if (body.commitment !== m.zk.commitment) {
-      return invalid("commitment differs from zk.commitment");
-    }
-    if (m.embed) return invalid("embed is only set by the embedded approval that signs it");
-    const now = Date.now();
-    if (m.exp * 1000 <= now) return invalid("exp has passed");
-    if (m.nbf * 1000 > now) return invalid("nbf is in the future");
-    const rpId = deps.passkeyRpId ?? RP_ID;
-    if (m.user.cred.rp_id !== rpId) return invalid(`user.cred.rp_id must be ${rpId}`);
-    const budget = m.payment.constraints.find((x) => x.type === "payment.budget");
-    const merchants = m.checkout.constraints.find((x) => x.type === "checkout.allowed_merchants");
-    if (budget?.type !== "payment.budget" || merchants?.type !== "checkout.allowed_merchants") {
-      return invalid("mandate lacks a budget or allowed merchants");
-    }
-    const agentId = AGENT_ID.test(m.agent.operator.agent_id)
-      ? BigInt(m.agent.operator.agent_id)
-      : undefined;
-    const operator =
-      agentId === undefined
-        ? undefined
-        : await db.query.operators.findFirst({ where: (row, { eq }) => eq(row.agentId, agentId) });
-    if (!operator) return invalid("agent.operator.agent_id is not a registered operator");
-    if (operator.agentRegistry.toLowerCase() !== m.agent.operator.agent_registry.toLowerCase()) {
-      return invalid(`agent.operator.agent_registry must be ${operator.agentRegistry}`);
-    }
-    const key = await db.query.passkey.findFirst({
-      where: (row, { eq }) => eq(row.credentialID, body.assertion.credentialId),
+  const assertion: SignedChallenge = {
+    authenticatorData: body.assertion.authenticatorData,
+    clientDataJSON: body.assertion.clientDataJSON,
+    signature: body.assertion.signature,
+    credentialId: body.assertion.credentialId,
+    ...(body.assertion.userHandle === undefined ? {} : { userHandle: body.assertion.userHandle }),
+  };
+  const cm = BigInt(body.commitment);
+  let M: Uint8Array;
+  try {
+    M = mandateChallenge(hSd(body.payloadSd), cm);
+  } catch (err) {
+    return invalid(err instanceof Error ? err.message : "invalid commitment");
+  }
+  const exists = () =>
+    problem(c, 409, "mandate-exists", "Mandate exists", "This signed mandate is already stored.");
+  const storedHash = () =>
+    db.query.mandates.findFirst({
+      columns: { id: true },
+      where: (row, { eq }) => eq(row.mandateHash, Buffer.from(M)),
     });
-    if (!key || key.userId !== userId) return notOwned();
-    let jwk: { x: string; y: string };
-    try {
-      jwk = passkeyJwk(key);
-    } catch {
-      return notOwned();
+  if (await storedHash()) return exists();
+  const cnf = await agentCnf(operator);
+  const bond = agentBond(operator);
+  const unbound = [
+    ...(cnf && isDeepStrictEqual(m.agent.cnf, cnf) ? [] : ["agent.cnf"]),
+    ...(bond && isDeepStrictEqual(m.agent.bond, bond) ? [] : ["agent.bond"]),
+    ...unboundPolicy(m.policy),
+    ...(m.policy.policy_set_hash === POLICY_SET_HASH ? [] : ["policy.policy_set_hash"]),
+    ...(isDeepStrictEqual(m.consent, await termsConsent()) ? [] : ["consent"]),
+  ];
+  let request: Connection | undefined;
+  if (body.connection) {
+    // RFC 8628 §5.1: user codes are short, so naming one is budgeted per user.
+    const key = `rl:connection-approve:${userId}:${Math.floor(Date.now() / 60_000)}`;
+    const [count] = await deps.kv.multi().incr(key).expire(key, 60, "NX").exec();
+    if (Number(count) > APPROVALS_PER_MINUTE) {
+      c.header("Retry-After", "60");
+      return problem(c, 429, "rate-limited", "Too many requests", "Too many approvals.");
     }
+    const code = normalizeUserCode(body.connection.code);
+    request = code ? await openRequest(db, code) : undefined;
+    if (embed && request?.id !== embed.connectionId) request = undefined;
+    // A cart paused under a mandate is approved only while that mandate still stands.
+    const parent = request?.parentMandateId
+      ? await queries.mandateById(request.parentMandateId)
+      : undefined;
     if (
-      m.user.sub !== userId ||
-      m.user.cred.id !== key.credentialID ||
-      m.user.cred.jwk.x !== jwk.x ||
-      m.user.cred.jwk.y !== jwk.y
+      !request ||
+      (request.userId !== null && request.userId !== userId) ||
+      (request.kind === "once" && (parent?.state !== "ACTIVE" || parent.revokeRequestedAt)) ||
+      (kindOf(request) === "change" &&
+        (!parent ||
+          !(REVOCABLE as readonly string[]).includes(parent.state) ||
+          parent.revokeRequestedAt)) ||
+      (request.parentMandateId !== null && parent?.userId !== userId)
     ) {
-      return notOwned();
+      return problem(
+        c,
+        409,
+        "connection-closed",
+        "Request closed",
+        "The agent's request was already decided, expired or does not exist.",
+      );
     }
-
-    const assertion: SignedChallenge = {
-      authenticatorData: body.assertion.authenticatorData,
-      clientDataJSON: body.assertion.clientDataJSON,
-      signature: body.assertion.signature,
-      credentialId: body.assertion.credentialId,
-      ...(body.assertion.userHandle === undefined ? {} : { userHandle: body.assertion.userHandle }),
-    };
-    const cm = BigInt(body.commitment);
-    let M: Uint8Array;
-    try {
-      M = mandateChallenge(hSd(body.payloadSd), cm);
-    } catch (err) {
-      return invalid(err instanceof Error ? err.message : "invalid commitment");
+    // An embedded approval is the request's own page, minted for the client that asked.
+    if (!embed && unmatched(request)) {
+      return problem(
+        c,
+        409,
+        "number-not-matched",
+        "Number not matched",
+        "Pick the number your agent shows first.",
+      );
     }
-    const exists = () =>
-      problem(c, 409, "mandate-exists", "Mandate exists", "This signed mandate is already stored.");
-    const storedHash = () =>
-      db.query.mandates.findFirst({
-        columns: { id: true },
-        where: (row, { eq }) => eq(row.mandateHash, Buffer.from(M)),
-      });
-    if (await storedHash()) return exists();
-    const cnf = await agentCnf(operator);
-    const bond = agentBond(operator);
-    const unbound = [
-      ...(cnf && isDeepStrictEqual(m.agent.cnf, cnf) ? [] : ["agent.cnf"]),
-      ...(bond && isDeepStrictEqual(m.agent.bond, bond) ? [] : ["agent.bond"]),
-      ...unboundPolicy(m.policy),
-      ...(m.policy.policy_set_hash === POLICY_SET_HASH ? [] : ["policy.policy_set_hash"]),
-      ...(isDeepStrictEqual(m.consent, await termsConsent()) ? [] : ["consent"]),
-    ];
-    let request: Connection | undefined;
-    if (body.connection) {
-      // RFC 8628 §5.1: user codes are short, so naming one is budgeted per user.
-      const key = `rl:connection-approve:${userId}:${Math.floor(Date.now() / 60_000)}`;
-      const [count] = await deps.kv.multi().incr(key).expire(key, 60, "NX").exec();
-      if (Number(count) > APPROVALS_PER_MINUTE) {
-        c.header("Retry-After", "60");
-        return problem(c, 429, "rate-limited", "Too many requests", "Too many approvals.");
-      }
-      const code = normalizeUserCode(body.connection.code);
-      request = code ? await openRequest(db, code) : undefined;
-      // A cart paused under a mandate is approved only while that mandate still stands.
-      const parent = request?.parentMandateId
-        ? await queries.mandateById(request.parentMandateId)
-        : undefined;
-      if (
-        !request ||
-        (request.userId !== null && request.userId !== userId) ||
-        (request.kind === "once" && (parent?.state !== "ACTIVE" || parent.revokeRequestedAt)) ||
-        (kindOf(request) === "change" &&
-          (!parent ||
-            !(REVOCABLE as readonly string[]).includes(parent.state) ||
-            parent.revokeRequestedAt)) ||
-        (request.parentMandateId !== null && parent?.userId !== userId)
-      ) {
-        return problem(
-          c,
-          409,
-          "connection-closed",
-          "Request closed",
-          "The agent's request was already decided, expired or does not exist.",
-        );
-      }
-      if (unmatched(request)) {
-        return problem(
-          c,
-          409,
-          "number-not-matched",
-          "Number not matched",
-          "Pick the number your agent shows first.",
-        );
-      }
-      const askAbove = body.connection.askAboveMinor;
-      const looser = looserThan(m, request);
-      if (
-        (request.askAboveMinor !== null && askAbove === undefined) ||
-        (askAbove !== undefined &&
-          BigInt(askAbove) > (request.askAboveMinor ?? request.perPurchaseMinor))
-      ) {
-        looser.push("askAbove");
-      }
-      if (looser.length > 0) {
-        return problem(
-          c,
-          422,
-          "mandate-looser-than-request",
-          "Mandate looser than the request",
-          `${looser.join(", ")} must not grant more than ${request.name} asked for.`,
-          { fields: looser },
-        );
-      }
+    const askAbove = body.connection.askAboveMinor;
+    const looser = looserThan(m, request);
+    if (
+      (request.askAboveMinor !== null && askAbove === undefined) ||
+      (askAbove !== undefined &&
+        BigInt(askAbove) > (request.askAboveMinor ?? request.perPurchaseMinor))
+    ) {
+      looser.push("askAbove");
     }
-    if (unbound.length > 0) {
+    if (looser.length > 0) {
       return problem(
         c,
         422,
-        "mandate-binding-mismatch",
-        "Mandate binding mismatch",
-        `${unbound.join(", ")} must be what compiling fills: the operator's registered agent key and bond, an engine build the legs are admitted to run, the current policy set and the current terms.`,
-        { fields: unbound },
+        "mandate-looser-than-request",
+        "Mandate looser than the request",
+        `${looser.join(", ")} must not grant more than ${request.name} asked for.`,
+        { fields: looser },
       );
     }
+  }
+  if (unbound.length > 0) {
+    return problem(
+      c,
+      422,
+      "mandate-binding-mismatch",
+      "Mandate binding mismatch",
+      `${unbound.join(", ")} must be what compiling fills: the operator's registered agent key and bond, an engine build the legs are admitted to run, the current policy set and the current terms.`,
+      { fields: unbound },
+    );
+  }
 
-    const invalidSignature = () =>
-      problem(
-        c,
-        401,
-        "invalid-signature",
-        "Invalid signature",
-        "The passkey signature does not verify for this mandate.",
-      );
-    let newCounter: number;
+  const invalidSignature = () =>
+    problem(
+      c,
+      401,
+      "invalid-signature",
+      "Invalid signature",
+      "The passkey signature does not verify for this mandate.",
+    );
+  let newCounter: number;
+  try {
+    ({ newCounter } = await verifyMandateSignature({
+      payloadSd: body.payloadSd,
+      cm,
+      assertion,
+      passkey: key,
+      expectedOrigin: embed ? embed.frameOrigin : origin,
+      expectedTopOrigin: embed?.origin,
+      expectedRpId: rpId,
+      spc: spcDetails(m),
+    }));
+  } catch (err) {
+    if (err instanceof SignatureError) return invalidSignature();
+    throw err;
+  }
+
+  let issued: MandateIssued | undefined;
+  if (deps.tee) {
+    if (!body.salt) return invalid("salt is required");
     try {
-      ({ newCounter } = await verifyMandateSignature({
-        payloadSd: body.payloadSd,
-        cm,
-        assertion,
-        passkey: key,
-        expectedOrigin: origin,
-        expectedRpId: rpId,
-        spc: spcDetails(m),
-      }));
-    } catch (err) {
-      if (err instanceof SignatureError) return invalidSignature();
-      throw err;
-    }
-
-    let issued: MandateIssued | undefined;
-    if (deps.tee) {
-      if (!body.salt) return invalid("salt is required");
-      try {
-        issued = await deps.tee.client.a.registerMandate({
-          sub: userId,
-          payload_sd: body.payloadSd,
-          disclosures: body.disclosures,
-          assertion: {
-            authenticatorData: assertion.authenticatorData,
-            clientDataJSON: assertion.clientDataJSON,
-            signature: assertion.signature,
-          },
-          salt: body.salt as `0x${string}`,
-          ...(key.userCredential ? { user_credential: key.userCredential } : {}),
-        });
-      } catch (err) {
-        if (!(err instanceof LegError)) throw err;
-        if (err.kind !== "problem" || (err.status ?? 0) >= 500) {
-          return problem(
-            c,
-            503,
-            "tee-unavailable",
-            "TEE unavailable",
-            "Leg A cannot issue the mandate now.",
-          );
-        }
-        if (err.code?.startsWith("auth.")) return notOwned();
-        return invalid(`the TEE refused the mandate: ${err.code ?? "unknown"}`);
-      }
-    }
-
-    // PayPal holds one payee's funds per authorization, so a mandate allowing several merchants
-    // holds each cart on its own and needs no budget hold to be usable.
-    const holdMode = merchants.allowed.length > 1 ? "per_purchase" : "mandate";
-    try {
-      await db.transaction(async (tx) => {
-        const counted = await tx
-          .update(passkey)
-          .set({
-            counter: newCounter,
-            ...(issued ? { userCredential: issued.user_credential } : {}),
-          })
-          .where(
-            sql`${passkey.id} = ${key.id} and (${newCounter} = 0 or ${passkey.counter} < ${newCounter})`,
-          );
-        if (counted.rowCount !== 1) throw new CounterError();
-        await tx.insert(mandates).values({
-          id: m.mid,
-          holdMode,
-          userId,
-          operatorAgentId: operator.agentId,
-          currency: m.payment.currency,
-          maxMinor: BigInt(budget.max),
-          remainingMinor: BigInt(budget.max),
-          merchantIds: merchants.allowed.map((x) => x.id),
-          expiresAt: new Date(m.exp * 1000),
-          mandateHash: Buffer.from(M),
-          commitment: Buffer.from(fromHex(body.commitment)),
-          payloadSd: body.payloadSd,
-          disclosures: body.disclosures,
-          userAuth: assertion,
-          credentialId: key.credentialID,
-          ...(issued
-            ? {
-                openMandate: issued.open_mandate,
-                sealedSalt: Buffer.from(issued.sealed_salt, "base64"),
-              }
-            : {}),
-        });
-        if (!(await transition(tx, "mandates", m.mid, "DRAFT", "COMPILED"))) {
-          throw new Error("mandate left DRAFT concurrently");
-        }
-        if (!(await transition(tx, "mandates", m.mid, "COMPILED", "SIGNED"))) {
-          throw new Error("mandate left COMPILED concurrently");
-        }
-        if (
-          holdMode === "per_purchase" &&
-          !(await transition(tx, "mandates", m.mid, "SIGNED", "ACTIVE"))
-        ) {
-          throw new Error("mandate left SIGNED concurrently");
-        }
-        // The user code is spent with the mandate that answers it, or neither is stored.
-        if (request) {
-          const over = await hostedCapError(
-            tx,
-            deps,
-            {
-              clientId: request.clientId,
-              operatorAgentId: operator.agentId,
-              userId,
-              currency: m.payment.currency,
-              amountMinor: BigInt(budget.max),
-              replaces: kindOf(request) === "change" ? request.parentMandateId : null,
-            },
-            true,
-          );
-          if (over) throw new OverHostedCap(over);
-          const askAbove = body.connection?.askAboveMinor;
-          const approved = await tx
-            .update(agentConnections)
-            .set({
-              state: "APPROVED",
-              userId,
-              mandateId: m.mid,
-              decidedAt: new Date(),
-              askAboveMinor: askAbove === undefined ? null : BigInt(askAbove),
-            })
-            .where(
-              and(
-                eq(agentConnections.id, request.id),
-                eq(agentConnections.state, "PENDING"),
-                gt(agentConnections.expiresAt, new Date()),
-              ),
-            )
-            .returning({ id: agentConnections.id });
-          if (approved.length !== 1) throw new RequestClosed();
-          // A change replaces its mandate: countersigns under the old one stop with this commit.
-          if (kindOf(request) === "change" && request.parentMandateId) {
-            await tx
-              .update(mandates)
-              .set({ revokeRequestedAt: sql`coalesce(${mandates.revokeRequestedAt}, now())` })
-              .where(eq(mandates.id, request.parentMandateId));
-          }
-        }
+      issued = await deps.tee.client.a.registerMandate({
+        sub: userId,
+        payload_sd: body.payloadSd,
+        disclosures: body.disclosures,
+        assertion: {
+          authenticatorData: assertion.authenticatorData,
+          clientDataJSON: assertion.clientDataJSON,
+          signature: assertion.signature,
+        },
+        salt: body.salt as `0x${string}`,
+        ...(key.userCredential ? { user_credential: key.userCredential } : {}),
       });
     } catch (err) {
-      if (err instanceof OverHostedCap) {
-        return problem(c, 422, "hosted-cap", "Over the hosted operator's cap", err.message);
-      }
-      if (err instanceof RequestClosed) {
+      if (!(err instanceof LegError)) throw err;
+      if (err.kind !== "problem" || (err.status ?? 0) >= 500) {
         return problem(
           c,
-          409,
-          "connection-closed",
-          "Request closed",
-          "The agent's request was decided or expired while you signed.",
+          503,
+          "tee-unavailable",
+          "TEE unavailable",
+          "Leg A cannot issue the mandate now.",
         );
       }
-      if (isUniqueViolation(err)) return exists();
-      // A concurrent request with the same assertion advanced the counter first.
-      if (err instanceof CounterError) return (await storedHash()) ? exists() : invalidSignature();
-      throw err;
+      if (err.code?.startsWith("auth.")) return notOwned();
+      return invalid(`the TEE refused the mandate: ${err.code ?? "unknown"}`);
     }
+  }
 
-    // Leg A opened the commitment with this salt; the circuit pins Keelson's RP ID.
-    if (issued && rpId === RP_ID && deps.proveAnonymousMandate) {
-      const salt = body.salt as string;
-      void deps
-        .proveAnonymousMandate(m.mid, salt)
-        .catch((err: unknown) => deps.log.warn({ err, mandateId: m.mid }, "C3 proof not started"));
-    }
-
-    if (request) {
-      await publishEvent(
-        deps,
-        principalChannel({ kind: "client", subject: request.clientId }, "connections"),
-        request.id,
-        { type: "connection.approved", userCode: request.userCode, mandateId: m.mid },
-      );
-      // Its hold is released now; the sweeper voids it if PayPal is down.
-      if (kindOf(request) === "change" && request.parentMandateId) {
-        const parent = await queries.mandateById(request.parentMandateId);
-        if (parent && (REVOCABLE as readonly string[]).includes(parent.state)) {
-          await revokeMandate(deps, parent).catch((err: unknown) =>
-            deps.log.warn({ err, mandateId: parent.id }, "replaced mandate not revoked yet"),
-          );
+  // PayPal holds one payee's funds per authorization, so a mandate allowing several merchants
+  // holds each cart on its own and needs no budget hold to be usable.
+  const holdMode = merchants.allowed.length > 1 ? "per_purchase" : "mandate";
+  try {
+    await db.transaction(async (tx) => {
+      const counted = await tx
+        .update(passkey)
+        .set({
+          counter: newCounter,
+          ...(issued ? { userCredential: issued.user_credential } : {}),
+        })
+        .where(
+          sql`${passkey.id} = ${key.id} and (${newCounter} = 0 or ${passkey.counter} < ${newCounter})`,
+        );
+      if (counted.rowCount !== 1) throw new CounterError();
+      await tx.insert(mandates).values({
+        id: m.mid,
+        holdMode,
+        userId,
+        operatorAgentId: operator.agentId,
+        currency: m.payment.currency,
+        maxMinor: BigInt(budget.max),
+        remainingMinor: BigInt(budget.max),
+        merchantIds: merchants.allowed.map((x) => x.id),
+        expiresAt: new Date(m.exp * 1000),
+        mandateHash: Buffer.from(M),
+        commitment: Buffer.from(fromHex(body.commitment)),
+        payloadSd: body.payloadSd,
+        disclosures: body.disclosures,
+        userAuth: assertion,
+        credentialId: key.credentialID,
+        ...(issued
+          ? {
+              openMandate: issued.open_mandate,
+              sealedSalt: Buffer.from(issued.sealed_salt, "base64"),
+            }
+          : {}),
+      });
+      if (!(await transition(tx, "mandates", m.mid, "DRAFT", "COMPILED"))) {
+        throw new Error("mandate left DRAFT concurrently");
+      }
+      if (!(await transition(tx, "mandates", m.mid, "COMPILED", "SIGNED"))) {
+        throw new Error("mandate left COMPILED concurrently");
+      }
+      if (
+        holdMode === "per_purchase" &&
+        !(await transition(tx, "mandates", m.mid, "SIGNED", "ACTIVE"))
+      ) {
+        throw new Error("mandate left SIGNED concurrently");
+      }
+      // The user code is spent with the mandate that answers it, or neither is stored.
+      if (request) {
+        const over = await hostedCapError(
+          tx,
+          deps,
+          {
+            clientId: request.clientId,
+            operatorAgentId: operator.agentId,
+            userId,
+            currency: m.payment.currency,
+            amountMinor: BigInt(budget.max),
+            replaces: kindOf(request) === "change" ? request.parentMandateId : null,
+          },
+          true,
+        );
+        if (over) throw new OverHostedCap(over);
+        const askAbove = body.connection?.askAboveMinor;
+        const approved = await tx
+          .update(agentConnections)
+          .set({
+            state: "APPROVED",
+            userId,
+            mandateId: m.mid,
+            decidedAt: new Date(),
+            askAboveMinor: askAbove === undefined ? null : BigInt(askAbove),
+          })
+          .where(
+            and(
+              eq(agentConnections.id, request.id),
+              eq(agentConnections.state, "PENDING"),
+              gt(agentConnections.expiresAt, new Date()),
+            ),
+          )
+          .returning({ id: agentConnections.id });
+        if (approved.length !== 1) throw new RequestClosed();
+        // A change replaces its mandate: countersigns under the old one stop with this commit.
+        if (kindOf(request) === "change" && request.parentMandateId) {
+          await tx
+            .update(mandates)
+            .set({ revokeRequestedAt: sql`coalesce(${mandates.revokeRequestedAt}, now())` })
+            .where(eq(mandates.id, request.parentMandateId));
         }
       }
+    });
+  } catch (err) {
+    if (err instanceof OverHostedCap) {
+      return problem(c, 422, "hosted-cap", "Over the hosted operator's cap", err.message);
     }
+    if (err instanceof RequestClosed) {
+      return problem(
+        c,
+        409,
+        "connection-closed",
+        "Request closed",
+        "The agent's request was decided or expired while you signed.",
+      );
+    }
+    if (isUniqueViolation(err)) return exists();
+    // A concurrent request with the same assertion advanced the counter first.
+    if (err instanceof CounterError) return (await storedHash()) ? exists() : invalidSignature();
+    throw err;
+  }
 
-    c.header("location", `/v1/mandates/${m.mid}`);
-    return c.json(
-      {
-        id: m.mid,
-        mandateHash: toHex(M),
-        state: holdMode === "per_purchase" ? ("ACTIVE" as const) : ("SIGNED" as const),
-        openMandate: issued?.open_mandate ?? null,
-      },
-      201,
+  // Leg A opened the commitment with this salt; the circuit pins Keelson's RP ID.
+  if (issued && rpId === RP_ID && deps.proveAnonymousMandate) {
+    const salt = body.salt as string;
+    void deps
+      .proveAnonymousMandate(m.mid, salt)
+      .catch((err: unknown) => deps.log.warn({ err, mandateId: m.mid }, "C3 proof not started"));
+  }
+
+  if (request) {
+    await publishEvent(
+      deps,
+      principalChannel({ kind: "client", subject: request.clientId }, "connections"),
+      request.id,
+      { type: "connection.approved", userCode: request.userCode, mandateId: m.mid },
     );
-  });
+    // Its hold is released now; the sweeper voids it if PayPal is down.
+    if (kindOf(request) === "change" && request.parentMandateId) {
+      const parent = await queries.mandateById(request.parentMandateId);
+      if (parent && (REVOCABLE as readonly string[]).includes(parent.state)) {
+        await revokeMandate(deps, parent).catch((err: unknown) =>
+          deps.log.warn({ err, mandateId: parent.id }, "replaced mandate not revoked yet"),
+        );
+      }
+    }
+  }
+
+  c.header("location", `/v1/mandates/${m.mid}`);
+  return c.json(
+    {
+      id: m.mid,
+      mandateHash: toHex(M),
+      state: holdMode === "per_purchase" ? ("ACTIVE" as const) : ("SIGNED" as const),
+      openMandate: issued?.open_mandate ?? null,
+    },
+    201,
+  );
+}
+
+export function registerMandates(app: OpenAPIHono, deps: MandateDeps): void {
+  const { db } = deps;
+  const queries = createQueries(db);
+
+  app.openapi(create, async (c) =>
+    storeMandate(c, deps, (c.get("principal") as Principal).subject, c.req.valid("json")),
+  );
 
   app.openapi(list, async (c) => {
     const userId = (c.get("principal") as Principal).subject;
