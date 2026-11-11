@@ -24,6 +24,7 @@ const STATUS = {
   resolved: { text: "Resolved", tone: "neutral" },
   refunded: { text: "Refunded", tone: "ok" },
   "bond-slashed": { text: "Bond slashed", tone: "attention" },
+  unknown: { text: "Outcome unknown", tone: "attention" },
   error: { text: "Error", tone: "error" },
 } as const satisfies Record<string, { text: string; tone: keyof typeof TONES }>;
 

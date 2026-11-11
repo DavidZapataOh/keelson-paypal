@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { type Draft, toMandate } from "@keelson/compiler";
-import { CURRENCIES, type CurrencyCode } from "@keelson/core";
+import { type Cart, CURRENCIES, type CurrencyCode } from "@keelson/core";
 import { agentConnections, and, eq, isNull, mandates, operators, or, sql } from "@keelson/db";
 import {
   buildSdPayload,
@@ -169,6 +169,38 @@ export const ConnectionView = z
       })
       .nullable(),
     mandateId: z.string().nullable(),
+    cart: z
+      .object({
+        merchant: z.object({ id: z.string(), name: z.string() }),
+        currency: z.string(),
+        totalMinor: z.string(),
+        lines: z.array(
+          z.object({
+            sku: z.string(),
+            size: z.string().nullable(),
+            color: z.string().nullable(),
+            category: z.string(),
+            qty: z.int(),
+            unitMinor: z.string(),
+          }),
+        ),
+      })
+      .nullable()
+      .openapi({ description: "For `once`: the cart the agent tried, as it saw it." }),
+    checks: z
+      .array(
+        z.object({
+          field: z.string(),
+          mandate: z.string().nullable(),
+          cart: z.string().nullable(),
+          pass: z.boolean(),
+        }),
+      )
+      .nullable()
+      .openapi({
+        description:
+          "For `once`: each mandate field against the cart; the failing ones are why it is paused. `askAbove` fails when the cart is above the user's ask-me amount.",
+      }),
     match: z
       .object({ options: z.array(z.int()), matched: z.boolean() })
       .nullable()
@@ -421,6 +453,28 @@ function parentGrant(m: typeof mandates.$inferSelect) {
   }
 }
 
+function cartView(cart: Cart | null) {
+  if (!cart) return null;
+  return {
+    merchant: {
+      id: cart.merchant,
+      name: MERCHANTS.find((m) => m.id === cart.merchant)?.name ?? cart.merchant,
+    },
+    currency: cart.currency,
+    totalMinor: cart.lines
+      .reduce((s, l) => s + BigInt(l.qty) * BigInt(l.unit_minor), 0n)
+      .toString(),
+    lines: cart.lines.map((l) => ({
+      sku: l.sku,
+      size: l.size ?? null,
+      color: l.color ?? null,
+      category: l.category,
+      qty: l.qty,
+      unitMinor: String(l.unit_minor),
+    })),
+  };
+}
+
 /** A request as the approval pages read it. */
 export async function connectionView(
   db: Deps["db"],
@@ -466,6 +520,8 @@ export async function connectionView(
         }
       : null,
     mandateId: request.mandateId,
+    cart: cartView(request.cart as Cart | null),
+    checks: request.checks ?? null,
     match:
       request.matchNumber === null
         ? null

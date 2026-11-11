@@ -1,7 +1,9 @@
 "use client";
 
 import {
+  Bell,
   Bot,
+  History,
   Home,
   KeyRound,
   LogOut,
@@ -27,15 +29,18 @@ export interface NavItem {
   icon: LucideIcon;
 }
 
-const ACCOUNT = "/passkeys/";
+/** Settings of the account: in the top bar on a phone. */
+const ACCOUNT = new Set(["/alerts/", "/passkeys/"]);
 
 const NAV: NavItem[] = [
   { href: "/", label: "Home", icon: Home },
   { href: "/agents/", label: "Agents", icon: Bot },
+  { href: "/activity/", label: "Activity", icon: History },
   { href: "/new/", label: "New mandate", short: "New", icon: Plus },
   { href: "/disputes/", label: "Disputes", icon: Scale },
   { href: "/live/", label: "Live", icon: Radio },
   { href: "/scoreboard/", label: "Scoreboard", icon: Trophy },
+  { href: "/alerts/", label: "Alerts", icon: Bell },
   { href: "/passkeys/", label: "Passkeys", icon: KeyRound },
 ];
 
@@ -71,10 +76,9 @@ export function AppShell({
         ? { name: session.user.name || session.user.email || "" }
         : null;
   const nav = own ?? (session ? NAV : NAV.filter((n) => PUBLIC.has(n.href)));
-  // A phone's tab bar holds five at most: the public proof pages share one tab there.
-  // A phone's tab bar holds five at most: the public proof pages share one tab there, and the
-  // account's passkeys sit in the top bar.
-  const onPhone = nav.filter((n) => n.href !== ACCOUNT);
+  // A phone's tab bar holds six at most: the public proof pages share one tab there, and the
+  // account's settings sit in the top bar.
+  const onPhone = nav.filter((n) => !ACCOUNT.has(n.href));
   const tabs =
     onPhone.length > 5
       ? [
@@ -82,7 +86,7 @@ export function AppShell({
           { href: "/live/", label: "Proof", icon: Radio } satisfies NavItem,
         ]
       : onPhone;
-  const settings = nav.find((n) => n.href === ACCOUNT);
+  const settings = nav.filter((n) => ACCOUNT.has(n.href));
   const active = (href: string) =>
     href === "/"
       ? path === "/"
@@ -154,16 +158,17 @@ export function AppShell({
             <span className="rounded-md border px-2 py-1 font-mono text-[11px] text-muted-foreground">
               Sandbox
             </span>
-            {settings ? (
+            {settings.map((item) => (
               <Link
-                href={settings.href}
-                aria-label={settings.label}
-                aria-current={active(settings.href) ? "page" : undefined}
+                key={item.href}
+                href={item.href}
+                aria-label={item.label}
+                aria-current={active(item.href) ? "page" : undefined}
                 className="grid size-10 place-items-center rounded-xl text-muted-foreground hover:bg-foreground/5 aria-[current=page]:bg-bone-2 aria-[current=page]:text-foreground"
               >
-                <settings.icon className="size-5" aria-hidden="true" />
+                <item.icon className="size-5" aria-hidden="true" />
               </Link>
-            ) : null}
+            ))}
           </span>
         </header>
         <main

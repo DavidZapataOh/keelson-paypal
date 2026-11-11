@@ -29,6 +29,7 @@ import type { RedisClientType } from "redis";
 import { ulid } from "ulid";
 import { publishEvent } from "./events.ts";
 import type { LogConfig } from "./log/append.ts";
+import { type Notifier, notify, stopAlert } from "./notify/notifier.ts";
 import type { PayPalDeps } from "./paypal.ts";
 import { principalChannel } from "./principal.ts";
 import { REVOCABLE, revokeMandate } from "./routes/revoke.ts";
@@ -40,6 +41,7 @@ export interface StopDeps {
   log: Logger;
   paypal?: PayPalDeps;
   tlog?: LogConfig;
+  notifier?: Notifier;
 }
 
 type Money = { currency: string; minor: string }[];
@@ -173,6 +175,7 @@ export async function stopAgents(deps: StopDeps, userId: string): Promise<StopRe
     releasing: done.releasing,
     logIndexes: done.logIndexes,
   });
+  notify(deps.notifier, (n) => stopAlert(n, userId, done));
   return done;
 }
 

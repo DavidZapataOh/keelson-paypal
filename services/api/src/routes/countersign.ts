@@ -43,12 +43,20 @@ import type { Context } from "hono";
 import { ulid } from "ulid";
 import { hexToBytes } from "viem";
 import type { Deps } from "../app.ts";
+import { cartChecks } from "../cart-checks.ts";
 import { deviceAuthorization, grantOf, requestOnce } from "../connections.ts";
 import { approvedMandate, closeForHost, isDelegated, notAnotherApps } from "../delegated.ts";
 import { capturable, merchantWebsite } from "../hold/state.ts";
 import { MERCHANTS } from "../merchants.ts";
 import { requireAgent } from "../middleware/auth.ts";
-import { drivePurchase, type PipelineDeps, viewOf } from "../pipeline/drive.ts";
+import { money, notify, purchaseAlert, requestAlert } from "../notify/notifier.ts";
+import {
+  drivePurchase,
+  type FieldCheck,
+  fieldChecks,
+  type PipelineDeps,
+  viewOf,
+} from "../pipeline/drive.ts";
 import { publishPurchase } from "../pipeline/events.ts";
 import { logStep } from "../pipeline/log-step.ts";
 import { principalKey } from "../principal.ts";
@@ -558,6 +566,7 @@ export function registerCountersign(
     | "appOrigin"
     | "demoAgentId"
     | "hostedAgentKey"
+    | "notifier"
   >,
 ): void {
   const { db, kv, log, tee } = deps;
@@ -571,10 +580,11 @@ export function registerCountersign(
   async function askOnce(
     c: Context,
     mandate: typeof mandates.$inferSelect,
-    cart: { merchant: string; currency: string },
+    cart: Cart,
     total: bigint,
     hash: Buffer,
     overMinor: bigint | null,
+    checks: FieldCheck[],
   ) {
     const clientId = c.var.principal?.subject as string;
     const [open] = await db
@@ -615,20 +625,22 @@ export function registerCountersign(
         ),
       );
     if (pending >= MAX_OPEN_ONCE) return undefined;
-    return {
-      approval: await requestOnce(
-        { db, kv, appOrigin },
-        {
-          mandate,
-          clientId,
-          merchantId: cart.merchant,
-          currency: cart.currency,
-          amountMinor: total,
-          cartHash: hash,
-          overMinor,
-        },
-      ),
-    };
+    const approval = await requestOnce(
+      { db, kv, appOrigin },
+      {
+        mandate,
+        clientId,
+        merchantId: cart.merchant,
+        currency: cart.currency,
+        amountMinor: total,
+        cartHash: hash,
+        cart,
+        checks,
+        overMinor,
+      },
+    );
+    notify(deps.notifier, (n) => requestAlert(n, approval.request_id));
+    return { approval };
   }
 
   app.openapi(route, async (c) => {
@@ -1086,7 +1098,15 @@ export function registerCountersign(
     // one-time approval, although the mandate would allow it.
     if (answered?.askAbove != null && total > answered.askAbove) {
       const asked = MERCHANTS.some((m) => m.id === body.cart.merchant)
-        ? await askOnce(c, mandate, body.cart, total, hashOfCart, null)
+        ? await askOnce(c, mandate, body.cart as Cart, total, hashOfCart, null, [
+            ...cartChecks(mandate, body.cart as Cart),
+            {
+              field: "askAbove",
+              mandate: money(answered.askAbove, body.cart.currency),
+              cart: money(total, body.cart.currency),
+              pass: false,
+            },
+          ])
         : undefined;
       if (!asked) {
         return problem(
@@ -1316,7 +1336,20 @@ export function registerCountersign(
       const asked =
         outside === undefined
           ? undefined
-          : await askOnce(c, mandate, body.cart, total, hashOfCart, outside.overMinor);
+          : await askOnce(
+              c,
+              mandate,
+              body.cart as Cart,
+              total,
+              hashOfCart,
+              outside.overMinor,
+              fieldChecks(out.trace, body.cart.currency),
+            );
+      // A cart paused for the user is announced as a request; one simply refused, once logged.
+      if (!allow && !asked) {
+        const blocked = () => notify(deps.notifier, (n) => purchaseAlert(n, purchaseId, "blocked"));
+        driving.then(blocked, blocked);
+      }
       c.header("Keelson-Countersign-Mode", out.mode);
       if (pending) c.header("Location", `/v1/purchases/${purchaseId}`);
       return c.json(

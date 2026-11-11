@@ -311,9 +311,16 @@
       "breakpoints": true
     },
     {
+      "idx": 44,
+      "version": "7",
+      "when": 1794385086324,
+      "tag": "0044_notifications",
+      "breakpoints": true
+    },
+    {
       "idx": 45,
       "version": "7",
-      "when": 1794387573164,
+      "when": 1794391625403,
       "tag": "0045_delegated_scopes",
       "breakpoints": true
     }

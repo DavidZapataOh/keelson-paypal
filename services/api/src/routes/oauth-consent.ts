@@ -5,6 +5,7 @@ import type { Context } from "hono";
 import type { Deps } from "../app.ts";
 import type { Auth } from "../auth.ts";
 import { requireSession } from "../middleware/auth.ts";
+import { notify, requestAlert } from "../notify/notifier.ts";
 import type { Principal } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 import { ConnectionRequest, invalidLimits, storeRequest } from "./connections.ts";
@@ -141,7 +142,7 @@ function spendingOf(raw: string | null): {
 
 export function registerOAuthConsent(
   app: OpenAPIHono,
-  deps: Pick<Deps, "db" | "auth" | "demoAgentId">,
+  deps: Pick<Deps, "db" | "auth" | "demoAgentId" | "notifier">,
 ): void {
   const { db, auth } = deps;
   if (!auth) return;
@@ -217,7 +218,7 @@ export function registerOAuthConsent(
         parsed.spendingError ?? "The client asked for no spending limits.",
       );
     }
-    const { userCode } = await storeRequest(deps, {
+    const { id, userCode } = await storeRequest(deps, {
       clientId: parsed.client.clientId,
       operatorAgentId: parsed.operator.agentId,
       name: parsed.spending.name,
@@ -226,6 +227,7 @@ export function registerOAuthConsent(
       // Bound to the user consenting: only they may approve it.
       userId: (c.get("principal") as Principal).subject,
     });
+    notify(deps.notifier, (n) => requestAlert(n, id));
     return c.json({ userCode }, 201);
   });
 }

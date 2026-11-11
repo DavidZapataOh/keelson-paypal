@@ -14,6 +14,7 @@ import { type Dispute, getDispute, ids, PayPalError } from "@keelson/paypal";
 import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
 import { reconcileHold } from "../hold/maintenance.ts";
+import type { Notifier } from "../notify/notifier.ts";
 import { call, type PayPalDeps, PayPalUnavailableError } from "../paypal.ts";
 import { reconcileCapture } from "../pipeline/capture-step.ts";
 
@@ -24,6 +25,7 @@ export interface ApplyDeps {
   paypal: PayPalDeps;
   /** Starts the evaluation of a dispute once it is stored; the dispute stays `OPEN` without it. */
   startDisputeWorkflow?: ((disputeId: string, revision: string) => Promise<void>) | undefined;
+  notifier?: Notifier | undefined;
 }
 
 export type EventRow = typeof paypalEvents.$inferSelect;

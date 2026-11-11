@@ -940,6 +940,86 @@ components:
           type:
             - string
             - "null"
+        cart:
+          type:
+            - object
+            - "null"
+          properties:
+            merchant:
+              type: object
+              properties:
+                id:
+                  type: string
+                name:
+                  type: string
+              required:
+                - id
+                - name
+            currency:
+              type: string
+            totalMinor:
+              type: string
+            lines:
+              type: array
+              items:
+                type: object
+                properties:
+                  sku:
+                    type: string
+                  size:
+                    type:
+                      - string
+                      - "null"
+                  color:
+                    type:
+                      - string
+                      - "null"
+                  category:
+                    type: string
+                  qty:
+                    type: integer
+                  unitMinor:
+                    type: string
+                required:
+                  - sku
+                  - size
+                  - color
+                  - category
+                  - qty
+                  - unitMinor
+          required:
+            - merchant
+            - currency
+            - totalMinor
+            - lines
+          description: "For `once`: the cart the agent tried, as it saw it."
+        checks:
+          type:
+            - array
+            - "null"
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              mandate:
+                type:
+                  - string
+                  - "null"
+              cart:
+                type:
+                  - string
+                  - "null"
+              pass:
+                type: boolean
+            required:
+              - field
+              - mandate
+              - cart
+              - pass
+          description: "For `once`: each mandate field against the cart; the failing ones
+            are why it is paused. `askAbove` fails when the cart is above the
+            user's ask-me amount."
         match:
           type:
             - object
@@ -970,6 +1050,8 @@ components:
         - limits
         - parent
         - mandateId
+        - cart
+        - checks
         - match
         - expiresAt
         - createdAt
@@ -1405,6 +1487,139 @@ components:
           description: Mandates stopped.
       required:
         - revoked
+    ActivityRow:
+      type: object
+      properties:
+        id:
+          type: string
+        at:
+          type: string
+        tone:
+          type: string
+          enum:
+            - good
+            - warn
+            - bad
+        line:
+          type: string
+          example: Claude Code bought $94.00 at RunFast.
+        agentId:
+          type:
+            - string
+            - "null"
+        purchaseId:
+          type:
+            - string
+            - "null"
+        mandateId:
+          type:
+            - string
+            - "null"
+        href:
+          type:
+            - string
+            - "null"
+        alibiUrl:
+          type:
+            - string
+            - "null"
+        logIndex:
+          type:
+            - string
+            - "null"
+      required:
+        - id
+        - at
+        - tone
+        - line
+        - agentId
+        - purchaseId
+        - mandateId
+        - href
+        - alibiUrl
+        - logIndex
+    PushSubscription:
+      type: object
+      properties:
+        endpoint:
+          type: string
+          maxLength: 2048
+          format: uri
+        expirationTime:
+          type:
+            - number
+            - "null"
+        keys:
+          type: object
+          properties:
+            p256dh:
+              type: string
+              pattern: ^[A-Za-z0-9_-]{80,100}$
+            auth:
+              type: string
+              pattern: ^[A-Za-z0-9_-]{16,32}$
+          required:
+            - p256dh
+            - auth
+      required:
+        - endpoint
+        - keys
+    AlertEmail:
+      type: object
+      properties:
+        address:
+          type:
+            - string
+            - "null"
+        confirmed:
+          type: boolean
+      required:
+        - address
+        - confirmed
+    SentEmail:
+      type: object
+      properties:
+        id:
+          type: string
+        address:
+          type: string
+        event:
+          type: string
+        subject:
+          type: string
+        subjectId:
+          type:
+            - string
+            - "null"
+        logIndex:
+          type:
+            - string
+            - "null"
+        alibiUrl:
+          type:
+            - string
+            - "null"
+        sentAt:
+          type:
+            - string
+            - "null"
+        error:
+          type:
+            - string
+            - "null"
+        createdAt:
+          type: string
+      required:
+        - id
+        - address
+        - event
+        - subject
+        - subjectId
+        - logIndex
+        - alibiUrl
+        - sentAt
+        - error
+        - createdAt
     CompiledMandate:
       type: object
       properties:
@@ -7374,6 +7589,368 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "404":
           description: No agent of yours with this id
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/activity:
+    get:
+      tags:
+        - agents
+      summary: Read your activity
+      description: "What your agents and Keelson did, newest first, one plain line
+        each: requests, purchases, blocks and stops. Purchases link to their
+        Alibi and log entry."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^(0|[1-9]\d{0,77})$
+            description: Only this agent's rows, and stops of every agent.
+          required: false
+          description: Only this agent's rows, and stops of every agent.
+          name: agent
+          in: query
+      responses:
+        "200":
+          description: The feed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ActivityRow"
+                required:
+                  - rows
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/push/key:
+    get:
+      tags:
+        - alerts
+      summary: Read the push key
+      description: The VAPID public key (RFC 8292) to pass as `applicationServerKey`
+        to `PushManager.subscribe()`.
+      responses:
+        "200":
+          description: The key, base64url
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  publicKey:
+                    type: string
+                required:
+                  - publicKey
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: Alerts are not configured
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/push/subscriptions:
+    post:
+      tags:
+        - alerts
+      summary: Get alerts on this browser
+      description: "Stores the browser's push subscription: agent requests, blocked
+        carts and stops are pushed to it."
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushSubscription"
+      responses:
+        "201":
+          description: Subscribed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                required:
+                  - id
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    delete:
+      tags:
+        - alerts
+      summary: Stop alerts on this browser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                endpoint:
+                  type: string
+                  maxLength: 2048
+              required:
+                - endpoint
+      responses:
+        "204":
+          description: Removed
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/push/test:
+    post:
+      tags:
+        - alerts
+      summary: Send a test notification
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      responses:
+        "200":
+          description: How many browsers' push services accepted it
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sent:
+                    type: integer
+                required:
+                  - sent
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: Alerts are not configured
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/alerts/email:
+    get:
+      tags:
+        - alerts
+      summary: Read your alert address
+      responses:
+        "200":
+          description: The address
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertEmail"
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    put:
+      tags:
+        - alerts
+      summary: Set your alert address
+      description: Stores the address unconfirmed and sends it a confirmation link,
+        signed, single use and valid for 24 hours. Alerts are emailed only once
+        it is confirmed. Never the sign-in address unless entered here.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                address:
+                  type: string
+                  maxLength: 254
+                  format: email
+              required:
+                - address
+      responses:
+        "202":
+          description: The confirmation link was sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertEmail"
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: A link was sent less than a minute ago
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: Alerts are not configured
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    delete:
+      tags:
+        - alerts
+      summary: Stop email alerts
+      responses:
+        "204":
+          description: Removed
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/alerts/email/confirm:
+    post:
+      tags:
+        - alerts
+      summary: Confirm an alert address
+      description: Opened from the confirmation link; needs no session. A link works once.
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+                  maxLength: 1024
+              required:
+                - token
+      responses:
+        "200":
+          description: Confirmed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  address:
+                    type: string
+                required:
+                  - address
+        "404":
+          description: The link is invalid, used or expired
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: Alerts are not configured
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/alerts/unsubscribe:
+    post:
+      tags:
+        - alerts
+      summary: Unsubscribe in one click
+      description: "The `List-Unsubscribe` URI of every alert email (RFC 8058): the
+        mail client posts `List-Unsubscribe=One-Click` to it, with no session or
+        other context. The token in the query names the address."
+      parameters:
+        - schema:
+            type: string
+            maxLength: 1024
+          required: true
+          name: token
+          in: query
+      responses:
+        "200":
+          description: No more email goes to the address
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  unsubscribed:
+                    type: boolean
+                    enum:
+                      - true
+                required:
+                  - unsubscribed
+        "404":
+          description: The link is invalid
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: Alerts are not configured
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/alerts/emails:
+    get:
+      tags:
+        - alerts
+      summary: List the emails sent to you
+      description: Every alert email composed for you, newest first, with what it reported.
+      responses:
+        "200":
+          description: The emails
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  emails:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SentEmail"
+                required:
+                  - emails
+        "401":
+          description: Not signed in
           content:
             application/problem+json:
               schema:
