@@ -9,6 +9,7 @@ mod hash;
 mod jcs;
 mod money;
 mod poseidon2;
+pub mod statement;
 
 pub use acir::{AcirField, FieldElement};
 pub use alibi::{AlibiFields, alibi_digest};
