@@ -379,6 +379,27 @@ components:
           items:
             type: string
           description: For a `DENIED` cart, the mandate fields whose check failed.
+        reasons:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              mandate:
+                type:
+                  - string
+                  - "null"
+              cart:
+                type:
+                  - string
+                  - "null"
+            required:
+              - field
+              - mandate
+              - cart
+          description: For a `DENIED` cart, each failed field with what the mandate
+            allowed and what the cart had, as text.
         live:
           type: object
           properties:
@@ -1360,6 +1381,27 @@ components:
           items:
             type: string
           description: For a `DENIED` cart, the mandate fields whose check failed.
+        reasons:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              mandate:
+                type:
+                  - string
+                  - "null"
+              cart:
+                type:
+                  - string
+                  - "null"
+            required:
+              - field
+              - mandate
+              - cart
+          description: For a `DENIED` cart, each failed field with what the mandate
+            allowed and what the cart had, as text.
         live:
           type: object
           properties:
@@ -1635,6 +1677,27 @@ components:
           items:
             type: string
           description: For a `DENIED` cart, the mandate fields whose check failed.
+        reasons:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              mandate:
+                type:
+                  - string
+                  - "null"
+              cart:
+                type:
+                  - string
+                  - "null"
+            required:
+              - field
+              - mandate
+              - cart
+          description: For a `DENIED` cart, each failed field with what the mandate
+            allowed and what the cart had, as text.
         live:
           type: object
           properties:
