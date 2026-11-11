@@ -13,6 +13,7 @@ import { money } from "../lib/format";
 import { AppShell } from "./app-shell";
 import { HoldButton } from "./hold-button";
 import { ErrorNotice } from "./notice";
+import { PhoneApprovalsOffer } from "./phone-approvals";
 
 const ago = (iso: string) => {
   const s = Math.round((Date.now() - Date.parse(iso)) / 1000);
@@ -279,6 +280,7 @@ export function AgentsPage() {
           </div>
         </div>
         {stopped ? <Stopped stop={stopped} /> : null}
+        {live.length > 0 ? <PhoneApprovalsOffer /> : null}
         {error ? <ErrorNotice>{error}</ErrorNotice> : null}
 
         <section aria-label="Your agents" className="rounded-3xl border bg-card px-5 sm:px-6">

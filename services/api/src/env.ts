@@ -71,6 +71,21 @@ const schema = z
       .string()
       .regex(/^[a-z0-9-]+$/)
       .optional(),
+    /** The VAPID key pair (RFC 8292) Web Push alerts are sent with; no push is sent without it. */
+    VAPID_PUBLIC_KEY: z
+      .string()
+      .regex(/^[A-Za-z0-9_-]{87}$/)
+      .optional(),
+    VAPID_PRIVATE_KEY: z
+      .string()
+      .regex(/^[A-Za-z0-9_-]{43}$/)
+      .optional(),
+    VAPID_SUBJECT: z
+      .string()
+      .regex(/^(mailto:|https:\/\/)/)
+      .optional(),
+    /** Sends alert emails through Resend; without it they are stored in the trail unsent. */
+    RESEND_API_KEY: z.string().startsWith("re_").optional(),
     PORT: z.coerce.number().int().positive().default(10000),
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   })
@@ -92,6 +107,19 @@ const schema = z
     message: "KEELSON_OPERATOR_KEY and DEMO_AGENT_ID are set together",
     path: ["KEELSON_OPERATOR_KEY"],
   })
+  .refine(
+    (env) =>
+      [env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY, env.VAPID_SUBJECT].every(
+        (v) => v === undefined,
+      ) ||
+      [env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY, env.VAPID_SUBJECT].every(
+        (v) => v !== undefined,
+      ),
+    {
+      message: "VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY and VAPID_SUBJECT are set together",
+      path: ["VAPID_PUBLIC_KEY"],
+    },
+  )
   .refine((env) => (env.LOG_URL === undefined) === (env.LOG_WRITE_TOKEN === undefined), {
     message: "LOG_URL and LOG_WRITE_TOKEN are set together",
     path: ["LOG_URL"],

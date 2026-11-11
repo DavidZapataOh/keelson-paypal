@@ -1,9 +1,20 @@
 import type { StatusState } from "@keelson/ui/components/status";
 import type { MandateState, Purchase } from "./types";
 
+/** PayPal's own answers to a capture: with one of these, nothing was charged. */
+const DECLINED = new Set(["DENIED", "DECLINED", "FAILED"]);
+
+/**
+ * A purchase that failed at the capture step without PayPal declining it: the capture may have
+ * reached PayPal, so whether the buyer was charged is not known until PayPal is read again.
+ */
+export const unknownOutcome = (p: Purchase): boolean =>
+  p.failure?.step === "capture" && !DECLINED.has(p.failure.reason);
+
 /** A purchase's chip: what Keelson or PayPal last did with it. */
 export function purchaseStatus(p: Purchase): StatusState {
   if (p.disputes.some((d) => d.state !== "RESOLVED")) return "disputed";
+  if (unknownOutcome(p)) return "unknown";
   switch (p.state) {
     case "PROPOSED":
     case "EVALUATING":

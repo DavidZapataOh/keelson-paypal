@@ -1,15 +1,14 @@
-import { getCedarLangVersion, getCedarVersion } from "@cedar-policy/cedar-wasm";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { type Cart, cartHash } from "@keelson/core";
+import type { Cart } from "@keelson/core";
 import { agentConnections, and, eq, gt, mandates, operators, sql } from "@keelson/db";
 import { decodeMandate } from "@keelson/mandate";
-import { cartContext, type EngineMeta, evaluate, mandateAgent } from "@keelson/policy";
 import type { Context } from "hono";
 import type { Deps } from "../app.ts";
+import { cartChecks } from "../cart-checks.ts";
 import { grantOf, REQUEST_TTL_SEC, requestChange } from "../connections.ts";
 import { MERCHANTS } from "../merchants.ts";
 import { requireClient } from "../middleware/auth.ts";
-import { fieldChecks } from "../pipeline/drive.ts";
+import { notify, requestAlert } from "../notify/notifier.ts";
 import type { Principal } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 import { stoppedSince } from "../stop.ts";
@@ -19,17 +18,6 @@ import { REVOCABLE } from "./revoke.ts";
 const problemContent = { "application/problem+json": { schema: ProblemSchema } };
 const Id = z.object({ id: z.string().regex(/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/) });
 const Minor = z.int().positive().max(Number.MAX_SAFE_INTEGER);
-
-/** The evaluator a check runs: the policy set the TEE legs run, in process, with no proof bundle. */
-const EVALUATOR: EngineMeta = {
-  cedar_policy: getCedarVersion(),
-  lang: getCedarLangVersion(),
-  symcc: "",
-  cvc5: "",
-  oci_digest: "",
-  canonicalizer: "@keelson/api check",
-  proof_bundle_hash: "",
-};
 
 /** The fields one approval of the user may lift: how much, and at which store. */
 const LIFTABLE = new Set(["total", "budget", "merchant"]);
@@ -173,7 +161,7 @@ const decoded = (m: typeof mandates.$inferSelect) =>
 
 export function registerMandateRequests(
   app: OpenAPIHono,
-  deps: Pick<Deps, "db" | "kv" | "appOrigin">,
+  deps: Pick<Deps, "db" | "kv" | "appOrigin" | "notifier">,
 ): void {
   const { db } = deps;
   const appOrigin = deps.appOrigin ?? "https://app.keelson.finance";
@@ -269,6 +257,7 @@ export function registerMandateRequests(
       );
     });
     if (auth instanceof Response) return auth;
+    notify(deps.notifier, (n) => requestAlert(n, auth.request_id));
     const { device_code: _, ...shown } = auth;
     return c.json(shown, 201, { "cache-control": "no-store" });
   });
@@ -300,40 +289,18 @@ export function registerMandateRequests(
         next: "Stop. Do not buy or ask again unless the user tells you to.",
       });
     }
-    let m: ReturnType<typeof decodeMandate> | undefined;
-    try {
-      m = decoded(mandate);
-    } catch {
-      m = undefined;
-    }
-    let checks: ReturnType<typeof fieldChecks> = [];
-    if (m && mandate.mandateHash) {
-      const trace = evaluate(
-        {
-          mandate: m,
-          budgetLeftMinor: Number(mandate.remainingMinor),
-          agent: mandateAgent(m),
-          context: cartContext(cart),
-          now: new Date(),
-          evidence: {},
-          mandateHash: mandate.mandateHash,
-          cartHash: cartHash(cart),
-        },
-        EVALUATOR,
-      );
-      checks = fieldChecks(trace, cart.currency);
-      const onboarded = MERCHANTS.some((x) => x.id === cart.merchant);
-      for (const f of checks.filter((x) => !x.pass)) {
-        const liftable = LIFTABLE.has(f.field) && onboarded;
-        blockers.push({
-          code: `field:${f.field}`,
-          field: f.field,
-          message: `${f.field}: the mandate allows ${f.mandate ?? "nothing"}, the cart has ${f.cart ?? "nothing"}.`,
-          next: liftable
-            ? "The countersign pauses this cart for the user's one-time approval, or ask for more room with keelson.request_mandate_change."
-            : "Change the cart: one approval cannot lift this field.",
-        });
-      }
+    const checks = cartChecks(mandate, cart);
+    const onboarded = MERCHANTS.some((x) => x.id === cart.merchant);
+    for (const f of checks.filter((x) => !x.pass)) {
+      const liftable = LIFTABLE.has(f.field) && onboarded;
+      blockers.push({
+        code: `field:${f.field}`,
+        field: f.field,
+        message: `${f.field}: the mandate allows ${f.mandate ?? "nothing"}, the cart has ${f.cart ?? "nothing"}.`,
+        next: liftable
+          ? "The countersign pauses this cart for the user's one-time approval, or ask for more room with keelson.request_mandate_change."
+          : "Change the cart: one approval cannot lift this field.",
+      });
     }
     const [answered] = await db
       .select({ askAbove: agentConnections.askAboveMinor })
