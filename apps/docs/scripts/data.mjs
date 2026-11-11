@@ -15,11 +15,23 @@ for (const id of ["01M6ZWZJHWRRHQEYNJAT7NMSV8", "01M6ZX07MFWDDDW4199FDJHWEG"]) {
 }
 
 // Live values shown on the site are read from production at build time, never written by hand.
-const get = async (url) => {
-  const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
-  if (!res.ok) throw new Error(`${url} answered ${res.status}`);
-  return res;
-};
+/** Production can blink; three tries a few seconds apart before the build gives up. */
+async function retry(what, attempt) {
+  for (let i = 1; ; i++) {
+    try {
+      return await attempt();
+    } catch (err) {
+      if (i === 3) throw new Error(`${what}: ${err.message}`);
+      await new Promise((wait) => setTimeout(wait, 3_000 * i));
+    }
+  }
+}
+const get = (url) =>
+  retry(url, async () => {
+    const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+    if (!res.ok) throw new Error(`answered ${res.status}`);
+    return res;
+  });
 const status = await (await get("https://api.keelson.finance/status")).json();
 const checkpoint = (
   await (await get("https://log.keelson.finance/alibi/2026-1/checkpoint")).text()
