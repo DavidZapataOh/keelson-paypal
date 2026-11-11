@@ -60,7 +60,7 @@ struct NetworkRequest {
     gas_used: Option<u64>,
     max_cost: String,
     cost: Option<String>,
-    balance: String,
+    balance: Option<String>,
 }
 
 /// How long provers have to bid before the request is cancelled.
@@ -178,6 +178,25 @@ fn prove_on_network(stdin: SP1Stdin, expected: &[u8; 64]) -> Proved {
         .timeout(NETWORK_TIMEOUT)
         .request()
         .expect("the network takes the request");
+    // The SDK reads the auction parameters again to sign the request: a base fee that rose in
+    // between is caught here and the request cancelled while it is still in its auction.
+    let requested = client
+        .get_proof_request(request_id)
+        .expect("the request reads")
+        .expect("the request exists");
+    let signed_fee: U256 = requested
+        .base_fee
+        .as_deref()
+        .map_or(U256::ZERO, |f| f.parse().expect("a base fee"));
+    let worst = signed_fee + U256::from(gas_limit) * U256::from(max_price_per_pgu);
+    if worst > max_cost {
+        client
+            .cancel_request(request_id)
+            .expect("the request cancels");
+        panic!(
+            "the base fee rose to {signed_fee} PROVE wei, over ENGINE_PROOF_MAX_COST {max_cost}"
+        );
+    }
     let proof = client
         .wait_proof(request_id, Some(NETWORK_TIMEOUT), Some(AUCTION_TIMEOUT))
         .expect("the network fulfils the request");
@@ -186,17 +205,13 @@ fn prove_on_network(stdin: SP1Stdin, expected: &[u8; 64]) -> Proved {
         .verify(&proof, pk.verifying_key(), None)
         .expect("the proof verifies");
 
-    let request = client
-        .get_proof_request(request_id)
-        .expect("the request reads")
-        .expect("the request exists");
-    let cost = request.deduction_amount.as_deref().map(|deducted| {
-        let deducted: U256 = deducted.parse().expect("a PROVE amount");
-        let refunded: U256 = request
-            .refund_amount
-            .as_deref()
-            .map_or(U256::ZERO, |r| r.parse().expect("a PROVE amount"));
-        (deducted - refunded).to_string()
+    // The proof is paid for by now: its accounting is best effort and never loses it.
+    let request = client.get_proof_request(request_id).ok().flatten();
+    let amount = |a: Option<&String>| a.and_then(|a| a.parse::<U256>().ok());
+    let cost = request.as_ref().and_then(|r| {
+        let deducted = amount(r.deduction_amount.as_ref())?;
+        let refunded = amount(r.refund_amount.as_ref()).unwrap_or(U256::ZERO);
+        deducted.checked_sub(refunded).map(|c| c.to_string())
     });
     let network = NetworkRequest {
         request_id: request_id.to_string(),
@@ -205,10 +220,10 @@ fn prove_on_network(stdin: SP1Stdin, expected: &[u8; 64]) -> Proved {
             get_explorer_url_for_mode(NetworkMode::Mainnet)
         ),
         gas_limit,
-        gas_used: request.gas_used,
+        gas_used: request.as_ref().and_then(|r| r.gas_used),
         max_cost: worst.to_string(),
         cost,
-        balance: client.get_balance().expect("the balance reads").to_string(),
+        balance: client.get_balance().ok().map(|b| b.to_string()),
     };
     proved(
         &proof,
