@@ -4,7 +4,7 @@ import { eq, oauthClient, operators } from "@keelson/db";
 import type { Context } from "hono";
 import type { Deps } from "../app.ts";
 import type { Auth } from "../auth.ts";
-import { cappedHost, hostedCapError } from "../hosted-caps.ts";
+import { cappedHost, HOSTED_CAP_CURRENCY, hostedCapError } from "../hosted-caps.ts";
 import { requireSession } from "../middleware/auth.ts";
 import { notify, requestAlert } from "../notify/notifier.ts";
 import type { Principal } from "../principal.ts";
@@ -209,7 +209,7 @@ export function registerOAuthConsent(
         capped && deps.hostedCaps
           ? {
               perUserMinor: deps.hostedCaps.perUserMinor,
-              currency: spending?.limits.currency ?? "USD",
+              currency: HOSTED_CAP_CURRENCY,
             }
           : null,
       scopes: (query.get("scope") ?? "").split(" ").filter(Boolean),

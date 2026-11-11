@@ -33,9 +33,12 @@ export const KNOWN_REDIRECT_URIS: readonly string[] = [
  */
 const LOOPBACK = "^http://(localhost|127\\.0\\.0\\.1):[0-9]{1,5}/callback$";
 
+/** The one currency an app Keelson does not know may ask for, so that its caps add up. */
+export const HOSTED_CAP_CURRENCY = "USD";
+
 /**
- * Limits on what Keelson's hosted bond backs for apps it does not know, in minor units of the
- * mandate's currency, counted per currency over live mandates (what is left of each).
+ * Limits on what Keelson's hosted bond backs for apps it does not know, in minor units of
+ * {@link HOSTED_CAP_CURRENCY}, counted over live mandates (what is left of each).
  */
 export interface HostedCaps {
   /** Most one user's live mandates for such apps may have left, together. */
@@ -188,6 +191,9 @@ export async function hostedCapError(
   if (!caps || demoAgentId === undefined || input.operatorAgentId !== demoAgentId) return;
   const hosted = await hostedClientId(db, demoAgentId);
   if (!(await cappedHost(db, input.clientId, hosted))) return;
+  if (input.currency !== HOSTED_CAP_CURRENCY) {
+    return `Keelson's hosted operator backs apps it does not know in ${HOSTED_CAP_CURRENCY} only.`;
+  }
   if (lock) await lockHostedExposure(db);
   const over = await overHostedCap(db, caps, {
     hostedAgentId: demoAgentId,
