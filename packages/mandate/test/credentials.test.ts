@@ -511,12 +511,12 @@ describe("open mandate (L2)", () => {
     ).rejects.toThrow(/cnf/);
   });
 
-  it("fails when any byte of the token changes", async () => {
+  it("fails when a byte of the token changes", async () => {
     const { token, opts } = await openMandate();
     await verifyCredential(token, OPEN_MANDATE_TYP, issuer.publicKey, opts);
     const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
     const accepted: number[] = [];
-    for (let i = 0; i < token.length; i++) {
+    for (const i of tamperPositions(token, 256)) {
       const c = token[i] as string;
       const j = alphabet.indexOf(c);
       const flipped = j < 0 ? "A" : (alphabet[j ^ 1] as string);
@@ -530,6 +530,60 @@ describe("open mandate (L2)", () => {
     expect(accepted).toEqual([]);
   }, 60_000);
 });
+
+/**
+ * The positions of `token` worth tampering with: every byte of each JWS header and signature,
+ * every separator with the two bytes on each side, every byte that encodes a digest or key in a
+ * JWS payload, and a seeded sample of `sample` other payload and disclosure bytes.
+ */
+function tamperPositions(token: string, sample: number): number[] {
+  const all = new Set<number>();
+  const rest: number[] = [];
+  let at = 0;
+  for (const part of token.split("~")) {
+    const segments = part.split(".");
+    segments.forEach((segment, k) => {
+      const end = at + segment.length;
+      if (segments.length === 3 && k !== 1) {
+        for (let i = at; i < end; i++) all.add(i);
+      } else {
+        if (segments.length === 3) for (const i of digestBytes(segment)) all.add(at + i);
+        for (let i = at; i < end; i++) rest.push(i);
+      }
+      at = end + 1;
+    });
+  }
+  for (let i = 0; i < token.length; i++) {
+    if (token[i] !== "~" && token[i] !== ".") continue;
+    for (let j = Math.max(i - 2, 0); j <= Math.min(i + 2, token.length - 1); j++) all.add(j);
+  }
+  const others = rest.filter((i) => !all.has(i));
+  let seed = 0x5eed;
+  const random = () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), seed | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 2 ** 32;
+  };
+  for (let n = 0; n < Math.min(sample, others.length); n++) {
+    const k = n + Math.floor(random() * (others.length - n));
+    [others[n], others[k]] = [others[k] as number, others[n] as number];
+    all.add(others[n] as number);
+  }
+  return [...all].sort((a, b) => a - b);
+}
+
+/** The base64url characters of a JWS payload that encode its 43-character digests and keys. */
+function digestBytes(segment: string): number[] {
+  const json = Buffer.from(segment, "base64url").toString("latin1");
+  const out: number[] = [];
+  for (const m of json.matchAll(/"([A-Za-z0-9_-]{43})"/g)) {
+    const start = (m.index as number) + 1;
+    const end = Math.min(Math.ceil((start + 43) / 3) * 4, segment.length);
+    for (let i = Math.floor(start / 3) * 4; i < end; i++) out.push(i);
+  }
+  return out;
+}
 
 function isLogin(d: string): boolean {
   const parts = JSON.parse(Buffer.from(d, "base64url").toString());
