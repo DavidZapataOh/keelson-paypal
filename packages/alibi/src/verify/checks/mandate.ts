@@ -99,7 +99,7 @@ export const challenge: CheckDef = {
  * The agent platform whose page framed Keelson's approval when the user signed, `embed.top_origin`
  * of the signed payload; undefined for a mandate signed at the top level in the Keelson app.
  */
-export function embeddedOn(b: AlibiBundle): string | undefined {
+function embeddedOn(b: AlibiBundle): string | undefined {
   const embed = (b.mandate.payload_sd as { embed?: { top_origin?: unknown } }).embed;
   return typeof embed?.top_origin === "string" ? embed.top_origin : undefined;
 }
