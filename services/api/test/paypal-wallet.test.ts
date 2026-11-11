@@ -58,14 +58,12 @@ describe("saved PayPal", () => {
 
   test("a user reads their saved PayPal without its vault id", async () => {
     const sub = await newUser();
-    await testDb
-      .insert(paypalWallets)
-      .values({
-        userId: sub,
-        vaultId: "jwgvx42",
-        customerId: "ROaPMoZUa5",
-        email: "b@example.com",
-      });
+    await testDb.insert(paypalWallets).values({
+      userId: sub,
+      vaultId: "jwgvx42",
+      customerId: "ROaPMoZUa5",
+      email: "b@example.com",
+    });
     const res = await app.request("/v1/paypal/wallet", { headers: asUser(sub) });
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
