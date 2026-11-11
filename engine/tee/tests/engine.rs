@@ -10,9 +10,7 @@ use keelson_mandate::{
     OPEN_MANDATE_TYP, OpenMandateVerifyOptions, USER_CREDENTIAL_TYP, verify_credential,
 };
 use keelson_tee::wire::{Base64, CountersignRequest, Countersigned, RegisterMandate};
-use keelson_tee::{
-    BIT_CANON, Engine, EngineError, MANDATE_SALT_PURPOSE, Root, SealAad, TeeKind, UserRecords,
-};
+use keelson_tee::{BIT_CANON, Engine, EngineError, MANDATE_SALT_PURPOSE, Root, SealAad, TeeKind};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
