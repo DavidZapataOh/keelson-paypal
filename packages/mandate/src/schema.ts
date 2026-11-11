@@ -37,6 +37,44 @@ export const CATEGORY_TABLE: { readonly version: "v1"; readonly ids: readonly st
 
 const categoryId = z.enum(CATEGORY_TABLE.ids as [string, ...string[]]);
 
+/**
+ * Merchant category code table, version `v1`: the ISO 18245 codes a card mandate may allow.
+ * Entries are only ever appended. Codes whose authorizations change after approval (fuel, lodging,
+ * car rental) and codes for cash or quasi-cash are left out.
+ */
+export const MCC_TABLE: { readonly version: "v1"; readonly codes: readonly string[] } = {
+  version: "v1",
+  codes: [
+    "5411", // Grocery stores, supermarkets
+    "5441", // Candy, nut and confectionery stores
+    "5462", // Bakeries
+    "5499", // Miscellaneous food stores
+    "5812", // Eating places, restaurants
+    "5814", // Fast food restaurants
+    "5300", // Wholesale clubs
+    "5310", // Discount stores
+    "5311", // Department stores
+    "5651", // Family clothing stores
+    "5661", // Shoe stores
+    "5691", // Men's and women's clothing stores
+    "5732", // Electronics stores
+    "5734", // Computer software stores
+    "5912", // Drug stores and pharmacies
+    "5941", // Sporting goods stores
+    "5942", // Book stores
+    "5945", // Hobby, toy and game shops
+    "5977", // Cosmetic stores
+    "5992", // Florists
+    "5995", // Pet shops, pet food and supplies
+    "5999", // Miscellaneous and specialty retail stores
+    "4111", // Commuter transport and ferries
+    "4121", // Taxicabs and limousines
+    "7832", // Motion picture theaters
+  ],
+};
+
+const mcc = z.enum(MCC_TABLE.codes as [string, ...string[]]);
+
 const codePoint = (c: number) => `\\u{${c.toString(16)}}`;
 const FORBIDDEN_CHARS = new RegExp(
   `[${CONTROL_OR_FORMAT.map(([lo, hi]) => `${codePoint(lo)}-${codePoint(hi)}`).join("")}]`,
@@ -121,14 +159,25 @@ const p256Jwk = z.strictObject({
   y: b64url32,
 });
 
+/**
+ * A merchant the mandate allows. A `paypal` mandate names it by `website` and
+ * `paypal_merchant_id`; a `card` mandate by the merchant category codes and country its card
+ * authorizations must carry, and may name its `website`.
+ */
 const merchant = z.strictObject({
   id: text(STRING_LIMITS.short),
   name: text(STRING_LIMITS.short),
   website: z
     .string()
     .refine(isWebsite, "invalid url")
-    .refine((s) => s.length <= STRING_LIMITS.url, "too long"),
-  paypal_merchant_id: text(STRING_LIMITS.short),
+    .refine((s) => s.length <= STRING_LIMITS.url, "too long")
+    .optional(),
+  paypal_merchant_id: text(STRING_LIMITS.short).optional(),
+  mcc: z.array(mcc).min(1).optional(),
+  country: z
+    .string()
+    .regex(/^[A-Z]{2}$/)
+    .optional(),
 });
 
 const paymentConstraint = z.discriminatedUnion("type", [
@@ -139,6 +188,11 @@ const paymentConstraint = z.discriminatedUnion("type", [
     allowed: z.array(z.strictObject({ paypal_merchant_id: text(STRING_LIMITS.short) })).min(1),
   }),
   z.strictObject({ type: z.literal("payment.execution_date"), not_after: z.iso.datetime() }),
+  z.strictObject({
+    type: z.literal("payment.card_controls"),
+    single_use: z.literal(true),
+    mcc_table: z.literal(MCC_TABLE.version),
+  }),
 ]);
 
 const checkoutConstraint = z.discriminatedUnion("type", [
@@ -206,7 +260,7 @@ export const MandateSchema = z.strictObject({
     }),
   }),
   payment: z.strictObject({
-    rail: z.literal("paypal"),
+    rail: z.enum(["paypal", "card"]),
     currency,
     constraints: z.array(paymentConstraint),
   }),
@@ -246,6 +300,12 @@ export type Mandate = z.infer<typeof MandateSchema>;
  */
 export const ANY_ITEM = "*";
 
+/**
+ * The `checkout.allowed_merchants` id that stands for any merchant of a `card` mandate. It is then
+ * the only merchant, and its `mcc` and `country` bind every card authorization.
+ */
+export const ANY_MERCHANT = "*";
+
 /** Maximum lifetime of a mandate, in seconds. */
 export const MAX_LIFETIME_SECONDS = 30 * 86400;
 
@@ -264,12 +324,27 @@ export class MandateError extends Error {
   }
 }
 
-const PAYMENT_REQUIRED = [
-  "payment.amount_range",
-  "payment.budget",
-  "payment.allowed_payees",
-  "payment.execution_date",
-];
+const PAYMENT_REQUIRED = {
+  paypal: [
+    "payment.amount_range",
+    "payment.budget",
+    "payment.allowed_payees",
+    "payment.execution_date",
+  ],
+  card: [
+    "payment.amount_range",
+    "payment.budget",
+    "payment.execution_date",
+    "payment.card_controls",
+  ],
+};
+/** The payment constraint each rail refuses: the other rail's own. */
+const PAYMENT_FORBIDDEN = { paypal: "payment.card_controls", card: "payment.allowed_payees" };
+/** The merchant fields each rail requires and refuses. */
+const MERCHANT_FIELDS = {
+  paypal: { required: ["website", "paypal_merchant_id"], forbidden: ["mcc", "country"] },
+  card: { required: ["mcc", "country"], forbidden: ["paypal_merchant_id"] },
+} as const;
 const CHECKOUT_OPTIONAL = [
   "checkout.line_items",
   "keelson.category",
@@ -308,7 +383,14 @@ export function parseMandate(input: unknown): Mandate {
   if (m.exp - m.iat > MAX_LIFETIME_SECONDS) {
     throw new MandateError("exp", "lifetime exceeds 30 days");
   }
-  requireCounts("payment.constraints", m.payment.constraints, PAYMENT_REQUIRED, []);
+  const rail = m.payment.rail;
+  requireCounts("payment.constraints", m.payment.constraints, PAYMENT_REQUIRED[rail], []);
+  if (m.payment.constraints.some((c) => c.type === PAYMENT_FORBIDDEN[rail])) {
+    throw new MandateError(
+      "payment.constraints",
+      `${PAYMENT_FORBIDDEN[rail]} not allowed for rail ${rail}`,
+    );
+  }
   requireCounts(
     "checkout.constraints",
     m.checkout.constraints,
@@ -319,6 +401,28 @@ export function parseMandate(input: unknown): Mandate {
     if ("currency" in c && c.currency !== m.payment.currency) {
       throw new MandateError(`payment.constraints.${i}.currency`, "differs from payment.currency");
     }
+  });
+  m.checkout.constraints.forEach((c, i) => {
+    if (c.type !== "checkout.allowed_merchants") return;
+    const { required, forbidden } = MERCHANT_FIELDS[rail];
+    c.allowed.forEach((x, j) => {
+      const path = `checkout.constraints.${i}.allowed.${j}`;
+      for (const key of required) {
+        if (x[key] === undefined)
+          throw new MandateError(`${path}.${key}`, `required for rail ${rail}`);
+      }
+      for (const key of forbidden) {
+        if (x[key] !== undefined) {
+          throw new MandateError(`${path}.${key}`, `not allowed for rail ${rail}`);
+        }
+      }
+      if (x.id === ANY_MERCHANT && (rail !== "card" || c.allowed.length > 1)) {
+        throw new MandateError(
+          `${path}.id`,
+          "any merchant must be the only merchant of a card mandate",
+        );
+      }
+    });
   });
   m.checkout.constraints.forEach((c, i) => {
     if (c.type !== "checkout.line_items") return;

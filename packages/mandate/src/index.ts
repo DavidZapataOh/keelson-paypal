@@ -23,6 +23,7 @@ export {
   CATEGORY_LABELS,
   type Card,
   type CardRow,
+  MCC_LABELS,
   prepareSigning,
   renderCard,
   type Signing,
@@ -86,12 +87,14 @@ export {
 } from "./credentials.ts";
 export {
   ANY_ITEM,
+  ANY_MERCHANT,
   CATEGORY_TABLE,
   isMerchantId,
   MAX_LIFETIME_SECONDS,
   type Mandate,
   MandateError,
   MandateSchema,
+  MCC_TABLE,
   parseMandate,
   STRING_LIMITS,
 } from "./schema.ts";
