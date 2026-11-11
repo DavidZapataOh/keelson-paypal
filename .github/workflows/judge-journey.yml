@@ -27,6 +27,7 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/apt-update
       - run: pnpm --filter @keelson/web exec playwright install --with-deps chromium
       - name: Walk the tour on app.keelson.finance
         env:
