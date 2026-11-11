@@ -406,7 +406,8 @@ impl Engine {
         let holder = root.user_key(&r.sub);
         let passkey = Jwk::from_value(&cred["jwk"]).map_err(|_| bad("mandate"))?;
         if let Some(l1) = &r.user_credential {
-            self.check_user_credential(l1, &r.sub, &jwk_of(&holder), &passkey)?;
+            let id = cred["id"].as_str().unwrap_or_default();
+            self.check_user_credential(l1, &r.sub, &jwk_of(&holder), id, &passkey)?;
         }
         let iat = now.unix_timestamp();
         let user_credential = match &r.user_credential {
@@ -1062,12 +1063,13 @@ impl Engine {
     }
 
     /// Checks a user credential from an earlier registration: issued by this engine's issuer,
-    /// to `sub`, for `holder` and the mandate's passkey.
+    /// to `sub`, for `holder` and the mandate's passkey, its credential id and key.
     fn check_user_credential(
         &self,
         l1: &str,
         sub: &str,
         holder: &Jwk,
+        cred_id: &str,
         passkey: &Jwk,
     ) -> Result<(), EngineError> {
         let issuer = self.issuer.as_ref().ok_or(EngineError::NoRoot)?;
@@ -1076,6 +1078,7 @@ impl Engine {
         let key = |v: &Value| Jwk::from_value(v).ok();
         let bound = v.claims.get("sub").and_then(Value::as_str) == Some(sub)
             && key(&v.claims["cnf"]["jwk"]).is_some_and(|k| same_key(&k, holder))
+            && v.claims["cred"]["id"].as_str() == Some(cred_id)
             && key(&v.claims["cred"]["jwk"]).is_some_and(|k| same_key(&k, passkey));
         bound.then_some(()).ok_or_else(rejected)
     }

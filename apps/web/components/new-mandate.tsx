@@ -99,6 +99,11 @@ export function NewMandate() {
     try {
       const { passkeys } = await get<{ passkeys: Passkey[] }>("/v1/passkeys");
       const named = passkeys.filter((p) => p.credentialId === compiled.mandateDraft.user.cred.id);
+      if (named.length === 0) {
+        throw new Error(
+          "The passkey this mandate names was removed. Edit the request to sign again.",
+        );
+      }
       const assertion = await signMandate(signing.challenge, named, { spc: signing.spc });
       const created = await post<{ id: string }>("/v1/mandates", {
         payloadSd: signing.payloadSd,

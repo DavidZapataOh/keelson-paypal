@@ -6199,8 +6199,10 @@ paths:
       tags:
         - passkeys
       summary: Remove one of the signed-in user's passkeys
-      description: The passkey can no longer sign in or sign mandates. A user keeps at
-        least one passkey, so the last one is not removed.
+      description: The passkey can no longer sign in or sign mandates, and the user's
+        other sessions end. It takes a sign-in within the last 10 minutes. A
+        user keeps at least one passkey, so the last one is not removed, and a
+        passkey stays while a mandate it signed is still being proved.
       parameters:
         - schema:
             type: string
@@ -6218,6 +6220,12 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+        "403":
+          description: The session is older than 10 minutes
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "404":
           description: No such passkey of this user
           content:
@@ -6225,7 +6233,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
         "409":
-          description: The user's last passkey
+          description: The user's last passkey, or one whose mandate is still being proved
           content:
             application/problem+json:
               schema:

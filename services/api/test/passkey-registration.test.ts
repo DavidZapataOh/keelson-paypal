@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { serve } from "@hono/node-server";
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import { eq, session as sessionTable } from "@keelson/db";
+import { eq, mandates, session as sessionTable } from "@keelson/db";
 import { cose, decodeCredentialPublicKey } from "@simplewebauthn/server/helpers";
 import { betterAuth } from "better-auth";
 import { testUtils } from "better-auth/plugins";
@@ -22,7 +22,9 @@ import { createApp } from "../src/app.ts";
 import { createAuth } from "../src/auth.ts";
 import { authenticate } from "../src/middleware/auth.ts";
 import { userPasskeys } from "../src/passkeys.ts";
+import { c3SaltKey } from "../src/zk/c3.ts";
 import { testAuthEnv, testDb, testKv } from "./setup.ts";
+import { seedOperator } from "./tee-live.ts";
 
 const pageScript = `
 import { createAuthClient } from "better-auth/client";
@@ -322,4 +324,64 @@ test("a user cannot remove another user's passkey", { timeout: 60_000 }, async (
   const res = await api("DELETE", `/v1/passkeys/${theirs?.id}`);
   expect(res.status).toBe(404);
   expect(await userPasskeys(testDb, owner.id)).toHaveLength(1);
+});
+
+test("removing a passkey takes a fresh sign-in and ends the user's other sessions", {
+  timeout: 60_000,
+}, async () => {
+  const { user, cdp, authenticatorId } = await signedInPage();
+  expect((await call("addPasskey")).error).toBeNull();
+  const device = await anotherDevice(cdp, authenticatorId);
+  expect((await call("addPasskey")).error).toBeNull();
+  const [first] = await userPasskeys(testDb, user.id);
+
+  // A session elsewhere, say on the lost device.
+  const { test: utils } = await helpers.$context;
+  await utils.getCookies({ userId: user.id, domain: "localhost" });
+
+  await ageSessions(user.id);
+  const stale = await api<{ type: string }>("DELETE", `/v1/passkeys/${first?.id}`);
+  expect(stale.status).toBe(403);
+  expect(stale.body.type).toBe(problemType("session-not-fresh"));
+
+  expect((await call<SessionData>("signInWithPasskey")).error).toBeNull();
+  const current = await call<SessionData & { session: { id: string } }>("getSession");
+  expect((await api("DELETE", `/v1/passkeys/${first?.id}`)).status).toBe(204);
+  const left = await testDb
+    .select({ id: sessionTable.id })
+    .from(sessionTable)
+    .where(eq(sessionTable.userId, user.id));
+  expect(left.map((r) => r.id)).toEqual([current.data?.session.id]);
+  const { credentials } = await cdp.send("WebAuthn.getCredentials", { authenticatorId: device });
+  expect(credentials).toHaveLength(1);
+});
+
+test("a passkey stays while a mandate it signed is being proved", { timeout: 60_000 }, async () => {
+  const { user, cdp, authenticatorId } = await signedInPage();
+  expect((await call("addPasskey")).error).toBeNull();
+  await anotherDevice(cdp, authenticatorId);
+  expect((await call("addPasskey")).error).toBeNull();
+  const [first] = await userPasskeys(testDb, user.id);
+  await seedOperator(testDb, 42n);
+  const mid = randomBytes(13).toString("hex");
+  await testDb.insert(mandates).values({
+    id: mid,
+    userId: user.id,
+    operatorAgentId: 42n,
+    state: "ACTIVE",
+    currency: "USD",
+    maxMinor: 10_000n,
+    remainingMinor: 10_000n,
+    merchantIds: ["store"],
+    expiresAt: new Date(Date.now() + 86_400_000),
+    credentialId: first?.credentialID,
+  });
+  await testKv.set(c3SaltKey(mid), "salt");
+
+  const busy = await api<{ type: string }>("DELETE", `/v1/passkeys/${first?.id}`);
+  expect(busy.status).toBe(409);
+  expect(busy.body.type).toBe(problemType("passkey-in-use"));
+
+  await testKv.del(c3SaltKey(mid));
+  expect((await api("DELETE", `/v1/passkeys/${first?.id}`)).status).toBe(204);
 });

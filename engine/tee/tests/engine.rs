@@ -370,6 +370,14 @@ fn every_passkey_of_a_user_signs_with_its_own_user_credential() {
     let err = engine.register_mandate(&swapped, at(NOW)).unwrap_err();
     assert_eq!(err.code(), "auth.open_user_credential");
 
+    // The same key under another credential id is another passkey.
+    let mut renamed = mandate_with(&sub(), &other_passkey(), |m| {
+        m["user"]["cred"]["id"] = json!("cmVuYW1lZA");
+    });
+    renamed.user_credential = Some(second.user_credential.clone());
+    let err = engine.register_mandate(&renamed, at(NOW)).unwrap_err();
+    assert_eq!(err.code(), "auth.open_user_credential");
+
     let mut stolen = mandate_for("kls_usr_other", &other_passkey());
     stolen.user_credential = Some(second.user_credential);
     let err = engine.register_mandate(&stolen, at(NOW)).unwrap_err();

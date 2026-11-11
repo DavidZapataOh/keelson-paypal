@@ -4,7 +4,7 @@ import { Badge } from "@keelson/ui/components/badge";
 import { Button } from "@keelson/ui/components/button";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { del, get } from "../lib/api";
+import { ApiError, del, get } from "../lib/api";
 import { authClient } from "../lib/auth";
 import { addPasskey, localPasskeys, type Passkey } from "../lib/passkeys";
 import { ErrorNotice, Eyebrow } from "./notice";
@@ -18,7 +18,8 @@ export function PasskeySettings() {
   const [passkeys, setPasskeys] = useState<Passkey[]>();
   const [busy, setBusy] = useState<string>();
   const [confirming, setConfirming] = useState<string>();
-  const [stale, setStale] = useState(false);
+  // Set when the session is too old for this action: sign in again, then add or remove.
+  const [stale, setStale] = useState<"add" | "remove">();
   const [error, setError] = useState<string>();
 
   const load = useCallback(async () => {
@@ -41,11 +42,11 @@ export function PasskeySettings() {
     const res = await addPasskey("Keelson");
     setBusy(undefined);
     if (!res.ok) {
-      setStale(res.stale);
-      if (!res.stale) setError(res.message);
+      if (res.stale) setStale("add");
+      else setError(res.message);
       return;
     }
-    setStale(false);
+    setStale(undefined);
     await load();
   };
 
@@ -58,7 +59,8 @@ export function PasskeySettings() {
       setError(res.error.message ?? "No passkey signed in.");
       return;
     }
-    await add();
+    if (stale === "add") await add();
+    else setStale(undefined);
   };
 
   const reauthWithPayPal = async () => {
@@ -81,12 +83,19 @@ export function PasskeySettings() {
       setConfirming(undefined);
       await load();
     } catch (e) {
+      if (e instanceof ApiError && e.slug === "session-not-fresh") {
+        setStale("remove");
+        setConfirming(undefined);
+        return;
+      }
       setError(e instanceof Error ? e.message : "The passkey was not removed.");
     } finally {
       setBusy(undefined);
     }
   };
 
+  // A Judge Mode tenant has no PayPal account; PayPal would sign in someone else.
+  const judge = (session.data?.user as { isAnonymous?: boolean | null } | undefined)?.isAnonymous;
   const here = new Set(passkeys ? localPasskeys() : []);
   const last = passkeys?.length === 1;
 
@@ -147,16 +156,19 @@ export function PasskeySettings() {
       {stale ? (
         <div className="grid gap-3 rounded-lg border p-4">
           <p className="text-pretty">
-            To add a passkey, confirm it's you: sign in again with a passkey you have, or with
-            PayPal.
+            {judge
+              ? "To change your passkeys, confirm it's you: sign in again with a passkey you have."
+              : "To change your passkeys, confirm it's you: sign in again with a passkey you have, or with PayPal."}
           </p>
           <div className="flex flex-col gap-2 sm:flex-row">
             <Button onClick={reauthWithPasskey} disabled={busy !== undefined}>
               {busy === "reauth" ? "Waiting for your passkey…" : "Use a passkey"}
             </Button>
-            <Button variant="outline" onClick={reauthWithPayPal} disabled={busy !== undefined}>
-              Continue with PayPal
-            </Button>
+            {judge ? null : (
+              <Button variant="outline" onClick={reauthWithPayPal} disabled={busy !== undefined}>
+                Continue with PayPal
+              </Button>
+            )}
           </div>
         </div>
       ) : (
