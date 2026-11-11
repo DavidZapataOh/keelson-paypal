@@ -19,6 +19,7 @@ import {
   ne,
   or,
   purchases,
+  sql,
 } from "@keelson/db";
 import { type Relayer, RelayerError } from "@keelson/relayer";
 import type { Logger } from "pino";
@@ -446,7 +447,7 @@ const attemptedBefore = (at: Date) =>
 /**
  * Starts `proveEngine` again for every purchase whose proof was paid for, or requested, by a run
  * that is over without recording it. The new run waits for the stored request or records the
- * stored proof, so it never pays again. A purchase is started at most `ENGINE_RESUMES` times, then
+ * stored proof, so it never pays again. A purchase's first run is followed by at most `ENGINE_RESUMES` more, then
  * given up on once: it is returned as `abandoned` and logged as an error. A claim with no request
  * that outlived its run may have paid, so it is never started again: it is returned as `stuck`
  * and logged as an error, for an operator to clear once the requester's explorer page shows
@@ -490,12 +491,17 @@ export async function sweepEngineProofs(
       log.warn({ err, purchaseId: id }, "engine proof not resumed");
       continue;
     }
-    // Marked as attempted now, so a run that has not begun yet is not started twice.
-    await db
+    // Marked as attempted now, so a run that has not begun yet is not started twice; a run that
+    // already marked it keeps its later time.
+    const [marked] = await db
       .update(purchases)
-      .set({ engineResumes: resumes + 1, engineAttemptedAt: now })
-      .where(counted);
-    resumed.push(id);
+      .set({
+        engineResumes: resumes + 1,
+        engineAttemptedAt: sql`greatest(${purchases.engineAttemptedAt}, ${now})`,
+      })
+      .where(counted)
+      .returning({ id: purchases.id });
+    if (marked) resumed.push(id);
   }
   const stuck = (
     await db
