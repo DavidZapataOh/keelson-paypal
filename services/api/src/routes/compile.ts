@@ -125,17 +125,38 @@ const USER_ERRORS: Readonly<Record<string, [slug: string, title: string, detail:
 type Fields = Omit<SystemFields, "mid" | "iat" | "nonce" | "merchants">;
 type ContextProblem = ReturnType<typeof problem<401 | 403 | 409 | 422 | 503>>;
 
-/**
- * The mandate fields Keelson fills for a compile: the user and the passkey that will sign, the
- * policy set, the request's risk data, and the operator and TEE inputs from `sources`. Answers
- * with a problem when one is missing.
- */
+/** The mandate fields a compile fills, and the model client it compiles with. */
 async function compileContext(
   c: Context,
   deps: Pick<Deps, "db" | "passkeyRpId" | "rateLimit" | "compileSources" | "anthropic">,
   userId: string,
   body: { credentialId?: string | undefined; mode: Mandate["mode"] },
 ): Promise<(Fields & { client: Anthropic }) | ContextProblem> {
+  const context = await signingContext(
+    c,
+    deps,
+    userId,
+    body,
+    deps.compileSources?.agent,
+    deps.anthropic ? [] : ["anthropic"],
+  );
+  if (context instanceof Response) return context;
+  return { ...context, client: deps.anthropic as Anthropic };
+}
+
+/**
+ * The mandate fields Keelson fills: the user and the passkey that will sign, the policy set, the
+ * request's risk data, the operator from `agent`, and the consent and TEE inputs from `sources`.
+ * Answers with a problem when one is missing, or 503 naming `unavailable` too.
+ */
+export async function signingContext(
+  c: Context,
+  deps: Pick<Deps, "db" | "passkeyRpId" | "rateLimit" | "compileSources">,
+  userId: string,
+  body: { credentialId?: string | undefined; mode: Mandate["mode"] },
+  agent: ((userId: string) => Promise<Mandate["agent"]>) | undefined,
+  unavailable: string[] = [],
+): Promise<Fields | ContextProblem> {
   const passkeys = await userPasskeys(deps.db, userId);
   const key = body.credentialId
     ? passkeys.find((p) => p.credentialID === body.credentialId)
@@ -181,11 +202,10 @@ async function compileContext(
     );
   }
 
-  const sources = deps.compileSources ?? {};
-  const missing: string[] = SOURCES.filter((s) => sources[s] === undefined);
-  if (!deps.anthropic) missing.push("anthropic");
-  const { agent, consent, engine } = sources;
-  if (!agent || !consent || !engine || !deps.anthropic) {
+  const sources = { ...deps.compileSources, agent };
+  const missing: string[] = [...SOURCES.filter((s) => sources[s] === undefined), ...unavailable];
+  const { consent, engine } = sources;
+  if (!agent || !consent || !engine || missing.length > 0) {
     return problem(
       c,
       503,
@@ -231,7 +251,6 @@ async function compileContext(
     consent: filled.consent,
     policy: { ...filled.policy, policy_set_hash: POLICY_SET_HASH },
     risk_data: { device_fp: device, ip },
-    client: deps.anthropic,
   };
 }
 

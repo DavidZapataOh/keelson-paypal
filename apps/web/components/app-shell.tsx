@@ -1,6 +1,16 @@
 "use client";
 
-import { Home, KeyRound, LogOut, type LucideIcon, Plus, Radio, Scale, Trophy } from "lucide-react";
+import {
+  Bot,
+  Home,
+  KeyRound,
+  LogOut,
+  type LucideIcon,
+  Plus,
+  Radio,
+  Scale,
+  Trophy,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
@@ -17,8 +27,11 @@ export interface NavItem {
   icon: LucideIcon;
 }
 
+const ACCOUNT = "/passkeys/";
+
 const NAV: NavItem[] = [
   { href: "/", label: "Home", icon: Home },
+  { href: "/agents/", label: "Agents", icon: Bot },
   { href: "/new/", label: "New mandate", short: "New", icon: Plus },
   { href: "/disputes/", label: "Disputes", icon: Scale },
   { href: "/live/", label: "Live", icon: Radio },
@@ -58,7 +71,22 @@ export function AppShell({
         ? { name: session.user.name || session.user.email || "" }
         : null;
   const nav = own ?? (session ? NAV : NAV.filter((n) => PUBLIC.has(n.href)));
-  const active = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
+  // A phone's tab bar holds five at most: the public proof pages share one tab there.
+  // A phone's tab bar holds five at most: the public proof pages share one tab there, and the
+  // account's passkeys sit in the top bar.
+  const onPhone = nav.filter((n) => n.href !== ACCOUNT);
+  const tabs =
+    onPhone.length > 5
+      ? [
+          ...onPhone.filter((n) => !PUBLIC.has(n.href)),
+          { href: "/live/", label: "Proof", icon: Radio } satisfies NavItem,
+        ]
+      : onPhone;
+  const settings = nav.find((n) => n.href === ACCOUNT);
+  const active = (href: string) =>
+    href === "/"
+      ? path === "/"
+      : path.startsWith(href) || (href === "/live/" && path.startsWith("/scoreboard/"));
   const signOut =
     person?.onSignOut ?? (() => authClient.signOut().then(() => location.assign("/")));
 
@@ -122,8 +150,20 @@ export function AppShell({
         <header className="flex h-14 items-center justify-between px-5 lg:hidden">
           {/* biome-ignore lint/performance/noImgElement: a static export serves the SVG as is */}
           <img src="/keelson.svg" alt="Keelson" width={94} height={28} className="h-6 w-auto" />
-          <span className="rounded-md border px-2 py-1 font-mono text-[11px] text-muted-foreground">
-            Sandbox
+          <span className="flex items-center gap-2">
+            <span className="rounded-md border px-2 py-1 font-mono text-[11px] text-muted-foreground">
+              Sandbox
+            </span>
+            {settings ? (
+              <Link
+                href={settings.href}
+                aria-label={settings.label}
+                aria-current={active(settings.href) ? "page" : undefined}
+                className="grid size-10 place-items-center rounded-xl text-muted-foreground hover:bg-foreground/5 aria-[current=page]:bg-bone-2 aria-[current=page]:text-foreground"
+              >
+                <settings.icon className="size-5" aria-hidden="true" />
+              </Link>
+            ) : null}
           </span>
         </header>
         <main
@@ -136,10 +176,10 @@ export function AppShell({
 
       <nav
         aria-label="Main"
-        style={{ gridTemplateColumns: `repeat(${nav.length}, minmax(0, 1fr))` }}
+        style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
         className="fixed inset-x-3 bottom-[max(12px,env(safe-area-inset-bottom))] z-30 grid rounded-2xl border bg-card/95 p-1.5 shadow-[0_18px_40px_-18px_rgb(23_24_27/0.4)] backdrop-blur-md lg:hidden"
       >
-        {nav.map(({ href, label, short, icon: Icon }) => (
+        {tabs.map(({ href, label, short, icon: Icon }) => (
           <Link
             key={href}
             href={href}

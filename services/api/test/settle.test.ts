@@ -284,6 +284,35 @@ describe.skipIf(!rpc)(
       expect(body.settlement.explorer_url).toMatch(/^https:\/\/sepolia\.arbiscan\.io\/tx\/0x/);
     });
 
+    test("the buyer's refund waits until the block that paid the merchant is final", async () => {
+      let final = false;
+      const blocks: bigint[] = [];
+      const gated: SettleDeps = {
+        ...deps,
+        finalized: async ({ block }) => {
+          blocks.push(block);
+          return final;
+        },
+      };
+      const id = await storeVerdict({ liable: 1, amount: 1_000n, payee: merchant });
+      expect(await settleDispute(gated, id)).toEqual({
+        status: "pending",
+        disputeId: id,
+        waiting: "finality",
+      });
+      const [paid] = await txsFor(id);
+      expect(paid?.status).toBe("confirmed");
+      expect(blocks.at(-1)).toBe(paid?.blockNumber);
+
+      final = true;
+      expect(await settleDispute(gated, id)).toMatchObject({ status: "settled", outcome: "paid" });
+      expect(await txsFor(id)).toHaveLength(1);
+      // Final once: the gate does not ask again for the same payment.
+      const asked = blocks.length;
+      await settleDispute(gated, id);
+      expect(blocks).toHaveLength(asked);
+    });
+
     test("a green verdict on the paypal rail pays the treasury from the reserve and waits for the payout", async () => {
       const before = await balance(KEELSON_TREASURY);
       const id = await storeVerdict({

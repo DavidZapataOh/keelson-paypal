@@ -271,8 +271,22 @@
     {
       "idx": 38,
       "version": "7",
-      "when": 1794371202567,
-      "tag": "0038_amber",
+      "when": 1794369883277,
+      "tag": "0038_agent_connections",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1794373166112,
+      "tag": "0039_chain_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1794375573380,
+      "tag": "0040_amber",
       "breakpoints": true
     }
   ]

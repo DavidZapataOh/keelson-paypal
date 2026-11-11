@@ -216,16 +216,18 @@ describe.skipIf(!live)("the user app, first-time user (live sandbox)", { timeout
         await axe();
         await page.getByRole("button", { name: "Running shoes, size 10" }).click();
         await page.getByLabel("Store name").fill("RunFast");
+        // A brand-new buyer creates the passkey the mandate will name before it is read.
         await page.getByRole("button", { name: "Review rules" }).click();
-        await page.getByRole("heading", { name: "Check it, then sign" }).waitFor();
+        await page.getByRole("heading", { name: "Sign with Face ID" }).waitFor();
+        await axe();
+        await page.getByRole("button", { name: "Create passkey" }).click();
+        await page
+          .getByRole("heading", { name: "Check it, then sign" })
+          .waitFor({ timeout: 60_000 });
         const review = page.getByRole("button", { name: /^Sign · up to / });
         await expect.poll(() => review.isEnabled(), { timeout: 60_000 }).toBe(true);
         await axe();
         await review.click();
-        // Without a passkey yet, the buyer creates one before signing.
-        await page.getByRole("heading", { name: "Sign with Face ID" }).waitFor();
-        await axe();
-        await page.getByRole("button", { name: "Create passkey" }).click();
         // The grant is said once more, with Cancel as weighty as the act and the cap on the button.
         await page.getByRole("dialog", { name: "Sign this mandate" }).waitFor();
         expect(await page.getByRole("button", { name: "Cancel" }).isVisible()).toBe(true);

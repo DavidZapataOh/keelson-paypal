@@ -1,4 +1,5 @@
 import type { AgDataSourcesDefinition } from "ag-studio";
+import { major } from "../../lib/format";
 import type { Evaluations, MerchantDispute } from "../../lib/merchant";
 import { FIELD, LIABLE, OUTCOME, PAID_BY_SHORT, RAIL } from "./labels";
 import type { Registry } from "./registry";
@@ -9,7 +10,7 @@ export function disputeRows(disputes: readonly MerchantDispute[]) {
   return disputes.map((d) => ({
     dispute_id: d.dispute_id,
     received_at: d.received_at ? new Date(d.received_at) : null,
-    amount: Number(d.amount_minor) / 100,
+    amount: major(d.amount_minor, d.currency),
     outcome: OUTCOME[d.outcome ?? "open"].text,
     liable: d.liable ? LIABLE[d.liable] : "Pending",
     rule: d.rule ?? "",
