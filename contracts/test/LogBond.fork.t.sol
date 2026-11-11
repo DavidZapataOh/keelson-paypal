@@ -225,10 +225,10 @@ contract LogBondForkTest is ForkTest {
         vm.expectRevert(ILogBond.NotReady.selector);
         bond.completeWithdrawal();
         bond.requestWithdrawal(50e6, owner);
-        vm.warp(block.timestamp + DELAY - 1);
+        vm.warp(vm.getBlockTimestamp() + DELAY - 1);
         vm.expectRevert(ILogBond.NotReady.selector);
         bond.completeWithdrawal();
-        vm.warp(block.timestamp + 1);
+        vm.warp(vm.getBlockTimestamp() + 1);
         uint256 before = pyusd.balanceOf(owner);
         bond.completeWithdrawal();
         vm.stopPrank();
@@ -240,7 +240,7 @@ contract LogBondForkTest is ForkTest {
     function test_anUnlockedWithdrawalLapses() public {
         vm.startPrank(owner);
         bond.requestWithdrawal(10e6, owner);
-        vm.warp(block.timestamp + DELAY + WINDOW + 1);
+        vm.warp(vm.getBlockTimestamp() + DELAY + WINDOW + 1);
         vm.expectRevert(ILogBond.NotReady.selector);
         bond.completeWithdrawal();
         vm.stopPrank();

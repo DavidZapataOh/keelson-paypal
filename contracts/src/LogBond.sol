@@ -164,6 +164,7 @@ contract LogBond is ILogBond, ReentrancyGuardTransient {
         if (bounty > 0) token.safeTransfer(msg.sender, bounty);
         // A beneficiary the token refuses (frozen) must not make the bond unslashable: its share then
         // stays here, and `release` sends it once the token accepts it.
+        // slither-disable-next-line unused-return
         if (amount > bounty) token.trySafeTransfer(beneficiary, amount - bounty);
     }
 
