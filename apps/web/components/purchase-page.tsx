@@ -20,6 +20,7 @@ import { major, money, when } from "../lib/format";
 import { purchaseStatus, unknownOutcome } from "../lib/status";
 import type { Dispute, Purchase } from "../lib/types";
 import { useMandate } from "../lib/use-mandate";
+import { AlibiExports } from "./alibi-exports";
 import { AnonymousProof } from "./anonymous-proof";
 import { AppShell } from "./app-shell";
 import { RiveMoment } from "./brand";
@@ -527,10 +528,12 @@ function Receipt() {
               >
                 Download .alibi
               </Button>
+              <AlibiExports id={p.id} onError={setFileError} />
             </div>
             <p className="text-muted-foreground text-xs">
               The link checks the public log entry. Drop the .alibi file into the verifier to check
-              everything else.
+              everything else. Exports carry the same purchase in AP2, Verifiable Intent, UCP, ACP
+              and Visa formats.
             </p>
           </div>
         ) : unknownOutcome(p) ? (
