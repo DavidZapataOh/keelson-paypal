@@ -1,5 +1,5 @@
 import { CURRENCIES, type CurrencyCode, fromHex } from "@keelson/core";
-import { CARD_BITS, cardAuthorizationDigest, keelsonDomain } from "@keelson/core/eip712";
+import { cardAuthorizationDigest, keelsonDomain } from "@keelson/core/eip712";
 import { cardRefCommit } from "@keelson/log";
 import { type Address, getAddress, type Hex, keccak256, recoverAddress, toHex } from "viem";
 import { type CheckDef, expect, pass } from "../check.ts";
@@ -105,10 +105,3 @@ export const card: CheckDef = {
     });
   },
 };
-
-/** The reasons a leg's `failedMask` names, by name. */
-export function cardReasons(failedMask: number): string[] {
-  return Object.entries(CARD_BITS)
-    .filter(([, bit]) => (failedMask >> bit) & 1)
-    .map(([name]) => name);
-}

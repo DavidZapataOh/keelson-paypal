@@ -362,3 +362,50 @@ fn a_card_mandate_is_backed_by_its_paypal_hold() {
         .unwrap();
     assert_eq!(short.countersign.decision, "2");
 }
+
+#[test]
+fn a_removed_spend_record_spends_the_budget() {
+    let records = Arc::new(Records::default());
+    let mandate = mandate_with(&sub(), &other_passkey(), to_card);
+    let mut engine = leg_a_on(&records, NOW - 1_000);
+    let issued = engine.register_mandate(&mandate, at(NOW)).unwrap();
+    let mut f = CartFixture::demo();
+    f.raw["cart"]["lines"][0]["unit_minor"] = json!(1000);
+    f.raw["unit"]["amount"]["value"] = json!("10.00");
+    f.raw["unit"]["amount"]["breakdown"]["item_total"]["value"] = json!("10.00");
+    for n in 1..=2 {
+        let allow = engine
+            .countersign(
+                &countersign_request(&issued, &f, request_id(n), None),
+                at(NOW + 10),
+            )
+            .unwrap();
+        let x = Fixture {
+            engine,
+            mandate: mandate.clone(),
+            allow,
+        };
+        let ok = x
+            .engine
+            .authorize_card(
+                &request(&x, network(&format!("a{n}"), 1000, "5661", "US")),
+                at(NOW + 20),
+            )
+            .unwrap();
+        assert_eq!(ok.authorization.decision, "1");
+        engine = x.engine;
+    }
+
+    // The host drops the first charge's record: the gap counts as spent, so a restarted leg
+    // allows nothing more.
+    assert!(records.remove_where(|k| k.starts_with("card-spend") && k.ends_with("\u{0}0")));
+    let restarted = leg_a_on(&records, NOW - 1_000);
+    let out = restarted
+        .countersign(
+            &countersign_request(&issued, &f, request_id(3), None),
+            at(NOW + 30),
+        )
+        .unwrap();
+    assert_eq!(out.countersign.decision, "2");
+    assert_ne!(common::mask(&out) & BIT_BUDGET, 0);
+}

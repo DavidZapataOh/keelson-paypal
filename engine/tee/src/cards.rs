@@ -128,6 +128,8 @@ const CARD_USE_PURPOSE: &str = "keelson/seal/card-use/v1";
 const CARD_SPEND_PURPOSE: &str = "keelson/seal/card-spend/v1";
 /// Most approved card charges one mandate keeps.
 const MAX_SPENDS: usize = 4_096;
+/// Missing slots in a row after which a mandate's charges end; fewer are holes.
+const MAX_GAP: usize = 16;
 
 /// Leg A's durable record of each card's single use and of what each card mandate's cards
 /// approved, sealed with the KMS root in the user records. The records survive a restart, so a
@@ -223,14 +225,22 @@ impl DurableCards<'_> {
         false
     }
 
-    /// Every approved charge of the mandate's cards, by request id. A record that does not open
-    /// counts as the most it could be, so the budget is then spent.
+    /// Every approved charge of the mandate's cards, by request id. A record that does not open,
+    /// or a slot missing below a later record, counts as the most it could be, so a record the
+    /// host altered or removed spends the budget instead of refilling it.
     pub(crate) fn spends(&self, mandate_hash: &[u8; 32]) -> Vec<([u8; 32], i64)> {
         let mut out = Vec::new();
+        let mut missing = 0;
         for n in 0..MAX_SPENDS {
             let Some(blob) = self.users.get(&Self::spend_key(mandate_hash, n)) else {
-                break;
+                missing += 1;
+                if missing == MAX_GAP {
+                    break;
+                }
+                continue;
             };
+            out.extend(std::iter::repeat_n(([0; 32], i64::MAX), missing));
+            missing = 0;
             out.push(
                 self.open(mandate_hash, n, &blob)
                     .unwrap_or(([0; 32], i64::MAX)),

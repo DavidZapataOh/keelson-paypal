@@ -180,6 +180,8 @@ export function registerCardWebhooks(
 /**
  * Records what the card network did with a purchase card's approved authorization: a settled
  * transaction captures the purchase, a voided or expired one closes the card and fails it.
+ *
+ * @internal
  */
 export async function applyTransaction(
   deps: Pick<Deps, "db" | "kv" | "log" | "cards" | "paypal">,

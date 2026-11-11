@@ -22,12 +22,12 @@ import { VERIFYING_CONTRACT } from "../tee/config.ts";
 import type { TeeConfig } from "../tee/signers.ts";
 
 /** How long each leg may take: both answer in parallel, inside the issuer's few seconds. */
-export const LEG_DEADLINE_MS = 1_500;
+const LEG_DEADLINE_MS = 1_500;
 /**
  * How long after the issuer's request a decision may still approve: past it the issuer has been
  * told to decline, so a late approval is stored as the decline the network saw.
  */
-export const DECIDE_DEADLINE_MS = 2_200;
+const DECIDE_DEADLINE_MS = 2_200;
 
 /** The issuer's answer: `APPROVED`, or the reason a merchant is told. */
 export type CardResult =
@@ -60,7 +60,7 @@ export interface CardDecision {
 const bit = (name: keyof typeof CARD_BITS) => 1 << CARD_BITS[name];
 
 /** What a merchant is told about a declined authorization, from the reasons the legs gave. */
-export function resultOf(failedMask: number, reason: string | null): CardResult {
+function resultOf(failedMask: number, reason: string | null): CardResult {
   if (failedMask === 0 && reason === null) return "APPROVED";
   if (reason === "timeout") return "SUSPECTED_FRAUD";
   if (failedMask & (bit("mcc") | bit("country") | bit("merchant"))) return "UNAUTHORIZED_MERCHANT";
