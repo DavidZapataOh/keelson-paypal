@@ -340,6 +340,18 @@ interface Reconciled {
   resource: unknown;
 }
 
+/** What a hold ends with when PayPal no longer has its order or authorization. */
+const NOT_FOUND = "NOT_FOUND";
+
+/**
+ * Resolves to `undefined` when PayPal answers 404 for an order or authorization it no longer
+ * keeps, such as a sandbox order never approved; rethrows anything else.
+ */
+function absent(err: unknown): undefined {
+  if (err instanceof PayPalError && err.status === 404) return undefined;
+  throw err;
+}
+
 /**
  * Re-reads a mandate's hold from PayPal with authenticated GETs and applies only what the re-read
  * shows: a pending hold whose authorization was created becomes `ACTIVE` (after the same checks
@@ -401,7 +413,11 @@ export async function reconcileHold(deps: HoldDeps, mandateId: string): Promise<
     if (!row.paypalAuthorizationId) return { effect: "unchanged", resource: null };
     const auth = await call(
       paypal.payments.getAuthorizedPayment({ authorizationId: row.paypalAuthorizationId }),
-    );
+    ).catch(absent);
+    if (!auth) {
+      if (row.voidedAt !== null) return { effect: "unchanged", resource: null };
+      return ended(NOT_FOUND, null);
+    }
     const status = auth.status ?? "";
     if (GONE.has(status) && row.voidedAt === null) {
       return ended(status, auth);
@@ -410,7 +426,8 @@ export async function reconcileHold(deps: HoldDeps, mandateId: string): Promise<
   }
 
   if (!row.paypalOrderId) return { effect: "unchanged", resource: null };
-  const order = await call(paypal.orders.getOrder({ id: row.paypalOrderId }));
+  const order = await call(paypal.orders.getOrder({ id: row.paypalOrderId })).catch(absent);
+  if (!order) return ended(NOT_FOUND, null);
   const authorization = order.purchaseUnits?.[0]?.payments?.authorizations?.[0];
   const status: string | undefined =
     authorization?.status ?? (order.status === "VOIDED" ? "VOIDED" : undefined);

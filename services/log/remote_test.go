@@ -43,15 +43,15 @@ func TestCheckpointSize(t *testing.T) {
 }
 
 func TestNewRemoteSignerReadsTheVkey(t *testing.T) {
-	const vkey = "log.keelson.finance/alibi/2026-1+2e11a7ea+AfBrbrDNyb9uyXNtg3PXXnVxKQBcMGqa1OlCtxlttUBX"
+	const vkey = "log.keelson.finance/alibi/2026-1+8553fcbd+ATEHrhTfdzkwLLgf9SZhMsIhsHzRmvpFnaBfgK0D10Id"
 	s, err := newRemoteSigner(vkey, "https://leg-a.example/", "token", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.Name() != "log.keelson.finance/alibi/2026-1" || s.KeyHash() != 0x2e11a7ea || len(s.public) != 32 {
+	if s.Name() != "log.keelson.finance/alibi/2026-1" || s.KeyHash() != 0x8553fcbd || len(s.public) != 32 {
 		t.Fatalf("%s %x %d", s.Name(), s.KeyHash(), len(s.public))
 	}
-	if _, err := newRemoteSigner("log.keelson.finance/alibi/2026-1+2e11a7ea+AAAA", "u", "t", nil); err == nil {
+	if _, err := newRemoteSigner("log.keelson.finance/alibi/2026-1+8553fcbd+AAAA", "u", "t", nil); err == nil {
 		t.Fatal("a malformed vkey is accepted")
 	}
 }

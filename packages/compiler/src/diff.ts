@@ -228,7 +228,7 @@ function resolve(name: string, directory: readonly Merchant[]): Merchant | undef
     (m) =>
       m.id === n ||
       m.name.toLowerCase() === n.toLowerCase() ||
-      (h !== undefined && h === host(m.website)),
+      (h !== undefined && m.website !== undefined && h === host(m.website)),
   );
 }
 
