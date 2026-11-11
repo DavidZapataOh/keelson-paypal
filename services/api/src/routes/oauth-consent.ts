@@ -4,6 +4,7 @@ import { eq, oauthClient, operators } from "@keelson/db";
 import type { Context } from "hono";
 import type { Deps } from "../app.ts";
 import type { Auth } from "../auth.ts";
+import { cappedHost, hostedCapError } from "../hosted-caps.ts";
 import { requireSession } from "../middleware/auth.ts";
 import { notify, requestAlert } from "../notify/notifier.ts";
 import type { Principal } from "../principal.ts";
@@ -50,6 +51,16 @@ const Consent = z
       .nullable()
       .openapi({ description: "The operator the client's mandates name, if it can be given any." }),
     scopes: z.array(z.string()),
+    hostedCap: z
+      .object({
+        perUserMinor: z.string(),
+        currency: z.string(),
+      })
+      .nullable()
+      .openapi({
+        description:
+          "For an app Keelson does not know acting through its hosted operator: the most its live mandates with this user may have left, together.",
+      }),
     spending: ConnectionRequest.nullable().openapi({
       description: `The limits the client asks for in \`authorization_details\` of type \`${MANDATE_DETAILS_TYPE}\`.`,
     }),
@@ -99,7 +110,11 @@ const connect = createRoute({
     400: { description: "The signed query is invalid or expired", content: problemContent },
     401: { description: "Not signed in", content: problemContent },
     404: { description: "No such client", content: problemContent },
-    422: { description: "The client cannot ask for spending", content: problemContent },
+    422: {
+      description:
+        "The client cannot ask for spending, or not this much while the hosted operator's cap stands",
+      content: problemContent,
+    },
   },
 });
 
@@ -108,6 +123,8 @@ interface Parsed {
   /** The client's own operator, or else the hosted one. */
   operator: typeof operators.$inferSelect | undefined;
   hosted: boolean;
+  /** What the hosted operator backs for this app per user, when it is capped. */
+  cap: { perUserMinor: bigint; currency: string } | null;
   scopes: string[];
   spending: z.infer<typeof ConnectionRequest> | null;
   spendingError: string | null;
@@ -142,7 +159,7 @@ function spendingOf(raw: string | null): {
 
 export function registerOAuthConsent(
   app: OpenAPIHono,
-  deps: Pick<Deps, "db" | "auth" | "demoAgentId" | "notifier">,
+  deps: Pick<Deps, "db" | "auth" | "demoAgentId" | "hostedCaps" | "notifier">,
 ): void {
   const { db, auth } = deps;
   if (!auth) return;
@@ -169,17 +186,39 @@ export function registerOAuthConsent(
         : await db.select().from(operators).where(eq(operators.agentId, deps.demoAgentId));
     const operator = own ?? hosted;
     const { spending, error } = spendingOf(query.get("authorization_details"));
+    const capped =
+      !own &&
+      hosted !== undefined &&
+      deps.hostedCaps !== undefined &&
+      (await cappedHost(db, clientId, hosted.clientId));
+    const overCap =
+      spending && operator
+        ? await hostedCapError(db, deps, {
+            clientId,
+            operatorAgentId: operator.agentId,
+            userId: (c.get("principal") as Principal).subject,
+            currency: spending.limits.currency,
+            amountMinor: BigInt(spending.limits.totalMinor),
+          })
+        : undefined;
     return {
       client,
       operator,
       hosted: !own && hosted !== undefined,
+      cap:
+        capped && deps.hostedCaps
+          ? {
+              perUserMinor: deps.hostedCaps.perUserMinor,
+              currency: spending?.limits.currency ?? "USD",
+            }
+          : null,
       scopes: (query.get("scope") ?? "").split(" ").filter(Boolean),
       spending,
       spendingError:
         error ??
         (spending && !operator
           ? "No registered agent operator can answer for this app, so it cannot be given spending limits."
-          : null),
+          : (overCap ?? null)),
     };
   }
 
@@ -199,6 +238,9 @@ export function registerOAuthConsent(
           ? { agentId: operator.agentId.toString(), operator: operator.name, hosted }
           : null,
         scopes: parsed.scopes,
+        hostedCap: parsed.cap
+          ? { perUserMinor: parsed.cap.perUserMinor.toString(), currency: parsed.cap.currency }
+          : null,
         spending: parsed.spendingError ? null : parsed.spending,
         spendingError: parsed.spendingError,
       },
@@ -209,7 +251,7 @@ export function registerOAuthConsent(
   app.openapi(connect, async (c) => {
     const parsed = await parse(c, auth, c.req.valid("json").oauthQuery);
     if (parsed instanceof Response) return parsed as never;
-    if (!parsed.spending || !parsed.operator) {
+    if (!parsed.spending || !parsed.operator || parsed.spendingError) {
       return problem(
         c,
         422,

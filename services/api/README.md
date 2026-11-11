@@ -423,10 +423,23 @@ that operator's private `cnf` key, `KEELSON_AGENT_KEY`, over the request id and 
 cart in the same request, the cart the TEE legs then countersign. That key signs nothing else, and
 only once every check of the countersign has passed. Without it those countersigns answer `503`.
 
+**What the hosted bond backs.** A host Keelson knows, by its registered redirect URIs (Claude,
+ChatGPT, Cursor, and the loopback `http://localhost:{port}/callback` of native apps such as Claude
+Code; `src/hosted-caps.ts`), gets the standard limits. Any other host acting through the hosted
+operator is capped, per currency, over what its live mandates have left: one user's together may
+not pass `HOSTED_CAP_PER_USER_MINOR` (default `10000`), and all users' together may not pass
+`HOSTED_CAP_TOTAL_MINOR` (default `100000`). A request, a change or a consent over a cap answers
+`422 hosted-cap`; the approval measures it again under an advisory lock, so concurrent approvals
+cannot pass it. The consent page shows the per-user cap.
+
 Refresh tokens rotate and can be revoked (RFC 7009, `/api/auth/oauth2/revoke`). Stopping every
 agent (`POST /v1/agents/stop`) revokes the user's refresh tokens and consents and refuses every
-access token issued before it, on the API and on `/mcp`; disconnecting an agent ends its
-connections, so its host reaches none of those mandates again.
+access token issued before it, on the API and on `/mcp`. Disconnecting one host
+(`POST /v1/agents/{agentId}/disconnect?client={clientId}`, one row per host on the agents page)
+does the same for that host only: its mandates, requests, consent and refresh tokens end, and its
+access tokens issued before then are refused. Whether a token was revoked is read from Valkey;
+while Valkey cannot answer, every token a user granted a host is refused (`503
+revocation-unavailable` on the API, `500 server_error` from `/mcp`).
 
 ## Risk model
 

@@ -7,6 +7,7 @@ import type { Deps } from "../app.ts";
 import { cartChecks } from "../cart-checks.ts";
 import { grantOf, REQUEST_TTL_SEC, requestChange } from "../connections.ts";
 import { approvedMandate, isDelegated, notAnotherApps } from "../delegated.ts";
+import { hostedCapError } from "../hosted-caps.ts";
 import { MERCHANTS } from "../merchants.ts";
 import { requireAgent } from "../middleware/auth.ts";
 import { notify, requestAlert } from "../notify/notifier.ts";
@@ -113,7 +114,10 @@ const change = createRoute({
         "The mandate has ended, or a change of it is already waiting for the user (`change-pending`, with its `requestId`)",
       content: problemContent,
     },
-    422: { description: "The limits are invalid", content: problemContent },
+    422: {
+      description: "The limits are invalid, or over the hosted operator's cap (`hosted-cap`)",
+      content: problemContent,
+    },
   },
 });
 
@@ -168,7 +172,7 @@ const decoded = (m: typeof mandates.$inferSelect) =>
 
 export function registerMandateRequests(
   app: OpenAPIHono,
-  deps: Pick<Deps, "db" | "kv" | "appOrigin" | "notifier">,
+  deps: Pick<Deps, "db" | "kv" | "appOrigin" | "notifier" | "demoAgentId" | "hostedCaps">,
 ): void {
   const { db } = deps;
   const appOrigin = deps.appOrigin ?? "https://app.keelson.finance";
@@ -221,6 +225,15 @@ export function registerMandateRequests(
               ? "until is more than 30 days away"
               : undefined;
     if (invalid) return problem(c, 422, "invalid-limits", "Invalid limits", invalid);
+    const over = await hostedCapError(db, deps, {
+      clientId: (c.get("principal") as Principal).subject,
+      operatorAgentId: mandate.operatorAgentId,
+      userId: mandate.userId,
+      currency: grant.currency,
+      amountMinor: total,
+      replaces: mandate.id,
+    });
+    if (over) return problem(c, 422, "hosted-cap", "Over the hosted operator's cap", over);
     // One change of a mandate waits for the user at a time.
     const auth = await db.transaction(async (tx) => {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`change:${mandate.id}`}))`);

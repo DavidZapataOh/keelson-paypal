@@ -46,6 +46,12 @@ const schema = z
      * apps that act for a user through Keelson's hosted operator with it (see `delegated.ts`).
      */
     KEELSON_AGENT_KEY: z.string().min(1).optional(),
+    /**
+     * What the hosted operator's bond backs for apps it does not know (see `hosted-caps.ts`), in
+     * minor units: what one user's live mandates for them may have left, and what all users' may.
+     */
+    HOSTED_CAP_PER_USER_MINOR: z.coerce.bigint().positive().default(10_000n),
+    HOSTED_CAP_TOTAL_MINOR: z.coerce.bigint().positive().default(100_000n),
     /** Lets a Judge Mode session past the daily cap; the app forwards it from `/judge/?invite=`. */
     JUDGE_INVITE_CODE: z.string().min(32).optional(),
     /** Keelson's treasury key: it pays in PYUSD the verdicts the chain refuses although they hold. */

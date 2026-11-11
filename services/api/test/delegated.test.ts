@@ -6,6 +6,8 @@ import {
   agentConnections,
   eq,
   mandates,
+  oauthClient,
+  oauthConsent,
   operators,
   purchases,
   teeSigners,
@@ -24,6 +26,8 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import demo from "../../../packages/mandate/test/fixtures/demo-mandate.json" with { type: "json" };
 import { createApp } from "../src/app.ts";
 import { tokenScopes } from "../src/auth.ts";
+import { hostedCapError, knownHost } from "../src/hosted-caps.ts";
+import { tokenStopped } from "../src/stopped.ts";
 import { createTee } from "../src/tee/config.ts";
 import { testDb, testKv } from "./setup.ts";
 import { carts, headerPrincipal } from "./tee-live.ts";
@@ -148,7 +152,7 @@ const OPEN = `${b64({ alg: "ES256" })}.${b64({})}.c2ln~~${b64({ alg: "ES256", ty
  * An active mandate of `sub` held as a whole, naming `operator`, that `sub` approved for `client`:
  * the `agent_connections` row the approval page leaves.
  */
-async function approved(sub: string, client: string, operator = HOSTED) {
+async function approved(sub: string, client: string, operator = HOSTED, amount = 100_000n) {
   const id = ulid();
   const authorizationId = `AUTH${randomBytes(6).toString("hex").toUpperCase()}`;
   await testDb.insert(mandates).values({
@@ -157,8 +161,8 @@ async function approved(sub: string, client: string, operator = HOSTED) {
     operatorAgentId: operator,
     state: "ACTIVE",
     currency: "USD",
-    maxMinor: 100_000n,
-    remainingMinor: 100_000n,
+    maxMinor: amount,
+    remainingMinor: amount,
     merchantIds: [cart.merchant],
     expiresAt: new Date(Date.now() + 86_400_000),
     openMandate: OPEN,
@@ -624,5 +628,254 @@ describe("the kill switch", () => {
     });
     expect(((await listed.json()) as { mandates: unknown[] }).mandates).toEqual([]);
     expect(await purchasesOf(m.id)).toEqual([]);
+  });
+});
+
+describe("the hosted operator's caps for apps Keelson does not know", () => {
+  const caps = { perUserMinor: 30_000n, totalMinor: 50_000n };
+  /** A hosted operator of its own, so that what other tests leave open counts for nothing. */
+  async function hostedWithCaps() {
+    const agentId = BigInt(`0x${randomBytes(7).toString("hex")}`);
+    await testDb.insert(operators).values({
+      agentId,
+      chainId: 421614,
+      agentRegistry: REGISTRY,
+      name: "Keelson",
+      cnfJwk: hostedCnf,
+      clientId: `keelson-${ulid()}`,
+    });
+    const capped = createApp({
+      db: testDb,
+      kv: testKv,
+      log: pino({ level: "silent" }),
+      authenticate: headerPrincipal,
+      appOrigin: "https://app.keelson.finance",
+      demoAgentId: agentId,
+      hostedAgentKey: hostedPair.privateKey,
+      hostedCaps: caps,
+      tee,
+    });
+    const ask = (headers: Record<string, string>, totalMinor: number) =>
+      capped.request("/v1/connections", {
+        method: "POST",
+        headers: { "idempotency-key": ulid(), "content-type": "application/json", ...headers },
+        body: JSON.stringify({
+          ...askBody,
+          limits: { ...askBody.limits, perPurchaseMinor: 5_000, totalMinor },
+        }),
+      });
+    return { CAPPED: agentId, capped, ask };
+  }
+  /** A host that registered itself (RFC 7591) with these redirect URIs. */
+  async function registered(redirectUris: string[]): Promise<string> {
+    const clientId = newHost();
+    await testDb.insert(oauthClient).values({
+      id: ulid(),
+      clientId,
+      redirectUris,
+      tokenEndpointAuthMethod: "none",
+      name: "A host",
+    });
+    return clientId;
+  }
+
+  test("known hosts are the ones whose every redirect URI a known host registers", () => {
+    expect(knownHost(["https://claude.ai/api/mcp/auth_callback"])).toBe(true);
+    expect(knownHost(["https://chatgpt.com/connector_platform_oauth_redirect"])).toBe(true);
+    expect(knownHost(["cursor://anysphere.cursor-mcp/oauth/callback"])).toBe(true);
+    expect(knownHost(["http://localhost:53682/callback", "http://127.0.0.1:8787/callback"])).toBe(
+      true,
+    );
+    expect(knownHost([])).toBe(false);
+    expect(knownHost(["https://claude.ai/api/mcp/auth_callback", "https://evil.example/cb"])).toBe(
+      false,
+    );
+    expect(knownHost(["https://claude.ai.evil.example/api/mcp/auth_callback"])).toBe(false);
+    expect(knownHost(["http://localhost:53682/callback/../steal"])).toBe(false);
+  });
+
+  test("an unknown app asks one user for no more than the per-user cap, counting what is left on its mandates", async () => {
+    const { CAPPED, ask } = await hostedWithCaps();
+    const a = await newUser();
+    const host = await registered(["https://unknown.example/callback"]);
+    const over = await ask(asHost(host, a), 30_001);
+    expect(over.status).toBe(422);
+    expect(await over.json()).toMatchObject({
+      type: expect.stringContaining("hosted-cap"),
+      detail: expect.stringContaining("$300.00"),
+    });
+    expect((await ask(asHost(host, a), 30_000)).status).toBe(201);
+    // Another unknown app of the same user shares the cap.
+    await approved(a, host, CAPPED, 20_000n);
+    const other = await registered(["https://other.example/callback"]);
+    expect((await ask(asHost(other, a), 10_001)).status).toBe(422);
+    expect((await ask(asHost(other, a), 10_000)).status).toBe(201);
+    // A host with no registration at all is as unknown.
+    expect((await ask(asHost(newHost(), a), 10_001)).status).toBe(422);
+  });
+
+  test("a known host asks with the standard limits", async () => {
+    const { CAPPED, ask } = await hostedWithCaps();
+    const a = await newUser();
+    const claude = await registered(["https://claude.ai/api/mcp/auth_callback"]);
+    await approved(a, claude, CAPPED, 90_000n);
+    expect((await ask(asHost(claude, a), 100_000)).status).toBe(201);
+    // What a known host holds does not count against unknown apps.
+    const unknown = await registered(["https://unknown.example/callback"]);
+    expect((await ask(asHost(unknown, a), 30_000)).status).toBe(201);
+  });
+
+  test("the total cap counts every user's live mandates for unknown apps; ended ones do not count", async () => {
+    const { CAPPED, ask } = await hostedWithCaps();
+    const [a, b, c] = [await newUser(), await newUser(), await newUser()];
+    const host = await registered(["https://unknown.example/callback"]);
+    const first = await approved(a, host, CAPPED, 25_000n);
+    await approved(b, host, CAPPED, 20_000n);
+    const res = await ask(asHost(host, c), 5_001);
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { detail: string }).detail).toContain("has reached");
+    expect((await ask(asHost(host, c), 5_000)).status).toBe(201);
+    await testDb
+      .update(mandates)
+      .set({ revokeRequestedAt: new Date() })
+      .where(eq(mandates.id, first.id));
+    expect((await ask(asHost(host, c), 30_000)).status).toBe(201);
+  });
+
+  test("a change is measured in place of the mandate it replaces", async () => {
+    const { CAPPED, capped } = await hostedWithCaps();
+    const a = await newUser();
+    const host = await registered(["https://unknown.example/callback"]);
+    const m = await approved(a, host, CAPPED, 25_000n);
+    const change = (totalMinor: number) =>
+      capped.request(`/v1/mandates/${m.id}/changes`, {
+        method: "POST",
+        headers: {
+          "idempotency-key": ulid(),
+          "content-type": "application/json",
+          ...asHost(host, a),
+        },
+        body: JSON.stringify({
+          note: "The shoes went up.",
+          limits: { totalMinor, perPurchaseMinor: 5_000, until: inDays(2) },
+        }),
+      });
+    const over = await change(30_001);
+    expect(over.status).toBe(422);
+    expect(await over.json()).toMatchObject({ type: expect.stringContaining("hosted-cap") });
+    const fits = await change(30_000);
+    expect(await fits.json()).toMatchObject({ request_id: expect.any(String) });
+    expect(fits.status).toBe(201);
+  });
+
+  test("the approval itself is measured under a lock, so concurrent approvals cannot pass a cap", async () => {
+    const { CAPPED } = await hostedWithCaps();
+    const a = await newUser();
+    const host = await registered(["https://unknown.example/callback"]);
+    await approved(a, host, CAPPED, 20_000n);
+    const input = {
+      clientId: host,
+      operatorAgentId: CAPPED,
+      userId: a,
+      currency: "USD",
+      amountMinor: 10_000n,
+    };
+    const deps = { demoAgentId: CAPPED, hostedCaps: caps };
+    // Two approvals of 10,000 race; each stores its mandate in the transaction that measured it.
+    const approve = () =>
+      testDb.transaction(async (tx) => {
+        const over = await hostedCapError(tx, deps, input, true);
+        if (!over) await approved(a, host, CAPPED, 10_000n).then(() => undefined);
+        return over;
+      });
+    const results = await Promise.all([approve(), approve()]);
+    expect(results.filter((r) => r === undefined)).toHaveLength(1);
+    // Another operator's mandates, or an uncapped deployment, are never measured.
+    expect(
+      await hostedCapError(testDb, deps, {
+        ...input,
+        operatorAgentId: HOSTED,
+        amountMinor: 10n ** 9n,
+      }),
+    ).toBeUndefined();
+    expect(
+      await hostedCapError(testDb, { demoAgentId: CAPPED }, { ...input, amountMinor: 10n ** 9n }),
+    ).toBeUndefined();
+  });
+
+  test("an app with an operator of its own is never capped", async () => {
+    const { ask } = await hostedWithCaps();
+    const a = await newUser();
+    const own = newHost();
+    await newOperator(own);
+    expect((await ask(asHost(own, a), 100_000)).status).toBe(201);
+  });
+});
+
+describe("disconnecting one app acting through the hosted operator", () => {
+  test("ends that app's mandates, requests and grant only; other apps stay connected", async () => {
+    const a = await newUser();
+    const [x, y] = [newHost(), newHost()];
+    for (const host of [x, y]) {
+      await testDb.insert(oauthClient).values({
+        id: ulid(),
+        clientId: host,
+        redirectUris: ["https://claude.ai/api/mcp/auth_callback"],
+        tokenEndpointAuthMethod: "none",
+      });
+    }
+    const mx = await approved(a, x);
+    const my = await approved(a, y);
+    await testDb.insert(oauthConsent).values({
+      id: ulid(),
+      clientId: x,
+      userId: a,
+      scopes: DELEGATED,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    const pending = await send("/v1/connections", asHost(x, a), askBody);
+    expect(pending.status).toBe(201);
+
+    const listed = await app.request("/v1/agents", { headers: asUser(a) });
+    const rows = (
+      (await listed.json()) as { agents: { agentId: string; clientId: string | null }[] }
+    ).agents;
+    expect(
+      rows
+        .filter((r) => r.agentId === HOSTED.toString())
+        .map((r) => r.clientId)
+        .sort(),
+    ).toEqual([x, y].sort());
+
+    const before = Math.floor(Date.now() / 1000) - 1;
+    const res = await send(`/v1/agents/${HOSTED}/disconnect?client=${x}`, asUser(a));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ revoked: 1 });
+
+    const [ended] = await testDb.select().from(mandates).where(eq(mandates.id, mx.id));
+    const [kept] = await testDb.select().from(mandates).where(eq(mandates.id, my.id));
+    expect(ended?.revokeRequestedAt).not.toBeNull();
+    expect(kept?.revokeRequestedAt).toBeNull();
+    const { request_id } = (await pending.json()) as { request_id: string };
+    const [denied] = await testDb
+      .select()
+      .from(agentConnections)
+      .where(eq(agentConnections.id, request_id));
+    expect(denied?.state).toBe("DENIED");
+    expect(await testDb.select().from(oauthConsent).where(eq(oauthConsent.clientId, x))).toEqual(
+      [],
+    );
+    // Its access tokens issued before now are refused; the other app's are not.
+    expect(await tokenStopped(testKv, a, x, before)).toBe(true);
+    expect(await tokenStopped(testKv, a, y, before)).toBe(false);
+
+    expect((await evidence(asHost(y, a), my.id)).status).toBe(201);
+    expect((await evidence(asHost(x, a), mx.id)).status).toBe(404);
+
+    // Another user's app, or one never connected, is not found.
+    expect(
+      (await send(`/v1/agents/${HOSTED}/disconnect?client=${newHost()}`, asUser(a))).status,
+    ).toBe(404);
   });
 });

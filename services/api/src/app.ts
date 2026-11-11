@@ -19,6 +19,7 @@ import { type Address, BaseError, HttpRequestError, TimeoutError } from "viem";
 import type { Auth } from "./auth.ts";
 import type { ChainReaders } from "./chain/reader.ts";
 import type { Channel3Lookup } from "./channel3/client.ts";
+import type { HostedCaps } from "./hosted-caps.ts";
 import type { LogConfig } from "./log/append.ts";
 import { requestLogger } from "./logger.ts";
 import { registerMcp } from "./mcp.ts";
@@ -118,6 +119,8 @@ export interface Deps {
    * operator with it, and nothing else (see `delegated.ts`). Their countersigns answer 503 without it.
    */
   hostedAgentKey?: CryptoKey;
+  /** What the hosted operator's bond backs for apps it does not know; uncapped without it. */
+  hostedCaps?: HostedCaps;
   /** Browser origin of the public verifier, allowed to read public Alibis, receipts and timestamps without credentials. */
   verifyOrigin?: string;
   /** Reads the anchor and signer registry for `POST /v1/alibis/verify`; it verifies offline without it. */

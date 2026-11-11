@@ -11,6 +11,7 @@ import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/cli
 import { betterAuth } from "better-auth";
 import { testUtils } from "better-auth/plugins";
 import { pino } from "pino";
+import { createClient, type RedisClientType } from "redis";
 import { ulid } from "ulid";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import demo from "../../../packages/mandate/test/fixtures/demo-mandate.json" with { type: "json" };
@@ -58,6 +59,8 @@ app = createApp({
   authenticate: authenticate(auth, baseURL, testKv),
   demoAgentId: HOSTED,
   hostedAgentKey: hosted.privateKey,
+  // Every user here is new, so only the per-user cap ever binds.
+  hostedCaps: { perUserMinor: 30_000n, totalMinor: 10n ** 15n },
   tee: createTee(
     {
       TEE_A_URL: legUrl,
@@ -115,12 +118,12 @@ const REASON =
 const DELEGATED = ["alibis:read", "mandates:request", "evidence:write", "purchases:write"];
 
 /** An MCP host registering itself (RFC 7591) as a public client, the way claude.ai does. */
-async function registerHost(): Promise<string> {
+async function registerHost(redirect = REDIRECT): Promise<string> {
   const res = await app.request("/api/auth/oauth2/register", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      redirect_uris: [REDIRECT],
+      redirect_uris: [redirect],
       client_name: "Claude",
       token_endpoint_auth_method: "none",
       grant_types: ["authorization_code", "refresh_token"],
@@ -508,6 +511,7 @@ test("the consent page shows the hosted operator answering for a host with none,
     client: { id: host, verified: false },
     agent: { agentId: HOSTED.toString(), operator: "Keelson", hosted: true },
     scopes: [...DELEGATED, "offline_access"],
+    hostedCap: null,
     spendingError: null,
   });
   const asked = await consent("/v1/oauth/consent/connection");
@@ -562,5 +566,148 @@ describe("revocation", () => {
     expect(mcp.status).toBe(401);
     expect(mcp.headers.get("www-authenticate")).toContain("invalid_token");
     expect((await refresh(host, tokens.refresh_token as string)).status).toBe(400);
+  });
+});
+
+test("the consent page shows the cap on Keelson's bond for a host it does not know, and refuses spending over it", async () => {
+  const UNKNOWN = "https://unknown-host.example/oauth/callback";
+  const host = await registerHost(UNKNOWN);
+  const user = await newUser();
+  const consentFor = async (totalMinor: number) => {
+    const { challenge } = pkce();
+    const res = await app.request(
+      `/api/auth/oauth2/authorize?${new URLSearchParams({
+        response_type: "code",
+        client_id: host,
+        redirect_uri: UNKNOWN,
+        resource: apiAudience,
+        state: "s1",
+        code_challenge: challenge,
+        code_challenge_method: "S256",
+        authorization_details: JSON.stringify([
+          {
+            type: "keelson_mandate",
+            name: "Some host",
+            reason: REASON,
+            limits: {
+              currency: "USD",
+              perPurchaseMinor: 5_000,
+              totalMinor,
+              merchants: ["mrc_runfast"],
+              until: new Date(Date.now() + 86_400_000).toISOString(),
+            },
+          },
+        ]),
+      })}`,
+      { headers: user.headers },
+    );
+    const oauthQuery = new URL(res.headers.get("location") ?? "").search.slice(1);
+    return (path: string) =>
+      app.request(path, {
+        method: "POST",
+        headers: {
+          cookie: user.headers.get("cookie") ?? "",
+          "content-type": "application/json",
+          "idempotency-key": ulid(),
+        },
+        body: JSON.stringify({ oauthQuery }),
+      });
+  };
+  const within = await consentFor(30_000);
+  expect(await (await within("/v1/oauth/consent")).json()).toMatchObject({
+    agent: { hosted: true },
+    hostedCap: { perUserMinor: "30000", currency: "USD" },
+    spendingError: null,
+  });
+  const over = await consentFor(30_001);
+  expect(await (await over("/v1/oauth/consent")).json()).toMatchObject({
+    hostedCap: { perUserMinor: "30000" },
+    spending: null,
+    spendingError: expect.stringContaining("$300.00"),
+  });
+  expect((await over("/v1/oauth/consent/connection")).status).toBe(422);
+});
+
+test("disconnecting one host refuses its access and refresh tokens, on the API and on MCP; another host of the user keeps working", async () => {
+  const user = await newUser();
+  const [one, two] = [await registerHost(), await registerHost()];
+  const [t1, t2] = [await grant(one, user), await grant(two, user)];
+  expect((await ask(t1.access_token)).status).toBe(201);
+  expect((await ask(t2.access_token)).status).toBe(201);
+
+  const off = await app.request(`/v1/agents/${HOSTED}/disconnect?client=${one}`, {
+    method: "POST",
+    headers: { cookie: user.headers.get("cookie") ?? "", "idempotency-key": ulid() },
+  });
+  expect(off.status).toBe(200);
+
+  const refused = await ask(t1.access_token);
+  expect(refused.status).toBe(401);
+  expect((await mcpPost(t1.access_token)).status).toBe(401);
+  expect((await refresh(one, t1.refresh_token as string)).status).toBe(400);
+
+  expect((await ask(t2.access_token)).status).toBe(201);
+  expect((await mcpPost(t2.access_token)).status).toBe(200);
+  expect((await refresh(two, t2.refresh_token as string)).status).toBe(200);
+});
+
+describe("when the revocation store is down", () => {
+  // A real client whose connection is gone: every command fails at once, as with Valkey down.
+  let down!: RedisClientType;
+  beforeAll(async () => {
+    down = createClient({
+      url: process.env.REDIS_URL,
+      disableOfflineQueue: true,
+    }) as RedisClientType;
+    await down.connect();
+    down.destroy();
+  });
+  const appWith = (kv: RedisClientType, revocations: RedisClientType) =>
+    createApp({
+      db: testDb,
+      kv,
+      log: pino({ level: "silent" }),
+      auth,
+      appOrigin: baseURL,
+      authBaseUrl: baseURL,
+      authenticate: authenticate(auth, baseURL, revocations),
+      demoAgentId: HOSTED,
+    });
+
+  test("a host's access token is refused on the API, whatever else works", async () => {
+    const { access_token } = await grant(await registerHost(), await newUser());
+    const res = await appWith(testKv, down).request(
+      "/v1/connections",
+      bearer(access_token, { name: "Claude", reason: REASON, limits: { currency: "USD" } }),
+    );
+    expect(res.status).toBe(503);
+    expect(res.headers.get("retry-after")).toBe("5");
+    expect(await res.json()).toMatchObject({
+      type: expect.stringContaining("revocation-unavailable"),
+    });
+  });
+
+  test("and on MCP", async () => {
+    const { access_token } = await grant(await registerHost(), await newUser());
+    const call = (to: OpenAPIHono) =>
+      to.request("/mcp", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${access_token}`,
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream",
+          host: new URL(baseURL).host,
+        },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+      });
+    const res = await call(appWith(down, down));
+    expect(res.status).toBe(503);
+    // Down between the API's check and MCP's own, the token is refused there too.
+    const late = await call(appWith(down, testKv));
+    expect(late.status).toBe(500);
+    expect(await late.json()).toMatchObject({
+      error: "server_error",
+      error_description: expect.stringContaining("cannot be checked"),
+    });
   });
 });

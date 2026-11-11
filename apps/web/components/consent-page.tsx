@@ -16,6 +16,8 @@ interface Consent {
   client: { id: string; name: string; uri: string | null; verified: boolean };
   agent: { agentId: string; operator: string; hosted: boolean } | null;
   scopes: string[];
+  /** For an app Keelson does not know acting through its own agent: what its bond backs per user. */
+  hostedCap: { perUserMinor: string; currency: string } | null;
   spending: {
     name: string;
     reason: string;
@@ -306,7 +308,19 @@ export function ConsentPage() {
                     : `${consent.agent.operator}, registered agent #${consent.agent.agentId}, signs each purchase, and its bond covers them.`}
                 </span>
               </p>
-            ) : (
+            ) : null}
+            {consent.agent && consent.hostedCap ? (
+              <p className="flex items-start gap-3 text-pretty text-sm leading-snug">
+                <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                <span>
+                  Keelson does not know {consent.client.name}, so its bond backs at most{" "}
+                  <span className="font-medium tnum">
+                    {money(BigInt(consent.hostedCap.perUserMinor), consent.hostedCap.currency)}
+                  </span>{" "}
+                  left on your open mandates with apps it does not know, together.
+                </span>
+              </p>
+            ) : consent.agent ? null : (
               <p className="flex items-start gap-3 text-pretty text-sm">
                 <Ban className="mt-0.5 size-4 shrink-0 text-vermilion-deep" aria-hidden="true" />
                 No registered agent answers for this app, so it cannot buy for you.

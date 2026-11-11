@@ -218,6 +218,10 @@ const app = createApp({
   authBaseUrl: env.BETTER_AUTH_URL,
   demoAgentId: env.DEMO_AGENT_ID,
   ...(hostedAgentKey ? { hostedAgentKey } : {}),
+  hostedCaps: {
+    perUserMinor: env.HOSTED_CAP_PER_USER_MINOR,
+    totalMinor: env.HOSTED_CAP_TOTAL_MINOR,
+  },
   judgeInvite: env.JUDGE_INVITE_CODE,
   rateLimit: { trustProxy: process.env.RENDER === "true" },
   shutdown: shutdown.signal,

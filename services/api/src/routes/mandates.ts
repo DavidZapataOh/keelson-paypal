@@ -41,6 +41,7 @@ import {
   unmatched,
 } from "../connections.ts";
 import { publishEvent } from "../events.ts";
+import { hostedCapError } from "../hosted-caps.ts";
 import { passkeyJwk, SignatureError, verifyMandateSignature } from "../mandate-signature.ts";
 import { requireSession } from "../middleware/auth.ts";
 import { purchaseView } from "../pipeline/drive.ts";
@@ -325,6 +326,7 @@ const AGENT_ID = /^(0|[1-9]\d{0,77})$/;
 
 class CounterError extends Error {}
 class RequestClosed extends Error {}
+class OverHostedCap extends Error {}
 
 /** Approvals by user code a user may attempt in a minute. */
 const APPROVALS_PER_MINUTE = 20;
@@ -340,7 +342,16 @@ export function registerMandates(
   app: OpenAPIHono,
   deps: Pick<
     Deps,
-    "db" | "kv" | "log" | "appOrigin" | "passkeyRpId" | "tee" | "proveAnonymousMandate" | "paypal"
+    | "db"
+    | "kv"
+    | "log"
+    | "appOrigin"
+    | "passkeyRpId"
+    | "tee"
+    | "proveAnonymousMandate"
+    | "paypal"
+    | "demoAgentId"
+    | "hostedCaps"
   >,
 ): void {
   const { db } = deps;
@@ -624,6 +635,20 @@ export function registerMandates(
         }
         // The user code is spent with the mandate that answers it, or neither is stored.
         if (request) {
+          const over = await hostedCapError(
+            tx,
+            deps,
+            {
+              clientId: request.clientId,
+              operatorAgentId: operator.agentId,
+              userId,
+              currency: m.payment.currency,
+              amountMinor: BigInt(budget.max),
+              replaces: kindOf(request) === "change" ? request.parentMandateId : null,
+            },
+            true,
+          );
+          if (over) throw new OverHostedCap(over);
           const askAbove = body.connection?.askAboveMinor;
           const approved = await tx
             .update(agentConnections)
@@ -653,6 +678,9 @@ export function registerMandates(
         }
       });
     } catch (err) {
+      if (err instanceof OverHostedCap) {
+        return problem(c, 422, "hosted-cap", "Over the hosted operator's cap", err.message);
+      }
       if (err instanceof RequestClosed) {
         return problem(
           c,

@@ -32,6 +32,7 @@ import {
 } from "../connections.ts";
 import { isDelegated } from "../delegated.ts";
 import { publishEvent } from "../events.ts";
+import { hostedCapError } from "../hosted-caps.ts";
 import { MERCHANTS } from "../merchants.ts";
 import { requireAgent, requireClient, requireSession } from "../middleware/auth.ts";
 import { rateLimit } from "../middleware/rate-limit.ts";
@@ -308,7 +309,7 @@ const create = createRoute({
   tags: ["connections"],
   summary: "Ask the user for a mandate",
   description:
-    "The agent's operator asks its user for a mandate with these limits, as an RFC 8628 device authorization: the user opens `verification_uri_complete`, compares `user_code` and approves on Keelson's page with a passkey, lowering any limit. Only a client that linked an operator may ask, and the mandate names that operator. The code expires in 15 minutes and is single use.\n\nAn app acting for a user with a token they granted it (`mandates:request`) asks that user only: the request is theirs from the start, so it carries no number to match. The mandate names the app's own operator, or Keelson's hosted operator when the app has none.",
+    "The agent's operator asks its user for a mandate with these limits, as an RFC 8628 device authorization: the user opens `verification_uri_complete`, compares `user_code` and approves on Keelson's page with a passkey, lowering any limit. Only a client that linked an operator may ask, and the mandate names that operator. The code expires in 15 minutes and is single use.\n\nAn app acting for a user with a token they granted it (`mandates:request`) asks that user only: the request is theirs from the start, so it carries no number to match. The mandate names the app's own operator, or Keelson's hosted operator when the app has none. Through the hosted operator, an app whose redirect URIs are not a known host's is capped: what one user's live mandates for such apps have left, and what all users' have, may not pass `HOSTED_CAP_PER_USER_MINOR` and `HOSTED_CAP_TOTAL_MINOR` (`hosted-cap`).",
   middleware: [requireAgent("mandates:request")],
   request: {
     headers: z.object({ "idempotency-key": z.string().min(1).max(255) }),
@@ -325,7 +326,10 @@ const create = createRoute({
       content: problemContent,
     },
     409: { description: "The client linked several operators", content: problemContent },
-    422: { description: "The request is invalid", content: problemContent },
+    422: {
+      description: "The request is invalid, or over the hosted operator's cap (`hosted-cap`)",
+      content: problemContent,
+    },
   },
 });
 
@@ -685,6 +689,7 @@ export function registerConnections(
     | "rateLimit"
     | "compileSources"
     | "demoAgentId"
+    | "hostedCaps"
   >,
 ): void {
   const { db } = deps;
@@ -732,6 +737,16 @@ export function registerConnections(
     }
     const invalid = invalidLimits(body.limits);
     if (invalid) return problem(c, 422, "invalid-limits", "Invalid limits", invalid);
+    if (delegated) {
+      const over = await hostedCapError(db, deps, {
+        clientId,
+        operatorAgentId: operator.agentId,
+        userId: principal.user,
+        currency: body.limits.currency,
+        amountMinor: BigInt(body.limits.totalMinor),
+      });
+      if (over) return problem(c, 422, "hosted-cap", "Over the hosted operator's cap", over);
+    }
     const stored = await storeRequest(deps, {
       clientId,
       operatorAgentId: operator.agentId,
