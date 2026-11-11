@@ -11,8 +11,8 @@ import { MERCHANTS } from "../merchants.ts";
 import { requireClient } from "../middleware/auth.ts";
 import { fieldChecks } from "../pipeline/drive.ts";
 import type { Principal } from "../principal.ts";
-import { stoppedSince } from "../stop.ts";
 import { ProblemSchema, problem } from "../problem.ts";
+import { stoppedSince } from "../stop.ts";
 import { CartSchema } from "./countersign.ts";
 import { REVOCABLE } from "./revoke.ts";
 

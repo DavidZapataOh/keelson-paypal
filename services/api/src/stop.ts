@@ -122,10 +122,7 @@ export async function stopAgents(deps: StopDeps, userId: string): Promise<StopRe
       .select({ currency: purchaseHolds.currency, minor: purchaseHolds.amountMinor })
       .from(purchaseHolds)
       .where(
-        and(
-          inArray(purchaseHolds.mandateId, perPurchase),
-          eq(purchaseHolds.state, "AUTHORIZED"),
-        ),
+        and(inArray(purchaseHolds.mandateId, perPurchase), eq(purchaseHolds.state, "AUTHORIZED")),
       )) {
       add(h.currency, h.minor);
     }

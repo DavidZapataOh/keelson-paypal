@@ -453,7 +453,6 @@ describe("revoking where the money moves", { timeout: 120_000 }, () => {
     expect(listed.stops[0]).toMatchObject({ id: stopped.id, revoked: 2 });
   });
 
-
   test("the agents list shows each agent's live mandate and what is left", async () => {
     const op = await newOperator("Shoe agent");
     const sub = await newUser();

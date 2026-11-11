@@ -47,6 +47,7 @@ import { publishPurchase } from "../pipeline/events.ts";
 import { logStep } from "../pipeline/log-step.ts";
 import { principalKey } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
+import { stoppedSince } from "../stop.ts";
 import { LegError } from "../tee/client.ts";
 import { VERIFYING_CONTRACT } from "../tee/config.ts";
 import {
@@ -54,7 +55,6 @@ import {
   type CountersignExpectation,
   countersign2of2,
 } from "../tee/coordinator.ts";
-import { stoppedSince } from "../stop.ts";
 import { span } from "../tracing.ts";
 import { PurchaseProgress, progressOf } from "./purchases.ts";
 
