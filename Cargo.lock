@@ -3278,6 +3278,7 @@ dependencies = [
  "ciborium",
  "coset",
  "ed25519-dalek",
+ "keelson-core",
  "serde",
  "serde_jcs",
  "serde_json",
