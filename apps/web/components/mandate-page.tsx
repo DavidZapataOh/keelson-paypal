@@ -8,7 +8,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { post } from "../lib/api";
-import { money, when } from "../lib/format";
+import { major, money, when } from "../lib/format";
 import { mandateLabel, purchaseStatus } from "../lib/status";
 import { useMandate } from "../lib/use-mandate";
 import { AppShell } from "./app-shell";
@@ -52,8 +52,8 @@ function MandateDetail() {
     );
 
   const { budget } = mandate;
-  const max = Number(budget.maxMinor) / 100;
-  const left = Number(budget.remainingMinor) / 100;
+  const max = major(budget.maxMinor, budget.currency);
+  const left = major(budget.remainingMinor, budget.currency);
   const dollars = (n: number) =>
     new Intl.NumberFormat("en-US", { style: "currency", currency: budget.currency }).format(n);
   const needsHold =
@@ -187,7 +187,7 @@ function MandateDetail() {
                 >
                   <span className="font-medium">{p.merchantId}</span>
                   <Amount
-                    value={Number(p.amount.minor) / 100}
+                    value={major(p.amount.minor, p.amount.currency)}
                     currency={p.amount.currency}
                     className="text-right"
                   />
