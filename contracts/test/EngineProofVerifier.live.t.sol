@@ -19,7 +19,7 @@ contract EngineProofVerifierLiveTest is ForkTest {
             vm.createSelectFork(vm.envString(json.readString(".rpcEnv")));
             DeployEngineProofVerifier script = new DeployEngineProofVerifier();
             EngineProofVerifier verifier = EngineProofVerifier(json.readAddress(".contracts.EngineProofVerifier"));
-            assertEq(address(verifier), script.predict("EngineProofVerifier"));
+            assertEq(address(verifier), script.predict(script.VERSION()));
             assertEq(address(verifier.VERIFIER()), json.readAddress(".external.sp1VerifierGateway"));
             assertEq(verifier.PROGRAM_VKEY(), v.readBytes32(".vkey"));
             EngineProofVerifier fresh = new EngineProofVerifier(verifier.VERIFIER(), verifier.PROGRAM_VKEY());

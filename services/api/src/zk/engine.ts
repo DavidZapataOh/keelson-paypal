@@ -20,7 +20,7 @@ const run = promisify(execFile);
 const ENGINE_PROVER = {
   url: "https://github.com/DavidZapataOh/keelson-paypal/releases/download/engine-proof-0000000/keelson-engine-proof-linux-x64",
   sha256: "0000000000000000000000000000000000000000000000000000000000000000",
-  vkey: "0x002239e16cb091e30fe341ef30ed323dc2064c7afcb39e4aa63e6fa1b9961a55" as Hex,
+  vkey: "0x00c562cc96a77edfb4714bf98a2685fc6dfb825bb60e29e60b6a33205455e54c" as Hex,
 } as const;
 
 /** The chain `EngineProofVerifier` records proofs on. */
