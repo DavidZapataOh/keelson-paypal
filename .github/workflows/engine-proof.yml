@@ -84,7 +84,12 @@ jobs:
       - name: Program size
         run: |
           elf=$(find target -path '*riscv64im-succinct-zkvm-elf/release/keelson-engine-program' | head -1)
-          echo "ELF: $(stat -c %s "$elf") bytes" | tee -a "$GITHUB_STEP_SUMMARY"
+          cp "$elf" keelson-engine-program.elf
+          echo "ELF: $(stat -c %s "$elf") bytes, sha256 $(sha256sum "$elf" | cut -d' ' -f1)" | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: keelson-engine-program
+          path: engine/zkvm/keelson-engine-program.elf
       - name: Execute the vector
         run: |
           jq .input "$GITHUB_WORKSPACE/$VECTOR" > input.json
