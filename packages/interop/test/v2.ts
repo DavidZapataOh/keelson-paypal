@@ -1,4 +1,6 @@
 import { readFileSync } from "node:fs";
+import { ALIBI_MEDIA_TYPE_V2, type AlibiBundleV2, toBase64 } from "@keelson/alibi";
+import { type Json, jcs } from "@keelson/core";
 import {
   buildReceipt,
   decodeSign1,
@@ -7,12 +9,14 @@ import {
   RECEIPTS,
   receiptProtected,
   rootFromInclusion,
+  teeCollection,
 } from "@keelson/scitt";
 import { ed25519PublicKey, signEd25519 } from "@keelson/scitt/testing";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { base64url } from "jose";
 import type { AlibiRef } from "../src/statement.ts";
+import { alibi } from "./fixtures.ts";
 
 /**
  * Transparent Statements for tests: the golden v2 statements the log's statement vectors define,
@@ -69,3 +73,34 @@ function decodeAlibiId(statement: Uint8Array): string {
 }
 
 const readdirVectors = () => ["allow-2of2", "deny-2of2", "card-2of2", "allow-degraded"];
+
+/**
+ * A v2 bundle around a production v1 Alibi: its sections as they are, with the golden statement
+ * whose countersign is the Alibi's and that statement's receipt, and its legs' evidence as a CMW
+ * collection.
+ */
+export function v2Of(id: string, vector = "allow-2of2"): AlibiBundleV2 {
+  const v1 = alibi(id);
+  const evidence = (kind: "tdx" | "nitro") => {
+    const a = v1.tee.attestations.find((x) => x.kind === kind);
+    return a ? new TextEncoder().encode(jcs(a as unknown as Json)) : undefined;
+  };
+  const legs = Object.fromEntries(
+    (["tdx", "nitro"] as const).flatMap((k) => (evidence(k) ? [[k, evidence(k)]] : [])),
+  ) as { tdx?: Uint8Array; nitro?: Uint8Array };
+  return {
+    type: ALIBI_MEDIA_TYPE_V2,
+    alibi_id: v1.alibi_id,
+    statement: toBase64(transparent(registered(vector))),
+    tlog_proof: v1.tlog_proof,
+    policy: v1.policy,
+    attestation: teeCollection(legs) as AlibiBundleV2["attestation"],
+    eval: v1.eval,
+    mandate: v1.mandate,
+    manifest: v1.manifest,
+    ...(v1.cart ? { cart: v1.cart } : {}),
+    ...(v1.checkout ? { checkout: v1.checkout } : {}),
+    ...(v1.zk ? { zk: v1.zk } : {}),
+    ...(v1.paypal ? { paypal: v1.paypal } : {}),
+  };
+}

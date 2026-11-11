@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest";
 import { purchaseFacts } from "../src/facts.ts";
+import { refOf } from "../src/statement.ts";
 import { ALLOW_CARD, ALLOW_PAYPAL, alibi, DENY_PAYPAL } from "./fixtures.ts";
+import { v2Of, v2Ref } from "./v2.ts";
 
 describe("purchaseFacts", () => {
   test("a PayPal purchase: amounts, payee and capture come from the countersign and PayPal", () => {
@@ -65,5 +67,26 @@ describe("purchaseFacts", () => {
     expect(purchaseFacts(alibi(ALLOW_PAYPAL)).personal?.appLoginId).toBeTruthy();
     expect(purchaseFacts(alibi(ALLOW_CARD)).personal).toBeUndefined();
     expect(purchaseFacts(alibi(DENY_PAYPAL)).personal).toBeUndefined();
+  });
+});
+
+describe("purchaseFacts of a v2 Alibi", () => {
+  test("reads the countersign from the SCITT statement and everything else from the bundle", () => {
+    expect(purchaseFacts(v2Of(ALLOW_PAYPAL))).toEqual({
+      ...purchaseFacts(alibi(ALLOW_PAYPAL)),
+      version: 2,
+    });
+    expect(purchaseFacts(alibi(ALLOW_PAYPAL)).version).toBe(1);
+  });
+
+  test("a statement whose claims were changed is refused", () => {
+    const b = v2Of(ALLOW_PAYPAL);
+    const bytes = Buffer.from(b.statement, "base64");
+    bytes[60] = (bytes[60] as number) ^ 1;
+    expect(() => purchaseFacts({ ...b, statement: bytes.toString("base64") })).toThrow();
+  });
+
+  test("refOf names the bundle's Transparent Statement", () => {
+    expect(refOf(v2Of(ALLOW_PAYPAL))).toEqual(v2Ref("allow-2of2"));
   });
 });

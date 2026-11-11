@@ -1,3 +1,4 @@
+import { type AlibiBundleV2, leafHashOf, statementOf } from "@keelson/alibi";
 import { parseStatementLeaf, ulidOfRequestId } from "@keelson/log";
 import { decodeSign1, encodeSign1, leafHash, RECEIPTS, verifyReceipt } from "@keelson/scitt";
 import { base64url } from "jose";
@@ -72,5 +73,17 @@ export function verifyStatement(
     currency: String(c.currency),
     decision: Number(c.decision) === 1 ? "allow" : "deny",
     issued_at: Number(c.issuedAt),
+  };
+}
+
+/** Where the API serves an Alibi's statement. */
+const STATEMENT_URI = "https://api.keelson.finance/v1/alibis";
+
+/** The reference an export carries for a v2 Alibi's Transparent Statement. */
+export function refOf(b: AlibiBundleV2): AlibiRef {
+  return {
+    statement: base64url.encode(statementOf(b)),
+    leafHash: base64url.encode(leafHashOf(b)),
+    uri: `${STATEMENT_URI}/${b.alibi_id}.cose`,
   };
 }

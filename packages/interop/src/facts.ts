@@ -1,6 +1,11 @@
-import type { AlibiBundle } from "@keelson/alibi";
+import {
+  ALIBI_MEDIA_TYPE_V2,
+  type AlibiBundle,
+  type AlibiBundleV2,
+  registeredOf,
+} from "@keelson/alibi";
 import { type Cart, CURRENCIES, type CurrencyCode, fromPayPalAmount } from "@keelson/core";
-import { ulidOfRequestId } from "@keelson/log";
+import { parseStatementLeaf, ulidOfRequestId } from "@keelson/log";
 import { type Disclosed, decodeDisclosed, type Mandate, type UserAuth } from "@keelson/mandate";
 
 /** One purchased line, in minor units of the purchase currency. */
@@ -58,6 +63,8 @@ export interface PurchaseFacts {
   userAuth: UserAuth;
   personal?: { appLoginId?: string; deviceFp?: string; ip?: string };
   env: "sandbox" | "live";
+  /** The Alibi's format: 1, or 2 for a SCITT Transparent Statement. */
+  version: 1 | 2;
 }
 
 /** The facts of a purchase's logged statement, as the issuer compares them before it signs. */
@@ -129,9 +136,24 @@ function itemTitles(m: Disclosed<Mandate>): Map<string, string> {
   return titles;
 }
 
-/** Reads an Alibi's purchase into the facts the exports state. */
-export function purchaseFacts(b: AlibiBundle): PurchaseFacts {
-  const cs = b.tee.countersign;
+/** The countersign of an Alibi, as decimal strings and hex, and its chain. */
+function countersignOf(b: AlibiBundle | AlibiBundleV2) {
+  if (b.type !== ALIBI_MEDIA_TYPE_V2) {
+    const v1 = b as AlibiBundle;
+    return { cs: v1.tee.countersign, chainId: v1.tee.domain.chain_id, version: 1 as const };
+  }
+  const parsed = parseStatementLeaf(registeredOf(b as AlibiBundleV2));
+  if (parsed.kind !== "purchase") throw new RangeError("not a purchase statement");
+  const c = parsed.claims.countersign;
+  const cs = Object.fromEntries(
+    Object.entries(c).map(([k, v]) => [k, typeof v === "string" ? v.toLowerCase() : String(v)]),
+  ) as AlibiBundle["tee"]["countersign"];
+  return { cs, chainId: parsed.claims.chainId, version: 2 as const };
+}
+
+/** Reads an Alibi's purchase into the facts the exports state; a v2 Alibi's countersign comes from its statement. */
+export function purchaseFacts(b: AlibiBundle | AlibiBundleV2): PurchaseFacts {
+  const { cs, chainId, version } = countersignOf(b);
   const mandate = decodeDisclosed(b.mandate.payload_sd, b.mandate.disclosures);
   const cart = b.cart as unknown as Cart | undefined;
   const card = b.card as unknown as CardSection | undefined;
@@ -204,7 +226,8 @@ export function purchaseFacts(b: AlibiBundle): PurchaseFacts {
     l2: b.mandate.sd_jwt,
     userAuth: b.mandate.user_auth as unknown as UserAuth,
     ...(Object.keys(personal).length ? { personal } : {}),
-    env: b.tee.domain.chain_id === ARBITRUM_ONE ? "live" : "sandbox",
+    env: chainId === ARBITRUM_ONE ? "live" : "sandbox",
+    version,
   };
 }
 
