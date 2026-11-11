@@ -189,16 +189,23 @@ async function isOwner(deps: Pick<Deps, "db">, principal: Principal, b: AlibiBun
   }
   if (!principal.scopes?.includes("alibis:read")) return false;
   const [row] = await deps.db
-    .select({ uploadedBy: evidenceBundles.uploadedBy, clientId: purchases.clientId })
+    .select({
+      uploadedBy: evidenceBundles.uploadedBy,
+      clientId: purchases.clientId,
+      userId: mandates.userId,
+    })
     .from(purchases)
+    .innerJoin(mandates, eq(mandates.id, purchases.mandateId))
     .innerJoin(
       evidenceBundles,
       eq(evidenceBundles.root, Buffer.from(b.tee.countersign.evidenceRoot.slice(2), "hex")),
     )
     .where(eq(purchases.id, b.alibi_id));
+  // An app acting for a user reads only that user's Alibis.
   return (
     row?.uploadedBy === principal.subject &&
-    (row.clientId === null || row.clientId === principal.subject)
+    (row.clientId === null || row.clientId === principal.subject) &&
+    (principal.user === undefined || principal.user === row.userId)
   );
 }
 

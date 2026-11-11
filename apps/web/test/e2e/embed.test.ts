@@ -172,7 +172,13 @@ setInterval(() => parent.postMessage({ source: "keelson", version: 1, type: "app
     r.fulfill({
       contentType: "text/html",
       body: hostPage,
-      headers: opts.hostPermissions ? { "permissions-policy": opts.hostPermissions } : {},
+      // A host delegates the features to Keelson's frame and keeps them itself: a frame gets a
+      // feature only where its parent has it.
+      headers: {
+        "permissions-policy":
+          opts.hostPermissions ??
+          `publickey-credentials-get=(self "${API}"), publickey-credentials-create=(self "${API}"), payment=(self "${API}")`,
+      },
     }),
   );
   await context.route(`${EVIL}/forge`, (r) => r.fulfill({ contentType: "text/html", body: forge }));
