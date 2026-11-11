@@ -1,0 +1,20 @@
+name: apt-get update
+description: >-
+  Updates apt's package lists, three attempts with one fetch retry each. The image's mirror list leads with
+  azure.archive.ubuntu.com, which the runners at times cannot resolve for minutes, so a failed update moves apt to the
+  Ubuntu archive for the next attempts.
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        apt=(-o Acquire::Retries=1 -o Acquire::http::Timeout=30 -o APT::Update::Error-Mode=any)
+        for attempt in 1 2 3; do
+          sudo apt-get "${apt[@]}" update && exit 0
+          [ "$attempt" = 3 ] && exit 1
+          echo "::warning::apt-get update failed; using archive.ubuntu.com"
+          grep -rls 'mirror+file:/etc/apt/apt-mirrors.txt' /etc/apt/sources.list /etc/apt/sources.list.d \
+            | xargs -r sudo sed -i 's#mirror+file:/etc/apt/apt-mirrors.txt#http://archive.ubuntu.com/ubuntu/#'
+          sleep 10
+        done
