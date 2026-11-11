@@ -1,0 +1,78 @@
+{
+  "name": "@keelson/sdk",
+  "version": "0.1.0",
+  "description": "Keelson for TypeScript: let an AI agent spend within a mandate the user signs with a passkey, and verify the receipt of every purchase.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DavidZapataOh/keelson-paypal.git",
+    "directory": "packages/sdk"
+  },
+  "homepage": "https://keelson.finance",
+  "keywords": [
+    "keelson",
+    "paypal",
+    "agents",
+    "agentic-commerce",
+    "mcp",
+    "mandate"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./ai-sdk": {
+      "types": "./dist/adapters/ai-sdk.d.ts",
+      "default": "./dist/adapters/ai-sdk.js"
+    },
+    "./openai-agents": {
+      "types": "./dist/adapters/openai-agents.d.ts",
+      "default": "./dist/adapters/openai-agents.js"
+    },
+    "./langchain": {
+      "types": "./dist/adapters/langchain.d.ts",
+      "default": "./dist/adapters/langchain.js"
+    },
+    "./claude-agent-sdk": {
+      "types": "./dist/adapters/claude-agent-sdk.d.ts",
+      "default": "./dist/adapters/claude-agent-sdk.js"
+    },
+    "./paypal-agent-toolkit": {
+      "types": "./dist/adapters/paypal-agent-toolkit.d.ts",
+      "default": "./dist/adapters/paypal-agent-toolkit.js"
+    }
+  },
+  "bin": {
+    "keelson": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "SKILL.md"
+  ],
+  "scripts": {
+    "types": "openapi-typescript ../../openapi/keelson.public.json --empty-objects-unknown -o src/schema.d.ts && biome format --write src/schema.d.ts",
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-schema.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:live": "KEELSON_LIVE=1 vitest run test/live"
+  },
+  "dependencies": {
+    "@noble/hashes": "catalog:",
+    "canonicalize": "5.1.0"
+  },
+  "devDependencies": {
+    "@keelson/core": "workspace:*",
+    "@keelson/evidence": "workspace:*",
+    "@keelson/mandate": "workspace:*",
+    "@types/node": "26.6.6",
+    "openapi-typescript": "7.13.0",
+    "typescript": "6.0.3",
+    "vitest": "catalog:"
+  }
+}
