@@ -43,6 +43,7 @@ import { decodeMandate, merchantLeaf } from "@keelson/mandate";
 import type { Context } from "hono";
 import { ulid } from "ulid";
 import { hexToBytes } from "viem";
+import { arbitrumSepolia } from "viem/chains";
 import type { Deps } from "../app.ts";
 import { cartChecks } from "../cart-checks.ts";
 import { deviceAuthorization, grantOf, requestOnce } from "../connections.ts";
@@ -1362,6 +1363,15 @@ export function registerCountersign(
         failedFieldsMask: Number(out.countersign.failedFieldsMask),
         countersignMode: out.mode,
         evalTrace: out.trace,
+        engineInput: {
+          cart: body.cart,
+          unit: body.unit,
+          evidence: evidenceSources,
+          now_ms: out.observation.now_ms,
+          budget_left_minor: out.observation.budget_left_minor,
+          chain_id: arbitrumSepolia.id,
+          verifying_contract: VERIFYING_CONTRACT,
+        },
         failureReason: null,
       };
       await transition(

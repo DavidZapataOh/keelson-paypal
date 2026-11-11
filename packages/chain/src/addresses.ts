@@ -18,6 +18,7 @@ export const addresses: Record<ChainId, Readonly<Record<string, Address>>> = {
     CertManager: "0x5FE55991F66f8bA97f005Ae46017FAf4FF802600",
     CheckpointAnchor: "0x049621749722D0660d5026456F25192fBD9A57ab",
     Ed25519Verifier: "0xd550BbF7b3eC73cDDD66d1EF2b9365cABBC7bfE7",
+    EngineProofVerifier: "0xc8adF5671E32eD69C848893B982BF6Dc3B1dA1c5",
     GuardianSafe: "0x1cd0152d2d954Fc8c9436986C9F4B2C15903eF5C",
     KeelsonBondVault: "0xb39898Ef4333f3CB32d1B420E744f5a1Aa2ae2Bf",
     KeelsonBondVaultPreview: "0x69ccD2fB3a85f590F2A8f431cca3ecc2e9Bf3c14",

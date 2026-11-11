@@ -1,0 +1,149 @@
+name: engine-proof
+
+# The engine's SP1 program: built and executed over the committed countersign vector on every
+# change to the code it runs, and proved to a Groth16 proof on demand. The prover binary is
+# published as a release asset for the dispute workflow.
+on:
+  pull_request:
+    paths:
+      - engine/zkvm/**
+      - engine/policy/**
+      - engine/canon/**
+      - engine/core/**
+      - engine/mandate/**
+      - engine/tee/tests/vectors/countersign-*.json
+      - Cargo.lock
+      - .github/workflows/engine-proof.yml
+  push:
+    branches: [main]
+    paths:
+      - engine/zkvm/**
+      - engine/policy/**
+      - engine/canon/**
+      - engine/core/**
+      - engine/mandate/**
+      - Cargo.lock
+      - .github/workflows/engine-proof.yml
+  workflow_dispatch:
+    inputs:
+      prove:
+        description: Prove the committed vector to a Groth16 proof
+        type: boolean
+        default: true
+
+concurrency:
+  group: engine-proof-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+env:
+  SP1_VERSION: v6.10.0
+  VECTOR: engine/tee/tests/vectors/countersign-allow.json
+
+jobs:
+  program:
+    # Render's native runtime is Ubuntu 22.04: the published binary must load on its glibc.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    defaults:
+      run:
+        working-directory: engine/zkvm
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.24"
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - name: Install the SP1 toolchain
+        run: |
+          curl -L https://sp1up.succinct.xyz | bash
+          ~/.sp1/bin/sp1up -v "$SP1_VERSION"
+          echo "$HOME/.sp1/bin" >> "$GITHUB_PATH"
+      - uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            engine/zkvm/target
+            !engine/zkvm/target/elf-compilation
+          key: zkvm-${{ hashFiles('engine/zkvm/Cargo.lock') }}-${{ github.sha }}
+          restore-keys: zkvm-
+      # The program itself is always built from scratch: an ELF left in the cache by another
+      # lockfile can differ from a clean build, and its verifying key with it.
+      - name: Build the program and the prover
+        run: |
+          rm -rf target/elf-compilation
+          cargo clean --release -p keelson-engine-proof
+          cargo build --release --locked -p keelson-engine-proof
+      # The prover's dependencies take most of the build: keep them even when the program fails.
+      - uses: actions/cache/save@v6
+        if: always()
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            engine/zkvm/target
+            !engine/zkvm/target/elf-compilation
+          key: zkvm-${{ hashFiles('engine/zkvm/Cargo.lock') }}-${{ github.sha }}
+      - name: Program size
+        run: |
+          elf=$(find target -path '*riscv64im-succinct-zkvm-elf/release/keelson-engine-program' | head -1)
+          echo "ELF: $(stat -c %s "$elf") bytes" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Execute the vector
+        run: |
+          jq .input "$GITHUB_WORKSPACE/$VECTOR" > input.json
+          ./target/release/keelson-engine-proof execute input.json | tee executed.json
+          jq -e --slurpfile v "$GITHUB_WORKSPACE/$VECTOR" \
+            '.eval_hash == $v[0].eval_hash and .countersign_digest == $v[0].digest' executed.json
+          jq -r '"Cycles: \(.cycles), execute: \(.execute_ms) ms"' executed.json | tee -a "$GITHUB_STEP_SUMMARY"
+      # EngineProofVerifier is immutable: the program must keep the verifying key it was deployed with.
+      - name: Program verifying key
+        run: |
+          vkey=$(./target/release/keelson-engine-proof vkey)
+          echo "$vkey" | tee -a "$GITHUB_STEP_SUMMARY"
+          test "$vkey" = "$(jq -r .vkey "$GITHUB_WORKSPACE/contracts/test/vectors/engine-proof.json")"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: keelson-engine-proof
+          path: engine/zkvm/target/release/keelson-engine-proof
+      - name: Publish the prover
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=engine-proof-${GITHUB_SHA::7}
+          cp target/release/keelson-engine-proof keelson-engine-proof-linux-x64
+          sha256sum keelson-engine-proof-linux-x64 > keelson-engine-proof-linux-x64.sha256
+          gh release create "$tag" keelson-engine-proof-linux-x64 keelson-engine-proof-linux-x64.sha256 \
+            --title "Engine prover ${GITHUB_SHA::7}" --notes "SP1 $SP1_VERSION engine prover, built from ${GITHUB_SHA}." --latest=false
+
+  prove:
+    needs: program
+    if: github.event_name == 'workflow_dispatch' && inputs.prove
+    runs-on: ubuntu-22.04
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v7
+      - name: Free disk and add swap for the Groth16 wrap
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo swapoff -a || true
+          sudo fallocate -l 24G /swapfile2 && sudo chmod 600 /swapfile2 && sudo mkswap /swapfile2 && sudo swapon /swapfile2
+          free -g && df -h /
+      - uses: actions/download-artifact@v6
+        with:
+          name: keelson-engine-proof
+      - name: Prove
+        run: |
+          chmod +x keelson-engine-proof
+          jq .input "$VECTOR" > input.json
+          /usr/bin/time -v ./keelson-engine-proof prove input.json proof.json 2> time.txt | tail -c 2000
+          grep -E "Maximum resident|Elapsed" time.txt | tee -a "$GITHUB_STEP_SUMMARY"
+          jq -r '"Cycles: \(.cycles), prove: \(.prove_ms) ms, proof: \(.proof_bytes) bytes, circuit \(.sp1_version), vkey \(.vkey)"' proof.json | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: engine-proof
+          path: proof.json

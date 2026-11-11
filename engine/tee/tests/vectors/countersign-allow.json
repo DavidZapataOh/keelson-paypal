@@ -1,0 +1,206 @@
+{
+  "input": {
+    "payload_sd": {
+      "v": "keelson.mandate.1",
+      "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+      "iat": 1793750400,
+      "nbf": 1793750400,
+      "exp": 1794355200,
+      "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+      "mode": "autonomous",
+      "user": {
+        "_sd": [
+          "O6ppPU-gN4YGoORTk_sQG57WiaVI2zO2H62q0pOTi9o",
+          "VwVr08Oidj7TXPEcoTLVkL0gCbUNqbZIM9-1WeXBR5A",
+          "chg32VLjmX--6Z9cIn8X7jwiwMcJm4lnFlA27t9jE30"
+        ]
+      },
+      "agent": {
+        "operator": {
+          "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+          "agent_id": "42"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "I7E7554R55Vpqq_RIrcnePtzpmUeFZqpMBmeZkVh1q4",
+            "y": "yigWVV5Jcx__wel4_j5gp7BChYCpzCsfFi6foSUuXZg",
+            "kid": "agt-01"
+          }
+        },
+        "bond": {
+          "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+          "asset": "PYUSD",
+          "min": 5000
+        }
+      },
+      "payment": {
+        "rail": "paypal",
+        "currency": "USD",
+        "constraints": [
+          {
+            "...": "qi8T1vHqwRSWHmLBEEYpLO6IEATyxIufRm_h2OARhh8"
+          },
+          {
+            "type": "payment.budget",
+            "currency": "USD",
+            "_sd": [
+              "RbkCwz5S54IgZdsIcUgTXqVkSRR2daa_olUlB6qtrmA"
+            ]
+          },
+          {
+            "type": "payment.allowed_payees",
+            "allowed": [
+              {
+                "...": "bguRk9MSf8lkYT8PJHJn9kkHtJrwctVsosO5DQHewMc"
+              }
+            ]
+          },
+          {
+            "type": "payment.execution_date",
+            "not_after": "2026-11-13T23:59:59Z"
+          }
+        ]
+      },
+      "checkout": {
+        "constraints": [
+          {
+            "type": "checkout.allowed_merchants",
+            "allowed": [
+              {
+                "...": "6G_INa3dMN9BBjZG382At5RSAhWl7TV_7IV2VAZ8Wmk"
+              }
+            ]
+          },
+          {
+            "type": "checkout.line_items",
+            "items": [
+              {
+                "id": "l1",
+                "acceptable_items": [
+                  {
+                    "...": "gpEnumfqiIwmmtz7DOXfPNn35MWKwhX5sGXwL8WW4ws"
+                  }
+                ],
+                "quantity": 1
+              }
+            ]
+          },
+          {
+            "type": "keelson.category",
+            "allow": [
+              "gpt:187"
+            ],
+            "deny": []
+          },
+          {
+            "type": "keelson.attributes",
+            "must": {
+              "size_us": "10",
+              "color": "any"
+            }
+          },
+          {
+            "type": "keelson.returns",
+            "min_days": 30,
+            "free": true
+          }
+        ]
+      },
+      "intent": {
+        "subjective": [
+          "look good"
+        ],
+        "_sd": [
+          "4InHSMkgKfv1xaZsvfyOZfiITpS9KaVupcYGWTZvnA8",
+          "et1UZqfPQUjL8Ngcc2WpPgM1qpmwBpBrx5zJBF8NlEU"
+        ]
+      },
+      "policy": {
+        "engine": "keelson-engine",
+        "version": "1.0.0",
+        "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+        "measurements": [
+          "tdx:0a1b2c",
+          "nitro:3d4e5f"
+        ]
+      },
+      "consent": {
+        "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+        "instruction_use": true,
+        "responsibility_ack": true,
+        "merchant_policy_ack": "at_capture",
+        "recurrence_ack": false
+      },
+      "zk": {
+        "commitment": "0x0b4ddedbcc32a4c88059552a09a459092cd3ca1dd217c714cf3c2555bb862f9f"
+      },
+      "cnf": {
+        "jwk": {
+          "kty": "EC",
+          "crv": "P-256",
+          "x": "I7E7554R55Vpqq_RIrcnePtzpmUeFZqpMBmeZkVh1q4",
+          "y": "yigWVV5Jcx__wel4_j5gp7BChYCpzCsfFi6foSUuXZg",
+          "kid": "agt-01"
+        }
+      },
+      "_sd": [
+        "hxU6Kb2G_7p44fiiLh6L2I7M0vn3TFBKJx2W4dpAeMU"
+      ]
+    },
+    "disclosures": [
+      "WyJjbnFkSXhRdG83bE9oLVJsTmdQZk1RIiwic3ViIiwia2xzX3Vzcl83ZjNhOWMyMSJd",
+      "WyJfRmE0akgtczA3U1NvY0haZmxhRW13IiwiY3JlZCIseyJpZCI6IlprM3AweFFtSDh2TjFzTHdUNXVZZEEiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6IlBNcGthUXZVRllDNzdORDI1UGI3RVdDNUVjTTd3NkNmcWtnRkJORXRGb1EiLCJ5IjoiLVFFMDFJLWp2bTZIOEJBQmNKVm8tb2V5ZHF2YXBrMmotUXpfSVVIWGVmayJ9fV0",
+      "WyIyd196WUNOb21TUmYtLXd5Qm0xbWxnIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+      "WyJnUVhadXprOFZBc0ZlYVhzdm5UNDZBIiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+      "WyJrSVZWZmh6dk10N2NDWFdIOU52dm53IiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+      "WyJWSVBfdktzV3QyVDRlWDN5U1VHVGdBIiwibWF4IiwxMDAwMF0",
+      "WyJhVElIQnhQU1BaQm9TdTN2RktYSUpnIix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+      "WyI3eTFzenh6MV9RZVg0XzJ1akZTVWlRIix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+      "WyJVeVdGdVBOdWFpUDBxOFVkdjkxaWF3Iix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+      "WyJlNlBOcGJFS1lfUU02TWZJSjlGSlRRIix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+      "WyJVYm5ucnIzNWFQMHo2SVFyaFY0N21BIiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+    ],
+    "cart": {
+      "merchant": "mrc_runfast",
+      "currency": "USD",
+      "lines": [
+        {
+          "sku": "sku-trail-10",
+          "size": "10",
+          "color": "black",
+          "category": "gpt:187",
+          "qty": 1,
+          "unit_minor": 9400
+        }
+      ],
+      "return_days": 30,
+      "returns_free": true
+    },
+    "unit": {
+      "amount": {
+        "currency_code": "USD",
+        "value": "94.00",
+        "breakdown": {
+          "item_total": {
+            "currency_code": "USD",
+            "value": "94.00"
+          }
+        }
+      }
+    },
+    "evidence": {},
+    "now_ms": 1793750470000,
+    "budget_left_minor": 10000,
+    "request_id": "0x0000000000000000000000000000000001a1a3dbe66000000000000000000001",
+    "evidence_root": "0x5555555555555555555555555555555555555555555555555555555555555555",
+    "expires_at": 1793751370,
+    "chain_id": 421614,
+    "verifying_contract": "0x0000000000000000000000000000000000000000",
+    "oci_digest": "sha256:abababababababababababababababababababababababababababababababab",
+    "canonicalizer": "keelson-canon/0.0.0"
+  },
+  "eval_hash": "0x5ec208ec6a28c83bddf1623fccde1b504aba7857aa257e90f4cdc0724e646682",
+  "digest": "0xdb32e05790504ed2cfae6088845fa73409ffeae3769198389902227c6195a9a5"
+}

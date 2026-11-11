@@ -37,3 +37,8 @@ test("of RegisteredUserSet only publishing a root is relayable, never revoking o
   expect(isAllowed("RegisteredUserSet", "publish")).toBe(true);
   expect(isAllowed("RegisteredUserSet", "revoke")).toBe(false);
 });
+
+test("of EngineProofVerifier only recording a proof is relayable", () => {
+  expect(isAllowed("EngineProofVerifier", "record")).toBe(true);
+  expect(isAllowed("EngineProofVerifier", "verify")).toBe(false);
+});

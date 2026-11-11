@@ -27,6 +27,7 @@ import { CardLeg } from "./card-leg";
 import { ChargebackSheet } from "./chargeback-sheet";
 import { CheckoutBreakdown } from "./checkout-breakdown";
 import { DisputeSheet } from "./dispute-sheet";
+import { EngineProof } from "./engine-proof";
 import { ErrorNotice } from "./notice";
 
 const PARTY = {
@@ -240,6 +241,7 @@ function DisputeCard({ id }: { id: string }) {
         {d.elapsed_ms !== null ? ` · attributed in ${(d.elapsed_ms / 1000).toFixed(1)} s` : ""}
       </p>
       {d.settlement?.refund_id ? <p className="text-sm">Refund {d.settlement.refund_id}</p> : null}
+      <EngineProof purchaseId={d.purchase_id} />
       <p className="text-muted-foreground text-xs">PayPal still decides disputes.</p>
     </section>
   );

@@ -73,3 +73,23 @@ regexes = [
   '''cee7c0b53e0c733a1a8d44870133fa7cf17187a502c7cf37e429eea5a8d565d5''',
   '''f06b6eb0cdc9bf6ec9736d8373d75e757129005c306a9ad4e942b7196db54057''',
 ]
+
+[[allowlists]]
+description = "The engine SP1 program's public verifying keys, current and earlier, pinned where proofs of it are checked"
+condition = "AND"
+paths = [
+  '''packages/alibi/src/verify/engine-vk\.ts''',
+  '''services/api/src/zk/engine\.ts''',
+]
+regexes = [
+  '''0x008eb02e13c538c0b1f2edbbde39d8400956f1aa1e9952de4746106312ec02a0''',
+  '''0x00ca4805d1b694c33678c69414b2bfa502ba5c7695c6e57f86ba7f2ae37b9714''',
+  '''0x00c562cc96a77edfb4714bf98a2685fc6dfb825bb60e29e60b6a33205455e54c''',
+  '''0x002239e16cb091e30fe341ef30ed323dc2064c7afcb39e4aa63e6fa1b9961a55''',
+]
+
+[[allowlists]]
+description = "A public SP1 Groth16 proof of the committed countersign vector: proof bytes, public values and the program's verifying key, no key"
+paths = [
+  '''contracts/test/vectors/engine-proof\.json''',
+]

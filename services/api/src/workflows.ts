@@ -25,6 +25,7 @@ import { calibrate, gradeOf } from "./risk.ts";
 import { createTee } from "./tee/config.ts";
 import { awaitingC3, proveAnonymousPurchase } from "./zk/c1c3.ts";
 import { c3SaltKey, proveAnonymousMandate, publishUserSetRoots } from "./zk/c3.ts";
+import { proveEngine } from "./zk/engine.ts";
 
 const Env = z.object({
   DATABASE_URL: z.string().min(1),
@@ -179,6 +180,37 @@ task(
       return { purchaseId, proved: false };
     }
     return { purchaseId, proved: true, ms: Date.now() - started };
+  },
+);
+
+/**
+ * Proves in SP1 that the engine evaluation a disputed purchase was countersigned on gives its
+ * `evalHash`, and records the Groth16 proof with `EngineProofVerifier`. The Groth16 wrap needs
+ * about 14 GB; the whole proof takes minutes on eight cores.
+ */
+task(
+  {
+    name: "proveEngine",
+    retry: { maxRetries: 1, waitDurationMs: 10_000 },
+    timeoutSeconds: 3 * 60 * 60,
+    plan: "8c-32g",
+  },
+  async function proveEngineTask(_ctx, purchaseId: string) {
+    deps ??= connect().catch((err: unknown) => {
+      deps = undefined;
+      throw err;
+    });
+    const { db, log, relayer, chain } = await deps;
+    if (!relayer) throw new Error("the relayer is not configured");
+    const started = Date.now();
+    try {
+      const proof = await proveEngine({ db, log, relayer, chain: chain.client }, purchaseId);
+      return { purchaseId, proved: true, tx: proof.tx, ms: Date.now() - started };
+    } catch (err) {
+      if (!(err instanceof RangeError)) throw err;
+      log.warn({ err, purchaseId }, "no engine input to prove");
+      return { purchaseId, proved: false };
+    }
   },
 );
 
