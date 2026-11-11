@@ -37,6 +37,22 @@
     ]
   },
   {
+    "profile": "ucp.checkout/1",
+    "typ": "JWT",
+    "rows": [
+      {
+        "pointer": "/checkout/totals/0/amount",
+        "fact": "amount_minor",
+        "transform": "Minor"
+      },
+      {
+        "pointer": "/checkout/currency",
+        "fact": "currency",
+        "transform": "UpperCurrency"
+      }
+    ]
+  },
+  {
     "profile": "acp.allowance/1",
     "typ": "JWT",
     "rows": [

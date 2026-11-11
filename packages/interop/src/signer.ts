@@ -29,6 +29,7 @@ export interface AgentSigner {
 export class ExportRefused extends Error {
   readonly reason:
     | "denied"
+    | "no_cart"
     | "v1_alibi"
     | "no_merchant_origin"
     | "no_http_key"
