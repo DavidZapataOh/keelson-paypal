@@ -72,8 +72,8 @@ const STREAMED_POSTS =
   /^\/v1\/(merchants\/[^/]+\/assistant|operators\/[^/]+\/(coverages\/rows|grid-query))$/;
 
 /**
- * The public reads the verifier makes: an Alibi's receipt, a leaf's timestamps, a mandate's C3
- * proof and the registered-user roots.
+ * The public reads the verifier makes: an Alibi when it is public, an Alibi's receipt, a leaf's
+ * timestamps, a mandate's C3 proof and the registered-user roots.
  */
 const PUBLIC_READS =
   /^\/v1\/(alibis\/[0-7][0-9A-HJKMNP-TV-Z]{25}|alibis\/[^/]+\/receipt|timestamps\/[^/]+|anonymous-mandates\/[^/]+|anonymous-purchases\/[^/]+|user-set\/roots\/[^/]+)$/;
@@ -94,7 +94,7 @@ export interface Deps {
   judgeInvite?: string | undefined;
   /** The operator MCP tool calls act for when they name none. */
   demoAgentId?: bigint | undefined;
-  /** Browser origin of the public verifier, allowed to read Alibi receipts and timestamps without credentials. */
+  /** Browser origin of the public verifier, allowed to read public Alibis, receipts and timestamps without credentials. */
   verifyOrigin?: string;
   /** Reads the anchor and signer registry for `POST /v1/alibis/verify`; it verifies offline without it. */
   alibiChain?: ChainReader;
