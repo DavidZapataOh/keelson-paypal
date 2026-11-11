@@ -1,5 +1,5 @@
 {
-  "id": "323f36dc-3fa9-4b78-a774-5ea9760de0fa",
+  "id": "2de0142e-e838-49de-8077-d6aad1287396",
   "prevId": "73d4b31f-3fe5-4430-8f04-d44a9cb4296d",
   "version": "7",
   "dialect": "postgresql",
@@ -2951,6 +2951,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "match_number": {
+          "name": "match_number",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "matched_at": {
+          "name": "matched_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "poll_interval": {
           "name": "poll_interval",
           "type": "integer",
@@ -3098,6 +3110,10 @@
         "agent_connections_limits": {
           "name": "agent_connections_limits",
           "value": "\"agent_connections\".\"per_purchase_minor\" > 0 and \"agent_connections\".\"per_purchase_minor\" <= \"agent_connections\".\"total_minor\" and (\"agent_connections\".\"ask_above_minor\" is null or \"agent_connections\".\"ask_above_minor\" between 1 and \"agent_connections\".\"per_purchase_minor\")"
+        },
+        "agent_connections_match_number": {
+          "name": "agent_connections_match_number",
+          "value": "\"agent_connections\".\"match_number\" is null or \"agent_connections\".\"match_number\" between 10 and 99"
         },
         "agent_connections_approved": {
           "name": "agent_connections_approved",
@@ -4714,18 +4730,6 @@
         },
         "c1c3_proof": {
           "name": "c1c3_proof",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "engine_input": {
-          "name": "engine_input",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "engine_proof": {
-          "name": "engine_proof",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false

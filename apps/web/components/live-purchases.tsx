@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { VERIFY } from "../lib/config";
 import { major, when } from "../lib/format";
 import { alibiUrl, type LivePurchase, livePurchases, reasonOf } from "../lib/live";
+import { CheckoutBreakdown } from "./checkout-breakdown";
 import { ErrorNotice } from "./notice";
 
 const host = (origin: string) => new URL(origin).hostname.replace(/^www\./, "");
@@ -36,6 +37,7 @@ function Entry({ p }: { p: LivePurchase }) {
             {host(p.store)}
           </a>
         </div>
+        <CheckoutBreakdown amount={p.amount} />
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground text-sm">
           <Status state={denied ? "blocked" : "countersigned"} />
           <time dateTime={p.createdAt}>{when(p.createdAt)}</time>

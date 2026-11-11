@@ -277,6 +277,9 @@ describe("an agent asks for a mandate (RFC 8628)", () => {
     const op = await newOperator();
     const sub = await newUser();
     const { body } = await ask(op);
+    await send(`/v1/connections/${body.user_code}/match`, asUser(sub), {
+      number: body.match_number,
+    });
     const draft = (l: Record<string, unknown>) =>
       send(
         `/v1/connections/${body.user_code}/draft`,

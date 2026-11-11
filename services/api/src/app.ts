@@ -49,6 +49,7 @@ import { registerHealth } from "./routes/health.ts";
 import { registerHold } from "./routes/hold.ts";
 import { registerJudge } from "./routes/judge.ts";
 import { registerLogBonds } from "./routes/log-bonds.ts";
+import { registerMandateRequests } from "./routes/mandate-requests.ts";
 import { registerMandates } from "./routes/mandates.ts";
 import { registerMerchantAssistant } from "./routes/merchant-assistant.ts";
 import { registerMerchantConsole } from "./routes/merchant-console.ts";
@@ -308,6 +309,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerPurchaseHolds(app, deps);
   registerRevoke(app, deps);
   registerConnections(app, deps);
+  registerMandateRequests(app, deps);
   registerEmbed(app, deps);
   if (deps.embedPage) registerEmbedPage(app, deps, deps.embedPage);
   registerAgents(app, deps);

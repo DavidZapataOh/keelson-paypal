@@ -14022,6 +14022,2765 @@
     }
   },
   {
+    "name": "parseMandate/ok/embed",
+    "input": {
+      "op": "parseMandate",
+      "mandate": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "sub": "kls_usr_7f3a9c21",
+          "cred": {
+            "id": "Zk3p0xQmH8vN1sLwT5uYdA",
+            "rp_id": "keelson.finance",
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "f83OJ3D2xF1Bg8vnKwxo1Ao8jzV5TnQ1rM7bY0qk2cA",
+              "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+            }
+          },
+          "app_login_id": "andres@example.com"
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "agt-01",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "type": "payment.amount_range",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.budget",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "id": "mrc_runfast",
+                  "name": "RunFast",
+                  "website": "https://runfast.example",
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "id": "sku-trail-10",
+                      "title": "Trail running shoe"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "prompt_summary": "Running shoes, size 10, under $100, free returns, by Friday",
+          "prompt_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "subjective": [
+            "look good"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "risk_data": {
+          "device_fp": "fp_3c9a71",
+          "ip": "203.0.113.7"
+        },
+        "embed": {
+          "top_origin": "https://agents.example.com"
+        }
+      }
+    },
+    "expected": true
+  },
+  {
+    "name": "parseMandate/ok/embed-port",
+    "input": {
+      "op": "parseMandate",
+      "mandate": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "sub": "kls_usr_7f3a9c21",
+          "cred": {
+            "id": "Zk3p0xQmH8vN1sLwT5uYdA",
+            "rp_id": "keelson.finance",
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "f83OJ3D2xF1Bg8vnKwxo1Ao8jzV5TnQ1rM7bY0qk2cA",
+              "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+            }
+          },
+          "app_login_id": "andres@example.com"
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "agt-01",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "type": "payment.amount_range",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.budget",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "id": "mrc_runfast",
+                  "name": "RunFast",
+                  "website": "https://runfast.example",
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "id": "sku-trail-10",
+                      "title": "Trail running shoe"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "prompt_summary": "Running shoes, size 10, under $100, free returns, by Friday",
+          "prompt_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "subjective": [
+            "look good"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "risk_data": {
+          "device_fp": "fp_3c9a71",
+          "ip": "203.0.113.7"
+        },
+        "embed": {
+          "top_origin": "https://agents.example.com:8443"
+        }
+      }
+    },
+    "expected": true
+  },
+  {
+    "name": "parseMandate/ok/embed-port-65535",
+    "input": {
+      "op": "parseMandate",
+      "mandate": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "sub": "kls_usr_7f3a9c21",
+          "cred": {
+            "id": "Zk3p0xQmH8vN1sLwT5uYdA",
+            "rp_id": "keelson.finance",
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "f83OJ3D2xF1Bg8vnKwxo1Ao8jzV5TnQ1rM7bY0qk2cA",
+              "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+            }
+          },
+          "app_login_id": "andres@example.com"
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "agt-01",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "type": "payment.amount_range",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.budget",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "id": "mrc_runfast",
+                  "name": "RunFast",
+                  "website": "https://runfast.example",
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "id": "sku-trail-10",
+                      "title": "Trail running shoe"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "prompt_summary": "Running shoes, size 10, under $100, free returns, by Friday",
+          "prompt_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "subjective": [
+            "look good"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "risk_data": {
+          "device_fp": "fp_3c9a71",
+          "ip": "203.0.113.7"
+        },
+        "embed": {
+          "top_origin": "https://agents.example.com:65535"
+        }
+      }
+    },
+    "expected": true
+  },
+  {
+    "name": "parseMandate/error/embed-port-443",
+    "input": {
+      "op": "parseMandate",
+      "mandate": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "sub": "kls_usr_7f3a9c21",
+          "cred": {
+            "id": "Zk3p0xQmH8vN1sLwT5uYdA",
+            "rp_id": "keelson.finance",
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "f83OJ3D2xF1Bg8vnKwxo1Ao8jzV5TnQ1rM7bY0qk2cA",
+              "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+            }
+          },
+          "app_login_id": "andres@example.com"
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "agt-01",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "type": "payment.amount_range",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.budget",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "id": "mrc_runfast",
+                  "name": "RunFast",
+                  "website": "https://runfast.example",
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "id": "sku-trail-10",
+                      "title": "Trail running shoe"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "prompt_summary": "Running shoes, size 10, under $100, free returns, by Friday",
+          "prompt_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "subjective": [
+            "look good"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "risk_data": {
+          "device_fp": "fp_3c9a71",
+          "ip": "203.0.113.7"
+        },
+        "embed": {
+          "top_origin": "https://agents.example.com:443"
+        }
+      }
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "embed.top_origin"
+    }
+  },
+  {
+    "name": "parseMandate/error/embed-port-65536",
+    "input": {
+      "op": "parseMandate",
+      "mandate": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "sub": "kls_usr_7f3a9c21",
+          "cred": {
+            "id": "Zk3p0xQmH8vN1sLwT5uYdA",
+            "rp_id": "keelson.finance",
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "f83OJ3D2xF1Bg8vnKwxo1Ao8jzV5TnQ1rM7bY0qk2cA",
+              "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+            }
+          },
+          "app_login_id": "andres@example.com"
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "agt-01",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "type": "payment.amount_range",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.budget",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "id": "mrc_runfast",
+                  "name": "RunFast",
+                  "website": "https://runfast.example",
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "id": "sku-trail-10",
+                      "title": "Trail running shoe"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "prompt_summary": "Running shoes, size 10, under $100, free returns, by Friday",
+          "prompt_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "subjective": [
+            "look good"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "risk_data": {
+          "device_fp": "fp_3c9a71",
+          "ip": "203.0.113.7"
+        },
+        "embed": {
+          "top_origin": "https://agents.example.com:65536"
+        }
+      }
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "embed.top_origin"
+    }
+  },
+  {
+    "name": "parseMandate/error/embed-port-leading-zero",
+    "input": {
+      "op": "parseMandate",
+      "mandate": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "sub": "kls_usr_7f3a9c21",
+          "cred": {
+            "id": "Zk3p0xQmH8vN1sLwT5uYdA",
+            "rp_id": "keelson.finance",
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "f83OJ3D2xF1Bg8vnKwxo1Ao8jzV5TnQ1rM7bY0qk2cA",
+              "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+            }
+          },
+          "app_login_id": "andres@example.com"
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "agt-01",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "type": "payment.amount_range",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.budget",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "id": "mrc_runfast",
+                  "name": "RunFast",
+                  "website": "https://runfast.example",
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "id": "sku-trail-10",
+                      "title": "Trail running shoe"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "prompt_summary": "Running shoes, size 10, under $100, free returns, by Friday",
+          "prompt_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "subjective": [
+            "look good"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "risk_data": {
+          "device_fp": "fp_3c9a71",
+          "ip": "203.0.113.7"
+        },
+        "embed": {
+          "top_origin": "https://agents.example.com:0443"
+        }
+      }
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "embed.top_origin"
+    }
+  },
+  {
+    "name": "parseMandate/error/embed-port-zero",
+    "input": {
+      "op": "parseMandate",
+      "mandate": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "sub": "kls_usr_7f3a9c21",
+          "cred": {
+            "id": "Zk3p0xQmH8vN1sLwT5uYdA",
+            "rp_id": "keelson.finance",
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "f83OJ3D2xF1Bg8vnKwxo1Ao8jzV5TnQ1rM7bY0qk2cA",
+              "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+            }
+          },
+          "app_login_id": "andres@example.com"
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "agt-01",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "type": "payment.amount_range",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.budget",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "id": "mrc_runfast",
+                  "name": "RunFast",
+                  "website": "https://runfast.example",
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "id": "sku-trail-10",
+                      "title": "Trail running shoe"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "prompt_summary": "Running shoes, size 10, under $100, free returns, by Friday",
+          "prompt_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "subjective": [
+            "look good"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "risk_data": {
+          "device_fp": "fp_3c9a71",
+          "ip": "203.0.113.7"
+        },
+        "embed": {
+          "top_origin": "https://agents.example.com:0"
+        }
+      }
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "embed.top_origin"
+    }
+  },
+  {
+    "name": "parseMandate/error/embed-empty-port",
+    "input": {
+      "op": "parseMandate",
+      "mandate": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "sub": "kls_usr_7f3a9c21",
+          "cred": {
+            "id": "Zk3p0xQmH8vN1sLwT5uYdA",
+            "rp_id": "keelson.finance",
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "f83OJ3D2xF1Bg8vnKwxo1Ao8jzV5TnQ1rM7bY0qk2cA",
+              "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+            }
+          },
+          "app_login_id": "andres@example.com"
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "agt-01",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "type": "payment.amount_range",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.budget",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "id": "mrc_runfast",
+                  "name": "RunFast",
+                  "website": "https://runfast.example",
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "id": "sku-trail-10",
+                      "title": "Trail running shoe"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "prompt_summary": "Running shoes, size 10, under $100, free returns, by Friday",
+          "prompt_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "subjective": [
+            "look good"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "risk_data": {
+          "device_fp": "fp_3c9a71",
+          "ip": "203.0.113.7"
+        },
+        "embed": {
+          "top_origin": "https://agents.example.com:"
+        }
+      }
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "embed.top_origin"
+    }
+  },
+  {
+    "name": "parseMandate/error/embed-http",
+    "input": {
+      "op": "parseMandate",
+      "mandate": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "sub": "kls_usr_7f3a9c21",
+          "cred": {
+            "id": "Zk3p0xQmH8vN1sLwT5uYdA",
+            "rp_id": "keelson.finance",
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "f83OJ3D2xF1Bg8vnKwxo1Ao8jzV5TnQ1rM7bY0qk2cA",
+              "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+            }
+          },
+          "app_login_id": "andres@example.com"
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "agt-01",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "type": "payment.amount_range",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.budget",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "id": "mrc_runfast",
+                  "name": "RunFast",
+                  "website": "https://runfast.example",
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "id": "sku-trail-10",
+                      "title": "Trail running shoe"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "prompt_summary": "Running shoes, size 10, under $100, free returns, by Friday",
+          "prompt_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "subjective": [
+            "look good"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "risk_data": {
+          "device_fp": "fp_3c9a71",
+          "ip": "203.0.113.7"
+        },
+        "embed": {
+          "top_origin": "http://agents.example.com"
+        }
+      }
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "embed.top_origin"
+    }
+  },
+  {
+    "name": "parseMandate/error/embed-path",
+    "input": {
+      "op": "parseMandate",
+      "mandate": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "sub": "kls_usr_7f3a9c21",
+          "cred": {
+            "id": "Zk3p0xQmH8vN1sLwT5uYdA",
+            "rp_id": "keelson.finance",
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "f83OJ3D2xF1Bg8vnKwxo1Ao8jzV5TnQ1rM7bY0qk2cA",
+              "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+            }
+          },
+          "app_login_id": "andres@example.com"
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "agt-01",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "type": "payment.amount_range",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.budget",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "id": "mrc_runfast",
+                  "name": "RunFast",
+                  "website": "https://runfast.example",
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "id": "sku-trail-10",
+                      "title": "Trail running shoe"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "prompt_summary": "Running shoes, size 10, under $100, free returns, by Friday",
+          "prompt_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "subjective": [
+            "look good"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "risk_data": {
+          "device_fp": "fp_3c9a71",
+          "ip": "203.0.113.7"
+        },
+        "embed": {
+          "top_origin": "https://agents.example.com/"
+        }
+      }
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "embed.top_origin"
+    }
+  },
+  {
+    "name": "parseMandate/error/embed-uppercase-host",
+    "input": {
+      "op": "parseMandate",
+      "mandate": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "sub": "kls_usr_7f3a9c21",
+          "cred": {
+            "id": "Zk3p0xQmH8vN1sLwT5uYdA",
+            "rp_id": "keelson.finance",
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "f83OJ3D2xF1Bg8vnKwxo1Ao8jzV5TnQ1rM7bY0qk2cA",
+              "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+            }
+          },
+          "app_login_id": "andres@example.com"
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "agt-01",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "type": "payment.amount_range",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.budget",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "id": "mrc_runfast",
+                  "name": "RunFast",
+                  "website": "https://runfast.example",
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "id": "sku-trail-10",
+                      "title": "Trail running shoe"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "prompt_summary": "Running shoes, size 10, under $100, free returns, by Friday",
+          "prompt_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "subjective": [
+            "look good"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "risk_data": {
+          "device_fp": "fp_3c9a71",
+          "ip": "203.0.113.7"
+        },
+        "embed": {
+          "top_origin": "https://Agents.example.com"
+        }
+      }
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "embed.top_origin"
+    }
+  },
+  {
+    "name": "parseMandate/error/embed-userinfo",
+    "input": {
+      "op": "parseMandate",
+      "mandate": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "sub": "kls_usr_7f3a9c21",
+          "cred": {
+            "id": "Zk3p0xQmH8vN1sLwT5uYdA",
+            "rp_id": "keelson.finance",
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "f83OJ3D2xF1Bg8vnKwxo1Ao8jzV5TnQ1rM7bY0qk2cA",
+              "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+            }
+          },
+          "app_login_id": "andres@example.com"
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "agt-01",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "type": "payment.amount_range",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.budget",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "id": "mrc_runfast",
+                  "name": "RunFast",
+                  "website": "https://runfast.example",
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "id": "sku-trail-10",
+                      "title": "Trail running shoe"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "prompt_summary": "Running shoes, size 10, under $100, free returns, by Friday",
+          "prompt_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "subjective": [
+            "look good"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "risk_data": {
+          "device_fp": "fp_3c9a71",
+          "ip": "203.0.113.7"
+        },
+        "embed": {
+          "top_origin": "https://user@agents.example.com"
+        }
+      }
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "embed.top_origin"
+    }
+  },
+  {
+    "name": "parseMandate/error/embed-ipv4",
+    "input": {
+      "op": "parseMandate",
+      "mandate": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "sub": "kls_usr_7f3a9c21",
+          "cred": {
+            "id": "Zk3p0xQmH8vN1sLwT5uYdA",
+            "rp_id": "keelson.finance",
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "f83OJ3D2xF1Bg8vnKwxo1Ao8jzV5TnQ1rM7bY0qk2cA",
+              "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+            }
+          },
+          "app_login_id": "andres@example.com"
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "agt-01",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "type": "payment.amount_range",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.budget",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "id": "mrc_runfast",
+                  "name": "RunFast",
+                  "website": "https://runfast.example",
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "id": "sku-trail-10",
+                      "title": "Trail running shoe"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "prompt_summary": "Running shoes, size 10, under $100, free returns, by Friday",
+          "prompt_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "subjective": [
+            "look good"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "risk_data": {
+          "device_fp": "fp_3c9a71",
+          "ip": "203.0.113.7"
+        },
+        "embed": {
+          "top_origin": "https://192.168.0.1"
+        }
+      }
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "embed.top_origin"
+    }
+  },
+  {
+    "name": "parseMandate/error/embed-not-a-string",
+    "input": {
+      "op": "parseMandate",
+      "mandate": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "sub": "kls_usr_7f3a9c21",
+          "cred": {
+            "id": "Zk3p0xQmH8vN1sLwT5uYdA",
+            "rp_id": "keelson.finance",
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "f83OJ3D2xF1Bg8vnKwxo1Ao8jzV5TnQ1rM7bY0qk2cA",
+              "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+            }
+          },
+          "app_login_id": "andres@example.com"
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "agt-01",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "type": "payment.amount_range",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.budget",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "id": "mrc_runfast",
+                  "name": "RunFast",
+                  "website": "https://runfast.example",
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "id": "sku-trail-10",
+                      "title": "Trail running shoe"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "prompt_summary": "Running shoes, size 10, under $100, free returns, by Friday",
+          "prompt_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "subjective": [
+            "look good"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "risk_data": {
+          "device_fp": "fp_3c9a71",
+          "ip": "203.0.113.7"
+        },
+        "embed": {
+          "top_origin": 42
+        }
+      }
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "embed.top_origin"
+    }
+  },
+  {
+    "name": "parseMandate/error/embed-null",
+    "input": {
+      "op": "parseMandate",
+      "mandate": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "sub": "kls_usr_7f3a9c21",
+          "cred": {
+            "id": "Zk3p0xQmH8vN1sLwT5uYdA",
+            "rp_id": "keelson.finance",
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "f83OJ3D2xF1Bg8vnKwxo1Ao8jzV5TnQ1rM7bY0qk2cA",
+              "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+            }
+          },
+          "app_login_id": "andres@example.com"
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "agt-01",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "type": "payment.amount_range",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.budget",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "id": "mrc_runfast",
+                  "name": "RunFast",
+                  "website": "https://runfast.example",
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "id": "sku-trail-10",
+                      "title": "Trail running shoe"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "prompt_summary": "Running shoes, size 10, under $100, free returns, by Friday",
+          "prompt_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "subjective": [
+            "look good"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "risk_data": {
+          "device_fp": "fp_3c9a71",
+          "ip": "203.0.113.7"
+        },
+        "embed": null
+      }
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "embed"
+    }
+  },
+  {
+    "name": "parseMandate/error/embed-empty",
+    "input": {
+      "op": "parseMandate",
+      "mandate": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "sub": "kls_usr_7f3a9c21",
+          "cred": {
+            "id": "Zk3p0xQmH8vN1sLwT5uYdA",
+            "rp_id": "keelson.finance",
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "f83OJ3D2xF1Bg8vnKwxo1Ao8jzV5TnQ1rM7bY0qk2cA",
+              "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+            }
+          },
+          "app_login_id": "andres@example.com"
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "agt-01",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "type": "payment.amount_range",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.budget",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "id": "mrc_runfast",
+                  "name": "RunFast",
+                  "website": "https://runfast.example",
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "id": "sku-trail-10",
+                      "title": "Trail running shoe"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "prompt_summary": "Running shoes, size 10, under $100, free returns, by Friday",
+          "prompt_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "subjective": [
+            "look good"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "risk_data": {
+          "device_fp": "fp_3c9a71",
+          "ip": "203.0.113.7"
+        },
+        "embed": {}
+      }
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "embed.top_origin"
+    }
+  },
+  {
+    "name": "parseMandate/error/embed-unknown-key",
+    "input": {
+      "op": "parseMandate",
+      "mandate": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "sub": "kls_usr_7f3a9c21",
+          "cred": {
+            "id": "Zk3p0xQmH8vN1sLwT5uYdA",
+            "rp_id": "keelson.finance",
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "f83OJ3D2xF1Bg8vnKwxo1Ao8jzV5TnQ1rM7bY0qk2cA",
+              "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+            }
+          },
+          "app_login_id": "andres@example.com"
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "agt-01",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "type": "payment.amount_range",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.budget",
+              "max": 10000,
+              "currency": "USD"
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "id": "mrc_runfast",
+                  "name": "RunFast",
+                  "website": "https://runfast.example",
+                  "paypal_merchant_id": "MERCH7XK2Q9LD"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "id": "sku-trail-10",
+                      "title": "Trail running shoe"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "prompt_summary": "Running shoes, size 10, under $100, free returns, by Friday",
+          "prompt_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "subjective": [
+            "look good"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "risk_data": {
+          "device_fp": "fp_3c9a71",
+          "ip": "203.0.113.7"
+        },
+        "embed": {
+          "top_origin": "https://agents.example.com",
+          "origin": "https://api.keelson.finance"
+        }
+      }
+    },
+    "expected": {
+      "error": "mandate",
+      "field": "embed"
+    }
+  },
+  {
     "name": "categoryMask/gpt:1",
     "input": {
       "op": "categoryMask",

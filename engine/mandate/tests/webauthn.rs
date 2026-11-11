@@ -66,6 +66,7 @@ fn verify(i: &Value) -> Result<(), WebAuthnError> {
         &Expected {
             challenge: mandate_challenge(&h_sd(&i["payloadSd"]).unwrap(), &cm),
             origin: text(&i["origin"]),
+            top_origin: i["topOrigin"].as_str().map(str::to_owned),
             rp_id: text(&i["rpId"]),
             public_key_sec1: hex(&i["publicKeySec1"]),
             spc: spc_details(&m).unwrap(),
@@ -76,7 +77,7 @@ fn verify(i: &Value) -> Result<(), WebAuthnError> {
 #[test]
 fn webauthn_vectors() {
     let vectors = vectors();
-    assert_eq!(vectors.len(), 59);
+    assert_eq!(vectors.len(), 73);
     for v in vectors {
         match v.input["op"].as_str() {
             Some("verify") => {
