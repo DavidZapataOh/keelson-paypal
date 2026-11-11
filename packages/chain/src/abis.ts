@@ -719,6 +719,16 @@ export const iAnonymousMandateVerifierAbi = [
   },
 ] as const;
 
+export const iArbBlockNumberAbi = [
+  {
+    type: "function",
+    name: "arbBlockNumber",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
+    stateMutability: "view",
+  },
+] as const;
+
 export const iArbSysAbi = [
   {
     type: "function",
