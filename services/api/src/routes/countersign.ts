@@ -51,6 +51,7 @@ import { publishPurchase } from "../pipeline/events.ts";
 import { logStep } from "../pipeline/log-step.ts";
 import { principalKey } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
+import { stoppedSince } from "../stop.ts";
 import { LegError } from "../tee/client.ts";
 import { VERIFYING_CONTRACT } from "../tee/config.ts";
 import {
@@ -1055,6 +1056,10 @@ export function registerCountersign(
           )
           .for("share");
         if (!live) return { revoked: true as const };
+        // A stop of every agent stored first refuses each mandate stored before it, flagged or not.
+        if (await stoppedSince(tx, mandate.userId, mandate.createdAt)) {
+          return { revoked: true as const };
+        }
         // Serializes the purchases of one cart under one mandate, so two retries cannot both pass.
         await tx.execute(
           sql`select pg_advisory_xact_lock(hashtext(${`purchase:${mandate.id}:${want.cartHash}`}))`,

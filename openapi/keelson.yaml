@@ -1336,6 +1336,67 @@ components:
         - merchant
         - mandateId
         - expiresAt
+    AgentStop:
+      type: object
+      properties:
+        id:
+          type: string
+        revoked:
+          type: integer
+          description: Mandates ended.
+        released:
+          type: array
+          items:
+            type: object
+            properties:
+              currency:
+                type: string
+              minor:
+                type: string
+            required:
+              - currency
+              - minor
+          description: What PayPal held for them, per currency, now released.
+        mandateHashes:
+          type: array
+          items:
+            type: string
+          description: "Hex of the stopped mandates' hashes. The stop leaf commits to
+            their digest: no Alibi leaf after it may carry one."
+        releasing:
+          type: array
+          items:
+            type: object
+            properties:
+              currency:
+                type: string
+              minor:
+                type: string
+            required:
+              - currency
+              - minor
+          description: "Holds backing purchases already countersigned: released once those
+            are captured."
+        logIndexes:
+          type: object
+          additionalProperties:
+            type: string
+          description: The stop leaf's index in each Alibi log origin. It is appended once
+            no purchase of the stopped mandates can still be logged, so no Alibi
+            leaf after it carries one of their hashes.
+        logged:
+          type: boolean
+        createdAt:
+          type: string
+      required:
+        - id
+        - revoked
+        - released
+        - mandateHashes
+        - releasing
+        - logIndexes
+        - logged
+        - createdAt
     AgentsRevoked:
       type: object
       properties:
@@ -7193,14 +7254,16 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
-  /v1/agents/freeze:
+  /v1/agents/stop:
     post:
       tags:
         - agents
-      summary: Freeze all agents
-      description: Revokes every live mandate of yours and ends every connection.
-        Keelson refuses every countersign for you from now on; purchases already
-        countersigned may still be captured.
+      summary: Stop all agents
+      description: The kill switch. Keelson refuses every countersign of a mandate of
+        yours stored before now, revokes every live mandate and voids its PayPal
+        holds, denies every open request, revokes every agent's OAuth grant, and
+        logs the stop as a `keelson.finance/stop/v1` leaf in the Alibi log.
+        Purchases already countersigned may still be captured.
       parameters:
         - schema:
             type: string
@@ -7211,11 +7274,37 @@ paths:
           in: header
       responses:
         "200":
-          description: Frozen
+          description: Stopped
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AgentsRevoked"
+                $ref: "#/components/schemas/AgentStop"
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/agents/stops:
+    get:
+      tags:
+        - agents
+      summary: Your stops
+      description: Each time you stopped all agents, newest first, with its log index.
+      responses:
+        "200":
+          description: The stops
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stops:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AgentStop"
+                required:
+                  - stops
         "401":
           description: Not signed in
           content:
