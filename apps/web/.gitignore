@@ -2,5 +2,5 @@ out
 .next
 next-env.d.ts
 *.tsbuildinfo
-rive/onboarding/build
 public/rive/rive.wasm
+rive/seal/build

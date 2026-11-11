@@ -1,18 +1,21 @@
 "use client";
 
 import { Button } from "@keelson/ui/components/button";
+import { KeyRound, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { authClient } from "../lib/auth";
-import { ErrorNotice, Eyebrow } from "./notice";
-import { Story } from "./story";
+import { ErrorNotice } from "./notice";
+import { OnboardingFrame } from "./onboarding/frame";
+import { GateScene } from "./onboarding/gate-scene";
 
-/** The first screen: what Keelson does for you, then sign in. */
+/** Step one: connect the PayPal account the agent will pay with. */
 export function Welcome() {
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState<"paypal" | "passkey">();
 
   const paypal = async () => {
     setBusy("paypal");
+    setError(undefined);
     const { error } = await authClient.signIn.social({
       provider: "paypal",
       callbackURL: `${location.origin}/`,
@@ -25,6 +28,7 @@ export function Welcome() {
 
   const passkey = async () => {
     setBusy("passkey");
+    setError(undefined);
     const res = await authClient.signIn.passkey();
     if (res.error) {
       setError(res.error.message ?? "No passkey signed in.");
@@ -35,33 +39,50 @@ export function Welcome() {
   };
 
   return (
-    <div className="grid gap-12 pt-4 md:grid-cols-[1.05fr_1fr] md:items-center md:gap-16 md:pt-12">
-      <div className="grid content-start gap-8">
-        <div className="grid gap-4">
-          <Eyebrow>Proof before payment</Eyebrow>
-          <h1 className="text-balance font-semibold text-4xl leading-[1.02] tracking-[-0.035em] sm:text-5xl">
-            If your agent goes outside what you signed, someone answers, and it isn't you.
-          </h1>
-          <p className="max-w-prose text-pretty text-lg text-muted-foreground">
-            Tell your shopping agent what it may buy. Keelson checks every cart against it before
-            PayPal pays, and keeps an Alibi of each purchase that anyone can verify.
+    <OnboardingFrame
+      step="PayPal"
+      stage={<GateScene />}
+      action={
+        <div className="grid gap-2">
+          <Button
+            size="lg"
+            onClick={paypal}
+            disabled={busy !== undefined}
+            className="h-13 w-full rounded-xl text-base"
+          >
+            {busy === "paypal" ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
+            {busy === "paypal" ? "Opening PayPal" : "Continue with PayPal"}
+          </Button>
+          <Button
+            size="lg"
+            variant="ghost"
+            onClick={passkey}
+            disabled={busy !== undefined}
+            className="h-12 w-full rounded-xl"
+          >
+            <KeyRound aria-hidden="true" />
+            {busy === "passkey" ? "Waiting for your passkey" : "I have a passkey"}
+          </Button>
+          <p className="mt-4 hidden text-muted-foreground text-xs leading-relaxed lg:block">
+            PayPal sandbox: no real money moves. Keelson is an independent project, not affiliated
+            with or endorsed by PayPal.
           </p>
         </div>
-        <div className="grid gap-3 sm:max-w-sm">
-          <Button size="lg" onClick={paypal} disabled={busy !== undefined}>
-            {busy === "paypal" ? "Opening PayPal…" : "Continue with PayPal"}
-          </Button>
-          <Button size="lg" variant="outline" onClick={passkey} disabled={busy !== undefined}>
-            {busy === "passkey" ? "Waiting for your passkey…" : "Sign in with a passkey"}
-          </Button>
-          <p className="text-muted-foreground text-sm">PayPal sandbox. No real money moves.</p>
-        </div>
-        {error ? <ErrorNotice>{error}</ErrorNotice> : null}
+      }
+    >
+      <div className="grid gap-3">
+        <h1 className="text-balance font-semibold text-[1.75rem] leading-[1.1] tracking-[-0.025em] sm:text-[2rem]">
+          Connect your PayPal
+        </h1>
+        <p className="text-pretty text-lg text-muted-foreground leading-snug">
+          Your agent pays with it. Keelson checks every cart first.
+        </p>
       </div>
-      <Story />
-      <p className="text-muted-foreground text-xs md:col-span-2">
-        Keelson is an independent project. Not affiliated with or endorsed by PayPal.
-      </p>
-    </div>
+      {error ? (
+        <div className="mt-6">
+          <ErrorNotice>{error}</ErrorNotice>
+        </div>
+      ) : null}
+    </OnboardingFrame>
   );
 }
