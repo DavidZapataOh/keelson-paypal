@@ -4,7 +4,12 @@ import { randomBytes } from "node:crypto";
 import { decodeAlibi, leafHashOf } from "@keelson/alibi";
 import { extractAlibi } from "@keelson/alibi/extract";
 import { verifyAlibi } from "@keelson/alibi/verify";
-import { type Conversion, DEFAULT_MAX_SPREAD_BPS, type FxReference } from "@keelson/core";
+import {
+  type Conversion,
+  captureCeiling,
+  DEFAULT_MAX_SPREAD_BPS,
+  type FxReference,
+} from "@keelson/core";
 import {
   alibis,
   eq,
@@ -21,6 +26,7 @@ import { ulid } from "ulid";
 import { beforeAll, describe, expect, test } from "vitest";
 import { fixtures } from "../../../packages/alibi/test/fixtures.ts";
 import demo from "../../../packages/mandate/test/fixtures/demo-mandate.json" with { type: "json" };
+import { loadAlibi } from "../src/alibi/issue.ts";
 import { createApp } from "../src/app.ts";
 import { commitmentBytes } from "../src/fx.ts";
 import { drivePurchase, resumePurchases } from "../src/pipeline/drive.ts";
@@ -255,6 +261,44 @@ describe.skipIf(!f)("live Alibis are public", () => {
     expect(res.status).toBe(200);
     const bundle = decodeAlibi(new Uint8Array(await res.arrayBuffer()));
     expect(bundle.paypal?.transaction_id).toBe("5MC585209K746392H");
+  });
+
+  test("the Alibi carries the store's PayPal order and its capture ceiling, and the conversion", async () => {
+    const conversion = {
+      v: "keelson.conversion/1",
+      merchant: { currency: "USD", value: "2.95" },
+      buyer: { currency: "COP", value: "10231" },
+      rate: "3468.14",
+      reference: {
+        rate: "3276.876985",
+        provider: "ExchangeRate-API",
+        source: "https://open.er-api.com/v6/latest/USD",
+        as_of: "2026-11-11T00:02:32.000Z",
+      },
+      spread_bps: 584,
+      max_spread_bps: 750,
+      locale: "es-CO",
+    };
+    const set = (o: Partial<typeof purchases.$inferInsert>) =>
+      testDb.update(purchases).set(o).where(eq(purchases.id, b.alibi_id));
+    await set({ paypalOrderIntent: "AUTHORIZE", paypalPayeeId: "MERCH7XK2Q9LD", conversion });
+    try {
+      const alibi = await loadAlibi(testDb, b.alibi_id);
+      const amount = Number(b.tee.countersign.amount);
+      expect(alibi?.paypal?.store_order).toEqual({
+        intent: "AUTHORIZE",
+        payee_id: "MERCH7XK2Q9LD",
+        capture_ceiling_minor: String(captureCeiling("USD", amount)),
+      });
+      expect(alibi?.conversion).toEqual(conversion);
+      await set({ paypalOrderIntent: "SALE", conversion: null });
+      expect((await loadAlibi(testDb, b.alibi_id))?.paypal?.store_order).toEqual({
+        intent: "SALE",
+        payee_id: "MERCH7XK2Q9LD",
+      });
+    } finally {
+      await set({ paypalOrderIntent: null, paypalPayeeId: null, conversion: null });
+    }
   });
 
   test("the public copy withholds the user's login id and risk data, and verifies", async () => {

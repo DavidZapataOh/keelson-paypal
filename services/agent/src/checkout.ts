@@ -120,6 +120,30 @@ const post = async (keelson: Keelson, path: string, headers: HeadersInit, body: 
 };
 
 /**
+ * Keelson's reference rates from `currency`, and the evidence item that binds them: their
+ * commitment, which holds each rate as a digest. Undefined when Keelson has no current ones; a
+ * charge PayPal converts is then never paid.
+ */
+export async function referenceItem(
+  keelson: Keelson,
+  headers: HeadersInit,
+  currency: string,
+): Promise<{ reference: FxReference; item: SealedItem } | undefined> {
+  const res = await keelson.request(`/v1/fx/reference/${currency}`, { method: "GET", headers });
+  if (res.status !== 200) return undefined;
+  const reference = (await res.json()) as FxReference;
+  return {
+    reference,
+    item: {
+      type: "api.fx_reference",
+      mediaType: MEDIA_TYPES["api.fx_reference"],
+      bytes: canonicalBytes(commitReference(reference)),
+      salt: crypto.getRandomValues(new Uint8Array(32)),
+    },
+  };
+}
+
+/**
  * Seals what the agent saw at decision time, stores it with Keelson and asks Keelson to
  * countersign the cart under the mandate. Keelson decides; a DENY is an answer, not an error.
  */
@@ -160,22 +184,9 @@ export async function checkout(o: {
     salt: crypto.getRandomValues(new Uint8Array(32)),
   });
   // A live purchase binds the reference rates the gate will check PayPal's conversion against.
-  let reference: FxReference | undefined;
-  if (o.live) {
-    const res = await o.keelson.request(`/v1/fx/reference/${o.quote.cart.currency}`, {
-      method: "GET",
-      headers: o.headers,
-    });
-    if (res.status === 200) {
-      reference = (await res.json()) as FxReference;
-      capture.items.push({
-        type: "api.fx_reference",
-        mediaType: MEDIA_TYPES["api.fx_reference"],
-        bytes: canonicalBytes(commitReference(reference)),
-        salt: crypto.getRandomValues(new Uint8Array(32)),
-      });
-    }
-  }
+  const fx = o.live ? await referenceItem(o.keelson, o.headers, o.quote.cart.currency) : undefined;
+  if (fx) capture.items.push(fx.item);
+  const reference = fx?.reference;
   if (o.observe) {
     t = performance.now();
     capture.items.push(...(await o.observe(capture)));
