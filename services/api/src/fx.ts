@@ -23,7 +23,7 @@ import type { RedisClientType } from "redis";
  * checked PayPal's against. It bounds PayPal's spread; it prices nothing. Rates more than 48 hours
  * old are not served.
  */
-export const PROVIDER = "ExchangeRate-API";
+const PROVIDER = "ExchangeRate-API";
 const sourceOf = (base: string) => `https://open.er-api.com/v6/latest/${base}`;
 const CACHE_SEC = 3600;
 /** How long a reference the API served can be bound into a purchase's evidence. */
@@ -33,13 +33,17 @@ const MAX_AGE_MS = 48 * 3600_000;
 const latestKey = (base: string) => `fx:latest:${base}`;
 const issuedKey = (bytes: Uint8Array) => `fx:issued:${toHex(sha256(bytes))}`;
 
-/** The bytes of the evidence item that binds `ref`: its commitment as RFC 8785 JSON. */
+/**
+ * The bytes of the evidence item that binds `ref`: its commitment as RFC 8785 JSON.
+ *
+ * @internal
+ */
 export function commitmentBytes(ref: FxReference): Uint8Array {
   return new TextEncoder().encode(jcs(commitReference(ref) as unknown as Json));
 }
 
 /** The reference `body` from the provider states, or undefined unless it is a usable one. */
-export function referenceOf(body: unknown, base: string, now: Date): FxReference | undefined {
+function referenceOf(body: unknown, base: string, now: Date): FxReference | undefined {
   const b = body as {
     result?: unknown;
     base_code?: unknown;

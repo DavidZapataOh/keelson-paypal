@@ -46,8 +46,10 @@ export function orderToken(url: string): string | undefined {
 const FUNDING =
   "query GetFundingOptions($orderID: String!) { checkoutSession(token: $orderID) { fundingOptions { currencyConversion { rate from { currencyValue currencyCode } to { currencyValue currencyCode } } } } }";
 
-/** The charge a `GetCheckoutDetails` answer states, or undefined unless it states exactly one. */
-export function chargeOf(answer: unknown): PayPalCharge | undefined {
+/**
+ * The charge a `GetCheckoutDetails` answer states, or undefined unless it states exactly one.
+ */
+function chargeOf(answer: unknown): PayPalCharge | undefined {
   type Amount = { currencyValue?: unknown; currencyCode?: unknown } | null | undefined;
   const session = (answer as { data?: { checkoutSession?: unknown } } | null)?.data
     ?.checkoutSession as
@@ -168,7 +170,7 @@ export interface KnownConversion {
  * (`checkoutSession.fundingOptions[].currencyConversion { rate from to }`), with plain decimal
  * values and ISO codes only; nothing else of the answer is kept.
  */
-export function conversionsOf(answer: unknown): KnownConversion[] {
+function conversionsOf(answer: unknown): KnownConversion[] {
   const options = (answer as { data?: { checkoutSession?: { fundingOptions?: unknown } } } | null)
     ?.data?.checkoutSession?.fundingOptions;
   if (!Array.isArray(options)) return [];

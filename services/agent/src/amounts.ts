@@ -874,7 +874,11 @@ function without(all: readonly number[], some: readonly number[]): number[] {
   });
 }
 
-/** Whether a page charges `minor` of its currency and nothing more: {@link judge} allows it. */
+/**
+ * Whether a page charges `minor` of its currency and nothing more: {@link judge} allows it.
+ *
+ * @internal
+ */
 export function charges(
   page: PageReading,
   minor: number,
