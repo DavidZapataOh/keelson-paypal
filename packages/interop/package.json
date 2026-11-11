@@ -32,13 +32,16 @@
     "@keelson/mandate": "workspace:*",
     "@noble/hashes": "catalog:",
     "@sd-jwt/core": "0.24.3",
-    "jose": "6.2.15"
+    "http-message-sig": "0.3.0",
+    "jose": "6.2.15",
+    "structured-headers": "2.0.3"
   },
   "devDependencies": {
     "@types/node": "26.6.6",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "typescript": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "web-bot-auth": "0.2.0"
   }
 }
