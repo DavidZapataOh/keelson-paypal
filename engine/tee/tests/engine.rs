@@ -323,6 +323,12 @@ fn leg_a_without_a_captured_amount_is_not_ready() {
         unread.countersign(&r, at(NOW + 10)).unwrap_err(),
         EngineError::NotReady
     );
+
+    let no_records = Engine::booted_at(config(None), Some(root()), at(NOW));
+    let err = no_records
+        .register_mandate(&register_request(), at(NOW))
+        .unwrap_err();
+    assert_eq!(err, EngineError::NotReady);
 }
 
 #[test]
@@ -347,41 +353,49 @@ fn registers_only_for_the_pinned_rp_id() {
     assert_eq!(err.code(), "auth.webauthn_rp_id");
 }
 
-/// Any passkey the caller registered to a user signs their mandates, each with its own user
-/// credential; a user credential vouches only for the passkey it names.
+/// The first registration binds a user to their passkey.
 #[test]
-fn every_passkey_of_a_user_signs_with_its_own_user_credential() {
-    let engine = leg_a();
-    let first = engine
+fn a_user_stays_bound_to_their_first_passkey() {
+    let records = Arc::new(Records::default());
+    let engine =
+        Engine::booted_at(config(None), Some(root()), at(NOW)).with_user_records(records.clone());
+    engine
         .register_mandate(&register_request(), at(NOW))
         .unwrap();
-    let second = engine
-        .register_mandate(&mandate_for(&sub(), &other_passkey()), at(NOW))
+    engine
+        .register_mandate(&register_request(), at(NOW))
         .unwrap();
-    assert_ne!(second.user_credential, first.user_credential);
 
-    let mut again = mandate_for(&sub(), &other_passkey());
-    again.user_credential = Some(second.user_credential.clone());
-    let reused = engine.register_mandate(&again, at(NOW)).unwrap();
-    assert_eq!(reused.user_credential, second.user_credential);
+    let err = engine
+        .register_mandate(&mandate_for(&sub(), &other_passkey()), at(NOW))
+        .unwrap_err();
+    assert_eq!(err, EngineError::Auth("sub_bound".into()));
+    assert_eq!(err.code(), "auth.sub_bound");
 
-    let mut swapped = mandate_for(&sub(), &other_passkey());
-    swapped.user_credential = Some(first.user_credential.clone());
-    let err = engine.register_mandate(&swapped, at(NOW)).unwrap_err();
-    assert_eq!(err.code(), "auth.open_user_credential");
+    // A user credential this issuer gave `sub` for that passkey vouches for it.
+    let elsewhere = Engine::booted_at(config(None), Some(root()), at(NOW))
+        .with_user_records(Arc::new(Records::default()));
+    let l1 = elsewhere
+        .register_mandate(&mandate_for(&sub(), &other_passkey()), at(NOW))
+        .unwrap()
+        .user_credential;
+    let mut vouched = mandate_for(&sub(), &other_passkey());
+    vouched.user_credential = Some(l1);
+    engine.register_mandate(&vouched, at(NOW)).unwrap();
 
-    // The same key under another credential id is another passkey.
-    let mut renamed = mandate_with(&sub(), &other_passkey(), |m| {
-        m["user"]["cred"]["id"] = json!("cmVuYW1lZA");
-    });
-    renamed.user_credential = Some(second.user_credential.clone());
-    let err = engine.register_mandate(&renamed, at(NOW)).unwrap_err();
-    assert_eq!(err.code(), "auth.open_user_credential");
+    // Another user may register that passkey.
+    engine
+        .register_mandate(&mandate_for("kls_usr_other", &other_passkey()), at(NOW))
+        .unwrap();
 
-    let mut stolen = mandate_for("kls_usr_other", &other_passkey());
-    stolen.user_credential = Some(second.user_credential);
-    let err = engine.register_mandate(&stolen, at(NOW)).unwrap_err();
-    assert_eq!(err.code(), "auth.open_user_credential");
+    // A record moved to another user's slot does not open there.
+    let theirs = records.get("kls_usr_other").unwrap();
+    let victim = "kls_usr_victim";
+    assert!(records.insert_new(victim, theirs));
+    let err = engine
+        .register_mandate(&mandate_for(victim, &other_passkey()), at(NOW))
+        .unwrap_err();
+    assert_eq!(err.code(), "auth.sub_bound");
 }
 
 /// The same request, with the same cart, is answered once; a different cart is a replay.

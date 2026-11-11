@@ -178,8 +178,8 @@ fn mandate(passkey: &p256::ecdsa::SigningKey) -> RegisterMandate {
 }
 
 /// The first run registers a mandate. After a restart or redeploy of the same app, the second
-/// presents the credential issued before it, which only the same root can have signed. Another
-/// passkey of the same user registers with a user credential of its own.
+/// presents the credential issued before it, which only the same root can have signed, and finds
+/// the user still bound to the first passkey.
 #[tokio::test]
 #[ignore = "needs the deployed CVM and KEELSON_LIVE_STATE"]
 async fn registrations_survive_a_redeploy() {
@@ -217,9 +217,8 @@ async fn registrations_survive_a_redeploy() {
     assert!(!issued.user_credential.is_empty());
 
     let (status, body) = register(&url, &mandate(&other_passkey())).await;
-    assert_eq!(status, 200, "{body}");
-    let other: MandateIssued = serde_json::from_value(body).unwrap();
-    assert_ne!(other.user_credential, issued.user_credential);
+    assert_eq!(status, 403, "{body}");
+    assert_eq!(body["code"], "auth.sub_bound", "{body}");
 }
 
 /// Countersigns carts against a real sandbox authorization, so every request makes the engine read
