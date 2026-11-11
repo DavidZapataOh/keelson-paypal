@@ -195,6 +195,12 @@ components:
             - EXHAUSTED
             - EXPIRED
             - REVOKED
+        rail:
+          type: string
+          enum:
+            - paypal
+            - card
+          description: "`card` when each purchase is paid with its own single-use card."
         mandateHash:
           type:
             - string
@@ -231,6 +237,7 @@ components:
       required:
         - id
         - state
+        - rail
         - mandateHash
         - budget
         - expiresAt
@@ -442,6 +449,87 @@ components:
               - pass
           description: For a purchase the engine checked, each mandate field with what the
             mandate allowed, what the cart had and whether it held.
+        card:
+          type: object
+          properties:
+            issuer:
+              type: string
+            lastFour:
+              type: string
+            state:
+              type: string
+            expiresAt:
+              type: string
+            controls:
+              type: object
+              additionalProperties: {}
+            settledMinor:
+              type:
+                - string
+                - "null"
+            authorizations:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  amountMinor:
+                    type: string
+                  currency:
+                    type: string
+                  mcc:
+                    type: string
+                  merchantName:
+                    type: string
+                  merchantCountry:
+                    type: string
+                  approved:
+                    type: boolean
+                  failedMask:
+                    type: integer
+                  reason:
+                    type:
+                      - string
+                      - "null"
+                  legs:
+                    type: object
+                    properties:
+                      tdx:
+                        type: boolean
+                      nitro:
+                        type: boolean
+                    required:
+                      - tdx
+                      - nitro
+                  latencyMs:
+                    type: integer
+                  at:
+                    type: string
+                required:
+                  - id
+                  - amountMinor
+                  - currency
+                  - mcc
+                  - merchantName
+                  - merchantCountry
+                  - approved
+                  - failedMask
+                  - reason
+                  - legs
+                  - latencyMs
+                  - at
+          required:
+            - issuer
+            - lastFour
+            - state
+            - expiresAt
+            - controls
+            - settledMinor
+            - authorizations
+          description: "A card purchase: its single-use card (never its number) and every
+            authorization the card network sent it, with both legs' decision.
+            `CAPTURED` once the merchant's capture settles."
         live:
           type: object
           properties:
@@ -1125,6 +1213,7 @@ components:
               - currency
               - budget
               - merchant
+              - card
               - deadline
               - quantity
               - items
@@ -1320,6 +1409,7 @@ components:
               type: string
               enum:
                 - paypal
+                - card
             currency:
               type: string
               enum:
@@ -1467,6 +1557,25 @@ components:
                       - type
                       - not_after
                     additionalProperties: false
+                  - type: object
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - payment.card_controls
+                      single_use:
+                        type: boolean
+                        enum:
+                          - true
+                      mcc_table:
+                        type: string
+                        enum:
+                          - v1
+                    required:
+                      - type
+                      - single_use
+                      - mcc_table
+                    additionalProperties: false
           required:
             - rail
             - currency
@@ -1498,11 +1607,43 @@ components:
                               type: string
                             paypal_merchant_id:
                               type: string
+                            mcc:
+                              type: array
+                              items:
+                                type: string
+                                enum:
+                                  - "4111"
+                                  - "4121"
+                                  - "5300"
+                                  - "5310"
+                                  - "5311"
+                                  - "5411"
+                                  - "5441"
+                                  - "5462"
+                                  - "5499"
+                                  - "5651"
+                                  - "5661"
+                                  - "5691"
+                                  - "5732"
+                                  - "5734"
+                                  - "5812"
+                                  - "5814"
+                                  - "5912"
+                                  - "5941"
+                                  - "5942"
+                                  - "5945"
+                                  - "5977"
+                                  - "5992"
+                                  - "5995"
+                                  - "5999"
+                                  - "7832"
+                              minItems: 1
+                            country:
+                              type: string
+                              pattern: ^[A-Z]{2}$
                           required:
                             - id
                             - name
-                            - website
-                            - paypal_merchant_id
                           additionalProperties: false
                         minItems: 1
                     required:
@@ -1920,6 +2061,87 @@ components:
               - pass
           description: For a purchase the engine checked, each mandate field with what the
             mandate allowed, what the cart had and whether it held.
+        card:
+          type: object
+          properties:
+            issuer:
+              type: string
+            lastFour:
+              type: string
+            state:
+              type: string
+            expiresAt:
+              type: string
+            controls:
+              type: object
+              additionalProperties: {}
+            settledMinor:
+              type:
+                - string
+                - "null"
+            authorizations:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  amountMinor:
+                    type: string
+                  currency:
+                    type: string
+                  mcc:
+                    type: string
+                  merchantName:
+                    type: string
+                  merchantCountry:
+                    type: string
+                  approved:
+                    type: boolean
+                  failedMask:
+                    type: integer
+                  reason:
+                    type:
+                      - string
+                      - "null"
+                  legs:
+                    type: object
+                    properties:
+                      tdx:
+                        type: boolean
+                      nitro:
+                        type: boolean
+                    required:
+                      - tdx
+                      - nitro
+                  latencyMs:
+                    type: integer
+                  at:
+                    type: string
+                required:
+                  - id
+                  - amountMinor
+                  - currency
+                  - mcc
+                  - merchantName
+                  - merchantCountry
+                  - approved
+                  - failedMask
+                  - reason
+                  - legs
+                  - latencyMs
+                  - at
+          required:
+            - issuer
+            - lastFour
+            - state
+            - expiresAt
+            - controls
+            - settledMinor
+            - authorizations
+          description: "A card purchase: its single-use card (never its number) and every
+            authorization the card network sent it, with both legs' decision.
+            `CAPTURED` once the merchant's capture settles."
         live:
           type: object
           properties:
@@ -1979,7 +2201,8 @@ components:
           maxLength: 64
           description: The PayPal authorization that holds the mandate's funds, or this
             request's own hold when the mandate holds each purchase separately;
-            leg A reads it.
+            leg A reads it. Absent for a card mandate, whose purchase is paid
+            with a single-use card issued after the ALLOW.
         closedMandate:
           type: string
           minLength: 1
@@ -2043,7 +2266,6 @@ components:
             than ten minutes ago. A retry after a lost answer never sends it:
             the `409 purchase-exists` answer names the purchase already made."
       required:
-        - authorizationId
         - closedMandate
         - cart
         - unit
@@ -2111,7 +2333,11 @@ components:
           type: string
           description: The purchase and its Alibi's id.
         store:
-          type: string
+          type:
+            - string
+            - "null"
+          description: The store's origin; `null` for a card purchase, named by the card
+            network.
         merchant:
           type: string
         amount:
@@ -2142,6 +2368,37 @@ components:
             type: string
           description: For a DENY, the mandate fields whose check failed, or leg A's
             reason when it denied on its read of the PayPal hold.
+        card:
+          type: object
+          properties:
+            lastFour:
+              type: string
+            merchantName:
+              type:
+                - string
+                - "null"
+            mcc:
+              type:
+                - string
+                - "null"
+            approved:
+              type: integer
+            declined:
+              type: integer
+            settledMinor:
+              type:
+                - string
+                - "null"
+          required:
+            - lastFour
+            - merchantName
+            - mcc
+            - approved
+            - declined
+            - settledMinor
+          description: "A card purchase: the merchant as the card network named it, and
+            how many of the card's authorizations both legs approved and
+            declined."
         logIndex:
           type: string
         createdAt:
@@ -2278,6 +2535,87 @@ components:
               - pass
           description: For a purchase the engine checked, each mandate field with what the
             mandate allowed, what the cart had and whether it held.
+        card:
+          type: object
+          properties:
+            issuer:
+              type: string
+            lastFour:
+              type: string
+            state:
+              type: string
+            expiresAt:
+              type: string
+            controls:
+              type: object
+              additionalProperties: {}
+            settledMinor:
+              type:
+                - string
+                - "null"
+            authorizations:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  amountMinor:
+                    type: string
+                  currency:
+                    type: string
+                  mcc:
+                    type: string
+                  merchantName:
+                    type: string
+                  merchantCountry:
+                    type: string
+                  approved:
+                    type: boolean
+                  failedMask:
+                    type: integer
+                  reason:
+                    type:
+                      - string
+                      - "null"
+                  legs:
+                    type: object
+                    properties:
+                      tdx:
+                        type: boolean
+                      nitro:
+                        type: boolean
+                    required:
+                      - tdx
+                      - nitro
+                  latencyMs:
+                    type: integer
+                  at:
+                    type: string
+                required:
+                  - id
+                  - amountMinor
+                  - currency
+                  - mcc
+                  - merchantName
+                  - merchantCountry
+                  - approved
+                  - failedMask
+                  - reason
+                  - legs
+                  - latencyMs
+                  - at
+          required:
+            - issuer
+            - lastFour
+            - state
+            - expiresAt
+            - controls
+            - settledMinor
+            - authorizations
+          description: "A card purchase: its single-use card (never its number) and every
+            authorization the card network sent it, with both legs' decision.
+            `CAPTURED` once the merchant's capture settles."
         live:
           type: object
           properties:
@@ -2308,6 +2646,19 @@ components:
           description: PayPal's 17-character transaction id.
       required:
         - transactionId
+    PurchaseCard:
+      type: object
+      properties:
+        lastFour:
+          type: string
+        expiresAt:
+          type: string
+        embedUrl:
+          type: string
+      required:
+        - lastFour
+        - expiresAt
+        - embedUrl
     EvidenceUpload:
       type: object
       properties:
@@ -5765,7 +6116,7 @@ paths:
       description: Verifies the passkey assertion over `M =
         SHA-256("keelson/mandate-challenge/v1" || 0x00 || H_sd || C_m)` and
         stores the mandate as `SIGNED`, or `ACTIVE` when it allows several
-        merchants.
+        merchants or pays with single-use cards.
       parameters:
         - schema:
             type: string
@@ -7137,6 +7488,42 @@ paths:
                 $ref: "#/components/schemas/Purchase"
         "404":
           description: No such purchase, or not the caller's
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/purchases/{id}/card:
+    get:
+      tags:
+        - purchases
+      summary: The single-use card of a card purchase
+      description: "For the agent's browser: a one-minute link to the card issuer's
+        hosted page showing the card's number, expiry and code. Open it in the
+        browser session that pays; never put its contents in a model's context
+        or a log. Only the client that asked for the countersign reads it, and
+        only while the card is open."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^[0-7][0-9A-HJKMNP-TV-Z]{25}$
+          required: true
+          name: id
+          in: path
+      responses:
+        "200":
+          description: The card's hosted page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PurchaseCard"
+        "404":
+          description: No such card purchase of this client
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: The card is not open
           content:
             application/problem+json:
               schema:

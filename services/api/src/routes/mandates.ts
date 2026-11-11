@@ -36,7 +36,7 @@ import { type Connection, looserThan, normalizeUserCode, openRequest } from "../
 import { publishEvent } from "../events.ts";
 import { passkeyJwk, SignatureError, verifyMandateSignature } from "../mandate-signature.ts";
 import { requireSession } from "../middleware/auth.ts";
-import { purchaseView } from "../pipeline/drive.ts";
+import { cardViewOf, purchaseView } from "../pipeline/drive.ts";
 import { type Principal, principalChannel } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 import { LegError, type MandateIssued } from "../tee/client.ts";
@@ -197,6 +197,9 @@ const MandateView = z
   .object({
     id: z.string(),
     state: MandateState,
+    rail: z.enum(["paypal", "card"]).openapi({
+      description: "`card` when each purchase is paid with its own single-use card.",
+    }),
     mandateHash: Hex32.nullable(),
     budget: Budget,
     expiresAt: z.iso.datetime(),
@@ -736,10 +739,18 @@ export function registerMandates(
       row.payloadSd && row.disclosures
         ? renderCard(row.payloadSd as object, row.disclosures, NO_EVIDENCE)
         : null;
+    const cards = new Map(
+      await Promise.all(
+        bought
+          .filter((p) => p.rail === "card")
+          .map(async (p) => [p.id, await cardViewOf(db, p.id)] as const),
+      ),
+    );
     return c.json(
       {
         id: row.id,
         state: row.state,
+        rail: row.rail,
         mandateHash: row.mandateHash ? toHex(row.mandateHash) : null,
         budget: budgetOf(row),
         expiresAt: row.expiresAt.toISOString(),
@@ -747,8 +758,10 @@ export function registerMandates(
         card,
         purchases: bought.map((p) => {
           const { mandateId: _, ...view } = withBreakdown(purchaseView(p), p.evidenceRoot, parts);
+          const card = cards.get(p.id);
           return {
             ...view,
+            ...(card ? { card } : {}),
             merchantId: p.merchantId,
             createdAt: p.createdAt.toISOString(),
             disputes: opened

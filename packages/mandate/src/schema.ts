@@ -1,6 +1,7 @@
 import { CURRENCIES, isUlid } from "@keelson/core";
 import { z } from "zod";
 import { CONTROL_OR_FORMAT } from "./generated/unicode.ts";
+import { ANY_MERCHANT, MCC_TABLE } from "./mcc.ts";
 
 /**
  * Category bit table, version `v1`. Bit `i` of a category mask stands for `ids[i]`; entries are
@@ -36,42 +37,6 @@ export const CATEGORY_TABLE: { readonly version: "v1"; readonly ids: readonly st
 };
 
 const categoryId = z.enum(CATEGORY_TABLE.ids as [string, ...string[]]);
-
-/**
- * Merchant category code table, version `v1`: the ISO 18245 codes a card mandate may allow.
- * Entries are only ever appended. Codes whose authorizations change after approval (fuel, lodging,
- * car rental) and codes for cash or quasi-cash are left out.
- */
-export const MCC_TABLE: { readonly version: "v1"; readonly codes: readonly string[] } = {
-  version: "v1",
-  codes: [
-    "5411", // Grocery stores, supermarkets
-    "5441", // Candy, nut and confectionery stores
-    "5462", // Bakeries
-    "5499", // Miscellaneous food stores
-    "5812", // Eating places, restaurants
-    "5814", // Fast food restaurants
-    "5300", // Wholesale clubs
-    "5310", // Discount stores
-    "5311", // Department stores
-    "5651", // Family clothing stores
-    "5661", // Shoe stores
-    "5691", // Men's and women's clothing stores
-    "5732", // Electronics stores
-    "5734", // Computer software stores
-    "5912", // Drug stores and pharmacies
-    "5941", // Sporting goods stores
-    "5942", // Book stores
-    "5945", // Hobby, toy and game shops
-    "5977", // Cosmetic stores
-    "5992", // Florists
-    "5995", // Pet shops, pet food and supplies
-    "5999", // Miscellaneous and specialty retail stores
-    "4111", // Commuter transport and ferries
-    "4121", // Taxicabs and limousines
-    "7832", // Motion picture theaters
-  ],
-};
 
 const mcc = z.enum(MCC_TABLE.codes as [string, ...string[]]);
 
@@ -299,12 +264,6 @@ export type Mandate = z.infer<typeof MandateSchema>;
  * user wants and is not blank.
  */
 export const ANY_ITEM = "*";
-
-/**
- * The `checkout.allowed_merchants` id that stands for any merchant of a `card` mandate. It is then
- * the only merchant, and its `mcc` and `country` bind every card authorization.
- */
-export const ANY_MERCHANT = "*";
 
 /** Maximum lifetime of a mandate, in seconds. */
 export const MAX_LIFETIME_SECONDS = 30 * 86400;

@@ -192,7 +192,9 @@ const transactionRoute = createRoute({
 const LivePurchase = z
   .object({
     id: z.string().openapi({ description: "The purchase and its Alibi's id." }),
-    store: z.string(),
+    store: z.string().nullable().openapi({
+      description: "The store's origin; `null` for a card purchase, named by the card network.",
+    }),
     merchant: z.string(),
     amount: Amount,
     decision: z.enum(["allow", "deny"]),
@@ -203,10 +205,38 @@ const LivePurchase = z
       description:
         "For a DENY, the mandate fields whose check failed, or leg A's reason when it denied on its read of the PayPal hold.",
     }),
+    card: z
+      .object({
+        lastFour: z.string(),
+        merchantName: z.string().nullable(),
+        mcc: z.string().nullable(),
+        approved: z.number().int(),
+        declined: z.number().int(),
+        settledMinor: z.string().nullable(),
+      })
+      .optional()
+      .openapi({
+        description:
+          "A card purchase: the merchant as the card network named it, and how many of the card's authorizations both legs approved and declined.",
+      }),
     logIndex: z.string(),
     createdAt: z.string(),
   })
   .openapi("LivePurchase");
+
+/**
+ * The card purchases whose Alibi is public: those Keelson's own demo operator made for one of its
+ * test users, on the reserved `example.test` domain, as for denials.
+ */
+function publicCard(demoAgentId: bigint | undefined): SQL | undefined {
+  return demoAgentId === undefined
+    ? undefined
+    : and(
+        eq(purchases.rail, "card"),
+        eq(mandates.operatorAgentId, demoAgentId),
+        like(user.email, "%@example.test"),
+      );
+}
 
 /**
  * The live carts Keelson denied whose Alibi is public: Keelson's own demo operator ran them for
@@ -262,8 +292,13 @@ export function registerPurchases(
       .innerJoin(user, eq(user.id, mandates.userId))
       .where(
         and(
-          isNotNull(purchases.liveStore),
-          or(isNotNull(purchases.paypalTransactionId), publicDenial(deps.demoAgentId)),
+          or(
+            and(
+              isNotNull(purchases.liveStore),
+              or(isNotNull(purchases.paypalTransactionId), publicDenial(deps.demoAgentId)),
+            ),
+            publicCard(deps.demoAgentId),
+          ),
         ),
       )
       .orderBy(desc(purchases.createdAt))
@@ -272,24 +307,48 @@ export function registerPurchases(
       deps.db,
       rows.map(({ purchase: p }) => p.evidenceRoot),
     );
+    const cards = new Map(
+      await Promise.all(
+        rows
+          .filter(({ purchase: p }) => p.rail === "card")
+          .map(async ({ purchase: p }) => [p.id, await cardViewOf(deps.db, p.id)] as const),
+      ),
+    );
     c.header("Cache-Control", "public, max-age=60");
     return c.json(
       {
-        purchases: rows.map(({ purchase: p }) => ({
-          ...withBreakdown(
-            { amount: { currency: p.currency, minor: p.amountMinor.toString() } },
-            p.evidenceRoot,
-            parts,
-          ),
-          id: p.id,
-          store: p.liveStore as string,
-          merchant: p.merchantId,
-          decision: p.state === "DENIED" ? ("deny" as const) : ("allow" as const),
-          transactionId: p.paypalTransactionId,
-          blocked: p.state === "DENIED" ? denyReasons(p.evalTrace) : [],
-          logIndex: String(p.logIndex),
-          createdAt: p.createdAt.toISOString(),
-        })),
+        purchases: rows.map(({ purchase: p }) => {
+          const card = cards.get(p.id);
+          const paid = card?.authorizations.find((a) => a.approved);
+          return {
+            ...withBreakdown(
+              { amount: { currency: p.currency, minor: p.amountMinor.toString() } },
+              p.evidenceRoot,
+              parts,
+            ),
+            id: p.id,
+            store: p.liveStore,
+            merchant: p.merchantId,
+            decision: p.state === "DENIED" ? ("deny" as const) : ("allow" as const),
+            transactionId: p.paypalTransactionId,
+            blocked: p.state === "DENIED" ? denyReasons(p.evalTrace) : [],
+            ...(card
+              ? {
+                  card: {
+                    lastFour: card.lastFour,
+                    merchantName:
+                      paid?.merchantName ?? card.authorizations[0]?.merchantName ?? null,
+                    mcc: paid?.mcc ?? null,
+                    approved: card.authorizations.filter((a) => a.approved).length,
+                    declined: card.authorizations.filter((a) => !a.approved).length,
+                    settledMinor: card.settledMinor,
+                  },
+                }
+              : {}),
+            logIndex: String(p.logIndex),
+            createdAt: p.createdAt.toISOString(),
+          };
+        }),
       },
       200,
     );

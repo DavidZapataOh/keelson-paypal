@@ -25,6 +25,7 @@ import { RP_ID, SPC_INSTRUMENT, type SpcDetails } from "./spc.ts";
 
 export type { Card, CardRow, Signing } from "./card.ts";
 export type { Evidence, FieldId } from "./colors.ts";
+export { ANY_MERCHANT, MCC_LABELS, onCardRail, storesFor } from "./mcc.ts";
 export type { Mandate } from "./schema.ts";
 export type { SpcDetails } from "./spc.ts";
 export { TERMS, TERMS_HASH } from "./terms.ts";

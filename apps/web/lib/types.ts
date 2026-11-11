@@ -54,11 +54,42 @@ export interface Purchase {
   /** For a checked purchase, each mandate field with both values and whether it held. */
   checks?: { field: string; mandate: string | null; cart: string | null; pass: boolean }[];
   disputes: { id: string; state: "OPEN" | "ATTRIBUTED" | "RESOLVED" }[];
+  /** A card purchase: its single-use card, never its number, and each network authorization. */
+  card?: PurchaseCard;
+}
+
+/** One card network authorization of a purchase's single-use card, as both enclaves decided it. */
+export interface CardAuthorization {
+  id: string;
+  amountMinor: string;
+  currency: string;
+  mcc: string;
+  merchantName: string;
+  merchantCountry: string;
+  approved: boolean;
+  /** The enclaves' reasons to decline, as `CARD_BITS` names them. */
+  failedMask: number;
+  /** Why it was declined without both enclaves' answers. */
+  reason: string | null;
+  legs: { tdx: boolean; nitro: boolean };
+  latencyMs: number;
+  at: string;
+}
+
+export interface PurchaseCard {
+  issuer: string;
+  lastFour: string;
+  state: "PAUSED" | "OPEN" | "USED" | "CLOSED";
+  expiresAt: string;
+  controls: { spend_limit_minor?: string; currency?: string; mcc?: string[]; countries?: string[] };
+  settledMinor: string | null;
+  authorizations: CardAuthorization[];
 }
 
 export interface MandateView {
   id: string;
   state: MandateState;
+  rail?: "paypal" | "card";
   mandateHash: string | null;
   budget: Budget;
   expiresAt: string;

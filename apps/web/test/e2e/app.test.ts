@@ -262,6 +262,37 @@ describe.each(Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[])("rules on %s
     await page.getByRole("button", { name: "Sign · up to $100.00" }).waitFor({ timeout: 30_000 });
     await context.close();
   });
+
+  test("any store by card signs a card mandate the buyer reads back", async () => {
+    const compiled = await demoCompiled();
+    const { context, page } = await signedIn(kind, "/new/", (path) => {
+      if (path === "/v1/passkeys") {
+        return {
+          passkeys: [
+            {
+              id: "pk_1",
+              name: "Keelson",
+              credentialId: "cred-1",
+              createdAt: new Date().toISOString(),
+            },
+          ],
+        };
+      }
+      return path === "/v1/mandates/compile" ? compiled : undefined;
+    });
+    await page.getByRole("heading", { level: 1, name: "What may your agent buy?" }).waitFor();
+    await page.getByRole("button", { name: "Coffee beans, whole" }).click();
+    await page.getByRole("radio", { name: "Any store (card)" }).check({ force: true });
+    await page.getByText("Paid with a single-use card.").waitFor();
+    await page.getByRole("button", { name: "Review rules" }).click();
+    await page.getByRole("button", { name: "Sign · up to $100.00" }).waitFor({ timeout: 30_000 });
+    expect(await page.getByText("Any store · card").first().isVisible()).toBe(true);
+    const answers = page.getByRole("list", { name: "Who answers for each part" });
+    expect(await answers.getByText(/Payment card/).count()).toBe(1);
+    const { violations } = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+    expect(violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
+    await context.close();
+  });
 });
 
 describe.each(Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[])("home on %s", (kind) => {
@@ -509,6 +540,96 @@ describe("receipts and disputes", () => {
     const { violations } = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
     expect(violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
     await context.close();
+  });
+
+  test("a card purchase shows its card, each charge and what both enclaves decided", async () => {
+    const at = new Date().toISOString();
+    const charge = {
+      currency: "USD",
+      mcc: "5814",
+      merchantName: "BLUE HARBOR COFFEE",
+      merchantCountry: "US",
+      legs: { tdx: true, nitro: true },
+      reason: null,
+      at,
+    };
+    const paid = {
+      ...bought,
+      id: "01M7PURCHASE00000000000009",
+      merchantId: "*",
+      amount: { currency: "USD", minor: "450" },
+      card: {
+        issuer: "lithic",
+        lastFour: "4242",
+        state: "CLOSED",
+        expiresAt: later(),
+        controls: { spend_limit_minor: "450", mcc: ["5814", "5499"], countries: ["US"] },
+        settledMinor: "450",
+        authorizations: [
+          {
+            ...charge,
+            id: "a1",
+            amountMinor: "450",
+            approved: true,
+            failedMask: 0,
+            latencyMs: 212,
+          },
+          {
+            ...charge,
+            id: "a2",
+            amountMinor: "450",
+            approved: false,
+            failedMask: 256,
+            latencyMs: 41,
+          },
+          {
+            ...charge,
+            id: "a3",
+            amountMinor: "9900",
+            mcc: "5812",
+            approved: false,
+            failedMask: 48,
+            latencyMs: 188,
+          },
+        ],
+      },
+    };
+    for (const kind of ["desktop", "mobile"] as const) {
+      const { context, page } = await signedIn(
+        kind,
+        `/purchase/?mandate=${id}&id=${paid.id}`,
+        (path) => (path === `/v1/mandates/${id}` ? viewIn(id, "ACTIVE", [paid]) : undefined),
+      );
+      const charges = page.getByRole("list", { name: "Charges on this card" });
+      await charges.waitFor();
+      expect(await page.getByRole("heading", { name: "Paid with a single-use card" }).count()).toBe(
+        1,
+      );
+      expect(await charges.getByRole("listitem").count()).toBe(3);
+      expect(await charges.getByText("Both enclaves approved the charge").count()).toBe(1);
+      expect(
+        await charges.getByText("Declined: a second charge on a single-use card").count(),
+      ).toBe(1);
+      expect(
+        await charges
+          .getByText(
+            "Declined: more than the countersigned total; a kind of store the mandate does not allow",
+          )
+          .count(),
+      ).toBe(1);
+      expect(
+        await page
+          .getByRole("list", { name: "What happened" })
+          .getByText(/BLUE HARBOR COFFEE charged \$4\.50; both enclaves approved it in 212 ms/)
+          .count(),
+      ).toBe(1);
+      expect(await page.getByText("BLUE HARBOR COFFEE", { exact: true }).first().isVisible()).toBe(
+        true,
+      );
+      const { violations } = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+      expect(violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
+      await context.close();
+    }
   });
 
   test("the disputes list shows every dispute, and says so when there is none", async () => {
