@@ -22,6 +22,8 @@ const fits = (s: unknown): s is string =>
  * color and unit price and the cart's free returns, and the store's JSON page for that SKU, where
  * a TLSNotary session can read what the store itself says. `undefined` when the cart has more
  * lines, a line without size or color, or a product page outside the merchant's website.
+ *
+ * @internal
  */
 export function amberOf(
   merchantId: string,

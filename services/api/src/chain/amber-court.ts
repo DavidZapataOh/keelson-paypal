@@ -21,12 +21,16 @@ import {
   type PublicClient,
 } from "viem";
 
-export const AMBER_CHAIN_ID = 421614;
+const AMBER_CHAIN_ID = 421614;
 const BN254_FR_MODULUS =
   21888242871839275222246405745257275088548364400416034343698204186575808495617n;
 const ULID = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
-/** The ULID a coverage id right-aligns, or `null` for another id. */
+/**
+ * The ULID a coverage id right-aligns, or `null` for another id.
+ *
+ * @internal
+ */
 export function purchaseOfCoverage(coverageId: Hex): string | null {
   const n = BigInt(coverageId);
   if (n >> 128n !== 0n) return null;
@@ -35,7 +39,12 @@ export function purchaseOfCoverage(coverageId: Hex): string | null {
   return out;
 }
 
-/** The C2b proof and `WebFact` of a `slashAmber` call, or `null` when the call went through another contract. */
+/**
+ * The C2b proof and `WebFact` of a `slashAmber` call, or `null` when the call went through another
+ * contract.
+ *
+ * @internal
+ */
 export function c2bOfCall(input: Hex): StoredC2b | null {
   let call: ReturnType<typeof decodeFunctionData<typeof amberContradictionCourtAbi>>;
   try {
