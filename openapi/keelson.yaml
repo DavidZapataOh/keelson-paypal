@@ -4731,11 +4731,32 @@ paths:
                     required:
                       - db
                       - kv
+                  rpc:
+                    type: object
+                    properties:
+                      calls:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            provider:
+                              type: string
+                            method:
+                              type: string
+                            calls:
+                              type: integer
+                          required:
+                            - provider
+                            - method
+                            - calls
+                    required:
+                      - calls
                   version:
                     type: string
                 required:
                   - status
                   - dependencies
+                  - rpc
                   - version
   /v1/events:
     get:

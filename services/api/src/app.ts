@@ -73,11 +73,11 @@ const STREAMED_POSTS =
   /^\/v1\/(merchants\/[^/]+\/assistant|operators\/[^/]+\/(coverages\/rows|grid-query))$/;
 
 /**
- * The public reads the verifier makes: an Alibi's receipt, a leaf's timestamps, a mandate's C3
- * proof, a purchase's engine proof and the registered-user roots.
+ * The public reads the verifier makes: an Alibi when it is public, an Alibi's receipt, a leaf's
+ * timestamps, a mandate's C3 proof, a purchase's engine proof and the registered-user roots.
  */
 const PUBLIC_READS =
-  /^\/v1\/(alibis\/[^/]+\/receipt|timestamps\/[^/]+|anonymous-mandates\/[^/]+|anonymous-purchases\/[^/]+|engine-proofs\/[^/]+|user-set\/roots\/[^/]+)$/;
+  /^\/v1\/(alibis\/[0-7][0-9A-HJKMNP-TV-Z]{25}|alibis\/[^/]+\/receipt|timestamps\/[^/]+|anonymous-mandates\/[^/]+|anonymous-purchases\/[^/]+|engine-proofs\/[^/]+|user-set\/roots\/[^/]+)$/;
 
 export interface Deps {
   db: Db;
@@ -95,7 +95,7 @@ export interface Deps {
   judgeInvite?: string | undefined;
   /** The operator MCP tool calls act for when they name none. */
   demoAgentId?: bigint | undefined;
-  /** Browser origin of the public verifier, allowed to read Alibi receipts and timestamps without credentials. */
+  /** Browser origin of the public verifier, allowed to read public Alibis, receipts and timestamps without credentials. */
   verifyOrigin?: string;
   /** Reads the anchor and signer registry for `POST /v1/alibis/verify`; it verifies offline without it. */
   alibiChain?: ChainReader;
@@ -197,7 +197,8 @@ export function createApp(deps: Deps): OpenAPIHono {
         exposeHeaders: ["location", "idempotent-replayed", "keelson-model"],
       })
     : undefined;
-  // The verifier reads only public receipts and timestamps, and never with credentials.
+  // The verifier reads only public receipts, timestamps and public Alibis, never with credentials,
+  // so a bundle only its user or operator may read is never sent to it.
   const receiptCors = deps.verifyOrigin
     ? cors({ origin: deps.verifyOrigin, allowMethods: ["GET"], allowHeaders: ["accept"] })
     : undefined;
