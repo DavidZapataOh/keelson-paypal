@@ -103,7 +103,10 @@ export function unsubscribeLinks(n: Notifier, userId: string, address: string) {
   };
 }
 
-/** Sends the alert as a push to the user's browsers and as an email to their confirmed address. */
+/**
+ * Sends the alert as a push to the user's browsers and as an email to their confirmed address.
+ * @internal
+ */
 export async function deliver(n: Notifier, userId: string, alert: Alert): Promise<void> {
   const pushed =
     alert.push && n.vapid

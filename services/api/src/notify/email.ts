@@ -5,7 +5,7 @@ import type { Resend } from "resend";
 import { ulid } from "ulid";
 
 /** Every alert comes from one verified sender. */
-export const FROM = "Keelson <notify@keelson.finance>";
+const FROM = "Keelson <notify@keelson.finance>";
 
 /** How long a confirmation link works, in seconds. */
 export const CONFIRM_TTL_SEC = 86_400;
