@@ -11,9 +11,65 @@
 
 /* The brand's tick field, behind illustrations. */
 .ticks {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='52' height='44'%3E%3Cg fill='%2317181B' fill-opacity='.12'%3E%3Crect x='12.4' y='6.5' width='1.2' height='9'/%3E%3Crect x='38.4' y='6.5' width='1.2' height='9'/%3E%3Crect x='25.4' y='28.5' width='1.2' height='9'/%3E%3Crect x='-0.6' y='28.5' width='1.2' height='9'/%3E%3Crect x='51.4' y='28.5' width='1.2' height='9'/%3E%3C/g%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='52' height='44'%3E%3Cg fill='%2317181B' fill-opacity='.08'%3E%3Crect x='12.4' y='6.5' width='1.2' height='9'/%3E%3Crect x='38.4' y='6.5' width='1.2' height='9'/%3E%3Crect x='25.4' y='28.5' width='1.2' height='9'/%3E%3Crect x='-0.6' y='28.5' width='1.2' height='9'/%3E%3Crect x='51.4' y='28.5' width='1.2' height='9'/%3E%3C/g%3E%3C/svg%3E");
 }
 
 html[data-session] .pending-session {
   visibility: hidden;
+}
+
+::selection {
+  background: rgb(255 75 31 / 0.22);
+}
+
+/* A range input as a track that fills in ink up to the thumb. */
+.range {
+  appearance: none;
+  height: 28px;
+  background: transparent;
+  cursor: pointer;
+}
+.range::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--color-graphite) var(--p),
+    rgb(23 24 27 / 0.12) var(--p)
+  );
+}
+.range::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--color-graphite) var(--p),
+    rgb(23 24 27 / 0.12) var(--p)
+  );
+}
+.range::-webkit-slider-thumb {
+  appearance: none;
+  margin-top: -9px;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--color-bone);
+  border: 2px solid var(--color-graphite);
+  box-shadow: 0 2px 6px rgb(23 24 27 / 0.2);
+  transition: transform 120ms var(--ease-out);
+}
+.range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--color-bone);
+  border: 2px solid var(--color-graphite);
+}
+.range:active::-webkit-slider-thumb {
+  transform: scale(1.12);
+}
+.range:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 4px;
+  border-radius: 8px;
 }

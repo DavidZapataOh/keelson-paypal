@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { authClient, SESSION_HINT } from "../lib/auth";
 
-export function Header() {
+/** Keeps the first-paint hint in step with the session, so a signed-in browser skips the welcome. */
+export function useSessionHint() {
   const { data, isPending } = authClient.useSession();
   useEffect(() => {
     if (isPending) return;
@@ -15,6 +16,11 @@ export function Header() {
       delete document.documentElement.dataset.session;
     }
   }, [data, isPending]);
+  return data;
+}
+
+export function Header() {
+  const data = useSessionHint();
   return (
     <header className="mx-auto flex h-16 w-full max-w-5xl items-center justify-between px-5 sm:px-8">
       <Link href="/" className="rounded-sm" aria-label="Keelson, home">

@@ -38,6 +38,7 @@ import {
   leafHash,
   parseWitnessPolicy,
 } from "@keelson/log";
+import { isPersonalDisclosure, withholdPersonal } from "@keelson/mandate";
 import { holdCustomId, purchaseHoldCustomId, purchaseHoldDigest } from "@keelson/paypal";
 import { calculateJwkThumbprint, type JWK } from "jose";
 import type { Logger } from "pino";
@@ -514,6 +515,21 @@ async function cartOf(db: Db, b: AlibiBundle): Promise<{ cart?: Record<string, J
       ),
     );
   return item?.bytes ? { cart: json(JSON.parse(Buffer.from(item.bytes).toString())) } : {};
+}
+
+/**
+ * The public copy of an Alibi: the mandate presented without the user's login id and risk data.
+ * Their digests stay in the signed payload, so the copy verifies as the original does.
+ */
+export function publicCopy(b: AlibiBundle): AlibiBundle {
+  return {
+    ...b,
+    mandate: {
+      ...b.mandate,
+      sd_jwt: withholdPersonal(b.mandate.sd_jwt),
+      disclosures: b.mandate.disclosures.filter((d) => !isPersonalDisclosure(d)),
+    },
+  };
 }
 
 function userAuthOf(stored: unknown): Record<string, string> {

@@ -21,7 +21,7 @@ export interface Session {
  * KERNEL profile, such as one the buyer signed in to PayPal with; the run never saves to it.
  */
 export type SessionSource =
-  | { hosts: readonly string[]; profile?: string }
+  | { hosts: readonly string[]; profile?: string; locale?: string }
   | { cdpUrl: string; liveViewUrl?: string };
 
 /**
@@ -41,6 +41,8 @@ export async function openSession(source: SessionSource): Promise<Session> {
       viewport: { ...VIEWPORT },
       network: { allowed_hosts: [...source.hosts] },
       ...(source.profile ? { profile: { name: source.profile, save_changes: false } } : {}),
+      // Pins the browser's language and formatting locale; pages may still render their own.
+      ...(source.locale ? { location: { locale: source.locale } } : {}),
     });
     id = created.session_id;
     cdpUrl = created.cdp_ws_url;

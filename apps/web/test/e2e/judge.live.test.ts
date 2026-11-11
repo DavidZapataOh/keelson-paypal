@@ -50,6 +50,14 @@ test.runIf(ORIGIN)(
         .waitFor({ timeout: 60_000 });
       mark("anonymous");
 
+      await next(page, "Catch the log lying");
+      await page.getByText("Bond slashed").first().waitFor();
+      await page
+        .getByRole("link", { name: /Arbiscan/ })
+        .first()
+        .waitFor();
+      mark("equivocation");
+
       await next(page, "A dispute arrives");
       await page.getByText("PayPal dispute", { exact: true }).waitFor();
       mark("dispute");

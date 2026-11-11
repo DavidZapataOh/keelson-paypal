@@ -831,7 +831,7 @@ test("only the app origin may call the API from a browser", { timeout: 60_000 },
   expect(read).toContain("Failed to fetch");
 });
 
-test("the verifier may read public receipts, and nothing else", async () => {
+test("the verifier may read public receipts and Alibis, without credentials, and nothing else", async () => {
   const preflight = (origin: string, path: string) =>
     app.request(path, {
       method: "OPTIONS",
@@ -843,15 +843,14 @@ test("the verifier may read public receipts, and nothing else", async () => {
   expect(allowed.headers.get("access-control-allow-credentials")).toBeNull();
   const get = await app.request(receipt, { headers: { origin: verifyOrigin } });
   expect(get.headers.get("access-control-allow-origin")).toBe(verifyOrigin);
-  for (const path of ["/v1/alibis/01JC0000000000000000000000", "/v1/mandates"]) {
+  const bundle = await preflight(verifyOrigin, "/v1/alibis/01JC0000000000000000000000");
+  expect(bundle.headers.get("access-control-allow-origin")).toBe(verifyOrigin);
+  expect(bundle.headers.get("access-control-allow-credentials")).toBeNull();
+  for (const path of ["/v1/alibis/01JC0000000000000000000000/other", "/v1/mandates"]) {
     const other = await preflight(verifyOrigin, path);
     expect(other.headers.get("access-control-allow-origin")).not.toBe(verifyOrigin);
   }
-  for (const path of [
-    "/v1/alibis/01JC0000000000000000000000",
-    "/v1/alibis/01JC0000000000000000000000.pdf",
-    `${receipt}/`,
-  ]) {
+  for (const path of ["/v1/alibis/01JC0000000000000000000000.pdf", `${receipt}/`]) {
     const read = await app.request(path, { headers: { origin: verifyOrigin } });
     expect(read.headers.get("access-control-allow-origin")).not.toBe(verifyOrigin);
   }
