@@ -35,7 +35,11 @@ for entry in $(printf '%s\n' "$logs" | tr ';' '\n'); do
 	vkey=${entry#*=}
 	case $known in
 	*"\"origin\":\"$origin\""*) ;;
-	*) witnessctl add-log -db "$DB" -origin "$origin" ;;
+	*)
+		witnessctl add-log -db "$DB" -origin "$origin"
+		known="$known
+\"origin\":\"$origin\""
+		;;
 	esac
 	case $known in
 	*"\"$vkey\""*) ;;
