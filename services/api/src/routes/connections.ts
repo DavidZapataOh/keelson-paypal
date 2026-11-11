@@ -36,6 +36,7 @@ import { hostedCapError } from "../hosted-caps.ts";
 import { MERCHANTS } from "../merchants.ts";
 import { requireAgent, requireClient, requireSession } from "../middleware/auth.ts";
 import { rateLimit } from "../middleware/rate-limit.ts";
+import { notify, requestAlert } from "../notify/notifier.ts";
 import { type Principal, principalChannel } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 import { signingContext } from "./compile.ts";
@@ -774,6 +775,7 @@ type ConnectionDeps = Pick<
   | "compileSources"
   | "demoAgentId"
   | "hostedCaps"
+  | "notifier"
 >;
 
 export function registerConnections(app: OpenAPIHono, deps: ConnectionDeps): void {
@@ -841,6 +843,8 @@ export function registerConnections(app: OpenAPIHono, deps: ConnectionDeps): voi
       // Asked with the user's own grant: theirs from the start, so no number to match.
       ...(delegated ? { userId: principal.user } : {}),
     });
+    // The user owns the request already, so it reaches their phone and inbox now.
+    if (delegated) notify(deps.notifier, (n) => requestAlert(n, stored.id));
     return c.json(deviceAuthorization(appOrigin, stored, stored.deviceCode), 201, {
       "cache-control": "no-store",
     });

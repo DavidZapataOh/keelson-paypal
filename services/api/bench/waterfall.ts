@@ -43,6 +43,7 @@ export function waterfall(spans: ReadableSpan[], only?: string) {
   };
   const steps = new Map<string, number[]>();
   const outbound = new Map<string, number[]>();
+  const internal = new Map<string, number[]>();
   const db = new Map<string, Map<string, number>>();
   for (const s of spans) {
     if (only !== undefined && stepOf(s)?.attributes["purchase.id"] !== only) continue;
@@ -52,6 +53,9 @@ export function waterfall(spans: ReadableSpan[], only?: string) {
     }
     const step = stepOf(s);
     if (!step) continue;
+    if (s.kind === SpanKind.INTERNAL && !s.name.startsWith("pg.")) {
+      internal.set(s.name, [...(internal.get(s.name) ?? []), ms(s)]);
+    }
     if (s.kind === SpanKind.CLIENT && s.attributes["server.address"]) {
       const host = String(s.attributes["server.address"]);
       outbound.set(host, [...(outbound.get(host) ?? []), ms(s)]);
@@ -68,6 +72,7 @@ export function waterfall(spans: ReadableSpan[], only?: string) {
   return {
     steps: record(steps),
     outbound: record(outbound),
+    internal: record(internal),
     db: Object.fromEntries([...db].sort().map(([k, v]) => [k, stats([...v.values()])])),
   };
 }

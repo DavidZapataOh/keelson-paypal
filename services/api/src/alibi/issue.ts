@@ -48,6 +48,7 @@ import { getAddress } from "viem";
 import { countersignOf, purchaseLeaf } from "../pipeline/leaf.ts";
 import { VERIFYING_CONTRACT } from "../tee/config.ts";
 import type { TeeConfig } from "../tee/signers.ts";
+import { span } from "../tracing.ts";
 import { rootKey } from "../zk/c3.ts";
 
 /** The item types an Alibi discloses: the PII-redacted public ones. */
@@ -285,11 +286,11 @@ export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<vo
     ?.issuerJwkThumbprint;
   if (!thumbprint) throw new AlibiIssueError("issuer", "the TDX attestation binds no issuer");
   const [issuerJwk, policyText, evidence, c1, c3] = await Promise.all([
-    issuerOf(deps.tee, thumbprint),
-    policyOf(origin),
-    disclosures(db, Buffer.from(c.evidenceRoot.slice(2), "hex")),
-    c1Of(deps, p, c.decision === "1" && m.sealedSalt !== null),
-    c3Of(deps, m, chainId),
+    span("alibi.issuer", {}, () => issuerOf(deps.tee, thumbprint)),
+    span("alibi.policy", {}, () => policyOf(origin)),
+    span("alibi.evidence", {}, () => disclosures(db, Buffer.from(c.evidenceRoot.slice(2), "hex"))),
+    span("alibi.c1", {}, () => c1Of(deps, p, c.decision === "1" && m.sealedSalt !== null)),
+    span("alibi.c3", {}, () => c3Of(deps, m, chainId)),
   ]);
 
   let customId = "";
@@ -406,7 +407,7 @@ export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<vo
   if (bytes.length > MAX_ALIBI_BYTES) {
     throw new AlibiIssueError("size", `the bundle is ${bytes.length} bytes`);
   }
-  const report = await verifyAlibi(bundle);
+  const report = await span("alibi.verify", {}, () => verifyAlibi(bundle));
   const failed = report.checks.filter((c) => c.status === "fail");
   if (failed.length > 0) {
     throw new AlibiIssueError(
