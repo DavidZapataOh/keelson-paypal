@@ -13,9 +13,10 @@ import {
 import { hasBuyer, judge, type User } from "./user.ts";
 
 const live = process.env.KEELSON_LIVE === "1";
-const SHOE = "https://store.keelson.finance/products/cloud-daily";
+// Keelson's hosted operator backs at most $100 per user for an app it does not know.
+const SHOE = "https://store.keelson.finance/products/pace-lite";
 const REASON =
-  "I am the SDK's live test. I buy one pair of Cloud Daily running shoes, size 10, at RunFast on the PayPal sandbox, and nothing else.";
+  "I am the SDK's live test. I buy one pair of Pace Lite running shoes, size 10, at RunFast on the PayPal sandbox, and nothing else.";
 
 describe.skipIf(!live)(
   "buying through the SDK (live, PayPal sandbox)",
@@ -24,28 +25,28 @@ describe.skipIf(!live)(
     let user: User;
     let keelson: Keelson;
     beforeAll(async () => {
-      user = await judge();
+      user = await judge({ cache: "purchase" });
       const path = join(await mkdtemp(join(tmpdir(), "keelson-purchase-")), "credentials.json");
       await login({ path, open: (url) => user.approveLogin(url), log: () => {} });
       keelson = new Keelson({ auth: storedLogin({ path }) });
     }, 180_000);
     afterAll(() => user?.close());
 
-    const ask = () =>
+    const ask = (total = "$5") =>
       keelson.mandates.request({
         name: "SDK live test",
         reason: REASON,
-        perPurchase: "$120",
-        total: "$120",
+        perPurchase: total,
+        total,
         until: "1h",
       });
 
     test("the sandbox store prices the cart itself", async () => {
       const { cart, total, sources } = await quote([{ productUrl: SHOE, size: "10", qty: 1 }]);
       expect(cart.merchant).toBe("mrc_runfast");
-      expect(cart.lines[0]).toMatchObject({ qty: 1, unit_minor: 11_900, size: "10" });
-      expect(total).toEqual({ currency: "USD", minor: 11_900 });
-      expect(sources.product).toMatchObject({ handle: "cloud-daily" });
+      expect(cart.lines[0]).toMatchObject({ qty: 1, unit_minor: 9_900, size: "10" });
+      expect(total).toMatchObject({ currency: "USD", minor: 9_900 });
+      expect(sources.product).toMatchObject({ handle: "pace-lite" });
       await expect(
         quote([{ productUrl: "https://example.com/p", size: "10", qty: 1 }]),
       ).rejects.toThrow(/not on the store/);
@@ -61,6 +62,7 @@ describe.skipIf(!live)(
       expect(state.state).toBe("APPROVED");
       expect(state.mandateId).toMatch(/^[0-9A-Z]{26}$/);
       expect(state.operatorAgentId).toMatch(/^\d+$/);
+      await user.revokeMandate(state.mandateId as string);
     });
 
     test("a declined request raises MandateRequestClosedError", async () => {
@@ -76,7 +78,7 @@ describe.skipIf(!live)(
       let purchaseId: string;
 
       test("buys a sandbox pair and gets its Alibi", async () => {
-        const req = await ask();
+        const req = await ask("$100");
         await user.approveRequest(req.approvalUrl, { hold: true });
         mandate = await keelson.mandates.waitForApproval(req.id, { timeoutMs: 120_000 });
         expect(mandate.authorizationId).toBeTruthy();
@@ -84,7 +86,7 @@ describe.skipIf(!live)(
         expect((await keelson.mandates.check(mandate.id, cart)).canAttempt).toBe(true);
         const { evidenceRoot } = await keelson.evidence.seal({
           mandateId: mandate.id,
-          sources: { ...sources, observation: "Cloud Daily, size 10, $119.00 at RunFast." },
+          sources: { ...sources, observation: "Pace Lite, size 10, $99.00 at RunFast." },
         });
         const signed = await keelson.purchases.countersign({ mandate, evidenceRoot, cart });
         expect(signed.decision).toBe("allow");
@@ -99,7 +101,7 @@ describe.skipIf(!live)(
         const { cart, sources } = await quote([{ productUrl: SHOE, size: "10", qty: 1 }]);
         const { evidenceRoot } = await keelson.evidence.seal({
           mandateId: mandate.id,
-          sources: { ...sources, observation: "Cloud Daily, size 10, $119.00 at RunFast." },
+          sources: { ...sources, observation: "Pace Lite, size 10, $99.00 at RunFast." },
         });
         const again = await keelson.purchases.countersign({ mandate, evidenceRoot, cart });
         expect(again.existing).toBe(true);

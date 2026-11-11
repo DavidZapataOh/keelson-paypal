@@ -8,7 +8,7 @@ import { type Browser, type BrowserContext, chromium, type Page } from "playwrig
  * Judge Mode admits five sessions an hour per address, so one judge, with its cookies and its
  * passkeys, is kept for every live suite until the nightly reset.
  */
-const CACHE = process.env.KEELSON_LIVE_JUDGE ?? join(tmpdir(), "keelson-live-judge.json");
+const DEFAULT_CACHE = process.env.KEELSON_LIVE_JUDGE ?? join(tmpdir(), "keelson-live-judge.json");
 const CACHE_MS = 10 * 3_600_000;
 
 interface Cached {
@@ -36,10 +36,18 @@ export interface User {
     o?: { matchNumber?: number | null; hold?: boolean },
   ): Promise<void>;
   denyRequest(approvalUrl: string): Promise<void>;
+  api(method: string, path: string): Promise<{ status: number; body: unknown }>;
+  /** Ends a mandate, as the user's Stop button does. */
+  revokeMandate(mandateId: string): Promise<void>;
   close(): Promise<void>;
 }
 
-export async function judge(): Promise<User> {
+/**
+ * `cache` names the judge to reuse; a suite that buys takes its own, since what one user may buy
+ * through the hosted operator is capped.
+ */
+export async function judge(o: { cache?: string } = {}): Promise<User> {
+  const CACHE = o.cache ? join(tmpdir(), `keelson-live-judge-${o.cache}.json`) : DEFAULT_CACHE;
   const browser: Browser = await chromium.launch({
     headless: process.env.PLAYWRIGHT_HEADED !== "1",
   });
@@ -96,18 +104,35 @@ export async function judge(): Promise<User> {
     await save();
   }
 
-  const createPasskeyIfAsked = async () => {
-    const create = page.getByRole("button", { name: "Create passkey" });
-    if (await create.isVisible().catch(() => false)) await create.click();
-  };
-
   const openRequest = async (approvalUrl: string, matchNumber?: number | null) => {
     await page.goto(approvalUrl);
     if (matchNumber) await page.getByRole("button", { name: String(matchNumber) }).click();
   };
 
+  /** Calls Keelson's API from the app's page, with the user's session. */
+  const api = async (method: string, path: string): Promise<{ status: number; body: unknown }> => {
+    if (!page.url().startsWith(APP_ORIGIN)) await page.goto(`${APP_ORIGIN}/`);
+    const base = process.env.KEELSON_API_URL ?? "https://api.keelson.finance";
+    return page.evaluate(
+      async ([url, m, key]) => {
+        const res = await fetch(url as string, {
+          method: m as string,
+          credentials: "include",
+          headers:
+            m === "POST"
+              ? { "content-type": "application/json", "idempotency-key": key as string }
+              : {},
+          ...(m === "POST" ? { body: "{}" } : {}),
+        });
+        return { status: res.status, body: await res.json().catch(() => null) };
+      },
+      [`${base}${path}`, method, crypto.randomUUID()],
+    );
+  };
+
   return {
     page,
+    api,
     async approveLogin(url) {
       const callback = /^http:\/\/127\.0\.0\.1:\d+\/callback/;
       await page.goto(url);
@@ -119,14 +144,26 @@ export async function judge(): Promise<User> {
     },
     async approveRequest(approvalUrl, o = {}) {
       await openRequest(approvalUrl, o.matchNumber);
-      const approve = page.getByRole("button", { name: /^Approve .* with passkey$/ });
-      await approve
-        .or(page.getByRole("button", { name: "Create passkey" }))
-        .first()
-        .waitFor();
-      await createPasskeyIfAsked();
-      await approve.click();
-      await page.getByRole("heading", { level: 1, name: "Approved" }).waitFor();
+      // A user without a passkey makes one first, then signs; each step is a button to press.
+      const approved = page.getByRole("heading", { level: 1, name: "Approved" });
+      const steps = [
+        page.getByRole("button", { name: /^Approve .* with passkey$/ }),
+        page.getByRole("button", { name: "Create passkey" }),
+        page.getByRole("button", { name: /^Sign: allow up to / }),
+      ];
+      const until = Date.now() + 120_000;
+      while (!(await approved.isVisible())) {
+        if (Date.now() > until)
+          throw new Error(`not approved: ${await page.locator("main").innerText()}`);
+        const step = await Promise.any(
+          steps.map(async (b) => {
+            await b.waitFor({ timeout: 5_000 });
+            return b;
+          }),
+        ).catch(() => undefined);
+        if (step && (await step.isEnabled())) await step.click();
+        else await page.waitForTimeout(500);
+      }
       await save();
       if (!o.hold) return;
       await page.getByRole("link", { name: /^Hold .* on PayPal$/ }).click();
@@ -141,8 +178,25 @@ export async function judge(): Promise<User> {
     },
     async denyRequest(approvalUrl) {
       await openRequest(approvalUrl);
-      await page.getByRole("button", { name: "Decline" }).click();
-      await page.getByRole("heading", { level: 1, name: "Declined" }).waitFor();
+      await page.getByRole("button", { name: /^(Reject|Decline)$/ }).click();
+      await page.getByRole("heading", { level: 1, name: /^(Declined|Rejected)$/ }).waitFor();
+    },
+    async revokeMandate(mandateId) {
+      if (!page.url().startsWith(APP_ORIGIN)) await page.goto(`${APP_ORIGIN}/`);
+      const api = process.env.KEELSON_API_URL ?? "https://api.keelson.finance";
+      const status = await page.evaluate(
+        async ([url, key]) =>
+          (
+            await fetch(url as string, {
+              method: "POST",
+              credentials: "include",
+              headers: { "content-type": "application/json", "idempotency-key": key as string },
+              body: "{}",
+            })
+          ).status,
+        [`${api}/v1/mandates/${mandateId}/revoke`, crypto.randomUUID()],
+      );
+      if (status >= 300) throw new Error(`revoking ${mandateId}: HTTP ${status}`);
     },
     async close() {
       await save().catch(() => {});

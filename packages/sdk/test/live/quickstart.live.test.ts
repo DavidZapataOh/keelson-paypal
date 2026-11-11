@@ -18,7 +18,7 @@ describe.skipIf(!live || !hasBuyer)(
     let user: User;
     let credentials: string;
     beforeAll(async () => {
-      user = await judge();
+      user = await judge({ cache: "quickstart" });
       credentials = join(await mkdtemp(join(tmpdir(), "keelson-quickstart-")), "credentials.json");
       await login({ path: credentials, open: (url) => user.approveLogin(url), log: () => {} });
     }, 180_000);
