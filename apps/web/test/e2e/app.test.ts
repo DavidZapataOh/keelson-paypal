@@ -1173,8 +1173,10 @@ test("a blocked cart shows, field by field, what the mandate allowed against the
   await page.getByText("blocked the cart before payment").waitFor();
   const lines = page.locator('[data-slot="block-diff"]');
   expect(await lines.count()).toBe(2);
-  expect(await lines.nth(0).innerText()).toMatch(/Mandate \$100\.00[\s\S]*Cart \$340\.00/);
-  expect(await lines.nth(1).innerText()).toMatch(/Mandate Running shoes[\s\S]*Cart Trail sandals/);
+  expect(await lines.nth(0).textContent()).toMatch(/Mandate \$100\.00[\s\S]*Cart \$340\.00/);
+  expect(await lines.nth(1).textContent()).toMatch(
+    /Mandate Running shoes[\s\S]*Cart Trail sandals/,
+  );
   await context.close();
 });
 
