@@ -2,6 +2,7 @@ import { addresses, keelsonBondVaultAbi } from "@keelson/chain";
 import { keelsonDomain } from "@keelson/core/eip712";
 import {
   and,
+  asc,
   chainTxs,
   type Db,
   desc,
@@ -323,6 +324,35 @@ export async function recordDenials(deps: SweeperDeps): Promise<number> {
   return recorded;
 }
 
+const LOCK_KEY = "KeelsonBondVault.lockCoverage:";
+const RELEASE_KEY = "KeelsonBondVault.releaseCoverage:";
+/** Coverages read from the vault on one pass. */
+const RELEASE_BATCH = 500;
+
+/**
+ * The coverage ids of recent locks Keelson has not released yet, oldest first, so released ones
+ * never crowd out those still active.
+ *
+ * @internal
+ */
+export async function releasableLocks(db: Db, limit: number): Promise<Hex[]> {
+  const locks = await db
+    .select({ key: chainTxs.key })
+    .from(chainTxs)
+    .where(
+      and(
+        eq(chainTxs.chainId, CHAIN_ID),
+        eq(chainTxs.status, "confirmed"),
+        like(chainTxs.key, `${LOCK_KEY}%`),
+        sql`${chainTxs.confirmedAt} > now() - ${RELEASABLE_FOR}::interval`,
+        sql`not exists (select 1 from ${chainTxs} r where r.status = 'confirmed' and r.key = ${RELEASE_KEY} || substr(${chainTxs.key}, ${LOCK_KEY.length + 1}))`,
+      ),
+    )
+    .orderBy(asc(chainTxs.confirmedAt))
+    .limit(limit);
+  return locks.map((l) => l.key.slice(LOCK_KEY.length) as Hex);
+}
+
 /**
  * Releases every coverage Keelson locked whose window has passed, so the operator's bond is free
  * again. Anyone may call `releaseCoverage`; the relayer pays for it.
@@ -332,21 +362,8 @@ export async function recordDenials(deps: SweeperDeps): Promise<number> {
 export async function releaseCoverages(deps: SweeperDeps): Promise<number> {
   const { db, relayer, chain, log } = deps;
   const vault = addresses[CHAIN_ID].KeelsonBondVault as Hex;
-  const prefix = "KeelsonBondVault.lockCoverage:";
-  const locks = await db
-    .select({ key: chainTxs.key })
-    .from(chainTxs)
-    .where(
-      and(
-        eq(chainTxs.chainId, CHAIN_ID),
-        eq(chainTxs.status, "confirmed"),
-        like(chainTxs.key, `${prefix}%`),
-        sql`${chainTxs.confirmedAt} > now() - ${RELEASABLE_FOR}::interval`,
-      ),
-    )
-    .limit(500);
-  if (locks.length === 0) return 0;
-  const ids = locks.map((l) => l.key.slice(prefix.length) as Hex);
+  const ids = await releasableLocks(db, RELEASE_BATCH);
+  if (ids.length === 0) return 0;
   const [block, coverages] = await Promise.all([
     chain.client.getBlock({ blockTag: "latest" }),
     chain.client.multicall({
@@ -369,7 +386,7 @@ export async function releaseCoverages(deps: SweeperDeps): Promise<number> {
         contract: "KeelsonBondVault",
         functionName: "releaseCoverage",
         args: [coverageId],
-        key: `KeelsonBondVault.releaseCoverage:${coverageId}`,
+        key: `${RELEASE_KEY}${coverageId}`,
       });
       if (record.status === "confirmed") {
         released++;
