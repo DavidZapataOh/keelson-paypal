@@ -7,7 +7,8 @@ import type { Amount } from "./types";
  */
 export interface LivePurchase {
   id: string;
-  store: string;
+  /** The store's origin; `null` for a card purchase, which the card network names. */
+  store: string | null;
   merchant: string;
   amount: Amount;
   decision: "allow" | "deny";
@@ -15,6 +16,15 @@ export interface LivePurchase {
   transactionId: string | null;
   /** For a DENY, the mandate fields that failed, or leg A's PayPal reason. */
   blocked: string[];
+  /** A card purchase: the merchant the card network named and what both enclaves decided. */
+  card?: {
+    lastFour: string;
+    merchantName: string | null;
+    mcc: string | null;
+    approved: number;
+    declined: number;
+    settledMinor: string | null;
+  };
   logIndex: string;
   createdAt: string;
 }

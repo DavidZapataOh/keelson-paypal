@@ -11,6 +11,7 @@ import type { MiddlewareHandler } from "hono";
 import { ulid } from "ulid";
 import { bytesToHex, createPublicClient, type Hex, type PublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
+import { newestAlibi, warmAlibiVerifier } from "../src/alibi/warm.ts";
 import { createApp } from "../src/app.ts";
 import { createAuth } from "../src/auth.ts";
 import { arbitrumSepoliaTransport } from "../src/chain/rpc.ts";
@@ -291,6 +292,8 @@ try {
   }
   await refreshLeg(db, "a", tee);
   await refreshLeg(db, "b", tee);
+  // As the server does at boot, so the first purchase is timed as one after a deploy's warm-up.
+  await warmAlibiVerifier(() => newestAlibi(db));
   const perHold = Math.ceil(PURCHASES / CONCURRENCY);
   for (let i = 0; i < CONCURRENCY; i++) holds.push(await openHold(perHold));
   // The evidence of every purchase is captured first, one browser page at a time, so the
@@ -343,6 +346,8 @@ try {
     endToEndDegraded: stats(captured.filter((r) => r.mode === "degraded").map((r) => r.ms)),
     sse: stats(lag),
     ...waterfall(spans.getFinishedSpans()),
+    // The first purchase pays what a fresh process has not opened or loaded yet.
+    first: results[0] && waterfall(spans.getFinishedSpans(), results[0].id),
     purchases: results.length,
     captured: captured.length,
     failures,

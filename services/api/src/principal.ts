@@ -4,6 +4,11 @@ export interface Principal {
   kind: "user" | "client";
   subject: string;
   scopes?: string[];
+  /**
+   * For a client acting with a token a user delegated to it (an MCP host): that user, the token's
+   * `sub`. `subject` stays the client, the token's `azp`.
+   */
+  user?: string;
   /** The Better Auth session a user principal came with. */
   session?: { id: string; createdAt: Date };
 }
@@ -15,11 +20,18 @@ declare module "hono" {
 }
 
 /**
- * The opaque per-principal key: base64url of `<kind>:<subject>`. Kinds contain no `:`, so a
+ * The opaque per-principal key: base64url of `<kind>:<subject>`, or of
+ * `delegated:<length of user>:<user>:<subject>` for a client acting for a user, so that the users of
+ * one app never share idempotency keys, rate limits or event channels. Kinds contain no `:`, so a
  * subject containing `:` cannot make two principals share a key.
  */
-export function principalKey(principal: Pick<Principal, "kind" | "subject">): string {
-  return Buffer.from(`${principal.kind}:${principal.subject}`).toString("base64url");
+export function principalKey(principal: Pick<Principal, "kind" | "subject" | "user">): string {
+  const { kind, subject, user } = principal;
+  const key =
+    kind === "client" && user !== undefined
+      ? `delegated:${user.length}:${user}:${subject}`
+      : `${kind}:${subject}`;
+  return Buffer.from(key).toString("base64url");
 }
 
 /**
@@ -28,7 +40,7 @@ export function principalKey(principal: Pick<Principal, "kind" | "subject">): st
  * @internal
  */
 export function principalChannel(
-  principal: Pick<Principal, "kind" | "subject">,
+  principal: Pick<Principal, "kind" | "subject" | "user">,
   suffix?: string,
 ): string {
   const channel =

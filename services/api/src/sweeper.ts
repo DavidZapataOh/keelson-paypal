@@ -1,6 +1,7 @@
 import { and, type Db, eq, lt, purchases, sql } from "@keelson/db";
 import type { Logger } from "pino";
 import { resumeSettlements, type SettleDeps } from "./disputes/settle.ts";
+import { closeExpiredCards, collectForcePosted } from "./pipeline/card-step.ts";
 import { logDenials, type PipelineDeps, resumePurchases } from "./pipeline/drive.ts";
 import { finishStops } from "./stop.ts";
 import { sweepEngineProofs } from "./zk/engine.ts";
@@ -44,7 +45,7 @@ const RESUME_INTERVAL_MS = 5_000;
 
 /**
  * Every five seconds, drives the purchases whose driver is gone, logs DENYs not yet logged and
- * finishes stops of every agent.
+ * finishes stops of every agent and closes the single-use cards whose countersign expired unused.
  */
 export function startPipelineResumer(deps: PipelineDeps): () => void {
   let running = false;
@@ -61,11 +62,13 @@ export function startPipelineResumer(deps: PipelineDeps): () => void {
         ...(deps.paypal ? { paypal: deps.paypal } : {}),
         ...(deps.tlog ? { tlog: deps.tlog } : {}),
       }),
+      closeExpiredCards(deps),
+      collectForcePosted(deps),
     ])
       .then(
-        ([resumed, logged, stops]) => {
-          if (resumed + logged + stops > 0) {
-            deps.log.info({ resumed, logged, stops }, "purchases resumed");
+        ([resumed, logged, stops, closed, collected]) => {
+          if (resumed + logged + stops + closed + collected > 0) {
+            deps.log.info({ resumed, logged, stops, closed, collected }, "purchases resumed");
           }
         },
         (err: unknown) => deps.log.error({ err }, "purchase resume failed"),

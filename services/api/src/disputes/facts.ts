@@ -114,19 +114,14 @@ const minorOf = (m: Money | undefined): bigint | undefined =>
     : undefined;
 
 /**
- * The facts of a dispute, from the PayPal reads and the purchase's Alibi. Every mandate field of
- * the countersigned evaluation is judged on its own: it failed if the evaluation failed it or if
- * the Channel3 observation in the Alibi contradicts it.
+ * Every mandate field of the countersigned evaluation, judged on its own: it failed if the
+ * evaluation failed it or if the Channel3 observation in the Alibi contradicts it.
  */
-export function disputeFacts({
-  reads,
-  bundle,
-  verified,
-  sameCartCountersigned,
-}: FactsInput): DisputeFacts {
-  const reason = reads.dispute.reason;
-  if (!reason || !REASONS.has(reason)) throw new Error(`unknown dispute reason ${reason}`);
-
+function fieldsOf(bundle: AlibiBundle): {
+  mismatches: Set<string>;
+  fields: FieldResult[];
+  failedFields: Partial<Record<Color, number>>;
+} {
   const mismatches = new Set(
     (
       (bundle.channel3_observation as { comparison?: { mismatches?: string[] } } | undefined)
@@ -154,8 +149,27 @@ export function disputeFacts({
     }
   }
 
+  return { mismatches, fields, failedFields };
+}
+
+/**
+ * The facts of a dispute, from the PayPal reads and the purchase's Alibi. Every mandate field of
+ * the countersigned evaluation is judged on its own: it failed if the evaluation failed it or if
+ * the Channel3 observation in the Alibi contradicts it.
+ */
+export function disputeFacts({
+  reads,
+  bundle,
+  verified,
+  sameCartCountersigned,
+}: FactsInput): DisputeFacts {
+  const reason = reads.dispute.reason;
+  if (!reason || !REASONS.has(reason)) throw new Error(`unknown dispute reason ${reason}`);
+
+  const { mismatches, fields, failedFields } = fieldsOf(bundle);
+
   const countersigned = BigInt(bundle.tee.countersign.amount);
-  const invoice = bundle.paypal.invoice_id;
+  const invoice = bundle.paypal?.invoice_id;
   const captures = (reads.order.purchaseUnits ?? []).flatMap((u) => u.payments?.captures ?? []);
   const live = (c: { status?: string }) => c.status !== "DECLINED" && c.status !== "FAILED";
 
@@ -175,6 +189,61 @@ export function disputeFacts({
       snapshot_matches_item: !mismatches.has("variant"),
       refund_recorded:
         reads.capture.status === "REFUNDED" || reads.capture.status === "PARTIALLY_REFUNDED",
+    },
+    fields,
+    failedFields,
+  };
+}
+
+/** The attribution reason each chargeback of a card purchase is judged under. */
+const CARD_REASON: Readonly<Record<string, string>> = {
+  not_received: "MERCHANDISE_OR_SERVICE_NOT_RECEIVED",
+  not_as_described: "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED",
+  unauthorized: "UNAUTHORISED",
+};
+
+export interface CardFactsInput {
+  /** The chargeback the user filed through the card issuer. */
+  chargeback: { reason: string; recoveredMinor: bigint | null };
+  /** What the card network settled for the purchase. */
+  settledMinor: bigint;
+  bundle: AlibiBundle;
+  /** The Alibi verified against the chain, its anchor and its card section included. */
+  verified: boolean;
+  /** Another captured purchase of the same mandate carries the same countersigned cart. */
+  sameCartCountersigned: boolean;
+}
+
+/**
+ * The facts of a card purchase's dispute, from its chargeback, its settlement and its Alibi, judged
+ * by the same attribution table as a PayPal dispute. A single-use card settles one charge, so a
+ * capture is never duplicated; nothing tracks a card purchase's delivery; and the money a
+ * chargeback returned is the refund on record.
+ */
+export function cardDisputeFacts({
+  chargeback,
+  settledMinor,
+  bundle,
+  verified,
+  sameCartCountersigned,
+}: CardFactsInput): DisputeFacts {
+  const reason = CARD_REASON[chargeback.reason];
+  if (!reason) throw new Error(`unknown chargeback reason ${chargeback.reason}`);
+  const { mismatches, fields, failedFields } = fieldsOf(bundle);
+  const approved = bundle.card?.authorizations.filter((a) => a.approved).length ?? 0;
+  return {
+    facts: {
+      reason,
+      proof_valid: verified,
+      failed_green: failedFields.green !== undefined,
+      failed_amber: failedFields.amber !== undefined,
+      failed_gray: failedFields.gray !== undefined,
+      captured_eq_countersigned: settledMinor === BigInt(bundle.tee.countersign.amount),
+      duplicate_countersig: sameCartCountersigned,
+      duplicate_capture: approved > 1,
+      tracking_delivered: false,
+      snapshot_matches_item: !mismatches.has("variant"),
+      refund_recorded: (chargeback.recoveredMinor ?? 0n) > 0n,
     },
     fields,
     failedFields,

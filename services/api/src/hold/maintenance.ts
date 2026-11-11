@@ -7,6 +7,7 @@ import {
   inArray,
   isNull,
   mandates,
+  or,
   purchaseHolds,
   purchases,
   sql,
@@ -67,7 +68,12 @@ async function inFlight(db: Db, mandateId: string, now: Date): Promise<boolean> 
       and(
         eq(purchases.mandateId, mandateId),
         inArray(purchases.state, [...IN_FLIGHT]),
-        gt(purchases.updatedAt, new Date(now.getTime() - IN_FLIGHT_MS)),
+        or(
+          gt(purchases.updatedAt, new Date(now.getTime() - IN_FLIGHT_MS)),
+          // A card charge is collected from the hold when the network settles it, which can take
+          // days: the hold stays until every covered card purchase is collected or closed.
+          and(eq(purchases.rail, "card"), eq(purchases.state, "COVERED")),
+        ),
       ),
     )
     .limit(1);
@@ -121,20 +127,33 @@ async function releasePurchaseHolds(deps: HoldDeps, mandateId: string): Promise<
     );
   let voided = false;
   for (const h of held) {
-    const authorizations = new Set(h.paypalAuthorizationId ? [h.paypalAuthorizationId] : []);
-    if (h.state === "PENDING") {
-      for (const id of await orderAuthorizations(deps.paypal, h.paypalOrderId)) {
-        authorizations.add(id);
-      }
-    }
-    for (const id of authorizations) {
-      if (await voidAuthorization(deps.paypal, id)) voided = true;
-    }
-    await deps.db
-      .update(purchaseHolds)
-      .set({ state: "VOIDED", updatedAt: sql`now()` })
-      .where(and(eq(purchaseHolds.requestId, h.requestId), eq(purchaseHolds.state, h.state)));
+    if (await releasePurchaseHold(deps, h)) voided = true;
   }
+  return voided;
+}
+
+/**
+ * Voids one per-purchase hold: its stored authorization and, while it is pending, any its order
+ * has at PayPal, then marks it `VOIDED`. Resolves to whether PayPal voided anything.
+ */
+export async function releasePurchaseHold(
+  deps: Pick<HoldDeps, "db" | "paypal">,
+  h: typeof purchaseHolds.$inferSelect,
+): Promise<boolean> {
+  let voided = false;
+  const authorizations = new Set(h.paypalAuthorizationId ? [h.paypalAuthorizationId] : []);
+  if (h.state === "PENDING") {
+    for (const id of await orderAuthorizations(deps.paypal, h.paypalOrderId)) {
+      authorizations.add(id);
+    }
+  }
+  for (const id of authorizations) {
+    if (await voidAuthorization(deps.paypal, id)) voided = true;
+  }
+  await deps.db
+    .update(purchaseHolds)
+    .set({ state: "VOIDED", updatedAt: sql`now()` })
+    .where(and(eq(purchaseHolds.requestId, h.requestId), eq(purchaseHolds.state, h.state)));
   return voided;
 }
 

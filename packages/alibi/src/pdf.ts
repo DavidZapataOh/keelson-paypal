@@ -142,20 +142,38 @@ export async function renderAlibiPdf(b: AlibiBundle): Promise<Uint8Array> {
       ? `Anchored at size ${b.anchor.anchored_size} on chain ${b.anchor.chain_id}, transaction ${b.anchor.tx_hash}`
       : "Not anchored yet",
   );
-  label("PayPal");
-  value(
-    [
-      `Order ${b.paypal.order_id}`,
-      b.paypal.transaction_id
-        ? `Paid by the buyer at the store: PayPal transaction ${b.paypal.transaction_id} (reported by PayPal, not signed)`
-        : b.paypal.capture_id
-          ? `Capture ${b.paypal.capture_id} (reported by PayPal, not signed)`
-          : "Not captured yet",
-      b.paypal.invoice_id ? `Invoice ${b.paypal.invoice_id}` : "",
-    ]
-      .filter(Boolean)
-      .join("\n"),
-  );
+  if (b.paypal) {
+    label("PayPal");
+    value(
+      [
+        `Order ${b.paypal.order_id}`,
+        b.paypal.transaction_id
+          ? `Paid by the buyer at the store: PayPal transaction ${b.paypal.transaction_id} (reported by PayPal, not signed)`
+          : b.paypal.capture_id
+            ? `Capture ${b.paypal.capture_id} (reported by PayPal, not signed)`
+            : "Not captured yet",
+        b.paypal.invoice_id ? `Invoice ${b.paypal.invoice_id}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+  }
+  if (b.card) {
+    const approved = b.card.authorizations.find((a) => a.approved);
+    label("Card");
+    value(
+      [
+        `Paid with PayPal · Keelson single-use card ending ${b.card.last_four}, issued after the ALLOW`,
+        approved
+          ? `Authorization ${approved.id}: ${approved.merchant_name}, MCC ${approved.mcc}, approved by both legs`
+          : "No authorization approved yet",
+        `${b.card.authorizations.filter((a) => !a.approved).length} declined`,
+        b.card.settlement
+          ? `Settled ${b.card.settlement.settled_minor} (reported by the issuer, not signed)`
+          : "Not settled yet",
+      ].join("\n"),
+    );
+  }
 
   const url = verifyUrl(b);
   const qr = QRCode.create(url, { errorCorrectionLevel: "M" });

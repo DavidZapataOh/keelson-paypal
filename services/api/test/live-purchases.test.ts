@@ -149,7 +149,7 @@ describe.skipIf(!f)("live Alibis are public", () => {
     const res = await app.request(`/v1/alibis/${b.alibi_id}`);
     expect(res.status).toBe(200);
     const bundle = decodeAlibi(new Uint8Array(await res.arrayBuffer()));
-    expect(bundle.paypal.transaction_id).toBe("5MC585209K746392H");
+    expect(bundle.paypal?.transaction_id).toBe("5MC585209K746392H");
   });
 
   test("the public copy withholds the user's login id and risk data, and verifies", async () => {

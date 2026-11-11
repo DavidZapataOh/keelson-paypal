@@ -47,6 +47,50 @@ const PAGES: Record<string, string> = {
     "<p>The Change US$2,95</p><p>Impuestos US$0,18</p><p>Total US$3,13</p><button>Pagar ahora</button>",
     "es",
   ),
+  // PayPal's review page for a buyer whose account converts to COP, written as PayPal writes
+  // amounts in Latin American Spanish: "$2.95 USD" with a point, "$10.231 COP" grouped with one.
+  // A test buyer only: every name, address and number in it is made up.
+  "/pay/converted": page(
+    `<header><button aria-label="Ver carrito">$2.95 USD</button></header>
+    <h1>Revisar pedido</h1>
+    <section aria-label="Resumen del pedido" data-testid="cart-summary">
+      <div><span>The Change</span> <span>$2.95 USD</span></div>
+      <div><span>Envío</span> <span>$0.00 USD</span></div>
+      <div data-testid="cart-total"><span>Total</span> <span>$2.95 USD</span></div>
+    </section>
+    <section aria-label="Pagar con">
+      <p>Ana Prueba · ana.prueba@example.test</p>
+      <p>Calle 85 # 11-53, Bogotá</p>
+      <div><span>Saldo de PayPal</span> <span>$1.669 COP</span></div>
+      <div><span>Visa ••••</span> <span>4242</span></div>
+      <p>Tasa de conversión de PayPal: 1 USD = 3.468,14 COP</p>
+      <div><span>Pagarás</span> <span>$10.231 COP</span></div>
+      <a href="#">Ver opciones de conversión</a>
+    </section>
+    <button>Pagar ahora</button>`,
+    "es",
+  ),
+  // The same page with the total only in COP: what the gate read on the held run (1669, 10231,
+  // 10231, 0, 1, 0, 1 and "$2.95 USD" unread) under the reader that took "$" for USD.
+  "/pay/cop-total": page(
+    `<h1>Revisar pedido</h1>
+    <div><span>The Change</span> <span>$2.95 USD</span></div>
+    <div><span>Saldo de PayPal</span> <span>$1.669 COP</span></div>
+    <div><span>Subtotal</span> <span>$10.231 COP</span></div>
+    <div><span>Total</span> <span>$10.231 COP</span></div>
+    <p>Envío $0 COP · 1 USD = 3.468,14 COP</p>
+    <p>Impuestos $0 COP · 1 USD = 3.468,14 COP</p>
+    <p>CC 1.023.456.789 · +57 300 123 4567</p>
+    <button>Pagar ahora</button>`,
+    "es",
+  ),
+  // A bare "$" amount on a page that also names COP may be either currency.
+  "/pay/bare": page(
+    `<h1>Revisar pedido</h1><div><span>Total</span> <span>$2.95 USD</span></div>
+    <div><span>Pagarás</span> <span>$10.231</span></div><p>1 USD = 3.468,14 COP</p>
+    <button>Pagar ahora</button>`,
+    "es",
+  ),
   "/checkouts/cn/framed": page(
     `<p>Item $2.95 USD</p><iframe srcdoc="<p>Total $5.90 USD</p>"></iframe><button>Pay now</button>`,
   ),
@@ -76,6 +120,12 @@ describe("the pay-click gate", () => {
   const open = async (path: string) => {
     const r = await driver.toolResult(call("navigate", { url: `${origin}${path}` }));
     expect(r.is_error).toBeFalsy();
+  };
+  /** The pages served here as PayPal's host: every action on them is gated. */
+  const asPayPal = async () => {
+    await driver.close();
+    gate = new PayGate({ checkoutHosts: ["127.0.0.1"], convertHosts: ["127.0.0.1"] });
+    driver = await StoreBrowser.attach(context, tab, { hosts: ["127.0.0.1"], gate });
   };
   const click = (target: Record<string, unknown>) =>
     driver.toolResult(call("left_click", { target }));
@@ -210,8 +260,13 @@ describe("the pay-click gate", () => {
     const held = await click({ type: "ref", ref: await ref("Pagar ahora") });
     expect(held.is_error).toBe(true);
     expect(text(held)).toMatch(/now USD 3\.13/);
-    expect(gate.held).toEqual([
-      { locale: "es", amounts: ["USD 2.95", "USD 0.18", "USD 3.13"], requote: "USD 3.13" },
+    expect(gate.held).toMatchObject([
+      {
+        locale: "es",
+        amounts: ["USD 2.95", "USD 0.18", "USD 3.13"],
+        totals: ["USD 3.13"],
+        requote: "USD 3.13",
+      },
     ]);
   });
 
@@ -243,7 +298,7 @@ describe("the pay-click gate", () => {
     gate.allow(USD_295);
     await open("/checkouts/cn/nolang");
     expect((await click({ type: "ref", ref: await ref("Pay now") })).is_error).toBe(true);
-    expect(gate.held).toEqual([{ locale: null, amounts: [], unsure: "no locale" }]);
+    expect(gate.held).toMatchObject([{ locale: null, amounts: [], unsure: "no locale" }]);
   });
 
   test("the store's own cart must hold the countersigned total too", async () => {
@@ -271,6 +326,89 @@ describe("the pay-click gate", () => {
     cart = { currency: "USD", minor: 590 };
     expect((await click({ type: "ref", ref: await ref("Pagar ahora") })).is_error).toBe(true);
     expect(gate.takeRequote()).toBeUndefined();
+  });
+
+  test("PayPal's page with the total in USD and its conversion to COP is paid", async () => {
+    await asPayPal();
+    gate.allow(USD_295);
+    await open("/pay/converted");
+    const r = await click({ type: "ref", ref: await ref("Pagar ahora") });
+    expect(r.is_error, JSON.stringify(gate.held)).toBeFalsy();
+    expect(await out()).toBe("clicked Pagar ahora");
+  });
+
+  test("PayPal's page with the total only in COP is held, and the log keeps no buyer data", async () => {
+    await asPayPal();
+    gate.allow(USD_295);
+    await open("/pay/cop-total");
+    const r = await click({ type: "ref", ref: await ref("Pagar ahora") });
+    expect(r.is_error).toBe(true);
+    expect(text(r)).toMatch(/does not label USD 2\.95 as its total/);
+    expect(await out()).toBe("");
+    const [held] = gate.held;
+    // "1 USD = 3.468,14 COP" is a rate, not an amount.
+    expect(held).toMatchObject({ locale: "es", amounts: ["USD 2.95"] });
+    expect(held?.totals).toEqual([]);
+    const log = JSON.stringify(gate.held);
+    for (const secret of ["023", "456", "789", "300", "4567"]) expect(log).not.toContain(secret);
+    expect(held?.seen).toEqual(
+      expect.arrayContaining([
+        { amount: "$10.231 COP", kind: "other", context: "total", label: "Total", region: "" },
+        {
+          amount: "$1.669 COP",
+          kind: "other",
+          context: "aside",
+          label: "Saldo de PayPal",
+          region: "",
+        },
+        { amount: "3.468,14 COP", kind: "other", context: "line", label: "=", region: "" },
+        expect.objectContaining({ amount: "#.###.###.###", kind: "loose", label: "▪" }),
+        expect.objectContaining({ amount: "## ### ### ####", kind: "loose" }),
+      ]),
+    );
+  });
+
+  test("on PayPal's page, the log keeps amounts, checkout words and regions only", async () => {
+    await asPayPal();
+    gate.allow(checkoutTotal("USD", { items: 100 }));
+    await open("/pay/converted");
+    expect((await click({ type: "ref", ref: await ref("Pagar ahora") })).is_error).toBe(true);
+    const log = JSON.stringify(gate.held);
+    for (const secret of ["Ana", "Prueba", "example", "Calle", "85", "53", "Bogot", "4242"]) {
+      expect(log).not.toContain(secret);
+    }
+    expect(gate.held[0]?.seen).toEqual(
+      expect.arrayContaining([
+        {
+          amount: "$2.95 USD",
+          kind: "target",
+          context: "total",
+          label: "Total",
+          region: "section cart-total",
+        },
+        {
+          amount: "$10.231 COP",
+          kind: "other",
+          context: "total",
+          label: "Pagarás",
+          region: "section",
+        },
+        {
+          amount: "$1.669 COP",
+          kind: "other",
+          context: "aside",
+          label: "Saldo de PayPal",
+          region: "section",
+        },
+      ]),
+    );
+  });
+
+  test("a bare dollar amount on a page that names COP may be USD, so a larger one holds", async () => {
+    await asPayPal();
+    gate.allow(USD_295);
+    await open("/pay/bare");
+    expect((await click({ type: "ref", ref: await ref("Pagar ahora") })).is_error).toBe(true);
   });
 
   test("a larger total inside a frame is seen", async () => {

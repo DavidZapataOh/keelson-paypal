@@ -1,8 +1,8 @@
+import type { Db } from "@keelson/db";
 import { isAPIError } from "better-auth/api";
 import { requestToResourceInput, verifyAccessTokenRequest } from "better-auth/oauth2";
 import type { Context, MiddlewareHandler } from "hono";
-import type { RedisClientType } from "redis";
-import { type Auth, apiAudience, tokenScopes } from "../auth.ts";
+import { type Auth, apiAudience, delegatedUser, tokenScopes } from "../auth.ts";
 import { judgeExpired } from "../judge.ts";
 import { problem } from "../problem.ts";
 import { tokenStopped } from "../stopped.ts";
@@ -18,7 +18,11 @@ declare module "hono" {
  * header is sent, from a session cookie. Never rejects: route guards decide what a missing
  * principal or an invalid token means.
  */
-export function authenticate(auth: Auth, baseURL: string, kv?: RedisClientType): MiddlewareHandler {
+export function authenticate(
+  auth: Auth,
+  baseURL: string,
+  revocations?: Pick<Db, "execute">,
+): MiddlewareHandler {
   const issuer = `${baseURL.replace(/\/$/, "")}/api/auth`;
   const jwksUrl = `${issuer}/jwks`;
   return async (c, next) => {
@@ -28,18 +32,26 @@ export function authenticate(auth: Auth, baseURL: string, kv?: RedisClientType):
           jwksUrl,
           verifyOptions: { issuer, audience: apiAudience, typ: "at+jwt", requiredClaims: ["azp"] },
         });
-        // A token the user granted before stopping every agent is refused, though it verifies.
-        if (
-          kv &&
-          typeof payload.sub === "string" &&
-          (await tokenStopped(kv, payload.sub, payload.iat))
-        ) {
+        const user = delegatedUser(payload);
+        // A token the user granted before stopping every agent, or disconnecting this app, is
+        // refused though it verifies; so is every such token while that cannot be checked.
+        let stopped: boolean;
+        try {
+          stopped =
+            revocations !== undefined &&
+            user !== undefined &&
+            (await tokenStopped(revocations, user, payload.azp as string, payload.iat));
+        } catch {
+          return revocationUnknown(c);
+        }
+        if (stopped) {
           c.set("invalidToken", true);
         } else {
           c.set("principal", {
             kind: "client",
             subject: payload.azp as string,
             scopes: tokenScopes(payload),
+            ...(user === undefined ? {} : { user }),
           });
         }
       } catch (err) {
@@ -60,6 +72,17 @@ export function authenticate(auth: Auth, baseURL: string, kv?: RedisClientType):
     }
     await next();
   };
+}
+
+function revocationUnknown(c: Context): Response {
+  c.header("Retry-After", "5");
+  return problem(
+    c,
+    503,
+    "revocation-unavailable",
+    "Revocation unavailable",
+    "Whether this access token was revoked cannot be checked now. Try again shortly.",
+  );
 }
 
 function invalidToken(c: Context): Response {
@@ -101,6 +124,18 @@ export function requireClient(scopes: string[]): MiddlewareHandler {
       );
     }
     await next();
+  };
+}
+
+/**
+ * Admits an agent: an operator's own client with `countersign:write`, or an app acting for a user
+ * (`principal.user`) with `delegated`, the scope that grants it this route for that user only.
+ */
+export function requireAgent(delegated: string): MiddlewareHandler {
+  return (c, next) => {
+    const principal = c.var.principal;
+    const scope = principal?.kind === "client" && principal.user ? delegated : "countersign:write";
+    return requireClient([scope])(c, next);
   };
 }
 

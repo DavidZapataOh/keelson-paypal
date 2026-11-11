@@ -156,7 +156,7 @@ func (f *follower) emit(e Event) {
 func (f *follower) check(ctx context.Context) error {
 	cur := f.st.Get(f.o.Name)
 	if f.tracker == nil {
-		t, err := client.NewLogStateTracker(ctx, f.fetcher.ReadTile, cur.Checkpoint, f.o.Verifier, f.o.Name, f.consensus)
+		t, err := client.NewLogStateTracker(ctx, f.fetcher.ReadTile, cur.Checkpoint, f.viewKey(cur.Checkpoint), f.o.Name, f.consensus)
 		if err != nil {
 			return err
 		}
@@ -194,7 +194,25 @@ func (f *follower) check(ctx context.Context) error {
 
 // consensus returns the log's checkpoint only if it satisfies the pinned
 // policy and does not conflict with the verified view at its size.
-func (f *follower) consensus(ctx context.Context, v note.Verifier, origin string) (*log.Checkpoint, []byte, *note.Note, error) {
+// viewKey is the key the saved view opens with: the log's, or a key it
+// retired whose bound covers the view, so a moved key does not stop the
+// monitor. The log's next checkpoints must still be signed with its key.
+func (f *follower) viewKey(saved []byte) note.Verifier {
+	if len(saved) == 0 {
+		return f.o.Verifier
+	}
+	if _, _, _, err := log.ParseCheckpoint(saved, f.o.Name, f.o.Verifier); err == nil {
+		return f.o.Verifier
+	}
+	for _, r := range f.o.Retired {
+		if c, _, _, err := log.ParseCheckpoint(saved, f.o.Name, r.Verifier); err == nil && c.Size <= r.UntilSize {
+			return r.Verifier
+		}
+	}
+	return f.o.Verifier
+}
+
+func (f *follower) consensus(ctx context.Context, _ note.Verifier, origin string) (*log.Checkpoint, []byte, *note.Note, error) {
 	raw, err := f.fetcher.ReadCheckpoint(ctx)
 	if err != nil {
 		return nil, nil, nil, err
@@ -202,7 +220,7 @@ func (f *follower) consensus(ctx context.Context, v note.Verifier, origin string
 	if _, _, err := torchwood.VerifyCheckpoint(raw, f.o.Policy); err != nil {
 		return nil, nil, nil, &findingError{Kind: "checkpoint.signature", Err: err}
 	}
-	c, _, n, err := log.ParseCheckpoint(raw, origin, v)
+	c, _, n, err := log.ParseCheckpoint(raw, origin, f.o.Verifier)
 	if err != nil {
 		return nil, nil, nil, &findingError{Kind: "checkpoint.signature", Err: err}
 	}

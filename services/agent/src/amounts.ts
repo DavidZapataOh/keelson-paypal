@@ -1,3 +1,5 @@
+import { partEnd, wordEnd } from "./requote.ts";
+
 /** An amount in minor units of an ISO 4217 currency: cents of USD, yen of JPY, fils of KWD. */
 export interface Money {
   currency: string;
@@ -28,26 +30,21 @@ export function minorDigits(currency: string): number {
 
 /** How `locale` writes amounts of `currency`, read from CLDR through `Intl.NumberFormat`. */
 interface Shape {
-  /** The locale's digits, 0 to 9. */
-  digits: string[];
-  group: string;
-  decimal: string;
-  /** Group sizes: the last group, then every other (3 and 3; 3 and 2 in India). */
-  primary: number;
-  secondary: number;
   fraction: number;
   /** The marks that name `currency` in this locale: its symbol and its ISO code. */
   marks: string[];
   /** The narrow symbol (`$` for USD), which names the currency only next to its ISO code. */
   narrow: string;
+  /** The signs other locales write the currency with (US$, $, $US). */
+  signs: string[];
 }
 
 /**
  * The symbols other locales write the currency with that also spell out its country (US$, $US,
  * CA$, R$): each one names this currency alone, whatever locale the page is in.
  */
-function spelled(currency: string): string[] {
-  return ["en", "en-GB", "en-CA", "en-AU", "es", "fr", "pt", "de"]
+function spelled(currency: string, any = false): string[] {
+  return ["en", "en-GB", "en-CA", "en-AU", "es", "fr", "pt", "de", "ja", "zh", "ko", "ar", "hi"]
     .map((l) =>
       flat(
         new Intl.NumberFormat(l, { style: "currency", currency })
@@ -55,7 +52,7 @@ function spelled(currency: string): string[] {
           .find((p) => p.type === "currency")?.value ?? "",
       ).trim(),
     )
-    .filter((m) => /\p{L}/u.test(m) && /\p{Sc}/u.test(m));
+    .filter((m) => (any || /\p{L}/u.test(m)) && /\p{Sc}/u.test(m));
 }
 
 const shapes = new Map<string, Shape>();
@@ -72,8 +69,6 @@ function shape(locale: string, currency: string): Shape {
       currencyDisplay: display,
       useGrouping: "always",
     });
-  const parts = format("symbol").formatToParts(1234567890.5);
-  const integers = parts.filter((p) => p.type === "integer").map((p) => flat(p.value));
   const mark = (display: "symbol" | "code" | "narrowSymbol") =>
     flat(
       format(display)
@@ -91,36 +86,24 @@ function shape(locale: string, currency: string): Shape {
           .join(""),
       ).trim(),
     );
-  const numerals = new Intl.NumberFormat(locale, { useGrouping: false });
-  const digits = [...Array(10).keys()].map((d) => numerals.format(d));
   const s: Shape = {
-    digits,
-    group: flat(parts.find((p) => p.type === "group")?.value ?? ""),
-    // Some locales write money with another decimal than plain numbers (fr-CH: 0.01 vs 0,01).
-    decimal: flat(
-      (
-        parts.find((p) => p.type === "decimal") ??
-        new Intl.NumberFormat(locale, { minimumFractionDigits: 1 })
-          .formatToParts(1.5)
-          .find((p) => p.type === "decimal")
-      )?.value ?? ".",
-    ),
-    primary: integers.at(-1)?.length ?? 3,
-    secondary:
-      integers.length > 2 ? (integers.at(-2)?.length ?? 3) : (integers.at(-1)?.length ?? 3),
     fraction,
     marks: [
       ...new Set([mark("symbol"), mark("code"), currency, ...spelled(currency), ...names()]),
     ].filter(Boolean),
     narrow: mark("narrowSymbol"),
+    signs: spelled(currency, true),
   };
   shapes.set(key, s);
   return s;
 }
 
-const SEPARATORS = ".,'\u2019\u066b\u066c";
 /** A run of digits and the separators or single spaces between them: a number as written. */
 const RUN = /\d(?:[.,'\u2019\u066b\u066c]\d|\d| (?=\d))*/gu;
+const RUN_SEPARATOR = /([.,'\u2019\u066b\u066c ])/u;
+/** What groups thousands somewhere, and what ends the whole units somewhere. */
+const GROUPS: ReadonlySet<string> = new Set([",", ".", " ", "'", "\u2019", "\u066c"]);
+const DECIMALS: ReadonlySet<string> = new Set([".", ",", "\u066b"]);
 /** A currency mark next to a number: a sign (`€`), letters and a sign (`US$`, `R$`) or an ISO code. */
 const MARK_BEFORE = /(?<!\p{L})(\p{Lu}{0,3}\p{Sc}|\p{Lu}{3}) ?$/u;
 const MARK_AFTER = /^ ?(\p{Lu}{0,3}\p{Sc}|\p{Lu}{3})(?!\p{L})/u;
@@ -142,8 +125,25 @@ const TAX_LABELS: ReadonlySet<string> = new Set([
   "DPH",
   "ALV",
 ]);
+const ISO: ReadonlySet<string> = new Set(Intl.supportedValuesOf("currency"));
+/** ISO codes that are also words a page may write in capitals (`text-transform: uppercase`). */
+const WORDS: ReadonlySet<string> = new Set([
+  "ALL",
+  "BOB",
+  "CUP",
+  "MAD",
+  "PEN",
+  "SOS",
+  "TOP",
+  "TRY",
+  "RON",
+  "BAM",
+  "GEL",
+  "MOP",
+  "NIO",
+  "AED",
+]);
 
-/** The text as one line of plain characters: compatibility forms folded (NFKC), bidi marks gone. */
 /** Every decimal digit Unicode has (Arabic-Indic, Devanagari, Thai, …), as its value 0 to 9. */
 const DIGITS: ReadonlyMap<string, string> = new Map(
   Intl.supportedValuesOf("numberingSystem").flatMap((nu) => {
@@ -162,104 +162,523 @@ const DIGITS: ReadonlyMap<string, string> = new Map(
  * gone (zero-width spaces, joiners, soft hyphens, bidi marks), and every script's digits written
  * 0 to 9, whatever numbering the locale uses.
  */
-function plain(text: string): string {
+export function plain(text: string): string {
   return flat(text.normalize("NFKC").replace(/\p{Cf}/gu, "")).replace(
     /\p{Nd}/gu,
     (c) => DIGITS.get(c) ?? c,
   );
 }
 
-interface Reading {
-  minor: number[];
-  /** The text before each amount, back to the amount before it: what the page labels it. */
-  labels: string[];
-  /** Why the text cannot be read for sure; undefined when it can. */
-  unsure?: string;
-}
-
-function read(text: string, locale: string, currency: string): Reading {
-  const s = shape(locale, currency);
-  const t = plain(text);
-  const marks = s.marks.map((m) => m.normalize("NFKC"));
-  const code = new RegExp(`(?<!\\p{L})${currency}(?!\\p{L})`, "u");
-  if (s.narrow && !marks.includes(s.narrow) && code.test(t)) marks.push(s.narrow.normalize("NFKC"));
-  const mark = [...marks]
-    .sort((a, b) => b.length - a.length)
-    .map(escapeRegex)
-    .join("|");
-  const g = escapeRegex(s.group);
-  const d = escapeRegex(s.decimal);
-  const integer = s.group
-    ? `\\d{1,${s.secondary}}(?:${g}\\d{${s.secondary}})*${g}\\d{${s.primary}}|\\d+`
-    : "\\d+";
-  const number = `(?:${integer})${s.fraction > 0 ? `(?:${d}\\d{${s.fraction}})?` : ""}`;
-  // A whole number only: no digit, separator or digit-and-space of a longer number may run on
-  // before or after it, and the mark is not the tail of another one (A$, CA$) or of a word.
-  const start = `(?<![\\d${escapeRegex(SEPARATORS)}${s.group === " " ? "" : g}])(?<!\\d )`;
-  const amount = new RegExp(
-    `(?:(?<![\\p{L}\\p{Sc}])(?:${mark}) ?${start}(${number})|${start}(${number}) ?(?:${mark})(?![\\p{L}\\p{Sc}]))(?![${escapeRegex(SEPARATORS)}${d}]?\\d)`,
-    "gud",
+/** Thousands groups as some locale writes them: 3 and 3, or 3 then 2s in India. */
+function grouped(groups: readonly string[]): boolean {
+  if (groups.length === 1) return true;
+  const [first = "", ...rest] = groups;
+  const last = rest.pop() ?? "";
+  if (last.length !== 3) return false;
+  return (
+    (first.length >= 1 && first.length <= 3 && rest.every((g) => g.length === 3)) ||
+    (first.length >= 1 && first.length <= 2 && rest.every((g) => g.length === 2))
   );
-  const minor: number[] = [];
-  const labels: string[] = [];
-  const spans = new Set<string>();
-  let end = 0;
-  for (const m of t.matchAll(amount)) {
-    labels.push(t.slice(end, m.index).trim());
-    end = m.index + m[0].length;
-    const group = m[1] !== undefined ? 1 : 2;
-    const written = m[group] as string;
-    const [from, to] = (m.indices as [number, number][])[group] as [number, number];
-    spans.add(`${from}:${to}`);
-    const [whole = "", cents = ""] = written.split(s.decimal);
-    const units = Number(s.group ? whole.replaceAll(s.group, "") : whole);
-    minor.push(units * 10 ** s.fraction + Number(cents.padEnd(s.fraction, "0") || 0));
-    // Cents set apart ("$15" over "99") would make the amount read smaller than it is.
-    if (s.fraction > 0 && !cents && new RegExp(`^ \\d{${s.fraction}}(?!\\d)`).test(t.slice(to))) {
-      return { minor, labels, unsure: "cents apart from their amount" };
-    }
-  }
-  // Every number written next to a currency mark must be read whole, and as this currency; and a
-  // number with a separator in it, shaped like an amount wherever its mark is, must be read too.
-  for (const run of t.matchAll(RUN)) {
-    const from = run.index;
-    const to = from + run[0].length;
-    if (!spans.has(`${from}:${to}`) && /[.,'\u2019\u066b\u066c]/u.test(run[0])) {
-      return { minor, labels, unsure: "a number like an amount not read" };
-    }
-    const before = MARK_BEFORE.exec(t.slice(Math.max(0, from - 5), from))?.[1];
-    const after = MARK_AFTER.exec(t.slice(to, to + 5))?.[1];
-    const near = [before, after].filter((x): x is string => x !== undefined && !TAX_LABELS.has(x));
-    if (near.some((x) => !marks.includes(x))) {
-      return { minor, labels, unsure: "another currency" };
-    }
-    if (
-      !spans.has(`${from}:${to}`) &&
-      (near.length > 0 ||
-        marks.some(
-          (x) =>
-            t
-              .slice(Math.max(0, from - x.length - 1), from)
-              .trim()
-              .endsWith(x) ||
-            t
-              .slice(to, to + x.length + 1)
-              .trim()
-              .startsWith(x),
-        ))
-    ) {
-      return { minor, labels, unsure: "an amount not read whole" };
-    }
-  }
-  return { minor, labels };
 }
 
 /**
- * Every amount of `currency` the text writes, read as `locale` writes it: its digits, its decimal
- * and grouping separators and group sizes, its currency marks before or after the number, and
- * any kind of space between them. The narrow symbol (`$`) counts only when the text also names
- * the currency by its ISO code, since it names several currencies. A number with no mark of the
- * currency is not an amount of it.
+ * The values, in minor units of a currency with `fraction` of them, that a number written `run`
+ * has in some locale: its last separator ends the whole units when exactly `fraction` digits
+ * follow it and any other separator groups thousands; otherwise every separator groups thousands.
+ * Whatever the locale, a currency with 2 or 0 minor digits gives one value at most: a group has 3
+ * digits after its separator. Only 3 minor digits (KWD 1.234) can give two. None when no locale
+ * writes it so (`2.9`, `15 99`, `1.000.000,5`).
+ *
+ * @internal
+ */
+export function values(run: string, fraction: number): number[] {
+  const parts = run.split(RUN_SEPARATOR);
+  const digits = parts.filter((_, i) => i % 2 === 0);
+  const seps = parts.filter((_, i) => i % 2 === 1);
+  if (digits.join("").length > 15) return [];
+  const scale = 10 ** fraction;
+  const out = new Set<number>();
+  const last = seps.at(-1);
+  if (last === undefined) return [Number(run) * scale];
+  const cents = digits.at(-1) ?? "";
+  const whole = digits.slice(0, -1);
+  const between = seps.slice(0, -1);
+  if (
+    fraction > 0 &&
+    DECIMALS.has(last) &&
+    cents.length === fraction &&
+    between.every((s) => s === between[0] && s !== last && GROUPS.has(s)) &&
+    grouped(whole)
+  ) {
+    out.add(Number(whole.join("")) * scale + Number(cents));
+  }
+  if (seps.every((s) => s === last && GROUPS.has(s)) && grouped(digits)) {
+    out.add(Number(digits.join("")) * scale);
+  }
+  const all = [...out];
+  return all;
+}
+
+/**
+ * Words a checkout labels the amount it charges with, in the languages PayPal and Shopify offer
+ * checkout in: the total, and what the buyer pays.
+ */
+const TOTAL = [
+  "total",
+  "totale",
+  "totaal",
+  "totalt",
+  "totaali",
+  "gesamt",
+  "gesamtbetrag",
+  "gesamtsumme",
+  "you pay",
+  "you'll pay",
+  "you will pay",
+  "pagas",
+  "pagarás",
+  "a pagar",
+  "due",
+  "balance due",
+  "amount due",
+  "total a pagar",
+  "importe total",
+  "valor total",
+  "montant total",
+  "pay now",
+  "pagará",
+  "vai pagar",
+  "você paga",
+  "charged",
+  "cobro",
+  "cobrará",
+  "итого",
+  "к оплате",
+  "toplam",
+  "razem",
+  "do zapłaty",
+  "celkem",
+  "yhteensä",
+  "i alt",
+  "összesen",
+  "合計",
+  "合计",
+  "总计",
+  "總計",
+  "합계",
+  "총액",
+  "รวม",
+  "סה״כ",
+  "الإجمالي",
+];
+/**
+ * Words that label money the buyer is not charged: a balance, a credit line, rewards, a rate of
+ * exchange. The nearest of these, the total words, and the tax and shipping words, decides.
+ */
+const ASIDE = [
+  "balance",
+  "available",
+  "rewards",
+  "points",
+  "cashback",
+  "limit",
+  "exchange rate",
+  "conversion rate",
+  "saldo",
+  "disponible",
+  "recompensas",
+  "puntos",
+  "límite",
+  "tipo de cambio",
+  "tasa de cambio",
+  "tasa de conversión",
+  "taxa de câmbio",
+  "guthaben",
+  "solde",
+  "taux de change",
+  "wechselkurs",
+];
+
+/** Where in `label` a total word last ends, or -1; "subtotal" and "sub-total" are no total. */
+function totalEnd(label: string): number {
+  let end = -1;
+  for (const word of TOTAL) {
+    const pattern = /^\p{Script=Latin}|^\p{Script=Cyrillic}/u.test(word)
+      ? new RegExp(`(?<![\\p{L}\\-])${escapeRegex(word)}(?!\\p{L})`, "giu")
+      : new RegExp(escapeRegex(word), "gu");
+    for (const m of label.matchAll(pattern)) end = Math.max(end, m.index + m[0].length);
+  }
+  return end;
+}
+
+/** Where an amount sits on its page: the charge, money it is not charged, or another line. */
+export type Context = "total" | "aside" | "line";
+
+/**
+ * Where an amount labeled `label` sits; an amount with no words before it, right after another
+ * one, sits on that one's row, unless that one is aside.
+ *
+ * @internal
+ */
+export function contextOf(label: string, previous: Context): Context {
+  const text = label.normalize("NFKC").toLowerCase();
+  // A balance or a rate labels its own amount only: rows run together in the page's text.
+  if (!/\p{L}/u.test(text)) return previous === "aside" ? "line" : previous;
+  const total = totalEnd(text);
+  const aside = wordEnd(text, ASIDE);
+  const part = partEnd(text);
+  const nearest = Math.max(total, aside, part);
+  if (nearest < 0) return "line";
+  if (nearest === aside) return "aside";
+  return nearest === total && total > part ? "total" : "line";
+}
+
+/** One number on a page, with the currency marks written next to it. */
+export interface Token {
+  from: number;
+  to: number;
+  /** The number and its marks, as the page writes them. */
+  text: string;
+  /** The number alone, as written. */
+  number: string;
+  /** The marks before and after the number. */
+  marks: string[];
+  /** For an amount of another currency, the ISO code that names it, if one does. */
+  currency?: string;
+  /**
+   * `target`: an amount of the currency read. `other`: of another currency. `loose`: it may be
+   * the currency read (no mark, or a mark several currencies on the page share). `plain`: a
+   * whole number with no mark, which is no amount.
+   */
+  kind: "target" | "other" | "loose" | "plain";
+  /** Its values in minor units of the currency read; for `target` and `loose` only. */
+  values: number[];
+  /** The text between the token before it and this one. */
+  label: string;
+  context: Context;
+}
+
+/**
+ * The mark of `marks` the text ends with before `at`, written as a mark: not inside a word, and
+ * not written onto the number before it ("2.95USD 4242").
+ */
+function markBefore(t: string, at: number, marks: readonly string[]): string | undefined {
+  const pre = t.slice(Math.max(0, at - 40), at).replace(/ $/, "");
+  return marks.find((m) => pre.endsWith(m) && !/[\p{L}\p{Sc}\d]$/u.test(pre.slice(0, -m.length)));
+}
+
+/** The mark of `marks` the text starts with at `at`, unless written onto the next number ("$2.95"). */
+function markAfter(
+  t: string,
+  at: number,
+  marks: readonly string[],
+  lone: boolean,
+): string | undefined {
+  const post = t.slice(at, at + 40).replace(/^ /, "");
+  return marks.find(
+    (m) =>
+      post.startsWith(m) &&
+      !/^[\p{L}\p{Sc}\d]/u.test(post.slice(m.length)) &&
+      !(lone && /^\p{Lu}{3}$/u.test(m) && /^ \p{Sc}/u.test(post.slice(m.length))),
+  );
+}
+
+/** A generic mark before or after a number, unless written onto the number on its other side. */
+function generic(
+  t: string,
+  from: number,
+  to: number,
+  side: "before" | "after",
+  lone = false,
+): string | undefined {
+  if (side === "before") {
+    const m = MARK_BEFORE.exec(t.slice(Math.max(0, from - 5), from));
+    const mark = m?.[1];
+    if (mark === undefined || TAX_LABELS.has(mark)) return undefined;
+    return /\d/.test(t[from - (m?.[0].length ?? 0) - 1] ?? "") ? undefined : mark;
+  }
+  const m = MARK_AFTER.exec(t.slice(to, to + 5));
+  const mark = m?.[1];
+  if (mark === undefined || TAX_LABELS.has(mark)) return undefined;
+  const rest = t.slice(to + (m?.[0].length ?? 0));
+  if (/^\d/.test(rest) || (lone && /^\p{Lu}{3}$/u.test(mark) && /^ \p{Sc}/u.test(rest))) {
+    return undefined;
+  }
+  return mark;
+}
+
+/**
+ * Every number in `t` with the currency marks next to it, and what it is for an amount of
+ * `currency` read in `locale`.
+ */
+function scanPlain(t: string, locale: string, currency: string): Token[] {
+  const s = shape(locale, currency);
+  const marks = [...new Set(s.marks.map((m) => m.normalize("NFKC")))].sort(
+    (a, b) => b.length - a.length,
+  );
+  const named = (code: string) => new RegExp(`(?<!\\p{L})${code}(?!\\p{L})`, "u").test(t);
+  const narrow = s.narrow.normalize("NFKC");
+  const narrowOk = narrow !== "" && !marks.includes(narrow) && named(currency);
+  const others = [
+    ...new Set(
+      [...t.matchAll(/(?<!\p{L})\p{Lu}{3}(?!\p{L})/gu)]
+        .map((m) => m[0])
+        .filter((c) => c !== currency && ISO.has(c)),
+    ),
+  ];
+  // A sign another currency named on the page also writes (COP's "$" next to USD's) names neither.
+  const shared = (mark: string) =>
+    others.some((c) => {
+      const o = shape(locale, c);
+      return o.narrow === mark || o.marks.includes(mark);
+    });
+  const own = narrowOk ? [...marks, narrow].sort((a, b) => b.length - a.length) : marks;
+  const signs = new Set(
+    [...marks, narrow, ...s.signs]
+      .filter((m) => /\p{Sc}/u.test(m))
+      .map((m) => m.replace(/\p{L}/gu, "")),
+  );
+  const tokens: Token[] = [];
+  let end = 0;
+  let claimed = 0;
+  let previous: Context = "line";
+  for (const run of t.matchAll(RUN)) {
+    let from = run.index;
+    let to = from + run[0].length;
+    const before = markBefore(t, from, own) ?? generic(t, from, to, "before");
+    // A code after a number with no mark before it, and before another amount ("Visa 4242 USD
+    // $2.95"), is that amount's.
+    const lone = before === undefined;
+    const after = markAfter(t, to, own, lone) ?? generic(t, from, to, "after", lone);
+    // A mark the token before already wrote after its number ("$2.95 USD 4242") is not this one's.
+    const ownBefore =
+      before !== undefined && t.lastIndexOf(before, from) >= claimed ? before : undefined;
+    const found = [ownBefore, after].filter((m): m is string => m !== undefined);
+    const code = (m: string) => /^\p{Lu}{3}$/u.test(m) && ISO.has(m);
+    let sure = false;
+    const maybe: string[] = [];
+    let other: string | undefined;
+    for (const m of found) {
+      if (m === currency) sure = true;
+      else if (code(m)) {
+        // A code that is also a word a checkout may write in capitals (ALL, TOP, PEN) may label.
+        if (WORDS.has(m)) maybe.push(m);
+        else other = m;
+      } else if (own.includes(m)) {
+        if (shared(m)) maybe.push(m);
+        else sure = true;
+      } else if (/\p{Sc}/u.test(m)) {
+        // Any sign this currency is written with somewhere ($ for USD: US$, USD$, A$ look alike).
+        if (m.includes(currency) || signs.has(m.replace(/\p{L}/gu, ""))) maybe.push(m);
+        else other ??= m;
+      } else maybe.push(m);
+    }
+    // "$10.231 COP": a sign both currencies write, and the other one's code, is the other one.
+    const writes = (c: string, m: string) => {
+      const o = shape(locale, c);
+      return o.narrow === m || o.marks.includes(m);
+    };
+    let kind: Token["kind"];
+    // A number that gave its code to the next amount may still be one ("490 USD $0.00").
+    // A masked card's last digits ("•••• 4242", "ending in 4242") are no amount.
+    const gave =
+      lone &&
+      after === undefined &&
+      /^ ?\p{Lu}{3} \p{Sc}/u.test(t.slice(to, to + 6)) &&
+      !/(?:[•*·]{2,}|ending(?: in)?|termina(?:da)? en) ?$/iu.test(
+        t.slice(Math.max(0, from - 16), from),
+      );
+    if (found.length === 0) {
+      // "490 dollars", "500 yen", "Rs. 490": a currency the reader does not name may be this one.
+      const named =
+        /^ ?(?:dollars?|dólar(?:es)?|pesos?|yen|euros?|rupees?|reais|real|won)\b/iu.test(
+          t.slice(to, to + 12),
+        ) || /\bRs\.? ?$/u.test(t.slice(Math.max(0, from - 4), from));
+      kind = RUN_SEPARATOR.test(run[0]) || named || gave ? "loose" : "plain";
+    } else if (sure && other === undefined) kind = "target";
+    else if (
+      other !== undefined &&
+      !sure &&
+      maybe.every((m) => code(other as string) && writes(other as string, m))
+    ) {
+      kind = "other";
+    } else kind = "loose";
+    if (ownBefore !== undefined) from = t.lastIndexOf(ownBefore, from);
+    if (after !== undefined) to = t.indexOf(after, to) + after.length;
+    if (found.length > 0) claimed = to;
+    const label = t.slice(end, from).trim();
+    const context = contextOf(label, previous);
+    if (kind !== "plain") {
+      end = to;
+      previous = context;
+    }
+    tokens.push({
+      from,
+      to,
+      text: t.slice(from, to),
+      number: run[0],
+      marks: found,
+      ...(kind === "other" && other && code(other) ? { currency: other } : {}),
+      kind,
+      values: kind === "target" || kind === "loose" ? values(run[0], s.fraction) : [],
+      label,
+      context,
+    });
+  }
+  return tokens;
+}
+
+/** Every number `text` writes, with its marks and label, read for `currency` in `locale`. */
+export function scan(text: string, locale: string, currency: string): Token[] {
+  return scanPlain(plain(text), locale, currency);
+}
+
+/** What a page shows in the currency read, in its own locale. */
+export interface PageReading {
+  locale: string;
+  /** Every amount in the currency, in minor units, in page order, but a rate's unit (`1 USD =`). */
+  minor: number[];
+  /** What the page labels each of `minor`: the text back to the number before it. */
+  labels: string[];
+  /** The amounts of `minor` the page labels its total or charge, and not a balance or rate. */
+  totals: number[];
+  /**
+   * The largest value each number that may be the currency can take: one with no mark, with a
+   * mark several currencies share, or written as no locale writes an amount.
+   */
+  loose: number[];
+  /**
+   * Amounts in another currency, in that currency's whole units, and whether the page labels each
+   * its total or charge (a conversion of the total, "Pagarás $10.231 COP") or money it is not
+   * charged (a balance). `currency` is undefined when only a sign names it.
+   */
+  conversions: { currency?: string; units: number; total: boolean; aside: boolean }[];
+  /** The rates the page writes from the currency (`1 USD = 3.468,14 COP`), by currency. */
+  rates: Record<string, number>;
+  /** Why the page cannot be read for sure; undefined when it can. */
+  unsure?: string;
+}
+
+/**
+ * A number's value in whole units of another currency, which a page may write with more decimals
+ * than CLDR shows it with (COP: `3.468,14`); undefined unless it reads one way.
+ */
+function units(run: string, currency: string | undefined): number | undefined {
+  for (const f of new Set([currency ? minorDigits(currency) : 2, 2, 0])) {
+    const [value, ...more] = values(run, f);
+    if (value !== undefined && more.length === 0) return value / 10 ** f;
+  }
+  return undefined;
+}
+
+/**
+ * A rate as a page writes it (`3.468,14`, `0.000288`, `16,6667`), with as many decimals as it
+ * likes; undefined when a single separator with 3 digits after it may group or end the units.
+ */
+function rateOf(run: string): number | undefined {
+  const parts = run.split(RUN_SEPARATOR);
+  const digits = parts.filter((_, i) => i % 2 === 0);
+  const seps = parts.filter((_, i) => i % 2 === 1);
+  const last = seps.at(-1);
+  if (last === undefined) return Number(run);
+  const cents = digits.at(-1) ?? "";
+  const whole = digits.slice(0, -1);
+  const between = seps.slice(0, -1);
+  const decimal =
+    DECIMALS.has(last) &&
+    between.every((x) => x === between[0] && x !== last && GROUPS.has(x)) &&
+    grouped(whole) &&
+    (between.length > 0 || cents.length !== 3);
+  if (decimal) return Number(`${whole.join("")}.${cents}`);
+  if (seps.every((x) => x === last && GROUPS.has(x)) && grouped(digits) && seps.length > 1) {
+    return Number(digits.join(""));
+  }
+  return undefined;
+}
+
+/** The value a number with no reading may at most have: every digit a whole unit. */
+const ceiling = (run: string, fraction: number) =>
+  Number(run.replace(/\D/g, "").slice(0, 15)) * 10 ** fraction;
+
+function read(text: string, locale: string, currency: string): Omit<PageReading, "locale"> {
+  const fraction = minorDigits(currency);
+  const tokens = scan(text, locale, currency);
+  const t = plain(text);
+  const minor: number[] = [];
+  const labels: string[] = [];
+  const totals: number[] = [];
+  const loose: number[] = [];
+  const conversions: PageReading["conversions"] = [];
+  const rates: Record<string, number> = {};
+  const rated = new Set<Token>();
+  let unsure: string | undefined;
+  for (const [i, token] of tokens.entries()) {
+    if (token.kind === "target") {
+      const [value, ...more] = token.values;
+      if (value === undefined || more.length > 0) {
+        unsure ??= value === undefined ? "an amount not read whole" : "an amount read two ways";
+        continue;
+      }
+      // "1 USD = 3.468,14 COP": the unit of a rate, not money.
+      const next = tokens.slice(i + 1).find((n) => n.kind !== "plain");
+      if (
+        value === 10 ** fraction &&
+        /^ ?= ?$/.test(t.slice(token.to, next?.from ?? token.to)) &&
+        next?.kind === "other" &&
+        next.currency
+      ) {
+        const rate = rateOf(next.number);
+        if (rate === undefined || (rates[next.currency] ?? rate) !== rate) {
+          unsure ??= "a rate not read for sure";
+        } else rates[next.currency] = rate;
+        rated.add(next);
+        continue;
+      }
+      minor.push(value);
+      labels.push(token.label);
+      if (token.context === "total") totals.push(value);
+    } else if (token.kind === "loose") {
+      if (token.values.length > 0) loose.push(Math.max(...token.values));
+      // A number with a separator no locale writes so may still be an amount: count it whole.
+      else if (/[.,\u066b]|\d \d\d$/u.test(token.number)) {
+        loose.push(ceiling(token.number, fraction));
+      }
+    } else if (token.kind === "other") {
+      // The number of a rate ("1 USD = 3.468,14 COP") is no amount.
+      if (rated.has(token)) continue;
+      const value = units(token.number, token.currency);
+      if (value === undefined) {
+        unsure ??= "an amount in another currency not read whole";
+        continue;
+      }
+      conversions.push({
+        ...(token.currency ? { currency: token.currency } : {}),
+        units: value,
+        total: token.context === "total",
+        // Only the buyer's own balance, which PayPal shows beside the total, is no charge.
+        aside: token.context === "aside" && /paypal|disponible|available/iu.test(token.label),
+      });
+    }
+  }
+  return {
+    minor,
+    labels,
+    totals,
+    loose,
+    conversions,
+    rates,
+    ...(unsure ? { unsure } : {}),
+  };
+}
+
+/**
+ * Every amount of `currency` the text writes, read as `locale` names the currency: its symbol,
+ * ISO code or name before or after the number, with any kind of space between them. A number's
+ * value does not depend on the locale's separators: a group has 3 digits after its separator, so
+ * `2.95` and `2,95` are both 2.95 USD, and `10.231` and `10,231` both 10,231 USD. The narrow
+ * symbol (`$`) counts only when the text also names the currency by its ISO code, and no sign
+ * another currency named on the page shares counts. A number with no mark of the currency is
+ * not an amount of it.
  */
 export function readAmounts(text: string, locale: string, currency: string): PageAmounts {
   return { locale, currency, minor: read(text, locale, currency).minor };
@@ -267,24 +686,71 @@ export function readAmounts(text: string, locale: string, currency: string): Pag
 
 /**
  * The amounts of `currency` on a page, read in each locale it names, and sure only if every one
- * reads them the same and nothing next to a currency mark is left unread or names another
- * currency. Whatever is unsure, the caller holds.
+ * reads them the same and every number marked as the currency is read whole. Whatever is unsure,
+ * the caller holds.
  */
-export function readPage(
-  text: string,
-  locales: readonly string[],
-  currency: string,
-): { locale: string; minor: number[]; labels: string[]; unsure?: string } {
+export function readPage(text: string, locales: readonly string[], currency: string): PageReading {
   const [first] = locales;
-  if (first === undefined) return { locale: "", minor: [], labels: [], unsure: "no locale" };
-  const readings = locales.map((l) => read(text, l, currency));
-  const unsure = readings.find((r) => r.unsure)?.unsure;
-  const { minor, labels } = readings[0] as Reading;
-  if (unsure) return { locale: first, minor, labels, unsure };
-  if (readings.some((r) => r.minor.join() !== minor.join())) {
-    return { locale: first, minor, labels, unsure: "its locales read it differently" };
+  if (first === undefined) {
+    return {
+      locale: "",
+      minor: [],
+      labels: [],
+      totals: [],
+      loose: [],
+      conversions: [],
+      rates: {},
+      unsure: "no locale",
+    };
   }
-  return { locale: first, minor, labels };
+  const readings = locales.map((l) => read(text, l, currency));
+  const reading = readings[0] as Omit<PageReading, "locale">;
+  const unsure = readings.find((r) => r.unsure)?.unsure;
+  if (unsure) return { locale: first, ...reading, unsure };
+  const same = (r: Omit<PageReading, "locale">) =>
+    r.minor.join() === reading.minor.join() &&
+    r.totals.join() === reading.totals.join() &&
+    r.loose.join() === reading.loose.join() &&
+    JSON.stringify([r.conversions, r.rates]) ===
+      JSON.stringify([reading.conversions, reading.rates]);
+  if (!readings.every(same)) {
+    return { locale: first, ...reading, unsure: "its locales read it differently" };
+  }
+  return { locale: first, ...reading };
+}
+
+/**
+ * Whether a page charges `minor` of its currency and nothing more: read for sure, labeling exactly
+ * that amount as its total or charge, and showing no larger amount the buyer may be charged,
+ * whether of the currency or a number that may be. A page shows amounts in other currencies only
+ * where it `converts` the total to the buyer's currency (PayPal), and each counts only at the rate
+ * the page writes for it (`1 USD = 3.468,14 COP`): labeled the total, it must be `minor`
+ * converted, within 1%; on another line, no more than that; a balance does not count.
+ */
+export function charges(
+  page: PageReading,
+  minor: number,
+  currency: string,
+  converts = false,
+): boolean {
+  const whole = minor / 10 ** minorDigits(currency);
+  return (
+    page.unsure === undefined &&
+    page.totals.includes(minor) &&
+    Math.max(...page.minor, ...page.loose) <= minor &&
+    (converts || Object.keys(page.rates).length === 0) &&
+    // A rate's unit is set aside as no amount; it may not hide a total under one unit.
+    (Object.keys(page.rates).length === 0 || minor >= 10 ** minorDigits(currency)) &&
+    page.conversions.every(({ currency: c, units, total, aside }) => {
+      if (!converts) return false;
+      if (aside) return true;
+      const rate = c === undefined ? undefined : page.rates[c];
+      if (rate === undefined) return false;
+      const converted = whole * rate;
+      const margin = Math.max(1, converted * 0.01);
+      return total ? Math.abs(units - converted) <= margin : units <= converted + margin;
+    })
+  );
 }
 
 /**

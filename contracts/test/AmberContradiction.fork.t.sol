@@ -49,7 +49,7 @@ contract AmberContradictionForkTest is ViolationBase {
         super.setUp();
         pool = new DeployViolationBondPool().run();
         DeployAmberContradictionCourt script = new DeployAmberContradictionCourt();
-        address previous = script.predict("AmberContradictionCourt");
+        address previous = script.predict("AmberContradictionCourt/2");
         vm.prank(address(_timelock()));
         pool.setCourt(previous, true);
         amber = script.run();

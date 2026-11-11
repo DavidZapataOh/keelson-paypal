@@ -109,6 +109,8 @@ export function capturable(paypal: PayPalDeps, row: MandateRow): boolean {
  * and the buyer pays each purchase at the store.
  */
 export function holdable(paypal: PayPalDeps, row: MandateRow): boolean {
+  // A card mandate holds the user's budget on Keelson's account, which pays the card network.
+  if (row.rail === "card") return true;
   return row.merchantIds.length === 1 && allowedPayees(row).includes(paypal.merchantId);
 }
 
@@ -118,7 +120,10 @@ export function expectedHold(paypal: PayPalDeps, row: MandateRow): ExpectedHold 
   return {
     customId: holdCustomId(paypal.env, row.id, row.mandateHash),
     amount: { currency: row.currency as ExpectedHold["amount"]["currency"], minor: row.maxMinor },
-    payees: allowedPayees(row).filter((p) => p === paypal.merchantId),
+    payees:
+      row.rail === "card"
+        ? [paypal.merchantId]
+        : allowedPayees(row).filter((p) => p === paypal.merchantId),
   };
 }
 

@@ -41,6 +41,7 @@ describe("receipts of real log leaves", () => {
         "evidence.web_fact": "undisclosed",
         "evidence.checkout": "undisclosed",
         "paypal.ids": "undisclosed",
+        "card.authorizations": "undisclosed",
         "policy.replay": "undisclosed",
       });
       expect(report.verdict).toBe("incomplete");

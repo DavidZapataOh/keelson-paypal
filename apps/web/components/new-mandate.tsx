@@ -1,8 +1,15 @@
 "use client";
 
-import { prepareSigning, type Signing, signMandate } from "@keelson/mandate/browser";
+import {
+  type Mandate,
+  onCardRail,
+  prepareSigning,
+  type Signing,
+  signMandate,
+  storesFor,
+} from "@keelson/mandate/browser";
 import { Button } from "@keelson/ui/components/button";
-import { Check, Loader2, PenLine } from "lucide-react";
+import { Check, CreditCard, Loader2, PenLine } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useId, useMemo, useState } from "react";
@@ -61,12 +68,20 @@ function fromCard(compiled: Compiled) {
   return {
     amount: total ? Number.parseFloat(total) : null,
     what: row("items")?.join(", ") ?? row("summary")?.[0] ?? "",
-    stores: (row("merchant") ?? []).map((m) => m.split(" (")[0] ?? m),
+    stores: row("card")
+      ? ["Any store · card"]
+      : (row("merchant") ?? []).map((m) => m.split(" (")[0] ?? m),
     until: deadline ? short(new Date(deadline)) : null,
   };
 }
 
 const READING = ["Reading your request", "Setting the cap", "Finding who answers"];
+
+/** The compiled draft on the card rail: any store of the kinds that sell what it names. */
+function onCard(draft: Mandate): Mandate {
+  const category = draft.checkout.constraints.find((c) => c.type === "keelson.category");
+  return onCardRail(draft, storesFor(category?.type === "keelson.category" ? category.allow : []));
+}
 
 /** While the request is read: each part ticks off as the card fills in. */
 function Reading() {
@@ -151,7 +166,7 @@ function Rules() {
   const handed = useSearchParams().get("request");
   const [what, setWhat] = useState(handed ?? "");
   const [budget, setBudget] = useState(100);
-  const [anyStore, setAnyStore] = useState<"any" | "one">("one");
+  const [anyStore, setAnyStore] = useState<"any" | "one" | "card">("one");
   const [store, setStore] = useState("");
   const [span, setSpan] = useState<Window>("week");
   const [passkeys, setPasskeys] = useState<Passkey[]>();
@@ -193,11 +208,16 @@ function Rules() {
         { prompt: request, mode: "autonomous", ...(credentialId ? { credentialId } : {}) },
         { "keelson-device": deviceId() },
       );
-      setCompiled(c);
+      // A card mandate is the same grant, paid with single-use cards at any store that takes them.
+      const draft = anyStore === "card" ? onCard(c.mandateDraft) : c.mandateDraft;
+      if (anyStore !== "card") setCompiled(c);
       setPhase("review");
       // Built now, so the passkey prompt opens on the click.
       const salt = crypto.getRandomValues(new Uint8Array(16));
-      setSigning(await prepareSigning(c.mandateDraft, salt, NO_EVIDENCE, c.ambiguous));
+      const s = await prepareSigning(draft, salt, NO_EVIDENCE, c.ambiguous);
+      // The card read back is the one signed: for a card mandate, the client's own.
+      if (anyStore === "card") setCompiled({ ...c, mandateDraft: draft, card: s.card });
+      setSigning(s);
     } catch (e) {
       setError(message(e));
       setPhase("edit");
@@ -258,7 +278,12 @@ function Rules() {
   const card = read ?? {
     amount: budget,
     what: what.trim(),
-    stores: anyStore === "one" && store.trim() ? [store.trim()] : [],
+    stores:
+      anyStore === "one" && store.trim()
+        ? [store.trim()]
+        : anyStore === "card"
+          ? ["Any store · card"]
+          : [],
     until: short(until),
   };
   const editing = phase === "edit";
@@ -279,6 +304,19 @@ function Rules() {
         seal={read ? "closing" : "open"}
       />
       {phase === "reading" ? <Reading /> : null}
+      {anyStore === "card" ? (
+        <div className="flex gap-3 rounded-2xl bg-card px-4 py-3 text-sm">
+          <CreditCard className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          <p className="text-muted-foreground">
+            <span className="font-medium text-foreground">
+              Paid with PayPal · Keelson single-use card.
+            </span>{" "}
+            Your budget is held on PayPal. Keelson issues a card only after both enclaves allow the
+            cart, capped at its total, and both check the store's charge again; the charge is then
+            collected from your hold. Test mode: no real money moves.
+          </p>
+        </div>
+      ) : null}
       {read && compiled ? <WhoAnswers card={compiled.card} /> : null}
       {passkeys && passkeys.length > 0 && !devicePasskey(passkeys) ? (
         <p className="text-muted-foreground text-sm">
@@ -419,6 +457,7 @@ function Rules() {
             options={[
               { id: "one", label: "One store" },
               { id: "any", label: "Any store" },
+              { id: "card", label: "Any store (PayPal card)" },
             ]}
           />
           {anyStore === "one" ? (

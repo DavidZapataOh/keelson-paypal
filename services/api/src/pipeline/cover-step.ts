@@ -20,7 +20,7 @@ import {
   type PublicClient,
 } from "viem";
 import { fixAmber } from "../amber.ts";
-import { SETTLEMENT } from "../merchants.ts";
+import { KEELSON_TREASURY, SETTLEMENT } from "../merchants.ts";
 import type { OperatorSigners } from "../operators/signer.ts";
 import { premiumBps } from "../risk.ts";
 import { countersignMessage } from "../tee/coordinator.ts";
@@ -105,6 +105,7 @@ export async function coverStep(
   const [row] = await db
     .select({
       merchantId: purchases.merchantId,
+      rail: purchases.rail,
       payloadSd: mandates.payloadSd,
       disclosures: mandates.disclosures,
       userAuth: mandates.userAuth,
@@ -113,7 +114,13 @@ export async function coverStep(
     .from(purchases)
     .innerJoin(mandates, eq(mandates.id, purchases.mandateId))
     .where(eq(purchases.id, purchaseId));
-  const merchant = row ? SETTLEMENT[row.merchantId] : undefined;
+  // A card merchant is paid by the card network; Keelson, the card program, takes what the
+  // coverage pays and makes the user whole.
+  const merchant = row
+    ? row.rail === "card"
+      ? KEELSON_TREASURY
+      : SETTLEMENT[row.merchantId]
+    : undefined;
   if (!row?.payloadSd || !row.disclosures || !row.userAuth) return final("cover:mandate-unsigned");
   if (!merchant) return final("cover:merchant-unknown");
   const jwk = decodeMandate(row.payloadSd as object, row.disclosures).user.cred.jwk;
