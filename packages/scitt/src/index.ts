@@ -19,6 +19,7 @@ export {
   leafHash,
   RECEIPTS,
   RFC9162_SHA256,
+  receiptPosition,
   receiptProtected,
   rootFromInclusion,
   type ScittReceiptCode,

@@ -364,6 +364,9 @@ importers:
       '@keelson/paypal':
         specifier: workspace:*
         version: link:../../packages/paypal
+      '@keelson/scitt':
+        specifier: workspace:*
+        version: link:../../packages/scitt
       '@keelson/ui':
         specifier: workspace:*
         version: link:../../packages/ui
