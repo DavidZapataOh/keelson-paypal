@@ -169,6 +169,25 @@ fn v_byte(recovery_id: RecoveryId) -> Result<u8, Error> {
     }
 }
 
+/// The address that signed `digest` with a 65-byte `r ‖ s ‖ v`, refusing a high `s`.
+pub fn recover_address(digest: &[u8; 32], signature: &[u8; 65]) -> Option<Address> {
+    let sig = k256::ecdsa::Signature::from_slice(&signature[..64]).ok()?;
+    if sig.normalize_s() != sig {
+        return None;
+    }
+    let id = match signature[64] {
+        v @ (0 | 1) => v,
+        v @ (27 | 28) => v - 27,
+        _ => return None,
+    };
+    let key =
+        k256::ecdsa::VerifyingKey::recover_from_prehash(digest, &sig, RecoveryId::from_byte(id)?)
+            .ok()?;
+    Some(Address::from_raw_public_key(
+        &key.to_sec1_point(false).as_bytes()[1..],
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use k256::ecdsa::RecoveryId;
@@ -248,23 +267,4 @@ mod tests {
         one[31] = 1;
         assert_eq!(after.as_slice(), one);
     }
-}
-
-/// The address that signed `digest` with a 65-byte `r ‖ s ‖ v`, refusing a high `s`.
-pub fn recover_address(digest: &[u8; 32], signature: &[u8; 65]) -> Option<Address> {
-    let sig = k256::ecdsa::Signature::from_slice(&signature[..64]).ok()?;
-    if sig.normalize_s() != sig {
-        return None;
-    }
-    let id = match signature[64] {
-        v @ (0 | 1) => v,
-        v @ (27 | 28) => v - 27,
-        _ => return None,
-    };
-    let key =
-        k256::ecdsa::VerifyingKey::recover_from_prehash(digest, &sig, RecoveryId::from_byte(id)?)
-            .ok()?;
-    Some(Address::from_raw_public_key(
-        &key.to_sec1_point(false).as_bytes()[1..],
-    ))
 }

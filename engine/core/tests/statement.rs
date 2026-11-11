@@ -318,3 +318,18 @@ fn bridge_vectors_match() {
         );
     }
 }
+
+#[test]
+fn receipt_protected_matches_the_typescript_one() {
+    let v: Value = serde_json::from_str(include_str!(
+        "../../../internal/scitt/testdata/receipt.json"
+    ))
+    .unwrap();
+    let public: [u8; 32] = fixed(v["public_key_hex"].as_str().unwrap());
+    let protected =
+        keelson_core::statement::receipt_protected(&public, v["origin"].as_str().unwrap());
+    assert_eq!(hex_of(&protected), v["protected_hex"]);
+    let root: [u8; 32] = fixed(v["root_hex"].as_str().unwrap());
+    let tbs = to_be_signed(&protected, &root);
+    assert_eq!(&hex_of(&tbs)[..24], "846a5369676e617475726531");
+}

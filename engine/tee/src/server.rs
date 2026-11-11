@@ -120,9 +120,6 @@ impl AppState {
         self.notary.as_ref().expect("routed only with a notary")
     }
 
-    /// Makes leg A read the request's PayPal authorization through `client` before every
-    /// countersign.
-    #[cfg(feature = "tdx")]
     /// Leg A reads card settlements from the issuer with this client.
     #[cfg(feature = "tdx")]
     pub fn with_lithic(mut self, client: crate::issuer::LithicClient) -> Self {
@@ -130,6 +127,9 @@ impl AppState {
         self
     }
 
+    /// Makes leg A read the request's PayPal authorization through `client` before every
+    /// countersign.
+    #[cfg(feature = "tdx")]
     pub fn with_paypal(mut self, client: crate::paypal::PayPalClient) -> Self {
         self.paypal = Some(client);
         self

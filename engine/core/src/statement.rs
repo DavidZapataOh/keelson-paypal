@@ -343,3 +343,25 @@ pub fn card_ref(salt: &[u8; 32], issuer: &str, card_token: &str) -> [u8; 32] {
     h.update(card_token.as_bytes());
     h.finalize().into()
 }
+
+/// COSE algorithm Ed25519 (RFC 9864).
+pub const ALG_ED25519: i64 = -19;
+
+/// The protected header of an origin's RFC 9942 inclusion receipts: Ed25519, the key's SHA-256
+/// as kid, the log host as issuer and the origin as subject, and `vds` RFC9162_SHA256.
+pub fn receipt_protected(public: &[u8; 32], origin: &str) -> Vec<u8> {
+    let kid: [u8; 32] = Sha256::digest(public).into();
+    let host = origin.split('/').next().unwrap_or(origin);
+    encode(Value::Map(vec![
+        (int(1), int(ALG_ED25519)),
+        (int(4), bytes(&kid)),
+        (
+            int(15),
+            Value::Map(vec![
+                (int(1), Value::Text(format!("https://{host}"))),
+                (int(2), Value::Text(origin.into())),
+            ]),
+        ),
+        (int(395), int(1)),
+    ]))
+}

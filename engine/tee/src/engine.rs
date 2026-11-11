@@ -1067,7 +1067,7 @@ impl Engine {
             transactionHash: B256::new(Sha256::digest(&observed.transaction.0).into()),
             settledMinor: u64::try_from(t.settled_amount).map_err(|_| bad("settlement.amount"))?,
             currency: currency_numeric(&t.amounts.settlement.currency)
-                .ok_or(bad("settlement.currency"))?,
+                .map_err(|_| bad("settlement.currency"))?,
             status,
             settledAt: U40::from(u64::try_from(settled_at).map_err(|_| bad("settlement.updated"))?),
             observedAt: U40::from(observed.observed_at),

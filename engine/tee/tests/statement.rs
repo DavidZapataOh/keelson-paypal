@@ -40,10 +40,9 @@ fn cose_signer(statement: &[u8]) -> (Address, CoseSign1) {
     for id in [0, 1] {
         if let Ok(k) =
             VerifyingKey::recover_from_prehash(&digest, &sig, RecoveryId::from_byte(id).unwrap())
+            && Address::from_raw_public_key(&k.to_sec1_point(false).as_bytes()[1..]) == kid
         {
-            if Address::from_raw_public_key(&k.to_sec1_point(false).as_bytes()[1..]) == kid {
-                return (kid, s);
-            }
+            return (kid, s);
         }
     }
     panic!("the statement is not signed by its kid");
