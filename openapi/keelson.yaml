@@ -1348,7 +1348,8 @@ components:
             - "null"
           description: "The app acting through Keelson's hosted operator, which many apps
             share: disconnect it alone with `?client=`. Null for an agent's own
-            operator."
+            operator, and for the hosted operator's mandates no app holds
+            (`Unknown app`)."
         name:
           type: string
         operator:
@@ -6445,7 +6446,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
         "422":
-          description: Keelson cannot capture for the mandate's merchant, or PayPal refused
+          description: Keelson cannot capture for the mandate's merchant, PayPal refused,
+            or the hold would pass the hosted operator's total cap
+            (`hosted-cap`)
           content:
             application/problem+json:
               schema:
@@ -6589,8 +6592,9 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "422":
           description: The cart is outside the mandate, its open cart holds with this one
-            exceed the remaining budget, Keelson cannot capture for it, or
-            PayPal refused
+            exceed the remaining budget, Keelson cannot capture for it, PayPal
+            refused, or the hold would pass the hosted operator's total cap
+            (`hosted-cap`)
           content:
             application/problem+json:
               schema:
@@ -6760,10 +6764,11 @@ paths:
         (`mandates:request`) asks that user only: the request is theirs from the
         start, so it carries no number to match. The mandate names the app's own
         operator, or Keelson's hosted operator when the app has none. Through
-        the hosted operator, an app whose redirect URIs are not a known host's
-        is capped: what one user's live mandates for such apps have left, and
-        what all users' have, may not pass `HOSTED_CAP_PER_USER_MINOR` and
-        `HOSTED_CAP_TOTAL_MINOR` (`hosted-cap`).
+        the hosted operator, every app is capped (`hosted-cap`): one user's open
+        mandates and purchases of the last 180 days with apps whose redirect
+        URIs are not a known host's may not pass `HOSTED_CAP_PER_USER_MINOR`,
+        and with all such apps `HOSTED_CAP_KNOWN_PER_USER_MINOR`; every user's
+        funded exposure may not pass `HOSTED_CAP_TOTAL_MINOR`.
       parameters:
         - schema:
             type: string
@@ -7580,7 +7585,9 @@ paths:
         With `client`, only that app, of the apps acting through the agent: the
         mandates you approved for it, its requests, its OAuth grant and refresh
         tokens, and the access tokens it holds for you. Apps acting through
-        Keelson's hosted operator are disconnected this way.
+        Keelson's hosted operator are disconnected this way; without `client`,
+        the hosted operator ends only your mandates of it that no app holds (its
+        `Unknown app` row).
       parameters:
         - schema:
             type: string

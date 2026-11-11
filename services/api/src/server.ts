@@ -30,6 +30,7 @@ import { type RunDeps, runDispute } from "./disputes/run.ts";
 import { treasuryFromKey } from "./disputes/treasury.ts";
 import { parseEnv } from "./env.ts";
 import { startHoldMaintenance } from "./hold/maintenance.ts";
+import { startUnfundedExpiry } from "./hosted-caps.ts";
 import { createKv } from "./kv.ts";
 import { createLogger } from "./logger.ts";
 import { authenticate } from "./middleware/auth.ts";
@@ -220,6 +221,7 @@ const app = createApp({
   ...(hostedAgentKey ? { hostedAgentKey } : {}),
   hostedCaps: {
     perUserMinor: env.HOSTED_CAP_PER_USER_MINOR,
+    knownPerUserMinor: env.HOSTED_CAP_KNOWN_PER_USER_MINOR,
     totalMinor: env.HOSTED_CAP_TOTAL_MINOR,
   },
   judgeInvite: env.JUDGE_INVITE_CODE,
@@ -276,6 +278,9 @@ const stopResumer = startPipelineResumer({
     : {}),
 });
 const stopHolds = startHoldMaintenance({ db, kv, log, paypal });
+const stopUnfunded = env.DEMO_AGENT_ID
+  ? startUnfundedExpiry({ db, hostedAgentId: env.DEMO_AGENT_ID, log })
+  : undefined;
 const poller = startPayPalPoller({
   db,
   kv,
@@ -342,6 +347,7 @@ process.once("SIGTERM", () => {
   stopSettlements?.();
   stopResumer();
   stopHolds();
+  stopUnfunded?.();
   stopReconciler?.();
   stopValidations?.();
   stopRpcReport();

@@ -17,7 +17,7 @@ interface Consent {
   agent: { agentId: string; operator: string; hosted: boolean } | null;
   scopes: string[];
   /** For an app Keelson does not know acting through its own agent: what its bond backs per user. */
-  hostedCap: { perUserMinor: string; currency: string } | null;
+  hostedCap: { perUserMinor: string; currency: string; knownHost: boolean } | null;
   spending: {
     name: string;
     reason: string;
@@ -313,11 +313,15 @@ export function ConsentPage() {
               <p className="flex items-start gap-3 text-pretty text-sm leading-snug">
                 <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
                 <span>
-                  Keelson does not know {consent.client.name}, so its bond backs at most{" "}
+                  {consent.hostedCap.knownHost
+                    ? `${consent.client.name} acts through Keelson's own agent, so its bond backs at most `
+                    : `Keelson does not know ${consent.client.name}, so its bond backs at most `}
                   <span className="font-medium tnum">
                     {money(BigInt(consent.hostedCap.perUserMinor), consent.hostedCap.currency)}
                   </span>{" "}
-                  left on your open mandates with apps it does not know, together.
+                  {consent.hostedCap.knownHost
+                    ? "across your open mandates and recent purchases with apps acting through it."
+                    : "across your open mandates and recent purchases with apps it does not know."}
                 </span>
               </p>
             ) : consent.agent ? null : (

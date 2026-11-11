@@ -68,7 +68,7 @@ app = createApp({
   demoAgentId: HOSTED,
   hostedAgentKey: hosted.privateKey,
   // Every user here is new, so only the per-user cap ever binds.
-  hostedCaps: { perUserMinor: 30_000n, totalMinor: 10n ** 15n },
+  hostedCaps: { perUserMinor: 30_000n, knownPerUserMinor: 60_000n, totalMinor: 10n ** 15n },
   tee: createTee(
     {
       TEE_A_URL: legUrl,
@@ -519,7 +519,8 @@ test("the consent page shows the hosted operator answering for a host with none,
     client: { id: host, verified: false },
     agent: { agentId: HOSTED.toString(), operator: "Keelson", hosted: true },
     scopes: [...DELEGATED, "offline_access"],
-    hostedCap: null,
+    // A loopback redirect URI names no host, so it gets the lower tier.
+    hostedCap: { perUserMinor: "30000", currency: "USD", knownHost: false },
     spendingError: null,
   });
   const asked = await consent("/v1/oauth/consent/connection");
@@ -577,17 +578,20 @@ describe("revocation", () => {
   });
 });
 
-test("the consent page shows the cap on Keelson's bond for a host it does not know, and refuses spending over it", async () => {
+test("the consent page shows the cap on Keelson's bond for the host's tier, and refuses spending over it", async () => {
   const UNKNOWN = "https://unknown-host.example/oauth/callback";
-  const host = await registerHost(UNKNOWN);
+  const CLAUDE = "https://claude.ai/api/mcp/auth_callback";
+  const unknownHost = await registerHost(UNKNOWN);
+  const claudeHost = await registerHost(CLAUDE);
   const user = await newUser();
-  const consentFor = async (totalMinor: number) => {
+  const consentFor = async (totalMinor: number, redirect = UNKNOWN) => {
+    const host = redirect === UNKNOWN ? unknownHost : claudeHost;
     const { challenge } = pkce();
     const res = await app.request(
       `/api/auth/oauth2/authorize?${new URLSearchParams({
         response_type: "code",
         client_id: host,
-        redirect_uri: UNKNOWN,
+        redirect_uri: redirect,
         resource: apiAudience,
         state: "s1",
         code_challenge: challenge,
@@ -624,7 +628,7 @@ test("the consent page shows the cap on Keelson's bond for a host it does not kn
   const within = await consentFor(30_000);
   expect(await (await within("/v1/oauth/consent")).json()).toMatchObject({
     agent: { hosted: true },
-    hostedCap: { perUserMinor: "30000", currency: "USD" },
+    hostedCap: { perUserMinor: "30000", currency: "USD", knownHost: false },
     spendingError: null,
   });
   const over = await consentFor(30_001);
@@ -634,6 +638,17 @@ test("the consent page shows the cap on Keelson's bond for a host it does not kn
     spendingError: expect.stringContaining("$300.00"),
   });
   expect((await over("/v1/oauth/consent/connection")).status).toBe(422);
+  // A known host is capped too, at the higher tier.
+  const known = await consentFor(60_000, CLAUDE);
+  expect(await (await known("/v1/oauth/consent")).json()).toMatchObject({
+    hostedCap: { perUserMinor: "60000", currency: "USD", knownHost: true },
+    spendingError: null,
+  });
+  const knownOver = await consentFor(60_001, CLAUDE);
+  expect(await (await knownOver("/v1/oauth/consent")).json()).toMatchObject({
+    spending: null,
+    spendingError: expect.stringContaining("$600.00"),
+  });
 });
 
 test("disconnecting one host refuses its access and refresh tokens, on the API and on MCP; another host of the user keeps working", async () => {

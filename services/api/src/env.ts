@@ -47,10 +47,12 @@ const schema = z
      */
     KEELSON_AGENT_KEY: z.string().min(1).optional(),
     /**
-     * What the hosted operator's bond backs for apps it does not know (see `hosted-caps.ts`), in
-     * minor units: what one user's live mandates for them may have left, and what all users' may.
+     * What the hosted operator's bond backs for apps that registered themselves (see
+     * `hosted-caps.ts`), in minor units: one user's exposure to apps it does not know, one user's
+     * to all of them (known hosts included), and every user's funded exposure.
      */
     HOSTED_CAP_PER_USER_MINOR: z.coerce.bigint().positive().default(10_000n),
+    HOSTED_CAP_KNOWN_PER_USER_MINOR: z.coerce.bigint().positive().default(50_000n),
     HOSTED_CAP_TOTAL_MINOR: z.coerce.bigint().positive().default(100_000n),
     /** Lets a Judge Mode session past the daily cap; the app forwards it from `/judge/?invite=`. */
     JUDGE_INVITE_CODE: z.string().min(32).optional(),

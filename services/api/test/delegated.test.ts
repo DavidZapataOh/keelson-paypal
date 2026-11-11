@@ -26,7 +26,18 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import demo from "../../../packages/mandate/test/fixtures/demo-mandate.json" with { type: "json" };
 import { createApp } from "../src/app.ts";
 import { tokenScopes } from "../src/auth.ts";
-import { hostedCapError, knownHost } from "../src/hosted-caps.ts";
+import {
+  DISPUTE_WINDOW_DAYS,
+  expireUnfunded,
+  FUNDING_TTL_MS,
+  fundingCapError,
+  type HostedCaps,
+  hostedCapError,
+  hostedClientId,
+  hostTier,
+  knownHost,
+  tierCap,
+} from "../src/hosted-caps.ts";
 import { tokenStopped } from "../src/stopped.ts";
 import { createTee } from "../src/tee/config.ts";
 import { testDb, testKv } from "./setup.ts";
@@ -152,14 +163,20 @@ const OPEN = `${b64({ alg: "ES256" })}.${b64({})}.c2ln~~${b64({ alg: "ES256", ty
  * An active mandate of `sub` held as a whole, naming `operator`, that `sub` approved for `client`:
  * the `agent_connections` row the approval page leaves.
  */
-async function approved(sub: string, client: string, operator = HOSTED, amount = 100_000n) {
+async function approved(
+  sub: string,
+  client: string,
+  operator = HOSTED,
+  amount = 100_000n,
+  state: "SIGNED" | "HOLD_PENDING" | "ACTIVE" = "ACTIVE",
+) {
   const id = ulid();
   const authorizationId = `AUTH${randomBytes(6).toString("hex").toUpperCase()}`;
   await testDb.insert(mandates).values({
     id,
     userId: sub,
     operatorAgentId: operator,
-    state: "ACTIVE",
+    state,
     currency: "USD",
     maxMinor: amount,
     remainingMinor: amount,
@@ -169,7 +186,7 @@ async function approved(sub: string, client: string, operator = HOSTED, amount =
     mandateHash: randomBytes(32),
     holdMode: "mandate",
     paypalOrderId: `ORDER${randomBytes(6).toString("hex").toUpperCase()}`,
-    paypalAuthorizationId: authorizationId,
+    paypalAuthorizationId: state === "ACTIVE" ? authorizationId : null,
     ...(await buildSdPayload(parseMandate(structuredClone(demo)), () => randomBytes(16))),
   });
   await testDb.insert(agentConnections).values({
@@ -631,10 +648,10 @@ describe("the kill switch", () => {
   });
 });
 
-describe("the hosted operator's caps for apps Keelson does not know", () => {
-  const caps = { perUserMinor: 30_000n, totalMinor: 50_000n };
+describe("the hosted operator's caps for apps that registered themselves", () => {
+  const caps = { perUserMinor: 30_000n, knownPerUserMinor: 60_000n, totalMinor: 100_000n };
   /** A hosted operator of its own, so that what other tests leave open counts for nothing. */
-  async function hostedWithCaps() {
+  async function hostedWithCaps(withCaps: HostedCaps = caps) {
     const agentId = BigInt(`0x${randomBytes(7).toString("hex")}`);
     await testDb.insert(operators).values({
       agentId,
@@ -652,7 +669,7 @@ describe("the hosted operator's caps for apps Keelson does not know", () => {
       appOrigin: "https://app.keelson.finance",
       demoAgentId: agentId,
       hostedAgentKey: hostedPair.privateKey,
-      hostedCaps: caps,
+      hostedCaps: withCaps,
       tee,
     });
     const ask = (headers: Record<string, string>, totalMinor: number) =>
@@ -678,26 +695,38 @@ describe("the hosted operator's caps for apps Keelson does not know", () => {
     });
     return clientId;
   }
+  /** A captured purchase of `amount` under mandate `id`, `daysAgo` days ago. */
+  async function captured(id: string, amount: bigint, daysAgo = 0, state = "CAPTURED" as const) {
+    await testDb.insert(purchases).values({
+      id: ulid(),
+      mandateId: id,
+      state,
+      merchantId: cart.merchant,
+      currency: "USD",
+      amountMinor: amount,
+      cartHash: randomBytes(32),
+      capturedAt: new Date(Date.now() - daysAgo * 86_400_000),
+    });
+  }
+  const CLAUDE = "https://claude.ai/api/mcp/auth_callback";
+  const UNKNOWN = "https://unknown.example/callback";
 
-  test("known hosts are the ones whose every redirect URI a known host registers", () => {
-    expect(knownHost(["https://claude.ai/api/mcp/auth_callback"])).toBe(true);
+  test("known hosts are the ones whose every redirect URI a known host registers; loopback is not one", () => {
+    expect(knownHost([CLAUDE])).toBe(true);
     expect(knownHost(["https://chatgpt.com/connector_platform_oauth_redirect"])).toBe(true);
     expect(knownHost(["cursor://anysphere.cursor-mcp/oauth/callback"])).toBe(true);
-    expect(knownHost(["http://localhost:53682/callback", "http://127.0.0.1:8787/callback"])).toBe(
-      true,
-    );
+    expect(knownHost(["http://localhost:53682/callback"])).toBe(false);
+    expect(knownHost(["http://127.0.0.1:8787/callback"])).toBe(false);
+    expect(knownHost([CLAUDE, "http://localhost:53682/callback"])).toBe(false);
     expect(knownHost([])).toBe(false);
-    expect(knownHost(["https://claude.ai/api/mcp/auth_callback", "https://evil.example/cb"])).toBe(
-      false,
-    );
+    expect(knownHost([CLAUDE, "https://evil.example/cb"])).toBe(false);
     expect(knownHost(["https://claude.ai.evil.example/api/mcp/auth_callback"])).toBe(false);
-    expect(knownHost(["http://localhost:53682/callback/../steal"])).toBe(false);
   });
 
   test("an unknown app asks one user for no more than the per-user cap, counting what is left on its mandates", async () => {
     const { CAPPED, capped, ask } = await hostedWithCaps();
     const a = await newUser();
-    const host = await registered(["https://unknown.example/callback"]);
+    const host = await registered([UNKNOWN]);
     const over = await ask(asHost(host, a), 30_001);
     expect(over.status).toBe(422);
     expect(await over.json()).toMatchObject({
@@ -710,6 +739,9 @@ describe("the hosted operator's caps for apps Keelson does not know", () => {
     const other = await registered(["https://other.example/callback"]);
     expect((await ask(asHost(other, a), 10_001)).status).toBe(422);
     expect((await ask(asHost(other, a), 10_000)).status).toBe(201);
+    // A loopback app is as unknown.
+    const local = await registered(["http://127.0.0.1:8787/callback"]);
+    expect((await ask(asHost(local, a), 10_001)).status).toBe(422);
     // Only in the cap's currency, so that the caps add up.
     const eur = await capped.request("/v1/connections", {
       method: "POST",
@@ -726,38 +758,119 @@ describe("the hosted operator's caps for apps Keelson does not know", () => {
     expect((await ask(asHost(newHost(), a), 10_001)).status).toBe(422);
   });
 
-  test("a known host asks with the standard limits", async () => {
+  test("a known host gets the higher tier, and is still capped", async () => {
     const { CAPPED, ask } = await hostedWithCaps();
     const a = await newUser();
-    const claude = await registered(["https://claude.ai/api/mcp/auth_callback"]);
-    await approved(a, claude, CAPPED, 90_000n);
-    expect((await ask(asHost(claude, a), 100_000)).status).toBe(201);
-    // What a known host holds does not count against unknown apps.
-    const unknown = await registered(["https://unknown.example/callback"]);
-    expect((await ask(asHost(unknown, a), 30_000)).status).toBe(201);
+    const claude = await registered([CLAUDE]);
+    expect((await ask(asHost(claude, a), 60_001)).status).toBe(422);
+    await approved(a, claude, CAPPED, 40_000n);
+    const over = await ask(asHost(claude, a), 20_001);
+    expect(over.status).toBe(422);
+    expect(((await over.json()) as { detail: string }).detail).toContain("$600.00");
+    expect((await ask(asHost(claude, a), 20_000)).status).toBe(201);
+    // What a known host holds is not an unknown app's, but counts toward the user's whole cap.
+    const unknown = await registered([UNKNOWN]);
+    expect((await ask(asHost(unknown, a), 20_000)).status).toBe(201);
+    expect((await ask(asHost(unknown, a), 20_001)).status).toBe(422);
   });
 
-  test("the total cap counts every user's live mandates for unknown apps; ended ones do not count", async () => {
-    const { CAPPED, ask } = await hostedWithCaps();
+  test("the consent page shows the cap of the app's tier", async () => {
+    const { CAPPED } = await hostedWithCaps();
+    const deps = { demoAgentId: CAPPED, hostedCaps: caps };
+    const hosted = await hostedClientId(testDb, CAPPED);
+    const claude = await registered([CLAUDE]);
+    const unknown = await registered([UNKNOWN]);
+    expect(await hostTier(testDb, claude, hosted)).toBe("known");
+    expect(await hostTier(testDb, unknown, hosted)).toBe("unknown");
+    expect(await hostTier(testDb, hosted as string, hosted)).toBeUndefined();
+    expect(tierCap(deps.hostedCaps, "known")).toBe(60_000n);
+    expect(tierCap(deps.hostedCaps, "unknown")).toBe(30_000n);
+  });
+
+  test("the total cap counts only funded mandates; signed ones never funded do not, and expire", async () => {
+    const { CAPPED, ask } = await hostedWithCaps({ ...caps, totalMinor: 50_000n });
     const [a, b, c] = [await newUser(), await newUser(), await newUser()];
-    const host = await registered(["https://unknown.example/callback"]);
+    const host = await registered([UNKNOWN]);
     const first = await approved(a, host, CAPPED, 25_000n);
     await approved(b, host, CAPPED, 20_000n);
     const res = await ask(asHost(host, c), 5_001);
     expect(res.status).toBe(422);
     expect(((await res.json()) as { detail: string }).detail).toContain("has reached");
     expect((await ask(asHost(host, c), 5_000)).status).toBe(201);
+    // Ended mandates do not count.
     await testDb
       .update(mandates)
       .set({ revokeRequestedAt: new Date() })
       .where(eq(mandates.id, first.id));
     expect((await ask(asHost(host, c), 30_000)).status).toBe(201);
+    // Signed but never held: another user's do not fill the total.
+    const d = await newUser();
+    const unfunded = await approved(d, host, CAPPED, 30_000n, "SIGNED");
+    expect((await ask(asHost(host, c), 30_000)).status).toBe(201);
+    // Past the funding TTL it expires, so it can never be held; younger, it is left alone.
+    expect(await expireUnfunded(testDb, CAPPED)).toBe(0);
+    expect(await expireUnfunded(testDb, CAPPED, new Date(Date.now() + FUNDING_TTL_MS + 1))).toBe(1);
+    const [ended] = await testDb.select().from(mandates).where(eq(mandates.id, unfunded.id));
+    expect(ended?.state).toBe("EXPIRED");
+  });
+
+  test("a hold is funded only within the total cap, counting holds in flight", async () => {
+    const { CAPPED } = await hostedWithCaps({ ...caps, totalMinor: 50_000n });
+    const deps = { demoAgentId: CAPPED, hostedCaps: { ...caps, totalMinor: 50_000n } };
+    const host = await registered([UNKNOWN]);
+    const [a, b] = [await newUser(), await newUser()];
+    await approved(a, host, CAPPED, 30_000n);
+    await approved(b, host, CAPPED, 15_000n, "HOLD_PENDING");
+    const signed = await approved(b, host, CAPPED, 5_001n, "SIGNED");
+    const fund = (amount: bigint) =>
+      testDb.transaction((tx) => fundingCapError(tx, deps, signed.id, amount));
+    // 30,000 held and 15,000 in flight: 5,000 more fits, 5,001 does not.
+    expect(await fund(5_000n)).toBeUndefined();
+    expect(await fund(5_001n)).toContain("has reached");
+    // A mandate of an app with an operator of its own, or the hosted operator's own, is not capped.
+    const own = newHost();
+    const ownAgent = await newOperator(own);
+    const mine = await approved(a, own, ownAgent, 10n ** 9n);
+    expect(await testDb.transaction((tx) => fundingCapError(tx, deps, mine.id, 10n ** 9n))).toBe(
+      undefined,
+    );
+  });
+
+  test("captured purchases count until their dispute window closes, so spending and asking again cannot pass a cap", async () => {
+    const { CAPPED, ask } = await hostedWithCaps();
+    const a = await newUser();
+    const host = await registered([UNKNOWN]);
+    const spent = await approved(a, host, CAPPED, 25_000n);
+    await testDb
+      .update(mandates)
+      .set({ state: "EXHAUSTED", remainingMinor: 0n })
+      .where(eq(mandates.id, spent.id));
+    await captured(spent.id, 25_000n);
+    expect((await ask(asHost(host, a), 5_001)).status).toBe(422);
+    expect((await ask(asHost(host, a), 5_000)).status).toBe(201);
+    // One captured past the window, or settled, no longer counts.
+    const old = await approved(a, host, CAPPED, 20_000n);
+    await testDb
+      .update(mandates)
+      .set({ state: "EXHAUSTED", remainingMinor: 0n })
+      .where(eq(mandates.id, old.id));
+    await captured(old.id, 20_000n, DISPUTE_WINDOW_DAYS + 1);
+    expect((await ask(asHost(host, a), 5_000)).status).toBe(201);
+    // In total too: what was captured under funded mandates is still backed.
+    const { CAPPED: TIGHT, ask: askTight } = await hostedWithCaps({
+      ...caps,
+      totalMinor: 40_000n,
+    });
+    const b = await newUser();
+    const m = await approved(b, host, TIGHT, 10_000n);
+    await captured(m.id, 25_000n);
+    expect((await askTight(asHost(host, await newUser()), 5_001)).status).toBe(422);
   });
 
   test("a change is measured in place of the mandate it replaces", async () => {
     const { CAPPED, capped } = await hostedWithCaps();
     const a = await newUser();
-    const host = await registered(["https://unknown.example/callback"]);
+    const host = await registered([UNKNOWN]);
     const m = await approved(a, host, CAPPED, 25_000n);
     const change = (totalMinor: number) =>
       capped.request(`/v1/mandates/${m.id}/changes`, {
@@ -783,7 +896,7 @@ describe("the hosted operator's caps for apps Keelson does not know", () => {
   test("the approval itself is measured under a lock, so concurrent approvals cannot pass a cap", async () => {
     const { CAPPED } = await hostedWithCaps();
     const a = await newUser();
-    const host = await registered(["https://unknown.example/callback"]);
+    const host = await registered([UNKNOWN]);
     await approved(a, host, CAPPED, 20_000n);
     const input = {
       clientId: host,
@@ -889,5 +1002,45 @@ describe("disconnecting one app acting through the hosted operator", () => {
     expect(
       (await send(`/v1/agents/${HOSTED}/disconnect?client=${newHost()}`, asUser(a))).status,
     ).toBe(404);
+  });
+
+  test("a hosted mandate no app holds is its own Unknown app row, and disconnecting it ends only those", async () => {
+    const a = await newUser();
+    const x = newHost();
+    const mx = await approved(a, x);
+    const orphan = await approved(a, x);
+    await testDb.delete(agentConnections).where(eq(agentConnections.mandateId, orphan.id));
+
+    const listed = await app.request("/v1/agents", { headers: asUser(a) });
+    const rows = (
+      (await listed.json()) as {
+        agents: { agentId: string; clientId: string | null; name: string }[];
+      }
+    ).agents.filter((r) => r.agentId === HOSTED.toString());
+    expect(rows.map((r) => [r.clientId, r.name]).sort()).toEqual(
+      [
+        [x, "Claude"],
+        [null, "Unknown app"],
+      ].sort(),
+    );
+
+    const res = await send(`/v1/agents/${HOSTED}/disconnect`, asUser(a));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ revoked: 1 });
+    const [ended] = await testDb.select().from(mandates).where(eq(mandates.id, orphan.id));
+    const [kept] = await testDb.select().from(mandates).where(eq(mandates.id, mx.id));
+    expect(ended?.revokeRequestedAt).not.toBeNull();
+    expect(kept?.revokeRequestedAt).toBeNull();
+    const [still] = await testDb
+      .select()
+      .from(agentConnections)
+      .where(eq(agentConnections.mandateId, mx.id));
+    expect(still?.disconnectedAt).toBeNull();
+    expect((await evidence(asHost(x, a), mx.id)).status).toBe(201);
+
+    // A user with no such mandate has nothing to disconnect without naming an app.
+    expect((await send(`/v1/agents/${HOSTED}/disconnect`, asUser(await newUser()))).status).toBe(
+      404,
+    );
   });
 });
