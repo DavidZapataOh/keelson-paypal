@@ -28,7 +28,7 @@ export class Alibis {
     return (await this.keelson.request<Uint8Array>("GET", path, { as: "bytes", auth: false })).data;
   }
 
-  /** Keelson's own check of an Alibi. To trust no one, use `verifyAlibi` from `@keelson/verify`. */
+  /** Keelson's own check of an Alibi. To trust no one, use `verifyAlibi` from `@keelson/verifier`. */
   async verifyRemote(alibi: Uint8Array): Promise<AlibiReport> {
     return (
       await this.keelson.request<AlibiReport>("POST", "/v1/alibis/verify", {

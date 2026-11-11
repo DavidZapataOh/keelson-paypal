@@ -68,7 +68,7 @@
     "@keelson/evidence": "workspace:*",
     "@keelson/mandate": "workspace:*",
     "@keelson/paypal": "workspace:*",
-    "@keelson/verify": "workspace:*",
+    "@keelson/verifier": "workspace:*",
     "@langchain/core": "1.3.6",
     "@openai/agents": "0.21.0",
     "@types/node": "26.6.6",

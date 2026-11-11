@@ -28,7 +28,9 @@
       "!contracts/out",
       "!contracts/cache",
       "!contracts/broadcast",
-      "!contracts/snapshots"
+      "!contracts/snapshots",
+      "!packages/sdk-python",
+      "!packages/context/src/corpus.json"
     ]
   },
   "formatter": {

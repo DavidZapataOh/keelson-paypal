@@ -48,6 +48,10 @@
       "entry": ["src/index.ts!", "eval/run.ts"],
       "project": ["src/**/*.ts!", "eval/**/*.ts", "test/**/*.ts"]
     },
+    "packages/context": {
+      "entry": ["src/index.ts!", "src/stdio.ts!", "scripts/*.ts"],
+      "project": ["src/**/*.ts!", "scripts/**/*.ts", "test/**/*.ts"]
+    },
     "packages/core": {
       "entry": [
         "src/index.ts!",

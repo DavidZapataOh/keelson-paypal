@@ -11,7 +11,7 @@ from typing import Any
 from ._errors import KeelsonError, VerifierUnavailable
 from ._jcs import canonical_bytes
 
-VERIFIER = "@keelson/verify@0.1.0"
+VERIFIER = "@keelson/verifier@0.1.0"
 
 
 def _command() -> list[str]:
