@@ -20,7 +20,7 @@ use acir::native_types::{Witness, WitnessMap, WitnessStack};
 use acvm::pwg::{ACVM, ACVMStatus};
 use barretenberg_rs::BarretenbergApi;
 use barretenberg_rs::backends::PipeBackend;
-use barretenberg_rs::generated_types::{CircuitInput, ProofSystemSettings};
+use barretenberg_rs::generated_types::{CircuitInput, CircuitInputNoVK, ProofSystemSettings};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use bn254_blackbox_solver::Bn254BlackBoxSolver;
@@ -124,8 +124,8 @@ type Job = Box<dyn FnOnce(&mut Api) + Send>;
 
 /// Starts `bb msgpack run` on a thread of its own that runs each job it is sent in turn. Dropping
 /// the sender ends the thread, and dropping the backend kills `bb`.
-fn start(bb: &Path) -> Result<mpsc::Sender<Job>, ProverError> {
-    let mut api = BarretenbergApi::new(PipeBackend::new(bb, None).map_err(bb_error)?);
+fn start(bb: &Path, threads: Option<usize>) -> Result<mpsc::Sender<Job>, ProverError> {
+    let mut api = BarretenbergApi::new(PipeBackend::new(bb, threads).map_err(bb_error)?);
     let (tx, rx) = mpsc::channel::<Job>();
     std::thread::spawn(move || {
         for job in rx {
@@ -139,7 +139,9 @@ fn start(bb: &Path) -> Result<mpsc::Sender<Job>, ProverError> {
 /// [`BB_DEADLINE`] abandons that process; the next call starts a new one.
 pub struct Prover {
     bb: PathBuf,
-    worker: Mutex<Option<mpsc::Sender<Job>>>,
+    threads: Option<usize>,
+    parallel: bool,
+    workers: [Mutex<Option<mpsc::Sender<Job>>>; 2],
     program: Program<FieldElement>,
     /// The ACIR program as `bb` reads it: msgpack, not gzipped.
     bytecode: Vec<u8>,
@@ -149,6 +151,16 @@ impl Prover {
     /// Starts `bb msgpack run` at `bb`. `CRS_PATH` must name a directory whose `bn254_g1.dat`
     /// holds the first [`CRS_POINTS`] points of the Aztec Ignition CRS (`crs.aztec.network/g1.dat`).
     pub fn spawn(bb: &Path) -> Result<Self, ProverError> {
+        Self::spawn_with(bb, false, None)
+    }
+
+    /// Experiment: `parallel` makes the two proofs on two `bb` processes at once; `threads` sets
+    /// each process's `HARDWARE_CONCURRENCY`.
+    pub fn spawn_with(
+        bb: &Path,
+        parallel: bool,
+        threads: Option<usize>,
+    ) -> Result<Self, ProverError> {
         let crs = std::env::var_os("CRS_PATH")
             .map(|dir| Path::new(&dir).join("bn254_g1.dat"))
             .ok_or_else(|| ProverError::Backend("CRS_PATH is not set".into()))?;
@@ -171,7 +183,12 @@ impl Prover {
             .read_to_end(&mut bytecode)
             .expect("the embedded bytecode is gzipped");
         Ok(Self {
-            worker: Mutex::new(Some(start(bb)?)),
+            workers: [
+                Mutex::new(Some(start(bb, threads)?)),
+                Mutex::new(Some(start(bb, threads)?)),
+            ],
+            threads,
+            parallel,
             bb: bb.to_owned(),
             program,
             bytecode,
@@ -203,11 +220,22 @@ impl Prover {
             circuit(RECURSIVE_VERIFICATION_KEY),
         );
         let recursive_witness = witness.clone();
-        let out = self.call(move |api| api.circuit_prove(evm_circuit, &witness, evm()))?;
-        let recursive = self
-            .call(move |api| {
-                api.circuit_prove(recursive_circuit, &recursive_witness, noir_recursive())
+        let prove_evm = move |api: &mut Api| api.circuit_prove(evm_circuit, &witness, evm());
+        let prove_recursive = move |api: &mut Api| {
+            api.circuit_prove(recursive_circuit, &recursive_witness, noir_recursive())
+        };
+        let (out, recursive) = if self.parallel {
+            std::thread::scope(|scope| {
+                let recursive = scope.spawn(move || self.call(1, prove_recursive));
+                let out = self.call(0, prove_evm);
+                (out, recursive.join().expect("the recursive proof's thread"))
             })
+        } else {
+            let out = self.call(0, prove_evm);
+            (out, self.call(0, prove_recursive))
+        };
+        let out = out?;
+        let recursive = recursive
             .map_err(|e| eprintln!("keelson-engine: no recursive C1 proof: {e}"))
             .ok();
         Ok(C1Proof {
@@ -226,8 +254,9 @@ impl Prover {
     pub fn verify(&self, proof: &C1Proof) -> Result<bool, ProverError> {
         let inputs = proof.public_inputs.iter().map(|f| f.to_vec()).collect();
         let fields = proof.proof.chunks(32).map(<[u8]>::to_vec).collect();
-        let out =
-            self.call(move |api| api.circuit_verify(VERIFICATION_KEY, inputs, fields, evm()))?;
+        let out = self.call(0, move |api| {
+            api.circuit_verify(VERIFICATION_KEY, inputs, fields, evm())
+        })?;
         Ok(out.verified)
     }
 
@@ -238,21 +267,37 @@ impl Prover {
             return Ok(false);
         };
         let fields = recursive.chunks(32).map(<[u8]>::to_vec).collect();
-        let out = self.call(move |api| {
+        let out = self.call(0, move |api| {
             api.circuit_verify(RECURSIVE_VERIFICATION_KEY, inputs, fields, noir_recursive())
         })?;
         Ok(out.verified)
     }
 
+    /// Experiment: one `circuit_compute_vk` per transcript, which builds the circuit and its
+    /// proving key without proving.
+    pub fn compute_vks(&self) -> Result<(), ProverError> {
+        let input = || CircuitInputNoVK {
+            name: "mandate_predicate".into(),
+            bytecode: self.bytecode.clone(),
+        };
+        let (a, b) = (input(), input());
+        self.call(0, move |api| api.circuit_compute_vk(a, evm()))?;
+        self.call(0, move |api| api.circuit_compute_vk(b, noir_recursive()))?;
+        Ok(())
+    }
+
     /// Runs `f` on the `bb` worker, starting one when there is none, within [`BB_DEADLINE`].
     fn call<T: Send + 'static>(
         &self,
+        index: usize,
         f: impl FnOnce(&mut Api) -> barretenberg_rs::Result<T> + Send + 'static,
     ) -> Result<T, ProverError> {
-        let mut worker = self.worker.lock().unwrap_or_else(|e| e.into_inner());
+        let mut worker = self.workers[index]
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let tx = match worker.as_ref() {
             Some(tx) => tx.clone(),
-            None => worker.insert(start(&self.bb)?).clone(),
+            None => worker.insert(start(&self.bb, self.threads)?).clone(),
         };
         let (done, answer) = mpsc::sync_channel(1);
         let sent = tx.send(Box::new(move |api: &mut Api| {
