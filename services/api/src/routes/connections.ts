@@ -228,6 +228,9 @@ const RequestState = z
     matchNumber: z.int().nullable(),
     expiresAt: z.string(),
     interval: z.int(),
+    operatorAgentId: z.string().openapi({
+      description: "The ERC-8004 agent id of the operator the mandate names, in decimal.",
+    }),
   })
   .openapi("ConnectionRequestState");
 
@@ -1020,6 +1023,7 @@ export function registerConnections(app: OpenAPIHono, deps: ConnectionDeps): voi
         matchNumber: row.matchNumber,
         expiresAt: row.expiresAt.toISOString(),
         interval: row.pollInterval,
+        operatorAgentId: row.operatorAgentId.toString(),
       },
       200,
       { "cache-control": "no-store" },

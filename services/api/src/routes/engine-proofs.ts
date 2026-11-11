@@ -51,6 +51,7 @@ const EngineProofSchema = z
 const route = createRoute({
   method: "get",
   path: "/v1/engine-proofs/{id}",
+  operationId: "getEngineProof",
   tags: ["purchases"],
   summary: "SP1 proof of a purchase's engine evaluation",
   description:

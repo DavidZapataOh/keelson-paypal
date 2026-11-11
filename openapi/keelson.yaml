@@ -1229,6 +1229,9 @@ components:
           type: string
         interval:
           type: integer
+        operatorAgentId:
+          type: string
+          description: The ERC-8004 agent id of the operator the mandate names, in decimal.
       required:
         - id
         - kind
@@ -1240,6 +1243,7 @@ components:
         - matchNumber
         - expiresAt
         - interval
+        - operatorAgentId
     ConnectionDraft:
       type: object
       properties:
@@ -10411,6 +10415,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/engine-proofs/{id}:
     get:
+      operationId: getEngineProof
       tags:
         - purchases
       summary: SP1 proof of a purchase's engine evaluation
