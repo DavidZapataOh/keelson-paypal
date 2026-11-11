@@ -14,6 +14,7 @@ import { arbitrumSepolia } from "viem/chains";
 import { anchorCovered } from "./alibi/anchors.ts";
 import { createApp } from "./app.ts";
 import { createAuth } from "./auth.ts";
+import { projectAmberConvictions } from "./chain/amber-court.ts";
 import { followChainEvents, isFinal, wssUrl } from "./chain/events.ts";
 import { arbitrumSepoliaTransport, POLLING_INTERVAL_MS, startRpcReport } from "./chain/rpc.ts";
 import { createChannel3 } from "./channel3/client.ts";
@@ -265,6 +266,7 @@ const chainEvents = followChainEvents({
   async handle() {
     if (sweeperDeps) await recordOutcomes(sweeperDeps);
     if (anchorDeps) await anchorCovered(anchorDeps);
+    await projectAmberConvictions({ db, log, client: chains[arbitrumSepolia.id].client });
   },
 });
 

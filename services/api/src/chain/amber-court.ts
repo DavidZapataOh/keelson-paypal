@@ -1,9 +1,18 @@
-import { amberContradictionCourtAbi, deploymentsFor } from "@keelson/chain";
-import { amberConvictions, type Db, type StoredC2b } from "@keelson/db";
-import type { Logger } from "pino";
-import type { RedisClientType } from "redis";
+import { amberContradictionCourtAbi } from "@keelson/chain";
 import {
-  type Address,
+  amberConvictions,
+  and,
+  chainEvents,
+  type Db,
+  eq,
+  isNull,
+  type StoredC2b,
+  sql,
+} from "@keelson/db";
+import type { Logger } from "pino";
+import {
+  BaseError,
+  bytesToHex,
   decodeFunctionData,
   encodeAbiParameters,
   type Hex,
@@ -13,30 +22,9 @@ import {
 } from "viem";
 
 export const AMBER_CHAIN_ID = 421614;
-/** A block before `AmberContradictionCourt` was deployed, where the search for its events starts. */
-export const AMBER_COURT_DEPLOYED_AT = 327_211_576n;
-/** The block range of one `eth_getLogs` call. */
-const LOG_RANGE = 100_000n;
-/**
- * About a minute of Arbitrum blocks: a block a lagging node behind the RPC's load balancer has not
- * indexed yet is scanned on a later pass, never passed by the cursor.
- */
-const CONFIRMATIONS = 240n;
-/** Reads of dispute data within this long of a scan reuse it. */
-const SCAN_EVERY_MS = 30_000;
-/** After a failed scan, how long reads wait before another. */
-const RETRY_AFTER_MS = 120_000;
 const BN254_FR_MODULUS =
   21888242871839275222246405745257275088548364400416034343698204186575808495617n;
 const ULID = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-
-export interface AmberCourtDeps {
-  db: Db;
-  kv: RedisClientType;
-  log: Logger;
-  /** `client` reads the court and transactions; `logs` serves `eth_getLogs` over wide ranges. */
-  chain: { client: PublicClient; logs?: PublicClient };
-}
 
 /** The ULID a coverage id right-aligns, or `null` for another id. */
 export function purchaseOfCoverage(coverageId: Hex): string | null {
@@ -84,89 +72,85 @@ export function c2bOfCall(input: Hex): StoredC2b | null {
   };
 }
 
-const cursorKey = (court: Address) => `amber:court:${AMBER_CHAIN_ID}:${court.toLowerCase()}`;
+/** Convictions projected per pass; the rest wait for the next one. */
+const BATCH = 100;
 
-/** Projects the court's new `AmberContradictionProven` events into `amber_convictions`. */
-async function scan(deps: AmberCourtDeps, court: Address): Promise<number> {
-  const { client } = deps.chain;
-  const logClient = deps.chain.logs ?? client;
-  const cursor = await deps.kv.get(cursorKey(court));
-  const fromBlock = cursor ? BigInt(cursor) + 1n : AMBER_COURT_DEPLOYED_AT;
-  // Head and logs from the same RPC, kept CONFIRMATIONS behind its head: a block that RPC has not
-  // indexed yet is never passed by the cursor.
-  const latest = (await logClient.getBlockNumber()) - CONFIRMATIONS;
-  let found = 0;
-  for (let from = fromBlock; from <= latest; from += LOG_RANGE) {
-    // biome-ignore lint/complexity/useMathMinMax: block numbers are bigints.
-    const to = from + LOG_RANGE - 1n < latest ? from + LOG_RANGE - 1n : latest;
-    const events = await logClient.getContractEvents({
-      address: court,
-      abi: amberContradictionCourtAbi,
-      eventName: "AmberContradictionProven",
-      fromBlock: from,
-      toBlock: to,
-    });
-    for (const e of events) {
-      const coverageId = e.args.coverageId as Hex;
-      // A conviction never changes once made, so the latest state is the event's.
-      const [tx, [fieldId, provenAt, digest]] = await Promise.all([
-        client.getTransaction({ hash: e.transactionHash }),
-        client.readContract({
-          address: court,
-          abi: amberContradictionCourtAbi,
-          functionName: "violations",
-          args: [coverageId],
-        }),
-      ]);
-      await deps.db
-        .insert(amberConvictions)
-        .values({
-          coverageId: Buffer.from(hexToBytes(coverageId)),
-          purchaseId: purchaseOfCoverage(coverageId),
-          chainId: AMBER_CHAIN_ID,
-          fieldId,
-          provenAt: new Date(provenAt * 1000),
-          webFactDigest: Buffer.from(hexToBytes(digest)),
-          txHash: Buffer.from(hexToBytes(e.transactionHash)),
-          blockNumber: e.blockNumber,
-          proof: tx.to?.toLowerCase() === court.toLowerCase() ? c2bOfCall(tx.input) : null,
-        })
-        .onConflictDoNothing();
-      found++;
-    }
-    await deps.kv.set(cursorKey(court), String(to));
-  }
-  return found;
-}
-
-let last: { at: number; run: Promise<void>; done: boolean } | undefined;
+const brief = (err: unknown) =>
+  err instanceof BaseError ? err.shortMessage : err instanceof Error ? err.message : String(err);
 
 /**
- * Brings `amber_convictions` up to the chain, at most once per {@link SCAN_EVERY_MS} however many
- * reads ask, and never two scans at once: one `eth_getBlockNumber` and one `eth_getLogs` per new
- * range, and two reads per new conviction. Resolves without scanning where the court is not
- * deployed; a failed scan is logged, the projection read as it stands, and the next waits
- * {@link RETRY_AFTER_MS}.
+ * Projects the court's `AmberContradictionProven` events the chain-events follower stored and
+ * nothing handled yet into `amber_convictions`, with the proof read from the `slashAmber` call
+ * and the time from the event's block: two reads per conviction, none when there is none. An
+ * event is handled once projected; one that fails stays unhandled for the next pass.
  */
-export function syncAmberConvictions(deps: AmberCourtDeps): Promise<void> {
-  const court = deploymentsFor(AMBER_CHAIN_ID).AmberContradictionCourt;
-  if (!court) return Promise.resolve();
-  if (last && (!last.done || Date.now() < last.at)) return last.run;
-  const entry = { at: Number.POSITIVE_INFINITY, done: false, run: Promise.resolve() };
-  entry.run = scan(deps, court)
-    .then(
-      (found) => {
-        entry.at = Date.now() + SCAN_EVERY_MS;
-        if (found > 0) deps.log.info({ found }, "amber convictions projected");
-      },
-      (err: unknown) => {
-        entry.at = Date.now() + RETRY_AFTER_MS;
-        deps.log.warn({ err }, "amber court scan failed");
-      },
+export async function projectAmberConvictions(deps: {
+  db: Db;
+  log: Logger;
+  client: PublicClient;
+}): Promise<number> {
+  const { db, client } = deps;
+  const rows = await db
+    .select({
+      txHash: chainEvents.txHash,
+      logIndex: chainEvents.logIndex,
+      blockNumber: chainEvents.blockNumber,
+      address: chainEvents.address,
+      args: chainEvents.args,
+    })
+    .from(chainEvents)
+    .where(
+      and(
+        eq(chainEvents.chainId, AMBER_CHAIN_ID),
+        eq(chainEvents.name, "AmberContradictionProven"),
+        isNull(chainEvents.handledAt),
+      ),
     )
-    .finally(() => {
-      entry.done = true;
-    });
-  last = entry;
-  return entry.run;
+    .orderBy(chainEvents.blockNumber)
+    .limit(BATCH);
+  let projected = 0;
+  for (const row of rows) {
+    const args = row.args as { coverageId: Hex; fieldId: string | number; webFactDigest: Hex };
+    const court = bytesToHex(row.address);
+    try {
+      const [tx, block] = await Promise.all([
+        client.getTransaction({ hash: bytesToHex(row.txHash) }),
+        client.getBlock({ blockNumber: row.blockNumber }),
+      ]);
+      await db.transaction(async (t) => {
+        await t
+          .insert(amberConvictions)
+          .values({
+            coverageId: Buffer.from(hexToBytes(args.coverageId)),
+            purchaseId: purchaseOfCoverage(args.coverageId),
+            chainId: AMBER_CHAIN_ID,
+            fieldId: Number(args.fieldId),
+            provenAt: new Date(Number(block.timestamp) * 1000),
+            webFactDigest: Buffer.from(hexToBytes(args.webFactDigest)),
+            txHash: row.txHash,
+            blockNumber: row.blockNumber,
+            proof: tx.to?.toLowerCase() === court.toLowerCase() ? c2bOfCall(tx.input) : null,
+          })
+          .onConflictDoNothing();
+        await t
+          .update(chainEvents)
+          .set({ handledAt: sql`now()` })
+          .where(
+            and(
+              eq(chainEvents.chainId, AMBER_CHAIN_ID),
+              eq(chainEvents.txHash, row.txHash),
+              eq(chainEvents.logIndex, row.logIndex),
+            ),
+          );
+      });
+      projected++;
+    } catch (err) {
+      deps.log.warn(
+        { coverageId: args.coverageId, err: brief(err) },
+        "amber conviction not projected",
+      );
+    }
+  }
+  if (projected > 0) deps.log.info({ projected }, "amber convictions projected");
+  return projected;
 }

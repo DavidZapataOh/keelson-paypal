@@ -10,7 +10,6 @@ import { rateLimit } from "../middleware/rate-limit.ts";
 import { agentAuthority, OPERATOR_CHAIN, walletsOf } from "../operators/owners.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 import { COVERED } from "../risk.ts";
-import { syncAmber } from "./disputes.ts";
 import { costMicros, reserve, settle } from "./merchant-assistant.ts";
 import { DEMO_OPERATOR } from "./operators.ts";
 
@@ -715,7 +714,6 @@ export function registerOperatorConsole(
 
   app.openapi(rowsRoute, async (c) => {
     const agentId = BigInt(c.req.valid("param").agentId);
-    syncAmber(deps);
     const started = performance.now();
     try {
       const block = await coverageRows(db, agentId, c.req.valid("json"));

@@ -4,7 +4,6 @@ import { CHAINS, isChainId } from "@keelson/relayer";
 import type { Context } from "hono";
 import { AMBER_FIELD, amberCases } from "../amber.ts";
 import type { Deps } from "../app.ts";
-import { AMBER_CHAIN_ID, syncAmberConvictions } from "../chain/amber-court.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 
 const PARTIES = ["operator", "keelson", "merchant", "user"] as const;
@@ -69,22 +68,12 @@ export const AmberCaseSchema = z
       "What the operator attested about the item it bought, and whether it was proven false. Null when the purchase carries no attestation (a cart of several lines, or bought before attestations).",
   });
 
-/**
- * Starts bringing the convictions up to the chain and returns at once: a read serves the
- * projection as it stands, and a conviction the scan finds shows on a later read.
- */
-export function syncAmber(deps: Pick<Deps, "db" | "kv" | "log" | "chains">): void {
-  const chain = deps.chains?.[AMBER_CHAIN_ID];
-  if (chain) void syncAmberConvictions({ ...deps, chain });
-}
-
-/** The amber cases of `purchaseIds`, starting a scan of the court's new convictions. */
+/** The amber cases of `purchaseIds`, as the chain-events follower projected the court's convictions. */
 export function amberOfPurchases(
-  deps: Pick<Deps, "db" | "kv" | "log" | "chains">,
+  deps: Pick<Deps, "db">,
   purchaseIds: readonly string[],
   options?: { redact?: boolean },
 ) {
-  syncAmber(deps);
   return amberCases(deps.db, purchaseIds, options);
 }
 

@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { amberContradictionCourtAbi } from "@keelson/chain";
+import { amberContradictionCourtAbi, deploymentsFor } from "@keelson/chain";
 import { ulidToBytes32 } from "@keelson/core";
 import { amberCommitment, amberProduct } from "@keelson/core/amber";
 import {
@@ -16,11 +16,23 @@ import {
 } from "@keelson/db";
 import { pino } from "pino";
 import { ulid } from "ulid";
-import { encodeFunctionData, type Hex, keccak256, stringToHex, zeroHash } from "viem";
+import {
+  encodeFunctionData,
+  type Hex,
+  keccak256,
+  type PublicClient,
+  stringToHex,
+  zeroHash,
+} from "viem";
 import { beforeAll, describe, expect, test } from "vitest";
 import { amberCases, amberOf, fixAmber } from "../src/amber.ts";
 import { createApp } from "../src/app.ts";
-import { c2bOfCall, purchaseOfCoverage } from "../src/chain/amber-court.ts";
+import {
+  c2bOfCall,
+  projectAmberConvictions,
+  purchaseOfCoverage,
+} from "../src/chain/amber-court.ts";
+import { type EventLog, ingest } from "../src/chain/events.ts";
 import { coverageRows } from "../src/routes/operator-console.ts";
 import { testDb, testKv } from "./setup.ts";
 
@@ -294,6 +306,61 @@ describe("the court's events", () => {
     expect(c2b?.bytes).toBe((v.proof.length - 2) / 2);
     expect(c2b?.hash).toBe(keccak256(v.proof));
     expect(c2b?.fact.t_capture).toBe(String(fact.tCapture));
+  });
+
+  test("the indexer's AmberContradictionProven events are projected once, then handled", async () => {
+    const id = await purchase("SLASHED");
+    const coverageId = ulidToBytes32(id) as Hex;
+    const v = vector("size");
+    const txHash = `0x${randomBytes(32).toString("hex")}` as Hex;
+    const court = deploymentsFor(421614).AmberContradictionCourt as Hex;
+    const [stored] = await ingest(
+      testDb,
+      [
+        {
+          address: court,
+          blockHash: `0x${randomBytes(32).toString("hex")}`,
+          blockNumber: 330_000_000n,
+          data: "0x",
+          logIndex: 3,
+          transactionHash: txHash,
+          transactionIndex: 0,
+          removed: false,
+          topics: [],
+          eventName: "AmberContradictionProven",
+          args: { coverageId, agentId: agentId, fieldId: 1, webFactDigest: `0x${"ab".repeat(32)}` },
+        } as EventLog,
+      ],
+      { finalized: false },
+    );
+    expect(stored).toBeDefined();
+    const reads: string[] = [];
+    const client = {
+      getTransaction: async () => {
+        reads.push("tx");
+        return { to: court, input: slashCall(coverageId, v.publicInputs[2] as Hex, 1, v.proof) };
+      },
+      getBlock: async () => {
+        reads.push("block");
+        return { timestamp: 1_794_400_000n };
+      },
+    } as unknown as PublicClient;
+    const log = pino({ level: "silent" });
+
+    expect(await projectAmberConvictions({ db: testDb, log, client })).toBe(1);
+    const [row] = await testDb
+      .select()
+      .from(amberConvictions)
+      .where(eq(amberConvictions.purchaseId, id));
+    expect(row).toMatchObject({
+      fieldId: 1,
+      provenAt: new Date(1_794_400_000 * 1000),
+      blockNumber: 330_000_000n,
+    });
+    expect(row?.proof?.public_inputs).toEqual(v.publicInputs);
+    // Handled: the next pass reads nothing.
+    expect(await projectAmberConvictions({ db: testDb, log, client })).toBe(0);
+    expect(reads).toEqual(["tx", "block"]);
   });
 
   test("another call yields none", () => {
