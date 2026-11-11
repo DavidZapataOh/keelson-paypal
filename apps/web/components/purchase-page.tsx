@@ -18,6 +18,7 @@ import { purchaseStatus } from "../lib/status";
 import type { Dispute, Purchase } from "../lib/types";
 import { useMandate } from "../lib/use-mandate";
 import { AnonymousProof } from "./anonymous-proof";
+import { CheckoutBreakdown } from "./checkout-breakdown";
 import { ErrorNotice, Eyebrow } from "./notice";
 
 const PARTY = {
@@ -186,6 +187,7 @@ export function PurchasePage() {
               {...(p.failure || p.state === "DENIED" ? { struck: "Not paid" } : {})}
             />
           </h1>
+          <CheckoutBreakdown amount={p.amount} />
           <div className="flex flex-wrap items-center gap-3 text-muted-foreground text-sm">
             <Status state={purchaseStatus(p)} />
             <span>{when(p.createdAt)}</span>
