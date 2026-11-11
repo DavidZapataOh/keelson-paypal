@@ -1,9 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { cartHash } from "@keelson/core";
 import { eq, mandates, operators, purchases, user } from "@keelson/db";
+import { buildSdPayload, parseMandate } from "@keelson/mandate";
 import { pino } from "pino";
 import { ulid } from "ulid";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import demo from "../../../packages/mandate/test/fixtures/demo-mandate.json" with { type: "json" };
 import { createApp } from "../src/app.ts";
 import { createTee } from "../src/tee/config.ts";
 import { EvidenceUploader } from "./evidence.ts";
@@ -20,6 +22,18 @@ const agent = {
 };
 const { cart, unit } = carts.demo;
 const hash = Buffer.from(cartHash(cart));
+const STORE = "https://www.alfred.com";
+
+/** The signed demo mandate, allowing the cart's merchant at `website`. */
+async function signedPayload(website: string) {
+  const m = parseMandate(structuredClone(demo));
+  for (const c of m.checkout.constraints) {
+    if (c.type === "checkout.allowed_merchants") {
+      c.allowed = c.allowed.map((x) => (x.id === cart.merchant ? { ...x, website } : x));
+    }
+  }
+  return buildSdPayload(m, () => randomBytes(16));
+}
 const b64 = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
 
 /**
@@ -34,7 +48,7 @@ const closed = (mid: string, requestId: string) =>
   ].join("~");
 
 /** An active mandate held as a whole, of an operator the test client linked. */
-async function heldMandate() {
+async function heldMandate(website = `${STORE}/`) {
   const userId = `user-${ulid()}`;
   await testDb.insert(user).values({ id: userId, name: "Tester", email: `${userId}@example.test` });
   const agentId = BigInt(`0x${randomBytes(12).toString("hex")}`);
@@ -63,6 +77,7 @@ async function heldMandate() {
     holdMode: "mandate",
     paypalOrderId: `ORDER${randomBytes(6).toString("hex").toUpperCase()}`,
     paypalAuthorizationId: authorizationId,
+    ...(await signedPayload(website)),
   });
   return { id, authorizationId };
 }
@@ -245,6 +260,61 @@ describe("countersigning the same cart again", { timeout: 120_000 }, () => {
       expect(bad.res.status).toBe(422);
       expect(bad.row).toBeUndefined();
     }
+  });
+
+  test("a live purchase is refused at a store the mandate does not allow", async () => {
+    const m = await heldMandate("https://runfast.example");
+    for (const store of [STORE, "https://alfred.com", "https://runfast.example.evil.test"]) {
+      const { res, body, row } = await countersign(m, { live: { store } });
+      expect(res.status).toBe(422);
+      expect(body.type).toMatch(/store-not-allowed$/);
+      expect(row).toBeUndefined();
+    }
+    const allowed = await countersign(m, { live: { store: "https://runfast.example" } });
+    expect(allowed.row?.liveStore).toBe("https://runfast.example");
+  });
+
+  test("a live purchase is refused under a mandate whose signed payload is not stored", async () => {
+    const m = await heldMandate();
+    await testDb
+      .update(mandates)
+      .set({ payloadSd: null, disclosures: null })
+      .where(eq(mandates.id, m.id));
+    const { res, body, row } = await countersign(m, { live: { store: STORE } });
+    expect(res.status).toBe(422);
+    expect(body.type).toMatch(/store-not-allowed$/);
+    expect(row).toBeUndefined();
+  });
+
+  test("a WebFact that is not the purchase's is refused before the legs", async () => {
+    const m = await heldMandate();
+    const offer = (o: Record<string, unknown>) =>
+      JSON.stringify({ offer_id: 1, sku: "sku-trail-10", price: 94, currency_code: "USD", ...o });
+    const send = async (o: Record<string, unknown>, url = `${STORE}/products/trail-10.oembed`) => {
+      const fact = {
+        url,
+        web_fact: { tCapture: Math.floor(Date.now() / 1000) - 5 },
+        committed: `0x${Buffer.from(offer(o)).toString("hex")}`,
+      };
+      const evidenceRoot = await evidence.store(app, m.id, await evidence.capture(cart), agent, {
+        type: "tlsn.web_fact",
+        mediaType: "application/json",
+        bytes: new TextEncoder().encode(JSON.stringify(fact)),
+        salt: randomBytes(32),
+      });
+      return countersign(m, { live: { store: STORE }, evidenceRoot });
+    };
+    for (const [o, url] of [
+      [{ price: 9.4 }, undefined],
+      [{ sku: "sku-road-9" }, undefined],
+      [{}, "https://other.example/products/trail-10.oembed"],
+    ] as const) {
+      const { res, body, row } = await send(o, url);
+      expect(res.status).toBe(422);
+      expect(body.type).toMatch(/web-fact-mismatch$/);
+      expect(row).toBeUndefined();
+    }
+    expect((await send({})).row?.liveStore).toBe(STORE);
   });
 
   test("a mandate whose merchant Keelson cannot capture for countersigns only live purchases", async () => {

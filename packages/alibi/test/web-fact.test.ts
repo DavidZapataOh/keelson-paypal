@@ -1,8 +1,10 @@
 import { type Json, jcs, sha256, toHex } from "@keelson/core";
 import { hashKeelson, keelsonDomain, reportData } from "@keelson/core/eip712";
+import { buildSdPayload, parseMandate } from "@keelson/mandate";
 import { keccak256, stringToHex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { describe, expect, test } from "vitest";
+import demo from "../../mandate/test/fixtures/demo-mandate.json" with { type: "json" };
 import type { AlibiBundle } from "../src/schema.ts";
 import { webFact } from "../src/verify/checks/web-fact.ts";
 
@@ -19,16 +21,64 @@ const binding = {
   issuerJwkThumbprint: `0x${"44".repeat(32)}`,
 } as const;
 const URL_ = "https://www.alfred.com/products/the-change-00-ps-0004070.oembed";
-const committed = new TextEncoder().encode('{"offer_id":44631538991240,"price":2.95}');
-const blinder = new Uint8Array(16).fill(5);
 
-async function signedDoc() {
-  const url = new URL(URL_);
+/** The demo mandate, allowing Alfred Music at its website. */
+async function mandate(website = "https://www.alfred.com") {
+  const m = parseMandate(structuredClone(demo));
+  for (const c of m.checkout.constraints) {
+    if (c.type === "checkout.allowed_merchants") {
+      c.allowed = [
+        { id: "mrc_alfred", name: "Alfred Music", website, paypal_merchant_id: "unknown" },
+      ];
+    }
+  }
+  const { payloadSd, disclosures } = await buildSdPayload(m, () =>
+    crypto.getRandomValues(new Uint8Array(16)),
+  );
+  return { payload_sd: payloadSd, disclosures };
+}
+const alfred = await mandate();
+const offer = (o: Record<string, unknown> = {}) =>
+  new TextEncoder().encode(
+    JSON.stringify({
+      title: "Default Title",
+      offer_id: 44631538991240,
+      sku: "00-PS-0004070",
+      price: 2.95,
+      currency_code: "USD",
+      in_stock: true,
+      ...o,
+    }),
+  );
+const committed = offer();
+const blinder = new Uint8Array(16).fill(5);
+const ISSUED_AT = 1_794_300_060;
+const LINE = /not a line of the cart/;
+const TIME = /not notarized for this purchase/;
+const cart = {
+  merchant: "mrc_alfred",
+  currency: "USD",
+  lines: [
+    {
+      sku: "00-PS-0004070",
+      size: null,
+      color: null,
+      category: "gpt:783",
+      qty: 2,
+      unit_minor: 295,
+    },
+  ],
+  return_days: 0,
+  returns_free: false,
+};
+
+async function signedDoc(bytes = committed, tCapture = 1_794_300_000, at = URL_) {
+  const url = new URL(at);
   const fact = {
     hostHash: keccak256(stringToHex(url.hostname)),
     urlPathHash: keccak256(stringToHex(`${url.pathname}${url.search}`)),
-    tCapture: 1_794_300_000,
-    rangeCommitment: toHex(sha256(new Uint8Array([...committed, ...blinder]))),
+    tCapture,
+    rangeCommitment: toHex(sha256(new Uint8Array([...bytes, ...blinder]))),
     attId: reportData(
       { ...binding, chainId: 421614n, bootEpoch: 7n },
       `0x${"00".repeat(32)}`,
@@ -36,15 +86,15 @@ async function signedDoc() {
   };
   const digest = hashKeelson("WebFact", fact, keelsonDomain(421614, VERIFYING));
   return {
-    url: URL_,
+    url: at,
     web_fact: fact,
     chain_id: 421614,
     digest,
     signature: await account.sign({ hash: digest }),
     signer: account.address,
     mode: "mpc",
-    range: [10, 10 + committed.length],
-    committed: toHex(committed),
+    range: [10, 10 + bytes.length],
+    committed: toHex(bytes),
     blinder: toHex(blinder),
   };
 }
@@ -52,14 +102,22 @@ async function signedDoc() {
 const bundleWith = (
   doc: Record<string, unknown>,
   hash = toHex(sha256(new TextEncoder().encode(jcs(doc as Json)))),
+  withCart: Record<string, unknown> | undefined = cart,
+  m: Awaited<ReturnType<typeof mandate>> = alfred,
 ) =>
   ({
     type: "application/vnd.keelson.alibi.v1+json",
     tee: {
       domain: { name: "Keelson", version: "1", chain_id: 421614, verifying_contract: VERIFYING },
+      countersign: { issuedAt: String(ISSUED_AT) },
       attestations: [{ kind: "tdx", signer: account.address, binding }],
     },
-    manifest: { disclosures: [{ type: "tlsn.web_fact", content_hash: hash }] },
+    mandate: m,
+    manifest: {
+      public: { items: [{ type: "tlsn.web_fact" }] },
+      disclosures: [{ type: "tlsn.web_fact", content_hash: hash }],
+    },
+    ...(withCart ? { cart: withCart } : {}),
     web_fact: doc,
   }) as unknown as AlibiBundle;
 
@@ -72,9 +130,47 @@ describe("the store's product endpoint, notarized", () => {
   });
 
   test("an Alibi without one has the check absent", async () => {
+    const b = bundleWith(await signedDoc()) as unknown as {
+      web_fact?: unknown;
+      manifest: { public: { items: unknown[] } };
+    };
+    delete b.web_fact;
+    b.manifest.public.items = [];
+    expect(await run(b as unknown as AlibiBundle)).toMatchObject({ status: "absent" });
+  });
+
+  test("an Alibi that leaves out the WebFact its evidence holds has it undisclosed", async () => {
     const b = bundleWith(await signedDoc()) as unknown as Record<string, unknown>;
     delete b.web_fact;
-    expect(await run(b as unknown as AlibiBundle)).toMatchObject({ status: "absent" });
+    expect(await run(b as unknown as AlibiBundle)).toMatchObject({ status: "undisclosed" });
+  });
+
+  test("a WebFact of another line of the cart passes and names that line", async () => {
+    const two = {
+      ...cart,
+      lines: [{ ...cart.lines[0], sku: "00-OTHER", unit_minor: 100 }, ...cart.lines],
+    };
+    expect(await run(bundleWith(await signedDoc(), undefined, two))).toMatchObject({
+      status: "pass",
+      detail: { sku: "00-PS-0004070" },
+    });
+  });
+
+  test.each([
+    ["another host", "https://alfred.example/products/the-change-00-ps-0004070.oembed"],
+    ["another path", "https://www.alfred.com/products/the-change-00-ps-0004070.js"],
+    ["a query", "https://www.alfred.com/products/the-change-00-ps-0004070.oembed?x=1"],
+  ])("a WebFact of %s fails", async (_, url) => {
+    await expect(run(bundleWith(await signedDoc(committed, undefined, url)))).rejects.toThrow(
+      /store the mandate allows/,
+    );
+  });
+
+  test("a WebFact under a mandate that allows the merchant at another website fails", async () => {
+    const other = await mandate("https://shop.alfred.example");
+    await expect(run(bundleWith(await signedDoc(), undefined, cart, other))).rejects.toThrow(
+      /store the mandate allows/,
+    );
   });
 
   test.each([
@@ -102,6 +198,39 @@ describe("the store's product endpoint, notarized", () => {
   ])("a tampered %s fails", async (_, tamper) => {
     const doc = tamper(await signedDoc());
     await expect(run(bundleWith(doc))).rejects.toThrow();
+  });
+
+  test("a line named by the variant id does not take an offer with its own SKU", async () => {
+    const byId = { ...cart, lines: [{ ...cart.lines[0], sku: "44631538991240" }] };
+    await expect(run(bundleWith(await signedDoc(), undefined, byId))).rejects.toThrow(LINE);
+  });
+
+  test("a WebFact whose offer names the line by its variant id passes", async () => {
+    const byId = { ...cart, lines: [{ ...cart.lines[0], sku: "44631538991240" }] };
+    const doc = await signedDoc(offer({ sku: "" }));
+    expect(await run(bundleWith(doc, undefined, byId))).toMatchObject({ status: "pass" });
+  });
+
+  test.each([
+    ["another product", () => signedDoc(offer({ offer_id: 1, sku: "00-PS-0009999" })), LINE],
+    ["another price", () => signedDoc(offer({ price: 0.99 })), LINE],
+    ["another currency", () => signedDoc(offer({ currency_code: "EUR" })), LINE],
+    ["a price as text", () => signedDoc(offer({ price: "2.95" })), LINE],
+    [
+      "bytes that are not an offer",
+      () => signedDoc(new TextEncoder().encode('"offer_id":1')),
+      /not one offer/,
+    ],
+    ["a stale notarization", () => signedDoc(committed, ISSUED_AT - 901), TIME],
+    ["a notarization after the countersign", () => signedDoc(committed, ISSUED_AT + 61), TIME],
+  ])("a WebFact of %s fails", async (_, doc, reason) => {
+    await expect(run(bundleWith(await doc()))).rejects.toThrow(reason);
+  });
+
+  test("a WebFact without the cart it is for fails", async () => {
+    await expect(run(bundleWith(await signedDoc(), undefined, null as never))).rejects.toThrow(
+      /cart/,
+    );
   });
 
   test("a document that is not the disclosed item fails", async () => {
