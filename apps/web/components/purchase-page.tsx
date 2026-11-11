@@ -15,7 +15,7 @@ import { useEffect, useState } from "react";
 import { get } from "../lib/api";
 import { API, VERIFY } from "../lib/config";
 import { DISPUTE_KINDS, kindOf } from "../lib/dispute-kinds";
-import { money, when } from "../lib/format";
+import { major, money, when } from "../lib/format";
 import { purchaseStatus } from "../lib/status";
 import type { Dispute, Purchase } from "../lib/types";
 import { useMandate } from "../lib/use-mandate";
@@ -257,7 +257,7 @@ function Receipt() {
         </div>
         <h1>
           <Amount
-            value={Number(p.amount.minor) / 100}
+            value={major(p.amount.minor, p.amount.currency)}
             currency={p.amount.currency}
             className="text-[3rem]"
             {...(p.failure || blocked ? { struck: "Not paid" } : {})}

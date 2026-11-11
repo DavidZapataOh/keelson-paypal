@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useState } from "react";
 import { get, post } from "../lib/api";
 import { VERIFY } from "../lib/config";
-import { money } from "../lib/format";
+import { major, money } from "../lib/format";
 import { purchaseStatus } from "../lib/status";
 import type { MandateSummary, MandateView, Purchase } from "../lib/types";
 import { useMandate } from "../lib/use-mandate";
@@ -213,8 +213,8 @@ function Focus({ id }: { id: string }) {
   }
 
   const { budget } = mandate;
-  const left = Number(budget.remainingMinor) / 100;
-  const max = Number(budget.maxMinor) / 100;
+  const left = major(budget.remainingMinor, budget.currency);
+  const max = major(budget.maxMinor, budget.currency);
   const store = storeNames(mandate);
   const purchases = [...mandate.purchases].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const blocked = purchases.filter((p) => kindOf(p) === "blocked");

@@ -5,6 +5,7 @@ import { Button } from "@keelson/ui/components/button";
 import { DataItem, DataList } from "@keelson/ui/components/data-list";
 import { useCallback, useEffect, useState } from "react";
 import { API } from "../../lib/config";
+import { major } from "../../lib/format";
 import { type Bond, bondOf, gradeOf, type TrustGrade } from "../../lib/operator";
 import { DepositSheet } from "./deposit-sheet";
 
@@ -85,7 +86,7 @@ export function Standing({ agentId, owner }: { agentId: string; owner: `0x${stri
   const locked = pyusd(bond.bond.locked);
   const queued = pyusd(bond.bond.queued);
   const total = free + locked + queued;
-  const minimum = grade.bond.requiredMinor / 100;
+  const minimum = major(grade.bond.requiredMinor, "USD");
   const backing = free + locked;
   const gap = backing - minimum;
   const g = GRADES[grade.grade];
@@ -178,10 +179,10 @@ export function Standing({ agentId, owner }: { agentId: string; owner: `0x${stri
             </span>
           </DataItem>
           <DataItem label={`Expected loss, next ${grade.loss.horizon} coverages`}>
-            <Amount value={grade.loss.expectedMinor / 100} />
+            <Amount value={major(grade.loss.expectedMinor, "USD")} />
           </DataItem>
           <DataItem label="Loss at 99 %">
-            <Amount value={grade.loss.var99Minor / 100} />
+            <Amount value={major(grade.loss.var99Minor, "USD")} />
           </DataItem>
           <DataItem label="Keelson's own faults, paid by its reserve (not graded)">
             <span className="font-mono tabular-nums">{grade.reserve.warranties}</span>
