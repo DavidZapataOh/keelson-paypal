@@ -102,3 +102,9 @@ paths = [
   '''internal/scitt/testdata/.*\.json''',
   '''internal/alibilog/testdata/statement-v2/.*\.json''',
 ]
+
+[[allowlists]]
+description = "Lithic's published OpenAPI examples of a card and a settled transaction: example tokens, no credential"
+paths = [
+  '''engine/tee/tests/vectors/lithic/.*\.json''',
+]
