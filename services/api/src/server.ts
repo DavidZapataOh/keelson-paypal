@@ -9,12 +9,18 @@ import { CertStore } from "@keelson/paypal";
 import { Render } from "@renderinc/sdk";
 import { identityToRecipient } from "age-encryption";
 import { pino } from "pino";
-import { createPublicClient, http } from "viem";
+import { createPublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { startAnchorWatcher } from "./alibi/anchors.ts";
 import { createApp } from "./app.ts";
 import { createAuth } from "./auth.ts";
-import { arbitrumSepoliaTransport } from "./chain/rpc.ts";
+import {
+  ARBITRUM_SEPOLIA_PUBLIC_RPC,
+  arbitrumSepoliaTransport,
+  POLLING_INTERVAL_MS,
+  rpcTransport,
+  startRpcReport,
+} from "./chain/rpc.ts";
 import { createChannel3 } from "./channel3/client.ts";
 import { operatorAgent, termsConsent } from "./compile-sources.ts";
 import { type RunDeps, runDispute } from "./disputes/run.ts";
@@ -83,8 +89,12 @@ const chains = {
     client: createPublicClient({
       chain: arbitrumSepolia,
       transport: arbitrumSepoliaTransport(env.ARBITRUM_SEPOLIA_RPC_URL),
+      pollingInterval: POLLING_INTERVAL_MS,
     }),
-    logs: createPublicClient({ chain: arbitrumSepolia, transport: http() }),
+    logs: createPublicClient({
+      chain: arbitrumSepolia,
+      transport: rpcTransport([ARBITRUM_SEPOLIA_PUBLIC_RPC]),
+    }),
   },
 };
 const relayer = await relayerFromEnv(env, db, log);
@@ -256,6 +266,8 @@ const anchors =
       })
     : undefined;
 
+const stopRpcReport = startRpcReport(log);
+
 const server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
   log.info({ port: info.port }, "listening");
 });
@@ -273,6 +285,7 @@ process.once("SIGTERM", () => {
   stopHolds();
   stopReconciler?.();
   stopValidations?.();
+  stopRpcReport();
   void closeServer(server, shutdown)
     .then(() => Promise.all([stamps.stop(), poller.stop(), paypalEvents.stop(), anchors?.stop()]))
     .then(() => Promise.all([pool.end(), kv.close()]))
