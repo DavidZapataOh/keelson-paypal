@@ -3,6 +3,7 @@ import { httpInstrumentationMiddleware } from "@hono/otel";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import type { ChainReader } from "@keelson/alibi/verify";
 import type { Db } from "@keelson/db";
+import type { AgentSigner, Ed25519Signer, ExportSigner } from "@keelson/interop";
 import type { CertStore } from "@keelson/paypal";
 import type { Relayer } from "@keelson/relayer";
 import type { Context, MiddlewareHandler } from "hono";
@@ -53,6 +54,7 @@ import { registerEngineCapabilities } from "./routes/engine-capabilities.ts";
 import { registerEngineProofs } from "./routes/engine-proofs.ts";
 import { registerEvents } from "./routes/events.ts";
 import { registerEvidence } from "./routes/evidence.ts";
+import { registerExports } from "./routes/exports.ts";
 import { registerFeedback } from "./routes/feedback.ts";
 import { registerFx } from "./routes/fx.ts";
 import { registerGrades } from "./routes/grades.ts";
@@ -127,6 +129,15 @@ export interface Deps {
    * operator with it, and nothing else (see `delegated.ts`). Their countersigns answer 503 without it.
    */
   hostedAgentKey?: CryptoKey;
+  /** The hosted operator's `cnf` key with its public JWK; exports close its mandates with it. */
+  hostedAgent?: AgentSigner;
+  /**
+   * Signs standard exports: leg A's attested issuer key behind `POST /v1/exports/sign`. Exports
+   * answer 503 without it.
+   */
+  exportIssuer?: ExportSigner;
+  /** The hosted agent's Ed25519 key for RFC 9421 requests (`KEELSON_AGENT_HTTP_KEY`). */
+  agentHttpKey?: Ed25519Signer;
   /** What the hosted operator's bond backs for apps it does not know; uncapped without it. */
   hostedCaps?: HostedCaps;
   /** Browser origin of the public verifier, allowed to read public Alibis, receipts and timestamps without credentials. */
@@ -368,6 +379,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerTee(app, deps);
   registerTimestamps(app, deps);
   registerAlibis(app, deps);
+  registerExports(app, deps);
   registerAnonymousMandates(app, deps);
   registerEngineProofs(app, deps);
   registerDisputes(app, deps);

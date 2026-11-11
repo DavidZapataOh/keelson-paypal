@@ -33,6 +33,7 @@ export class ExportRefused extends Error {
     | "v1_alibi"
     | "no_merchant_origin"
     | "no_http_key"
+    | "no_agent_key"
     | "signer_unavailable";
 
   constructor(reason: ExportRefused["reason"]) {

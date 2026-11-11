@@ -208,7 +208,7 @@ const verifyRoute = createRoute({
  * ({@link publicDenial}), or a card purchase the live purchases list ({@link publicCard}); nothing
  * otherwise.
  */
-async function access(
+export async function access(
   deps: Pick<Deps, "db" | "demoAgentId">,
   principal: Principal | undefined,
   stored: AlibiBundle | AlibiBundleV2,

@@ -1245,6 +1245,9 @@ importers:
       '@keelson/evidence':
         specifier: workspace:*
         version: link:../../packages/evidence
+      '@keelson/interop':
+        specifier: workspace:*
+        version: link:../../packages/interop
       '@keelson/log':
         specifier: workspace:*
         version: link:../../packages/log

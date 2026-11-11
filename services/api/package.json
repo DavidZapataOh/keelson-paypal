@@ -40,6 +40,7 @@
     "@keelson/db": "workspace:*",
     "@keelson/erc8004": "workspace:*",
     "@keelson/evidence": "workspace:*",
+    "@keelson/interop": "workspace:*",
     "@keelson/log": "workspace:*",
     "@keelson/mandate": "workspace:*",
     "@keelson/mcp": "workspace:*",

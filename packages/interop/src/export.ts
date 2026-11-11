@@ -43,7 +43,8 @@ export async function exportOne(
     case "vi":
       return exportVi(f, ref, k, o);
     case "ucp":
-      if (!k.agent) throw new ExportRefused("no_http_key");
+      if (!f.lines && !f.breakdown) throw new ExportRefused("no_cart");
+      if (!k.agent) throw new ExportRefused("no_agent_key");
       return exportUcp(f, ref, { issuer: k.issuer, agent: k.agent }, o);
     case "acp":
       return exportAcp(f, ref, k, o);

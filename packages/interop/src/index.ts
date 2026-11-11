@@ -26,7 +26,7 @@ export {
   jwks,
   teeExportSigner,
 } from "./signer.ts";
-export { type AlibiRef, StatementError, verifyStatement } from "./statement.ts";
+export { type AlibiRef, refOf, StatementError, verifyStatement } from "./statement.ts";
 export {
   AgentSignatureError,
   type Ed25519Signer,

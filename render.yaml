@@ -105,6 +105,9 @@ services:
       # The private JWK of the shopping agent's cnf key, the one the demo operator links.
       - key: KEELSON_AGENT_KEY
         sync: false
+      # The private Ed25519 JWK the shopping agent signs its RFC 9421 requests with (Visa TAP, Web Bot Auth).
+      - key: KEELSON_AGENT_HTTP_KEY
+        sync: false
       # The invite in the hackathon's testing instructions: it lets judges past the daily cap.
       - key: JUDGE_INVITE_CODE
         sync: false
