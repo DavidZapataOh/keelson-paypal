@@ -205,9 +205,12 @@ jobs:
       - run: forge build --root lib/nitro-validator
       # Only the status lines are kept: traces and logs could carry the funder keys parsed from the secret. Forge runs a
       # contract's invariants as one campaign and its JSON names only the first, so the per-invariant lines are parsed.
+      # The fuzzed users' storage is read from the fork for every run, and the RPC key is shared with the other jobs: a
+      # rate-limited read (429) is retried with a longer backoff than forge's default instead of failing the campaign.
       - run: |
           set +e
-          forge test --match-path 'test/invariant/*' --compute-units-per-second "$FOUNDRY_COMPUTE_UNITS_PER_SECOND" > forge-invariant.log 2>&1
+          forge test --match-path 'test/invariant/*' --compute-units-per-second "$FOUNDRY_COMPUTE_UNITS_PER_SECOND" \
+            --fork-retries 10 --fork-retry-backoff 2000 > forge-invariant.log 2>&1
           status=$?
           set -e
           # Forge's suite results and failures, without traces; 32-byte hex values are redacted.
