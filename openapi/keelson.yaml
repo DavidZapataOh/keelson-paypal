@@ -10095,6 +10095,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/fx/reference/{base}:
     get:
+      operationId: getFxReference
       tags:
         - purchases
       summary: Reference exchange rates
@@ -10106,6 +10107,9 @@ paths:
         references the API issued in the last 6 hours. The pay-click gate checks
         the rate PayPal converts the charge at against them, within the
         mandate's `fx.max_spread_bps`.
+      security:
+        - oauth2:
+            - countersign:write
       parameters:
         - schema:
             type: string
