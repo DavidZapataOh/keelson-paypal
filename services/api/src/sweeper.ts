@@ -1,7 +1,7 @@
 import { and, type Db, eq, lt, purchases, sql } from "@keelson/db";
 import type { Logger } from "pino";
 import { resumeSettlements, type SettleDeps } from "./disputes/settle.ts";
-import { closeExpiredCards } from "./pipeline/card-step.ts";
+import { closeExpiredCards, collectForcePosted } from "./pipeline/card-step.ts";
 import { logDenials, type PipelineDeps, resumePurchases } from "./pipeline/drive.ts";
 import { finishStops } from "./stop.ts";
 
@@ -62,11 +62,12 @@ export function startPipelineResumer(deps: PipelineDeps): () => void {
         ...(deps.tlog ? { tlog: deps.tlog } : {}),
       }),
       closeExpiredCards(deps),
+      collectForcePosted(deps),
     ])
       .then(
-        ([resumed, logged, stops, closed]) => {
-          if (resumed + logged + stops + closed > 0) {
-            deps.log.info({ resumed, logged, stops, closed }, "purchases resumed");
+        ([resumed, logged, stops, closed, collected]) => {
+          if (resumed + logged + stops + closed + collected > 0) {
+            deps.log.info({ resumed, logged, stops, closed, collected }, "purchases resumed");
           }
         },
         (err: unknown) => deps.log.error({ err }, "purchase resume failed"),

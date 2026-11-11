@@ -4,8 +4,10 @@ import {
   type Db,
   eq,
   inArray,
+  isNotNull,
   lt,
   mandates,
+  or,
   purchaseCards,
   purchases,
   sql,
@@ -145,18 +147,24 @@ export async function openCardStep(
 }
 
 /**
- * Closes the cards that were never used before their countersign expired and fails their
- * purchases, so nothing can be authorized on them later. Returns how many it closed.
+ * Closes the cards never used before their countersign expired or their mandate ended, and fails
+ * their purchases, so nothing can be authorized on them later. Returns how many it closed.
  */
 export async function closeExpiredCards(deps: CardStepDeps): Promise<number> {
   const { db } = deps;
   const expired = await db
     .select({ purchaseId: purchaseCards.purchaseId, token: purchaseCards.cardToken })
     .from(purchaseCards)
+    .innerJoin(purchases, eq(purchases.id, purchaseCards.purchaseId))
+    .innerJoin(mandates, eq(mandates.id, purchases.mandateId))
     .where(
       and(
         inArray(purchaseCards.state, ["PAUSED", "OPEN"]),
-        lt(purchaseCards.expiresAt, sql`now()`),
+        // Unused past its countersign, or its mandate ended: a revoked mandate leaves no open card.
+        or(
+          lt(purchaseCards.expiresAt, sql`now()`),
+          inArray(mandates.state, ["REVOKED", "EXPIRED", "EXHAUSTED"]),
+        ),
       ),
     )
     .limit(20);
@@ -216,27 +224,39 @@ export async function captureCardStep(
   if (p.state === "CAPTURED" && p.paypalCaptureId) {
     return done({ captureId: p.paypalCaptureId, status: p.captureStatus ?? "COMPLETED" });
   }
-  if (p.state !== "COVERED") return final(`capture:state-${p.state}`);
+  // A card voided and then force-posted failed its purchase; the network paid all the same.
+  const forcePosted =
+    p.state === "FAILED" &&
+    (p.failureReason === "card:voided" || p.failureReason === "card:expired");
+  if (p.state !== "COVERED" && !forcePosted) return final(`capture:state-${p.state}`);
   if (card.settledMinor === null) return retry("capture:not-settled");
   if (!p.paypalOrderId) return final("capture:no-order");
   if (!paypal) return retry("capture:paypal-unavailable");
   const amount: Money = { currency: p.currency as CurrencyCode, minor: card.settledMinor };
   const invoice = await invoiceFor({ db, paypal }, purchaseId);
-  if (!invoice) return final("capture:invoice-exhausted");
+  if (!invoice) return uncollected("invoice-exhausted");
+  /**
+   * A settled charge is never written off: the purchase stays covered, counted against the
+   * budget, and the collection is tried again on the next drive while someone looks.
+   */
+  function uncollected(reason: string) {
+    log.error({ purchaseId, reason }, "settled card charge not collected from the hold");
+    return retry(`capture:${reason}`);
+  }
   try {
     const found = await findCapture(paypal, p.paypalOrderId, invoice.invoiceId);
     if (found) {
-      if (found.amount.minor !== amount.minor) return final("capture:DUPLICATE_INVOICE_ID");
+      if (found.amount.minor !== amount.minor) return uncollected("DUPLICATE_INVOICE_ID");
       await commitCapture(deps, purchaseId, found);
       return done({ captureId: found.id, status: found.status });
     }
+    // The network already paid the merchant: the charge is collected even from a mandate revoked
+    // or expired since, whose hold waits for it.
     const [m] = await db.select().from(mandates).where(eq(mandates.id, p.mandateId));
-    if (!m || (m.state !== "ACTIVE" && m.state !== "EXHAUSTED")) {
-      return final(`capture:mandate-${m?.state ?? "missing"}`);
-    }
-    if (amount.minor > m.remainingMinor) return final("capture:budget-exceeded");
+    if (!m) return final("capture:mandate-missing");
+    if (amount.minor > m.remainingMinor) return uncollected("budget-exceeded");
     const authorizationId = (await holdOf(db, p.mandateId))?.authorizationId;
-    if (!authorizationId) return final("capture:no-authorization");
+    if (!authorizationId) return uncollected("no-authorization");
     const finalCapture = amount.minor === m.remainingMinor;
     const res = await call(
       paypal.paypal.payments.captureAuthorizedPayment({
@@ -254,10 +274,7 @@ export async function captureCardStep(
       return retry("capture:malformed-response");
     }
     const captured = fromPayPalValue(res.amount.currencyCode as CurrencyCode, res.amount.value);
-    if (captured.minor !== amount.minor) {
-      log.error({ purchaseId, captureId: res.id }, "PayPal captured another amount");
-      return final("capture:amount-mismatch");
-    }
+    if (captured.minor !== amount.minor) return uncollected("amount-mismatch");
     log.info({ purchaseId, captureId: res.id, status: res.status }, "card capture.sent");
     await commitCapture(deps, purchaseId, {
       id: res.id,
@@ -269,7 +286,7 @@ export async function captureCardStep(
     return done({ captureId: res.id, status: res.status ?? "PENDING" });
   } catch (err) {
     if (err instanceof PayPalError && !TRANSIENT.has(err.status)) {
-      return final(`capture:${err.details[0]?.issue ?? `HTTP_${err.status}`}`);
+      return uncollected(err.details[0]?.issue ?? `HTTP_${err.status}`);
     }
     if (err instanceof PayPalError || err instanceof PayPalUnavailableError) {
       return retry("capture:paypal-unavailable");
@@ -280,3 +297,24 @@ export async function captureCardStep(
 
 /** PayPal answers these for the caller or the moment, never for the capture itself. */
 const TRANSIENT = new Set([401, 408, 409, 429]);
+
+/**
+ * Collects the charges of cards voided and then force-posted by the merchant: their purchase
+ * failed, but the network paid. Returns how many it tried.
+ */
+export async function collectForcePosted(deps: CaptureDeps): Promise<number> {
+  const rows = await deps.db
+    .select({ id: purchases.id })
+    .from(purchases)
+    .innerJoin(purchaseCards, eq(purchaseCards.purchaseId, purchases.id))
+    .where(
+      and(
+        eq(purchases.state, "FAILED"),
+        inArray(purchases.failureReason, ["card:voided", "card:expired"]),
+        isNotNull(purchaseCards.settledMinor),
+      ),
+    )
+    .limit(20);
+  for (const r of rows) await captureCardStep(deps, r.id);
+  return rows.length;
+}

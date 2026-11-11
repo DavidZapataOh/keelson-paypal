@@ -295,7 +295,7 @@ describe("the card authorization veto", () => {
     expect(more.result).toBe("VELOCITY_EXCEEDED");
   });
 
-  test("only the approved transaction, for no more than approved, settles the card", async () => {
+  test("only the approved transaction settles the card, for no more than approved", async () => {
     answers = { a: () => ({ mask: 0 }), b: () => ({ mask: 0 }) };
     const { id, cardToken } = await cardPurchase();
     const n = coffee(cardToken);
@@ -303,23 +303,28 @@ describe("the card authorization veto", () => {
     const card = async () =>
       (await testDb.select().from(purchaseCards).where(eq(purchaseCards.purchaseId, id)))[0];
     const base = { db: testDb, kv: testKv, log };
-    for (const [transactionToken, settledMinor] of [
-      ["txn-other", 450],
-      [n.transactionToken, 451],
-    ] as const) {
-      await applyTransaction(base, {
-        cardToken,
-        transactionToken,
-        status: "SETTLED",
-        settledMinor,
-      });
-      expect((await card())?.settledMinor).toBeNull();
-    }
+    await applyTransaction(base, {
+      cardToken,
+      transactionToken: "txn-other",
+      status: "SETTLED",
+      settledMinor: 450,
+    });
+    expect((await card())?.settledMinor).toBeNull();
+    // A void and then a force-post: the network paid, so it is still collected, capped.
+    await applyTransaction(base, {
+      cardToken,
+      transactionToken: n.transactionToken,
+      status: "VOIDED",
+      settledMinor: 0,
+    });
+    expect((await testDb.select().from(purchases).where(eq(purchases.id, id)))[0]?.state).toBe(
+      "FAILED",
+    );
     await applyTransaction(base, {
       cardToken,
       transactionToken: n.transactionToken,
       status: "SETTLED",
-      settledMinor: 450,
+      settledMinor: 900,
     });
     expect(await card()).toMatchObject({ state: "CLOSED", settledMinor: 450n });
   });
@@ -528,7 +533,7 @@ describe("POST /v1/purchases/{id}/chargeback", () => {
     expect(other.status).toBe(404);
 
     await applyChargeback(
-      { db: testDb },
+      { db: testDb, log },
       { token: body.id, status: "CASE_WON", resolution: "WON_FIRST_CHARGEBACK" },
     );
     const [stored] = await testDb
@@ -536,6 +541,16 @@ describe("POST /v1/purchases/{id}/chargeback", () => {
       .from(cardChargebacks)
       .where(eq(cardChargebacks.id, body.id));
     expect(stored?.recoveredMinor).toBe(450n);
+    // An older event arriving after the decision changes nothing.
+    await applyChargeback(
+      { db: testDb, log },
+      { token: body.id, status: "SUBMITTED", resolution: null },
+    );
+    const [after] = await testDb
+      .select()
+      .from(cardChargebacks)
+      .where(eq(cardChargebacks.id, body.id));
+    expect(after).toMatchObject({ status: "CASE_WON", recoveredMinor: 450n });
   });
 
   test("refuses more than was settled, and a card not settled yet", async () => {

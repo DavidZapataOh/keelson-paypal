@@ -7,6 +7,7 @@ import {
   inArray,
   isNull,
   mandates,
+  or,
   purchaseHolds,
   purchases,
   sql,
@@ -67,7 +68,12 @@ async function inFlight(db: Db, mandateId: string, now: Date): Promise<boolean> 
       and(
         eq(purchases.mandateId, mandateId),
         inArray(purchases.state, [...IN_FLIGHT]),
-        gt(purchases.updatedAt, new Date(now.getTime() - IN_FLIGHT_MS)),
+        or(
+          gt(purchases.updatedAt, new Date(now.getTime() - IN_FLIGHT_MS)),
+          // A card charge is collected from the hold when the network settles it, which can take
+          // days: the hold stays until every covered card purchase is collected or closed.
+          and(eq(purchases.rail, "card"), eq(purchases.state, "COVERED")),
+        ),
       ),
     )
     .limit(1);

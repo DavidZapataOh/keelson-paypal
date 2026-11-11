@@ -1,4 +1,8 @@
-import type { cardChargebacks } from "@keelson/db";
+import { type CurrencyCode, sha256, toPayPalValue } from "@keelson/core";
+import { type cardChargebacks, type Db, eq, purchases } from "@keelson/db";
+import { ids } from "@keelson/paypal";
+import type { Logger } from "pino";
+import { call, type PayPalDeps } from "../paypal.ts";
 
 /**
  * The chargebacks a card purchase's user may file, the issuer's reason for each and the reason
@@ -75,4 +79,42 @@ export function chargebackView(c: typeof cardChargebacks.$inferSelect) {
     recoveredMinor: c.recoveredMinor?.toString() ?? null,
     evidenceUploaded: c.evidenceUploaded,
   };
+}
+
+/**
+ * Returns to the user's PayPal account what the card network returned to Keelson for a card
+ * purchase: a chargeback the issuer won, or a merchant's refund to the card. Keyed by the issuer's
+ * id of that return, so it is refunded once however often it is reported.
+ */
+export async function refundToUser(
+  deps: { db: Db; log: Logger; paypal?: PayPalDeps | undefined },
+  purchaseId: string,
+  returnId: string,
+  amountMinor: bigint,
+  note: string,
+): Promise<void> {
+  if (amountMinor <= 0n) return;
+  const [p] = await deps.db
+    .select({ captureId: purchases.paypalCaptureId, currency: purchases.currency })
+    .from(purchases)
+    .where(eq(purchases.id, purchaseId));
+  if (!p?.captureId) {
+    deps.log.error({ purchaseId, returnId }, "a card return to pass on, but nothing was collected");
+    return;
+  }
+  if (!deps.paypal) throw new Error("PayPal is not configured to refund the user");
+  const money = { currency: p.currency as CurrencyCode, minor: amountMinor };
+  const refund = await call(
+    deps.paypal.paypal.payments.refundCapturedPayment({
+      captureId: p.captureId,
+      paypalRequestId: ids.requestIdFromDigest(
+        sha256(new TextEncoder().encode(`card-return:${returnId}`)),
+      ),
+      body: {
+        amount: { currencyCode: money.currency, value: toPayPalValue(money) },
+        noteToPayer: note,
+      },
+    }),
+  );
+  deps.log.info({ purchaseId, returnId, refundId: refund.id }, "card return refunded to the user");
 }

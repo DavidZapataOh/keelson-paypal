@@ -10,9 +10,12 @@ import {
   and,
   type Db,
   eq,
+  inArray,
   isNull,
   like,
   mandates,
+  or,
+  purchaseCards,
   purchaseHolds,
   purchases,
   sql,
@@ -298,7 +301,11 @@ export async function commitCapture(
           and(
             eq(purchases.id, purchaseId),
             eq(purchases.state, "FAILED"),
-            like(purchases.failureReason, "capture:%"),
+            or(
+              like(purchases.failureReason, "capture:%"),
+              // A card voided and then force-posted, whose charge the hold now pays.
+              inArray(purchases.failureReason, ["card:voided", "card:expired"]),
+            ),
           ),
         )
         .returning({ id: purchases.id });
@@ -384,7 +391,19 @@ export async function reconcileCapture(
     return { effect: "mismatch", purchaseId, resource };
   }
   const amount = fromValue(resource.amount.currencyCode, resource.amount.value);
-  if (!sameMoney(amount, moneyOf(p))) {
+  // A card purchase's capture is the amount the network settled.
+  const [card] =
+    p.rail === "card"
+      ? await db
+          .select({ settled: purchaseCards.settledMinor })
+          .from(purchaseCards)
+          .where(eq(purchaseCards.purchaseId, p.id))
+      : [];
+  const expected =
+    card?.settled != null
+      ? { currency: p.currency as CurrencyCode, minor: card.settled }
+      : moneyOf(p);
+  if (!sameMoney(amount, expected)) {
     log.warn({ purchaseId, captureId }, "capture amount is not the countersigned amount");
     return { effect: "mismatch", purchaseId, resource };
   }

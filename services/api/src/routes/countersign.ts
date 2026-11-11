@@ -1092,7 +1092,10 @@ export function registerCountersign(
             sql`select pg_advisory_xact_lock(hashtext(${`card-budget:${mandate.id}`}))`,
           );
           const [{ committed } = { committed: "0" }] = await tx
-            .select({ committed: sql<string>`coalesce(sum(${purchases.amountMinor}), 0)::text` })
+            // A settled card purchase counts what the network settled; any other, its cart.
+            .select({
+              committed: sql<string>`coalesce(sum(coalesce((select pc.settled_minor from purchase_cards pc where pc.purchase_id = ${purchases.id}), ${purchases.amountMinor})), 0)::text`,
+            })
             .from(purchases)
             .where(
               and(
