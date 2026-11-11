@@ -18,6 +18,7 @@
   "lockCoverage_coverage_2of2_payment": "167350",
   "lockCoverage_coverage_2of2_webauthn": "166833",
   "lockCoverage_coverage_degraded": "158951",
+  "logBond_proveEquivocation": "2049134",
   "nitro_leafCache_tx": "6034801",
   "nitro_validateDocument_tx": "13243089",
   "payWarranty": "176011",

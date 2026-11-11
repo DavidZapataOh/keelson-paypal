@@ -3316,6 +3316,110 @@ components:
         - nonce
         - deadline
         - ownerSignature
+    LogBond:
+      type: object
+      properties:
+        chainId:
+          type: number
+        address:
+          type: string
+        origin:
+          type: string
+        test:
+          type: boolean
+          description: A test origin's bond, slashed by the equivocation drill.
+        key:
+          type: string
+          description: The Ed25519 log key the bond pins, hex.
+        owner:
+          type: string
+        verifier:
+          type: string
+          description: The Ed25519 verifier the bond calls.
+        balanceMinor:
+          type: string
+        withdrawalDelaySeconds:
+          type: number
+        withdrawal:
+          type:
+            - object
+            - "null"
+          properties:
+            amountMinor:
+              type: string
+            unlockAt:
+              type: string
+            to:
+              type: string
+          required:
+            - amountMinor
+            - unlockAt
+            - to
+        equivocation:
+          $ref: "#/components/schemas/LogEquivocation"
+        explorerUrl:
+          type: string
+      required:
+        - chainId
+        - address
+        - origin
+        - test
+        - key
+        - owner
+        - verifier
+        - balanceMinor
+        - withdrawalDelaySeconds
+        - withdrawal
+        - equivocation
+        - explorerUrl
+    LogEquivocation:
+      type:
+        - object
+        - "null"
+      properties:
+        prover:
+          type: string
+        amountMinor:
+          type: string
+          description: PYUSD base units paid to the prover.
+        provenAt:
+          type: string
+        size:
+          type: string
+          description: The tree size both checkpoints state.
+        rootA:
+          type: string
+        rootB:
+          type: string
+        noteA:
+          type:
+            - string
+            - "null"
+          description: The first signed checkpoint, as submitted; null until its
+            transaction is found.
+        noteB:
+          type:
+            - string
+            - "null"
+        txHash:
+          type:
+            - string
+            - "null"
+        explorerUrl:
+          type:
+            - string
+            - "null"
+      required:
+        - prover
+        - amountMinor
+        - provenAt
+        - size
+        - rootA
+        - rootB
+        - noteA
+        - noteB
+        - txHash
+        - explorerUrl
     PayoutAddress:
       type: object
       properties:
@@ -6868,6 +6972,36 @@ paths:
         "503":
           description: "The relayer cannot send now: chain unavailable, gas price cap or
             low balance"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/log/bonds:
+    get:
+      tags:
+        - log
+      summary: Log equivocation bonds
+      description: The PYUSD bonds on the log keys, on Arbitrum Sepolia. Two
+        checkpoints signed by a bond's key that state different roots for one
+        size pay its whole balance to whoever submits them
+        (`LogBond.proveEquivocation`). Each bond reports its balance and, once
+        slashed, the equivocation and its transaction.
+      responses:
+        "200":
+          description: Every deployed bond
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bonds:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/LogBond"
+                required:
+                  - bonds
+        "503":
+          description: This server does not read Arbitrum Sepolia
           content:
             application/problem+json:
               schema:
