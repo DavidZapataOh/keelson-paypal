@@ -58,7 +58,14 @@ const FIELD_WORDS: Record<string, string> = {
   quantity: "the wrong quantity",
 };
 
+/** "Cart $340.00 · max $100.00" when the API says both sides, else the field in words. */
 function blockedWhy(p: Purchase): string {
+  const reason = p.reasons?.[0];
+  if (reason?.cart && reason.mandate) {
+    return reason.field === "total" || reason.field === "budget"
+      ? `Cart ${reason.cart} · max ${reason.mandate}`
+      : `${reason.cart}, not ${reason.mandate}`;
+  }
   const field = p.blocked?.[0];
   if (field) return FIELD_WORDS[field] ?? `outside your ${field}`;
   return p.failure?.reason ?? "outside your rules";
