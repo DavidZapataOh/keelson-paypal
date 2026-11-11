@@ -144,7 +144,7 @@ jobs:
         with:
           node-version-file: .node-version
           cache: pnpm
-      # The runners' DNS fails now and then: the .debs are cached per runner image, and fetched with retries.
+      # The runners' DNS fails now and then: the .debs are cached per runner image, and fetched with retries and an archive fallback.
       - id: image
         run: echo "version=$ImageVersion" >> "$GITHUB_OUTPUT"
       - id: debs
@@ -154,11 +154,15 @@ jobs:
           key: debs-poppler-utils-zbar-tools-${{ runner.os }}-${{ runner.arch }}-${{ steps.image.outputs.version }}
       - if: steps.debs.outputs.cache-hit != 'true'
         run: |
-          apt=(-o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o APT::Update::Error-Mode=any)
+          apt=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o APT::Update::Error-Mode=any)
           for attempt in 1 2 3; do
             sudo apt-get "${apt[@]}" update && break
             [ "$attempt" = 3 ] && exit 1
-            sleep 30
+            # The image's mirror list leads with azure.archive.ubuntu.com, which the runners at times cannot resolve
+            # for minutes: the next attempts read the Ubuntu archive directly.
+            grep -rls 'mirror+file:/etc/apt/apt-mirrors.txt' /etc/apt/sources.list /etc/apt/sources.list.d \
+              | xargs -r sudo sed -i 's#mirror+file:/etc/apt/apt-mirrors.txt#http://archive.ubuntu.com/ubuntu/#'
+            sleep 10
           done
           sudo apt-get clean
           sudo apt-get "${apt[@]}" install -y --download-only poppler-utils zbar-tools
