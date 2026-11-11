@@ -266,7 +266,7 @@ function Focus({
                     setStopping(true);
                     await post(`/v1/mandates/${mandate.id}/revoke`).catch(() => {});
                     setStopping(false);
-                    reload();
+                    void reload();
                   }}
                   className="grid size-14 place-items-center rounded-full bg-bone-2 transition-transform duration-200 hover:-translate-y-0.5"
                 >

@@ -7,7 +7,7 @@ import {
   signMandate,
 } from "@keelson/mandate/browser";
 import { Button } from "@keelson/ui/components/button";
-import { Ban, Check, Fingerprint, Hand, Loader2, ShieldCheck } from "lucide-react";
+import { Ban, Check, Fingerprint, Hand, Loader2, ShieldCheck, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 import { ApiError, get, post } from "../lib/api";
@@ -20,6 +20,7 @@ import { MandateVisual } from "./mandate-visual";
 import { ErrorNotice } from "./notice";
 import { OnboardingFrame } from "./onboarding/frame";
 import { PasskeySetup } from "./passkey-setup";
+import { PhoneApprovalsOffer } from "./phone-approvals";
 
 const NO_EVIDENCE = { merchantSignedCheckout: false, zkTlsFields: new Set<never>() };
 const HOUR = 3_600_000;
@@ -76,6 +77,116 @@ function lowered(c: ConnectionView, want: Partial<Chosen>): Chosen {
     merchants: merchants?.length ? merchants : a.merchants,
     until,
   };
+}
+
+/** The mandate's fields as the user reads them. */
+const FIELDS: Record<string, string> = {
+  agent: "Agent",
+  total: "Per purchase",
+  budget: "Left to spend",
+  merchant: "Store",
+  category: "Category",
+  currency: "Currency",
+  quantity: "Quantity",
+  return_policy: "Returns",
+  variant: "Size and color",
+  deadline: "Until",
+  askAbove: "Ask me above",
+};
+
+/** `m:ss` left until `iso`. */
+function countdown(iso: string, now: number): string {
+  const s = Math.max(0, Math.ceil((Date.parse(iso) - now) / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+/**
+ * What the agent's cart has against what the mandate allows, field by field. The fields it fails
+ * are why it waits for the user, in amber: outside the mandate, not refused.
+ */
+function CartDiff({ request }: { request: ConnectionView }) {
+  const { cart, checks } = request;
+  if (!cart || !checks?.length) return null;
+  const rows = [...checks].sort((a, b) => Number(a.pass) - Number(b.pass));
+  const outside = rows.filter((r) => !r.pass).length;
+  return (
+    <section aria-labelledby="diff" className="mt-5 grid gap-3">
+      <div className="grid gap-0.5">
+        <h2 id="diff" className="font-semibold">
+          What {request.name} saw, against your mandate
+        </h2>
+        <p className="text-muted-foreground text-sm">
+          {outside === 1 ? "One field is" : `${outside} fields are`} outside it. Everything else
+          holds.
+        </p>
+      </div>
+      <ul aria-label="The cart" className="grid gap-1 rounded-2xl bg-bone-2 px-4 py-3 text-sm">
+        {cart.lines.map((l) => (
+          <li
+            key={`${l.sku}:${l.size}:${l.color}`}
+            className="flex items-baseline justify-between gap-3"
+          >
+            <span className="min-w-0 truncate">
+              <span className="font-mono">{l.sku}</span>
+              {[l.size && `size ${l.size}`, l.color].filter(Boolean).length ? (
+                <span className="text-muted-foreground">
+                  {" "}
+                  · {[l.size && `size ${l.size}`, l.color].filter(Boolean).join(", ")}
+                </span>
+              ) : null}
+            </span>
+            <span className="shrink-0 tnum">
+              {l.qty} × {money(BigInt(l.unitMinor), cart.currency)}
+            </span>
+          </li>
+        ))}
+        <li className="mt-1 flex justify-between gap-3 border-foreground/15 border-t pt-2 font-medium">
+          <span>{cart.merchant.name}</span>
+          <span className="tnum">{money(BigInt(cart.totalMinor), cart.currency)}</span>
+        </li>
+      </ul>
+      <table className="w-full table-fixed text-sm">
+        <caption className="sr-only">Each field of your mandate against the cart</caption>
+        <thead>
+          <tr className="text-left text-muted-foreground text-xs uppercase tracking-[0.08em]">
+            <th scope="col" className="w-1/3 pb-2 font-normal">
+              Field
+            </th>
+            <th scope="col" className="pb-2 font-normal">
+              Mandate
+            </th>
+            <th scope="col" className="pb-2 font-normal">
+              Cart
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr
+              key={r.field}
+              className={r.pass ? "border-t" : "border-warn/30 border-t bg-warn/10 text-warn"}
+            >
+              <th scope="row" className="py-2 pr-2 pl-2 text-left font-medium">
+                <span className="flex items-center gap-1.5">
+                  {r.pass ? (
+                    <Check className="size-3.5 shrink-0 text-ok" aria-hidden="true" />
+                  ) : (
+                    <TriangleAlert className="size-3.5 shrink-0" aria-hidden="true" />
+                  )}
+                  <span className="truncate">
+                    {FIELDS[r.field] ?? r.field.replaceAll("_", " ")}
+                  </span>
+                  <span className="sr-only">{r.pass ? ", within" : ", outside the mandate"}</span>
+                </span>
+              </th>
+              <td className="truncate py-2 pr-2 font-mono tnum">{r.mandate ?? "—"}</td>
+              <td className="truncate py-2 pr-2 font-mono font-semibold tnum">{r.cart ?? "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
 }
 
 function message(e: unknown): string {
@@ -216,9 +327,9 @@ export function Approval({
   const drafting = useRef(0);
 
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 30_000);
+    const t = setInterval(() => setNow(Date.now()), once ? 1_000 : 30_000);
     return () => clearInterval(t);
-  }, []);
+  }, [once]);
 
   // The draft follows the chosen limits, so the passkey prompt opens on the click.
   const draft = useCallback(
@@ -428,6 +539,7 @@ export function Approval({
       .filter((o) => Date.parse(o.at) < Date.parse(requested.until)),
   ];
   const signingNow = phase === "signing";
+  const expired = Date.parse(request.expiresAt) <= now;
 
   return (
     <OnboardingFrame
@@ -448,7 +560,9 @@ export function Approval({
           <Button
             size="lg"
             onClick={approve}
-            disabled={signingNow || (!ready && !needsPasskey) || chosen.merchants.length === 0}
+            disabled={
+              signingNow || expired || (!ready && !needsPasskey) || chosen.merchants.length === 0
+            }
             className="h-13 rounded-xl px-4 text-[15px] sm:text-base"
           >
             {signingNow || (!ready && !needsPasskey && !error) ? (
@@ -467,7 +581,15 @@ export function Approval({
     >
       <div className="grid gap-3">
         <div className="flex flex-wrap items-center gap-1.5">
-          <Chip>Expires in {untilIn(request.expiresAt, now)}</Chip>
+          {once ? (
+            <Chip>
+              <span role="timer" aria-live="off" className="font-mono tnum">
+                {expired ? "Expired" : `Expires in ${countdown(request.expiresAt, now)}`}
+              </span>
+            </Chip>
+          ) : (
+            <Chip>Expires in {untilIn(request.expiresAt, now)}</Chip>
+          )}
           <Chip>
             Code <span className="font-mono tracking-wider">{request.code}</span>
           </Chip>
@@ -481,14 +603,22 @@ export function Approval({
         </h1>
         <p className="text-pretty text-muted-foreground leading-snug">
           {once
-            ? over > 0
-              ? `${money(BigInt(over), currency)} above this mandate. Paused until you answer.`
-              : "At a store this mandate does not allow. Paused until you answer."
+            ? expired
+              ? `This request expired. Ask ${request.name} to try again.`
+              : `${
+                  request.checks?.some((c) => c.field === "askAbove" && !c.pass)
+                    ? "Above the amount you asked to approve each time."
+                    : over > 0
+                      ? `${money(BigInt(over), currency)} above this mandate.`
+                      : "At a store this mandate does not allow."
+                } Paused until you answer. Approve soon — the price may change.`
             : change
               ? "Nothing changes unless you sign. You can lower anything it asks for."
               : "Only continue if you started this."}
         </p>
       </div>
+
+      {once ? <CartDiff request={request} /> : null}
 
       {change ? (
         <section
@@ -699,6 +829,10 @@ export function Approval({
           <ErrorNotice>{error}</ErrorNotice>
         </div>
       ) : null}
+
+      <div className="mt-6">
+        <PhoneApprovalsOffer />
+      </div>
     </OnboardingFrame>
   );
 }

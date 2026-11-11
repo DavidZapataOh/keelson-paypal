@@ -26,6 +26,7 @@ import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
 import { voidHold } from "../hold/maintenance.ts";
 import { holdOf, purchaseHoldOf } from "../hold/state.ts";
+import { type Notifier, notify, purchaseAlert } from "../notify/notifier.ts";
 import { call, type PayPalDeps, PayPalUnavailableError } from "../paypal.ts";
 import type { CountersignJson } from "../tee/client.ts";
 import { publishPurchase } from "./events.ts";
@@ -52,6 +53,7 @@ export interface CaptureDeps {
   kv: RedisClientType;
   log: Logger;
   paypal?: PayPalDeps | undefined;
+  notifier?: Notifier | undefined;
 }
 
 /** @public */
@@ -361,6 +363,7 @@ export async function commitCapture(
     invoiceId: capture.invoiceId,
     amount: { currency: capture.amount.currency, minor: capture.amount.minor.toString() },
   });
+  notify(deps.notifier, (n) => purchaseAlert(n, purchaseId, "captured"));
   return "applied";
 }
 

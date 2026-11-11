@@ -343,6 +343,8 @@ try {
     endToEndDegraded: stats(captured.filter((r) => r.mode === "degraded").map((r) => r.ms)),
     sse: stats(lag),
     ...waterfall(spans.getFinishedSpans()),
+    // The first purchase pays what a fresh process has not opened or loaded yet.
+    first: results[0] && waterfall(spans.getFinishedSpans(), results[0].id),
     purchases: results.length,
     captured: captured.length,
     failures,

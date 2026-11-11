@@ -47,8 +47,10 @@
   }
 
   /**
-   * Frames the approval in `container`. It grows with its content; nothing in the frame may use a
-   * passkey or a payment, so the frame is given no permissions. Returns `{ iframe, destroy }`.
+   * Frames the approval in `container`. It grows with its content. The user signs in it with a
+   * passkey, so the frame is delegated the passkey features and Secure Payment Confirmation,
+   * which shows the amount in the browser's own prompt; the approval's page allows them for itself
+   * only. Returns `{ iframe, destroy }`.
    */
   function mount(container, { url, onEvent = () => {} }) {
     const origin = originOf(url);
@@ -56,6 +58,7 @@
     iframe.title = "Keelson approval";
     iframe.src = url;
     iframe.referrerPolicy = "no-referrer";
+    iframe.allow = "publickey-credentials-get; publickey-credentials-create; payment";
     // Scripts and its own origin to call Keelson; popups for the Keelson window, unsandboxed.
     iframe.setAttribute(
       "sandbox",
