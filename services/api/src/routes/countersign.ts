@@ -54,6 +54,7 @@ import {
   type CountersignExpectation,
   countersign2of2,
 } from "../tee/coordinator.ts";
+import { stoppedSince } from "../stop.ts";
 import { span } from "../tracing.ts";
 import { PurchaseProgress, progressOf } from "./purchases.ts";
 
@@ -652,6 +653,17 @@ export function registerCountersign(
         "mandate-not-active",
         "Mandate not active",
         "The mandate cannot countersign now.",
+      );
+    }
+
+    // The user stopped every agent after this mandate was stored: nothing under it is signed again.
+    if (await stoppedSince(db, mandate.userId, mandate.createdAt)) {
+      return problem(
+        c,
+        409,
+        "agents-stopped",
+        "Agents stopped",
+        "The user stopped all agents; this mandate cannot countersign.",
       );
     }
 

@@ -11,6 +11,7 @@ import { MERCHANTS } from "../merchants.ts";
 import { requireClient } from "../middleware/auth.ts";
 import { fieldChecks } from "../pipeline/drive.ts";
 import type { Principal } from "../principal.ts";
+import { stoppedSince } from "../stop.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 import { CartSchema } from "./countersign.ts";
 import { REVOCABLE } from "./revoke.ts";
@@ -289,6 +290,14 @@ export function registerMandateRequests(
           mandate.state === "SIGNED" || mandate.state === "HOLD_PENDING"
             ? "Call keelson.confirm_mandate and wait for the hold."
             : "Stop. Ask the user for a new mandate with keelson.request_mandate.",
+      });
+    }
+    if (await stoppedSince(db, mandate.userId, mandate.createdAt)) {
+      blockers.push({
+        code: "agents-stopped",
+        field: null,
+        message: "The user stopped all agents.",
+        next: "Stop. Do not buy or ask again unless the user tells you to.",
       });
     }
     let m: ReturnType<typeof decodeMandate> | undefined;

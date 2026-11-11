@@ -87,25 +87,34 @@ export class LogError extends Error {
 
 /** Appends leaves to one origin of the log over its private write listener. */
 export class LogClient {
-  private readonly endpoint: string;
+  private readonly base: string;
   private readonly token: string;
   private readonly timeoutMs: number;
 
   constructor(url: string, token: string, origin: string, timeoutMs = 8000) {
     if (!origin.startsWith(`${LOG_HOST}/`)) throw new RangeError(`not a log origin: ${origin}`);
-    this.endpoint = `${url.replace(/\/$/, "")}/${origin.slice(LOG_HOST.length + 1)}/add`;
+    this.base = `${url.replace(/\/$/, "")}/${origin.slice(LOG_HOST.length + 1)}`;
     this.token = token;
     this.timeoutMs = timeoutMs;
   }
 
   /** Appends `leaf` and resolves once a checkpoint covers it. */
-  async add(leaf: Uint8Array, countersign: Record<string, string>): Promise<AppendResult> {
+  add(leaf: Uint8Array, countersign: Record<string, string>): Promise<AppendResult> {
+    return this.post("add", { leaf: btoa(String.fromCharCode(...leaf)), countersign });
+  }
+
+  /** Appends a stop leaf (`keelson.finance/stop/v1`) and resolves once a checkpoint covers it. */
+  stop(leaf: Uint8Array): Promise<AppendResult> {
+    return this.post("stop", { leaf: btoa(String.fromCharCode(...leaf)) });
+  }
+
+  private async post(path: "add" | "stop", body: unknown): Promise<AppendResult> {
     let res: Response;
     try {
-      res = await fetch(this.endpoint, {
+      res = await fetch(`${this.base}/${path}`, {
         method: "POST",
         headers: { authorization: `Bearer ${this.token}`, "content-type": "application/json" },
-        body: JSON.stringify({ leaf: btoa(String.fromCharCode(...leaf)), countersign }),
+        body: JSON.stringify(body),
         signal: AbortSignal.timeout(this.timeoutMs),
       });
     } catch (err) {
@@ -114,16 +123,16 @@ export class LogClient {
         name === "TimeoutError" || name === "AbortError" ? "timeout" : "unreachable",
       );
     }
-    const body = (await res.json().catch(() => ({}))) as Record<string, string>;
+    const answer = (await res.json().catch(() => ({}))) as Record<string, string>;
     if (res.status === 200) {
-      const { index, leafHash, proof, checkpoint } = body;
+      const { index, leafHash, proof, checkpoint } = answer;
       if (!index || !leafHash || !proof || !checkpoint)
         throw new LogError("unreachable", "malformed");
       return { index: BigInt(index), leafHash: hexToBytes(leafHash), proof, checkpoint };
     }
     if (res.status === 429) throw new LogError("pushback");
-    if (res.status === 503) throw new LogError("unavailable", body.code);
-    if (res.status >= 400 && res.status < 500) throw new LogError("rejected", body.code);
+    if (res.status === 503) throw new LogError("unavailable", answer.code);
+    if (res.status >= 400 && res.status < 500) throw new LogError("rejected", answer.code);
     throw new LogError("unreachable", String(res.status));
   }
 }

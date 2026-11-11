@@ -2,7 +2,7 @@
 
 import { Button } from "@keelson/ui/components/button";
 import { Skeleton } from "@keelson/ui/components/skeleton";
-import { Bot, EllipsisVertical, Plus, Snowflake } from "lucide-react";
+import { Bot, EllipsisVertical, OctagonX, Plus } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { get, post } from "../lib/api";
@@ -24,6 +24,40 @@ const ago = (iso: string) => {
 
 const short = (iso: string) =>
   new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(iso));
+
+/** A stop of every agent, as `POST /v1/agents/stop` answers it. */
+interface Stop {
+  id: string;
+  revoked: number;
+  released: { currency: string; minor: string }[];
+  logIndex: string | null;
+}
+
+/** What the stop did, with the money PayPal releases and where the log records it. */
+function Stopped({ stop }: { stop: Stop }) {
+  const released = stop.released.filter((r) => r.minor !== "0");
+  return (
+    <section
+      role="status"
+      aria-label="All agents stopped"
+      className="grid gap-1.5 rounded-2xl bg-graphite px-4 py-3.5 text-bone"
+    >
+      <p className="font-semibold">
+        All agents stopped.{" "}
+        {released.length > 0
+          ? `${released.map((r) => money(BigInt(r.minor), r.currency)).join(" + ")} of holds released.`
+          : "Nothing was held."}
+      </p>
+      <p className="text-bone/75 text-sm">
+        {stop.revoked} {stop.revoked === 1 ? "mandate" : "mandates"} ended, every request denied and
+        every agent's access revoked. Keelson refuses every payment they try.{" "}
+        {stop.logIndex
+          ? `Recorded in the public log at entry #${stop.logIndex}.`
+          : "Being recorded in the public log."}
+      </p>
+    </section>
+  );
+}
 
 const EFFECT =
   "Takes effect immediately. Keelson will refuse every payment from this agent from now on. Purchases already in flight are not affected.";
@@ -180,7 +214,8 @@ export function AgentsPage() {
   const session = authClient.useSession();
   const [agents, setAgents] = useState<AgentRow[]>();
   const [error, setError] = useState<string>();
-  const [frozen, setFrozen] = useState<number>();
+  const [stopped, setStopped] = useState<Stop>();
+  const [stopping, setStopping] = useState(false);
 
   const load = useCallback(() => {
     get<{ agents: AgentRow[] }>("/v1/agents")
@@ -211,28 +246,32 @@ export function AgentsPage() {
             </Button>
             {live.length > 0 ? (
               <HoldButton
-                hint="Hold to freeze every agent: all your mandates end and Keelson refuses every payment from now on."
+                ms={1600}
+                disabled={stopping}
+                hint="Hold to stop every agent: all your mandates end, PayPal releases what they hold, every agent loses access and Keelson refuses every payment from now on."
                 onConfirm={async () => {
-                  const r = await post<{ revoked: number }>("/v1/agents/freeze").catch(
-                    () => undefined,
-                  );
-                  setFrozen(r?.revoked ?? 0);
-                  load();
+                  setStopping(true);
+                  setError(undefined);
+                  try {
+                    setStopped(await post<Stop>("/v1/agents/stop"));
+                  } catch (e) {
+                    setError(
+                      e instanceof Error ? e.message : "It could not be stopped. Try again.",
+                    );
+                  } finally {
+                    setStopping(false);
+                    load();
+                  }
                 }}
-                className="inline-flex h-10 items-center gap-2 rounded-xl bg-graphite px-4 font-medium text-bone text-sm"
+                className="inline-flex h-10 items-center gap-2 rounded-xl bg-vermilion-deep px-4 font-medium text-bone text-sm"
               >
-                <Snowflake className="size-4" aria-hidden="true" />
-                Freeze all agents
+                <OctagonX className="size-4" aria-hidden="true" />
+                {stopping ? "Stopping" : "Hold to stop all agents"}
               </HoldButton>
             ) : null}
           </div>
         </div>
-        {frozen !== undefined ? (
-          <p role="status" className="rounded-2xl bg-bone-2 px-4 py-3 text-sm">
-            Frozen. {frozen} {frozen === 1 ? "mandate" : "mandates"} ended; Keelson refuses every
-            payment from your agents from now on. Purchases already in flight are not affected.
-          </p>
-        ) : null}
+        {stopped ? <Stopped stop={stopped} /> : null}
         {error ? <ErrorNotice>{error}</ErrorNotice> : null}
 
         <section aria-label="Your agents" className="rounded-3xl border bg-card px-5 sm:px-6">

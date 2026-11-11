@@ -186,7 +186,13 @@ async function verify(origin, index) {
     if (inTree) {
       try {
         const leaf = await v.parseLeaf(p.entry);
-        mark("leaf", "ok", `mode: ${leaf.mode}, alibi ${leaf.alibiId}, issued ${leaf.issuedAt}`);
+        mark(
+          "leaf",
+          "ok",
+          leaf.kind === "stop"
+            ? `stop ${leaf.stopId}: every agent stopped, ${leaf.mandateCount} mandates ended, issued ${leaf.issuedAt}`
+            : `mode: ${leaf.mode}, alibi ${leaf.alibiId}, issued ${leaf.issuedAt}`,
+        );
         await v.verifyInclusion(index, leaf.leafHash, p.inclusion, note);
         mark("inclusion", "ok", `leaf ${index} is in the tree of size ${cp.size}`);
       } catch (e) {

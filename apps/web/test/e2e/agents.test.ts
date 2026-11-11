@@ -447,12 +447,67 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("agents on %s", (kind) => {
     await context.close();
   });
 
+  test("held to confirm, the stop says what PayPal releases and where it is logged", async () => {
+    const agents = [
+      {
+        agentId: "351",
+        name: "Claude Code",
+        operator: "Anthropic Labs",
+        connected: true,
+        mandate: {
+          id: "01M7MANDATE000000000000000",
+          state: "ACTIVE",
+          currency: "USD",
+          maxMinor: "50000",
+          remainingMinor: "41200",
+          expiresAt: later(),
+          merchants: ["RunFast"],
+        },
+        lastActivityAt: new Date().toISOString(),
+      },
+    ];
+    let stopped = 0;
+    const { context, page } = await signedIn(kind, "/agents/", (path, _body, method) => {
+      if (path === "/v1/agents") return { agents };
+      if (path === "/v1/agents/stop" && method === "POST") {
+        stopped++;
+        return {
+          id: "01M7STOP000000000000000000",
+          revoked: 1,
+          released: [{ currency: "USD", minor: "41200" }],
+          mandateHashes: ["ab".repeat(32)],
+          logIndex: "1207",
+          createdAt: new Date().toISOString(),
+        };
+      }
+      return undefined;
+    });
+    const stop = page.getByRole("button", { name: "Hold to stop all agents" });
+    await stop.waitFor();
+    // A tap is not enough.
+    await stop.click();
+    await page.waitForTimeout(300);
+    expect(stopped).toBe(0);
+    const box = await stop.boundingBox();
+    if (!box) throw new Error("no stop button");
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(1800);
+    await page.mouse.up();
+    await page.getByText("All agents stopped. $412.00 of holds released.").waitFor();
+    expect(await page.getByText("entry #1207", { exact: false }).count()).toBe(1);
+    expect(stopped).toBe(1);
+    await axe(page);
+    await shot(page, kind, "agents-stopped");
+    await context.close();
+  });
+
   test("no agents yet: the prompt to paste, never a grid of zeros", async () => {
     const { context, page } = await signedIn(kind, "/agents/", (path) =>
       path === "/v1/agents" ? { agents: [] } : undefined,
     );
     await page.getByRole("heading", { level: 2, name: "No agents yet" }).waitFor();
-    expect(await page.getByText("Freeze all agents").count()).toBe(0);
+    expect(await page.getByText("Hold to stop all agents").count()).toBe(0);
     await axe(page);
     await context.close();
   });
