@@ -4,6 +4,7 @@ import type { Mandate } from "@keelson/mandate";
 import type { BrowserContext, Page } from "playwright";
 import { z } from "zod";
 import { StoreBrowser } from "./driver.ts";
+import type { PayGate } from "./gate.ts";
 import { datamark } from "./spotlight.ts";
 
 /**
@@ -176,6 +177,8 @@ export interface AgentOptions {
   hosts: readonly string[];
   context: BrowserContext;
   page: Page;
+  /** Holds every action that could pay while the agent looks for the cart: Keelson has not countersigned yet. */
+  gate?: PayGate;
   onStep?: (step: Step) => void;
 }
 
@@ -239,6 +242,7 @@ export async function runAgent(o: AgentOptions): Promise<AgentRun> {
   const mark = config.spotlight ? datamark() : undefined;
   const browser = await StoreBrowser.attach(o.context, o.page, {
     hosts: o.hosts,
+    ...(o.gate ? { gate: o.gate } : {}),
     ...(mark ? { mark: mark.mark } : {}),
   });
   const run = (outcome: AgentRun["outcome"], extra: Partial<AgentRun> = {}): AgentRun => {
