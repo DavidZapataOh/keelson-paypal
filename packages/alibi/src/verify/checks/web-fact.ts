@@ -1,16 +1,8 @@
-import {
-  type Cart,
-  CURRENCIES,
-  type CurrencyCode,
-  fromHex,
-  fromPayPalValue,
-  type Json,
-  jcs,
-  sha256,
-  toHex,
-} from "@keelson/core";
+import { type Cart, fromHex, type Json, jcs, sha256, toHex } from "@keelson/core";
 import { hashKeelson, keelsonDomain, reportData } from "@keelson/core/eip712";
+import { decodeMandate } from "@keelson/mandate";
 import { getAddress, type Hex, keccak256, recoverAddress, stringToHex } from "viem";
+import { bindWebFact } from "../../web-fact.ts";
 import { type CheckDef, expect, pass } from "../check.ts";
 import { isBundle, UNDISCLOSED } from "./util.ts";
 
@@ -32,59 +24,25 @@ interface WebFactDocument {
   blinder: Hex;
 }
 
-/** How long before the countersign the store's endpoint may have been notarized. */
-const WEB_FACT_MAX_AGE_SEC = 900;
-/** How far the notary's clock may run ahead of the countersign's. */
-const WEB_FACT_SKEW_SEC = 60;
-
-/** The committed object of a Shopify `.oembed` body: one variant's offer. */
-interface Offer {
-  offer_id?: unknown;
-  sku?: unknown;
-  price?: unknown;
-  currency_code?: unknown;
-}
-
-/** The cart line the notarized offer is for, priced at the offer's price, or `undefined`. */
-function lineOf(offer: Offer, cart: Cart): Cart["lines"][number] | undefined {
-  const currency = offer.currency_code;
-  if (
-    typeof currency !== "string" ||
-    currency !== cart.currency ||
-    !Object.hasOwn(CURRENCIES, currency) ||
-    typeof offer.price !== "number"
-  ) {
-    return undefined;
-  }
-  let minor: bigint;
-  try {
-    minor = fromPayPalValue(currency as CurrencyCode, String(offer.price)).minor;
-  } catch {
-    return undefined;
-  }
-  const ids = [offer.sku, offer.offer_id].filter(
-    (x) => (typeof x === "string" && x !== "") || typeof x === "number",
-  );
-  return cart.lines.find(
-    (l) => ids.some((id) => String(id) === l.sku) && BigInt(l.unit_minor) === minor,
-  );
-}
-
 /**
  * The WebFact is the disclosed `tlsn.web_fact` item; its committed bytes and blinder open its
  * range commitment; it names the URL's host and target; and it is the EIP-712 `WebFact` signed by
- * the attested TDX signer whose binding its `attId` names. Its committed offer is a line of the
- * disclosed cart at that line's price, notarized within {@link WEB_FACT_MAX_AGE_SEC} before the
- * countersign.
+ * the attested TDX signer whose binding its `attId` names; and {@link bindWebFact} ties it to the
+ * store the mandate allows, the disclosed cart and the countersign's time. A WebFact the manifest
+ * holds but the Alibi leaves out is undisclosed, not absent.
  */
 export const webFact: CheckDef = {
   id: "evidence.web_fact",
   step: 0,
-  reads: ["/web_fact", "/cart"],
+  reads: ["/web_fact", "/cart", "/mandate/payload_sd"],
   async run(input) {
     if (!isBundle(input)) return UNDISCLOSED;
     const doc = input.web_fact as unknown as WebFactDocument | undefined;
-    if (doc === undefined) return { status: "absent", reads: ["/web_fact"] };
+    if (doc === undefined) {
+      return input.manifest.public.items.some((x) => x.type === "tlsn.web_fact")
+        ? { status: "undisclosed", reads: ["/web_fact", "/manifest/public/items"] }
+        : { status: "absent", reads: ["/web_fact"] };
+    }
     const i = input.manifest.disclosures.findIndex((d) => d.type === "tlsn.web_fact");
     expect(
       toHex(sha256(new TextEncoder().encode(jcs(doc as unknown as Json)))) ===
@@ -145,30 +103,20 @@ export const webFact: CheckDef = {
     ]);
     const cart = input.cart as unknown as Cart | undefined;
     expect(cart, "the WebFact is not tied to a disclosed cart", ["/web_fact", "/cart"]);
-    let offer: Offer | undefined;
+    let website: string | undefined;
     try {
-      const parsed = JSON.parse(
-        new TextDecoder("utf-8", { fatal: true }).decode(fromHex(doc.committed)),
-      );
-      offer =
-        parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
-          ? parsed
+      const m = decodeMandate(input.mandate.payload_sd, input.mandate.disclosures);
+      const merchants = m.checkout.constraints.find((c) => c.type === "checkout.allowed_merchants");
+      website =
+        merchants?.type === "checkout.allowed_merchants"
+          ? merchants.allowed.find((x) => x.id === cart.merchant)?.website
           : undefined;
     } catch {
-      offer = undefined;
+      website = undefined;
     }
-    expect(offer, "the committed bytes are not one offer", ["/web_fact/committed"]);
-    const line = lineOf(offer, cart);
-    expect(line, "the notarized offer is not a line of the cart at its price", [
-      "/web_fact/committed",
-      "/cart/lines",
-    ]);
-    const issuedAt = Number(input.tee.countersign.issuedAt);
-    expect(
-      f.tCapture >= issuedAt - WEB_FACT_MAX_AGE_SEC && f.tCapture <= issuedAt + WEB_FACT_SKEW_SEC,
-      "the WebFact was not notarized for this purchase",
-      ["/web_fact/web_fact/tCapture", "/tee/countersign/issuedAt"],
-    );
+    const bound = bindWebFact(doc, cart, website, Number(input.tee.countersign.issuedAt));
+    if ("reason" in bound) expect(false, bound.reason, bound.reads);
+    const { line } = bound;
     return pass({ url: doc.url, sku: line.sku });
   },
 };

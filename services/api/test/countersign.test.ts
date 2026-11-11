@@ -286,6 +286,37 @@ describe("countersigning the same cart again", { timeout: 120_000 }, () => {
     expect(row).toBeUndefined();
   });
 
+  test("a WebFact that is not the purchase's is refused before the legs", async () => {
+    const m = await heldMandate();
+    const offer = (o: Record<string, unknown>) =>
+      JSON.stringify({ offer_id: 1, sku: "sku-trail-10", price: 94, currency_code: "USD", ...o });
+    const send = async (o: Record<string, unknown>, url = `${STORE}/products/trail-10.oembed`) => {
+      const fact = {
+        url,
+        web_fact: { tCapture: Math.floor(Date.now() / 1000) - 5 },
+        committed: `0x${Buffer.from(offer(o)).toString("hex")}`,
+      };
+      const evidenceRoot = await evidence.store(app, m.id, await evidence.capture(cart), agent, {
+        type: "tlsn.web_fact",
+        mediaType: "application/json",
+        bytes: new TextEncoder().encode(JSON.stringify(fact)),
+        salt: randomBytes(32),
+      });
+      return countersign(m, { live: { store: STORE }, evidenceRoot });
+    };
+    for (const [o, url] of [
+      [{ price: 9.4 }, undefined],
+      [{ sku: "sku-road-9" }, undefined],
+      [{}, "https://other.example/products/trail-10.oembed"],
+    ] as const) {
+      const { res, body, row } = await send(o, url);
+      expect(res.status).toBe(422);
+      expect(body.type).toMatch(/web-fact-mismatch$/);
+      expect(row).toBeUndefined();
+    }
+    expect((await send({})).row?.liveStore).toBe(STORE);
+  });
+
   test("a mandate whose merchant Keelson cannot capture for countersigns only live purchases", async () => {
     // The mandate allows no payee Keelson captures for: its hold can only back a budget.
     const withPayPal = createApp({

@@ -20,3 +20,4 @@ export {
   MAX_ALIBI_BYTES,
   receiptSchema,
 } from "./schema.ts";
+export { bindWebFact, type WebFactFields, type WebFactMismatch } from "./web-fact.ts";
