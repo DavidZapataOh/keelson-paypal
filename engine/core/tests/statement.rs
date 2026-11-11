@@ -1,0 +1,270 @@
+use alloy_primitives::FixedBytes;
+use alloy_primitives::{Address, B256, U256, aliases::U40};
+use alloy_sol_types::SolStruct;
+use coset::{CborSerializable, CoseSign1, TaggedCborSerializable};
+use keelson_core::eip712::{CardAuthorization, CardSettlement, Countersign};
+use keelson_core::statement::{
+    CARD_AUTHORIZATION_CONTENT_TYPE, CARD_SETTLEMENT_CONTENT_TYPE, CardAuthorizationClaims,
+    CardSettlementClaims, LegSignature, Mode, StatementClaims, card_authorization_claims_bytes,
+    card_settlement_claims_bytes, claims_bytes, protected_header, statement, statement_protected,
+    to_be_signed,
+};
+use serde_json::Value;
+
+const VECTORS: [(&str, &str); 4] = [
+    (
+        "allow-2of2",
+        include_str!("../../../internal/alibilog/testdata/statement-v2/allow-2of2.json"),
+    ),
+    (
+        "deny-2of2",
+        include_str!("../../../internal/alibilog/testdata/statement-v2/deny-2of2.json"),
+    ),
+    (
+        "allow-degraded",
+        include_str!("../../../internal/alibilog/testdata/statement-v2/allow-degraded.json"),
+    ),
+    (
+        "card-2of2",
+        include_str!("../../../internal/alibilog/testdata/statement-v2/card-2of2.json"),
+    ),
+];
+
+fn hex_bytes(s: &str) -> Vec<u8> {
+    let s = s.trim_start_matches("0x");
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+        .collect()
+}
+
+fn hex_of(b: &[u8]) -> String {
+    b.iter().map(|x| format!("{x:02x}")).collect()
+}
+
+fn fixed<const N: usize>(s: &str) -> [u8; N] {
+    hex_bytes(s).try_into().unwrap()
+}
+
+fn countersign(c: &Value) -> Countersign {
+    let s = |k: &str| c[k].as_str().unwrap();
+    let b = |k: &str| B256::from(fixed::<32>(s(k)));
+    Countersign {
+        requestId: b("requestId"),
+        mandateHash: b("mandateHash"),
+        mandateCommitment: b("mandateCommitment"),
+        cartHash: b("cartHash"),
+        agentId: U256::from_str_radix(s("agentId"), 10).unwrap(),
+        merchantId: b("merchantId"),
+        amount: s("amount").parse().unwrap(),
+        currency: s("currency").parse().unwrap(),
+        category: s("category").parse().unwrap(),
+        evidenceRoot: b("evidenceRoot"),
+        evalHash: b("evalHash"),
+        policySetHash: b("policySetHash"),
+        decision: s("decision").parse().unwrap(),
+        failedFieldsMask: s("failedFieldsMask").parse().unwrap(),
+        issuedAt: U40::from(s("issuedAt").parse::<u64>().unwrap()),
+        expiresAt: U40::from(s("expiresAt").parse::<u64>().unwrap()),
+    }
+}
+
+#[test]
+fn statement_vectors_match() {
+    for (name, raw) in VECTORS {
+        let v: Value = serde_json::from_str(raw).unwrap();
+        let i = &v["inputs"];
+        let cs = countersign(&i["countersign"]);
+        let legs: Vec<LegSignature> = i["legs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|l| LegSignature {
+                kind: if l["kind"] == "tdx" { 1 } else { 2 },
+                signer: fixed(l["signer"].as_str().unwrap()),
+                signature: fixed(l["signature"].as_str().unwrap()),
+                measurement: fixed(l["measurement"].as_str().unwrap()),
+            })
+            .collect();
+        let mode = if i["mode"] == "2of2" {
+            Mode::TwoOfTwo
+        } else {
+            Mode::Degraded
+        };
+        let verifying_contract: Address =
+            i["verifying_contract"].as_str().unwrap().parse().unwrap();
+        let claims = StatementClaims {
+            countersign: &cs,
+            chain_id: i["chain_id"].as_u64().unwrap(),
+            verifying_contract: verifying_contract.into_array(),
+            mode,
+            legs: &legs,
+            pay_ref: i["pay_ref"].as_str().map(fixed::<32>),
+        };
+        let payload = claims_bytes(&claims);
+        assert_eq!(hex_of(&payload), v["claims_hex"], "{name} claims");
+        let signer = legs.last().unwrap().signer;
+        let protected = statement_protected(
+            signer,
+            i["alibi_id"].as_str().unwrap(),
+            cs.issuedAt.to::<u64>(),
+        );
+        assert_eq!(hex_of(&protected), v["protected_hex"], "{name} protected");
+        let tbs = to_be_signed(&protected, &payload);
+        assert_eq!(hex_of(&tbs), v["tbs_hex"], "{name} tbs");
+
+        let expected = hex_bytes(v["statement_hex"].as_str().unwrap());
+        let decoded = CoseSign1::from_tagged_slice(&expected).unwrap();
+        assert_eq!(
+            hex_of(&decoded.tbs_data(b"")),
+            v["tbs_hex"],
+            "{name} coset tbs"
+        );
+        let signature: [u8; 64] = decoded.signature.clone().try_into().unwrap();
+        assert_eq!(
+            hex_of(&statement(protected, payload, signature)),
+            v["statement_hex"],
+            "{name} statement"
+        );
+        let _ = decoded.to_vec().unwrap();
+    }
+}
+
+#[test]
+fn agent_id_above_u64_is_a_tag_2_bignum() {
+    let v: Value = serde_json::from_str(VECTORS[0].1).unwrap();
+    let mut cs = countersign(&v["inputs"]["countersign"]);
+    cs.agentId = U256::MAX;
+    let legs: Vec<LegSignature> = vec![];
+    let claims = StatementClaims {
+        countersign: &cs,
+        chain_id: 421_614,
+        verifying_contract: [0; 20],
+        mode: Mode::Degraded,
+        legs: &legs,
+        pay_ref: None,
+    };
+    let hex = hex_of(&claims_bytes(&claims));
+    assert!(hex.contains(&format!("06c25820{}", "ff".repeat(32))));
+}
+
+const CARD_VECTORS: [&str; 3] = [
+    include_str!("../../../internal/alibilog/testdata/statement-v2/card-auth-approve.json"),
+    include_str!("../../../internal/alibilog/testdata/statement-v2/card-auth-decline.json"),
+    include_str!("../../../internal/alibilog/testdata/statement-v2/card-settlement.json"),
+];
+
+fn legs_of(i: &Value) -> Vec<LegSignature> {
+    i["legs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| LegSignature {
+            kind: if l["kind"] == "tdx" { 1 } else { 2 },
+            signer: fixed(l["signer"].as_str().unwrap()),
+            signature: fixed(l["signature"].as_str().unwrap()),
+            measurement: fixed(l["measurement"].as_str().unwrap()),
+        })
+        .collect()
+}
+
+#[test]
+fn card_statement_vectors_match() {
+    for raw in CARD_VECTORS {
+        let v: Value = serde_json::from_str(raw).unwrap();
+        let i = &v["inputs"];
+        let f = &i["facts"];
+        let s = |k: &str| f[k].as_str().unwrap();
+        let b = |k: &str| B256::from(fixed::<32>(s(k)));
+        let n = |k: &str| s(k).parse::<u64>().unwrap();
+        let legs = legs_of(i);
+        let verifying_contract: Address =
+            i["verifying_contract"].as_str().unwrap().parse().unwrap();
+        let chain_id = i["chain_id"].as_u64().unwrap();
+        let d = keelson_core::domain(chain_id, verifying_contract).unwrap();
+        let parent = fixed::<32>(i["parent"].as_str().unwrap());
+        let (payload, digest, iat, content_type) = if v["kind"] == "card-authorization" {
+            let a = CardAuthorization {
+                requestId: b("requestId"),
+                countersignDigest: b("countersignDigest"),
+                authorizationHash: b("authorizationHash"),
+                merchantHash: b("merchantHash"),
+                mcc: n("mcc") as u16,
+                country: FixedBytes::<2>::from(fixed::<2>(s("country"))),
+                amount: n("amount"),
+                currency: n("currency") as u16,
+                decision: n("decision") as u8,
+                failedMask: n("failedMask") as u32,
+                issuedAt: U40::from(n("issuedAt")),
+            };
+            let claims = CardAuthorizationClaims {
+                authorization: &a,
+                card_ref: fixed(i["card_ref"].as_str().unwrap()),
+                parent,
+                chain_id,
+                verifying_contract: verifying_contract.into_array(),
+                mode: Mode::TwoOfTwo,
+                legs: &legs,
+            };
+            (
+                card_authorization_claims_bytes(&claims),
+                a.eip712_signing_hash(&d),
+                n("issuedAt"),
+                CARD_AUTHORIZATION_CONTENT_TYPE,
+            )
+        } else {
+            let t = CardSettlement {
+                requestId: b("requestId"),
+                cardRef: b("cardRef"),
+                transactionHash: b("transactionHash"),
+                settledMinor: n("settledMinor"),
+                currency: n("currency") as u16,
+                status: n("status") as u8,
+                settledAt: U40::from(n("settledAt")),
+                observedAt: U40::from(n("observedAt")),
+            };
+            let claims = CardSettlementClaims {
+                settlement: &t,
+                parent,
+                chain_id,
+                verifying_contract: verifying_contract.into_array(),
+                mode: Mode::TwoOfTwo,
+                legs: &legs,
+            };
+            (
+                card_settlement_claims_bytes(&claims),
+                t.eip712_signing_hash(&d),
+                n("observedAt"),
+                CARD_SETTLEMENT_CONTENT_TYPE,
+            )
+        };
+        assert_eq!(hex_of(&payload), v["claims_hex"], "{} claims", v["name"]);
+        assert_eq!(
+            hex_of(digest.as_slice()),
+            v["digest_hex"],
+            "{} digest",
+            v["name"]
+        );
+        let protected = protected_header(
+            legs[1].signer,
+            i["alibi_id"].as_str().unwrap(),
+            iat,
+            content_type,
+        );
+        assert_eq!(
+            hex_of(&protected),
+            v["protected_hex"],
+            "{} protected",
+            v["name"]
+        );
+        let decoded =
+            CoseSign1::from_tagged_slice(&hex_bytes(v["statement_hex"].as_str().unwrap())).unwrap();
+        let signature: [u8; 64] = decoded.signature.clone().try_into().unwrap();
+        assert_eq!(
+            hex_of(&statement(protected, payload, signature)),
+            v["statement_hex"],
+            "{} statement",
+            v["name"]
+        );
+    }
+}

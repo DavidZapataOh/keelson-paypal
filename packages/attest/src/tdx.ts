@@ -1,7 +1,10 @@
+import "@abraham/reflection";
+import { PemConverter, X509Certificate, X509Crl } from "@peculiar/x509";
 import { type Collateral, verify } from "@phala/dcap-qvl";
-import { bytesToHex, type Hex, hexToString } from "viem";
+import { bytesToHex, type Hex, hexToBytes, hexToString } from "viem";
 import { AttestError } from "./errors.ts";
 import { type DstackEvent, replayRtmr3, runtimePayload } from "./eventlog.ts";
+import { intersect, type Validity } from "./validity.ts";
 
 export type { Collateral };
 
@@ -15,6 +18,7 @@ export interface TdxResult {
   appId: Hex;
   osImageHash: Hex | null;
   keyProvider: string | null;
+  validity: Validity;
 }
 
 /** `SWHardeningNeeded` passes only when Intel names the advisories, so they can be recorded. */
@@ -39,6 +43,47 @@ function classify(error: Error): AttestError {
             ? "cert_chain"
             : "signature";
   return new AttestError(code, message, { cause: error });
+}
+
+const PEM = /-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g;
+
+function crl(value: Collateral["root_ca_crl"]): X509Crl {
+  const der = typeof value === "string" ? hexToBytes(`0x${value}`) : Uint8Array.from(value);
+  return new X509Crl(der as Uint8Array<ArrayBuffer>);
+}
+
+/**
+ * The times at which every dated item DCAP verification checks is current: TCB info and QE
+ * identity (`issueDate` to `nextUpdate`), both CRLs (`thisUpdate` to `nextUpdate`) and every
+ * certificate of the collateral's chains and of the PCK chain the quote carries.
+ */
+function collateralValidity(
+  quote: Uint8Array,
+  c: Collateral & { pck_certificate_chain?: string },
+): Validity {
+  const bounds: [Date, Date][] = [];
+  for (const json of [c.tcb_info, c.qe_identity]) {
+    const { issueDate, nextUpdate } = JSON.parse(json) as { issueDate: string; nextUpdate: string };
+    bounds.push([new Date(issueDate), new Date(nextUpdate)]);
+  }
+  for (const list of [crl(c.root_ca_crl), crl(c.pck_crl)]) {
+    if (!list.nextUpdate) throw new AttestError("cert_chain", "a CRL has no nextUpdate");
+    bounds.push([list.thisUpdate, list.nextUpdate]);
+  }
+  const chains = [
+    c.pck_crl_issuer_chain,
+    c.tcb_info_issuer_chain,
+    c.qe_identity_issuer_chain,
+    c.pck_certificate_chain ?? "",
+    new TextDecoder("latin1").decode(quote),
+  ];
+  for (const pem of chains.flatMap((text) => text.match(PEM) ?? [])) {
+    for (const der of PemConverter.decode(pem)) {
+      const cert = new X509Certificate(der);
+      bounds.push([cert.notBefore, cert.notAfter]);
+    }
+  }
+  return intersect(bounds);
 }
 
 function required(events: readonly DstackEvent[], name: string): Hex {
@@ -87,5 +132,6 @@ export async function verifyTdx(
     appId: required(att.eventLog, "app-id"),
     osImageHash: runtimePayload(att.eventLog, "os-image-hash"),
     keyProvider: provider ? hexToString(provider) : null,
+    validity: collateralValidity(att.quote, att.collateral),
   };
 }

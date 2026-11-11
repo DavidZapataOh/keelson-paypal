@@ -115,6 +115,17 @@ sol! {
         uint40 issuedAt;
     }
 
+    struct CardSettlement {
+        bytes32 requestId;
+        bytes32 cardRef;
+        bytes32 transactionHash;
+        uint64 settledMinor;
+        uint16 currency;
+        uint8 status;
+        uint40 settledAt;
+        uint40 observedAt;
+    }
+
     struct WebFact {
         bytes32 hostHash;
         bytes32 urlPathHash;

@@ -6,6 +6,8 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+ciborium = "0.2.2"
+coset = "0.4.2"
 acir = "1.0.0"
 alloy-primitives = "1.7.3"
 alloy-sol-types = "1.7.3"

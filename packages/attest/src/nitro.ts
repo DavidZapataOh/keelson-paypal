@@ -4,6 +4,7 @@ import { Decoder, Tag } from "cbor-x";
 import { bytesToHex, type Hex } from "viem";
 import { AttestError } from "./errors.ts";
 import { AWS_NITRO_ROOT_PEM } from "./roots/aws-nitro-root-g1.ts";
+import { intersect, type Validity } from "./validity.ts";
 
 export type NitroPcrs = Record<0 | 1 | 2 | 3 | 4 | 8, Hex>;
 
@@ -16,6 +17,8 @@ export interface NitroResult {
   publicKey: Hex | null;
   userData: Hex | null;
   nonce: Hex | null;
+  /** When every certificate of the chain is valid. */
+  validity: Validity;
 }
 
 const PCR_INDEXES = [0, 1, 2, 3, 4, 8] as const;
@@ -110,13 +113,13 @@ const same = (a: ArrayBuffer, b: ArrayBuffer) =>
 /**
  * Checks the chain `cabundle[0]` (the AWS root) to the document certificate: the root is the
  * bundled one, every certificate is signed by its predecessor and valid at the document's
- * timestamp and at `now`.
+ * timestamp and at `now`. Returns the chain, root first.
  */
 async function verifyChain(
   body: Map<unknown, unknown>,
   timestamp: number,
   now: Date,
-): Promise<X509Certificate> {
+): Promise<X509Certificate[]> {
   const bundle = body.get("cabundle");
   if (!Array.isArray(bundle) || bundle.length === 0) throw chain("cabundle is missing");
   const certs = [...bundle.map((c, i) => certificate(c, `cabundle[${i}]`))];
@@ -139,7 +142,7 @@ async function verifyChain(
     const signed = await cert.verify({ publicKey: parent.publicKey, signatureOnly: true });
     if (!signed) throw chain(`certificate ${i} is not signed by certificate ${i - 1}`);
   }
-  return leaf;
+  return certs;
 }
 
 /** An all-zero PCR0 marks an enclave started in debug mode. */
@@ -154,7 +157,8 @@ export function isDebugMode(pcrs: NitroPcrs): boolean {
 export async function verifyNitro(document: Uint8Array, opts: { now: Date }): Promise<NitroResult> {
   const { protectedHeader, payload, signature, body } = decode(document);
   const timestamp = field<number>(body, "timestamp", "number");
-  const leaf = await verifyChain(body, timestamp, opts.now);
+  const certs = await verifyChain(body, timestamp, opts.now);
+  const leaf = certs[certs.length - 1] as X509Certificate;
 
   const key = await crypto.subtle.importKey(
     "spki",
@@ -190,5 +194,6 @@ export async function verifyNitro(document: Uint8Array, opts: { now: Date }): Pr
     publicKey: optionalBytes(body, "public_key"),
     userData: optionalBytes(body, "user_data"),
     nonce: optionalBytes(body, "nonce"),
+    validity: intersect(certs.map((c) => [c.notBefore, c.notAfter] as const)),
   };
 }

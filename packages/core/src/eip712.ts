@@ -108,6 +108,16 @@ export const KEELSON_TYPES = {
     { name: "failedMask", type: "uint32" },
     { name: "issuedAt", type: "uint40" },
   ],
+  CardSettlement: [
+    { name: "requestId", type: "bytes32" },
+    { name: "cardRef", type: "bytes32" },
+    { name: "transactionHash", type: "bytes32" },
+    { name: "settledMinor", type: "uint64" },
+    { name: "currency", type: "uint16" },
+    { name: "status", type: "uint8" },
+    { name: "settledAt", type: "uint40" },
+    { name: "observedAt", type: "uint40" },
+  ],
   WebFact: [
     { name: "hostHash", type: "bytes32" },
     { name: "urlPathHash", type: "bytes32" },
@@ -206,6 +216,17 @@ export type CardAuthorization = TypedDataDefinition<
 export function cardAuthorizationDigest(a: CardAuthorization, domain: TypedDataDomain): Hex {
   assertChain(domain.chainId);
   return hashKeelson("CardAuthorization", a, domain);
+}
+
+export type CardSettlement = TypedDataDefinition<typeof KEELSON_TYPES, "CardSettlement">["message"];
+
+/** `CardSettlement.status`: what the card network did with the transaction. */
+export const SettlementStatus = { SETTLED: 1, VOIDED: 2, EXPIRED: 3, REFUNDED: 4 } as const;
+
+/** The EIP-712 signing hash of a `CardSettlement`; only Arbitrum Sepolia and Arbitrum One. */
+export function cardSettlementDigest(s: CardSettlement, domain: TypedDataDomain): Hex {
+  assertChain(domain.chainId);
+  return hashKeelson("CardSettlement", s, domain);
 }
 
 /** The `failedMask` bit of each reason a leg declines a card authorization. Append-only. */
