@@ -29,7 +29,7 @@ export interface CardStepDeps {
 }
 
 /** The merchant category codes and countries a card mandate allows for the cart's merchant. */
-export function cardControlsOf(
+function cardControlsOf(
   m: Mandate,
   merchantId: string,
 ): { mcc: string[]; countries: string[] } | undefined {
