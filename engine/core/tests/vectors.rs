@@ -1,5 +1,5 @@
 use acir::{AcirField, FieldElement};
-use alloy_primitives::{Address, B256, U256};
+use alloy_primitives::{Address, B256, FixedBytes, U256};
 use alloy_sol_types::SolStruct;
 use keelson_core::{
     AlibiFields, Dst, Money, alibi_digest, currency_numeric, domain, eip712, field_from_ascii,
@@ -110,6 +110,7 @@ macro_rules! typed_hash {
     }};
     (@parse b32, $v:expr) => { $v.as_str().unwrap().parse::<B256>().unwrap() };
     (@parse addr, $v:expr) => { $v.as_str().unwrap().parse::<Address>().unwrap() };
+    (@parse b2, $v:expr) => { $v.as_str().unwrap().parse::<FixedBytes<2>>().unwrap() };
     (@parse $kind:ident, $v:expr) => { uint($v).to() };
 }
 
@@ -118,7 +119,7 @@ fn eip712_vectors() {
     let vectors = load(include_str!(
         "../../../packages/core/test/vectors/eip712.json"
     ));
-    assert_eq!(vectors.len(), 20);
+    assert_eq!(vectors.len(), 22);
     for v in vectors {
         let chain_id = v.input["chainId"].as_u64().unwrap();
         let contract: Address = v.input["verifyingContract"]
@@ -255,6 +256,23 @@ fn eip712_vectors() {
                     tCapture: u,
                     rangeCommitment: b32,
                     attId: b32,
+                },
+                m,
+                &d
+            ),
+            "CardAuthorization" => typed_hash!(
+                CardAuthorization {
+                    requestId: b32,
+                    countersignDigest: b32,
+                    authorizationHash: b32,
+                    merchantHash: b32,
+                    mcc: u,
+                    country: b2,
+                    amount: u,
+                    currency: u,
+                    decision: u,
+                    failedMask: u,
+                    issuedAt: u,
                 },
                 m,
                 &d

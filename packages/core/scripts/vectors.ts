@@ -147,6 +147,7 @@ function eip712Vectors() {
           if (type === "bytes32") message[name] = field(BigInt(index + 1) * 0x0101010101010101n);
           else if (type === "address")
             message[name] = ADDRESSES[(index + (max ? 1 : 0)) % 3] as string;
+          else if (type === "bytes2") message[name] = max ? "0xffff" : "0x5553";
           else {
             const bits = BigInt(type.slice("uint".length));
             message[name] = (
