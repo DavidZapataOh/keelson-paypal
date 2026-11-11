@@ -23,6 +23,11 @@ Its view lives in `$MONITOR_DATA_DIR/state.json`, written atomically, so a resta
 last verified checkpoint and a log rolled back below it is caught rather than followed again from
 zero.
 
+When a log moves to a new key, its policy names the new key and `retiredKeys` in `config.go` keeps
+the old one with the tree size the log had reached when it moved. A view saved under the old key
+opens only up to that size, and every later checkpoint must be signed with the new key and be
+consistent with the saved view.
+
 **Deployment:** <https://keelson-monitor-production.up.railway.app>, a public monitor operated by
 Keelson, on Railway under a Railway-provided domain: a different provider and DNS from the log
 (Render, `keelson.finance` on Cloudflare). It holds no Keelson secret and reads only the public log,
