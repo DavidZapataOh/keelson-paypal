@@ -2,11 +2,13 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import {
   type Conversion,
+  commitReference,
   conversionProblem,
   convertsTo,
   decimalOf,
   decimalParts,
   describeConversion,
+  referenceProblem,
   spreadBps,
 } from "../src/fx.ts";
 
@@ -135,5 +137,48 @@ describe("a recorded conversion", () => {
   it("writes provider rates as plain decimals", () => {
     expect(decimalOf(3276.876985)).toBe("3276.876985");
     expect(decimalOf(1e-7)).toBe("0.0000001");
+  });
+});
+
+describe("a reference bound into the evidence", () => {
+  const ref = {
+    v: "keelson.fx_reference/1" as const,
+    provider: "ExchangeRate-API",
+    source: "https://open.er-api.com/v6/latest/USD",
+    base: "USD",
+    as_of: "2026-11-11T00:02:32.000Z",
+    fetched_at: "2026-11-11T12:00:00.000Z",
+    rates: { COP: "3276.876985", EUR: "0.89871" },
+  };
+
+  it("holds each rate as a digest, and a conversion opens only its own", () => {
+    const committed = commitReference(ref);
+    expect(Object.keys(committed.rates)).toEqual(["COP", "EUR"]);
+    expect(JSON.stringify(committed)).not.toContain("3276");
+    const c: Conversion = {
+      v: "keelson.conversion/1",
+      merchant: { currency: "USD", value: "2.95" },
+      buyer: { currency: "COP", value: "10231" },
+      rate: "3468.14",
+      reference: {
+        rate: "3276.876985",
+        provider: ref.provider,
+        source: ref.source,
+        as_of: ref.as_of,
+      },
+      spread_bps: 584,
+      max_spread_bps: 750,
+      locale: "es-CO",
+    };
+    expect(referenceProblem(c, committed)).toBeUndefined();
+    expect(
+      referenceProblem({ ...c, reference: { ...c.reference, rate: "3400" } }, committed),
+    ).toMatch(/rate is not/);
+    expect(
+      referenceProblem(
+        { ...c, reference: { ...c.reference, as_of: "2026-11-10T00:00:00Z" } },
+        committed,
+      ),
+    ).toMatch(/not the one/);
   });
 });

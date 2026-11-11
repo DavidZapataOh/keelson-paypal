@@ -1,3 +1,6 @@
+import { sha256, toHex } from "./hash.ts";
+import { jcs } from "./jcs.ts";
+
 /**
  * Currency conversion at a checkout: the merchant charges in its currency, and PayPal converts that
  * amount into the buyer's currency at a rate it shows. Amounts and rates are decimal strings, as
@@ -21,6 +24,65 @@ export interface FxReference {
   /** When the API fetched them, ISO 8601. */
   fetched_at: string;
   rates: Record<string, string>;
+}
+
+/**
+ * What a purchase's evidence binds of an {@link FxReference}: everything but the rates, each of
+ * which it holds as its {@link rateDigest}, so the evidence fixes every rate and an Alibi discloses
+ * only the one its conversion used.
+ */
+export interface FxReferenceCommitment {
+  v: "keelson.fx_reference_commitment/1";
+  provider: string;
+  source: string;
+  base: string;
+  as_of: string;
+  fetched_at: string;
+  rates: Record<string, string>;
+}
+
+const utf8 = new TextEncoder();
+
+/** The digest a commitment holds for one rate: SHA-256 of `{v, base, currency, rate}` as RFC 8785 JSON. */
+export function rateDigest(base: string, currency: string, rate: string): string {
+  return toHex(sha256(utf8.encode(jcs({ v: "keelson.fx_rate/1", base, currency, rate }))));
+}
+
+/** The commitment a purchase's evidence binds for `ref`. */
+export function commitReference(ref: FxReference): FxReferenceCommitment {
+  return {
+    v: "keelson.fx_reference_commitment/1",
+    provider: ref.provider,
+    source: ref.source,
+    base: ref.base,
+    as_of: ref.as_of,
+    fetched_at: ref.fetched_at,
+    rates: Object.fromEntries(
+      Object.entries(ref.rates).map(([c, r]) => [c, rateDigest(ref.base, c, r)]),
+    ),
+  };
+}
+
+/**
+ * Why `c` does not use the reference `committed` binds, or undefined when it does: the same
+ * provider, source and time, and the rate the commitment holds for the buyer's currency.
+ */
+export function referenceProblem(
+  c: Conversion,
+  committed: FxReferenceCommitment,
+): string | undefined {
+  if (
+    committed.base !== c.merchant.currency ||
+    committed.provider !== c.reference.provider ||
+    committed.source !== c.reference.source ||
+    committed.as_of !== c.reference.as_of
+  ) {
+    return "the reference is not the one the evidence binds";
+  }
+  return committed.rates[c.buyer.currency] ===
+    rateDigest(committed.base, c.buyer.currency, c.reference.rate)
+    ? undefined
+    : "the reference rate is not the one the evidence binds";
 }
 
 /** A charge converted into the buyer's currency, as PayPal showed it and as the reference prices it. */
