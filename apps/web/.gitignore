@@ -3,4 +3,4 @@ out
 next-env.d.ts
 *.tsbuildinfo
 public/rive/rive.wasm
-rive/seal/build
+rive/states/build

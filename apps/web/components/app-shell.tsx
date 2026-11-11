@@ -1,6 +1,6 @@
 "use client";
 
-import { Home, KeyRound, LogOut, Plus, Radio, Trophy } from "lucide-react";
+import { Home, KeyRound, LogOut, Plus, Radio, Scale, Trophy } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
@@ -10,6 +10,7 @@ import { useSessionHint } from "./header";
 const NAV = [
   { href: "/", label: "Home", icon: Home },
   { href: "/new/", label: "New mandate", icon: Plus },
+  { href: "/disputes/", label: "Disputes", icon: Scale },
   { href: "/live/", label: "Live", icon: Radio },
   { href: "/scoreboard/", label: "Scoreboard", icon: Trophy },
   { href: "/passkeys/", label: "Passkeys", icon: KeyRound },
@@ -81,7 +82,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <nav
         aria-label="Main"
-        className="fixed inset-x-3 bottom-[max(12px,env(safe-area-inset-bottom))] z-30 grid grid-cols-5 rounded-2xl border bg-card/95 p-1.5 shadow-[0_18px_40px_-18px_rgb(23_24_27/0.4)] backdrop-blur-md lg:hidden"
+        className="fixed inset-x-3 bottom-[max(12px,env(safe-area-inset-bottom))] z-30 grid grid-cols-6 rounded-2xl border bg-card/95 p-1.5 shadow-[0_18px_40px_-18px_rgb(23_24_27/0.4)] backdrop-blur-md lg:hidden"
       >
         {NAV.map(({ href, label, icon: Icon }) => (
           <Link
