@@ -9,7 +9,8 @@ import {Base64} from "@openzeppelin/contracts/utils/Base64.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
-interface IArbSys {
+/// @dev The one ArbSys function the bond reads.
+interface IArbBlockNumber {
     function arbBlockNumber() external view returns (uint256);
 }
 
@@ -253,7 +254,7 @@ contract LogBond is ILogBond, ReentrancyGuardTransient {
     }
 
     function _l2Block() internal view returns (uint64) {
-        (bool ok, bytes memory ret) = ARB_SYS.staticcall(abi.encodeCall(IArbSys.arbBlockNumber, ()));
+        (bool ok, bytes memory ret) = ARB_SYS.staticcall(abi.encodeCall(IArbBlockNumber.arbBlockNumber, ()));
         return ok && ret.length == 32 ? abi.decode(ret, (uint256)).toUint64() : 0;
     }
 }
