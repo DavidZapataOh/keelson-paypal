@@ -156,12 +156,14 @@ function prepare(input: AnyAlibi): {
 }
 
 /**
- * An Alibi bundle in the v1 shape: a v2 bundle's countersign, legs and attestations read from its
+ * An Alibi in the v1 shape: a v2 bundle's countersign, legs and attestations read from its
  * statement and evidence collection, its leaf the registered statement. For reading its facts;
  * never encoded or verified as a v1 Alibi.
  */
-export function v1Shape(input: AlibiBundle | AlibiBundleV2): AlibiBundle {
-  return prepare(input).legacy as AlibiBundle;
+export function v1Shape(input: AlibiBundle | AlibiBundleV2): AlibiBundle;
+export function v1Shape(input: AnyAlibi): AlibiBundle | AlibiReceipt;
+export function v1Shape(input: AnyAlibi): AlibiBundle | AlibiReceipt {
+  return prepare(input).legacy;
 }
 
 /**
