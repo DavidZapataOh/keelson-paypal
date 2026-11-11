@@ -40,6 +40,7 @@ import { registerCountersign } from "./routes/countersign.ts";
 import { registerDisputes } from "./routes/disputes.ts";
 import { registerEmbed } from "./routes/embed.ts";
 import { noFraming, registerEmbedPage } from "./routes/embed-page.ts";
+import { registerEmbedSigning } from "./routes/embed-signing.ts";
 import { registerEvents } from "./routes/events.ts";
 import { registerEvidence } from "./routes/evidence.ts";
 import { registerFeedback } from "./routes/feedback.ts";
@@ -308,6 +309,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerRevoke(app, deps);
   registerConnections(app, deps);
   registerEmbed(app, deps);
+  registerEmbedSigning(app, deps);
   if (deps.embedPage) registerEmbedPage(app, deps, deps.embedPage);
   registerAgents(app, deps);
   registerOAuthConsent(app, deps);

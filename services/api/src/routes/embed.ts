@@ -4,17 +4,20 @@ import type { Context } from "hono";
 import type { Deps } from "../app.ts";
 import { hashDeviceCode, REQUEST_TTL_SEC } from "../connections.ts";
 import {
+  clientEmbedOrigins,
   EMBED_TOKEN_TTL_SEC,
   type Embed,
   httpsOrigin,
   mintEmbed,
   redeemEmbed,
   sessionEmbed,
+  sessionUser,
 } from "../embed.ts";
 import { requireClient } from "../middleware/auth.ts";
 import type { Principal } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 import { ConnectionView, connectionView, denyRequest } from "./connections.ts";
+import { EmbedSigner, signerOf } from "./embed-signing.ts";
 
 const problemContent = { "application/problem+json": { schema: ProblemSchema } };
 
@@ -40,6 +43,8 @@ const EmbedView = z
     /** The agent platform the approval is framed in; the user sees it. */
     origin: z.string(),
     request: ConnectionView,
+    /** Who the frame signs for, once the user signed in here or linked a Keelson window. */
+    signer: EmbedSigner.nullable(),
   })
   .openapi("EmbedRequest");
 
@@ -154,22 +159,13 @@ const deny = createRoute({
   },
 });
 
-/** The https origins `clientId` registered for embedding. */
-async function clientEmbedOrigins(db: Deps["db"], clientId: string): Promise<string[]> {
-  const rows = await db
-    .select({ origin: embedOrigins.origin })
-    .from(embedOrigins)
-    .where(eq(embedOrigins.clientId, clientId));
-  return rows.map((r) => r.origin);
-}
-
 export function registerEmbed(
   app: OpenAPIHono,
   deps: Pick<Deps, "db" | "kv" | "log" | "authBaseUrl">,
 ): void {
   const { db, kv } = deps;
 
-  const view = async (embed: Embed) => {
+  const view = async (embed: Embed, session?: string) => {
     const [row] = await db
       .select({ request: agentConnections, operator: operators })
       .from(agentConnections)
@@ -182,6 +178,10 @@ export function registerEmbed(
         ref: embed.ref,
         origin: embed.origin,
         request: await connectionView(db, row.request, row.operator),
+        signer: await (async () => {
+          const bound = session ? await sessionUser(kv, session) : undefined;
+          return bound ? signerOf(db, bound) : null;
+        })(),
       },
     };
   };
@@ -270,8 +270,9 @@ export function registerEmbed(
   });
 
   app.openapi(read, async (c) => {
-    const embed = await sessionEmbed(kv, c.req.header(EMBED_SESSION_HEADER));
-    const found = embed && (await view(embed));
+    const session = c.req.header(EMBED_SESSION_HEADER);
+    const embed = await sessionEmbed(kv, session);
+    const found = embed && (await view(embed, session));
     if (!found) return noSession(c);
     return c.json(found.view, 200, { "cache-control": "no-store" });
   });

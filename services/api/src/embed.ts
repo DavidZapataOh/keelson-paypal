@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import { type Db, embedOrigins, eq } from "@keelson/db";
 import type { RedisClientType } from "redis";
 import { ulid } from "ulid";
 
@@ -100,4 +101,100 @@ export async function sessionEmbed(
   if (!session?.startsWith("kes_") || session.length > 64) return undefined;
   const ref = await kv.get(sessionKey(session));
   return ref ? readEmbed(kv, ref) : undefined;
+}
+
+/** How long a passkey ceremony the frame started may wait for its answer. */
+const EMBED_CEREMONY_TTL_SEC = 300;
+/** How long a link the frame opened in a Keelson window may wait for the user. */
+export const EMBED_LINK_TTL_SEC = 600;
+
+const userKey = (sessionDigest: string) => `embed:usr:${sessionDigest}`;
+const ceremonyKey = (session: string) => `embed:cer:${digest(session)}`;
+const linkKey = (nonce: string) => `embed:lnk:${digest(nonce)}`;
+
+/** Who a frame's session signs for, once a passkey or a Keelson window said so. */
+export interface EmbedUser {
+  userId: string;
+  /** The passkey the user signed in with in the frame, so present on this device. */
+  credentialId?: string;
+}
+
+/** A WebAuthn ceremony the frame started, answered once. */
+export interface EmbedCeremony {
+  kind: "authenticate" | "register";
+  challenge: string;
+  /** For a registration: the `payment` extension was requested, so SPC may use the passkey. */
+  payment?: boolean;
+}
+
+/** The user a frame's session is bound to. */
+export async function sessionUser(
+  kv: RedisClientType,
+  session: string,
+): Promise<EmbedUser | undefined> {
+  const raw = await kv.get(userKey(digest(session)));
+  return raw ? (JSON.parse(raw) as EmbedUser) : undefined;
+}
+
+/** Binds the session to `user` for as long as the session lives. */
+export function bindUser(kv: RedisClientType, session: string, user: EmbedUser): Promise<void> {
+  return bindDigest(kv, digest(session), user);
+}
+
+async function bindDigest(kv: RedisClientType, sessionDigest: string, user: EmbedUser) {
+  const ttl = await kv.ttl(`embed:ses:${sessionDigest}`);
+  if (ttl <= 0) return;
+  await kv.set(userKey(sessionDigest), JSON.stringify(user), { EX: ttl });
+}
+
+/** Starts a ceremony for the session, replacing any it had. */
+export async function startCeremony(
+  kv: RedisClientType,
+  session: string,
+  ceremony: EmbedCeremony,
+): Promise<void> {
+  await kv.set(ceremonyKey(session), JSON.stringify(ceremony), { EX: EMBED_CEREMONY_TTL_SEC });
+}
+
+/** The session's ceremony, deleted as it is read, so an answer is checked against it once. */
+export async function takeCeremony(
+  kv: RedisClientType,
+  session: string,
+): Promise<EmbedCeremony | undefined> {
+  const raw = await kv.getDel(ceremonyKey(session));
+  return raw ? (JSON.parse(raw) as EmbedCeremony) : undefined;
+}
+
+/**
+ * A single-use nonce for the Keelson window the frame opens: the user who signs in there and
+ * confirms binds this session, and only this one, to their account.
+ */
+export async function mintLink(kv: RedisClientType, session: string): Promise<string> {
+  const nonce = `kel_${randomBytes(32).toString("base64url")}`;
+  await kv.set(linkKey(nonce), digest(session), { EX: EMBED_LINK_TTL_SEC });
+  return nonce;
+}
+
+/** Spends a link for `userId`: the session it names is bound to them. */
+export async function confirmLink(
+  kv: RedisClientType,
+  nonce: string,
+  userId: string,
+): Promise<Embed | undefined> {
+  if (!nonce.startsWith("kel_") || nonce.length > 64) return undefined;
+  const sessionDigest = await kv.getDel(linkKey(nonce));
+  const ref = sessionDigest ? await kv.get(`embed:ses:${sessionDigest}`) : null;
+  const embed = ref ? await readEmbed(kv, ref) : undefined;
+  if (!sessionDigest || !embed) return undefined;
+  await bindDigest(kv, sessionDigest, { userId });
+  return embed;
+}
+
+/** The https origins `clientId` registered for embedding. */
+export async function clientEmbedOrigins(db: Db, clientId: string): Promise<string[]> {
+  const rows = await db
+    .select({ origin: embedOrigins.origin })
+    .from(embedOrigins)
+    .where(eq(embedOrigins.clientId, clientId));
+  return rows.map((r) => r.origin);
 }

@@ -5,7 +5,7 @@ import { Check, Copy, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, useEffect, useId, useState } from "react";
-import { ApiError, get } from "../lib/api";
+import { ApiError, get, post } from "../lib/api";
 import { authClient } from "../lib/auth";
 import { API } from "../lib/config";
 import { CONNECT_PROMPT, type ConnectionView } from "../lib/connections";
@@ -167,7 +167,73 @@ function embedReturn(params: URLSearchParams) {
   if (until) initial.until = until;
   const back = new URL("/embed/approve", API);
   back.search = new URLSearchParams({ r: ref, mode: via, step: "done" }).toString();
-  return { initial, back: back.toString() };
+  const link = params.get("link");
+  return {
+    initial,
+    back: back.toString(),
+    ...(link && LINK.test(link) ? { link } : {}),
+  };
+}
+
+const LINK = /^kel_[A-Za-z0-9_-]{43}$/;
+
+/**
+ * Opened by an embedded approval for a user it does not know yet: once signed in here, the user
+ * links their account to that approval, which then creates their passkey if they have none and
+ * signs there.
+ */
+function LinkEmbed({
+  request,
+  nonce,
+  back,
+}: {
+  request: ConnectionView;
+  nonce: string;
+  back: string;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  const confirm = async () => {
+    setBusy(true);
+    setError(undefined);
+    try {
+      await post("/v1/embed/links/confirm", { nonce });
+      location.replace(back);
+    } catch (e) {
+      setBusy(false);
+      setError(e instanceof Error ? e.message : "The approval could not be linked.");
+    }
+  };
+  return (
+    <OnboardingFrame
+      step="Agent"
+      stage={<span className="size-3 rounded-full bg-graphite" aria-hidden="true" />}
+      action={
+        <Button
+          size="lg"
+          onClick={confirm}
+          disabled={busy}
+          className="h-13 w-full rounded-xl text-base"
+        >
+          {busy ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
+          Continue to {request.agent.operator}
+        </Button>
+      }
+    >
+      <h1 className="text-balance font-semibold text-[1.75rem] leading-[1.1] tracking-[-0.025em] sm:text-[2rem]">
+        Finish in {request.agent.operator}
+      </h1>
+      <p className="mt-3 text-pretty text-lg text-muted-foreground leading-snug">
+        {request.name} asked for your approval there. Continue, and approve it there with your
+        passkey. This window closes.
+      </p>
+      {error ? (
+        <div className="mt-6">
+          <ErrorNotice>{error}</ErrorNotice>
+        </div>
+      ) : null}
+    </OnboardingFrame>
+  );
 }
 
 /** `/connect?c=XXXX-XXXX`: an agent's request, approved here with a passkey or rejected. */
@@ -247,6 +313,9 @@ export function ConnectPage() {
         line="This code was used. Your agents page shows the grant."
       />
     );
+  }
+  if (embed?.link) {
+    return <LinkEmbed request={request} nonce={embed.link} back={embed.back} />;
   }
   if (embed) {
     const done = () => location.replace(embed.back);

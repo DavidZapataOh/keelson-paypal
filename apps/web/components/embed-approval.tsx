@@ -1,7 +1,15 @@
 "use client";
 
+import {
+  passkeyRegistrationOptions,
+  prepareSigning,
+  rememberPaymentPasskey,
+  type Signing,
+  signMandate,
+} from "@keelson/mandate/browser";
 import { Button } from "@keelson/ui/components/button";
-import { Check, ExternalLink, Fingerprint, Loader2, ShieldCheck } from "lucide-react";
+import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
+import { Check, ExternalLink, Fingerprint, KeyRound, Loader2, ShieldCheck } from "lucide-react";
 import {
   type CSSProperties,
   type ReactNode,
@@ -11,16 +19,26 @@ import {
   useState,
 } from "react";
 import { untilIn } from "../lib/connections";
+import { deviceId } from "../lib/device";
 import {
+  approveEmbed,
   DONE,
   declineEmbed,
+  draftEmbed,
   EmbedError,
+  type EmbedSigner,
   type EmbedView,
+  framePasskeys,
   type HostEvent,
   openEmbed,
+  passkeyOptions,
   post,
   readEmbed,
+  savePasskey,
+  signIn,
+  signInOptions,
   signUrl,
+  startLink,
 } from "../lib/embed";
 import { money } from "../lib/format";
 import { asked, type Chosen, Clause, day, Lower, Value } from "./approval";
@@ -38,7 +56,15 @@ type Mode = "frame" | "popup";
 type Phase =
   | { at: "loading" }
   | { at: "review" }
-  | { at: "waiting"; blocked: boolean }
+  /** The passkey prompt that tells who signs is open. */
+  | { at: "identifying" }
+  /** A Keelson window linked the user, who has no passkey yet: one is created here. */
+  | { at: "create"; busy: boolean }
+  /** The user is known: the mandate is drafted for the limits chosen and signed here. */
+  | { at: "confirm"; signing: boolean }
+  /** This browser or page lets no passkey be used here: the Keelson window signs instead. */
+  | { at: "elsewhere"; why: string }
+  | { at: "waiting"; blocked: boolean; link: boolean }
   | { at: "approved"; mandateId: string }
   | { at: "declined" }
   | { at: "closed"; title: string; line: string }
@@ -82,10 +108,11 @@ function framedBy(origin: string): boolean {
 function useArmed(
   targets: React.RefObject<HTMLElement | null>[],
   active: boolean,
+  step: string,
 ): { visible: boolean; armed: boolean } {
   const [visible, setVisible] = useState(false);
   const [armed, setArmed] = useState(false);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the refs are stable
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the refs are stable; each step re-arms
   useEffect(() => {
     setArmed(false);
     setVisible(false);
@@ -123,7 +150,7 @@ function useArmed(
       observer?.disconnect();
       document.removeEventListener("visibilitychange", arm);
     };
-  }, [active]);
+  }, [active, step]);
   return { visible, armed };
 }
 
@@ -166,11 +193,30 @@ function Notice({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
+const NO_EVIDENCE = { merchantSignedCheckout: false, zkTlsFields: new Set<never>() };
+
+/** Why a passkey ceremony failed, for the user; `elsewhere` when this frame may not run it. */
+function ceremonyError(e: unknown): { elsewhere: boolean; message: string } {
+  const name =
+    (e as { name?: string; cause?: { name?: string } } | null)?.cause?.name ??
+    (e as { name?: string } | null)?.name;
+  if (name === "SecurityError" || name === "NotSupportedError") {
+    return { elsewhere: true, message: "This page cannot use your passkey here." };
+  }
+  if (name === "NotAllowedError" || name === "AbortError") {
+    return { elsewhere: false, message: "No passkey was used. Nothing was approved." };
+  }
+  return { elsewhere: false, message: e instanceof Error ? e.message : "Something went wrong." };
+}
+
 /**
- * The approval an agent platform embeds. It shows the request, lets the user lower its limits,
- * and opens a top-level Keelson window where the user signs with a passkey: a mandate's
- * assertion must come from the app's own origin, never from a frame. The host hears `ready`,
- * `resize`, `approved` (request and mandate ids) and `declined`, posted only to its own origin.
+ * The approval an agent platform embeds. It shows the request and lets the user lower its limits;
+ * the user then signs in and signs the mandate with a passkey here, in the frame. The mandate
+ * names the platform's page (`embed.top_origin`) and the browser writes it into the assertion
+ * as `topOrigin`, which every verifier checks. A user without a passkey signs in once in a
+ * Keelson window and creates one here; where the browser or the page lets no passkey be used in a
+ * frame, the Keelson window signs instead. The host hears `ready`, `resize`, `approved` (request
+ * and mandate ids) and `declined`, posted only to its own origin.
  */
 export function EmbedApproval() {
   const [phase, setPhase] = useState<Phase>({ at: "loading" });
@@ -181,6 +227,8 @@ export function EmbedApproval() {
     mode: "frame",
     ref: "",
   });
+  const [signer, setSigner] = useState<EmbedSigner | null>(null);
+  const [signing, setSigning] = useState<{ for: string; s: Signing; credentialId: string }>();
   const root = useRef<HTMLDivElement>(null);
   const allow = useRef<HTMLButtonElement>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -194,6 +242,7 @@ export function EmbedApproval() {
 
   const settle = useCallback((v: EmbedView) => {
     setView(v);
+    if (v.signer) setSigner(v.signer);
     const { request } = v;
     if (request.state === "APPROVED" && request.mandateId) {
       setPhase({ at: "approved", mandateId: request.mandateId });
@@ -293,6 +342,7 @@ export function EmbedApproval() {
   }, [phase, view, tell]);
 
   // While the Keelson window is open: read the answer, woken early by that window.
+  const linking = phase.at === "waiting" && phase.link;
   useEffect(() => {
     if (phase.at !== "waiting") return;
     const { session } = ctx.current;
@@ -302,7 +352,17 @@ export function EmbedApproval() {
       try {
         const v = await readEmbed(session);
         if (stop) return;
-        if (!settle(v) && ctx.current.popup?.closed) {
+        if (settle(v)) return;
+        if (linking && v.signer) {
+          ctx.current.popup?.close();
+          setPhase(
+            v.signer.passkeys.length > 0
+              ? { at: "confirm", signing: false }
+              : { at: "create", busy: false },
+          );
+          return;
+        }
+        if (ctx.current.popup?.closed) {
           setPhase({ at: "review" });
           setError("The Keelson window closed before you answered. Nothing was approved.");
         }
@@ -324,7 +384,71 @@ export function EmbedApproval() {
       clearInterval(t);
       window.removeEventListener("message", onMessage);
     };
-  }, [phase.at, settle]);
+  }, [phase.at, linking, settle]);
+
+  // Once the user is known, the mandate for the chosen limits is drafted, so the prompt opens on
+  // the click.
+  const chosenKey = JSON.stringify(chosen ?? null);
+  useEffect(() => {
+    const { session } = ctx.current;
+    if (phase.at !== "confirm" || !signer || !chosen || !session) return;
+    if (signing?.for === chosenKey) return;
+    let stop = false;
+    void (async () => {
+      try {
+        const compiled = await draftEmbed(
+          session,
+          {
+            limits: {
+              perPurchaseMinor: chosen.perPurchase,
+              totalMinor: chosen.total,
+              merchants: chosen.merchants,
+              until: chosen.until,
+              ...(chosen.askAbove === null ? {} : { askAboveMinor: chosen.askAbove }),
+            },
+            ...(signer.credentialId ? { credentialId: signer.credentialId } : {}),
+          },
+          deviceId(),
+        );
+        const s = await prepareSigning(
+          compiled.mandateDraft,
+          crypto.getRandomValues(new Uint8Array(16)),
+          NO_EVIDENCE,
+          compiled.ambiguous,
+        );
+        if (!stop)
+          setSigning({ for: chosenKey, s, credentialId: compiled.mandateDraft.user.cred.id });
+      } catch (e) {
+        if (stop) return;
+        setPhase({ at: "review" });
+        setError(e instanceof Error ? e.message : "The mandate could not be drafted. Try again.");
+      }
+    })();
+    return () => {
+      stop = true;
+    };
+  }, [phase.at, signer, chosen, chosenKey, signing?.for]);
+
+  // A passkey is created on the click that asks for it: its options are fetched before.
+  const [creation, setCreation] = useState<{
+    options: Awaited<ReturnType<typeof passkeyOptions>>;
+    platform: boolean;
+  }>();
+  useEffect(() => {
+    const { session } = ctx.current;
+    if (phase.at !== "create" || creation || !session) return;
+    let stop = false;
+    (async () => {
+      const platform = (await passkeyRegistrationOptions()).authenticatorAttachment === "platform";
+      const options = await passkeyOptions(session, platform);
+      if (!stop) setCreation({ options, platform });
+    })().catch((e: unknown) => {
+      if (!stop) setError(e instanceof Error ? e.message : "Creating a passkey could not start.");
+    });
+    return () => {
+      stop = true;
+    };
+  }, [phase.at, creation]);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 30_000);
@@ -340,9 +464,9 @@ export function EmbedApproval() {
     return () => removeEventListener("resize", check);
   }, []);
 
-  const reviewing = phase.at === "review" && fits;
+  const reviewing = (phase.at === "review" || phase.at === "confirm") && fits;
   const summary = useRef<HTMLParagraphElement>(null);
-  const { visible, armed } = useArmed([allow, summary], reviewing);
+  const { visible, armed } = useArmed([allow, summary], reviewing, phase.at);
 
   if (phase.at === "loading" || !view || !chosen) {
     if (phase.at === "closed" || phase.at === "unsafe") {
@@ -374,24 +498,137 @@ export function EmbedApproval() {
   const set = (patch: Partial<Chosen>) => setChosen((c) => (c ? { ...c, ...patch } : c));
   const once = request.kind === "once";
 
-  const approve = () => {
-    if (!armed || chosen.merchants.length === 0) return;
-    setError(undefined);
-    const url = signUrl(view, ctx.current.mode, chosen);
-    if (ctx.current.mode === "popup") {
-      location.assign(url);
-      return;
-    }
+  /** Opens the Keelson app's approval in a top-level window; `link` makes it only sign the user in. */
+  const openWindow = (link?: Promise<string>) => {
     const w = 480;
     const h = 760;
-    const popup = window.open(
-      url,
-      // An unguessable name, so the host cannot look the window up and navigate it.
-      `keelson-${crypto.randomUUID()}`,
-      `popup,width=${w},height=${h},left=${Math.round(screenX + (outerWidth - w) / 2)},top=${Math.round(screenY + (outerHeight - h) / 2)}`,
-    );
+    const features = `popup,width=${w},height=${h},left=${Math.round(screenX + (outerWidth - w) / 2)},top=${Math.round(screenY + (outerHeight - h) / 2)}`;
+    // An unguessable name, so the host cannot look the window up and navigate it.
+    const name = `keelson-${crypto.randomUUID()}`;
+    if (!link) {
+      const popup = window.open(signUrl(view, ctx.current.mode, chosen), name, features);
+      ctx.current.popup = popup;
+      setPhase({ at: "waiting", blocked: popup === null, link: false });
+      return;
+    }
+    // Opened on the click, and sent on once the link exists.
+    const popup = window.open("about:blank", name, features);
     ctx.current.popup = popup;
-    setPhase({ at: "waiting", blocked: popup === null });
+    setPhase({ at: "waiting", blocked: popup === null, link: true });
+    link
+      .then((nonce) => popup?.location.replace(signUrl(view, "frame", chosen, nonce)))
+      .catch(() => {
+        popup?.close();
+        setPhase({ at: "review" });
+        setError("The Keelson window could not open. Try again.");
+      });
+  };
+
+  const approve = async () => {
+    if (!armed || chosen.merchants.length === 0) return;
+    setError(undefined);
+    if (ctx.current.mode === "popup") {
+      location.assign(signUrl(view, "popup", chosen));
+      return;
+    }
+    if (!framePasskeys("get")) {
+      openWindow();
+      return;
+    }
+    if (signer) {
+      setPhase({ at: "confirm", signing: false });
+      return;
+    }
+    const { session } = ctx.current;
+    if (!session) return;
+    setPhase({ at: "identifying" });
+    try {
+      const optionsJSON = await signInOptions(session);
+      const who = await signIn(session, await startAuthentication({ optionsJSON }));
+      setSigner(who);
+      setPhase({ at: "confirm", signing: false });
+    } catch (e) {
+      const { elsewhere, message } = ceremonyError(e);
+      if (elsewhere) {
+        setPhase({ at: "elsewhere", why: message });
+        return;
+      }
+      setPhase({ at: "review" });
+      setError(
+        e instanceof EmbedError
+          ? message
+          : `${message} New to Keelson? Set up your passkey in a Keelson window below.`,
+      );
+    }
+  };
+
+  const sign = async () => {
+    const { session } = ctx.current;
+    if (!armed || !signing || !signer || !session || phase.at !== "confirm" || phase.signing) {
+      return;
+    }
+    setPhase({ at: "confirm", signing: true });
+    setError(undefined);
+    const { s, credentialId } = signing;
+    try {
+      const assertion = await signMandate(
+        s.challenge,
+        signer.passkeys.filter((p) => p.credentialId === credentialId),
+        { spc: s.spc, onDevice: signer.credentialId ? [signer.credentialId] : [] },
+      );
+      const created = await approveEmbed(session, {
+        payloadSd: s.payloadSd,
+        disclosures: s.disclosures,
+        commitment: s.commitment,
+        salt: s.salt,
+        assertion,
+        ...(chosen.askAbove === null ? {} : { askAboveMinor: chosen.askAbove }),
+      });
+      setPhase({ at: "approved", mandateId: created.id });
+    } catch (e) {
+      const { elsewhere, message } = ceremonyError(e);
+      // Each attempt signs a fresh draft.
+      setSigning(undefined);
+      if (elsewhere) setPhase({ at: "elsewhere", why: message });
+      else {
+        setPhase({ at: "confirm", signing: false });
+        setError(message);
+      }
+    }
+  };
+
+  const create = async () => {
+    const { session } = ctx.current;
+    if (phase.at !== "create" || phase.busy || !creation || !session) return;
+    if (!framePasskeys("create")) {
+      setPhase({ at: "elsewhere", why: "This page cannot create a passkey here." });
+      return;
+    }
+    setPhase({ at: "create", busy: true });
+    setError(undefined);
+    try {
+      const response = await startRegistration({ optionsJSON: creation.options });
+      const who = await savePasskey(session, response);
+      if (creation.platform && who.credentialId) rememberPaymentPasskey(who.credentialId);
+      setSigner(who);
+      setPhase({ at: "confirm", signing: false });
+    } catch (e) {
+      const { elsewhere, message } = ceremonyError(e);
+      // A ceremony's challenge answers once.
+      setCreation(undefined);
+      if (elsewhere) setPhase({ at: "elsewhere", why: message });
+      else {
+        setPhase({ at: "create", busy: false });
+        setError(message);
+      }
+    }
+  };
+
+  const link = () => {
+    const { session } = ctx.current;
+    if (!session) return;
+    setError(undefined);
+    openWindow(startLink(session).then((l) => l.nonce));
   };
 
   const decline = async () => {
@@ -481,12 +718,56 @@ export function EmbedApproval() {
 
   const armStyle = { "--arm": `${ARM_MS}ms` } as CSSProperties;
 
-  const waiting = phase.at === "waiting";
+  const ready = signing !== undefined && signing.for === chosenKey;
+  // The limits are fixed once a draft or the Keelson window has them.
+  const locked = phase.at !== "review";
+  const armedButton = (label: ReactNode, onClick: () => void, disabled: boolean) => (
+    <Button
+      ref={allow}
+      size="lg"
+      onClick={onClick}
+      aria-disabled={!armed || disabled}
+      data-armed={armed}
+      style={armStyle}
+      className="relative h-12 overflow-hidden rounded-xl text-[15px] aria-disabled:cursor-not-allowed aria-disabled:bg-graphite-2"
+    >
+      <span
+        aria-hidden="true"
+        className="absolute inset-y-0 left-0 w-full origin-left bg-bone/14 motion-reduce:hidden"
+        style={{
+          transform: `scaleX(${visible ? 1 : 0})`,
+          transition: visible ? "transform var(--arm) cubic-bezier(0.4,0,0.2,1)" : "none",
+          opacity: armed ? 0 : 1,
+        }}
+      />
+      {label}
+    </Button>
+  );
+  const grant = (
+    <p ref={summary} className="text-pretty text-sm leading-snug">
+      <span className="font-medium">{request.name}</span> by {request.agent.operator} may spend up
+      to <span className="font-medium tnum">{cap}</span>
+      {merchantNames.length ? ` at ${merchantNames.join(", ")}` : ""} until {day(chosen.until)}.
+    </p>
+  );
+  const back = (
+    <Button
+      variant="outline"
+      size="lg"
+      className="h-12 rounded-xl px-5"
+      onClick={() => {
+        ctx.current.popup?.close();
+        setError(undefined);
+        setPhase({ at: "review" });
+      }}
+    >
+      Back
+    </Button>
+  );
   return (
     <div ref={root} className="grid bg-background">
       <Brand host={origin} />
-      {/* The limits are fixed once the Keelson window has them. */}
-      <div className="grid gap-4 px-4 pt-4" inert={waiting}>
+      <div className="grid gap-4 px-4 pt-4" inert={locked}>
         <div className="grid gap-2">
           <div className="flex flex-wrap items-center gap-1.5 text-xs">
             <span className="inline-flex h-6 items-center rounded-full bg-bone-2 px-2.5">
@@ -625,25 +906,18 @@ export function EmbedApproval() {
             {error}
           </p>
         ) : null}
-        {waiting ? (
+        {phase.at === "waiting" ? (
           <div className="grid gap-2" role="status">
             <p className="flex items-center gap-2 font-medium">
               <Loader2 className="size-4 animate-spin" aria-hidden="true" />
               {phase.blocked
                 ? "Your browser blocked the Keelson window"
-                : "Confirm in the Keelson window"}
+                : phase.link
+                  ? "Sign in to Keelson in the window, then come back here"
+                  : "Confirm in the Keelson window"}
             </p>
             <div className="grid grid-cols-2 gap-2">
-              <Button
-                variant="outline"
-                className="h-11 rounded-xl"
-                onClick={() => {
-                  ctx.current.popup?.close();
-                  setPhase({ at: "review" });
-                }}
-              >
-                Back
-              </Button>
+              {back}
               {phase.blocked ? (
                 <Button asChild className="h-11 rounded-xl">
                   <a href={signUrl(view, "frame", chosen)} target="_blank" rel="noreferrer">
@@ -658,49 +932,109 @@ export function EmbedApproval() {
               )}
             </div>
           </div>
+        ) : phase.at === "elsewhere" ? (
+          <div className="grid gap-2">
+            <p className="text-pretty text-sm leading-snug" role="status">
+              {phase.why} Confirm with your passkey in a Keelson window instead.
+            </p>
+            <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-2">
+              {back}
+              <Button size="lg" className="h-12 rounded-xl" onClick={() => openWindow()}>
+                Continue in Keelson
+                <ExternalLink aria-hidden="true" />
+              </Button>
+            </div>
+          </div>
+        ) : phase.at === "create" ? (
+          <div className="grid gap-2">
+            <p className="text-pretty text-sm leading-snug">
+              Create the passkey that signs for you. It stays on this device, and Keelson asks for
+              it before anything is approved.
+            </p>
+            <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-2">
+              {back}
+              <Button
+                size="lg"
+                className="h-12 rounded-xl text-[15px]"
+                onClick={create}
+                aria-disabled={!creation || phase.busy}
+              >
+                {phase.busy || !creation ? (
+                  <Loader2 className="animate-spin" aria-hidden="true" />
+                ) : (
+                  <KeyRound aria-hidden="true" />
+                )}
+                {phase.busy ? "Waiting for your device" : "Create passkey"}
+              </Button>
+            </div>
+          </div>
+        ) : phase.at === "confirm" ? (
+          <>
+            {grant}
+            <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-2">
+              {back}
+              {armedButton(
+                <>
+                  {phase.signing || !ready ? (
+                    <Loader2 className="animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Fingerprint aria-hidden="true" />
+                  )}
+                  {phase.signing ? "Waiting for your passkey" : `Sign ${cap} with passkey`}
+                </>,
+                sign,
+                !ready || phase.signing,
+              )}
+            </div>
+            <p className="text-center text-muted-foreground text-xs">
+              Your passkey signs these limits for {new URL(origin).host}. Keelson checks the
+              signature names this page.
+            </p>
+          </>
         ) : (
           <>
             {/* What Allow grants, beside it: watched with the button, so neither can be covered. */}
-            <p ref={summary} className="text-pretty text-sm leading-snug">
-              <span className="font-medium">{request.name}</span> by {request.agent.operator} may
-              spend up to <span className="font-medium tnum">{cap}</span>
-              {merchantNames.length ? ` at ${merchantNames.join(", ")}` : ""} until{" "}
-              {day(chosen.until)}.
-            </p>
+            {grant}
             <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-2">
               <Button
                 variant="outline"
                 size="lg"
                 className="h-12 rounded-xl px-5"
                 onClick={decline}
+                disabled={phase.at === "identifying"}
               >
                 {once ? "Decline" : "Reject"}
               </Button>
-              <Button
-                ref={allow}
-                size="lg"
-                onClick={approve}
-                aria-disabled={!armed || chosen.merchants.length === 0}
-                data-armed={armed}
-                style={armStyle}
-                className="relative h-12 overflow-hidden rounded-xl text-[15px] aria-disabled:cursor-not-allowed aria-disabled:bg-graphite-2"
-              >
-                <span
-                  aria-hidden="true"
-                  className="absolute inset-y-0 left-0 w-full origin-left bg-bone/14 motion-reduce:hidden"
-                  style={{
-                    transform: `scaleX(${visible ? 1 : 0})`,
-                    transition: visible ? "transform var(--arm) cubic-bezier(0.4,0,0.2,1)" : "none",
-                    opacity: armed ? 0 : 1,
-                  }}
-                />
-                <Fingerprint aria-hidden="true" />
-                {once ? `Approve once · ${cap}` : `Allow ${cap}`}
-              </Button>
+              {armedButton(
+                <>
+                  {phase.at === "identifying" ? (
+                    <Loader2 className="animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Fingerprint aria-hidden="true" />
+                  )}
+                  {phase.at === "identifying"
+                    ? "Choose your passkey"
+                    : once
+                      ? `Approve once · ${cap}`
+                      : `Allow ${cap}`}
+                </>,
+                approve,
+                chosen.merchants.length === 0 || phase.at === "identifying",
+              )}
             </div>
-            <p className="text-center text-muted-foreground text-xs">
-              You confirm with your passkey in a Keelson window.
-            </p>
+            {ctx.current.mode === "frame" ? (
+              <button
+                type="button"
+                onClick={link}
+                className="justify-self-center text-muted-foreground text-xs underline underline-offset-2 hover:text-foreground"
+              >
+                New to Keelson? Set up your passkey in a Keelson window
+              </button>
+            ) : (
+              <p className="text-center text-muted-foreground text-xs">
+                You confirm with your passkey in Keelson.
+              </p>
+            )}
           </>
         )}
       </div>
