@@ -228,7 +228,7 @@ const RequestState = z
   })
   .openapi("ConnectionRequestState");
 
-const DraftRequest = z
+export const DraftRequest = z
   .object({
     limits: z.object({
       perPurchaseMinor: Minor,
@@ -669,13 +669,98 @@ const tokenError = (
     { "cache-control": "no-store" },
   );
 
-export function registerConnections(
-  app: OpenAPIHono,
-  deps: Pick<
-    Deps,
-    "db" | "kv" | "log" | "appOrigin" | "passkeyRpId" | "rateLimit" | "compileSources"
-  >,
-): void {
+/**
+ * The unsigned mandate approving `request` with the limits `userId` chose, which may only be
+ * lower than what it asked. `embedOrigin` names the agent platform whose embedded approval
+ * the user signs it in.
+ */
+export async function draftMandate(
+  c: Context,
+  deps: ConnectionDeps,
+  userId: string,
+  request: Connection,
+  body: z.infer<typeof DraftRequest>,
+  embedOrigin?: string,
+) {
+  const { db } = deps;
+  const over = raised(body.limits, request);
+  if (over.length > 0) {
+    return problem(
+      c,
+      422,
+      "limits-raised",
+      "Limits raised",
+      `${over.join(", ")} must not be above what ${request.name} asked for; raising it takes a new request.`,
+      { fields: over },
+    );
+  }
+  const mode = request.kind === "once" ? "immediate" : "autonomous";
+  const context = await signingContext(
+    c,
+    deps as Parameters<typeof signingContext>[1],
+    userId,
+    { credentialId: body.credentialId, mode },
+    operatorAgent(db, request.operatorAgentId),
+  );
+  if (context instanceof Response) return context;
+  const iat = Math.floor(Date.now() / 1000);
+  const until = Math.min(
+    Math.floor(Date.parse(body.limits.until) / 1000),
+    Math.floor(request.notAfter.getTime() / 1000),
+  );
+  if (until <= iat) {
+    return problem(c, 422, "invalid-limits", "Invalid limits", "until has passed");
+  }
+  const { mandate, ambiguous } = toMandate(
+    {
+      currency: request.currency as CurrencyCode,
+      maxTotalMinor: body.limits.perPurchaseMinor,
+      budgetMinor: body.limits.totalMinor,
+      merchants: body.limits.merchants.map((id) => MERCHANTS.find((m) => m.id === id)?.name ?? id),
+      ...(await inherited(db, request)),
+      notAfter: new Date(until * 1000).toISOString(),
+      quantityPerLine: 1,
+      item: request.kind === "once" ? "This cart only" : "Any item at the stores allowed",
+      subjective: [],
+      summary: request.reason,
+    },
+    {
+      ...context,
+      mid: ulid(),
+      iat,
+      nonce: randomBytes(16).toString("base64url"),
+      merchants: MERCHANTS,
+    },
+    {
+      promptHash: `sha256:${createHash("sha256").update(request.reason, "utf8").digest("hex")}`,
+    },
+  );
+  const signed: Mandate = embedOrigin
+    ? { ...mandate, embed: { top_origin: embedOrigin } }
+    : mandate;
+  const { payloadSd, disclosures } = await buildSdPayload(signed, () => randomBytes(16));
+  const card = renderCard(payloadSd, disclosures, {
+    merchantSignedCheckout: false,
+    zkTlsFields: new Set(),
+    ambiguous: new Set(ambiguous),
+  });
+  return c.json(
+    {
+      mandateDraft: signed as unknown as Record<string, unknown>,
+      card,
+      ambiguous,
+      check: { status: "skipped" as const, discrepancies: null },
+    },
+    200,
+  );
+}
+
+type ConnectionDeps = Pick<
+  Deps,
+  "db" | "kv" | "log" | "appOrigin" | "passkeyRpId" | "rateLimit" | "compileSources"
+>;
+
+export function registerConnections(app: OpenAPIHono, deps: ConnectionDeps): void {
   const { db } = deps;
   const appOrigin = deps.appOrigin ?? "https://app.keelson.finance";
 
@@ -895,75 +980,6 @@ export function registerConnections(
       return problem(c, 404, "not-found", "Not found");
     }
     if (unmatched(request)) return notMatched(c);
-    const body = c.req.valid("json");
-    const over = raised(body.limits, request);
-    if (over.length > 0) {
-      return problem(
-        c,
-        422,
-        "limits-raised",
-        "Limits raised",
-        `${over.join(", ")} must not be above what ${request.name} asked for; raising it takes a new request.`,
-        { fields: over },
-      );
-    }
-    const mode = request.kind === "once" ? "immediate" : "autonomous";
-    const context = await signingContext(
-      c,
-      deps,
-      userId,
-      { credentialId: body.credentialId, mode },
-      operatorAgent(db, request.operatorAgentId),
-    );
-    if (context instanceof Response) return context;
-    const iat = Math.floor(Date.now() / 1000);
-    const until = Math.min(
-      Math.floor(Date.parse(body.limits.until) / 1000),
-      Math.floor(request.notAfter.getTime() / 1000),
-    );
-    if (until <= iat) {
-      return problem(c, 422, "invalid-limits", "Invalid limits", "until has passed");
-    }
-    const { mandate, ambiguous } = toMandate(
-      {
-        currency: request.currency as CurrencyCode,
-        maxTotalMinor: body.limits.perPurchaseMinor,
-        budgetMinor: body.limits.totalMinor,
-        merchants: body.limits.merchants.map(
-          (id) => MERCHANTS.find((m) => m.id === id)?.name ?? id,
-        ),
-        ...(await inherited(db, request)),
-        notAfter: new Date(until * 1000).toISOString(),
-        quantityPerLine: 1,
-        item: request.kind === "once" ? "This cart only" : "Any item at the stores allowed",
-        subjective: [],
-        summary: request.reason,
-      },
-      {
-        ...context,
-        mid: ulid(),
-        iat,
-        nonce: randomBytes(16).toString("base64url"),
-        merchants: MERCHANTS,
-      },
-      {
-        promptHash: `sha256:${createHash("sha256").update(request.reason, "utf8").digest("hex")}`,
-      },
-    );
-    const { payloadSd, disclosures } = await buildSdPayload(mandate, () => randomBytes(16));
-    const card = renderCard(payloadSd, disclosures, {
-      merchantSignedCheckout: false,
-      zkTlsFields: new Set(),
-      ambiguous: new Set(ambiguous),
-    });
-    return c.json(
-      {
-        mandateDraft: mandate as unknown as Record<string, unknown>,
-        card,
-        ambiguous,
-        check: { status: "skipped" as const, discrepancies: null },
-      },
-      200,
-    );
+    return draftMandate(c, deps, userId, request, c.req.valid("json"));
   });
 }
