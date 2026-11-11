@@ -1,19 +1,20 @@
 "use client";
 
 import { Button } from "@keelson/ui/components/button";
-import { Ban, Check, Loader2, TriangleAlert } from "lucide-react";
+import { Ban, Check, Fingerprint, Loader2, ShieldCheck, TriangleAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 import { get, post } from "../lib/api";
 import { authClient } from "../lib/auth";
 import type { ConnectionView } from "../lib/connections";
 import { money } from "../lib/format";
 import { Approval, Chip } from "./approval";
+import { SplitK } from "./brand";
 import { ErrorNotice } from "./notice";
 import { OnboardingFrame } from "./onboarding/frame";
 
 interface Consent {
   client: { id: string; name: string; uri: string | null; verified: boolean };
-  agent: { agentId: string; operator: string } | null;
+  agent: { agentId: string; operator: string; hosted: boolean } | null;
   scopes: string[];
   spending: {
     name: string;
@@ -30,13 +31,47 @@ interface Consent {
   spendingError: string | null;
 }
 
-/** Each scope in the words of what it lets the app do. */
-const SCOPE_WORDS: Record<string, string> = {
-  "alibis:read": "See the receipts (Alibis) of purchases made for you",
-  "disputes:read": "See your disputes and how they were decided",
-  "countersign:write": "Ask Keelson to check carts against your mandate",
-  "evidence:write": "Send the store pages it read as evidence",
+/** Each permission in the words of what it lets the app do, in the order a purchase runs. */
+const SCOPE_WORDS: Record<string, { title: string; detail: string }> = {
+  "mandates:request": {
+    title: "Ask you for a spending mandate",
+    detail: "You set the limits and approve it with your passkey. Nothing is spent until you do.",
+  },
+  "evidence:write": {
+    title: "Keep what it read at the store",
+    detail: "The product and cart pages are sealed as evidence for each purchase.",
+  },
+  "purchases:write": {
+    title: "Buy within a mandate you signed",
+    detail: "Two independent checks compare every cart to your mandate before PayPal is charged.",
+  },
+  "alibis:read": {
+    title: "Show you the receipt of each purchase",
+    detail: "The Alibi that proves what was bought, and who answers for it.",
+  },
+  offline_access: {
+    title: "Stay connected until you disconnect it",
+    detail: "So it does not ask you to sign in again every hour.",
+  },
+  "countersign:write": {
+    title: "Ask Keelson to check carts against your mandate",
+    detail: "Every cart is compared to what you signed before PayPal is charged.",
+  },
+  "disputes:read": {
+    title: "See your disputes and how they were decided",
+    detail: "Only disputes of purchases it made for you.",
+  },
 };
+const ORDER = Object.keys(SCOPE_WORDS);
+const ordered = (scopes: string[]) =>
+  [...scopes].sort((a, b) => (ORDER.indexOf(a) + 1 || 99) - (ORDER.indexOf(b) + 1 || 99));
+
+/** What no permission grants, whatever the app asks: shown, never offered as a choice. */
+const NEVER = [
+  "See your PayPal login, your card or your password.",
+  "Spend above what you sign. Keelson refuses before PayPal is charged.",
+  "Act for anyone else, or under a mandate you approved for another app.",
+];
 
 const day = (iso: string) =>
   new Intl.DateTimeFormat("en-US", {
@@ -121,22 +156,37 @@ export function ConsentPage() {
 
   const s = consent?.spending;
   const cap = s ? money(BigInt(s.limits.totalMinor), s.limits.currency) : null;
+  const initial = consent?.client.name.slice(0, 1).toUpperCase() ?? "";
 
   return (
     <OnboardingFrame
       step="Agent"
-      stageLabel={consent ? `${consent.client.name} asks to connect` : undefined}
+      stageLabel={consent ? `${consent.client.name} connects to Keelson for you` : undefined}
       stage={
         consent ? (
-          <div className="grid w-full max-w-[380px] justify-items-center gap-4 text-center">
-            <span className="grid size-20 place-items-center rounded-3xl bg-card font-semibold text-3xl shadow-[0_12px_30px_-16px_rgb(23_24_27/0.45)]">
-              {consent.client.name.slice(0, 1).toUpperCase()}
-            </span>
+          <div className="grid w-full max-w-[400px] justify-items-center gap-6 text-center">
+            <div className="flex items-center gap-3">
+              <span className="grid size-20 place-items-center rounded-3xl bg-card font-semibold text-3xl shadow-[0_12px_30px_-16px_rgb(23_24_27/0.45)]">
+                {initial}
+              </span>
+              <span className="flex items-center gap-1" aria-hidden="true">
+                <span className="size-1.5 rounded-full bg-foreground/25" />
+                <span className="size-1.5 rounded-full bg-foreground/45" />
+                <span className="size-1.5 rounded-full bg-vermilion" />
+              </span>
+              <span className="grid size-20 place-items-center rounded-3xl bg-graphite shadow-[0_12px_30px_-16px_rgb(23_24_27/0.6)]">
+                <SplitK className="size-10" stem="var(--color-bone)" />
+              </span>
+            </div>
             <p className="grid gap-0.5">
               <span className="font-semibold text-lg">{consent.client.name}</span>
               <span className="truncate text-muted-foreground text-sm">
                 {consent.client.uri ?? consent.client.id}
               </span>
+            </p>
+            <p className="flex max-w-[34ch] items-start gap-2 text-left text-pretty text-sm">
+              <Fingerprint className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              Every mandate it asks for waits for your passkey, on this page, never in the app.
             </p>
           </div>
         ) : (
@@ -194,60 +244,101 @@ export function ConsentPage() {
             </p>
           </div>
 
-          <section aria-labelledby="requested" className="mt-6">
-            <h2 id="requested" className="font-semibold">
-              Requested permissions
+          <section aria-labelledby="can" className="mt-7">
+            <h2 id="can" className="font-semibold">
+              It can
             </h2>
             <ul className="mt-1 divide-y">
-              {consent.scopes.map((scope) => (
-                <li key={scope}>
-                  <label className="flex cursor-pointer items-center gap-3 py-3">
-                    <input
-                      type="checkbox"
-                      checked={scopes.includes(scope)}
-                      onChange={(e) =>
-                        setScopes((now) =>
-                          e.target.checked ? [...now, scope] : now.filter((x) => x !== scope),
-                        )
-                      }
-                      className="size-4 accent-[var(--color-graphite)]"
-                    />
-                    <span className="flex-1">{SCOPE_WORDS[scope] ?? scope}</span>
-                  </label>
+              {ordered(consent.scopes).map((scope) => {
+                const words = SCOPE_WORDS[scope];
+                return (
+                  <li key={scope}>
+                    <label className="flex cursor-pointer items-start gap-3 py-3">
+                      <input
+                        type="checkbox"
+                        checked={scopes.includes(scope)}
+                        onChange={(e) =>
+                          setScopes((now) =>
+                            e.target.checked ? [...now, scope] : now.filter((x) => x !== scope),
+                          )
+                        }
+                        className="mt-1 size-4 shrink-0 accent-[var(--color-graphite)]"
+                      />
+                      <span className="grid flex-1 gap-0.5">
+                        <span className="font-medium leading-snug">{words?.title ?? scope}</span>
+                        {words ? (
+                          <span className="text-pretty text-muted-foreground text-sm leading-snug">
+                            {words.detail}
+                          </span>
+                        ) : null}
+                      </span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+
+          <section aria-labelledby="never" className="mt-5">
+            <h2 id="never" className="font-semibold">
+              It can never
+            </h2>
+            <ul className="mt-1 divide-y">
+              {NEVER.map((line) => (
+                <li key={line} className="flex items-start gap-3 py-3">
+                  <Ban className="mt-1 size-4 shrink-0 text-vermilion-deep" aria-hidden="true" />
+                  <span className="flex-1 text-pretty leading-snug">{line}</span>
                 </li>
               ))}
             </ul>
           </section>
 
-          <section aria-labelledby="spending" className="mt-4 grid gap-2">
-            <h2 id="spending" className="font-semibold">
-              Spending
+          <section aria-labelledby="answers" className="mt-5 grid gap-2">
+            <h2 id="answers" className="font-semibold">
+              Who answers for its purchases
             </h2>
-            {s && cap ? (
-              <>
-                <p className="text-pretty">
-                  It asks to spend up to {cap} in total,{" "}
-                  {money(BigInt(s.limits.perPurchaseMinor), s.limits.currency)} per purchase, until{" "}
-                  {day(s.limits.until)}
-                  {s.limits.askAboveMinor
-                    ? `, asking you above ${money(BigInt(s.limits.askAboveMinor), s.limits.currency)}`
-                    : ""}
-                  . You approve it with your passkey next, and may lower any of it.
-                </p>
-                <p className="flex gap-2 text-sm">
-                  <Ban className="mt-0.5 size-4 shrink-0 text-vermilion-deep" aria-hidden="true" />
-                  It cannot pay outside these rules: Keelson refuses before PayPal is charged.
-                </p>
-              </>
+            {consent.agent ? (
+              <p className="flex items-start gap-3 text-pretty leading-snug">
+                <ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                <span>
+                  {consent.agent.hosted
+                    ? `Keelson's own agent, #${consent.agent.agentId}, signs each purchase ${consent.client.name} makes, and its bond covers them.`
+                    : `${consent.agent.operator}, registered agent #${consent.agent.agentId}, signs each purchase, and its bond covers them.`}
+                </span>
+              </p>
             ) : (
-              <p className="flex gap-2 text-pretty text-sm">
+              <p className="flex items-start gap-3 text-pretty text-sm">
                 <Ban className="mt-0.5 size-4 shrink-0 text-vermilion-deep" aria-hidden="true" />
-                {consent.spendingError
-                  ? `It asked to spend, but cannot be allowed to: ${consent.spendingError}`
-                  : "It cannot spend. To buy, it must ask you for a mandate, which you approve with your passkey."}
+                No registered agent answers for this app, so it cannot buy for you.
               </p>
             )}
           </section>
+
+          {s && cap ? (
+            <section aria-labelledby="spending" className="mt-5 grid gap-2">
+              <h2 id="spending" className="font-semibold">
+                Spending
+              </h2>
+              <p className="text-pretty">
+                It asks to spend up to {cap} in total,{" "}
+                {money(BigInt(s.limits.perPurchaseMinor), s.limits.currency)} per purchase, until{" "}
+                {day(s.limits.until)}
+                {s.limits.askAboveMinor
+                  ? `, asking you above ${money(BigInt(s.limits.askAboveMinor), s.limits.currency)}`
+                  : ""}
+                . You approve it with your passkey next, and may lower any of it.
+              </p>
+              <p className="flex gap-2 text-sm">
+                <Ban className="mt-0.5 size-4 shrink-0 text-vermilion-deep" aria-hidden="true" />
+                It cannot pay outside these rules: Keelson refuses before PayPal is charged.
+              </p>
+            </section>
+          ) : consent.spendingError ? (
+            <p className="mt-5 flex gap-2 text-pretty text-sm">
+              <Ban className="mt-0.5 size-4 shrink-0 text-vermilion-deep" aria-hidden="true" />
+              It asked to spend, but cannot be allowed to: {consent.spendingError}
+            </p>
+          ) : null}
         </>
       ) : error ? null : (
         <p role="status" className="sr-only">

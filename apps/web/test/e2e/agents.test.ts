@@ -381,7 +381,7 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("an app's consent on %s", (kind)
     );
     await page.getByRole("heading", { level: 1, name: "Inspector wants to connect" }).waitFor();
     expect(await page.getByText("Unverified client").count()).toBe(1);
-    expect(await page.getByRole("checkbox", { name: /receipts/ }).isChecked()).toBe(true);
+    expect(await page.getByRole("checkbox", { name: /receipt/ }).isChecked()).toBe(true);
     expect(
       await page.getByText("It cannot pay outside these rules", { exact: false }).count(),
     ).toBe(1);
@@ -390,8 +390,67 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("an app's consent on %s", (kind)
     expect(Math.round(deny?.width ?? 0)).toBe(Math.round(allow?.width ?? 1));
     await axe(page);
     await shot(page, kind, "consent");
-    await page.getByRole("checkbox", { name: /receipts/ }).uncheck();
+    await page.getByRole("checkbox", { name: /receipt/ }).uncheck();
     expect(await page.getByRole("button", { name: "Allow, then approve" }).isDisabled()).toBe(true);
+    await context.close();
+  });
+
+  test("a host with no operator of its own: what it can do, what it never can, and who answers", async () => {
+    const scopes = [
+      "alibis:read",
+      "mandates:request",
+      "evidence:write",
+      "purchases:write",
+      "offline_access",
+    ];
+    let sent: unknown;
+    const { context, page } = await signedIn(
+      kind,
+      `/consent/?client_id=c2&scope=${encodeURIComponent(scopes.join(" "))}&sig=x`,
+      (path, body) => {
+        if (path === "/api/auth/oauth2/consent") {
+          sent = JSON.parse(body ?? "{}");
+          return { url: `${site.base}/` };
+        }
+        return path === "/v1/oauth/consent"
+          ? {
+              client: { id: "c2", name: "Claude", uri: "https://claude.ai", verified: false },
+              agent: { agentId: "351", operator: "Keelson", hosted: true },
+              scopes,
+              spending: null,
+              spendingError: null,
+            }
+          : undefined;
+      },
+    );
+    await page.getByRole("heading", { level: 1, name: "Claude wants to connect" }).waitFor();
+    const can = page.getByRole("region", { name: "It can" });
+    for (const name of [
+      /Ask you for a spending mandate/,
+      /Buy within a mandate you signed/,
+      /Keep what it read at the store/,
+      /receipt of each purchase/,
+      /Stay connected/,
+    ]) {
+      expect(await can.getByRole("checkbox", { name }).isChecked()).toBe(true);
+    }
+    const never = page.getByRole("region", { name: "It can never" });
+    expect(await never.getByRole("checkbox").count()).toBe(0);
+    expect(await never.getByText(/PayPal login/).count()).toBe(1);
+    expect(await never.getByText(/Spend above what you sign/).count()).toBe(1);
+    expect(
+      await page.getByRole("region", { name: "Who answers for its purchases" }).textContent(),
+    ).toContain("Keelson's own agent, #351");
+    await axe(page);
+    await shot(page, kind, "consent-hosted");
+    await can.getByRole("checkbox", { name: /Stay connected/ }).uncheck();
+    await page.getByRole("button", { name: "Allow", exact: true }).click();
+    await expect
+      .poll(() => sent)
+      .toMatchObject({
+        accept: true,
+        scope: "alibis:read mandates:request evidence:write purchases:write",
+      });
     await context.close();
   });
 });
