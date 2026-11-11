@@ -12,5 +12,6 @@ export function intersect(bounds: readonly (readonly [Date, Date])[]): Validity 
   };
 }
 
-export const within = (v: Validity, at: Date) =>
-  at.getTime() >= v.notBefore.getTime() && at.getTime() <= v.notAfter.getTime();
+export function within(v: Validity, at: Date): boolean {
+  return at.getTime() >= v.notBefore.getTime() && at.getTime() <= v.notAfter.getTime();
+}
