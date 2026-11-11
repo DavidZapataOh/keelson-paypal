@@ -76,7 +76,7 @@ const STREAMED_POSTS =
  * proof and the registered-user roots.
  */
 const PUBLIC_READS =
-  /^\/v1\/(alibis\/[^/]+\/receipt|timestamps\/[^/]+|anonymous-mandates\/[^/]+|anonymous-purchases\/[^/]+|user-set\/roots\/[^/]+)$/;
+  /^\/v1\/(alibis\/[0-7][0-9A-HJKMNP-TV-Z]{25}|alibis\/[^/]+\/receipt|timestamps\/[^/]+|anonymous-mandates\/[^/]+|anonymous-purchases\/[^/]+|user-set\/roots\/[^/]+)$/;
 
 export interface Deps {
   db: Db;
@@ -196,7 +196,8 @@ export function createApp(deps: Deps): OpenAPIHono {
         exposeHeaders: ["location", "idempotent-replayed", "keelson-model"],
       })
     : undefined;
-  // The verifier reads only public receipts and timestamps, and never with credentials.
+  // The verifier reads only public receipts, timestamps and public Alibis, never with credentials,
+  // so a bundle only its user or operator may read is never sent to it.
   const receiptCors = deps.verifyOrigin
     ? cors({ origin: deps.verifyOrigin, allowMethods: ["GET"], allowHeaders: ["accept"] })
     : undefined;
