@@ -12,6 +12,9 @@ fn main() {
         BuildArgs {
             docker: true,
             tag: "v6.10.0".to_string(),
+            // One codegen unit: with several, the hashed names LLVM gives promoted local symbols
+            // differ between builds of the same source, and the verifying key with them.
+            rustflags: vec!["-C".to_string(), "codegen-units=1".to_string()],
             workspace_directory: Some(
                 root.canonicalize()
                     .expect("the repository root")
