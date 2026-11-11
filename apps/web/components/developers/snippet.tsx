@@ -13,11 +13,7 @@ export function Snippet({ code, label }: { code: string; label: string }) {
   }, [copied]);
   return (
     <div className="relative min-w-0 rounded-xl bg-graphite text-bone">
-      <pre
-        tabIndex={0}
-        aria-label={label}
-        className="overflow-x-auto px-4 py-3.5 pr-12 font-mono text-[13px] leading-relaxed"
-      >
+      <pre className="whitespace-pre-wrap break-all px-4 py-3.5 pr-12 font-mono text-[13px] leading-relaxed">
         <code>{code}</code>
       </pre>
       <button

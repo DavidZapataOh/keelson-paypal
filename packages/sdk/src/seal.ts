@@ -3,10 +3,10 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 import canonicalize from "canonicalize";
 
 /** The kinds of evidence this SDK seals, in manifest order. */
-export const ITEM_TYPES = ["api.product", "api.cart", "llm.observation"] as const;
-export type ItemType = (typeof ITEM_TYPES)[number];
+const ITEM_TYPES = ["api.product", "api.cart", "llm.observation"] as const;
+type ItemType = (typeof ITEM_TYPES)[number];
 
-export const MEDIA_TYPES: Readonly<Record<ItemType, string>> = Object.freeze({
+const MEDIA_TYPES: Readonly<Record<ItemType, string>> = Object.freeze({
   "api.product": "application/json",
   "api.cart": "application/json",
   "llm.observation": "text/plain; charset=utf-8",

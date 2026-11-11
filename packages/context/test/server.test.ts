@@ -66,7 +66,7 @@ describe("the Keelson Context Plugin", () => {
       name: "integrate_keelson",
       arguments: { language: "typescript", role: "app" },
     });
-    const text = (messages[0]?.content as { text: string }).text;
+    const text = (messages[0]?.content as { text?: string } | undefined)?.text ?? "";
     expect(text).toContain("npx keelson login");
     expect(text).toContain("waitForApproval");
   });

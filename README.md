@@ -100,13 +100,13 @@ Build on Keelson from TypeScript or Python: ask the user for a mandate, seal wha
 countersign the cart and verify the Alibi offline. A walkthrough that ticks as your code runs is at
 https://app.keelson.finance/developers.
 
-| Package | What it is |
-| --- | --- |
-| [`@keelson/sdk`](packages/sdk/README.md) | TypeScript client: typed errors, retries with one idempotency key per call, `npx keelson login`, adapters for the Vercel AI SDK, OpenAI Agents SDK, LangChain and the Claude Agent SDK |
-| [`keelson-finance`](packages/sdk-python/README.md) | The same client for Python (`import keelson`), blocking and asyncio |
-| [`@keelson/verifier`](packages/verify/README.md) | Offline Alibi verifier and `keelson-verify` CLI, the code of verify.keelson.finance |
-| [`@keelson/context`](packages/context/src/index.ts) | Keelson Context Plugin: these docs, every operation and its schema, over MCP at `https://api.keelson.finance/context/mcp` |
-| [Postman collection](openapi/postman/keelson.postman_collection.json) | Every developer operation, signed in with OAuth 2.0 and PKCE |
+| Package                                                               | What it is                                                                                                                                                                             |
+| --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`@keelson/sdk`](packages/sdk/README.md)                              | TypeScript client: typed errors, retries with one idempotency key per call, `npx keelson login`, adapters for the Vercel AI SDK, OpenAI Agents SDK, LangChain and the Claude Agent SDK |
+| [`keelson-finance`](packages/sdk-python/README.md)                    | The same client for Python (`import keelson`), blocking and asyncio                                                                                                                    |
+| [`@keelson/verifier`](packages/verify/README.md)                      | Offline Alibi verifier and `keelson-verify` CLI, the code of verify.keelson.finance                                                                                                    |
+| [`@keelson/context`](packages/context/src/index.ts)                   | Keelson Context Plugin: these docs, every operation and its schema, over MCP at `https://api.keelson.finance/context/mcp`                                                              |
+| [Postman collection](openapi/postman/keelson.postman_collection.json) | Every developer operation, signed in with OAuth 2.0 and PKCE                                                                                                                           |
 
 The clients are written by hand; their request and response types are generated from
 [`openapi/keelson.public.json`](openapi/keelson.public.json), the developer subset of the API, and

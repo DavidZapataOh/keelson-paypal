@@ -1,6 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "ignore": ["contracts/**"],
+  "ignore": ["contracts/**", "packages/sdk-python/**"],
   "workspaces": {
     "apps/store": {
       "entry": ["src/server.ts!", "public/checkout.js!", "bench/*.bench.ts"],
@@ -101,7 +101,7 @@
       "project": ["src/**/*.ts!", "bench/**/*.ts", "test/**/*.ts"]
     },
     "packages/sdk": {
-      "entry": ["src/index.ts!", "src/cli.ts!", "scripts/*.ts", "examples/*"],
+      "entry": ["src/index.ts!", "src/cli.ts!", "src/adapters/*.ts!", "scripts/*.ts", "examples/*"],
       "project": ["src/**/*.ts!", "scripts/**/*.ts", "test/**/*.ts", "examples/**"]
     },
     "packages/timestamp": {

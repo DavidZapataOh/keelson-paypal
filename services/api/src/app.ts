@@ -20,10 +20,10 @@ import { type Auth, apiAudience, SCOPE_DESCRIPTIONS } from "./auth.ts";
 import type { CardIssuer } from "./cards/issuer.ts";
 import type { ChainReaders } from "./chain/reader.ts";
 import type { Channel3Lookup } from "./channel3/client.ts";
+import { registerContext } from "./context.ts";
 import type { HostedCaps } from "./hosted-caps.ts";
 import type { LogConfig } from "./log/append.ts";
 import { requestLogger } from "./logger.ts";
-import { registerContext } from "./context.ts";
 import { registerMcp } from "./mcp.ts";
 import { requireClient, securityOf } from "./middleware/auth.ts";
 import { idempotency } from "./middleware/idempotency.ts";
@@ -244,7 +244,11 @@ function documentSecurity(app: OpenAPIHono): void {
   });
 }
 
-/** The OpenAPI 3.1 document of an app {@link createApp} built. */
+/**
+ * The OpenAPI 3.1 document of an app {@link createApp} built.
+ *
+ * @internal
+ */
 export function openApiDocument(app: OpenAPIHono): ReturnType<OpenAPIHono["getOpenAPI31Document"]> {
   return app.getOpenAPI31Document({
     openapi: "3.1.0",
