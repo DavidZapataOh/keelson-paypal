@@ -189,12 +189,13 @@ export interface EngineProof {
   network?: {
     request_id: string;
     explorer: string;
-    gas_limit: number;
+    gas_limit: number | null;
     gas_used: number | null;
-    max_cost: string;
     cost: string | null;
     balance: string | null;
   };
+  /** The prover's peak resident memory while it waited for and verified the proof. */
+  peak_rss_kb?: number;
   chain_id: number;
   verifier: string;
   tx: string;

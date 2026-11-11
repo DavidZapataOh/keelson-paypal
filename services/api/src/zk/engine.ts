@@ -33,8 +33,10 @@ const ENGINE_PROOF_FROM_BLOCK = 328_028_156n;
  * refuses a request whose Groth16 base fee plus gas limit at the bid price exceeds it.
  */
 const ENGINE_PROOF_MAX_COST = 2n * 10n ** 18n;
-/** The network's auction, proving and the requester's local simulation and verification. */
-const PROVE_TIMEOUT_MS = 40 * 60 * 1000;
+/** The local simulation that sizes a network request, and the request itself. */
+const REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
+/** The network's auction and proving, and the local verification of its proof. */
+const WAIT_TIMEOUT_MS = 35 * 60 * 1000;
 /** The free run of the program that checks a dispute's input before a proof of it is paid for. */
 const EXECUTE_TIMEOUT_MS = 5 * 60 * 1000;
 const RECORD_WAIT_MS = 120_000;
@@ -159,27 +161,68 @@ async function executeInput(
   }
 }
 
-/** Proves `input` to a Groth16 proof on the Succinct Prover Network, paid by `NETWORK_PRIVATE_KEY`. */
-async function proveInput(input: CountersignInput): Promise<EngineProved> {
+/** What the prover needs from the workflow's environment: its other keys stay out of it. */
+function proverEnv(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
   if (!process.env.NETWORK_PRIVATE_KEY) throw new Error("NETWORK_PRIVATE_KEY is not set");
+  return {
+    PATH: process.env.PATH,
+    HOME: process.env.HOME,
+    TMPDIR: process.env.TMPDIR,
+    NETWORK_PRIVATE_KEY: process.env.NETWORK_PRIVATE_KEY,
+    RUST_LOG: "warn",
+    ...extra,
+  };
+}
+
+/**
+ * Requests a Groth16 proof of `input` from the Succinct Prover Network, paid by
+ * `NETWORK_PRIVATE_KEY`, and stores the request on purchase `purchaseId` as soon as the prover
+ * prints it, even when the prover then fails: a request it could not cancel may still be paid for.
+ */
+async function requestProof(db: Db, purchaseId: string, input: CountersignInput): Promise<Hex> {
+  const dir = await mkdtemp(join(tmpdir(), "engine-request-"));
+  try {
+    const inputPath = join(dir, "input.json");
+    await writeFile(inputPath, JSON.stringify(input));
+    let stdout = "";
+    let failure: unknown;
+    try {
+      ({ stdout } = await run(await prover(), ["request", inputPath], {
+        timeout: REQUEST_TIMEOUT_MS,
+        maxBuffer: 16 * 1024 * 1024,
+        env: proverEnv({ ENGINE_PROOF_MAX_COST: ENGINE_PROOF_MAX_COST.toString() }),
+      }));
+    } catch (err) {
+      failure = err;
+      stdout = (err as { stdout?: string }).stdout ?? "";
+    }
+    const line = stdout.split("\n").find((l) => l.startsWith("{"));
+    const requested = line ? (JSON.parse(line) as { request_id: Hex }) : undefined;
+    if (requested) {
+      await db
+        .update(purchases)
+        .set({ engineRequest: requested.request_id })
+        .where(eq(purchases.id, purchaseId));
+    }
+    if (failure) throw failure;
+    if (!requested) throw new Error("the engine prover printed no request");
+    return requested.request_id;
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+/** Waits for network request `requestId` to prove `input`, and verifies the proof here. */
+async function waitProof(input: CountersignInput, requestId: Hex): Promise<EngineProved> {
   const dir = await mkdtemp(join(tmpdir(), "engine-proof-"));
   try {
     const inputPath = join(dir, "input.json");
     const outPath = join(dir, "proof.json");
     await writeFile(inputPath, JSON.stringify(input));
-    await run(await prover(), ["prove", inputPath, outPath], {
-      timeout: PROVE_TIMEOUT_MS,
+    await run(await prover(), ["wait", inputPath, requestId, outPath], {
+      timeout: WAIT_TIMEOUT_MS,
       maxBuffer: 64 * 1024 * 1024,
-      // Only what the prover needs: the workflow's other keys stay out of its environment.
-      env: {
-        PATH: process.env.PATH,
-        HOME: process.env.HOME,
-        TMPDIR: process.env.TMPDIR,
-        NETWORK_PRIVATE_KEY: process.env.NETWORK_PRIVATE_KEY,
-        SP1_PROVER: "network",
-        ENGINE_PROOF_MAX_COST: ENGINE_PROOF_MAX_COST.toString(),
-        RUST_LOG: "warn",
-      },
+      env: proverEnv(),
     });
     return JSON.parse(await readFile(outPath, "utf8")) as EngineProved;
   } finally {
@@ -228,7 +271,11 @@ export async function proveEngine(
 ): Promise<EngineProof> {
   const { db, log, relayer, chain } = deps;
   const [existing] = await db
-    .select({ proof: purchases.engineProof, proved: purchases.engineProved })
+    .select({
+      proof: purchases.engineProof,
+      proved: purchases.engineProved,
+      request: purchases.engineRequest,
+    })
     .from(purchases)
     .where(eq(purchases.id, purchaseId));
   if (existing?.proof) return existing.proof;
@@ -239,19 +286,32 @@ export async function proveEngine(
   // A proof paid for by an earlier run that did not get recorded is recorded, not bought again.
   let proved = existing?.proved?.vkey === ENGINE_PROVER.vkey ? existing.proved : undefined;
   if (!proved) {
-    // A mismatch here would repeat on every paid attempt, so it is caught before paying.
-    const executed = await executeInput(input);
-    if (executed.eval_hash !== evalHash || executed.countersign_digest !== digest) {
-      throw new Error(`purchase ${purchaseId}: its engine input does not give its countersign`);
+    // A request an earlier run made is waited for again, never made twice; one that failed for
+    // good is cleared by hand once its explorer page shows it was not paid for.
+    let requestId = existing?.request as Hex | null | undefined;
+    if (!requestId) {
+      // A mismatch here would repeat on every paid attempt, so it is caught before paying.
+      const executed = await executeInput(input);
+      if (executed.eval_hash !== evalHash || executed.countersign_digest !== digest) {
+        throw new Error(`purchase ${purchaseId}: its engine input does not give its countersign`);
+      }
+      requestId = await requestProof(db, purchaseId, input);
     }
-    proved = await proveInput(input);
+    log.info({ purchaseId, requestId }, "engine proof requested");
+    proved = await waitProof(input, requestId);
     if (proved.vkey !== ENGINE_PROVER.vkey) throw new Error(`engine prover vkey ${proved.vkey}`);
     if (proved.eval_hash !== evalHash || proved.countersign_digest !== digest) {
       throw new Error(`purchase ${purchaseId}: the proof is not of its countersign`);
     }
     await db.update(purchases).set({ engineProved: proved }).where(eq(purchases.id, purchaseId));
     log.info(
-      { purchaseId, cycles: proved.cycles, proveMs: proved.prove_ms, network: proved.network },
+      {
+        purchaseId,
+        cycles: proved.cycles,
+        proveMs: proved.prove_ms,
+        network: proved.network,
+        peakRssKb: proved.peak_rss_kb,
+      },
       "engine evaluation proved",
     );
   }
