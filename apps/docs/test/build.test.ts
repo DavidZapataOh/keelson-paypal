@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -107,6 +108,33 @@ describe("the copy", () => {
       read("reference/api/post-v1-alibis-verify/index.html").replace(/<\/?(pre|code)\b[^>]*>/g, ""),
     );
     expect(text.match(/\b\d+\.\d{4,}\b/g)).toBeNull();
+  });
+});
+
+describe("the deployment", () => {
+  test("the CSP in render.yaml allows exactly the inline scripts the pages carry", () => {
+    const blueprint = parse(readFileSync(join(repo, "render.yaml"), "utf8")) as {
+      services: { name: string; headers?: { path: string; name: string; value: string }[] }[];
+    };
+    const csp = blueprint.services
+      .find((s) => s.name === "keelson-docs")
+      ?.headers?.find((h) => h.name === "Content-Security-Policy")?.value;
+    const scriptSrc = csp?.match(/script-src ([^;]+)/)?.[1] ?? "";
+    const hashes = new Set(
+      htmlFiles().flatMap((f) =>
+        [
+          ...readFileSync(f, "utf8").matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g),
+        ].map(
+          (m) =>
+            `'sha256-${createHash("sha256")
+              .update(m[1] ?? "")
+              .digest("base64")}'`,
+        ),
+      ),
+    );
+    expect(hashes.size).toBeGreaterThan(0);
+    for (const h of hashes) expect(scriptSrc).toContain(h);
+    expect(scriptSrc).not.toContain("unsafe-inline");
   });
 });
 

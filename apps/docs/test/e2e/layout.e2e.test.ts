@@ -46,7 +46,11 @@ describe("layout", () => {
     await page.goto(`${preview.url}/quickstart/verify-an-alibi/`);
     const short = await page.evaluate(() =>
       [...document.querySelectorAll<HTMLElement>(".pane:not([hidden]) .line")]
-        .map((l, i) => ({ i: i + 1, h: l.getBoundingClientRect().height, lh: Number.parseFloat(getComputedStyle(l).lineHeight) }))
+        .map((l, i) => ({
+          i: i + 1,
+          h: l.getBoundingClientRect().height,
+          lh: Number.parseFloat(getComputedStyle(l).lineHeight),
+        }))
         .filter((l) => l.h < l.lh - 0.5)
         .map((l) => l.i),
     );
