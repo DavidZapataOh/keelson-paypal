@@ -1,5 +1,6 @@
 //! The C1 proving budget, timed in a test binary of its own: Cargo runs test binaries one at a
-//! time, so no other test's proofs share the CPU with the timed ones.
+//! time, so no other test's proofs share the CPU with the timed ones. The witness is solved in
+//! Rust, so it is timed in the release build the legs run; run with `--release --ignored`.
 
 mod zk_demo;
 
@@ -10,6 +11,7 @@ use zk_demo::{demo, prover};
 /// The budget is 200 ms per proof, witness and `bb` included: 400 ms for one statement's two
 /// proofs, EVM and recursive.
 #[test]
+#[ignore = "times the release build; run with --release"]
 fn proving_is_within_budget() {
     let d = demo();
     prover()
