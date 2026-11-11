@@ -19,6 +19,7 @@ tdx = [
     "dep:reqwest",
     "dep:rmpv",
     "dep:rustls",
+    "dep:tokio-rustls",
     "tokio/sync",
     "tokio/time",
 ]
@@ -73,6 +74,7 @@ sha2 = { version = "0.11.1", features = ["zeroize"] }
 subtle = "2.6.1"
 time = { version = "0.3.55", features = ["formatting", "macros", "parsing"] }
 tokio = { version = "1.54.1", features = ["macros", "net", "rt-multi-thread", "time"] }
+tokio-rustls = { version = "0.26.6", optional = true, default-features = false, features = ["ring"] }
 tokio-vsock = { version = "=0.7.3", optional = true, features = ["axum08"] }
 tower = { version = "0.5.3", optional = true, features = ["util"] }
 ulid = { version = "3.0.0", features = ["serde"] }

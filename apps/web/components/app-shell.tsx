@@ -1,6 +1,16 @@
 "use client";
 
-import { Bot, Home, LogOut, type LucideIcon, Plus, Radio, Scale, Trophy } from "lucide-react";
+import {
+  Bot,
+  Home,
+  KeyRound,
+  LogOut,
+  type LucideIcon,
+  Plus,
+  Radio,
+  Scale,
+  Trophy,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
@@ -17,6 +27,8 @@ export interface NavItem {
   icon: LucideIcon;
 }
 
+const ACCOUNT = "/passkeys/";
+
 const NAV: NavItem[] = [
   { href: "/", label: "Home", icon: Home },
   { href: "/agents/", label: "Agents", icon: Bot },
@@ -24,6 +36,7 @@ const NAV: NavItem[] = [
   { href: "/disputes/", label: "Disputes", icon: Scale },
   { href: "/live/", label: "Live", icon: Radio },
   { href: "/scoreboard/", label: "Scoreboard", icon: Trophy },
+  { href: "/passkeys/", label: "Passkeys", icon: KeyRound },
 ];
 
 /** Who is signed in to a console, when it is not the shopper's session. */
@@ -59,13 +72,17 @@ export function AppShell({
         : null;
   const nav = own ?? (session ? NAV : NAV.filter((n) => PUBLIC.has(n.href)));
   // A phone's tab bar holds five at most: the public proof pages share one tab there.
+  // A phone's tab bar holds five at most: the public proof pages share one tab there, and the
+  // account's passkeys sit in the top bar.
+  const onPhone = nav.filter((n) => n.href !== ACCOUNT);
   const tabs =
-    nav.length > 5
+    onPhone.length > 5
       ? [
-          ...nav.filter((n) => !PUBLIC.has(n.href)),
+          ...onPhone.filter((n) => !PUBLIC.has(n.href)),
           { href: "/live/", label: "Proof", icon: Radio } satisfies NavItem,
         ]
-      : nav;
+      : onPhone;
+  const settings = nav.find((n) => n.href === ACCOUNT);
   const active = (href: string) =>
     href === "/"
       ? path === "/"
@@ -133,8 +150,20 @@ export function AppShell({
         <header className="flex h-14 items-center justify-between px-5 lg:hidden">
           {/* biome-ignore lint/performance/noImgElement: a static export serves the SVG as is */}
           <img src="/keelson.svg" alt="Keelson" width={94} height={28} className="h-6 w-auto" />
-          <span className="rounded-md border px-2 py-1 font-mono text-[11px] text-muted-foreground">
-            Sandbox
+          <span className="flex items-center gap-2">
+            <span className="rounded-md border px-2 py-1 font-mono text-[11px] text-muted-foreground">
+              Sandbox
+            </span>
+            {settings ? (
+              <Link
+                href={settings.href}
+                aria-label={settings.label}
+                aria-current={active(settings.href) ? "page" : undefined}
+                className="grid size-10 place-items-center rounded-xl text-muted-foreground hover:bg-foreground/5 aria-[current=page]:bg-bone-2 aria-[current=page]:text-foreground"
+              >
+                <settings.icon className="size-5" aria-hidden="true" />
+              </Link>
+            ) : null}
           </span>
         </header>
         <main

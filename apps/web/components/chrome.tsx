@@ -21,6 +21,7 @@ const OWN_CHROME = new Set([
   "/connect/",
   "/consent/",
   "/sign-in/",
+  "/passkeys/",
 ]);
 
 export function Chrome({ children }: { children: ReactNode }) {

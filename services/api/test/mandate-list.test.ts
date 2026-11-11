@@ -74,6 +74,34 @@ beforeAll(async () => {
       invoiceId: `inv-${captured}`,
       paypalCaptureId: `cap-${captured}`,
       captureStatus: "COMPLETED",
+      evalTrace: {
+        fields: [
+          {
+            id: "amount",
+            field: "total",
+            color: "green",
+            pass: true,
+            observed: 4000,
+            bound: 10000,
+          },
+          {
+            id: "merchant",
+            field: "merchant",
+            color: "green",
+            pass: true,
+            observed: "store",
+            bound: ["store"],
+          },
+          {
+            id: "sanity",
+            field: "cart",
+            color: "green",
+            pass: true,
+            observed: { total_minor: 4000 },
+            bound: null,
+          },
+        ],
+      },
     },
     {
       ...purchase(failed, newer, new Date()),
@@ -193,6 +221,17 @@ describe("GET /v1/mandates/{id}", () => {
       capture: { id: `cap-${captured}`, status: "COMPLETED" },
       disputes: [{ id: disputeId, state: "OPEN" }],
     });
+  });
+
+  test("a countersigned purchase shows each check it passed, with both values", async () => {
+    const res = await get(`/v1/mandates/${newer}`, asUser(owner));
+    const body = (await res.json()) as { purchases: Record<string, unknown>[] };
+    const bought = body.purchases.find((p) => p.id === captured);
+    expect(bought?.checks).toEqual([
+      { field: "total", mandate: "$100.00", cart: "$40.00", pass: true },
+      { field: "merchant", mandate: "store", cart: "store", pass: true },
+    ]);
+    expect(bought).not.toHaveProperty("blocked");
   });
 
   test("carries the purchase holds still waiting for the buyer's approval", async () => {

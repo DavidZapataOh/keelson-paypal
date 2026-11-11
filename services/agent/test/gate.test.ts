@@ -21,8 +21,8 @@ const text = (r: Anthropic.Beta.BetaToolResultBlockParam) =>
     .map((b) => ("text" in b ? b.text : ""))
     .join("\n");
 
-const page = (body: string) =>
-  `<!doctype html><html><body>${body}<p id="out"></p><script>for (const b of document.querySelectorAll("button")) b.onclick = () => { document.getElementById("out").textContent = "clicked " + b.textContent; };</script></body></html>`;
+const page = (body: string, lang = "en") =>
+  `<!doctype html><html lang="${lang}"><body>${body}<p id="out"></p><script>for (const b of document.querySelectorAll("button")) b.onclick = () => { document.getElementById("out").textContent = "clicked " + b.textContent; };</script></body></html>`;
 
 const PAGES: Record<string, string> = {
   "/products/the-change": page("<h1>The Change</h1><p>$2.95</p><button>Add to cart</button>"),
@@ -36,6 +36,18 @@ const PAGES: Record<string, string> = {
   "/checkouts/cn/icon": page(
     '<p>Total $2.95 USD</p><button aria-label="x"><span id="icon">&#10148;</span> Pay now</button>',
   ),
+  "/checkouts/cn/es": page(
+    "<h1>Revisar pedido</h1><p>Total 2,95\u00a0US$</p><button>Pagar ahora</button>",
+    "es",
+  ),
+  "/checkouts/cn/es-tax": page(
+    "<p>The Change US$2,95</p><p>Impuestos US$0,18</p><p>Total US$3,13</p><button>Pagar ahora</button>",
+    "es",
+  ),
+  "/checkouts/cn/framed": page(
+    `<p>Item $2.95 USD</p><iframe srcdoc="<p>Total $5.90 USD</p>"></iframe><button>Pay now</button>`,
+  ),
+  "/checkouts/cn/nolang": page("<p>Total $2.95 USD</p><button>Pay now</button>", ""),
   "/checkouts/cn/more": page("<h1>Checkout</h1><p>Total $4.99 USD</p><button>Pay now</button>"),
   "/checkouts/cn/frame": page(
     `<h1>Checkout</h1><p>Total $2.95 USD</p><iframe srcdoc='${page("<button>Complete Purchase</button>").replaceAll("'", "&#39;")}'></iframe>`,
@@ -69,7 +81,7 @@ describe("the pay-click gate", () => {
   beforeAll(async () => {
     server = createServer((req, res) => {
       const body = PAGES[req.url ?? ""];
-      res.writeHead(body ? 200 : 404, { "content-type": "text/html" });
+      res.writeHead(body ? 200 : 404, { "content-type": "text/html; charset=utf-8" });
       res.end(body ?? "");
     });
     await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
@@ -183,5 +195,43 @@ describe("the pay-click gate", () => {
     const r = await click({ type: "ref", ref: await ref("Pay now") });
     expect(r.is_error).toBe(true);
     expect(await out()).toBe("");
+  });
+
+  test("a total written the Spanish way passes; a larger one is refused and its amounts kept", async () => {
+    gate.allow({ minor: 295, currency: "USD" });
+    await open("/checkouts/cn/es");
+    const paid = await click({ type: "ref", ref: await ref("Pagar ahora") });
+    expect(paid.is_error, JSON.stringify(gate.held)).toBeFalsy();
+    expect(await out()).toBe("clicked Pagar ahora");
+    await open("/checkouts/cn/es-tax");
+    expect((await click({ type: "ref", ref: await ref("Pagar ahora") })).is_error).toBe(true);
+    expect(gate.held).toEqual([{ locale: "es", amounts: ["USD 2.95", "USD 0.18", "USD 3.13"] }]);
+  });
+
+  test("a page that names no locale is held, even showing the total", async () => {
+    gate.allow({ minor: 295, currency: "USD" });
+    await open("/checkouts/cn/nolang");
+    expect((await click({ type: "ref", ref: await ref("Pay now") })).is_error).toBe(true);
+    expect(gate.held).toEqual([{ locale: null, amounts: [], unsure: "no locale" }]);
+  });
+
+  test("the store's own cart must hold the countersigned total too", async () => {
+    await driver.close();
+    let cart = { currency: "USD", minor: 590 };
+    gate = new PayGate({ checkoutHosts: [], cart: async () => cart });
+    driver = await StoreBrowser.attach(context, tab, { hosts: ["127.0.0.1"], gate });
+    gate.allow({ minor: 295, currency: "USD" });
+    await open("/checkouts/cn/abc");
+    expect((await click({ type: "ref", ref: await ref("Pay now") })).is_error).toBe(true);
+    expect(gate.held[0]?.cart).toBe("USD 5.90");
+    cart = { currency: "USD", minor: 295 };
+    expect((await click({ type: "ref", ref: await ref("Pay now") })).is_error).toBeFalsy();
+  });
+
+  test("a larger total inside a frame is seen", async () => {
+    gate.allow({ minor: 295, currency: "USD" });
+    await open("/checkouts/cn/framed");
+    expect((await click({ type: "ref", ref: await ref("Pay now") })).is_error).toBe(true);
+    expect(gate.held[0]?.amounts).toContain("USD 5.90");
   });
 });

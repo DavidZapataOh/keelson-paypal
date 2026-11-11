@@ -15,6 +15,7 @@ import {
 import { ArrowUpRight } from "lucide-react";
 import { useState } from "react";
 import { PAYPAL_RESOLUTION } from "../lib/config";
+import { DISPUTE_KINDS, type DisputeKind } from "../lib/dispute-kinds";
 
 /** The parts of an order a buyer can say were wrong, in the card's field ids. */
 const WRONG = ["items", "variant", "quantity", "total", "merchant", "category", "return_policy"];
@@ -41,19 +42,62 @@ export function DisputeSheet({
   card: Card;
   alibiId: string;
 }) {
-  const rows = card.rows.filter((r) => WRONG.includes(r.field));
-  const [field, setField] = useState(rows[0]?.field);
-  const row = rows.find((r) => r.field === field);
+  const [kind, setKind] = useState<DisputeKind>("error");
+  // An agent error is a detail the operator vouched for; "not what I meant" is about taste.
+  const rows = card.rows.filter(
+    (r) =>
+      WRONG.includes(r.field) &&
+      (kind === "error" ? r.color === "amber" : kind === "intent" ? r.color !== "green" : true),
+  );
+  const [field, setField] = useState<string>();
+  const row = rows.find((r) => r.field === field) ?? rows[0];
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full gap-0 sm:max-w-md">
         <SheetHeader>
-          <SheetTitle>What was wrong?</SheetTitle>
-          <SheetDescription>Pick the part that did not match what you signed.</SheetDescription>
+          <SheetTitle>What happened?</SheetTitle>
+          <SheetDescription>Pick the closest. It decides who answers.</SheetDescription>
         </SheetHeader>
         <div className="grid gap-5 overflow-y-auto px-4 pb-4">
-          <fieldset className="flex flex-wrap gap-1.5">
+          <fieldset className="grid gap-1.5">
+            <legend className="sr-only">What happened</legend>
+            {(Object.keys(DISPUTE_KINDS) as DisputeKind[]).map((k) => (
+              <label
+                key={k}
+                className="grid cursor-pointer gap-0.5 rounded-2xl border px-4 py-3 has-checked:border-foreground has-checked:bg-foreground/4 has-focus-visible:outline-2 has-focus-visible:outline-ring"
+              >
+                <input
+                  type="radio"
+                  name="kind"
+                  value={k}
+                  checked={kind === k}
+                  onChange={() => {
+                    setKind(k);
+                    setField(undefined);
+                  }}
+                  className="sr-only"
+                />
+                <span className="font-medium text-sm">{DISPUTE_KINDS[k].label}</span>
+                <span className="text-muted-foreground text-xs">{DISPUTE_KINDS[k].detail}</span>
+              </label>
+            ))}
+          </fieldset>
+          {kind === "rogue" ? (
+            <p className="flex items-start gap-2.5 rounded-2xl bg-bone-2/70 p-4 text-sm">
+              <LiabilityMark kind="verified" className="mt-0.5" />
+              Keelson blocks carts outside your mandate before payment. If one got through, Keelson
+              answers from its reserve.
+            </p>
+          ) : null}
+          {kind === "unrecognized" ? (
+            <p className="rounded-2xl bg-bone-2/70 p-4 text-sm">
+              The Alibi below shows the mandate you signed and the check this cart passed.
+            </p>
+          ) : null}
+          <fieldset
+            className={`flex flex-wrap gap-1.5 ${kind === "intent" || kind === "error" ? "" : "hidden"}`}
+          >
             <legend className="sr-only">The part that was wrong</legend>
             {rows.map((r) => (
               <label
@@ -64,7 +108,7 @@ export function DisputeSheet({
                   type="radio"
                   name="wrong"
                   value={r.field}
-                  checked={field === r.field}
+                  checked={row?.field === r.field}
                   onChange={() => setField(r.field)}
                   className="sr-only"
                 />
@@ -72,7 +116,7 @@ export function DisputeSheet({
               </label>
             ))}
           </fieldset>
-          {row ? (
+          {row && (kind === "intent" || kind === "error") ? (
             <div className="grid gap-3 rounded-2xl bg-bone-2/70 p-4">
               <p className="text-muted-foreground text-sm">You signed</p>
               <p className="font-medium">{row.values.join(", ")}</p>

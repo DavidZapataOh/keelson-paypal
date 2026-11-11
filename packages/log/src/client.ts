@@ -21,6 +21,27 @@ export const LOG_VKEYS: Readonly<Record<string, readonly [string, string]>> = {
   ],
 };
 
+/** A key set an origin signed with until its tree reached `untilSize` leaves. */
+export interface RetiredVkeys {
+  vkeys: readonly string[];
+  untilSize: bigint;
+}
+
+/**
+ * Log key sets an origin signed with before its current `LOG_VKEYS`, oldest first. A checkpoint
+ * signed then still verifies under its set, but only up to the size where the log moved on: a
+ * retired key's signature on a larger tree proves nothing.
+ */
+export const LOG_VKEY_HISTORY: Readonly<Record<string, readonly RetiredVkeys[]>> = {};
+
+/** Every key set of an origin, the current one last, with the largest size each may sign. */
+export function logVkeySets(origin: string): readonly RetiredVkeys[] {
+  const current = LOG_VKEYS[origin];
+  if (!current) return [];
+  const max = 2n ** 64n - 1n;
+  return [...(LOG_VKEY_HISTORY[origin] ?? []), { vkeys: current, untilSize: max }];
+}
+
 const OWN_WITNESSES = [
   "witness-1.keelson.finance+f179740d+BA2CNkIvGf1TnnZNrT8I4QEE3VFdcK71m1HOqlHv6INc",
   "witness-2.keelson.finance+25bcde99+BG9zFgsma2ggzGNea4Nm1oG1/011LGpfypKDmR5Qi2ox",

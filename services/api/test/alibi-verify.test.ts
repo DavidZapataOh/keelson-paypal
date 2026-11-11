@@ -89,9 +89,14 @@ describe("cross-origin reads from the verifier", () => {
     }
   });
 
-  test("the full bundle and other origins get no CORS headers", async () => {
+  test("the full bundle is readable without credentials; other origins get no CORS headers", async () => {
+    const bundle = await preflight(`/v1/alibis/${f.id}`, VERIFY);
+    expect(bundle.headers.get("access-control-allow-origin")).toBe(VERIFY);
+    expect(bundle.headers.get("access-control-allow-credentials")).toBeNull();
     expect(
-      (await preflight(`/v1/alibis/${f.id}`, VERIFY)).headers.get("access-control-allow-origin"),
+      (await preflight(`/v1/alibis/${f.id}.pdf`, VERIFY)).headers.get(
+        "access-control-allow-origin",
+      ),
     ).toBeNull();
     expect(
       (await preflight(`/v1/alibis/${f.id}/receipt`, "https://evil.example")).headers.get(

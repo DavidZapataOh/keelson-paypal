@@ -107,6 +107,11 @@ impl Signer {
         self.sign_digest(&f.eip712_signing_hash(domain).0)
     }
 
+    /// Signs the binding of an RA-TLS certificate, a digest no EIP-712 message can have.
+    pub fn sign_tls_binding(&self, digest: &[u8; 32]) -> Result<[u8; 65], Error> {
+        self.sign_digest(digest)
+    }
+
     fn sign_digest(&self, digest: &[u8; 32]) -> Result<[u8; 65], Error> {
         // k256 normalizes to low-S and flips the recovery id accordingly.
         let (signature, recovery_id) = self.key.sign_prehash_recoverable(digest);

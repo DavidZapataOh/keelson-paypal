@@ -10,7 +10,7 @@ import { authClient } from "../lib/auth";
 import { VERIFY } from "../lib/config";
 import type { AgentRow, PendingApproval } from "../lib/connections";
 import { useEvents, userChannel } from "../lib/events";
-import { money } from "../lib/format";
+import { major, money } from "../lib/format";
 import { purchaseStatus } from "../lib/status";
 import type { MandateSummary, MandateView, Purchase } from "../lib/types";
 import { useMandate } from "../lib/use-mandate";
@@ -77,6 +77,12 @@ function blockedWhy(p: Purchase): string {
   return p.failure?.reason ?? "outside your rules";
 }
 
+/** The cap check a bought cart passed, as "$89.00 ≤ $100.00 ✓". */
+function passedLine(p: Purchase): string | undefined {
+  const c = p.checks?.find((x) => x.field === "total" && x.pass);
+  return c?.cart && c.mandate ? `${c.cart} ≤ ${c.mandate} ✓` : undefined;
+}
+
 type Kind = MarkKind;
 
 function kindOf(p: Purchase): Kind {
@@ -107,7 +113,9 @@ function Row({ p, store, mandateId }: { p: Purchase; store: string; mandateId: s
           <span className="truncate font-medium">{store}</span>
           <span className="truncate text-muted-foreground text-sm">
             {SAY[kind]}
-            {kind === "blocked" ? ` · ${blockedWhy(p)}` : ` · ${time(p.createdAt)}`}
+            {kind === "blocked"
+              ? ` · ${blockedWhy(p)}`
+              : ` · ${passedLine(p) ?? time(p.createdAt)}`}
           </span>
         </span>
         <span
@@ -173,8 +181,8 @@ function Focus({
   }
 
   const { budget } = mandate;
-  const left = Number(budget.remainingMinor) / 100;
-  const max = Number(budget.maxMinor) / 100;
+  const left = major(budget.remainingMinor, budget.currency);
+  const max = major(budget.maxMinor, budget.currency);
   const store = storeNames(mandate);
   const purchases = [...mandate.purchases].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const blocked = purchases.filter((p) => kindOf(p) === "blocked");
@@ -323,7 +331,9 @@ function Focus({
             </span>
             <span className="truncate text-muted-foreground text-sm">
               {store(latestBlock.merchantId)} ·{" "}
-              {money(latestBlock.amount.minor, latestBlock.amount.currency)} ·{" "}
+              {latestBlock.reasons?.length
+                ? ""
+                : `${money(latestBlock.amount.minor, latestBlock.amount.currency)} · `}
               {blockedWhy(latestBlock)} · nothing paid
             </span>
           </span>

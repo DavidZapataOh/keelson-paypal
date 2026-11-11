@@ -50,6 +50,8 @@ export interface PurchaseView {
   blocked?: string[];
   /** For a `DENIED` cart, each failed field with what the mandate allowed and what the cart had. */
   reasons?: BlockReason[];
+  /** For a countersigned purchase, each mandate field with both values and that it held. */
+  checks?: FieldCheck[];
   /** A purchase the buyer pays at the store's own checkout: the store and PayPal's transaction. */
   live?: { store: string; transactionId: string | null };
 }
@@ -64,7 +66,7 @@ export function failedFields(trace: unknown): string[] {
 }
 
 /** A failed mandate field, its bound and the cart's value, as the buyer reads them. */
-export interface BlockReason {
+interface BlockReason {
   field: string;
   mandate: string | null;
   cart: string | null;
@@ -107,25 +109,50 @@ function shown(field: string, value: unknown, currency: string): string | null {
   return String(value);
 }
 
-/** The failed fields of the engine's evaluation trace, one per mandate field. */
-function blockReasons(trace: unknown, currency: string): BlockReason[] {
-  const fields = (trace as { fields?: FieldTrace[] } | null)?.fields;
-  if (!Array.isArray(fields)) return [];
-  const seen = new Set<string>();
-  return fields.flatMap((f) => {
-    if (f.pass !== false || typeof f.field !== "string" || seen.has(f.field)) return [];
-    seen.add(f.field);
-    return [
-      {
-        field: f.field,
-        mandate: shown(f.field, f.bound, currency),
-        cart: shown(f.field, f.observed, currency),
-      },
-    ];
-  });
+/** One mandate field as the engine checked it: both values and whether it held. */
+interface FieldCheck extends BlockReason {
+  pass: boolean;
 }
 
-const denied = (reasons: BlockReason[]) => ({ blocked: reasons.map((r) => r.field), reasons });
+/**
+ * Each mandate field of the engine's evaluation trace, once, with both sides. A field holds only
+ * if every policy reading it passed. The cart's own sanity check has no mandate side and is left
+ * out.
+ */
+function fieldChecks(trace: unknown, currency: string): FieldCheck[] {
+  const fields = (trace as { fields?: FieldTrace[] } | null)?.fields;
+  if (!Array.isArray(fields)) return [];
+  const byField = new Map<string, FieldCheck>();
+  for (const f of fields) {
+    if (typeof f.field !== "string" || f.field === "cart") continue;
+    const seen = byField.get(f.field);
+    if (seen) {
+      if (f.pass === false && seen.pass) {
+        byField.set(f.field, {
+          field: f.field,
+          mandate: shown(f.field, f.bound, currency),
+          cart: shown(f.field, f.observed, currency),
+          pass: false,
+        });
+      }
+      continue;
+    }
+    byField.set(f.field, {
+      field: f.field,
+      mandate: shown(f.field, f.bound, currency),
+      cart: shown(f.field, f.observed, currency),
+      pass: f.pass !== false,
+    });
+  }
+  return [...byField.values()];
+}
+
+function verdict(p: Row) {
+  const checks = fieldChecks(p.evalTrace, p.currency);
+  if (p.state !== "DENIED") return checks.length > 0 ? { checks } : {};
+  const reasons = checks.filter((c) => !c.pass).map(({ pass: _, ...r }) => r);
+  return { blocked: reasons.map((r) => r.field), reasons };
+}
 
 export function purchaseView(p: Row): PurchaseView {
   const failure = p.state === "FAILED" && p.failureReason ? p.failureReason : undefined;
@@ -151,7 +178,7 @@ export function purchaseView(p: Row): PurchaseView {
     ...(failure
       ? { failure: rest.length > 0 ? { step, reason: rest.join(":") } : { step, reason: failure } }
       : {}),
-    ...(p.state === "DENIED" ? denied(blockReasons(p.evalTrace, p.currency)) : {}),
+    ...verdict(p),
     ...(p.liveStore !== null
       ? { live: { store: p.liveStore, transactionId: p.paypalTransactionId } }
       : {}),

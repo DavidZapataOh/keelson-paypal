@@ -523,10 +523,13 @@ export function registerConnections(
     windowSec: 60,
     failClosed: true,
   });
-  app.use("/v1/connections/:code/*", codeLimit);
-  app.use("/v1/connections/:code", (c, next) =>
-    c.req.method === "GET" ? codeLimit(c, next) : next(),
-  );
+  // One middleware, so a request is counted once: `/:code/*` would also match `/:code`.
+  app.use("/v1/connections/*", (c, next) => {
+    const rest = c.req.path.slice("/v1/connections/".length);
+    if (rest === "token") return next();
+    if (!rest.includes("/") && c.req.method !== "GET") return next();
+    return codeLimit(c, next);
+  });
 
   app.openapi(read, async (c) => {
     const userId = (c.get("principal") as Principal).subject;

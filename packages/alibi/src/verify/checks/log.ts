@@ -1,10 +1,11 @@
 import {
   LOG_ORIGINS,
-  LOG_VKEYS,
   LOG_WITNESSES,
+  logVkeySets,
   parseWitnessPolicy,
   verifyCosignatures,
-  verifyProof,
+  type verifyProof,
+  verifyProofOfOrigin,
 } from "@keelson/log";
 import { leafHashOf } from "../../codec.ts";
 import { type CheckDef, expect, pass } from "../check.ts";
@@ -29,7 +30,7 @@ export const policy: CheckDef = {
     const p = parseWitnessPolicy(input.policy.text);
     const witnesses = LOG_WITNESSES[origin];
     expect(
-      sameJson(p.logs, LOG_VKEYS[origin]) &&
+      logVkeySets(origin).some((set) => sameJson(p.logs, set.vkeys)) &&
         witnesses !== undefined &&
         p.quorum.k === witnesses.quorum &&
         sameJson(
@@ -52,7 +53,7 @@ export const inclusion: CheckDef = {
     const origin = pinnedOrigin(proofCheckpoint(input.tlog_proof));
     let out: ReturnType<typeof verifyProof>;
     try {
-      out = verifyProof(input.tlog_proof, leafHashOf(input), LOG_VKEYS[origin] ?? []);
+      out = verifyProofOfOrigin(input.tlog_proof, leafHashOf(input), origin);
     } catch {
       expect(false, "not included", ["/tlog_proof", "/leaf"]);
     }
