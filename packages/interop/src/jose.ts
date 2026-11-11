@@ -15,3 +15,9 @@ export function sdHash(sdJwt: string): string {
 /** The payload of a compact JWS, or of the issuer JWT of an SD-JWT. */
 export const jwtPayload = (jwt: string): Record<string, unknown> =>
   decodeJwt(jwt.split("~")[0] as string) as Record<string, unknown>;
+
+/** The `sha-256` hasher `@sd-jwt/core` takes. */
+export function sha256Hasher(data: string | ArrayBuffer, alg: string): Uint8Array {
+  if (alg !== "sha-256") throw new RangeError(`unsupported _sd_alg ${alg}`);
+  return sha256(typeof data === "string" ? encoder.encode(data) : new Uint8Array(data));
+}

@@ -34,6 +34,7 @@ export interface Profile {
  */
 export const EXPORT_BINDINGS: Record<string, Profile> = {
   "keelson.export/1": { typ: "JWT", rows: [] },
+  "ap2.open/1": { typ: "sd+jwt", rows: [] },
 };
 
 /** Why an export payload cannot be signed. */

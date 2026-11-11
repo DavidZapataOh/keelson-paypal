@@ -3,5 +3,10 @@
     "profile": "keelson.export/1",
     "typ": "JWT",
     "rows": []
+  },
+  {
+    "profile": "ap2.open/1",
+    "typ": "sd+jwt",
+    "rows": []
   }
 ]
