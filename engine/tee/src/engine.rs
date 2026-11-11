@@ -9,7 +9,7 @@ use alloy_primitives::{Address, B256, U256};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use keelson_canon::{canonicalize, cart_hash};
-use keelson_core::eip712::{Countersign, WebFact};
+use keelson_core::eip712::{CardAuthorization, Countersign, WebFact};
 use keelson_core::{AcirField, currency_numeric};
 use keelson_mandate::{
     ClosedMandateVerifyOptions, EMBED_ORIGIN, Expected, Fr, Jwk, OpenMandateParams,
@@ -26,15 +26,18 @@ use p256::ecdsa::SigningKey;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use time::{Duration, OffsetDateTime};
+use ulid::Ulid;
 
 use crate::budget::{Budget, Claimed, Replay};
+use crate::cards::{Approval, CardLedger, DurableCards, card_bit};
 use crate::checkpoint::{CheckpointError, verify_checkpoint};
 use crate::logsign::{LogSigner, SignError, SignRequest, Signed};
 use crate::paypal::{HoldKind, PayPalDeny, paypal_check};
 use crate::wire::{
-    self, Base64, CheckpointRequest, CheckpointSigned, CountersignRequest, Countersigned, Hex,
-    MandateIssued, Observation, PayPalObservation, RegisterMandate, VerdictRequest, VerdictSigned,
-    WebFactJson, WebFactSigned, ZkProof,
+    self, Base64, CardAuthorizeRequest, CardAuthorized, CheckpointRequest, CheckpointSigned,
+    CountersignJson, CountersignRequest, Countersigned, Hex, MandateIssued, Observation,
+    PayPalObservation, RegisterMandate, VerdictRequest, VerdictSigned, WebFactJson, WebFactSigned,
+    ZkProof,
 };
 use crate::zk::{Prover, Statement};
 use crate::{
@@ -203,6 +206,7 @@ pub struct Engine {
     config: EngineConfig,
     boot: OffsetDateTime,
     budget: Budget,
+    cards: CardLedger,
     issuer: Option<Jwk>,
     meta: EngineMeta,
     captured: Option<Arc<dyn CapturedSource>>,
@@ -290,6 +294,7 @@ impl Engine {
             config,
             boot,
             budget: Budget::default(),
+            cards: CardLedger::default(),
             issuer,
             captured: None,
             users: None,
@@ -664,6 +669,167 @@ impl Engine {
         })
     }
 
+    /// Checks a card network authorization against the ALLOW its single-use card was issued
+    /// under, and signs the EIP-712 `CardAuthorization`, approve or decline.
+    ///
+    /// The countersign must be this leg's own ALLOW, over the card mandate the request carries.
+    /// The authorization passes only within the countersign's lifetime, in its currency, for at
+    /// most its amount, at a merchant category code and country the mandate allows for its
+    /// merchant, and as the card's first approved authorization. The answer to an approved
+    /// authorization id is the same on every retry.
+    pub fn authorize_card(
+        &self,
+        r: &CardAuthorizeRequest,
+        now: OffsetDateTime,
+    ) -> Result<CardAuthorized, EngineError> {
+        let n = &r.authorization;
+        for (s, what) in [
+            (&n.id, "authorization.id"),
+            (&n.merchant_name, "authorization.merchant_name"),
+            (&n.network_id, "authorization.network_id"),
+        ] {
+            within(s, MAX_STRING, what)?;
+        }
+        if r.disclosures.len() > MAX_DISCLOSURES {
+            return Err(EngineError::TooLarge("disclosures"));
+        }
+        for d in &r.disclosures {
+            within(d, MAX_PART, "disclosure")?;
+        }
+        let payload = serde_json::to_vec(&r.payload_sd).map_err(|_| bad("payload_sd"))?;
+        if payload.len() > MAX_PAYLOAD {
+            return Err(EngineError::TooLarge("payload_sd"));
+        }
+        let chain_id = r.chain_id.unwrap_or(self.config.chain_id);
+        let domain = keelson_core::domain(chain_id, self.config.verifying_contract)
+            .map_err(|_| bad("chain_id"))?;
+        let c = countersign_of(&r.countersign)?;
+        let digest = countersign_digest(&c, &domain);
+        if !self.signer.signed(&digest, &r.signature.0) {
+            return Err(bad("signature"));
+        }
+        let m = decode_mandate(&r.payload_sd, &r.disclosures).map_err(|_| bad("mandate"))?;
+        let cm = commitment(&m).ok_or(bad("mandate"))?;
+        let h = h_sd(&r.payload_sd).map_err(|_| bad("mandate"))?;
+        let mandate_hash = mandate_challenge(&h, &Fr::from_be_bytes_reduce(&cm));
+        if mandate_hash != c.mandateHash.0 {
+            return Err(bad("mandate"));
+        }
+        let mcc: u16 = match n.mcc.as_bytes() {
+            [a, b, c, d] if [a, b, c, d].iter().all(|x| x.is_ascii_digit()) => {
+                n.mcc.parse().map_err(|_| bad("authorization.mcc"))?
+            }
+            _ => return Err(bad("authorization.mcc")),
+        };
+        let country: [u8; 2] = match n.merchant_country.as_bytes() {
+            [a, b] if a.is_ascii_uppercase() && b.is_ascii_uppercase() => [*a, *b],
+            _ => return Err(bad("authorization.merchant_country")),
+        };
+        let amount =
+            u64::try_from(n.amount_minor).map_err(|_| bad("authorization.amount_minor"))?;
+        let now_s = now.unix_timestamp();
+        let expires_at = i64::try_from(c.expiresAt.to::<u64>()).map_err(|_| bad("countersign"))?;
+
+        // Every check is evaluated, so the mask names every reason to decline.
+        let mut failed = 0;
+        if c.decision != 1 {
+            failed |= card_bit("decision");
+        }
+        if m["payment"]["rail"] != "card" {
+            failed |= card_bit("rail");
+        }
+        if now_s >= expires_at {
+            failed |= card_bit("expired");
+        }
+        if currency_numeric(&n.currency).ok() != Some(c.currency) {
+            failed |= card_bit("currency");
+        }
+        if amount == 0 || amount > c.amount {
+            failed |= card_bit("amount");
+        }
+        let allowed = constraint(&m, "checkout", "checkout.allowed_merchants")["allowed"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|x| {
+                x["id"]
+                    .as_str()
+                    .and_then(|id| merchant_leaf(id).ok())
+                    .is_some_and(|leaf| field_bytes(&leaf) == c.merchantId.0)
+            });
+        match allowed {
+            None => failed |= card_bit("merchant"),
+            Some(x) => {
+                let codes = x["mcc"].as_array().into_iter().flatten();
+                if !codes
+                    .into_iter()
+                    .any(|k| k.as_str() == Some(n.mcc.as_str()))
+                {
+                    failed |= card_bit("mcc");
+                }
+                if x["country"].as_str() != Some(n.merchant_country.as_str()) {
+                    failed |= card_bit("country");
+                }
+            }
+        }
+        let mandate_exp = m["exp"].as_i64().ok_or(bad("mandate"))?;
+        let merchant_hash = alloy_primitives::keccak256(
+            [n.network_id.as_bytes(), &[0], n.merchant_name.as_bytes()].concat(),
+        );
+        let request_id = c.requestId.0;
+        let durable = match (&self.root, &self.users) {
+            (Some(root), Some(users)) => Some(DurableCards {
+                root,
+                users: users.as_ref(),
+            }),
+            _ => None,
+        };
+        self.cards.decide(request_id, &n.id, now_s, |used| {
+            let mut failed = failed | if used { card_bit("used") } else { 0 };
+            // Leg A's approval holds across restarts: the card's use and the mandate's charge
+            // are sealed into its records before it is signed.
+            if let (0, Some(d)) = (failed, &durable) {
+                if !d.claim_use(&request_id, &n.id) {
+                    failed |= card_bit("used");
+                } else if !d.record_spend(&mandate_hash, &request_id, n.amount_minor) {
+                    return Err(EngineError::Busy);
+                }
+            }
+            let a = CardAuthorization {
+                requestId: c.requestId,
+                countersignDigest: B256::new(digest),
+                authorizationHash: alloy_primitives::keccak256(n.id.as_bytes()),
+                merchantHash: merchant_hash,
+                mcc,
+                country: alloy_primitives::FixedBytes(country),
+                amount,
+                currency: currency_numeric(&n.currency).unwrap_or(0),
+                decision: if failed == 0 { 1 } else { 2 },
+                failedMask: failed,
+                issuedAt: uint40(now_s)?,
+            };
+            let signature = self
+                .signer
+                .sign_card_authorization(&a, &domain)
+                .map_err(EngineError::Signer)?;
+            Ok(Approval {
+                out: CardAuthorized {
+                    authorization: (&a).into(),
+                    chain_id,
+                    digest: Hex(alloy_sol_types::SolStruct::eip712_signing_hash(&a, &domain).0),
+                    signature: Hex(signature),
+                    signer: self.signer.address(),
+                    tee: self.config.tee_kind,
+                },
+                approves: failed == 0,
+                mandate_hash,
+                mandate_exp,
+                amount: n.amount_minor,
+                forget_at: expires_at.max(now_s).saturating_add(COUNTERSIGN_TTL),
+            })
+        })
+    }
+
     /// [`Engine::countersign`] on leg A over a PayPal reading made for this request.
     ///
     /// With `paypal`, the amount captured is the one it reports, and the cart is denied unless
@@ -680,13 +846,14 @@ impl Engine {
         let chain_id = r.chain_id.unwrap_or(self.config.chain_id);
         let domain = keelson_core::domain(chain_id, self.config.verifying_contract)
             .map_err(|_| bad("chain_id"))?;
-        let captured = match (&self.root, &r.observation, &paypal) {
+        // Leg A without a PayPal reading reads what was spent from its captured source, or for a
+        // card mandate from its own card ledger; which one is known once the mandate is read.
+        let ledger = match (&self.root, &r.observation, &paypal) {
             (Some(_), Some(_), _) | (None, None, _) | (None, _, Some(_)) => {
                 return Err(bad("observation"));
             }
-            (Some(_), None, Some(_)) => None,
-            (Some(_), None, None) => Some(self.captured.as_ref().ok_or(EngineError::NotReady)?),
-            (None, Some(_), None) => None,
+            (Some(_), None, None) => true,
+            (Some(_), None, Some(_)) | (None, Some(_), None) => false,
         };
         let observed = paypal
             .as_ref()
@@ -755,15 +922,49 @@ impl Engine {
         let context = canonicalize(&r.cart, &r.unit);
         let total = context.as_ref().map_or(0, |c| c.total_minor);
         let amount = u64::try_from(total).map_err(|_| bad("cart"))?;
-        let captured = match (captured, &paypal) {
+        // A card mandate spends on single-use cards. Leg A counts what its cards approved from
+        // its sealed records and, when the mandate's PayPal hold is read, counts the charges
+        // already collected from the hold as PayPal reports them and the rest from the records.
+        let card = m["payment"]["rail"] == "card";
+        let spends = match (&self.root, &self.users) {
+            (Some(root), Some(users)) if card => DurableCards {
+                root,
+                users: users.as_ref(),
+            }
+            .spends(&a.mandate_hash),
+            _ => Vec::new(),
+        };
+        let recorded = |collected: &BTreeMap<Ulid, i64>| {
+            spends
+                .iter()
+                .filter(|(id, _)| {
+                    let ulid =
+                        Ulid::from(u128::from_be_bytes(id[16..].try_into().expect("16 bytes")));
+                    !collected.contains_key(&ulid)
+                })
+                .fold(0i64, |n, (_, amount)| n.saturating_add(*amount))
+        };
+        let captured = match (ledger, &paypal) {
+            (true, _) if card => self
+                .cards
+                .spent(&a.mandate_hash, now_s)
+                .max(recorded(&BTreeMap::new())),
+            (false, Some(read)) if card => read
+                .captured_minor
+                .max(read.order_captured_minor)
+                .max(0)
+                .saturating_add(recorded(&read.captured_by_request)),
             // A negative capture would raise the budget past its max.
-            (Some(source), _) => source
+            (true, _) => self
+                .captured
+                .as_ref()
+                .ok_or(EngineError::NotReady)?
                 .captured_minor(&a.mandate_hash)
                 .ok_or(EngineError::NotReady)?
                 .max(0),
             // Every capture of the order spends the mandate, a reauthorized parent's included.
-            (None, Some(read)) => read.captured_minor.max(read.order_captured_minor).max(0),
-            (None, None) => 0,
+            (false, Some(read)) => read.captured_minor.max(read.order_captured_minor).max(0),
+            (false, None) => 0,
         };
         let no_captures = BTreeMap::new();
         let captured_by = paypal
@@ -1370,6 +1571,33 @@ fn request_digest(r: &CountersignRequest) -> Result<[u8; 32], EngineError> {
 }
 
 /// `sha256:<hex>`.
+/// The `Countersign` its JSON form names.
+fn countersign_of(j: &CountersignJson) -> Result<Countersign, EngineError> {
+    fn num<T: std::str::FromStr>(s: &str) -> Result<T, EngineError> {
+        s.parse().map_err(|_| bad("countersign"))
+    }
+    let issued: u64 = num(&j.issued_at)?;
+    let expires: u64 = num(&j.expires_at)?;
+    Ok(Countersign {
+        requestId: B256::new(j.request_id.0),
+        mandateHash: B256::new(j.mandate_hash.0),
+        mandateCommitment: B256::new(j.mandate_commitment.0),
+        cartHash: B256::new(j.cart_hash.0),
+        agentId: U256::from_str_radix(&j.agent_id, 10).map_err(|_| bad("countersign"))?,
+        merchantId: B256::new(j.merchant_id.0),
+        amount: num(&j.amount)?,
+        currency: num(&j.currency)?,
+        category: num(&j.category)?,
+        evidenceRoot: B256::new(j.evidence_root.0),
+        evalHash: B256::new(j.eval_hash.0),
+        policySetHash: B256::new(j.policy_set_hash.0),
+        decision: num(&j.decision)?,
+        failedFieldsMask: num(&j.failed_fields_mask)?,
+        issuedAt: U40::try_from(issued).map_err(|_| bad("countersign"))?,
+        expiresAt: U40::try_from(expires).map_err(|_| bad("countersign"))?,
+    })
+}
+
 fn sha256_tag(digest: &[u8; 32]) -> String {
     let hex = Hex(*digest).to_string();
     format!("sha256:{}", &hex[2..])

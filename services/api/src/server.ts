@@ -208,7 +208,7 @@ const app = createApp({
   // The public RPCs the browser verifier uses: a report never names the API's keyed RPC URL.
   alibiChain: createChainReader(),
   passkeyRpId: env.PASSKEY_RP_ID,
-  authenticate: authenticate(auth, env.BETTER_AUTH_URL),
+  authenticate: authenticate(auth, env.BETTER_AUTH_URL, kv),
   authBaseUrl: env.BETTER_AUTH_URL,
   demoAgentId: env.DEMO_AGENT_ID,
   judgeInvite: env.JUDGE_INVITE_CODE,

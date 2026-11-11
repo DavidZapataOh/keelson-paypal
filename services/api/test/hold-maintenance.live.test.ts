@@ -321,6 +321,19 @@ describe.skipIf(!live)("hold maintenance (live sandbox)", { timeout: 600_000 }, 
     expect((await reconcileHold(deps, mid)).effect).toBe("unchanged");
   });
 
+  test("a pending hold whose order PayPal no longer has ends as EXPIRED, once", async () => {
+    const { sub, mid } = await h.signed();
+    await h.hold(sub, mid);
+    // PayPal drops an order the buyer never approved; an id it never issued answers the same 404.
+    await testDb
+      .update(mandates)
+      .set({ paypalOrderId: "0NOTANORDER00000" })
+      .where(eq(mandates.id, mid));
+    expect((await reconcileHold(deps, mid)).effect).toBe("applied");
+    expect(await row(mid)).toMatchObject({ state: "EXPIRED", holdError: "paypal:NOT_FOUND" });
+    expect((await reconcileHold(deps, mid)).effect).toBe("unchanged");
+  });
+
   test("a pending hold authorized directly on PayPal becomes ACTIVE on reconcile", async () => {
     const { sub, mid } = await h.signed();
     const held = await h.hold(sub, mid);

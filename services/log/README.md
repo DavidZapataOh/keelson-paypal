@@ -200,6 +200,23 @@ without padding.
 Leaves are at most 1,024 bytes. The Go parser is [`internal/alibilog`](../../internal/alibilog) and the
 TypeScript builder is [`@keelson/log`](../../packages/log).
 
+### Stop leaves
+
+When a user stops every agent at once, the API appends a stop leaf through `POST /<origin>/stop`
+(the private listener, with the write token). A stop carries no TEE countersign: it is Keelson's
+own assertion, and what it commits Keelson to is checkable. The API appends it once no purchase of
+the stopped mandates can still be logged:
+
+```
+leaf = "keelson.finance/stop/v1\n" || JCS({issued_at, mandate_count, mandates_digest, stop_id})
+mandates_digest = SHA-256(mandate_hash_1 ‖ … ‖ mandate_hash_n), sorted bytewise, no repeats
+```
+
+`stop_id` is a ULID, `issued_at` RFC 3339 UTC seconds, `mandate_count` the number of hashes. The
+API publishes the stopped mandate hashes with the stop, so anyone can recompute the digest and check
+that no Alibi leaf at a later index carries one of them. One `stop_id` gets one leaf, as one
+purchase does. The monitor counts a well-formed stop leaf as no finding.
+
 ## Verify with any tlog-tiles client
 
 With [torchwood](https://pkg.go.dev/filippo.io/torchwood), a proof returned by the log

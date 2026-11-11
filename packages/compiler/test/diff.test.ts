@@ -472,7 +472,12 @@ describe("toMandate", () => {
 
 describe("merging two drafts", () => {
   const names = [
-    ...dir.flatMap((m) => [m.name, m.name.toLowerCase(), new URL(m.website).hostname, m.id]),
+    ...dir.flatMap((m) => [
+      m.name,
+      m.name.toLowerCase(),
+      ...(m.website ? [new URL(m.website).hostname] : []),
+      m.id,
+    ]),
     "Shoe Barn",
   ];
   const categories = ["gpt:187", "gpt:166", "gpt:988"];

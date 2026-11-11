@@ -1336,6 +1336,67 @@ components:
         - merchant
         - mandateId
         - expiresAt
+    AgentStop:
+      type: object
+      properties:
+        id:
+          type: string
+        revoked:
+          type: integer
+          description: Mandates ended.
+        released:
+          type: array
+          items:
+            type: object
+            properties:
+              currency:
+                type: string
+              minor:
+                type: string
+            required:
+              - currency
+              - minor
+          description: What PayPal held for them, per currency, now released.
+        mandateHashes:
+          type: array
+          items:
+            type: string
+          description: "Hex of the stopped mandates' hashes. The stop leaf commits to
+            their digest: no Alibi leaf after it may carry one."
+        releasing:
+          type: array
+          items:
+            type: object
+            properties:
+              currency:
+                type: string
+              minor:
+                type: string
+            required:
+              - currency
+              - minor
+          description: "Holds backing purchases already countersigned: released once those
+            are captured."
+        logIndexes:
+          type: object
+          additionalProperties:
+            type: string
+          description: The stop leaf's index in each Alibi log origin. It is appended once
+            no purchase of the stopped mandates can still be logged, so no Alibi
+            leaf after it carries one of their hashes.
+        logged:
+          type: boolean
+        createdAt:
+          type: string
+      required:
+        - id
+        - revoked
+        - released
+        - mandateHashes
+        - releasing
+        - logIndexes
+        - logged
+        - createdAt
     AgentsRevoked:
       type: object
       properties:
@@ -1362,6 +1423,7 @@ components:
               - currency
               - budget
               - merchant
+              - card
               - deadline
               - quantity
               - items
@@ -1557,6 +1619,7 @@ components:
               type: string
               enum:
                 - paypal
+                - card
             currency:
               type: string
               enum:
@@ -1704,6 +1767,25 @@ components:
                       - type
                       - not_after
                     additionalProperties: false
+                  - type: object
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - payment.card_controls
+                      single_use:
+                        type: boolean
+                        enum:
+                          - true
+                      mcc_table:
+                        type: string
+                        enum:
+                          - v1
+                    required:
+                      - type
+                      - single_use
+                      - mcc_table
+                    additionalProperties: false
           required:
             - rail
             - currency
@@ -1735,11 +1817,43 @@ components:
                               type: string
                             paypal_merchant_id:
                               type: string
+                            mcc:
+                              type: array
+                              items:
+                                type: string
+                                enum:
+                                  - "4111"
+                                  - "4121"
+                                  - "5300"
+                                  - "5310"
+                                  - "5311"
+                                  - "5411"
+                                  - "5441"
+                                  - "5462"
+                                  - "5499"
+                                  - "5651"
+                                  - "5661"
+                                  - "5691"
+                                  - "5732"
+                                  - "5734"
+                                  - "5812"
+                                  - "5814"
+                                  - "5912"
+                                  - "5941"
+                                  - "5942"
+                                  - "5945"
+                                  - "5977"
+                                  - "5992"
+                                  - "5995"
+                                  - "5999"
+                                  - "7832"
+                              minItems: 1
+                            country:
+                              type: string
+                              pattern: ^[A-Z]{2}$
                           required:
                             - id
                             - name
-                            - website
-                            - paypal_merchant_id
                           additionalProperties: false
                         minItems: 1
                     required:
@@ -7294,14 +7408,16 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
-  /v1/agents/freeze:
+  /v1/agents/stop:
     post:
       tags:
         - agents
-      summary: Freeze all agents
-      description: Revokes every live mandate of yours and ends every connection.
-        Keelson refuses every countersign for you from now on; purchases already
-        countersigned may still be captured.
+      summary: Stop all agents
+      description: The kill switch. Keelson refuses every countersign of a mandate of
+        yours stored before now, revokes every live mandate and voids its PayPal
+        holds, denies every open request, revokes every agent's OAuth grant, and
+        logs the stop as a `keelson.finance/stop/v1` leaf in the Alibi log.
+        Purchases already countersigned may still be captured.
       parameters:
         - schema:
             type: string
@@ -7312,11 +7428,37 @@ paths:
           in: header
       responses:
         "200":
-          description: Frozen
+          description: Stopped
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AgentsRevoked"
+                $ref: "#/components/schemas/AgentStop"
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/agents/stops:
+    get:
+      tags:
+        - agents
+      summary: Your stops
+      description: Each time you stopped all agents, newest first, with its log index.
+      responses:
+        "200":
+          description: The stops
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stops:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AgentStop"
+                required:
+                  - stops
         "401":
           description: Not signed in
           content:
