@@ -10212,11 +10212,29 @@ paths:
           description: "The alibi id: the purchase's ULID."
           name: id
           in: path
+        - schema:
+            type: string
+            enum:
+              - "1"
+              - "2"
+            description: "`2`: the Alibi as an IETF SCITT transparent statement (RFC 9943).
+              A v1 Alibi is served as the bridge statement that carries its
+              countersigned facts, once there is one."
+          required: false
+          description: "`2`: the Alibi as an IETF SCITT transparent statement (RFC 9943).
+            A v1 Alibi is served as the bridge statement that carries its
+            countersigned facts, once there is one."
+          name: version
+          in: query
       responses:
         "200":
           description: The bundle
           content:
             application/vnd.keelson.alibi.v1+json:
+              schema:
+                type: string
+                format: binary
+            application/vnd.keelson.alibi.v2+json:
               schema:
                 type: string
                 format: binary

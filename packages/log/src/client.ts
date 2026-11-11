@@ -151,13 +151,29 @@ export class LogClient {
     return this.post("stop", { leaf: btoa(String.fromCharCode(...leaf)) });
   }
 
-  private async post(path: "add" | "stop", body: unknown): Promise<AppendResult> {
+  /**
+   * The inclusion proof and receipt of the leaf at `index` in the latest checkpoint: what a leaf
+   * logged under an earlier log key is proven with now.
+   */
+  async prove(index: bigint): Promise<Omit<AppendResult, "leafHash">> {
+    const { leafHash: _, ...out } = await this.request(`proof?index=${index}`);
+    return out;
+  }
+
+  private post(path: "add" | "stop", body: unknown): Promise<AppendResult> {
+    return this.request(path, body);
+  }
+
+  private async request(path: string, body?: unknown): Promise<AppendResult> {
     let res: Response;
     try {
       res = await fetch(`${this.base}/${path}`, {
-        method: "POST",
-        headers: { authorization: `Bearer ${this.token}`, "content-type": "application/json" },
-        body: JSON.stringify(body),
+        method: body === undefined ? "GET" : "POST",
+        headers: {
+          authorization: `Bearer ${this.token}`,
+          ...(body === undefined ? {} : { "content-type": "application/json" }),
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
         signal: AbortSignal.timeout(this.timeoutMs),
       });
     } catch (err) {
@@ -169,11 +185,11 @@ export class LogClient {
     const answer = (await res.json().catch(() => ({}))) as Record<string, string>;
     if (res.status === 200) {
       const { index, leafHash, proof, checkpoint, receipt } = answer;
-      if (!index || !leafHash || !proof || !checkpoint)
+      if (!index || (!leafHash && body !== undefined) || !proof || !checkpoint)
         throw new LogError("unreachable", "malformed");
       return {
         index: BigInt(index),
-        leafHash: hexToBytes(leafHash),
+        leafHash: leafHash ? hexToBytes(leafHash) : new Uint8Array(),
         proof,
         checkpoint,
         ...(receipt ? { receipt: Uint8Array.from(atob(receipt), (c) => c.charCodeAt(0)) } : {}),

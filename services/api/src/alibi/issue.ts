@@ -3,6 +3,7 @@ import "../tee/attest.ts";
 import {
   ALIBI_MEDIA_TYPE,
   type AlibiBundle,
+  type AlibiBundleV2,
   alibiSchema,
   encodeAlibi,
   MAX_ALIBI_BYTES,
@@ -650,7 +651,7 @@ async function cartOf(db: Db, b: AlibiBundle): Promise<{ cart?: Record<string, J
  * The public copy of an Alibi: the mandate presented without the user's login id and risk data.
  * Their digests stay in the signed payload, so the copy verifies as the original does.
  */
-export function publicCopy(b: AlibiBundle): AlibiBundle {
+export function publicCopy<T extends AlibiBundle | AlibiBundleV2>(b: T): T {
   return {
     ...b,
     mandate: {

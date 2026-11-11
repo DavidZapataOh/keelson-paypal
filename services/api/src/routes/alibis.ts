@@ -2,10 +2,12 @@ import { createHash } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import {
   ALIBI_MEDIA_TYPE,
+  ALIBI_MEDIA_TYPE_V2,
   type AlibiBundle,
   AlibiFormatError,
   decodeAlibi,
   encodeAlibi,
+  encodeAny,
   encodeReceipt,
   receiptOf,
 } from "@keelson/alibi";
@@ -13,6 +15,7 @@ import { renderAlibiPdf } from "@keelson/alibi/pdf";
 import { verifyAlibi } from "@keelson/alibi/verify";
 import { and, eq, evidenceBundles, mandates, purchases, user } from "@keelson/db";
 import type { Context } from "hono";
+import { loadBridge } from "../alibi/bridge.ts";
 import { loadAlibi, publicCopy } from "../alibi/issue.ts";
 import type { Deps } from "../app.ts";
 import type { Principal } from "../principal.ts";
@@ -36,11 +39,22 @@ const bundleRoute = createRoute({
   summary: "An alibi bundle",
   description:
     "The purchase's Alibi: its RFC 8785 bundle, readable by the mandate's user or, with `alibis:read`, by the client that uploaded the purchase's evidence; the Alibi of a live purchase, once its PayPal transaction is recorded, by anyone. Anyone else gets its public copy, whose mandate withholds the user's login id and risk data: their salted digests stay in the signed payload, so the copy verifies the same. It grows as timestamps, the capture and the on-chain anchor arrive; earlier sections never change.",
-  request: { params: z.object({ id: Id }) },
+  request: {
+    params: z.object({ id: Id }),
+    query: z.object({
+      version: z.enum(["1", "2"]).optional().openapi({
+        description:
+          "`2`: the Alibi as an IETF SCITT transparent statement (RFC 9943). A v1 Alibi is served as the bridge statement that carries its countersigned facts, once there is one.",
+      }),
+    }),
+  },
   responses: {
     200: {
       description: "The bundle",
-      content: { [ALIBI_MEDIA_TYPE]: { schema: z.string().openapi({ format: "binary" }) } },
+      content: {
+        [ALIBI_MEDIA_TYPE]: { schema: z.string().openapi({ format: "binary" }) },
+        [ALIBI_MEDIA_TYPE_V2]: { schema: z.string().openapi({ format: "binary" }) },
+      },
     },
     304: { description: "The bundle has not changed" },
     404: notFound,
@@ -219,7 +233,7 @@ const etagOf = (bundle: Uint8Array, kind: string) =>
 async function send(
   c: Context,
   bundle: Uint8Array,
-  kind: "alibi" | "pdf",
+  kind: "alibi" | "alibi2" | "pdf",
   body: () => Promise<Uint8Array> | Uint8Array,
   headers: Record<string, string> = {},
 ) {
@@ -229,7 +243,10 @@ async function send(
   c.header("Vary", "Cookie, Authorization", { append: true });
   for (const [k, v] of Object.entries(headers)) c.header(k, v);
   if (c.req.header("if-none-match") === etag) return c.body(null, 304);
-  c.header("Content-Type", kind === "pdf" ? "application/pdf" : ALIBI_MEDIA_TYPE);
+  c.header(
+    "Content-Type",
+    kind === "pdf" ? "application/pdf" : kind === "alibi2" ? ALIBI_MEDIA_TYPE_V2 : ALIBI_MEDIA_TYPE,
+  );
   return c.body((await body()) as Uint8Array<ArrayBuffer>, 200);
 }
 
@@ -237,9 +254,12 @@ export function registerAlibis(
   app: OpenAPIHono,
   deps: Pick<Deps, "db" | "alibiChain" | "demoAgentId">,
 ): void {
-  const readable = async (c: Context, id: string) => {
+  const levelOf = async (c: Context, id: string) => {
     const b = await loadAlibi(deps.db, id);
-    const level = b && (await access(deps, c.get("principal"), b));
+    return { b, level: b && (await access(deps, c.get("principal"), b)) };
+  };
+  const readable = async (c: Context, id: string) => {
+    const { b, level } = await levelOf(c, id);
     return level === "full" ? b : level === "public" ? publicCopy(b as AlibiBundle) : null;
   };
   const missing = (c: Context) =>
@@ -258,6 +278,13 @@ export function registerAlibis(
 
   app.openapi(bundleRoute, (async (c: Context) => {
     const { id } = c.req.param() as { id: string };
+    if (c.req.query("version") === "2") {
+      const { level } = await levelOf(c, id);
+      const v2 = level ? await loadBridge(deps.db, id) : null;
+      if (!v2) return missing(c);
+      const bytes = encodeAny(level === "full" ? v2 : publicCopy(v2));
+      return send(c, bytes, "alibi2", () => bytes);
+    }
     const b = await readable(c, id);
     if (!b) return missing(c);
     const bytes = encodeAlibi(b);
