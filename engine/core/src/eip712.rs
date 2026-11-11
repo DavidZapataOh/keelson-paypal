@@ -101,6 +101,20 @@ sol! {
         uint256 deadline;
     }
 
+    struct CardAuthorization {
+        bytes32 requestId;
+        bytes32 countersignDigest;
+        bytes32 authorizationHash;
+        bytes32 merchantHash;
+        uint16 mcc;
+        bytes2 country;
+        uint64 amount;
+        uint16 currency;
+        uint8 decision;
+        uint32 failedMask;
+        uint40 issuedAt;
+    }
+
     struct WebFact {
         bytes32 hostHash;
         bytes32 urlPathHash;

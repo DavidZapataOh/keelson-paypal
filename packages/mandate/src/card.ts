@@ -9,7 +9,7 @@ import {
   fieldColors,
 } from "./colors.ts";
 import { mandateCommitment } from "./commitment.ts";
-import { ANY_ITEM, CATEGORY_TABLE, type Mandate } from "./schema.ts";
+import { ANY_ITEM, ANY_MERCHANT, CATEGORY_TABLE, type Mandate } from "./schema.ts";
 import { buildSdPayload, decodeMandate } from "./sd.ts";
 import { type SpcDetails, spcDetails } from "./spc.ts";
 
@@ -47,6 +47,7 @@ const LABELS: Record<FieldId, string> = {
   currency: "Currency",
   budget: "Budget",
   merchant: "Merchant",
+  card: "Payment card",
   deadline: "Buy by",
   quantity: "Quantity",
   agent: "Agent",
@@ -85,6 +86,35 @@ export const CATEGORY_LABELS: Readonly<Record<string, string>> = {
   "gpt:187": "Apparel & Accessories > Shoes",
 };
 
+/** English names of the {@link MCC_TABLE} codes (ISO 18245). */
+export const MCC_LABELS: Readonly<Record<string, string>> = {
+  "5411": "Grocery stores and supermarkets",
+  "5441": "Candy, nut and confectionery stores",
+  "5462": "Bakeries",
+  "5499": "Food stores and coffee shops",
+  "5812": "Restaurants",
+  "5814": "Fast food restaurants",
+  "5300": "Wholesale clubs",
+  "5310": "Discount stores",
+  "5311": "Department stores",
+  "5651": "Family clothing stores",
+  "5661": "Shoe stores",
+  "5691": "Clothing stores",
+  "5732": "Electronics stores",
+  "5734": "Computer software stores",
+  "5912": "Drug stores and pharmacies",
+  "5941": "Sporting goods stores",
+  "5942": "Book stores",
+  "5945": "Hobby, toy and game shops",
+  "5977": "Cosmetic stores",
+  "5992": "Florists",
+  "5995": "Pet shops and pet supplies",
+  "5999": "Specialty retail stores",
+  "4111": "Commuter transport",
+  "4121": "Taxis and limousines",
+  "7832": "Movie theaters",
+};
+
 /** Decimal places of the bond assets the card can format; other assets are shown in minor units. */
 const ASSET_DECIMALS: Readonly<Record<string, number>> = { PYUSD: 6 };
 
@@ -118,12 +148,24 @@ function values(m: Mandate): Partial<Record<FieldId, string[]>> {
     if (c.type === "payment.amount_range") out.total = [money(m, c.max)];
     else if (c.type === "payment.budget") out.budget = [money(m, c.max)];
     else if (c.type === "payment.execution_date") out.deadline = [c.not_after];
+    else if (c.type === "payment.card_controls") {
+      out.card = [
+        "A single-use virtual card, issued only after Keelson allows the cart",
+        "Capped at the allowed total, and only at the stores above",
+        "Each card authorization is checked again by both enclaves",
+      ];
+    }
   }
   for (const c of m.checkout.constraints) {
     if (c.type === "checkout.allowed_merchants") {
-      out.merchant = c.allowed.map(
-        (x) => `${x.name} (${host(x.website)}, PayPal ${x.paypal_merchant_id})`,
-      );
+      out.merchant = c.allowed.map((x) => {
+        if (m.payment.rail === "paypal") {
+          return `${x.name} (${host(x.website ?? "")}, PayPal ${x.paypal_merchant_id})`;
+        }
+        const codes = (x.mcc ?? []).map((k) => `${MCC_LABELS[k] ?? "MCC"} (${k})`).join(", ");
+        const store = x.id === ANY_MERCHANT ? "Any store" : x.name;
+        return `${store} in ${x.country}: ${codes}`;
+      });
     } else if (c.type === "checkout.line_items") {
       out.quantity = [String(c.items.reduce((n, i) => n + i.quantity, 0))];
       out.items = c.items.map((i) =>

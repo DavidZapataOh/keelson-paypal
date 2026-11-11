@@ -68,7 +68,10 @@ function normalize(d: Draft): Draft {
   const merchant = (name: string) => {
     const n = name.trim().toLowerCase();
     const m = system.merchants.find(
-      (m) => m.id === n || m.name.toLowerCase() === n || host(m.website) === host(n),
+      (m) =>
+        m.id === n ||
+        m.name.toLowerCase() === n ||
+        (m.website !== undefined && host(m.website) === host(n)),
     );
     return m?.id ?? n;
   };

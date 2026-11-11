@@ -139,13 +139,18 @@ func (o *origin) appendOnce(ctx context.Context, leaf []byte) (*appendResult, er
 	if err != nil {
 		return nil, err
 	}
+	return o.appendClaimed(ctx, l.AlibiID, leaf)
+}
+
+// appendClaimed appends the leaf under claim, which no other leaf may hold.
+func (o *origin) appendClaimed(ctx context.Context, claim string, leaf []byte) (*appendResult, error) {
 	h := alibilog.LeafHash(leaf)
-	unlock := o.claims.lock(l.AlibiID)
+	unlock := o.claims.lock(claim)
 	defer unlock()
-	if err := o.claims.check(l.AlibiID, h); err != nil {
+	if err := o.claims.check(claim, h); err != nil {
 		return nil, err
 	}
-	if err := o.claims.record(l.AlibiID, h); err != nil {
+	if err := o.claims.record(claim, h); err != nil {
 		return nil, err
 	}
 	return o.append(context.WithoutCancel(ctx), leaf)
@@ -287,6 +292,41 @@ func (s *server) private() http.Handler {
 				"to":    strconv.FormatUint(to, 10),
 				"proof": proof,
 			})
+		})
+		// A stop names no purchase and carries no countersign: the API's token is its
+		// authority, and the leaf's index orders it before every Alibi it forbids.
+		mux.HandleFunc("POST /"+o.path+"/stop", func(w http.ResponseWriter, r *http.Request) {
+			if !s.authorized(r) {
+				writeJSON(w, http.StatusUnauthorized, map[string]string{"code": "unauthorized"})
+				return
+			}
+			dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10))
+			dec.DisallowUnknownFields()
+			var req struct {
+				Leaf []byte `json:"leaf"`
+			}
+			if err := dec.Decode(&req); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"code": "request.malformed"})
+				return
+			}
+			stop, err := alibilog.ParseStop(req.Leaf)
+			if err != nil {
+				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"code": code(err)})
+				return
+			}
+			res, err := o.appendClaimed(r.Context(), "stop-"+stop.StopID, req.Leaf)
+			switch {
+			case errors.Is(err, errClaimed):
+				writeJSON(w, http.StatusConflict, map[string]string{"code": "leaf.duplicate"})
+			case errors.Is(err, tessera.ErrPushback):
+				w.Header().Set("Retry-After", "1")
+				writeJSON(w, http.StatusTooManyRequests, map[string]string{"code": "pushback"})
+			case err != nil:
+				s.log.Error("append stop", "origin", o.name, "err", err)
+				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"code": "unavailable"})
+			default:
+				writeJSON(w, http.StatusOK, res)
+			}
 		})
 		mux.HandleFunc("POST /"+o.path+"/add", func(w http.ResponseWriter, r *http.Request) {
 			if !s.authorized(r) {

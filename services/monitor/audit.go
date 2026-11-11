@@ -35,7 +35,15 @@ func audit(ctx context.Context, fetch client.EntryBundleFetcherFunc, rng *compac
 		}
 		for i, leaf := range bundle.Entries[start:n] {
 			index := first + uint64(i)
-			l, err := alibilog.Parse(leaf)
+			var l *alibilog.Leaf
+			var err error
+			if alibilog.IsStop(leaf) {
+				// A user stopped every agent: well-formed, it is no finding.
+				_, err = alibilog.ParseStop(leaf)
+				l = &alibilog.Leaf{}
+			} else {
+				l, err = alibilog.Parse(leaf)
+			}
 			switch {
 			case err != nil && len(res.findings) < maxFindings:
 				res.findings = append(res.findings, Finding{Kind: "leaf.format", Index: &index, Detail: err.Error()})

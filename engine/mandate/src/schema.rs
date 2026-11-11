@@ -8,6 +8,19 @@ use crate::{CATEGORY_IDS, Error};
 /// what the user wants and is not blank.
 pub const ANY_ITEM: &str = "*";
 
+/// The `checkout.allowed_merchants` id that stands for any merchant of a `card` mandate. It is
+/// then the only merchant, and its `mcc` and `country` bind every card authorization.
+pub const ANY_MERCHANT: &str = "*";
+
+/// Merchant category code table, version `v1`: the ISO 18245 codes a card mandate may allow.
+/// Entries are only ever appended; mirrors `MCC_TABLE` in the TypeScript schema.
+pub const MCC_TABLE_VERSION: &str = "v1";
+pub const MCC_CODES: [&str; 25] = [
+    "5411", "5441", "5462", "5499", "5812", "5814", "5300", "5310", "5311", "5651", "5661", "5691",
+    "5732", "5734", "5912", "5941", "5942", "5945", "5977", "5992", "5995", "5999", "4111", "4121",
+    "7832",
+];
+
 /// Maximum lifetime of a mandate, in seconds.
 pub const MAX_LIFETIME_SECONDS: i64 = 30 * 86400;
 
@@ -25,11 +38,17 @@ const CURRENCIES: [&str; 24] = [
     "TWD", "NZD", "NOK", "PHP", "PLN", "GBP", "SGD", "SEK", "CHF", "THB", "USD",
 ];
 
-const PAYMENT_REQUIRED: [&str; 4] = [
+const PAYPAL_REQUIRED: [&str; 4] = [
     "payment.amount_range",
     "payment.budget",
     "payment.allowed_payees",
     "payment.execution_date",
+];
+const CARD_REQUIRED: [&str; 4] = [
+    "payment.amount_range",
+    "payment.budget",
+    "payment.execution_date",
+    "payment.card_controls",
 ];
 const CHECKOUT_OPTIONAL: [&str; 4] = [
     "checkout.line_items",
@@ -378,6 +397,12 @@ fn payment_constraint(c: &Value, path: &str) -> Result {
         "payment.execution_date" => strict(c, path, &["type", "not_after"], |o| {
             matching(get(o, "not_after"), &p("not_after"), is_datetime).map(drop)
         }),
+        "payment.card_controls" => strict(c, path, &["type", "single_use", "mcc_table"], |o| {
+            if get(o, "single_use") != &Value::Bool(true) {
+                return Err(invalid(&p("single_use"), "expected true"));
+            }
+            literal(get(o, "mcc_table"), &p("mcc_table"), MCC_TABLE_VERSION)
+        }),
         _ => Err(invalid(&p("type"), "invalid discriminator")),
     }
 }
@@ -390,24 +415,48 @@ fn category(v: &Value, path: &str) -> Result {
     Ok(())
 }
 
+/// A merchant code from [`MCC_CODES`].
+fn mcc(v: &Value, path: &str) -> Result {
+    if !MCC_CODES.contains(&string(v, path)?) {
+        return Err(invalid(path, "unknown merchant category code"));
+    }
+    Ok(())
+}
+
+/// A merchant: `website` and `paypal_merchant_id` for a `paypal` mandate, `mcc` and `country` for
+/// a `card` one. Which of the optional keys a rail requires is checked by [`parse_mandate`].
 fn merchant(v: &Value, path: &str) -> Result {
     strict(
         v,
         path,
-        &["id", "name", "website", "paypal_merchant_id"],
+        &[
+            "id",
+            "name",
+            "website?",
+            "paypal_merchant_id?",
+            "mcc?",
+            "country?",
+        ],
         |m| {
             text(get(m, "id"), &join(path, "id"), SHORT, false)?;
             text(get(m, "name"), &join(path, "name"), SHORT, false)?;
-            if matching(get(m, "website"), &join(path, "website"), is_website)?.len() > URL {
+            if let Some(w) = m.get("website")
+                && matching(w, &join(path, "website"), is_website)?.len() > URL
+            {
                 return Err(invalid(&join(path, "website"), "too long"));
             }
-            text(
-                get(m, "paypal_merchant_id"),
-                &join(path, "paypal_merchant_id"),
-                SHORT,
-                false,
-            )
-            .map(drop)
+            if let Some(id) = m.get("paypal_merchant_id") {
+                text(id, &join(path, "paypal_merchant_id"), SHORT, false)?;
+            }
+            if let Some(codes) = m.get("mcc") {
+                each(codes, &join(path, "mcc"), 1, mcc)?;
+            }
+            if let Some(country) = m.get("country") {
+                matching(country, &join(path, "country"), |s| {
+                    s.len() == 2 && s.bytes().all(|b| b.is_ascii_uppercase())
+                })?;
+            }
+            Ok(())
         },
     )
 }
@@ -598,7 +647,10 @@ fn members(root: &Map<String, Value>) -> Result<(&Map<String, Value>, i64, i64, 
         "payment",
         &["rail", "currency", "constraints"],
         |payment| {
-            literal(get(payment, "rail"), "payment.rail", "paypal")?;
+            let rail = string(get(payment, "rail"), "payment.rail")?;
+            if rail != "paypal" && rail != "card" {
+                return Err(invalid("payment.rail", "invalid option"));
+            }
             currency(get(payment, "currency"), "payment.currency")?;
             each(
                 get(payment, "constraints"),
@@ -733,12 +785,19 @@ pub fn parse_mandate(m: &Value) -> Result {
         return Err(invalid("exp", "lifetime exceeds 30 days"));
     }
     let payment_constraints = array(get(payment, "constraints"), "payment.constraints", 0)?;
-    require_counts(
-        "payment.constraints",
-        payment_constraints,
-        &PAYMENT_REQUIRED,
-        &[],
-    )?;
+    let card = payment.get("rail").and_then(Value::as_str) == Some("card");
+    let (rail, required, forbidden) = if card {
+        ("card", CARD_REQUIRED, "payment.allowed_payees")
+    } else {
+        ("paypal", PAYPAL_REQUIRED, "payment.card_controls")
+    };
+    require_counts("payment.constraints", payment_constraints, &required, &[])?;
+    if payment_constraints.iter().any(|c| c["type"] == forbidden) {
+        return Err(invalid(
+            "payment.constraints",
+            &format!("{forbidden} not allowed for rail {rail}"),
+        ));
+    }
     let checkout_constraints = array(get(checkout, "constraints"), "checkout.constraints", 0)?;
     require_counts(
         "checkout.constraints",
@@ -754,6 +813,42 @@ pub fn parse_mandate(m: &Value) -> Result {
                 &format!("payment.constraints.{i}.currency"),
                 "differs from payment.currency",
             ));
+        }
+    }
+    let (merchant_required, merchant_forbidden): (&[&str], &[&str]) = if card {
+        (&["mcc", "country"], &["paypal_merchant_id"])
+    } else {
+        (&["website", "paypal_merchant_id"], &["mcc", "country"])
+    };
+    for (i, c) in checkout_constraints.iter().enumerate() {
+        if c["type"] != "checkout.allowed_merchants" {
+            continue;
+        }
+        let allowed = array(&c["allowed"], "checkout.constraints", 0)?;
+        for (j, m) in allowed.iter().enumerate() {
+            let path = format!("checkout.constraints.{i}.allowed.{j}");
+            for key in merchant_required {
+                if m.get(key).is_none() {
+                    return Err(invalid(
+                        &join(&path, key),
+                        &format!("required for rail {rail}"),
+                    ));
+                }
+            }
+            for key in merchant_forbidden {
+                if m.get(key).is_some() {
+                    return Err(invalid(
+                        &join(&path, key),
+                        &format!("not allowed for rail {rail}"),
+                    ));
+                }
+            }
+            if m["id"] == ANY_MERCHANT && (!card || allowed.len() > 1) {
+                return Err(invalid(
+                    &join(&path, "id"),
+                    "any merchant must be the only merchant of a card mandate",
+                ));
+            }
         }
     }
     for (i, c) in checkout_constraints.iter().enumerate() {
