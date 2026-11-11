@@ -73,7 +73,6 @@ const create = createRoute({
     "For a pending request this client made, a URL to frame in the agent platform's page at `origin`, one of the client's embed origins. The URL's fragment carries a single-use token the frame redeems within five minutes; mint another to frame it again. The user approves in a Keelson window the frame opens, with a passkey; poll `POST /v1/connections/token` as usual for the answer.",
   middleware: [requireClient(["countersign:write"])],
   request: {
-    headers: z.object({ "idempotency-key": z.string().min(1).max(255) }),
     body: {
       required: true,
       content: {
@@ -146,7 +145,7 @@ const deny = createRoute({
   tags: ["embed"],
   summary: "Decline the embedded request",
   request: {
-    headers: sessionHeaders.extend({ "idempotency-key": z.string().min(1).max(255) }),
+    headers: sessionHeaders,
   },
   responses: {
     200: { description: "Declined", content: { "application/json": { schema: EmbedView } } },
@@ -164,7 +163,10 @@ async function clientEmbedOrigins(db: Deps["db"], clientId: string): Promise<str
   return rows.map((r) => r.origin);
 }
 
-export function registerEmbed(app: OpenAPIHono, deps: Pick<Deps, "db" | "kv" | "log">): void {
+export function registerEmbed(
+  app: OpenAPIHono,
+  deps: Pick<Deps, "db" | "kv" | "log" | "authBaseUrl">,
+): void {
   const { db, kv } = deps;
 
   const view = async (embed: Embed) => {
@@ -241,8 +243,7 @@ export function registerEmbed(app: OpenAPIHono, deps: Pick<Deps, "db" | "kv" | "
       { connectionId: request.id, clientId, origin },
       liveUntil,
     );
-    const url = new URL("/embed/approve", c.req.url);
-    url.protocol = "https:";
+    const url = new URL("/embed/approve", deps.authBaseUrl ?? c.req.url);
     url.search = new URLSearchParams({ r: ref }).toString();
     // The token rides in the fragment, which no server or referrer ever sees.
     url.hash = new URLSearchParams({ t: token }).toString();

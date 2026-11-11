@@ -33,6 +33,9 @@ interface Stored {
   deviceCode: string;
   interval: number;
   mandateId?: string;
+  /** The last answer and when it was read: Keelson is polled at most once per `interval`. */
+  status?: string;
+  polledAt?: number;
 }
 
 export function registerPlatform(
@@ -114,12 +117,25 @@ export function registerPlatform(
   );
 
   app.post("/platform/requests", onOrigin, async (c) => {
-    const ip = c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-    const budget = `platform:rl:${ip}:${Math.floor(Date.now() / 600_000)}`;
-    const [count] = (await deps.kv.multi().incr(budget).expire(budget, 600).exec()) as unknown as [
-      number,
-    ];
-    if (count > 10) return c.json({ error: "Too many requests; try again in a few minutes." }, 429);
+    // Only this page may ask, never a cross-site form or fetch.
+    if (c.req.header("sec-fetch-site") !== "same-origin") {
+      return c.json({ error: "Ask from the platform page." }, 403);
+    }
+    // Render's edge sets the client address; a client-sent X-Forwarded-For entry is never read.
+    const ip =
+      c.req.header("cf-connecting-ip") ??
+      c.req.header("x-forwarded-for")?.split(",").at(-1)?.trim();
+    const slot = Math.floor(Date.now() / 600_000);
+    const [mine, all] = (await deps.kv
+      .multi()
+      .incr(`platform:rl:${ip ?? "unknown"}:${slot}`)
+      .expire(`platform:rl:${ip ?? "unknown"}:${slot}`, 600)
+      .incr(`platform:rl:all:${slot}`)
+      .expire(`platform:rl:all:${slot}`, 600)
+      .exec()) as unknown as [number, number, number, number];
+    if (mine > 10 || all > 120) {
+      return c.json({ error: "Too many requests; try again in a few minutes." }, 429);
+    }
     try {
       if (!originsSet) {
         const res = await keelson("/v1/embed/origins", {
@@ -174,6 +190,9 @@ export function registerPlatform(
     if (!saved) return c.json({ status: "unknown" }, 404);
     const stored = JSON.parse(saved) as Stored;
     if (stored.mandateId) return c.json({ status: "approved", mandateId: stored.mandateId });
+    if (stored.status && stored.polledAt && Date.now() - stored.polledAt < stored.interval * 1000) {
+      return c.json({ status: stored.status }, 200, { "cache-control": "no-store" });
+    }
     const res = await keelson("/v1/connections/token", {
       method: "POST",
       idempotent: false,
@@ -196,6 +215,9 @@ export function registerPlatform(
         : body.error === "expired_token"
           ? "expired"
           : "pending";
+    await deps.kv.set(key(id), JSON.stringify({ ...stored, status, polledAt: Date.now() }), {
+      KEEPTTL: true,
+    });
     return c.json({ status }, 200, { "cache-control": "no-store" });
   });
 }

@@ -21,9 +21,13 @@ const refKey = (ref: string) => `embed:ref:${ref}`;
 const tokenKey = (token: string) => `embed:tok:${digest(token)}`;
 const sessionKey = (session: string) => `embed:ses:${digest(session)}`;
 
+/** An https origin with a DNS hostname: no wildcard, IP literal or CSP separator can pass. */
+const ORIGIN =
+  /^https:\/\/(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9](?::\d{1,5})?$/;
+
 /**
- * A serialized https origin, or undefined: scheme, host and optional port, with no path, query,
- * fragment or credentials, as `URL.origin` writes it.
+ * A serialized https origin, or undefined: a DNS hostname and optional port, with no path,
+ * query, fragment or credentials, as `URL.origin` writes it. Keelson's own hosts are refused.
  */
 export function httpsOrigin(input: string): string | undefined {
   let url: URL;
@@ -32,7 +36,12 @@ export function httpsOrigin(input: string): string | undefined {
   } catch {
     return undefined;
   }
-  if (url.protocol !== "https:" || url.origin !== input) return undefined;
+  if (url.protocol !== "https:" || url.origin !== input || !ORIGIN.test(url.origin)) {
+    return undefined;
+  }
+  if (url.hostname === "keelson.finance" || url.hostname.endsWith(".keelson.finance")) {
+    return undefined;
+  }
   return url.origin;
 }
 

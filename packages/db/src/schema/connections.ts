@@ -102,6 +102,9 @@ export const embedOrigins = pgTable(
   },
   (t) => [
     primaryKey({ columns: [t.clientId, t.origin] }),
-    check("embed_origins_https", sql`${t.origin} ~ '^https://[^/?#]+$'`),
+    check(
+      "embed_origins_https",
+      sql`${t.origin} ~ '^https://([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z][a-z0-9-]{0,61}[a-z0-9](:[0-9]{1,5})?$'`,
+    ),
   ],
 );

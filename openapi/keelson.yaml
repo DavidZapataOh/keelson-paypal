@@ -6381,14 +6381,6 @@ paths:
         minutes; mint another to frame it again. The user approves in a Keelson
         window the frame opens, with a passkey; poll `POST
         /v1/connections/token` as usual for the answer.
-      parameters:
-        - schema:
-            type: string
-            minLength: 1
-            maxLength: 255
-          required: true
-          name: idempotency-key
-          in: header
       requestBody:
         required: true
         content:
@@ -6498,13 +6490,6 @@ paths:
             maxLength: 64
           required: false
           name: keelson-embed
-          in: header
-        - schema:
-            type: string
-            minLength: 1
-            maxLength: 255
-          required: true
-          name: idempotency-key
           in: header
       responses:
         "200":

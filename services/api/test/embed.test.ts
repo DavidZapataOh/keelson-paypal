@@ -16,6 +16,7 @@ const app = createApp({
   log: pino({ level: "silent" }),
   authenticate: headerPrincipal,
   appOrigin,
+  authBaseUrl: "https://api.keelson.finance",
   embedPage: async () => PAGE,
 });
 
@@ -101,6 +102,13 @@ describe("embed origins", () => {
       "https://user@agents.example.com",
       "*",
       "null",
+      "https://*",
+      "https://*.example.com",
+      "https://a.example.com;sandbox",
+      "https://a,b.example.com",
+      "https://192.168.1.2",
+      "https://localhost",
+      "https://app.keelson.finance",
     ]) {
       expect((await allow(clientId, [bad])).status, bad).toBe(422);
     }
@@ -145,7 +153,7 @@ describe("minting an embed", () => {
     expect(res.headers.get("cache-control")).toBe("no-store");
     const url = new URL(body.url);
     expect(url.pathname).toBe("/embed/approve");
-    expect(url.protocol).toBe("https:");
+    expect(url.origin).toBe("https://api.keelson.finance");
     expect(url.searchParams.get("r")).toBe(body.ref);
     expect(tokenOf(body.url)).toMatch(/^ket_[\w-]{43}$/);
     expect(url.search).not.toContain("ket_");

@@ -75,11 +75,11 @@ import type { StampWorker } from "./timestamps/worker.ts";
 
 /**
  * POST routes that stream their response, that read, or that an RFC 8628 client polls without an
- * `Idempotency-Key`: none changes anything a retry repeats. An embed token is single use, and its
- * session is never stored for a replay.
+ * `Idempotency-Key`: none changes anything a retry repeats. Embed tokens and sessions are never
+ * stored for a replay; declining is a compare-and-set on a pending request.
  */
 const STREAMED_POSTS =
-  /^\/v1\/(merchants\/[^/]+\/assistant|operators\/[^/]+\/(coverages\/rows|grid-query)|connections\/token|embed\/sessions)$/;
+  /^\/v1\/(merchants\/[^/]+\/assistant|operators\/[^/]+\/(coverages\/rows|grid-query)|connections\/token|connections\/embed|embed\/(sessions|deny))$/;
 
 /**
  * The public reads the verifier makes: an Alibi when it is public, an Alibi's receipt, a leaf's

@@ -53,7 +53,8 @@ function where(): { ref: string; mode: Mode; done: boolean; token: string | null
   if (location.hash) history.replaceState(null, "", location.pathname + location.search);
   return {
     ref: q.get("r") ?? "",
-    mode: q.get("mode") === "popup" ? "popup" : "frame",
+    // A framed page is always in frame mode, whatever its address says.
+    mode: q.get("mode") === "popup" && window.parent === window ? "popup" : "frame",
     done: q.get("step") === "done",
     token,
   };
@@ -73,50 +74,56 @@ function framedBy(origin: string): boolean {
 }
 
 /**
- * Armed once the button has been fully visible, unobscured and untransformed (Intersection
- * Observer v2, where supported) for `ARM_MS`; any occlusion disarms it again.
+ * Armed once the button and the whole request have been fully visible, unobscured and
+ * untransformed (Intersection Observer v2) for `ARM_MS`; any occlusion disarms it. Browsers
+ * without v2 only get the geometric check, so the top-level Keelson window stays the real
+ * confirmation.
  */
 function useArmed(
-  target: React.RefObject<HTMLElement | null>,
+  targets: React.RefObject<HTMLElement | null>[],
   active: boolean,
 ): { visible: boolean; armed: boolean } {
   const [visible, setVisible] = useState(false);
   const [armed, setArmed] = useState(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the refs are stable
   useEffect(() => {
     setArmed(false);
     setVisible(false);
-    const el = target.current;
-    if (!active || !el) return;
+    const els = targets.map((t) => t.current);
+    if (!active || els.some((el) => !el)) return;
+    const seen = new Map<Element, boolean>();
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const arm = (visible: boolean) => {
+    const arm = () => {
       clearTimeout(timer);
       setArmed(false);
-      const shown = visible && document.visibilityState === "visible";
+      const shown =
+        document.visibilityState === "visible" && els.every((el) => seen.get(el as Element));
       setVisible(shown);
       if (shown) timer = setTimeout(() => setArmed(true), ARM_MS);
     };
     let observer: IntersectionObserver | undefined;
     try {
       observer = new IntersectionObserver(
-        ([entry]) => {
-          if (!entry) return;
-          const v2 = entry as IntersectionObserverEntry & { isVisible?: boolean };
-          arm(v2.isVisible ?? entry.intersectionRatio >= 0.99);
+        (entries) => {
+          for (const entry of entries) {
+            const v2 = entry as IntersectionObserverEntry & { isVisible?: boolean };
+            seen.set(entry.target, v2.isVisible ?? entry.intersectionRatio >= 0.99);
+          }
+          arm();
         },
         { threshold: [0, 0.99, 1], trackVisibility: true, delay: 100 } as IntersectionObserverInit,
       );
-      observer.observe(el);
+      for (const el of els) observer.observe(el as Element);
     } catch {
-      arm(true);
+      // No observer, no arming.
     }
-    const onVisibility = () => arm(document.visibilityState === "visible");
-    document.addEventListener("visibilitychange", onVisibility);
+    document.addEventListener("visibilitychange", arm);
     return () => {
       clearTimeout(timer);
       observer?.disconnect();
-      document.removeEventListener("visibilitychange", onVisibility);
+      document.removeEventListener("visibilitychange", arm);
     };
-  }, [target, active]);
+  }, [active]);
   return { visible, armed };
 }
 
@@ -334,7 +341,8 @@ export function EmbedApproval() {
   }, []);
 
   const reviewing = phase.at === "review" && fits;
-  const { visible, armed } = useArmed(allow, reviewing);
+  const summary = useRef<HTMLParagraphElement>(null);
+  const { visible, armed } = useArmed([allow, summary], reviewing);
 
   if (phase.at === "loading" || !view || !chosen) {
     if (phase.at === "closed" || phase.at === "unsafe") {
@@ -378,7 +386,8 @@ export function EmbedApproval() {
     const h = 760;
     const popup = window.open(
       url,
-      `keelson-${view.ref}`,
+      // An unguessable name, so the host cannot look the window up and navigate it.
+      `keelson-${crypto.randomUUID()}`,
       `popup,width=${w},height=${h},left=${Math.round(screenX + (outerWidth - w) / 2)},top=${Math.round(screenY + (outerHeight - h) / 2)}`,
     );
     ctx.current.popup = popup;
@@ -651,6 +660,13 @@ export function EmbedApproval() {
           </div>
         ) : (
           <>
+            {/* What Allow grants, beside it: watched with the button, so neither can be covered. */}
+            <p ref={summary} className="text-pretty text-sm leading-snug">
+              <span className="font-medium">{request.name}</span> by {request.agent.operator} may
+              spend up to <span className="font-medium tnum">{cap}</span>
+              {merchantNames.length ? ` at ${merchantNames.join(", ")}` : ""} until{" "}
+              {day(chosen.until)}.
+            </p>
             <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-2">
               <Button
                 variant="outline"

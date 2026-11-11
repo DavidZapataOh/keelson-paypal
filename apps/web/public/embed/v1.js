@@ -15,11 +15,16 @@
   const MIN_HEIGHT = 480;
   const READY_TIMEOUT_MS = 10_000;
 
-  /** The Keelson origin `url` is served from; anything else is refused. */
+  /** The only origin the approval is served from; a local copy of this script may serve its own. */
+  const KEELSON = "https://api.keelson.finance";
+  const script = document.currentScript ? new URL(document.currentScript.src) : undefined;
+  const local = script && (script.hostname === "localhost" || script.hostname === "127.0.0.1");
+
+  /** The Keelson origin `url` is served from; any other is refused. */
   function originOf(url) {
     const u = new URL(url);
-    if (u.protocol !== "https:" && u.hostname !== "localhost" && u.hostname !== "127.0.0.1") {
-      throw new TypeError("Keelson: the embed URL must be https");
+    if (u.origin !== KEELSON && !(local && u.origin === script.origin)) {
+      throw new TypeError(`Keelson: the embed URL must be on ${KEELSON}`);
     }
     if (u.pathname !== "/embed/approve" || !u.searchParams.get("r") || !u.hash) {
       throw new TypeError("Keelson: pass the url POST /v1/connections/embed returned");

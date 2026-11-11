@@ -1,5 +1,5 @@
 {
-  "id": "c14d15ff-3e66-4a34-86c4-8904273e4758",
+  "id": "4b556258-4c6d-47c2-aab0-b37630d6f2ad",
   "prevId": "1d31d978-bd1c-455a-8e5e-5b2ce3d4d6ef",
   "version": "7",
   "dialect": "postgresql",
@@ -3058,7 +3058,7 @@
       "checkConstraints": {
         "embed_origins_https": {
           "name": "embed_origins_https",
-          "value": "\"embed_origins\".\"origin\" ~ '^https://[^/?#]+$'"
+          "value": "\"embed_origins\".\"origin\" ~ '^https://([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z][a-z0-9-]{0,61}[a-z0-9](:[0-9]{1,5})?$'"
         }
       },
       "isRLSEnabled": false
