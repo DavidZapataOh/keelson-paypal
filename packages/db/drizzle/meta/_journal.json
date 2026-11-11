@@ -351,6 +351,13 @@
       "when": 1794424683288,
       "tag": "0049_live_order_conversion",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1794429197531,
+      "tag": "0050_paypal_wallets",
+      "breakpoints": true
     }
   ]
 }
