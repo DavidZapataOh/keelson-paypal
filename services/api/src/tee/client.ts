@@ -111,6 +111,69 @@ const CardAuthorizedSchema = z.strictObject({
 });
 export type CardAuthorized = z.infer<typeof CardAuthorizedSchema>;
 
+const StatementSignedSchema = z.strictObject({ statement: z.base64() });
+export type StatementSigned = z.infer<typeof StatementSignedSchema>;
+
+const SettlementObservationSchema = z.strictObject({
+  transaction: z.base64(),
+  card: z.base64(),
+  observed_at: z.number(),
+});
+export type SettlementObservation = z.infer<typeof SettlementObservationSchema>;
+
+const CardSettledSchema = z.strictObject({
+  settlement: z.strictObject({
+    requestId: Hex32,
+    cardRef: Hex32,
+    transactionHash: Hex32,
+    settledMinor: z.string(),
+    currency: z.string(),
+    status: z.string(),
+    settledAt: z.string(),
+    observedAt: z.string(),
+  }),
+  digest: Hex32,
+  signature: Hex65,
+  signer: Address,
+  observation: SettlementObservationSchema,
+  statement: z.base64(),
+});
+export type CardSettled = z.infer<typeof CardSettledSchema>;
+
+/** `POST /v1/statements/card-authorization`: a decision both legs signed, as its own statement. */
+export interface CardStatementRequest {
+  authorization: Record<string, string>;
+  signatures: { tdx: Hex; nitro?: Hex };
+  measurements: { tdx: Hex; nitro?: Hex };
+  parent: Hex;
+  issuer: string;
+  card_token: string;
+  ref_salt: Hex;
+  chain_id?: number;
+}
+
+/** `POST /v1/card/settlement`: leg A reads the settlement from the issuer; leg B checks its reading. */
+export interface CardSettlementRequest {
+  request_id: string;
+  transaction_token: string;
+  card_token: string;
+  issuer: string;
+  parent: Hex;
+  ref_salt: Hex;
+  measurements: { tdx: Hex; nitro?: Hex };
+  observation?: SettlementObservation;
+  leg_a?: { signer: string; signature: Hex };
+  chain_id?: number;
+}
+
+/** `POST /v1/statements/bridge`: a v1 Alibi carried into a SCITT statement by leg A. */
+export interface BridgeRequest {
+  leaf: string;
+  tlog_proof: string;
+  countersign: CountersignJson;
+  chain_id?: number;
+}
+
 /** A card network authorization, as the card issuer's real-time request reported it. */
 export interface CardNetworkAuthorization {
   id: string;
@@ -394,6 +457,21 @@ export class LegClient {
       CardAuthorizedSchema,
       await this.call("POST", "/v1/card/authorize", req, { timeoutMs }),
     );
+  }
+
+  async cardStatement(req: CardStatementRequest): Promise<StatementSigned> {
+    return this.parse(
+      StatementSignedSchema,
+      await this.call("POST", "/v1/statements/card-authorization", req),
+    );
+  }
+
+  async cardSettlement(req: CardSettlementRequest): Promise<CardSettled> {
+    return this.parse(CardSettledSchema, await this.call("POST", "/v1/card/settlement", req));
+  }
+
+  async bridge(req: BridgeRequest): Promise<StatementSigned> {
+    return this.parse(StatementSignedSchema, await this.call("POST", "/v1/statements/bridge", req));
   }
 
   async registerMandate(req: RegisterMandate): Promise<MandateIssued> {

@@ -84,7 +84,10 @@ const health = new Map<Leg, { supports: boolean; at: number }>();
  * Whether a leg signs SCITT statements, from its `/v1/health` (cached a minute, read again after
  * any failure): a leg on an older engine refuses a request carrying the field.
  */
-async function legSupportsStatements(deps: CoordinatorDeps, leg: Leg): Promise<boolean> {
+export async function legSupportsStatements(
+  deps: { tee: Pick<TeeConfig, "client"> },
+  leg: Leg,
+): Promise<boolean> {
   const cached = health.get(leg);
   if (cached && Date.now() - cached.at < HEALTH_TTL_MS) return cached.supports;
   try {

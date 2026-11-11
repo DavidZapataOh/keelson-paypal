@@ -16,10 +16,12 @@ import {
 } from "@keelson/db";
 import type { Logger } from "pino";
 import { type Address, getAddress, type Hex, keccak256, recoverAddress, toHex } from "viem";
+import type { LogConfig } from "../log/append.ts";
 import { countersignOf } from "../pipeline/leaf.ts";
 import type { CardAuthorized, CardNetworkAuthorization } from "../tee/client.ts";
 import { VERIFYING_CONTRACT } from "../tee/config.ts";
 import type { TeeConfig } from "../tee/signers.ts";
+import { type CardStatementDeps, logCardAuthorization } from "./statements.ts";
 
 /** How long each leg may take: both answer in parallel, inside the issuer's few seconds. */
 const LEG_DEADLINE_MS = 1_500;
@@ -42,6 +44,8 @@ export interface CardVetoDeps {
   db: Db;
   log: Logger;
   tee?: Pick<TeeConfig, "client"> | undefined;
+  /** Where each decision is logged as its own statement, after the answer. */
+  tlog?: LogConfig | undefined;
 }
 
 /** A card network authorization of one card, as the issuer's real-time request reported it. */
@@ -264,8 +268,10 @@ export async function decide(
     const mask = failedMask | bit("used");
     const again = await insert(false, mask);
     if (again.length === 0) return decide(deps, n, receivedAt, deadline);
+    logLater(deps, n.id);
     return { approved: false, result: resultOf(mask, reason), failedMask: mask };
   }
+  logLater(deps, n.id);
   if (approved) {
     await db
       .update(purchaseCards)
@@ -273,4 +279,13 @@ export async function decide(
       .where(and(eq(purchaseCards.purchaseId, row.purchase.id), eq(purchaseCards.state, "OPEN")));
   }
   return { approved, result: resultOf(failedMask, reason), failedMask };
+}
+
+/** Logs the decision as its statement once the issuer has its answer; never awaited. */
+function logLater(deps: CardVetoDeps, authorizationId: string): void {
+  setImmediate(() => {
+    logCardAuthorization(deps as CardStatementDeps, authorizationId).catch((err: unknown) =>
+      deps.log.warn({ err, auth: authorizationId }, "card decision not logged as a statement"),
+    );
+  });
 }

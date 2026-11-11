@@ -8,6 +8,7 @@ import {
   LogClient,
   LogError,
   leafHash,
+  parseStatementLeaf,
   verifyProof,
 } from "@keelson/log";
 import type { Logger } from "pino";
@@ -27,6 +28,15 @@ const decoder = new TextDecoder();
 
 /** The `alibi_id` and `mode` the leaf states; the log checks the rest. */
 function stated(leaf: Uint8Array): { alibiId: string; mode: string } {
+  if (leaf[0] === 0xd2) {
+    try {
+      const s = parseStatementLeaf(leaf, { verify: false });
+      const mode = "claims" in s ? s.claims.mode : s.card.mode;
+      return { alibiId: s.alibiId, mode };
+    } catch {
+      throw new LogError("rejected", "leaf.noncanonical");
+    }
+  }
   const text = decoder.decode(leaf);
   if (!text.startsWith(LEAF_PREFIX)) throw new LogError("rejected", "leaf.prefix");
   try {
@@ -96,5 +106,38 @@ export async function appendLeaf(
     .returning({ id: purchases.id });
   if (updated.length === 0) throw new LogError("rejected", "purchase.logged");
   enqueueStamp(deps, result.leafHash, "leaf");
+  return result;
+}
+
+/**
+ * Appends a card decision's or settlement's statement to its purchase's log: its purchase leaf is
+ * already there (the log checks the link), and nothing about the purchase row changes. The
+ * statement's own receipt and proof come back.
+ *
+ * @internal
+ */
+export async function appendStatement(
+  deps: { db: Db; tlog: LogConfig },
+  purchaseId: string,
+  leaf: Uint8Array,
+  countersign: Record<string, string>,
+): Promise<AppendResult> {
+  const [purchase] = await deps.db
+    .select({ chainId: purchases.chainId })
+    .from(purchases)
+    .where(eq(purchases.id, purchaseId));
+  if (!purchase) throw new LogError("rejected", "purchase.unknown");
+  if (stated(leaf).alibiId !== purchaseId) throw new LogError("rejected", "card.parent");
+  const origin = LOG_ORIGINS[purchase.chainId ?? CHAIN_IDS.arbitrumSepolia];
+  if (!origin) throw new LogError("rejected", "purchase.chain");
+  const client = new LogClient(deps.tlog.url, deps.tlog.token, origin, deps.tlog.timeoutMs);
+  const result = await client.add(leaf, countersign);
+  const expected = leafHash(leaf);
+  if (!result.leafHash.every((b, i) => b === expected[i]))
+    throw new LogError("invalid", "leaf_hash");
+  const vkeys = deps.tlog.vkeys?.[origin] ?? LOG_VKEYS[origin];
+  if (vkeys === undefined || verifyProof(result.proof, expected, vkeys).index !== result.index) {
+    throw new LogError("invalid", "proof");
+  }
   return result;
 }
