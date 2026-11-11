@@ -97,7 +97,7 @@
       "project": ["src/**/*.ts!", "bench/**/*.ts", "test/**/*.ts"]
     },
     "packages/sdk": {
-      "entry": ["src/index.ts!", "scripts/*.ts", "examples/*"],
+      "entry": ["src/index.ts!", "src/cli.ts!", "scripts/*.ts", "examples/*"],
       "project": ["src/**/*.ts!", "scripts/**/*.ts", "test/**/*.ts", "examples/**"]
     },
     "packages/timestamp": {
@@ -113,6 +113,10 @@
         "test/fixture/*.{ts,tsx}"
       ],
       "project": ["src/**/*.{ts,tsx}!", "test/**/*.{ts,tsx}"]
+    },
+    "packages/verify": {
+      "entry": ["src/index.ts!", "src/cli.ts!"],
+      "project": ["src/**/*.ts!", "test/**/*.ts"]
     },
     "services/agent": {
       "entry": ["src/index.ts!", "scripts/*.ts"],
