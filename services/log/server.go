@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -50,6 +51,8 @@ type origin struct {
 	shutdown          func(context.Context) error
 	claims            *claims
 	policy            []byte
+	// receipts signs the roots of RFC 9942 receipts; nil when the origin issues none.
+	receipts receiptSource
 }
 
 func openOrigin(ctx context.Context, spec originSpec, dir string, verifyingContract [20]byte, signers []note.Signer, policy []byte) (*origin, error) {
@@ -101,6 +104,9 @@ type appendResult struct {
 	LeafHash   string `json:"leafHash"`
 	Proof      string `json:"proof"`
 	Checkpoint string `json:"checkpoint"`
+	// Receipt is the RFC 9942 receipt of the leaf in the same checkpoint, base64; absent when the
+	// origin issues none.
+	Receipt string `json:"receipt,omitempty"`
 }
 
 // append adds the leaf and waits for a checkpoint that covers it, then proves
@@ -122,12 +128,20 @@ func (o *origin) append(ctx context.Context, leaf []byte) (*appendResult, error)
 		return nil, fmt.Errorf("inclusion proof: %w", err)
 	}
 	h := alibilog.LeafHash(leaf)
-	return &appendResult{
+	path := make([][]byte, len(p))
+	for k := range p {
+		path[k] = p[k][:]
+	}
+	res := &appendResult{
 		Index:      strconv.FormatUint(idx.Index, 10),
 		LeafHash:   hex.EncodeToString(h[:]),
 		Proof:      string(torchwood.FormatProof(i, p, cp)),
 		Checkpoint: string(cp),
-	}, nil
+	}
+	if r := o.receiptOf(uint64(c.N), idx.Index, [32]byte(c.Hash), path); r != nil {
+		res.Receipt = base64.StdEncoding.EncodeToString(r)
+	}
+	return res, nil
 }
 
 // appendOnce appends the leaf unless its purchase is already claimed by
@@ -135,7 +149,7 @@ func (o *origin) append(ctx context.Context, leaf []byte) (*appendResult, error)
 // append fails, so a retry can only send the same bytes, which get the same
 // index. The append outlives the caller's request.
 func (o *origin) appendOnce(ctx context.Context, leaf []byte) (*appendResult, error) {
-	l, err := alibilog.Parse(leaf)
+	l, err := alibilog.ParseAny(leaf)
 	if err != nil {
 		return nil, err
 	}
@@ -432,6 +446,15 @@ func (s *server) public() http.Handler {
 			http.ServeContent(w, r, "", st.ModTime(), f)
 		})
 	}
+	mux.HandleFunc("GET /.well-known/scitt-keys", func(w http.ResponseWriter, r *http.Request) {
+		b, err := keySet(s.origins)
+		if err != nil {
+			http.Error(w, "unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/cbor")
+		_, _ = w.Write(b)
+	})
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		type health struct {
 			Origin string `json:"origin"`

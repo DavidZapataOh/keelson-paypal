@@ -42,14 +42,14 @@ func audit(ctx context.Context, fetch client.EntryBundleFetcherFunc, rng *compac
 				_, err = alibilog.ParseStop(leaf)
 				l = &alibilog.Leaf{}
 			} else {
-				l, err = alibilog.Parse(leaf)
+				l, err = alibilog.ParseAny(leaf)
 			}
 			switch {
 			case err != nil && len(res.findings) < maxFindings:
 				res.findings = append(res.findings, Finding{Kind: "leaf.format", Index: &index, Detail: err.Error()})
 			case err != nil:
 				res.unlisted++
-			case l.Mode == alibilog.ModeDegraded:
+			case l.Mode == alibilog.ModeDegraded && l.Kind == alibilog.KindPurchase:
 				res.degraded = append(res.degraded, index)
 			}
 			h := alibilog.LeafHash(leaf)

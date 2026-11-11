@@ -21,9 +21,15 @@ func refuse(code string) error { return &admitError{Code: code} }
 // one the API recorded for the purchase. Errors other than *admitError and
 // *alibilog.LeafError are the registry's.
 func (o *origin) admit(ctx context.Context, reg registry, leaf []byte, c alibilog.Countersign) error {
-	l, err := alibilog.Parse(leaf)
+	l, err := alibilog.ParseAny(leaf)
 	if err != nil {
 		return err
+	}
+	if l.Kind != alibilog.KindPurchase {
+		return refuse("leaf.kind")
+	}
+	if l.Version == 2 && (l.ChainID != o.chainID || l.VerifyingContract != o.verifyingContract) {
+		return refuse("countersign.digest")
 	}
 	if alibilog.Digest(c, o.chainID, o.verifyingContract) != l.CountersignDigest {
 		return refuse("countersign.digest")
