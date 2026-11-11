@@ -190,7 +190,7 @@ async function verify(origin, index) {
           "leaf",
           "ok",
           leaf.kind === "stop"
-            ? `stop ${leaf.stopId}: every agent stopped, ${leaf.mandateCount} mandates ended, issued ${leaf.issuedAt}`
+            ? `stop ${leaf.stopId}, issued ${leaf.issuedAt}: Keelson asserts ${leaf.mandateCount} mandates stopped (no TEE countersign; no later Alibi may carry them)`
             : `mode: ${leaf.mode}, alibi ${leaf.alibiId}, issued ${leaf.issuedAt}`,
         );
         await v.verifyInclusion(index, leaf.leafHash, p.inclusion, note);

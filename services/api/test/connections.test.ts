@@ -11,6 +11,8 @@ import demo from "../../../packages/mandate/test/fixtures/demo-mandate.json" wit
 import { createApp } from "../src/app.ts";
 import { normalizeUserCode } from "../src/connections.ts";
 import { principalChannel } from "../src/principal.ts";
+import { finishStops } from "../src/stop.ts";
+import { tokenStopped } from "../src/stopped.ts";
 import { createTee } from "../src/tee/config.ts";
 import { EvidenceUploader } from "./evidence.ts";
 import { testDb, testKv } from "./setup.ts";
@@ -419,9 +421,11 @@ describe("revoking where the money moves", { timeout: 120_000 }, () => {
     const stopped = await res.json();
     expect(stopped).toMatchObject({
       revoked: 2,
-      // No PayPal here: nothing is voided, and what the holds kept is still counted.
-      released: [{ currency: "USD", minor: "200000" }],
-      logIndex: null,
+      // No PayPal here: nothing is voided yet, so nothing is said to be released.
+      released: [],
+      releasing: [{ currency: "USD", minor: "200000" }],
+      logIndexes: {},
+      logged: false,
     });
     expect(stopped.mandateHashes).toHaveLength(2);
     for (const id of [a, b]) {
@@ -446,8 +450,16 @@ describe("revoking where the money moves", { timeout: 120_000 }, () => {
       .set({ createdAt: new Date(Date.now() - 60_000) })
       .where(eq(mandates.id, missed));
     const late = await countersign(opB, missed);
-    expect((await late.json()).type).toMatch(/\/agents-stopped$/);
+    expect(late.status).toBe(409);
     expect(legCalls).toEqual([]);
+    // The resumer revokes it.
+    await finishStops({ db: testDb, kv: testKv, log: pino({ level: "silent" }) });
+    const [revoked] = await testDb.select().from(mandates).where(eq(mandates.id, missed));
+    expect(revoked?.revokeRequestedAt).not.toBeNull();
+    // Access tokens the user granted before the stop are refused; later ones are not.
+    expect(await tokenStopped(testKv, sub, Math.floor(Date.now() / 1000) - 5)).toBe(true);
+    expect(await tokenStopped(testKv, sub, Math.floor(Date.now() / 1000) + 5)).toBe(false);
+    expect(await tokenStopped(testKv, await newUser(), 0)).toBe(false);
 
     const listed = await (await app.request("/v1/agents/stops", { headers: asUser(sub) })).json();
     expect(listed.stops[0]).toMatchObject({ id: stopped.id, revoked: 2 });

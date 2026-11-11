@@ -1341,12 +1341,29 @@ components:
             type: string
           description: "Hex of the stopped mandates' hashes. The stop leaf commits to
             their digest: no Alibi leaf after it may carry one."
-        logIndex:
-          type:
-            - string
-            - "null"
-          description: The stop leaf's index in the Alibi log; null until the log appended
-            it.
+        releasing:
+          type: array
+          items:
+            type: object
+            properties:
+              currency:
+                type: string
+              minor:
+                type: string
+            required:
+              - currency
+              - minor
+          description: "Holds backing purchases already countersigned: released once those
+            are captured."
+        logIndexes:
+          type: object
+          additionalProperties:
+            type: string
+          description: The stop leaf's index in each Alibi log origin. It is appended once
+            no purchase of the stopped mandates can still be logged, so no Alibi
+            leaf after it carries one of their hashes.
+        logged:
+          type: boolean
         createdAt:
           type: string
       required:
@@ -1354,7 +1371,9 @@ components:
         - revoked
         - released
         - mandateHashes
-        - logIndex
+        - releasing
+        - logIndexes
+        - logged
         - createdAt
     AgentsRevoked:
       type: object

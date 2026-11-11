@@ -475,8 +475,10 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("agents on %s", (kind) => {
           id: "01M7STOP000000000000000000",
           revoked: 1,
           released: [{ currency: "USD", minor: "41200" }],
+          releasing: [],
           mandateHashes: ["ab".repeat(32)],
-          logIndex: "1207",
+          logIndexes: { "log.keelson.finance/alibi/2026-1": "1207" },
+          logged: true,
           createdAt: new Date().toISOString(),
         };
       }

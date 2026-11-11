@@ -30,12 +30,14 @@ interface Stop {
   id: string;
   revoked: number;
   released: { currency: string; minor: string }[];
-  logIndex: string | null;
+  releasing: { currency: string; minor: string }[];
+  logIndexes: Record<string, string>;
 }
 
 /** What the stop did, with the money PayPal releases and where the log records it. */
 function Stopped({ stop }: { stop: Stop }) {
-  const released = stop.released.filter((r) => r.minor !== "0");
+  const sum = (m: Stop["released"]) => m.map((r) => money(BigInt(r.minor), r.currency)).join(" + ");
+  const index = Object.values(stop.logIndexes)[0];
   return (
     <section
       role="status"
@@ -44,16 +46,21 @@ function Stopped({ stop }: { stop: Stop }) {
     >
       <p className="font-semibold">
         All agents stopped.{" "}
-        {released.length > 0
-          ? `${released.map((r) => money(BigInt(r.minor), r.currency)).join(" + ")} of holds released.`
-          : "Nothing was held."}
+        {stop.released.length > 0
+          ? `${sum(stop.released)} of holds released.`
+          : stop.releasing.length > 0
+            ? ""
+            : "Nothing was held."}
       </p>
       <p className="text-bone/75 text-sm">
         {stop.revoked} {stop.revoked === 1 ? "mandate" : "mandates"} ended, every request denied and
-        every agent's access revoked. Keelson refuses every payment they try.{" "}
-        {stop.logIndex
-          ? `Recorded in the public log at entry #${stop.logIndex}.`
-          : "Being recorded in the public log."}
+        every agent's access revoked. Keelson refuses every payment they try.
+        {stop.releasing.length > 0
+          ? ` ${sum(stop.releasing)} still backs purchases already approved and is released once they settle.`
+          : ""}{" "}
+        {index
+          ? `Recorded in the public log at entry #${index}.`
+          : "It is recorded in the public log once those purchases are logged."}
       </p>
     </section>
   );

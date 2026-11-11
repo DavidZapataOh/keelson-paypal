@@ -656,17 +656,6 @@ export function registerCountersign(
       );
     }
 
-    // The user stopped every agent after this mandate was stored: nothing under it is signed again.
-    if (await stoppedSince(db, mandate.userId, mandate.createdAt)) {
-      return problem(
-        c,
-        409,
-        "agents-stopped",
-        "Agents stopped",
-        "The user stopped all agents; this mandate cannot countersign.",
-      );
-    }
-
     // The agent pays a live purchase at the store, so the store is the one the user allowed.
     if (body.live) {
       let website: string | undefined;
@@ -1015,6 +1004,10 @@ export function registerCountersign(
           )
           .for("share");
         if (!live) return { revoked: true as const };
+        // A stop of every agent stored first refuses each mandate stored before it, flagged or not.
+        if (await stoppedSince(tx, mandate.userId, mandate.createdAt)) {
+          return { revoked: true as const };
+        }
         // Serializes the purchases of one cart under one mandate, so two retries cannot both pass.
         await tx.execute(
           sql`select pg_advisory_xact_lock(hashtext(${`purchase:${mandate.id}:${want.cartHash}`}))`,

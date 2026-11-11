@@ -1,5 +1,5 @@
 {
-  "id": "cd81511c-c863-4f39-8da6-f9ddf5eab4e3",
+  "id": "7b5dc255-e00c-4f74-9082-f5340fbd91ad",
   "prevId": "2de0142e-e838-49de-8077-d6aad1287396",
   "version": "7",
   "dialect": "postgresql",
@@ -5001,29 +5001,46 @@
           "name": "mandate_hashes",
           "type": "text[]",
           "primaryKey": false,
-          "notNull": true
+          "notNull": true,
+          "default": "'{}'"
         },
         "revoked": {
           "name": "revoked",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true
+          "notNull": true,
+          "default": 0
         },
         "released": {
           "name": "released",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": true
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "releasing": {
+          "name": "releasing",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
         },
         "leaf": {
           "name": "leaf",
           "type": "bytea",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
-        "log_index": {
-          "name": "log_index",
-          "type": "numeric(20, 0)",
+        "log_indexes": {
+          "name": "log_indexes",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "logged_at": {
+          "name": "logged_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },
@@ -5053,6 +5070,22 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "agent_stops_unlogged_idx": {
+          "name": "agent_stops_unlogged_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"agent_stops\".\"logged_at\" is null",
           "concurrently": false,
           "method": "btree",
           "with": {}

@@ -203,7 +203,9 @@ TypeScript builder is [`@keelson/log`](../../packages/log).
 ### Stop leaves
 
 When a user stops every agent at once, the API appends a stop leaf through `POST /<origin>/stop`
-(the private listener, with the write token; there is no countersign to check):
+(the private listener, with the write token). A stop carries no TEE countersign: it is Keelson's
+own assertion, and what it commits Keelson to is checkable. The API appends it once no purchase of
+the stopped mandates can still be logged:
 
 ```
 leaf = "keelson.finance/stop/v1\n" || JCS({issued_at, mandate_count, mandates_digest, stop_id})

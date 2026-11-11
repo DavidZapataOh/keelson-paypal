@@ -129,9 +129,15 @@ const StopSchema = z
       description:
         "Hex of the stopped mandates' hashes. The stop leaf commits to their digest: no Alibi leaf after it may carry one.",
     }),
-    logIndex: z.string().nullable().openapi({
-      description: "The stop leaf's index in the Alibi log; null until the log appended it.",
+    releasing: z.array(z.object({ currency: z.string(), minor: z.string() })).openapi({
+      description:
+        "Holds backing purchases already countersigned: released once those are captured.",
     }),
+    logIndexes: z.record(z.string(), z.string()).openapi({
+      description:
+        "The stop leaf's index in each Alibi log origin. It is appended once no purchase of the stopped mandates can still be logged, so no Alibi leaf after it carries one of their hashes.",
+    }),
+    logged: z.boolean(),
     createdAt: z.string(),
   })
   .openapi("AgentStop");
@@ -374,7 +380,7 @@ export function registerAgents(
 
   app.openapi(stops, async (c) => {
     const userId = (c.get("principal") as Principal).subject;
-    return c.json({ stops: await userStops(deps, userId) }, 200);
+    return c.json({ stops: await userStops(db, userId) }, 200);
   });
 
   app.openapi(disconnect, async (c) => {
