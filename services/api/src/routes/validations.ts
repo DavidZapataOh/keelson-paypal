@@ -29,6 +29,7 @@ const Validation = z
 const route = createRoute({
   method: "get",
   path: "/v1/validations/{requestHash}",
+  operationId: "getValidation",
   tags: ["validations"],
   summary: "Validation request of a countersign",
   description:

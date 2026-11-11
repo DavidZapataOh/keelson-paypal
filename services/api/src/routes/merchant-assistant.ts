@@ -89,6 +89,7 @@ const Body = z
 const route = createRoute({
   method: "post",
   path: "/v1/merchants/{merchantId}/assistant",
+  operationId: "askMerchantAssistant",
   tags: ["merchants"],
   summary: "One streamed model turn for the merchant console's agents",
   description:

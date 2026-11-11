@@ -19,6 +19,7 @@ const Revoking = z.object({ state: z.literal("REVOKING") }).openapi("RevokingMan
 const route = createRoute({
   method: "post",
   path: "/v1/mandates/{id}/revoke",
+  operationId: "revokeMandate",
   tags: ["mandates"],
   summary: "Revoke a mandate",
   description:

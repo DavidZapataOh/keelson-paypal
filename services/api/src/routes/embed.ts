@@ -56,6 +56,7 @@ const EmbedView = z
 const setOrigins = createRoute({
   method: "put",
   path: "/v1/embed/origins",
+  operationId: "setEmbedOrigins",
   tags: ["embed"],
   summary: "Set the origins that may frame approvals",
   description:
@@ -77,6 +78,7 @@ const setOrigins = createRoute({
 const create = createRoute({
   method: "post",
   path: "/v1/connections/embed",
+  operationId: "embedConnection",
   tags: ["embed"],
   summary: "Embed the approval of a request",
   description:
@@ -112,6 +114,7 @@ const create = createRoute({
 const session = createRoute({
   method: "post",
   path: "/v1/embed/sessions",
+  operationId: "openEmbedSession",
   tags: ["embed"],
   summary: "Open the embedded approval",
   description:
@@ -140,6 +143,7 @@ const sessionHeaders = z.object({ [EMBED_SESSION_HEADER]: z.string().max(64).opt
 const read = createRoute({
   method: "get",
   path: "/v1/embed/request",
+  operationId: "getEmbedRequest",
   tags: ["embed"],
   summary: "Read the embedded request",
   request: { headers: sessionHeaders },
@@ -152,6 +156,7 @@ const read = createRoute({
 const deny = createRoute({
   method: "post",
   path: "/v1/embed/deny",
+  operationId: "denyEmbedRequest",
   tags: ["embed"],
   summary: "Decline the embedded request",
   request: {

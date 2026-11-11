@@ -16,7 +16,7 @@ import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
 import { ulid } from "ulid";
 import { type Address, BaseError, HttpRequestError, TimeoutError } from "viem";
-import type { Auth } from "./auth.ts";
+import { type Auth, apiAudience, SCOPE_DESCRIPTIONS } from "./auth.ts";
 import type { CardIssuer } from "./cards/issuer.ts";
 import type { ChainReaders } from "./chain/reader.ts";
 import type { Channel3Lookup } from "./channel3/client.ts";
@@ -24,7 +24,7 @@ import type { HostedCaps } from "./hosted-caps.ts";
 import type { LogConfig } from "./log/append.ts";
 import { requestLogger } from "./logger.ts";
 import { registerMcp } from "./mcp.ts";
-import { requireClient } from "./middleware/auth.ts";
+import { requireClient, securityOf } from "./middleware/auth.ts";
 import { idempotency } from "./middleware/idempotency.ts";
 import { type RateLimitOptions, rateLimit } from "./middleware/rate-limit.ts";
 import type { Notifier } from "./notify/notifier.ts";
@@ -206,6 +206,51 @@ export interface Deps {
  */
 export const apiInfo = { title: "Keelson API", version: "0.0.0" } as const;
 
+const authServer = `${apiAudience}/api/auth`;
+
+/**
+ * Documents on each route the security its guard enforces: OAuth 2.1 client credentials for an
+ * operator's agent, the authorization code grant with PKCE for an app acting for a user, or the
+ * app's session cookie. `openapi` drops a route's middleware before it registers the route.
+ */
+function documentSecurity(app: OpenAPIHono): void {
+  const register = app.openapi;
+  app.openapi = ((route, handler, hook) => {
+    const guards = [route.middleware ?? []].flat() as MiddlewareHandler[];
+    const security = route.security ?? guards.map(securityOf).find((s) => s !== undefined);
+    return register(security ? { ...route, security } : route, handler, hook);
+  }) as typeof app.openapi;
+  app.openAPIRegistry.registerComponent("securitySchemes", "oauth2", {
+    type: "oauth2",
+    description:
+      "OAuth 2.1. An operator's agent uses client credentials; an app acting for a user uses the authorization code grant with PKCE (S256). Every token is requested for the resource `https://api.keelson.finance` (RFC 8707).",
+    flows: {
+      clientCredentials: { tokenUrl: `${authServer}/oauth2/token`, scopes: SCOPE_DESCRIPTIONS },
+      authorizationCode: {
+        authorizationUrl: `${authServer}/oauth2/authorize`,
+        tokenUrl: `${authServer}/oauth2/token`,
+        refreshUrl: `${authServer}/oauth2/token`,
+        scopes: SCOPE_DESCRIPTIONS,
+      },
+    },
+  });
+  app.openAPIRegistry.registerComponent("securitySchemes", "session", {
+    type: "apiKey",
+    in: "cookie",
+    name: "__Secure-better-auth.session_token",
+    description: "The session of a user signed in to the Keelson app.",
+  });
+}
+
+/** The OpenAPI 3.1 document of an app {@link createApp} built. */
+export function openApiDocument(app: OpenAPIHono): ReturnType<OpenAPIHono["getOpenAPI31Document"]> {
+  return app.getOpenAPI31Document({
+    openapi: "3.1.0",
+    info: apiInfo,
+    servers: [{ url: apiAudience, description: "Keelson's API, on the PayPal sandbox" }],
+  });
+}
+
 export function createApp(deps: Deps): OpenAPIHono {
   const app = new OpenAPIHono({
     defaultHook: (result, c) => {
@@ -226,6 +271,7 @@ export function createApp(deps: Deps): OpenAPIHono {
       }
     },
   });
+  documentSecurity(app);
 
   app.use(httpInstrumentationMiddleware());
   app.use(requestId({ generator: () => ulid() }));
@@ -379,8 +425,6 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerTransactions(app, deps);
   registerRedTeam(app, deps);
   registerJudge(app, deps);
-  app.get("/openapi.json", (c) =>
-    c.json(app.getOpenAPI31Document({ openapi: "3.1.0", info: apiInfo })),
-  );
+  app.get("/openapi.json", (c) => c.json(openApiDocument(app)));
   return app;
 }

@@ -80,6 +80,7 @@ const AuthorizedPurchaseHold = z
 const create = createRoute({
   method: "post",
   path: "/v1/mandates/{id}/holds",
+  operationId: "holdCart",
   tags: ["mandates"],
   summary: "Hold one cart of a multi-merchant mandate",
   description:
@@ -115,6 +116,7 @@ const create = createRoute({
 const authorize = createRoute({
   method: "post",
   path: "/v1/mandates/{id}/holds/{requestId}/authorize",
+  operationId: "authorizeCartHold",
   tags: ["mandates"],
   summary: "Authorize an approved cart hold",
   description:

@@ -78,6 +78,7 @@ const CheckResult = z
 const change = createRoute({
   method: "post",
   path: "/v1/mandates/{id}/changes",
+  operationId: "requestMandateChange",
   tags: ["mandates"],
   summary: "Ask the user to change a mandate",
   description:
@@ -124,6 +125,7 @@ const change = createRoute({
 const check = createRoute({
   method: "post",
   path: "/v1/mandates/{id}/check",
+  operationId: "checkCart",
   tags: ["mandates"],
   summary: "Check a cart against a mandate",
   description:

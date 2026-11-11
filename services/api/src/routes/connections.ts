@@ -249,6 +249,7 @@ const Code = z.object({ code: z.string().min(8).max(16) });
 const match = createRoute({
   method: "post",
   path: "/v1/connections/{code}/match",
+  operationId: "matchConnection",
   tags: ["connections"],
   summary: "Pick the agent's number",
   description:
@@ -279,6 +280,7 @@ const match = createRoute({
 const requestState = createRoute({
   method: "get",
   path: "/v1/connections/requests/{id}",
+  operationId: "getConnectionRequest",
   tags: ["connections"],
   summary: "Read your request's state",
   description:
@@ -307,6 +309,7 @@ const notMatched = (c: Context) =>
 const create = createRoute({
   method: "post",
   path: "/v1/connections",
+  operationId: "requestMandate",
   tags: ["connections"],
   summary: "Ask the user for a mandate",
   description:
@@ -337,6 +340,7 @@ const create = createRoute({
 const token = createRoute({
   method: "post",
   path: "/v1/connections/token",
+  operationId: "pollConnection",
   tags: ["connections"],
   summary: "Poll for the user's answer",
   description:
@@ -368,6 +372,7 @@ const token = createRoute({
 const read = createRoute({
   method: "get",
   path: "/v1/connections/{code}",
+  operationId: "getConnectionByCode",
   tags: ["connections"],
   summary: "Read a request by its user code",
   description:
@@ -388,6 +393,7 @@ const read = createRoute({
 const deny = createRoute({
   method: "post",
   path: "/v1/connections/{code}/deny",
+  operationId: "denyConnection",
   tags: ["connections"],
   summary: "Deny a request",
   middleware: [requireSession()],
@@ -408,6 +414,7 @@ const deny = createRoute({
 const draft = createRoute({
   method: "post",
   path: "/v1/connections/{code}/draft",
+  operationId: "draftConnectionMandate",
   tags: ["connections"],
   summary: "Draft the mandate that approves a request",
   description:

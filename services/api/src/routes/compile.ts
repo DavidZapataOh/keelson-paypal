@@ -264,6 +264,7 @@ export function registerCompile(
   const route = createRoute({
     method: "post",
     path: "/v1/mandates/compile",
+    operationId: "compileMandate",
     tags: ["mandates"],
     summary: "Compile a mandate from a shopping request",
     description:
