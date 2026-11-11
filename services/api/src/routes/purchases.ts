@@ -14,6 +14,7 @@ import {
   user,
 } from "@keelson/db";
 import type { Deps } from "../app.ts";
+import { Amount, breakdowns, withBreakdown } from "../checkout.ts";
 import { requireClient, requirePrincipal } from "../middleware/auth.ts";
 import { failedFields, type PurchaseView, purchaseView } from "../pipeline/drive.ts";
 import { ProblemSchema, problem } from "../problem.ts";
@@ -91,7 +92,7 @@ const Purchase = z
     id: z.string(),
     mandateId: z.string(),
     mode: z.enum(["2of2", "degraded"]).nullable(),
-    amount: z.object({ currency: z.string(), minor: z.string() }),
+    amount: Amount,
     ...PurchaseProgress.shape,
     state: z.string(),
   })
@@ -160,7 +161,7 @@ const LivePurchase = z
     id: z.string().openapi({ description: "The purchase and its Alibi's id." }),
     store: z.string(),
     merchant: z.string(),
-    amount: z.object({ currency: z.string(), minor: z.string() }),
+    amount: Amount,
     decision: z.enum(["allow", "deny"]),
     transactionId: z.string().nullable().openapi({
       description: "The PayPal transaction the store was paid by; `null` for a DENY.",
@@ -231,14 +232,22 @@ export function registerPurchases(app: OpenAPIHono, deps: Pick<Deps, "db" | "dem
       )
       .orderBy(desc(purchases.createdAt))
       .limit(100);
+    const parts = await breakdowns(
+      deps.db,
+      rows.map(({ purchase: p }) => p.evidenceRoot),
+    );
     c.header("Cache-Control", "public, max-age=60");
     return c.json(
       {
         purchases: rows.map(({ purchase: p }) => ({
+          ...withBreakdown(
+            { amount: { currency: p.currency, minor: p.amountMinor.toString() } },
+            p.evidenceRoot,
+            parts,
+          ),
           id: p.id,
           store: p.liveStore as string,
           merchant: p.merchantId,
-          amount: { currency: p.currency, minor: p.amountMinor.toString() },
           decision: p.state === "DENIED" ? ("deny" as const) : ("allow" as const),
           transactionId: p.paypalTransactionId,
           blocked: p.state === "DENIED" ? denyReasons(p.evalTrace) : [],
@@ -309,7 +318,9 @@ export function registerPurchases(app: OpenAPIHono, deps: Pick<Deps, "db" | "dem
         ? principal.subject === row.userId
         : principal.subject === row.purchase.clientId);
     if (!row || !mine) return problem(c, 404, "not-found", "Not found");
+    const p = row.purchase;
+    const parts = await breakdowns(deps.db, [p.evidenceRoot]);
     c.header("Cache-Control", "no-store");
-    return c.json(purchaseView(row.purchase), 200);
+    return c.json(withBreakdown(purchaseView(p), p.evidenceRoot, parts), 200);
   });
 }

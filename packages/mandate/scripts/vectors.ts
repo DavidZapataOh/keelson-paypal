@@ -918,6 +918,35 @@ async function commitmentVectors() {
       },
     ],
   ];
+  const embedded = (top_origin: unknown) => (m: Mandate) => {
+    (m as unknown as { embed: unknown }).embed = { top_origin };
+  };
+  parseCases.push(
+    ["ok/embed", embedded("https://agents.example.com")],
+    ["ok/embed-port", embedded("https://agents.example.com:8443")],
+    ["ok/embed-port-65535", embedded("https://agents.example.com:65535")],
+    ["error/embed-port-443", embedded("https://agents.example.com:443")],
+    ["error/embed-port-65536", embedded("https://agents.example.com:65536")],
+    ["error/embed-port-leading-zero", embedded("https://agents.example.com:0443")],
+    ["error/embed-port-zero", embedded("https://agents.example.com:0")],
+    ["error/embed-empty-port", embedded("https://agents.example.com:")],
+    ["error/embed-http", embedded("http://agents.example.com")],
+    ["error/embed-path", embedded("https://agents.example.com/")],
+    ["error/embed-uppercase-host", embedded("https://Agents.example.com")],
+    ["error/embed-userinfo", embedded("https://user@agents.example.com")],
+    ["error/embed-ipv4", embedded("https://192.168.0.1")],
+    ["error/embed-not-a-string", embedded(42)],
+    ["error/embed-null", (m) => ((m as unknown as { embed: unknown }).embed = null)],
+    ["error/embed-empty", (m) => ((m as unknown as { embed: unknown }).embed = {})],
+    [
+      "error/embed-unknown-key",
+      (m) =>
+        ((m as unknown as { embed: unknown }).embed = {
+          top_origin: "https://agents.example.com",
+          origin: "https://api.keelson.finance",
+        }),
+    ],
+  );
   const websites: [string, string][] = [
     ["ok/website-punycode", "https://xn--caf-dma.example"],
     ["ok/website-invalid-punycode", "https://xn--a.example"],

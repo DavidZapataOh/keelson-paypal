@@ -110,6 +110,11 @@ function Row({ check }: { check: Check }) {
       <div className="min-w-0">
         <p className="text-[15px]">{meta.label}</p>
         {reason && <p className="mt-0.5 break-words text-sm text-muted-foreground">{reason}</p>}
+        {check.detail?.signedOn && (
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Signed on {check.detail.signedOn}, in Keelson's approval
+          </p>
+        )}
         {check.detail?.alert && <p className="mt-0.5 text-sm text-warn">{check.detail.alert}</p>}
         {evidence.note && <p className="mt-0.5 text-sm text-muted-foreground">{evidence.note}</p>}
         {evidence.link && (

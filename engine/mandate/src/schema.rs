@@ -299,6 +299,25 @@ fn is_website(s: &str) -> bool {
         && path.bytes().all(is_path_char)
 }
 
+/// Whether `s` is a serialized https origin as `URL.origin` writes it: `https://`, a host name as
+/// [`is_website`] takes it and an optional port other than 443, without leading zeros.
+fn is_https_origin(s: &str) -> bool {
+    let Some(rest) = s.strip_prefix("https://") else {
+        return false;
+    };
+    let (host, port) = match rest.split_once(':') {
+        Some((host, port)) => (host, Some(port)),
+        None => (rest, None),
+    };
+    let port_ok = port.is_none_or(|port| {
+        (1..=5).contains(&port.len())
+            && !port.starts_with('0')
+            && port.bytes().all(|b| b.is_ascii_digit())
+            && port.parse::<u32>().is_ok_and(|p| p <= 65_535 && p != 443)
+    });
+    port_ok && !host.contains('/') && is_website(&format!("https://{host}"))
+}
+
 fn p256_jwk(v: &Value, path: &str, kid: bool) -> Result {
     let keys: &[&str] = if kid {
         &["kty", "crv", "x", "y", "kid"]
@@ -669,6 +688,12 @@ fn members(root: &Map<String, Value>) -> Result<(&Map<String, Value>, i64, i64, 
         text(get(risk, "device_fp"), "risk_data.device_fp", SHORT, true)?;
         text(get(risk, "ip"), "risk_data.ip", SHORT, true).map(drop)
     })?;
+
+    if let Some(embed) = root.get("embed") {
+        strict(embed, "embed", &["top_origin"], |e| {
+            matching(get(e, "top_origin"), "embed.top_origin", is_https_origin).map(drop)
+        })?;
+    }
     Ok((root, iat, nbf, exp))
 }
 
@@ -692,6 +717,7 @@ pub fn parse_mandate(m: &Value) -> Result {
         "consent",
         "zk",
         "risk_data",
+        "embed?",
     ];
     let (root, iat, nbf, exp) = strict(m, "", &keys, members)?;
     let at = |k: &str| get(root, k);

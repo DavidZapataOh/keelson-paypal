@@ -10,7 +10,7 @@ import { decodeJwt, importJWK, type JWK } from "jose";
 import { fromBase64url, toBase64url } from "../../b64.ts";
 import type { AlibiBundle } from "../../schema.ts";
 import { type CheckDef, expect, pass } from "../check.ts";
-import { MANDATE_ORIGIN, MANDATE_RP_ID } from "../trust.ts";
+import { MANDATE_EMBED_ORIGIN, MANDATE_ORIGIN, MANDATE_RP_ID } from "../trust.ts";
 import { issuerThumbprint } from "./attestation.ts";
 import { isBundle, UNDISCLOSED } from "./util.ts";
 
@@ -95,11 +95,24 @@ export const challenge: CheckDef = {
   },
 };
 
-/** The user's passkey, named in the mandate, signed its challenge with user verification. */
+/**
+ * The agent platform whose page framed Keelson's approval when the user signed, `embed.top_origin`
+ * of the signed payload; undefined for a mandate signed at the top level in the Keelson app.
+ */
+function embeddedOn(b: AlibiBundle): string | undefined {
+  const embed = (b.mandate.payload_sd as { embed?: { top_origin?: unknown } }).embed;
+  return typeof embed?.top_origin === "string" ? embed.top_origin : undefined;
+}
+
+/**
+ * The user's passkey, named in the mandate, signed its challenge with user verification, in the
+ * Keelson app or, for a mandate with `embed`, in Keelson's approval framed by `embed.top_origin`
+ * and no other page.
+ */
 export const passkey: CheckDef = {
   id: "mandate.passkey",
   step: 2,
-  reads: ["/mandate/user_auth", "/mandate/payload_sd/user/cred"],
+  reads: ["/mandate/user_auth", "/mandate/payload_sd/user/cred", "/mandate/payload_sd/embed"],
   async run(input) {
     if (!isBundle(input)) return UNDISCLOSED;
     const auth = input.mandate.user_auth as {
@@ -119,13 +132,27 @@ export const passkey: CheckDef = {
         BigInt(input.tee.countersign.mandateCommitment),
       ),
     );
+    const top = embeddedOn(input);
+    const payment = data.payment as { topOrigin?: unknown } | undefined;
+    // WebAuthn Level 3 section 7.2 steps 11 and 12: a top-level assertion has no `topOrigin`
+    // and `crossOrigin` absent or false; a framed one names its top-level origin.
+    const framing =
+      top === undefined
+        ? data.origin === MANDATE_ORIGIN &&
+          (data.crossOrigin === undefined || data.crossOrigin === false) &&
+          !("topOrigin" in data)
+        : data.origin === MANDATE_EMBED_ORIGIN &&
+          data.crossOrigin === true &&
+          data.topOrigin === top;
     expect(
       (data.type === "webauthn.get" || data.type === "payment.get") &&
         data.challenge === m &&
-        data.origin === MANDATE_ORIGIN &&
-        data.crossOrigin !== true,
-      "the assertion is not over this mandate's challenge from the Keelson app",
-      ["/mandate/user_auth/clientDataJSON"],
+        framing &&
+        (data.type !== "payment.get" || payment?.topOrigin === (top ?? MANDATE_ORIGIN)),
+      top === undefined
+        ? "the assertion is not over this mandate's challenge from the Keelson app"
+        : `the assertion is not over this mandate's challenge from Keelson's approval framed by ${top}`,
+      ["/mandate/user_auth/clientDataJSON", "/mandate/payload_sd/embed"],
     );
     const rpIdHash = sha256(encoder.encode(MANDATE_RP_ID));
     expect(
@@ -152,7 +179,7 @@ export const passkey: CheckDef = {
       signed,
     );
     expect(ok, "the passkey signature does not verify", ["/mandate/user_auth/signature", ...reads]);
-    return pass();
+    return pass(top === undefined ? undefined : { signedOn: new URL(top).host });
   },
 };
 

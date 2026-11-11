@@ -45,7 +45,10 @@ const CreatePurchaseHold = z
     requestId: Ulid.openapi({ description: "The request id the purchase is countersigned under." }),
     merchant: z.string().min(1).max(256),
     currency: z.string().length(3),
-    amountMinor: Minor.openapi({ description: "The cart total, in minor units." }),
+    amountMinor: Minor.openapi({
+      description:
+        "The checkout total the purchase is countersigned for, tax and shipping included, in minor units.",
+    }),
     cartHash: Hex32,
     closedMandate: z.string().min(1).max(32_768).openapi({
       description:
