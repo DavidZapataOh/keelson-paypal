@@ -1,6 +1,6 @@
 {
-  "id": "f2ec5bab-175e-4c26-b983-196434f8d868",
-  "prevId": "48b4328c-5487-45d3-8425-b7a4dc6a9d49",
+  "id": "0e4b3f1c-0024-4170-9dde-17d504ceca09",
+  "prevId": "741e10ae-a105-4e2d-bfab-fa9bbae1a4c4",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -6383,7 +6383,7 @@
         },
         "verdicts_rail_valid": {
           "name": "verdicts_rail_valid",
-          "value": "\"verdicts\".\"rail\" in ('pyusd', 'paypal', 'card')"
+          "value": "\"verdicts\".\"rail\" in ('pyusd', 'paypal')"
         },
         "verdicts_outcome_valid": {
           "name": "verdicts_outcome_valid",

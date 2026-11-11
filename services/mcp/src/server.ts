@@ -28,7 +28,7 @@ import {
   inputRequired,
   inputResponse,
   McpServer,
-  requireScopes,
+  type ScopeChallengeHandler,
   type ServerContext,
 } from "@modelcontextprotocol/server";
 import { ulid } from "ulid";
@@ -64,8 +64,14 @@ export interface KeelsonServerOptions {
   storeOrigin: string;
   /** The operator the client linked, when the tool call names none. */
   agentId?: bigint | undefined;
-  /** The agent's `cnf` key; `keelson.request_countersign` is offered only where it lives. */
+  /** The agent's `cnf` key; `keelson.request_countersign` closes mandates with it where it lives. */
   agentKey?: CryptoKey | undefined;
+  /**
+   * The client acts for a user with a token they granted it (an MCP host over OAuth): its
+   * mandates name Keelson's hosted operator, which the API closes for each countersign, so
+   * `keelson.request_countersign` needs no key here.
+   */
+  delegated?: boolean;
   /** Challenge each tool for the OAuth scopes its API calls need (HTTP only). */
   scoped?: boolean;
   /**
@@ -209,6 +215,9 @@ const Pending = {
   expiresAt: z.string().optional(),
 };
 
+/** The scopes an app acting for a user holds where an operator's own client holds `countersign:write`. */
+const FOR_A_USER = new Set(["mandates:request", "purchases:write"]);
+
 /** The rule every write tool's description ends with. */
 const NEVER_AGAIN =
   "Never call this tool again to finish or check what it started: that starts a new operation. Follow `next`, and poll keelson.get_request or keelson.get_purchase.";
@@ -328,8 +337,8 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
   const codec = createRequestStateCodec<{ tool: string; requestId: string }>({
     key: o.stateKey ?? crypto.getRandomValues(new Uint8Array(32)),
     ttlSeconds: 900,
-    // Only the client that started a request may resume it.
-    bind: (ctx) => ctx.http?.authInfo?.clientId ?? "",
+    // Only the client that started a request, for the same user, may resume it.
+    bind: (ctx) => `${ctx.http?.authInfo?.clientId ?? ""}:${ctx.http?.authInfo?.extra?.user ?? ""}`,
   });
   const server = new McpServer(
     { name: "keelson", title: "Keelson", version, websiteUrl: "https://keelson.finance" },
@@ -346,8 +355,20 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
       ].join(" "),
     },
   );
-  const scopes = (...s: [string, ...string[]]) =>
-    o.scoped ? { scopeChallenge: requireScopes(...s) } : {};
+  // A tool is challenged for the scope an app acting for a user needs (MCP step-up); an operator's
+  // own client holds `countersign:write` in place of the delegated scopes that stand for it.
+  const scopes = (scope: string): { scopeChallenge?: ScopeChallengeHandler } =>
+    o.scoped
+      ? {
+          scopeChallenge: ({ authInfo }) => {
+            if (authInfo === undefined) return undefined;
+            const held = new Set(authInfo.scopes);
+            if (held.has(scope)) return undefined;
+            if (FOR_A_USER.has(scope) && held.has("countersign:write")) return undefined;
+            return { scopes: [scope] };
+          },
+        }
+      : {};
   const { keelson } = o;
 
   const listMandates = (agentId: string | undefined) => {
@@ -573,7 +594,7 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
           .optional(),
       }),
       annotations: { openWorldHint: true, idempotentHint: false },
-      ...scopes("countersign:write"),
+      ...scopes("mandates:request"),
     },
     async ({ name, reason, perPurchaseMinor, totalMinor, until, askAboveMinor }, ctx) => {
       try {
@@ -639,7 +660,7 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
         mandateId: z.string().nullable().optional(),
       }),
       annotations: { readOnlyHint: true, idempotentHint: true },
-      ...scopes("countersign:write"),
+      ...scopes("mandates:request"),
     },
     async ({ requestId }) => {
       try {
@@ -669,7 +690,7 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
         mandateId: z.string().nullable().optional(),
       }),
       annotations: { openWorldHint: true, idempotentHint: false },
-      ...scopes("countersign:write"),
+      ...scopes("mandates:request"),
     },
     async ({ mandateId, note, perPurchaseMinor, totalMinor, until }, ctx) => {
       try {
@@ -724,7 +745,7 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
       }),
       outputSchema: Envelope.extend({ mandate: MandateSummary.nullable(), url: z.string() }),
       annotations: { readOnlyHint: true },
-      ...scopes("countersign:write"),
+      ...scopes("mandates:request"),
     },
     async ({ mandateId, agentId }, ctx): Promise<CallToolResult | InputRequiredResult> => {
       const mandates = await listMandates(agentId);
@@ -771,17 +792,18 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
     },
   );
 
-  const countersignNext = o.agentKey
-    ? {
-        action: "call" as const,
-        tool: "keelson.request_countersign",
-        say: "Check it with keelson.check_cart, then countersign it with keelson.request_countersign.",
-      }
-    : {
-        action: "call" as const,
-        tool: "keelson.check_cart",
-        say: "Check it with keelson.check_cart, then countersign it from the process that holds your agent key (keelson.request_countersign in Keelson's STDIO server).",
-      };
+  const countersignNext =
+    o.agentKey || o.delegated
+      ? {
+          action: "call" as const,
+          tool: "keelson.request_countersign",
+          say: "Check it with keelson.check_cart, then countersign it with keelson.request_countersign.",
+        }
+      : {
+          action: "call" as const,
+          tool: "keelson.check_cart",
+          say: "Check it with keelson.check_cart, then countersign it from the process that holds your agent key (keelson.request_countersign in Keelson's STDIO server).",
+        };
 
   server.registerTool(
     "keelson.submit_evidence",
@@ -914,7 +936,7 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
           .optional(),
       }),
       annotations: { readOnlyHint: true, idempotentHint: true },
-      ...scopes("countersign:write"),
+      ...scopes("purchases:write"),
     },
     async ({ mandateId, cart }) => {
       try {
@@ -1058,7 +1080,7 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
       inputSchema: z.object({ purchaseId: Ulid }),
       outputSchema: Envelope.extend(PurchaseFields),
       annotations: { readOnlyHint: true, idempotentHint: true },
-      ...scopes("countersign:write"),
+      ...scopes("purchases:write"),
     },
     async ({ purchaseId }) => {
       try {
@@ -1072,7 +1094,7 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
   );
 
   const agentKey = o.agentKey;
-  if (agentKey) {
+  if (agentKey || o.delegated) {
     server.registerTool(
       "keelson.request_countersign",
       {
@@ -1089,7 +1111,7 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
         }),
         outputSchema: Envelope.extend({ ...PurchaseFields, ...Pending }),
         annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
-        ...scopes("countersign:write"),
+        ...scopes("purchases:write"),
       },
       async ({ mandateId, evidenceRoot, cart, agentId, repeatOf }, ctx) => {
         const resumed = ctx.mcpReq.requestState<{ tool: string; requestId: string }>();
@@ -1110,6 +1132,17 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
             );
           }
           const requestId = ulid();
+          // Where the agent's key lives, it closes the mandate; for an app acting for a user,
+          // Keelson closes it with its hosted operator's key over this request and cart.
+          const authority = agentKey
+            ? {
+                closedMandate: await closeMandate(
+                  mandate.openMandate,
+                  { requestId, cartHash: `sha256:${toHex(cartHash(cart as Cart)).slice(2)}` },
+                  agentKey,
+                ),
+              }
+            : { mandateId, requestId };
           const total = cart.lines.reduce(
             (sum, l) => sum + BigInt(l.qty) * BigInt(l.unit_minor),
             0n,
@@ -1124,11 +1157,7 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
               "/v1/countersign",
               post({
                 authorizationId: mandate.authorizationId,
-                closedMandate: await closeMandate(
-                  mandate.openMandate,
-                  { requestId, cartHash: `sha256:${toHex(cartHash(cart as Cart)).slice(2)}` },
-                  agentKey,
-                ),
+                ...authority,
                 cart,
                 unit: {
                   amount: {

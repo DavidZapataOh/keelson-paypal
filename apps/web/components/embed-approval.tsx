@@ -232,6 +232,9 @@ export function EmbedApproval() {
   });
   const [signer, setSigner] = useState<EmbedSigner | null>(null);
   const [signing, setSigning] = useState<{ for: string; s: Signing; credentialId: string }>();
+  // The browser's payment prompt needs the passkey known to this browser as a payment one; once it
+  // fails, the next attempt asks for the passkey directly.
+  const paymentPrompt = useRef(true);
   const root = useRef<HTMLDivElement>(null);
   const allow = useRef<HTMLButtonElement>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -582,7 +585,10 @@ export function EmbedApproval() {
       const assertion = await signMandate(
         s.challenge,
         signer.passkeys.filter((p) => p.credentialId === credentialId),
-        { spc: s.spc, onDevice: signer.credentialId ? [signer.credentialId] : [] },
+        {
+          ...(paymentPrompt.current ? { spc: s.spc } : {}),
+          onDevice: signer.credentialId ? [signer.credentialId] : [],
+        },
       );
       const created = await approveEmbed(session, {
         payloadSd: s.payloadSd,
@@ -600,7 +606,14 @@ export function EmbedApproval() {
       if (elsewhere) setPhase({ at: "elsewhere", why: message });
       else {
         setPhase({ at: "confirm", signing: false });
-        setError(message);
+        const viaPayment =
+          paymentPrompt.current && (e as { name?: string })?.name === "NotAllowedError";
+        paymentPrompt.current = false;
+        setError(
+          viaPayment
+            ? "The payment prompt did not finish. Nothing was approved; sign again to use your passkey directly."
+            : message,
+        );
       }
     }
   };
@@ -1049,7 +1062,16 @@ export function EmbedApproval() {
               </button>
             ) : (
               <p className="text-center text-muted-foreground text-xs">
-                You confirm with your passkey in Keelson.
+                You confirm with your passkey in Keelson
+                {view.matchNumber !== null ? (
+                  <>
+                    . When it asks for your agent's number, pick{" "}
+                    <span className="font-mono font-medium text-foreground tnum">
+                      {view.matchNumber}
+                    </span>
+                  </>
+                ) : null}
+                .
               </p>
             )}
           </>

@@ -101,11 +101,12 @@ export function registerPlatform(
     },
     // The Keelson window answers this page through its opener.
     crossOriginOpenerPolicy: "same-origin-allow-popups",
-    // The user signs in Keelson's frame: its passkey and payment prompts are delegated to it alone.
+    // The user signs in Keelson's frame: its passkey and payment prompts are delegated to it. A
+    // frame gets a feature only where its parent has it too, so this page keeps them as well.
     permissionsPolicy: {
-      publickeyCredentialsGet: [deps.api],
-      payment: [deps.api],
-      ...({ publickeyCredentialsCreate: [deps.api] } as object),
+      publickeyCredentialsGet: ["self", deps.api],
+      payment: ["self", deps.api],
+      ...({ publickeyCredentialsCreate: ["self", deps.api] } as object),
     },
   });
 
@@ -158,9 +159,9 @@ export function registerPlatform(
           reason: REASON,
           limits: {
             currency: "USD",
-            perPurchaseMinor: 6_000,
+            // One pair under $120, as the user asked: RunFast's shoes start at $99.
+            perPurchaseMinor: 12_000,
             totalMinor: 12_000,
-            askAboveMinor: 4_000,
             merchants: ["mrc_runfast"],
             until: new Date(Date.now() + 7 * DAY_MS).toISOString(),
           },

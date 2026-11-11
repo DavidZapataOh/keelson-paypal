@@ -263,6 +263,9 @@ async function main() {
     embed: "issued (not printed)",
   });
 
+  // Charges need the issuer to ask the legs (ASA) and to report settlements (webhooks).
+  if (process.env.SKIP_CHARGES) return;
+
   // Lithic's sandbox plays the card network: it reads the card as a merchant terminal would.
   const lithic = new Lithic({ apiKey: env("LITHIC_API_KEY"), environment: "sandbox" });
   let token: string | undefined;

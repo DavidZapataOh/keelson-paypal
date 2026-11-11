@@ -33,7 +33,6 @@ import { type Notifier, notify, stopAlert } from "./notify/notifier.ts";
 import type { PayPalDeps } from "./paypal.ts";
 import { principalChannel } from "./principal.ts";
 import { REVOCABLE, revokeMandate } from "./routes/revoke.ts";
-import { stoppedKey } from "./stopped.ts";
 
 export interface StopDeps {
   db: Db;
@@ -96,16 +95,23 @@ const money = (m: Map<string, bigint>): Money =>
     .map(([currency, minor]) => ({ currency, minor: minor.toString() }));
 
 /**
- * Stops every agent of the user at once. The stop is stored first, so from this instant no
- * mandate stored before it is countersigned; then every live mandate is flagged, every request
- * denied and every OAuth grant revoked; then each hold is voided. The stop leaf is appended once
+ * Stops every agent of the user at once. Every OAuth grant is revoked, then the stop is stored, so
+ * from this instant no mandate stored before it is countersigned and no access token issued before
+ * it is accepted; then every live mandate is flagged and every request denied; then each hold is
+ * voided. The stop leaf is appended once
  * no purchase of the stopped mandates can still be logged (see {@link finishStops}).
  */
 export async function stopAgents(deps: StopDeps, userId: string): Promise<StopRecord> {
   const { db } = deps;
   const id = ulid();
+  // Grants end first: every access token a refresh could still mint was issued before the stop,
+  // which refuses it by its issue time (see stopped.ts).
+  await db
+    .update(oauthRefreshToken)
+    .set({ revoked: new Date() })
+    .where(and(eq(oauthRefreshToken.userId, userId), isNull(oauthRefreshToken.revoked)));
+  await db.delete(oauthConsent).where(eq(oauthConsent.userId, userId));
   await db.insert(agentStops).values({ id, userId });
-  await deps.kv.set(stoppedKey(userId), String(Math.floor(Date.now() / 1000))).catch(() => {});
 
   const rows = await flagLive(db, userId);
   await db
@@ -116,12 +122,6 @@ export async function stopAgents(deps: StopDeps, userId: string): Promise<StopRe
     .update(agentConnections)
     .set({ state: "DENIED", decidedAt: new Date() })
     .where(and(eq(agentConnections.userId, userId), eq(agentConnections.state, "PENDING")));
-  // Refresh tokens and consents end here; access tokens are refused by their issue time.
-  await db
-    .update(oauthRefreshToken)
-    .set({ revoked: new Date() })
-    .where(and(eq(oauthRefreshToken.userId, userId), isNull(oauthRefreshToken.revoked)));
-  await db.delete(oauthConsent).where(eq(oauthConsent.userId, userId));
 
   const released = new Map<string, bigint>();
   const releasing = new Map<string, bigint>();
