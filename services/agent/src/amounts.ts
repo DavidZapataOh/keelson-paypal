@@ -17,7 +17,7 @@ const SPACES = /[\s    ]+/gu;
 /** Bidirectional marks right-to-left locales put around numbers and signs. */
 const BIDI = /[؜‎‏‪-‮⁦-⁩]/gu;
 
-const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const flat = (s: string) => s.replace(BIDI, "").replace(SPACES, " ");
 
 /** The minor units of `currency`: 2 for USD, 0 for JPY, 3 for KWD (ISO 4217, as CLDR has them). */
@@ -106,10 +106,10 @@ export function readAmounts(text: string, locale: string, currency: string): Pag
   if (s.narrow && !marks.includes(s.narrow) && t.includes(currency)) marks.push(s.narrow);
   const mark = marks
     .sort((a, b) => b.length - a.length)
-    .map(escape)
+    .map(escapeRegex)
     .join("|");
-  const g = escape(s.group);
-  const d = escape(s.decimal);
+  const g = escapeRegex(s.group);
+  const d = escapeRegex(s.decimal);
   const integer = s.group
     ? `\\d{1,${s.secondary}}(?:${g}\\d{${s.secondary}})*${g}\\d{${s.primary}}|\\d+`
     : "\\d+";
@@ -117,9 +117,9 @@ export function readAmounts(text: string, locale: string, currency: string): Pag
   // A whole number only: no digit or separator of any locale may run on before or after it, so
   // a number written another way ("2.95" where "," is the decimal) is not read in part.
   const SEPARATORS = ".,'\u2019\u066b\u066c";
-  const before = `\\d${escape(SEPARATORS)}${s.group === " " ? "" : g}`;
+  const before = `\\d${escapeRegex(SEPARATORS)}${s.group === " " ? "" : g}`;
   const amount = new RegExp(
-    `(?<![${before}])(?:(?:${mark}) ?(${number})|(${number}) ?(?:${mark}))(?![${escape(SEPARATORS)}${d}]?\\d)`,
+    `(?<![${before}])(?:(?:${mark}) ?(${number})|(${number}) ?(?:${mark}))(?![${escapeRegex(SEPARATORS)}${d}]?\\d)`,
     "gu",
   );
   const minor: number[] = [];
