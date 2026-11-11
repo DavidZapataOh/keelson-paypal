@@ -260,6 +260,13 @@
       "when": 1794329930351,
       "tag": "0036_live_purchases",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1794361697551,
+      "tag": "0037_agent_connections",
+      "breakpoints": true
     }
   ]
 }

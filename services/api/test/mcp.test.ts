@@ -5,7 +5,9 @@ import { serve } from "@hono/node-server";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { leafHashOf } from "@keelson/alibi";
 import {
+  agentConnections,
   alibis,
+  eq,
   evidenceBundles,
   mandates,
   operators,
@@ -139,10 +141,12 @@ test("a client with client credentials lists the tools, each with an output sche
   const client = await connect(["alibis:read"]);
   const { tools } = await client.listTools();
   expect(tools.map((t) => t.name).sort()).toEqual([
+    "keelson.await_approval",
     "keelson.compile_mandate",
     "keelson.confirm_mandate",
     "keelson.get_alibi",
     "keelson.get_trust_grade",
+    "keelson.request_mandate",
     "keelson.submit_evidence",
     "keelson.verify_alibi",
   ]);
@@ -359,5 +363,53 @@ test.skipIf(!fixtures[0])("verifying an Alibi returns the API verifier's report"
   const report = result.structuredContent as { verdict: string; checks: { id: string }[] };
   expect(report.verdict).toEqual(expect.any(String));
   expect(report.checks.map((x) => x.id)).toContain("tee.countersign");
+  await client.close();
+});
+
+test("an agent asks its user for a mandate and hears the answer through the tools", async () => {
+  const creds = await registerClient(["countersign:write"]);
+  await testDb.insert(operators).values({
+    agentId: BigInt(`0x${randomBytes(10).toString("hex")}`),
+    chainId: 421614,
+    agentRegistry: "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+    name: "Asking operator",
+    cnfJwk: {},
+    clientId: creds.id,
+  });
+  const client = await connect(["countersign:write"], creds);
+  const asked = await client.callTool({
+    name: "keelson.request_mandate",
+    arguments: {
+      name: "Claude Code",
+      reason:
+        "I am Claude Code, buying the running shoes you asked for in this session. I check out at RunFast only and only what you named.",
+      perPurchaseMinor: 5_000,
+      totalMinor: 5_000,
+      until: new Date(Date.now() + 86_400_000).toISOString(),
+    },
+  });
+  expect(asked.isError, JSON.stringify(asked.content)).toBeFalsy();
+  const waiting = asked.structuredContent as {
+    userCode: string;
+    url: string;
+    deviceCode: string;
+    card: { title: string; action: string; url: string };
+  };
+  expect(waiting.card).toEqual({
+    title: "Claude Code wants to spend up to $50.00",
+    amount: "$50.00",
+    action: "Review",
+    url: waiting.url,
+  });
+  expect(waiting.url).toMatch(/\/connect\?c=[A-Z]{4}-[A-Z]{4}$/);
+
+  const poll = () =>
+    client.callTool({ name: "keelson.await_approval", arguments: { deviceCode: waiting.deviceCode } });
+  expect((await poll()).structuredContent).toMatchObject({ status: "pending", mandateId: null });
+  await testDb
+    .update(agentConnections)
+    .set({ state: "DENIED", decidedAt: new Date() })
+    .where(eq(agentConnections.userCode, waiting.userCode));
+  expect((await poll()).structuredContent).toMatchObject({ status: "denied" });
   await client.close();
 });
