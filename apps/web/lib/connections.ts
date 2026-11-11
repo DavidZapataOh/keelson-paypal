@@ -27,6 +27,22 @@ export interface ConnectionView {
     until: string;
   } | null;
   mandateId: string | null;
+  /** For `once`: the cart the agent tried, as it saw it. */
+  cart: {
+    merchant: { id: string; name: string };
+    currency: string;
+    totalMinor: string;
+    lines: {
+      sku: string;
+      size: string | null;
+      color: string | null;
+      category: string;
+      qty: number;
+      unitMinor: string;
+    }[];
+  } | null;
+  /** For `once`: each mandate field against the cart; the failing ones are why it paused. */
+  checks: { field: string; mandate: string | null; cart: string | null; pass: boolean }[] | null;
   /** The three numbers to pick the agent's from, until the user did; null when none is needed. */
   match: { options: number[]; matched: boolean } | null;
   expiresAt: string;

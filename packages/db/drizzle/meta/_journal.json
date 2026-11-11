@@ -309,6 +309,13 @@
       "when": 1794384849021,
       "tag": "0043_agent_stops",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1794385086324,
+      "tag": "0044_notifications",
+      "breakpoints": true
     }
   ]
 }

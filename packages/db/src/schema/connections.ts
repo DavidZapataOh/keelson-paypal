@@ -5,6 +5,7 @@ import {
   check,
   index,
   integer,
+  jsonb,
   numeric,
   pgTable,
   primaryKey,
@@ -50,6 +51,12 @@ export const agentConnections = pgTable(
     /** For `once`: the mandate the cart fell outside of, and the cart. */
     parentMandateId: char({ length: 26 }).references(() => mandates.id),
     cartHash: bytea(),
+    /** For `once`: the cart the agent saw, and each mandate field checked against it. */
+    cart: jsonb(),
+    checks:
+      jsonb().$type<
+        { field: string; mandate: string | null; cart: string | null; pass: boolean }[]
+      >(),
     state: text({ enum: ["PENDING", "APPROVED", "DENIED"] })
       .notNull()
       .default("PENDING"),

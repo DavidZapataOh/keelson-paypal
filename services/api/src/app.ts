@@ -25,12 +25,15 @@ import { registerMcp } from "./mcp.ts";
 import { requireClient } from "./middleware/auth.ts";
 import { idempotency } from "./middleware/idempotency.ts";
 import { type RateLimitOptions, rateLimit } from "./middleware/rate-limit.ts";
+import type { Notifier } from "./notify/notifier.ts";
 import type { OperatorSigners } from "./operators/signer.ts";
 import type { PayPalDeps } from "./paypal.ts";
 import { ProblemSchema, problem } from "./problem.ts";
+import { registerActivity } from "./routes/activity.ts";
 import { registerAdminClients } from "./routes/admin-clients.ts";
 import { registerAgentDocs } from "./routes/agent-docs.ts";
 import { registerAgents } from "./routes/agents.ts";
+import { registerAlerts } from "./routes/alerts.ts";
 import { registerAlibis } from "./routes/alibis.ts";
 import { registerAnonymousMandates } from "./routes/anonymous-mandates.ts";
 import { registerBonds } from "./routes/bonds.ts";
@@ -78,10 +81,11 @@ import type { StampWorker } from "./timestamps/worker.ts";
 /**
  * POST routes that stream their response, that read, or that an RFC 8628 client polls without an
  * `Idempotency-Key`: none changes anything a retry repeats. Embed tokens and sessions are never
- * stored for a replay; declining is a compare-and-set on a pending request.
+ * stored for a replay; declining is a compare-and-set on a pending request. Mail clients post the
+ * RFC 8058 one-click unsubscribe with no header of ours, and it is idempotent.
  */
 const STREAMED_POSTS =
-  /^\/v1\/(merchants\/[^/]+\/assistant|operators\/[^/]+\/(coverages\/rows|grid-query)|connections\/token|connections\/embed|embed\/(sessions|deny))$/;
+  /^\/v1\/(merchants\/[^/]+\/assistant|operators\/[^/]+\/(coverages\/rows|grid-query)|connections\/token|connections\/embed|embed\/(sessions|deny)|alerts\/unsubscribe)$/;
 
 /**
  * The public reads the verifier makes: an Alibi when it is public, an Alibi's receipt, a leaf's
@@ -168,6 +172,8 @@ export interface Deps {
   shutdown?: AbortSignal;
   /** The markup of the app's embedded approval page; `/embed/approve` is not served without it. */
   embedPage?: () => Promise<string>;
+  /** Sends phone and email alerts; nothing is sent without it and the alert routes answer 503. */
+  notifier?: Notifier;
 }
 
 /**
@@ -314,6 +320,8 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerEmbed(app, deps);
   if (deps.embedPage) registerEmbedPage(app, deps, deps.embedPage);
   registerAgents(app, deps);
+  registerActivity(app, deps);
+  registerAlerts(app, deps);
   registerOAuthConsent(app, deps);
   registerCompile(app, deps);
   registerCountersign(app, deps);
