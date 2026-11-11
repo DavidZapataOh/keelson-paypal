@@ -152,7 +152,8 @@ export function checkoutObject(f: PurchaseFacts): Record<string, unknown> {
   };
 }
 
-function instrumentOf(f: PurchaseFacts): Record<string, string> {
+/** The purchase's payment instrument, as AP2 and Verifiable Intent describe it. */
+export function instrumentOf(f: PurchaseFacts): Record<string, string> {
   return f.card
     ? {
         id: `card:${f.card.lastFour}`,
@@ -161,6 +162,14 @@ function instrumentOf(f: PurchaseFacts): Record<string, string> {
       }
     : { id: `paypal:${f.payee}`, type: "PAYPAL", description: "PayPal" };
 }
+
+/** The purchase's checkout as a JWT signed in the issuer slot. */
+export const signCheckoutJwt = (f: PurchaseFacts, ref: AlibiRef, issuer: ExportSigner) =>
+  issuer.sign(
+    JWT,
+    { ...checkoutObject(f), keelson: keelsonClaim(f, ref, AP2_CHECKOUT_JWT) },
+    ref.statement,
+  );
 
 /** A receipt's `reference`: the hash of the final segment of a closed mandate chain. */
 export const receiptReference = (chain: string): string =>
@@ -262,7 +271,7 @@ async function receipts(
 }
 
 /** The nonce of a purchase's closed mandates: its countersigned request id, as a ULID. */
-const nonceOf = (facts: StatementFacts) =>
+export const nonceOf = (facts: StatementFacts) =>
   transform("UlidOfRequest", facts.request_id, facts) as string;
 
 /**
@@ -276,11 +285,7 @@ export async function exportAp2(
   o: { now: number },
 ): Promise<Ap2Export> {
   const open = await issueAp2Open(f, ref, k.issuer);
-  const checkoutJwt = await k.issuer.sign(
-    JWT,
-    { ...checkoutObject(f), keelson: keelsonClaim(f, ref, AP2_CHECKOUT_JWT) },
-    ref.statement,
-  );
+  const checkoutJwt = await signCheckoutJwt(f, ref, k.issuer);
   const x: Ap2Export = {
     type: "keelson.ap2/1",
     alibi: ref,

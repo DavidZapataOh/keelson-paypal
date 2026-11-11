@@ -27,6 +27,23 @@ const merchantOf = (m: { id?: string; name?: string; website?: string | undefine
   ...(m.website ? { website: m.website } : {}),
 });
 
+type NamedMerchant = { id?: string; name?: string; website?: string; paypal_merchant_id?: string };
+
+/**
+ * A PayPal payee as a merchant: the allowed merchant with its PayPal merchant id, or the only
+ * allowed merchant, else the bare id.
+ */
+function payeeOf(merchants: NamedMerchant[], paypalId: string) {
+  const of =
+    merchants.find((x) => x.paypal_merchant_id === paypalId) ??
+    (merchants.length === 1 ? merchants[0] : undefined);
+  return {
+    id: paypalId,
+    name: of?.name ?? paypalId,
+    ...(of?.website ? { website: of.website } : {}),
+  };
+}
+
 /**
  * Maps the disclosed constraints of a purchase's mandate to AP2's constraint types. AP2 has no
  * wildcard: a wildcard merchant is no AP2 constraint, and a wildcard line of an allowed purchase is
@@ -35,8 +52,7 @@ const merchantOf = (m: { id?: string; name?: string; website?: string | undefine
 export function ap2Constraints(f: PurchaseFacts): StandardConstraints {
   const m = f.mandate;
   const out: StandardConstraints = { checkout: [], payment: [], keelsonOnly: [], refined: [] };
-  const merchants: { id?: string; name?: string; website?: string; paypal_merchant_id?: string }[] =
-    [];
+  const merchants: NamedMerchant[] = [];
   for (const c of m.checkout?.constraints ?? []) {
     if (!c?.type) continue;
     if (c.type === "checkout.allowed_merchants") {
@@ -96,13 +112,8 @@ export function ap2Constraints(f: PurchaseFacts): StandardConstraints {
         out.payment.push({
           type: c.type,
           allowed: (c.allowed ?? []).map((p) => {
-            const of =
-              merchants.find((x) => x.paypal_merchant_id === p?.paypal_merchant_id) ??
-              (merchants.length === 1 ? merchants[0] : undefined);
-            return {
-              id: p?.paypal_merchant_id as string,
-              name: of?.name ?? (p?.paypal_merchant_id as string),
-            };
+            const { id, name } = payeeOf(merchants, p?.paypal_merchant_id as string);
+            return { id, name };
           }),
         });
         break;
@@ -111,5 +122,47 @@ export function ap2Constraints(f: PurchaseFacts): StandardConstraints {
     }
   }
   if (budget) out.payment.push({ type: "payment.agent_recurrence", frequency: "ON_DEMAND" });
+  return out;
+}
+
+/**
+ * Maps the disclosed constraints of a purchase's mandate to Verifiable Intent's `mandate.*` types,
+ * with AP2's wildcard rules. Amounts and budgets stay in minor units. Payees are stated as
+ * merchants. VI has no execution date, so it travels verbatim with the Keelson-only constraints.
+ */
+export function viConstraints(f: PurchaseFacts): StandardConstraints {
+  const ap2 = ap2Constraints(f);
+  const merchants = (f.mandate.checkout?.constraints ?? []).flatMap((c) =>
+    c?.type === "checkout.allowed_merchants"
+      ? ((c.allowed ?? []).filter(
+          (x) => x?.id && x.id !== ANY_MERCHANT && x.name,
+        ) as NamedMerchant[])
+      : [],
+  );
+  const out: StandardConstraints = {
+    checkout: ap2.checkout.map((c) => ({ ...c, type: `mandate.${c.type}` })),
+    payment: [],
+    keelsonOnly: ap2.keelsonOnly.filter((c) => !c.type.startsWith("payment.")),
+    refined: ap2.refined,
+  };
+  for (const c of f.mandate.payment?.constraints ?? []) {
+    if (!c?.type) continue;
+    switch (c.type) {
+      case "payment.amount_range":
+      case "payment.budget":
+        out.payment.push({ type: `mandate.${c.type}`, currency: c.currency, max: c.max });
+        break;
+      case "payment.allowed_payees":
+        out.payment.push({
+          type: "mandate.payment.allowed_payees",
+          allowed: (c.allowed ?? []).map((p) =>
+            payeeOf(merchants, p?.paypal_merchant_id as string),
+          ),
+        });
+        break;
+      default:
+        out.keelsonOnly.push(c as Constraint);
+    }
+  }
   return out;
 }

@@ -69,6 +69,8 @@ export const EXPORT_BINDINGS: Record<string, Profile> = {
     typ: "JWT",
     rows: [{ pointer: "/status", fact: "decision", transform: "StatusOfDecision" }],
   },
+  "vi.l1/1": { typ: "sd+jwt", rows: [] },
+  "vi.l2/1": { typ: "kb-sd-jwt+kb", rows: [] },
 };
 
 /** Why an export payload cannot be signed. */

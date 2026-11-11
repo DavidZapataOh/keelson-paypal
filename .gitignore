@@ -22,3 +22,4 @@ engine/tee/out/
 /services/log/log
 packages/interop/conformance/out/
 packages/interop/conformance/.venv/
+packages/interop/conformance/__pycache__/

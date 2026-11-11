@@ -5,6 +5,7 @@ description = "Checks Keelson's standards exports with the standards' own refere
 requires-python = ">=3.12,<3.13"
 dependencies = [
   "ap2 @ git+https://github.com/google-agentic-commerce/AP2@e1ea56db72a6385bce3e5c1112b3a56ce60acb43",
+  "verifiable-intent @ git+https://github.com/agent-intent/verifiable-intent@356c29635f1c44df7de02edb58699ca9f29bece6",
 ]
 
 [tool.uv]
