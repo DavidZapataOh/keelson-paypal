@@ -54,3 +54,8 @@ export function span<T>(
     }
   });
 }
+
+/** Records a span named `name` from `startedAt` (epoch ms) to now, under the active span. */
+export function mark(name: string, startedAt: number): void {
+  tracer.startSpan(name, { startTime: startedAt }).end();
+}
