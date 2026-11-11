@@ -80,7 +80,6 @@ export type SecurityRequirement = Record<string, string[]>;
 // Route modules build their guards as they load, and some load while this module is still
 // loading (an import cycle through the routes): a hoisted `var`, filled on first use, is there
 // for them where a `const` would not be initialized yet.
-// biome-ignore lint/style/noVar: see above
 var requirements: WeakMap<MiddlewareHandler, SecurityRequirement[]> | undefined;
 
 /** The OpenAPI security requirements a guard enforces, any one of which admits the request. */
