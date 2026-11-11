@@ -131,6 +131,8 @@ async function userSignsAndHolds(): Promise<string> {
   await page.waitForURL(/\/new\/\?hold=/, { timeout: 90_000 });
   const mid = new URL(page.url()).searchParams.get("hold") as string;
   log("mandate signed", mid);
+  await page.waitForLoadState("load");
+  await page.waitForTimeout(3_000);
   await shot(page, "04-hold");
   const { orderId } = await inPage<{ orderId: string }>(page, `/v1/mandates/${mid}/hold`, "POST");
   await approveOrder(
