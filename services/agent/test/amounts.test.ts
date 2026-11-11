@@ -355,7 +355,8 @@ describe("PayPal's review page for a buyer whose account converts the total", ()
   };
   const usdTotal = (minor: number) => `$${(minor / 100).toFixed(2)} USD`;
   const page = fc.record({
-    usd: fc.integer({ min: 1, max: 1_000_000 }),
+    // A total under one unit holds where a rate shows: its unit is set aside.
+    usd: fc.integer({ min: 100, max: 1_000_000 }),
     /** COP per USD, in hundredths: 1.00 to 10,000.00. */
     rate: fc.integer({ min: 100, max: 1_000_000 }),
     balance: fc.integer({ min: 0, max: 9_000_000_000 }),
@@ -496,5 +497,51 @@ describe("pages a second review found paid more than the countersigned total", (
       minor: [1000, 1000],
       totals: [1000],
     });
+  });
+});
+
+describe("pages a final review found paid more than the countersigned total", () => {
+  test.each([
+    [
+      "a whole amount whose code a quantity follows",
+      "Total $10.00 USD\nShipping 490 USD 1 item",
+      "en",
+      "USD",
+    ],
+    [
+      "a whole amount before another amount",
+      "Total $10.00 USD\nShipping 490 USD $0.00",
+      "en",
+      "USD",
+    ],
+    ["a whole yen amount before a quantity", "合計 ¥1,000\n追加 5000 JPY 2", "ja", "JPY"],
+  ])("%s is held", (_, text, locale, currency) => {
+    expect(charges(readPage(text, [locale], currency), 1000, currency, true)).toBe(false);
+  });
+
+  test("a rate's unit does not hide a total under one unit", () => {
+    const text = "Total $0.50 USD\nFee 1 USD = 4,000.00 COP";
+    expect(charges(readPage(text, ["en"], "USD"), 50, "USD", true)).toBe(false);
+  });
+
+  test("on PayPal, only the buyer's balance in another currency is set aside", () => {
+    const rate = "Total $10.00 USD\n1 USD = 17.00 MXN\nPagarás $170.00 MXN";
+    expect(
+      charges(readPage(`${rate}\nSaldo de PayPal $4,900.00 MXN`, ["es"], "USD"), 1000, "USD", true),
+    ).toBe(true);
+    expect(
+      charges(
+        readPage(`${rate}\nRemaining balance $4,900.00 MXN`, ["en"], "USD"),
+        1000,
+        "USD",
+        true,
+      ),
+    ).toBe(false);
+  });
+
+  test("a masked card's last digits before a coded amount are no amount", () => {
+    expect(
+      charges(readPage("Visa •••• 4242 USD $10.00\nTotal USD $10.00", ["en"], "USD"), 1000, "USD"),
+    ).toBe(true);
   });
 });

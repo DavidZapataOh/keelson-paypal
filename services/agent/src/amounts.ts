@@ -379,7 +379,7 @@ function markAfter(
     (m) =>
       post.startsWith(m) &&
       !/^[\p{L}\p{Sc}\d]/u.test(post.slice(m.length)) &&
-      !(lone && /^\p{Lu}{3}$/u.test(m) && /^ [\p{Sc}\d]/u.test(post.slice(m.length))),
+      !(lone && /^\p{Lu}{3}$/u.test(m) && /^ \p{Sc}/u.test(post.slice(m.length))),
   );
 }
 
@@ -401,7 +401,7 @@ function generic(
   const mark = m?.[1];
   if (mark === undefined || TAX_LABELS.has(mark)) return undefined;
   const rest = t.slice(to + (m?.[0].length ?? 0));
-  if (/^\d/.test(rest) || (lone && /^\p{Lu}{3}$/u.test(mark) && /^ [\p{Sc}\d]/u.test(rest))) {
+  if (/^\d/.test(rest) || (lone && /^\p{Lu}{3}$/u.test(mark) && /^ \p{Sc}/u.test(rest))) {
     return undefined;
   }
   return mark;
@@ -479,13 +479,22 @@ function scanPlain(t: string, locale: string, currency: string): Token[] {
       return o.narrow === m || o.marks.includes(m);
     };
     let kind: Token["kind"];
+    // A number that gave its code to the next amount may still be one ("490 USD $0.00").
+    // A masked card's last digits ("•••• 4242", "ending in 4242") are no amount.
+    const gave =
+      lone &&
+      after === undefined &&
+      /^ ?\p{Lu}{3} \p{Sc}/u.test(t.slice(to, to + 6)) &&
+      !/(?:[•*·]{2,}|ending(?: in)?|termina(?:da)? en) ?$/iu.test(
+        t.slice(Math.max(0, from - 16), from),
+      );
     if (found.length === 0) {
       // "490 dollars", "500 yen", "Rs. 490": a currency the reader does not name may be this one.
       const named =
         /^ ?(?:dollars?|dólar(?:es)?|pesos?|yen|euros?|rupees?|reais|real|won)\b/iu.test(
           t.slice(to, to + 12),
         ) || /\bRs\.? ?$/u.test(t.slice(Math.max(0, from - 4), from));
-      kind = RUN_SEPARATOR.test(run[0]) || named ? "loose" : "plain";
+      kind = RUN_SEPARATOR.test(run[0]) || named || gave ? "loose" : "plain";
     } else if (sure && other === undefined) kind = "target";
     else if (
       other !== undefined &&
@@ -646,7 +655,8 @@ function read(text: string, locale: string, currency: string): Omit<PageReading,
         ...(token.currency ? { currency: token.currency } : {}),
         units: value,
         total: token.context === "total",
-        aside: token.context === "aside",
+        // Only the buyer's own balance, which PayPal shows beside the total, is no charge.
+        aside: token.context === "aside" && /paypal|disponible|available/iu.test(token.label),
       });
     }
   }
@@ -729,6 +739,8 @@ export function charges(
     page.totals.includes(minor) &&
     Math.max(...page.minor, ...page.loose) <= minor &&
     (converts || Object.keys(page.rates).length === 0) &&
+    // A rate's unit is set aside as no amount; it may not hide a total under one unit.
+    (Object.keys(page.rates).length === 0 || minor >= 10 ** minorDigits(currency)) &&
     page.conversions.every(({ currency: c, units, total, aside }) => {
       if (!converts) return false;
       if (aside) return true;
