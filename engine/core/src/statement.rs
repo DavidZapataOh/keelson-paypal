@@ -2,6 +2,7 @@
 //! payload is the countersigned facts in deterministic CBOR (RFC 8949 §4.2.1).
 
 use ciborium::value::{CanonicalValue, Integer, Value};
+use sha2::{Digest, Sha256};
 
 use crate::eip712::{CardAuthorization, CardSettlement, Countersign};
 
@@ -318,4 +319,15 @@ pub fn statement(protected: Vec<u8>, payload: Vec<u8>, signature: [u8; 64]) -> V
             bytes(&signature),
         ])),
     ))
+}
+
+/// `SHA-256(salt ‖ order_id ‖ 0x00 ‖ authorization_id)`: the PayPal payment reference a purchase
+/// statement commits to (the TypeScript `paypalRefCommit`).
+pub fn pay_ref(salt: &[u8; 32], order_id: &str, authorization_id: &str) -> [u8; 32] {
+    let mut h = Sha256::new();
+    h.update(salt);
+    h.update(order_id.as_bytes());
+    h.update([0]);
+    h.update(authorization_id.as_bytes());
+    h.finalize().into()
 }

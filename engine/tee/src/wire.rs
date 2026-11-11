@@ -250,6 +250,40 @@ pub struct CountersignRequest {
     /// ALLOW; leg B cannot open it and ignores it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sealed_salt: Option<Base64>,
+    /// Asks for the purchase's SCITT signed statement alongside the countersign.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statement: Option<StatementRequest>,
+}
+
+/// What a leg needs, beyond the countersign, to sign the purchase's statement.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StatementRequest {
+    /// The registered measurement of each leg, as the signer registry holds it; the log and the
+    /// verifier check each against the leg's attestation.
+    pub measurements: LegMeasurements,
+    /// The salt of the PayPal payment reference; absent for a card purchase.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ref_salt: Option<Hex32>,
+    /// Leg A's countersignature, on leg B: the statement then carries both.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leg_a: Option<LegA>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LegMeasurements {
+    pub tdx: Hex32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nitro: Option<Hex32>,
+}
+
+/// Leg A's signer and its signature over the countersign.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LegA {
+    pub signer: Address,
+    pub signature: Hex65,
 }
 
 /// A C1 `mandate_predicate` proof: UltraHonk for the EVM, as `verify(bytes, bytes32[])` takes it.
@@ -334,6 +368,10 @@ pub struct Countersigned {
     pub trace_jcs: Base64,
     /// The facts the decision used, for leg B.
     pub observation: Observation,
+    /// The purchase's SCITT signed statement (RFC 9943), when asked for: leg A's alone
+    /// (`degraded`), or on leg B with both legs' signatures (`2of2`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statement: Option<Base64>,
 }
 
 /// A checkpoint to sign as the EIP-712 `Checkpoint`.

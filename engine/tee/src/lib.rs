@@ -42,4 +42,4 @@ pub use error::Error;
 pub use keys::{Root, SealAad, SealError};
 pub use records::FileRecords;
 pub use report_data::{SignerBinding, TeeKind, report_data};
-pub use signer::Signer;
+pub use signer::{Signer, recover_address};

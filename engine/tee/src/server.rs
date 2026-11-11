@@ -348,6 +348,8 @@ async fn authorized(token_hash: &[u8; 32], request: Request, next: Next) -> Resp
 #[derive(Serialize)]
 struct Health {
     tee: TeeKind,
+    /// 1: countersigns answer with the purchase's SCITT statement when asked.
+    statements: u8,
     signer: Address,
     boot_epoch: u64,
     oci_digest: String,
@@ -381,6 +383,7 @@ async fn health(State(state): State<Arc<AppState>>) -> Json<Health> {
     let engine = &state.engine;
     Json(Health {
         tee: engine.config().tee_kind,
+        statements: 1,
         signer: engine.signer(),
         boot_epoch: engine.boot_epoch(),
         oci_digest: engine.config().oci_digest.clone(),

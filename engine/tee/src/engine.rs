@@ -836,6 +836,82 @@ impl Engine {
     /// the authorization can back it (see [`PayPalDeny`]). Without it, the amount comes from the
     /// [`CapturedSource`]. Leg B takes the reading from the request's observation and refuses
     /// one passed here.
+    /// The purchase's SCITT signed statement (RFC 9943): leg A signs its own leg alone
+    /// (`degraded`); leg B, given leg A's signature over the same digest, signs both (`2of2`).
+    /// `None` on leg B without leg A's signature.
+    fn purchase_statement(
+        &self,
+        ask: &wire::StatementRequest,
+        c: &Countersign,
+        chain_id: u64,
+        signature: &[u8; 65],
+        paypal: Option<&PayPalObservation>,
+        alibi_id: &str,
+    ) -> Result<Option<Vec<u8>>, EngineError> {
+        use keelson_core::statement::{
+            LegSignature, Mode, StatementClaims, claims_bytes, pay_ref, statement,
+            statement_protected, to_be_signed,
+        };
+        let domain = keelson_core::domain(chain_id, self.config.verifying_contract)
+            .map_err(|_| bad("chain_id"))?;
+        let digest = crate::countersign_digest(c, &domain);
+        let own = LegSignature {
+            kind: self.config.tee_kind.into(),
+            signer: self.signer.address().into_array(),
+            signature: *signature,
+            measurement: match self.config.tee_kind {
+                TeeKind::Tdx => ask.measurements.tdx.0,
+                TeeKind::Nitro => ask.measurements.nitro.ok_or(bad("measurements"))?.0,
+            },
+        };
+        let legs = match (self.config.tee_kind, &ask.leg_a) {
+            (TeeKind::Tdx, _) => vec![own],
+            (TeeKind::Nitro, Some(a)) => {
+                if crate::recover_address(&digest, &a.signature.0) != Some(a.signer) {
+                    return Err(bad("leg_a"));
+                }
+                vec![
+                    LegSignature {
+                        kind: TeeKind::Tdx.into(),
+                        signer: a.signer.into_array(),
+                        signature: a.signature.0,
+                        measurement: ask.measurements.tdx.0,
+                    },
+                    own,
+                ]
+            }
+            (TeeKind::Nitro, None) => return Ok(None),
+        };
+        let reference = ask.ref_salt.and_then(|salt| {
+            paypal
+                .filter(|p| !p.order_id.is_empty() && !p.authorization_id.is_empty())
+                .map(|p| pay_ref(&salt.0, &p.order_id, &p.authorization_id))
+        });
+        let claims = StatementClaims {
+            countersign: c,
+            chain_id,
+            verifying_contract: self.config.verifying_contract.into_array(),
+            mode: if legs.len() == 2 {
+                Mode::TwoOfTwo
+            } else {
+                Mode::Degraded
+            },
+            legs: &legs,
+            pay_ref: reference,
+        };
+        let payload = claims_bytes(&claims);
+        let protected = statement_protected(
+            self.signer.address().into_array(),
+            alibi_id,
+            c.issuedAt.to::<u64>(),
+        );
+        let sig = self
+            .signer
+            .sign_statement(&to_be_signed(&protected, &payload))
+            .map_err(EngineError::Signer)?;
+        Ok(Some(statement(protected, payload, sig)))
+    }
+
     pub fn countersign_with(
         &self,
         r: &CountersignRequest,
@@ -1070,6 +1146,17 @@ impl Engine {
             {
                 continue;
             }
+            let scitt = match &r.statement {
+                Some(ask) => self.purchase_statement(
+                    ask,
+                    &c,
+                    chain_id,
+                    &signature,
+                    observed,
+                    &r.request_id.to_string(),
+                )?,
+                None => None,
+            };
             let statement = allow.then(|| Statement {
                 c_m: Fr::from_be_bytes_reduce(&a.commitment),
                 amount,
@@ -1094,6 +1181,7 @@ impl Engine {
                         user_key: a.user_key.clone(),
                         paypal: observed.cloned().unwrap_or_default(),
                     },
+                    statement: scitt.map(Base64),
                 },
                 statement,
             );

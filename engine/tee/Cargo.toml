@@ -85,6 +85,8 @@ rustix = { version = "1.1.5", default-features = false, features = ["process", "
 
 [dev-dependencies]
 alloy-primitives = { version = "1.7.3", features = ["k256", "serde"] }
+ciborium = "0.2.2"
+coset = "0.4.2"
 criterion = { version = "0.8.2", default-features = false }
 http-body-util = "0.1.5"
 keelson-tlsn = { path = "../tlsn", features = ["prover"] }
