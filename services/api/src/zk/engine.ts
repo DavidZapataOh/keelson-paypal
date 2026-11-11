@@ -32,7 +32,7 @@ const run = promisify(execFile);
  * The engine's SP1 prover, built by the `engine-proof` workflow from the program whose verifying
  * key `EngineProofVerifier` holds. A new program needs a new verifier and a new pin.
  */
-const ENGINE_PROVER = {
+export const ENGINE_PROVER = {
   url: "https://github.com/DavidZapataOh/keelson-paypal/releases/download/engine-proof-0000000/keelson-engine-proof-linux-x64",
   sha256: "0000000000000000000000000000000000000000000000000000000000000000",
   vkey: "0x008eb02e13c538c0b1f2edbbde39d8400956f1aa1e9952de4746106312ec02a0" as Hex,
