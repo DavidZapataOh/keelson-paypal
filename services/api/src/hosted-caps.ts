@@ -11,7 +11,9 @@ import {
   type SQL,
   sql,
 } from "@keelson/db";
+import { type HoldDeps, releasePurchaseHold, voidHold } from "./hold/maintenance.ts";
 import { money } from "./notify/notifier.ts";
+import type { PayPalDeps } from "./paypal.ts";
 
 /**
  * The redirect URIs the MCP hosts Keelson knows register (RFC 7591), each from the host's own
@@ -119,12 +121,16 @@ function cappedMandate(scope: Scope): SQL {
         ${unknown})`;
 }
 
+/** Purchases that may still be countersigned or captured. */
+const IN_FLIGHT = sql`('PROPOSED', 'EVALUATING', 'COUNTERSIGNED', 'LOGGED', 'COVERED')`;
+
 /**
- * The exposure of `scope`. Without `funded`, every live mandate counts what it has left: what the
- * user has granted. With `funded`, only money held does: whole-budget holds completed, and cart
- * holds authorized; with `inFlight` too, holds a buyer is still approving. Purchases captured
- * within {@link DISPUTE_WINDOW_DAYS} always count, so spending a mandate and asking for another
- * cannot pass a cap.
+ * The exposure of `scope`. Without `funded`, what the user has granted counts: what every live
+ * mandate has left, and the purchases still in flight under a mandate that ended or is replaced.
+ * With `funded`, only money held at PayPal does: whole-budget holds completed and not yet
+ * released, and cart holds authorized; with `inFlight` too, holds a buyer is still approving.
+ * Purchases captured within {@link DISPUTE_WINDOW_DAYS} always count, so spending a mandate and
+ * asking for another cannot pass a cap.
  */
 export async function hostedExposure(
   db: Pick<Db, "execute">,
@@ -132,19 +138,24 @@ export async function hostedExposure(
   mode: { funded?: boolean; inFlight?: boolean } = {},
 ): Promise<bigint> {
   const capped = cappedMandate(scope);
-  const replaced = scope.replaces ? sql`and ${mandates.id} <> ${scope.replaces}` : sql``;
+  const replaced = scope.replaces ? sql`${mandates.id} = ${scope.replaces}` : sql`false`;
+  const granted = sql`${mandates.state} in ('SIGNED', 'HOLD_PENDING', 'ACTIVE')
+    and ${mandates.revokeRequestedAt} is null and not (${replaced})`;
+  // A revoked whole-budget hold stays ACTIVE, still held, until its void lands.
   const live = mode.funded
     ? sql`${mandates.holdMode} = 'mandate' and ${mandates.state} in ${mode.inFlight ? sql`('HOLD_PENDING', 'ACTIVE')` : sql`('ACTIVE')`}`
-    : sql`${mandates.state} in ('SIGNED', 'HOLD_PENDING', 'ACTIVE')`;
+    : granted;
   const holds = mode.funded
     ? sql`(select coalesce(sum(${purchaseHolds.amountMinor}), 0) from ${purchaseHolds}
         join ${mandates} on ${mandates.id} = ${purchaseHolds.mandateId}
         where ${capped} and ${mandates.holdMode} = 'per_purchase'
           and ${purchaseHolds.state} in ${mode.inFlight ? sql`('PENDING', 'AUTHORIZED')` : sql`('AUTHORIZED')`})`
-    : sql`0`;
+    : sql`(select coalesce(sum(${purchases.amountMinor}), 0) from ${purchases}
+        join ${mandates} on ${mandates.id} = ${purchases.mandateId}
+        where ${capped} and not (${granted}) and ${purchases.state} in ${IN_FLIGHT})`;
   const { rows } = await db.execute<{ exposure: string }>(sql`select (
       (select coalesce(sum(${mandates.remainingMinor}), 0) from ${mandates}
-        where ${capped} and ${live} and ${mandates.revokeRequestedAt} is null ${replaced})
+        where ${capped} and ${live})
       + ${holds}
       + (select coalesce(sum(${purchases.amountMinor}), 0) from ${purchases}
         join ${mandates} on ${mandates.id} = ${purchases.mandateId}
@@ -261,16 +272,18 @@ export async function fundingCapError(
 }
 
 /**
- * Expires the mandates of apps acting through the hosted operator that were signed more than
- * {@link FUNDING_TTL_MS} ago and hold nothing yet, and voids their cart holds a buyer never
- * approved, so neither counts against a cap any more. An authorization PayPal already returned
- * (pending) is left to finish. Returns how many rows ended.
+ * Ends what apps acting through the hosted operator signed but did not fund within
+ * {@link FUNDING_TTL_MS}, so it no longer counts against a cap: a signed mandate, which has no
+ * order yet, expires; a whole-budget hold still pending, or a cart hold no buyer approved, is
+ * released like any other, voiding whatever its order authorized at PayPal meanwhile. Without
+ * PayPal only signed mandates expire. Returns how many ended.
  */
 export async function expireUnfunded(
-  db: Pick<Db, "execute">,
+  deps: Pick<HoldDeps, "db" | "kv" | "log"> & { paypal?: PayPalDeps | undefined },
   hostedAgentId: bigint,
   now: Date = new Date(),
 ): Promise<number> {
+  const { db } = deps;
   const hosted = sql`(select ${operators.clientId} from ${operators} where ${operators.agentId} = ${hostedAgentId})`;
   const ofApp = sql`${mandates.operatorAgentId} = ${hostedAgentId} and exists (
       select 1 from ${agentConnections}
@@ -280,29 +293,43 @@ export async function expireUnfunded(
   const before = new Date(now.getTime() - FUNDING_TTL_MS);
   const expired = await db.execute(sql`update ${mandates}
     set state = 'EXPIRED', updated_at = now()
-    where ${ofApp} and ${mandates.state} in ('SIGNED', 'HOLD_PENDING')
-      and ${mandates.paypalParentAuthorizationId} is null
-      and ${mandates.createdAt} < ${before}`);
-  const voided = await db.execute(sql`update ${purchaseHolds}
-    set state = 'VOIDED', updated_at = now()
-    from ${mandates}
-    where ${mandates.id} = ${purchaseHolds.mandateId} and ${ofApp}
-      and ${purchaseHolds.state} = 'PENDING'
-      and ${purchaseHolds.paypalAuthorizationId} is null
-      and ${purchaseHolds.createdAt} < ${before}`);
-  return (expired.rowCount ?? 0) + (voided.rowCount ?? 0);
+    where ${ofApp} and ${mandates.state} = 'SIGNED' and ${mandates.createdAt} < ${before}`);
+  let ended = expired.rowCount ?? 0;
+  const { paypal } = deps;
+  if (!paypal) return ended;
+  // A pending hold is timed from when it started; a replaced order starts it again.
+  const pending = await db
+    .select({ id: mandates.id })
+    .from(mandates)
+    .where(
+      sql`${ofApp} and ${mandates.state} = 'HOLD_PENDING' and ${mandates.updatedAt} < ${before}`,
+    );
+  for (const { id } of pending) {
+    if ((await voidHold({ ...deps, paypal }, id, "EXPIRED", now)) === "voided") ended++;
+  }
+  const carts = await db
+    .select({ hold: purchaseHolds })
+    .from(purchaseHolds)
+    .innerJoin(mandates, eq(mandates.id, purchaseHolds.mandateId))
+    .where(
+      sql`${ofApp} and ${purchaseHolds.state} = 'PENDING' and ${purchaseHolds.createdAt} < ${before}`,
+    );
+  for (const { hold } of carts) {
+    await releasePurchaseHold({ db, paypal }, hold);
+    ended++;
+  }
+  return ended;
 }
 
-/** Expires unfunded mandates of apps acting through the hosted operator every minute. */
-export function startUnfundedExpiry(deps: {
-  db: Db;
-  hostedAgentId: bigint;
-  log: { warn: (o: object, m: string) => void; error: (o: object, m: string) => void };
-}): () => void {
+/** Ends what apps acting through the hosted operator did not fund in time, every minute. */
+export function startUnfundedExpiry(
+  deps: Pick<HoldDeps, "db" | "kv" | "log"> & { paypal?: PayPalDeps | undefined },
+  hostedAgentId: bigint,
+): () => void {
   const timer = setInterval(() => {
-    expireUnfunded(deps.db, deps.hostedAgentId).then(
+    expireUnfunded(deps, hostedAgentId).then(
       (count) => {
-        if (count > 0) deps.log.warn({ count }, "unfunded hosted mandates expired");
+        if (count > 0) deps.log.warn({ count }, "unfunded hosted mandates ended");
       },
       (err: unknown) => deps.log.error({ err }, "unfunded expiry failed"),
     );

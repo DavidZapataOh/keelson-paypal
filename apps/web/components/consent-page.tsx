@@ -314,7 +314,7 @@ export function ConsentPage() {
                 <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
                 <span>
                   {consent.hostedCap.knownHost
-                    ? `${consent.client.name} acts through Keelson's own agent, so its bond backs at most `
+                    ? `${consent.client.name} acts through Keelson's hosted operator, so its bond backs at most `
                     : `Keelson does not know ${consent.client.name}, so its bond backs at most `}
                   <span className="font-medium tnum">
                     {money(BigInt(consent.hostedCap.perUserMinor), consent.hostedCap.currency)}

@@ -797,10 +797,10 @@ describe("the hosted operator's caps for apps that registered themselves", () =>
     expect(res.status).toBe(422);
     expect(((await res.json()) as { detail: string }).detail).toContain("has reached");
     expect((await ask(asHost(host, c), 5_000)).status).toBe(201);
-    // Ended mandates do not count.
+    // Mandates whose hold was released do not count.
     await testDb
       .update(mandates)
-      .set({ revokeRequestedAt: new Date() })
+      .set({ state: "REVOKED", revokeRequestedAt: new Date(), voidedAt: new Date() })
       .where(eq(mandates.id, first.id));
     expect((await ask(asHost(host, c), 30_000)).status).toBe(201);
     // Signed but never held: another user's do not fill the total.
@@ -808,8 +808,10 @@ describe("the hosted operator's caps for apps that registered themselves", () =>
     const unfunded = await approved(d, host, CAPPED, 30_000n, "SIGNED");
     expect((await ask(asHost(host, c), 30_000)).status).toBe(201);
     // Past the funding TTL it expires, so it can never be held; younger, it is left alone.
-    expect(await expireUnfunded(testDb, CAPPED)).toBe(0);
-    expect(await expireUnfunded(testDb, CAPPED, new Date(Date.now() + FUNDING_TTL_MS + 1))).toBe(1);
+    const holdDeps = { db: testDb, kv: testKv, log: pino({ level: "silent" }) };
+    expect(await expireUnfunded(holdDeps, CAPPED)).toBe(0);
+    const later = new Date(Date.now() + FUNDING_TTL_MS + 1);
+    expect(await expireUnfunded(holdDeps, CAPPED, later)).toBe(1);
     const [ended] = await testDb.select().from(mandates).where(eq(mandates.id, unfunded.id));
     expect(ended?.state).toBe("EXPIRED");
   });
@@ -865,6 +867,31 @@ describe("the hosted operator's caps for apps that registered themselves", () =>
     const m = await approved(b, host, TIGHT, 10_000n);
     await captured(m.id, 25_000n);
     expect((await askTight(asHost(host, await newUser()), 5_001)).status).toBe(422);
+  });
+
+  test("purchases still in flight under an ended or replaced mandate keep counting, and so does a hold not yet released", async () => {
+    const { CAPPED, ask } = await hostedWithCaps({ ...caps, totalMinor: 50_000n });
+    const a = await newUser();
+    const host = await registered([UNKNOWN]);
+    const ended = await approved(a, host, CAPPED, 30_000n);
+    await testDb.insert(purchases).values({
+      id: ulid(),
+      mandateId: ended.id,
+      state: "COUNTERSIGNED",
+      merchantId: cart.merchant,
+      currency: "USD",
+      amountMinor: 30_000n,
+      cartHash: randomBytes(32),
+    });
+    await testDb
+      .update(mandates)
+      .set({ revokeRequestedAt: new Date() })
+      .where(eq(mandates.id, ended.id));
+    // Its countersigned purchase may still be captured: the user's room is still taken.
+    expect((await ask(asHost(host, a), 1)).status).toBe(422);
+    // Its hold stays ACTIVE until its void lands, so it still fills the total.
+    expect((await ask(asHost(host, await newUser()), 20_001)).status).toBe(422);
+    expect((await ask(asHost(host, await newUser()), 20_000)).status).toBe(201);
   });
 
   test("a change is measured in place of the mandate it replaces", async () => {

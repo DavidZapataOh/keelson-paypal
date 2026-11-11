@@ -362,24 +362,25 @@ export function registerPurchaseHolds(
     // The budget is checked again under the mandate's row lock, so concurrent holds cannot
     // together exceed it.
     const inserted = await db.transaction(async (tx) => {
+      const [again] = await tx
+        .select({ requestId: purchaseHolds.requestId })
+        .from(purchaseHolds)
+        .where(eq(purchaseHolds.requestId, hold.requestId));
+      // The hosted operator's lock is taken before the mandate's row, as approvals take them.
+      if (again === undefined) {
+        const over = await fundingCapError(tx, deps, mandate.id, amount.minor);
+        if (over) return over;
+      }
       const [locked] = await tx
         .select({ remainingMinor: mandates.remainingMinor })
         .from(mandates)
         .where(eq(mandates.id, mandate.id))
         .for("update");
-      const [again] = await tx
-        .select({ requestId: purchaseHolds.requestId })
-        .from(purchaseHolds)
-        .where(eq(purchaseHolds.requestId, hold.requestId));
       if (
         again === undefined &&
         (await openHolds(tx, mandate.id)) + amount.minor > (locked?.remainingMinor ?? 0n)
       ) {
         return null;
-      }
-      if (again === undefined) {
-        const over = await fundingCapError(tx, deps, mandate.id, amount.minor);
-        if (over) return over;
       }
       return tx
         .insert(purchaseHolds)

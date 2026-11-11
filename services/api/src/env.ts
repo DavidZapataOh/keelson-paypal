@@ -124,6 +124,10 @@ const schema = z
     message: "KEELSON_AGENT_KEY needs DEMO_AGENT_ID",
     path: ["KEELSON_AGENT_KEY"],
   })
+  .refine((env) => env.HOSTED_CAP_KNOWN_PER_USER_MINOR >= env.HOSTED_CAP_PER_USER_MINOR, {
+    message: "HOSTED_CAP_KNOWN_PER_USER_MINOR is at least HOSTED_CAP_PER_USER_MINOR",
+    path: ["HOSTED_CAP_KNOWN_PER_USER_MINOR"],
+  })
   .refine(
     (env) =>
       [env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY, env.VAPID_SUBJECT].every(

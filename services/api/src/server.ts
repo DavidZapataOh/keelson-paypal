@@ -279,7 +279,7 @@ const stopResumer = startPipelineResumer({
 });
 const stopHolds = startHoldMaintenance({ db, kv, log, paypal });
 const stopUnfunded = env.DEMO_AGENT_ID
-  ? startUnfundedExpiry({ db, hostedAgentId: env.DEMO_AGENT_ID, log })
+  ? startUnfundedExpiry({ db, kv, log, paypal }, env.DEMO_AGENT_ID)
   : undefined;
 const poller = startPayPalPoller({
   db,
