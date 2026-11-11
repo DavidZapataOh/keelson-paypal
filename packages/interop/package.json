@@ -20,7 +20,9 @@
     "vendor": "node scripts/vendor.ts"
   },
   "dependencies": {
-    "@keelson/alibi": "workspace:*"
+    "@keelson/alibi": "workspace:*",
+    "@keelson/core": "workspace:*",
+    "@keelson/mandate": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "26.6.6",

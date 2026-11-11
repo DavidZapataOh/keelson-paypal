@@ -767,6 +767,12 @@ importers:
       '@keelson/alibi':
         specifier: workspace:*
         version: link:../alibi
+      '@keelson/core':
+        specifier: workspace:*
+        version: link:../core
+      '@keelson/mandate':
+        specifier: workspace:*
+        version: link:../mandate
     devDependencies:
       '@types/node':
         specifier: 26.6.6
