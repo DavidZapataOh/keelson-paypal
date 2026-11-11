@@ -16,6 +16,17 @@ interface PayPalErrorBody {
 }
 
 /** A PayPal API failure; `name` carries PayPal's error name, e.g. `RESOURCE_NOT_FOUND`. */
+/**
+ * PayPal refused the access token itself, not the request: it is invalid or revoked (401), or it
+ * lacks a scope the app has since been granted (403 `NOT_AUTHORIZED`). A new token may pass.
+ */
+export function isTokenRefused(err: unknown): boolean {
+  return (
+    err instanceof PayPalError &&
+    (err.status === 401 || (err.status === 403 && err.name === "NOT_AUTHORIZED"))
+  );
+}
+
 export class PayPalError extends Error {
   readonly status: number;
   readonly debugId: string | undefined;
