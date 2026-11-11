@@ -1,5 +1,5 @@
 import { deploymentsFor } from "@keelson/chain";
-import { createPublicClient, http, type PublicClient } from "viem";
+import { createPublicClient, fallback, http, type PublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { expect, test } from "vitest";
 import { readAmber } from "../src/verify/index.ts";
@@ -16,7 +16,10 @@ test.runIf(live && deployed)(
     const id = fixtures[0]?.bundle.alibi_id as string;
     const client = createPublicClient({
       chain: arbitrumSepolia,
-      transport: http(rpc),
+      // The configured RPC, with the public one behind it.
+      transport: fallback(
+        [...(rpc ? [rpc] : []), ...arbitrumSepolia.rpcUrls.default.http].map((url) => http(url)),
+      ),
     }) as PublicClient;
     const amber = await readAmber(id, { client });
     expect(amber.commitment).toBe(`0x${"0".repeat(64)}`);

@@ -460,6 +460,9 @@ describe("amber in dispute data", () => {
       sortModel: [],
       filterModel: { amber: { filterType: "set", values: ["contradicted"] } },
     });
-    expect(filtered.rows.map((r) => r.id)).toEqual([convicted]);
+    // Other tests of this operator convict too: the filter keeps only convictions, this one among them.
+    expect(filtered.rows.map((r) => r.id)).toContain(convicted);
+    expect(filtered.rows.map((r) => r.id)).not.toContain(attestedOnly);
+    expect(filtered.rows.every((r) => r.amber === "contradicted")).toBe(true);
   });
 });
