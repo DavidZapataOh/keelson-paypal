@@ -364,7 +364,7 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
         mandateId: z.string().nullable(),
         interval: z.number().nullable(),
       }),
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: false, idempotentHint: false },
       ...scopes("countersign:write"),
     },
     async ({ deviceCode }) => {

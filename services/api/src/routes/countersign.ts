@@ -472,6 +472,23 @@ function outsideMandate(
   return total > cap ? { overMinor: total - cap } : undefined;
 }
 
+/** The mandate fields a one-time approval may lift: how much, and at which store. */
+const LIFTABLE = new Set(["total", "budget", "merchant"]);
+
+/** Most carts of one mandate waiting for the user's answer at once. */
+const MAX_OPEN_ONCE = 3;
+
+/**
+ * Whether every field the engine failed is one a one-time approval may lift; a cart denied for
+ * anything else (its items, size, deadline) stays denied.
+ */
+function onlyOneApprovalFixes(trace: unknown): boolean {
+  const fields = (trace as { fields?: { field?: unknown; pass?: unknown }[] } | null)?.fields;
+  if (!Array.isArray(fields)) return false;
+  const failed = fields.filter((f) => f.pass === false).map((f) => f.field);
+  return failed.length > 0 && failed.every((f) => typeof f === "string" && LIFTABLE.has(f));
+}
+
 /** How long a countersign answer waits for the purchase to be logged, covered and captured. */
 const INLINE_BUDGET_MS = 4_500;
 
@@ -531,6 +548,18 @@ export function registerCountersign(
         },
       };
     }
+    // A few open questions at a time: an agent cannot bury its user in approvals.
+    const [{ pending = 0 } = {}] = await db
+      .select({ pending: sql<number>`count(*)::int` })
+      .from(agentConnections)
+      .where(
+        and(
+          eq(agentConnections.parentMandateId, mandate.id),
+          eq(agentConnections.state, "PENDING"),
+          gt(agentConnections.expiresAt, new Date()),
+        ),
+      );
+    if (pending >= MAX_OPEN_ONCE) return undefined;
     return {
       approval: await requestOnce(
         { db, kv, appOrigin },
@@ -739,27 +768,24 @@ export function registerCountersign(
     }
     const hashOfCart = Buffer.from(cartHash(body.cart as Cart));
 
-    // Above the user's "ask me above" the cart is paused for their one-time approval, although the
-    // mandate would allow it.
-    const [asking] = await db
-      .select({ askAbove: agentConnections.askAboveMinor })
+    // The request the mandate answers: a one-time approval buys exactly the cart it was asked for.
+    const [answered] = await db
+      .select({
+        kind: agentConnections.kind,
+        askAbove: agentConnections.askAboveMinor,
+        cartHash: agentConnections.cartHash,
+      })
       .from(agentConnections)
       .where(
-        and(
-          eq(agentConnections.mandateId, mandate.id),
-          eq(agentConnections.kind, "connect"),
-          eq(agentConnections.state, "APPROVED"),
-        ),
+        and(eq(agentConnections.mandateId, mandate.id), eq(agentConnections.state, "APPROVED")),
       );
-    if (asking?.askAbove != null && total > asking.askAbove) {
-      const approval = await askOnce(c, mandate, body.cart, total, hashOfCart, null);
+    if (answered?.kind === "once" && !answered.cartHash?.equals(hashOfCart)) {
       return problem(
         c,
-        409,
-        "approval-required",
-        "Paused for approval",
-        `The cart is above the ${asking.askAbove} minor units the user asked to approve each time. The user was asked; poll POST /v1/connections/token with the device code.`,
-        approval,
+        422,
+        "not-the-approved-cart",
+        "Not the approved cart",
+        "This mandate was approved for one cart only, and this is another.",
       );
     }
 
@@ -922,6 +948,31 @@ export function registerCountersign(
         );
       }
       observationId = obs.id;
+    }
+
+    // Above the user's "ask me above" a cart that passed every other check is paused for their
+    // one-time approval, although the mandate would allow it.
+    if (answered?.askAbove != null && total > answered.askAbove) {
+      const asked = MERCHANTS.some((m) => m.id === body.cart.merchant)
+        ? await askOnce(c, mandate, body.cart, total, hashOfCart, null)
+        : undefined;
+      if (!asked) {
+        return problem(
+          c,
+          429,
+          "too-many-approvals",
+          "Too many approvals waiting",
+          "The user already has carts of this mandate to answer.",
+        );
+      }
+      return problem(
+        c,
+        409,
+        "approval-required",
+        "Paused for approval",
+        `The cart is above the ${answered.askAbove} minor units the user asked to approve each time. The user was asked; poll POST /v1/connections/token with the device code.`,
+        asked,
+      );
     }
 
     const [bound] = await db
@@ -1096,7 +1147,10 @@ export function registerCountersign(
       const pending = view === undefined || PENDING.has(view.state);
       // A cart over the mandate's amount or outside its stores is paused for the user's one-time
       // approval, never silently declined.
-      const outside = allow ? undefined : outsideMandate(mandate, body.cart.merchant, total);
+      const outside =
+        allow || !onlyOneApprovalFixes(out.trace)
+          ? undefined
+          : outsideMandate(mandate, body.cart.merchant, total);
       const asked =
         outside === undefined
           ? undefined

@@ -404,7 +404,10 @@ test("an agent asks its user for a mandate and hears the answer through the tool
   expect(waiting.url).toMatch(/\/connect\?c=[A-Z]{4}-[A-Z]{4}$/);
 
   const poll = () =>
-    client.callTool({ name: "keelson.await_approval", arguments: { deviceCode: waiting.deviceCode } });
+    client.callTool({
+      name: "keelson.await_approval",
+      arguments: { deviceCode: waiting.deviceCode },
+    });
   expect((await poll()).structuredContent).toMatchObject({ status: "pending", mandateId: null });
   await testDb
     .update(agentConnections)

@@ -110,7 +110,6 @@ describe("MCP authorization (OAuth 2.1, RFC 7591, RFC 7636, RFC 9728, RFC 9396)"
       issuer: `${baseURL}/api/auth`,
       registration_endpoint: `${baseURL}/api/auth/oauth2/register`,
       code_challenge_methods_supported: ["S256"],
-      authorization_details_types_supported: ["keelson_mandate"],
     });
     expect(as.grant_types_supported).toEqual(
       expect.arrayContaining(["authorization_code", "client_credentials", "refresh_token"]),

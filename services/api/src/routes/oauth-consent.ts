@@ -5,13 +5,18 @@ import type { Context } from "hono";
 import type { Deps } from "../app.ts";
 import type { Auth } from "../auth.ts";
 import { requireSession } from "../middleware/auth.ts";
+import type { Principal } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 import { ConnectionRequest, invalidLimits, storeRequest } from "./connections.ts";
 
 const problemContent = { "application/problem+json": { schema: ProblemSchema } };
 
-/** The RFC 9396 `authorization_details` type an MCP client asks for spending limits with. */
-export const MANDATE_DETAILS_TYPE = "keelson_mandate";
+/**
+ * The type of the `authorization_details` entry (in RFC 9396's format, carried as a plain
+ * authorization request parameter: it is shown on the consent page, not bound to the token) an MCP
+ * client asks for spending limits with.
+ */
+const MANDATE_DETAILS_TYPE = "keelson_mandate";
 
 const SignedQuery = z
   .object({
@@ -195,6 +200,8 @@ export function registerOAuthConsent(app: OpenAPIHono, deps: Pick<Deps, "db" | "
       name: parsed.spending.name,
       reason: parsed.spending.reason,
       limits: parsed.spending.limits,
+      // Bound to the user consenting: only they may approve it.
+      userId: (c.get("principal") as Principal).subject,
     });
     return c.json({ userCode }, 201);
   });

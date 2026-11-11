@@ -254,7 +254,8 @@ describe("an agent asks for a mandate (RFC 8628)", () => {
     const read = await app.request(`/v1/connections/${body.user_code}`, {
       headers: asUser(await newUser()),
     });
-    expect((await read.json()).state).toBe("EXPIRED");
+    // Nobody opened it, so nobody but the agent learns what it asked.
+    expect(read.status).toBe(404);
   });
 
   test("the approved mandate is answered once: the device code is spent with it", async () => {
@@ -546,7 +547,78 @@ describe("a cart above “ask me above” is paused for the user", { timeout: 12
       kind: "once",
       parent: { mandateId: mid },
     });
+
+    // Revoking the mandate withdraws the question: it can no longer be approved.
+    await send(`/v1/agents/${op.agentId}/disconnect`, asUser(sub));
+    const after = await app.request(`/v1/connections/${paused.approval.user_code}`, {
+      headers: asUser(sub),
+    });
+    expect((await after.json()).state).toBe("DENIED");
   });
+
+  test("a mandate approved for one cart countersigns that cart only", async () => {
+    const op = await newOperator();
+    const sub = await newUser();
+    const parent = await liveMandate(sub, op);
+    const mid = await liveMandate(sub, op);
+    const headers = client(op.clientId, "countersign:write", "evidence:write");
+    const { body } = await ask(op);
+    await testDb
+      .update(agentConnections)
+      .set({
+        kind: "once",
+        parentMandateId: parent,
+        cartHash: randomBytes(32),
+        state: "APPROVED",
+        userId: sub,
+        mandateId: mid,
+        askAboveMinor: null,
+        decidedAt: new Date(),
+      })
+      .where(eq(agentConnections.userCode, body.user_code as string));
+    const root = await evidence.upload(app, mid, carts.demo.cart, headers);
+    legCalls.length = 0;
+    const res = await send("/v1/countersign", headers, {
+      authorizationId: (await testDb.select().from(mandates).where(eq(mandates.id, mid)))[0]
+        ?.paypalAuthorizationId,
+      closedMandate: closed(mid, ulid()),
+      cart: carts.demo.cart,
+      unit: carts.demo.unit,
+      evidenceRoot: root,
+    });
+    expect(res.status).toBe(422);
+    expect((await res.json()).type).toMatch(/\/not-the-approved-cart$/);
+    expect(legCalls).toEqual([]);
+  });
+});
+
+test("a client linked to several operators cannot ask: the mandate would name one at random", async () => {
+  const op = await newOperator();
+  await testDb.insert(operators).values({
+    agentId: op.agentId + 1n,
+    chainId: 421614,
+    agentRegistry: REGISTRY,
+    name: "Twin",
+    cnfJwk: {},
+    clientId: op.clientId,
+  });
+  const { res } = await ask(op);
+  expect(res.status).toBe(409);
+  expect((await res.json()).type).toMatch(/\/several-operators$/);
+});
+
+test("guessing user codes is budgeted across reads, denials and drafts", async () => {
+  const sub = await newUser();
+  const statuses: number[] = [];
+  for (let i = 0; i < 22; i++) {
+    const res =
+      i % 2 === 0
+        ? await app.request(`/v1/connections/BCDF-${"GHJK"}`, { headers: asUser(sub) })
+        : await send("/v1/connections/BCDF-GHJK/deny", asUser(sub));
+    statuses.push(res.status);
+  }
+  expect(statuses.slice(0, 20).every((s) => s === 404)).toBe(true);
+  expect(statuses.slice(20)).toEqual([429, 429]);
 });
 
 test("user codes are read forgivingly and only from the RFC 8628 alphabet", () => {

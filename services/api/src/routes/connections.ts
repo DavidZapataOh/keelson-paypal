@@ -1,9 +1,16 @@
 import { createHash, randomBytes } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { toMandate } from "@keelson/compiler";
+import { type Draft, toMandate } from "@keelson/compiler";
 import { CURRENCIES, type CurrencyCode } from "@keelson/core";
-import { agentConnections, and, eq, isNull, operators, sql } from "@keelson/db";
-import { buildSdPayload, CATEGORY_TABLE, MAX_LIFETIME_SECONDS, renderCard } from "@keelson/mandate";
+import { agentConnections, and, eq, isNull, mandates, operators, sql } from "@keelson/db";
+import {
+  buildSdPayload,
+  CATEGORY_TABLE,
+  decodeMandate,
+  MAX_LIFETIME_SECONDS,
+  type Mandate,
+  renderCard,
+} from "@keelson/mandate";
 import type { Context } from "hono";
 import { ulid } from "ulid";
 import type { Deps } from "../app.ts";
@@ -13,10 +20,10 @@ import {
   deviceAuthorization,
   hashDeviceCode,
   newDeviceCode,
-  newUserCode,
   normalizeUserCode,
   openRequest,
   REQUEST_TTL_SEC,
+  withFreshUserCode,
 } from "../connections.ts";
 import { publishEvent } from "../events.ts";
 import { MERCHANTS } from "../merchants.ts";
@@ -181,6 +188,7 @@ const create = createRoute({
     },
     401: { description: "No valid access token", content: problemContent },
     403: { description: "The client linked no operator", content: problemContent },
+    409: { description: "The client linked several operators", content: problemContent },
     422: { description: "The request is invalid", content: problemContent },
   },
 });
@@ -320,6 +328,36 @@ function raised(
   return out;
 }
 
+/**
+ * What a mandate for `request` allows besides money, stores and time: anything, for an agent's
+ * standing request; for one cart outside a mandate, only what that mandate allowed, so a one-time
+ * approval lifts its amount or store and nothing else.
+ */
+async function inherited(
+  db: Deps["db"],
+  request: Connection,
+): Promise<Pick<Draft, "category" | "attributes" | "returns">> {
+  const open = { category: [...CATEGORY_TABLE.ids], attributes: {}, returns: null };
+  if (request.kind !== "once" || !request.parentMandateId) return open;
+  const [parent] = await db
+    .select({ payloadSd: mandates.payloadSd, disclosures: mandates.disclosures })
+    .from(mandates)
+    .where(eq(mandates.id, request.parentMandateId));
+  if (!parent?.payloadSd || !parent.disclosures)
+    throw new Error("the parent mandate is not signed");
+  const m = decodeMandate(parent.payloadSd as Record<string, unknown>, parent.disclosures);
+  const of = <T extends Mandate["checkout"]["constraints"][number]["type"]>(type: T) =>
+    m.checkout.constraints.find((c) => c.type === type) as
+      | Extract<Mandate["checkout"]["constraints"][number], { type: T }>
+      | undefined;
+  const returns = of("keelson.returns");
+  return {
+    category: of("keelson.category")?.allow ?? open.category,
+    attributes: of("keelson.attributes")?.must ?? {},
+    returns: returns ? { minDays: returns.min_days, free: returns.free } : null,
+  };
+}
+
 /** The error a request's limits fail with, if any, before it is stored. */
 export function invalidLimits(limits: Limits, now = Date.now()): string | undefined {
   const until = Date.parse(limits.until);
@@ -337,28 +375,32 @@ export async function storeRequest(
     name: string;
     reason: string;
     limits: Limits;
+    /** The user it is bound to from the start, when the request comes from their own consent. */
+    userId?: string;
   },
 ): Promise<{ userCode: string; deviceCode: string }> {
   const device = newDeviceCode();
-  const userCode = newUserCode();
   const { limits } = input;
-  await deps.db.insert(agentConnections).values({
-    id: ulid(),
-    kind: "connect",
-    clientId: input.clientId,
-    operatorAgentId: input.operatorAgentId,
-    name: input.name,
-    reason: input.reason,
-    userCode,
-    deviceCodeHash: device.hash,
-    currency: limits.currency,
-    perPurchaseMinor: BigInt(limits.perPurchaseMinor),
-    totalMinor: BigInt(limits.totalMinor),
-    askAboveMinor: limits.askAboveMinor === undefined ? null : BigInt(limits.askAboveMinor),
-    merchantIds: limits.merchants,
-    notAfter: new Date(limits.until),
-    expiresAt: new Date(Date.now() + REQUEST_TTL_SEC * 1000),
-  });
+  const userCode = await withFreshUserCode((userCode) =>
+    deps.db.insert(agentConnections).values({
+      id: ulid(),
+      kind: "connect",
+      clientId: input.clientId,
+      operatorAgentId: input.operatorAgentId,
+      name: input.name,
+      reason: input.reason,
+      userCode,
+      deviceCodeHash: device.hash,
+      currency: limits.currency,
+      perPurchaseMinor: BigInt(limits.perPurchaseMinor),
+      totalMinor: BigInt(limits.totalMinor),
+      askAboveMinor: limits.askAboveMinor === undefined ? null : BigInt(limits.askAboveMinor),
+      merchantIds: limits.merchants,
+      notAfter: new Date(limits.until),
+      expiresAt: new Date(Date.now() + REQUEST_TTL_SEC * 1000),
+      ...(input.userId ? { userId: input.userId } : {}),
+    }),
+  );
   return { userCode, deviceCode: device.code };
 }
 
@@ -388,7 +430,7 @@ export function registerConnections(
   app.openapi(create, async (c) => {
     const clientId = (c.get("principal") as Principal).subject;
     const body = c.req.valid("json");
-    const [operator] = await db
+    const [operator, another] = await db
       .select({ agentId: operators.agentId })
       .from(operators)
       .where(eq(operators.clientId, clientId));
@@ -399,6 +441,16 @@ export function registerConnections(
         "no-operator",
         "No operator",
         "Link this client to its operator with POST /v1/operators/{agentId}/link first.",
+      );
+    }
+    // The mandate names one agent; a client acting for several cannot say which here.
+    if (another) {
+      return problem(
+        c,
+        409,
+        "several-operators",
+        "Several operators",
+        "This client is linked to more than one operator; use one client per agent.",
       );
     }
     const invalid = invalidLimits(body.limits);
@@ -430,6 +482,10 @@ export function registerConnections(
       return tokenError(c, "invalid_grant", "The device code is not valid.");
     }
     if (row.state === "DENIED") return tokenError(c, "access_denied", "The user said no.");
+    // An approval is collected within one more request lifetime, or the session is over.
+    if (row.expiresAt.getTime() + REQUEST_TTL_SEC * 1000 <= Date.now()) {
+      return tokenError(c, "expired_token", "The device code has expired.");
+    }
     if (row.state === "APPROVED" && row.mandateId) {
       const [spent] = await db
         .update(agentConnections)
@@ -459,10 +515,18 @@ export function registerConnections(
     return tokenError(c, "authorization_pending", "The user has not decided yet.");
   });
 
-  app.use("/v1/connections/:code", async (c, next) => {
-    if (c.req.method !== "GET") return next();
-    return rateLimit(deps.kv, { name: "connection-read", limit: 20, windowSec: 60 })(c, next);
+  // RFC 8628 §5.1: every route that tells a live user code from a dead one shares one budget, so
+  // codes cannot be guessed; approving one also takes a passkey signature.
+  const codeLimit = rateLimit(deps.kv, {
+    name: "connection-code",
+    limit: 20,
+    windowSec: 60,
+    failClosed: true,
   });
+  app.use("/v1/connections/:code/*", codeLimit);
+  app.use("/v1/connections/:code", (c, next) =>
+    c.req.method === "GET" ? codeLimit(c, next) : next(),
+  );
 
   app.openapi(read, async (c) => {
     const userId = (c.get("principal") as Principal).subject;
@@ -474,7 +538,14 @@ export function registerConnections(
           .innerJoin(operators, eq(operators.agentId, agentConnections.operatorAgentId))
           .where(eq(agentConnections.userCode, code))
       : [];
-    if (!row || (row.request.userId !== null && row.request.userId !== userId)) {
+    // An expired request nobody opened stays private to the agent that made it.
+    const lapsed =
+      row?.request.state === "PENDING" && row.request.expiresAt.getTime() <= Date.now();
+    if (
+      !row ||
+      (row.request.userId !== null && row.request.userId !== userId) ||
+      (lapsed && row.request.userId === null)
+    ) {
       return problem(c, 404, "not-found", "Not found");
     }
     const { request, operator } = row;
@@ -588,9 +659,7 @@ export function registerConnections(
         merchants: body.limits.merchants.map(
           (id) => MERCHANTS.find((m) => m.id === id)?.name ?? id,
         ),
-        category: [...CATEGORY_TABLE.ids],
-        attributes: {},
-        returns: null,
+        ...(await inherited(db, request)),
         notAfter: new Date(until * 1000).toISOString(),
         quantityPerLine: 1,
         item: request.kind === "once" ? "This cart only" : "Any item at the stores allowed",

@@ -142,28 +142,23 @@ export function registerAgents(
 
   /** Stops the user's live mandates (of one agent, or all) and ends the matching connections. */
   async function stop(userId: string, agentId?: bigint): Promise<number> {
-    const rows = await db
-      .select()
-      .from(mandates)
-      .where(
-        and(
-          eq(mandates.userId, userId),
-          inArray(mandates.state, LIVE),
-          agentId === undefined ? undefined : eq(mandates.operatorAgentId, agentId),
-        ),
-      );
-    // Every countersign stops at once; the holds are released one by one after.
-    if (rows.length > 0) {
-      await db
+    // Every countersign stops at once; the holds are released one by one after. A second pass
+    // catches a mandate stored while the first one ran.
+    const flag = () =>
+      db
         .update(mandates)
         .set({ revokeRequestedAt: sql`coalesce(${mandates.revokeRequestedAt}, now())` })
         .where(
-          inArray(
-            mandates.id,
-            rows.map((r) => r.id),
+          and(
+            eq(mandates.userId, userId),
+            inArray(mandates.state, LIVE),
+            agentId === undefined ? undefined : eq(mandates.operatorAgentId, agentId),
           ),
-        );
-    }
+        )
+        .returning();
+    const first = await flag();
+    const later = (await flag()).filter((r) => !first.some((f) => f.id === r.id));
+    const rows = [...first, ...later];
     for (const row of rows) {
       try {
         await revokeMandate(deps, row);

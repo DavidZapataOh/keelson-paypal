@@ -1,5 +1,5 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { createQueries, eq, mandates, sql, transition } from "@keelson/db";
+import { agentConnections, and, createQueries, eq, mandates, sql, transition } from "@keelson/db";
 import type { Deps } from "../app.ts";
 import { voidHold } from "../hold/maintenance.ts";
 import { publishHold } from "../hold/state.ts";
@@ -64,6 +64,13 @@ export async function revokeMandate(
     .update(mandates)
     .set({ revokeRequestedAt: sql`coalesce(${mandates.revokeRequestedAt}, now())` })
     .where(eq(mandates.id, row.id));
+  // Carts paused under it can no longer be approved.
+  await db
+    .update(agentConnections)
+    .set({ state: "DENIED", decidedAt: new Date() })
+    .where(
+      and(eq(agentConnections.parentMandateId, row.id), eq(agentConnections.state, "PENDING")),
+    );
   if (row.state === "SIGNED") {
     if (await transition(db, "mandates", row.id, "SIGNED", "REVOKED")) {
       await publishHold(deps, row, { state: "REVOKED" });

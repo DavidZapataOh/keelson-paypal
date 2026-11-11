@@ -17,8 +17,32 @@ const POLL_INTERVAL_SEC = 5;
 
 export type Connection = typeof agentConnections.$inferSelect;
 
+/**
+ * Stores a row under a fresh user code, drawing another on the rare collision with a code already
+ * issued. Returns the code stored.
+ */
+export async function withFreshUserCode(
+  insert: (userCode: string) => Promise<unknown>,
+): Promise<string> {
+  for (let attempt = 0; ; attempt++) {
+    const userCode = newUserCode();
+    try {
+      await insert(userCode);
+      return userCode;
+    } catch (err) {
+      const e = err as {
+        code?: string;
+        constraint?: string;
+        cause?: { code?: string; constraint?: string };
+      };
+      const constraint = e.cause?.constraint ?? e.constraint;
+      if (attempt >= 4 || constraint !== "agent_connections_user_code_unique") throw err;
+    }
+  }
+}
+
 /** `XXXX-XXXX`, about 34.6 bits drawn uniformly. */
-export function newUserCode(): string {
+function newUserCode(): string {
   const pick = () =>
     Array.from({ length: 4 }, () => USER_CODE_ALPHABET[randomInt(USER_CODE_ALPHABET.length)]).join(
       "",
@@ -168,27 +192,28 @@ export async function requestOnce(
     );
   const name = named?.name ?? operator?.name ?? "Your agent";
   const device = newDeviceCode();
-  const userCode = newUserCode();
   const expiresAt = new Date(Date.now() + REQUEST_TTL_SEC * 1000);
-  await db.insert(agentConnections).values({
-    id: ulid(),
-    kind: "once",
-    clientId: input.clientId,
-    operatorAgentId: input.mandate.operatorAgentId,
-    name,
-    reason: `Asks to buy one cart that mandate ${input.mandate.id} does not allow, and nothing else.`,
-    userCode,
-    deviceCodeHash: device.hash,
-    currency: input.currency,
-    perPurchaseMinor: input.amountMinor,
-    totalMinor: input.amountMinor,
-    merchantIds: [input.merchantId],
-    notAfter: expiresAt,
-    parentMandateId: input.mandate.id,
-    cartHash: input.cartHash,
-    userId: input.mandate.userId,
-    expiresAt,
-  });
+  const userCode = await withFreshUserCode((userCode) =>
+    db.insert(agentConnections).values({
+      id: ulid(),
+      kind: "once",
+      clientId: input.clientId,
+      operatorAgentId: input.mandate.operatorAgentId,
+      name,
+      reason: `Asks to buy one cart that mandate ${input.mandate.id} does not allow, and nothing else.`,
+      userCode,
+      deviceCodeHash: device.hash,
+      currency: input.currency,
+      perPurchaseMinor: input.amountMinor,
+      totalMinor: input.amountMinor,
+      merchantIds: [input.merchantId],
+      notAfter: expiresAt,
+      parentMandateId: input.mandate.id,
+      cartHash: input.cartHash,
+      userId: input.mandate.userId,
+      expiresAt,
+    }),
+  );
   await publishEvent(
     deps,
     principalChannel({ kind: "user", subject: input.mandate.userId }, "agents"),

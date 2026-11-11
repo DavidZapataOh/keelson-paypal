@@ -1,7 +1,7 @@
 import { isAPIError } from "better-auth/api";
 import { requestToResourceInput, verifyAccessTokenRequest } from "better-auth/oauth2";
 import type { Context, MiddlewareHandler } from "hono";
-import { type Auth, apiAudience } from "../auth.ts";
+import { type Auth, apiAudience, tokenScopes } from "../auth.ts";
 import { judgeExpired } from "../judge.ts";
 import { problem } from "../problem.ts";
 
@@ -29,7 +29,7 @@ export function authenticate(auth: Auth, baseURL: string): MiddlewareHandler {
         c.set("principal", {
           kind: "client",
           subject: payload.azp as string,
-          scopes: typeof payload.scope === "string" ? payload.scope.split(" ") : [],
+          scopes: tokenScopes(payload),
         });
       } catch (err) {
         if (!isAPIError(err)) throw err;

@@ -244,6 +244,7 @@ const create = createRoute({
         "The mandate is invalid (`invalid-mandate`), or it binds an agent key, a bond, an engine build, a policy set or terms other than the ones `POST /v1/mandates/compile` fills: the named operator's registered `cnf` key, its bond vault with the 50 PYUSD minimum, the engine version and TEE measurements of the build the legs run (or of another build admitted during a rotation), the current policy set hash and the current terms (`mandate-binding-mismatch`; `fields` names `agent.cnf`, `agent.bond`, `policy.engine`, `policy.version`, `policy.measurements`, `policy.policy_set_hash` or `consent`)",
       content: problemContent,
     },
+    429: { description: "Too many approvals by user code", content: problemContent },
     503: { description: "The TEE could not issue the mandate", content: problemContent },
   },
 });
@@ -316,6 +317,9 @@ const AGENT_ID = /^(0|[1-9]\d{0,77})$/;
 
 class CounterError extends Error {}
 class RequestClosed extends Error {}
+
+/** Approvals by user code a user may attempt in a minute. */
+const APPROVALS_PER_MINUTE = 20;
 
 function isUniqueViolation(err: unknown): boolean {
   for (let e = err; e && typeof e === "object"; e = (e as { cause?: unknown }).cause) {
@@ -432,9 +436,24 @@ export function registerMandates(
     ];
     let request: Connection | undefined;
     if (body.connection) {
+      // RFC 8628 §5.1: user codes are short, so naming one is budgeted per user.
+      const key = `rl:connection-approve:${userId}:${Math.floor(Date.now() / 60_000)}`;
+      const [count] = await deps.kv.multi().incr(key).expire(key, 60, "NX").exec();
+      if (Number(count) > APPROVALS_PER_MINUTE) {
+        c.header("Retry-After", "60");
+        return problem(c, 429, "rate-limited", "Too many requests", "Too many approvals.");
+      }
       const code = normalizeUserCode(body.connection.code);
       request = code ? await openRequest(db, code) : undefined;
-      if (!request || (request.userId !== null && request.userId !== userId)) {
+      // A cart paused under a mandate is approved only while that mandate still stands.
+      const parent = request?.parentMandateId
+        ? await queries.mandateById(request.parentMandateId)
+        : undefined;
+      if (
+        !request ||
+        (request.userId !== null && request.userId !== userId) ||
+        (request.kind === "once" && (parent?.state !== "ACTIVE" || parent.revokeRequestedAt))
+      ) {
         return problem(
           c,
           409,

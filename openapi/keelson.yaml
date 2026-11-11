@@ -5320,6 +5320,12 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+        "429":
+          description: Too many approvals by user code
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "503":
           description: The TEE could not issue the mandate
           content:
@@ -5782,6 +5788,12 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "403":
           description: The client linked no operator
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: The client linked several operators
           content:
             application/problem+json:
               schema:

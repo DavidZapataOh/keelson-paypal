@@ -14,8 +14,7 @@ import { isAPIError } from "better-auth/api";
 import { verifyBearerToken } from "better-auth/oauth2";
 import { bodyLimit } from "hono/body-limit";
 import type { Deps } from "./app.ts";
-import { apiAudience } from "./auth.ts";
-import { MANDATE_DETAILS_TYPE } from "./routes/oauth-consent.ts";
+import { apiAudience, tokenScopes } from "./auth.ts";
 
 /**
  * Keelson's MCP server on Streamable HTTP at `/mcp`, stateless: one server per request, built for
@@ -53,20 +52,7 @@ export function registerMcp(
   const asMetadata = oauthProviderAuthServerMetadata(auth, {
     headers: { "access-control-allow-origin": "*" },
   });
-  // RFC 9396 §10: a client may ask for spending limits as `keelson_mandate` authorization details.
-  app.get("/.well-known/oauth-authorization-server/api/auth", async (c) => {
-    const res = await asMetadata(c.req.raw);
-    if (!res.ok) return res;
-    const metadata = (await res.json()) as Record<string, unknown>;
-    return c.json(
-      { ...metadata, authorization_details_types_supported: [MANDATE_DETAILS_TYPE] },
-      200,
-      {
-        "access-control-allow-origin": "*",
-        "cache-control": res.headers.get("cache-control") ?? "public, max-age=15",
-      },
-    );
-  });
+  app.get("/.well-known/oauth-authorization-server/api/auth", (c) => asMetadata(c.req.raw));
 
   const gate = requireBearerAuth({
     verifier: {
@@ -84,7 +70,7 @@ export function registerMcp(
           return {
             token,
             clientId: payload.azp as string,
-            scopes: typeof payload.scope === "string" ? payload.scope.split(" ") : [],
+            scopes: tokenScopes(payload),
             ...(payload.exp ? { expiresAt: payload.exp } : {}),
             resource: new URL(apiAudience),
           };
