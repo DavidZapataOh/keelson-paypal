@@ -28,8 +28,13 @@ const ENGINE_PROOF_CHAIN_ID = arbitrumSepolia.id;
 /** The block `EngineProofVerifier` was deployed at, where its `EngineProven` history starts. */
 const ENGINE_PROOF_FROM_BLOCK = 328_028_156n;
 
-/** How long a Groth16 proof may take on the workflow instance. */
-const PROVE_TIMEOUT_MS = 3 * 60 * 60 * 1000;
+/**
+ * The most PROVE, in wei, one dispute's proof may cost on the Succinct Prover Network: the prover
+ * refuses a request whose Groth16 base fee plus gas limit at the bid price exceeds it.
+ */
+const ENGINE_PROOF_MAX_COST = 2n * 10n ** 18n;
+/** The network's auction, proving and the requester's local simulation and verification. */
+const PROVE_TIMEOUT_MS = 40 * 60 * 1000;
 const RECORD_WAIT_MS = 120_000;
 
 /** The `CountersignInput` the SP1 program reads, as JSON. */
@@ -134,8 +139,9 @@ async function prover(): Promise<string> {
 
 type Proved = Omit<EngineProof, "chain_id" | "verifier" | "tx" | "gas_used" | "proven_at">;
 
-/** Proves `input` to a Groth16 proof with the SP1 CPU prover. */
+/** Proves `input` to a Groth16 proof on the Succinct Prover Network, paid by `NETWORK_PRIVATE_KEY`. */
 async function proveInput(input: CountersignInput): Promise<Proved> {
+  if (!process.env.NETWORK_PRIVATE_KEY) throw new Error("NETWORK_PRIVATE_KEY is not set");
   const dir = await mkdtemp(join(tmpdir(), "engine-proof-"));
   try {
     const inputPath = join(dir, "input.json");
@@ -144,7 +150,12 @@ async function proveInput(input: CountersignInput): Promise<Proved> {
     await run(await prover(), ["prove", inputPath, outPath], {
       timeout: PROVE_TIMEOUT_MS,
       maxBuffer: 64 * 1024 * 1024,
-      env: { ...process.env, SP1_PROVER: "cpu", RUST_LOG: "warn" },
+      env: {
+        ...process.env,
+        SP1_PROVER: "network",
+        ENGINE_PROOF_MAX_COST: ENGINE_PROOF_MAX_COST.toString(),
+        RUST_LOG: "warn",
+      },
     });
     return JSON.parse(await readFile(outPath, "utf8")) as Proved;
   } finally {
@@ -207,7 +218,7 @@ export async function proveEngine(
     throw new Error(`purchase ${purchaseId}: the proof is not of its countersign`);
   }
   log.info(
-    { purchaseId, cycles: proved.cycles, proveMs: proved.prove_ms },
+    { purchaseId, cycles: proved.cycles, proveMs: proved.prove_ms, network: proved.network },
     "engine evaluation proved",
   );
 

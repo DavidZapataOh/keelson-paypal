@@ -152,6 +152,16 @@ export interface EngineProof {
   prove_ms: number;
   proof_bytes: number;
   sp1_version: string;
+  /** The Succinct Prover Network request that proved it; amounts are PROVE wei. */
+  network?: {
+    request_id: string;
+    explorer: string;
+    gas_limit: number;
+    gas_used: number | null;
+    max_cost: string;
+    cost: string | null;
+    balance: string;
+  };
   chain_id: number;
   verifier: string;
   tx: string;

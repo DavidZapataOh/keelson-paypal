@@ -182,15 +182,17 @@ task(
 
 /**
  * Proves in SP1 that the engine evaluation a disputed purchase was countersigned on gives its
- * `evalHash`, and records the Groth16 proof with `EngineProofVerifier`. The Groth16 wrap needs
- * about 14 GB; the whole proof takes minutes on eight cores.
+ * `evalHash`, and records the Groth16 proof with `EngineProofVerifier`. The Succinct Prover
+ * Network proves; this instance only simulates the program, waits and verifies the proof, so it
+ * needs a fraction of the 45 GB a local proof does. Each attempt is a paid network request, so a
+ * failure is not retried.
  */
 task(
   {
     name: "proveEngine",
-    retry: { maxRetries: 1, waitDurationMs: 10_000 },
-    timeoutSeconds: 3 * 60 * 60,
-    plan: "8c-32g",
+    retry: { maxRetries: 0, waitDurationMs: 10_000 },
+    timeoutSeconds: 45 * 60,
+    plan: "2c-8g",
   },
   async function proveEngineTask(_ctx, purchaseId: string) {
     deps ??= connect().catch((err: unknown) => {

@@ -173,6 +173,9 @@ services:
         sync: false
       - key: KEELSON_TREASURY_KEY
         sync: false
+      # Pays the Succinct Prover Network for disputes' engine proofs.
+      - key: NETWORK_PRIVATE_KEY
+        sync: false
       - key: PLAYWRIGHT_BROWSERS_PATH
         value: "0"
       # The red team plants its attacks through the store's listing API.
