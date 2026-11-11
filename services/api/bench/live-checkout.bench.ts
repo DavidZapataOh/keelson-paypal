@@ -6,6 +6,7 @@ import {
   ALFRED,
   apiClient,
   checkout,
+  decimal,
   LIVE_ITEM,
   liveMandate,
   liveObservations,
@@ -20,7 +21,9 @@ import {
 } from "@keelson/agent";
 import { decodeAlibi } from "@keelson/alibi";
 import { verifyAlibi } from "@keelson/alibi/verify";
+import type { CheckoutTotal } from "@keelson/core";
 import { alibis, eq, purchases } from "@keelson/db";
+import { startRecorder } from "@keelson/evidence/capture";
 import { parseMandate } from "@keelson/mandate";
 import { loadAlibi } from "../src/alibi/issue.ts";
 import { renderHarness } from "../test/render-live.ts";
@@ -35,7 +38,11 @@ import { renderHarness } from "../test/render-live.ts";
 //                     it, and the agent's checkout is held at its first payment action.
 //   LIVE_RUN=buy      the guarded agent finds the item and proposes it; Keelson countersigns it;
 //                     the agent pays at the store's checkout with PayPal; the purchase's Alibi
-//                     gets the PayPal transaction id and is published. Needs LIVE_BUY=yes.
+//                     gets the PayPal transaction id and is published. Needs LIVE_BUY=yes. When
+//                     the checkout adds tax or shipping once PayPal has the buyer's address, the
+//                     run re-quotes it and asks Keelson to countersign the new total, which must
+//                     also fit the mandate: the first countersign holds its amount until it
+//                     expires, so the mandate leaves room for both.
 //
 // Prints a JSON summary, with no URL query, page text or credential, and exits 1 unless the run
 // ends as it should.
@@ -44,7 +51,8 @@ if (RUN !== "blocked" && (RUN !== "buy" || process.env.LIVE_BUY !== "yes")) {
   throw new Error("LIVE_RUN=blocked, or LIVE_RUN=buy with LIVE_BUY=yes");
 }
 const PROFILE = process.env.PAYPAL_PROFILE ?? "keelson-live-paypal";
-const MAX_MINOR = 500;
+// Two copies ($5.90) break a $5 mandate; one copy and its re-quote with tax fit an $8 one.
+const MAX_MINOR = RUN === "blocked" ? 500 : 800;
 /** No live purchase may cost more, whatever the mandate says. */
 const CEILING_MINOR = 1_500;
 const SETTLE_MS = 180_000;
@@ -113,7 +121,9 @@ try {
       };
     }
     const quote = await quoteShopify(ALFRED, proposal);
-    if (quote.total.minor > CEILING_MINOR) throw new Error(`the cart costs ${quote.total.display}`);
+    if (quote.total.minor > CEILING_MINOR) {
+      throw new Error(`the cart costs ${decimal(quote.total.currency, quote.total.minor)}`);
+    }
     // The store's scripts can still navigate the page after it loads; capture once it is quiet.
     await session.page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {});
     const skipped: string[] = [];
@@ -146,6 +156,58 @@ try {
       cart: shopifyCart(session.context, ALFRED.origin),
     });
     if (allowed) gate.allow(quote.total);
+    // The purchase the payment is for: the first countersign, or the last re-quote Keelson allowed.
+    let paid = result.requestId;
+    const requotes: Record<string, unknown>[] = [];
+    // A re-quoted total is countersigned on evidence captured in a tab of its own on the product
+    // page, so nothing of the checkout's pages, which show the buyer's address, is sealed.
+    const requote = async (total: CheckoutTotal): Promise<boolean> => {
+      if (total.minor > CEILING_MINOR) return false;
+      const tab = await session.context.newPage();
+      const recorder = await startRecorder(tab);
+      try {
+        await tab.goto(productUrl);
+        await tab.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {});
+        const next = { ...quote, total };
+        const again = await checkout({
+          keelson: agentApi,
+          headers: {},
+          hold: {
+            mandateId: hold.mid,
+            openMandate: hold.openMandate,
+            agentKey: hold.key,
+            authorizationId: hold.authorizationId,
+          },
+          session: { ...session, page: tab, recorder },
+          quote: next,
+          observation: agent ? agent.reads.join("\n\n") : "",
+          recipient,
+          observe: liveObservations({
+            keelson: agentApi,
+            headers: {},
+            mandateId: hold.mid,
+            productUrl,
+            quote: next,
+            skipped,
+          }),
+          live: { store: ALFRED.origin },
+          repeatOf: paid,
+        });
+        const ok = again.status < 300 && again.body.decision === "allow";
+        requotes.push({
+          total,
+          purchase: again.requestId,
+          status: again.status,
+          decision: again.body.decision,
+          problem: again.status >= 400 ? again.body.type : undefined,
+        });
+        if (ok) paid = again.requestId;
+        return ok;
+      } finally {
+        await recorder.stop().catch(() => {});
+        await tab.close();
+      }
+    };
 
     const paying = RUN === "blocked" || allowed;
     const run = paying
@@ -157,21 +219,22 @@ try {
           gate,
           quote,
           proposal,
+          requote,
           onStep: log,
         })
       : undefined;
-    const purchase = await settle(result.requestId);
+    const purchase = await settle(paid);
     let transactionId: string | undefined;
     let recorded: number | undefined;
     if (run?.outcome === "paid") {
       transactionId = await paypalTransactionId(
         session.context,
         session.page,
-        quote.total.display,
+        decimal(run.total.currency, run.total.minor),
         "Alfred",
       );
       if (transactionId) {
-        const res = await agentApi.request(`/v1/purchases/${result.requestId}/paypal-transaction`, {
+        const res = await agentApi.request(`/v1/purchases/${paid}/paypal-transaction`, {
           method: "PUT",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ transactionId }),
@@ -179,12 +242,12 @@ try {
         recorded = res.status;
       }
     }
-    const alibiRes = await fetch(`${API_URL}/v1/alibis/${result.requestId}`);
+    const alibiRes = await fetch(`${API_URL}/v1/alibis/${paid}`);
     // The Alibi may not be issued yet when the API is asked: it is then read where Keelson keeps it.
     const bundle =
       alibiRes.status === 200
         ? decodeAlibi(new Uint8Array(await alibiRes.arrayBuffer()))
-        : await loadAlibi(h.db, result.requestId);
+        : await loadAlibi(h.db, paid);
     const verdict = bundle ? (await verifyAlibi(bundle)).verdict : undefined;
     const listed = (await (await fetch(`${API_URL}/v1/live-purchases`)).json()) as {
       purchases: { id: string }[];
@@ -195,12 +258,13 @@ try {
       store: ALFRED.origin,
       mandate: hold.mid,
       cart: quote.cart.lines.map((l) => `${l.qty}x ${l.sku} @ ${l.unit_minor}`),
-      totalMinor: quote.total.minor,
+      total: run?.total ?? quote.total,
       decision: result.body.decision,
       status: result.status,
       problem: result.status >= 400 ? result.body.type : undefined,
       blocked: result.body.blocked,
-      purchase: result.requestId,
+      purchase: paid,
+      requotes,
       state: purchase?.state,
       logIndex: purchase?.logIndex?.toString(),
       evidence: { root: result.evidenceRoot, skipped, ms: result.timings },
@@ -218,7 +282,7 @@ try {
       alibi: {
         status: alibiRes.status,
         verdict,
-        listed: listed.purchases.some((p) => p.id === result.requestId),
+        listed: listed.purchases.some((p) => p.id === paid),
       },
     };
     console.log(JSON.stringify(summary));

@@ -22,6 +22,7 @@ import { useMandate } from "../lib/use-mandate";
 import { AnonymousProof } from "./anonymous-proof";
 import { AppShell } from "./app-shell";
 import { RiveMoment } from "./brand";
+import { CheckoutBreakdown } from "./checkout-breakdown";
 import { DisputeSheet } from "./dispute-sheet";
 import { ErrorNotice } from "./notice";
 
@@ -270,6 +271,7 @@ function Receipt() {
             {...((p.failure && !unknownOutcome(p)) || blocked ? { struck: "Not paid" } : {})}
           />
         </h1>
+        <CheckoutBreakdown amount={p.amount} layout="ledger" />
 
         {unknownOutcome(p) ? (
           <section

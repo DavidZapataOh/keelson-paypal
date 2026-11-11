@@ -5,11 +5,15 @@ import { bindWebFact, type WebFactFields } from "@keelson/alibi";
 import {
   type Cart,
   type Channel3Comparison,
+  type CheckoutTotal,
   CURRENCIES,
   type CurrencyCode,
   cartHash,
   channel3Sources,
+  fromPayPalAmount,
   isUlid,
+  type Json,
+  jcs,
   toHex,
 } from "@keelson/core";
 import {
@@ -120,7 +124,10 @@ const Body = z
     unit: z
       .record(z.string(), z.unknown())
       .refine((unit) => bytes(unit) <= MAX_UNIT_BYTES, "The purchase unit is too large.")
-      .openapi({ description: "The PayPal purchase unit the cart is checked against." }),
+      .openapi({
+        description:
+          "The PayPal purchase unit the cart is checked against: `{amount}`, the checkout total the buyer pays as a PayPal Orders v2 amount, whose `breakdown` has the `item_total` of the cart's lines and, when the checkout charges them, `tax_total`, `shipping` and `discount`. Keelson countersigns `amount.value`, which must be `item_total + tax_total + shipping − discount`, and checks it against the mandate's budget. `handling`, `insurance` and `shipping_discount` are refused: fold them into `shipping`.",
+      }),
     evidence: z
       .record(z.string(), z.array(z.string().max(MAX_STRING)).max(MAX_SOURCES))
       .refine((e) => Object.keys(e).length <= MAX_EVIDENCE_FIELDS, "Too many evidence fields.")
@@ -245,7 +252,7 @@ const route = createRoute({
     413: { description: "A leg refused the request as too large", content: problemContent },
     422: {
       description:
-        "The request is invalid, the authorization is not this purchase's hold, the cart is not the one held for this request, the evidence holds another cart, its Channel3 observation is not usable, its WebFact is not this purchase's, or a live store is not the website the mandate allows",
+        "The request is invalid, the purchase unit's amount does not reconcile with the cart (`invalid-amount`), the authorization is not this purchase's hold, the cart is not the one held for this request, the evidence holds another cart or another checkout amount, its Channel3 observation is not usable, its WebFact is not this purchase's, or a live store is not the website the mandate allows",
       content: problemContent,
     },
     429: { description: "Too many countersigns for this mandate", content: problemContent },
@@ -382,6 +389,15 @@ async function redrive(
     paypalOrderId: hold.orderId,
     paypalAuthorizationId: hold.authorizationId,
   });
+}
+
+/** Whether the `api.checkout` item stored with the evidence is `amount`, as RFC 8785 JSON. */
+function sameAmount(bytes: Buffer, amount: unknown): boolean {
+  try {
+    return jcs(JSON.parse(bytes.toString("utf8")) as Json) === jcs(amount as Json);
+  } catch {
+    return false;
+  }
 }
 
 /** The cart hash of the `api.cart` item stored with the evidence, or `null` if it has none. */
@@ -750,6 +766,7 @@ export function registerCountersign(
           inArray(evidenceItems.type, [
             "api.product",
             "api.cart",
+            "api.checkout",
             "channel3.observation",
             "tlsn.web_fact",
           ]),
@@ -770,10 +787,21 @@ export function registerCountersign(
       );
     }
 
-    const total = body.cart.lines.reduce(
-      (sum, l) => sum + BigInt(l.qty) * BigInt(l.unit_minor),
-      0n,
-    );
+    // The total the legs countersign, reconciled as the engine does: the items are the cart's and
+    // the breakdown adds up to the value.
+    let checkout: CheckoutTotal;
+    try {
+      checkout = fromPayPalAmount(body.unit.amount, body.cart as Cart);
+    } catch (err) {
+      return problem(
+        c,
+        422,
+        "invalid-amount",
+        "Invalid amount",
+        `The purchase unit's amount is not the cart's checkout total: ${err instanceof Error ? err.message : "it does not parse"}.`,
+      );
+    }
+    const total = BigInt(checkout.minor);
     if (total <= 0n)
       return problem(c, 422, "invalid-cart", "Invalid cart", "The cart total must be positive.");
     const currency = CURRENCIES[body.cart.currency as CurrencyCode];
@@ -847,6 +875,30 @@ export function registerCountersign(
         "evidence-cart-mismatch",
         "Evidence cart mismatch",
         "The cart the agent saw, as stored with the evidence, is not the cart to countersign.",
+      );
+    }
+
+    // The Alibi discloses the checkout amount the evidence binds: it must be the one countersigned.
+    // A total with tax, shipping or a discount is countersigned only with its breakdown in the
+    // evidence, so its Alibi can show it.
+    const quoted = item("api.checkout")?.bytes;
+    const priced = checkout.tax > 0 || checkout.shipping > 0 || checkout.discount > 0;
+    if (priced && !quoted) {
+      return problem(
+        c,
+        422,
+        "evidence-checkout-missing",
+        "Evidence checkout missing",
+        "A total with tax, shipping or a discount needs its PayPal amount stored with the evidence as an api.checkout item.",
+      );
+    }
+    if (quoted && !sameAmount(quoted, body.unit.amount)) {
+      return problem(
+        c,
+        422,
+        "evidence-checkout-mismatch",
+        "Evidence checkout mismatch",
+        "The checkout amount stored with the evidence is not the purchase unit's amount.",
       );
     }
 
