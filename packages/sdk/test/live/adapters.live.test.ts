@@ -26,7 +26,7 @@ describe.skipIf(process.env.KEELSON_LIVE !== "1")(
 
     test("Vercel AI SDK", async () => {
       const t = aiSdkTools(keelson).keelson_verify_alibi;
-      verified(await t?.execute?.({ purchaseId }, { toolCallId: "1", messages: [] }));
+      verified(await t?.execute?.({ purchaseId }, { toolCallId: "1", messages: [], context: {} } as never));
     });
 
     test("OpenAI Agents SDK", async () => {
