@@ -391,6 +391,11 @@ pub(crate) struct LogKeyInfo {
     pub vkey: String,
     /// The raw Ed25519 public key, hex.
     pub public_key: String,
+    /// The origin's RFC 9942 receipt key, hex, and its key id (hex SHA-256 of the key).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub receipt_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub receipt_kid: Option<String>,
     /// `GetKey`'s signature chain, hex: absent on leg B.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub signature_chain: Vec<String>,
@@ -424,6 +429,10 @@ fn log_keys(engine: &Engine) -> Vec<LogKeyInfo> {
                 origin: k.origin,
                 vkey: k.vkey(),
                 public_key: format!("0x{}", hex(&k.public_key())),
+                receipt_key: Some(hex(&k.receipt_public_key())),
+                receipt_kid: Some(hex(&<[u8; 32]>::from(sha2::Sha256::digest(
+                    k.receipt_public_key(),
+                )))),
                 signature_chain: k.signature_chain.iter().map(|l| hex(l)).collect(),
             })
             .collect();
@@ -435,6 +444,8 @@ fn log_keys(engine: &Engine) -> Vec<LogKeyInfo> {
             origin,
             vkey: crate::logsign::vkey(origin, key),
             public_key: format!("0x{}", hex(key)),
+            receipt_key: None,
+            receipt_kid: None,
             signature_chain: Vec::new(),
         })
         .collect()

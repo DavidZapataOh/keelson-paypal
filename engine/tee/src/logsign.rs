@@ -33,6 +33,8 @@ pub fn key_domain(origin: &str) -> String {
 }
 
 const SEAL_PURPOSE: &str = "keelson/seal/log-checkpoint/v1";
+/// HKDF info deriving an origin's receipt key from its log-key seed.
+const RECEIPT_KEY_INFO: &[u8] = b"keelson/log-receipt/v1";
 /// Longest consistency proof between trees of up to 2^64 - 1 leaves (RFC 9162 §2.1.4.1).
 const MAX_PROOF: usize = 65;
 
@@ -40,6 +42,8 @@ const MAX_PROOF: usize = 65;
 pub struct LogKey {
     pub origin: &'static str,
     key: SigningKey,
+    /// Signs the roots of the origin's RFC 9942 receipts; derived from the same seed.
+    receipt: SigningKey,
     /// `GetKey`'s `signature_chain`: the app root key's signature over the key claim and the
     /// KMS root key's signature over the app root key.
     pub signature_chain: Vec<Vec<u8>>,
@@ -52,11 +56,25 @@ impl LogKey {
         seed: &Zeroizing<[u8; 32]>,
         signature_chain: Vec<Vec<u8>>,
     ) -> Self {
+        // `Hkdf::new` would drop the pseudorandom key unwiped.
+        let mut extract = hkdf::HkdfExtract::<Sha256>::new(None);
+        extract.input_ikm(seed.as_slice());
+        let (mut prk, hkdf) = extract.finalize();
+        zeroize::Zeroize::zeroize(&mut prk);
+        let mut receipt = Zeroizing::new([0u8; 32]);
+        hkdf.expand(RECEIPT_KEY_INFO, receipt.as_mut_slice())
+            .expect("32 bytes is a valid HKDF-SHA256 length");
         Self {
             origin,
             key: SigningKey::from_bytes(seed),
+            receipt: SigningKey::from_bytes(&receipt),
             signature_chain,
         }
+    }
+
+    /// The Ed25519 key of the origin's RFC 9942 receipts.
+    pub fn receipt_public_key(&self) -> [u8; 32] {
+        self.receipt.verifying_key().to_bytes()
     }
 
     pub fn public_key(&self) -> [u8; 32] {
@@ -101,6 +119,8 @@ pub struct Signed {
     pub signature: String,
     /// The note verifier key that signed.
     pub vkey: String,
+    /// The Ed25519 signature, base64, over the RFC 9942 receipt `Sig_structure` of the same root.
+    pub receipt_signature: String,
 }
 
 /// Why a checkpoint was not signed.
@@ -244,9 +264,14 @@ impl LogSigner {
         drop(latest);
 
         let signature = key.key.sign(r.checkpoint.as_bytes());
+        let receipt = key.receipt.sign(&keelson_core::statement::to_be_signed(
+            &keelson_core::statement::receipt_protected(&key.receipt_public_key(), key.origin),
+            &tree.root,
+        ));
         Ok(Signed {
             signature: STANDARD.encode(signature.to_bytes()),
             vkey: key.vkey(),
+            receipt_signature: STANDARD.encode(receipt.to_bytes()),
         })
     }
 
