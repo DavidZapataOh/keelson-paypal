@@ -14,6 +14,7 @@ export const FIELD_IDS = [
   "currency",
   "budget",
   "merchant",
+  "card",
   "deadline",
   "quantity",
   "items",
@@ -71,6 +72,7 @@ export function fieldColors(m: Mandate, evidence: Evidence): Partial<Record<Fiel
     agent: "green",
     bond: "green",
   };
+  if (m.payment.rail === "card") colors.card = "green";
   // A mandate for any item binds no item: its title only describes what the user wants.
   if (anyItem(m)) colors.items = "gray";
   else if (has("checkout.line_items"))

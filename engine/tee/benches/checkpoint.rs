@@ -13,13 +13,13 @@ use common::*;
 const CHECKPOINT_BUDGET_US: f64 = 1_000.0;
 const RUNS: usize = 5_000;
 /// After every cosignature of the note.
-const CLOCK: i64 = 1_794_200_000;
+const CLOCK: i64 = 1_794_500_000;
 
 /// Budget (p99, host, mains power): `sign_checkpoint` < [`CHECKPOINT_BUDGET_US`].
 fn main() {
     let engine = leg_b();
     let r = CheckpointRequest {
-        signed_note: include_str!("../tests/data/checkpoints/alibi-2026-1-54.note").into(),
+        signed_note: include_str!("../tests/data/checkpoints/alibi-2026-1-823.note").into(),
         chain_id: None,
     };
     assert!(engine.sign_checkpoint(&r, at(CLOCK)).is_ok());
