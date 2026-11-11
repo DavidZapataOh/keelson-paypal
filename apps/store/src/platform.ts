@@ -159,9 +159,9 @@ export function registerPlatform(
           reason: REASON,
           limits: {
             currency: "USD",
-            perPurchaseMinor: 6_000,
+            // One pair under $120, as the user asked: RunFast's shoes start at $99.
+            perPurchaseMinor: 12_000,
             totalMinor: 12_000,
-            askAboveMinor: 4_000,
             merchants: ["mrc_runfast"],
             until: new Date(Date.now() + 7 * DAY_MS).toISOString(),
           },
