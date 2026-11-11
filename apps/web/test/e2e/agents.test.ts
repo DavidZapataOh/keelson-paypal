@@ -138,6 +138,16 @@ async function signedIn(
         ? SESSION()
         : await answer(url.pathname, req.postData(), req.method());
     if (value === undefined) return route.abort("connectionrefused");
+    // `{ problem: status, ... }` answers as an RFC 9457 problem.
+    const { problem, ...rest } = value as { problem?: number };
+    if (problem) {
+      return route.fulfill({
+        status: problem,
+        headers,
+        contentType: "application/problem+json",
+        body: JSON.stringify(rest),
+      });
+    }
     return route.fulfill({ headers, contentType: "application/json", body: JSON.stringify(value) });
   });
   const page = await context.newPage();
@@ -171,6 +181,7 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("connecting an agent on %s", (ki
     const { context, page } = await signedIn(kind, "/connect/", () => undefined);
     await page.getByRole("heading", { level: 1, name: "Connect your agent" }).waitFor();
     expect(await page.getByText("keelson.request_mandate", { exact: false }).count()).toBe(1);
+    expect(await page.getByText("keelson.get_request", { exact: false }).count()).toBe(1);
     const code = page.getByLabel("The code your agent shows");
     await code.fill("bcdf ghjk");
     expect(await page.getByRole("button", { name: "Open" }).isDisabled()).toBe(true);
@@ -179,6 +190,51 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("connecting an agent on %s", (ki
     await shot(page, kind, "connect-first-run");
     await page.getByRole("button", { name: "Open" }).click();
     await page.waitForURL(/\/connect\/\?c=BCDF-GHJK$/);
+    await context.close();
+  });
+
+  test("a relayed link opens only once the user picks the number their agent shows", async () => {
+    const matched: number[] = [];
+    const { context, page } = await signedIn(kind, "/connect/?c=BCDF-GHJK", (path, body) => {
+      if (path === "/v1/connections/BCDF-GHJK") {
+        return request({ match: { options: [17, 42, 88], matched: false } });
+      }
+      if (path === "/v1/connections/BCDF-GHJK/match") {
+        matched.push(JSON.parse(body ?? "{}").number);
+        return { matched: true };
+      }
+      if (path === "/v1/connections/BCDF-GHJK/draft") return draft();
+      if (path === "/v1/passkeys") return passkeys;
+      return undefined;
+    });
+    await page
+      .getByRole("heading", { level: 1, name: "Which number does Claude Code show?" })
+      .waitFor();
+    await axe(page);
+    await shot(page, kind, "connect-number-match");
+    await page.getByRole("button", { name: "42" }).click();
+    await page.getByRole("heading", { level: 1, name: /Claude Code wants to spend/ }).waitFor();
+    expect(matched).toEqual([42]);
+    await context.close();
+  });
+
+  test("a wrong number cancels the request and says why", async () => {
+    const { context, page } = await signedIn(kind, "/connect/?c=BCDF-GHJK", (path) => {
+      if (path === "/v1/connections/BCDF-GHJK") {
+        return request({ match: { options: [17, 42, 88], matched: false } });
+      }
+      if (path === "/v1/connections/BCDF-GHJK/match") {
+        return {
+          problem: 409,
+          type: "https://api.keelson.finance/problems/number-mismatch",
+          title: "Not your agent's number",
+          detail: "The number does not match the one Claude Code shows, so this request was denied.",
+        };
+      }
+      return undefined;
+    });
+    await page.getByRole("button", { name: "17" }).click();
+    await page.getByRole("heading", { level: 1, name: "That's not your agent's number" }).waitFor();
     await context.close();
   });
 

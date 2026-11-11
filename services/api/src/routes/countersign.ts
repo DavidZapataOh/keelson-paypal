@@ -76,7 +76,7 @@ const bytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value));
 const OBSERVATION_TTL_SEC = 900;
 const fold = (s: string) => s.normalize("NFKC").trim().toUpperCase().toLowerCase();
 
-const CartSchema = z
+export const CartSchema = z
   .object({
     merchant: z.string().min(1).max(MAX_STRING),
     currency: z.string().length(3),
@@ -161,6 +161,9 @@ const Approval = z
     verification_uri_complete: z.string(),
     expires_in: z.int(),
     interval: z.int(),
+    request_id: z.string().openapi({
+      description: "Read the request's state with `GET /v1/connections/requests/{id}`.",
+    }),
   })
   .openapi("OnceApproval");
 
@@ -527,7 +530,11 @@ export function registerCountersign(
   ) {
     const clientId = c.var.principal?.subject as string;
     const [open] = await db
-      .select({ userCode: agentConnections.userCode, expiresAt: agentConnections.expiresAt })
+      .select({
+        id: agentConnections.id,
+        userCode: agentConnections.userCode,
+        expiresAt: agentConnections.expiresAt,
+      })
       .from(agentConnections)
       .where(
         and(
@@ -540,7 +547,7 @@ export function registerCountersign(
       )
       .limit(1);
     if (open) {
-      const { device_code: _, ...shown } = deviceAuthorization(appOrigin, open.userCode, "");
+      const { device_code: _, ...shown } = deviceAuthorization(appOrigin, open, "");
       return {
         approval: {
           ...shown,

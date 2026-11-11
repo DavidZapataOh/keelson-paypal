@@ -141,16 +141,27 @@ test("a client with client credentials lists the tools, each with an output sche
   const client = await connect(["alibis:read"]);
   const { tools } = await client.listTools();
   expect(tools.map((t) => t.name).sort()).toEqual([
-    "keelson.await_approval",
+    "keelson.check_cart",
     "keelson.compile_mandate",
     "keelson.confirm_mandate",
     "keelson.get_alibi",
+    "keelson.get_purchase",
+    "keelson.get_request",
     "keelson.get_trust_grade",
     "keelson.request_mandate",
+    "keelson.request_mandate_change",
     "keelson.submit_evidence",
     "keelson.verify_alibi",
   ]);
   for (const tool of tools) expect(tool.outputSchema?.type).toBe("object");
+  // Every tool that starts something says it is never called again to finish it.
+  for (const name of [
+    "keelson.request_mandate",
+    "keelson.request_mandate_change",
+    "keelson.submit_evidence",
+  ]) {
+    expect(tools.find((t) => t.name === name)?.description).toContain("Never call this tool again");
+  }
   const card = tools.find((t) => t.name === "keelson.get_alibi");
   expect((card?._meta?.ui as { resourceUri?: string } | undefined)?.resourceUri).toBe(
     ALIBI_VIEW_URI,
@@ -174,8 +185,9 @@ test("compiling hands the request to the user's app when the client opens no URL
     name: "keelson.compile_mandate",
     arguments: { request: "Trail Runner 2, size 10, under $150" },
   });
-  expect(result.structuredContent).toEqual({
-    status: "signing",
+  expect(result.structuredContent).toMatchObject({
+    status: "pending_approval",
+    next: { action: "show_user_then_poll", tool: "keelson.confirm_mandate" },
     url: "https://app.keelson.finance/new?request=Trail+Runner+2%2C+size+10%2C+under+%24150",
   });
   await client.close();
@@ -290,7 +302,8 @@ test("confirming finds the held mandate of the operator the client linked, throu
     arguments: { agentId: agentId.toString() },
   });
   expect(result.structuredContent).toMatchObject({
-    status: "ready",
+    status: "success",
+    next: { action: "call", tool: "keelson.submit_evidence", arguments: { mandateId: id } },
     mandate: { id, currency: "USD", remainingMinor: 15_000, holdMode: "mandate", held: true },
   });
   const other = await connect(["countersign:write"]);
@@ -389,30 +402,197 @@ test("an agent asks its user for a mandate and hears the answer through the tool
     },
   });
   expect(asked.isError, JSON.stringify(asked.content)).toBeFalsy();
+  // A client that opens no URLs is told to show the link and the number, then poll.
   const waiting = asked.structuredContent as {
+    status: string;
+    next: { action: string; tool: string; arguments: { requestId: string }; afterSeconds: number };
+    requestId: string;
     userCode: string;
-    url: string;
-    deviceCode: string;
+    approvalUrl: string;
+    matchNumber: number;
     card: { title: string; action: string; url: string };
   };
+  expect(waiting).toMatchObject({
+    status: "pending_approval",
+    next: {
+      action: "show_user_then_poll",
+      tool: "keelson.get_request",
+      arguments: { requestId: waiting.requestId },
+      afterSeconds: 5,
+    },
+  });
+  expect(waiting.matchNumber).toBeGreaterThanOrEqual(10);
   expect(waiting.card).toEqual({
     title: "Claude Code wants to spend up to $50.00",
     amount: "$50.00",
     action: "Review",
-    url: waiting.url,
+    url: waiting.approvalUrl,
   });
-  expect(waiting.url).toMatch(/\/connect\?c=[A-Z]{4}-[A-Z]{4}$/);
+  expect(waiting.approvalUrl).toMatch(/\/connect\?c=[A-Z]{4}-[A-Z]{4}$/);
 
   const poll = () =>
     client.callTool({
-      name: "keelson.await_approval",
-      arguments: { deviceCode: waiting.deviceCode },
+      name: "keelson.get_request",
+      arguments: { requestId: waiting.requestId },
     });
-  expect((await poll()).structuredContent).toMatchObject({ status: "pending", mandateId: null });
+  // Polling changes nothing, however often.
+  expect((await poll()).structuredContent).toMatchObject({ status: "pending_approval" });
+  expect((await poll()).structuredContent).toMatchObject({ status: "pending_approval" });
   await testDb
     .update(agentConnections)
     .set({ state: "DENIED", decidedAt: new Date() })
     .where(eq(agentConnections.userCode, waiting.userCode));
-  expect((await poll()).structuredContent).toMatchObject({ status: "denied" });
+  expect((await poll()).structuredContent).toMatchObject({
+    status: "denied",
+    next: { action: "stop" },
+  });
+  await client.close();
+});
+
+/** An operator whose agent's client is `creds`, and a user with a live mandate naming it. */
+async function linkedMandate(creds: { id: string }) {
+  const agentId = BigInt(`0x${randomBytes(10).toString("hex")}`);
+  await testDb.insert(operators).values({
+    agentId,
+    chainId: 421614,
+    agentRegistry: "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+    name: "Linked",
+    cnfJwk: {},
+    clientId: creds.id,
+  });
+  const sub = `kls_usr_${randomBytes(8).toString("hex")}`;
+  await testDb.insert(users).values({ id: sub, name: "Tester", email: `${sub}@example.test` });
+  const id = ulid();
+  await testDb.insert(mandates).values({
+    id,
+    userId: sub,
+    currency: "USD",
+    maxMinor: 15_000n,
+    remainingMinor: 15_000n,
+    merchantIds: ["mrc_runfast"],
+    expiresAt: new Date(Date.now() + 86_400_000),
+    operatorAgentId: agentId,
+    state: "ACTIVE",
+    openMandate: "open~active~",
+    holdMode: "mandate",
+    paypalAuthorizationId: `AUTH${randomBytes(6).toString("hex").toUpperCase()}`,
+  });
+  return { agentId, sub, id };
+}
+
+test("a host that opens URLs is shown the approval page in the same call, then gets the state", async () => {
+  const creds = await registerClient(["countersign:write"]);
+  await testDb.insert(operators).values({
+    agentId: BigInt(`0x${randomBytes(10).toString("hex")}`),
+    chainId: 421614,
+    agentRegistry: "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+    name: "Asking operator",
+    cnfJwk: {},
+    clientId: creds.id,
+  });
+  const scopes = ["countersign:write"];
+  const client = new Client(
+    { name: "elicit-agent", version: "1.0.0" },
+    // The modern protocol carries the client's capabilities on every request, so a stateless
+    // server knows it opens URLs.
+    { capabilities: { elicitation: { url: {} } }, versionNegotiation: { mode: "auto" } },
+  );
+  const opened: string[] = [];
+  client.setRequestHandler("elicitation/create", async (request) => {
+    opened.push((request.params as { url?: string }).url ?? "");
+    return { action: "accept" };
+  });
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL("/mcp", apiAudience), {
+      fetch: viaTestServer,
+      authProvider: new ClientCredentialsProvider({
+        clientId: creds.id,
+        clientSecret: creds.secret,
+        scope: scopes.join(" "),
+        expectedIssuer: issuer,
+      }),
+    }),
+  );
+  const asked = await client.callTool({
+    name: "keelson.request_mandate",
+    arguments: {
+      name: "Claude Code",
+      reason:
+        "I am Claude Code, buying the running shoes you asked for in this session. I check out at RunFast only and only what you named.",
+      perPurchaseMinor: 5_000,
+      totalMinor: 5_000,
+      until: new Date(Date.now() + 86_400_000).toISOString(),
+    },
+  });
+  expect(asked.isError, JSON.stringify(asked.content)).toBeFalsy();
+  expect(opened).toHaveLength(1);
+  expect(opened[0]).toMatch(/\/connect\?c=[A-Z]{4}-[A-Z]{4}$/);
+  const s = asked.structuredContent as { status: string; approvalUrl: string; requestId: string };
+  expect(s.status).toBe("pending_approval");
+  expect(s.approvalUrl).toBe(opened[0]);
+  // One request for one call, however many rounds it took.
+  const rows = await testDb
+    .select()
+    .from(agentConnections)
+    .where(eq(agentConnections.clientId, creds.id));
+  expect(rows).toHaveLength(1);
+  await client.close();
+});
+
+test("an agent checks a cart, asks for more room and polls a purchase, each in the envelope", async () => {
+  const creds = await registerClient(["countersign:write"]);
+  const { id } = await linkedMandate(creds);
+  const client = await connect(["countersign:write"], creds);
+
+  // The test mandate carries no signed payload: the check says what blocks it.
+  const checked = await client.callTool({
+    name: "keelson.check_cart",
+    arguments: {
+      mandateId: id,
+      cart: {
+        merchant: "mrc_runfast",
+        currency: "USD",
+        lines: [{ sku: "TR2-10", size: "10", category: "shoes", qty: 1, unit_minor: 13_900 }],
+        return_days: 30,
+        returns_free: true,
+      },
+    },
+  });
+  expect(checked.isError, JSON.stringify(checked.content)).toBeFalsy();
+  expect(checked.structuredContent).toMatchObject({ next: expect.any(Object) });
+
+  const changed = await client.callTool({
+    name: "keelson.request_mandate_change",
+    arguments: { mandateId: id, note: "Needs $40 more for shipping", totalMinor: 19_000 },
+  });
+  // The test mandate is not signed, so it cannot be changed: a tool error in the envelope.
+  expect(changed.structuredContent).toMatchObject({ status: "error", retryable: false });
+
+  const purchaseId = ulid();
+  await testDb.insert(purchases).values({
+    id: purchaseId,
+    mandateId: id,
+    clientId: creds.id,
+    state: "FAILED",
+    failureReason: "capture:timeout",
+    merchantId: "mrc_runfast",
+    currency: "USD",
+    amountMinor: 13_900n,
+    cartHash: randomBytes(32),
+  });
+  const got = await client.callTool({ name: "keelson.get_purchase", arguments: { purchaseId } });
+  // A capture that failed after it was sent may have moved the money: say so, never retry.
+  expect(got.structuredContent).toMatchObject({
+    status: "error",
+    outcome: "unknown",
+    retryable: false,
+    next: { action: "poll", tool: "keelson.get_purchase" },
+  });
+  await testDb
+    .update(purchases)
+    .set({ state: "CAPTURED", failureReason: null })
+    .where(eq(purchases.id, purchaseId));
+  const done = await client.callTool({ name: "keelson.get_purchase", arguments: { purchaseId } });
+  expect(done.structuredContent).toMatchObject({ status: "success", outcome: "known" });
   await client.close();
 });

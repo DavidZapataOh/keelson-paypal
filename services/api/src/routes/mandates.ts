@@ -31,7 +31,14 @@ import type { SignedChallenge } from "@keelson/mandate/browser";
 import { POLICY_SET_HASH } from "@keelson/policy/hashes";
 import type { Deps } from "../app.ts";
 import { agentBond, agentCnf, termsConsent } from "../compile-sources.ts";
-import { type Connection, looserThan, normalizeUserCode, openRequest } from "../connections.ts";
+import {
+  type Connection,
+  kindOf,
+  looserThan,
+  normalizeUserCode,
+  openRequest,
+  unmatched,
+} from "../connections.ts";
 import { publishEvent } from "../events.ts";
 import { passkeyJwk, SignatureError, verifyMandateSignature } from "../mandate-signature.ts";
 import { requireSession } from "../middleware/auth.ts";
@@ -41,6 +48,7 @@ import { ProblemSchema, problem } from "../problem.ts";
 import { LegError, type MandateIssued } from "../tee/client.ts";
 import { unboundPolicy } from "../tee/engine-source.ts";
 import { PurchaseProgress } from "./purchases.ts";
+import { REVOCABLE, revokeMandate } from "./revoke.ts";
 
 const Hex32 = z.string().regex(/^0x[0-9a-f]{64}$/);
 const MANDATES_SHOWN = 50;
@@ -331,7 +339,7 @@ export function registerMandates(
   app: OpenAPIHono,
   deps: Pick<
     Deps,
-    "db" | "kv" | "log" | "appOrigin" | "passkeyRpId" | "tee" | "proveAnonymousMandate"
+    "db" | "kv" | "log" | "appOrigin" | "passkeyRpId" | "tee" | "proveAnonymousMandate" | "paypal"
   >,
 ): void {
   const { db } = deps;
@@ -451,7 +459,8 @@ export function registerMandates(
       if (
         !request ||
         (request.userId !== null && request.userId !== userId) ||
-        (request.kind === "once" && (parent?.state !== "ACTIVE" || parent.revokeRequestedAt))
+        (request.kind === "once" && (parent?.state !== "ACTIVE" || parent.revokeRequestedAt)) ||
+        (request.parentMandateId !== null && parent?.userId !== userId)
       ) {
         return problem(
           c,
@@ -459,6 +468,15 @@ export function registerMandates(
           "connection-closed",
           "Request closed",
           "The agent's request was already decided, expired or does not exist.",
+        );
+      }
+      if (unmatched(request)) {
+        return problem(
+          c,
+          409,
+          "number-not-matched",
+          "Number not matched",
+          "Pick the number your agent shows first.",
         );
       }
       const askAbove = body.connection.askAboveMinor;
@@ -652,6 +670,15 @@ export function registerMandates(
         request.id,
         { type: "connection.approved", userCode: request.userCode, mandateId: m.mid },
       );
+      // A change replaces the mandate it changes: that one stops now and its hold is released.
+      if (kindOf(request) === "change" && request.parentMandateId) {
+        const parent = await queries.mandateById(request.parentMandateId);
+        if (parent && (REVOCABLE as readonly string[]).includes(parent.state)) {
+          await revokeMandate(deps, parent).catch((err: unknown) =>
+            deps.log.warn({ err, mandateId: parent.id }, "replaced mandate not revoked yet"),
+          );
+        }
+      }
     }
 
     c.header("location", `/v1/mandates/${m.mid}`);

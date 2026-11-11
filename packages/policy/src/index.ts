@@ -13,6 +13,8 @@
  *
  * @packageDocumentation
  */
+
+export { cartContext } from "./cart.ts";
 export { agentUid, EntityError, mandateAgent, mandateEntity } from "./entity.ts";
 export {
   type Context,

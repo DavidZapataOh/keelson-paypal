@@ -236,6 +236,13 @@ export function registerEmbed(
         "Register the origin with PUT /v1/embed/origins first.",
       );
     }
+    // Inside the agent's own registered page the user is already looking at their agent.
+    if (request.matchNumber !== null && request.matchedAt === null) {
+      await db
+        .update(agentConnections)
+        .set({ matchedAt: new Date() })
+        .where(eq(agentConnections.id, request.id));
+    }
     // Readable until the agent can no longer collect the answer, a request lifetime after expiry.
     const liveUntil = new Date(request.expiresAt.getTime() + REQUEST_TTL_SEC * 1000);
     const { ref, token } = await mintEmbed(
