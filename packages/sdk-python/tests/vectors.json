@@ -1,0 +1,53 @@
+{
+  "cart": {
+    "merchant": "mrc_runfast",
+    "currency": "USD",
+    "lines": [
+      {
+        "sku": "RF-TMP3-9",
+        "size": "9",
+        "color": "blue",
+        "category": "gpt:187",
+        "qty": 1,
+        "unit_minor": 12900
+      }
+    ],
+    "return_days": 30,
+    "returns_free": true
+  },
+  "product": {
+    "handle": "tempo-3",
+    "title": "Tempo 3 — “trail”",
+    "price": {
+      "minor": 12900,
+      "currency": "USD"
+    },
+    "sizes": [
+      "9",
+      "10"
+    ],
+    "rating": 4.5
+  },
+  "cartHash": "sha256:f9e10dda1bc3d5eb778cba9a6563a98281af3e8ace748d679c368b7f508a758a",
+  "manifest": {
+    "v": "keelson.manifest/1",
+    "root": "0x83cefce352bcf3123fa57e2a48518ac85d1d01c7550047a16a57a4a5a546ad60",
+    "items": [
+      {
+        "type": "api.product",
+        "media_type": "application/json",
+        "leaf": "0xbfb9b3a3d9b0e62ac028922485df08f94e6f6b0d4ef29dc4eb0d5a769abd84b1"
+      },
+      {
+        "type": "api.cart",
+        "media_type": "application/json",
+        "leaf": "0x1334514fcb4c62851130396d02f9f1bbe01e6d6bb038830c3a5f38b8ac61285e"
+      },
+      {
+        "type": "llm.observation",
+        "media_type": "text/plain; charset=utf-8",
+        "leaf": "0x604c5be57468af9d004f04cb1fae6091336920fc446b9cf6bc296ab4bd73957d"
+      }
+    ]
+  }
+}

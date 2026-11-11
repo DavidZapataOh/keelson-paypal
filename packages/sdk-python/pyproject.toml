@@ -1,0 +1,57 @@
+[project]
+name = "keelson-sdk"
+version = "0.1.0"
+description = "Python SDK for Keelson's API: mandates, countersigns and offline Alibi verification"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+keywords = ["keelson", "paypal", "agents", "mandates", "openapi"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Typing :: Typed",
+]
+dependencies = [
+  "attrs>=23.2",
+  "cryptography>=44",
+  "httpx2>=2.16",
+  "python-dateutil>=2.9",
+  "rfc8785>=0.1.4",
+]
+
+[project.urls]
+Homepage = "https://keelson.finance"
+Repository = "https://github.com/DavidZapataOh/keelson-paypal"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.14", "mypy>=1.18"]
+generate = ["openapi-python-client==0.30.0", "pyyaml>=6", "ruff>=0.14"]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/keelson"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["src/keelson/generated"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+# The formatter keeps lines at 100; the messages agents read stay whole strings.
+ignore = ["E501"]
+
+[tool.mypy]
+strict = true
+packages = ["keelson"]
+mypy_path = "src"
+exclude = ["src/keelson/generated/"]
+
+[[tool.mypy.overrides]]
+module = ["keelson.generated.*"]
+ignore_errors = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
