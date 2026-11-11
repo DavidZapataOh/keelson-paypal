@@ -27,9 +27,11 @@ export type PayAction =
  */
 export class PayGate {
   readonly #checkoutHosts: readonly string[];
-  #total: string | undefined;
+  #total: { minor: number; currency: string } | undefined;
   /** Actions refused so far. */
   refused = 0;
+  /** The amounts read on each page where a pay action was held for its total: nothing else of it. */
+  readonly held: string[][] = [];
 
   constructor(o: { checkoutHosts: readonly string[] }) {
     this.#checkoutHosts = o.checkoutHosts;
@@ -37,7 +39,7 @@ export class PayGate {
 
   /** Opens the gate for the countersigned total, in minor units. */
   allow(total: { minor: number; currency: string }): void {
-    this.#total = (total.minor / 100).toFixed(2);
+    this.#total = total;
   }
 
   get open(): boolean {
@@ -115,13 +117,49 @@ export class PayGate {
       // biome-ignore lint/performance/useDomNodeTextContent: the amounts as the buyer sees them on the page.
       .innerText()
       .catch(() => "");
-    const amounts = [...shown.matchAll(/\$\s?(\d{1,3}(?:,\d{3})*\.\d{2})/g)].map((m) =>
-      Number((m[1] as string).replaceAll(",", "")),
-    );
-    if (!amounts.includes(Number(total)) || Math.max(...amounts) > Number(total)) {
+    const amounts = pageAmounts(shown);
+    const same = amounts.filter((a) => a.currency === total.currency).map((a) => a.minor);
+    if (!same.includes(total.minor) || Math.max(...same) > total.minor) {
+      this.held.push(amounts.map((a) => `${a.currency} ${(a.minor / 100).toFixed(2)}`));
       this.#refuse(
-        `Keelson countersigned a total of ${total}, and this page does not show it as its largest amount. Pay only for the countersigned cart.`,
+        `Keelson countersigned a total of ${total.currency} ${(total.minor / 100).toFixed(2)}, and this page does not show it as its largest amount. Pay only for the countersigned cart.`,
       );
     }
   }
+}
+
+/** Currency marks as stores and PayPal write them, and the ISO 4217 code each one means. */
+const MARKS: Record<string, string> = {
+  US$: "USD",
+  USD: "USD",
+  $: "USD",
+  "€": "EUR",
+  EUR: "EUR",
+  "£": "GBP",
+  GBP: "GBP",
+};
+const MARK = "US\\$|USD|EUR|GBP|\\$|€|£";
+const NUMBER = "\\d{1,3}(?:[., ]\\d{3})+(?:[.,]\\d{2})?|\\d+(?:[.,]\\d{2})?";
+const AMOUNT = new RegExp(
+  `(${MARK}) ?(${NUMBER})(?![\\d])|(?<![\\d.,])(${NUMBER}) ?(${MARK})`,
+  "g",
+);
+
+/** Minor units of a number written with `.` or `,` for decimals and either one, or a space, for thousands. */
+function minorOf(text: string): number {
+  const cents = /[.,](\d{2})$/.exec(text);
+  const whole = (cents ? text.slice(0, -3) : text).replace(/[., ]/g, "");
+  return Number(whole) * 100 + (cents ? Number(cents[1]) : 0);
+}
+
+/**
+ * Every amount the text writes with a currency mark: `$2.95`, `US$2,95`, `2,95 US$`, `$2.95 USD`,
+ * `1.234,56 €`, with any kind of space. A number without a mark is not an amount.
+ */
+export function pageAmounts(text: string): { currency: string; minor: number }[] {
+  const flat = text.replace(/[\u00a0\u202f\u2009]/g, " ");
+  return [...flat.matchAll(AMOUNT)].map((m) => ({
+    currency: MARKS[(m[1] ?? m[4]) as string] as string,
+    minor: minorOf((m[2] ?? m[3]) as string),
+  }));
 }

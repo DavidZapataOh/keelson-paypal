@@ -206,6 +206,8 @@ try {
         ms: run.ms,
         usd: run.usage.usd,
         refusedByGate: gate.refused,
+        // Only the amounts read on each page where a pay action was held.
+        heldAmounts: gate.held,
       },
       transactionId,
       recorded,
