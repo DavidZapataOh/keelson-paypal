@@ -43,6 +43,10 @@ export const purchases = pgTable(
     state: purchaseState().notNull().default("PROPOSED"),
     failureReason: text(),
     merchantId: text().notNull(),
+    /** `card` when the purchase is paid with a single-use card instead of a PayPal capture. */
+    rail: text({ enum: ["paypal", "card"] })
+      .notNull()
+      .default("paypal"),
     currency: char({ length: 3 }).notNull(),
     amountMinor: bigint({ mode: "bigint" }).notNull(),
     cartHash: bytea().notNull(),
@@ -118,6 +122,7 @@ export const purchases = pgTable(
   },
   (t) => [
     check("purchases_amount_positive", sql`${t.amountMinor} > 0`),
+    check("purchases_rail_valid", sql`${t.rail} in ('paypal', 'card')`),
     check("purchases_countersign_mode_valid", sql`${t.countersignMode} in ('2of2', 'degraded')`),
     check("purchases_decision_valid", sql`${t.decision} in (1, 2)`),
     check("purchases_cart_hash_len", sql`octet_length(${t.cartHash}) = 32`),

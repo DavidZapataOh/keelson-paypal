@@ -2,6 +2,7 @@ export * from "./alibis.ts";
 export * from "./amber.ts";
 export * from "./attacks.ts";
 export * from "./auth.ts";
+export * from "./cards.ts";
 export * from "./chain.ts";
 export * from "./channel3.ts";
 export * from "./connections.ts";
