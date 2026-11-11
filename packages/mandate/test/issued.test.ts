@@ -6,10 +6,12 @@ import {
   OPEN_MANDATE_TYP,
   type OpenMandateParams,
   type P256PublicJwk,
+  readOpenMandate,
   USER_CREDENTIAL_TYP,
   type UserCredentialParams,
   verifyCredential,
 } from "../src/credentials.ts";
+import { decodeMandate } from "../src/sd.ts";
 import vectors from "./vectors/issued.json" with { type: "json" };
 
 interface Derived {
@@ -59,6 +61,16 @@ describe("credentials issued from derived keys", () => {
       vectors.openMandate.verify,
     );
     expect(v.mandate.mid).toBe(l2Params.nonce);
+  });
+
+  it("reads the delegated mandate of an open mandate, every disclosure resolved", () => {
+    expect(readOpenMandate(vectors.openMandate.expected)).toEqual(
+      decodeMandate(l2Params.payloadSd, l2Params.disclosures),
+    );
+  });
+
+  it("refuses to read a token without a delegated mandate", () => {
+    expect(() => readOpenMandate(vectors.userCredential.expected)).toThrow(RangeError);
   });
 
   it("reproduces the user credential from its salts and iat", async () => {

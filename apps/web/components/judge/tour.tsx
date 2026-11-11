@@ -7,7 +7,7 @@ import { Status } from "@keelson/ui/components/status";
 import { Timeline, TimelineItem } from "@keelson/ui/components/timeline";
 import { cn } from "@keelson/ui/lib/utils";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../../lib/api";
 import { authClient, SESSION_HINT } from "../../lib/auth";
 import { VERIFY } from "../../lib/config";
@@ -35,6 +35,7 @@ const STEPS: { id: string; title: string; role: Role }[] = [
   { id: "mandate", title: "The mandate", role: "Shopper" },
   { id: "agent", title: "The agent shops", role: "Shopper" },
   { id: "alibi", title: "Try to cheat the Alibi", role: "Shopper" },
+  { id: "anonymous", title: "Anonymous, and still accountable", role: "Shopper" },
   { id: "dispute", title: "A dispute arrives", role: "Merchant" },
   { id: "verdict", title: "Verdict and settlement", role: "Merchant" },
   { id: "forensics", title: "Merchant forensics", role: "Merchant" },
@@ -55,6 +56,17 @@ type Phase =
 /** Judge Mode: a temporary tenant and a guided walk through the live product. */
 export function JudgeMode() {
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
+  const invite = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    // A fragment never reaches a server nor a Referer; the invite then leaves the address bar
+    // and the history, and stays in memory only.
+    const url = new URL(location.href);
+    const code = new URLSearchParams(url.hash.slice(1)).get("invite");
+    if (code === null) return;
+    invite.current = code;
+    url.hash = "";
+    history.replaceState(history.state, "", url);
+  }, []);
 
   const load = useCallback(async () => {
     // Without a session there is no tenant to read: the visitor starts one first.
@@ -84,6 +96,7 @@ export function JudgeMode() {
       pending={phase.kind === "loading"}
       signedIn={phase.kind === "welcome" && phase.signedIn}
       {...(phase.kind === "welcome" && phase.error ? { error: phase.error } : {})}
+      invite={invite}
       onStarted={load}
     />
   );
@@ -93,11 +106,13 @@ function Welcome({
   pending,
   signedIn,
   error,
+  invite,
   onStarted,
 }: {
   pending: boolean;
   signedIn: boolean;
   error?: string;
+  invite: { current: string | undefined };
   onStarted: () => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
@@ -108,7 +123,8 @@ function Welcome({
     setFailure("");
     try {
       if (signedIn) await authClient.signOut();
-      await startJudge();
+      await startJudge(invite.current);
+      invite.current = undefined;
       localStorage.setItem(SESSION_HINT, "1");
       localStorage.setItem(STEP_KEY, "0");
       localStorage.setItem(STARTED_KEY, String(Date.now()));
@@ -133,10 +149,10 @@ function Welcome({
           Judge Keelson in five minutes, on the live system.
         </h1>
         <p className="max-w-prose text-pretty text-lg text-muted-foreground">
-          One click opens a temporary tenant with no keys and no sign-up. Nine steps walk you
-          through a real mandate, the agent run that bought under it, its Alibi, a PayPal dispute
-          and its verdict, then the merchant&apos;s and the operator&apos;s side. Every number comes
-          from production records on PayPal sandbox and Arbitrum Sepolia.
+          One click opens a temporary tenant with no keys and no sign-up. Ten steps walk you through
+          a real mandate, the agent run that bought under it, its Alibi, a PayPal dispute and its
+          verdict, then the merchant&apos;s and the operator&apos;s side. Every number comes from
+          production records on PayPal sandbox and Arbitrum Sepolia.
         </p>
         <div className="flex flex-wrap items-center gap-4">
           <Button size="lg" onClick={start} disabled={busy || pending}>
@@ -296,6 +312,8 @@ function StepBody({ id, tour }: { id: string; tour: Tour }) {
       return <AgentStep captured={captured} blocked={blocked} />;
     case "alibi":
       return <AlibiStep captured={captured} />;
+    case "anonymous":
+      return <AnonymousStep purchase={tour.anonymous_purchase} />;
     case "dispute":
     case "verdict":
       return <DisputeStep id={tour.dispute_id} part={id} />;
@@ -446,6 +464,29 @@ function AlibiStep({ captured }: { captured: TourPurchase | undefined }) {
         target="_blank"
         rel="noopener"
       >
+        Open in the full verifier ↗
+      </a>
+    </div>
+  );
+}
+
+function AnonymousStep({ purchase }: { purchase: Tour["anonymous_purchase"] }) {
+  if (!purchase) return <Missing what="purchase with an anonymous proof" />;
+  const link = `${VERIFY}/a/${purchase.id}?proof=anonymous${purchase.alibi_fragment ? `#${purchase.alibi_fragment}` : ""}`;
+  return (
+    <div className="grid gap-5">
+      <Lead>
+        A merchant can know a real, registered person approved this purchase and that the cart
+        stayed within their mandate, without learning who they are. One zero-knowledge proof carries
+        both. Your browser verifies it below, then asks the verifier on Arbitrum.
+      </Lead>
+      <iframe
+        title="Anonymous proof verifier"
+        src={link.replace("?proof=anonymous", "?embed&proof=anonymous")}
+        loading="lazy"
+        className="h-[42rem] w-full rounded-lg border bg-card"
+      />
+      <a className="text-sm underline" href={link} target="_blank" rel="noopener">
         Open in the full verifier ↗
       </a>
     </div>

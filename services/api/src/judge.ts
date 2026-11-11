@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from "node:crypto";
 import {
   and,
   type Db,
@@ -26,6 +27,8 @@ export const JUDGE_TTL_MS = 12 * 3_600_000;
 export const JUDGE_COMPILES = 5;
 /** New judges a day, over every address. */
 const JUDGES_PER_DAY = 200;
+/** New judges a day who came with the invite, counted apart from {@link JUDGES_PER_DAY}. */
+const INVITED_PER_DAY = 300;
 
 /** Whether a judge opened at `createdAt` has outlived its tenant. */
 export const judgeExpired = (createdAt: Date, now = Date.now()): boolean =>
@@ -42,15 +45,32 @@ export async function isJudge(db: Db, userId: string): Promise<boolean> {
 
 const day = () => new Date().toISOString().slice(0, 10);
 
-/** Counts one more judge today; false once {@link JUDGES_PER_DAY} were opened. */
-export async function admitJudge(kv: RedisClientType): Promise<boolean> {
-  const key = `judge:opened:${day()}`;
+/** Whether `given` is the configured invite, compared in constant time. */
+export function isInvite(expected: string | undefined, given: string | undefined): boolean {
+  if (!expected || given === undefined) return false;
+  const digest = (s: string) => createHash("sha256").update(s).digest();
+  return timingSafeEqual(digest(expected), digest(given));
+}
+
+/**
+ * Counts one more judge today, invited ones apart; false once the day's cap is reached. Logs an
+ * error the moment a cap passes 80%.
+ */
+export async function admitJudge(
+  kv: RedisClientType,
+  log: Logger,
+  invited = false,
+): Promise<boolean> {
+  const cap = invited ? INVITED_PER_DAY : JUDGES_PER_DAY;
+  const key = `judge:${invited ? "invited" : "opened"}:${day()}`;
   const [count] = await kv
     .multi()
     .incr(key)
     .expire(key, 2 * 86_400)
     .exec();
-  return Number(count) <= JUDGES_PER_DAY;
+  const used = Number(count);
+  if (used === Math.floor(cap * 0.8)) log.error({ used, cap, invited }, "judge cap 80% used");
+  return used <= cap;
 }
 
 /** Counts one more compile by the judge; false past {@link JUDGE_COMPILES}. */
@@ -82,6 +102,16 @@ export async function tourSeed(db: Db, agentId: bigint | undefined) {
     order by exists (select 1 from purchases d where d.mandate_id = p.mandate_id and d.state = 'DENIED') desc,
       p.created_at desc limit 1`)
     .then((r) => r.rows);
+  // The newest test buyer's purchase whose C1 and C3 proofs were composed into one.
+  const [anonymous] = await db
+    .execute<{ id: string }>(sql`
+    select p.id from purchases p
+    join mandates m on m.id = p.mandate_id
+    join alibis a on a.purchase_id = p.id
+    join "user" u on u.id = m.user_id
+    where p.c1c3_proof is not null and not u.is_anonymous and u.email like '%@example.test'
+    order by p.created_at desc limit 1`)
+    .then((r) => r.rows);
   const [dispute] = await db
     .select({ id: disputes.id })
     .from(disputes)
@@ -96,6 +126,7 @@ export async function tourSeed(db: Db, agentId: bigint | undefined) {
     .limit(1);
   return {
     mandateId: bought?.mandate_id ?? null,
+    anonymousPurchaseId: anonymous?.id ?? null,
     disputeId: dispute?.id ?? null,
     campaignId: campaign?.id ?? null,
   };

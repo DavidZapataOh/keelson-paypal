@@ -573,7 +573,7 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
       if (!alibi) throw new Error(`Purchase ${purchaseId} has no Alibi yet.`);
       const res = await call(keelson, "/v1/alibis/verify", {
         method: "POST",
-        headers: { "content-type": ALIBI_MEDIA_TYPE },
+        headers: { "content-type": ALIBI_MEDIA_TYPE, "idempotency-key": crypto.randomUUID() },
         body: alibi.bytes,
       });
       const report = (await res.json()) as {

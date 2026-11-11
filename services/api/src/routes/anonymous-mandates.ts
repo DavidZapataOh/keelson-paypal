@@ -1,9 +1,10 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { deploymentsFor } from "@keelson/chain";
-import { eq, mandates, purchases, userSetRoots } from "@keelson/db";
+import { and, chainTxs, eq, mandates, purchases, userSetRoots } from "@keelson/db";
 import { arbitrumSepolia } from "viem/chains";
 import type { Deps } from "../app.ts";
 import { ProblemSchema, problem } from "../problem.ts";
+import { rootKey } from "../zk/c3.ts";
 
 const Hex32 = z.string().regex(/^0x[0-9a-f]{64}$/);
 
@@ -59,6 +60,10 @@ const AnonymousPurchaseSchema = z
     verifier: z.object({ chain_id: z.number().int(), address: z.string() }).optional().openapi({
       description:
         "The deployed verifier that accepts the proof in an `eth_call`. It checks the proof only: `public_inputs` must also be the countersign's and the root one `GET /v1/user-set/roots/{root}` lists.",
+    }),
+    root_tx: Hex32.optional().openapi({
+      description:
+        "The Arbitrum Sepolia transaction that published `user_set_root` to `RegisteredUserSet`, once it is confirmed.",
     }),
   })
   .openapi("AnonymousPurchase");
@@ -144,13 +149,26 @@ export function registerAnonymousMandates(app: OpenAPIHono, deps: Pick<Deps, "db
       return problem(c, 404, "not-found", "Not found", "This purchase has no composed proof yet.");
     }
     const verifier = deploymentsFor(arbitrumSepolia.id).AnonymousPurchaseVerifier;
-    c.header("Cache-Control", "public, max-age=3600, immutable");
+    const root = row.c1c3.public_inputs[9] as string;
+    const [tx] = await db
+      .select({ hash: chainTxs.hash })
+      .from(chainTxs)
+      .where(
+        and(
+          eq(chainTxs.chainId, arbitrumSepolia.id),
+          eq(chainTxs.key, rootKey(root)),
+          eq(chainTxs.status, "confirmed"),
+        ),
+      );
+    // Until its root is published the answer changes, so it is cached briefly.
+    c.header("Cache-Control", tx?.hash ? "public, max-age=3600, immutable" : "public, max-age=30");
     return c.json(
       {
-        user_set_root: row.c1c3.public_inputs[9] as string,
+        user_set_root: root,
         proof: row.c1c3.proof,
         public_inputs: row.c1c3.public_inputs,
         ...(verifier ? { verifier: { chain_id: arbitrumSepolia.id, address: verifier } } : {}),
+        ...(tx?.hash ? { root_tx: hex(tx.hash) } : {}),
       },
       200,
     );
