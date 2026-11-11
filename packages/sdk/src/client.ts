@@ -1,6 +1,14 @@
+import { importAgentKey } from "./agent-key.ts";
 import { DEFAULT_BASE_URL } from "./auth.ts";
 import { resolveAuth } from "./credentials.ts";
 import { KeelsonError } from "./errors.ts";
+import { Alibis } from "./resources/alibis.ts";
+import { Events } from "./resources/events.ts";
+import { Evidence } from "./resources/evidence.ts";
+import { Mandates } from "./resources/mandates.ts";
+import { Operators } from "./resources/operators.ts";
+import { Purchases } from "./resources/purchases.ts";
+import { Requests } from "./resources/requests.ts";
 import {
   type APIResponse,
   type AuthProvider,
@@ -25,12 +33,25 @@ export interface KeelsonOptions {
   /** Per attempt; 60 s by default. */
   timeoutMs?: number;
   fetch?: typeof fetch;
+  /**
+   * An operator's agent key (its private P-256 JWK, or the key itself), which closes each
+   * mandate it buys under. Defaults to `KEELSON_AGENT_KEY`. Without it, Keelson's hosted operator
+   * closes the mandate for the signed-in user.
+   */
+  agentKey?: CryptoKey | JsonWebKey | string;
 }
 
 /** Keelson's API. */
 export class Keelson {
   readonly baseUrl: string;
   readonly #transport: TransportOptions;
+  readonly mandates: Mandates;
+  readonly requests: Requests;
+  readonly evidence: Evidence;
+  readonly purchases: Purchases;
+  readonly alibis: Alibis;
+  readonly events: Events;
+  readonly operators: Operators;
 
   constructor(options: KeelsonOptions = {}) {
     this.baseUrl = checkBaseUrl(
@@ -50,6 +71,24 @@ export class Keelson {
         return provider;
       },
     };
+    const raw = options.agentKey ?? process.env.KEELSON_AGENT_KEY;
+    let key: Promise<CryptoKey | undefined> | undefined;
+    const agentKey = () => {
+      key ??=
+        raw === undefined
+          ? Promise.resolve(undefined)
+          : raw instanceof CryptoKey
+            ? Promise.resolve(raw)
+            : importAgentKey(raw);
+      return key;
+    };
+    this.mandates = new Mandates(this);
+    this.requests = new Requests(this);
+    this.evidence = new Evidence(this);
+    this.purchases = new Purchases(this, agentKey);
+    this.alibis = new Alibis(this);
+    this.events = new Events(this);
+    this.operators = new Operators(this);
   }
 
   /** Calls any operation of the API. Resources use it; it is public for what they do not cover. */

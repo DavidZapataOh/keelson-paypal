@@ -1,5 +1,21 @@
+import { readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { approveOnPage } from "@keelson/paypal/testing";
 import { type Browser, type BrowserContext, chromium, type Page } from "playwright";
+
+/**
+ * Judge Mode admits five sessions an hour per address, so one judge, with its cookies and its
+ * passkeys, is kept for every live suite until the nightly reset.
+ */
+const CACHE = process.env.KEELSON_LIVE_JUDGE ?? join(tmpdir(), "keelson-live-judge.json");
+const CACHE_MS = 10 * 3_600_000;
+
+interface Cached {
+  at: number;
+  storageState: Awaited<ReturnType<BrowserContext["storageState"]>>;
+  credentials: unknown[];
+}
 
 export const APP_ORIGIN: string = process.env.KEELSON_APP_URL ?? "https://app.keelson.finance";
 export const hasBuyer: boolean = Boolean(
@@ -27,12 +43,19 @@ export async function judge(): Promise<User> {
   const browser: Browser = await chromium.launch({
     headless: process.env.PLAYWRIGHT_HEADED !== "1",
   });
-  const context: BrowserContext = await browser.newContext({ locale: "en-US" });
+  const cached = await readFile(CACHE, "utf8")
+    .then((t) => JSON.parse(t) as Cached)
+    .catch(() => undefined);
+  const reuse = cached && Date.now() - cached.at < CACHE_MS ? cached : undefined;
+  const context: BrowserContext = await browser.newContext({
+    locale: "en-US",
+    ...(reuse ? { storageState: reuse.storageState } : {}),
+  });
   const page = await context.newPage();
   page.setDefaultTimeout(60_000);
   const cdp = await context.newCDPSession(page);
   await cdp.send("WebAuthn.enable");
-  await cdp.send("WebAuthn.addVirtualAuthenticator", {
+  const { authenticatorId } = await cdp.send("WebAuthn.addVirtualAuthenticator", {
     options: {
       protocol: "ctap2",
       transport: "internal",
@@ -42,9 +65,36 @@ export async function judge(): Promise<User> {
       automaticPresenceSimulation: true,
     },
   });
-  await page.goto(`${APP_ORIGIN}/judge/`);
-  await page.getByRole("button", { name: "Start Judge Mode" }).click();
-  await page.getByRole("heading", { level: 1, name: "The mandate" }).waitFor();
+  for (const credential of reuse?.credentials ?? []) {
+    await cdp.send("WebAuthn.addCredential", {
+      authenticatorId,
+      credential: credential as never,
+    });
+  }
+  const save = async () => {
+    const { credentials } = await cdp.send("WebAuthn.getCredentials", { authenticatorId });
+    const entry: Cached = {
+      at: reuse?.at ?? Date.now(),
+      storageState: await context.storageState(),
+      credentials,
+    };
+    await writeFile(CACHE, JSON.stringify(entry), { mode: 0o600 });
+  };
+  if (!reuse) {
+    await page.goto(`${APP_ORIGIN}/judge/`);
+    const started = page.waitForResponse((r) => r.url().endsWith("/v1/judge/sessions"));
+    await page.getByRole("button", { name: "Start Judge Mode" }).click();
+    const res = await started;
+    if (res.status() !== 201) {
+      const problem = (await res.json().catch(() => ({}))) as { title?: string; detail?: string };
+      await browser.close();
+      throw new Error(
+        `Judge Mode refused (${res.status()}): ${problem.title}. ${problem.detail ?? ""}`,
+      );
+    }
+    await page.getByRole("heading", { level: 1, name: "The mandate" }).waitFor();
+    await save();
+  }
 
   const createPasskeyIfAsked = async () => {
     const create = page.getByRole("button", { name: "Create passkey" });
@@ -77,6 +127,7 @@ export async function judge(): Promise<User> {
       await createPasskeyIfAsked();
       await approve.click();
       await page.getByRole("heading", { level: 1, name: "Approved" }).waitFor();
+      await save();
       if (!o.hold) return;
       await page.getByRole("link", { name: /^Hold .* on PayPal$/ }).click();
       await page.locator("paypal-button").waitFor();
@@ -94,6 +145,7 @@ export async function judge(): Promise<User> {
       await page.getByRole("heading", { level: 1, name: "Declined" }).waitFor();
     },
     async close() {
+      await save().catch(() => {});
       await context.close();
       await browser.close();
     },

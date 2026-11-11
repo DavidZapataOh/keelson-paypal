@@ -22,8 +22,8 @@ export interface RequestOptions {
   signal?: AbortSignal;
   /** `false` sends no token: the operation is public. */
   auth?: boolean;
-  /** How to read the answer: JSON (default), raw bytes, or none. */
-  as?: "json" | "bytes" | "none";
+  /** How to read the answer: JSON (default), raw bytes, the open response (a stream), or none. */
+  as?: "json" | "bytes" | "stream" | "none";
 }
 
 export interface APIResponse<T> {
@@ -99,10 +99,19 @@ export async function send<T>(
     if (v !== undefined) url.searchParams.set(k, String(v));
   }
   const headers = new Headers(opts.headers);
-  headers.set("accept", opts.as === "bytes" ? "*/*" : "application/json");
-  if (opts.body !== undefined) headers.set("content-type", "application/json");
+  headers.set(
+    "accept",
+    opts.as === "bytes" ? "*/*" : opts.as === "stream" ? "text/event-stream" : "application/json",
+  );
+  const raw = opts.body instanceof Uint8Array;
+  if (opts.body !== undefined && !raw) headers.set("content-type", "application/json");
   if (method === "POST") headers.set("idempotency-key", opts.idempotencyKey ?? crypto.randomUUID());
-  const body = opts.body === undefined ? null : JSON.stringify(opts.body);
+  const body =
+    opts.body === undefined
+      ? null
+      : opts.body instanceof Uint8Array
+        ? (opts.body as Uint8Array<ArrayBuffer>)
+        : JSON.stringify(opts.body);
   const provider = opts.auth === false ? undefined : o.auth();
   let refreshed = false;
   let force = false;
@@ -130,6 +139,7 @@ export async function send<T>(
     }
     const requestId = response.headers.get("x-request-id");
     if (response.ok) {
+      if (opts.as === "stream") return { data: undefined as T, response, requestId };
       const data =
         opts.as === "bytes"
           ? new Uint8Array(await response.arrayBuffer())

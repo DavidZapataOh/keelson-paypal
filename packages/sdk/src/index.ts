@@ -1,3 +1,4 @@
+export { cartHash, closeMandate, importAgentKey } from "./agent-key.ts";
 export {
   AUDIENCE,
   clientCredentials,
@@ -31,5 +32,11 @@ export {
   UnprocessableEntityError,
 } from "./errors.ts";
 export { LOGIN_SCOPES, type LoginOptions, login } from "./login.ts";
+export { type Amount, minorOf, type Until } from "./money.ts";
+export type { ServerEvent } from "./resources/events.ts";
+export type { Mandate, MandateRequest } from "./resources/mandates.ts";
+export type { CountersignResult } from "./resources/purchases.ts";
+export { type ProposedLine, quote, SANDBOX_STORE } from "./sandbox.ts";
+export { canonicalBytes, type EvidenceSources, type Manifest, manifestOf } from "./seal.ts";
 export type { APIResponse, AuthProvider, RequestOptions } from "./transport.ts";
 export type * from "./types.ts";
