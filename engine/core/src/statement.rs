@@ -3,10 +3,16 @@
 
 use ciborium::value::{CanonicalValue, Integer, Value};
 
-use crate::eip712::Countersign;
+use crate::eip712::{CardAuthorization, CardSettlement, Countersign};
 
 /// The content type of a purchase statement's payload.
 pub const CLAIMS_CONTENT_TYPE: &str = "application/vnd.keelson.alibi-claims+cbor";
+/// The content type of a card authorization decision's payload.
+pub const CARD_AUTHORIZATION_CONTENT_TYPE: &str =
+    "application/vnd.keelson.card-authorization-claims+cbor";
+/// The content type of a card settlement's payload.
+pub const CARD_SETTLEMENT_CONTENT_TYPE: &str =
+    "application/vnd.keelson.card-settlement-claims+cbor";
 /// The issuer every Alibi statement names in its CWT claims.
 pub const STATEMENT_ISSUER: &str = "https://keelson.finance";
 /// COSE algorithm ES256K (RFC 8812).
@@ -154,6 +160,83 @@ pub fn claims_bytes(c: &StatementClaims<'_>) -> Vec<u8> {
     if let Some(r) = c.pay_ref {
         map.push((int(22), bytes(&r)));
     }
+    encode(Value::Map(map))
+}
+
+/// One card network authorization decision, linked to its purchase leaf.
+#[derive(Clone, Copy)]
+pub struct CardAuthorizationClaims<'a> {
+    pub authorization: &'a CardAuthorization,
+    /// `cardRefCommit(salt, issuer, card token)`, computed in the leg.
+    pub card_ref: [u8; 32],
+    /// The purchase leaf's RFC 6962 hash.
+    pub parent: [u8; 32],
+    pub chain_id: u64,
+    pub verifying_contract: [u8; 20],
+    pub mode: Mode,
+    pub legs: &'a [LegSignature],
+}
+
+/// One card settlement as the legs read it from the issuer, linked to its purchase leaf.
+#[derive(Clone, Copy)]
+pub struct CardSettlementClaims<'a> {
+    pub settlement: &'a CardSettlement,
+    pub parent: [u8; 32],
+    pub chain_id: u64,
+    pub verifying_contract: [u8; 20],
+    pub mode: Mode,
+    pub legs: &'a [LegSignature],
+}
+
+/// A card authorization decision's payload.
+pub fn card_authorization_claims_bytes(c: &CardAuthorizationClaims<'_>) -> Vec<u8> {
+    let a = c.authorization;
+    let mut map = vec![
+        (int(1), int(2)),
+        (int(2), bytes(a.requestId.as_slice())),
+        (int(3), bytes(a.countersignDigest.as_slice())),
+        (int(4), bytes(a.authorizationHash.as_slice())),
+        (int(5), bytes(a.merchantHash.as_slice())),
+        (int(6), int(a.mcc)),
+        (int(7), bytes(a.country.as_slice())),
+        (int(8), int(a.amount)),
+        (int(9), int(a.currency)),
+        (int(10), int(a.decision)),
+        (int(11), int(a.failedMask)),
+        (int(12), int(a.issuedAt.to::<u64>())),
+        (int(13), bytes(&c.card_ref)),
+        (int(14), bytes(&c.parent)),
+    ];
+    map.extend(signed_entries(
+        c.chain_id,
+        c.verifying_contract,
+        c.mode,
+        c.legs,
+    ));
+    encode(Value::Map(map))
+}
+
+/// A card settlement's payload.
+pub fn card_settlement_claims_bytes(c: &CardSettlementClaims<'_>) -> Vec<u8> {
+    let t = c.settlement;
+    let mut map = vec![
+        (int(1), int(2)),
+        (int(2), bytes(t.requestId.as_slice())),
+        (int(3), bytes(t.cardRef.as_slice())),
+        (int(4), bytes(t.transactionHash.as_slice())),
+        (int(5), int(t.settledMinor)),
+        (int(6), int(t.currency)),
+        (int(7), int(t.status)),
+        (int(8), int(t.settledAt.to::<u64>())),
+        (int(9), int(t.observedAt.to::<u64>())),
+        (int(14), bytes(&c.parent)),
+    ];
+    map.extend(signed_entries(
+        c.chain_id,
+        c.verifying_contract,
+        c.mode,
+        c.legs,
+    ));
     encode(Value::Map(map))
 }
 

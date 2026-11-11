@@ -70,6 +70,12 @@ type Leaf struct {
 	Countersign       *Countersign
 	ChainID           uint64
 	VerifyingContract [20]byte
+	// Parent is the purchase leaf hash a card statement links to.
+	Parent *[32]byte
+	// CardRef is a card statement's commitment to the issuer and card token.
+	CardRef       *[32]byte
+	Authorization *CardAuthorization
+	Settlement    *CardSettlement
 }
 
 // wire is the JSON body. Its fields are in RFC 8785 key order and every value
