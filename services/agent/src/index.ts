@@ -34,6 +34,7 @@ export { openSession, type Session, type SessionSource, VIEWPORT } from "./kerne
 export {
   bare,
   type CheckoutRun,
+  decimal,
   type LiveStore,
   liveObservations,
   paypalTransactionId,
