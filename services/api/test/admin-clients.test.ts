@@ -58,7 +58,10 @@ afterAll(async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
-async function registerClient(scopes: string[]): Promise<{ id: string; secret: string }> {
+async function registerClient(
+  scopes: string[],
+  resources: string[] = [apiAudience],
+): Promise<{ id: string; secret: string }> {
   const client = await auth.api.adminCreateOAuthClient({
     headers: sessionHeaders,
     body: {
@@ -66,7 +69,7 @@ async function registerClient(scopes: string[]): Promise<{ id: string; secret: s
       token_endpoint_auth_method: "client_secret_basic",
       grant_types: ["client_credentials"],
       client_credentials_scopes: scopes,
-      resources: [apiAudience],
+      resources,
     },
   });
   return { id: client.client_id, secret: client.client_secret as string };
@@ -161,4 +164,22 @@ test("an admin's scopes let the client get a token for the API", async () => {
   const token = await issueToken(client, { resource: apiAudience, scope: SCOPES.join(" ") });
   expect(token.status).toBe(200);
   expect((await token.json()).scope.split(" ").sort()).toEqual([...SCOPES].sort());
+});
+
+test("an admin links a client to the API, so it gets a JWT for the API's audience", async () => {
+  const client = await registerClient(SCOPES, []);
+  const unlinked = await issueToken(client);
+  expect(unlinked.status).toBe(400);
+  expect((await unlinked.json()).error).toBe("invalid_target");
+  expect((await set(client.id, sessionHeaders)).status).toBe(200);
+  expect((await set(client.id, sessionHeaders)).status).toBe(200);
+  const res = await issueToken(client, { resource: apiAudience, scope: SCOPES.join(" ") });
+  expect(res.status).toBe(200);
+  const { access_token } = await res.json();
+  const [header, payload] = (access_token as string)
+    .split(".")
+    .slice(0, 2)
+    .map((part) => JSON.parse(Buffer.from(part, "base64url").toString()));
+  expect(header.typ).toBe("at+jwt");
+  expect([payload.aud].flat()).toContain(apiAudience);
 });

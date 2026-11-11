@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { decodeAlibi, leafHashOf } from "@keelson/alibi";
-import { alibis, eq, purchases, sql } from "@keelson/db";
+import { alibis, eq, mandates, purchases, sql, user } from "@keelson/db";
 import { pino } from "pino";
 import { ulid } from "ulid";
 import { beforeAll, describe, expect, test } from "vitest";
@@ -153,7 +153,105 @@ describe.skipIf(!f)("live Alibis are public", () => {
     };
     const row = list.find((p) => p.id === b.alibi_id);
     expect(row).toMatchObject({ store: STORE, transactionId: "5MC585209K746392H" });
+    expect(row).toMatchObject({ decision: "allow", blocked: [] });
     // A live purchase without an Alibi is not listed.
-    expect(list.every((p) => p.id === b.alibi_id)).toBe(true);
+    expect(list.filter((p) => p.id !== b.alibi_id && p.transactionId)).toEqual([]);
+  });
+});
+
+const g = fixtures[1];
+
+describe.skipIf(!g)("denied live carts", () => {
+  const b = g?.bundle as NonNullable<typeof g>["bundle"];
+  let demo: ReturnType<typeof createApp>;
+  let mandateId: string;
+  beforeAll(async () => {
+    mandateId = await channel3Mandate();
+    const [m] = await testDb.select().from(mandates).where(eq(mandates.id, mandateId));
+    demo = createApp({
+      db: testDb,
+      kv: testKv,
+      log: pino({ level: "silent" }),
+      authenticate: headerPrincipal,
+      demoAgentId: m?.operatorAgentId,
+    });
+  });
+  const insert = async (
+    liveStore: string | null,
+    state: "DENIED" | "LOGGED",
+    mandate = mandateId,
+  ) => {
+    const id = ulid();
+    const c = b.tee.countersign;
+    await testDb.insert(purchases).values({
+      id,
+      mandateId: mandate,
+      clientId: agent,
+      state,
+      liveStore,
+      merchantId: String(b.eval.context.merchant),
+      currency: "USD",
+      amountMinor: BigInt(c.amount),
+      cartHash: Buffer.from(c.cartHash.slice(2), "hex"),
+      evalTrace: {
+        fields: [
+          { id: "budget", pass: false },
+          { id: "merchant", pass: true },
+        ],
+      },
+      logIndex: BigInt(Date.now()) * 1000n + BigInt(randomBytes(1)[0] ?? 0),
+    });
+    const { timestamps: _t, anchor: _a, ...core } = b;
+    await testDb.insert(alibis).values({
+      purchaseId: id,
+      leafHash: randomBytes(32),
+      bundle: {
+        ...core,
+        alibi_id: id,
+        timestamps: [],
+        paypal: { ...core.paypal, capture_id: undefined, invoice_id: undefined },
+      },
+    });
+    return id;
+  };
+  const listed = async () =>
+    (
+      (await (await demo.request("/v1/live-purchases")).json()) as {
+        purchases: { id: string; decision: string; transactionId: unknown; blocked: string[] }[];
+      }
+    ).purchases;
+
+  test("a live cart the demo operator ran and Keelson denied is public and listed with why", async () => {
+    const id = await insert(STORE, "DENIED");
+    expect((await demo.request(`/v1/alibis/${id}`)).status).toBe(200);
+    expect((await listed()).find((p) => p.id === id)).toMatchObject({
+      decision: "deny",
+      transactionId: null,
+      blocked: ["budget"],
+    });
+  });
+
+  test("other denied carts, a real user's and unpaid live purchases stay private", async () => {
+    const sandbox = await insert(null, "DENIED");
+    const unpaid = await insert(STORE, "LOGGED");
+    const another = await insert(STORE, "DENIED", await channel3Mandate());
+    // A real user's mandate under the demo operator.
+    const real = await channel3Mandate();
+    const [demoMandate] = await testDb.select().from(mandates).where(eq(mandates.id, mandateId));
+    const [realMandate] = await testDb
+      .update(mandates)
+      .set({ operatorAgentId: demoMandate?.operatorAgentId as bigint })
+      .where(eq(mandates.id, real))
+      .returning();
+    await testDb
+      .update(user)
+      .set({ email: `${ulid()}@gmail.com` })
+      .where(eq(user.id, realMandate?.userId as string));
+    const person = await insert(STORE, "DENIED", real);
+    for (const id of [sandbox, unpaid, another, person]) {
+      expect((await demo.request(`/v1/alibis/${id}`)).status).toBe(404);
+    }
+    const ids = (await listed()).map((p) => p.id);
+    expect(ids.some((id) => [sandbox, unpaid, another, person].includes(id))).toBe(false);
   });
 });

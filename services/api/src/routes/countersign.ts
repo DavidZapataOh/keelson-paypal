@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { bindWebFact, type WebFactFields } from "@keelson/alibi";
 import {
   type Cart,
   type Channel3Comparison,
@@ -36,7 +37,7 @@ import { merchantLeaf } from "@keelson/mandate";
 import type { Context } from "hono";
 import { hexToBytes } from "viem";
 import type { Deps } from "../app.ts";
-import { capturable } from "../hold/state.ts";
+import { capturable, merchantWebsite } from "../hold/state.ts";
 import { requireClient } from "../middleware/auth.ts";
 import { drivePurchase, type PipelineDeps, viewOf } from "../pipeline/drive.ts";
 import { publishPurchase } from "../pipeline/events.ts";
@@ -129,12 +130,15 @@ const Body = z
             (s) => new URL(s).origin === s,
             "The store is an origin, such as https://shop.example.",
           )
-          .openapi({ description: "The store's origin." }),
+          .openapi({
+            description:
+              "The store's origin: the origin of the website the mandate allows for the cart's merchant.",
+          }),
       })
       .optional()
       .openapi({
         description:
-          "Only when the buyer pays at the store's own checkout with their own PayPal account: Keelson countersigns and logs the purchase and issues its Alibi, and neither covers nor captures it. The agent's pay click waits for an ALLOW; the agent then records PayPal's transaction id with `PUT /v1/purchases/{id}/paypal-transaction`.",
+          "Only when the buyer pays at the store's own checkout with their own PayPal account: Keelson countersigns and logs the purchase and issues its Alibi, and neither covers nor captures it. Its Alibi is public once the PayPal transaction is recorded. The agent's pay click waits for an ALLOW; the agent then records PayPal's transaction id with `PUT /v1/purchases/{id}/paypal-transaction`.",
       }),
     repeatOf: z.string().length(26).optional().openapi({
       description:
@@ -208,7 +212,7 @@ const route = createRoute({
     413: { description: "A leg refused the request as too large", content: problemContent },
     422: {
       description:
-        "The request is invalid, the authorization is not this purchase's hold, the cart is not the one held for this request, the evidence holds another cart, or its Channel3 observation is not usable",
+        "The request is invalid, the authorization is not this purchase's hold, the cart is not the one held for this request, the evidence holds another cart, its Channel3 observation is not usable, its WebFact is not this purchase's, or a live store is not the website the mandate allows",
       content: problemContent,
     },
     429: { description: "Too many countersigns for this mandate", content: problemContent },
@@ -507,6 +511,25 @@ export function registerCountersign(
       );
     }
 
+    // The agent pays a live purchase at the store, so the store is the one the user allowed.
+    if (body.live) {
+      let website: string | undefined;
+      try {
+        website = merchantWebsite(mandate, body.cart.merchant);
+      } catch {
+        website = undefined;
+      }
+      if (website === undefined || new URL(website).origin !== body.live.store) {
+        return problem(
+          c,
+          422,
+          "store-not-allowed",
+          "Store not allowed",
+          "The store is not the website the mandate allows for the cart's merchant.",
+        );
+      }
+    }
+
     // A mandate whose merchant Keelson cannot capture for holds a budget only: the buyer pays
     // its purchases at the store's own checkout.
     if (
@@ -567,7 +590,12 @@ export function registerCountersign(
         evidenceItems,
         and(
           eq(evidenceItems.root, evidenceBundles.root),
-          inArray(evidenceItems.type, ["api.product", "api.cart", "channel3.observation"]),
+          inArray(evidenceItems.type, [
+            "api.product",
+            "api.cart",
+            "channel3.observation",
+            "tlsn.web_fact",
+          ]),
         ),
       )
       .where(
@@ -640,6 +668,38 @@ export function registerCountersign(
         "Evidence cart mismatch",
         "The cart the agent saw, as stored with the evidence, is not the cart to countersign.",
       );
+    }
+
+    // The Alibi discloses the WebFact; one that is not this purchase's would fail its verification.
+    const notarized = item("tlsn.web_fact")?.bytes;
+    if (notarized) {
+      let website: string | undefined;
+      try {
+        website = merchantWebsite(mandate, body.cart.merchant);
+      } catch {
+        website = undefined;
+      }
+      let bound: ReturnType<typeof bindWebFact> | undefined;
+      try {
+        bound = bindWebFact(
+          JSON.parse(notarized.toString("utf8")) as WebFactFields,
+          body.cart as Cart,
+          website,
+          // The legs sign a little later than now: the Alibi measures the WebFact's age from then.
+          Math.floor(Date.now() / 1000) + 60,
+        );
+      } catch {
+        bound = undefined;
+      }
+      if (!bound || "reason" in bound) {
+        return problem(
+          c,
+          422,
+          "web-fact-mismatch",
+          "WebFact mismatch",
+          `The notarized product endpoint is not this purchase's: ${bound?.reason ?? "it is not a WebFact"}.`,
+        );
+      }
     }
 
     const purchaseId = ids.requestId;

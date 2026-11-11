@@ -127,6 +127,8 @@ export const alibiSchema = z.strictObject({
       }),
     ),
   }),
+  /** The disclosed `api.cart` item: the cart the countersign's `cartHash` names. */
+  cart: json.optional(),
   channel3_observation: json.optional(),
   /** The store's product endpoint notarized with TLSNotary: the disclosed `tlsn.web_fact` item. */
   web_fact: json.optional(),
