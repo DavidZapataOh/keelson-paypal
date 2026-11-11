@@ -124,6 +124,24 @@ const RUN = /\d(?:[.,'\u2019\u066b\u066c]\d|\d| (?=\d))*/gu;
 /** A currency mark next to a number: a sign (`€`), letters and a sign (`US$`, `R$`) or an ISO code. */
 const MARK_BEFORE = /(?<!\p{L})(\p{Lu}{0,3}\p{Sc}|\p{Lu}{3}) ?$/u;
 const MARK_AFTER = /^ ?(\p{Lu}{0,3}\p{Sc}|\p{Lu}{3})(?!\p{L})/u;
+/**
+ * Three capitals checkouts write before a tax amount that are no ISO 4217 code, so next to a
+ * number they label it rather than name its currency: "VAT $0.18", "IVA US$0,18", "TVA 0,18 €".
+ */
+const TAX_LABELS: ReadonlySet<string> = new Set([
+  "VAT",
+  "IVA",
+  "TVA",
+  "GST",
+  "HST",
+  "PST",
+  "QST",
+  "IGV",
+  "BTW",
+  "KDV",
+  "DPH",
+  "ALV",
+]);
 
 /** The text as one line of plain characters: compatibility forms folded (NFKC), bidi marks gone. */
 /** Every decimal digit Unicode has (Arabic-Indic, Devanagari, Thai, …), as its value 0 to 9. */
@@ -153,6 +171,8 @@ function plain(text: string): string {
 
 interface Reading {
   minor: number[];
+  /** The text before each amount, back to the amount before it: what the page labels it. */
+  labels: string[];
   /** Why the text cannot be read for sure; undefined when it can. */
   unsure?: string;
 }
@@ -181,8 +201,12 @@ function read(text: string, locale: string, currency: string): Reading {
     "gud",
   );
   const minor: number[] = [];
+  const labels: string[] = [];
   const spans = new Set<string>();
+  let end = 0;
   for (const m of t.matchAll(amount)) {
+    labels.push(t.slice(end, m.index).trim());
+    end = m.index + m[0].length;
     const group = m[1] !== undefined ? 1 : 2;
     const written = m[group] as string;
     const [from, to] = (m.indices as [number, number][])[group] as [number, number];
@@ -192,7 +216,7 @@ function read(text: string, locale: string, currency: string): Reading {
     minor.push(units * 10 ** s.fraction + Number(cents.padEnd(s.fraction, "0") || 0));
     // Cents set apart ("$15" over "99") would make the amount read smaller than it is.
     if (s.fraction > 0 && !cents && new RegExp(`^ \\d{${s.fraction}}(?!\\d)`).test(t.slice(to))) {
-      return { minor, unsure: "cents apart from their amount" };
+      return { minor, labels, unsure: "cents apart from their amount" };
     }
   }
   // Every number written next to a currency mark must be read whole, and as this currency; and a
@@ -201,12 +225,14 @@ function read(text: string, locale: string, currency: string): Reading {
     const from = run.index;
     const to = from + run[0].length;
     if (!spans.has(`${from}:${to}`) && /[.,'\u2019\u066b\u066c]/u.test(run[0])) {
-      return { minor, unsure: "a number like an amount not read" };
+      return { minor, labels, unsure: "a number like an amount not read" };
     }
     const before = MARK_BEFORE.exec(t.slice(Math.max(0, from - 5), from))?.[1];
     const after = MARK_AFTER.exec(t.slice(to, to + 5))?.[1];
-    const near = [before, after].filter((x): x is string => x !== undefined);
-    if (near.some((x) => !marks.includes(x))) return { minor, unsure: "another currency" };
+    const near = [before, after].filter((x): x is string => x !== undefined && !TAX_LABELS.has(x));
+    if (near.some((x) => !marks.includes(x))) {
+      return { minor, labels, unsure: "another currency" };
+    }
     if (
       !spans.has(`${from}:${to}`) &&
       (near.length > 0 ||
@@ -222,10 +248,10 @@ function read(text: string, locale: string, currency: string): Reading {
               .startsWith(x),
         ))
     ) {
-      return { minor, unsure: "an amount not read whole" };
+      return { minor, labels, unsure: "an amount not read whole" };
     }
   }
-  return { minor };
+  return { minor, labels };
 }
 
 /**
@@ -248,17 +274,17 @@ export function readPage(
   text: string,
   locales: readonly string[],
   currency: string,
-): { locale: string; minor: number[]; unsure?: string } {
+): { locale: string; minor: number[]; labels: string[]; unsure?: string } {
   const [first] = locales;
-  if (first === undefined) return { locale: "", minor: [], unsure: "no locale" };
+  if (first === undefined) return { locale: "", minor: [], labels: [], unsure: "no locale" };
   const readings = locales.map((l) => read(text, l, currency));
   const unsure = readings.find((r) => r.unsure)?.unsure;
-  const minor = (readings[0] as Reading).minor;
-  if (unsure) return { locale: first, minor, unsure };
+  const { minor, labels } = readings[0] as Reading;
+  if (unsure) return { locale: first, minor, labels, unsure };
   if (readings.some((r) => r.minor.join() !== minor.join())) {
-    return { locale: first, minor, unsure: "its locales read it differently" };
+    return { locale: first, minor, labels, unsure: "its locales read it differently" };
   }
-  return { locale: first, minor };
+  return { locale: first, minor, labels };
 }
 
 /**

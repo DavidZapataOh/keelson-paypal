@@ -185,6 +185,17 @@ describe("what the gate cannot read for sure, it reports as unsure", () => {
     expect(unsure("Total $15.00 USD", ["es-MX"], "MXN")).toBeDefined();
   });
 
+  test("a tax abbreviation before an amount labels it; three capitals no tax uses still hold", () => {
+    expect(readPage("Item $2.95 VAT $0.18 Total $3.13", ["en"], "USD")).toMatchObject({
+      minor: [295, 18, 313],
+      labels: ["Item", "VAT", "Total"],
+    });
+    expect(readPage("Total 3,13 US$ IVA 0,18 US$", ["es"], "USD").unsure).toBeUndefined();
+    expect(readPage("Total 3,13 € TVA 0,18 €", ["fr"], "EUR").unsure).toBeUndefined();
+    expect(readPage("Item $2.95 Total RMB 1,015.00", ["en"], "USD").unsure).toBeDefined();
+    expect(readPage("Item $2.95 VAT 1,015.00", ["en"], "USD").unsure).toBeDefined();
+  });
+
   test("USDC is not the code of USD", () => {
     expect(readPage("Total $2.95 · USDC", ["es-CO"], "USD").minor).toEqual([]);
   });
@@ -193,6 +204,7 @@ describe("what the gate cannot read for sure, it reports as unsure", () => {
     expect(readPage("Subtotal US$2,95\nTotal 2,95 US$", ["es"], "USD")).toEqual({
       locale: "es",
       minor: [295, 295],
+      labels: ["Subtotal", "Total"],
     });
     expect(readPage("Total ¥1,500", ["ja"], "JPY").minor).toEqual([1500]);
     expect(readPage("Total ￥1,500", ["ja"], "JPY").minor).toEqual([1500]);
@@ -203,6 +215,7 @@ describe("what the gate cannot read for sure, it reports as unsure", () => {
     expect(readPage("Total US$2,95", ["es", "es-ES"], "USD")).toEqual({
       locale: "es",
       minor: [295],
+      labels: ["Total"],
     });
   });
 });
@@ -230,11 +243,16 @@ describe("a larger total the reader cannot place makes the page unsure", () => {
     ["a word joiner", "Subtotal $15.00 Total $\u20601,015.00"],
     ["a soft hyphen", "Subtotal $15.00 Total $1\u00ad,015.00"],
   ])("a total with %s inside is read whole", (_, text) => {
-    expect(readPage(text, ["en"], "USD")).toEqual({ locale: "en", minor: [1500, 101_500] });
+    expect(readPage(text, ["en"], "USD")).toMatchObject({ locale: "en", minor: [1500, 101_500] });
+    expect(readPage(text, ["en"], "USD").unsure).toBeUndefined();
   });
 
   test("yen written 円 is read as yen, and a larger one is not missed", () => {
-    expect(readPage("合計 1,500円", ["ja"], "JPY")).toEqual({ locale: "ja", minor: [1500] });
+    expect(readPage("合計 1,500円", ["ja"], "JPY")).toEqual({
+      locale: "ja",
+      minor: [1500],
+      labels: ["合計"],
+    });
     expect(readPage("商品 ¥1,500 合計 101,500 円（税込）", ["ja"], "JPY").minor).toContain(101_500);
   });
 });

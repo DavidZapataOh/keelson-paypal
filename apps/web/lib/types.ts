@@ -26,10 +26,20 @@ export interface MandateSummary {
   createdAt: string;
 }
 
+/**
+ * A countersigned total in minor units and, when the purchase's evidence holds it, what it is
+ * made of: the items, plus tax and shipping, less discounts.
+ */
+export interface Amount {
+  currency: string;
+  minor: string;
+  breakdown?: { items: string; tax: string; shipping: string; discount: string };
+}
+
 export interface Purchase {
   id: string;
   merchantId: string;
-  amount: { currency: string; minor: string };
+  amount: Amount;
   createdAt: string;
   state: string;
   mode: "2of2" | "degraded" | null;
