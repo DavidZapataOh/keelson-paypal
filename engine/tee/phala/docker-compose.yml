@@ -19,6 +19,8 @@ services:
       - KEELSON_TEE_TOKEN_SHA256=${KEELSON_TEE_TOKEN_SHA256}
       - PAYPAL_CLIENT_ID=${PAYPAL_CLIENT_ID}
       - PAYPAL_CLIENT_SECRET=${PAYPAL_CLIENT_SECRET}
+      - LITHIC_API_KEY=${LITHIC_API_KEY}
+      - LITHIC_ENV=sandbox
     restart: unless-stopped
 
 volumes:

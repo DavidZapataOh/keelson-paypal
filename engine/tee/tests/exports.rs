@@ -176,3 +176,84 @@ fn refuses_what_the_statement_does_not_back() {
         EngineError::BadRequest("export.leg")
     );
 }
+
+/// Sets `v` at a JSON pointer, creating the objects and arrays on the way.
+fn set(target: &mut Value, pointer: &str, v: Value) {
+    let mut at = target;
+    let parts: Vec<&str> = pointer.split('/').skip(1).collect();
+    for (i, part) in parts.iter().enumerate() {
+        let last = i + 1 == parts.len();
+        let next = if last {
+            v.clone()
+        } else if parts[i + 1].parse::<usize>().is_ok() {
+            json!([])
+        } else {
+            json!({})
+        };
+        at = match part.parse::<usize>() {
+            Ok(n) => {
+                let a = at.as_array_mut().unwrap();
+                while a.len() <= n {
+                    a.push(Value::Null);
+                }
+                if last || a[n].is_null() {
+                    a[n] = next;
+                }
+                &mut a[n]
+            }
+            Err(_) => {
+                let o = at.as_object_mut().unwrap();
+                if last || !o.contains_key(*part) {
+                    o.insert((*part).to_string(), next);
+                }
+                o.get_mut(*part).unwrap()
+            }
+        };
+    }
+}
+
+/// What a row's pointer must hold for the countersign the facts state.
+fn bound(fact: &Value, transform: Option<&str>, x: &keelson_tee::wire::Countersigned) -> Value {
+    match transform {
+        None => fact.clone(),
+        Some("Minor") => json!(x.countersign.amount.parse::<u64>().unwrap()),
+        Some("UpperCurrency") => json!("USD"),
+        Some("LowerCurrency") => json!("usd"),
+        Some("StatusOfDecision") => {
+            json!(if x.countersign.decision == "1" { "Success" } else { "Error" })
+        }
+        Some(other) => panic!("no test value for transform {other}"),
+    }
+}
+
+#[test]
+fn signs_every_profile_only_when_its_bound_pointers_hold() {
+    let engine = leg();
+    let (statement, x) = logged(&engine);
+    let f = facts(&x);
+    let profiles: Value = serde_json::from_str(include_str!("../src/export_bindings.json")).unwrap();
+    assert_eq!(profiles.as_array().unwrap().len(), 10);
+    for p in profiles.as_array().unwrap() {
+        let name = p["profile"].as_str().unwrap();
+        let mut r = request(&statement, f.clone());
+        r.typ = p["typ"].as_str().unwrap().into();
+        r.payload["keelson"]["profile"] = name.into();
+        let rows = p["rows"].as_array().unwrap();
+        for row in rows {
+            let fact = &f[row["fact"].as_str().unwrap()];
+            let v = bound(fact, row["transform"].as_str(), &x);
+            set(&mut r.payload, row["pointer"].as_str().unwrap(), v);
+        }
+        assert!(engine.sign_export(&r).is_ok(), "{name} with its bound values");
+        for row in rows {
+            let mut wrong = r.clone();
+            set(&mut wrong.payload, row["pointer"].as_str().unwrap(), json!("not the fact"));
+            assert_eq!(
+                engine.sign_export(&wrong).unwrap_err(),
+                EngineError::BadRequest("export.binding"),
+                "{name} {}",
+                row["pointer"]
+            );
+        }
+    }
+}
