@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { serve } from "@hono/node-server";
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import { operators } from "@keelson/db";
+import { agentConnections, eq, operators } from "@keelson/db";
 import { type Mandate, parseMandate } from "@keelson/mandate";
 import { POLICY_SET_HASH } from "@keelson/policy/hashes";
 import { cose, decodeCredentialPublicKey, isoBase64URL } from "@simplewebauthn/server/helpers";
@@ -15,13 +15,14 @@ import { build } from "esbuild";
 import { pino } from "pino";
 import { type Browser, chromium, type Page } from "playwright";
 import { ulid } from "ulid";
-import { afterAll, beforeAll, expect, test } from "vitest";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import demo from "../../../packages/mandate/test/fixtures/demo-mandate.json" with { type: "json" };
 import { createApp } from "../src/app.ts";
 import { createAuth } from "../src/auth.ts";
 import { operatorAgent, termsConsent } from "../src/compile-sources.ts";
 import { authenticate } from "../src/middleware/auth.ts";
 import { userPasskeys } from "../src/passkeys.ts";
+import { storeRequest } from "../src/routes/connections.ts";
 import { engineSource } from "../src/tee/engine-source.ts";
 import { testAuthEnv, testDb, testKv } from "./setup.ts";
 
@@ -109,6 +110,10 @@ window.keelson = {
       body: await res.json(),
     };
   },
+  api: async (path, init) => {
+    const res = await call(path, init);
+    return { status: res.status, body: await res.json() };
+  },
   get: async (id) => {
     const res = await call("/v1/mandates/" + id);
     return { status: res.status, body: await res.json() };
@@ -141,7 +146,8 @@ interface Posted {
 
 const secret = randomBytes(32).toString("base64url");
 let app!: OpenAPIHono;
-const server = serve({ fetch: (req) => app.fetch(req), port: 0, hostname: "127.0.0.1" });
+// The node bindings go along, so routes read the client address as they do in production.
+const server = serve({ fetch: (req, env) => app.fetch(req, env), port: 0, hostname: "127.0.0.1" });
 await new Promise<void>((resolve) => server.once("listening", () => resolve()));
 const port = (server.address() as AddressInfo).port;
 // Served under the production RP ID: Chromium resolves every host to this server, so the API,
@@ -160,6 +166,7 @@ app = createApp({
   appOrigin,
   verifyOrigin,
   authenticate: authenticate(auth, apiOrigin),
+  compileSources: { consent: termsConsent, engine: engineSource },
 });
 
 const bundle = await build({
@@ -856,4 +863,150 @@ test("the verifier may read public receipts and Alibis, without credentials, and
   }
   const evil = await preflight(evilOrigin, receipt);
   expect(evil.headers.get("access-control-allow-origin")).not.toBe(evilOrigin);
+});
+
+describe("approving an agent's request with a passkey", () => {
+  const REASON =
+    "I am Claude Code, buying the running shoes you asked for in this session. I compare prices at RunFast and check out only what you named.";
+  const api = (page: Page, path: string, init: RequestInit = {}) =>
+    page.evaluate(
+      ([path, init]) =>
+        (
+          window as unknown as {
+            keelson: { api(...a: unknown[]): Promise<{ status: number; body: unknown }> };
+          }
+        ).keelson.api(path, init),
+      [path, init] as const,
+    );
+  const agentId = BigInt(`0x${randomBytes(9).toString("hex")}`);
+  const clientId = `agent-${ulid()}`;
+
+  beforeAll(async () => {
+    await testDb.insert(operators).values({
+      agentId,
+      chainId: 421614,
+      agentRegistry: demo.agent.operator.agent_registry,
+      name: "Claude Code operator",
+      cnfJwk: await newAgentJwk(),
+      clientId,
+    });
+  });
+
+  const request = () =>
+    storeRequest(
+      { db: testDb },
+      {
+        clientId,
+        operatorAgentId: agentId,
+        name: "Claude Code",
+        reason: REASON,
+        limits: {
+          currency: "USD",
+          perPurchaseMinor: 5_000,
+          totalMinor: 10_000,
+          merchants: ["mrc_runfast"],
+          until: new Date(Date.now() + 2 * 86_400_000).toISOString(),
+          askAboveMinor: 2_500,
+        },
+      },
+    );
+
+  const draft = async (page: Page, code: string) => {
+    const res = await api(page, `/v1/connections/${code}/draft`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": crypto.randomUUID(),
+        "keelson-device": "test-device",
+      },
+      body: JSON.stringify({
+        limits: {
+          perPurchaseMinor: 3_000,
+          totalMinor: 8_000,
+          merchants: ["mrc_runfast"],
+          until: new Date(Date.now() + 86_400_000).toISOString(),
+          askAboveMinor: 1_000,
+        },
+      }),
+    });
+    expect(res.status).toBe(200);
+    return parseMandate((res.body as { mandateDraft: unknown }).mandateDraft);
+  };
+  const connectionOf = async (userCode: string) =>
+    (
+      await testDb.select().from(agentConnections).where(eq(agentConnections.userCode, userCode))
+    )[0];
+
+  test("the lowered mandate names the asking agent and spends the code", {
+    timeout: 60_000,
+  }, async () => {
+    const s = await signer();
+    const { userCode } = await request();
+    const m = await draft(s.page, userCode);
+    expect(m.agent.operator.agent_id).toBe(agentId.toString());
+    expect(m.mode).toBe("autonomous");
+    expect(m.payment.constraints).toEqual(
+      expect.arrayContaining([
+        { type: "payment.amount_range", max: 3_000, currency: "USD" },
+        { type: "payment.budget", max: 8_000, currency: "USD" },
+      ]),
+    );
+    const created = await post(s.page, {
+      ...(await sign(s.page, m)).body,
+      connection: { code: userCode, askAboveMinor: 1_000 },
+    });
+    expect(created.status).toBe(201);
+    expect(await connectionOf(userCode)).toMatchObject({
+      state: "APPROVED",
+      userId: s.userId,
+      mandateId: m.mid,
+      askAboveMinor: 1_000n,
+    });
+    const stored = await testDb.query.mandates.findFirst({ where: (t, { eq }) => eq(t.id, m.mid) });
+    expect(stored?.operatorAgentId).toBe(agentId);
+
+    const second = parseMandate({ ...structuredClone(m), mid: ulid() });
+    const reused = await post(s.page, {
+      ...(await sign(s.page, second)).body,
+      connection: { code: userCode, askAboveMinor: 1_000 },
+    });
+    expect(reused.status).toBe(409);
+    expect(reused.body.type).toBe(problemType("connection-closed"));
+  });
+
+  test("a mandate looser than the request, or for another agent, does not approve it", {
+    timeout: 60_000,
+  }, async () => {
+    const s = await signer();
+    const { userCode } = await request();
+    const m = await draft(s.page, userCode);
+    const raised = parseMandate({ ...structuredClone(m), mid: ulid() });
+    for (const c of raised.payment.constraints) {
+      if (c.type === "payment.budget") c.max = 20_000;
+    }
+    const looser = await post(s.page, {
+      ...(await sign(s.page, raised)).body,
+      connection: { code: userCode, askAboveMinor: 1_000 },
+    });
+    expect(looser.status).toBe(422);
+    expect(looser.body).toMatchObject({
+      type: problemType("mandate-looser-than-request"),
+      fields: ["total"],
+    });
+
+    const wrong = await post(s.page, {
+      ...(await sign(s.page, mandateFor(s))).body,
+      connection: { code: userCode, askAboveMinor: 1_000 },
+    });
+    expect(wrong.status).toBe(422);
+    expect(wrong.body.fields).toContain("agent");
+
+    const noAsk = await post(s.page, {
+      ...(await sign(s.page, parseMandate({ ...structuredClone(m), mid: ulid() }))).body,
+      connection: { code: userCode },
+    });
+    expect(noAsk.status).toBe(422);
+    expect(noAsk.body.fields).toEqual(["askAbove"]);
+    expect((await connectionOf(userCode))?.state).toBe("PENDING");
+  });
 });

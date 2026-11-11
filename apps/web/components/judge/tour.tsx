@@ -11,7 +11,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../../lib/api";
 import { authClient, SESSION_HINT } from "../../lib/auth";
 import { VERIFY } from "../../lib/config";
-import { money, when } from "../../lib/format";
+import { major, money, when } from "../../lib/format";
 import {
   type DisputeStatus,
   disputeOf,
@@ -475,7 +475,7 @@ function AgentStep({
               </span>
             </div>
             <Amount
-              value={Number(blocked.amount.minor) / 100}
+              value={major(blocked.amount.minor, blocked.amount.currency)}
               currency={blocked.amount.currency}
               className="text-[2.25rem]"
               struck="Not paid"
@@ -498,7 +498,7 @@ function AgentStep({
             </span>
           </div>
           <Amount
-            value={Number(captured.amount.minor) / 100}
+            value={major(captured.amount.minor, captured.amount.currency)}
             currency={captured.amount.currency}
             className="text-[2.25rem]"
           />

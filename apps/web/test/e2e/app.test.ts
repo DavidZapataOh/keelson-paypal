@@ -221,7 +221,18 @@ describe.each(Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[])("rules on %s
     const compiled = await demoCompiled();
     let prompt = "";
     const { context, page } = await signedIn(kind, "/new/", (path, body) => {
-      if (path === "/v1/passkeys") return { passkeys: [] };
+      if (path === "/v1/passkeys") {
+        return {
+          passkeys: [
+            {
+              id: "pk_1",
+              name: "Keelson",
+              credentialId: "cred-1",
+              createdAt: new Date().toISOString(),
+            },
+          ],
+        };
+      }
       if (path === "/v1/mandates/compile") {
         prompt = (JSON.parse(body ?? "{}") as { prompt: string }).prompt;
         return compiled;
@@ -354,20 +365,29 @@ async function viewIn(id: string, state: string, purchases: unknown[] = []) {
 }
 
 describe("signing and going live", () => {
-  test("a buyer without a passkey creates one before signing, and can go back", async () => {
-    const compiled = await demoCompiled();
+  test("a brand-new buyer creates a passkey before the rules are read, and can go back", async () => {
+    // The API compiles only for a buyer with a passkey, since the mandate names it.
+    let compiles = 0;
     const { context, page } = await signedIn("desktop", "/new/", (path) => {
       if (path === "/v1/passkeys") return { passkeys: [] };
-      if (path === "/v1/mandates/compile") return compiled;
+      if (path === "/v1/mandates/compile") {
+        compiles++;
+        return undefined;
+      }
       return undefined;
     });
     await page.getByRole("button", { name: "Running shoes, size 10" }).click();
     await page.getByRole("button", { name: "Review rules" }).click();
-    await page.getByRole("button", { name: "Sign · up to $100.00" }).click({ timeout: 30_000 });
     await page.getByRole("heading", { level: 1, name: "Sign with Face ID" }).waitFor();
     expect(await page.getByRole("button", { name: "Create passkey" }).isEnabled()).toBe(true);
+    expect(compiles).toBe(0);
     await page.getByRole("button", { name: "Back" }).click();
-    await page.getByRole("heading", { level: 1, name: "Check it, then sign" }).waitFor();
+    await page.getByRole("heading", { level: 1, name: "What may your agent buy?" }).waitFor();
+    expect(
+      await page
+        .getByRole("button", { name: "Running shoes, size 10" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
     await context.close();
   });
 

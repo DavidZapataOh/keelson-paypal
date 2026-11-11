@@ -29,11 +29,13 @@ import type { OperatorSigners } from "./operators/signer.ts";
 import type { PayPalDeps } from "./paypal.ts";
 import { ProblemSchema, problem } from "./problem.ts";
 import { registerAdminClients } from "./routes/admin-clients.ts";
+import { registerAgents } from "./routes/agents.ts";
 import { registerAlibis } from "./routes/alibis.ts";
 import { registerAnonymousMandates } from "./routes/anonymous-mandates.ts";
 import { registerBonds } from "./routes/bonds.ts";
 import { registerChannel3Webhook } from "./routes/channel3-webhook.ts";
 import { type CompileSources, registerCompile } from "./routes/compile.ts";
+import { registerConnections } from "./routes/connections.ts";
 import { registerCountersign } from "./routes/countersign.ts";
 import { registerDisputes } from "./routes/disputes.ts";
 import { registerEngineProofs } from "./routes/engine-proofs.ts";
@@ -50,6 +52,7 @@ import { registerMerchantAssistant } from "./routes/merchant-assistant.ts";
 import { registerMerchantConsole } from "./routes/merchant-console.ts";
 import { registerMerchantsPayout } from "./routes/merchants-payout.ts";
 import { registerMerchantsSettlement } from "./routes/merchants-settlement.ts";
+import { registerOAuthConsent } from "./routes/oauth-consent.ts";
 import { registerObservations } from "./routes/observations.ts";
 import { registerOperatorConsole } from "./routes/operator-console.ts";
 import { registerOperators } from "./routes/operators.ts";
@@ -69,9 +72,12 @@ import { registerWebFacts } from "./routes/web-facts.ts";
 import type { TeeConfig } from "./tee/signers.ts";
 import type { StampWorker } from "./timestamps/worker.ts";
 
-/** POST routes that stream their response, or that read: neither changes anything a retry repeats. */
+/**
+ * POST routes that stream their response, that read, or that an RFC 8628 client polls without an
+ * `Idempotency-Key`: none changes anything a retry repeats.
+ */
 const STREAMED_POSTS =
-  /^\/v1\/(merchants\/[^/]+\/assistant|operators\/[^/]+\/(coverages\/rows|grid-query))$/;
+  /^\/v1\/(merchants\/[^/]+\/assistant|operators\/[^/]+\/(coverages\/rows|grid-query)|connections\/token)$/;
 
 /**
  * The public reads the verifier makes: an Alibi when it is public, an Alibi's receipt, a leaf's
@@ -295,6 +301,9 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerHold(app, deps);
   registerPurchaseHolds(app, deps);
   registerRevoke(app, deps);
+  registerConnections(app, deps);
+  registerAgents(app, deps);
+  registerOAuthConsent(app, deps);
   registerCompile(app, deps);
   registerCountersign(app, deps);
   registerPurchases(app, deps);
