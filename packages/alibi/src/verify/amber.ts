@@ -93,10 +93,10 @@ export async function readAmber(
   });
   const commitment = (locked?.args.amberCommitment as Hex | undefined) ?? null;
 
-  const [fieldId, provenAt, webFactDigest] = await client.readContract({
+  const { fieldId, provenAt, webFactDigest } = await client.readContract({
     address: court,
     abi: amberContradictionCourtAbi,
-    functionName: "violations",
+    functionName: "convictions",
     args: [coverageId],
   });
   if (fieldId === 0) return { court: true, commitment, conviction: null };
@@ -124,7 +124,7 @@ export async function readAmber(
   if (tx.to?.toLowerCase() !== court.toLowerCase()) return { court: true, commitment, conviction };
   const call = decodeFunctionData({ abi: amberContradictionCourtAbi, data: tx.input });
   if (call.functionName !== "slashAmber") return { court: true, commitment, conviction };
-  const [c, , , fact, , calledField, proof] = call.args;
+  const [c, , , fact, , , calledField, proof] = call.args;
   const statement = c2bStatement(fact, c.amberCommitment, calledField);
   return {
     court: true,

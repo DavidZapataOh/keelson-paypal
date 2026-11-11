@@ -71,6 +71,19 @@ abstract contract KeelsonDeploy is Script {
         _record(name, deployed, args);
     }
 
+    /// @dev As `_deploy`, at the address of `saltName` and recorded as `name`: a later version of a contract whose
+    /// earlier one keeps its address.
+    function _deployVersion(string memory name, string memory saltName, bytes memory creationCode, bytes memory args)
+        internal
+        returns (address deployed)
+    {
+        deployed = predict(saltName);
+        if (deployed.code.length == 0) {
+            KeelsonDeployer(deployerAddress()).deploy(salt(saltName), abi.encodePacked(creationCode, args));
+        }
+        _record(name, deployed, args);
+    }
+
     /// @dev Writes back to the registry only when broadcasting, so tests and dry runs leave it untouched.
     function _record(string memory name, address deployed, bytes memory args) internal {
         if (!vm.isContext(VmSafe.ForgeContext.ScriptBroadcast)) return;

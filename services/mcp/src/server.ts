@@ -2,7 +2,15 @@ import { readFileSync } from "node:fs";
 import { type Keelson, quoteCart } from "@keelson/agent/checkout";
 import { type OperatorMandate, operatorMandates } from "@keelson/agent/keelson";
 import { ALIBI_MEDIA_TYPE, type AlibiBundle, decodeAlibi, verifyUrl } from "@keelson/alibi";
-import { type Cart, type CurrencyCode, cartHash, toHex, toPayPalValue } from "@keelson/core";
+import {
+  type Cart,
+  type CurrencyCode,
+  cartHash,
+  type Json,
+  jcs,
+  toHex,
+  toPayPalValue,
+} from "@keelson/core";
 import { buildManifest, canonicalBytes, MEDIA_TYPES, type SealedItem } from "@keelson/evidence";
 import { closeMandate } from "@keelson/mandate";
 import { POLICY_SET_HASH, POLICY_SET_SRC } from "@keelson/policy";
@@ -460,7 +468,7 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
     {
       title: "Submit evidence",
       description:
-        "Prices the cart from the store itself and seals what the agent saw at decision time: the store's product and cart answers and the agent's own observation. Returns the evidence root and the cart to countersign.",
+        "Prices the cart from the store itself and seals what the agent saw at decision time: the store's product and cart answers, the agent's own observation and, for a one-line cart, the store's answer for that variant notarized over TLS by Keelson's TEE. Returns the evidence root and the cart to countersign.",
       inputSchema: z.object({
         mandateId: Ulid,
         lines: z
@@ -516,6 +524,8 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
           salt: salt(),
         },
       ];
+      const notarized = await notarizedVariant(keelson, o.storeOrigin, quote);
+      if (notarized) items.push({ ...notarized, salt: salt() });
       const res = await call(
         keelson,
         "/v1/evidence",
@@ -809,4 +819,39 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
   );
 
   return server;
+}
+
+/**
+ * The store's JSON for a one-line cart's variant, fetched once over TLS with leg A as the TLSNotary
+ * notary and sealed as the `tlsn.web_fact` item: the page an amber attestation names, so that only
+ * what the store answered at the purchase can contradict it. `undefined` for a cart of several
+ * lines, or when the session fails, which never holds the purchase back.
+ */
+async function notarizedVariant(
+  keelson: Keelson,
+  storeOrigin: string,
+  quote: Awaited<ReturnType<typeof quoteCart>>,
+): Promise<Omit<SealedItem, "salt"> | undefined> {
+  const [line] = quote.cart.lines;
+  const handle = (quote.products[0] as { handle?: unknown } | undefined)?.handle;
+  if (quote.cart.lines.length !== 1 || !line || typeof handle !== "string") return undefined;
+  const url = new URL(
+    `/api/products/${handle}/variants/${encodeURIComponent(line.sku)}`,
+    storeOrigin,
+  ).href;
+  try {
+    const res = await call(keelson, "/v1/observations/web-fact", post({ url, anchor: '"sku"' }));
+    const { webFact, committed, blinder } = (await res.json()) as {
+      webFact: Record<string, Json>;
+      committed: string;
+      blinder: string;
+    };
+    return {
+      type: "tlsn.web_fact",
+      mediaType: MEDIA_TYPES["tlsn.web_fact"],
+      bytes: new TextEncoder().encode(jcs({ url, ...webFact, committed, blinder })),
+    };
+  } catch {
+    return undefined;
+  }
 }

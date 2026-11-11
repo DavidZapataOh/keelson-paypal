@@ -53,7 +53,7 @@ export function c2bOfCall(input: Hex): StoredC2b | null {
     return null;
   }
   if (call.functionName !== "slashAmber") return null;
-  const [c, , , fact, , fieldId, proof] = call.args;
+  const [c, , , fact, , , fieldId, proof] = call.args;
   const range = BigInt(fact.rangeCommitment);
   const page = keccak256(
     encodeAbiParameters(
