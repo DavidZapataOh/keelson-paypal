@@ -50,7 +50,10 @@ fn allowed(edit: impl FnOnce(&mut Value)) -> Fixture {
     let issued: MandateIssued = engine.register_mandate(&mandate, at(NOW)).unwrap();
     let f = CartFixture::demo();
     let allow = engine
-        .countersign(&countersign_request(&issued, &f, request_id(1), None), at(NOW + 10))
+        .countersign(
+            &countersign_request(&issued, &f, request_id(1), None),
+            at(NOW + 10),
+        )
         .unwrap();
     Fixture {
         engine,
@@ -112,7 +115,10 @@ fn approves_the_first_matching_authorization_once() {
     let f = allowed(to_card);
     let ok = f
         .engine
-        .authorize_card(&request(&f, network("iauth_1", 9400, "5661", "US")), at(NOW + 20))
+        .authorize_card(
+            &request(&f, network("iauth_1", 9400, "5661", "US")),
+            at(NOW + 20),
+        )
         .unwrap();
     assert_eq!(ok.authorization.decision, "1");
     assert_eq!(mask(&ok), 0);
@@ -128,14 +134,20 @@ fn approves_the_first_matching_authorization_once() {
     // A retry of the same authorization gets the same answer.
     let again = f
         .engine
-        .authorize_card(&request(&f, network("iauth_1", 9400, "5661", "US")), at(NOW + 21))
+        .authorize_card(
+            &request(&f, network("iauth_1", 9400, "5661", "US")),
+            at(NOW + 21),
+        )
         .unwrap();
     assert_eq!(again, ok);
 
     // Any other authorization of the card is a second use.
     let second = f
         .engine
-        .authorize_card(&request(&f, network("iauth_2", 100, "5661", "US")), at(NOW + 22))
+        .authorize_card(
+            &request(&f, network("iauth_2", 100, "5661", "US")),
+            at(NOW + 22),
+        )
         .unwrap();
     assert_eq!(second.authorization.decision, "2");
     assert_eq!(mask(&second), bit("used"));
@@ -158,7 +170,10 @@ fn declines_what_the_allow_does_not_cover() {
         ),
     ];
     for (n, want) in cases {
-        let out = f.engine.authorize_card(&request(&f, n), at(NOW + 20)).unwrap();
+        let out = f
+            .engine
+            .authorize_card(&request(&f, n), at(NOW + 20))
+            .unwrap();
         assert_eq!(out.authorization.decision, "2");
         assert_eq!(mask(&out), want);
     }
@@ -238,7 +253,10 @@ fn any_store_binds_the_code_and_country() {
         let mut cart = CartFixture::demo();
         cart.raw["cart"]["merchant"] = json!("*");
         let allow = engine
-            .countersign(&countersign_request(&issued, &cart, request_id(1), None), at(NOW + 10))
+            .countersign(
+                &countersign_request(&issued, &cart, request_id(1), None),
+                at(NOW + 10),
+            )
             .unwrap();
         Fixture {
             engine,
