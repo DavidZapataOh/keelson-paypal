@@ -215,6 +215,7 @@ async function send(
   const etag = etagOf(bundle, kind);
   c.header("ETag", etag);
   c.header("Cache-Control", "private, no-cache");
+  c.header("Vary", "Cookie, Authorization", { append: true });
   for (const [k, v] of Object.entries(headers)) c.header(k, v);
   if (c.req.header("if-none-match") === etag) return c.body(null, 304);
   c.header("Content-Type", kind === "pdf" ? "application/pdf" : ALIBI_MEDIA_TYPE);

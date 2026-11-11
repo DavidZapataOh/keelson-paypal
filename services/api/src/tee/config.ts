@@ -4,7 +4,7 @@ import { type Address, createPublicClient, createWalletClient, type Hex } from "
 import { privateKeyToAccount } from "viem/accounts";
 import { arbitrumSepolia } from "viem/chains";
 import type { ChainDeps } from "../chain/registry.ts";
-import { arbitrumSepoliaTransport } from "../chain/rpc.ts";
+import { arbitrumSepoliaTransport, POLLING_INTERVAL_MS } from "../chain/rpc.ts";
 import { LegClient } from "./client.ts";
 import { loadMeasurements } from "./measurements.ts";
 import type { LegExpectations, TeeConfig } from "./signers.ts";
@@ -47,8 +47,13 @@ function registrar(key: Hex, rpcUrl: string | undefined): ChainDeps {
       account: privateKeyToAccount(key),
       chain: arbitrumSepolia,
       transport,
+      pollingInterval: POLLING_INTERVAL_MS,
     }),
-    public: createPublicClient({ chain: arbitrumSepolia, transport }),
+    public: createPublicClient({
+      chain: arbitrumSepolia,
+      transport,
+      pollingInterval: POLLING_INTERVAL_MS,
+    }),
     verdictVerifier: VERIFYING_CONTRACT,
     certManager,
   };
@@ -65,6 +70,7 @@ export function createTee(
   const rpc = createPublicClient({
     chain: arbitrumSepolia,
     transport: arbitrumSepoliaTransport(env.ARBITRUM_SEPOLIA_RPC_URL),
+    pollingInterval: POLLING_INTERVAL_MS,
   });
   const m = loadMeasurements();
   const common = {

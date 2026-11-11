@@ -150,6 +150,8 @@ describe("the landing", () => {
     const html = await readFile(join(dist("landing"), "index.html"), "utf8");
     // The policy's time check is when the cart is paid (`payment.execution_date`), not delivery.
     expect(html).not.toMatch(/Deliver by|quoted date/);
-    expect(html).not.toMatch(/MCP server|@keelson\/sdk/);
+    expect(html).not.toMatch(/@keelson\/sdk/);
+    // The MCP server is live at api.keelson.finance/mcp and a sandbox purchase through it is captured.
+    expect(html).toMatch(/An open API, an MCP server, open contracts/);
   });
 });

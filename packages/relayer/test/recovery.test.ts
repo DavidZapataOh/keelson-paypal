@@ -15,16 +15,33 @@ const AMOUNT = 100n;
 const salt = (): Hex => `0x${randomBytes(32).toString("hex")}`;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** A sequencer endpoint that forwards to the fork; on a send it calls `onSend` and never answers. */
+/**
+ * A sequencer endpoint that forwards to the fork. On a send it calls `onSend` and never answers,
+ * or, in `partial` mode, answers the receipt with a zero `blockHash`, as Arbitrum's sequencer will
+ * once it answers at execution.
+ */
 function sequencerProxy(
   target: string,
-  mode: "drop" | "forward",
+  mode: "drop" | "forward" | "partial",
   onSend: () => void,
 ): Promise<{ url: string; server: Server }> {
   const server = createServer(async (req, res) => {
     let body = "";
     for await (const chunk of req) body += chunk;
     const { method } = JSON.parse(body) as { method: string };
+    if (mode === "partial" && method === "eth_sendRawTransactionSync") {
+      onSend();
+      const answer = (await (
+        await fetch(target, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body,
+        })
+      ).json()) as { result?: { blockHash: Hex } };
+      if (answer.result) answer.result.blockHash = `0x${"0".repeat(64)}`;
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(answer));
+      return;
+    }
     if (method === "eth_sendRawTransactionSync" || method === "eth_sendRawTransaction") {
       if (mode === "forward") {
         await fetch(target, {
@@ -158,5 +175,31 @@ describe.skipIf(!rpc)("recovery on an anvil fork of Arbitrum Sepolia", { timeout
     expect(fixed?.blockHash).not.toBe(first.blockHash);
     const receipt = await fork.client.getTransactionReceipt({ hash: first.hash as Hex });
     expect(fixed?.blockHash).toBe(receipt.blockHash);
+  });
+
+  test("a receipt answered with a zero blockHash is completed from the node", async () => {
+    let sends = 0;
+    const proxy = await sequencerProxy(fork.url, "partial", () => sends++);
+    try {
+      const r = createRelayer({
+        db: testDb,
+        log,
+        chains: { 421614: { rpcUrl: fork.url, sequencerUrl: proxy.url, account } },
+      });
+      const { nonce, args } = await depositArgs(funder(), AMOUNT);
+      const tx = await r.submit({
+        chainId: 421614,
+        contract: "KeelsonBondVault",
+        functionName: "depositWithAuthorization",
+        args,
+        key: `KeelsonBondVault.deposit:${nonce}`,
+      });
+      expect(sends).toBe(1);
+      expect(tx.status).toBe("confirmed");
+      const receipt = await fork.client.getTransactionReceipt({ hash: tx.hash as Hex });
+      expect(tx.blockHash).toBe(receipt.blockHash);
+    } finally {
+      proxy.server.close();
+    }
   });
 });
