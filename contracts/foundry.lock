@@ -1,4 +1,7 @@
 {
+  "lib/crypto-lib": {
+    "rev": "d714e9824e2e2e44be3c8fd498e0de651ddc9425"
+  },
   "lib/erc4626-tests": {
     "rev": "ac485460e014f22807c1ff687e0b4dc3af96ee40"
   },

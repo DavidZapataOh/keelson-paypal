@@ -8,6 +8,7 @@ import { CopyValue } from "@keelson/ui/components/copy-value";
 import { DataItem, DataList } from "@keelson/ui/components/data-list";
 import { Status } from "@keelson/ui/components/status";
 import { Timeline, TimelineItem } from "@keelson/ui/components/timeline";
+import { ChevronRight, MessageSquareWarning } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -18,8 +19,11 @@ import { purchaseStatus } from "../lib/status";
 import type { Dispute, Purchase } from "../lib/types";
 import { useMandate } from "../lib/use-mandate";
 import { AnonymousProof } from "./anonymous-proof";
+import { AppShell } from "./app-shell";
+import { RiveMoment } from "./brand";
+import { DisputeSheet } from "./dispute-sheet";
 import { EngineProof } from "./engine-proof";
-import { ErrorNotice, Eyebrow } from "./notice";
+import { ErrorNotice } from "./notice";
 
 const PARTY = {
   operator: "The agent's operator, from its bond",
@@ -40,22 +44,23 @@ const CAPTURED = new Set([
   "MERCHANT_LIABLE",
 ]);
 
-/**
- * One line per field that failed its check: what the mandate allows against the cart. The API
- * keeps only the cart's total, so other fields say the cart did not match.
- */
+/** One line per field that failed its check: what the mandate allows against the cart. */
 function Blocks({ p, card }: { p: Purchase; card: Card | null }) {
   if (!p.blocked?.length) return null;
   return (
     <div className="mt-2 grid gap-1">
       {p.blocked.map((field) => {
         const row = card?.rows.find((r) => r.field === field);
+        const reason = p.reasons?.find((r) => r.field === field);
         return (
           <BlockDiff
             key={field}
             field={row?.label ?? field.replaceAll("_", " ")}
-            mandate={row ? row.values.join(", ") : "as signed"}
-            cart={field === "total" ? money(p.amount.minor, p.amount.currency) : "not as signed"}
+            mandate={reason?.mandate ?? (row ? row.values.join(", ") : "as signed")}
+            cart={
+              reason?.cart ??
+              (field === "total" ? money(p.amount.minor, p.amount.currency) : "not as signed")
+            }
           />
         );
       })}
@@ -64,7 +69,7 @@ function Blocks({ p, card }: { p: Purchase; card: Card | null }) {
 }
 
 /** Sign → Check → Pay → Dispute → Resolve: who acted at each step, and when. */
-function Steps({ p, card }: { p: Purchase; card: Card | null }) {
+function Steps({ p }: { p: Purchase }) {
   const checking = p.state === "PROPOSED" || p.state === "EVALUATING";
   const blocked = p.state === "DENIED";
   const paid = CAPTURED.has(p.state);
@@ -81,7 +86,6 @@ function Steps({ p, card }: { p: Purchase; card: Card | null }) {
       ) : blocked ? (
         <TimelineItem state="blocked" actor="Keelson" time={p.createdAt}>
           blocked the cart before payment
-          <Blocks p={p} card={card} />
         </TimelineItem>
       ) : (
         <TimelineItem state="done" actor="Keelson" time={p.createdAt}>
@@ -122,23 +126,43 @@ function DisputeCard({ id }: { id: string }) {
   }, [id]);
   if (error) return <ErrorNotice>{error}</ErrorNotice>;
   if (!d) return null;
+  const refunded = Boolean(d.settlement?.refund_id);
   return (
-    <div className="grid gap-2 rounded-xl border p-5">
-      <p className="font-mono text-muted-foreground text-xs">{d.dispute_id}</p>
-      <p className="font-medium">
-        {d.liable ? `Liable: ${PARTY[d.liable]}` : "Keelson is reading the evidence."}
-      </p>
+    <section
+      aria-label={`Dispute ${d.dispute_id}`}
+      className="grid gap-3 rounded-3xl border bg-card p-5 sm:p-6"
+    >
+      <div className="flex items-center gap-4">
+        <RiveMoment
+          artboard="Refund"
+          play={refunded}
+          className="size-16 shrink-0"
+          still={
+            <span
+              className={`size-5 rounded-full ${refunded ? "bg-ok" : "animate-pending bg-foreground"}`}
+            />
+          }
+        />
+        <div className="grid min-w-0 gap-0.5">
+          <p className="font-semibold">
+            {refunded
+              ? "Refunded to your PayPal"
+              : d.liable
+                ? `${PARTY[d.liable]} answers`
+                : "Keelson is reading the evidence"}
+          </p>
+          <p className="font-mono text-muted-foreground text-xs">{d.dispute_id}</p>
+        </div>
+      </div>
       <p className="text-muted-foreground text-sm">
         PayPal reason: {d.reason.replaceAll("_", " ").toLowerCase()}
         {d.verdict ? ` · rule ${d.verdict.rule}` : ""}
         {d.elapsed_ms !== null ? ` · attributed in ${(d.elapsed_ms / 1000).toFixed(1)} s` : ""}
       </p>
-      {d.settlement?.refund_id ? (
-        <p className="text-sm">Refund {d.settlement.refund_id} sent to you on PayPal.</p>
-      ) : null}
+      {d.settlement?.refund_id ? <p className="text-sm">Refund {d.settlement.refund_id}</p> : null}
       <EngineProof purchaseId={d.purchase_id} />
       <p className="text-muted-foreground text-xs">PayPal still decides disputes.</p>
-    </div>
+    </section>
   );
 }
 
@@ -151,10 +175,31 @@ async function download(path: string, name: string) {
   URL.revokeObjectURL(url);
 }
 
+/** The store's name as the signed card spells it. */
+function storeName(card: Card | null, id: string): string {
+  const names = (card?.rows.find((r) => r.field === "merchant")?.values ?? []).map(
+    (v) => v.split(" (")[0] ?? v,
+  );
+  const bare = id.replace(/^mrc_/, "");
+  return (
+    names.find((n) => n.toLowerCase().replace(/\W/g, "") === bare.replace(/\W/g, "")) ??
+    bare.charAt(0).toUpperCase() + bare.slice(1)
+  );
+}
+
 export function PurchasePage() {
+  return (
+    <AppShell>
+      <Receipt />
+    </AppShell>
+  );
+}
+
+function Receipt() {
   const params = useSearchParams();
   const { mandate, error } = useMandate(params.get("mandate"));
   const [fileError, setFileError] = useState<string>();
+  const [disputing, setDisputing] = useState(false);
   if (error) return <ErrorNotice>{error}</ErrorNotice>;
   const p = mandate?.purchases.find((x) => x.id === params.get("id"));
   if (!mandate)
@@ -168,42 +213,97 @@ export function PurchasePage() {
   // The Alibi is issued, and verified, when the leaf is logged: before a capture, and for a
   // blocked cart too. A purchase that failed before its Alibi has none.
   const sealed = !p.failure && (CAPTURED.has(p.state) || (p.state === "DENIED" && logged));
+  const blocked = p.state === "DENIED";
+  const store = storeName(mandate.card, p.merchantId);
 
   return (
-    <div className="grid gap-10 md:grid-cols-[1.1fr_1fr] md:gap-16">
+    <div className="grid items-start gap-6 lg:grid-cols-[1fr_400px]">
       <section className="grid content-start gap-6">
         <Link
-          href={`/mandate/?id=${mandate.id}`}
+          href="/"
           className="w-fit py-2 text-muted-foreground text-sm underline-offset-4 hover:underline"
         >
-          ← Mandate {mandate.id.slice(-8)}
+          ← Home
         </Link>
-        <div className="grid gap-3">
-          <Eyebrow>{p.merchantId}</Eyebrow>
-          <h1>
-            <Amount
-              value={Number(p.amount.minor) / 100}
-              currency={p.amount.currency}
-              className="text-amount"
-              {...(p.failure || p.state === "DENIED" ? { struck: "Not paid" } : {})}
-            />
-          </h1>
-          <div className="flex flex-wrap items-center gap-3 text-muted-foreground text-sm">
-            <Status state={purchaseStatus(p)} />
-            <span>{when(p.createdAt)}</span>
+        <div className="flex items-center gap-4">
+          <span
+            className={`grid size-14 shrink-0 place-items-center rounded-2xl font-semibold text-xl ${blocked ? "bg-vermilion text-graphite" : "bg-graphite text-bone"}`}
+          >
+            {store.charAt(0)}
+          </span>
+          <div className="grid min-w-0 gap-1">
+            <p className="truncate font-medium text-lg">{store}</p>
+            <div className="flex flex-wrap items-center gap-3 text-muted-foreground text-sm">
+              <Status state={purchaseStatus(p)} />
+              <span>{when(p.createdAt)}</span>
+            </div>
           </div>
         </div>
-        <Steps p={p} card={mandate.card} />
+        <h1>
+          <Amount
+            value={Number(p.amount.minor) / 100}
+            currency={p.amount.currency}
+            className="text-[3rem]"
+            {...(p.failure || blocked ? { struck: "Not paid" } : {})}
+          />
+        </h1>
+
+        {blocked ? (
+          <div className="flex gap-4 rounded-3xl border border-vermilion/35 bg-vermilion/[0.06] p-5">
+            <RiveMoment
+              artboard="Blocked"
+              play
+              className="size-20 shrink-0"
+              still={<span className="size-6 rounded-[4px] bg-vermilion" />}
+            />
+            <div className="grid min-w-0 content-center gap-2">
+              <p className="font-semibold">Keelson stopped this cart. Nothing was paid.</p>
+              <Blocks p={p} card={mandate.card} />
+            </div>
+          </div>
+        ) : null}
+
+        {!blocked && CAPTURED.has(p.state) && p.disputes.length === 0 ? (
+          <button
+            type="button"
+            onClick={() => setDisputing(true)}
+            className="flex items-center gap-4 rounded-3xl border bg-card p-5 text-left transition-colors hover:bg-foreground/4"
+          >
+            <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-bone-2">
+              <MessageSquareWarning className="size-5" aria-hidden="true" />
+            </span>
+            <span className="grid flex-1 leading-snug">
+              <span className="font-semibold">Not what you asked for?</span>
+              <span className="text-muted-foreground text-sm">
+                See who answers, then dispute it
+              </span>
+            </span>
+            <ChevronRight className="size-5 text-muted-foreground" aria-hidden="true" />
+          </button>
+        ) : null}
+
+        <div className="rounded-3xl border bg-card p-5 sm:p-6">
+          <h2 className="mb-4 font-semibold text-lg">What happened</h2>
+          <Steps p={p} />
+        </div>
         {p.disputes.map((d) => (
           <DisputeCard key={d.id} id={d.id} />
         ))}
+        {mandate.card ? (
+          <DisputeSheet
+            open={disputing}
+            onOpenChange={setDisputing}
+            card={mandate.card}
+            alibiId={p.id}
+          />
+        ) : null}
       </section>
 
       <section
-        className="grid content-start gap-5 rounded-xl border bg-card p-6"
+        className="grid content-start gap-5 rounded-3xl border bg-card p-5 sm:p-6"
         aria-labelledby="alibi"
       >
-        <h2 id="alibi" className="font-semibold text-xl">
+        <h2 id="alibi" className="font-semibold text-lg">
           Alibi
         </h2>
         <p className="text-muted-foreground text-sm">

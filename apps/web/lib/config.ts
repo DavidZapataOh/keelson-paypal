@@ -3,3 +3,6 @@ export const API = process.env.NEXT_PUBLIC_API_ORIGIN ?? "https://api.keelson.fi
 
 /** The public Alibi verifier. */
 export const VERIFY = "https://verify.keelson.finance";
+
+/** Where a PayPal buyer opens a dispute (the app runs on the PayPal sandbox). */
+export const PAYPAL_RESOLUTION = "https://www.sandbox.paypal.com/resolutioncenter";
