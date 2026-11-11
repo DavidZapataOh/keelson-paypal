@@ -3,7 +3,12 @@ import { renderAlibiPdf } from "@keelson/alibi/pdf";
 import { and, cardChargebacks, eq, mandates, purchaseCards, purchases, sql } from "@keelson/db";
 import { loadAlibi } from "../alibi/issue.ts";
 import type { Deps } from "../app.ts";
-import { chargebackRecovered, chargebackView } from "../cards/chargeback.ts";
+import {
+  chargebackOpen,
+  chargebackRecovered,
+  chargebackView,
+  refundToUser,
+} from "../cards/chargeback.ts";
 import { requireSession } from "../middleware/auth.ts";
 import { publishPurchase } from "../pipeline/events.ts";
 import { ProblemSchema, problem } from "../problem.ts";
@@ -181,18 +186,31 @@ export function registerChargebacks(
 
 /** Records the issuer's news about a chargeback: its status, its resolution, what it returned. */
 export async function applyChargeback(
-  deps: Pick<Deps, "db">,
+  deps: Pick<Deps, "db" | "log" | "paypal">,
   d: { token: string; status: string; resolution: string | null },
 ): Promise<void> {
   const [row] = await deps.db.select().from(cardChargebacks).where(eq(cardChargebacks.id, d.token));
   if (!row) return;
+  // A decided chargeback stays decided: an older event arriving late changes nothing.
+  if (!chargebackOpen(row.status)) return;
+  const recovered = chargebackRecovered(d.status, d.resolution, row.amountMinor);
   await deps.db
     .update(cardChargebacks)
     .set({
       status: d.status,
       resolution: d.resolution,
-      recoveredMinor: chargebackRecovered(d.status, d.resolution, row.amountMinor),
+      recoveredMinor: recovered,
       updatedAt: sql`now()`,
     })
     .where(eq(cardChargebacks.id, d.token));
+  // What the chargeback won came back to Keelson, the cardholder: it goes on to the user.
+  if (recovered) {
+    await refundToUser(
+      deps,
+      row.purchaseId,
+      d.token,
+      recovered,
+      `Refund of chargeback ${d.token} on your card purchase.`,
+    );
+  }
 }

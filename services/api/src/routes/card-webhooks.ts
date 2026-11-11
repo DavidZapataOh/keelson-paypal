@@ -1,10 +1,20 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import { and, cardAuthorizations, eq, inArray, purchaseCards, purchases, sql } from "@keelson/db";
+import {
+  and,
+  cardAuthorizations,
+  eq,
+  inArray,
+  isNull,
+  purchaseCards,
+  purchases,
+  sql,
+} from "@keelson/db";
 import type { Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import type { Deps } from "../app.ts";
 import { type CardResult, decide } from "../cards/authorize.ts";
+import { refundToUser } from "../cards/chargeback.ts";
 import { alpha2, type CardIssuer } from "../cards/issuer.ts";
 import { captureCardStep } from "../pipeline/card-step.ts";
 import { publishPurchase } from "../pipeline/events.ts";
@@ -191,34 +201,50 @@ export async function applyTransaction(
         eq(cardAuthorizations.approved, true),
       ),
     );
-  // Only the transaction both legs approved captures the purchase, and for no more than they
-  // approved: anything else is the merchant's to answer for through a chargeback.
-  const matches = approval !== undefined && BigInt(t.settledMinor) <= approval.amountMinor;
-  if (t.status === "SETTLED" && !matches) {
+  // Only the transaction both legs approved is collected from the hold, and for no more than they
+  // approved: any excess, or any other transaction, is the merchant's to answer for through a
+  // chargeback.
+  // A merchant's refund to the card goes on to the user's PayPal account.
+  if (t.status === "SETTLED" && t.settledMinor < 0) {
+    await refundToUser(
+      deps,
+      card.purchaseId,
+      t.transactionToken,
+      BigInt(-t.settledMinor),
+      "Refund from the store of your card purchase.",
+    );
+    return;
+  }
+  if (t.status === "SETTLED" && t.settledMinor > 0 && !approval) {
     deps.log.error(
       { purchaseId: card.purchaseId, transaction: t.transactionToken, settled: t.settledMinor },
-      "card settlement does not match the approved authorization",
+      "card settlement of a transaction the legs did not approve",
     );
   }
-  if (t.status === "SETTLED" && t.settledMinor > 0 && matches) {
+  if (t.status === "SETTLED" && t.settledMinor > 0 && approval) {
+    const settled = BigInt(t.settledMinor);
+    const collected = settled < approval.amountMinor ? settled : approval.amountMinor;
+    if (settled > approval.amountMinor) {
+      deps.log.error(
+        { purchaseId: card.purchaseId, settled: t.settledMinor, approved: approval.amountMinor },
+        "card settled above the approved amount; the excess is not collected",
+      );
+    }
+    // A settlement that follows a void (a force-post) is collected too: the network paid.
     await db
       .update(purchaseCards)
       .set({
         state: "CLOSED",
         transactionToken: t.transactionToken,
-        settledMinor: BigInt(t.settledMinor),
+        settledMinor: collected,
         settledAt: sql`now()`,
       })
-      .where(and(eq(purchaseCards.purchaseId, card.purchaseId), eq(purchaseCards.state, "USED")));
+      .where(
+        and(eq(purchaseCards.purchaseId, card.purchaseId), isNull(purchaseCards.settledMinor)),
+      );
     // The network paid the merchant: the charge is collected from the user's PayPal hold. A
     // capture PayPal does not answer now is retried by the pipeline resumer.
-    const out = await captureCardStep(deps, card.purchaseId);
-    if (out.kind === "final") {
-      deps.log.error(
-        { purchaseId: card.purchaseId, reason: out.reason },
-        "card charge not collected",
-      );
-    }
+    await captureCardStep(deps, card.purchaseId);
   } else if (t.status === "VOIDED" || t.status === "EXPIRED") {
     await db
       .update(purchaseCards)
