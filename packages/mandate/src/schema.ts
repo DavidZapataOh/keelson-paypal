@@ -1,4 +1,4 @@
-import { CURRENCIES, isUlid } from "@keelson/core";
+import { CURRENCIES, DEFAULT_MAX_SPREAD_BPS, isUlid } from "@keelson/core";
 import { z } from "zod";
 import { CONTROL_OR_FORMAT } from "./generated/unicode.ts";
 import { ANY_MERCHANT, MCC_TABLE } from "./mcc.ts";
@@ -122,6 +122,9 @@ function isHttpsOrigin(s: string): boolean {
     isWebsite(`https://${m[1]}`)
   );
 }
+
+/** The largest spread a mandate may allow over the reference rate: 30%. */
+export const MAX_SPREAD_BPS = 3_000;
 
 const amount = z.number().int().nonnegative().safe();
 const b64url = z.string().regex(/^[A-Za-z0-9_-]+$/);
@@ -274,7 +277,15 @@ export const MandateSchema = z.strictObject({
   embed: z
     .strictObject({ top_origin: z.string().refine(isHttpsOrigin, "invalid format") })
     .optional(),
+  /**
+   * How far the rate PayPal converts a charge to the buyer's own currency at may be from the
+   * reference mid-market rate, in basis points; {@link maxSpreadBps} when absent.
+   */
+  fx: z
+    .strictObject({ max_spread_bps: z.number().int().min(0).max(MAX_SPREAD_BPS) })
+    .optional(),
 });
+
 
 /** A `keelson.mandate.1` payload. */
 export type Mandate = z.infer<typeof MandateSchema>;
@@ -427,3 +438,7 @@ export function parseMandate(input: unknown): Mandate {
   });
   return m;
 }
+
+/** The spread over the reference rate `m` allows a conversion of its charges, in basis points. */
+export const maxSpreadBps = (m: Pick<Mandate, "fx">): number =>
+  m.fx?.max_spread_bps ?? DEFAULT_MAX_SPREAD_BPS;
