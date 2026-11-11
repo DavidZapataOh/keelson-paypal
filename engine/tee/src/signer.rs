@@ -6,7 +6,7 @@ use alloy_sol_types::SolStruct;
 use k256::ecdsa::{RecoveryId, SigningKey};
 use k256::elliptic_curve::Generate;
 use k256::elliptic_curve::zeroize::ZeroizeOnDrop;
-use keelson_core::eip712::{Checkpoint, Countersign, Verdict, WebFact};
+use keelson_core::eip712::{CardAuthorization, Checkpoint, Countersign, Verdict, WebFact};
 
 use crate::countersign_digest;
 use crate::error::{Error, check_chain};
@@ -105,6 +105,29 @@ impl Signer {
             .ok_or(Error::MissingChain)?;
         check_chain(chain_id)?;
         self.sign_digest(&f.eip712_signing_hash(domain).0)
+    }
+
+    /// Signs the EIP-712 digest of `a`, as [`Signer::sign_countersign`] does.
+    ///
+    /// Fails on domains outside Arbitrum Sepolia and Arbitrum One.
+    pub fn sign_card_authorization(
+        &self,
+        a: &CardAuthorization,
+        domain: &Eip712Domain,
+    ) -> Result<[u8; 65], Error> {
+        let chain_id = domain
+            .chain_id
+            .and_then(|id| u64::try_from(id).ok())
+            .ok_or(Error::MissingChain)?;
+        check_chain(chain_id)?;
+        self.sign_digest(&a.eip712_signing_hash(domain).0)
+    }
+
+    /// Whether `signature` (`r ‖ s ‖ v`) is this key's signature over `digest`.
+    pub fn signed(&self, digest: &[u8; 32], signature: &[u8; 65]) -> bool {
+        use k256::ecdsa::signature::hazmat::PrehashVerifier;
+        k256::ecdsa::Signature::from_slice(&signature[..64])
+            .is_ok_and(|s| self.key.verifying_key().verify_prehash(digest, &s).is_ok())
     }
 
     /// Signs the binding of an RA-TLS certificate, a digest no EIP-712 message can have.

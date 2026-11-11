@@ -66,7 +66,15 @@ describe("pricing a cart from a Shopify store's public product JSON", () => {
       return_days: 0,
       returns_free: false,
     });
-    expect(quote.total).toEqual({ currency: "USD", minor: 590, display: "5.90" });
+    // Shopify publishes no tax or shipping before the checkout: the items are the whole quote.
+    expect(quote.total).toEqual({
+      currency: "USD",
+      items: 590,
+      tax: 0,
+      shipping: 0,
+      discount: 0,
+      minor: 590,
+    });
   });
 
   test("a line off the store, or not a product page, is refused", async () => {

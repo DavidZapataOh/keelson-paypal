@@ -41,6 +41,7 @@ const view = (state = "PENDING", mandateId: string | null = null, signer: unknow
   ref: REF,
   origin: HOST,
   signer,
+  matchNumber: 42,
   request: {
     code: "BCDF-GHJK",
     kind: "connect",

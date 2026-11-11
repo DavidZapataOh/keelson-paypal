@@ -31,8 +31,16 @@ import type { SignedChallenge } from "@keelson/mandate/browser";
 import { POLICY_SET_HASH } from "@keelson/policy/hashes";
 import type { Context } from "hono";
 import type { Deps } from "../app.ts";
+import { Amount, breakdowns, withBreakdown } from "../checkout.ts";
 import { agentBond, agentCnf, termsConsent } from "../compile-sources.ts";
-import { type Connection, looserThan, normalizeUserCode, openRequest } from "../connections.ts";
+import {
+  type Connection,
+  kindOf,
+  looserThan,
+  normalizeUserCode,
+  openRequest,
+  unmatched,
+} from "../connections.ts";
 import { clientEmbedOrigins } from "../embed.ts";
 import { publishEvent } from "../events.ts";
 import { passkeyJwk, SignatureError, verifyMandateSignature } from "../mandate-signature.ts";
@@ -43,6 +51,7 @@ import { ProblemSchema, problem } from "../problem.ts";
 import { LegError, type MandateIssued } from "../tee/client.ts";
 import { unboundPolicy } from "../tee/engine-source.ts";
 import { PurchaseProgress } from "./purchases.ts";
+import { REVOCABLE, revokeMandate } from "./revoke.ts";
 
 const Hex32 = z.string().regex(/^0x[0-9a-f]{64}$/);
 const MANDATES_SHOWN = 50;
@@ -173,7 +182,7 @@ const MandatePurchase = z
   .object({
     id: z.string().openapi({ description: "The purchase's ULID, which is also its Alibi id." }),
     merchantId: z.string(),
-    amount: z.object({ currency: z.string(), minor: z.string() }),
+    amount: Amount,
     createdAt: z.iso.datetime(),
     ...PurchaseProgress.shape,
     state: z.string(),
@@ -339,6 +348,11 @@ export interface SignedIn {
   connectionId: string;
 }
 
+type MandateDeps = Pick<
+  Deps,
+  "db" | "kv" | "log" | "appOrigin" | "passkeyRpId" | "tee" | "proveAnonymousMandate" | "paypal"
+>;
+
 /**
  * Verifies and stores a mandate `userId` signed, answering `body.connection` when given. A
  * mandate signed in an embedded approval (`embed`) must name that approval's platform in
@@ -485,7 +499,12 @@ export async function storeMandate(
     if (
       !request ||
       (request.userId !== null && request.userId !== userId) ||
-      (request.kind === "once" && (parent?.state !== "ACTIVE" || parent.revokeRequestedAt))
+      (request.kind === "once" && (parent?.state !== "ACTIVE" || parent.revokeRequestedAt)) ||
+      (kindOf(request) === "change" &&
+        (!parent ||
+          !(REVOCABLE as readonly string[]).includes(parent.state) ||
+          parent.revokeRequestedAt)) ||
+      (request.parentMandateId !== null && parent?.userId !== userId)
     ) {
       return problem(
         c,
@@ -493,6 +512,16 @@ export async function storeMandate(
         "connection-closed",
         "Request closed",
         "The agent's request was already decided, expired or does not exist.",
+      );
+    }
+    // An embedded approval is the request's own page, minted for the client that asked.
+    if (!embed && unmatched(request)) {
+      return problem(
+        c,
+        409,
+        "number-not-matched",
+        "Number not matched",
+        "Pick the number your agent shows first.",
       );
     }
     const askAbove = body.connection.askAboveMinor;
@@ -654,6 +683,13 @@ export async function storeMandate(
           )
           .returning({ id: agentConnections.id });
         if (approved.length !== 1) throw new RequestClosed();
+        // A change replaces its mandate: countersigns under the old one stop with this commit.
+        if (kindOf(request) === "change" && request.parentMandateId) {
+          await tx
+            .update(mandates)
+            .set({ revokeRequestedAt: sql`coalesce(${mandates.revokeRequestedAt}, now())` })
+            .where(eq(mandates.id, request.parentMandateId));
+        }
       }
     });
   } catch (err) {
@@ -687,6 +723,15 @@ export async function storeMandate(
       request.id,
       { type: "connection.approved", userCode: request.userCode, mandateId: m.mid },
     );
+    // Its hold is released now; the sweeper voids it if PayPal is down.
+    if (kindOf(request) === "change" && request.parentMandateId) {
+      const parent = await queries.mandateById(request.parentMandateId);
+      if (parent && (REVOCABLE as readonly string[]).includes(parent.state)) {
+        await revokeMandate(deps, parent).catch((err: unknown) =>
+          deps.log.warn({ err, mandateId: parent.id }, "replaced mandate not revoked yet"),
+        );
+      }
+    }
   }
 
   c.header("location", `/v1/mandates/${m.mid}`);
@@ -700,11 +745,6 @@ export async function storeMandate(
     201,
   );
 }
-
-type MandateDeps = Pick<
-  Deps,
-  "db" | "kv" | "log" | "appOrigin" | "passkeyRpId" | "tee" | "proveAnonymousMandate"
->;
 
 export function registerMandates(app: OpenAPIHono, deps: MandateDeps): void {
   const { db } = deps;
@@ -771,6 +811,10 @@ export function registerMandates(app: OpenAPIHono, deps: MandateDeps): void {
       .from(purchaseHolds)
       .where(and(eq(purchaseHolds.mandateId, row.id), eq(purchaseHolds.state, "PENDING")))
       .orderBy(asc(purchaseHolds.createdAt));
+    const parts = await breakdowns(
+      db,
+      bought.map((p) => p.evidenceRoot),
+    );
     c.header("Cache-Control", "no-store");
     const card =
       row.payloadSd && row.disclosures
@@ -786,7 +830,7 @@ export function registerMandates(app: OpenAPIHono, deps: MandateDeps): void {
         hold: holdView(row),
         card,
         purchases: bought.map((p) => {
-          const { mandateId: _, ...view } = purchaseView(p);
+          const { mandateId: _, ...view } = withBreakdown(purchaseView(p), p.evidenceRoot, parts);
           return {
             ...view,
             merchantId: p.merchantId,

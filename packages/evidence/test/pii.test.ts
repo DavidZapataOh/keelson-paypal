@@ -300,9 +300,9 @@ describe.skipIf(!sandbox)("checkout capture with the PayPal sandbox buyer", () =
     await recorder.stop();
     await product.close();
     expect(clean.items.some((i) => i.type.endsWith(".original"))).toBe(false);
-    // The Channel3 observation is issued by the API and added by the driver, not captured.
-    expect(clean.items.map((i) => i.type)).toEqual(
-      ITEM_TYPES.filter((t) => t !== "channel3.observation" && t !== "tlsn.web_fact"),
-    );
+    // The driver adds these after capture: the API's Channel3 observation, the notarized web fact
+    // and the PayPal amount it countersigns.
+    const added: readonly string[] = ["channel3.observation", "tlsn.web_fact", "api.checkout"];
+    expect(clean.items.map((i) => i.type)).toEqual(ITEM_TYPES.filter((t) => !added.includes(t)));
   });
 });

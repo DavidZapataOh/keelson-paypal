@@ -26,6 +26,8 @@ export interface EmbedView {
   request: ConnectionView;
   /** Set once the user signed in here or linked a Keelson window. */
   signer: EmbedSigner | null;
+  /** The number the Keelson window asks for before it signs there. */
+  matchNumber: number | null;
 }
 
 /** What the embed tells its host. Never a token, a session or a signature. */

@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { type Draft, toMandate } from "@keelson/compiler";
 import { CURRENCIES, type CurrencyCode } from "@keelson/core";
-import { agentConnections, and, eq, isNull, mandates, operators, sql } from "@keelson/db";
+import { agentConnections, and, eq, isNull, mandates, operators, or, sql } from "@keelson/db";
 import {
   buildSdPayload,
   CATEGORY_TABLE,
@@ -18,11 +18,16 @@ import { agentBond, operatorAgent } from "../compile-sources.ts";
 import {
   type Connection,
   deviceAuthorization,
+  grantOf,
   hashDeviceCode,
+  kindOf,
+  matchOptions,
   newDeviceCode,
+  newMatchNumber,
   normalizeUserCode,
   openRequest,
   REQUEST_TTL_SEC,
+  unmatched,
   withFreshUserCode,
 } from "../connections.ts";
 import { publishEvent } from "../events.ts";
@@ -94,6 +99,14 @@ const DeviceAuthorizationSchema = z
     verification_uri_complete: z.string(),
     expires_in: z.int(),
     interval: z.int(),
+    request_id: z.string().openapi({
+      description:
+        "The request's id: `GET /v1/connections/requests/{id}` reads its state without spending the device code.",
+    }),
+    match_number: z.int().min(10).max(99).optional().openapi({
+      description:
+        "Show it beside the link: the user picks it out of three before the request opens, so a link relayed by someone else does not.",
+    }),
   })
   .openapi("DeviceAuthorization", {
     description:
@@ -125,7 +138,10 @@ const Approved = z
 export const ConnectionView = z
   .object({
     code: z.string(),
-    kind: z.enum(["connect", "once"]),
+    kind: z.enum(["connect", "once", "change"]).openapi({
+      description:
+        "`connect`: standing limits. `once`: one cart its mandate does not allow. `change`: new limits that replace `parent`, whose hold is released.",
+    }),
     state: z.enum(["PENDING", "APPROVED", "DENIED", "EXPIRED"]),
     name: z.string(),
     reason: z.string(),
@@ -146,13 +162,39 @@ export const ConnectionView = z
       .object({
         mandateId: z.string(),
         perPurchaseMinor: z.string(),
+        totalMinor: z.string(),
         remainingMinor: z.string(),
+        until: z.string(),
       })
       .nullable(),
     mandateId: z.string().nullable(),
+    match: z
+      .object({ options: z.array(z.int()), matched: z.boolean() })
+      .nullable()
+      .openapi({
+        description:
+          "When the user must pick the agent's number before approving: three numbers, one the agent shows. Null when the request needs no match.",
+      }),
     expiresAt: z.string(),
+    createdAt: z.string(),
   })
   .openapi("Connection");
+
+/** What the agent that asked reads of its request, without spending its device code. */
+const RequestState = z
+  .object({
+    id: z.string(),
+    kind: z.enum(["connect", "once", "change"]),
+    state: z.enum(["PENDING", "APPROVED", "DENIED", "EXPIRED"]),
+    mandateId: z.string().nullable().openapi({ description: "The mandate the user signed." }),
+    parentMandateId: z.string().nullable(),
+    userCode: z.string(),
+    approvalUrl: z.string(),
+    matchNumber: z.int().nullable(),
+    expiresAt: z.string(),
+    interval: z.int(),
+  })
+  .openapi("ConnectionRequestState");
 
 export const DraftRequest = z
   .object({
@@ -168,6 +210,64 @@ export const DraftRequest = z
   .openapi("ConnectionDraft");
 
 const Code = z.object({ code: z.string().min(8).max(16) });
+
+const match = createRoute({
+  method: "post",
+  path: "/v1/connections/{code}/match",
+  tags: ["connections"],
+  summary: "Pick the agent's number",
+  description:
+    "The user picks the number the agent shows beside its link out of the three the request offers. The right one opens the request; a wrong one denies it, since the link may not be the user's agent's.",
+  middleware: [requireSession()],
+  request: {
+    params: Code,
+    headers: z.object({ "idempotency-key": z.string().min(1).max(255) }),
+    body: {
+      required: true,
+      content: { "application/json": { schema: z.object({ number: z.int().min(10).max(99) }) } },
+    },
+  },
+  responses: {
+    200: {
+      description: "Matched",
+      content: { "application/json": { schema: z.object({ matched: z.literal(true) }) } },
+    },
+    401: { description: "Not signed in", content: problemContent },
+    404: { description: "No open request with this code", content: problemContent },
+    409: {
+      description: "Not the agent's number (`number-mismatch`); the request is denied",
+      content: problemContent,
+    },
+  },
+});
+
+const requestState = createRoute({
+  method: "get",
+  path: "/v1/connections/requests/{id}",
+  tags: ["connections"],
+  summary: "Read your request's state",
+  description:
+    "The state of a request this client made, as often as needed: reading it changes nothing and does not spend the device code. Wait `interval` seconds between reads.",
+  middleware: [requireClient(["countersign:write"])],
+  request: { params: z.object({ id: z.string().regex(/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/) }) },
+  responses: {
+    200: {
+      description: "The request",
+      content: { "application/json": { schema: RequestState } },
+    },
+    401: { description: "No valid access token", content: problemContent },
+    404: { description: "No such request of this client", content: problemContent },
+  },
+});
+
+const notMatched = (c: Context) =>
+  problem(
+    c,
+    409,
+    "number-not-matched",
+    "Number not matched",
+    "Pick the number your agent shows first.",
+  );
 
 const create = createRoute({
   method: "post",
@@ -306,6 +406,17 @@ const draft = createRoute({
   },
 });
 
+/** What a signed mandate grants, or undefined when it is not signed. */
+function parentGrant(m: typeof mandates.$inferSelect) {
+  try {
+    return m.payloadSd && m.disclosures
+      ? grantOf(decodeMandate(m.payloadSd as Record<string, unknown>, m.disclosures))
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** A request as the approval pages read it. */
 export async function connectionView(
   db: Deps["db"],
@@ -321,7 +432,7 @@ export async function connectionView(
   const expired = request.state === "PENDING" && request.expiresAt.getTime() <= Date.now();
   return {
     code: request.userCode,
-    kind: request.kind,
+    kind: kindOf(request),
     state: expired ? ("EXPIRED" as const) : request.state,
     name: request.name,
     reason: request.reason,
@@ -344,12 +455,22 @@ export async function connectionView(
     parent: parent
       ? {
           mandateId: parent.id,
-          perPurchaseMinor: parent.maxMinor.toString(),
+          perPurchaseMinor: (parentGrant(parent)?.perPurchaseMinor ?? parent.maxMinor).toString(),
+          totalMinor: parent.maxMinor.toString(),
           remainingMinor: parent.remainingMinor.toString(),
+          until: parent.expiresAt.toISOString(),
         }
       : null,
     mandateId: request.mandateId,
+    match:
+      request.matchNumber === null
+        ? null
+        : {
+            options: matchOptions(request.id, request.matchNumber),
+            matched: request.matchedAt !== null,
+          },
     expiresAt: request.expiresAt.toISOString(),
+    createdAt: request.createdAt.toISOString(),
   };
 }
 
@@ -401,15 +522,15 @@ function raised(
 
 /**
  * What a mandate for `request` allows besides money, stores and time: anything, for an agent's
- * standing request; for one cart outside a mandate, only what that mandate allowed, so a one-time
- * approval lifts its amount or store and nothing else.
+ * standing request; for one cart outside a mandate or a change of one, only what that mandate
+ * allowed, so an approval lifts its amount, stores or time and nothing else.
  */
 async function inherited(
   db: Deps["db"],
   request: Connection,
 ): Promise<Pick<Draft, "category" | "attributes" | "returns">> {
   const open = { category: [...CATEGORY_TABLE.ids], attributes: {}, returns: null };
-  if (request.kind !== "once" || !request.parentMandateId) return open;
+  if (!request.parentMandateId) return open;
   const [parent] = await db
     .select({ payloadSd: mandates.payloadSd, disclosures: mandates.disclosures })
     .from(mandates)
@@ -449,12 +570,15 @@ export async function storeRequest(
     /** The user it is bound to from the start, when the request comes from their own consent. */
     userId?: string;
   },
-): Promise<{ userCode: string; deviceCode: string }> {
+): Promise<{ id: string; userCode: string; deviceCode: string; matchNumber: number | null }> {
   const device = newDeviceCode();
   const { limits } = input;
+  const id = ulid();
+  // A request no session of the user's made opens only once the user picks the agent's number.
+  const matchNumber = input.userId ? null : newMatchNumber();
   const userCode = await withFreshUserCode((userCode) =>
     deps.db.insert(agentConnections).values({
-      id: ulid(),
+      id,
       kind: "connect",
       clientId: input.clientId,
       operatorAgentId: input.operatorAgentId,
@@ -469,10 +593,11 @@ export async function storeRequest(
       merchantIds: limits.merchants,
       notAfter: new Date(limits.until),
       expiresAt: new Date(Date.now() + REQUEST_TTL_SEC * 1000),
+      matchNumber,
       ...(input.userId ? { userId: input.userId } : {}),
     }),
   );
-  return { userCode, deviceCode: device.code };
+  return { id, userCode, deviceCode: device.code, matchNumber };
 }
 
 const tokenError = (
@@ -611,14 +736,14 @@ export function registerConnections(app: OpenAPIHono, deps: ConnectionDeps): voi
     }
     const invalid = invalidLimits(body.limits);
     if (invalid) return problem(c, 422, "invalid-limits", "Invalid limits", invalid);
-    const { userCode, deviceCode } = await storeRequest(deps, {
+    const stored = await storeRequest(deps, {
       clientId,
       operatorAgentId: operator.agentId,
       name: body.name,
       reason: body.reason,
       limits: body.limits,
     });
-    return c.json(deviceAuthorization(appOrigin, userCode, deviceCode), 201, {
+    return c.json(deviceAuthorization(appOrigin, stored, stored.deviceCode), 201, {
       "cache-control": "no-store",
     });
   });
@@ -682,7 +807,7 @@ export function registerConnections(app: OpenAPIHono, deps: ConnectionDeps): voi
   // One middleware, so a request is counted once: `/:code/*` would also match `/:code`.
   app.use("/v1/connections/*", (c, next) => {
     const rest = c.req.path.slice("/v1/connections/".length);
-    if (rest === "token") return next();
+    if (rest === "token" || rest.startsWith("requests/")) return next();
     if (!rest.includes("/") && c.req.method !== "GET") return next();
     return codeLimit(c, next);
   });
@@ -722,6 +847,75 @@ export function registerConnections(app: OpenAPIHono, deps: ConnectionDeps): voi
     return c.json({ state: "DENIED" as const }, 200);
   });
 
+  app.openapi(match, async (c) => {
+    const userId = (c.get("principal") as Principal).subject;
+    const code = normalizeUserCode(c.req.valid("param").code);
+    const request = code ? await openRequest(db, code) : undefined;
+    if (!request || (request.userId !== null && request.userId !== userId)) {
+      return problem(c, 404, "not-found", "Not found");
+    }
+    if (request.matchNumber === null || request.matchedAt !== null) {
+      return c.json({ matched: true as const }, 200);
+    }
+    if (c.req.valid("json").number !== request.matchNumber) {
+      await denyRequest(deps, request, userId);
+      return problem(
+        c,
+        409,
+        "number-mismatch",
+        "Not your agent's number",
+        `The number does not match the one ${request.name} shows, so this request was denied. If you did not ask an agent for this, ignore the link.`,
+      );
+    }
+    // Bound to this user from now on: nobody else can open it with the code.
+    const [matched] = await db
+      .update(agentConnections)
+      .set({ matchedAt: new Date(), userId })
+      .where(
+        and(
+          eq(agentConnections.id, request.id),
+          eq(agentConnections.state, "PENDING"),
+          isNull(agentConnections.matchedAt),
+          or(isNull(agentConnections.userId), eq(agentConnections.userId, userId)),
+        ),
+      )
+      .returning({ id: agentConnections.id });
+    if (!matched) return problem(c, 404, "not-found", "Not found");
+    return c.json({ matched: true as const }, 200);
+  });
+
+  app.openapi(requestState, async (c) => {
+    const clientId = (c.get("principal") as Principal).subject;
+    const [row] = await db
+      .select()
+      .from(agentConnections)
+      .where(
+        and(
+          eq(agentConnections.id, c.req.valid("param").id),
+          eq(agentConnections.clientId, clientId),
+        ),
+      );
+    if (!row) return problem(c, 404, "not-found", "Not found");
+    const expired = row.state === "PENDING" && row.expiresAt.getTime() <= Date.now();
+    const link = deviceAuthorization(appOrigin, row, "");
+    return c.json(
+      {
+        id: row.id,
+        kind: kindOf(row),
+        state: expired ? ("EXPIRED" as const) : row.state,
+        mandateId: row.mandateId,
+        parentMandateId: row.parentMandateId,
+        userCode: row.userCode,
+        approvalUrl: link.verification_uri_complete,
+        matchNumber: row.matchNumber,
+        expiresAt: row.expiresAt.toISOString(),
+        interval: row.pollInterval,
+      },
+      200,
+      { "cache-control": "no-store" },
+    );
+  });
+
   app.openapi(draft, async (c) => {
     const userId = (c.get("principal") as Principal).subject;
     const code = normalizeUserCode(c.req.valid("param").code);
@@ -729,6 +923,7 @@ export function registerConnections(app: OpenAPIHono, deps: ConnectionDeps): voi
     if (!request || (request.userId !== null && request.userId !== userId)) {
       return problem(c, 404, "not-found", "Not found");
     }
+    if (unmatched(request)) return notMatched(c);
     return draftMandate(c, deps, userId, request, c.req.valid("json"));
   });
 }

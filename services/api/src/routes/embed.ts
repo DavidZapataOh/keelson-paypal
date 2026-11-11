@@ -45,6 +45,11 @@ const EmbedView = z
     request: ConnectionView,
     /** Who the frame signs for, once the user signed in here or linked a Keelson window. */
     signer: EmbedSigner.nullable(),
+    /**
+     * The number the Keelson window asks for before it signs, while it is unmatched. Signing in
+     * the frame needs none.
+     */
+    matchNumber: z.int().nullable(),
   })
   .openapi("EmbedRequest");
 
@@ -178,6 +183,7 @@ export function registerEmbed(
         ref: embed.ref,
         origin: embed.origin,
         request: await connectionView(db, row.request, row.operator),
+        matchNumber: row.request.matchedAt === null ? row.request.matchNumber : null,
         signer: await (async () => {
           const bound = session ? await sessionUser(kv, session) : undefined;
           return bound ? signerOf(db, bound) : null;

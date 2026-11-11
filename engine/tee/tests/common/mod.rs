@@ -110,6 +110,16 @@ impl CapturedSource for Captured {
 #[derive(Default)]
 pub struct Records(Mutex<BTreeMap<String, Vec<u8>>>);
 
+impl Records {
+    /// Removes the records whose key matches, as a host could; says whether it removed any.
+    pub fn remove_where(&self, f: impl Fn(&str) -> bool) -> bool {
+        let mut records = self.0.lock().unwrap();
+        let before = records.len();
+        records.retain(|k, _| !f(k));
+        records.len() != before
+    }
+}
+
 impl UserRecords for Records {
     fn get(&self, sub: &str) -> Option<Vec<u8>> {
         self.0.lock().unwrap().get(sub).cloned()

@@ -924,6 +924,15 @@ export function EmbedApproval() {
                   ? "Sign in to Keelson in the window, then come back here"
                   : "Confirm in the Keelson window"}
             </p>
+            {!phase.link && view.matchNumber !== null ? (
+              <p className="text-sm">
+                When it asks for your agent's number, pick{" "}
+                <span className="rounded-md bg-graphite px-1.5 py-0.5 font-mono font-medium text-bone tnum">
+                  {view.matchNumber}
+                </span>
+                .
+              </p>
+            ) : null}
             <div className="grid grid-cols-2 gap-2">
               {back}
               {phase.blocked ? (

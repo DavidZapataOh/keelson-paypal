@@ -11,6 +11,8 @@ import demo from "../../../packages/mandate/test/fixtures/demo-mandate.json" wit
 import { createApp } from "../src/app.ts";
 import { normalizeUserCode } from "../src/connections.ts";
 import { principalChannel } from "../src/principal.ts";
+import { finishStops } from "../src/stop.ts";
+import { tokenStopped } from "../src/stopped.ts";
 import { createTee } from "../src/tee/config.ts";
 import { EvidenceUploader } from "./evidence.ts";
 import { testDb, testKv } from "./setup.ts";
@@ -277,6 +279,9 @@ describe("an agent asks for a mandate (RFC 8628)", () => {
     const op = await newOperator();
     const sub = await newUser();
     const { body } = await ask(op);
+    await send(`/v1/connections/${body.user_code}/match`, asUser(sub), {
+      number: body.match_number,
+    });
     const draft = (l: Record<string, unknown>) =>
       send(
         `/v1/connections/${body.user_code}/draft`,
@@ -401,20 +406,63 @@ describe("revoking where the money moves", { timeout: 120_000 }, () => {
     expect(res.status).toBe(404);
   });
 
-  test("freezing stops every live mandate and pending approval of the user", async () => {
+  test("stopping all agents ends every live mandate, request and grant, and refuses countersigns", async () => {
     const sub = await newUser();
     const a = await liveMandate(sub, await newOperator());
     const opB = await newOperator();
     const b = await liveMandate(sub, opB);
-    const res = await send("/v1/agents/freeze", asUser(sub));
-    expect(await res.json()).toEqual({ revoked: 2 });
+    const { body } = await ask(opB);
+    await testDb
+      .update(agentConnections)
+      .set({ userId: sub })
+      .where(eq(agentConnections.userCode, body.user_code as string));
+    const res = await send("/v1/agents/stop", asUser(sub));
+    expect(res.status).toBe(200);
+    const stopped = await res.json();
+    expect(stopped).toMatchObject({
+      revoked: 2,
+      // No PayPal here: nothing is voided yet, so nothing is said to be released.
+      released: [],
+      releasing: [{ currency: "USD", minor: "200000" }],
+      logIndexes: {},
+      logged: false,
+    });
+    expect(stopped.mandateHashes).toHaveLength(2);
     for (const id of [a, b]) {
       const [row] = await testDb.select().from(mandates).where(eq(mandates.id, id));
       expect(row?.revokeRequestedAt).not.toBeNull();
     }
+    const [asked] = await testDb
+      .select()
+      .from(agentConnections)
+      .where(eq(agentConnections.userCode, body.user_code as string));
+    expect(asked?.state).toBe("DENIED");
+
     legCalls.length = 0;
-    expect((await countersign(opB, b)).status).toBe(409);
+    const refused = await countersign(opB, b);
+    expect(refused.status).toBe(409);
     expect(legCalls).toEqual([]);
+
+    // Even a mandate the stop did not see, stored before it, cannot countersign.
+    const missed = await liveMandate(sub, opB);
+    await testDb
+      .update(mandates)
+      .set({ createdAt: new Date(Date.now() - 60_000) })
+      .where(eq(mandates.id, missed));
+    const late = await countersign(opB, missed);
+    expect(late.status).toBe(409);
+    expect(legCalls).toEqual([]);
+    // The resumer revokes it.
+    await finishStops({ db: testDb, kv: testKv, log: pino({ level: "silent" }) });
+    const [revoked] = await testDb.select().from(mandates).where(eq(mandates.id, missed));
+    expect(revoked?.revokeRequestedAt).not.toBeNull();
+    // Access tokens the user granted before the stop are refused; later ones are not.
+    expect(await tokenStopped(testKv, sub, Math.floor(Date.now() / 1000) - 5)).toBe(true);
+    expect(await tokenStopped(testKv, sub, Math.floor(Date.now() / 1000) + 5)).toBe(false);
+    expect(await tokenStopped(testKv, await newUser(), 0)).toBe(false);
+
+    const listed = await (await app.request("/v1/agents/stops", { headers: asUser(sub) })).json();
+    expect(listed.stops[0]).toMatchObject({ id: stopped.id, revoked: 2 });
   });
 
   test("the agents list shows each agent's live mandate and what is left", async () => {

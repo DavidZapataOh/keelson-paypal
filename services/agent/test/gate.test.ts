@@ -1,10 +1,13 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import type Anthropic from "@anthropic-ai/sdk";
+import { checkoutTotal } from "@keelson/core";
 import { type Browser, type BrowserContext, chromium, type Page } from "playwright";
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import { StoreBrowser } from "../src/driver.ts";
 import { PayGate } from "../src/gate.ts";
+
+const USD_295 = checkoutTotal("USD", { items: 295 });
 
 let n = 0;
 const call = (name: string, input: Record<string, unknown>): Anthropic.Beta.BetaToolUseBlock =>
@@ -133,7 +136,7 @@ describe("the pay-click gate", () => {
   });
 
   test("after it, the pay click goes through only where the page shows the countersigned total", async () => {
-    gate.allow({ minor: 295, currency: "USD" });
+    gate.allow(USD_295);
     await open("/checkouts/cn/more");
     const r = await click({ type: "ref", ref: await ref("Pay now") });
     expect(r.is_error).toBe(true);
@@ -155,7 +158,7 @@ describe("the pay-click gate", () => {
   });
 
   test("saving a payment method is refused even after the countersignature; unchecking is not", async () => {
-    gate.allow({ minor: 295, currency: "USD" });
+    gate.allow(USD_295);
     await open("/checkouts/cn/save");
     const tree = text(await driver.toolResult(call("read_page", {})));
     const box = (label: string) =>
@@ -169,7 +172,7 @@ describe("the pay-click gate", () => {
   });
 
   test("Space or any key on a checkout page is refused, so a focused pay button cannot be pressed", async () => {
-    gate.allow({ minor: 295, currency: "USD" });
+    gate.allow(USD_295);
     await open("/checkouts/cn/abc");
     for (const text of ["Tab", "space", "NumpadEnter"]) {
       expect((await driver.toolResult(call("key", { text }))).is_error).toBe(true);
@@ -190,7 +193,7 @@ describe("the pay-click gate", () => {
   });
 
   test("a page whose largest amount is more than the countersigned total is refused", async () => {
-    gate.allow({ minor: 295, currency: "USD" });
+    gate.allow(USD_295);
     await open("/checkouts/cn/two");
     const r = await click({ type: "ref", ref: await ref("Pay now") });
     expect(r.is_error).toBe(true);
@@ -198,18 +201,46 @@ describe("the pay-click gate", () => {
   });
 
   test("a total written the Spanish way passes; a larger one is refused and its amounts kept", async () => {
-    gate.allow({ minor: 295, currency: "USD" });
+    gate.allow(USD_295);
     await open("/checkouts/cn/es");
     const paid = await click({ type: "ref", ref: await ref("Pagar ahora") });
     expect(paid.is_error, JSON.stringify(gate.held)).toBeFalsy();
     expect(await out()).toBe("clicked Pagar ahora");
     await open("/checkouts/cn/es-tax");
+    const held = await click({ type: "ref", ref: await ref("Pagar ahora") });
+    expect(held.is_error).toBe(true);
+    expect(text(held)).toMatch(/now USD 3\.13/);
+    expect(gate.held).toEqual([
+      { locale: "es", amounts: ["USD 2.95", "USD 0.18", "USD 3.13"], requote: "USD 3.13" },
+    ]);
+  });
+
+  test("a total with tax is re-quoted, and paid only once Keelson countersigned it", async () => {
+    gate.allow(USD_295);
+    await open("/checkouts/cn/es-tax");
     expect((await click({ type: "ref", ref: await ref("Pagar ahora") })).is_error).toBe(true);
-    expect(gate.held).toEqual([{ locale: "es", amounts: ["USD 2.95", "USD 0.18", "USD 3.13"] }]);
+    const next = gate.takeRequote();
+    expect(next).toEqual(checkoutTotal("USD", { items: 295, tax: 18 }));
+    expect(gate.takeRequote()).toBeUndefined();
+    // Until it is countersigned, the higher total stays held.
+    expect((await click({ type: "ref", ref: await ref("Pagar ahora") })).is_error).toBe(true);
+    gate.allow(next as NonNullable<typeof next>);
+    expect((await click({ type: "ref", ref: await ref("Pagar ahora") })).is_error).toBeFalsy();
+    expect(await out()).toBe("clicked Pagar ahora");
+    // A page showing less than the countersigned total is not it either.
+    await open("/checkouts/cn/es");
+    expect((await click({ type: "ref", ref: await ref("Pagar ahora") })).is_error).toBe(true);
+  });
+
+  test("a larger total nobody labels as tax or shipping is held and not re-quoted", async () => {
+    gate.allow(USD_295);
+    await open("/checkouts/cn/two");
+    expect((await click({ type: "ref", ref: await ref("Pay now") })).is_error).toBe(true);
+    expect(gate.takeRequote()).toBeUndefined();
   });
 
   test("a page that names no locale is held, even showing the total", async () => {
-    gate.allow({ minor: 295, currency: "USD" });
+    gate.allow(USD_295);
     await open("/checkouts/cn/nolang");
     expect((await click({ type: "ref", ref: await ref("Pay now") })).is_error).toBe(true);
     expect(gate.held).toEqual([{ locale: null, amounts: [], unsure: "no locale" }]);
@@ -220,7 +251,7 @@ describe("the pay-click gate", () => {
     let cart = { currency: "USD", minor: 590 };
     gate = new PayGate({ checkoutHosts: [], cart: async () => cart });
     driver = await StoreBrowser.attach(context, tab, { hosts: ["127.0.0.1"], gate });
-    gate.allow({ minor: 295, currency: "USD" });
+    gate.allow(USD_295);
     await open("/checkouts/cn/abc");
     expect((await click({ type: "ref", ref: await ref("Pay now") })).is_error).toBe(true);
     expect(gate.held[0]?.cart).toBe("USD 5.90");
@@ -228,8 +259,22 @@ describe("the pay-click gate", () => {
     expect((await click({ type: "ref", ref: await ref("Pay now") })).is_error).toBeFalsy();
   });
 
+  test("the store's cart holds the items before tax; a cart that changed is never re-quoted", async () => {
+    await driver.close();
+    let cart = { currency: "USD", minor: 295 };
+    gate = new PayGate({ checkoutHosts: [], cart: async () => cart });
+    driver = await StoreBrowser.attach(context, tab, { hosts: ["127.0.0.1"], gate });
+    gate.allow(checkoutTotal("USD", { items: 295, tax: 18 }));
+    await open("/checkouts/cn/es-tax");
+    expect((await click({ type: "ref", ref: await ref("Pagar ahora") })).is_error).toBeFalsy();
+    gate.allow(USD_295);
+    cart = { currency: "USD", minor: 590 };
+    expect((await click({ type: "ref", ref: await ref("Pagar ahora") })).is_error).toBe(true);
+    expect(gate.takeRequote()).toBeUndefined();
+  });
+
   test("a larger total inside a frame is seen", async () => {
-    gate.allow({ minor: 295, currency: "USD" });
+    gate.allow(USD_295);
     await open("/checkouts/cn/framed");
     expect((await click({ type: "ref", ref: await ref("Pay now") })).is_error).toBe(true);
     expect(gate.held[0]?.amounts).toContain("USD 5.90");

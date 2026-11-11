@@ -200,6 +200,7 @@ export function Approval({
   continueLabel?: string;
 }) {
   const once = request.kind === "once";
+  const change = request.kind === "change" ? request.parent : null;
   const { currency } = request.limits;
   const [chosen, setChosen] = useState<Chosen>(() =>
     initial ? lowered(request, initial) : asked(request),
@@ -474,16 +475,45 @@ export function Approval({
         <h1 className="text-balance font-semibold text-[1.75rem] leading-[1.1] tracking-[-0.025em] sm:text-[2rem]">
           {once
             ? `${request.name} wants ${cap}`
-            : `${request.name} wants to spend up to ${money(BigInt(requested.total), currency)}`}
+            : change
+              ? `${request.name} asks for more room`
+              : `${request.name} wants to spend up to ${money(BigInt(requested.total), currency)}`}
         </h1>
         <p className="text-pretty text-muted-foreground leading-snug">
           {once
             ? over > 0
               ? `${money(BigInt(over), currency)} above this mandate. Paused until you answer.`
               : "At a store this mandate does not allow. Paused until you answer."
-            : "Only continue if you started this."}
+            : change
+              ? "Nothing changes unless you sign. You can lower anything it asks for."
+              : "Only continue if you started this."}
         </p>
       </div>
+
+      {change ? (
+        <section
+          aria-label="What this replaces"
+          className="mt-5 grid gap-2 rounded-2xl border px-4 py-3.5 text-sm"
+        >
+          <div className="grid grid-cols-[auto_1fr_1fr] items-baseline gap-x-4 gap-y-1.5 tnum">
+            <span />
+            <span className="text-muted-foreground text-xs uppercase tracking-[0.08em]">Now</span>
+            <span className="text-muted-foreground text-xs uppercase tracking-[0.08em]">Asked</span>
+            <span className="text-muted-foreground">Left to spend</span>
+            <span>{money(BigInt(change.remainingMinor), currency)}</span>
+            <span className="font-medium">{money(BigInt(requested.total), currency)}</span>
+            <span className="text-muted-foreground">Per purchase</span>
+            <span>{money(BigInt(change.perPurchaseMinor), currency)}</span>
+            <span className="font-medium">{money(BigInt(requested.perPurchase), currency)}</span>
+            <span className="text-muted-foreground">Until</span>
+            <span>{day(change.until)}</span>
+            <span className="font-medium">{day(requested.until)}</span>
+          </div>
+          <p className="text-muted-foreground">
+            Approving replaces your current mandate: it ends now and PayPal releases what it holds.
+          </p>
+        </section>
+      ) : null}
 
       {once ? null : (
         <figure className="mt-5 grid gap-1.5">

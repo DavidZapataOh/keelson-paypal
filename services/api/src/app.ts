@@ -29,6 +29,7 @@ import type { OperatorSigners } from "./operators/signer.ts";
 import type { PayPalDeps } from "./paypal.ts";
 import { ProblemSchema, problem } from "./problem.ts";
 import { registerAdminClients } from "./routes/admin-clients.ts";
+import { registerAgentDocs } from "./routes/agent-docs.ts";
 import { registerAgents } from "./routes/agents.ts";
 import { registerAlibis } from "./routes/alibis.ts";
 import { registerAnonymousMandates } from "./routes/anonymous-mandates.ts";
@@ -49,6 +50,7 @@ import { registerHealth } from "./routes/health.ts";
 import { registerHold } from "./routes/hold.ts";
 import { registerJudge } from "./routes/judge.ts";
 import { registerLogBonds } from "./routes/log-bonds.ts";
+import { registerMandateRequests } from "./routes/mandate-requests.ts";
 import { registerMandates } from "./routes/mandates.ts";
 import { registerMerchantAssistant } from "./routes/merchant-assistant.ts";
 import { registerMerchantConsole } from "./routes/merchant-console.ts";
@@ -301,6 +303,7 @@ export function createApp(deps: Deps): OpenAPIHono {
     );
   }
   registerHealth(app);
+  registerAgentDocs(app);
   registerStatus(app, deps);
   registerEvents(app, deps);
   registerMandates(app, deps);
@@ -308,6 +311,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerPurchaseHolds(app, deps);
   registerRevoke(app, deps);
   registerConnections(app, deps);
+  registerMandateRequests(app, deps);
   registerEmbed(app, deps);
   registerEmbedSigning(app, deps);
   if (deps.embedPage) registerEmbedPage(app, deps, deps.embedPage);

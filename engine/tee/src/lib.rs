@@ -2,6 +2,7 @@
 //! in-memory signer and the keys derived from the KMS root.
 
 mod budget;
+mod cards;
 #[cfg(feature = "tdx")]
 pub mod chain;
 pub mod checkpoint;
@@ -29,6 +30,7 @@ pub mod wire;
 pub mod zk;
 
 pub use budget::{Budget, ClaimGuard, Claimed, Replay};
+pub use cards::CARD_BITS;
 pub use countersign::{
     BIT_CANON, BIT_CEDAR_ERROR, BIT_EXTRA, BIT_PAYPAL, FIELD_BITS, countersign_digest,
     failed_fields_mask,
