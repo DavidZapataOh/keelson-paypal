@@ -2,7 +2,10 @@ import openapi from "../../public/openapi.json";
 
 export const API = "https://api.keelson.finance";
 
-/** Operations anyone can call without credentials; the API opens exactly these to the docs origin. */
+/**
+ * Operations anyone can call without credentials; the API opens exactly these to the docs origin.
+ * @public
+ */
 export const PUBLIC_OPERATIONS = [
   "GET /status",
   "GET /v1/live-purchases",
@@ -30,7 +33,7 @@ export interface Schema {
   $ref?: string;
 }
 
-export interface Param {
+interface Param {
   name: string;
   in: "path" | "query" | "header" | "cookie";
   required: boolean;
@@ -38,7 +41,7 @@ export interface Param {
   schema?: Schema;
 }
 
-export interface Response {
+interface Response {
   status: string;
   description: string;
   mediaType?: string;
@@ -87,7 +90,7 @@ function deref<T extends { $ref?: string }>(value: T, seen = new Set<string>()):
 }
 
 /** A schema with every `$ref` replaced by its target, to `depth` levels. */
-export function resolve(schema: Schema | undefined, depth = 4): Schema | undefined {
+function resolve(schema: Schema | undefined, depth = 4): Schema | undefined {
   if (!schema) return undefined;
   const s = deref(schema);
   if (depth === 0) return s;
@@ -110,7 +113,7 @@ const first = <T>(content: Record<string, T> | undefined) => {
   return mediaType ? { mediaType, value: value as T } : undefined;
 };
 
-export const slugOf = (method: string, path: string, operationId?: string) =>
+const slugOf = (method: string, path: string, operationId?: string) =>
   operationId ??
   `${method}-${path}`
     .replace(/[{}]/g, "")

@@ -2,6 +2,12 @@
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "ignore": ["contracts/**"],
   "workspaces": {
+    "apps/docs": {
+      "entry": ["scripts/prepare.mjs!", "astro.config.mjs!", "markdoc.config.mjs!", "test/**/*.ts"],
+      "project": ["src/**/*.{ts,astro}!", "scripts/**/*.mjs!", "test/**/*.ts"],
+      "ignoreUnresolved": ["/pagefind/pagefind.js"],
+      "ignoreDependencies": ["@astrojs/markdoc"]
+    },
     "engine/tee": {
       "entry": ["scripts/*.ts!"],
       "project": ["scripts/**/*.ts!"]

@@ -7,7 +7,7 @@
     "prepare": "node scripts/prepare.mjs",
     "dev": "pnpm prepare && astro dev",
     "build": "pnpm prepare && astro build && pagefind --site dist",
-    "typecheck": "tsc",
+    "typecheck": "pnpm prepare && astro sync && tsc",
     "test": "vitest run --exclude '**/*.live.test.ts' --exclude 'test/e2e/**'",
     "e2e": "vitest run test/e2e --exclude '**/*.live.test.ts'",
     "test:live": "vitest run test/*.live.test.ts test/e2e/*.live.test.ts"
