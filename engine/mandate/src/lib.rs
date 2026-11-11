@@ -40,8 +40,8 @@ pub use schema::{
 };
 pub use sd::{decode_disclosed, decode_mandate};
 pub use spc::{
-    RP_ID, SPC_INSTRUMENT_DISPLAY_NAME, SPC_INSTRUMENT_ICON, SPC_PAYEE_NAME, SPC_PAYEE_ORIGIN,
-    SpcDetails, spc_details,
+    EMBED_ORIGIN, RP_ID, SPC_INSTRUMENT_DISPLAY_NAME, SPC_INSTRUMENT_ICON, SPC_PAYEE_NAME,
+    SPC_PAYEE_ORIGIN, SpcDetails, spc_details,
 };
 pub use webauthn::{Assertion, Expected, WebAuthnError, verify_assertion};
 

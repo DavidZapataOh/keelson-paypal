@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
@@ -786,6 +786,10 @@ test.runIf(capturePath)(
         ).keelson.assert(challenge, id, "discouraged"),
       [challenge, s.credentialId] as const,
     );
+    // The framed capture comes from the vectors script itself; it is kept as is.
+    const { framed } = JSON.parse(readFileSync(capturePath as string, "utf8")) as {
+      framed?: unknown;
+    };
     writeFileSync(
       capturePath as string,
       `${JSON.stringify(
@@ -800,6 +804,7 @@ test.runIf(capturePath)(
             shownPayee: shownPayee.body,
             unverified: { ...webauthn.body, assertion: unverified },
           },
+          framed,
         },
         null,
         2,

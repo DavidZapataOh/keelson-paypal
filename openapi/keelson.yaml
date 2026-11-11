@@ -1724,6 +1724,14 @@ components:
             - device_fp
             - ip
           additionalProperties: false
+        embed:
+          type: object
+          properties:
+            top_origin:
+              type: string
+          required:
+            - top_origin
+          additionalProperties: false
       required:
         - v
         - mid

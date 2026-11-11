@@ -111,6 +111,7 @@ export {
   withholdPersonal,
 } from "./sd.ts";
 export {
+  EMBED_ORIGIN,
   RP_ID,
   SPC_INSTRUMENT,
   SPC_PAYEE_ORIGIN,
