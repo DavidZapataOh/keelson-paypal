@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://keelson.finance/schemas/visa-evidence-pack/1.json",
+  "title": "Keelson Agentic Evidence Pack",
+  "description": "What a Keelson Alibi proves about one agent purchase, mapped to the Visa Core Rules' Agentic Platform Requirements (4.1.23) and to Compelling Evidence 3.0 for Dispute Condition 10.4.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "type",
+    "rules",
+    "generated_at",
+    "retained_until",
+    "transaction",
+    "requirements",
+    "ce3",
+    "transparency",
+    "alibi",
+    "attestation"
+  ],
+  "properties": {
+    "type": { "const": "keelson.visa-evidence-pack/1" },
+    "rules": { "const": "Visa Core Rules and Visa Product and Service Rules, 24 October 2026" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "retained_until": { "type": "string", "format": "date-time" },
+    "transaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "alibi_id",
+        "decision",
+        "countersigned_at",
+        "amount_minor",
+        "currency",
+        "merchant",
+        "rail"
+      ],
+      "properties": {
+        "alibi_id": { "type": "string", "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$" },
+        "decision": { "enum": ["allow", "deny"] },
+        "countersigned_at": { "type": "string", "format": "date-time" },
+        "amount_minor": { "type": "integer", "minimum": 0 },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+        "merchant": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "name"],
+          "properties": {
+            "id": { "type": "string" },
+            "name": { "type": "string" },
+            "website": { "type": "string" }
+          }
+        },
+        "rail": { "enum": ["paypal", "card"] },
+        "confirmation_id": { "type": "string" }
+      }
+    },
+    "requirements": { "type": "array", "items": { "$ref": "#/$defs/item" } },
+    "ce3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dispute_condition", "table", "elements"],
+      "properties": {
+        "dispute_condition": { "const": "10.4" },
+        "table": { "const": "11-29" },
+        "elements": { "type": "array", "items": { "$ref": "#/$defs/item" } }
+      }
+    },
+    "transparency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["standards", "statement_uri", "leaf_hash"],
+      "properties": {
+        "standards": { "const": "RFC 9943, RFC 9942" },
+        "statement_uri": { "type": "string", "format": "uri" },
+        "leaf_hash": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" }
+      }
+    },
+    "alibi": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["statement", "leafHash", "uri"],
+      "properties": {
+        "statement": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+        "leafHash": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" },
+        "uri": { "type": "string", "format": "uri" }
+      }
+    },
+    "attestation": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$"
+    }
+  },
+  "$defs": {
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rule", "title", "status", "statement", "evidence"],
+      "properties": {
+        "rule": { "type": "string" },
+        "title": { "type": "string" },
+        "status": { "enum": ["evidenced", "not_evidenced", "withheld", "not_available"] },
+        "statement": { "type": "string" },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source", "pointer", "value"],
+            "properties": {
+              "source": { "enum": ["statement", "mandate", "bundle"] },
+              "pointer": { "type": "string" },
+              "value": {}
+            }
+          }
+        }
+      }
+    }
+  }
+}

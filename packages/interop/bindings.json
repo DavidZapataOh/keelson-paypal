@@ -53,6 +53,27 @@
     ]
   },
   {
+    "profile": "visa.pack/1",
+    "typ": "JWT",
+    "rows": [
+      {
+        "pointer": "/pack/transaction/amount_minor",
+        "fact": "amount_minor",
+        "transform": "Minor"
+      },
+      {
+        "pointer": "/pack/transaction/currency",
+        "fact": "currency",
+        "transform": "UpperCurrency"
+      },
+      {
+        "pointer": "/pack/transaction/decision",
+        "fact": "decision",
+        "transform": "Identity"
+      }
+    ]
+  },
+  {
     "profile": "acp.allowance/1",
     "typ": "JWT",
     "rows": [

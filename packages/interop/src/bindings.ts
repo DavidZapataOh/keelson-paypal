@@ -53,6 +53,14 @@ export const EXPORT_BINDINGS: Record<string, Profile> = {
       { pointer: "/checkout/currency", fact: "currency", transform: "UpperCurrency" },
     ],
   },
+  "visa.pack/1": {
+    typ: "JWT",
+    rows: [
+      { pointer: "/pack/transaction/amount_minor", fact: "amount_minor", transform: "Minor" },
+      { pointer: "/pack/transaction/currency", fact: "currency", transform: "UpperCurrency" },
+      { pointer: "/pack/transaction/decision", fact: "decision", transform: "Identity" },
+    ],
+  },
   "acp.allowance/1": {
     typ: "JWT",
     rows: [{ pointer: "/allowance/currency", fact: "currency", transform: "LowerCurrency" }],

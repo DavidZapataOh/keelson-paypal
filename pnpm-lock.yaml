@@ -782,16 +782,25 @@ importers:
       jose:
         specifier: 6.2.15
         version: 6.2.15
+      pdfkit:
+        specifier: 0.20.2
+        version: 0.20.2
     devDependencies:
       '@types/node':
         specifier: 26.6.6
         version: 26.6.6
+      '@types/pdfkit':
+        specifier: 0.17.7
+        version: 0.17.7
       ajv:
         specifier: 8.20.0
         version: 8.20.0
       ajv-formats:
         specifier: 3.0.1
         version: 3.0.1(ajv@8.20.0)
+      pdfjs-dist:
+        specifier: 6.4.299
+        version: 6.4.299
       typescript:
         specifier: 'catalog:'
         version: 7.0.2

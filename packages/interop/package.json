@@ -11,6 +11,10 @@
     "./testing": {
       "types": "./dist/testing.d.ts",
       "default": "./dist/testing.js"
+    },
+    "./visa-pdf": {
+      "types": "./dist/visa-pdf.d.ts",
+      "node": "./dist/visa-pdf.js"
     }
   },
   "files": [
@@ -32,12 +36,15 @@
     "@keelson/mandate": "workspace:*",
     "@noble/hashes": "catalog:",
     "@sd-jwt/core": "0.24.3",
-    "jose": "6.2.15"
+    "jose": "6.2.15",
+    "pdfkit": "0.20.2"
   },
   "devDependencies": {
     "@types/node": "26.6.6",
+    "@types/pdfkit": "0.17.7",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
+    "pdfjs-dist": "6.4.299",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }
