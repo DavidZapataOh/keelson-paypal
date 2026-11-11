@@ -171,5 +171,34 @@ export async function chooseSettlement(
   return settlementOf(merchant.merchant_id);
 }
 
+/** An agent's purchase at the merchant: allowed, or blocked with the fields that failed. */
+export interface MerchantOrder {
+  purchase_id: string;
+  created_at: string;
+  state: string;
+  amount_minor: string;
+  currency: string;
+  agent_id: string;
+  has_alibi: boolean;
+  blocked: { field: string; cart: string | null }[];
+  dispute: {
+    dispute_id: string;
+    state: MerchantDispute["state"];
+    liable: MerchantDispute["liable"];
+  } | null;
+}
+
+/** What the public log already publishes about an Alibi. */
+export interface AlibiReceipt {
+  alibi_id: string;
+  leaf_hash: string;
+  anchor?: Record<string, unknown>;
+  timestamps: { tsa: string; token: string }[];
+}
+
+export const ordersOf = (id: string) =>
+  get<{ orders: MerchantOrder[] }>(`/v1/merchants/${id}/orders`).then((r) => r.orders);
+export const receiptOf = (alibiId: string) => get<AlibiReceipt>(`/v1/alibis/${alibiId}/receipt`);
+
 export const assistantEndpoint = (merchantId: string) =>
   `${API}/v1/merchants/${merchantId}/assistant`;

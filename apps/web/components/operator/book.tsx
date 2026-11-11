@@ -209,18 +209,18 @@ function Daily({ agentId }: { agentId: string }) {
   if (error)
     return <p className="text-destructive text-sm">The daily totals could not be read: {error}</p>;
   return (
-    <section aria-labelledby="daily" className="grid gap-3">
-      <h2 id="daily" className="font-semibold">
+    <section aria-labelledby="daily" className="grid gap-4 rounded-3xl border bg-card p-5 sm:p-6">
+      <h2 id="daily" className="font-semibold text-lg tracking-tight">
         Coverage per day
       </h2>
       <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
         <figure className="grid gap-1">
-          <div ref={chartRef} className="h-72 rounded-[10px] border" />
+          <div ref={chartRef} className="h-72 overflow-hidden rounded-2xl border bg-background" />
           <figcaption className="text-muted-foreground text-xs">
             Covered amount and premiums per day, charted from the table beside it.
           </figcaption>
         </figure>
-        <div className="h-72">
+        <div className="h-72 overflow-hidden rounded-2xl border">
           <AgGridReact<CoverageDay>
             theme={keelsonGridTheme}
             rowData={days ?? null}
@@ -337,8 +337,9 @@ function Book({ agentId }: { agentId: string }) {
         ...set(["operator", "keelson", "merchant", "user"]),
         cellRenderer: (p: { value: CoverageRow["liable"] }) =>
           p.value === "operator" ? (
-            <span>
-              <span aria-hidden="true">■ </span>operator · slash
+            <span className="inline-flex items-center gap-1.5">
+              <span aria-hidden="true" className="size-2.5 rounded-[3px] bg-foreground" />
+              operator · slash
             </span>
           ) : (
             (p.value ?? "")
@@ -452,12 +453,12 @@ function Book({ agentId }: { agentId: string }) {
   }
 
   return (
-    <section aria-labelledby="book" className="grid gap-3">
+    <section aria-labelledby="book" className="grid gap-4 rounded-3xl border bg-card p-5 sm:p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 id="book" className="font-semibold">
+        <h2 id="book" className="font-semibold text-lg tracking-tight">
           Coverage book
         </h2>
-        <span className="text-muted-foreground text-sm" aria-live="polite">
+        <span className="font-mono text-muted-foreground text-sm tnum" aria-live="polite">
           {total === undefined ? "" : `${total.toLocaleString("en-US")} coverages`}
         </span>
       </div>
@@ -471,7 +472,7 @@ function Book({ agentId }: { agentId: string }) {
           onChange={(e) => setPrompt(e.target.value)}
           placeholder="e.g. slashes over $20 at mrc_runfast, largest first"
           maxLength={500}
-          className="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm"
+          className="h-10 min-w-0 flex-1 rounded-xl border bg-background px-3.5 text-sm"
         />
         <Button size="sm" type="submit" disabled={busy || !api}>
           {busy ? "Reading…" : "Ask"}
@@ -497,7 +498,7 @@ function Book({ agentId }: { agentId: string }) {
           </span>
         )}
       </p>
-      <div className="h-[560px]" data-testid="coverage-grid">
+      <div className="h-[560px] overflow-hidden rounded-2xl border" data-testid="coverage-grid">
         <AgGridReact<CoverageRow>
           theme={keelsonGridTheme}
           rowModelType="serverSide"
@@ -524,7 +525,7 @@ function Book({ agentId }: { agentId: string }) {
 export default function CoverageBook({ agentId }: { agentId: string }) {
   return (
     <AgGridProvider modules={modules}>
-      <div className="grid gap-10">
+      <div className="grid gap-6">
         <Daily agentId={agentId} />
         <Book agentId={agentId} />
       </div>

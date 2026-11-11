@@ -3947,6 +3947,80 @@ components:
         - settled_at
         - explorer_url
         - has_alibi
+    MerchantOrder:
+      type: object
+      properties:
+        purchase_id:
+          type: string
+          description: Also the id of the purchase's Alibi.
+        created_at:
+          type: string
+          format: date-time
+        state:
+          type: string
+          description: "`DENIED` when Keelson blocked the cart."
+        amount_minor:
+          type: string
+        currency:
+          type: string
+        agent_id:
+          type: string
+          description: The ERC-8004 agent that made the purchase.
+        has_alibi:
+          type: boolean
+        blocked:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              cart:
+                type:
+                  - string
+                  - "null"
+            required:
+              - field
+              - cart
+          description: For a blocked cart, each mandate field whose check failed and what
+            the cart had. The mandate's own bound stays with the buyer.
+        dispute:
+          type:
+            - object
+            - "null"
+          properties:
+            dispute_id:
+              type: string
+            state:
+              type: string
+              enum:
+                - OPEN
+                - ATTRIBUTED
+                - RESOLVED
+            liable:
+              type:
+                - string
+                - "null"
+              enum:
+                - operator
+                - keelson
+                - merchant
+                - user
+                - null
+          required:
+            - dispute_id
+            - state
+            - liable
+      required:
+        - purchase_id
+        - created_at
+        - state
+        - amount_minor
+        - currency
+        - agent_id
+        - has_alibi
+        - blocked
+        - dispute
     MerchantEvaluations:
       type: object
       properties:
@@ -7615,6 +7689,48 @@ paths:
                       $ref: "#/components/schemas/MerchantDispute"
                 required:
                   - disputes
+        "401":
+          description: No session
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The session is not this merchant's
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/merchants/{merchantId}/orders:
+    get:
+      tags:
+        - merchants
+      summary: The agent purchases at a merchant
+      description: "The latest 100 purchases agents asked Keelson to countersign at
+        the merchant, newest first: the ones it allowed and the ones it blocked,
+        with the dispute over each."
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 64
+          required: true
+          name: merchantId
+          in: path
+      responses:
+        "200":
+          description: The orders
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  orders:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/MerchantOrder"
+                required:
+                  - orders
         "401":
           description: No session
           content:
