@@ -19,6 +19,7 @@ import { isJudge } from "../judge.ts";
 import { MERCHANTS, merchantOfUser, SETTLEMENT } from "../merchants.ts";
 import { purchaseView } from "../pipeline/drive.ts";
 import { ProblemSchema, problem } from "../problem.ts";
+import { AmberCaseSchema, amberOfPurchases } from "./disputes.ts";
 
 const PARTIES = ["operator", "keelson", "merchant", "user"] as const;
 
@@ -141,6 +142,7 @@ const DisputeRow = z
     settled_at: z.iso.datetime().nullable(),
     explorer_url: z.url().nullable(),
     has_alibi: z.boolean(),
+    amber: AmberCaseSchema.nullable(),
   })
   .openapi("MerchantDispute");
 
@@ -290,7 +292,7 @@ const iso = (d: Date | string | null) => (d === null ? null : new Date(d).toISOS
 
 export function registerMerchantConsole(
   app: OpenAPIHono,
-  deps: Pick<Deps, "db" | "merchantSigners">,
+  deps: Pick<Deps, "db" | "kv" | "log" | "chains" | "merchantSigners">,
 ): void {
   const guard = requireMerchant(deps);
   app.use("/v1/merchants/me", guard);
@@ -357,6 +359,10 @@ export function registerMerchantConsole(
       .where(eq(purchases.merchantId, merchantId))
       .orderBy(desc(disputes.createdAt))
       .limit(500);
+    const ambers = await amberOfPurchases(
+      deps,
+      rows.map((r) => r.purchaseId),
+    );
     c.header("Cache-Control", "no-store");
     return c.json(
       {
@@ -387,6 +393,7 @@ export function registerMerchantConsole(
                 ? `${CHAINS[v.chainId].explorer}/tx/${txHash}`
                 : null,
             has_alibi: r.hasAlibi,
+            amber: ambers.get(r.purchaseId) ?? null,
           };
         }),
       },
