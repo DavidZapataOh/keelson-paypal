@@ -65,7 +65,7 @@ export function AlertLinkPage({ kind }: { kind: keyof typeof COPY }) {
           {/* biome-ignore lint/performance/noImgElement: a static export serves the SVG as is */}
           <img src="/keelson.svg" alt="" width={94} height={28} className="h-7 w-auto" />
         </Link>
-        <section className="grid gap-5 rounded-3xl border bg-card p-6 sm:p-8">
+        <section className="grid gap-5 rounded-3xl border bg-card p-6">
           <span
             className={`grid size-12 place-items-center rounded-2xl ${done ? "bg-ok text-bone" : "bg-bone-2"}`}
           >
