@@ -59,6 +59,17 @@ type Leaf struct {
 	AgentID         *big.Int
 	IssuedAt        time.Time
 	PrevAlibiByUser *[32]byte
+
+	// Version is 1 for a JCS leaf and 2 for a signed statement.
+	Version int
+	// Kind is KindPurchase, KindCardAuthorization or KindCardSettlement.
+	Kind string
+	// StatementSigner is the leg whose key signed a v2 statement.
+	StatementSigner [20]byte
+	// Countersign holds every countersigned field of a v2 purchase statement.
+	Countersign       *Countersign
+	ChainID           uint64
+	VerifyingContract [20]byte
 }
 
 // wire is the JSON body. Its fields are in RFC 8785 key order and every value
@@ -119,7 +130,7 @@ func Parse(leaf []byte) (*Leaf, error) {
 		return nil, leafErr("leaf.noncanonical", "%v", err)
 	}
 
-	l := &Leaf{}
+	l := &Leaf{Version: 1, Kind: KindPurchase}
 	if w.Mode == nil {
 		return nil, leafErr("leaf.mode", "missing")
 	}
