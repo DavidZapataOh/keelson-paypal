@@ -46,6 +46,23 @@ const PRICE_MINOR = 1450;
 mkdirSync(SHOTS, { recursive: true });
 const shot = (page: Page, name: string) =>
   page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true });
+/** The user's pages, in the session the user signed the mandate in. */
+async function userSees(shots: [name: string, path: string][]) {
+  const browser = await chromium.launch();
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 900 },
+    locale: "en-US",
+    storageState: `${SHOTS}/user.json`,
+  });
+  const page = await context.newPage();
+  for (const [name, path] of shots) {
+    await page.goto(path.startsWith("http") ? path : `${APP}${path}`);
+    await page.waitForTimeout(3_000);
+    await page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true });
+  }
+  await browser.close();
+}
+
 const log = (step: string, value: unknown) =>
   console.log(`${step}: ${typeof value === "string" ? value : JSON.stringify(value)}`);
 
@@ -127,6 +144,7 @@ async function userSignsAndHolds(): Promise<string> {
   await page.goto(`${APP}/mandate/?id=${mid}`);
   await page.waitForTimeout(2_500);
   await shot(page, "05-mandate-active");
+  await context.storageState({ path: `${SHOTS}/user.json` });
   await browser.close();
   return mid;
 }
@@ -164,7 +182,7 @@ async function main() {
     apiUrl: API,
     clientId: env("KEELSON_CLIENT_ID"),
     clientSecret: env("KEELSON_CLIENT_SECRET"),
-    scopes: ["countersign:write", "evidence:write", "mandates:read"],
+    scopes: ["countersign:write", "evidence:write"],
   });
   const json = async <T>(path: string, init: RequestInit = {}) => {
     const res = await agent.request(path, init);
@@ -179,67 +197,70 @@ async function main() {
       body: JSON.stringify(body),
     });
 
-  // The agent finds the mandate, builds the cart at the test merchant and captures its evidence.
-  const { mandates } = await json<{ mandates: { id: string; openMandate: string }[] }>(
-    `/v1/operators/${env("DEMO_AGENT_ID")}/mandates`,
-  );
-  const open = mandates.find((m) => m.id === mid)?.openMandate;
-  if (!open) throw new Error(`mandate ${mid} is not active for the operator`);
-  const site = await merchantSite();
-  const browser = await chromium.launch();
-  const page = await (
-    await browser.newContext({ viewport: { width: 1280, height: 720 } })
-  ).newPage();
-  const recorder = await startRecorder(page);
-  await page.goto(site.url);
-  await page.locator("body[data-ready]").waitFor({ state: "attached" });
-  const captured = await captureEvidence(recorder, {
-    product: site.product,
-    cart: site.cart,
-    llmObservation: await page.locator("body").ariaSnapshot(),
-    recipient: env("KEELSON_EVIDENCE_AGE_RECIPIENT"),
-  });
-  await browser.close();
-  site.close();
-  const evidence = await post<{ root: string }>("/v1/evidence", {
-    mandateId: mid,
-    manifest: captured.manifest,
-    items: captured.items.map((i) => ({
-      type: i.type,
-      mediaType: i.mediaType,
-      salt: Buffer.from(i.salt).toString("base64"),
-      bytes: Buffer.from(i.bytes).toString("base64"),
-    })),
-  });
-  log("evidence stored", evidence.root);
-
-  const requestId = ulid();
-  const { privateKey } = await agentKey(env("KEELSON_AGENT_KEY"));
-  const hash = bytesToHex(cartHash(site.cart)).replace("0x", "");
-  const value = (PRICE_MINOR / 100).toFixed(2);
-  const started = performance.now();
-  const countersigned = await post<{ purchaseId: string; decision: string; mode: string }>(
-    "/v1/countersign",
-    {
-      closedMandate: await closeMandate(
-        open,
-        { requestId, cartHash: `sha256:${hash}` },
-        privateKey,
-      ),
+  const buy = async () => {
+    // The agent finds the mandate, builds the cart at the test merchant and captures its evidence.
+    const { mandates } = await json<{ mandates: { id: string; openMandate: string }[] }>(
+      `/v1/operators/${env("DEMO_AGENT_ID")}/mandates`,
+    );
+    const open = mandates.find((m) => m.id === mid)?.openMandate;
+    if (!open) throw new Error(`mandate ${mid} is not active for the operator`);
+    const site = await merchantSite();
+    const browser = await chromium.launch();
+    const page = await (
+      await browser.newContext({ viewport: { width: 1280, height: 720 } })
+    ).newPage();
+    const recorder = await startRecorder(page);
+    await page.goto(site.url);
+    await page.locator("body[data-ready]").waitFor({ state: "attached" });
+    const captured = await captureEvidence(recorder, {
+      product: site.product,
       cart: site.cart,
-      unit: {
-        amount: {
-          currency_code: "USD",
-          value,
-          breakdown: { item_total: { currency_code: "USD", value } },
+      llmObservation: await page.locator("body").ariaSnapshot(),
+      recipient: env("KEELSON_EVIDENCE_AGE_RECIPIENT"),
+    });
+    await browser.close();
+    site.close();
+    const evidence = await post<{ evidenceRoot: string }>("/v1/evidence", {
+      mandateId: mid,
+      manifest: captured.manifest,
+      items: captured.items.map((i) => ({
+        type: i.type,
+        mediaType: i.mediaType,
+        salt: Buffer.from(i.salt).toString("base64"),
+        bytes: Buffer.from(i.bytes).toString("base64"),
+      })),
+    });
+    log("evidence stored", evidence.evidenceRoot);
+
+    const requestId = ulid();
+    const { privateKey } = await agentKey(env("KEELSON_AGENT_KEY"));
+    const hash = bytesToHex(cartHash(site.cart)).replace("0x", "");
+    const value = (PRICE_MINOR / 100).toFixed(2);
+    const started = performance.now();
+    const countersigned = await post<{ purchaseId: string; decision: string; mode: string }>(
+      "/v1/countersign",
+      {
+        closedMandate: await closeMandate(
+          open,
+          { requestId, cartHash: `sha256:${hash}` },
+          privateKey,
+        ),
+        cart: site.cart,
+        unit: {
+          amount: {
+            currency_code: "USD",
+            value,
+            breakdown: { item_total: { currency_code: "USD", value } },
+          },
         },
+        evidence: {},
+        evidenceRoot: evidence.evidenceRoot,
       },
-      evidence: {},
-      evidenceRoot: evidence.root,
-    },
-  );
-  log("countersign", { ...countersigned, ms: Math.round(performance.now() - started) });
-  const id = countersigned.purchaseId;
+    );
+    log("countersign", { ...countersigned, ms: Math.round(performance.now() - started) });
+    return countersigned.purchaseId;
+  };
+  const id = process.env.PURCHASE_ID ?? (await buy());
 
   // The card opens once the purchase is logged and covered.
   type View = {
@@ -256,6 +277,11 @@ async function main() {
     throw new Error(`timed out waiting for ${what}`);
   };
   const opened = await until((v) => v.card?.state === "OPEN", "the card to open");
+  const receipt = `/purchase/?mandate=${mid}&id=${id}`;
+  await userSees([
+    ["06-receipt-card-open", receipt],
+    ["07-live", "/live/"],
+  ]);
   log("card open", opened.card);
   const details = await json<{ lastFour: string; embedUrl: string }>(`/v1/purchases/${id}/card`);
   log("card for the agent's browser", {
@@ -276,6 +302,10 @@ async function main() {
   if (!token) throw new Error("the card is not on the issuer");
   const { pan } = await lithic.cards.retrieve(token);
   if (!pan) throw new Error("the sandbox card has no number");
+  const seen = new Set<string>();
+  for await (const t of lithic.transactions.list({ card_token: token, page_size: 100 })) {
+    seen.add(t.token);
+  }
   const charge = async (label: string, amount: number, mcc = MERCHANT.mcc) => {
     const t0 = performance.now();
     const out = await lithic.transactions.simulateAuthorization({
@@ -288,12 +318,21 @@ async function main() {
       merchant_acceptor_state: MERCHANT.state,
       merchant_acceptor_country: MERCHANT.country,
     });
-    const tx = await lithic.transactions.retrieve(out.token as string);
+    let tx: Lithic.Transaction | undefined;
+    for (let i = 0; i < 20 && !tx; i++) {
+      for await (const t of lithic.transactions.list({ card_token: token, page_size: 20 })) {
+        if (!seen.has(t.token)) tx = t;
+        break;
+      }
+      if (!tx) await new Promise((r) => setTimeout(r, 500));
+    }
+    if (!tx) throw new Error(`no transaction for ${out.token}`);
+    seen.add(tx.token);
     log(label, { result: tx.result, status: tx.status, ms: Math.round(performance.now() - t0) });
     return tx;
   };
   await charge("over-amount charge", PRICE_MINOR + 500);
-  await charge("charge at a restaurant (MCC 5812)", PRICE_MINOR, "5812");
+  await charge("charge at an electronics store (MCC 5732)", PRICE_MINOR, "5732");
   const paid = await charge("the coffee", PRICE_MINOR);
   await charge("second charge on the same card", 200);
   await lithic.transactions.simulateClearing({ token: paid.token });
@@ -308,7 +347,13 @@ async function main() {
     failed: report.checks.filter((c) => c.status === "fail").map((c) => c.id),
     card: report.checks.find((c) => c.id === "card.authorizations"),
   });
-  log("receipt", `${APP}/purchase/?mandate=${mid}&id=${id}`);
+  await userSees([
+    ["08-receipt-captured", receipt],
+    ["09-activity", "/activity/"],
+    ["10-mandate", `/mandate/?id=${mid}`],
+    ["11-alibi-verify", `https://verify.keelson.finance/a/${id}`],
+  ]);
+  log("receipt", `${APP}${receipt}`);
 }
 
 await main();
