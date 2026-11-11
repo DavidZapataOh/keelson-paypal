@@ -1204,7 +1204,13 @@ export function registerCountersign(
             unit: body.unit,
             evidence: evidenceSources,
             evidence_root: body.evidenceRoot as `0x${string}`,
-            ...(body.authorizationId ? { authorization_id: body.authorizationId } : {}),
+            // Leg A reads the hold of a card mandate too: it backs the budget the cards spend.
+            ...(body.authorizationId || mandate.paypalAuthorizationId
+              ? {
+                  authorization_id: (body.authorizationId ??
+                    mandate.paypalAuthorizationId) as string,
+                }
+              : {}),
             ...(mandate.sealedSalt
               ? { sealed_salt: Buffer.from(mandate.sealedSalt).toString("base64") }
               : {}),
