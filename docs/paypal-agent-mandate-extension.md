@@ -94,17 +94,3 @@ Well-formed values (the digests are illustrative):
 custom_id   ks1.sm.01K9QKRARY9ND8RYVAB543E9GN.DLNvjrqd4CbuAjJNwxF1mR_-DYrfBixgPElCYxIRDlA
 invoice_id  KS1-01K9QKT2GV5GYMWQV0E619795N-01-4J5FTZDF5FEVKHV98PVWGZ66MS
 ```
-
-## Proposal for PayPal's Agent Toolkit
-
-PayPal's [Agent Toolkit](https://github.com/paypal/agent-toolkit) `create_order` tool does not let
-an agent set `intent` or `custom_id`, so an agent using it can neither place a hold nor tag an
-order. Adding both, with the limits of the Orders v2 API, is enough for any agent to follow this
-extension.
-
-The change is proposed upstream in
-[paypal/agent-toolkit#127](https://github.com/paypal/agent-toolkit/pull/127). This convention is
-also offered for agent-placed orders under disputes in
-[#113](https://github.com/paypal/agent-toolkit/issues/113#issuecomment-6804356281), and the
-per-call idempotency it relies on is tracked in
-[#98](https://github.com/paypal/agent-toolkit/issues/98#issuecomment-6804357607).
