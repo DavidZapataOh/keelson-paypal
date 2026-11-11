@@ -98,6 +98,8 @@ try {
         hosts: ALFRED.hosts,
         context: session.context,
         page: session.page,
+        // Shut: nothing is countersigned while the agent looks for the cart.
+        gate: new PayGate({ checkoutHosts: ALFRED.checkoutHosts }),
         onStep: log,
       });
       if (!agent.proposal) throw new Error(`no cart proposed (${agent.outcome})`);
