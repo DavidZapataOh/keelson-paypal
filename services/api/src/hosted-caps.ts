@@ -21,7 +21,7 @@ import type { PayPalDeps } from "./paypal.ts";
  * redirect URI is one of these is still capped; it gets the higher tier (see {@link HostedCaps}).
  * A loopback URI (RFC 8252 §7.3) is never known: any local app can register one.
  */
-export const KNOWN_REDIRECT_URIS: readonly string[] = [
+const KNOWN_REDIRECT_URIS: readonly string[] = [
   // Claude (claude.ai, Claude Desktop)
   "https://claude.ai/api/mcp/auth_callback",
   "https://claude.com/api/mcp/auth_callback",
@@ -35,12 +35,18 @@ export const KNOWN_REDIRECT_URIS: readonly string[] = [
 /** The one currency an app acting through the hosted operator may ask for, so the caps add up. */
 export const HOSTED_CAP_CURRENCY = "USD";
 
-/** A signed mandate whose hold has not completed by then expires, and stops counting. */
+/**
+ * A signed mandate whose hold has not completed by then expires, and stops counting.
+ *
+ * @internal
+ */
 export const FUNDING_TTL_MS = 30 * 60_000;
 
 /**
  * A captured purchase counts until a buyer can no longer dispute it: PayPal Purchase Protection
  * takes a dispute within 180 days of the payment.
+ *
+ * @internal
  */
 export const DISPUTE_WINDOW_DAYS = 180;
 
@@ -61,7 +67,11 @@ export interface HostedCaps {
 /** `known`: every redirect URI is a known host's; `unknown`: any other self-registered app. */
 export type HostTier = "known" | "unknown";
 
-/** Whether every redirect URI the app registered is a known host's. */
+/**
+ * Whether every redirect URI the app registered is a known host's.
+ *
+ * @internal
+ */
 export function knownHost(redirectUris: readonly string[]): boolean {
   return redirectUris.length > 0 && redirectUris.every((u) => KNOWN_REDIRECT_URIS.includes(u));
 }
@@ -132,7 +142,7 @@ const IN_FLIGHT = sql`('PROPOSED', 'EVALUATING', 'COUNTERSIGNED', 'LOGGED', 'COV
  * Purchases captured within {@link DISPUTE_WINDOW_DAYS} always count, so spending a mandate and
  * asking for another cannot pass a cap.
  */
-export async function hostedExposure(
+async function hostedExposure(
   db: Pick<Db, "execute">,
   scope: Scope,
   mode: { funded?: boolean; inFlight?: boolean } = {},
@@ -167,7 +177,7 @@ export async function hostedExposure(
 }
 
 /** Serializes the cap checks of concurrent approvals and holds until the transaction ends. */
-export const lockHostedExposure = (tx: Pick<Db, "execute">) =>
+const lockHostedExposure = (tx: Pick<Db, "execute">) =>
   tx.execute(sql`select pg_advisory_xact_lock(hashtext('keelson.hosted-exposure'))`);
 
 /** The sentence an app or the user reads when a per-user cap stops a mandate. */
@@ -177,7 +187,11 @@ const userCapMessage = (tier: HostTier, limit: bigint, currency: string) =>
 const TOTAL_CAP_MESSAGE =
   "Keelson's hosted operator has reached what it backs for apps acting through it. Try again later, or connect an app with an operator of its own.";
 
-/** The hosted operator's own OAuth client, which the caps never bound. */
+/**
+ * The hosted operator's own OAuth client, which the caps never bound.
+ *
+ * @internal
+ */
 export async function hostedClientId(
   db: Pick<Db, "select">,
   hostedAgentId: bigint,
@@ -277,6 +291,8 @@ export async function fundingCapError(
  * order yet, expires; a whole-budget hold still pending, or a cart hold no buyer approved, is
  * released like any other, voiding whatever its order authorized at PayPal meanwhile. Without
  * PayPal only signed mandates expire. Returns how many ended.
+ *
+ * @internal
  */
 export async function expireUnfunded(
   deps: Pick<HoldDeps, "db" | "kv" | "log"> & { paypal?: PayPalDeps | undefined },
