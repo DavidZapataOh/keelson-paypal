@@ -498,6 +498,9 @@ importers:
       '@keelson/policy':
         specifier: workspace:*
         version: link:../policy
+      '@keelson/scitt':
+        specifier: workspace:*
+        version: link:../scitt
       '@keelson/timestamp':
         specifier: workspace:*
         version: link:../timestamp
