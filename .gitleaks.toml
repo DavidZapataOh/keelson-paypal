@@ -52,3 +52,9 @@ paths = [
   '''packages/alibi/test/fixtures/.*\.alibi''',
   '''packages/alibi/test/fixtures/.*\.receipt''',
 ]
+
+[[allowlists]]
+description = "A public Alibi receipt and the composed proof of a sandbox purchase, as the public API serves them: hashes, signatures and proof bytes, no key"
+paths = [
+  '''packages/alibi/test/fixtures/01M73AGWP5EJSW35XE6Q090MCH\.(receipt|anonymous\.json)''',
+]

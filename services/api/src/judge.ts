@@ -102,6 +102,16 @@ export async function tourSeed(db: Db, agentId: bigint | undefined) {
     order by exists (select 1 from purchases d where d.mandate_id = p.mandate_id and d.state = 'DENIED') desc,
       p.created_at desc limit 1`)
     .then((r) => r.rows);
+  // The newest test buyer's purchase whose C1 and C3 proofs were composed into one.
+  const [anonymous] = await db
+    .execute<{ id: string }>(sql`
+    select p.id from purchases p
+    join mandates m on m.id = p.mandate_id
+    join alibis a on a.purchase_id = p.id
+    join "user" u on u.id = m.user_id
+    where p.c1c3_proof is not null and not u.is_anonymous and u.email like '%@example.test'
+    order by p.created_at desc limit 1`)
+    .then((r) => r.rows);
   const [dispute] = await db
     .select({ id: disputes.id })
     .from(disputes)
@@ -116,6 +126,7 @@ export async function tourSeed(db: Db, agentId: bigint | undefined) {
     .limit(1);
   return {
     mandateId: bought?.mandate_id ?? null,
+    anonymousPurchaseId: anonymous?.id ?? null,
     disputeId: dispute?.id ?? null,
     campaignId: campaign?.id ?? null,
   };

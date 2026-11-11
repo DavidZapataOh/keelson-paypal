@@ -24,6 +24,15 @@ describe("parseRoute", () => {
     expect(parseRoute(at(`/a/${id}#${b64.slice(1)}.1.421614`))).toEqual({ alibiId: id });
   });
 
+  test("?proof=anonymous asks for the anonymous proof first", () => {
+    expect(parseRoute(at(`/a/${id}?embed&proof=anonymous`))).toEqual({
+      alibiId: id,
+      embed: true,
+      anonymous: true,
+    });
+    expect(parseRoute(at(`/a/${id}?proof=other`)).anonymous).toBeUndefined();
+  });
+
   test("a size of 0 states no anchor", () => {
     expect(parseRoute(at(`/a/${id}#${b64}.0.421614`)).expect).toEqual({
       leafHash: b64,

@@ -5,6 +5,8 @@ export interface Route {
   rpc?: string;
   /** `?embed`: the page is framed, so it shows only the cheats and the report. */
   embed?: boolean;
+  /** `?proof=anonymous`: the anonymous proof comes first, and alone in an embed. */
+  anonymous?: boolean;
   /** Why a `?rpc=` was refused. */
   rpcRefused?: string;
 }
@@ -33,6 +35,7 @@ export function parseRoute(loc: { pathname: string; hash: string; search: string
   }
   const search = new URLSearchParams(loc.search);
   if (search.has("embed")) out.embed = true;
+  if (search.get("proof") === "anonymous") out.anonymous = true;
   const rpc = search.get("rpc");
   if (rpc !== null) {
     let url: URL | undefined;
