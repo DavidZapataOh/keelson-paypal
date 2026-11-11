@@ -309,7 +309,8 @@ export function registerMerchantConsole(
       {
         merchant_id: merchant.id,
         name: merchant.name,
-        website: merchant.website,
+        // A PayPal merchant always names its website.
+        website: merchant.website as string,
         settlement_address: signers[merchant.id] as string,
         read_only: c.var.judgeId !== undefined,
       },

@@ -40,14 +40,14 @@ pub const ORIGINS: [LogOrigin; 3] = [
     LogOrigin {
         name: "log.keelson.finance/alibi/2026-1",
         chain_id: 421_614,
-        log_key: "log.keelson.finance/alibi/2026-1+2e11a7ea+AfBrbrDNyb9uyXNtg3PXXnVxKQBcMGqa1OlCtxlttUBX",
+        log_key: "log.keelson.finance/alibi/2026-1+8553fcbd+ATEHrhTfdzkwLLgf9SZhMsIhsHzRmvpFnaBfgK0D10Id",
         witnesses: &OWN_WITNESSES,
         quorum: 2,
     },
     LogOrigin {
         name: "log.keelson.finance/alibi-live/2026-1",
         chain_id: 42_161,
-        log_key: "log.keelson.finance/alibi-live/2026-1+2cbeb917+AUYYGFiA5vhiLgoStIMQMZCqkg5QPBseIXyURpLLwvph",
+        log_key: "log.keelson.finance/alibi-live/2026-1+39e7ebfa+AUiaY8TAW9gFbueTv6mPbHeZq5ClgTnG9a4kGEnU5uyL",
         witnesses: &OWN_WITNESSES,
         quorum: 2,
     },

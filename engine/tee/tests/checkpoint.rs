@@ -20,7 +20,7 @@ use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
 use tower::ServiceExt;
 
-const SANDBOX: &str = include_str!("data/checkpoints/alibi-2026-1-54.note");
+const SANDBOX: &str = include_str!("data/checkpoints/alibi-2026-1-823.note");
 const LIVE: &str = include_str!("data/checkpoints/alibi-live-2026-1-0.note");
 const CONFORMANCE: &str = include_str!("data/checkpoints/conformance-2026-1-16.note");
 const SEPOLIA: u64 = 421_614;
@@ -28,7 +28,7 @@ const ONE: u64 = 42_161;
 
 /// After every cosignature in the test notes.
 fn now() -> OffsetDateTime {
-    at(1_794_200_000)
+    at(1_794_500_000)
 }
 
 /// The origin hash, size and root of the verified note.
@@ -55,7 +55,7 @@ fn the_sandbox_note_verifies_for_arbitrum_sepolia() {
         verify(SANDBOX, SEPOLIA),
         Ok((
             keccak256("log.keelson.finance/alibi/2026-1"),
-            54,
+            823,
             root_of(SANDBOX)
         ))
     );
@@ -123,7 +123,7 @@ fn one_witness_is_not_a_quorum() {
 
 #[test]
 fn a_cosignature_from_the_future_does_not_count() {
-    let early = at(1_794_000_000);
+    let early = at(1_794_300_000);
     assert_eq!(
         fields(verify_checkpoint(SANDBOX.as_bytes(), SEPOLIA, early, &[])),
         Err(CheckpointError::Quorum)
@@ -140,7 +140,7 @@ fn extension_lines_and_malformed_bodies_are_refused() {
     );
     let no_separator = SANDBOX.replacen("\n\n", "\n", 1);
     assert_eq!(verify(&no_separator, SEPOLIA), Err(CheckpointError::Format));
-    let leading_zero = SANDBOX.replacen("\n54\n", "\n054\n", 1);
+    let leading_zero = SANDBOX.replacen("\n823\n", "\n0823\n", 1);
     assert_eq!(verify(&leading_zero, SEPOLIA), Err(CheckpointError::Format));
     let short_root = SANDBOX.replacen(l[2], "AAAA\n", 1);
     assert_eq!(verify(&short_root, SEPOLIA), Err(CheckpointError::Format));
@@ -158,7 +158,7 @@ fn an_unknown_origin_is_refused() {
 
 #[test]
 fn a_changed_size_breaks_the_log_signature() {
-    let other = SANDBOX.replacen("\n54\n", "\n55\n", 1);
+    let other = SANDBOX.replacen("\n823\n", "\n824\n", 1);
     assert_eq!(verify(&other, SEPOLIA), Err(CheckpointError::LogSignature));
 }
 
@@ -281,7 +281,7 @@ fn the_engine_signs_under_the_requested_chain() {
         )
         .unwrap();
     assert_eq!(signed.chain_id, SEPOLIA);
-    assert_eq!(signed.tree_size, "54");
+    assert_eq!(signed.tree_size, "823");
     assert_eq!(
         recover(B256::new(signed.digest.0), &signed.signature.0),
         engine.signer()
@@ -353,7 +353,7 @@ async fn the_route_signs_a_witnessed_checkpoint() {
 
 #[tokio::test]
 async fn the_route_answers_the_refusal_code() {
-    let tampered = SANDBOX.replacen("\n54\n", "\n55\n", 1);
+    let tampered = SANDBOX.replacen("\n823\n", "\n824\n", 1);
     let (status, body) = post(json!({ "signed_note": tampered }), Some(TOKEN)).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(body["code"], "checkpoint_log_signature");
