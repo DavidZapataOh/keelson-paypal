@@ -20,13 +20,16 @@ function PromptBlock() {
   const [copied, setCopied] = useState(false);
   return (
     <div className="relative grid gap-2">
-      <pre
+      <section
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region must take keyboard focus (WCAG 2.1.1)
         tabIndex={0}
         aria-label="Prompt for your agent"
-        className="max-h-56 overflow-y-auto whitespace-pre-wrap rounded-xl bg-graphite px-4 py-3.5 pr-12 font-mono text-[13px] text-bone leading-relaxed"
+        className="max-h-56 overflow-y-auto rounded-xl bg-graphite px-4 py-3.5 pr-12"
       >
-        {CONNECT_PROMPT}
-      </pre>
+        <pre className="whitespace-pre-wrap font-mono text-[13px] text-bone leading-relaxed">
+          {CONNECT_PROMPT}
+        </pre>
+      </section>
       <button
         type="button"
         onClick={async () => {

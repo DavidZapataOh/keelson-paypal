@@ -214,7 +214,7 @@ function Welcome({
             Judge Mode
           </h1>
           <p className="text-pretty text-lg text-muted-foreground leading-snug">
-            Ten steps on the live sandbox. No keys, no sign-up.
+            {STEPS.length} steps on the live sandbox. No keys, no sign-up.
           </p>
         </div>
         <section
