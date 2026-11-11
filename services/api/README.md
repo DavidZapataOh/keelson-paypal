@@ -392,6 +392,41 @@ credential issuer and the log's witness policy (both needed for the Alibi) from 
 caches. The first purchase after a deploy pays those reads once. RFC 3161 timestamps, the Alibi PDF and
 anchoring are off the path, and `purchase.captured` is published before any of them.
 
+## Apps acting for a user
+
+An MCP host such as claude.ai, ChatGPT, Cursor or Claude Code connects over OAuth 2.1: it registers
+itself (RFC 7591, public client, PKCE with S256), the user signs in and consents at
+`/consent`, and the host gets a JWT access token (RFC 9068) whose `sub` is the user and `azp`
+the host. Such a token carries at most these scopes, whatever the host's registration holds; the
+API never grants it `countersign:write` or any operator scope.
+
+| Scope              | Lets the host, for that user only                                                                                                        |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `mandates:request` | ask for a mandate (`POST /v1/connections`) or a change of one, read those requests, and list the mandates the user approved for the host |
+| `evidence:write`   | seal evidence (`POST /v1/evidence`) and notarize a product endpoint under such a mandate                                                 |
+| `purchases:write`  | check a cart (`POST /v1/mandates/{id}/check`), countersign (`POST /v1/countersign`) and read its purchases                               |
+| `alibis:read`      | read the Alibis of its purchases                                                                                                         |
+| `offline_access`   | get a refresh token                                                                                                                      |
+
+A request the host makes is the user's from the start, so it has no number to match. Every other
+route reaches only a mandate whose `agent_connections` row names this host, this user and this
+mandate, approved and not disconnected: a host never acts under a mandate the user approved for
+another host, nor under another user's.
+
+**The operator rule.** The operator, its bond and the `cnf` key a mandate names stay a registered
+agent operator's. A host linked to an operator of its own (`operators.clientId`) asks for mandates
+naming that operator and closes them with its own key. A host with no operator of its own acts
+through Keelson's hosted operator, `DEMO_AGENT_ID`, whose bond covers its purchases: it
+countersigns with `mandateId` in place of `closedMandate`, and the API closes the mandate with
+that operator's private `cnf` key, `KEELSON_AGENT_KEY`, over the request id and the hash of the
+cart in the same request, the cart the TEE legs then countersign. That key signs nothing else, and
+only once every check of the countersign has passed. Without it those countersigns answer `503`.
+
+Refresh tokens rotate and can be revoked (RFC 7009, `/api/auth/oauth2/revoke`). Stopping every
+agent (`POST /v1/agents/stop`) revokes the user's refresh tokens and consents and refuses every
+access token issued before it, on the API and on `/mcp`; disconnecting an agent ends its
+connections, so its host reaches none of those mandates again.
+
 ## Risk model
 
 Every linked operator has a trust grade, a premium and a minimum bond:
