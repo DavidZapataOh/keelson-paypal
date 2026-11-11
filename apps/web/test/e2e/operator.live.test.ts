@@ -36,7 +36,7 @@ test.skipIf(!process.env.KEELSON_LIVE || !key || !rpc)(
     expect(grade).toMatch(/^[ABCDF]$/);
     expect(premium).toMatch(/^\d+ bps$/);
 
-    await page.getByRole("button", { name: "Deposit PYUSD" }).click();
+    await page.getByRole("button", { name: "Top up" }).click();
     await page.getByLabel("Amount").fill(AMOUNT);
     await page.getByRole("button", { name: "Review the permit" }).click();
     await page.getByRole("button", { name: /^Sign permit/ }).click();

@@ -17,7 +17,9 @@ import type { Context, MiddlewareHandler } from "hono";
 import type { Deps } from "../app.ts";
 import { isJudge } from "../judge.ts";
 import { MERCHANTS, merchantOfUser, SETTLEMENT } from "../merchants.ts";
+import { purchaseView } from "../pipeline/drive.ts";
 import { ProblemSchema, problem } from "../problem.ts";
+import { AmberCaseSchema, amberOfPurchases } from "./disputes.ts";
 
 const PARTIES = ["operator", "keelson", "merchant", "user"] as const;
 
@@ -140,8 +142,32 @@ const DisputeRow = z
     settled_at: z.iso.datetime().nullable(),
     explorer_url: z.url().nullable(),
     has_alibi: z.boolean(),
+    amber: AmberCaseSchema.nullable(),
   })
   .openapi("MerchantDispute");
+
+const OrderRow = z
+  .object({
+    purchase_id: z.string().openapi({ description: "Also the id of the purchase's Alibi." }),
+    created_at: z.iso.datetime(),
+    state: z.string().openapi({ description: "`DENIED` when Keelson blocked the cart." }),
+    amount_minor: z.string(),
+    currency: z.string(),
+    agent_id: z.string().openapi({ description: "The ERC-8004 agent that made the purchase." }),
+    has_alibi: z.boolean(),
+    blocked: z.array(z.object({ field: z.string(), cart: z.string().nullable() })).openapi({
+      description:
+        "For a blocked cart, each mandate field whose check failed and what the cart had. The mandate's own bound stays with the buyer.",
+    }),
+    dispute: z
+      .object({
+        dispute_id: z.string(),
+        state: z.enum(["OPEN", "ATTRIBUTED", "RESOLVED"]),
+        liable: z.enum(PARTIES).nullable(),
+      })
+      .nullable(),
+  })
+  .openapi("MerchantOrder");
 
 /** The latest purchases and attacks read per source: each yields one row per mandate field. */
 const EVALUATIONS_LIMIT = 20_000;
@@ -214,6 +240,23 @@ const disputeList = createRoute({
   },
 });
 
+const orderList = createRoute({
+  method: "get",
+  path: "/v1/merchants/{merchantId}/orders",
+  tags: ["merchants"],
+  summary: "The agent purchases at a merchant",
+  description:
+    "The latest 100 purchases agents asked Keelson to countersign at the merchant, newest first: the ones it allowed and the ones it blocked, with the dispute over each.",
+  request: { params: MerchantId },
+  responses: {
+    200: {
+      description: "The orders",
+      content: { "application/json": { schema: z.object({ orders: z.array(OrderRow) }) } },
+    },
+    ...problems,
+  },
+});
+
 const evaluations = createRoute({
   method: "get",
   path: "/v1/merchants/{merchantId}/evaluations",
@@ -249,11 +292,11 @@ const iso = (d: Date | string | null) => (d === null ? null : new Date(d).toISOS
 
 export function registerMerchantConsole(
   app: OpenAPIHono,
-  deps: Pick<Deps, "db" | "merchantSigners">,
+  deps: Pick<Deps, "db" | "kv" | "log" | "chains" | "merchantSigners">,
 ): void {
   const guard = requireMerchant(deps);
   app.use("/v1/merchants/me", guard);
-  for (const path of ["settlement", "disputes", "evaluations"]) {
+  for (const path of ["settlement", "disputes", "orders", "evaluations"]) {
     app.on("GET", `/v1/merchants/:merchantId/${path}`, guard);
   }
   const signers = deps.merchantSigners ?? SETTLEMENT;
@@ -316,6 +359,10 @@ export function registerMerchantConsole(
       .where(eq(purchases.merchantId, merchantId))
       .orderBy(desc(disputes.createdAt))
       .limit(500);
+    const ambers = await amberOfPurchases(
+      deps,
+      rows.map((r) => r.purchaseId),
+    );
     c.header("Cache-Control", "no-store");
     return c.json(
       {
@@ -346,8 +393,55 @@ export function registerMerchantConsole(
                 ? `${CHAINS[v.chainId].explorer}/tx/${txHash}`
                 : null,
             has_alibi: r.hasAlibi,
+            amber: ambers.get(r.purchaseId) ?? null,
           };
         }),
+      },
+      200,
+    );
+  }) as never);
+
+  app.openapi(orderList, (async (c: Context) => {
+    const merchantId = c.var.merchantId as string;
+    const rows = await deps.db
+      .select({
+        purchase: purchases,
+        agentId: mandates.operatorAgentId,
+        hasAlibi: sql<boolean>`exists (select 1 from alibis where alibis.purchase_id = ${purchases.id})`,
+        disputeId: disputes.id,
+        disputeState: disputes.state,
+        liable: verdicts.liable,
+      })
+      .from(purchases)
+      .innerJoin(mandates, eq(mandates.id, purchases.mandateId))
+      .leftJoin(disputes, eq(disputes.purchaseId, purchases.id))
+      .leftJoin(verdicts, eq(verdicts.disputeId, disputes.id))
+      .where(eq(purchases.merchantId, merchantId))
+      .orderBy(desc(purchases.createdAt))
+      .limit(100);
+    c.header("Cache-Control", "no-store");
+    return c.json(
+      {
+        orders: rows.map((r) => ({
+          purchase_id: r.purchase.id,
+          created_at: r.purchase.createdAt.toISOString(),
+          state: r.purchase.state,
+          amount_minor: r.purchase.amountMinor.toString(),
+          currency: r.purchase.currency,
+          agent_id: r.agentId.toString(),
+          has_alibi: r.hasAlibi,
+          blocked: (purchaseView(r.purchase).reasons ?? []).map(({ field, cart }) => ({
+            field,
+            cart,
+          })),
+          dispute: r.disputeId
+            ? {
+                dispute_id: r.disputeId,
+                state: r.disputeState as "OPEN" | "ATTRIBUTED" | "RESOLVED",
+                liable: r.liable ? (PARTIES[r.liable - 1] ?? null) : null,
+              }
+            : null,
+        })),
       },
       200,
     );

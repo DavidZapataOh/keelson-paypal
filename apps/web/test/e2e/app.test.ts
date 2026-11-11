@@ -221,7 +221,18 @@ describe.each(Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[])("rules on %s
     const compiled = await demoCompiled();
     let prompt = "";
     const { context, page } = await signedIn(kind, "/new/", (path, body) => {
-      if (path === "/v1/passkeys") return { passkeys: [] };
+      if (path === "/v1/passkeys") {
+        return {
+          passkeys: [
+            {
+              id: "pk_1",
+              name: "Keelson",
+              credentialId: "cred-1",
+              createdAt: new Date().toISOString(),
+            },
+          ],
+        };
+      }
       if (path === "/v1/mandates/compile") {
         prompt = (JSON.parse(body ?? "{}") as { prompt: string }).prompt;
         return compiled;
@@ -291,6 +302,7 @@ describe.each(Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[])("home on %s"
               createdAt: now,
               state: "CAPTURED",
               mode: "2of2",
+              checks: [{ field: "total", mandate: "$100.00", cart: "$89.00", pass: true }],
               disputes: [],
             },
             {
@@ -314,6 +326,7 @@ describe.each(Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[])("home on %s"
     expect(await page.getByText("$11", { exact: false }).count()).toBeGreaterThan(0);
     const activity = page.getByRole("region", { name: "Activity" });
     expect(await activity.getByRole("link").count()).toBe(2);
+    expect(await activity.getByText("$89.00 ≤ $100.00 ✓").count()).toBe(1);
     await activity.getByRole("tab", { name: /Blocked/ }).click();
     expect(await activity.getByRole("link").count()).toBe(1);
     expect(await activity.getByText("Cart $340.00 · max $100.00").count()).toBe(1);
@@ -352,20 +365,29 @@ async function viewIn(id: string, state: string, purchases: unknown[] = []) {
 }
 
 describe("signing and going live", () => {
-  test("a buyer without a passkey creates one before signing, and can go back", async () => {
-    const compiled = await demoCompiled();
+  test("a brand-new buyer creates a passkey before the rules are read, and can go back", async () => {
+    // The API compiles only for a buyer with a passkey, since the mandate names it.
+    let compiles = 0;
     const { context, page } = await signedIn("desktop", "/new/", (path) => {
       if (path === "/v1/passkeys") return { passkeys: [] };
-      if (path === "/v1/mandates/compile") return compiled;
+      if (path === "/v1/mandates/compile") {
+        compiles++;
+        return undefined;
+      }
       return undefined;
     });
     await page.getByRole("button", { name: "Running shoes, size 10" }).click();
     await page.getByRole("button", { name: "Review rules" }).click();
-    await page.getByRole("button", { name: "Sign · up to $100.00" }).click({ timeout: 30_000 });
     await page.getByRole("heading", { level: 1, name: "Sign with Face ID" }).waitFor();
     expect(await page.getByRole("button", { name: "Create passkey" }).isEnabled()).toBe(true);
+    expect(compiles).toBe(0);
     await page.getByRole("button", { name: "Back" }).click();
-    await page.getByRole("heading", { level: 1, name: "Check it, then sign" }).waitFor();
+    await page.getByRole("heading", { level: 1, name: "What may your agent buy?" }).waitFor();
+    expect(
+      await page
+        .getByRole("button", { name: "Running shoes, size 10" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
     await context.close();
   });
 
@@ -451,6 +473,10 @@ describe("receipts and disputes", () => {
     state: "CAPTURED",
     mode: "2of2",
     logIndex: "12",
+    checks: [
+      { field: "total", mandate: "$100.00", cart: "$89.00", pass: true },
+      { field: "variant", mandate: "size_us 10", cart: "size_us 10", pass: true },
+    ],
     disputes: [] as { id: string; state: string }[],
   };
 
@@ -460,8 +486,21 @@ describe("receipts and disputes", () => {
       `/purchase/?mandate=${id}&id=${bought.id}`,
       (path) => (path === `/v1/mandates/${id}` ? viewIn(id, "ACTIVE", [bought]) : undefined),
     );
+    const checks = page.getByRole("list", { name: "What Keelson checked" });
+    await checks.waitFor();
+    expect(
+      await page.getByRole("list", { name: "What happened" }).getByText("$89.00 paid").count(),
+    ).toBe(1);
+    expect(await checks.getByRole("listitem").count()).toBe(2);
+    expect(await checks.getByRole("listitem").first().textContent()).toMatch(
+      /\$89\.00\s+within\s+\$100\.00/,
+    );
     await page.getByRole("button", { name: /Not what you asked for/ }).click();
-    await page.getByRole("heading", { name: "What was wrong?" }).waitFor();
+    await page.getByRole("heading", { name: "What happened?" }).waitFor();
+    for (const kind of ["I don't remember it", "Not what I meant", "The agent went rogue"]) {
+      expect(await page.getByRole("dialog").getByText(kind).count()).toBe(1);
+    }
+    await page.getByRole("dialog").getByText("The agent got it wrong").click();
     await page.getByRole("dialog").getByText("Variant", { exact: true }).click();
     await page.getByText("The agent's operator answers for this, from its bond.").waitFor();
     expect(await page.getByRole("link", { name: /Open on PayPal/ }).getAttribute("href")).toBe(
@@ -517,6 +556,12 @@ test("keyboard focus is visible", async () => {
 
 test("a signed-out visitor who opens the mandate form is sent to the welcome", async () => {
   const { context, page } = await visit("desktop", "/new/");
+  await page.waitForURL(`${base}/`);
+  await context.close();
+});
+
+test("a signed-out visitor who opens the passkeys is sent to the welcome", async () => {
+  const { context, page } = await visit("desktop", "/passkeys/");
   await page.waitForURL(`${base}/`);
   await context.close();
 });
@@ -591,7 +636,7 @@ test("the first paint is the welcome, before any script or session read", async 
 const VISITOR_VIEWS = [
   ["merchant/", "Merchant console", "Checking your session"],
   ["operator/", "Operator console", "Checking your session"],
-  ["judge/", "Judge Keelson in five minutes", "Opening Judge Mode"],
+  ["judge/", "Judge Mode", "Opening Judge Mode"],
 ] as const;
 
 test.each(VISITOR_VIEWS)(

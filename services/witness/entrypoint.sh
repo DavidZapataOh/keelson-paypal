@@ -5,7 +5,8 @@
 #   WITNESS_NAME  name in the cosignature lines, e.g. witness-1.keelson.finance
 #   WITNESS_KEY   OpenSSH Ed25519 private key
 #   WITNESS_LOGS  origin=vkey pairs separated by ';' or newlines; defaults to
-#                 the logs baked into the image
+#                 the logs baked into the image. An origin may be listed with
+#                 several keys; a key no longer listed for an origin is deleted
 #   DB            SQLite database, on persistent storage
 #   PORT          HTTP listener
 set -eu
@@ -34,12 +35,34 @@ for entry in $(printf '%s\n' "$logs" | tr ';' '\n'); do
 	vkey=${entry#*=}
 	case $known in
 	*"\"origin\":\"$origin\""*) ;;
-	*) witnessctl add-log -db "$DB" -origin "$origin" ;;
+	*)
+		witnessctl add-log -db "$DB" -origin "$origin"
+		known="$known
+\"origin\":\"$origin\""
+		;;
 	esac
 	case $known in
 	*"\"$vkey\""*) ;;
 	*) witnessctl add-key -db "$DB" -origin "$origin" -key "$vkey" ;;
 	esac
+done
+# Keys of a listed origin that are no longer listed, such as a log key that
+# moved, are deleted: the witness then refuses checkpoints signed with them.
+known=$(witnessctl list-logs -db "$DB")
+for line in $known; do
+	origin=$(printf '%s' "$line" | sed -n 's/.*"origin":"\([^"]*\)".*/\1/p')
+	wanted=$(printf '%s\n' "$logs" | tr ';' '\n' | sed -n "s|^$origin=||p")
+	[ -n "$wanted" ] || continue
+	for vkey in $(printf '%s' "$line" | sed -n 's/.*"keys":\[\([^]]*\)\].*/\1/p' | tr ',' '\n' | tr -d '"'); do
+		case "
+$wanted
+" in
+		*"
+$vkey
+"*) ;;
+		*) witnessctl del-key -db "$DB" -origin "$origin" -key "$vkey" ;;
+		esac
+	done
 done
 unset IFS
 

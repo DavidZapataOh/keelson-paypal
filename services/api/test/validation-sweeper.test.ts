@@ -17,9 +17,10 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { ANVIL_KEY, type Fork, startFork } from "../../../packages/relayer/test/fork.ts";
+import { ingestReceipt } from "../src/chain/events.ts";
 import { recordOutcomes, recordValidations, type SweeperDeps } from "../src/onchain/validations.ts";
 import { VERIFYING_CONTRACT } from "../src/tee/config.ts";
-import { testDb, testKv } from "./setup.ts";
+import { testDb } from "./setup.ts";
 
 const rpc = process.env.ARBITRUM_SEPOLIA_RPC_URL;
 /** The demo operator's first live `recordCountersign`; the fork starts one block before it. */
@@ -67,11 +68,9 @@ describe.skipIf(!rpc)(
       const client = fork.client as unknown as PublicClient;
       deps = {
         db: testDb,
-        kv: testKv,
         log: pino({ level: "silent" }),
         relayer,
-        chain: { client, logs: client },
-        outcomesFrom: BLOCK + 1n,
+        chain: { client },
       };
 
       // The real countersign and the legs' real signatures, from the transaction that first recorded them.
@@ -182,6 +181,10 @@ describe.skipIf(!rpc)(
         key: `KeelsonBondVault.releaseCoverage:${coverageId}`,
       });
       expect(release.status).toBe("confirmed");
+      // The event as the subscription stores it, twice: the second copy is the same row.
+      const receipt = await fork.client.getTransactionReceipt({ hash: release.hash as Hex });
+      expect(await ingestReceipt(testDb, receipt)).toHaveLength(1);
+      expect(await ingestReceipt(testDb, receipt)).toHaveLength(0);
       expect(await recordOutcomes(deps)).toBe(2);
       expect(
         await fork.client.readContract({

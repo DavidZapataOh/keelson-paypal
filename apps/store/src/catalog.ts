@@ -151,6 +151,20 @@ export function productJson(p: Product, url: string, description: string = p.des
   };
 }
 
+function variantSku(p: Product, size: string): string {
+  return `${p.sku}-${size}`;
+}
+
+/**
+ * One size of a product as a flat JSON object, keyed by the SKU a cart line carries: the whole body a
+ * TLSNotary session commits to when it proves what the store sells under that SKU.
+ */
+export function variantJson(p: Product, sku: string) {
+  const size = p.sizes.find((s) => variantSku(p, s) === sku);
+  if (size === undefined) return undefined;
+  return { sku, size, color: p.color, unit_minor: p.priceMinor, returns_free: true };
+}
+
 export interface LineRequest {
   handle: string;
   size: string;
@@ -189,7 +203,7 @@ export function quote(requested: readonly LineRequest[]): Quote {
       merchant: MERCHANT_ID,
       currency: CURRENCY,
       lines: lines.map(({ product: p, size, qty }) => ({
-        sku: `${p.sku}-${size}`,
+        sku: variantSku(p, size),
         size,
         color: p.color,
         category: TAXONOMY[p.category],

@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@keelson/ui/components/button";
+import { LiabilityMark } from "@keelson/ui/components/liability";
 import { keelsonChartPalette, keelsonGridTheme } from "@keelson/ui/grid";
 import { AgChartsEnterpriseModule } from "ag-charts-enterprise";
 import {
@@ -28,6 +29,7 @@ import {
 } from "ag-grid-enterprise";
 import { AgGridProvider, AgGridReact } from "ag-grid-react";
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AMBER_LABEL, amberValue } from "../../lib/amber";
 import { ApiError } from "../../lib/api";
 import { VERIFY } from "../../lib/config";
 import {
@@ -102,6 +104,24 @@ function eventsOf(r: CoverageRow): Event[] {
       proofLabel: "Arbiscan",
     },
   ];
+  if (r.amberCommitment) {
+    out.push({
+      at: r.createdAt,
+      actor: "You (operator)",
+      event: `Attested the item's size, color, unit price and free returns in the coverage (commitment ${r.amberCommitment.slice(0, 10)}…)`,
+      proof: `${VERIFY}/a/${r.id}`,
+      proofLabel: "Verifier",
+    });
+  }
+  if (r.amberField) {
+    out.push({
+      at: r.amberProvenAt,
+      actor: "AmberContradictionCourt",
+      event: `Convicted your ${AMBER_LABEL[r.amberField].toLowerCase()} (${r.amberClaimed !== null ? amberValue(r.amberField, r.amberClaimed) : "attested"}) with a C2b proof of the store's notarized answer; WebFact ${r.amberWebFact?.slice(0, 10) ?? ""}…`,
+      proof: r.amberTx,
+      proofLabel: "Arbiscan",
+    });
+  }
   if (r.disputeId) {
     out.push({
       at: r.disputedAt,
@@ -208,18 +228,18 @@ function Daily({ agentId }: { agentId: string }) {
   if (error)
     return <p className="text-destructive text-sm">The daily totals could not be read: {error}</p>;
   return (
-    <section aria-labelledby="daily" className="grid gap-3">
-      <h2 id="daily" className="font-semibold">
+    <section aria-labelledby="daily" className="grid gap-4 rounded-3xl border bg-card p-5 sm:p-6">
+      <h2 id="daily" className="font-semibold text-lg tracking-tight">
         Coverage per day
       </h2>
       <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
         <figure className="grid gap-1">
-          <div ref={chartRef} className="h-72 rounded-[10px] border" />
+          <div ref={chartRef} className="h-72 overflow-hidden rounded-2xl border bg-background" />
           <figcaption className="text-muted-foreground text-xs">
             Covered amount and premiums per day, charted from the table beside it.
           </figcaption>
         </figure>
-        <div className="h-72">
+        <div className="h-72 overflow-hidden rounded-2xl border">
           <AgGridReact<CoverageDay>
             theme={keelsonGridTheme}
             rowData={days ?? null}
@@ -336,8 +356,9 @@ function Book({ agentId }: { agentId: string }) {
         ...set(["operator", "keelson", "merchant", "user"]),
         cellRenderer: (p: { value: CoverageRow["liable"] }) =>
           p.value === "operator" ? (
-            <span>
-              <span aria-hidden="true">■ </span>operator · slash
+            <span className="inline-flex items-center gap-1.5">
+              <span aria-hidden="true" className="size-2.5 rounded-[3px] bg-foreground" />
+              operator · slash
             </span>
           ) : (
             (p.value ?? "")
@@ -349,6 +370,24 @@ function Book({ agentId }: { agentId: string }) {
         ...set(["paid", "queued", "claimable", "failed"]),
       },
       { field: "paidBy", headerName: "Paid by", ...set(["chain", "treasury", "violation-pool"]) },
+      {
+        field: "amber",
+        headerName: "Amber",
+        ...set(["none", "attested", "contradicted"]),
+        cellRenderer: (p: { value: CoverageRow["amber"]; data?: CoverageRow }) =>
+          p.value === "contradicted" ? (
+            <span className="font-medium text-vermilion-deep dark:text-vermilion">
+              {p.data?.amberField ? AMBER_LABEL[p.data.amberField] : "Field"} proven false
+            </span>
+          ) : p.value === "attested" ? (
+            <span className="inline-flex items-center gap-1.5">
+              <LiabilityMark kind="attested" />
+              attested
+            </span>
+          ) : (
+            ""
+          ),
+      },
       {
         field: "id",
         headerName: "Purchase",
@@ -431,12 +470,12 @@ function Book({ agentId }: { agentId: string }) {
   }
 
   return (
-    <section aria-labelledby="book" className="grid gap-3">
+    <section aria-labelledby="book" className="grid gap-4 rounded-3xl border bg-card p-5 sm:p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 id="book" className="font-semibold">
+        <h2 id="book" className="font-semibold text-lg tracking-tight">
           Coverage book
         </h2>
-        <span className="text-muted-foreground text-sm" aria-live="polite">
+        <span className="font-mono text-muted-foreground text-sm tnum" aria-live="polite">
           {total === undefined ? "" : `${total.toLocaleString("en-US")} coverages`}
         </span>
       </div>
@@ -450,7 +489,7 @@ function Book({ agentId }: { agentId: string }) {
           onChange={(e) => setPrompt(e.target.value)}
           placeholder="e.g. slashes over $20 at mrc_runfast, largest first"
           maxLength={500}
-          className="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm"
+          className="h-10 min-w-0 flex-1 rounded-xl border bg-background px-3.5 text-sm"
         />
         <Button size="sm" type="submit" disabled={busy || !api}>
           {busy ? "Reading…" : "Ask"}
@@ -476,7 +515,7 @@ function Book({ agentId }: { agentId: string }) {
           </span>
         )}
       </p>
-      <div className="h-[560px]" data-testid="coverage-grid">
+      <div className="h-[560px] overflow-hidden rounded-2xl border" data-testid="coverage-grid">
         <AgGridReact<CoverageRow>
           theme={keelsonGridTheme}
           rowModelType="serverSide"
@@ -503,7 +542,7 @@ function Book({ agentId }: { agentId: string }) {
 export default function CoverageBook({ agentId }: { agentId: string }) {
   return (
     <AgGridProvider modules={modules}>
-      <div className="grid gap-10">
+      <div className="grid gap-6">
         <Daily agentId={agentId} />
         <Book agentId={agentId} />
       </div>

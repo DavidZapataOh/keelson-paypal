@@ -2,12 +2,14 @@ import { isDeepStrictEqual } from "node:util";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { fromHex, toHex } from "@keelson/core";
 import {
+  agentConnections,
   and,
   asc,
   createQueries,
   desc,
   disputes,
   eq,
+  gt,
   inArray,
   mandates,
   passkey,
@@ -15,7 +17,6 @@ import {
   purchases,
   sql,
   transition,
-  user,
 } from "@keelson/db";
 import {
   decodeMandate,
@@ -31,10 +32,12 @@ import { POLICY_SET_HASH } from "@keelson/policy/hashes";
 import type { Deps } from "../app.ts";
 import { Amount, breakdowns, withBreakdown } from "../checkout.ts";
 import { agentBond, agentCnf, termsConsent } from "../compile-sources.ts";
+import { type Connection, looserThan, normalizeUserCode, openRequest } from "../connections.ts";
+import { publishEvent } from "../events.ts";
 import { passkeyJwk, SignatureError, verifyMandateSignature } from "../mandate-signature.ts";
 import { requireSession } from "../middleware/auth.ts";
 import { purchaseView } from "../pipeline/drive.ts";
-import type { Principal } from "../principal.ts";
+import { type Principal, principalChannel } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 import { LegError, type MandateIssued } from "../tee/client.ts";
 import { unboundPolicy } from "../tee/engine-source.ts";
@@ -73,6 +76,16 @@ const CreateMandate = z
         description: "The salt that opens `C_m`; the TEE needs it to issue the mandate.",
       }),
     assertion: Assertion,
+    connection: z
+      .object({
+        code: z.string().min(8).max(16),
+        askAboveMinor: z.int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
+      })
+      .optional()
+      .openapi({
+        description:
+          "The agent's request this mandate approves, by its user code. The mandate must name the asking agent's operator and grant no more than it asked; `askAboveMinor` may only be lower too.",
+      }),
   })
   .openapi("CreateMandate");
 
@@ -231,6 +244,7 @@ const create = createRoute({
         "The mandate is invalid (`invalid-mandate`), or it binds an agent key, a bond, an engine build, a policy set or terms other than the ones `POST /v1/mandates/compile` fills: the named operator's registered `cnf` key, its bond vault with the 50 PYUSD minimum, the engine version and TEE measurements of the build the legs run (or of another build admitted during a rotation), the current policy set hash and the current terms (`mandate-binding-mismatch`; `fields` names `agent.cnf`, `agent.bond`, `policy.engine`, `policy.version`, `policy.measurements`, `policy.policy_set_hash` or `consent`)",
       content: problemContent,
     },
+    429: { description: "Too many approvals by user code", content: problemContent },
     503: { description: "The TEE could not issue the mandate", content: problemContent },
   },
 });
@@ -302,6 +316,10 @@ const NO_EVIDENCE = { merchantSignedCheckout: false, zkTlsFields: new Set<never>
 const AGENT_ID = /^(0|[1-9]\d{0,77})$/;
 
 class CounterError extends Error {}
+class RequestClosed extends Error {}
+
+/** Approvals by user code a user may attempt in a minute. */
+const APPROVALS_PER_MINUTE = 20;
 
 function isUniqueViolation(err: unknown): boolean {
   for (let e = err; e && typeof e === "object"; e = (e as { cause?: unknown }).cause) {
@@ -312,7 +330,10 @@ function isUniqueViolation(err: unknown): boolean {
 
 export function registerMandates(
   app: OpenAPIHono,
-  deps: Pick<Deps, "db" | "log" | "appOrigin" | "passkeyRpId" | "tee" | "proveAnonymousMandate">,
+  deps: Pick<
+    Deps,
+    "db" | "kv" | "log" | "appOrigin" | "passkeyRpId" | "tee" | "proveAnonymousMandate"
+  >,
 ): void {
   const { db } = deps;
   const queries = createQueries(db);
@@ -413,6 +434,54 @@ export function registerMandates(
       ...(m.policy.policy_set_hash === POLICY_SET_HASH ? [] : ["policy.policy_set_hash"]),
       ...(isDeepStrictEqual(m.consent, await termsConsent()) ? [] : ["consent"]),
     ];
+    let request: Connection | undefined;
+    if (body.connection) {
+      // RFC 8628 §5.1: user codes are short, so naming one is budgeted per user.
+      const key = `rl:connection-approve:${userId}:${Math.floor(Date.now() / 60_000)}`;
+      const [count] = await deps.kv.multi().incr(key).expire(key, 60, "NX").exec();
+      if (Number(count) > APPROVALS_PER_MINUTE) {
+        c.header("Retry-After", "60");
+        return problem(c, 429, "rate-limited", "Too many requests", "Too many approvals.");
+      }
+      const code = normalizeUserCode(body.connection.code);
+      request = code ? await openRequest(db, code) : undefined;
+      // A cart paused under a mandate is approved only while that mandate still stands.
+      const parent = request?.parentMandateId
+        ? await queries.mandateById(request.parentMandateId)
+        : undefined;
+      if (
+        !request ||
+        (request.userId !== null && request.userId !== userId) ||
+        (request.kind === "once" && (parent?.state !== "ACTIVE" || parent.revokeRequestedAt))
+      ) {
+        return problem(
+          c,
+          409,
+          "connection-closed",
+          "Request closed",
+          "The agent's request was already decided, expired or does not exist.",
+        );
+      }
+      const askAbove = body.connection.askAboveMinor;
+      const looser = looserThan(m, request);
+      if (
+        (request.askAboveMinor !== null && askAbove === undefined) ||
+        (askAbove !== undefined &&
+          BigInt(askAbove) > (request.askAboveMinor ?? request.perPurchaseMinor))
+      ) {
+        looser.push("askAbove");
+      }
+      if (looser.length > 0) {
+        return problem(
+          c,
+          422,
+          "mandate-looser-than-request",
+          "Mandate looser than the request",
+          `${looser.join(", ")} must not grant more than ${request.name} asked for.`,
+          { fields: looser },
+        );
+      }
+    }
     if (unbound.length > 0) {
       return problem(
         c,
@@ -451,10 +520,6 @@ export function registerMandates(
     let issued: MandateIssued | undefined;
     if (deps.tee) {
       if (!body.salt) return invalid("salt is required");
-      const holder = await db.query.user.findFirst({
-        columns: { userCredential: true },
-        where: (row, { eq: is }) => is(row.id, userId),
-      });
       try {
         issued = await deps.tee.client.a.registerMandate({
           sub: userId,
@@ -466,7 +531,7 @@ export function registerMandates(
             signature: assertion.signature,
           },
           salt: body.salt as `0x${string}`,
-          ...(holder?.userCredential ? { user_credential: holder.userCredential } : {}),
+          ...(key.userCredential ? { user_credential: key.userCredential } : {}),
         });
       } catch (err) {
         if (!(err instanceof LegError)) throw err;
@@ -491,7 +556,10 @@ export function registerMandates(
       await db.transaction(async (tx) => {
         const counted = await tx
           .update(passkey)
-          .set({ counter: newCounter })
+          .set({
+            counter: newCounter,
+            ...(issued ? { userCredential: issued.user_credential } : {}),
+          })
           .where(
             sql`${passkey.id} = ${key.id} and (${newCounter} = 0 or ${passkey.counter} < ${newCounter})`,
           );
@@ -519,12 +587,6 @@ export function registerMandates(
               }
             : {}),
         });
-        if (issued) {
-          await tx
-            .update(user)
-            .set({ userCredential: issued.user_credential })
-            .where(eq(user.id, userId));
-        }
         if (!(await transition(tx, "mandates", m.mid, "DRAFT", "COMPILED"))) {
           throw new Error("mandate left DRAFT concurrently");
         }
@@ -537,8 +599,39 @@ export function registerMandates(
         ) {
           throw new Error("mandate left SIGNED concurrently");
         }
+        // The user code is spent with the mandate that answers it, or neither is stored.
+        if (request) {
+          const askAbove = body.connection?.askAboveMinor;
+          const approved = await tx
+            .update(agentConnections)
+            .set({
+              state: "APPROVED",
+              userId,
+              mandateId: m.mid,
+              decidedAt: new Date(),
+              askAboveMinor: askAbove === undefined ? null : BigInt(askAbove),
+            })
+            .where(
+              and(
+                eq(agentConnections.id, request.id),
+                eq(agentConnections.state, "PENDING"),
+                gt(agentConnections.expiresAt, new Date()),
+              ),
+            )
+            .returning({ id: agentConnections.id });
+          if (approved.length !== 1) throw new RequestClosed();
+        }
       });
     } catch (err) {
+      if (err instanceof RequestClosed) {
+        return problem(
+          c,
+          409,
+          "connection-closed",
+          "Request closed",
+          "The agent's request was decided or expired while you signed.",
+        );
+      }
       if (isUniqueViolation(err)) return exists();
       // A concurrent request with the same assertion advanced the counter first.
       if (err instanceof CounterError) return (await storedHash()) ? exists() : invalidSignature();
@@ -551,6 +644,15 @@ export function registerMandates(
       void deps
         .proveAnonymousMandate(m.mid, salt)
         .catch((err: unknown) => deps.log.warn({ err, mandateId: m.mid }, "C3 proof not started"));
+    }
+
+    if (request) {
+      await publishEvent(
+        deps,
+        principalChannel({ kind: "client", subject: request.clientId }, "connections"),
+        request.id,
+        { type: "connection.approved", userCode: request.userCode, mandateId: m.mid },
+      );
     }
 
     c.header("location", `/v1/mandates/${m.mid}`);

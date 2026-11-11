@@ -29,6 +29,16 @@ const paymentExtension = { payment: { isPayment: true } } as AuthenticationExten
 const PAYMENT_CEREMONY = "passkey-payment:";
 const PAYMENT_CEREMONY_MS = 10 * 60_000;
 
+/**
+ * A user who already has a passkey adds another only within this long of signing in, with PayPal
+ * or with one of their passkeys.
+ */
+export const PASSKEY_FRESH_MS = 10 * 60_000;
+const PASSKEY_REGISTRATION = new Set([
+  "/passkey/generate-register-options",
+  "/passkey/verify-registration",
+]);
+
 /** Arbitrum Sepolia and Arbitrum One, the chains a merchant's settlement wallet signs on. */
 const SIWE_CHAINS = new Set([421614, 42161]);
 
@@ -56,6 +66,21 @@ export const OAUTH_SCOPES = [
   "merchants:write",
 ] as const;
 
+/**
+ * What a token a user delegated to an app may do, whatever that app's registration holds: read
+ * the user's Alibis. Spending and every write stay with an agent's own client credentials.
+ */
+const DELEGATED_SCOPES = ["alibis:read"] as const;
+
+/** The scopes a verified access token grants: a delegated one (`sub` is a user) never more than `DELEGATED_SCOPES`. */
+export function tokenScopes(payload: { scope?: unknown; sub?: unknown; azp?: unknown }): string[] {
+  const scopes = typeof payload.scope === "string" ? payload.scope.split(" ") : [];
+  const delegated = typeof payload.sub === "string" && payload.sub !== payload.azp;
+  return delegated
+    ? scopes.filter((s) => (DELEGATED_SCOPES as readonly string[]).includes(s))
+    : scopes;
+}
+
 export interface AuthEnv {
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
@@ -79,15 +104,61 @@ export function createAuth(
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.BETTER_AUTH_URL,
     trustedOrigins: [env.APP_ORIGIN],
-    // Judges are created only through `POST /v1/judge/sessions`, which limits them.
-    disabledPaths: ["/token", "/sign-in/anonymous"],
+    // Judges are created only through `POST /v1/judge/sessions`, which limits them. Passkeys are
+    // removed through `DELETE /v1/passkeys/{id}`, which keeps the last one.
+    disabledPaths: ["/token", "/sign-in/anonymous", "/passkey/delete-passkey"],
     hooks: {
-      // A judge's tenant is temporary: it cannot take a PayPal account the reset would then strand.
       before: createAuthMiddleware(async (ctx) => {
-        if (ctx.path !== "/link-social") return;
-        const session = await getSessionFromCtx(ctx);
-        if ((session?.user as { isAnonymous?: boolean | null } | undefined)?.isAnonymous) {
-          throw new APIError("FORBIDDEN", { message: "Judge Mode cannot link an account." });
+        // Open registration is for public clients only: a confidential client is created by an
+        // admin, who grants its scopes. A public MCP client is linked to this API, the one
+        // resource it can ask a token for (RFC 8707), without having to name it.
+        if (ctx.path === "/oauth2/register") {
+          const body = (ctx.body ?? {}) as {
+            token_endpoint_auth_method?: unknown;
+            resources?: unknown;
+          };
+          if (await getSessionFromCtx(ctx)) return;
+          if (body.token_endpoint_auth_method !== "none") {
+            throw new APIError("BAD_REQUEST", {
+              error: "invalid_client_metadata",
+              error_description:
+                "Only public clients (token_endpoint_auth_method none) may register.",
+            });
+          }
+          return { context: { body: { ...body, resources: body.resources ?? [apiAudience] } } };
+        }
+        // A request for spending limits is always shown to the user, even when they consented to
+        // the same scopes before.
+        if (ctx.path === "/oauth2/authorize") {
+          const query = (ctx.query ?? {}) as Record<string, unknown>;
+          if (query.authorization_details === undefined) return;
+          return { context: { query: { ...query, prompt: "consent" } } };
+        }
+        if (ctx.path === "/link-social") {
+          const session = await getSessionFromCtx(ctx);
+          if ((session?.user as { isAnonymous?: boolean | null } | undefined)?.isAnonymous) {
+            throw new APIError("FORBIDDEN", { message: "Judge Mode cannot link an account." });
+          }
+          return;
+        }
+        // Another passkey can sign for the user, so it takes a recent sign-in, as a first one
+        // took the sign-up.
+        if (PASSKEY_REGISTRATION.has(ctx.path)) {
+          const session = await getSessionFromCtx(ctx);
+          if (!session) return;
+          const age = Date.now() - new Date(session.session.createdAt).getTime();
+          if (age < PASSKEY_FRESH_MS) return;
+          const [existing] = await db
+            .select({ id: passkeyTable.id })
+            .from(passkeyTable)
+            .where(sql`${passkeyTable.userId} = ${session.user.id}`)
+            .limit(1);
+          if (existing) {
+            throw APIError.from("FORBIDDEN", {
+              code: "SESSION_NOT_FRESH",
+              message: "Sign in again to add a passkey.",
+            });
+          }
         }
       }),
       // A passkey is payment-capable only if the server issued the `payment` extension for its
@@ -146,11 +217,20 @@ export function createAuth(
     },
     plugins: [
       jwt(),
+      // Agents act for themselves with client credentials. MCP clients act for a user with the
+      // authorization code grant and PKCE (S256 only, required of public clients), registering
+      // themselves (RFC 7591) as the MCP authorization spec asks; such a client reads only, and
+      // spends only under a mandate the user signs on the consent's approval page.
       oauthProvider({
-        loginPage: "/sign-in",
-        consentPage: "/consent",
+        loginPage: `${env.APP_ORIGIN}/sign-in`,
+        consentPage: `${env.APP_ORIGIN}/consent`,
         scopes: [...OAUTH_SCOPES],
-        grantTypes: ["client_credentials"],
+        grantTypes: ["client_credentials", "authorization_code", "refresh_token"],
+        allowDynamicClientRegistration: true,
+        allowUnauthenticatedClientRegistration: true,
+        clientRegistrationDefaultScopes: [...DELEGATED_SCOPES],
+        clientRegistrationDefaultApplicationType: "infer",
+        clientRegistrationAllowedResources: [apiAudience],
         resources: [apiAudience],
         clientPrivileges: ({ user }) => user?.role === "admin",
       }),

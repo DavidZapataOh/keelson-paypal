@@ -1,18 +1,21 @@
 services:
   engine:
-    image: ghcr.io/davidzapataoh/keelson-engine@sha256:ff92c3209b1683f7324f5ec5e5a12eff50ff36f0bed96b1e588b6779edd0b058
+    image: ghcr.io/davidzapataoh/keelson-engine@sha256:9f04109b0853f22e7a337ff37a8943b2e0f5ba7856d9e970618c4efc3cc58643
     command: ["--platform", "tdx", "--listen", "tcp:0.0.0.0:8080"]
     ports:
       - "8080:8080"
+      - "8443:8443"
     volumes:
       - /var/run/dstack.sock:/var/run/dstack.sock
       - data:/data
     environment:
-      - KEELSON_OCI_DIGEST=sha256:ff92c3209b1683f7324f5ec5e5a12eff50ff36f0bed96b1e588b6779edd0b058
+      - KEELSON_OCI_DIGEST=sha256:9f04109b0853f22e7a337ff37a8943b2e0f5ba7856d9e970618c4efc3cc58643
       - KEELSON_CANONICALIZER=keelson-canon/0.0.0
       - KEELSON_ORIGIN=https://app.keelson.finance
       - KEELSON_BOND_VAULT=0xb39898Ef4333f3CB32d1B420E744f5a1Aa2ae2Bf
       - KEELSON_VERIFYING_CONTRACT=0xe16E8767EC1DA59Ef0D9Bc7851637E4D22352d96
+      - KEELSON_RATLS_LISTEN=0.0.0.0:8443
+      - KEELSON_RATLS_HOST=58955baac3072bac57064089176bed1c2379f86d-8443s.dstack-pha1-prod5.phala.network
       - KEELSON_TEE_TOKEN_SHA256=${KEELSON_TEE_TOKEN_SHA256}
       - PAYPAL_CLIENT_ID=${PAYPAL_CLIENT_ID}
       - PAYPAL_CLIENT_SECRET=${PAYPAL_CLIENT_SECRET}

@@ -1,6 +1,16 @@
 "use client";
 
-import { Home, LogOut, Plus, Radio, Scale, Trophy } from "lucide-react";
+import {
+  Bot,
+  Home,
+  KeyRound,
+  LogOut,
+  type LucideIcon,
+  Plus,
+  Radio,
+  Scale,
+  Trophy,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
@@ -9,21 +19,76 @@ import { useSessionHint } from "./header";
 
 const PUBLIC = new Set(["/live/", "/scoreboard/"]);
 
-const NAV = [
+export interface NavItem {
+  href: string;
+  label: string;
+  /** The tab bar's word, when the label is too long for it. */
+  short?: string;
+  icon: LucideIcon;
+}
+
+const ACCOUNT = "/passkeys/";
+
+const NAV: NavItem[] = [
   { href: "/", label: "Home", icon: Home },
-  { href: "/new/", label: "New mandate", icon: Plus },
+  { href: "/agents/", label: "Agents", icon: Bot },
+  { href: "/new/", label: "New mandate", short: "New", icon: Plus },
   { href: "/disputes/", label: "Disputes", icon: Scale },
   { href: "/live/", label: "Live", icon: Radio },
   { href: "/scoreboard/", label: "Scoreboard", icon: Trophy },
-] as const;
+  { href: "/passkeys/", label: "Passkeys", icon: KeyRound },
+];
 
-/** The signed-in app: a sidebar on desktop, a tab bar on a phone. */
-export function AppShell({ children }: { children: ReactNode }) {
+/** Who is signed in to a console, when it is not the shopper's session. */
+export interface ShellAccount {
+  name: string;
+  detail?: ReactNode;
+  onSignOut?: () => void;
+}
+
+/**
+ * The signed-in app: a sidebar on desktop, a tab bar on a phone. The merchant and operator
+ * consoles and Judge Mode pass their own `nav` and `account`.
+ */
+export function AppShell({
+  children,
+  nav: own,
+  account,
+  wide = false,
+}: {
+  children: ReactNode;
+  nav?: NavItem[];
+  account?: ShellAccount | null;
+  /** Dense consoles use the whole width beside the sidebar. */
+  wide?: boolean;
+}) {
   const path = usePathname();
   const session = useSessionHint();
-  const name = session?.user.name || session?.user.email || "";
-  const nav = session ? NAV : NAV.filter((n) => PUBLIC.has(n.href));
-  const active = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
+  const person: ShellAccount | null =
+    account !== undefined
+      ? account
+      : session
+        ? { name: session.user.name || session.user.email || "" }
+        : null;
+  const nav = own ?? (session ? NAV : NAV.filter((n) => PUBLIC.has(n.href)));
+  // A phone's tab bar holds five at most: the public proof pages share one tab there.
+  // A phone's tab bar holds five at most: the public proof pages share one tab there, and the
+  // account's passkeys sit in the top bar.
+  const onPhone = nav.filter((n) => n.href !== ACCOUNT);
+  const tabs =
+    onPhone.length > 5
+      ? [
+          ...onPhone.filter((n) => !PUBLIC.has(n.href)),
+          { href: "/live/", label: "Proof", icon: Radio } satisfies NavItem,
+        ]
+      : onPhone;
+  const settings = nav.find((n) => n.href === ACCOUNT);
+  const active = (href: string) =>
+    href === "/"
+      ? path === "/"
+      : path.startsWith(href) || (href === "/live/" && path.startsWith("/scoreboard/"));
+  const signOut =
+    person?.onSignOut ?? (() => authClient.signOut().then(() => location.assign("/")));
 
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[248px_1fr]">
@@ -49,7 +114,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <span className="w-fit rounded-md border px-2 py-1 font-mono text-[11px] text-muted-foreground">
             PayPal sandbox
           </span>
-          {session ? null : (
+          {person || own ? null : (
             <Link
               href="/"
               className="grid h-11 place-items-center rounded-xl bg-graphite font-medium text-bone text-sm"
@@ -57,14 +122,21 @@ export function AppShell({ children }: { children: ReactNode }) {
               Get started
             </Link>
           )}
-          <div className={session ? "flex items-center gap-3" : "hidden"}>
+          <div className={person ? "flex items-center gap-3" : "hidden"}>
             <span className="grid size-8 shrink-0 place-items-center rounded-full bg-graphite font-medium text-bone text-xs uppercase">
-              {name.slice(0, 1)}
+              {person?.name.slice(0, 1)}
             </span>
-            <span className="min-w-0 flex-1 truncate text-sm">{name}</span>
+            <span className="grid min-w-0 flex-1 leading-tight">
+              <span className="truncate text-sm">{person?.name}</span>
+              {person?.detail ? (
+                <span className="truncate font-mono text-[11px] text-muted-foreground">
+                  {person.detail}
+                </span>
+              ) : null}
+            </span>
             <button
               type="button"
-              onClick={() => authClient.signOut().then(() => location.assign("/"))}
+              onClick={signOut}
               className="grid size-9 place-items-center rounded-lg text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
               aria-label="Sign out"
             >
@@ -78,13 +150,25 @@ export function AppShell({ children }: { children: ReactNode }) {
         <header className="flex h-14 items-center justify-between px-5 lg:hidden">
           {/* biome-ignore lint/performance/noImgElement: a static export serves the SVG as is */}
           <img src="/keelson.svg" alt="Keelson" width={94} height={28} className="h-6 w-auto" />
-          <span className="rounded-md border px-2 py-1 font-mono text-[11px] text-muted-foreground">
-            Sandbox
+          <span className="flex items-center gap-2">
+            <span className="rounded-md border px-2 py-1 font-mono text-[11px] text-muted-foreground">
+              Sandbox
+            </span>
+            {settings ? (
+              <Link
+                href={settings.href}
+                aria-label={settings.label}
+                aria-current={active(settings.href) ? "page" : undefined}
+                className="grid size-10 place-items-center rounded-xl text-muted-foreground hover:bg-foreground/5 aria-[current=page]:bg-bone-2 aria-[current=page]:text-foreground"
+              >
+                <settings.icon className="size-5" aria-hidden="true" />
+              </Link>
+            ) : null}
           </span>
         </header>
         <main
           id="main"
-          className="mx-auto w-full max-w-[1120px] px-4 pt-2 pb-28 sm:px-8 lg:pt-10 lg:pb-16"
+          className={`mx-auto w-full px-4 pt-2 pb-28 sm:px-8 lg:pt-10 lg:pb-16 ${wide ? "max-w-[1600px]" : "max-w-[1120px]"}`}
         >
           {children}
         </main>
@@ -92,10 +176,10 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <nav
         aria-label="Main"
-        style={{ gridTemplateColumns: `repeat(${nav.length}, minmax(0, 1fr))` }}
+        style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
         className="fixed inset-x-3 bottom-[max(12px,env(safe-area-inset-bottom))] z-30 grid rounded-2xl border bg-card/95 p-1.5 shadow-[0_18px_40px_-18px_rgb(23_24_27/0.4)] backdrop-blur-md lg:hidden"
       >
-        {nav.map(({ href, label, icon: Icon }) => (
+        {tabs.map(({ href, label, short, icon: Icon }) => (
           <Link
             key={href}
             href={href}
@@ -103,7 +187,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             className="grid h-14 place-items-center content-center gap-1 rounded-xl text-[11px] text-muted-foreground aria-[current=page]:bg-bone-2 aria-[current=page]:text-foreground"
           >
             <Icon className="size-5" aria-hidden="true" />
-            {label === "New mandate" ? "New" : label}
+            {short ?? label}
           </Link>
         ))}
       </nav>

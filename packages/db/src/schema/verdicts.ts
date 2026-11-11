@@ -41,6 +41,8 @@ export const verdicts = pgTable(
     /** The relayed `slash`, `payWarranty` or `executeSlash` that last moved the settlement. */
     txId: char({ length: 26 }),
     txHash: bytea(),
+    /** `txId` once its block is final: a refund or payout after a chain payment waits for it. */
+    finalTxId: char({ length: 26 }),
     /** `paid`, `queued` (behind the veto window), `claimable` (the transfer failed) or `failed`. */
     outcome: text(),
     /** The contract error that ended a `failed` settlement. */

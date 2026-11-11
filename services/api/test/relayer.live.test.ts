@@ -29,6 +29,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { arbitrumSepolia } from "viem/chains";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { createApp } from "../src/app.ts";
+import { ingestReceipt } from "../src/chain/events.ts";
 import { ARBITRUM_SEPOLIA_PUBLIC_RPC, arbitrumSepoliaTransport } from "../src/chain/rpc.ts";
 import { recordOutcomes, recordValidations, type SweeperDeps } from "../src/onchain/validations.ts";
 import { createTee } from "../src/tee/config.ts";
@@ -85,7 +86,6 @@ describe.skipIf(!relayerKeys)(
       chain: arbitrumSepolia,
       transport: arbitrumSepoliaTransport(process.env.ARBITRUM_SEPOLIA_RPC_URL),
     });
-    const logs = createPublicClient({ chain: arbitrumSepolia, transport: http() });
     const passkeys: Passkey[] = [];
     let relayer: Relayer;
     let deps: SweeperDeps;
@@ -129,11 +129,9 @@ describe.skipIf(!relayerKeys)(
       });
       deps = {
         db: testDb,
-        kv: testKv,
         log,
         relayer,
-        chain: { client: client as PublicClient, logs: logs as PublicClient },
-        outcomesFrom: await logs.getBlockNumber(),
+        chain: { client: client as PublicClient },
       };
     }, 120_000);
     afterAll(async () => {
@@ -300,6 +298,10 @@ describe.skipIf(!relayerKeys)(
           key: `KeelsonBondVault.releaseCoverage:${cs.requestId}`,
         });
         expect(release.status).toBe("confirmed");
+        await ingestReceipt(
+          testDb,
+          await client.getTransactionReceipt({ hash: release.hash as `0x${string}` }),
+        );
         const done = async () =>
           (await client.readContract({
             address: REPORTER,

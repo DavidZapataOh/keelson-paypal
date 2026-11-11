@@ -15,6 +15,10 @@
     "./poseidon2": {
       "types": "./dist/poseidon2.d.ts",
       "default": "./dist/poseidon2.js"
+    },
+    "./amber": {
+      "types": "./dist/amber.d.ts",
+      "default": "./dist/amber.js"
     }
   },
   "files": [
@@ -24,7 +28,7 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "vectors": "tsc -p tsconfig.build.json && node scripts/vectors.ts",
+    "vectors": "tsc -p tsconfig.build.json && node scripts/vectors.ts && node scripts/c2b-vectors.ts",
     "bench": "vitest bench --reporter=verbose"
   },
   "dependencies": {

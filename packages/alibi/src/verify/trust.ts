@@ -38,6 +38,11 @@ export const TEE_BUILDS: readonly {
     tdx: "tdx:0faad5181c680e0bd478b69ec903ee8da239078e1713ea50b2d0806bf5a20b88",
     nitro: "nitro:750688295e0ba8d49243490bfe01db68e91415ebe2fa77c476f7b33da8a714b2",
   },
+  {
+    engineBuildId: "0x9f04109b0853f22e7a337ff37a8943b2e0f5ba7856d9e970618c4efc3cc58643",
+    tdx: "tdx:61fcd9f01b1daca85a13c767c28368f1f09f0df7d8d31ac9dcd60c0028f2bf94",
+    nitro: "nitro:b66097541c6d78e3505448e794678d9042e5e6bf18880d5446c85572d40901b0",
+  },
 ];
 
 /** The origin a passkey assertion over a mandate must come from, and its RP ID. */

@@ -2,12 +2,80 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { asc, disputeResponses, disputes, eq, paypalEvents, sql, verdicts } from "@keelson/db";
 import { CHAINS, isChainId } from "@keelson/relayer";
 import type { Context } from "hono";
+import { AMBER_FIELD, amberCases } from "../amber.ts";
 import type { Deps } from "../app.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 
 const PARTIES = ["operator", "keelson", "merchant", "user"] as const;
 
 const Party = z.enum(PARTIES);
+
+const Hex = z.string().regex(/^0x[0-9a-f]+$/);
+
+export const AmberCaseSchema = z
+  .object({
+    commitment: Hex.openapi({
+      description:
+        "The `amberCommitment` the operator signed into the coverage: Poseidon2 over the product page, the fields below and a salt.",
+    }),
+    attested: z
+      .object({
+        url: z.url().openapi({ description: "The store's JSON page for the SKU." }),
+        sku: z.string(),
+        size: z.string(),
+        color: z.string(),
+        unit_minor: z.string().regex(/^\d+$/),
+        returns_free: z.boolean(),
+      })
+      .nullable()
+      .openapi({
+        description:
+          "What the operator attested. Null on the public dispute read: what was bought stays with the consoles.",
+      }),
+    conviction: z
+      .object({
+        field: z.enum(AMBER_FIELD),
+        attested_value: z.string().nullable().openapi({
+          description:
+            "What the operator attested of the field, which the store's answer contradicts. Null on the public dispute read.",
+        }),
+        proven_at: z.iso.datetime(),
+        web_fact_digest: Hex.openapi({
+          description: "The EIP-712 digest of the `WebFact` leg A signed over the store's answer.",
+        }),
+        captured_at: z.iso.datetime().nullable(),
+        tx_hash: Hex,
+        explorer_url: z.url(),
+        proof: z
+          .object({
+            bytes: z.number().int(),
+            hash: Hex.openapi({ description: "keccak256 of the proof." }),
+            public_inputs: z.array(Hex).length(5).openapi({
+              description:
+                "`range_hi, range_lo, amber_commitment, product, field_id`, as the court gave the verifier.",
+            }),
+          })
+          .nullable(),
+      })
+      .nullable()
+      .openapi({
+        description:
+          "`AmberContradictionCourt`'s conviction on Arbitrum Sepolia: a C2b proof that the store's own answer, notarized by leg A, holds another value of `field`. Null while there is none.",
+      }),
+  })
+  .openapi("AmberCase", {
+    description:
+      "What the operator attested about the item it bought, and whether it was proven false. Null when the purchase carries no attestation (a cart of several lines, or bought before attestations).",
+  });
+
+/** The amber cases of `purchaseIds`, as the chain-events follower projected the court's convictions. */
+export function amberOfPurchases(
+  deps: Pick<Deps, "db">,
+  purchaseIds: readonly string[],
+  options?: { redact?: boolean },
+) {
+  return amberCases(deps.db, purchaseIds, options);
+}
 
 const DisputeStatus = z
   .object({
@@ -90,6 +158,7 @@ const DisputeStatus = z
         description:
           "What Keelson sent PayPal for the party at fault. The action and the evidence types follow from the rule; a model only drafts the text.",
       }),
+    amber: AmberCaseSchema.nullable(),
   })
   .openapi("DisputeStatus");
 
@@ -104,7 +173,7 @@ const route = createRoute({
   tags: ["Disputes"],
   summary: "A dispute's attribution",
   description:
-    "Where a PayPal dispute over a Keelson purchase stands: the party at fault, the `Verdict` both TEE legs signed and the time from the dispute's arrival to its verdict. No authentication; it holds no personal data.",
+    "Where a PayPal dispute over a Keelson purchase stands: the party at fault, the `Verdict` both TEE legs signed, the time from the dispute's arrival to its verdict, and the operator's amber commitment with any conviction of it. No authentication; it holds no personal data, so what the operator attested is left out.",
   request: { params: z.object({ id: z.string().regex(/^PP-[A-Z]-[0-9A-Za-z-]{1,40}$/) }) },
   responses: {
     200: { description: "The dispute", content: { "application/json": { schema: DisputeStatus } } },
@@ -115,7 +184,10 @@ const route = createRoute({
   },
 });
 
-export function registerDisputes(app: OpenAPIHono, deps: Pick<Deps, "db">): void {
+export function registerDisputes(
+  app: OpenAPIHono,
+  deps: Pick<Deps, "db" | "kv" | "log" | "chains">,
+): void {
   app.openapi(route, (async (c: Context) => {
     const { id } = c.req.param() as { id: string };
     const [row] = await deps.db
@@ -136,6 +208,9 @@ export function registerDisputes(app: OpenAPIHono, deps: Pick<Deps, "db">): void
       .from(disputeResponses)
       .where(eq(disputeResponses.disputeId, id))
       .orderBy(asc(disputeResponses.createdAt));
+    const amber =
+      (await amberOfPurchases(deps, [row.purchaseId], { redact: true })).get(row.purchaseId) ??
+      null;
     const v = row.verdict;
     const txHash = v?.txHash ? `0x${Buffer.from(v.txHash).toString("hex")}` : null;
     const received = row.receivedAt ? new Date(row.receivedAt) : null;
@@ -200,6 +275,7 @@ export function registerDisputes(app: OpenAPIHono, deps: Pick<Deps, "db">): void
             sent_at: r.createdAt.toISOString(),
           };
         }),
+        amber,
       },
       200,
     );

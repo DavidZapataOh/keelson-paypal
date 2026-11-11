@@ -56,6 +56,8 @@ export function countedHttp(url: string, config?: HttpTransportConfig): Transpor
 /**
  * Sends each request to the first URL and, on a rate limit, a server error or a timeout, to the
  * next. Errors name the last URL tried, so a provider's key in the first one stays out of logs.
+ *
+ * @internal
  */
 export function rpcTransport(urls: readonly string[]): Transport {
   return urls.length === 1
@@ -66,6 +68,23 @@ export function rpcTransport(urls: readonly string[]): Transport {
 /** The configured Arbitrum Sepolia RPC with the public one behind it. */
 export function arbitrumSepoliaTransport(primary: string | undefined): Transport {
   return rpcTransport(arbitrumSepoliaRpcUrls(primary));
+}
+
+/**
+ * For `eth_getLogs`: the public RPC, then the configured one. Alchemy's free tier answers at most
+ * 10 blocks per call, about 110 calls for five minutes of Arbitrum Sepolia, and dRPC's refuses the
+ * chain's ranges outright; the public RPC answers 10,000 blocks in one.
+ * https://www.alchemy.com/docs/reference/eth-getlogs
+ *
+ * @internal
+ */
+export function arbitrumSepoliaLogsRpcUrls(provider: string | undefined): string[] {
+  return arbitrumSepoliaRpcUrls(provider).reverse();
+}
+
+/** {@link arbitrumSepoliaLogsRpcUrls} through the shared fallback. */
+export function arbitrumSepoliaLogsTransport(provider: string | undefined): Transport {
+  return rpcTransport(arbitrumSepoliaLogsRpcUrls(provider));
 }
 
 /**

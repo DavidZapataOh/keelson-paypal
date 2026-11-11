@@ -14,6 +14,15 @@ const OWN_CHROME = new Set([
   "/live/",
   "/scoreboard/",
   "/scoreboard/methodology/",
+  "/merchant/",
+  "/operator/",
+  "/judge/",
+  "/agents/",
+  "/connect/",
+  "/consent/",
+  "/sign-in/",
+  "/passkeys/",
+  "/embed/approve/",
 ]);
 
 export function Chrome({ children }: { children: ReactNode }) {

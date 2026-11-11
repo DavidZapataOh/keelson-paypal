@@ -260,6 +260,41 @@
       "when": 1794329930351,
       "tag": "0036_live_purchases",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1794360708081,
+      "tag": "0037_passkey_user_credential",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1794369883277,
+      "tag": "0038_agent_connections",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1794373166112,
+      "tag": "0039_chain_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1794375573380,
+      "tag": "0040_amber",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1794378640639,
+      "tag": "0041_embed_origins",
+      "breakpoints": true
     }
   ]
 }

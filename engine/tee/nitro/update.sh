@@ -8,13 +8,18 @@
 # Reads KEELSON_TEE_TOKEN_SHA256 and KEELSON_ISSUER_JWK (the issuer's public key) from the
 # environment, and optionally KEELSON_ORIGIN, KEELSON_CANONICALIZER, KEELSON_CHAIN_ID,
 # KEELSON_BOND_VAULT and KEELSON_VERIFYING_CONTRACT, which default to leg A's values (the
-# CREATE3 addresses of KeelsonBondVault and VerdictVerifier).
+# CREATE3 addresses of KeelsonBondVault and VerdictVerifier), and TEE_A_URL, whose /v1/health gives
+# leg A's log keys and their KMS chains; the enclave checks each chain.
 . "$(dirname "$0")/common.sh"
 
 digest="${1:-}"
 [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "usage: update.sh sha256:<digest> [--hold]" >&2; exit 1; }
 hold="${2:-}"
 : "${KEELSON_TEE_TOKEN_SHA256:?}" "${KEELSON_ISSUER_JWK:?}"
+
+# Without leg A's log keys the enclave cannot verify the checkpoints leg A signs.
+: "${TEE_A_URL:?the URL of leg A, to read its log keys}"
+log_keys="$(curl -fsS "$TEE_A_URL/v1/health" | jq -c '[.log_keys // [] | .[] | select(.signature_chain) | {origin, public_key, signature_chain}]')"
 
 id="$(instance_id)"
 [ -n "$id" ] && [ "$(instance_state "$id")" = running ] || { echo "no running parent" >&2; exit 1; }
@@ -28,8 +33,9 @@ boot="$(jq -n \
   --argjson chain "${KEELSON_CHAIN_ID:-421614}" \
   --arg vault "${KEELSON_BOND_VAULT:-0xb39898Ef4333f3CB32d1B420E744f5a1Aa2ae2Bf}" \
   --arg verifying "${KEELSON_VERIFYING_CONTRACT:-0xe16E8767EC1DA59Ef0D9Bc7851637E4D22352d96}" \
+  --argjson log_keys "$log_keys" \
   '{token_sha256: $token, config: {chain_id: $chain, bond_vault: $vault, verifying_contract: $verifying,
-    oci_digest: $digest, canonicalizer: $canonicalizer, issuer: $issuer, origin: $origin}}')"
+    oci_digest: $digest, canonicalizer: $canonicalizer, issuer: $issuer, origin: $origin, log_keys: $log_keys}}')"
 
 # The enclave image is the engine image with the enclave's command. nitro-cli runs only the
 # image's Cmd, so the entrypoint is cleared and the binary named in it. Its layers are the engine

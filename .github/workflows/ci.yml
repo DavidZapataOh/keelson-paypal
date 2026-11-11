@@ -792,3 +792,15 @@ jobs:
           circuits/c1c3/prove.sh "$RUNNER_TEMP/c1c3.json"
           circuits/c1c3/refuses.sh
           bb gates -b circuits/c1c3/target/anonymous_purchase.json | tee -a "$GITHUB_STEP_SUMMARY"
+      - run: nargo test
+        working-directory: circuits/c2b
+      - name: The C2b key and Solidity verifiers are what the circuit compiles to
+        run: |
+          circuits/c2b/build.sh
+          git diff --exit-code circuits/c2b/amber_contradiction.vk contracts/src/verifiers
+      - name: bb proves and verifies a contradiction of each amber field
+        run: |
+          for field in size color unitPrice returnsFree; do
+            circuits/c2b/prove.sh "$field" "$RUNNER_TEMP/c2b-$field.json"
+          done
+          bb gates -b circuits/c2b/target/amber_contradiction.json | tee -a "$GITHUB_STEP_SUMMARY"

@@ -2,8 +2,11 @@ import { Amount } from "@keelson/ui/components/amount";
 import type { AgWidgetFieldReference, AgWidgetParams } from "ag-studio";
 import { AgIncompleteDataMappingOverlay, AgNoDataOverlay } from "ag-studio-react";
 import { use } from "react";
+import { AMBER_LABEL } from "../../lib/amber";
 import { VERIFY } from "../../lib/config";
+import { major } from "../../lib/format";
 import type { MerchantDispute } from "../../lib/merchant";
+import { AmberCase } from "../amber-case";
 import { LIABLE, OUTCOME, PAID_BY, RAIL } from "./labels";
 
 export interface DisputeDef {
@@ -66,7 +69,11 @@ export function DisputeClock(params: AgWidgetParams<DisputeDef>) {
       className="grid h-full content-start gap-4 overflow-auto p-4 text-ui"
     >
       <header className="flex flex-wrap items-baseline justify-between gap-2">
-        <Amount value={Number(d.amount_minor) / 100} currency={d.currency} className="text-2xl" />
+        <Amount
+          value={major(d.amount_minor, d.currency)}
+          currency={d.currency}
+          className="text-2xl"
+        />
         <span className={`inline-flex items-center gap-1.5 font-medium text-xs ${outcome.tone}`}>
           <span aria-hidden="true">{outcome.glyph}</span>
           {d.outcome === "queued" && d.ready_at ? `Queued until ${time(d.ready_at)}` : outcome.text}
@@ -97,6 +104,12 @@ export function DisputeClock(params: AgWidgetParams<DisputeDef>) {
             <span className="font-mono">{d.rule}</span>
           </Event>
         ) : null}
+        {d.amber?.conviction ? (
+          <Event when={d.amber.conviction.proven_at}>
+            AmberContradictionCourt proved the operator&apos;s{" "}
+            <strong>{AMBER_LABEL[d.amber.conviction.field].toLowerCase()}</strong> false
+          </Event>
+        ) : null}
         {d.paid_by ? (
           <Event when={d.settled_at}>
             {PAID_BY[d.paid_by]} {d.outcome === "paid" ? "paid" : "pays"} you
@@ -104,6 +117,7 @@ export function DisputeClock(params: AgWidgetParams<DisputeDef>) {
           </Event>
         ) : null}
       </ol>
+      {d.amber ? <AmberCase amber={d.amber} purchaseId={d.purchase_id} compact /> : null}
       <nav aria-label="Checks outside Keelson" className="flex flex-wrap gap-x-4 gap-y-1">
         {d.has_alibi ? (
           <a

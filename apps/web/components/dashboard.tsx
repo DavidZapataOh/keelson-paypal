@@ -1,20 +1,25 @@
 "use client";
 
 import { Skeleton } from "@keelson/ui/components/skeleton";
-import { ArrowUpRight, Check, ChevronRight, Hand, Plus, ShieldCheck, X } from "lucide-react";
+import { ArrowUpRight, ChevronRight, Hand, Plus, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { get, post } from "../lib/api";
+import { authClient } from "../lib/auth";
 import { VERIFY } from "../lib/config";
-import { money } from "../lib/format";
+import type { AgentRow, PendingApproval } from "../lib/connections";
+import { useEvents, userChannel } from "../lib/events";
+import { major, money } from "../lib/format";
 import { purchaseStatus } from "../lib/status";
 import type { MandateSummary, MandateView, Purchase } from "../lib/types";
 import { useMandate } from "../lib/use-mandate";
 import { AppShell } from "./app-shell";
 import { HoldButton } from "./hold-button";
+import { GetStarted, PausedApprovals } from "./home-agents";
 import { CardAmount, MandateVisual } from "./mandate-visual";
 import { ErrorNotice } from "./notice";
+import { Mark, type MarkKind, Panel } from "./surface";
 import { WhoAnswers } from "./who-answers";
 
 const short = (iso: string) =>
@@ -72,7 +77,13 @@ function blockedWhy(p: Purchase): string {
   return p.failure?.reason ?? "outside your rules";
 }
 
-type Kind = "bought" | "blocked" | "checking" | "attention";
+/** The cap check a bought cart passed, as "$89.00 ≤ $100.00 ✓". */
+function passedLine(p: Purchase): string | undefined {
+  const c = p.checks?.find((x) => x.field === "total" && x.pass);
+  return c?.cart && c.mandate ? `${c.cart} ≤ ${c.mandate} ✓` : undefined;
+}
+
+type Kind = MarkKind;
 
 function kindOf(p: Purchase): Kind {
   const s = purchaseStatus(p);
@@ -80,29 +91,6 @@ function kindOf(p: Purchase): Kind {
   if (s === "checking") return "checking";
   if (s === "error" || s === "disputed") return "attention";
   return "bought";
-}
-
-function Mark({ kind }: { kind: Kind }) {
-  const base = "grid size-10 shrink-0 place-items-center rounded-xl";
-  if (kind === "blocked")
-    return (
-      <span className={`${base} bg-vermilion text-graphite`}>
-        <X className="size-5" strokeWidth={2.5} aria-hidden="true" />
-      </span>
-    );
-  if (kind === "bought")
-    return (
-      <span className={`${base} bg-ok text-bone`}>
-        <Check className="size-5" strokeWidth={2.5} aria-hidden="true" />
-      </span>
-    );
-  return (
-    <span className={`${base} bg-bone-2`}>
-      <span
-        className={`size-2.5 rounded-full ${kind === "checking" ? "animate-pending bg-foreground" : "bg-warn"}`}
-      />
-    </span>
-  );
 }
 
 const SAY: Record<Kind, string> = {
@@ -125,7 +113,9 @@ function Row({ p, store, mandateId }: { p: Purchase; store: string; mandateId: s
           <span className="truncate font-medium">{store}</span>
           <span className="truncate text-muted-foreground text-sm">
             {SAY[kind]}
-            {kind === "blocked" ? ` · ${blockedWhy(p)}` : ` · ${time(p.createdAt)}`}
+            {kind === "blocked"
+              ? ` · ${blockedWhy(p)}`
+              : ` · ${passedLine(p) ?? time(p.createdAt)}`}
           </span>
         </span>
         <span
@@ -135,26 +125,6 @@ function Row({ p, store, mandateId }: { p: Purchase; store: string; mandateId: s
         </span>
       </Link>
     </li>
-  );
-}
-
-function Panel({
-  title,
-  aside,
-  children,
-}: {
-  title: string;
-  aside?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <section aria-label={title} className="rounded-3xl border bg-card p-5 sm:p-6">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-semibold text-lg tracking-tight">{title}</h2>
-        {aside}
-      </div>
-      {children}
-    </section>
   );
 }
 
@@ -189,7 +159,13 @@ function Action({
 
 const FILTERS = ["All", "Bought", "Blocked"] as const;
 
-function Focus({ id }: { id: string }) {
+function Focus({
+  id,
+  setup,
+}: {
+  id: string;
+  setup: { connected: boolean; approved: boolean } | null;
+}) {
   const { mandate, error, reload } = useMandate(id);
   const [stopping, setStopping] = useState(false);
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("All");
@@ -205,8 +181,8 @@ function Focus({ id }: { id: string }) {
   }
 
   const { budget } = mandate;
-  const left = Number(budget.remainingMinor) / 100;
-  const max = Number(budget.maxMinor) / 100;
+  const left = major(budget.remainingMinor, budget.currency);
+  const max = major(budget.maxMinor, budget.currency);
   const store = storeNames(mandate);
   const purchases = [...mandate.purchases].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const blocked = purchases.filter((p) => kindOf(p) === "blocked");
@@ -226,6 +202,13 @@ function Focus({ id }: { id: string }) {
   return (
     <div className="grid gap-6">
       <h1 className="sr-only">Home</h1>
+      {setup ? (
+        <GetStarted
+          connected={setup.connected}
+          approved={setup.approved}
+          bought={purchases.some((p) => kindOf(p) === "bought")}
+        />
+      ) : null}
       <div className="grid items-center gap-8 lg:grid-cols-[1fr_400px]">
         <div className="grid gap-6">
           <div className="grid gap-1">
@@ -348,7 +331,9 @@ function Focus({ id }: { id: string }) {
             </span>
             <span className="truncate text-muted-foreground text-sm">
               {store(latestBlock.merchantId)} ·{" "}
-              {money(latestBlock.amount.minor, latestBlock.amount.currency)} ·{" "}
+              {latestBlock.reasons?.length
+                ? ""
+                : `${money(latestBlock.amount.minor, latestBlock.amount.currency)} · `}
               {blockedWhy(latestBlock)} · nothing paid
             </span>
           </span>
@@ -436,7 +421,10 @@ function Focus({ id }: { id: string }) {
 /** Home: what the agent bought, what Keelson blocked, and who answers if it goes wrong. */
 export function Dashboard() {
   const router = useRouter();
+  const session = authClient.useSession();
   const [mandates, setMandates] = useState<MandateSummary[]>();
+  const [agents, setAgents] = useState<AgentRow[]>();
+  const [approvals, setApprovals] = useState<PendingApproval[]>([]);
   const [error, setError] = useState<string>();
 
   useEffect(() => {
@@ -449,12 +437,44 @@ export function Dashboard() {
       .catch((e: Error) => setError(e.message));
   }, [router]);
 
+  const loadAgents = useCallback(() => {
+    get<{ agents: AgentRow[] }>("/v1/agents")
+      .then((r) => setAgents(r.agents))
+      .catch(() => setAgents([]));
+    get<{ approvals: PendingApproval[] }>("/v1/approvals")
+      .then((r) => setApprovals(r.approvals))
+      .catch(() => setApprovals([]));
+  }, []);
+  useEffect(loadAgents, [loadAgents]);
+  useEvents(
+    session.data ? userChannel(session.data.user.id, "agents") : undefined,
+    loadAgents,
+    loadAgents,
+  );
+
   const focus = mandates?.find((m) => m.state === "ACTIVE") ?? mandates?.[0];
 
   return (
     <AppShell>
       {error ? <ErrorNotice>{error}</ErrorNotice> : null}
-      {focus ? <Focus id={focus.id} /> : null}
+      <div className="grid gap-6">
+        <PausedApprovals approvals={approvals} onAnswered={loadAgents} />
+        {focus ? (
+          <Focus
+            id={focus.id}
+            setup={
+              agents === undefined
+                ? null
+                : {
+                    connected: agents.some((a) => a.connected),
+                    approved: (mandates ?? []).some((m) =>
+                      ["SIGNED", "HOLD_PENDING", "ACTIVE", "EXHAUSTED"].includes(m.state),
+                    ),
+                  }
+            }
+          />
+        ) : null}
+      </div>
     </AppShell>
   );
 }
