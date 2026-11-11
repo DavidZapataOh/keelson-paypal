@@ -181,7 +181,7 @@ export const ConnectionView = z
   .openapi("Connection");
 
 /** What the agent that asked reads of its request, without spending its device code. */
-export const RequestState = z
+const RequestState = z
   .object({
     id: z.string(),
     kind: z.enum(["connect", "once", "change"]),
