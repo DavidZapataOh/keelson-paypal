@@ -2,9 +2,8 @@ import { deploymentsFor } from "@keelson/chain";
 import { fromHex, toHex } from "@keelson/core";
 import {
   LOG_ORIGINS,
-  LOG_VKEYS,
   verifyConsistency,
-  verifyProof,
+  verifyProofOfOrigin,
   verifyWitnessedCheckpoint,
 } from "@keelson/log";
 import { leafHashOf } from "../../codec.ts";
@@ -54,11 +53,7 @@ export const anchor: CheckDef = {
       "/anchor/anchored_root",
       "/anchor/checkpoint",
     ]);
-    const { index, checkpoint } = verifyProof(
-      input.tlog_proof,
-      leafHashOf(input),
-      LOG_VKEYS[origin] ?? [],
-    );
+    const { index, checkpoint } = verifyProofOfOrigin(input.tlog_proof, leafHashOf(input), origin);
     expect(index < anchored.size, "the anchor does not cover the leaf", ["/anchor/anchored_size"]);
     const older = anchored.size <= checkpoint.size;
     const [from, to] = older ? [anchored, checkpoint] : [checkpoint, anchored];

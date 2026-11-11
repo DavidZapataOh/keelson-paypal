@@ -19,6 +19,9 @@ use subtle::ConstantTimeEq;
 use time::OffsetDateTime;
 
 use crate::engine::{C1Status, unix_ms};
+use crate::logsign::SignError;
+#[cfg(feature = "tdx")]
+use crate::logsign::{SignRequest, Signed};
 use crate::wire::{
     CheckpointRequest, CheckpointSigned, CountersignRequest, Countersigned, MandateIssued,
     RegisterMandate, VerdictRequest, VerdictSigned, ZkProof,
@@ -48,6 +51,17 @@ pub struct AppState {
     nitro: Option<crate::nitro::Nitro>,
     #[cfg(feature = "tdx")]
     notary: Option<Arc<tokio::sync::Semaphore>>,
+    /// The SHA-256 of the RA-TLS certificate and the signer's signature over its binding.
+    #[cfg(feature = "tdx")]
+    tls: Option<TlsBinding>,
+}
+
+#[cfg(feature = "tdx")]
+#[derive(Clone, Serialize)]
+struct TlsBinding {
+    certificate_sha256: crate::wire::Hex32,
+    signature: crate::wire::Hex<65>,
+    signer: Address,
 }
 
 impl AppState {
@@ -66,7 +80,27 @@ impl AppState {
             nitro: None,
             #[cfg(feature = "tdx")]
             notary: None,
+            #[cfg(feature = "tdx")]
+            tls: None,
         }
+    }
+
+    /// Serves `GET /v1/log/tls`: the signer's signature over the RA-TLS certificate whose
+    /// SHA-256 is `certificate_sha256`.
+    #[cfg(feature = "tdx")]
+    pub fn with_tls_certificate(
+        mut self,
+        certificate_sha256: [u8; 32],
+    ) -> Result<Self, crate::Error> {
+        let signature = self
+            .engine
+            .sign_tls_binding(&crate::ratls::binding_digest(&certificate_sha256))?;
+        self.tls = Some(TlsBinding {
+            certificate_sha256: crate::wire::Hex(certificate_sha256),
+            signature: crate::wire::Hex(signature),
+            signer: self.engine.signer(),
+        });
+        Ok(self)
     }
 
     /// Serves `GET /v1/notary`: the leg notarizes TLS sessions and signs a `WebFact` for each
@@ -158,6 +192,11 @@ pub fn router(state: Arc<AppState>) -> Router {
         (open, protected)
     };
     #[cfg(feature = "tdx")]
+    let open = match state.tls.clone() {
+        Some(tls) => open.route("/v1/log/tls", get(move || async move { Json(tls) })),
+        None => open,
+    };
+    #[cfg(feature = "tdx")]
     let protected = if state.notary.is_some() {
         protected.route("/v1/notary", get(crate::notary::notary))
     } else {
@@ -189,6 +228,8 @@ pub(crate) struct Problem {
     status: StatusCode,
     code: String,
     detail: Option<&'static str>,
+    /// The last size signed for the origin, on a `log_not_extending` refusal.
+    latest: Option<u64>,
 }
 
 impl Problem {
@@ -197,6 +238,7 @@ impl Problem {
             status,
             code: code.into(),
             detail: None,
+            latest: None,
         }
     }
 }
@@ -216,6 +258,16 @@ impl From<EngineError> for Problem {
             EngineError::NotReady | EngineError::Busy => StatusCode::SERVICE_UNAVAILABLE,
             EngineError::Signer(_) => StatusCode::INTERNAL_SERVER_ERROR,
             EngineError::PayPal => StatusCode::BAD_GATEWAY,
+            EngineError::Log(SignError::NotExtending { .. }) => StatusCode::CONFLICT,
+            EngineError::Log(SignError::Format | SignError::Origin) => {
+                StatusCode::UNPROCESSABLE_ENTITY
+            }
+            EngineError::Log(SignError::Records) => StatusCode::INTERNAL_SERVER_ERROR,
+            EngineError::Log(SignError::NoFloor) => StatusCode::SERVICE_UNAVAILABLE,
+        };
+        let latest = match &e {
+            EngineError::Log(SignError::NotExtending { latest }) => *latest,
+            _ => None,
         };
         let detail = match e {
             EngineError::BadRequest(what) | EngineError::TooLarge(what) => Some(what),
@@ -225,6 +277,7 @@ impl From<EngineError> for Problem {
             status,
             code: e.code(),
             detail,
+            latest,
         }
     }
 }
@@ -240,6 +293,9 @@ impl IntoResponse for Problem {
         if let Some(detail) = self.detail {
             body["detail"] = detail.into();
         }
+        if let Some(latest) = self.latest {
+            body["latest"] = latest.into();
+        }
         let mut response = (self.status, body.to_string()).into_response();
         response.headers_mut().insert(
             header::CONTENT_TYPE,
@@ -252,6 +308,21 @@ impl IntoResponse for Problem {
 /// Requires `Authorization: Bearer <token>` whose SHA-256 is the configured hash, compared in
 /// constant time.
 async fn bearer(State(state): State<Arc<AppState>>, request: Request, next: Next) -> Response {
+    authorized(&state.token_hash, request, next).await
+}
+
+/// The routes of leg A's checkpoint signer, served only on its RA-TLS listener, so the
+/// gateway's TLS-terminating route never reaches them.
+#[cfg(feature = "tdx")]
+pub fn log_router(state: Arc<AppState>) -> Router {
+    Router::new()
+        .route("/v1/log/sign", post(log_sign))
+        .layer(DefaultBodyLimit::max(BODY_LIMIT))
+        .route_layer(middleware::from_fn_with_state(state.clone(), bearer))
+        .with_state(state)
+}
+
+async fn authorized(token_hash: &[u8; 32], request: Request, next: Next) -> Response {
     let presented = request
         .headers()
         .get(header::AUTHORIZATION)
@@ -261,7 +332,7 @@ async fn bearer(State(state): State<Arc<AppState>>, request: Request, next: Next
         .map(|(_, token)| token);
     let known = presented.is_some_and(|token| {
         let hash: [u8; 32] = Sha256::digest(token).into();
-        hash.ct_eq(&state.token_hash).into()
+        hash.ct_eq(token_hash).into()
     });
     if known {
         return next.run(request).await;
@@ -288,6 +359,21 @@ struct Health {
     /// Resident memory of the process in KiB, where the platform reports it.
     #[serde(skip_serializing_if = "Option::is_none")]
     rss_kib: Option<u64>,
+    /// The Alibi origins' log keys leg A holds, as note verifier keys; on leg A with the KMS
+    /// signature chain that proves the app derived each.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    log_keys: Vec<LogKeyInfo>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct LogKeyInfo {
+    pub origin: &'static str,
+    pub vkey: String,
+    /// The raw Ed25519 public key, hex.
+    pub public_key: String,
+    /// `GetKey`'s signature chain, hex: absent on leg B.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub signature_chain: Vec<String>,
 }
 
 async fn health(State(state): State<Arc<AppState>>) -> Json<Health> {
@@ -303,7 +389,34 @@ async fn health(State(state): State<Arc<AppState>>) -> Json<Health> {
             .issuer()
             .map(|k| json!({ "kty": "EC", "crv": "P-256", "x": k.x, "y": k.y })),
         rss_kib: crate::process::rss_kib(),
+        log_keys: log_keys(engine),
     })
+}
+
+fn log_keys(engine: &Engine) -> Vec<LogKeyInfo> {
+    let hex = |b: &[u8]| -> String { b.iter().map(|x| format!("{x:02x}")).collect() };
+    if let Some(log) = engine.log_signer() {
+        return log
+            .keys()
+            .iter()
+            .map(|k| LogKeyInfo {
+                origin: k.origin,
+                vkey: k.vkey(),
+                public_key: format!("0x{}", hex(&k.public_key())),
+                signature_chain: k.signature_chain.iter().map(|l| hex(l)).collect(),
+            })
+            .collect();
+    }
+    engine
+        .tee_log_keys()
+        .iter()
+        .map(|(origin, key)| LogKeyInfo {
+            origin,
+            vkey: crate::logsign::vkey(origin, key),
+            public_key: format!("0x{}", hex(key)),
+            signature_chain: Vec::new(),
+        })
+        .collect()
 }
 
 pub(crate) fn parse<T: for<'de> Deserialize<'de>>(
@@ -328,6 +441,7 @@ pub(crate) fn parse<T: for<'de> Deserialize<'de>>(
             status,
             code: "bad_request".into(),
             detail: Some("the body is not a valid request"),
+            latest: None,
         }
     })
 }
@@ -440,6 +554,36 @@ async fn read_paypal(
             Err(EngineError::PayPal.into())
         }
     }
+}
+
+#[cfg(feature = "tdx")]
+async fn log_sign(
+    State(state): State<Arc<AppState>>,
+    body: Result<Bytes, BytesRejection>,
+) -> Result<Json<Signed>, Problem> {
+    let request: SignRequest = parse(body)?;
+    let origin = request
+        .checkpoint
+        .split('\n')
+        .next()
+        .unwrap_or_default()
+        .to_owned();
+    let floor = if state.engine.log_needs_floor(&origin)? {
+        let chain_id = if origin.contains("/alibi-live/") {
+            42_161
+        } else {
+            421_614
+        };
+        let hash = alloy_primitives::keccak256(origin.as_bytes()).0;
+        Some(
+            crate::chain::anchored(&crate::chain::rpc_url_for(chain_id), &hash)
+                .await
+                .map_err(|_| EngineError::Log(SignError::NoFloor))?,
+        )
+    } else {
+        None
+    };
+    blocking(move || state.engine.sign_log(&request, floor)).await
 }
 
 async fn checkpoint(

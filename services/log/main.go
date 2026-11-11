@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/mod/sumdb/note"
 )
 
 func main() {
@@ -41,9 +42,20 @@ func run(log *slog.Logger) error {
 
 	s := &server{registry: registry{db}, tokenHash: cfg.TokenHash, log: log}
 	for _, spec := range originSpecs {
-		o, err := openOrigin(appendCtx, spec, cfg.originDir(spec), cfg.VerifyingContract, cfg.Signers[spec.Name], cfg.Policies[spec.Name])
+		signers := cfg.Signers[spec.Name]
+		var remote *remoteSigner
+		if vkey, ok := cfg.RemoteVkeys[spec.Name]; ok {
+			if remote, err = newRemoteSigner(vkey, cfg.RemoteURL, cfg.TEEToken, s.registry); err != nil {
+				return err
+			}
+			signers = append([]note.Signer{remote}, signers...)
+		}
+		o, err := openOrigin(appendCtx, spec, cfg.originDir(spec), cfg.VerifyingContract, signers, cfg.Policies[spec.Name])
 		if err != nil {
 			return err
+		}
+		if remote != nil {
+			remote.setReader(o.reader.ReadTile)
 		}
 		s.origins = append(s.origins, o)
 	}
