@@ -57,7 +57,7 @@
   ],
   "scripts": {
     "types": "openapi-typescript ../../openapi/keelson.public.json --empty-objects-unknown -o src/schema.d.ts && biome format --write src/schema.d.ts",
-    "build": "tsc -p tsconfig.build.json && node scripts/copy-schema.ts",
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-schema.ts && node scripts/api-surface.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:live": "KEELSON_LIVE=1 vitest run test/live"
@@ -71,7 +71,9 @@
     "@keelson/evidence": "workspace:*",
     "@keelson/mandate": "workspace:*",
     "@keelson/paypal": "workspace:*",
+    "@keelson/verify": "workspace:*",
     "@types/node": "26.6.6",
+    "esbuild": "0.28.2",
     "openapi-typescript": "7.13.0",
     "playwright": "1.64.1",
     "typescript": "6.0.3",

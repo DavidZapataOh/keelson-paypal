@@ -956,9 +956,15 @@ importers:
       '@keelson/paypal':
         specifier: workspace:*
         version: link:../paypal
+      '@keelson/verify':
+        specifier: workspace:*
+        version: link:../verify
       '@types/node':
         specifier: 26.6.6
         version: 26.6.6
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
       openapi-typescript:
         specifier: 7.13.0
         version: 7.13.0(typescript@6.0.3)

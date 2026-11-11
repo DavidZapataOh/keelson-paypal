@@ -71,7 +71,11 @@
     },
     {
       "includes": ["apps/verify/src/styles.css"],
-      "css": { "parser": { "tailwindDirectives": true } }
+      "css": {
+        "parser": {
+          "tailwindDirectives": true
+        }
+      }
     },
     {
       "includes": [
@@ -92,7 +96,11 @@
     },
     {
       "includes": ["packages/ui/src/styles/globals.css"],
-      "css": { "parser": { "tailwindDirectives": true } },
+      "css": {
+        "parser": {
+          "tailwindDirectives": true
+        }
+      },
       "linter": {
         "rules": {
           "complexity": {
@@ -109,6 +117,12 @@
             "noImportantStyles": "off"
           }
         }
+      }
+    },
+    {
+      "includes": ["packages/sdk/examples/quickstart.mjs"],
+      "formatter": {
+        "lineWidth": 160
       }
     }
   ]
