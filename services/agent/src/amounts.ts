@@ -1,3 +1,4 @@
+import { convertsTo, exceedsConversion } from "@keelson/core";
 import { partEnd, wordEnd } from "./requote.ts";
 
 /** An amount in minor units of an ISO 4217 currency: cents of USD, yen of JPY, fils of KWD. */
@@ -173,6 +174,8 @@ export function plain(text: string): string {
 function grouped(groups: readonly string[]): boolean {
   if (groups.length === 1) return true;
   const [first = "", ...rest] = groups;
+  // No amount writes a thousands group after a lone 0: `0.941` is a fraction.
+  if (/^0/.test(first)) return false;
   const last = rest.pop() ?? "";
   if (last.length !== 3) return false;
   return (
@@ -552,21 +555,45 @@ export interface PageReading {
    * its total or charge (a conversion of the total, "Pagarás $10.231 COP") or money it is not
    * charged (a balance). `currency` is undefined when only a sign names it.
    */
-  conversions: { currency?: string; units: number; total: boolean; aside: boolean }[];
-  /** The rates the page writes from the currency (`1 USD = 3.468,14 COP`), by currency. */
-  rates: Record<string, number>;
+  conversions: { currency?: string; units: string; total: boolean; aside: boolean }[];
+  /**
+   * The rates the page writes from the currency (`1 USD = 3.468,14 COP`), by currency, as decimal
+   * strings with the digits the page shows (`3468.14`).
+   */
+  rates: Record<string, string>;
   /** Why the page cannot be read for sure; undefined when it can. */
   unsure?: string;
 }
 
+/** `int` minor units with `scale` of them as a decimal string: `decimalText(1023101, 2)` is `10231.01`. */
+export function decimalText(int: number, scale: number): string {
+  const t = String(int).padStart(scale + 1, "0");
+  return scale ? `${t.slice(0, -scale)}.${t.slice(-scale)}` : t;
+}
+
 /**
- * A number's value in whole units of another currency, which a page may write with more decimals
- * than CLDR shows it with (COP: `3.468,14`); undefined unless it reads one way.
+ * A number's value in whole units of another currency, as a decimal string with the decimals the
+ * page shows (`$10.231 COP` is `10231`, `$17,18 BRL` is `17.18`); undefined unless it reads one
+ * way.
  */
-function units(run: string, currency: string | undefined): number | undefined {
+function units(run: string, currency: string | undefined, locale: string): string | undefined {
+  const parts = run.split(RUN_SEPARATOR);
+  const last = parts.at(-1) ?? "";
   for (const f of new Set([currency ? minorDigits(currency) : 2, 2, 0])) {
-    const [value, ...more] = values(run, f);
-    if (value !== undefined && more.length === 0) return value / 10 ** f;
+    let [value, ...more] = values(run, f);
+    if (value === undefined) continue;
+    if (more.length > 0) {
+      // 3 minor digits (`1.000 KWD`) read two ways: the locale's decimal separator decides.
+      const decimal = new Intl.NumberFormat(locale)
+        .formatToParts(1.5)
+        .find((p) => p.type === "decimal")?.value;
+      if (parts.at(-2) !== decimal) return undefined;
+      value = Math.min(value, ...more);
+      more = [];
+    }
+    // Written with `f` decimals when its last separator ends the whole units; grouped otherwise.
+    const shown = f > 0 && last.length === f && RUN_SEPARATOR.test(run) ? f : 0;
+    return decimalText(value / 10 ** (f - shown), shown);
   }
   return undefined;
 }
@@ -575,12 +602,12 @@ function units(run: string, currency: string | undefined): number | undefined {
  * A rate as a page writes it (`3.468,14`, `0.000288`, `16,6667`), with as many decimals as it
  * likes; undefined when a single separator with 3 digits after it may group or end the units.
  */
-function rateOf(run: string): number | undefined {
+function rateOf(run: string): string | undefined {
   const parts = run.split(RUN_SEPARATOR);
   const digits = parts.filter((_, i) => i % 2 === 0);
   const seps = parts.filter((_, i) => i % 2 === 1);
   const last = seps.at(-1);
-  if (last === undefined) return Number(run);
+  if (last === undefined) return run.replace(/^0+(?=\d)/, "");
   const cents = digits.at(-1) ?? "";
   const whole = digits.slice(0, -1);
   const between = seps.slice(0, -1);
@@ -588,10 +615,10 @@ function rateOf(run: string): number | undefined {
     DECIMALS.has(last) &&
     between.every((x) => x === between[0] && x !== last && GROUPS.has(x)) &&
     grouped(whole) &&
-    (between.length > 0 || cents.length !== 3);
-  if (decimal) return Number(`${whole.join("")}.${cents}`);
+    (between.length > 0 || cents.length !== 3 || whole.join("") === "0");
+  if (decimal) return `${whole.join("").replace(/^0+(?=\d)/, "")}.${cents}`;
   if (seps.every((x) => x === last && GROUPS.has(x)) && grouped(digits) && seps.length > 1) {
-    return Number(digits.join(""));
+    return digits.join("");
   }
   return undefined;
 }
@@ -609,7 +636,7 @@ function read(text: string, locale: string, currency: string): Omit<PageReading,
   const totals: number[] = [];
   const loose: number[] = [];
   const conversions: PageReading["conversions"] = [];
-  const rates: Record<string, number> = {};
+  const rates: Record<string, string> = {};
   const rated = new Set<Token>();
   let unsure: string | undefined;
   for (const [i, token] of tokens.entries()) {
@@ -628,9 +655,11 @@ function read(text: string, locale: string, currency: string): Omit<PageReading,
         next.currency
       ) {
         const rate = rateOf(next.number);
-        if (rate === undefined || (rates[next.currency] ?? rate) !== rate) {
-          unsure ??= "a rate not read for sure";
-        } else rates[next.currency] = rate;
+        const known = rates[next.currency];
+        if (rate === undefined) unsure ??= "a rate not read for sure";
+        else if (known !== undefined && Number(known) !== Number(rate)) {
+          unsure ??= "rates that disagree";
+        } else rates[next.currency] = known ?? rate;
         rated.add(next);
         continue;
       }
@@ -646,7 +675,7 @@ function read(text: string, locale: string, currency: string): Omit<PageReading,
     } else if (token.kind === "other") {
       // The number of a rate ("1 USD = 3.468,14 COP") is no amount.
       if (rated.has(token)) continue;
-      const value = units(token.number, token.currency);
+      const value = units(token.number, token.currency, locale);
       if (value === undefined) {
         unsure ??= "an amount in another currency not read whole";
         continue;
@@ -719,38 +748,98 @@ export function readPage(text: string, locales: readonly string[], currency: str
   return { locale: first, ...reading };
 }
 
+/** The total a page charges converted to the buyer's currency, at the rate the page writes. */
+export interface ShownConversion {
+  currency: string;
+  /** 1 unit of the charged currency is `rate` of `currency`, with the digits the page shows. */
+  rate: string;
+  /** The converted total the page labels, with the decimals it shows. */
+  buyer: string;
+  locale: string;
+}
+
+export type Judgment = { ok: true; conversion?: ShownConversion } | { ok: false; reason: string };
+
+/** `minor` units of `currency` as a decimal string: `2.95`, `1500`, `1.234`. */
+function wholeOf(minor: number, currency: string): string {
+  return decimalText(minor, minorDigits(currency));
+}
+
 /**
- * Whether a page charges `minor` of its currency and nothing more: read for sure, labeling exactly
- * that amount as its total or charge, and showing no larger amount the buyer may be charged,
- * whether of the currency or a number that may be. A page shows amounts in other currencies only
- * where it `converts` the total to the buyer's currency (PayPal), and each counts only at the rate
- * the page writes for it (`1 USD = 3.468,14 COP`): labeled the total, it must be `minor`
- * converted, within 1%; on another line, no more than that; a balance does not count.
+ * Whether a page charges `minor` of its currency and nothing more, and why not. It must be read
+ * for sure and show no larger amount the buyer may be charged, whether of the currency or a number
+ * that may be. Its total is labeled in the currency, as exactly `minor`, or, only on a host that
+ * `converts` it to the buyer's currency (PayPal), in one other currency at the one rate the page
+ * writes for it (`1 USD = 3.468,14 COP`): the converted total is `minor` at that rate up to the
+ * page's rounding ({@link convertsTo}), and no other amount in that currency is more. A page that
+ * shows a conversion and no rate line, rates that disagree, a rate or an amount in a third
+ * currency, or another total, is held. The buyer's own balance does not count. Where PayPal's
+ * order states the total, the page need not label it in its own currency (`labeled` false).
  */
+export function judge(
+  page: PageReading,
+  minor: number,
+  currency: string,
+  converts = false,
+  /** Whether the page must label the total; not where PayPal's order states it. */
+  labeled = true,
+  /** The rate PayPal itself states for the conversion, which a rate line on the page must agree with. */
+  known?: { currency: string; rate: string },
+): Judgment {
+  const no = (reason: string): Judgment => ({ ok: false, reason });
+  if (page.unsure !== undefined) return no(page.unsure);
+  if (Math.max(...page.minor, ...page.loose) > minor)
+    return no("a larger amount that may be charged");
+  if (page.totals.some((t) => t !== minor)) return no("another total");
+  if (known && page.rates[known.currency] !== undefined) {
+    if (Number(page.rates[known.currency]) !== Number(known.rate)) {
+      return no("a rate line that is not PayPal's rate");
+    }
+  }
+  const rates = known ? { [known.currency]: known.rate, ...page.rates } : page.rates;
+  const codes = Object.keys(rates);
+  const charged = page.conversions.filter((c) => !c.aside);
+  if (Object.keys(page.rates).length === 0 && page.conversions.length === 0) {
+    return page.totals.includes(minor) || !labeled ? { ok: true } : no("no total labeled");
+  }
+  if (!converts) return no("another currency on a store's checkout");
+  // A rate's unit is set aside as no amount; it may not hide a total under one unit.
+  if (minor < 10 ** minorDigits(currency)) return no("a total under one unit next to a rate");
+  const [code, ...more] = codes;
+  if (code === undefined) return no("an amount in another currency with no rate line");
+  if (more.length > 0) return no("rates to more than one currency");
+  if (charged.some((c) => c.currency !== code)) return no("an amount in a third currency");
+  const rate = rates[code] as string;
+  const whole = wholeOf(minor, currency);
+  const totals = charged.filter((c) => c.total);
+  if (totals.length === 0) {
+    // PayPal's own conversion needs no label on the page; one the page alone writes does.
+    if (!known) return no("no converted total labeled");
+    return charged.some((c) => exceedsConversion(whole, rate, c.units))
+      ? no("a larger amount in the buyer's currency")
+      : { ok: true };
+  }
+  if (!totals.every((c) => convertsTo(whole, rate, c.units))) {
+    return no("a converted total that is not the countersigned one at the page's rate");
+  }
+  if (charged.some((c) => exceedsConversion(whole, rate, c.units))) {
+    return no("a larger amount in the buyer's currency");
+  }
+  const buyer = totals[0]?.units as string;
+  if (totals.some((c) => Number(c.units) !== Number(buyer))) {
+    return no("converted totals that disagree");
+  }
+  return { ok: true, conversion: { currency: code, rate, buyer, locale: page.locale } };
+}
+
+/** Whether a page charges `minor` of its currency and nothing more: {@link judge} allows it. */
 export function charges(
   page: PageReading,
   minor: number,
   currency: string,
   converts = false,
 ): boolean {
-  const whole = minor / 10 ** minorDigits(currency);
-  return (
-    page.unsure === undefined &&
-    page.totals.includes(minor) &&
-    Math.max(...page.minor, ...page.loose) <= minor &&
-    (converts || Object.keys(page.rates).length === 0) &&
-    // A rate's unit is set aside as no amount; it may not hide a total under one unit.
-    (Object.keys(page.rates).length === 0 || minor >= 10 ** minorDigits(currency)) &&
-    page.conversions.every(({ currency: c, units, total, aside }) => {
-      if (!converts) return false;
-      if (aside) return true;
-      const rate = c === undefined ? undefined : page.rates[c];
-      if (rate === undefined) return false;
-      const converted = whole * rate;
-      const margin = Math.max(1, converted * 0.01);
-      return total ? Math.abs(units - converted) <= margin : units <= converted + margin;
-    })
-  );
+  return judge(page, minor, currency, converts).ok;
 }
 
 /**
