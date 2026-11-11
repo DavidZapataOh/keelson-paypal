@@ -55,13 +55,8 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: "1.24"
-      - name: Install protoc and a RISC-V assembler
-        # Cedar's stack probe (stacker, through psm) assembles a RISC-V source for the program. SP1's own
-        # C toolchain needs a newer glibc than this image, so Ubuntu's cross compiler assembles it.
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y protobuf-compiler gcc-riscv64-unknown-elf
-          echo "CC_riscv64im_succinct_zkvm_elf=riscv64-unknown-elf-gcc" >> "$GITHUB_ENV"
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - name: Install the SP1 toolchain
         run: |
           curl -L https://sp1up.succinct.xyz | bash

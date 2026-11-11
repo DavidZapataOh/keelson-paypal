@@ -17,21 +17,21 @@ const run = promisify(execFile);
  * The engine's SP1 prover, built by the `engine-proof` workflow from the program whose verifying
  * key `EngineProofVerifier` holds. A new program needs a new verifier and a new pin.
  */
-export const ENGINE_PROVER = {
+const ENGINE_PROVER = {
   url: "https://github.com/DavidZapataOh/keelson-paypal/releases/download/engine-proof-0000000/keelson-engine-proof-linux-x64",
   sha256: "0000000000000000000000000000000000000000000000000000000000000000",
   vkey: "0x0000000000000000000000000000000000000000000000000000000000000000" as Hex,
 } as const;
 
 /** The chain `EngineProofVerifier` records proofs on. */
-export const ENGINE_PROOF_CHAIN_ID = arbitrumSepolia.id;
+const ENGINE_PROOF_CHAIN_ID = arbitrumSepolia.id;
 
 /** How long a Groth16 proof may take on the workflow instance. */
 const PROVE_TIMEOUT_MS = 3 * 60 * 60 * 1000;
 const RECORD_WAIT_MS = 120_000;
 
 /** The `CountersignInput` the SP1 program reads, as JSON. */
-export interface CountersignInput {
+interface CountersignInput {
   payload_sd: unknown;
   disclosures: string[];
   cart: unknown;
@@ -53,6 +53,7 @@ export interface CountersignInput {
  * countersign's own `evalHash` and digest it must reproduce.
  *
  * @throws {RangeError} when the purchase was countersigned without its inputs being kept.
+ * @internal
  */
 export async function engineInputOf(
   db: Db,
