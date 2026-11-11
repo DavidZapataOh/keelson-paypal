@@ -174,8 +174,11 @@ describe("the embed page's headers", () => {
     expect(csp).toContain(`frame-ancestors ${HOST}`);
     expect(csp).not.toContain("other.example.com");
     expect(res.headers.get("x-frame-options")).toBeNull();
-    expect(res.headers.get("permissions-policy")).toContain("publickey-credentials-get=()");
-    expect(res.headers.get("permissions-policy")).toContain("payment=()");
+    const policy = res.headers.get("permissions-policy");
+    expect(policy).toContain("publickey-credentials-get=(self)");
+    expect(policy).toContain("publickey-credentials-create=(self)");
+    expect(policy).toContain("payment=(self)");
+    expect(policy).toContain("camera=()");
     expect(res.headers.get("referrer-policy")).toBe("no-referrer");
     expect(res.headers.get("cache-control")).toBe("no-store");
   });

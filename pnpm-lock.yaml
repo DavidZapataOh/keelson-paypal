@@ -370,6 +370,9 @@ importers:
       '@rive-app/canvas-lite':
         specifier: 2.49.1
         version: 2.49.1
+      '@simplewebauthn/browser':
+        specifier: 14.0.0
+        version: 14.0.0
       ag-charts-enterprise:
         specifier: 14.3.0
         version: 14.3.0
