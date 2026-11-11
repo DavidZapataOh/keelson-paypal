@@ -17,7 +17,7 @@ import { ulid } from "ulid";
 import type { PublicClient } from "viem";
 import { describe, expect, test } from "vitest";
 import { type EvaluateDeps, evaluateDispute } from "../src/disputes/evaluate.ts";
-import { settleDispute, userReceiver } from "../src/disputes/settle.ts";
+import { settleDispute } from "../src/disputes/settle.ts";
 import { KEELSON_TREASURY } from "../src/merchants.ts";
 import { testDb, testKv } from "./setup.ts";
 
@@ -120,10 +120,19 @@ describe("card disputes", () => {
     expect(p?.state).toBe("MERCHANT_LIABLE");
   });
 
-  test("the user is paid at the PayPal account they signed in with, never a judge's", async () => {
-    const paid = await disputed("CASE_CLOSED", "buyer@example.test");
-    expect(await userReceiver(testDb, paid.id)).toBe("buyer@example.test");
-    const judge = await disputed("CASE_CLOSED", `anon-${ulid()}@judge.keelson.finance`);
-    expect(await userReceiver(testDb, judge.id)).toBeNull();
+  test("a PayPal dispute of a charged-back card purchase is not attributed twice", async () => {
+    const { id } = await disputed("SUBMITTED");
+    const paypalDispute = `PP-D-${ulid()}`;
+    await testDb.insert(disputes).values({
+      id: paypalDispute,
+      purchaseId: id,
+      reason: "MERCHANDISE_OR_SERVICE_NOT_RECEIVED",
+      raw: {},
+    });
+    const out = await evaluateDispute(
+      { db: testDb, kv: testKv, log, chain } as unknown as EvaluateDeps,
+      paypalDispute,
+    );
+    expect(out).toEqual({ status: "resolved", disputeId: paypalDispute });
   });
 });

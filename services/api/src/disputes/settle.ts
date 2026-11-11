@@ -27,7 +27,6 @@ import {
   purchases,
   sql,
   transition,
-  user,
   verdicts,
 } from "@keelson/db";
 import {
@@ -267,6 +266,8 @@ async function load(db: Db, disputeId: string): Promise<Row | undefined> {
  * then refused would leave the merchant out of pocket.
  */
 async function refund(deps: SettleDeps, row: Row): Promise<void> {
+  // A card purchase's user is paid by payout; its capture is not this dispute's to refund.
+  if (row.rail === "card") return;
   if (!row.refundId && deps.paypal && row.captureId) await refundBuyer(deps, deps.paypal, row);
 }
 
@@ -864,7 +865,7 @@ async function payout(deps: SettleDeps, paypal: PayPalDeps, row: Row): Promise<s
     // A card purchase's user is paid what the chargeback did not return; a merchant, its claim.
     const paypalReceiver =
       row.rail === "card"
-        ? await userReceiver(deps.db, row.purchaseId)
+        ? await userReceiver(deps.db, paypal, row.purchaseId)
         : (await settlementOf(deps.db, row.merchantId)).paypalReceiver;
     if (!paypalReceiver) throw new Error(`purchase ${row.purchaseId} has no PayPal receiver`);
     const ref = ids.encodeVerdictRef(row.id, digestOf(row));
@@ -894,19 +895,24 @@ async function payout(deps: SettleDeps, paypal: PayPalDeps, row: Row): Promise<s
 }
 
 /**
- * The PayPal account a card purchase's user signed in with: the confirmed email PayPal gave Keelson.
- * A Judge Mode tenant has none.
+ * The PayPal account that paid a card purchase: the payer of its mandate's hold, which the
+ * user approved on PayPal.
  *
  * @internal
  */
-export async function userReceiver(db: Db, purchaseId: string): Promise<string | null> {
+export async function userReceiver(
+  db: Db,
+  paypal: PayPalDeps,
+  purchaseId: string,
+): Promise<string | null> {
   const [row] = await db
-    .select({ email: user.email, verified: user.emailVerified })
+    .select({ orderId: mandates.paypalOrderId })
     .from(purchases)
     .innerJoin(mandates, eq(mandates.id, purchases.mandateId))
-    .innerJoin(user, eq(user.id, mandates.userId))
     .where(eq(purchases.id, purchaseId));
-  return row?.verified && !row.email.endsWith("@judge.keelson.finance") ? row.email : null;
+  if (!row?.orderId) return null;
+  const order = await call(paypal.paypal.orders.getOrder({ id: row.orderId }));
+  return order.payer?.emailAddress ?? null;
 }
 
 /**

@@ -145,7 +145,18 @@ export async function evaluateDispute(deps: EvaluateDeps, disputeId: string): Pr
   if (row.state === "RESOLVED") return { status: "resolved", disputeId };
   const p = row.purchase;
   const chainId = p.chainId ?? 421614;
-  if (p.rail === "card") return evaluateCardDispute(deps, disputeId, p, Boolean(row.anchored));
+  if (p.rail === "card") {
+    const [chargeback] = await db
+      .select({ id: cardChargebacks.id })
+      .from(cardChargebacks)
+      .where(eq(cardChargebacks.purchaseId, p.id));
+    if (chargeback?.id === disputeId) {
+      return evaluateCardDispute(deps, disputeId, p, Boolean(row.anchored));
+    }
+    // A PayPal dispute of a card purchase already charged back is the same loss twice: the
+    // chargeback answers for it, and PayPal decides this one on its own.
+    if (chargeback) return { status: "resolved", disputeId };
+  }
   if (!p.paypalCaptureId || !p.paypalOrderId || !p.countersign) {
     throw new Error(`purchase ${p.id} was not captured under a countersign`);
   }
