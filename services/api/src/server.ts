@@ -15,7 +15,12 @@ import { anchorCovered } from "./alibi/anchors.ts";
 import { createApp } from "./app.ts";
 import { createAuth } from "./auth.ts";
 import { followChainEvents, isFinal, wssUrl } from "./chain/events.ts";
-import { arbitrumSepoliaTransport, POLLING_INTERVAL_MS, startRpcReport } from "./chain/rpc.ts";
+import {
+  arbitrumSepoliaLogsTransport,
+  arbitrumSepoliaTransport,
+  POLLING_INTERVAL_MS,
+  startRpcReport,
+} from "./chain/rpc.ts";
 import { createChannel3 } from "./channel3/client.ts";
 import { operatorAgent, termsConsent } from "./compile-sources.ts";
 import { type RunDeps, runDispute } from "./disputes/run.ts";
@@ -78,8 +83,8 @@ const stamps = startStampWorker(
     },
   },
 );
-// Reads and receipts go to the configured provider; `eth_getLogs` and the reconciler to dRPC, with
-// the chain's public RPC behind it, so the provider's quota stays for writes and the subscription.
+// Reads and receipts go to the configured provider; `eth_getLogs` and the reconciler to the
+// chain's public RPC first, which serves the ranges the provider's free tier refuses.
 const chains = {
   [arbitrumSepolia.id]: {
     client: createPublicClient({
@@ -89,7 +94,7 @@ const chains = {
     }),
     logs: createPublicClient({
       chain: arbitrumSepolia,
-      transport: arbitrumSepoliaTransport(env.DRPC_ARBITRUM_SEPOLIA_URL),
+      transport: arbitrumSepoliaLogsTransport(env.ARBITRUM_SEPOLIA_RPC_URL),
     }),
   },
 };
