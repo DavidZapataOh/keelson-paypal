@@ -4,15 +4,28 @@
  * (tdx = 0x01…01, nitro = 0x02…02). Run: node packages/log/scripts/statement-vectors.ts
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { type Countersign, countersignDigest, keelsonDomain } from "@keelson/core/eip712";
+import {
+  type CardAuthorization,
+  type CardSettlement,
+  type Countersign,
+  cardAuthorizationDigest,
+  cardSettlementDigest,
+  countersignDigest,
+  keelsonDomain,
+} from "@keelson/core/eip712";
 import { addressOf, encode, leafHash } from "@keelson/scitt";
 import { signEs256k } from "@keelson/scitt/testing";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
+import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { Tag } from "cbor2";
 import { getAddress, type Hex } from "viem";
-import { paypalRefCommit } from "../src/leaf.ts";
+import { cardRefCommit, paypalRefCommit } from "../src/leaf.ts";
 import {
+  CARD_AUTHORIZATION_CONTENT_TYPE,
+  CARD_SETTLEMENT_CONTENT_TYPE,
+  cardAuthorizationClaimsBytes,
+  cardSettlementClaimsBytes,
   claimsBytes,
   type LegSignature,
   type StatementClaims,
@@ -128,6 +141,149 @@ function vector(
   );
 }
 
+/** Card statements under the `card-2of2` purchase: its leaf hash is their parent. */
+function cardVectors() {
+  const purchase = JSON.parse(readFileSync(new URL("card-2of2.json", out), "utf8"));
+  const f = fixture("01M6ZWZJHWRRHQEYNJAT7NMSV8");
+  const chainId = f.tee.domain.chain_id as 421614;
+  const verifyingContract = f.tee.domain.verifying_contract as Hex;
+  const domain = keelsonDomain(chainId, verifyingContract);
+  const cs = purchase.inputs.countersign as Record<string, string>;
+  const parent = `0x${purchase.leaf_hash_hex}` as Hex;
+  const cardRef = cardRefCommit(
+    hexToBytes(f.paypal.ref_salt.slice(2)),
+    "lithic",
+    "card_vector_token",
+  );
+  const alibiId = purchase.inputs.alibi_id as string;
+  const legsOver = (digest: Hex) =>
+    ([0, 1] as const).map((i) => ({
+      ...(purchase.inputs.legs[i] as LegSignature),
+      signature: sign712(digest, keys[i]),
+    })) as [LegSignature, LegSignature];
+  const write = (
+    name: string,
+    kind: string,
+    facts: Record<string, string>,
+    payload: Uint8Array,
+    iat: number,
+    contentType: string,
+    legs: LegSignature[],
+    digest: Hex,
+  ) => {
+    const prot = statementProtected(legs[1]?.signer as Hex, alibiId, iat, contentType);
+    const s = signEs256k(prot, payload, keys[1]);
+    const statement = encode(new Tag(18, [s.protected, s.unprotected, s.payload, s.signature]));
+    writeFileSync(
+      new URL(`${name}.json`, out),
+      `${JSON.stringify(
+        {
+          name,
+          kind,
+          inputs: {
+            alibi_id: alibiId,
+            facts,
+            parent,
+            ...(kind === "card-authorization" ? { card_ref: cardRef } : {}),
+            chain_id: chainId,
+            verifying_contract: verifyingContract,
+            mode: "2of2",
+            legs,
+          },
+          digest_hex: digest.slice(2),
+          claims_hex: bytesToHex(payload),
+          protected_hex: bytesToHex(prot),
+          statement_hex: bytesToHex(statement),
+          leaf_hash_hex: bytesToHex(leafHash(statement)),
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  };
+  for (const [name, decision, failedMask] of [
+    ["card-auth-approve", "1", "0"],
+    ["card-auth-decline", "2", "16"],
+  ] as const) {
+    const facts = {
+      requestId: cs.requestId as string,
+      countersignDigest: `0x${purchase.countersign_digest_hex}`,
+      authorizationHash: `0x${bytesToHex(sha256(new TextEncoder().encode(`authorization ${name}`)))}`,
+      merchantHash: `0x${bytesToHex(sha256(new TextEncoder().encode("merchant vector")))}`,
+      mcc: "5661",
+      country: "0x5553",
+      amount: "100",
+      currency: "840",
+      decision,
+      failedMask,
+      issuedAt: String(Number(cs.issuedAt) + 60),
+    };
+    const a = Object.fromEntries(
+      Object.entries(facts).map(([k, x]) => [
+        k,
+        ["mcc", "amount", "currency", "decision", "failedMask", "issuedAt"].includes(k)
+          ? BigInt(x)
+          : x,
+      ]),
+    ) as unknown as CardAuthorization;
+    const digest = cardAuthorizationDigest(a, domain);
+    const legs = legsOver(digest);
+    write(
+      name,
+      "card-authorization",
+      facts,
+      cardAuthorizationClaimsBytes({
+        authorization: a,
+        cardRef,
+        parent,
+        chainId,
+        verifyingContract,
+        mode: "2of2",
+        legs,
+      }),
+      Number(facts.issuedAt),
+      CARD_AUTHORIZATION_CONTENT_TYPE,
+      legs,
+      digest,
+    );
+  }
+  const facts = {
+    requestId: cs.requestId as string,
+    cardRef,
+    transactionHash: `0x${bytesToHex(sha256(new TextEncoder().encode("issuer transaction response")))}`,
+    settledMinor: "100",
+    currency: "840",
+    status: "1",
+    settledAt: String(Number(cs.issuedAt) + 3600),
+    observedAt: String(Number(cs.issuedAt) + 3700),
+  };
+  const t = Object.fromEntries(
+    Object.entries(facts).map(([k, x]) => [
+      k,
+      ["settledMinor", "currency", "status", "settledAt", "observedAt"].includes(k) ? BigInt(x) : x,
+    ]),
+  ) as unknown as CardSettlement;
+  const digest = cardSettlementDigest(t, domain);
+  const legs = legsOver(digest);
+  write(
+    "card-settlement",
+    "card-settlement",
+    facts,
+    cardSettlementClaimsBytes({
+      settlement: t,
+      parent,
+      chainId,
+      verifyingContract,
+      mode: "2of2",
+      legs,
+    }),
+    Number(facts.observedAt),
+    CARD_SETTLEMENT_CONTENT_TYPE,
+    legs,
+    digest,
+  );
+}
+
 mkdirSync(out, { recursive: true });
 vector("allow-2of2", "01M6ZWZJHWRRHQEYNJAT7NMSV8", "2of2", {}, true);
 vector(
@@ -139,3 +295,4 @@ vector(
 );
 vector("allow-degraded", "01M6ZX07MFWDDDW4199FDJHWEG", "degraded", {}, true);
 vector("card-2of2", "01M6ZWZJHWRRHQEYNJAT7NMSV8", "2of2", {}, false);
+cardVectors();

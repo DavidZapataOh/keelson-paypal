@@ -1,6 +1,11 @@
 import { hexToBytes } from "@noble/hashes/utils.js";
 import type { Hex } from "viem";
-import type { LegSignature, StatementClaims } from "../src/statement.ts";
+import type {
+  CardAuthorizationClaims,
+  CardSettlementClaims,
+  LegSignature,
+  StatementClaims,
+} from "../src/statement.ts";
 
 export const VECTOR_NAMES = ["allow-2of2", "deny-2of2", "allow-degraded", "card-2of2"] as const;
 
@@ -52,4 +57,66 @@ export function fromVector(v: StatementVector): { claims: StatementClaims; alibi
       ...(v.inputs.pay_ref ? { payRef: v.inputs.pay_ref } : {}),
     },
   };
+}
+
+export const CARD_VECTOR_NAMES = [
+  "card-auth-approve",
+  "card-auth-decline",
+  "card-settlement",
+] as const;
+
+const CARD_UINTS = [
+  "mcc",
+  "amount",
+  "currency",
+  "decision",
+  "failedMask",
+  "issuedAt",
+  "settledMinor",
+  "status",
+  "settledAt",
+  "observedAt",
+];
+
+interface CardVector {
+  kind: "card-authorization" | "card-settlement";
+  inputs: {
+    facts: Record<string, string>;
+    parent: Hex;
+    card_ref?: Hex;
+    chain_id: number;
+    verifying_contract: Hex;
+    mode: "2of2" | "degraded";
+    legs: LegSignature[];
+  };
+}
+
+export function cardFromVector(
+  v: CardVector,
+):
+  | { kind: "card-authorization"; claims: CardAuthorizationClaims }
+  | { kind: "card-settlement"; claims: CardSettlementClaims } {
+  const facts = Object.fromEntries(
+    Object.entries(v.inputs.facts).map(([k, x]) => [k, CARD_UINTS.includes(k) ? BigInt(x) : x]),
+  );
+  const signed = {
+    chainId: v.inputs.chain_id,
+    verifyingContract: v.inputs.verifying_contract,
+    mode: v.inputs.mode,
+    legs: v.inputs.legs as StatementClaims["legs"],
+    parent: v.inputs.parent,
+  };
+  return v.kind === "card-authorization"
+    ? {
+        kind: v.kind,
+        claims: {
+          ...signed,
+          authorization: facts as unknown as CardAuthorizationClaims["authorization"],
+          cardRef: v.inputs.card_ref as Hex,
+        },
+      }
+    : {
+        kind: v.kind,
+        claims: { ...signed, settlement: facts as unknown as CardSettlementClaims["settlement"] },
+      };
 }

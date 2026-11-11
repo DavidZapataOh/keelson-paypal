@@ -34,7 +34,8 @@ describe("golden vectors", () => {
     const parsed = parseStatementLeaf(hexToBytes(v.statement_hex));
     expect(parsed.alibiId).toBe(alibiId);
     expect(parsed.signer.toLowerCase()).toBe(signer?.toLowerCase());
-    expect(parsed.claims).toEqual(claims);
+    expect(parsed.kind).toBe("purchase");
+    expect(parsed.kind === "purchase" && parsed.claims).toEqual(claims);
   });
 
   test("the claims map has integer keys 1..21 (22 only with a payment reference), in order", () => {
@@ -83,7 +84,12 @@ function signStatement(
   const leg = as ?? (c.mode === "2of2" ? 1 : 0);
   const signer = c.legs[leg]?.signer ?? c.legs[0].signer;
   const prot = statementProtected(signer, alibiId, Number(c.countersign.issuedAt));
-  const s = signEs256k(prot, claimsBytes(c), vectorKeys[leg] as Uint8Array, unprotected ? { unprotected } : {});
+  const s = signEs256k(
+    prot,
+    claimsBytes(c),
+    vectorKeys[leg] as Uint8Array,
+    unprotected ? { unprotected } : {},
+  );
   return encode(new Tag(18, [s.protected, s.unprotected, s.payload, s.signature]));
 }
 
