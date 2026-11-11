@@ -23,7 +23,7 @@ use keelson_policy::{
     deny_trace, eval_hash, policy_set_hash, trace_jcs,
 };
 use p256::ecdsa::SigningKey;
-use serde_json::{Value, json};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use time::{Duration, OffsetDateTime};
 
