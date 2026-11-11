@@ -1428,14 +1428,16 @@ components:
               type: string
               maxLength: 256
               format: uri
-              description: The store's origin.
+              description: "The store's origin: the origin of the website the mandate allows
+                for the cart's merchant."
           required:
             - store
           additionalProperties: false
           description: "Only when the buyer pays at the store's own checkout with their
             own PayPal account: Keelson countersigns and logs the purchase and
-            issues its Alibi, and neither covers nor captures it. The agent's
-            pay click waits for an ALLOW; the agent then records PayPal's
+            issues its Alibi, and neither covers nor captures it. Its Alibi is
+            public once the PayPal transaction is recorded. The agent's pay
+            click waits for an ALLOW; the agent then records PayPal's
             transaction id with `PUT /v1/purchases/{id}/paypal-transaction`."
         repeatOf:
           type: string
@@ -1528,8 +1530,22 @@ components:
           required:
             - currency
             - minor
-        transactionId:
+        decision:
           type: string
+          enum:
+            - allow
+            - deny
+        transactionId:
+          type:
+            - string
+            - "null"
+          description: The PayPal transaction the store was paid by; `null` for a DENY.
+        blocked:
+          type: array
+          items:
+            type: string
+          description: For a DENY, the mandate fields whose check failed, or leg A's
+            reason when it denied on its read of the PayPal hold.
         logIndex:
           type: string
         createdAt:
@@ -1539,7 +1555,9 @@ components:
         - store
         - merchant
         - amount
+        - decision
         - transactionId
+        - blocked
         - logIndex
         - createdAt
     Purchase:
@@ -2317,6 +2335,11 @@ components:
             checks the proof only: `public_inputs` must also be the
             countersign's and the root one `GET /v1/user-set/roots/{root}`
             lists."
+        root_tx:
+          type: string
+          pattern: ^0x[0-9a-f]{64}$
+          description: The Arbitrum Sepolia transaction that published `user_set_root` to
+            `RegisteredUserSet`, once it is confirmed.
       required:
         - user_set_root
         - proof
@@ -4418,6 +4441,22 @@ components:
             - created_at
             - card
             - purchases
+        anonymous_purchase:
+          type:
+            - object
+            - "null"
+          properties:
+            id:
+              type: string
+            alibi_fragment:
+              type:
+                - string
+                - "null"
+          required:
+            - id
+            - alibi_fragment
+          description: The newest test purchase whose C1 and C3 proofs are composed into
+            one anonymous proof, served at `GET /v1/anonymous-purchases/{id}`.
         dispute_id:
           type:
             - string
@@ -4430,6 +4469,7 @@ components:
         - merchant_id
         - agent_id
         - mandate
+        - anonymous_purchase
         - dispute_id
         - campaign_id
     JudgeTourPurchase:
@@ -5416,7 +5456,9 @@ paths:
         "422":
           description: The request is invalid, the authorization is not this purchase's
             hold, the cart is not the one held for this request, the evidence
-            holds another cart, or its Channel3 observation is not usable
+            holds another cart, its Channel3 observation is not usable, its
+            WebFact is not this purchase's, or a live store is not the website
+            the mandate allows
           content:
             application/problem+json:
               schema:
@@ -5444,10 +5486,11 @@ paths:
       tags:
         - purchases
       summary: Live purchases
-      description: "Purchases the shopping agent made with real money at real stores'
-        own checkouts, newest first: each has a public Alibi and the PayPal
-        transaction it paid. Keelson countersigned and logged them; it covers
-        none of them."
+      description: Purchases the shopping agent made with real money at real stores'
+        own checkouts, and the carts Keelson denied there before the payment for
+        Keelson's own test users, newest first. Each has a public Alibi; a paid
+        one names the PayPal transaction it paid. Keelson countersigned and
+        logged them; it covers none of them.
       responses:
         "200":
           description: The live purchases

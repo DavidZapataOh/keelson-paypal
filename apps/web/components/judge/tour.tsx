@@ -36,6 +36,7 @@ const STEPS: { id: string; title: string; role: Role }[] = [
   { id: "mandate", title: "The mandate", role: "Shopper" },
   { id: "agent", title: "The agent shops", role: "Shopper" },
   { id: "alibi", title: "Try to cheat the Alibi", role: "Shopper" },
+  { id: "anonymous", title: "Anonymous, and still accountable", role: "Shopper" },
   { id: "dispute", title: "A dispute arrives", role: "Merchant" },
   { id: "verdict", title: "Verdict and settlement", role: "Merchant" },
   { id: "forensics", title: "Merchant forensics", role: "Merchant" },
@@ -149,10 +150,10 @@ function Welcome({
           Judge Keelson in five minutes, on the live system.
         </h1>
         <p className="max-w-prose text-pretty text-lg text-muted-foreground">
-          One click opens a temporary tenant with no keys and no sign-up. Nine steps walk you
-          through a real mandate, the agent run that bought under it, its Alibi, a PayPal dispute
-          and its verdict, then the merchant&apos;s and the operator&apos;s side. Every number comes
-          from production records on PayPal sandbox and Arbitrum Sepolia.
+          One click opens a temporary tenant with no keys and no sign-up. Ten steps walk you through
+          a real mandate, the agent run that bought under it, its Alibi, a PayPal dispute and its
+          verdict, then the merchant&apos;s and the operator&apos;s side. Every number comes from
+          production records on PayPal sandbox and Arbitrum Sepolia.
         </p>
         <div className="flex flex-wrap items-center gap-4">
           <Button size="lg" onClick={start} disabled={busy || pending}>
@@ -312,6 +313,8 @@ function StepBody({ id, tour }: { id: string; tour: Tour }) {
       return <AgentStep captured={captured} blocked={blocked} />;
     case "alibi":
       return <AlibiStep captured={captured} />;
+    case "anonymous":
+      return <AnonymousStep purchase={tour.anonymous_purchase} />;
     case "dispute":
     case "verdict":
       return <DisputeStep id={tour.dispute_id} part={id} />;
@@ -462,6 +465,29 @@ function AlibiStep({ captured }: { captured: TourPurchase | undefined }) {
         target="_blank"
         rel="noopener"
       >
+        Open in the full verifier ↗
+      </a>
+    </div>
+  );
+}
+
+function AnonymousStep({ purchase }: { purchase: Tour["anonymous_purchase"] }) {
+  if (!purchase) return <Missing what="purchase with an anonymous proof" />;
+  const link = `${VERIFY}/a/${purchase.id}?proof=anonymous${purchase.alibi_fragment ? `#${purchase.alibi_fragment}` : ""}`;
+  return (
+    <div className="grid gap-5">
+      <Lead>
+        A merchant can know a real, registered person approved this purchase and that the cart
+        stayed within their mandate, without learning who they are. One zero-knowledge proof carries
+        both. Your browser verifies it below, then asks the verifier on Arbitrum.
+      </Lead>
+      <iframe
+        title="Anonymous proof verifier"
+        src={link.replace("?proof=anonymous", "?embed&proof=anonymous")}
+        loading="lazy"
+        className="h-[42rem] w-full rounded-lg border bg-card"
+      />
+      <a className="text-sm underline" href={link} target="_blank" rel="noopener">
         Open in the full verifier ↗
       </a>
     </div>

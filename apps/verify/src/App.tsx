@@ -1,5 +1,6 @@
 import type { ChainReader, Check, Report as VerifyReport } from "@keelson/alibi/verify";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Anonymous } from "./Anonymous.tsx";
 import { EngineProof } from "./EngineProof.tsx";
 import type { Loaded } from "./load.ts";
 import { Report } from "./Report.tsx";
@@ -39,6 +40,9 @@ export function App() {
   const [route, setRoute] = useState<Route>(() => parseRoute(location));
   const [loaded, setLoaded] = useState<Loaded>();
   const [run, setRun] = useState<Run>();
+  // The Alibi the report is of: the loaded one, or the visitor's edit of it.
+  const [current, setCurrent] = useState<Loaded["alibi"]>();
+  const [rpc, setRpc] = useState<string>();
   const [edited, setEdited] = useState<unknown>();
   const [changed, setChanged] = useState<string[]>([]);
   const [paste, setPaste] = useState("");
@@ -56,6 +60,7 @@ export function App() {
     async (alibi: Loaded["alibi"], original?: Loaded["alibi"]) => {
       const id = ++runId.current;
       setRun({ checks: [] });
+      setCurrent(alibi);
       const { verifyAlibi } = await verifier;
       const checks: Check[] = [];
       const report = await verifyAlibi(alibi, {
@@ -173,6 +178,7 @@ export function App() {
     }
     setError(undefined);
     chain.current = readerFor(next.rpc);
+    setRpc(next.rpc);
     if (loaded) void verify(loaded.alibi);
   };
 
@@ -188,8 +194,11 @@ export function App() {
             {error}
           </p>
         )}
-        {run && loaded && edited !== undefined ? (
+        {route.anonymous && current ? (
+          <Anonymous alibi={current} rpc={rpc} />
+        ) : run && loaded && edited !== undefined ? (
           <>
+            {current && <Anonymous alibi={current} rpc={rpc} />}
             <Suspense fallback={null}>
               <Cheat edited={edited} changed={changed} onChange={onEdit} onReset={onReset} embed />
             </Suspense>
@@ -320,8 +329,10 @@ export function App() {
                 from an Alibi's QR code carry one.
               </p>
             )}
+            {route.anonymous && current && <Anonymous alibi={current} rpc={rpc} />}
             <Report checks={run.checks} report={run.report} receipt={isReceipt(loaded)} />
-            <EngineProof alibi={loaded.alibi} rpc={route.rpc} />
+            {!route.anonymous && current && <Anonymous alibi={current} rpc={rpc} />}
+            <EngineProof alibi={loaded.alibi} rpc={rpc} />
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"

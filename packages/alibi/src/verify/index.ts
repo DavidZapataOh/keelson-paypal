@@ -21,7 +21,9 @@ import { diffPointers, expand, reads, UNBOUND, valueAt } from "./expand.ts";
 import { fieldsOf } from "./fields.ts";
 import { type Report, type VerifyOptions, verdictOf } from "./report.ts";
 
+export { CATEGORY_LABELS } from "@keelson/mandate";
 export {
+  type AnonymousPurchaseAnswer,
   type ChainAnswer,
   type ChainQuery,
   type ChainReader,
@@ -29,6 +31,7 @@ export {
   ChainUnreachableError,
   createChainReader,
   type EngineProofAnswer,
+  readAnonymousPurchase,
   verifyEngineProof,
 } from "./chain.ts";
 export { ENGINE_PROGRAM_VKEY } from "./engine-vk.ts";
@@ -38,6 +41,10 @@ export type { Check, CheckId, CheckStatus, Report, Verdict, VerifyOptions } from
 export { verdictOf } from "./report.ts";
 export {
   type AnonymousMandateProof,
+  type AnonymousPurchase,
+  anonymousPurchaseFacts,
+  anonymousPurchaseStatement,
+  bindAnonymousPurchase,
   c1c3Statement,
   c3Statement,
   RP_ID_HASH,

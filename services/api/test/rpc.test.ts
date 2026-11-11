@@ -16,7 +16,7 @@ import {
   arbitrumSepoliaTransport,
   rpcTransport,
 } from "../src/chain/rpc.ts";
-import { releaseCoverages } from "../src/onchain/validations.ts";
+import { releasableLocks, releaseCoverages } from "../src/onchain/validations.ts";
 import { testDb, testKv } from "./setup.ts";
 
 const servers: Server[] = [];
@@ -120,6 +120,44 @@ describe("the coverage release sweep", { timeout: 60_000 }, () => {
   test("fails without a fallback", async () => {
     const primary = await endpoint(429, '{"error":"Monthly capacity limit exceeded"}');
     await expect(sweep(rpcTransport([primary.url]))).rejects.toThrow();
+  });
+
+  test("reads the oldest locks not yet released first", async () => {
+    const tx = (k: string, fn: string, confirmedAt: Date) => ({
+      id: ulid(),
+      chainId: arbitrumSepolia.id,
+      key: k,
+      contract: "KeelsonBondVault",
+      function: fn,
+      sender: Buffer.alloc(20),
+      to: Buffer.alloc(20),
+      data: Buffer.alloc(0),
+      dataHash: Buffer.alloc(32),
+      status: "confirmed" as const,
+      confirmedAt,
+    });
+    const hour = 3_600_000;
+    const released = bytesToHex(randomBytes(32));
+    const active = bytesToHex(randomBytes(32));
+    const rows = [
+      tx(
+        `KeelsonBondVault.lockCoverage:${released}`,
+        "lockCoverage",
+        new Date(Date.now() - 3 * hour),
+      ),
+      tx(
+        `KeelsonBondVault.releaseCoverage:${released}`,
+        "releaseCoverage",
+        new Date(Date.now() - 2 * hour),
+      ),
+      tx(`KeelsonBondVault.lockCoverage:${active}`, "lockCoverage", new Date(Date.now() - hour)),
+    ];
+    await testDb.insert(chainTxs).values(rows);
+    try {
+      expect(await releasableLocks(testDb, 1)).toEqual([active]);
+    } finally {
+      for (const r of rows) await testDb.delete(chainTxs).where(eq(chainTxs.key, r.key));
+    }
   });
 });
 

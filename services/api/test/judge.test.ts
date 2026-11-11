@@ -381,6 +381,55 @@ describe("tour", () => {
     expect(tour.mandate.id).toBe(mandateId);
   });
 
+  test("names the newest test buyer's purchase with a composed anonymous proof", async () => {
+    const anonymous = (await (await call("/v1/judge/tour", judgeCookie)).json()) as {
+      anonymous_purchase: { id: string; alibi_fragment: string | null } | null;
+    };
+    expect(anonymous.anonymous_purchase).toBeNull();
+    const composed = { proof: "", public_inputs: [] };
+    const shopper = ulid();
+    await testDb
+      .insert(user)
+      .values({ id: shopper, name: "Shopper", email: `${shopper}@shopper.invalid` });
+    const theirs = ulid();
+    await testDb.insert(mandates).values({
+      id: theirs,
+      userId: shopper,
+      operatorAgentId: agentId,
+      state: "ACTIVE",
+      currency: "USD",
+      maxMinor: 100n,
+      remainingMinor: 0n,
+      merchantIds: ["mrc_runfast"],
+      expiresAt: new Date(Date.now() + 86_400_000),
+    });
+    for (const [id, mid] of [
+      [capturedId, mandateId],
+      [ulid(), theirs],
+    ] as const) {
+      if (id !== capturedId) {
+        await testDb.insert(purchases).values({
+          id,
+          mandateId: mid,
+          merchantId: "mrc_runfast",
+          currency: "USD",
+          amountMinor: 100n,
+          cartHash: randomBytes(32),
+          state: "CAPTURED",
+        });
+        await testDb
+          .insert(alibis)
+          .values({ purchaseId: id, leafHash: randomBytes(32), bundle: {} });
+      }
+      await testDb.update(purchases).set({ c1c3Proof: composed }).where(eq(purchases.id, id));
+    }
+    const tour = (await (await call("/v1/judge/tour", judgeCookie)).json()) as {
+      anonymous_purchase: { id: string; alibi_fragment: string | null } | null;
+    };
+    expect(tour.anonymous_purchase?.id).toBe(capturedId);
+    expect(tour.anonymous_purchase?.alibi_fragment).toMatch(/^[A-Za-z0-9_-]{43}\.758\.421614$/);
+  });
+
   test("is for judges only", async () => {
     expect((await call("/v1/judge/tour", "")).status).toBe(401);
     expect((await call("/v1/judge/tour", shopperCookie)).status).toBe(403);

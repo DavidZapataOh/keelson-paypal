@@ -4,6 +4,7 @@ import { appendFileSync } from "node:fs";
 import Anthropic from "@anthropic-ai/sdk";
 import {
   ALFRED,
+  apiClient,
   checkout,
   LIVE_ITEM,
   liveMandate,
@@ -18,15 +19,16 @@ import {
 } from "@keelson/agent";
 import { decodeAlibi } from "@keelson/alibi";
 import { verifyAlibi } from "@keelson/alibi/verify";
-import { eq, purchases } from "@keelson/db";
+import { alibis, eq, purchases } from "@keelson/db";
 import { parseMandate } from "@keelson/mandate";
+import { loadAlibi } from "../src/alibi/issue.ts";
 import { renderHarness } from "../test/render-live.ts";
-import { asAgent } from "../test/tee-live.ts";
 
 // The shopping agent at a real store, with real money, under a fresh mandate for one digital
 // copy of the live item from Alfred Music (at most $5). The buyer's PayPal session is the KERNEL
 // profile PAYPAL_PROFILE, which the buyer signed in to himself. Run as a one-off job of
-// keelson-api, like the money-path bench.
+// keelson-api, like the money-path bench: the mandate is opened in this process, and the agent
+// calls the deployed API as the operator's OAuth client (KEELSON_CLIENT_ID, KEELSON_CLIENT_SECRET).
 //
 //   LIVE_RUN=blocked  a cart that breaks the mandate (two copies, over the budget): Keelson denies
 //                     it, and the agent's checkout is held at its first payment action.
@@ -51,16 +53,24 @@ const h = await renderHarness();
 const recipient = h.env.KEELSON_EVIDENCE_AGE_RECIPIENT as string;
 if (!recipient) throw new Error("needs KEELSON_EVIDENCE_AGE_RECIPIENT");
 const client = new Anthropic();
+const API_URL = process.env.KEELSON_API_URL ?? "https://api.keelson.finance";
+const agentApi = apiClient({
+  apiUrl: API_URL,
+  clientId: process.env.KEELSON_CLIENT_ID as string,
+  clientSecret: process.env.KEELSON_CLIENT_SECRET as string,
+  scopes: ["countersign:write", "evidence:write"],
+});
 
 async function settle(id: string) {
   const until = Date.now() + SETTLE_MS;
   for (;;) {
     const [p] = await h.db.select().from(purchases).where(eq(purchases.id, id));
+    const [a] = await h.db
+      .select({ id: alibis.purchaseId })
+      .from(alibis)
+      .where(eq(alibis.purchaseId, id));
     const done =
-      p &&
-      (p.state === "LOGGED" ||
-        p.state === "FAILED" ||
-        (p.state === "DENIED" && p.logIndex !== null));
+      p && (p.state === "FAILED" || ((p.state === "LOGGED" || p.state === "DENIED") && a));
     if (done || Date.now() > until) return p;
     await new Promise((r) => setTimeout(r, 500));
   }
@@ -88,6 +98,8 @@ try {
         hosts: ALFRED.hosts,
         context: session.context,
         page: session.page,
+        // Shut: nothing is countersigned while the agent looks for the cart.
+        gate: new PayGate({ checkoutHosts: ALFRED.checkoutHosts }),
         onStep: log,
       });
       if (!agent.proposal) throw new Error(`no cart proposed (${agent.outcome})`);
@@ -105,8 +117,8 @@ try {
     await session.page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {});
     const skipped: string[] = [];
     const result = await checkout({
-      keelson: h.app,
-      headers: asAgent,
+      keelson: agentApi,
+      headers: {},
       hold: {
         mandateId: hold.mid,
         openMandate: hold.openMandate,
@@ -118,8 +130,8 @@ try {
       observation: agent ? agent.reads.join("\n\n") : "",
       recipient,
       observe: liveObservations({
-        keelson: h.app,
-        headers: asAgent,
+        keelson: agentApi,
+        headers: {},
         mandateId: hold.mid,
         productUrl,
         quote,
@@ -155,20 +167,22 @@ try {
         "Alfred",
       );
       if (transactionId) {
-        const res = await h.app.request(`/v1/purchases/${result.requestId}/paypal-transaction`, {
+        const res = await agentApi.request(`/v1/purchases/${result.requestId}/paypal-transaction`, {
           method: "PUT",
-          headers: { "content-type": "application/json", ...asAgent },
+          headers: { "content-type": "application/json" },
           body: JSON.stringify({ transactionId }),
         });
         recorded = res.status;
       }
     }
-    const alibiRes = await h.app.request(`/v1/alibis/${result.requestId}`);
-    const verdict =
+    const alibiRes = await fetch(`${API_URL}/v1/alibis/${result.requestId}`);
+    // The Alibi may not be issued yet when the API is asked: it is then read where Keelson keeps it.
+    const bundle =
       alibiRes.status === 200
-        ? (await verifyAlibi(decodeAlibi(new Uint8Array(await alibiRes.arrayBuffer())))).verdict
-        : undefined;
-    const listed = (await (await h.app.request("/v1/live-purchases")).json()) as {
+        ? decodeAlibi(new Uint8Array(await alibiRes.arrayBuffer()))
+        : await loadAlibi(h.db, result.requestId);
+    const verdict = bundle ? (await verifyAlibi(bundle)).verdict : undefined;
+    const listed = (await (await fetch(`${API_URL}/v1/live-purchases`)).json()) as {
       purchases: { id: string }[];
     };
 
@@ -213,7 +227,8 @@ try {
         ? summary.decision === "deny" &&
           run?.outcome !== "paid" &&
           gate.refused > 0 &&
-          summary.state === "DENIED"
+          summary.state === "DENIED" &&
+          verdict?.startsWith("verified") === true
         : summary.decision === "allow" &&
           run?.outcome === "paid" &&
           recorded === 200 &&

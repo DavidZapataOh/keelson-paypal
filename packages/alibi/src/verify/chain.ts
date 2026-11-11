@@ -1,6 +1,6 @@
 import {
-  addresses,
   checkpointAnchorAbi,
+  deploymentsFor,
   honkVerifierAbi,
   registeredUserSetAbi,
   verdictVerifierAbi,
@@ -8,6 +8,7 @@ import {
 import {
   type Address,
   type BaseError,
+  bytesToHex,
   type Chain,
   ContractFunctionRevertedError,
   createPublicClient,
@@ -19,6 +20,7 @@ import {
   type TransactionReceipt,
 } from "viem";
 import { arbitrum, arbitrumSepolia } from "viem/chains";
+import { fromBase64 } from "../b64.ts";
 import { ENGINE_PROGRAM_VKEY } from "./engine-vk.ts";
 
 /** What one verification reads from the chain its Alibi is anchored on. */
@@ -131,6 +133,60 @@ export interface ChainReaderOptions {
   timeoutMs?: number;
 }
 
+/** A client of chain `chainId` over its RPCs in order, and which of them answered last. */
+function clientOf(chainId: number, opts: ChainReaderOptions) {
+  const known = CHAINS[chainId];
+  if (!known) throw new ChainUnreachableError(`no RPC is known for chain ${chainId}`);
+  const chosen = opts.rpc?.[chainId];
+  const urls = chosen ? [chosen].flat() : known.rpcs;
+  let answered = urls[0] as string;
+  const transports = urls.map((url) =>
+    http(url, {
+      batch: { wait: 16 },
+      retryCount: 0,
+      timeout: opts.timeoutMs ?? 10_000,
+      ...(opts.fetchFn ? { fetchFn: opts.fetchFn } : {}),
+      onFetchResponse: () => {
+        answered = url;
+      },
+    }),
+  );
+  const client = createPublicClient({
+    chain: known.chain,
+    batch: { multicall: true },
+    transport: transports.length === 1 ? (transports[0] as never) : fallback(transports),
+  });
+  return { client, answered: () => answered, custom: Boolean(chosen) };
+}
+
+const receiptOf = (client: ReturnType<typeof clientOf>["client"], hash: Hex) =>
+  client.getTransactionReceipt({ hash }).catch((err: unknown) => {
+    if ((err as Error).name === "TransactionReceiptNotFoundError") return null;
+    throw err;
+  });
+
+/** Whether a Honk verifier accepts a proof; it reverts on one it rejects. */
+const honkVerify = (
+  client: ReturnType<typeof clientOf>["client"],
+  verifier: Address,
+  proof: Hex,
+  publicInputs: Hex[],
+) =>
+  client
+    .readContract({
+      address: verifier,
+      abi: honkVerifierAbi,
+      functionName: "verify",
+      args: [proof, publicInputs],
+    })
+    .catch((err: unknown) => {
+      // Anything but a revert is the RPC's failure.
+      if ((err as BaseError).walk?.((e) => e instanceof ContractFunctionRevertedError)) {
+        return false;
+      }
+      throw err;
+    });
+
 /**
  * The RPC is trusted for what it reads: no light client checks its answers, so a dishonest RPC can
  * hide a revocation or claim an anchor. What an Alibi proves offline (witnessed checkpoints,
@@ -143,34 +199,8 @@ export interface ChainReaderOptions {
 export function createChainReader(opts: ChainReaderOptions = {}): ChainReader {
   return {
     async read(chainId, q) {
-      const known = CHAINS[chainId];
-      if (!known) throw new ChainUnreachableError(`no RPC is known for chain ${chainId}`);
-      const chosen = opts.rpc?.[chainId];
-      const custom = Boolean(chosen);
-      const urls = chosen ? [chosen].flat() : known.rpcs;
-      let answered = urls[0] as string;
-      const transports = urls.map((url) =>
-        http(url, {
-          batch: { wait: 16 },
-          retryCount: 0,
-          timeout: opts.timeoutMs ?? 10_000,
-          ...(opts.fetchFn ? { fetchFn: opts.fetchFn } : {}),
-          onFetchResponse: () => {
-            answered = url;
-          },
-        }),
-      );
-      const client = createPublicClient({
-        chain: known.chain,
-        batch: { multicall: true },
-        transport: transports.length === 1 ? (transports[0] as never) : fallback(transports),
-      });
+      const { client, answered, custom } = clientOf(chainId, opts);
       const anchor = { address: q.anchor, abi: checkpointAnchorAbi } as const;
-      const receiptOf = (hash: Hex) =>
-        client.getTransactionReceipt({ hash }).catch((err: unknown) => {
-          if ((err as Error).name === "TransactionReceiptNotFoundError") return null;
-          throw err;
-        });
       const verifier = { address: q.verifier, abi: verdictVerifierAbi } as const;
       try {
         const settled = await Promise.allSettled([
@@ -192,24 +222,9 @@ export function createChainReader(opts: ChainReaderOptions = {}): ChainReader {
           ),
           Promise.all(q.blocks.map((n) => client.getBlock({ blockNumber: n }).then((b) => b.hash))),
           q.c1
-            ? client
-                .readContract({
-                  address: q.c1.verifier,
-                  abi: honkVerifierAbi,
-                  functionName: "verify",
-                  args: [q.c1.proof, q.c1.publicInputs],
-                })
-                .catch((err: unknown) => {
-                  // The verifier reverts on a proof it rejects; anything else is the RPC's failure.
-                  if (
-                    (err as BaseError).walk?.((e) => e instanceof ContractFunctionRevertedError)
-                  ) {
-                    return false;
-                  }
-                  throw err;
-                })
+            ? honkVerify(client, q.c1.verifier, q.c1.proof, q.c1.publicInputs)
             : Promise.resolve(undefined),
-          q.anchorTx ? receiptOf(q.anchorTx) : Promise.resolve(undefined),
+          q.anchorTx ? receiptOf(client, q.anchorTx) : Promise.resolve(undefined),
           q.c3
             ? Promise.all([
                 client.readContract({
@@ -218,7 +233,7 @@ export function createChainReader(opts: ChainReaderOptions = {}): ChainReader {
                   functionName: "roots",
                   args: [q.c3.root],
                 }),
-                receiptOf(q.c3.tx),
+                receiptOf(client, q.c3.tx),
               ])
             : Promise.resolve(undefined),
         ] as const);
@@ -257,7 +272,7 @@ export function createChainReader(opts: ChainReaderOptions = {}): ChainReader {
           blocks,
           ...(c1 === undefined ? {} : { c1 }),
           ...(c3 && q.c3 ? { c3: c3Of(q.c3, c3[0], c3[1]) } : {}),
-          rpc: answered,
+          rpc: answered(),
           custom,
         };
         if (q.anchorBlock !== undefined && head < q.anchorBlock) {
@@ -318,8 +333,7 @@ export async function verifyEngineProof(
   opts: ChainReaderOptions = {},
 ): Promise<EngineProofAnswer> {
   const known = CHAINS[chainId];
-  const verifier = (addresses as Record<number, Record<string, Address> | undefined>)[chainId]
-    ?.EngineProofVerifier;
+  const verifier = known ? deploymentsFor(chainId).EngineProofVerifier : undefined;
   if (!known || !verifier) {
     throw new ChainUnreachableError(`no engine proof verifier is known for chain ${chainId}`);
   }
@@ -353,5 +367,58 @@ export async function verifyEngineProof(
       return { proven: null, verifier, rpc };
     }
     throw new ChainUnreachableError((err as Error).message);
+  }
+}
+
+/** What the chain says of a composed proof: whether the verifier accepts it, and its root. */
+export interface AnonymousPurchaseAnswer {
+  accepted: boolean;
+  /** `RegisteredUserSet.roots(root)`, and the `RootPublished` log of `root_tx` when one is given. */
+  root: NonNullable<ChainAnswer["c3"]>;
+  rpc: string;
+  custom: boolean;
+}
+
+/**
+ * Reads, in one HTTP request, whether the deployed `AnonymousPurchaseVerifier` accepts composed
+ * proof `p` in an `eth_call`, and the record `RegisteredUserSet` holds of its root. As for
+ * {@link createChainReader}, the RPC is trusted for what it reads.
+ */
+export async function readAnonymousPurchase(
+  chainId: number,
+  p: { proof: string; public_inputs: readonly string[]; user_set_root: string; root_tx?: string },
+  opts: ChainReaderOptions = {},
+): Promise<AnonymousPurchaseAnswer> {
+  const { AnonymousPurchaseVerifier: verifier, RegisteredUserSet: registry } =
+    deploymentsFor(chainId);
+  if (!verifier || !registry) {
+    throw new ChainUnreachableError(`no anonymous-purchase verifier is pinned on chain ${chainId}`);
+  }
+  const { client, answered, custom } = clientOf(chainId, opts);
+  const root = p.user_set_root as Hex;
+  try {
+    const [id, accepted, record, receipt] = await Promise.all([
+      client.getChainId(),
+      honkVerify(client, verifier, bytesToHex(fromBase64(p.proof)), p.public_inputs as Hex[]),
+      client.readContract({
+        address: registry,
+        abi: registeredUserSetAbi,
+        functionName: "roots",
+        args: [root],
+      }),
+      p.root_tx ? receiptOf(client, p.root_tx as Hex) : Promise.resolve(null),
+    ]);
+    if (id !== chainId) throw new ChainUnreachableError(`the RPC answered for chain ${id}`);
+    return {
+      accepted,
+      root: c3Of({ registry, root, tx: (p.root_tx ?? "0x") as Hex }, record, receipt),
+      rpc: answered(),
+      custom,
+    };
+  } catch (err) {
+    if (err instanceof ChainUnreachableError) throw err;
+    throw new ChainUnreachableError(
+      `the chain could not be read: ${(err as { shortMessage?: string }).shortMessage ?? (err as Error).message}`,
+    );
   }
 }
