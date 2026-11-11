@@ -630,7 +630,7 @@ test("the welcome stays inside its budgets", async () => {
     }),
   );
   expect(js).toBeLessThan(230_000);
-  expect(css).toBeLessThan(18_200);
+  expect(css).toBeLessThan(18_000);
   expect(riv).toBeLessThan(16_000);
   expect(lcp).toBeLessThan(1_800);
 });
