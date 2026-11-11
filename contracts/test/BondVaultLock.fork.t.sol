@@ -262,40 +262,6 @@ contract BondVaultLockForkTest is LockBase {
         _lock(v, sig);
     }
 
-    /// @dev ERC-8004 v2.0.0: the owner sets a wallet that signed `AgentWalletSet` under the registry's domain.
-    function _setAgentWallet(address wallet, uint256 walletKey) internal {
-        address identity = address(_identity());
-        uint256 deadline = vm.getBlockTimestamp() + 60;
-        bytes32 domain = keccak256(
-            abi.encode(
-                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
-                keccak256("ERC8004IdentityRegistry"),
-                keccak256("1"),
-                block.chainid,
-                identity
-            )
-        );
-        bytes32 structHash = keccak256(
-            abi.encode(
-                keccak256("AgentWalletSet(uint256 agentId,address newWallet,address owner,uint256 deadline)"),
-                agentId,
-                wallet,
-                operator,
-                deadline
-            )
-        );
-        (uint8 sv, bytes32 r, bytes32 s) =
-            vm.sign(walletKey, keccak256(abi.encodePacked("\x19\x01", domain, structHash)));
-        vm.prank(operator);
-        (bool ok,) = identity.call(
-            abi.encodeWithSignature(
-                "setAgentWallet(uint256,address,uint256,bytes)", agentId, wallet, deadline, abi.encodePacked(r, s, sv)
-            )
-        );
-        assertTrue(ok, "setAgentWallet");
-        assertEq(_identity().getAgentWallet(agentId), wallet);
-    }
-
     // Pauses and the bond.
 
     function test_lock_whenPausedReverts() public {
