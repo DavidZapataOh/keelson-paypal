@@ -358,7 +358,10 @@ function Focus({ id }: { id: string }) {
               </Link>
             }
           >
-            <WhoAnswers card={mandate.card} className="[&>li]:animate-none [&>li]:bg-bone-2/60 [&>li]:shadow-none" />
+            <WhoAnswers
+              card={mandate.card}
+              className="[&>li]:animate-none [&>li]:bg-bone-2/60 [&>li]:shadow-none"
+            />
           </Panel>
         ) : null}
       </div>
