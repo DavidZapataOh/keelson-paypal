@@ -3397,6 +3397,130 @@ components:
         - nonce
         - deadline
         - ownerSignature
+    LogBond:
+      type: object
+      properties:
+        chainId:
+          type: number
+        address:
+          type: string
+        origin:
+          type: string
+        test:
+          type: boolean
+          description: A test origin's bond, slashed by the equivocation drill.
+        key:
+          type: string
+          description: The Ed25519 log key the bond pins, hex.
+        owner:
+          type: string
+        verifier:
+          type: string
+          description: The Ed25519 verifier the bond calls.
+        canonical:
+          type: boolean
+          description: Whether the bond calls the registry's `Ed25519Verifier` over PYUSD.
+            A bond on another verifier or token proves nothing.
+        beneficiary:
+          type: string
+          description: Who receives a slash, less the bounty.
+        bountyBps:
+          type: number
+        completionWindowSeconds:
+          type: number
+        balanceMinor:
+          type: string
+        withdrawalDelaySeconds:
+          type: number
+        withdrawal:
+          type:
+            - object
+            - "null"
+          properties:
+            amountMinor:
+              type: string
+            unlockAt:
+              type: string
+            to:
+              type: string
+          required:
+            - amountMinor
+            - unlockAt
+            - to
+        equivocation:
+          $ref: "#/components/schemas/LogEquivocation"
+        explorerUrl:
+          type: string
+      required:
+        - chainId
+        - address
+        - origin
+        - test
+        - key
+        - owner
+        - verifier
+        - canonical
+        - beneficiary
+        - bountyBps
+        - completionWindowSeconds
+        - balanceMinor
+        - withdrawalDelaySeconds
+        - withdrawal
+        - equivocation
+        - explorerUrl
+    LogEquivocation:
+      type:
+        - object
+        - "null"
+      properties:
+        prover:
+          type: string
+        amountMinor:
+          type: string
+          description: The whole bond slashed, PYUSD base units.
+        bountyMinor:
+          type: string
+          description: The prover's bounty out of it; the rest went to the bond's
+            beneficiary.
+        provenAt:
+          type: string
+        size:
+          type: string
+          description: The tree size both checkpoints state.
+        rootA:
+          type: string
+        rootB:
+          type: string
+        noteA:
+          type:
+            - string
+            - "null"
+          description: The first signed checkpoint, as submitted; null until its
+            transaction is found.
+        noteB:
+          type:
+            - string
+            - "null"
+        txHash:
+          type:
+            - string
+            - "null"
+        explorerUrl:
+          type:
+            - string
+            - "null"
+      required:
+        - prover
+        - amountMinor
+        - bountyMinor
+        - provenAt
+        - size
+        - rootA
+        - rootB
+        - noteA
+        - noteB
+        - txHash
+        - explorerUrl
     PayoutAddress:
       type: object
       properties:
@@ -4694,11 +4818,32 @@ paths:
                     required:
                       - db
                       - kv
+                  rpc:
+                    type: object
+                    properties:
+                      calls:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            provider:
+                              type: string
+                            method:
+                              type: string
+                            calls:
+                              type: integer
+                          required:
+                            - provider
+                            - method
+                            - calls
+                    required:
+                      - calls
                   version:
                     type: string
                 required:
                   - status
                   - dependencies
+                  - rpc
                   - version
   /v1/events:
     get:
@@ -5968,8 +6113,8 @@ paths:
         - alibis
       summary: An alibi as a PDF/A-3b
       description: A one-page PDF/A-3b summary of the Alibi with a QR to its verify
-        page and the bundle embedded as `<id>.alibi`. Same readers as the
-        bundle.
+        page and the bundle embedded as `<id>.alibi`. Same readers, and the same
+        public copy, as the bundle.
       parameters:
         - schema:
             type: string
@@ -6003,8 +6148,11 @@ paths:
       description: "The purchase's Alibi: its RFC 8785 bundle, readable by the
         mandate's user or, with `alibis:read`, by the client that uploaded the
         purchase's evidence; the Alibi of a live purchase, once its PayPal
-        transaction is recorded, by anyone. It grows as timestamps, the capture
-        and the on-chain anchor arrive; earlier sections never change."
+        transaction is recorded, by anyone. Anyone else gets its public copy,
+        whose mandate withholds the user's login id and risk data: their salted
+        digests stay in the signed payload, so the copy verifies the same. It
+        grows as timestamps, the capture and the on-chain anchor arrive; earlier
+        sections never change."
       parameters:
         - schema:
             type: string
@@ -6952,6 +7100,36 @@ paths:
         "503":
           description: "The relayer cannot send now: chain unavailable, gas price cap or
             low balance"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/log/bonds:
+    get:
+      tags:
+        - log
+      summary: Log equivocation bonds
+      description: The PYUSD bonds on the log keys, on Arbitrum Sepolia. Two
+        checkpoints signed by a bond's key that state different roots for one
+        size pay its whole balance to whoever submits them
+        (`LogBond.proveEquivocation`). Each bond reports its balance and, once
+        slashed, the equivocation and its transaction.
+      responses:
+        "200":
+          description: Every deployed bond
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bonds:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/LogBond"
+                required:
+                  - bonds
+        "503":
+          description: This server does not read Arbitrum Sepolia
           content:
             application/problem+json:
               schema:

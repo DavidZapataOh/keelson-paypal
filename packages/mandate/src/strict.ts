@@ -96,32 +96,44 @@ export function assertStrictJwt(jwt: string): void {
 }
 
 /**
- * Requires every `_sd` digest and every array element placeholder in `payload` and in the
- * disclosed values to belong to one of `disclosures`. Keelson issues no decoy digests, so an
- * unresolved digest is a withheld disclosure.
+ * How many digests in `payload` and in the disclosures no disclosure resolves: object claims
+ * (`_sd`) and array elements (`...`) apart.
  */
-export function assertDigestsResolved(payload: unknown, disclosures: readonly string[]): void {
+export function undisclosedDigests(
+  payload: unknown,
+  disclosures: readonly string[],
+): { claims: number; elements: number } {
   const present = new Set(disclosures.map((d) => uint8ArrayToBase64Url(sha256(encoder.encode(d)))));
-  const resolved = (digest: unknown) => {
-    if (typeof digest === "string" && !present.has(digest)) {
-      throw new RangeError("undisclosed digest");
-    }
+  const missing = { claims: 0, elements: 0 };
+  const count = (digest: unknown, kind: keyof typeof missing) => {
+    if (typeof digest === "string" && !present.has(digest)) missing[kind]++;
   };
   const walk = (v: unknown): void => {
     if (v === null || typeof v !== "object") return;
     if (Array.isArray(v)) {
       for (const item of v) {
         if (item !== null && typeof item === "object" && !Array.isArray(item) && "..." in item) {
-          resolved((item as Record<string, unknown>)["..."]);
+          count((item as Record<string, unknown>)["..."], "elements");
         }
         walk(item);
       }
       return;
     }
     const o = v as Record<string, unknown>;
-    if (Array.isArray(o._sd)) o._sd.forEach(resolved);
+    if (Array.isArray(o._sd)) for (const d of o._sd) count(d, "claims");
     for (const item of Object.values(o)) walk(item);
   };
   walk(payload);
   for (const d of disclosures) walk((decodeStrictJson(d) as unknown[]).at(-1));
+  return missing;
+}
+
+/**
+ * Requires every `_sd` digest and every array element placeholder in `payload` and in the
+ * disclosed values to belong to one of `disclosures`. Keelson issues no decoy digests, so an
+ * unresolved digest is a withheld disclosure.
+ */
+export function assertDigestsResolved(payload: unknown, disclosures: readonly string[]): void {
+  const { claims, elements } = undisclosedDigests(payload, disclosures);
+  if (claims + elements > 0) throw new RangeError("undisclosed digest");
 }

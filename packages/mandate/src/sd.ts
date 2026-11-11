@@ -36,6 +36,28 @@ export const SD_FIELDS: readonly string[] = [
   "risk_data",
 ];
 
+/**
+ * The claims a public presentation of a mandate withholds: the user's login id and the risk data
+ * (device and IP). Their digests stay in the signed payload, so they remain committed to.
+ */
+export const PERSONAL_CLAIMS: readonly string[] = ["app_login_id", "risk_data"];
+
+/** Whether `disclosure` is an object claim named in {@link PERSONAL_CLAIMS}. */
+export function isPersonalDisclosure(disclosure: string): boolean {
+  const d = decodeStrictJson(disclosure) as unknown[];
+  return d.length === 3 && PERSONAL_CLAIMS.includes(d[1] as string);
+}
+
+/** An SD-JWT presentation (`jwt~d1~…~dn~[kb]`) without the {@link PERSONAL_CLAIMS} disclosures. */
+export function withholdPersonal(presentation: string): string {
+  return presentation
+    .split("~")
+    .filter(
+      (part, i) => i === 0 || part === "" || part.includes(".") || !isPersonalDisclosure(part),
+    )
+    .join("~");
+}
+
 const indices = (xs: readonly unknown[]): number[] => xs.map((_, i) => i);
 
 type SdClaims = Mandate & { cnf: { jwk: Mandate["agent"]["cnf"]["jwk"] } };

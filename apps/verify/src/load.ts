@@ -121,8 +121,20 @@ export async function qrTextOf(image: Blob): Promise<string> {
   return first.rawValue;
 }
 
-/** The public receipt of an Alibi, which anyone may read by id. */
+/**
+ * The Alibi `alibiId` names: the full bundle when it is public, as a live purchase's is, or else
+ * its public receipt, which anyone may read by id.
+ */
 export async function fromLink(alibiId: string, signal?: AbortSignal): Promise<Loaded> {
+  const full = await fetch(`${API}/v1/alibis/${encodeURIComponent(alibiId)}`, {
+    credentials: "omit",
+    ...(signal ? { signal } : {}),
+  }).catch(() => null);
+  if (full?.ok) {
+    const bytes = new Uint8Array(await full.arrayBuffer());
+    if (bytes.length > MAX_INPUT_BYTES) throw new InputError("The Alibi is larger than 8 MB.");
+    return { alibi: decodeAlibi(bytes), bytes };
+  }
   const res = await fetch(`${API}/v1/alibis/${encodeURIComponent(alibiId)}/receipt`, {
     credentials: "omit",
     ...(signal ? { signal } : {}),
