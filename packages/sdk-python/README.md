@@ -55,7 +55,7 @@ An operator closing mandates with its own key installs `keelson-finance[operator
 
 ```python
 from keelson.adapters.openai_agents import openai_agents_tools  # pip install keelson-finance[openai-agents]
-from keelson.adapters.langchain import langchain_tools          # pip install keelson-finance[langchain]
+from keelson.adapters.langchain import langchain_tools  # pip install keelson-finance[langchain]
 from keelson.adapters.claude_agent_sdk import keelson_mcp_server  # pip install keelson-finance[claude-agent-sdk]
 ```
 
