@@ -12,6 +12,7 @@ import { arbitrumSepolia } from "viem/chains";
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "vitest";
 import {
   ARBITRUM_SEPOLIA_PUBLIC_RPC,
+  arbitrumSepoliaLogsRpcUrls,
   arbitrumSepoliaRpcUrls,
   arbitrumSepoliaTransport,
   computeUnits,
@@ -78,6 +79,14 @@ test("the public RPC follows a configured one, once", () => {
   expect(arbitrumSepoliaRpcUrls(ARBITRUM_SEPOLIA_PUBLIC_RPC)).toEqual([
     ARBITRUM_SEPOLIA_PUBLIC_RPC,
   ]);
+});
+
+test("log reads go to the public RPC first, the configured one behind it", () => {
+  expect(arbitrumSepoliaLogsRpcUrls("https://rpc.example/v2/key")).toEqual([
+    ARBITRUM_SEPOLIA_PUBLIC_RPC,
+    "https://rpc.example/v2/key",
+  ]);
+  expect(arbitrumSepoliaLogsRpcUrls(undefined)).toEqual([ARBITRUM_SEPOLIA_PUBLIC_RPC]);
 });
 
 test("every Arbitrum Sepolia transport goes through the shared fallback", () => {

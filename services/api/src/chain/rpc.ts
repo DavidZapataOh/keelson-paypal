@@ -71,6 +71,23 @@ export function arbitrumSepoliaTransport(primary: string | undefined): Transport
 }
 
 /**
+ * For `eth_getLogs`: the public RPC, then the configured one. Alchemy's free tier answers at most
+ * 10 blocks per call, about 110 calls for five minutes of Arbitrum Sepolia, and dRPC's refuses the
+ * chain's ranges outright; the public RPC answers 10,000 blocks in one.
+ * https://www.alchemy.com/docs/reference/eth-getlogs
+ *
+ * @internal
+ */
+export function arbitrumSepoliaLogsRpcUrls(provider: string | undefined): string[] {
+  return arbitrumSepoliaRpcUrls(provider).reverse();
+}
+
+/** {@link arbitrumSepoliaLogsRpcUrls} through the shared fallback. */
+export function arbitrumSepoliaLogsTransport(provider: string | undefined): Transport {
+  return rpcTransport(arbitrumSepoliaLogsRpcUrls(provider));
+}
+
+/**
  * Alchemy's compute units per method; a method it does not list is counted as an `eth_call`.
  * https://www.alchemy.com/docs/reference/compute-unit-costs
  */

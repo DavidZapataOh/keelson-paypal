@@ -2,19 +2,23 @@
 import "./spans.ts";
 import { randomBytes } from "node:crypto";
 import { appendFileSync } from "node:fs";
+import { accessToken } from "@keelson/agent";
 import { cartHash } from "@keelson/core";
-import { createDb, eq, events, mandates, purchases } from "@keelson/db";
+import { createDb, eq, events, mandates, operators, purchases } from "@keelson/db";
 import { closeMandate } from "@keelson/mandate";
 import { Render } from "@renderinc/sdk";
+import type { MiddlewareHandler } from "hono";
 import { ulid } from "ulid";
 import { bytesToHex, createPublicClient, type Hex, type PublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { createApp } from "../src/app.ts";
+import { createAuth } from "../src/auth.ts";
 import { arbitrumSepoliaTransport } from "../src/chain/rpc.ts";
 import { parseEnv } from "../src/env.ts";
 import { eventsChannel } from "../src/events.ts";
 import { createKv } from "../src/kv.ts";
 import { createLogger } from "../src/logger.ts";
+import { authenticate } from "../src/middleware/auth.ts";
 import { relayerFromEnv } from "../src/onchain/relayer.ts";
 import { operatorSigners } from "../src/operators/signer.ts";
 import { call, createPayPalDeps } from "../src/paypal.ts";
@@ -24,9 +28,8 @@ import { refreshLeg } from "../src/tee/signers.ts";
 import { c1c3Prover } from "../src/zk/c1c3.ts";
 import { c3Prover } from "../src/zk/c3.ts";
 import { EvidenceUploader } from "../test/evidence.ts";
-import { cartOf, demoOperator, seedDemoOperator } from "../test/pipeline-live.ts";
+import { cartOf, demoOperator } from "../test/pipeline-live.ts";
 import {
-  asAgent,
   asUser,
   headerPrincipal,
   repeating,
@@ -42,8 +45,10 @@ import { stats, waterfall } from "./waterfall.ts";
 // cart as the one it repeats. Every DEGRADED_EVERY-th one runs with
 // leg B unreachable. Each is timed from POST /v1/countersign to a terminal state, against the live
 // legs, the deployed log, Arbitrum Sepolia through the relayer and the PayPal sandbox, in-process
-// on the database the log reads. Prints the per-step waterfall from the purchase spans as JSON
-// and exits 1 if a purchase is not captured or the end-to-end p95 is over budget.
+// on the database the log reads. The agent is the operator's own OAuth client (KEELSON_CLIENT_ID,
+// KEELSON_CLIENT_SECRET): its access tokens come from the deployed API's client credentials grant
+// and are verified against that issuer's keys. Prints the per-step waterfall from the purchase
+// spans as JSON and exits 1 if a purchase is not captured or the end-to-end p95 is over budget.
 const PURCHASES = Number(process.env.PURCHASES ?? 40);
 const CONCURRENCY = Number(process.env.CONCURRENCY ?? 1);
 const DEGRADED_EVERY = Number(process.env.DEGRADED_EVERY ?? 0);
@@ -55,9 +60,18 @@ const TERMINAL_WAIT_MS = 120_000;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const env = parseEnv();
-if (!env.LOG_URL || !env.LOG_WRITE_TOKEN || !env.KEELSON_OPERATOR_KEY || !env.DEMO_AGENT_ID) {
+const CLIENT_ID = process.env.KEELSON_CLIENT_ID;
+const CLIENT_SECRET = process.env.KEELSON_CLIENT_SECRET;
+if (
+  !env.LOG_URL ||
+  !env.LOG_WRITE_TOKEN ||
+  !env.KEELSON_OPERATOR_KEY ||
+  !env.DEMO_AGENT_ID ||
+  !CLIENT_ID ||
+  !CLIENT_SECRET
+) {
   throw new Error(
-    "the bench needs LOG_URL, LOG_WRITE_TOKEN, KEELSON_OPERATOR_KEY and DEMO_AGENT_ID",
+    "the bench needs LOG_URL, LOG_WRITE_TOKEN, KEELSON_OPERATOR_KEY, DEMO_AGENT_ID, KEELSON_CLIENT_ID and KEELSON_CLIENT_SECRET",
   );
 }
 const log = createLogger();
@@ -88,13 +102,24 @@ const workflow =
     : undefined;
 const proveAnonymousMandate = c3Prover({ db, kv, log }, workflow);
 const proveAnonymousPurchase = c1c3Prover({ db, log }, workflow);
+const token = accessToken({
+  apiUrl: env.BETTER_AUTH_URL,
+  clientId: CLIENT_ID,
+  clientSecret: CLIENT_SECRET,
+  scopes: ["countersign:write", "evidence:write"],
+});
+const asOperator = async () => ({ authorization: `Bearer ${await token()}` });
+// The agent's requests carry its access token; the users this run seeds act through a header.
+const verifyToken = authenticate(createAuth(db, env), env.BETTER_AUTH_URL);
+const principal: MiddlewareHandler = (c, next) =>
+  c.req.header("authorization") ? verifyToken(c, next) : headerPrincipal(c, next);
 const appWith = (t: typeof tee) =>
   createApp({
     db,
     kv,
     log,
     appOrigin: env.APP_ORIGIN,
-    authenticate: headerPrincipal,
+    authenticate: principal,
     tee: t,
     tlog: { url: env.LOG_URL as string, token: env.LOG_WRITE_TOKEN as string },
     relayer,
@@ -213,7 +238,11 @@ async function purchase(h: Hold, mode: Result["mode"], evidenceRoot: string): Pr
   const started = Date.now();
   const res = await (mode === "degraded" ? degraded : app).request("/v1/countersign", {
     method: "POST",
-    headers: { "content-type": "application/json", "idempotency-key": ulid(), ...asAgent },
+    headers: {
+      "content-type": "application/json",
+      "idempotency-key": ulid(),
+      ...(await asOperator()),
+    },
     body: JSON.stringify(body),
   });
   const out = (await res.json()) as Record<string, unknown>;
@@ -252,11 +281,16 @@ async function purchase(h: Hold, mode: Result["mode"], evidenceRoot: string): Pr
   };
 }
 
-let unseed = async () => {};
 try {
+  const [operator] = await db
+    .select({ clientId: operators.clientId })
+    .from(operators)
+    .where(eq(operators.agentId, demoOperator.agentId));
+  if (operator?.clientId !== CLIENT_ID) {
+    throw new Error(`operator ${demoOperator.agentId} is not linked to KEELSON_CLIENT_ID`);
+  }
   await refreshLeg(db, "a", tee);
   await refreshLeg(db, "b", tee);
-  unseed = await seedDemoOperator(db);
   const perHold = Math.ceil(PURCHASES / CONCURRENCY);
   for (let i = 0; i < CONCURRENCY; i++) holds.push(await openHold(perHold));
   // The evidence of every purchase is captured first, one browser page at a time, so the
@@ -264,7 +298,8 @@ try {
   const roots: string[] = [];
   const cart = cartOf(PRICE_MINOR).cart;
   for (let i = 0; i < PURCHASES; i++) {
-    roots.push(await evidence.upload(app, (holds[i % CONCURRENCY] as Hold).mid, cart, asAgent));
+    const hold = holds[i % CONCURRENCY] as Hold;
+    roots.push(await evidence.upload(app, hold.mid, cart, await asOperator()));
   }
   await evidence.close();
 
@@ -325,7 +360,6 @@ try {
     process.exitCode = 1;
   }
 } finally {
-  await unseed();
   for (const m of opened) {
     await post(`/v1/mandates/${m.mid}/revoke`, asUser(m.sub)).catch((err: unknown) =>
       console.error(`mandate ${m.mid} not revoked: ${String(err)}`),

@@ -9,7 +9,11 @@ import { createPublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { z } from "zod";
 import { isFinal } from "./chain/events.ts";
-import { arbitrumSepoliaTransport, POLLING_INTERVAL_MS } from "./chain/rpc.ts";
+import {
+  arbitrumSepoliaLogsTransport,
+  arbitrumSepoliaTransport,
+  POLLING_INTERVAL_MS,
+} from "./chain/rpc.ts";
 import { type RunDeps, runDispute } from "./disputes/run.ts";
 import { treasuryFromKey } from "./disputes/treasury.ts";
 import { resetJudges } from "./judge.ts";
@@ -33,7 +37,6 @@ const Env = z.object({
   TEE_B_URL: z.url(),
   KEELSON_TEE_TOKEN: z.string().min(32),
   ARBITRUM_SEPOLIA_RPC_URL: z.url(),
-  DRPC_ARBITRUM_SEPOLIA_URL: z.url().optional(),
   LOG_URL: z.url(),
   LOG_WRITE_TOKEN: z.string().min(32),
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
@@ -55,7 +58,7 @@ async function connect(): Promise<RunDeps> {
   const { db } = createDb(env.DATABASE_URL);
   const logs = createPublicClient({
     chain: arbitrumSepolia,
-    transport: arbitrumSepoliaTransport(env.DRPC_ARBITRUM_SEPOLIA_URL),
+    transport: arbitrumSepoliaLogsTransport(env.ARBITRUM_SEPOLIA_RPC_URL),
   });
   return {
     // Settles on chain only with the relayer's KMS key.
@@ -66,8 +69,8 @@ async function connect(): Promise<RunDeps> {
     log,
     paypal: createPayPalDeps(env),
     tee: createTee(env),
-    // Reads and receipts go to the configured provider; `eth_getLogs` and the reconciler to dRPC, with
-    // the chain's public RPC behind it, so the provider's quota stays for writes and the subscription.
+    // Reads and receipts go to the configured provider; `eth_getLogs` and the reconciler to the
+    // chain's public RPC first, which serves the ranges the provider's free tier refuses.
     chain: {
       client: createPublicClient({
         chain: arbitrumSepolia,

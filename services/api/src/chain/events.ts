@@ -174,7 +174,7 @@ export function isFinal(db: Db, client: PublicClient) {
 
 /**
  * The widest `eth_getLogs` range tried; a provider that refuses it gets halves, down to
- * `MIN_RANGE`. dRPC's free plan refuses more than 10,000 blocks.
+ * `MIN_RANGE`. Arbitrum's public RPC answers 10,000 blocks.
  */
 const MAX_RANGE = 10_000n;
 const MIN_RANGE = 50n;
