@@ -78,7 +78,7 @@
     "LogBondTestOrigin": "0xb8B9cF2EA599b033feA6016FC44502c31F5A1488",
     "AmberContradictionVerifier": "0x378b1DBdf260460c93DDec38F0245E95f36A2414",
     "AmberContradictionReferenceVerifier": "0x87F47494Fdc0F6e4f2f01Ab7c40538F5164EcA8A",
-    "AmberContradictionCourt": "0x04B0b3E7f07548d4FA5E873ec8Dd946FE7Da19Be"
+    "AmberContradictionCourt": "0x7dA4BA7bdbb118848A04a92d7F85951a184fF3fA"
   },
   "constructorArgs": {
     "KeelsonDeployer": "0x0000000000000000000000009c0215b66f6a64c34ccb0126cb8d027689fa68b9",
