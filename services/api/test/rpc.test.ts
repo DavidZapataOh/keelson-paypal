@@ -1,27 +1,20 @@
-import { randomBytes } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { chainTxs, eq } from "@keelson/db";
-import { createRelayer } from "@keelson/relayer";
-import { pino } from "pino";
-import { ulid } from "ulid";
-import { bytesToHex, createPublicClient, http, type PublicClient } from "viem";
+import { createPublicClient, http } from "viem";
 import { arbitrumSepolia } from "viem/chains";
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "vitest";
+import { afterEach, expect, test } from "vitest";
 import {
   ARBITRUM_SEPOLIA_PUBLIC_RPC,
   arbitrumSepoliaLogsRpcUrls,
   arbitrumSepoliaRpcUrls,
-  arbitrumSepoliaTransport,
   computeUnits,
   counted,
   rpcCalls,
   rpcTransport,
   startRpcReport,
 } from "../src/chain/rpc.ts";
-import { testDb, testKv } from "./setup.ts";
 
 const servers: Server[] = [];
 afterEach(() => {

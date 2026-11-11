@@ -225,8 +225,9 @@ export async function applyTransaction(
   }
   if (t.status === "SETTLED" && t.settledMinor > 0 && approval) {
     const settled = BigInt(t.settledMinor);
-    const collected = settled < approval.amountMinor ? settled : approval.amountMinor;
+    let collected = settled;
     if (settled > approval.amountMinor) {
+      collected = approval.amountMinor;
       deps.log.error(
         { purchaseId: card.purchaseId, settled: t.settledMinor, approved: approval.amountMinor },
         "card settled above the approved amount; the excess is not collected",

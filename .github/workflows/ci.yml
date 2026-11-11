@@ -687,6 +687,8 @@ jobs:
         run: "! cargo tree -p keelson-tee --features tdx,nitro -e normal | grep -E 'cedar-policy-symcc|cvc5'"
       - name: Resident memory after 10,000 countersigns on each leg
         run: cargo test -p keelson-tee --release --test rss -- --ignored --nocapture
+      - name: C1 proving within its budget
+        run: cargo test -p keelson-tee --release --test zk_budget -- --ignored --nocapture
       - run: cargo test -p keelson-tee --features tdx,nitro
         env:
           PAYPAL_CLIENT_ID: ${{ secrets.PAYPAL_CLIENT_ID }}
