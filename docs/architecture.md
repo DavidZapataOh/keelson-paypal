@@ -166,12 +166,13 @@ PayPal adjudicates the dispute. Keelson's verdict decides what evidence is sent,
 whether the warranty pays; it does not bind PayPal. Details in
 [Dispute evaluation](../services/api/README.md#dispute-evaluation).
 
-Three paths convict without trusting Keelson's TEEs:
+Two courts convict on chain:
 
 - **C2a, `MandateViolationCourt`**: anyone holding the mandate's opening proves the countersigned
-  cart broke the mandate.
+  cart broke the mandate. This path does not trust Keelson's TEEs.
 - **C2b, `AmberContradictionCourt`**: the store's own TLS response, notarized with TLSNotary,
-  contradicts what the operator attested about the item.
+  contradicts what the operator attested about the item. The notary is leg A, so this path trusts
+  Keelson's TDX leg.
 - **`ViolationBondPool`** pays a conviction from either court out of the operator's deposit.
 
 ## Card mandates
