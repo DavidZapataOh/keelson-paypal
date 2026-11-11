@@ -16,7 +16,7 @@ import { Status } from "@keelson/ui/components/status";
 import { ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import { VERIFY } from "../../lib/config";
-import { money, when } from "../../lib/format";
+import { major, money, when } from "../../lib/format";
 import { type AlibiReceipt, type MerchantOrder, receiptOf } from "../../lib/merchant";
 import { Mark, type MarkKind, Panel, Segmented } from "../surface";
 import { FIELD, LIABLE } from "./labels";
@@ -113,7 +113,7 @@ function AlibiSheet({ order, onClose }: { order: MerchantOrder | undefined; onCl
               </SheetDescription>
               <div className="flex flex-wrap items-center gap-3">
                 <Amount
-                  value={Number(order.amount_minor) / 100}
+                  value={major(order.amount_minor, order.currency)}
                   currency={order.currency}
                   className="text-[2.25rem]"
                   {...(blocked || order.state === "FAILED" ? { struck: "Not charged" } : {})}

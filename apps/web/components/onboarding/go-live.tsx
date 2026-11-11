@@ -2,7 +2,7 @@
 
 import { Button } from "@keelson/ui/components/button";
 import Link from "next/link";
-import { money } from "../../lib/format";
+import { major, money } from "../../lib/format";
 import type { MandateView } from "../../lib/types";
 import { useMandate } from "../../lib/use-mandate";
 import { RiveMoment } from "../brand";
@@ -20,7 +20,7 @@ function Card({ mandate, state }: { mandate: MandateView; state: string }) {
   const row = (f: string) => mandate.card?.rows.find((r) => r.field === f)?.values;
   return (
     <MandateVisual
-      amount={Number(mandate.budget.maxMinor) / 100}
+      amount={major(mandate.budget.maxMinor, mandate.budget.currency)}
       currency={mandate.budget.currency}
       amountLabel="Up to"
       what={row("items")?.join(", ") ?? row("summary")?.[0] ?? ""}

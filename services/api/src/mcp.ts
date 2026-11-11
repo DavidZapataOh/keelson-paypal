@@ -14,7 +14,7 @@ import { isAPIError } from "better-auth/api";
 import { verifyBearerToken } from "better-auth/oauth2";
 import { bodyLimit } from "hono/body-limit";
 import type { Deps } from "./app.ts";
-import { apiAudience } from "./auth.ts";
+import { apiAudience, tokenScopes } from "./auth.ts";
 
 /**
  * Keelson's MCP server on Streamable HTTP at `/mcp`, stateless: one server per request, built for
@@ -70,7 +70,7 @@ export function registerMcp(
           return {
             token,
             clientId: payload.azp as string,
-            scopes: typeof payload.scope === "string" ? payload.scope.split(" ") : [],
+            scopes: tokenScopes(payload),
             ...(payload.exp ? { expiresAt: payload.exp } : {}),
             resource: new URL(apiAudience),
           };

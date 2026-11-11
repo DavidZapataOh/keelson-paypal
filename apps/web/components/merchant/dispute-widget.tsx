@@ -3,6 +3,7 @@ import type { AgWidgetFieldReference, AgWidgetParams } from "ag-studio";
 import { AgIncompleteDataMappingOverlay, AgNoDataOverlay } from "ag-studio-react";
 import { use } from "react";
 import { VERIFY } from "../../lib/config";
+import { major } from "../../lib/format";
 import type { MerchantDispute } from "../../lib/merchant";
 import { EngineProof } from "../engine-proof";
 import { LIABLE, OUTCOME, PAID_BY, RAIL } from "./labels";
@@ -67,7 +68,11 @@ export function DisputeClock(params: AgWidgetParams<DisputeDef>) {
       className="grid h-full content-start gap-4 overflow-auto p-4 text-ui"
     >
       <header className="flex flex-wrap items-baseline justify-between gap-2">
-        <Amount value={Number(d.amount_minor) / 100} currency={d.currency} className="text-2xl" />
+        <Amount
+          value={major(d.amount_minor, d.currency)}
+          currency={d.currency}
+          className="text-2xl"
+        />
         <span className={`inline-flex items-center gap-1.5 font-medium text-xs ${outcome.tone}`}>
           <span aria-hidden="true">{outcome.glyph}</span>
           {d.outcome === "queued" && d.ready_at ? `Queued until ${time(d.ready_at)}` : outcome.text}

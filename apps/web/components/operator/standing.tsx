@@ -7,6 +7,7 @@ import { Skeleton } from "@keelson/ui/components/skeleton";
 import { ArrowUpRight, Check, Plus, TriangleAlert } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { API } from "../../lib/config";
+import { major } from "../../lib/format";
 import {
   type Bond,
   bondOf,
@@ -199,7 +200,7 @@ export function Standing({ agentId, owner }: { agentId: string; owner: `0x${stri
   const free = pyusd(bond.bond.free);
   const locked = pyusd(bond.bond.locked);
   const queued = pyusd(bond.bond.queued);
-  const minimum = grade.bond.requiredMinor / 100;
+  const minimum = major(grade.bond.requiredMinor, "USD");
   const gap = free + locked - minimum;
   const g = GRADES[grade.grade];
   const { incidents, coverages } = grade.evidence;
@@ -302,10 +303,10 @@ export function Standing({ agentId, owner }: { agentId: string; owner: `0x${stri
             </span>
           </DataItem>
           <DataItem label={`Expected loss, next ${grade.loss.horizon}`}>
-            <Amount value={grade.loss.expectedMinor / 100} />
+            <Amount value={major(grade.loss.expectedMinor, "USD")} />
           </DataItem>
           <DataItem label="Loss at 99 %">
-            <Amount value={grade.loss.var99Minor / 100} />
+            <Amount value={major(grade.loss.var99Minor, "USD")} />
           </DataItem>
         </DataList>
       </Panel>
