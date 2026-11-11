@@ -73,6 +73,22 @@ components:
           description: The salt that opens `C_m`; the TEE needs it to issue the mandate.
         assertion:
           $ref: "#/components/schemas/PasskeyAssertion"
+        connection:
+          type: object
+          properties:
+            code:
+              type: string
+              minLength: 8
+              maxLength: 16
+            askAboveMinor:
+              type: integer
+              exclusiveMinimum: 0
+              maximum: 9007199254740991
+          required:
+            - code
+          description: The agent's request this mandate approves, by its user code. The
+            mandate must name the asking agent's operator and grant no more than
+            it asked; `askAboveMinor` may only be lower too.
       required:
         - payloadSd
         - disclosures
@@ -639,6 +655,386 @@ components:
         - state
       description: Purchases already countersigned may still be captured; the hold is
         voided after them.
+    DeviceAuthorization:
+      type: object
+      properties:
+        device_code:
+          type: string
+        user_code:
+          type: string
+        verification_uri:
+          type: string
+        verification_uri_complete:
+          type: string
+        expires_in:
+          type: integer
+        interval:
+          type: integer
+      required:
+        - device_code
+        - user_code
+        - verification_uri
+        - verification_uri_complete
+        - expires_in
+        - interval
+      description: RFC 8628 §3.2. Show `user_code` and `verification_uri` to the user,
+        then poll `POST /v1/connections/token` every `interval` seconds.
+    ConnectionRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+          example: Claude Code
+        reason:
+          type: string
+          minLength: 100
+          maxLength: 1000
+          description: Why the agent asks, in its own words; the user reads it before
+            approving.
+        limits:
+          $ref: "#/components/schemas/ConnectionLimits"
+      required:
+        - name
+        - reason
+        - limits
+    ConnectionLimits:
+      type: object
+      properties:
+        currency:
+          type: string
+          enum:
+            - AUD
+            - BRL
+            - CAD
+            - CNY
+            - CZK
+            - DKK
+            - EUR
+            - HKD
+            - HUF
+            - ILS
+            - JPY
+            - MYR
+            - MXN
+            - TWD
+            - NZD
+            - NOK
+            - PHP
+            - PLN
+            - GBP
+            - SGD
+            - SEK
+            - CHF
+            - THB
+            - USD
+          default: USD
+        perPurchaseMinor:
+          type: integer
+          exclusiveMinimum: 0
+          maximum: 9007199254740991
+          description: Most one purchase may cost, minor units.
+        totalMinor:
+          type: integer
+          exclusiveMinimum: 0
+          maximum: 9007199254740991
+          description: Most all purchases may cost together.
+        merchants:
+          type: array
+          items:
+            type: string
+            enum:
+              - mrc_runfast
+          minItems: 1
+          maxItems: 1
+          default:
+            - mrc_runfast
+          description: Onboarded merchant ids; every one when left out.
+        until:
+          type: string
+          format: date-time
+          description: When the mandate ends.
+        askAboveMinor:
+          type: integer
+          exclusiveMinimum: 0
+          maximum: 9007199254740991
+          description: Above this a purchase waits for the user's one-time approval,
+            although the limits allow it.
+      required:
+        - perPurchaseMinor
+        - totalMinor
+        - until
+    ConnectionApproved:
+      type: object
+      properties:
+        mandate_id:
+          type: string
+        kind:
+          type: string
+          enum:
+            - connect
+            - once
+      required:
+        - mandate_id
+        - kind
+    ConnectionTokenError:
+      type: object
+      properties:
+        error:
+          type: string
+          enum:
+            - authorization_pending
+            - slow_down
+            - access_denied
+            - expired_token
+            - invalid_grant
+            - unsupported_grant_type
+        error_description:
+          type: string
+        interval:
+          type: integer
+      required:
+        - error
+        - error_description
+    Connection:
+      type: object
+      properties:
+        code:
+          type: string
+        kind:
+          type: string
+          enum:
+            - connect
+            - once
+        state:
+          type: string
+          enum:
+            - PENDING
+            - APPROVED
+            - DENIED
+            - EXPIRED
+        name:
+          type: string
+        reason:
+          type: string
+        agent:
+          type: object
+          properties:
+            agentId:
+              type: string
+            operator:
+              type: string
+            bond:
+              type:
+                - object
+                - "null"
+              properties:
+                asset:
+                  type: string
+                min:
+                  type: number
+                vault:
+                  type: string
+              required:
+                - asset
+                - min
+                - vault
+          required:
+            - agentId
+            - operator
+            - bond
+        limits:
+          type: object
+          properties:
+            currency:
+              type: string
+            perPurchaseMinor:
+              type: string
+            totalMinor:
+              type: string
+            askAboveMinor:
+              type:
+                - string
+                - "null"
+            merchants:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                required:
+                  - id
+                  - name
+            until:
+              type: string
+          required:
+            - currency
+            - perPurchaseMinor
+            - totalMinor
+            - askAboveMinor
+            - merchants
+            - until
+        parent:
+          type:
+            - object
+            - "null"
+          properties:
+            mandateId:
+              type: string
+            perPurchaseMinor:
+              type: string
+            remainingMinor:
+              type: string
+          required:
+            - mandateId
+            - perPurchaseMinor
+            - remainingMinor
+        mandateId:
+          type:
+            - string
+            - "null"
+        expiresAt:
+          type: string
+      required:
+        - code
+        - kind
+        - state
+        - name
+        - reason
+        - agent
+        - limits
+        - parent
+        - mandateId
+        - expiresAt
+    ConnectionDraft:
+      type: object
+      properties:
+        limits:
+          type: object
+          properties:
+            perPurchaseMinor:
+              type: integer
+              exclusiveMinimum: 0
+              maximum: 9007199254740991
+            totalMinor:
+              type: integer
+              exclusiveMinimum: 0
+              maximum: 9007199254740991
+            merchants:
+              type: array
+              items:
+                type: string
+              minItems: 1
+            until:
+              type: string
+              format: date-time
+            askAboveMinor:
+              type: integer
+              exclusiveMinimum: 0
+              maximum: 9007199254740991
+          required:
+            - perPurchaseMinor
+            - totalMinor
+            - merchants
+            - until
+        credentialId:
+          type: string
+          minLength: 1
+      required:
+        - limits
+    Agent:
+      type: object
+      properties:
+        agentId:
+          type: string
+        name:
+          type: string
+        operator:
+          type: string
+        connected:
+          type: boolean
+        mandate:
+          type:
+            - object
+            - "null"
+          properties:
+            id:
+              type: string
+            state:
+              type: string
+            currency:
+              type: string
+            maxMinor:
+              type: string
+            remainingMinor:
+              type: string
+            expiresAt:
+              type: string
+            merchants:
+              type: array
+              items:
+                type: string
+          required:
+            - id
+            - state
+            - currency
+            - maxMinor
+            - remainingMinor
+            - expiresAt
+            - merchants
+          description: The live mandate the agent buys under, if any.
+        lastActivityAt:
+          type: string
+      required:
+        - agentId
+        - name
+        - operator
+        - connected
+        - mandate
+        - lastActivityAt
+    PendingApproval:
+      type: object
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        currency:
+          type: string
+        amountMinor:
+          type: string
+        overMinor:
+          type:
+            - string
+            - "null"
+          description: How far above the mandate the cart is; null when it is the store.
+        merchant:
+          type: string
+        mandateId:
+          type: string
+        expiresAt:
+          type: string
+      required:
+        - code
+        - name
+        - currency
+        - amountMinor
+        - overMinor
+        - merchant
+        - mandateId
+        - expiresAt
+    AgentsRevoked:
+      type: object
+      properties:
+        revoked:
+          type: integer
+          description: Mandates stopped.
+      required:
+        - revoked
     CompiledMandate:
       type: object
       properties:
@@ -1352,6 +1748,8 @@ components:
             - nitro
         trace:
           description: The `keelson.eval/1` trace both legs signed over.
+        approval:
+          $ref: "#/components/schemas/OnceApproval"
         state:
           type: string
           description: "`CAPTURED` once logged, covered and captured; `FAILED` with
@@ -1473,6 +1871,33 @@ components:
         - digest
         - signatures
         - signers
+    OnceApproval:
+      type: object
+      properties:
+        device_code:
+          type: string
+          description: "Absent when the user is already being asked about this cart: keep
+            polling the device code you were given then."
+        user_code:
+          type: string
+        verification_uri:
+          type: string
+        verification_uri_complete:
+          type: string
+        expires_in:
+          type: integer
+        interval:
+          type: integer
+      required:
+        - user_code
+        - verification_uri
+        - verification_uri_complete
+        - expires_in
+        - interval
+      description: "On a deny for a cart over the mandate's amount or outside its
+        merchants: the user was asked to approve this cart once. Poll `POST
+        /v1/connections/token` with its `device_code`; the answer is a
+        single-purchase mandate for exactly this cart."
     CountersignRequest:
       type: object
       properties:
@@ -4956,6 +5381,20 @@ paths:
                             type: integer
                         required:
                           - status
+                      chainEvents:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                            enum:
+                              - up
+                              - down
+                          finalizedBlock:
+                            type: string
+                          reconciledAgeMs:
+                            type: integer
+                        required:
+                          - status
                       anchor:
                         type: object
                         properties:
@@ -5122,6 +5561,12 @@ paths:
             hash and the current terms (`mandate-binding-mismatch`; `fields`
             names `agent.cnf`, `agent.bond`, `policy.engine`, `policy.version`,
             `policy.measurements`, `policy.policy_set_hash` or `consent`)"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Too many approvals by user code
           content:
             application/problem+json:
               schema:
@@ -5544,6 +5989,424 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "503":
           description: PayPal is unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/connections:
+    post:
+      tags:
+        - connections
+      summary: Ask the user for a mandate
+      description: "The agent's operator asks its user for a mandate with these
+        limits, as an RFC 8628 device authorization: the user opens
+        `verification_uri_complete`, compares `user_code` and approves on
+        Keelson's page with a passkey, lowering any limit. Only a client that
+        linked an operator may ask, and the mandate names that operator. The
+        code expires in 15 minutes and is single use."
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectionRequest"
+      responses:
+        "201":
+          description: Show the code and the link to the user, then poll
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceAuthorization"
+        "401":
+          description: No valid access token
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The client linked no operator
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: The client linked several operators
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: The request is invalid
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/connections/token:
+    post:
+      tags:
+        - connections
+      summary: Poll for the user's answer
+      description: "RFC 8628 §3.4 polling with
+        `grant_type=urn:ietf:params:oauth:grant-type:device_code`. Until the
+        user decides: `authorization_pending`, or `slow_down` (and 5 more
+        seconds to wait) when polled faster than `interval`. Then
+        `access_denied`, `expired_token`, or the approved mandate's id, once:
+        the device code is spent by the answer that carries it."
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                grant_type:
+                  type: string
+                device_code:
+                  type: string
+                  maxLength: 256
+              required:
+                - grant_type
+                - device_code
+      responses:
+        "200":
+          description: "Approved: the mandate the user signed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectionApproved"
+        "400":
+          description: Not approved, or not yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectionTokenError"
+        "401":
+          description: No valid access token
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/connections/{code}:
+    get:
+      tags:
+        - connections
+      summary: Read a request by its user code
+      description: What the agent asks for, for the approval page. Limited to 20 reads
+        a minute per user, so codes cannot be guessed.
+      parameters:
+        - schema:
+            type: string
+            minLength: 8
+            maxLength: 16
+          required: true
+          name: code
+          in: path
+      responses:
+        "200":
+          description: The request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Connection"
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: No such request for this user
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Too many reads
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/connections/{code}/deny:
+    post:
+      tags:
+        - connections
+      summary: Deny a request
+      parameters:
+        - schema:
+            type: string
+            minLength: 8
+            maxLength: 16
+          required: true
+          name: code
+          in: path
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      responses:
+        "200":
+          description: Denied; the agent's next poll says `access_denied`
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  state:
+                    type: string
+                    enum:
+                      - DENIED
+                required:
+                  - state
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: No open request with this code
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/connections/{code}/draft:
+    post:
+      tags:
+        - connections
+      summary: Draft the mandate that approves a request
+      description: The unsigned mandate for the limits the user chose, which may only
+        be lower than or equal to what the agent asked. It names the asking
+        agent's operator. Sign it and store it with `POST /v1/mandates`, passing
+        `connection`, to approve.
+      parameters:
+        - schema:
+            type: string
+            minLength: 8
+            maxLength: 16
+          required: true
+          name: code
+          in: path
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+        - schema:
+            type: string
+          required: false
+          name: keelson-device
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectionDraft"
+      responses:
+        "200":
+          description: The draft mandate and its card
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mandateDraft:
+                    type: object
+                    additionalProperties: {}
+                  card:
+                    $ref: "#/components/schemas/MandateCard"
+                  ambiguous:
+                    type: array
+                    items:
+                      type: string
+                  check:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        enum:
+                          - skipped
+                      discrepancies:
+                        type: "null"
+                    required:
+                      - status
+                      - discrepancies
+                required:
+                  - mandateDraft
+                  - card
+                  - ambiguous
+                  - check
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The passkey is not the user's
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: No open request with this code
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: The user has no passkey
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: A limit is above what the agent asked (`limits-raised`; `fields`
+            names it)
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: The operator's agent key or bond is not set
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/agents:
+    get:
+      tags:
+        - agents
+      summary: List your agents
+      description: "Each agent that holds or held a mandate of yours, or that you
+        connected: its live mandate with what is left, and when it last acted."
+      responses:
+        "200":
+          description: The agents, most recently active first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agents:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Agent"
+                required:
+                  - agents
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/approvals:
+    get:
+      tags:
+        - agents
+      summary: Carts paused for your approval
+      description: Carts your agents tried that their mandate does not allow, each
+        waiting for you to approve it once or decline it. New ones arrive as
+        `approval.requested` events on the `agents` channel.
+      responses:
+        "200":
+          description: The open requests, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  approvals:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PendingApproval"
+                required:
+                  - approvals
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/agents/freeze:
+    post:
+      tags:
+        - agents
+      summary: Freeze all agents
+      description: Revokes every live mandate of yours and ends every connection.
+        Keelson refuses every countersign for you from now on; purchases already
+        countersigned may still be captured.
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      responses:
+        "200":
+          description: Frozen
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentsRevoked"
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/agents/{agentId}/disconnect:
+    post:
+      tags:
+        - agents
+      summary: Disconnect an agent
+      description: Revokes every live mandate of yours that names the agent and ends
+        its connections. Keelson refuses its countersigns from now on; purchases
+        already countersigned may still be captured.
+      parameters:
+        - schema:
+            type: string
+            pattern: ^(0|[1-9]\d{0,77})$
+          required: true
+          name: agentId
+          in: path
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      responses:
+        "200":
+          description: Disconnected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentsRevoked"
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: No agent of yours with this id
           content:
             application/problem+json:
               schema:

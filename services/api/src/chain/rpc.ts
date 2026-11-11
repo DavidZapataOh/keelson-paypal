@@ -56,6 +56,8 @@ export function countedHttp(url: string, config?: HttpTransportConfig): Transpor
 /**
  * Sends each request to the first URL and, on a rate limit, a server error or a timeout, to the
  * next. Errors name the last URL tried, so a provider's key in the first one stays out of logs.
+ *
+ * @internal
  */
 export function rpcTransport(urls: readonly string[]): Transport {
   return urls.length === 1

@@ -8,7 +8,7 @@ import { Skeleton } from "@keelson/ui/components/skeleton";
 import { Status } from "@keelson/ui/components/status";
 import { useEffect, useState } from "react";
 import { VERIFY } from "../lib/config";
-import { when } from "../lib/format";
+import { major, when } from "../lib/format";
 import { alibiUrl, type LivePurchase, livePurchases, reasonOf } from "../lib/live";
 import { ErrorNotice } from "./notice";
 
@@ -21,7 +21,7 @@ function Entry({ p }: { p: LivePurchase }) {
       <div className="grid min-w-0 gap-2">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <Amount
-            value={Number(p.amount.minor) / 100}
+            value={major(p.amount.minor, p.amount.currency)}
             currency={p.amount.currency}
             className="text-xl"
             {...(denied ? { struck: "Not paid" } : {})}

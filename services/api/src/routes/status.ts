@@ -1,11 +1,12 @@
 import { createRequire } from "node:module";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { addresses, checkpointAnchorAbi } from "@keelson/chain";
 import { type Db, desc, eq, paypalEvents } from "@keelson/db";
 import { LOG_HOST, LOG_ORIGINS } from "@keelson/log";
 import type { Relayer } from "@keelson/relayer";
 import type { RedisClientType } from "redis";
-import { type Address, keccak256, stringToBytes } from "viem";
+import { keccak256, stringToBytes } from "viem";
+import { latestAnchor } from "../alibi/anchors.ts";
+import { finalizedBlock } from "../chain/events.ts";
 import type { ChainReaders } from "../chain/reader.ts";
 import { rpcCalls } from "../chain/rpc.ts";
 import type { LogConfig } from "../log/append.ts";
@@ -69,6 +70,13 @@ const route = createRoute({
                   status: Dependency,
                   lastWebhookAgeMs: z.number().int().optional(),
                   lastPollAgeMs: z.number().int().optional(),
+                })
+                .optional(),
+              chainEvents: z
+                .object({
+                  status: Dependency,
+                  finalizedBlock: z.string().optional(),
+                  reconciledAgeMs: z.number().int().optional(),
                 })
                 .optional(),
               anchor: z
@@ -228,32 +236,52 @@ function paypalState(paypal: PayPalDeps): Promise<"up" | "down"> {
   return last.status;
 }
 
-/** The latest checkpoint of the sandbox log anchored on Arbitrum Sepolia. */
-async function anchorState(chains: ChainReaders) {
-  const reader = chains[421614];
-  if (!reader) return undefined;
+/** The latest checkpoint of the sandbox log anchored on Arbitrum Sepolia, from the stored events. */
+async function anchorState(db: Db) {
   const environment = "arbitrum-sepolia" as const;
-  try {
-    const [size, , anchoredAt] = await Promise.race([
-      reader.client.readContract({
-        address: addresses[421614].CheckpointAnchor as Address,
-        abi: checkpointAnchorAbi,
-        functionName: "latest",
-        args: [keccak256(stringToBytes(LOG_ORIGINS[421614] as string))],
-      }),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("timeout")), TEE_PROBE_TIMEOUT_MS).unref(),
-      ),
-    ]);
-    return {
-      status: "up" as const,
-      environment,
-      size: size.toString(),
-      anchoredAgeMs: Math.max(0, Date.now() - anchoredAt * 1000),
-    };
-  } catch {
-    return { status: "down" as const, environment };
+  const latest = await latestAnchor(
+    db,
+    421614,
+    keccak256(stringToBytes(LOG_ORIGINS[421614] as string)),
+  );
+  if (!latest) return { status: "down" as const, environment };
+  return {
+    status: "up" as const,
+    environment,
+    size: latest.size.toString(),
+    anchoredAgeMs: Math.max(0, Date.now() - latest.seenAt.getTime()),
+  };
+}
+
+/** The reconciler runs every five minutes; older than this, the stored events are falling behind. */
+const RECONCILE_MAX_AGE_MS = 900_000;
+
+/** How far the stored chain events are behind: the last finalized block read, and when. */
+async function chainEventsState(db: Db) {
+  const cursor = await finalizedBlock(db);
+  if (!cursor) return { status: "down" as const };
+  const reconciledAgeMs = Math.max(0, Date.now() - cursor.at.getTime());
+  return {
+    status: reconciledAgeMs < RECONCILE_MAX_AGE_MS ? ("up" as const) : ("down" as const),
+    finalizedBlock: cursor.block.toString(),
+    reconciledAgeMs,
+  };
+}
+
+/** How long one relayer read answers for, so `/status` reads the chain at most this often. */
+const RELAYER_PROBE_TTL_MS = 15_000;
+const relayerProbes = new WeakMap<
+  Relayer,
+  { at: number; state: ReturnType<typeof relayerState> }
+>();
+
+function cachedRelayerState(relayer: Relayer) {
+  let last = relayerProbes.get(relayer);
+  if (!last || Date.now() - last.at > RELAYER_PROBE_TTL_MS) {
+    last = { at: Date.now(), state: relayerState(relayer) };
+    relayerProbes.set(relayer, last);
   }
+  return last.state;
 }
 
 export function registerStatus(
@@ -270,17 +298,24 @@ export function registerStatus(
 ): void {
   app.openapi(route, async (c) => {
     const { tee, tlog, relayer, paypal, chains } = deps;
-    const [db, kv, teeA, teeB, log, relayerDep, paypalDep, webhooks, anchor] = await Promise.all([
-      probe(() => deps.db.execute("select 1")),
-      probe(() => deps.kv.ping()),
-      tee ? probe(() => tee.client.a.health(), TEE_PROBE_TIMEOUT_MS) : undefined,
-      tee ? probe(() => tee.client.b.health(), TEE_PROBE_TIMEOUT_MS) : undefined,
-      tlog ? logState(tlog).catch(() => ({ status: "down" as const, origins: [] })) : undefined,
-      relayer ? relayerState(relayer) : undefined,
-      paypal ? paypalState(paypal) : undefined,
-      paypal ? within(webhookState(deps.db, deps.kv), PROBE_TIMEOUT_MS) : undefined,
-      chains ? anchorState(chains) : undefined,
-    ]);
+    const [db, kv, teeA, teeB, log, relayerDep, paypalDep, webhooks, anchor, events] =
+      await Promise.all([
+        probe(() => deps.db.execute("select 1")),
+        probe(() => deps.kv.ping()),
+        tee ? probe(() => tee.client.a.health(), TEE_PROBE_TIMEOUT_MS) : undefined,
+        tee ? probe(() => tee.client.b.health(), TEE_PROBE_TIMEOUT_MS) : undefined,
+        tlog ? logState(tlog).catch(() => ({ status: "down" as const, origins: [] })) : undefined,
+        relayer ? cachedRelayerState(relayer) : undefined,
+        paypal ? paypalState(paypal) : undefined,
+        paypal ? within(webhookState(deps.db, deps.kv), PROBE_TIMEOUT_MS) : undefined,
+        chains
+          ? anchorState(deps.db).catch(() => ({
+              status: "down" as const,
+              environment: "arbitrum-sepolia" as const,
+            }))
+          : undefined,
+        chains ? within(chainEventsState(deps.db), PROBE_TIMEOUT_MS) : undefined,
+      ]);
     const up = [
       db,
       kv,
@@ -291,6 +326,7 @@ export function registerStatus(
       paypalDep,
       webhooks?.status,
       anchor?.status,
+      events?.status,
     ].every((d) => d === undefined || d === "up");
     return c.json(
       {
@@ -306,6 +342,7 @@ export function registerStatus(
             : {}),
           ...(webhooks ? { webhooks } : {}),
           ...(anchor ? { anchor } : {}),
+          ...(events ? { chainEvents: events } : {}),
         },
         rpc: { calls: rpcCalls() },
         version,
