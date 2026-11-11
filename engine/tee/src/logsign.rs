@@ -395,3 +395,105 @@ pub fn verify_consistency(
     }
     sn == 0 && fr == *root1 && sr == *root2
 }
+
+/// RFC 9162 §2.1.3.2: the root an inclusion path yields, or `None` for a malformed proof.
+pub fn root_from_inclusion(
+    leaf_hash: &[u8; 32],
+    index: u64,
+    size: u64,
+    path: &[[u8; 32]],
+) -> Option<[u8; 32]> {
+    if index >= size {
+        return None;
+    }
+    let (mut fn_, mut sn) = (index, size - 1);
+    let mut r = *leaf_hash;
+    for p in path {
+        if sn == 0 {
+            return None;
+        }
+        if fn_ & 1 == 1 || fn_ == sn {
+            r = node(p, &r);
+            while fn_ & 1 == 0 && fn_ != 0 {
+                fn_ >>= 1;
+                sn >>= 1;
+            }
+        } else {
+            r = node(&r, p);
+        }
+        fn_ >>= 1;
+        sn >>= 1;
+    }
+    (sn == 0).then_some(r)
+}
+
+impl LogSigner {
+    /// Whether `proof` (c2sp.org/tlog-proof@v1) includes `leaf` in a checkpoint of `origin` that
+    /// this leg's own log key signed.
+    pub fn includes(&self, origin: &str, leaf: &[u8], proof: &str) -> bool {
+        let Some(key) = self.keys.iter().find(|k| k.origin == origin) else {
+            return false;
+        };
+        let Some(rest) = proof.strip_prefix("c2sp.org/tlog-proof@v1\n") else {
+            return false;
+        };
+        let Some((head, note)) = rest.split_once("\n\n") else {
+            return false;
+        };
+        let mut lines = head.split('\n').filter(|l| !l.starts_with("extra "));
+        let Some(index) = lines
+            .next()
+            .and_then(|l| l.strip_prefix("index "))
+            .and_then(|n| n.parse::<u64>().ok())
+        else {
+            return false;
+        };
+        let Some(path) = lines
+            .map(|l| {
+                STANDARD
+                    .decode(l)
+                    .ok()
+                    .and_then(|h| <[u8; 32]>::try_from(h).ok())
+            })
+            .collect::<Option<Vec<_>>>()
+        else {
+            return false;
+        };
+        let Some((body, signatures)) = note.split_once("\n\n") else {
+            return false;
+        };
+        let body = format!("{body}\n");
+        let Some((name, tree)) = parse_body(&body) else {
+            return false;
+        };
+        let id = note_key_id(origin, 0x01, &key.public_key());
+        let signed = signatures.lines().any(|line| {
+            let Some(rest) = line.strip_prefix("\u{2014} ") else {
+                return false;
+            };
+            let Some((who, sig)) = rest.split_once(' ') else {
+                return false;
+            };
+            let Ok(raw) = STANDARD.decode(sig) else {
+                return false;
+            };
+            who == origin
+                && raw.len() == 68
+                && raw[..4] == id
+                && <[u8; 64]>::try_from(&raw[4..]).is_ok_and(|s| {
+                    key.key
+                        .verifying_key()
+                        .verify_strict(body.as_bytes(), &ed25519_dalek::Signature::from_bytes(&s))
+                        .is_ok()
+                })
+        });
+        let leaf_hash: [u8; 32] = Sha256::new()
+            .chain_update([0])
+            .chain_update(leaf)
+            .finalize()
+            .into();
+        name == origin
+            && signed
+            && root_from_inclusion(&leaf_hash, index, tree.size, &path) == Some(tree.root)
+    }
+}

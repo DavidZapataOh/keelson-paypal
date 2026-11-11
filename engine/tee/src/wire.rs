@@ -708,3 +708,15 @@ pub struct CardSettled {
     pub observation: SettlementObservation,
     pub statement: Base64,
 }
+
+/// Asks leg A to carry a v1 Alibi into v2: its leaf, an inclusion proof of it in a checkpoint this
+/// leg signed, and the countersign the leaf names.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BridgeRequest {
+    pub leaf: Base64,
+    pub tlog_proof: String,
+    pub countersign: CountersignJson,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chain_id: Option<u64>,
+}

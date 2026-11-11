@@ -1147,6 +1147,111 @@ impl Engine {
         })
     }
 
+    /// Carries a v1 Alibi into a SCITT bridge statement, after checking it in full: the leaf's
+    /// digest is the countersign's, its signatures recover over it in the number its mode says, and
+    /// this leg's own log key signed a checkpoint that includes it, so the log admitted it under
+    /// the signer registry. The facts are exactly the v1 countersign's; nothing is added.
+    pub fn bridge(&self, r: &wire::BridgeRequest) -> Result<wire::StatementSigned, EngineError> {
+        use keelson_core::statement::{
+            BRIDGE_CONTENT_TYPE, BridgeClaims, LegSignature, Mode, bridge_claims_bytes,
+            protected_header, statement, to_be_signed,
+        };
+        #[derive(serde::Deserialize)]
+        struct V1Leaf {
+            alibi_id: String,
+            countersign_digest: String,
+            mode: String,
+            tee_sigs: Vec<String>,
+            measurements: Vec<String>,
+        }
+        let log = self.log.as_deref().ok_or(bad("bridge.leg"))?;
+        let body = r
+            .leaf
+            .0
+            .strip_prefix(b"keelson.finance/alibi/v1\n".as_slice())
+            .ok_or(bad("bridge.leaf"))?;
+        let v1: V1Leaf = serde_json::from_slice(body).map_err(|_| bad("bridge.leaf"))?;
+        let b32 = |s: &str| -> Result<[u8; 32], EngineError> {
+            URL_SAFE_NO_PAD
+                .decode(s)
+                .ok()
+                .and_then(|b| b.try_into().ok())
+                .ok_or(bad("bridge.leaf"))
+        };
+        let chain_id = r.chain_id.unwrap_or(self.config.chain_id);
+        let domain = keelson_core::domain(chain_id, self.config.verifying_contract)
+            .map_err(|_| bad("chain_id"))?;
+        let c = countersign_of(&r.countersign)?;
+        let digest = crate::countersign_digest(&c, &domain);
+        if digest != b32(&v1.countersign_digest)? {
+            return Err(bad("bridge.digest"));
+        }
+        let mut request_id = [0u8; 16];
+        request_id.copy_from_slice(&c.requestId.0[16..]);
+        if c.requestId.0[..16].iter().any(|b| *b != 0)
+            || Ulid::from_bytes(request_id).to_string() != v1.alibi_id
+        {
+            return Err(bad("bridge.digest"));
+        }
+        let (mode, n) = match v1.mode.as_str() {
+            "2of2" => (Mode::TwoOfTwo, 2),
+            "degraded" => (Mode::Degraded, 1),
+            _ => return Err(bad("bridge.mode")),
+        };
+        if v1.tee_sigs.len() != n || v1.measurements.len() != n {
+            return Err(bad("bridge.mode"));
+        }
+        let mut legs = Vec::with_capacity(n);
+        for (i, (sig, measurement)) in v1.tee_sigs.iter().zip(&v1.measurements).enumerate() {
+            let signature: [u8; 65] = URL_SAFE_NO_PAD
+                .decode(sig)
+                .ok()
+                .and_then(|b| b.try_into().ok())
+                .ok_or(bad("bridge.leaf"))?;
+            let signer = crate::recover_address(&digest, &signature).ok_or(bad("bridge.signer"))?;
+            legs.push(LegSignature {
+                kind: if i == 0 { TeeKind::Tdx } else { TeeKind::Nitro }.into(),
+                signer: signer.into_array(),
+                signature,
+                measurement: b32(measurement)?,
+            });
+        }
+        let origin = crate::checkpoint::ORIGINS
+            .iter()
+            .find(|o| o.chain_id == chain_id)
+            .ok_or(bad("chain_id"))?;
+        if !log.includes(origin.name, &r.leaf.0, &r.tlog_proof) {
+            return Err(bad("bridge.inclusion"));
+        }
+        let predecessor: [u8; 32] = Sha256::new()
+            .chain_update([0])
+            .chain_update(&r.leaf.0)
+            .finalize()
+            .into();
+        let claims = BridgeClaims {
+            countersign: &c,
+            chain_id,
+            verifying_contract: self.config.verifying_contract.into_array(),
+            mode,
+            legs: &legs,
+            predecessor,
+        };
+        let payload = bridge_claims_bytes(&claims);
+        let protected = protected_header(
+            self.signer.address().into_array(),
+            &v1.alibi_id,
+            c.issuedAt.to::<u64>(),
+            BRIDGE_CONTENT_TYPE,
+        );
+        let sig = self
+            .signer
+            .sign_statement(&to_be_signed(&protected, &payload))
+            .map_err(EngineError::Signer)?;
+        Ok(wire::StatementSigned {
+            statement: Base64(statement(protected, payload, sig)),
+        })
+    }
+
     pub fn countersign_with(
         &self,
         r: &CountersignRequest,

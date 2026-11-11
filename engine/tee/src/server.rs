@@ -194,6 +194,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/v1/verdict", post(verdict))
         .route("/v1/card/authorize", post(card_authorize))
         .route("/v1/card/settlement", post(card_settlement))
+        .route("/v1/statements/bridge", post(bridge_statement))
         .route(
             "/v1/statements/card-authorization",
             post(card_authorization_statement),
@@ -632,6 +633,14 @@ async fn card_authorization_statement(
 ) -> Result<Json<crate::wire::StatementSigned>, Problem> {
     let request: crate::wire::CardStatementRequest = parse(body)?;
     blocking(move || state.engine.card_authorization_statement(&request)).await
+}
+
+async fn bridge_statement(
+    State(state): State<Arc<AppState>>,
+    body: Result<Bytes, BytesRejection>,
+) -> Result<Json<crate::wire::StatementSigned>, Problem> {
+    let request: crate::wire::BridgeRequest = parse(body)?;
+    blocking(move || state.engine.bridge(&request)).await
 }
 
 async fn card_settlement(
