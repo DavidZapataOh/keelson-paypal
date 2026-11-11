@@ -65,7 +65,9 @@ const WEEKDAY = new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: "U
 /** The user turn for a compiler model: the current time, the merchant directory and the request. */
 export function draftMessage(prompt: string, now: number, merchants: readonly Merchant[]): string {
   const at = new Date(now * 1000);
-  const stores = merchants.map((m) => `- ${m.name} (${new URL(m.website).host})`).join("\n");
+  const stores = merchants
+    .map((m) => (m.website ? `- ${m.name} (${new URL(m.website).host})` : `- ${m.name}`))
+    .join("\n");
   return `Now: ${at.toISOString()} (${WEEKDAY.format(at)})
 Known stores:
 ${stores}
