@@ -24,6 +24,7 @@ export { StoreBrowser, type StoreBrowserOptions } from "./driver.ts";
 export { type PayAction, PayGate } from "./gate.ts";
 export {
   type ApiClientOptions,
+  accessToken,
   agentKey,
   announceRun,
   apiClient,

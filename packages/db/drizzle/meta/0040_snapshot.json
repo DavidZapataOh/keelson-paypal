@@ -1,5 +1,5 @@
 {
-  "id": "4b556258-4c6d-47c2-aab0-b37630d6f2ad",
+  "id": "5f237bfa-39e2-4243-bc2a-4c7b0938ffc7",
   "prevId": "1d31d978-bd1c-455a-8e5e-5b2ce3d4d6ef",
   "version": "7",
   "dialect": "postgresql",
@@ -72,6 +72,105 @@
         "alibis_leaf_hash_len": {
           "name": "alibis_leaf_hash_len",
           "value": "octet_length(\"alibis\".\"leaf_hash\") = 32"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.amber_convictions": {
+      "name": "amber_convictions",
+      "schema": "",
+      "columns": {
+        "coverage_id": {
+          "name": "coverage_id",
+          "type": "bytea",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "purchase_id": {
+          "name": "purchase_id",
+          "type": "char(26)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "chain_id": {
+          "name": "chain_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "field_id": {
+          "name": "field_id",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "proven_at": {
+          "name": "proven_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "web_fact_digest": {
+          "name": "web_fact_digest",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tx_hash": {
+          "name": "tx_hash",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "block_number": {
+          "name": "block_number",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "proof": {
+          "name": "proof",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "amber_convictions_purchase_id_idx": {
+          "name": "amber_convictions_purchase_id_idx",
+          "columns": [
+            {
+              "expression": "purchase_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "amber_convictions_coverage_id_len": {
+          "name": "amber_convictions_coverage_id_len",
+          "value": "octet_length(\"amber_convictions\".\"coverage_id\") = 32"
+        },
+        "amber_convictions_field_id_range": {
+          "name": "amber_convictions_field_id_range",
+          "value": "\"amber_convictions\".\"field_id\" between 1 and 4"
         }
       },
       "isRLSEnabled": false
@@ -3011,58 +3110,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.embed_origins": {
-      "name": "embed_origins",
-      "schema": "",
-      "columns": {
-        "client_id": {
-          "name": "client_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "origin": {
-          "name": "origin",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "embed_origins_client_id_oauth_client_client_id_fk": {
-          "name": "embed_origins_client_id_oauth_client_client_id_fk",
-          "tableFrom": "embed_origins",
-          "tableTo": "oauth_client",
-          "columnsFrom": ["client_id"],
-          "columnsTo": ["client_id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "embed_origins_client_id_origin_pk": {
-          "name": "embed_origins_client_id_origin_pk",
-          "columns": ["client_id", "origin"]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "embed_origins_https": {
-          "name": "embed_origins_https",
-          "value": "\"embed_origins\".\"origin\" ~ '^https://([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z][a-z0-9-]{0,61}[a-z0-9](:[0-9]{1,5})?$'"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.dispute_responses": {
       "name": "dispute_responses",
       "schema": "",
@@ -4615,6 +4662,12 @@
         },
         "c1c3_proof": {
           "name": "c1c3_proof",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "amber": {
+          "name": "amber",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false

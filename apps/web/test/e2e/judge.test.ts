@@ -151,6 +151,21 @@ const DISPUTE = {
   liable: "operator",
   verdict: { rule: "R03", digest: "0x00", chain_id: 421614, signatures: [] },
   settlement: null,
+  // The public read: what was bought is left out.
+  amber: {
+    commitment: `0x${"1f".repeat(32)}`,
+    attested: null,
+    conviction: {
+      field: "size",
+      attested_value: null,
+      proven_at: "2026-11-09T11:02:00.000Z",
+      web_fact_digest: `0x${"ab".repeat(32)}`,
+      captured_at: "2026-11-09T10:01:00.000Z",
+      tx_hash: `0x${"cd".repeat(32)}`,
+      explorer_url: `https://sepolia.arbiscan.io/tx/0x${"cd".repeat(32)}`,
+      proof: { bytes: 7_616, hash: `0x${"ef".repeat(32)}`, public_inputs: [] },
+    },
+  },
 };
 const GRADE = {
   agentId: "351",
@@ -221,6 +236,16 @@ describe.each(Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[])("touring on 
     await page.getByRole("button", { name: "Merchant", exact: true }).click();
     await page.getByRole("heading", { level: 1, name: "A dispute arrives" }).waitFor();
     await page.getByText("PayPal dispute", { exact: true }).waitFor();
+    await axe();
+
+    await page.getByRole("button", { name: "Next: Verdict and settlement" }).click();
+    await page.getByRole("heading", { level: 1, name: "Verdict and settlement" }).waitFor();
+    const amber = page.getByRole("region", { name: "What the operator attested" });
+    await amber.getByText("Proven false on chain").waitFor();
+    expect(await amber.getByText("Size", { exact: true }).isVisible()).toBe(true);
+    expect(
+      await amber.getByRole("link", { name: /Conviction transaction/ }).getAttribute("href"),
+    ).toBe(DISPUTE.amber.conviction.explorer_url);
     await axe();
 
     await page.getByRole("button", { name: "Operator", exact: true }).click();

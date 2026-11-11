@@ -14,12 +14,12 @@ export interface ApiClientOptions {
 }
 
 /**
- * Keelson's API over HTTPS as an OAuth client: an access token from the client credentials
- * grant (RFC 6749 §4.4) for Keelson's audience, kept until a minute before it expires.
+ * An access token for Keelson's audience from the client credentials grant (RFC 6749 §4.4), kept
+ * until a minute before it expires.
  */
-export function apiClient(o: ApiClientOptions): Keelson {
+export function accessToken(o: ApiClientOptions): () => Promise<string> {
   let token: { value: string; until: number } | undefined;
-  const bearer = async () => {
+  return async () => {
     if (token && Date.now() < token.until) return token.value;
     const res = await fetch(new URL("/api/auth/oauth2/token", o.apiUrl), {
       method: "POST",
@@ -38,6 +38,11 @@ export function apiClient(o: ApiClientOptions): Keelson {
     token = { value: body.access_token, until: Date.now() + body.expires_in * 1000 - EARLY_MS };
     return token.value;
   };
+}
+
+/** Keelson's API over HTTPS as an OAuth client, with a token from {@link accessToken}. */
+export function apiClient(o: ApiClientOptions): Keelson {
+  const bearer = accessToken(o);
   return {
     async request(path, init) {
       const headers = new Headers(init.headers);

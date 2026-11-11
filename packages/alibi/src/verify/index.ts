@@ -22,6 +22,7 @@ import { fieldsOf } from "./fields.ts";
 import { type Report, type VerifyOptions, verdictOf } from "./report.ts";
 
 export { CATEGORY_LABELS } from "@keelson/mandate";
+export { type AmberReading, readAmber } from "./amber.ts";
 export {
   type AnonymousPurchaseAnswer,
   type ChainAnswer,
@@ -43,13 +44,16 @@ export {
   anonymousPurchaseStatement,
   bindAnonymousPurchase,
   c1c3Statement,
+  c2bStatement,
   c3Statement,
   RP_ID_HASH,
   registeredUserSetRoot,
   verifyAnonymousMandate,
   verifyAnonymousPurchase,
   verifyC1C3,
+  verifyC2b,
   verifyC3,
+  type WebFactStatement,
 } from "./zk.ts";
 
 const CHECKS = [

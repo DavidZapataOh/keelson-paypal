@@ -1,4 +1,5 @@
 export * from "./alibis.ts";
+export * from "./amber.ts";
 export * from "./attacks.ts";
 export * from "./auth.ts";
 export * from "./chain.ts";

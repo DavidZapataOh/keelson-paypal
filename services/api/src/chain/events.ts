@@ -1,4 +1,9 @@
-import { addresses, checkpointAnchorAbi, keelsonBondVaultAbi } from "@keelson/chain";
+import {
+  addresses,
+  amberContradictionCourtAbi,
+  checkpointAnchorAbi,
+  keelsonBondVaultAbi,
+} from "@keelson/chain";
 import { and, chainCursors, chainEvents, type Db, eq, sql } from "@keelson/db";
 import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
@@ -39,6 +44,10 @@ const EVENTS: readonly AbiEvent[] = [
     (i): i is Extract<(typeof checkpointAnchorAbi)[number], { type: "event" }> =>
       i.type === "event" && i.name === "CheckpointAnchored",
   ),
+  ...amberContradictionCourtAbi.filter(
+    (i): i is Extract<(typeof amberContradictionCourtAbi)[number], { type: "event" }> =>
+      i.type === "event" && i.name === "AmberContradictionProven",
+  ),
 ];
 
 /**
@@ -49,6 +58,7 @@ const EVENTS: readonly AbiEvent[] = [
 export const CONTRACTS: readonly Address[] = [
   addresses[CHAIN_ID].KeelsonBondVault as Address,
   addresses[CHAIN_ID].CheckpointAnchor as Address,
+  addresses[CHAIN_ID].AmberContradictionCourt as Address,
 ];
 
 /** A decoded log of one of `EVENTS`. */
@@ -174,7 +184,7 @@ export function isFinal(db: Db, client: PublicClient) {
 
 /**
  * The widest `eth_getLogs` range tried; a provider that refuses it gets halves, down to
- * `MIN_RANGE`. dRPC's free plan refuses more than 10,000 blocks.
+ * `MIN_RANGE`. Arbitrum's public RPC answers 10,000 blocks.
  */
 const MAX_RANGE = 10_000n;
 const MIN_RANGE = 50n;
@@ -182,7 +192,7 @@ const MIN_RANGE = 50n;
  * @internal
  */
 export const BACKFILL_BLOCKS = 2_500_000n;
-/** No vault or anchor event is older than the anchor's deployment. */
+/** No followed event is older than the anchor's deployment, the first of the three. */
 const DEPLOYED_AT = 327_211_576n;
 
 export interface ReconcileDeps {

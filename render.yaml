@@ -80,8 +80,6 @@ services:
       # The relayer signs with KMS keys only this IAM user may use; reads go through the provider RPC.
       - key: ARBITRUM_SEPOLIA_RPC_URL
         sync: false
-      - key: DRPC_ARBITRUM_SEPOLIA_URL
-        sync: false
       - key: ARBITRUM_SEPOLIA_WSS_URL
         sync: false
       - key: RELAYER_KMS_KEY_SANDBOX
@@ -161,8 +159,6 @@ services:
       - key: KEELSON_TEE_TOKEN
         sync: false
       - key: ARBITRUM_SEPOLIA_RPC_URL
-        sync: false
-      - key: DRPC_ARBITRUM_SEPOLIA_URL
         sync: false
       - key: LOG_WRITE_TOKEN
         sync: false
