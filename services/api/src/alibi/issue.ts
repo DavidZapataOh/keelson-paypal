@@ -48,7 +48,7 @@ import { getAddress } from "viem";
 import { countersignOf, purchaseLeaf } from "../pipeline/leaf.ts";
 import { VERIFYING_CONTRACT } from "../tee/config.ts";
 import type { TeeConfig } from "../tee/signers.ts";
-import { span } from "../tracing.ts";
+import { mark, span } from "../tracing.ts";
 import { rootKey } from "../zk/c3.ts";
 
 /** The item types an Alibi discloses: the PII-redacted public ones. */
@@ -407,7 +407,11 @@ export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<vo
   if (bytes.length > MAX_ALIBI_BYTES) {
     throw new AlibiIssueError("size", `the bundle is ${bytes.length} bytes`);
   }
-  const report = await span("alibi.verify", {}, () => verifyAlibi(bundle));
+  const report = await span("alibi.verify", {}, () => {
+    // Each check's span ends when it settles: the checks run together.
+    const started = Date.now();
+    return verifyAlibi(bundle, { onCheck: (c) => mark(`alibi.check.${c.id}`, started) });
+  });
   const failed = report.checks.filter((c) => c.status === "fail");
   if (failed.length > 0) {
     throw new AlibiIssueError(
