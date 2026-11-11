@@ -149,7 +149,7 @@ export interface Usage {
 export interface Step {
   /** Milliseconds since the run started. */
   at: number;
-  kind: "plan" | "model" | "tool" | "proposal" | "end";
+  kind: "plan" | "model" | "tool" | "proposal" | "requote" | "end";
   detail: string;
   ms?: number;
 }

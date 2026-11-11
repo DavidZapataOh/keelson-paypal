@@ -27,6 +27,7 @@ export type CheckId =
   | "zk.c3"
   | "evidence.manifest"
   | "evidence.web_fact"
+  | "evidence.checkout"
   | "paypal.ids";
 
 export interface Check {
@@ -94,6 +95,7 @@ const OPTIONAL_CHECKS: ReadonlySet<CheckId> = new Set([
   "zk.c3",
   "timestamps",
   "evidence.web_fact",
+  "evidence.checkout",
 ]);
 
 /**

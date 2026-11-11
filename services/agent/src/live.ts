@@ -1,5 +1,13 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { type Cart, type Json, jcs, sha256, toHex } from "@keelson/core";
+import {
+  type Cart,
+  type CheckoutTotal,
+  checkoutTotal,
+  type Json,
+  jcs,
+  sha256,
+  toHex,
+} from "@keelson/core";
 import type { SealedItem } from "@keelson/evidence";
 import type { Capture } from "@keelson/evidence/capture";
 import type { BrowserContext, Page } from "playwright";
@@ -50,11 +58,19 @@ async function json<T>(url: string, what: string): Promise<T> {
 /** The product page path on a Shopify store, `/products/<handle>`, or undefined. */
 const handleOf = (url: URL) => /^\/products\/([a-z0-9][a-z0-9-]{0,254})$/.exec(url.pathname)?.[1];
 
+/** An amount of minor units as a plain decimal in its currency's own minor units: `2.95`, `1500`. */
+export function decimal(currency: string, minor: number): string {
+  const digits = minorDigits(currency);
+  return (minor / 10 ** digits).toFixed(digits);
+}
+
 /**
  * Prices a proposed cart from the Shopify store's own public product JSON: the variant the line
  * names (or the product's only one), its SKU and price from `/products/<handle>.js`, and the
  * currency from the same variant's offer in `/products/<handle>.oembed`. Nothing the agent wrote
- * but product pages, variants and quantities reaches the cart.
+ * but product pages, variants and quantities reaches the cart. The quote's total is the items
+ * alone: Shopify publishes no tax or shipping before the checkout knows the buyer's address, so
+ * a checkout that adds them is re-quoted from the page the pay action waits on.
  */
 export async function quoteShopify(store: LiveStore, proposal: ProposedCart): Promise<Quote> {
   const lines: Cart["lines"] = [];
@@ -106,16 +122,8 @@ export async function quoteShopify(store: LiveStore, proposal: ProposedCart): Pr
     return_days: store.returnDays,
     returns_free: store.returnsFree,
   };
-  const minor = lines.reduce((sum, l) => sum + l.qty * l.unit_minor, 0);
-  return {
-    cart,
-    total: {
-      currency: cart.currency,
-      minor,
-      display: (minor / 10 ** minorDigits(cart.currency)).toFixed(minorDigits(cart.currency)),
-    },
-    products,
-  };
+  const items = lines.reduce((sum, l) => sum + l.qty * l.unit_minor, 0);
+  return { cart, total: checkoutTotal(cart.currency, { items }), products };
 }
 
 const post = async (keelson: Keelson, path: string, headers: HeadersInit, body: unknown) => {
@@ -225,6 +233,8 @@ const MAX_TURNS = 30;
 export interface CheckoutRun {
   outcome: "paid" | "blocked" | "stopped" | "turns-exhausted";
   note: string;
+  /** The total the payment was allowed for: the quote's, or the last one re-quoted. */
+  total: CheckoutTotal;
   steps: Step[];
   usage: Usage;
   ms: number;
@@ -238,7 +248,9 @@ export function bare(url: string): string {
 
 /**
  * Drives the store's checkout for the countersigned cart with the browser toolset, on a driver
- * whose every payment action waits on `gate`. Returns once the model calls `finish`.
+ * whose every payment action waits on `gate`. When the gate holds a page whose total adds tax or
+ * shipping to the countersigned one, `requote` asks Keelson to countersign that total; the gate
+ * opens for it only if Keelson allows it. Returns once the model calls `finish`.
  */
 export async function runCheckout(o: {
   client: Anthropic;
@@ -248,6 +260,8 @@ export async function runCheckout(o: {
   gate: PayGate;
   quote: Quote;
   proposal: ProposedCart;
+  /** Countersigns a re-quoted checkout total; true when Keelson allowed it. */
+  requote?: (total: CheckoutTotal) => Promise<boolean>;
   onStep?: (step: Step) => void;
 }): Promise<CheckoutRun> {
   const started = performance.now();
@@ -264,10 +278,12 @@ export async function runCheckout(o: {
     mark: mark.mark,
     gate: o.gate,
   });
+  let total = o.quote.total;
   const end = (outcome: CheckoutRun["outcome"], note: string): CheckoutRun => {
     step({ kind: "end", detail: outcome });
-    return { outcome, note, steps, usage, ms: Math.round(performance.now() - started) };
+    return { outcome, note, total, steps, usage, ms: Math.round(performance.now() - started) };
   };
+  const show = (t: CheckoutTotal) => `${decimal(t.currency, t.minor)} ${t.currency}`;
   const cart = o.proposal.lines.map((l, i) => ({
     product_url: l.product_url,
     variant: l.size,
@@ -280,7 +296,7 @@ export async function runCheckout(o: {
   const messages: Anthropic.Beta.BetaMessageParam[] = [
     {
       role: "user",
-      content: `The cart: ${JSON.stringify(cart)}. Its total before any tax is ${o.quote.total.display} ${o.quote.total.currency}. Check it out with PayPal.`,
+      content: `The cart: ${JSON.stringify(cart)}. Its total before any tax or shipping is ${show(o.quote.total)}. Check it out with PayPal.`,
     },
   ];
   try {
@@ -340,7 +356,28 @@ export async function runCheckout(o: {
         });
         results.push(result);
       }
-      messages.push({ role: "user", content: results });
+      const content: Anthropic.Beta.BetaContentBlockParam[] = [...results];
+      const next = o.gate.takeRequote();
+      if (next && o.requote) {
+        const t = performance.now();
+        const allowed = await o.requote(next);
+        step({
+          kind: "requote",
+          detail: `${show(next)} ${allowed ? "allowed" : "not allowed"}`,
+          ms: Math.round(performance.now() - t),
+        });
+        if (allowed) {
+          o.gate.allow(next);
+          total = next;
+        }
+        content.push({
+          type: "text",
+          text: allowed
+            ? `Keelson countersigned the checkout's new total of ${show(next)}: items ${decimal(next.currency, next.items)}, tax ${decimal(next.currency, next.tax)}, shipping ${decimal(next.currency, next.shipping)}. Repeat the action that was held.`
+            : `Keelson did not countersign the checkout's new total of ${show(next)}. Do not pay: call finish with blocked.`,
+        });
+      }
+      messages.push({ role: "user", content });
     }
     return end("turns-exhausted", "");
   } finally {

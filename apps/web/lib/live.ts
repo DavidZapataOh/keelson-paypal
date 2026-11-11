@@ -1,4 +1,5 @@
 import { API } from "./config";
+import type { Amount } from "./types";
 
 /**
  * A purchase the agent made with real money at a real store, or a cart Keelson denied there
@@ -8,7 +9,7 @@ export interface LivePurchase {
   id: string;
   store: string;
   merchant: string;
-  amount: { currency: string; minor: string };
+  amount: Amount;
   decision: "allow" | "deny";
   /** The PayPal transaction the store was paid by; `null` for a DENY. */
   transactionId: string | null;
