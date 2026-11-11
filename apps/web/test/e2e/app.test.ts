@@ -441,6 +441,68 @@ describe("home actions", () => {
   });
 });
 
+describe("receipts and disputes", () => {
+  const id = "01M7MANDATE000000000000003";
+  const bought = {
+    id: "01M7PURCHASE00000000000003",
+    merchantId: "mrc_runfast",
+    amount: { currency: "USD", minor: "8900" },
+    createdAt: new Date().toISOString(),
+    state: "CAPTURED",
+    mode: "2of2",
+    logIndex: "12",
+    disputes: [] as { id: string; state: string }[],
+  };
+
+  test("a bought order says who answers for the wrong part and where to dispute it", async () => {
+    const { context, page } = await signedIn(
+      "desktop",
+      `/purchase/?mandate=${id}&id=${bought.id}`,
+      (path) => (path === `/v1/mandates/${id}` ? viewIn(id, "ACTIVE", [bought]) : undefined),
+    );
+    await page.getByRole("button", { name: /Not what you asked for/ }).click();
+    await page.getByRole("heading", { name: "What was wrong?" }).waitFor();
+    await page.getByRole("dialog").getByText("Variant", { exact: true }).click();
+    await page.getByText("The agent's operator answers for this, from its bond.").waitFor();
+    expect(await page.getByRole("link", { name: /Open on PayPal/ }).getAttribute("href")).toBe(
+      "https://www.sandbox.paypal.com/resolutioncenter",
+    );
+    const { violations } = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+    expect(violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
+    await context.close();
+  });
+
+  test("the disputes list shows every dispute, and says so when there is none", async () => {
+    const disputed = { ...bought, disputes: [{ id: "PP-D-1234", state: "OPEN" }] };
+    for (const [purchases, expectText] of [
+      [[disputed], "PP-D-1234"],
+      [[bought], "No disputes"],
+    ] as const) {
+      const { context, page } = await signedIn("mobile", "/disputes/", (path) => {
+        if (path === "/v1/mandates") {
+          return {
+            mandates: [
+              {
+                id,
+                state: "ACTIVE",
+                budget: { currency: "USD", maxMinor: "10000", remainingMinor: "1100" },
+                merchantIds: ["mrc_runfast"],
+                holdMode: "mandate",
+                expiresAt: later(),
+                createdAt: new Date().toISOString(),
+              },
+            ],
+          };
+        }
+        if (path === `/v1/mandates/${id}`) return viewIn(id, "ACTIVE", [...purchases]);
+        return undefined;
+      });
+      await page.getByText(expectText, { exact: false }).first().waitFor();
+      await context.close();
+    }
+  });
+});
+
 test("keyboard focus is visible", async () => {
   const { context, page } = await visit("desktop");
   await page.keyboard.press("Tab");
