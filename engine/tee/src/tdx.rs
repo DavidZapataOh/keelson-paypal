@@ -14,6 +14,7 @@ use serde_json::{Value, json};
 use tokio::net::UnixStream;
 use zeroize::Zeroizing;
 
+use crate::logsign::{self, LogKey};
 pub use crate::wire::Block;
 use crate::{Engine, EngineConfig, Error, Root, SignerBinding, chain, report_data};
 
@@ -99,6 +100,64 @@ impl Dstack {
         hex::decode_to_slice(key.key, &mut root[..])
             .map_err(|_| DstackError::Malformed("GetKey key"))?;
         Ok(Root::new(&root))
+    }
+
+    /// The Ed25519 log key of `origin`: `GetKey` for its domain, with the KMS signature chain
+    /// that proves this app derived it. The seed lives only in the returned key.
+    pub async fn log_key(&self, origin: &'static str) -> Result<LogKey, DstackError> {
+        #[derive(Deserialize)]
+        struct Key<'a> {
+            key: &'a str,
+            signature_chain: Vec<&'a str>,
+        }
+        let body = self
+            .call(
+                "GetKey",
+                json!({ "domain": logsign::key_domain(origin), "algorithm": "ed25519" }),
+            )
+            .await?;
+        let key: Key<'_> =
+            serde_json::from_slice(&body).map_err(|_| DstackError::Malformed("GetKey"))?;
+        let mut seed = Zeroizing::new([0; 32]);
+        hex::decode_to_slice(key.key, &mut seed[..])
+            .map_err(|_| DstackError::Malformed("GetKey key"))?;
+        let chain = key
+            .signature_chain
+            .iter()
+            .map(hex::decode)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| DstackError::Malformed("GetKey signature_chain"))?;
+        Ok(LogKey::new(origin, &seed, chain))
+    }
+
+    /// `IssueCert` for an RA-TLS server certificate: the CVM's attestation in the certificate
+    /// (dstack `PHALA_RATLS_ATTESTATION`), bound to a key the agent generates. Returns the PEM
+    /// private key and the PEM chain, leaf first.
+    pub async fn ra_tls_cert(
+        &self,
+        alt_names: &[String],
+    ) -> Result<(Zeroizing<String>, Vec<String>), DstackError> {
+        #[derive(Deserialize)]
+        struct Cert {
+            key: String,
+            certificate_chain: Vec<String>,
+        }
+        let body = self
+            .call(
+                "IssueCert",
+                json!({
+                    "subject": "keelson-engine",
+                    "alt_names": alt_names,
+                    "usage_ra_tls": true,
+                    "usage_server_auth": true,
+                    "usage_client_auth": false,
+                    "with_app_info": true,
+                }),
+            )
+            .await?;
+        let cert: Cert =
+            serde_json::from_slice(&body).map_err(|_| DstackError::Malformed("IssueCert"))?;
+        Ok((Zeroizing::new(cert.key), cert.certificate_chain))
     }
 
     /// `Attest` over `report_data`: the versioned attestation, MessagePack V1.

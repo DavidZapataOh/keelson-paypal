@@ -57,6 +57,12 @@ type config struct {
 	// Policies are the witness policies of each origin, in the Sigsum policy
 	// format: the log keys, the witnesses and the quorum every checkpoint needs.
 	Policies map[string][]byte
+	// RemoteVkeys are the origins whose Ed25519 key leg A holds, with that key:
+	// those origins are signed over RA-TLS at RemoteURL (LOG_SIGNER_VKEY_<env>,
+	// LOG_REMOTE_SIGNER_URL), with the legs' bearer token.
+	RemoteVkeys map[string]string
+	RemoteURL   string
+	TEEToken    string
 	// Sigsum co-logs checkpoints when SIGSUM_SUBMIT_KEY is set.
 	Sigsum       *submit.Config
 	SigsumSigner sigsumcrypto.Signer
@@ -115,6 +121,9 @@ func loadConfig(getenv func(string) string) (*config, error) {
 		PrivateAddr: cmp.Or(getenv("LOG_PRIVATE_ADDR"), ":8081"),
 		DatabaseURL: getenv("DATABASE_URL"),
 		Signers:     map[string][]note.Signer{},
+		RemoteVkeys: map[string]string{},
+		RemoteURL:   getenv("LOG_REMOTE_SIGNER_URL"),
+		TEEToken:    getenv("KEELSON_TEE_TOKEN"),
 		Policies:    map[string][]byte{},
 	}
 	policyDir := getenv("LOG_POLICY_DIR")
@@ -135,11 +144,23 @@ func loadConfig(getenv func(string) string) (*config, error) {
 	}
 	copy(c.TokenHash[:], th)
 	for _, o := range originSpecs {
-		s, err := originSigners(o.Name, getenv("LOG_SIGNER_KEY_"+o.Env), getenv("LOG_MLDSA_SEED_"+o.Env))
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", o.Name, err)
+		if vkey := getenv("LOG_SIGNER_VKEY_" + o.Env); vkey != "" {
+			if c.RemoteURL == "" || c.TEEToken == "" {
+				return nil, fmt.Errorf("%s: LOG_REMOTE_SIGNER_URL and KEELSON_TEE_TOKEN are required with LOG_SIGNER_VKEY_%s", o.Name, o.Env)
+			}
+			ml, err := mldsaSigner(o.Name, getenv("LOG_MLDSA_SEED_"+o.Env))
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", o.Name, err)
+			}
+			c.RemoteVkeys[o.Name] = vkey
+			c.Signers[o.Name] = []note.Signer{ml}
+		} else {
+			s, err := originSigners(o.Name, getenv("LOG_SIGNER_KEY_"+o.Env), getenv("LOG_MLDSA_SEED_"+o.Env))
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", o.Name, err)
+			}
+			c.Signers[o.Name] = s
 		}
-		c.Signers[o.Name] = s
 		p, err := os.ReadFile(filepath.Join(policyDir, o.policyFile()))
 		if err != nil {
 			return nil, err
@@ -180,6 +201,15 @@ func originSigners(origin, skey, seed64 string) ([]note.Signer, error) {
 	if ed.Name() != origin {
 		return nil, fmt.Errorf("signer key is for %q", ed.Name())
 	}
+	ml, err := mldsaSigner(origin, seed64)
+	if err != nil {
+		return nil, err
+	}
+	return []note.Signer{ed, ml}, nil
+}
+
+// mldsaSigner returns the ML-DSA-44 signer of an origin, from its 32-byte seed.
+func mldsaSigner(origin, seed64 string) (note.Signer, error) {
 	seed, err := base64.StdEncoding.DecodeString(seed64)
 	if err != nil || len(seed) != 32 {
 		return nil, errors.New("ML-DSA seed is not 32 bytes of base64")
@@ -188,11 +218,7 @@ func originSigners(origin, skey, seed64 string) ([]note.Signer, error) {
 	if err != nil {
 		return nil, err
 	}
-	ml, err := torchwood.NewCosignatureSigner(origin, k)
-	if err != nil {
-		return nil, err
-	}
-	return []note.Signer{ed, ml}, nil
+	return torchwood.NewCosignatureSigner(origin, k)
 }
 
 func (c *config) originDir(o originSpec) string {

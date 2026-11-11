@@ -210,18 +210,21 @@ describe.skipIf(!live)("the user app, first-time user (live sandbox)", { timeout
       };
 
       try {
+        // A first-time buyer lands on the rules step of the guided setup.
         await page.goto(`${APP_ORIGIN}/`);
-        await page.getByRole("heading", { name: "Nothing is delegated yet" }).waitFor();
-        await axe();
-
-        await page.getByRole("link", { name: "New mandate" }).first().click();
-        await page.getByRole("button", { name: "Create passkey" }).click();
         await page.getByRole("heading", { name: "What may your agent buy?" }).waitFor();
         await axe();
-        await page.getByRole("button", { name: "Use the example" }).click();
-        await page.getByRole("button", { name: "Review the mandate" }).click();
-        await page.getByRole("heading", { name: "Check it, then sign" }).waitFor();
-        const review = page.getByRole("button", { name: "Review and sign" });
+        await page.getByRole("button", { name: "Running shoes, size 10" }).click();
+        await page.getByLabel("Store name").fill("RunFast");
+        // A brand-new buyer creates the passkey the mandate will name before it is read.
+        await page.getByRole("button", { name: "Review rules" }).click();
+        await page.getByRole("heading", { name: "Sign with Face ID" }).waitFor();
+        await axe();
+        await page.getByRole("button", { name: "Create passkey" }).click();
+        await page
+          .getByRole("heading", { name: "Check it, then sign" })
+          .waitFor({ timeout: 60_000 });
+        const review = page.getByRole("button", { name: /^Sign · up to / });
         await expect.poll(() => review.isEnabled(), { timeout: 60_000 }).toBe(true);
         await axe();
         await review.click();
@@ -229,11 +232,11 @@ describe.skipIf(!live)("the user app, first-time user (live sandbox)", { timeout
         await page.getByRole("dialog", { name: "Sign this mandate" }).waitFor();
         expect(await page.getByRole("button", { name: "Cancel" }).isVisible()).toBe(true);
         await axe();
-        await page.getByRole("button", { name: "Sign: allow up to $100.00" }).click();
-        await page.waitForURL(/\/mandate\/\?id=/);
-        const mid = new URL(page.url()).searchParams.get("id") as string;
+        await page.getByRole("button", { name: /^Sign: allow up to / }).click();
+        await page.waitForURL(/\/new\/\?hold=/);
+        const mid = new URL(page.url()).searchParams.get("hold") as string;
 
-        await page.getByRole("heading", { name: "Approve the hold on PayPal" }).waitFor();
+        await page.getByRole("heading", { name: /^Hold \$[\d.,]+ on PayPal$/ }).waitFor();
         await page.locator("paypal-button").waitFor();
         await axe();
         const popup = context.waitForEvent("page", { timeout: 20_000 });
@@ -242,7 +245,12 @@ describe.skipIf(!live)("the user app, first-time user (live sandbox)", { timeout
         paypal.setDefaultTimeout(60_000);
         await paypal.waitForLoadState();
         await approveOnPage(paypal);
-        await page.getByText(/· Active$/).waitFor({ timeout: 90_000 });
+        await page
+          .getByRole("heading", { name: "Your agent is live" })
+          .waitFor({ timeout: 90_000 });
+        await axe();
+        await page.getByRole("link", { name: "Go home" }).click();
+        await page.getByRole("region", { name: "Activity" }).waitFor();
 
         // The agent checks out a cart inside the mandate; the page shows it live.
         const [row] = await testDb.select().from(mandates).where(eq(mandates.id, mid));
@@ -271,7 +279,7 @@ describe.skipIf(!live)("the user app, first-time user (live sandbox)", { timeout
         );
         expect([200, 202], JSON.stringify(countersigned)).toContain(res.status);
 
-        // The purchase arrives on the open page over SSE, with Keelson's decision.
+        // The purchase arrives on home over SSE, with Keelson's decision.
         await page.getByRole("link", { name: /\$40\.00/ }).waitFor({ timeout: 60_000 });
         await axe();
         await page.getByRole("link", { name: /\$40\.00/ }).click();

@@ -77,6 +77,33 @@ pub async fn latest_block(rpc: &str) -> Result<(u64, [u8; 32]), ChainError> {
     Ok((quantity(&block.number)?, hash))
 }
 
+/// `CheckpointAnchor`, at the same CREATE3 address on every chain.
+pub const CHECKPOINT_ANCHOR: &str = "0x049621749722D0660d5026456F25192fBD9A57ab";
+
+/// The latest anchored tree of the origin whose `keccak256` is `origin`: `latest(bytes32)` of
+/// [`CHECKPOINT_ANCHOR`], `(size, root)`; size 0 when nothing is anchored.
+pub async fn anchored(rpc: &str, origin: &[u8; 32]) -> Result<(u64, [u8; 32]), ChainError> {
+    // keccak256("latest(bytes32)")[..4]
+    let data = format!("0x79feb107{}", alloy_primitives::hex::encode(origin));
+    let out: String = call(
+        rpc,
+        "eth_call",
+        json!([{ "to": CHECKPOINT_ANCHOR, "data": data }, "latest"]),
+    )
+    .await?;
+    let bytes = alloy_primitives::hex::decode(&out).map_err(|_| ChainError::Malformed("latest"))?;
+    // No anchor contract on the chain yet: nothing is anchored.
+    if bytes.is_empty() {
+        return Ok((0, [0; 32]));
+    }
+    if bytes.len() != 96 || bytes[..24].iter().any(|b| *b != 0) {
+        return Err(ChainError::Malformed("latest"));
+    }
+    let size = u64::from_be_bytes(bytes[24..32].try_into().expect("8 bytes"));
+    let root: [u8; 32] = bytes[32..64].try_into().expect("32 bytes");
+    Ok((size, root))
+}
+
 /// The chain id the node serves: `eth_chainId`.
 pub async fn chain_id(rpc: &str) -> Result<u64, ChainError> {
     quantity(&call::<String>(rpc, "eth_chainId", json!([])).await?)

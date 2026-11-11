@@ -17,9 +17,8 @@ import {
 import {
   LOG_HOST,
   LOG_ORIGINS,
-  LOG_VKEYS,
   verifyConsistency,
-  verifyProof,
+  verifyProofOfOrigin,
   verifyWitnessedCheckpoint,
 } from "@keelson/log";
 import type { Logger } from "pino";
@@ -158,10 +157,10 @@ export async function reanchorAlibi(
   if (!event) return "not_covered";
   const { size, root } = event;
   const { tlog_proof: tlogProof } = row.bundle as { tlog_proof: string };
-  const { index, checkpoint } = verifyProof(
+  const { index, checkpoint } = verifyProofOfOrigin(
     tlogProof,
     new Uint8Array(row.leafHash),
-    LOG_VKEYS[origin] ?? [],
+    origin,
   );
   if (index >= size) return "not_covered";
 

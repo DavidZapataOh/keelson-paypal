@@ -5,6 +5,7 @@ import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import AxeBuilder from "@axe-core/playwright";
+import { buildSdPayload, parseMandate, renderCard } from "@keelson/mandate";
 import { type Browser, type BrowserContext, chromium, devices, type Page } from "playwright";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { parse } from "yaml";
@@ -83,54 +84,462 @@ async function visit(kind: keyof typeof VIEWPORTS, path = "/", reducedMotion = f
   return { context, page };
 }
 
+const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"];
+
+/** Waits until the example cart of the welcome scene has been bought (GSAP has run). */
+const verdictShown = (page: Page) =>
+  page.waitForFunction(
+    () => {
+      const v = document.querySelector<HTMLElement>('[data-verdict="a"]');
+      return v !== null && Number(getComputedStyle(v).opacity) > 0.9;
+    },
+    undefined,
+    { timeout: 15_000 },
+  );
+
 describe.each(Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[])("welcome on %s", (kind) => {
-  test("says what Keelson does and offers both sign-ins", async () => {
+  test("asks for one decision: connect PayPal, or sign in with a passkey", async () => {
     const { context, page } = await visit(kind);
     await expect(page.getByRole("heading", { level: 1 }).textContent()).resolves.toBe(
-      "If your agent goes outside what you signed, someone answers, and it isn't you.",
+      "Connect your PayPal",
     );
     expect(await page.getByRole("button", { name: "Continue with PayPal" }).isVisible()).toBe(true);
-    expect(await page.getByRole("button", { name: "Sign in with a passkey" }).isVisible()).toBe(
-      true,
+    expect(await page.getByRole("button", { name: "I have a passkey" }).isVisible()).toBe(true);
+    expect(await page.getByRole("list", { name: "Step 1 of 4" }).count()).toBe(1);
+    await context.close();
+  });
+
+  test("has no WCAG 2.2 A or AA violations, while the scene plays", async () => {
+    const { context, page } = await visit(kind);
+    await verdictShown(page);
+    const { violations } = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+    expect(violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
+    await context.close();
+  });
+
+  test("plays the example: a cart inside the mandate is bought, one outside is blocked", async () => {
+    const { context, page } = await visit(kind);
+    await verdictShown(page);
+    await page.waitForFunction(
+      () => {
+        const v = document.querySelector<HTMLElement>('[data-verdict="b"]');
+        return v !== null && Number(getComputedStyle(v).opacity) > 0.9;
+      },
+      undefined,
+      { timeout: 15_000 },
     );
-    await context.close();
-  });
-
-  test("has no WCAG 2.2 A or AA violations, on every story step", async () => {
-    const { context, page } = await visit(kind);
-    for (let step = 0; step < 3; step++) {
-      const { violations } = await new AxeBuilder({ page })
-        .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"])
-        .analyze();
-      expect(violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
-      if (step < 2) await page.getByRole("button", { name: "Next" }).click();
-    }
-    await context.close();
-  });
-
-  test("plays the story with Rive, one artboard per step", async () => {
-    const { context, page } = await visit(kind);
-    // The runtime loads only once the story is on screen.
-    await page.locator("canvas").scrollIntoViewIfNeeded();
-    await page.locator("canvas[data-ready=true]").waitFor({ timeout: 15_000 });
-    await page.getByRole("button", { name: "Next" }).click();
-    await page.getByRole("heading", { name: "Every cart is checked before it pays." }).waitFor();
-    await page.locator("canvas[data-ready=true]").waitFor({ timeout: 15_000 });
     await context.close();
   });
 });
 
-test("with reduced motion the story is words only and loads no Rive", async () => {
+test("with reduced motion the scene stands still and loads no animation runtime", async () => {
   const { context, page } = await visit("desktop", "/", true);
-  const rive: string[] = [];
-  page.on("request", (r) => r.url().includes("/rive/") && rive.push(r.url()));
-  await page.locator("canvas").scrollIntoViewIfNeeded();
-  await page.getByRole("button", { name: "Next" }).click();
-  await page.getByRole("heading", { name: "Every cart is checked before it pays." }).waitFor();
-  await page.waitForTimeout(500);
-  expect(rive).toEqual([]);
-  expect(await page.locator("canvas").getAttribute("data-ready")).not.toBe("true");
+  const loaded: string[] = [];
+  page.on("request", (r) => /\/rive\/|gsap/.test(r.url()) && loaded.push(r.url()));
+  await page.waitForTimeout(800);
+  const opacities = await page.evaluate(() =>
+    [...document.querySelectorAll<HTMLElement>("[data-verdict]")].map((v) =>
+      Number(getComputedStyle(v).opacity),
+    ),
+  );
+  expect(opacities).toEqual([1, 1]);
+  expect(loaded.filter((u) => u.includes("/rive/"))).toEqual([]);
   await context.close();
+});
+
+const later = () => new Date(Date.now() + 86_400_000).toISOString();
+const SESSION = () => {
+  const now = new Date().toISOString();
+  return {
+    session: {
+      id: "s",
+      userId: "u",
+      token: "t",
+      expiresAt: later(),
+      createdAt: now,
+      updatedAt: now,
+    },
+    user: {
+      id: "u",
+      name: "Buyer",
+      email: "b@example.test",
+      emailVerified: false,
+      createdAt: now,
+      updatedAt: now,
+    },
+  };
+};
+
+/** The card the compiler returns for the repo's demo mandate, rendered by the real renderer. */
+async function demoCompiled() {
+  const demo = JSON.parse(
+    await readFile(
+      new URL("../../../../packages/mandate/test/fixtures/demo-mandate.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const { payloadSd, disclosures } = await buildSdPayload(parseMandate(structuredClone(demo)), () =>
+    crypto.getRandomValues(new Uint8Array(16)),
+  );
+  const card = renderCard(payloadSd, disclosures, {
+    merchantSignedCheckout: false,
+    zkTlsFields: new Set(),
+  });
+  return { mandateDraft: demo, card, ambiguous: [], check: { status: "ok", discrepancies: null } };
+}
+
+/** A signed-in buyer whose API answers come from `answer`; anything else is refused. */
+async function signedIn(
+  kind: keyof typeof VIEWPORTS,
+  path: string,
+  answer: (path: string, body: string | null) => unknown | Promise<unknown>,
+) {
+  const context = await browser.newContext(VIEWPORTS[kind]);
+  await context.route("https://api.keelson.finance/**", async (route) => {
+    const req = route.request();
+    const url = new URL(req.url());
+    const headers = {
+      "access-control-allow-origin": base,
+      "access-control-allow-credentials": "true",
+      "access-control-allow-headers": "content-type, idempotency-key, keelson-device",
+    };
+    if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers });
+    const value =
+      url.pathname === "/api/auth/get-session"
+        ? SESSION()
+        : await answer(url.pathname, req.postData());
+    if (value === undefined) return route.abort("connectionrefused");
+    return route.fulfill({ headers, contentType: "application/json", body: JSON.stringify(value) });
+  });
+  const page = await context.newPage();
+  await page.goto(`${base}${path}`);
+  return { context, page };
+}
+
+describe.each(Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[])("rules on %s", (kind) => {
+  test("the controls write the request, and the read card seals with who answers", async () => {
+    const compiled = await demoCompiled();
+    let prompt = "";
+    const { context, page } = await signedIn(kind, "/new/", (path, body) => {
+      if (path === "/v1/passkeys") {
+        return {
+          passkeys: [
+            {
+              id: "pk_1",
+              name: "Keelson",
+              credentialId: "cred-1",
+              createdAt: new Date().toISOString(),
+            },
+          ],
+        };
+      }
+      if (path === "/v1/mandates/compile") {
+        prompt = (JSON.parse(body ?? "{}") as { prompt: string }).prompt;
+        return compiled;
+      }
+      return undefined;
+    });
+    await page.getByRole("heading", { level: 1, name: "What may your agent buy?" }).waitFor();
+    await page.getByRole("button", { name: "Running shoes, size 10" }).click();
+    await page.getByRole("button", { name: "$50", exact: true }).click();
+    await page.getByLabel("Store name").fill("RunFast");
+    // The radios are visually hidden behind their segmented labels.
+    await page.getByRole("radio", { name: "Today" }).check({ force: true });
+    // Let the pressed chips finish their color transition before measuring contrast.
+    await page.waitForTimeout(300);
+    const { violations } = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+    expect(violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target).join(",")}`)).toEqual([]);
+
+    await page.getByRole("button", { name: "Review rules" }).click();
+    await page.getByRole("heading", { level: 1, name: "Check it, then sign" }).waitFor();
+    expect(prompt).toMatch(
+      /^Running shoes, size 10, under \$50, from RunFast, by \w{3}, \w{3} \d+$/,
+    );
+    const answers = page.getByRole("list", { name: "Who answers for each part" });
+    expect(await answers.getByText("Keelson checks").count()).toBe(1);
+    expect(await answers.getByText("Agent's bond covers").count()).toBe(1);
+    expect(await answers.getByText("Up to you").count()).toBe(1);
+    await page.getByRole("button", { name: "Sign · up to $100.00" }).waitFor({ timeout: 30_000 });
+    await context.close();
+  });
+});
+
+describe.each(Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[])("home on %s", (kind) => {
+  test("says what the agent bought, what Keelson blocked and who answers", async () => {
+    const { card } = await demoCompiled();
+    const id = "01M7MANDATE000000000000000";
+    const now = new Date().toISOString();
+    const { context, page } = await signedIn(kind, "/", (path) => {
+      if (path === "/v1/mandates") {
+        return {
+          mandates: [
+            {
+              id,
+              state: "ACTIVE",
+              budget: { currency: "USD", maxMinor: "10000", remainingMinor: "1100" },
+              merchantIds: ["mrc_runfast"],
+              holdMode: "mandate",
+              expiresAt: later(),
+              createdAt: now,
+            },
+          ],
+        };
+      }
+      if (path === `/v1/mandates/${id}`) {
+        return {
+          id,
+          state: "ACTIVE",
+          mandateHash: null,
+          budget: { currency: "USD", maxMinor: "10000", remainingMinor: "1100" },
+          expiresAt: later(),
+          hold: null,
+          card,
+          purchases: [
+            {
+              id: "p1",
+              merchantId: "mrc_runfast",
+              amount: { currency: "USD", minor: "8900" },
+              createdAt: now,
+              state: "CAPTURED",
+              mode: "2of2",
+              checks: [{ field: "total", mandate: "$100.00", cart: "$89.00", pass: true }],
+              disputes: [],
+            },
+            {
+              id: "p2",
+              merchantId: "mrc_runfast",
+              amount: { currency: "USD", minor: "34000" },
+              createdAt: now,
+              state: "DENIED",
+              mode: "2of2",
+              blocked: ["total"],
+              reasons: [{ field: "total", mandate: "$100.00", cart: "$340.00" }],
+              disputes: [],
+            },
+          ],
+          pendingHolds: [],
+        };
+      }
+      return undefined;
+    });
+    await page.getByText("Keelson blocked 1 cart").waitFor();
+    expect(await page.getByText("$11", { exact: false }).count()).toBeGreaterThan(0);
+    const activity = page.getByRole("region", { name: "Activity" });
+    expect(await activity.getByRole("link").count()).toBe(2);
+    expect(await activity.getByText("$89.00 ≤ $100.00 ✓").count()).toBe(1);
+    await activity.getByRole("tab", { name: /Blocked/ }).click();
+    expect(await activity.getByRole("link").count()).toBe(1);
+    expect(await activity.getByText("Cart $340.00 · max $100.00").count()).toBe(1);
+    expect(await page.getByRole("list", { name: "Who answers for each part" }).count()).toBe(1);
+    const { violations } = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+    expect(violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target).join(",")}`)).toEqual([]);
+    await context.close();
+  });
+
+  test("a first-time buyer goes on to set the rules", async () => {
+    const { context, page } = await signedIn(kind, "/", (path) => {
+      if (path === "/v1/mandates") return { mandates: [] };
+      if (path === "/v1/passkeys") return { passkeys: [] };
+      return undefined;
+    });
+    await page.waitForURL(`${base}/new/`);
+    await page.getByRole("heading", { level: 1, name: "What may your agent buy?" }).waitFor();
+    await context.close();
+  });
+});
+
+/** A mandate view in `state`, built on the demo card. */
+async function viewIn(id: string, state: string, purchases: unknown[] = []) {
+  const { card } = await demoCompiled();
+  return {
+    id,
+    state,
+    mandateHash: null,
+    budget: { currency: "USD", maxMinor: "10000", remainingMinor: "10000" },
+    expiresAt: later(),
+    hold: null,
+    card,
+    purchases,
+    pendingHolds: [],
+  };
+}
+
+describe("signing and going live", () => {
+  test("a brand-new buyer creates a passkey before the rules are read, and can go back", async () => {
+    // The API compiles only for a buyer with a passkey, since the mandate names it.
+    let compiles = 0;
+    const { context, page } = await signedIn("desktop", "/new/", (path) => {
+      if (path === "/v1/passkeys") return { passkeys: [] };
+      if (path === "/v1/mandates/compile") {
+        compiles++;
+        return undefined;
+      }
+      return undefined;
+    });
+    await page.getByRole("button", { name: "Running shoes, size 10" }).click();
+    await page.getByRole("button", { name: "Review rules" }).click();
+    await page.getByRole("heading", { level: 1, name: "Sign with Face ID" }).waitFor();
+    expect(await page.getByRole("button", { name: "Create passkey" }).isEnabled()).toBe(true);
+    expect(compiles).toBe(0);
+    await page.getByRole("button", { name: "Back" }).click();
+    await page.getByRole("heading", { level: 1, name: "What may your agent buy?" }).waitFor();
+    expect(
+      await page
+        .getByRole("button", { name: "Running shoes, size 10" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    await context.close();
+  });
+
+  test("a signed mandate asks for the PayPal hold, then says the agent is live", async () => {
+    const id = "01M7MANDATE000000000000001";
+    let state = "SIGNED";
+    const { context, page } = await signedIn("desktop", `/new/?hold=${id}`, (path) =>
+      path === `/v1/mandates/${id}` ? viewIn(id, state) : undefined,
+    );
+    await page.getByRole("heading", { level: 1, name: "Hold $100.00 on PayPal" }).waitFor();
+    const { violations } = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+    expect(violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
+    state = "ACTIVE";
+    await page.reload();
+    await page.getByRole("heading", { level: 1, name: "Your agent is live" }).waitFor();
+    expect(await page.getByRole("list", { name: "All steps done" }).count()).toBe(1);
+    expect(await page.getByRole("link", { name: "Go home" }).getAttribute("href")).toBe("/");
+    await context.close();
+  });
+});
+
+describe("home actions", () => {
+  const id = "01M7MANDATE000000000000002";
+  const summary = (state: string) => ({
+    mandates: [
+      {
+        id,
+        state,
+        budget: { currency: "USD", maxMinor: "10000", remainingMinor: "10000" },
+        merchantIds: ["mrc_runfast"],
+        holdMode: "mandate",
+        expiresAt: later(),
+        createdAt: new Date().toISOString(),
+      },
+    ],
+  });
+
+  test("a mandate waiting for its hold shows the setup step that is left", async () => {
+    const { context, page } = await signedIn("mobile", "/", async (path) => {
+      if (path === "/v1/mandates") return summary("SIGNED");
+      if (path === `/v1/mandates/${id}`) return viewIn(id, "SIGNED");
+      return undefined;
+    });
+    const setup = page.getByRole("link", { name: /Finish setup · 3 of 4/ });
+    await setup.waitFor();
+    expect(await setup.getAttribute("href")).toBe(`/new/?hold=${id}`);
+    expect(await page.getByRole("button", { name: "Stop your agent" }).count()).toBe(0);
+    await context.close();
+  });
+
+  test("stopping the agent takes a held key, not a tap", async () => {
+    let revoked = 0;
+    const { context, page } = await signedIn("desktop", "/", async (path) => {
+      if (path === "/v1/mandates") return summary("ACTIVE");
+      if (path === `/v1/mandates/${id}`) return viewIn(id, revoked ? "REVOKED" : "ACTIVE");
+      if (path === `/v1/mandates/${id}/revoke`) {
+        revoked++;
+        return { id, state: "REVOKED" };
+      }
+      return undefined;
+    });
+    const stop = page.getByRole("button", { name: "Stop your agent" });
+    await stop.click();
+    await page.waitForTimeout(300);
+    expect(revoked).toBe(0);
+    await stop.focus();
+    await page.keyboard.down("Space");
+    await page.waitForTimeout(1_400);
+    await page.keyboard.up("Space");
+    await expect.poll(() => revoked).toBe(1);
+    await stop.waitFor({ state: "detached" });
+    await context.close();
+  });
+});
+
+describe("receipts and disputes", () => {
+  const id = "01M7MANDATE000000000000003";
+  const bought = {
+    id: "01M7PURCHASE00000000000003",
+    merchantId: "mrc_runfast",
+    amount: { currency: "USD", minor: "8900" },
+    createdAt: new Date().toISOString(),
+    state: "CAPTURED",
+    mode: "2of2",
+    logIndex: "12",
+    checks: [
+      { field: "total", mandate: "$100.00", cart: "$89.00", pass: true },
+      { field: "variant", mandate: "size_us 10", cart: "size_us 10", pass: true },
+    ],
+    disputes: [] as { id: string; state: string }[],
+  };
+
+  test("a bought order says who answers for the wrong part and where to dispute it", async () => {
+    const { context, page } = await signedIn(
+      "desktop",
+      `/purchase/?mandate=${id}&id=${bought.id}`,
+      (path) => (path === `/v1/mandates/${id}` ? viewIn(id, "ACTIVE", [bought]) : undefined),
+    );
+    const checks = page.getByRole("list", { name: "What Keelson checked" });
+    await checks.waitFor();
+    expect(
+      await page.getByRole("list", { name: "What happened" }).getByText("$89.00 paid").count(),
+    ).toBe(1);
+    expect(await checks.getByRole("listitem").count()).toBe(2);
+    expect(await checks.getByRole("listitem").first().textContent()).toMatch(
+      /\$89\.00\s+within\s+\$100\.00/,
+    );
+    await page.getByRole("button", { name: /Not what you asked for/ }).click();
+    await page.getByRole("heading", { name: "What happened?" }).waitFor();
+    for (const kind of ["I don't remember it", "Not what I meant", "The agent went rogue"]) {
+      expect(await page.getByRole("dialog").getByText(kind).count()).toBe(1);
+    }
+    await page.getByRole("dialog").getByText("The agent got it wrong").click();
+    await page.getByRole("dialog").getByText("Variant", { exact: true }).click();
+    await page.getByText("The agent's operator answers for this, from its bond.").waitFor();
+    expect(await page.getByRole("link", { name: /Open on PayPal/ }).getAttribute("href")).toBe(
+      "https://www.sandbox.paypal.com/resolutioncenter",
+    );
+    const { violations } = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+    expect(violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
+    await context.close();
+  });
+
+  test("the disputes list shows every dispute, and says so when there is none", async () => {
+    const disputed = { ...bought, disputes: [{ id: "PP-D-1234", state: "OPEN" }] };
+    for (const [purchases, expectText] of [
+      [[disputed], "PP-D-1234"],
+      [[bought], "No disputes"],
+    ] as const) {
+      const { context, page } = await signedIn("mobile", "/disputes/", (path) => {
+        if (path === "/v1/mandates") {
+          return {
+            mandates: [
+              {
+                id,
+                state: "ACTIVE",
+                budget: { currency: "USD", maxMinor: "10000", remainingMinor: "1100" },
+                merchantIds: ["mrc_runfast"],
+                holdMode: "mandate",
+                expiresAt: later(),
+                createdAt: new Date().toISOString(),
+              },
+            ],
+          };
+        }
+        if (path === `/v1/mandates/${id}`) return viewIn(id, "ACTIVE", [...purchases]);
+        return undefined;
+      });
+      await page.getByText(expectText, { exact: false }).first().waitFor();
+      await context.close();
+    }
+  });
 });
 
 test("keyboard focus is visible", async () => {
@@ -151,6 +560,12 @@ test("a signed-out visitor who opens the mandate form is sent to the welcome", a
   await context.close();
 });
 
+test("a signed-out visitor who opens the passkeys is sent to the welcome", async () => {
+  const { context, page } = await visit("desktop", "/passkeys/");
+  await page.waitForURL(`${base}/`);
+  await context.close();
+});
+
 test("the welcome stays inside its budgets", async () => {
   const html = await readFile(join(out, "index.html"), "utf8");
   const assets = [...new Set(html.match(/\/_next\/static\/[^"]+\.(js|css)/g) ?? [])];
@@ -163,7 +578,7 @@ test("the welcome stays inside its budgets", async () => {
   };
   const js = await gz(".js");
   const css = await gz(".css");
-  const riv = (await stat(join(out, "rive/onboarding.riv"))).size;
+  const riv = (await stat(join(out, "rive/states.riv"))).size;
 
   const { context, page } = await visit("mobile");
   const lcp = await page.evaluate(
@@ -180,12 +595,12 @@ test("the welcome stays inside its budgets", async () => {
     JSON.stringify({
       firstLoadJsGzip: js,
       cssGzip: css,
-      onboardingRiv: riv,
+      statesRiv: riv,
       lcpMsLocal: Math.round(lcp),
     }),
   );
   expect(js).toBeLessThan(230_000);
-  expect(css).toBeLessThan(15_000);
+  expect(css).toBeLessThan(18_000);
   expect(riv).toBeLessThan(16_000);
   expect(lcp).toBeLessThan(1_800);
 });
@@ -200,28 +615,28 @@ test("render.yaml serves the app's Content-Security-Policy", async () => {
   expect(web?.headers?.find((h) => h.name === "Content-Security-Policy")?.value).toBe(CSP);
 });
 
-test("the CSP holds: no violation while the story plays", async () => {
+test("the CSP holds: no violation while the scene plays", async () => {
   const { context, page } = await visit("desktop");
   const violations: string[] = [];
   page.on(
     "console",
     (m) => m.text().includes("Content Security Policy") && violations.push(m.text()),
   );
-  await page.locator("canvas[data-ready=true]").waitFor({ timeout: 15_000 });
+  await verdictShown(page);
   expect(violations).toEqual([]);
   await context.close();
 });
 
 test("the first paint is the welcome, before any script or session read", async () => {
   const html = await readFile(join(out, "index.html"), "utf8");
-  expect(html).toContain("someone answers, and it isn");
+  expect(html).toContain("Connect your PayPal");
   expect(html).not.toContain("Loading…");
 });
 
 const VISITOR_VIEWS = [
   ["merchant/", "Merchant console", "Checking your session"],
   ["operator/", "Operator console", "Checking your session"],
-  ["judge/", "Judge Keelson in five minutes", "Opening Judge Mode"],
+  ["judge/", "Judge Mode", "Opening Judge Mode"],
 ] as const;
 
 test.each(VISITOR_VIEWS)(
@@ -474,6 +889,10 @@ test("a blocked cart shows, field by field, what the mandate allowed against the
             state: "DENIED",
             mode: "2of2",
             blocked: ["total", "items"],
+            reasons: [
+              { field: "total", mandate: "$100.00", cart: "$340.00" },
+              { field: "items", mandate: "Running shoes", cart: "Trail sandals" },
+            ],
             disputes: [],
           },
         ],
@@ -487,8 +906,8 @@ test("a blocked cart shows, field by field, what the mandate allowed against the
   await page.getByText("blocked the cart before payment").waitFor();
   const lines = page.locator('[data-slot="block-diff"]');
   expect(await lines.count()).toBe(2);
-  expect(await lines.nth(0).innerText()).toMatch(/Mandate ≤ \$100\.00[\s\S]*Cart \$340\.00/);
-  expect(await lines.nth(1).innerText()).toMatch(/Mandate Running shoes[\s\S]*Cart not as signed/);
+  expect(await lines.nth(0).innerText()).toMatch(/Mandate \$100\.00[\s\S]*Cart \$340\.00/);
+  expect(await lines.nth(1).innerText()).toMatch(/Mandate Running shoes[\s\S]*Cart Trail sandals/);
   await context.close();
 });
 

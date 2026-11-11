@@ -13,6 +13,7 @@ import {
   toHex,
 } from "@keelson/core";
 import {
+  agentConnections,
   and,
   channel3Observations,
   type Db,
@@ -33,11 +34,13 @@ import {
   sql,
   transition,
 } from "@keelson/db";
-import { merchantLeaf } from "@keelson/mandate";
+import { decodeMandate, merchantLeaf } from "@keelson/mandate";
 import type { Context } from "hono";
 import { hexToBytes } from "viem";
 import type { Deps } from "../app.ts";
+import { deviceAuthorization, grantOf, requestOnce } from "../connections.ts";
 import { capturable, merchantWebsite } from "../hold/state.ts";
+import { MERCHANTS } from "../merchants.ts";
 import { requireClient } from "../middleware/auth.ts";
 import { drivePurchase, type PipelineDeps, viewOf } from "../pipeline/drive.ts";
 import { publishPurchase } from "../pipeline/events.ts";
@@ -147,6 +150,20 @@ const Body = z
   })
   .openapi("CountersignRequest");
 
+const Approval = z
+  .object({
+    device_code: z.string().optional().openapi({
+      description:
+        "Absent when the user is already being asked about this cart: keep polling the device code you were given then.",
+    }),
+    user_code: z.string(),
+    verification_uri: z.string(),
+    verification_uri_complete: z.string(),
+    expires_in: z.int(),
+    interval: z.int(),
+  })
+  .openapi("OnceApproval");
+
 const CountersignMessage = z
   .record(z.string(), z.string())
   .openapi({ description: "The EIP-712 `Countersign` message, as decimal strings." });
@@ -165,6 +182,10 @@ const Result = z
     trace: z
       .unknown()
       .openapi({ description: "The `keelson.eval/1` trace both legs signed over." }),
+    approval: Approval.optional().openapi({
+      description:
+        "On a deny for a cart over the mandate's amount or outside its merchants: the user was asked to approve this cart once. Poll `POST /v1/connections/token` with its `device_code`; the answer is a single-purchase mandate for exactly this cart.",
+    }),
     ...PurchaseProgress.shape,
   })
   .openapi("Countersigned");
@@ -426,6 +447,48 @@ function storedComparison(document: unknown): Channel3Comparison {
   };
 }
 
+/**
+ * Whether a denied cart is outside the mandate in a way one approval can fix: a store it does not
+ * allow (onboarded, so a mandate can name it), or more than one purchase or what is left may cost.
+ * `overMinor` is how far over, or null for the store.
+ */
+function outsideMandate(
+  m: typeof mandates.$inferSelect,
+  merchant: string,
+  total: bigint,
+): { overMinor: bigint | null } | undefined {
+  if (!MERCHANTS.some((x) => x.id === merchant)) return undefined;
+  if (!m.merchantIds.includes(merchant)) return { overMinor: null };
+  let cap = m.remainingMinor;
+  try {
+    const grant =
+      m.payloadSd && m.disclosures
+        ? grantOf(decodeMandate(m.payloadSd as Record<string, unknown>, m.disclosures))
+        : undefined;
+    if (grant && grant.perPurchaseMinor < cap) cap = grant.perPurchaseMinor;
+  } catch {
+    // An undecodable mandate is judged by what is left of it.
+  }
+  return total > cap ? { overMinor: total - cap } : undefined;
+}
+
+/** The mandate fields a one-time approval may lift: how much, and at which store. */
+const LIFTABLE = new Set(["total", "budget", "merchant"]);
+
+/** Most carts of one mandate waiting for the user's answer at once. */
+const MAX_OPEN_ONCE = 3;
+
+/**
+ * Whether every field the engine failed is one a one-time approval may lift; a cart denied for
+ * anything else (its items, size, deadline) stays denied.
+ */
+function onlyOneApprovalFixes(trace: unknown): boolean {
+  const fields = (trace as { fields?: { field?: unknown; pass?: unknown }[] } | null)?.fields;
+  if (!Array.isArray(fields)) return false;
+  const failed = fields.filter((f) => f.pass === false).map((f) => f.field);
+  return failed.length > 0 && failed.every((f) => typeof f === "string" && LIFTABLE.has(f));
+}
+
 /** How long a countersign answer waits for the purchase to be logged, covered and captured. */
 const INLINE_BUDGET_MS = 4_500;
 
@@ -433,11 +496,85 @@ export function registerCountersign(
   app: OpenAPIHono,
   deps: Pick<
     Deps,
-    "db" | "kv" | "log" | "tee" | "tlog" | "stamps" | "relayer" | "operators" | "chains" | "paypal"
+    | "db"
+    | "kv"
+    | "log"
+    | "tee"
+    | "tlog"
+    | "stamps"
+    | "relayer"
+    | "operators"
+    | "chains"
+    | "paypal"
+    | "appOrigin"
   >,
 ): void {
   const { db, kv, log, tee } = deps;
   const pipeline: PipelineDeps = { ...deps, chain: deps.chains?.[421614] };
+  const appOrigin = deps.appOrigin ?? "https://app.keelson.finance";
+
+  /**
+   * Asks the user to approve this cart once, unless they are already being asked for it: then the
+   * agent keeps polling the device code it was given.
+   */
+  async function askOnce(
+    c: Context,
+    mandate: typeof mandates.$inferSelect,
+    cart: { merchant: string; currency: string },
+    total: bigint,
+    hash: Buffer,
+    overMinor: bigint | null,
+  ) {
+    const clientId = c.var.principal?.subject as string;
+    const [open] = await db
+      .select({ userCode: agentConnections.userCode, expiresAt: agentConnections.expiresAt })
+      .from(agentConnections)
+      .where(
+        and(
+          eq(agentConnections.parentMandateId, mandate.id),
+          eq(agentConnections.cartHash, hash),
+          eq(agentConnections.clientId, clientId),
+          eq(agentConnections.state, "PENDING"),
+          gt(agentConnections.expiresAt, new Date()),
+        ),
+      )
+      .limit(1);
+    if (open) {
+      const { device_code: _, ...shown } = deviceAuthorization(appOrigin, open.userCode, "");
+      return {
+        approval: {
+          ...shown,
+          expires_in: Math.ceil((open.expiresAt.getTime() - Date.now()) / 1000),
+        },
+      };
+    }
+    // A few open questions at a time: an agent cannot bury its user in approvals.
+    const [{ pending = 0 } = {}] = await db
+      .select({ pending: sql<number>`count(*)::int` })
+      .from(agentConnections)
+      .where(
+        and(
+          eq(agentConnections.parentMandateId, mandate.id),
+          eq(agentConnections.state, "PENDING"),
+          gt(agentConnections.expiresAt, new Date()),
+        ),
+      );
+    if (pending >= MAX_OPEN_ONCE) return undefined;
+    return {
+      approval: await requestOnce(
+        { db, kv, appOrigin },
+        {
+          mandate,
+          clientId,
+          merchantId: cart.merchant,
+          currency: cart.currency,
+          amountMinor: total,
+          cartHash: hash,
+          overMinor,
+        },
+      ),
+    };
+  }
 
   app.openapi(route, async (c) => {
     const body = c.req.valid("json");
@@ -629,8 +766,31 @@ export function registerCountersign(
     if (!currency) {
       return problem(c, 422, "invalid-cart", "Invalid cart", "The currency is not supported.");
     }
+    const hashOfCart = Buffer.from(cartHash(body.cart as Cart));
+
+    // The request the mandate answers: a one-time approval buys exactly the cart it was asked for.
+    const [answered] = await db
+      .select({
+        kind: agentConnections.kind,
+        askAbove: agentConnections.askAboveMinor,
+        cartHash: agentConnections.cartHash,
+      })
+      .from(agentConnections)
+      .where(
+        and(eq(agentConnections.mandateId, mandate.id), eq(agentConnections.state, "APPROVED")),
+      );
+    if (answered?.kind === "once" && !answered.cartHash?.equals(hashOfCart)) {
+      return problem(
+        c,
+        422,
+        "not-the-approved-cart",
+        "Not the approved cart",
+        "This mandate was approved for one cart only, and this is another.",
+      );
+    }
+
     const want: CountersignExpectation = {
-      cartHash: `0x${Buffer.from(cartHash(body.cart as Cart)).toString("hex")}`,
+      cartHash: `0x${hashOfCart.toString("hex")}`,
       amount: total,
       merchantId: `0x${merchantId.toString(16).padStart(64, "0")}`,
       currency: currency.numeric,
@@ -790,6 +950,31 @@ export function registerCountersign(
       observationId = obs.id;
     }
 
+    // Above the user's "ask me above" a cart that passed every other check is paused for their
+    // one-time approval, although the mandate would allow it.
+    if (answered?.askAbove != null && total > answered.askAbove) {
+      const asked = MERCHANTS.some((m) => m.id === body.cart.merchant)
+        ? await askOnce(c, mandate, body.cart, total, hashOfCart, null)
+        : undefined;
+      if (!asked) {
+        return problem(
+          c,
+          429,
+          "too-many-approvals",
+          "Too many approvals waiting",
+          "The user already has carts of this mandate to answer.",
+        );
+      }
+      return problem(
+        c,
+        409,
+        "approval-required",
+        "Paused for approval",
+        `The cart is above the ${answered.askAbove} minor units the user asked to approve each time. The user was asked; poll POST /v1/connections/token with the device code.`,
+        asked,
+      );
+    }
+
     const [bound] = await db
       .select({ id: purchases.id })
       .from(purchases)
@@ -797,6 +982,20 @@ export function registerCountersign(
     if (bound && bound.id !== purchaseId) return evidenceUsed(c);
     const claim = await db
       .transaction(async (tx) => {
+        // A revoke updates this row, so it waits for this claim or this claim sees it: no purchase
+        // is taken into evaluation once a revoke has been requested.
+        const [live] = await tx
+          .select({ id: mandates.id })
+          .from(mandates)
+          .where(
+            and(
+              eq(mandates.id, mandate.id),
+              eq(mandates.state, "ACTIVE"),
+              isNull(mandates.revokeRequestedAt),
+            ),
+          )
+          .for("share");
+        if (!live) return { revoked: true as const };
         // Serializes the purchases of one cart under one mandate, so two retries cannot both pass.
         await tx.execute(
           sql`select pg_advisory_xact_lock(hashtext(${`purchase:${mandate.id}:${want.cartHash}`}))`,
@@ -838,6 +1037,15 @@ export function registerCountersign(
         throw err;
       });
     if (claim === null) return evidenceUsed(c);
+    if ("revoked" in claim) {
+      return problem(
+        c,
+        409,
+        "mandate-not-active",
+        "Mandate not active",
+        "The mandate cannot countersign now.",
+      );
+    }
     if ("exists" in claim) {
       c.header("Location", `/v1/purchases/${claim.exists}`);
       return problem(
@@ -937,6 +1145,16 @@ export function registerCountersign(
           .catch(() => undefined)
           .finally(() => budget.abort())) ?? (await viewOf(db, purchaseId));
       const pending = view === undefined || PENDING.has(view.state);
+      // A cart over the mandate's amount or outside its stores is paused for the user's one-time
+      // approval, never silently declined.
+      const outside =
+        allow || !onlyOneApprovalFixes(out.trace)
+          ? undefined
+          : outsideMandate(mandate, body.cart.merchant, total);
+      const asked =
+        outside === undefined
+          ? undefined
+          : await askOnce(c, mandate, body.cart, total, hashOfCart, outside.overMinor);
       c.header("Keelson-Countersign-Mode", out.mode);
       if (pending) c.header("Location", `/v1/purchases/${purchaseId}`);
       return c.json(
@@ -949,6 +1167,7 @@ export function registerCountersign(
           signatures: out.signatures,
           signers: out.signers,
           trace: out.trace as Record<string, unknown>,
+          ...(asked ? { approval: asked.approval } : {}),
           ...progressOf(view),
         },
         pending ? 202 : 200,
