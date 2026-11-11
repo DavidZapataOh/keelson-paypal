@@ -1,9 +1,11 @@
 import { createHash, randomBytes, randomInt } from "node:crypto";
+import type { Cart } from "@keelson/core";
 import { agentConnections, and, type Db, eq, gt, operators } from "@keelson/db";
 import type { Mandate } from "@keelson/mandate";
 import type { RedisClientType } from "redis";
 import { ulid } from "ulid";
 import { publishEvent } from "./events.ts";
+import type { FieldCheck } from "./pipeline/drive.ts";
 import { principalChannel } from "./principal.ts";
 
 /** RFC 8628 §6.1: base-20 consonants, no vowels, so no words and nothing confusable. */
@@ -194,7 +196,11 @@ export function matchOptions(requestId: string, matchNumber: number): number[] {
 }
 
 /** How the user knows the agent of a mandate: the name it asked with, else its operator's. */
-async function agentName(db: Db, mandateId: string, operatorAgentId: bigint): Promise<string> {
+export async function agentName(
+  db: Db,
+  mandateId: string,
+  operatorAgentId: bigint,
+): Promise<string> {
   const [operator] = await db
     .select({ name: operators.name })
     .from(operators)
@@ -278,6 +284,9 @@ export async function requestOnce(
     currency: string;
     amountMinor: bigint;
     cartHash: Buffer;
+    /** The cart the agent saw and each mandate field checked against it, shown to the user. */
+    cart: Cart;
+    checks: FieldCheck[];
     /** How far over the mandate the cart is, for the prompt; omitted when it is the merchant. */
     overMinor: bigint | null;
   },
@@ -304,6 +313,8 @@ export async function requestOnce(
       notAfter: expiresAt,
       parentMandateId: input.mandate.id,
       cartHash: input.cartHash,
+      cart: input.cart,
+      checks: input.checks,
       userId: input.mandate.userId,
       expiresAt,
     }),

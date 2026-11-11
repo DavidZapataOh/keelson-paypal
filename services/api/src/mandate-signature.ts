@@ -133,7 +133,10 @@ interface CollectedClientData {
  * 12): at the top level `crossOrigin` is absent or `false` and `topOrigin` absent; in a frame
  * `crossOrigin` is `true` and `topOrigin` is the embedding page's origin.
  */
-function framedAs(data: { crossOrigin?: unknown; topOrigin?: unknown }, top?: string): boolean {
+export function framedAs(
+  data: { crossOrigin?: unknown; topOrigin?: unknown },
+  top?: string,
+): boolean {
   if (top === undefined) {
     return (
       (!Object.hasOwn(data, "crossOrigin") || data.crossOrigin === false) &&

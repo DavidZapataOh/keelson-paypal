@@ -1,3 +1,4 @@
+import { Agent, fetch as undiciFetch } from "undici";
 import { type Hex, hexToBytes } from "viem";
 import { z } from "zod";
 import { getCollateral, type SignerAttestation } from "./attest.ts";
@@ -261,6 +262,11 @@ interface ChainBlock {
 
 /** Attestation reads and refreshes are not on the countersign path; a refresh takes about 2 s. */
 const ADMIN_TIMEOUT_MS = 15_000;
+/**
+ * The legs keep an idle connection open for at least 45 s, while Node's fetch drops it after 4 s,
+ * so a call after a pause paid a new TLS handshake through leg A's gateway (about 380 ms).
+ */
+const legConnections = new Agent({ keepAliveTimeout: 60_000 });
 /** Leg A waits up to 8 s for a proof still being made. */
 const C1_TIMEOUT_MS = 10_000;
 
@@ -306,9 +312,10 @@ export class LegClient {
     options: { auth?: boolean; timeoutMs?: number } = {},
   ): Promise<unknown> {
     const { auth = true, timeoutMs = this.timeoutMs } = options;
-    let res: Response;
+    let res: Awaited<ReturnType<typeof undiciFetch>>;
     try {
-      res = await fetch(new URL(path, this.url), {
+      res = await undiciFetch(new URL(path, this.url), {
+        dispatcher: legConnections,
         method,
         headers: {
           ...(auth ? { authorization: `Bearer ${this.token}` } : {}),

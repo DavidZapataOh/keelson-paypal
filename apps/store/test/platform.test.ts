@@ -22,6 +22,9 @@ describe("the demo agent platform", () => {
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).toMatch(/script-src 'nonce-[^']+' https:\/\/app\.keelson\.finance/);
     expect(res.headers.get("cross-origin-opener-policy")).toBe("same-origin-allow-popups");
+    expect(res.headers.get("permissions-policy")).toBe(
+      'publickey-credentials-get=("https://api.keelson.finance"), payment=("https://api.keelson.finance"), publickey-credentials-create=("https://api.keelson.finance")',
+    );
     const html = await res.text();
     expect(html).toContain('src="https://app.keelson.finance/embed/v1.js"');
   });

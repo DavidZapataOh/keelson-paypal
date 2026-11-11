@@ -1,5 +1,5 @@
 {
-  "id": "c18a68b2-453f-4e52-8f96-e3d461143f09",
+  "id": "ba31ccb4-487d-40f6-a3a3-f972ad3c99ea",
   "prevId": "7b5dc255-e00c-4f74-9082-f5340fbd91ad",
   "version": "7",
   "dialect": "postgresql",
@@ -2088,419 +2088,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.card_authorizations": {
-      "name": "card_authorizations",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "transaction_token": {
-          "name": "transaction_token",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "purchase_id": {
-          "name": "purchase_id",
-          "type": "char(26)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "amount_minor": {
-          "name": "amount_minor",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "currency": {
-          "name": "currency",
-          "type": "char(3)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "mcc": {
-          "name": "mcc",
-          "type": "char(4)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "merchant_name": {
-          "name": "merchant_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "merchant_country": {
-          "name": "merchant_country",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "network_id": {
-          "name": "network_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "approved": {
-          "name": "approved",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "failed_mask": {
-          "name": "failed_mask",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "tdx": {
-          "name": "tdx",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "nitro": {
-          "name": "nitro",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "latency_ms": {
-          "name": "latency_ms",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "card_authorizations_purchase_id_created_at_idx": {
-          "name": "card_authorizations_purchase_id_created_at_idx",
-          "columns": [
-            {
-              "expression": "purchase_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "card_authorizations_one_approved_idx": {
-          "name": "card_authorizations_one_approved_idx",
-          "columns": [
-            {
-              "expression": "purchase_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"card_authorizations\".\"approved\"",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "card_authorizations_purchase_id_purchases_id_fk": {
-          "name": "card_authorizations_purchase_id_purchases_id_fk",
-          "tableFrom": "card_authorizations",
-          "tableTo": "purchases",
-          "columnsFrom": ["purchase_id"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "card_authorizations_mcc": {
-          "name": "card_authorizations_mcc",
-          "value": "\"card_authorizations\".\"mcc\" ~ '^[0-9]{4}$'"
-        },
-        "card_authorizations_approved_signed": {
-          "name": "card_authorizations_approved_signed",
-          "value": "not \"card_authorizations\".\"approved\" or (\"card_authorizations\".\"tdx\" is not null and \"card_authorizations\".\"nitro\" is not null)"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.card_chargebacks": {
-      "name": "card_chargebacks",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "purchase_id": {
-          "name": "purchase_id",
-          "type": "char(26)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "amount_minor": {
-          "name": "amount_minor",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "resolution": {
-          "name": "resolution",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "recovered_minor": {
-          "name": "recovered_minor",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "evidence_uploaded": {
-          "name": "evidence_uploaded",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "card_chargebacks_one_open_idx": {
-          "name": "card_chargebacks_one_open_idx",
-          "columns": [
-            {
-              "expression": "purchase_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"card_chargebacks\".\"status\" not in ('CASE_WON', 'CASE_CLOSED')",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "card_chargebacks_purchase_id_purchases_id_fk": {
-          "name": "card_chargebacks_purchase_id_purchases_id_fk",
-          "tableFrom": "card_chargebacks",
-          "tableTo": "purchases",
-          "columnsFrom": ["purchase_id"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "card_chargebacks_amount_positive": {
-          "name": "card_chargebacks_amount_positive",
-          "value": "\"card_chargebacks\".\"amount_minor\" > 0"
-        },
-        "card_chargebacks_reason_valid": {
-          "name": "card_chargebacks_reason_valid",
-          "value": "\"card_chargebacks\".\"reason\" in ('not_received', 'not_as_described', 'unauthorized')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.purchase_cards": {
-      "name": "purchase_cards",
-      "schema": "",
-      "columns": {
-        "purchase_id": {
-          "name": "purchase_id",
-          "type": "char(26)",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "issuer": {
-          "name": "issuer",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "card_token": {
-          "name": "card_token",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "last_four": {
-          "name": "last_four",
-          "type": "char(4)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "controls": {
-          "name": "controls",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "state": {
-          "name": "state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "transaction_token": {
-          "name": "transaction_token",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "settled_minor": {
-          "name": "settled_minor",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "settled_at": {
-          "name": "settled_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "purchase_cards_open_expires_at_idx": {
-          "name": "purchase_cards_open_expires_at_idx",
-          "columns": [
-            {
-              "expression": "expires_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"purchase_cards\".\"state\" in ('PAUSED', 'OPEN')",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "purchase_cards_purchase_id_purchases_id_fk": {
-          "name": "purchase_cards_purchase_id_purchases_id_fk",
-          "tableFrom": "purchase_cards",
-          "tableTo": "purchases",
-          "columnsFrom": ["purchase_id"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "purchase_cards_card_token_unique": {
-          "name": "purchase_cards_card_token_unique",
-          "nullsNotDistinct": false,
-          "columns": ["card_token"]
-        },
-        "purchase_cards_transaction_token_unique": {
-          "name": "purchase_cards_transaction_token_unique",
-          "nullsNotDistinct": false,
-          "columns": ["transaction_token"]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "purchase_cards_last_four": {
-          "name": "purchase_cards_last_four",
-          "value": "\"purchase_cards\".\"last_four\" ~ '^[0-9]{4}$'"
-        },
-        "purchase_cards_state_valid": {
-          "name": "purchase_cards_state_valid",
-          "value": "\"purchase_cards\".\"state\" in ('PAUSED', 'OPEN', 'USED', 'CLOSED')"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.chain_cursors": {
       "name": "chain_cursors",
       "schema": "",
@@ -3342,6 +2929,18 @@
         "cart_hash": {
           "name": "cart_hash",
           "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cart": {
+          "name": "cart",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "checks": {
+          "name": "checks",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },
@@ -4368,13 +3967,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "rail": {
-          "name": "rail",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'paypal'"
-        },
         "hold_mode": {
           "name": "hold_mode",
           "type": "text",
@@ -4537,12 +4129,267 @@
         "mandates_hold_mode_valid": {
           "name": "mandates_hold_mode_valid",
           "value": "\"mandates\".\"hold_mode\" in ('mandate', 'per_purchase')"
-        },
-        "mandates_rail_valid": {
-          "name": "mandates_rail_valid",
-          "value": "\"mandates\".\"rail\" in ('paypal', 'card')"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.alert_emails": {
+      "name": "alert_emails",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "address": {
+          "name": "address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "confirm_nonce": {
+          "name": "confirm_nonce",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "confirmed_at": {
+          "name": "confirmed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "alert_emails_user_id_user_id_fk": {
+          "name": "alert_emails_user_id_user_id_fk",
+          "tableFrom": "alert_emails",
+          "tableTo": "user",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.push_subscriptions": {
+      "name": "push_subscriptions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "char(26)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "endpoint": {
+          "name": "endpoint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "p256dh": {
+          "name": "p256dh",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "auth": {
+          "name": "auth",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "push_subscriptions_user_id_idx": {
+          "name": "push_subscriptions_user_id_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "push_subscriptions_user_id_user_id_fk": {
+          "name": "push_subscriptions_user_id_user_id_fk",
+          "tableFrom": "push_subscriptions",
+          "tableTo": "user",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "push_subscriptions_endpoint_unique": {
+          "name": "push_subscriptions_endpoint_unique",
+          "nullsNotDistinct": false,
+          "columns": ["endpoint"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "push_subscriptions_https": {
+          "name": "push_subscriptions_https",
+          "value": "\"push_subscriptions\".\"endpoint\" like 'https://%'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.sent_emails": {
+      "name": "sent_emails",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "char(26)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "address": {
+          "name": "address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event": {
+          "name": "event",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject": {
+          "name": "subject",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject_id": {
+          "name": "subject_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "log_index": {
+          "name": "log_index",
+          "type": "numeric(20, 0)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "alibi_url": {
+          "name": "alibi_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provider_id": {
+          "name": "provider_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sent_at": {
+          "name": "sent_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "sent_emails_user_id_created_at_idx": {
+          "name": "sent_emails_user_id_created_at_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "sent_emails_user_id_user_id_fk": {
+          "name": "sent_emails_user_id_user_id_fk",
+          "tableFrom": "sent_emails",
+          "tableTo": "user",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.merchant_settlement": {
@@ -4966,13 +4813,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "rail": {
-          "name": "rail",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'paypal'"
-        },
         "currency": {
           "name": "currency",
           "type": "char(3)",
@@ -5328,10 +5168,6 @@
         "purchases_amount_positive": {
           "name": "purchases_amount_positive",
           "value": "\"purchases\".\"amount_minor\" > 0"
-        },
-        "purchases_rail_valid": {
-          "name": "purchases_rail_valid",
-          "value": "\"purchases\".\"rail\" in ('paypal', 'card')"
         },
         "purchases_countersign_mode_valid": {
           "name": "purchases_countersign_mode_valid",

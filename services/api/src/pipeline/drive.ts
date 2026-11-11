@@ -19,6 +19,7 @@ import { type Hex, type PublicClient, toHex } from "viem";
 import { bondClaimMinor, chargebackView } from "../cards/chargeback.ts";
 import type { CardIssuer } from "../cards/issuer.ts";
 import type { LogConfig } from "../log/append.ts";
+import type { Notifier } from "../notify/notifier.ts";
 import type { OperatorSigners } from "../operators/signer.ts";
 import type { PayPalDeps } from "../paypal.ts";
 import type { CountersignJson } from "../tee/client.ts";
@@ -52,6 +53,7 @@ export interface PipelineDeps {
   /** Issues the single-use cards of card purchases; they fail before logging without it. */
   cardIssuer?: CardIssuer | undefined;
   proveAnonymousPurchase?: ((purchaseId: string) => Promise<void>) | undefined;
+  notifier?: Notifier | undefined;
 }
 
 /** What `POST /v1/countersign` and `GET /v1/purchases/{id}` say about a purchase. */
