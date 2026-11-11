@@ -267,6 +267,13 @@
       "when": 1794360708081,
       "tag": "0037_passkey_user_credential",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1794369883277,
+      "tag": "0038_agent_connections",
+      "breakpoints": true
     }
   ]
 }

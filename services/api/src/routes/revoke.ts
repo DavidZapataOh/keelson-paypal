@@ -1,5 +1,5 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { createQueries, eq, mandates, sql, transition } from "@keelson/db";
+import { agentConnections, and, createQueries, eq, mandates, sql, transition } from "@keelson/db";
 import type { Deps } from "../app.ts";
 import { voidHold } from "../hold/maintenance.ts";
 import { publishHold } from "../hold/state.ts";
@@ -45,42 +45,68 @@ const route = createRoute({
   },
 });
 
-export function registerRevoke(
-  app: OpenAPIHono,
-  deps: Pick<Deps, "db" | "kv" | "log" | "paypal">,
-): void {
+type RevokeDeps = Pick<Deps, "db" | "kv" | "log" | "paypal">;
+
+/** The mandate states a revoke can still end. */
+export const REVOCABLE = ["SIGNED", "HOLD_PENDING", "ACTIVE"] as const;
+
+/**
+ * Stops new countersigns for the mandate at once, then releases what it holds: a signed mandate
+ * is revoked now, a held one voided at PayPal (by the sweeper, while a countersigned purchase may
+ * still be captured). Throws PayPal's error when it refuses the void; countersigns stay stopped.
+ */
+export async function revokeMandate(
+  deps: RevokeDeps,
+  row: typeof mandates.$inferSelect,
+): Promise<"REVOKED" | "REVOKING"> {
   const { db } = deps;
-  const queries = createQueries(db);
+  await db
+    .update(mandates)
+    .set({ revokeRequestedAt: sql`coalesce(${mandates.revokeRequestedAt}, now())` })
+    .where(eq(mandates.id, row.id));
+  // Carts paused under it can no longer be approved.
+  await db
+    .update(agentConnections)
+    .set({ state: "DENIED", decidedAt: new Date() })
+    .where(
+      and(eq(agentConnections.parentMandateId, row.id), eq(agentConnections.state, "PENDING")),
+    );
+  if (row.state === "SIGNED") {
+    if (await transition(db, "mandates", row.id, "SIGNED", "REVOKED")) {
+      await publishHold(deps, row, { state: "REVOKED" });
+    }
+  } else if (deps.paypal) {
+    await voidHold({ ...deps, paypal: deps.paypal }, row.id, "REVOKED");
+  }
+  const [now] = await db
+    .select({ state: mandates.state })
+    .from(mandates)
+    .where(eq(mandates.id, row.id));
+  return now?.state === "REVOKED" ? "REVOKED" : "REVOKING";
+}
+
+export function registerRevoke(app: OpenAPIHono, deps: RevokeDeps): void {
+  const queries = createQueries(deps.db);
 
   app.openapi(route, async (c) => {
     const userId = (c.get("principal") as Principal).subject;
     const id = c.req.valid("param").id;
     const row = await queries.mandateById(id);
     if (!row || row.userId !== userId) return problem(c, 404, "not-found", "Not found");
-    const revoked = () => c.json({ state: "REVOKED" as const }, 200);
-    if (row.state === "REVOKED") return revoked();
-    if (row.state !== "SIGNED" && row.state !== "HOLD_PENDING" && row.state !== "ACTIVE") {
+    if (row.state === "REVOKED") return c.json({ state: "REVOKED" as const }, 200);
+    if (!(REVOCABLE as readonly string[]).includes(row.state)) {
       return problem(c, 409, "mandate-ended", "Mandate ended", `The mandate is ${row.state}.`);
     }
-
-    await db
-      .update(mandates)
-      .set({ revokeRequestedAt: sql`coalesce(${mandates.revokeRequestedAt}, now())` })
-      .where(eq(mandates.id, id));
-    if (row.state === "SIGNED") {
-      if (await transition(db, "mandates", id, "SIGNED", "REVOKED")) {
-        await publishHold(deps, row, { state: "REVOKED" });
-      }
-    } else if (deps.paypal) {
-      try {
-        await voidHold({ ...deps, paypal: deps.paypal }, id, "REVOKED");
-      } catch (err) {
-        const answer = paypalProblem(c, err);
-        if (answer) return answer;
-        throw err;
-      }
+    let state: "REVOKED" | "REVOKING";
+    try {
+      state = await revokeMandate(deps, row);
+    } catch (err) {
+      const answer = paypalProblem(c, err);
+      if (answer) return answer;
+      throw err;
     }
-    const now = await queries.mandateById(id);
-    return now?.state === "REVOKED" ? revoked() : c.json({ state: "REVOKING" as const }, 202);
+    return state === "REVOKED"
+      ? c.json({ state: "REVOKED" as const }, 200)
+      : c.json({ state: "REVOKING" as const }, 202);
   });
 }
