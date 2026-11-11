@@ -55,7 +55,7 @@ export interface PurchaseView {
 type Row = typeof purchases.$inferSelect;
 
 /** The mandate fields whose check failed, from the engine's evaluation trace. */
-function failedFields(trace: unknown): string[] {
+export function failedFields(trace: unknown): string[] {
   const fields = (trace as { fields?: { id?: unknown; pass?: unknown }[] } | null)?.fields;
   if (!Array.isArray(fields)) return [];
   return fields.flatMap((f) => (typeof f.id === "string" && f.pass === false ? [f.id] : []));

@@ -1428,15 +1428,18 @@ components:
               type: string
               maxLength: 256
               format: uri
-              description: The store's origin.
+              description: "The store's origin: the origin of the website the mandate allows
+                for the cart's merchant."
           required:
             - store
           additionalProperties: false
           description: "Only when the buyer pays at the store's own checkout with their
             own PayPal account: Keelson countersigns and logs the purchase and
-            issues its Alibi, and neither covers nor captures it. The agent's
-            pay click waits for an ALLOW; the agent then records PayPal's
-            transaction id with `PUT /v1/purchases/{id}/paypal-transaction`."
+            issues its Alibi, and neither covers nor captures it. Its Alibi is
+            public once the PayPal transaction is recorded, or as soon as it is
+            issued for a DENY. The agent's pay click waits for an ALLOW; the
+            agent then records PayPal's transaction id with `PUT
+            /v1/purchases/{id}/paypal-transaction`."
         repeatOf:
           type: string
           minLength: 26
@@ -1528,8 +1531,22 @@ components:
           required:
             - currency
             - minor
-        transactionId:
+        decision:
           type: string
+          enum:
+            - allow
+            - deny
+        transactionId:
+          type:
+            - string
+            - "null"
+          description: The PayPal transaction the store was paid by; `null` for a DENY.
+        blocked:
+          type: array
+          items:
+            type: string
+          description: For a DENY, the mandate fields whose check failed, or leg A's
+            reason when it denied on its read of the PayPal hold.
         logIndex:
           type: string
         createdAt:
@@ -1539,7 +1556,9 @@ components:
         - store
         - merchant
         - amount
+        - decision
         - transactionId
+        - blocked
         - logIndex
         - createdAt
     Purchase:
@@ -5338,7 +5357,8 @@ paths:
         "422":
           description: The request is invalid, the authorization is not this purchase's
             hold, the cart is not the one held for this request, the evidence
-            holds another cart, or its Channel3 observation is not usable
+            holds another cart, its Channel3 observation is not usable, or a
+            live store is not the website the mandate allows
           content:
             application/problem+json:
               schema:
@@ -5366,10 +5386,11 @@ paths:
       tags:
         - purchases
       summary: Live purchases
-      description: "Purchases the shopping agent made with real money at real stores'
-        own checkouts, newest first: each has a public Alibi and the PayPal
+      description: Purchases the shopping agent made with real money at real stores'
+        own checkouts, and the carts Keelson denied there before the payment,
+        newest first. Each has a public Alibi; a paid one names the PayPal
         transaction it paid. Keelson countersigned and logged them; it covers
-        none of them."
+        none of them.
       responses:
         "200":
           description: The live purchases

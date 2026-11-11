@@ -153,7 +153,75 @@ describe.skipIf(!f)("live Alibis are public", () => {
     };
     const row = list.find((p) => p.id === b.alibi_id);
     expect(row).toMatchObject({ store: STORE, transactionId: "5MC585209K746392H" });
+    expect(row).toMatchObject({ decision: "allow", blocked: [] });
     // A live purchase without an Alibi is not listed.
-    expect(list.every((p) => p.id === b.alibi_id)).toBe(true);
+    expect(list.filter((p) => p.id !== b.alibi_id && p.transactionId)).toEqual([]);
+  });
+});
+
+const g = fixtures[1];
+
+describe.skipIf(!g)("denied live carts", () => {
+  const b = g?.bundle as NonNullable<typeof g>["bundle"];
+  const insert = async (id: string, liveStore: string | null, state: "DENIED" | "LOGGED") => {
+    const mandateId = await channel3Mandate();
+    const c = b.tee.countersign;
+    await testDb.insert(purchases).values({
+      id,
+      mandateId,
+      clientId: agent,
+      state,
+      liveStore,
+      merchantId: String(b.eval.context.merchant),
+      currency: "USD",
+      amountMinor: BigInt(c.amount),
+      cartHash: Buffer.from(c.cartHash.slice(2), "hex"),
+      evalTrace: {
+        fields: [
+          { id: "budget", pass: false },
+          { id: "merchant", pass: true },
+        ],
+      },
+      logIndex: BigInt(Date.now()) * 1000n + BigInt(randomBytes(1)[0] ?? 0),
+    });
+    const { timestamps: _t, anchor: _a, ...core } = b;
+    await testDb.insert(alibis).values({
+      purchaseId: id,
+      leafHash: randomBytes(32),
+      bundle: {
+        ...core,
+        alibi_id: id,
+        timestamps: [],
+        paypal: { ...core.paypal, capture_id: undefined, invoice_id: undefined },
+      },
+    });
+  };
+
+  test("a denied live cart's Alibi is public and listed with why it was denied", async () => {
+    const id = ulid();
+    await insert(id, STORE, "DENIED");
+    expect((await app.request(`/v1/alibis/${id}`)).status).toBe(200);
+    const { purchases: list } = (await (await app.request("/v1/live-purchases")).json()) as {
+      purchases: { id: string; decision: string; transactionId: unknown; blocked: string[] }[];
+    };
+    expect(list.find((p) => p.id === id)).toMatchObject({
+      decision: "deny",
+      transactionId: null,
+      blocked: ["budget"],
+    });
+  });
+
+  test("a denied cart that is not live, or a live one not paid yet, stays private", async () => {
+    const sandbox = ulid();
+    await insert(sandbox, null, "DENIED");
+    const unpaid = ulid();
+    await insert(unpaid, STORE, "LOGGED");
+    for (const id of [sandbox, unpaid]) {
+      expect((await app.request(`/v1/alibis/${id}`)).status).toBe(404);
+    }
+    const { purchases: list } = (await (await app.request("/v1/live-purchases")).json()) as {
+      purchases: { id: string }[];
+    };
+    expect(list.some((p) => p.id === sandbox || p.id === unpaid)).toBe(false);
   });
 });

@@ -154,10 +154,16 @@ const verifyRoute = createRoute({
 
 /**
  * Whether the principal is the mandate's user or the client that uploaded the evidence. The
- * Alibi of a live purchase is public.
+ * Alibi of a live purchase is public once it is final: paid, with its PayPal transaction, or
+ * denied before any payment.
  */
 async function mayRead(deps: Pick<Deps, "db">, principal: Principal | undefined, b: AlibiBundle) {
   if (b.paypal.transaction_id !== undefined) return true;
+  const [p] = await deps.db
+    .select({ liveStore: purchases.liveStore, state: purchases.state })
+    .from(purchases)
+    .where(eq(purchases.id, b.alibi_id));
+  if (p !== undefined && p.liveStore !== null && p.state === "DENIED") return true;
   if (!principal) return false;
   if (principal.kind === "user") {
     const [row] = await deps.db
