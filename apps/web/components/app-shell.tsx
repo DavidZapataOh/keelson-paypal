@@ -1,6 +1,6 @@
 "use client";
 
-import { Home, LogOut, type LucideIcon, Plus, Radio, Scale, Trophy } from "lucide-react";
+import { Bot, Home, LogOut, type LucideIcon, Plus, Radio, Scale, Trophy } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
@@ -19,6 +19,7 @@ export interface NavItem {
 
 const NAV: NavItem[] = [
   { href: "/", label: "Home", icon: Home },
+  { href: "/agents/", label: "Agents", icon: Bot },
   { href: "/new/", label: "New mandate", short: "New", icon: Plus },
   { href: "/disputes/", label: "Disputes", icon: Scale },
   { href: "/live/", label: "Live", icon: Radio },

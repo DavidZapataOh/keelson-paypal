@@ -45,7 +45,7 @@ export function OnboardingFrame({
   step: Step;
   stage: ReactNode;
   /** Names the picture when it carries information; otherwise it is decoration. */
-  stageLabel?: string;
+  stageLabel?: string | undefined;
   /** Every step is done: the bar fills. */
   complete?: boolean;
   children: ReactNode;

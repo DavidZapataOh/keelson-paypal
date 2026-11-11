@@ -17,6 +17,10 @@ const OWN_CHROME = new Set([
   "/merchant/",
   "/operator/",
   "/judge/",
+  "/agents/",
+  "/connect/",
+  "/consent/",
+  "/sign-in/",
 ]);
 
 export function Chrome({ children }: { children: ReactNode }) {
