@@ -11,4 +11,9 @@ done
 for f in ecdsa_secp256k1_sha256_test ed25519_test; do
   curl -fsSL "$WYCHEPROOF/testvectors_v1/$f.json" -o "wycheproof/$f.json"
 done
+MERKLE=https://raw.githubusercontent.com/transparency-dev/merkle/c39fbf350a405f68571bf4c42a6a518eb0a46a4b
+for f in $(cat merkle/FILES); do
+  mkdir -p "merkle/$(dirname "$f")"
+  curl -gfsSL "$MERKLE/testdata/inclusion/$f" -o "merkle/$f"
+done
 shasum -a 256 -c SHA256SUMS
