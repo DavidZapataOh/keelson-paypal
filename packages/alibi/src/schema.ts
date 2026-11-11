@@ -195,6 +195,22 @@ const paypalSection = z
   })
   .optional();
 
+const conversionSection = z.strictObject({
+  v: z.literal("keelson.conversion/1"),
+  merchant: z.strictObject({ currency: z.string(), value: z.string() }),
+  buyer: z.strictObject({ currency: z.string(), value: z.string() }),
+  rate: z.string(),
+  reference: z.strictObject({
+    rate: z.string(),
+    provider: z.string(),
+    source: z.string(),
+    as_of: z.string(),
+  }),
+  spread_bps: z.int().nonnegative(),
+  max_spread_bps: z.int().nonnegative(),
+  locale: z.string(),
+});
+
 export const alibiSchema = z.strictObject({
   type: z.literal(ALIBI_MEDIA_TYPE),
   alibi_id: ulid,
@@ -258,23 +274,7 @@ export const alibiSchema = z.strictObject({
    * charged the buyer at its rate, and the reference rate the evidence binds, with the spread
    * between them. Reported by the agent from PayPal's checkout. Not signed.
    */
-  conversion: z
-    .strictObject({
-      v: z.literal("keelson.conversion/1"),
-      merchant: z.strictObject({ currency: z.string(), value: z.string() }),
-      buyer: z.strictObject({ currency: z.string(), value: z.string() }),
-      rate: z.string(),
-      reference: z.strictObject({
-        rate: z.string(),
-        provider: z.string(),
-        source: z.string(),
-        as_of: z.string(),
-      }),
-      spread_bps: z.int().nonnegative(),
-      max_spread_bps: z.int().nonnegative(),
-      locale: z.string(),
-    })
-    .optional(),
+  conversion: conversionSection.optional(),
   zk: zkSection,
   /** A card purchase: the single-use card, every card authorization and the settled capture. */
   card: cardSection,
@@ -363,6 +363,8 @@ export const alibiSchemaV2 = z.strictObject({
   channel3_observation: json.optional(),
   web_fact: json.optional(),
   checkout: json.optional(),
+  fx_reference: json.optional(),
+  conversion: conversionSection.optional(),
   zk: zkSection,
   card: cardSectionV2,
   paypal: paypalSection,

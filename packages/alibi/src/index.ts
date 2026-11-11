@@ -1,5 +1,5 @@
 export { fromBase64, toBase64, toBase64url } from "./b64.ts";
-export { bridgeBundle } from "./bridge.ts";
+export { bridgeBundle, type SharedSections, statementBundle } from "./bridge.ts";
 export {
   type AlibiFormatCode,
   AlibiFormatError,

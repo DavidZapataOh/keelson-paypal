@@ -1,7 +1,7 @@
 import { LEAF_PREFIX, receiptKeyMap } from "@keelson/log";
 import { type EarStatus, earClaims } from "@keelson/scitt";
 import { fromBase64 } from "../b64.ts";
-import type { AlibiBundle, AlibiReceipt, AnyAlibi } from "../schema.ts";
+import type { AlibiBundle, AlibiBundleV2, AlibiReceipt, AnyAlibi } from "../schema.ts";
 import { type Context, runCheck } from "./check.ts";
 import { anchor } from "./checks/anchor.ts";
 import { nitro, tdx } from "./checks/attestation.ts";
@@ -153,6 +153,15 @@ function prepare(input: AnyAlibi): {
       view,
     };
   }
+}
+
+/**
+ * An Alibi bundle in the v1 shape: a v2 bundle's countersign, legs and attestations read from its
+ * statement and evidence collection, its leaf the registered statement. For reading its facts;
+ * never encoded or verified as a v1 Alibi.
+ */
+export function v1Shape(input: AlibiBundle | AlibiBundleV2): AlibiBundle {
+  return prepare(input).legacy as AlibiBundle;
 }
 
 /**
