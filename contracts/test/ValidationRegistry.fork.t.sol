@@ -303,9 +303,10 @@ contract ValidationRegistryForkTest is Erc8004Base {
     function test_deny_degradedTwiceExists() public {
         KeelsonTypes.Countersign memory c = _deny();
         bytes memory tdx = _signCountersign(tdxKey, c);
-        validation.recordCountersign(c, tdx, _operatorRequest(c));
+        bytes memory request = _operatorRequest(c);
+        validation.recordCountersign(c, tdx, request);
         vm.expectRevert(IKeelsonValidationRegistry.ValidationExists.selector);
-        validation.recordCountersign(c, tdx, _operatorRequest(c));
+        validation.recordCountersign(c, tdx, request);
     }
 
     /// @dev Decision 0 is neither ALLOW nor DENY, even with the operator's request.
@@ -313,8 +314,9 @@ contract ValidationRegistryForkTest is Erc8004Base {
         KeelsonTypes.Countersign memory c = _deny();
         c.decision = 0;
         bytes memory sigs = _sign2of2(c);
+        bytes memory request = _operatorRequest(c);
         vm.expectRevert(IKeelsonValidationRegistry.InvalidCountersign.selector);
-        validation.recordCountersign(c, sigs, _operatorRequest(c));
+        validation.recordCountersign(c, sigs, request);
     }
 
     /// @dev The agent's ERC-8004 wallet may ask for a DENY as its owner can; once a wallet is set, a stranger still
@@ -325,10 +327,12 @@ contract ValidationRegistryForkTest is Erc8004Base {
         KeelsonTypes.Countersign memory c = _deny();
         bytes memory sigs = _sign2of2(c);
         (, uint256 strangerKey) = makeAddrAndKey("erc8004 stranger");
+        bytes memory byStranger = _validationRequest(strangerKey, c);
+        bytes memory byWallet = _validationRequest(walletKey, c);
         vm.expectRevert(IKeelsonValidationRegistry.NotAgentAuthority.selector);
-        validation.recordCountersign(c, sigs, _validationRequest(strangerKey, c));
+        validation.recordCountersign(c, sigs, byStranger);
 
-        bytes32 requestHash = validation.recordCountersign(c, sigs, _validationRequest(walletKey, c));
+        bytes32 requestHash = validation.recordCountersign(c, sigs, byWallet);
         _assertStatus(requestHash, 0, "2of2", c.evalHash);
     }
 
