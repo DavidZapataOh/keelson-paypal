@@ -68,10 +68,15 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             engine/zkvm/target
+            !engine/zkvm/target/elf-compilation
           key: zkvm-${{ hashFiles('engine/zkvm/Cargo.lock') }}-${{ github.sha }}
           restore-keys: zkvm-
+      # The program itself is always built from scratch: an ELF left in the cache by another
+      # lockfile can differ from a clean build, and its verifying key with it.
       - name: Build the program and the prover
-        run: cargo build --release --locked -p keelson-engine-proof
+        run: |
+          cargo clean --release -p keelson-engine-proof
+          cargo build --release --locked -p keelson-engine-proof
       # The prover's dependencies take most of the build: keep them even when the program fails.
       - uses: actions/cache/save@v6
         if: always()
@@ -80,6 +85,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             engine/zkvm/target
+            !engine/zkvm/target/elf-compilation
           key: zkvm-${{ hashFiles('engine/zkvm/Cargo.lock') }}-${{ github.sha }}
       - name: Program size
         run: |
@@ -92,8 +98,12 @@ jobs:
           jq -e --slurpfile v "$GITHUB_WORKSPACE/$VECTOR" \
             '.eval_hash == $v[0].eval_hash and .countersign_digest == $v[0].digest' executed.json
           jq -r '"Cycles: \(.cycles), execute: \(.execute_ms) ms"' executed.json | tee -a "$GITHUB_STEP_SUMMARY"
+      # EngineProofVerifier is immutable: the program must keep the verifying key it was deployed with.
       - name: Program verifying key
-        run: ./target/release/keelson-engine-proof vkey | tee -a "$GITHUB_STEP_SUMMARY"
+        run: |
+          vkey=$(./target/release/keelson-engine-proof vkey)
+          echo "$vkey" | tee -a "$GITHUB_STEP_SUMMARY"
+          test "$vkey" = "$(jq -r .vkey "$GITHUB_WORKSPACE/contracts/test/vectors/engine-proof.json")"
       - uses: actions/upload-artifact@v6
         with:
           name: keelson-engine-proof

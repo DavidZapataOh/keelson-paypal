@@ -23,12 +23,13 @@ use keelson_policy::{
     deny_trace, eval_hash, policy_set_hash, trace_jcs,
 };
 use p256::ecdsa::SigningKey;
-use serde_json::{Value, json};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use time::{Duration, OffsetDateTime};
 
 use crate::budget::{Budget, Claimed, Replay};
 use crate::checkpoint::{CheckpointError, verify_checkpoint};
+use crate::logsign::{LogSigner, SignError, SignRequest, Signed};
 use crate::paypal::{HoldKind, PayPalDeny, paypal_check};
 use crate::wire::{
     self, Base64, CheckpointRequest, CheckpointSigned, CountersignRequest, Countersigned, Hex,
@@ -42,12 +43,9 @@ use crate::{
 
 /// The seal purpose of a mandate's commitment salt; the record is `M`.
 pub const MANDATE_SALT_PURPOSE: &str = "keelson/seal/mandate-salt/v1";
-/// The seal purpose of a user's record, which binds their `sub` to their passkey.
-pub const USER_PASSKEY_PURPOSE: &str = "keelson/seal/user-passkey/v1";
 /// The sealing purpose of the record that binds a mandate to the PayPal order holding its funds.
 const MANDATE_HOLD_PURPOSE: &str = "keelson/seal/mandate-hold-order/v1";
 const ARBITRUM_ONE: u64 = 42_161;
-const USER_PASSKEY_RECORD: &[u8] = b"passkey";
 
 /// `iss` of the user credential.
 const ISSUER: &str = "https://keelson.finance";
@@ -149,6 +147,8 @@ pub enum EngineError {
     Signer(Error),
     /// The checkpoint is not one the engine signs.
     Checkpoint(CheckpointError),
+    /// The log checkpoint was not signed.
+    Log(SignError),
 }
 
 impl EngineError {
@@ -169,6 +169,7 @@ impl EngineError {
             Self::PayPal => "paypal".into(),
             Self::Signer(_) => "signer".into(),
             Self::Checkpoint(e) => e.code().into(),
+            Self::Log(e) => e.code().into(),
         }
     }
 }
@@ -208,6 +209,10 @@ pub struct Engine {
     users: Option<Arc<dyn UserRecords>>,
     prover: Option<Arc<Prover>>,
     c1: C1Proofs,
+    log: Option<Arc<LogSigner>>,
+    /// The Alibi origins' log keys leg A holds, `(origin, Ed25519 key)`: leg A's own, or on leg B
+    /// the ones its boot message carried with a KMS chain that verified.
+    tee_log_keys: Vec<(&'static str, [u8; 32])>,
 }
 
 /// What leg A needs to prove C1 for an ALLOW it already answered.
@@ -290,7 +295,63 @@ impl Engine {
             users: None,
             prover: None,
             c1: C1Proofs::default(),
+            log: None,
+            tee_log_keys: Vec::new(),
         }
+    }
+
+    /// Sets the checkpoint signer of the Alibi origins, which leg A holds.
+    pub fn with_log_signer(mut self, log: Arc<LogSigner>) -> Self {
+        self.tee_log_keys = log
+            .keys()
+            .iter()
+            .map(|k| (k.origin, k.public_key()))
+            .collect();
+        self.log = Some(log);
+        self
+    }
+
+    /// Sets the log keys leg A holds, for a leg that verifies checkpoints but does not sign them.
+    pub fn with_tee_log_keys(mut self, keys: Vec<(&'static str, [u8; 32])>) -> Self {
+        self.tee_log_keys = keys;
+        self
+    }
+
+    /// Signs the RA-TLS binding digest of [`crate::ratls::binding_digest`] with the attested
+    /// signer.
+    pub fn sign_tls_binding(&self, digest: &[u8; 32]) -> Result<[u8; 65], Error> {
+        self.signer.sign_tls_binding(digest)
+    }
+
+    /// The log keys this engine trusts for the Alibi origins.
+    pub fn tee_log_keys(&self) -> &[(&'static str, [u8; 32])] {
+        &self.tee_log_keys
+    }
+
+    /// The checkpoint signer, on leg A.
+    pub fn log_signer(&self) -> Option<&LogSigner> {
+        self.log.as_deref()
+    }
+
+    /// Signs a log checkpoint that extends the last one signed for its origin, or the origin's
+    /// on-chain anchor `floor` when the leg has signed none.
+    pub fn sign_log(
+        &self,
+        r: &SignRequest,
+        floor: Option<(u64, [u8; 32])>,
+    ) -> Result<Signed, EngineError> {
+        let (Some(log), Some(root)) = (&self.log, &self.root) else {
+            return Err(EngineError::NoRoot);
+        };
+        log.sign(root, floor, r).map_err(EngineError::Log)
+    }
+
+    /// Whether signing a checkpoint of `origin` needs its on-chain anchor first.
+    pub fn log_needs_floor(&self, origin: &str) -> Result<bool, EngineError> {
+        let (Some(log), Some(root)) = (&self.log, &self.root) else {
+            return Ok(false);
+        };
+        log.needs_floor(root, origin).map_err(EngineError::Log)
     }
 
     /// Sets the captured amounts leg A counts against each budget.
@@ -372,7 +433,6 @@ impl Engine {
         now: OffsetDateTime,
     ) -> Result<MandateIssued, EngineError> {
         let root = self.root.as_ref().ok_or(EngineError::NoRoot)?;
-        let users = self.users.as_ref().ok_or(EngineError::NotReady)?;
         check_register(r)?;
         let m = decode_mandate(&r.payload_sd, &r.disclosures).map_err(|_| bad("mandate"))?;
         if m["user"]["sub"] != r.sub.as_str() {
@@ -407,15 +467,9 @@ impl Engine {
         let holder = root.user_key(&r.sub);
         let passkey = Jwk::from_value(&cred["jwk"]).map_err(|_| bad("mandate"))?;
         if let Some(l1) = &r.user_credential {
-            self.check_user_credential(l1, &r.sub, &jwk_of(&holder), &passkey)?;
+            let id = cred["id"].as_str().unwrap_or_default();
+            self.check_user_credential(l1, &r.sub, &jwk_of(&holder), id, &passkey)?;
         }
-        bind_passkey(
-            root,
-            users.as_ref(),
-            &r.sub,
-            &passkey,
-            r.user_credential.is_some(),
-        )?;
         let iat = now.unix_timestamp();
         let user_credential = match &r.user_credential {
             Some(l1) => l1.clone(),
@@ -491,7 +545,7 @@ impl Engine {
         now: OffsetDateTime,
     ) -> Result<CheckpointSigned, EngineError> {
         let chain_id = r.chain_id.unwrap_or(self.config.chain_id);
-        let c = verify_checkpoint(r.signed_note.as_bytes(), chain_id, now)
+        let c = verify_checkpoint(r.signed_note.as_bytes(), chain_id, now, &self.tee_log_keys)
             .map_err(EngineError::Checkpoint)?;
         let domain = keelson_core::domain(chain_id, self.config.verifying_contract)
             .map_err(|_| bad("chain_id"))?;
@@ -1059,12 +1113,13 @@ impl Engine {
     }
 
     /// Checks a user credential from an earlier registration: issued by this engine's issuer,
-    /// to `sub`, for `holder` and the mandate's passkey.
+    /// to `sub`, for `holder` and the mandate's passkey, its credential id and key.
     fn check_user_credential(
         &self,
         l1: &str,
         sub: &str,
         holder: &Jwk,
+        cred_id: &str,
         passkey: &Jwk,
     ) -> Result<(), EngineError> {
         let issuer = self.issuer.as_ref().ok_or(EngineError::NoRoot)?;
@@ -1073,6 +1128,7 @@ impl Engine {
         let key = |v: &Value| Jwk::from_value(v).ok();
         let bound = v.claims.get("sub").and_then(Value::as_str) == Some(sub)
             && key(&v.claims["cnf"]["jwk"]).is_some_and(|k| same_key(&k, holder))
+            && v.claims["cred"]["id"].as_str() == Some(cred_id)
             && key(&v.claims["cred"]["jwk"]).is_some_and(|k| same_key(&k, passkey));
         bound.then_some(()).ok_or_else(rejected)
     }
@@ -1086,10 +1142,6 @@ fn within(s: &str, max: usize, what: &'static str) -> Result<(), EngineError> {
 
 fn check_register(r: &RegisterMandate) -> Result<(), EngineError> {
     within(&r.sub, MAX_SUB, "sub")?;
-    // The user records also hold mandate bindings under keys that contain a NUL.
-    if r.sub.contains('\0') {
-        return Err(bad("sub"));
-    }
     if r.disclosures.len() > MAX_DISCLOSURES {
         return Err(EngineError::TooLarge("disclosures"));
     }
@@ -1210,30 +1262,6 @@ fn bind_hold(
         }
     };
     bound.then_some(()).ok_or(PayPalDeny::HoldMismatch)
-}
-
-/// Binds `sub` to `passkey` on its first registration, in a record sealed to `sub`. Later
-/// registrations must use that passkey, unless they present a user credential issued for `sub`
-/// and this passkey (`vouched`).
-fn bind_passkey(
-    root: &Root,
-    users: &dyn UserRecords,
-    sub: &str,
-    passkey: &Jwk,
-    vouched: bool,
-) -> Result<(), EngineError> {
-    let aad = SealAad {
-        purpose: USER_PASSKEY_PURPOSE,
-        sub: Some(sub),
-        record: USER_PASSKEY_RECORD,
-    };
-    let key = sec1(&json!({ "x": passkey.x, "y": passkey.y }));
-    let holds = |blob: Vec<u8>| root.unseal(&aad, &blob).is_ok_and(|bound| bound == key);
-    let bound = match users.get(sub) {
-        Some(blob) => vouched || holds(blob),
-        None => users.insert_new(sub, root.seal(&aad, &key)) || users.get(sub).is_some_and(holds),
-    };
-    bound.then_some(()).ok_or_else(|| auth("sub_bound"))
 }
 
 /// Verifies the passkey assertion over `M` against the mandate's `user.cred`, on the RP ID

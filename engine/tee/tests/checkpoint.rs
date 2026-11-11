@@ -33,7 +33,7 @@ fn now() -> OffsetDateTime {
 
 /// The origin hash, size and root of the verified note.
 fn verify(note: &str, chain_id: u64) -> Result<(B256, u64, B256), CheckpointError> {
-    fields(verify_checkpoint(note.as_bytes(), chain_id, now()))
+    fields(verify_checkpoint(note.as_bytes(), chain_id, now(), &[]))
 }
 
 fn fields(c: Result<Checkpoint, CheckpointError>) -> Result<(B256, u64, B256), CheckpointError> {
@@ -125,7 +125,7 @@ fn one_witness_is_not_a_quorum() {
 fn a_cosignature_from_the_future_does_not_count() {
     let early = at(1_794_000_000);
     assert_eq!(
-        fields(verify_checkpoint(SANDBOX.as_bytes(), SEPOLIA, early)),
+        fields(verify_checkpoint(SANDBOX.as_bytes(), SEPOLIA, early, &[])),
         Err(CheckpointError::Quorum)
     );
 }
@@ -145,7 +145,7 @@ fn extension_lines_and_malformed_bodies_are_refused() {
     let short_root = SANDBOX.replacen(l[2], "AAAA\n", 1);
     assert_eq!(verify(&short_root, SEPOLIA), Err(CheckpointError::Format));
     assert_eq!(
-        fields(verify_checkpoint(b"\xff\xfe", SEPOLIA, now())),
+        fields(verify_checkpoint(b"\xff\xfe", SEPOLIA, now(), &[])),
         Err(CheckpointError::Format)
     );
 }

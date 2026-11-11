@@ -11,7 +11,7 @@ Two legs run the same engine:
 
 `Engine::register_mandate` takes the mandate the user signed with their passkey and the salt of its commitment. It recomputes `C_m` and requires it to equal `zk.commitment`, computes the challenge `M`, and verifies the passkey assertion over `M` on the engine's configured origin and the RP ID `keelson.finance`. It then issues the user credential (when the request has none) and the open mandate, and returns the salt sealed to the user and `M`.
 
-The first registration of a `sub` binds it to its passkey in a sealed user record. Later registrations for that `sub` must use the same passkey, or present a user credential issued for that `sub` and the new passkey; otherwise they fail with `auth.sub_bound`. Which `sub` the first registration belongs to is taken from the caller. The record store must be one the caller cannot delete from, since a lost record lets the `sub` be bound again.
+A user may sign with any of their passkeys. Which passkeys belong to a `sub` is the caller's to say, as WebAuthn leaves it to the relying party: the API registers a passkey to a user only after a fresh sign-in with PayPal or with one of their passkeys, and sends leg A a mandate only when its `user.cred` is one of them. Leg A verifies the assertion against that credential and issues a user credential per passkey, all with the `sub`'s one holder key. A registration that presents a user credential must be for the same `sub`, holder key and passkey, or it fails with `auth.open_user_credential`.
 
 ## Countersign a cart
 
@@ -40,6 +40,18 @@ Leg A answers the countersign first and proves right after, off the request's pa
 4. the origin anchors on the request's chain (`chain_id`, the engine's own chain when absent): the sandbox and conformance origins on Arbitrum Sepolia, the live origin on Arbitrum One.
 
 `origin` is `keccak256` of the origin string, and the domain is the engine's (`verifyingContract` = the `VerdictVerifier`). Because both legs sign only witnessed checkpoints, the log key alone cannot get a checkpoint anchored.
+
+## Sign the log's checkpoints
+
+Leg A holds the Ed25519 checkpoint key of each Alibi origin (`log.keelson.finance/alibi/2026-1` and `log.keelson.finance/alibi-live/2026-1`). Each is the dstack KMS key `GetKey(keelson/log/<origin>/v1, ed25519)`, so it is the same across restarts and image upgrades of the app and never leaves the CVM. `GET /v1/health` serves it as a note verifier key with the KMS signature chain (dstack `docs/guest-api-v1.md`, "The signature chain"), which anyone can check against the KMS root key and the app id.
+
+`POST /v1/log/sign` (bearer) takes `{ checkpoint, from_size?, consistency? }`: a checkpoint body (origin, decimal size, base64 root, nothing else) and the RFC 6962 consistency proof from `from_size`, the last size the leg signed for the origin. It answers `{ signature, vkey }` only if the checkpoint extends that tree: the same size with the same root, or a larger size whose proof verifies. Before the signature leaves, the leg records the tree in its sealed records, each size once and with one successor (`first`, then `next/<size>`), so the trees it signed for an origin form one history and a restarted leg recovers it. Anything else is `409 log_not_extending` with `latest`, the last size signed. A leg with no records for an origin (a new CVM, or one whose volume was wiped) first reads the origin's latest anchor in `CheckpointAnchor` and signs only a tree that extends it. So no caller of one leg, the log's operator included, can get two views of an origin signed, and an equivocation of these keys means the TDX leg was broken or the limits below were used, which `LogBond` makes costly.
+
+The limits. The key belongs to the app, the history to one CVM's encrypted volume: whoever controls the app on Phala Cloud (its allowed composes and instances) can start another instance, or roll a volume back, and have it sign a different extension of the latest anchor; anchors are hourly, so that window is up to an hour of the log. The witnesses then see two views of one origin, and the monitor and `LogBond` turn them into proof. `/v1/log/sign` takes the legs' bearer token, so its holders (the API and CI) can also push a made-up extension and stop the real log until the origin moves; a token only the log holds is a configuration change away.
+
+Leg B holds no root. Its boot message carries leg A's log keys with their KMS chains, and it trusts a key only if the chain shows the KMS root `kms::KMS_ROOT` issued it to leg A's app `kms::APP_ID`; `sign_checkpoint` on either leg then accepts checkpoints signed by these keys besides the pinned ones in `src/checkpoint.rs`.
+
+The log reaches `/v1/log/sign` over RA-TLS, the only listener that serves it: with `KEELSON_RATLS_LISTEN` and `KEELSON_RATLS_HOST`, leg A also serves its routes on a TLS listener whose certificate the dstack agent issues with the CVM's attestation in it (`IssueCert` with `usage_ra_tls`), behind the gateway in TLS passthrough (`<app id>-8443s.<gateway domain>`). The attested signer signs `keccak256("keelson/ra-tls/v1" ‖ SHA-256(certificate))`, served at `GET /v1/log/tls`; the log pins the certificate only when that signer is an active TDX signer.
 
 ## Sign a verdict
 
@@ -134,17 +146,17 @@ Registering refuses a mandate whose `exp` has passed (`mandate_expired`) or whos
 
 ## Errors
 
-Refusals carry no signature and one of these stable codes: `auth.closed_*`, `auth.open_*`, `auth.webauthn_*`, `auth.sub_bound`, `clock_skew`, `no_root`, `not_ready`, `commitment_mismatch`, `replay`, `busy`, `bad_request`, `payload_too_large`, `mandate_expired`, `mandate_not_yet_valid`, `paypal`, `signer`, and for checkpoints `checkpoint_format`, `checkpoint_origin`, `checkpoint_chain`, `checkpoint_log_signature` and `checkpoint_quorum`.
+Refusals carry no signature and one of these stable codes: `auth.closed_*`, `auth.open_*`, `auth.webauthn_*`, `clock_skew`, `no_root`, `not_ready`, `commitment_mismatch`, `replay`, `busy`, `bad_request`, `payload_too_large`, `mandate_expired`, `mandate_not_yet_valid`, `paypal`, `signer`, and for checkpoints `checkpoint_format`, `checkpoint_origin`, `checkpoint_chain`, `checkpoint_log_signature` and `checkpoint_quorum`.
 
 ## HTTP
 
-`keelson-engine --listen tcp:<addr>` serves `POST /v1/countersign`, `GET /v1/c1/{request_id}` (see Prove C1), `GET /v1/notary` on leg A (see Notarize a TLS session), `POST /v1/mandates/register`, `POST /v1/verdict` (`{ facts, input, chain_id? }`, answered with `{ verdict, chain_id, digest, signature, signer, tee }`), `POST /v1/checkpoint` (`{ signed_note, chain_id? }`, at most 16 KiB, answered with `{ origin, tree_size, root_hash, chain_id, digest, signature, signer }`) and `GET /v1/health` (`{ tee, signer, boot_epoch, oci_digest, version, now_ms, issuer, rss_kib }`, `now_ms` being the engine's clock, `issuer` the credential issuer's public JWK and `rss_kib` the process's resident memory on Linux). With `--platform tdx` it also serves `GET /v1/attestation` and `POST /v1/attestation/refresh` (see below). Every route except health and `GET /v1/attestation` needs `Authorization: Bearer <token>`; the engine holds only the token's SHA-256, from `KEELSON_TEE_TOKEN_SHA256`, and compares it in constant time. Refusals are `application/problem+json` (RFC 9457) with `type` `https://keelson.finance/problems/<code>` and the stable code, and never echo the request. Bodies are JSON with unknown fields rejected.
+`keelson-engine --listen tcp:<addr>` serves `POST /v1/countersign`, `GET /v1/c1/{request_id}` (see Prove C1), `GET /v1/notary` on leg A (see Notarize a TLS session), `POST /v1/mandates/register`, `POST /v1/verdict` (`{ facts, input, chain_id? }`, answered with `{ verdict, chain_id, digest, signature, signer, tee }`), `POST /v1/log/sign` and `GET /v1/log/tls` on leg A (see Sign the log's checkpoints), `POST /v1/checkpoint` (`{ signed_note, chain_id? }`, at most 16 KiB, answered with `{ origin, tree_size, root_hash, chain_id, digest, signature, signer }`) and `GET /v1/health` (`{ tee, signer, boot_epoch, oci_digest, version, now_ms, issuer, rss_kib }`, `now_ms` being the engine's clock, `issuer` the credential issuer's public JWK and `rss_kib` the process's resident memory on Linux). With `--platform tdx` it also serves `GET /v1/attestation` and `POST /v1/attestation/refresh` (see below). Every route except health and `GET /v1/attestation` needs `Authorization: Bearer <token>`; the engine holds only the token's SHA-256, from `KEELSON_TEE_TOKEN_SHA256`, and compares it in constant time. Refusals are `application/problem+json` (RFC 9457) with `type` `https://keelson.finance/problems/<code>` and the stable code, and never echo the request. Bodies are JSON with unknown fields rejected.
 
 | Status | Codes                                                                                            |
 | ------ | ------------------------------------------------------------------------------------------------ |
 | 401    | `unauthorized`                                                                                   |
 | 403    | `auth.*`                                                                                         |
-| 409    | `replay`, `clock_skew`, `already_booted`                                                         |
+| 409    | `replay`, `clock_skew`, `already_booted`, `log_not_extending`                                    |
 | 413    | `payload_too_large`                                                                              |
 | 422    | `bad_request`, `commitment_mismatch`, `mandate_expired`, `mandate_not_yet_valid`, `checkpoint_*` |
 | 501    | `no_root`                                                                                        |
@@ -207,7 +219,7 @@ Built with the cargo feature `nitro`, `keelson-engine --platform nitro --listen 
 
 ## Records
 
-On `--platform tdx` the user records (each `sub`'s passkey binding and the PayPal order holding each mandate) are kept by `FileRecords`, one sealed file per record, in `KEELSON_DATA_DIR` (`/data` by default). The image ships `/data` owned by the engine's user, and the compose file mounts a named volume there, which lives on the CVM's encrypted disk. A restart or redeploy of the same app keeps the records. A file that was altered or moved does not open under its `sub` or mandate, and the request that depends on it fails with `auth.sub_bound` or a `paypal.hold_mismatch` denial.
+On `--platform tdx` the user records (the PayPal order holding each mandate) are kept by `FileRecords`, one sealed file per record, in `KEELSON_DATA_DIR` (`/data` by default). The image ships `/data` owned by the engine's user, and the compose file mounts a named volume there, which lives on the CVM's encrypted disk. A restart or redeploy of the same app keeps the records. A file that was altered or moved does not open under its mandate, and the request that depends on it fails with a `paypal.hold_mismatch` denial.
 
 ## Sealing
 
