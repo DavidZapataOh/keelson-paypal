@@ -233,15 +233,16 @@ const LivePurchase = z
 
 /**
  * The card purchases whose Alibi is public: those Keelson's own demo operator made for one of its
- * test users, on the reserved `example.test` domain, as for denials.
+ * test users, on the reserved `example.test` domain, or for a Judge Mode tenant, which is
+ * anonymous.
  */
-function publicCard(demoAgentId: bigint | undefined): SQL | undefined {
+export function publicCard(demoAgentId: bigint | undefined): SQL | undefined {
   return demoAgentId === undefined
     ? undefined
     : and(
         eq(purchases.rail, "card"),
         eq(mandates.operatorAgentId, demoAgentId),
-        like(user.email, "%@example.test"),
+        or(like(user.email, "%@example.test"), like(user.email, "%@judge.keelson.finance")),
       );
 }
 
