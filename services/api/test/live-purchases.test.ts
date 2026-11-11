@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { decodeAlibi, leafHashOf } from "@keelson/alibi";
-import { alibis, eq, purchases, sql } from "@keelson/db";
+import { alibis, eq, mandates, purchases, sql } from "@keelson/db";
 import { pino } from "pino";
 import { ulid } from "ulid";
 import { beforeAll, describe, expect, test } from "vitest";
@@ -163,12 +163,29 @@ const g = fixtures[1];
 
 describe.skipIf(!g)("denied live carts", () => {
   const b = g?.bundle as NonNullable<typeof g>["bundle"];
-  const insert = async (id: string, liveStore: string | null, state: "DENIED" | "LOGGED") => {
-    const mandateId = await channel3Mandate();
+  let demo: ReturnType<typeof createApp>;
+  let mandateId: string;
+  beforeAll(async () => {
+    mandateId = await channel3Mandate();
+    const [m] = await testDb.select().from(mandates).where(eq(mandates.id, mandateId));
+    demo = createApp({
+      db: testDb,
+      kv: testKv,
+      log: pino({ level: "silent" }),
+      authenticate: headerPrincipal,
+      demoAgentId: m?.operatorAgentId,
+    });
+  });
+  const insert = async (
+    liveStore: string | null,
+    state: "DENIED" | "LOGGED",
+    mandate = mandateId,
+  ) => {
+    const id = ulid();
     const c = b.tee.countersign;
     await testDb.insert(purchases).values({
       id,
-      mandateId,
+      mandateId: mandate,
       clientId: agent,
       state,
       liveStore,
@@ -195,33 +212,33 @@ describe.skipIf(!g)("denied live carts", () => {
         paypal: { ...core.paypal, capture_id: undefined, invoice_id: undefined },
       },
     });
+    return id;
   };
+  const listed = async () =>
+    (
+      (await (await demo.request("/v1/live-purchases")).json()) as {
+        purchases: { id: string; decision: string; transactionId: unknown; blocked: string[] }[];
+      }
+    ).purchases;
 
-  test("a denied live cart's Alibi is public and listed with why it was denied", async () => {
-    const id = ulid();
-    await insert(id, STORE, "DENIED");
-    expect((await app.request(`/v1/alibis/${id}`)).status).toBe(200);
-    const { purchases: list } = (await (await app.request("/v1/live-purchases")).json()) as {
-      purchases: { id: string; decision: string; transactionId: unknown; blocked: string[] }[];
-    };
-    expect(list.find((p) => p.id === id)).toMatchObject({
+  test("a live cart the demo operator ran and Keelson denied is public and listed with why", async () => {
+    const id = await insert(STORE, "DENIED");
+    expect((await demo.request(`/v1/alibis/${id}`)).status).toBe(200);
+    expect((await listed()).find((p) => p.id === id)).toMatchObject({
       decision: "deny",
       transactionId: null,
       blocked: ["budget"],
     });
   });
 
-  test("a denied cart that is not live, or a live one not paid yet, stays private", async () => {
-    const sandbox = ulid();
-    await insert(sandbox, null, "DENIED");
-    const unpaid = ulid();
-    await insert(unpaid, STORE, "LOGGED");
-    for (const id of [sandbox, unpaid]) {
-      expect((await app.request(`/v1/alibis/${id}`)).status).toBe(404);
+  test("other denied carts and unpaid live purchases stay private", async () => {
+    const sandbox = await insert(null, "DENIED");
+    const unpaid = await insert(STORE, "LOGGED");
+    const another = await insert(STORE, "DENIED", await channel3Mandate());
+    for (const id of [sandbox, unpaid, another]) {
+      expect((await demo.request(`/v1/alibis/${id}`)).status).toBe(404);
     }
-    const { purchases: list } = (await (await app.request("/v1/live-purchases")).json()) as {
-      purchases: { id: string }[];
-    };
-    expect(list.some((p) => p.id === sandbox || p.id === unpaid)).toBe(false);
+    const ids = (await listed()).map((p) => p.id);
+    expect(ids.some((id) => id === sandbox || id === unpaid || id === another)).toBe(false);
   });
 });

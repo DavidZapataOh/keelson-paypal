@@ -150,7 +150,7 @@ const liveRoute = createRoute({
   tags: ["purchases"],
   summary: "Live purchases",
   description:
-    "Purchases the shopping agent made with real money at real stores' own checkouts, and the carts Keelson denied there before the payment, newest first. Each has a public Alibi; a paid one names the PayPal transaction it paid. Keelson countersigned and logged them; it covers none of them.",
+    "Purchases the shopping agent made with real money at real stores' own checkouts, and the carts Keelson denied there before the payment when Keelson's demo operator ran them, newest first. Each has a public Alibi; a paid one names the PayPal transaction it paid. Keelson countersigned and logged them; it covers none of them.",
   responses: {
     200: {
       description: "The live purchases",
@@ -161,16 +161,22 @@ const liveRoute = createRoute({
   },
 });
 
-export function registerPurchases(app: OpenAPIHono, deps: Pick<Deps, "db">): void {
+export function registerPurchases(app: OpenAPIHono, deps: Pick<Deps, "db" | "demoAgentId">): void {
   app.openapi(liveRoute, async (c) => {
     const rows = await deps.db
       .select({ purchase: purchases })
       .from(purchases)
       .innerJoin(alibis, eq(alibis.purchaseId, purchases.id))
+      .innerJoin(mandates, eq(mandates.id, purchases.mandateId))
       .where(
         and(
           isNotNull(purchases.liveStore),
-          or(isNotNull(purchases.paypalTransactionId), eq(purchases.state, "DENIED")),
+          or(
+            isNotNull(purchases.paypalTransactionId),
+            deps.demoAgentId === undefined
+              ? undefined
+              : and(eq(purchases.state, "DENIED"), eq(mandates.operatorAgentId, deps.demoAgentId)),
+          ),
         ),
       )
       .orderBy(desc(purchases.createdAt))

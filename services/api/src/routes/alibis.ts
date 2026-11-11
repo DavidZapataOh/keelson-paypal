@@ -11,7 +11,7 @@ import {
 } from "@keelson/alibi";
 import { renderAlibiPdf } from "@keelson/alibi/pdf";
 import { verifyAlibi } from "@keelson/alibi/verify";
-import { eq, evidenceBundles, mandates, purchases } from "@keelson/db";
+import { and, eq, evidenceBundles, mandates, purchases } from "@keelson/db";
 import type { Context } from "hono";
 import { loadAlibi } from "../alibi/issue.ts";
 import type { Deps } from "../app.ts";
@@ -154,16 +154,23 @@ const verifyRoute = createRoute({
 
 /**
  * Whether the principal is the mandate's user or the client that uploaded the evidence. The
- * Alibi of a live purchase is public once it is final: paid, with its PayPal transaction, or
- * denied before any payment.
+ * Alibi of a live purchase is public once its PayPal transaction is recorded; a live cart denied
+ * before any payment is public when Keelson's own demo operator ran it.
  */
-async function mayRead(deps: Pick<Deps, "db">, principal: Principal | undefined, b: AlibiBundle) {
+async function mayRead(
+  deps: Pick<Deps, "db" | "demoAgentId">,
+  principal: Principal | undefined,
+  b: AlibiBundle,
+) {
   if (b.paypal.transaction_id !== undefined) return true;
-  const [p] = await deps.db
-    .select({ liveStore: purchases.liveStore, state: purchases.state })
-    .from(purchases)
-    .where(eq(purchases.id, b.alibi_id));
-  if (p !== undefined && p.liveStore !== null && p.state === "DENIED") return true;
+  if (deps.demoAgentId !== undefined) {
+    const [p] = await deps.db
+      .select({ liveStore: purchases.liveStore, state: purchases.state })
+      .from(purchases)
+      .innerJoin(mandates, eq(mandates.id, purchases.mandateId))
+      .where(and(eq(purchases.id, b.alibi_id), eq(mandates.operatorAgentId, deps.demoAgentId)));
+    if (p !== undefined && p.liveStore !== null && p.state === "DENIED") return true;
+  }
   if (!principal) return false;
   if (principal.kind === "user") {
     const [row] = await deps.db
@@ -211,7 +218,10 @@ async function send(
   return c.body((await body()) as Uint8Array<ArrayBuffer>, 200);
 }
 
-export function registerAlibis(app: OpenAPIHono, deps: Pick<Deps, "db" | "alibiChain">): void {
+export function registerAlibis(
+  app: OpenAPIHono,
+  deps: Pick<Deps, "db" | "alibiChain" | "demoAgentId">,
+): void {
   const readable = async (c: Context, id: string) => {
     const b = await loadAlibi(deps.db, id);
     return b && (await mayRead(deps, c.get("principal"), b)) ? b : null;
