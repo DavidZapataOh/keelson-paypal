@@ -1,6 +1,7 @@
 import { and, type Db, eq, lt, purchases, sql } from "@keelson/db";
 import type { Logger } from "pino";
 import { resumeSettlements, type SettleDeps } from "./disputes/settle.ts";
+import { closeExpiredCards } from "./pipeline/card-step.ts";
 import { logDenials, type PipelineDeps, resumePurchases } from "./pipeline/drive.ts";
 
 /** A countersign that has not finished by now was lost with its process; the request timeout is 30 s. */
@@ -40,16 +41,21 @@ export function startPurchaseSweeper(deps: { db: Db; log: Logger }): () => void 
 
 const RESUME_INTERVAL_MS = 5_000;
 
-/** Every five seconds, drives the purchases whose driver is gone and logs DENYs not yet logged. */
+/**
+ * Every five seconds, drives the purchases whose driver is gone, logs DENYs not yet logged and
+ * closes the single-use cards whose countersign expired unused.
+ */
 export function startPipelineResumer(deps: PipelineDeps): () => void {
   let running = false;
   const timer = setInterval(() => {
     if (running) return;
     running = true;
-    void Promise.all([resumePurchases(deps), logDenials(deps)])
+    void Promise.all([resumePurchases(deps), logDenials(deps), closeExpiredCards(deps)])
       .then(
-        ([resumed, logged]) => {
-          if (resumed + logged > 0) deps.log.info({ resumed, logged }, "purchases resumed");
+        ([resumed, logged, closed]) => {
+          if (resumed + logged + closed > 0) {
+            deps.log.info({ resumed, logged, closed }, "purchases resumed");
+          }
         },
         (err: unknown) => deps.log.error({ err }, "purchase resume failed"),
       )

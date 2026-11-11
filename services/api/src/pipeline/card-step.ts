@@ -1,4 +1,14 @@
-import { and, type Db, eq, mandates, purchaseCards, purchases } from "@keelson/db";
+import {
+  and,
+  type Db,
+  eq,
+  inArray,
+  lt,
+  mandates,
+  purchaseCards,
+  purchases,
+  sql,
+} from "@keelson/db";
 import { decodeMandate, type Mandate } from "@keelson/mandate";
 import type { Logger } from "pino";
 import type { CardIssuer } from "../cards/issuer.ts";
@@ -127,4 +137,54 @@ export async function openCardStep(
     .set({ state: "OPEN" })
     .where(and(eq(purchaseCards.purchaseId, purchaseId), eq(purchaseCards.state, "PAUSED")));
   return done({ token: card.cardToken });
+}
+
+/**
+ * Closes the cards that were never used before their countersign expired and fails their
+ * purchases, so nothing can be authorized on them later. Returns how many it closed.
+ */
+export async function closeExpiredCards(deps: CardStepDeps): Promise<number> {
+  const { db } = deps;
+  const expired = await db
+    .select({ purchaseId: purchaseCards.purchaseId, token: purchaseCards.cardToken })
+    .from(purchaseCards)
+    .where(
+      and(
+        inArray(purchaseCards.state, ["PAUSED", "OPEN"]),
+        lt(purchaseCards.expiresAt, sql`now()`),
+      ),
+    )
+    .limit(20);
+  let closed = 0;
+  for (const card of expired) {
+    if (!deps.cardIssuer) break;
+    try {
+      await deps.cardIssuer.close(card.token);
+    } catch (err) {
+      deps.log.warn({ err, purchaseId: card.purchaseId }, "expired card not closed");
+      continue;
+    }
+    await db.transaction(async (tx) => {
+      await tx
+        .update(purchaseCards)
+        .set({ state: "CLOSED" })
+        .where(
+          and(
+            eq(purchaseCards.purchaseId, card.purchaseId),
+            inArray(purchaseCards.state, ["PAUSED", "OPEN"]),
+          ),
+        );
+      await tx
+        .update(purchases)
+        .set({ state: "FAILED", failureReason: "card:expired", updatedAt: sql`now()` })
+        .where(
+          and(
+            eq(purchases.id, card.purchaseId),
+            inArray(purchases.state, ["COUNTERSIGNED", "LOGGED", "COVERED"]),
+          ),
+        );
+    });
+    closed++;
+  }
+  return closed;
 }
