@@ -706,6 +706,7 @@ export const amberContradictionCourtAbi = [
     anonymous: false,
   },
   { type: "error", name: "AlreadyProven", inputs: [] },
+  { type: "error", name: "ConvictionWindowClosed", inputs: [] },
   { type: "error", name: "CountersignMismatch", inputs: [] },
   { type: "error", name: "InvalidCountersignature", inputs: [] },
   { type: "error", name: "InvalidProof", inputs: [] },
