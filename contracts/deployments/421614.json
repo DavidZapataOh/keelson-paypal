@@ -71,6 +71,8 @@
     "AnonymousMandateVerifier": "0x103CC9650C1f1d9568e5EdF45Cd1A3C0978BFc7C",
     "AnonymousMandateReferenceVerifier": "0x07639DbF0E01E4c134B51Dc6210968600b499c6B",
     "RegisteredUserSet": "0x1Ad48b9ff3A87Adec54855454c83029f66f2A0E5",
+    "AnonymousPurchaseVerifier": "0x18b2F0b2D235F69461989C0B7dB86efa91e6B77c",
+    "AnonymousPurchaseReferenceVerifier": "0x9e4AbD6603F21aB9d72De73c83eaa2E8b5CFfaA1",
     "AmberContradictionVerifier": "0x378b1DBdf260460c93DDec38F0245E95f36A2414",
     "AmberContradictionReferenceVerifier": "0x87F47494Fdc0F6e4f2f01Ab7c40538F5164EcA8A",
     "AmberContradictionCourt": "0x193984661a2be5da3725f1CF1bB436501eA744Bc"
@@ -99,6 +101,8 @@
     "AnonymousMandateVerifier": "0x",
     "AnonymousMandateReferenceVerifier": "0x",
     "RegisteredUserSet": "0x00000000000000000000000057c30a4a175978673bad2b2b2d3667966cd58314000000000000000000000000103cc9650c1f1d9568e5edf45cd1a3c0978bfc7c",
+    "AnonymousPurchaseVerifier": "0x",
+    "AnonymousPurchaseReferenceVerifier": "0x",
     "AmberContradictionVerifier": "0x",
     "AmberContradictionReferenceVerifier": "0x",
     "AmberContradictionCourt": "0x000000000000000000000000b39898ef4333f3cb32d1b420e744f5a1aa2ae2bf000000000000000000000000e16e8767ec1da59ef0d9bc7851637e4d22352d96000000000000000000000000378b1dbdf260460c93ddec38f0245e95f36a2414"

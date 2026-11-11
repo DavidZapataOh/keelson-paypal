@@ -1,4 +1,4 @@
-import { type Json, jcs, sha256, toHex } from "@keelson/core";
+import { type Cart, cartHash, type Json, jcs, sha256, toHex } from "@keelson/core";
 import {
   type Disclosure,
   type ItemType,
@@ -22,7 +22,8 @@ const mediaTypeOf = (type: string) =>
 
 /**
  * The public manifest builds the evidence root the countersignature binds, every disclosure opens
- * its item under that root, and the Channel3 observation is the disclosed item's content.
+ * its item under that root, and the cart and the Channel3 observation are the disclosed items'
+ * content; the cart is the one the countersign names.
  */
 export const evidence: CheckDef = {
   id: "evidence.manifest",
@@ -61,6 +62,27 @@ export const evidence: CheckDef = {
         "the disclosure does not open its item under the root",
         [at],
       );
+    }
+    const cart = input.cart;
+    if (cart !== undefined) {
+      const i = input.manifest.disclosures.findIndex((d) => d.type === "api.cart");
+      const d = input.manifest.disclosures[i];
+      expect(
+        d !== undefined &&
+          toHex(sha256(new TextEncoder().encode(jcs(cart as Json)))) === d.content_hash,
+        "the cart is not the disclosed item",
+        ["/cart", `/manifest/disclosures/${i}/content_hash`],
+      );
+      let hash: string | undefined;
+      try {
+        hash = toHex(cartHash(cart as unknown as Cart));
+      } catch {
+        hash = undefined;
+      }
+      expect(hash === input.tee.countersign.cartHash, "the cart is not the countersigned one", [
+        "/cart",
+        "/tee/countersign/cartHash",
+      ]);
     }
     const obs = input.channel3_observation;
     if (obs !== undefined) {

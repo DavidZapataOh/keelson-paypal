@@ -9,12 +9,18 @@ import { CertStore } from "@keelson/paypal";
 import { Render } from "@renderinc/sdk";
 import { identityToRecipient } from "age-encryption";
 import { pino } from "pino";
-import { createPublicClient, http } from "viem";
+import { createPublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { startAnchorWatcher } from "./alibi/anchors.ts";
 import { createApp } from "./app.ts";
 import { createAuth } from "./auth.ts";
-import { arbitrumSepoliaTransport } from "./chain/rpc.ts";
+import {
+  ARBITRUM_SEPOLIA_PUBLIC_RPC,
+  arbitrumSepoliaTransport,
+  POLLING_INTERVAL_MS,
+  rpcTransport,
+  startRpcReport,
+} from "./chain/rpc.ts";
 import { createChannel3 } from "./channel3/client.ts";
 import { operatorAgent, termsConsent } from "./compile-sources.ts";
 import { type RunDeps, runDispute } from "./disputes/run.ts";
@@ -36,7 +42,7 @@ import { createTee } from "./tee/config.ts";
 import { engineSource } from "./tee/engine-source.ts";
 import { startSignerRefresh } from "./tee/signers.ts";
 import { startStampWorker } from "./timestamps/worker.ts";
-import { composable, proveAnonymousPurchase } from "./zk/c1c3.ts";
+import { c1c3Prover } from "./zk/c1c3.ts";
 import { c3Prover } from "./zk/c3.ts";
 
 const FORCE_EXIT_MS = 10_000;
@@ -83,8 +89,12 @@ const chains = {
     client: createPublicClient({
       chain: arbitrumSepolia,
       transport: arbitrumSepoliaTransport(env.ARBITRUM_SEPOLIA_RPC_URL),
+      pollingInterval: POLLING_INTERVAL_MS,
     }),
-    logs: createPublicClient({ chain: arbitrumSepolia, transport: http() }),
+    logs: createPublicClient({
+      chain: arbitrumSepolia,
+      transport: rpcTransport([ARBITRUM_SEPOLIA_PUBLIC_RPC]),
+    }),
   },
 };
 const relayer = await relayerFromEnv(env, db, log);
@@ -147,20 +157,10 @@ const proveC3 = c3Prover(
   { db, kv, log, relayer },
   render && env.DISPUTE_WORKFLOW ? { render, slug: env.DISPUTE_WORKFLOW } : undefined,
 );
-// Composing takes about 2.8 GB: the workflow does it, only for a purchase with both recursive proofs.
-const proveC1C3 = async (purchaseId: string) => {
-  if (!(await composable(db, purchaseId))) return;
-  if (!render) {
-    await proveAnonymousPurchase({ db, log }, purchaseId);
-    return;
-  }
-  const run = await render.workflows.startTask(
-    `${env.DISPUTE_WORKFLOW}/proveAnonymousPurchase`,
-    [purchaseId],
-    { idempotencyKey: `proveAnonymousPurchase:${purchaseId}` },
-  );
-  log.info({ purchaseId, taskRunId: run.taskRunId }, "composition workflow started");
-};
+const proveC1C3 = c1c3Prover(
+  { db, log },
+  render && env.DISPUTE_WORKFLOW ? { render, slug: env.DISPUTE_WORKFLOW } : undefined,
+);
 const paypalEvents = startPayPalEventWorker({ db, kv, log, paypal, startDisputeWorkflow });
 const operators =
   env.KEELSON_OPERATOR_KEY && env.DEMO_AGENT_ID
@@ -179,6 +179,7 @@ const app = createApp({
   authenticate: authenticate(auth, env.BETTER_AUTH_URL),
   authBaseUrl: env.BETTER_AUTH_URL,
   demoAgentId: env.DEMO_AGENT_ID,
+  judgeInvite: env.JUDGE_INVITE_CODE,
   rateLimit: { trustProxy: process.env.RENDER === "true" },
   shutdown: shutdown.signal,
   stamps,
@@ -265,6 +266,8 @@ const anchors =
       })
     : undefined;
 
+const stopRpcReport = startRpcReport(log);
+
 const server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
   log.info({ port: info.port }, "listening");
 });
@@ -282,6 +285,7 @@ process.once("SIGTERM", () => {
   stopHolds();
   stopReconciler?.();
   stopValidations?.();
+  stopRpcReport();
   void closeServer(server, shutdown)
     .then(() => Promise.all([stamps.stop(), poller.stop(), paypalEvents.stop(), anchors?.stop()]))
     .then(() => Promise.all([pool.end(), kv.close()]))

@@ -8,7 +8,7 @@
 //   MANDATE_ID                                 optional: which of its active mandates; the newest by default
 //   STORE_URL (the demo store), KEELSON_API_URL, KERNEL_API_KEY, ANTHROPIC_API_KEY
 import Anthropic from "@anthropic-ai/sdk";
-import { parseMandate } from "@keelson/mandate";
+import { readOpenMandate } from "@keelson/mandate";
 import { runAgent } from "../src/agent.ts";
 import { checkout, quoteCart } from "../src/checkout.ts";
 import { agentKey, announceRun, apiClient, operatorMandates } from "../src/keelson.ts";
@@ -34,20 +34,7 @@ const held = listed.find((m) =>
 );
 if (!held?.authorizationId) throw new Error("no active mandate held as a whole for this operator");
 const openMandate = held.openMandate;
-// The mandate is the SD-JWT disclosure whose value is the `keelson.mandate.1` payload.
-const mandate = parseMandate(
-  openMandate
-    .split("~")
-    .slice(1)
-    .flatMap((d) => {
-      try {
-        const value = (JSON.parse(Buffer.from(d, "base64url").toString()) as unknown[]).at(-1);
-        return (value as { v?: string })?.v === "keelson.mandate.1" ? [value] : [];
-      } catch {
-        return [];
-      }
-    })[0],
-);
+const mandate = readOpenMandate(openMandate);
 const { privateKey } = await agentKey(env("KEELSON_AGENT_KEY"));
 const session = await openSession({ hosts });
 try {

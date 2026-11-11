@@ -1,6 +1,8 @@
-import { fromHex, type Json, jcs, sha256, toHex } from "@keelson/core";
+import { type Cart, fromHex, type Json, jcs, sha256, toHex } from "@keelson/core";
 import { hashKeelson, keelsonDomain, reportData } from "@keelson/core/eip712";
+import { decodeMandate } from "@keelson/mandate";
 import { getAddress, type Hex, keccak256, recoverAddress, stringToHex } from "viem";
+import { bindWebFact } from "../../web-fact.ts";
 import { type CheckDef, expect, pass } from "../check.ts";
 import { isBundle, UNDISCLOSED } from "./util.ts";
 
@@ -25,16 +27,22 @@ interface WebFactDocument {
 /**
  * The WebFact is the disclosed `tlsn.web_fact` item; its committed bytes and blinder open its
  * range commitment; it names the URL's host and target; and it is the EIP-712 `WebFact` signed by
- * the attested TDX signer whose binding its `attId` names.
+ * the attested TDX signer whose binding its `attId` names; and {@link bindWebFact} ties it to the
+ * store the mandate allows, the disclosed cart and the countersign's time. A WebFact the manifest
+ * holds but the Alibi leaves out is undisclosed, not absent.
  */
 export const webFact: CheckDef = {
   id: "evidence.web_fact",
   step: 0,
-  reads: ["/web_fact"],
+  reads: ["/web_fact", "/cart", "/mandate/payload_sd"],
   async run(input) {
     if (!isBundle(input)) return UNDISCLOSED;
     const doc = input.web_fact as unknown as WebFactDocument | undefined;
-    if (doc === undefined) return { status: "absent", reads: ["/web_fact"] };
+    if (doc === undefined) {
+      return input.manifest.public.items.some((x) => x.type === "tlsn.web_fact")
+        ? { status: "undisclosed", reads: ["/web_fact", "/manifest/public/items"] }
+        : { status: "absent", reads: ["/web_fact"] };
+    }
     const i = input.manifest.disclosures.findIndex((d) => d.type === "tlsn.web_fact");
     expect(
       toHex(sha256(new TextEncoder().encode(jcs(doc as unknown as Json)))) ===
@@ -93,6 +101,22 @@ export const webFact: CheckDef = {
       "/web_fact/web_fact/attId",
       "/tee/attestations",
     ]);
-    return pass({ url: doc.url });
+    const cart = input.cart as unknown as Cart | undefined;
+    expect(cart, "the WebFact is not tied to a disclosed cart", ["/web_fact", "/cart"]);
+    let website: string | undefined;
+    try {
+      const m = decodeMandate(input.mandate.payload_sd, input.mandate.disclosures);
+      const merchants = m.checkout.constraints.find((c) => c.type === "checkout.allowed_merchants");
+      website =
+        merchants?.type === "checkout.allowed_merchants"
+          ? merchants.allowed.find((x) => x.id === cart.merchant)?.website
+          : undefined;
+    } catch {
+      website = undefined;
+    }
+    const bound = bindWebFact(doc, cart, website, Number(input.tee.countersign.issuedAt));
+    if ("reason" in bound) expect(false, bound.reason, bound.reads);
+    const { line } = bound;
+    return pass({ url: doc.url, sku: line.sku });
   },
 };

@@ -37,3 +37,37 @@ export function measurementHex(id: string): `0x${string}` {
   if (!m) throw new TypeError(`malformed measurement id: ${id}`);
   return `0x${m[2]}`;
 }
+
+const BIT_PAYPAL = 31n;
+
+/**
+ * The reason, when leg A denied the cart on its read of the PayPal hold before any policy ran
+ * (`paypal.insufficient`, `paypal.payee`, …): such a trace has no context to replay or compare,
+ * its only error is that reason, and the countersignature sets the PayPal bit of its mask.
+ */
+export function paypalDenial(
+  trace: unknown,
+  c: { decision: string; failedFieldsMask: string },
+): string | undefined {
+  const t = trace as {
+    decision?: unknown;
+    context?: unknown;
+    fields?: unknown[];
+    fired?: unknown[];
+    errors?: unknown[];
+  };
+  const reason = t.errors?.[0];
+  const empty =
+    typeof t.context === "object" && t.context !== null && Object.keys(t.context).length === 0;
+  return t.decision === "deny" &&
+    c.decision === "2" &&
+    empty &&
+    t.fields?.length === 0 &&
+    t.fired?.length === 0 &&
+    t.errors?.length === 1 &&
+    typeof reason === "string" &&
+    reason.startsWith("paypal.") &&
+    ((BigInt(c.failedFieldsMask) >> BIT_PAYPAL) & 1n) === 1n
+    ? reason
+    : undefined;
+}

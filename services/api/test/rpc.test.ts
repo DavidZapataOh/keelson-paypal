@@ -7,16 +7,20 @@ import { chainTxs, eq } from "@keelson/db";
 import { createRelayer } from "@keelson/relayer";
 import { pino } from "pino";
 import { ulid } from "ulid";
-import { bytesToHex, createPublicClient, type PublicClient } from "viem";
+import { bytesToHex, createPublicClient, http, type PublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "vitest";
 import {
   ARBITRUM_SEPOLIA_PUBLIC_RPC,
   arbitrumSepoliaRpcUrls,
   arbitrumSepoliaTransport,
+  computeUnits,
+  counted,
+  rpcCalls,
   rpcTransport,
+  startRpcReport,
 } from "../src/chain/rpc.ts";
-import { releaseCoverages } from "../src/onchain/validations.ts";
+import { releasableLocks, releaseCoverages } from "../src/onchain/validations.ts";
 import { testDb, testKv } from "./setup.ts";
 
 const servers: Server[] = [];
@@ -121,6 +125,44 @@ describe("the coverage release sweep", { timeout: 60_000 }, () => {
     const primary = await endpoint(429, '{"error":"Monthly capacity limit exceeded"}');
     await expect(sweep(rpcTransport([primary.url]))).rejects.toThrow();
   });
+
+  test("reads the oldest locks not yet released first", async () => {
+    const tx = (k: string, fn: string, confirmedAt: Date) => ({
+      id: ulid(),
+      chainId: arbitrumSepolia.id,
+      key: k,
+      contract: "KeelsonBondVault",
+      function: fn,
+      sender: Buffer.alloc(20),
+      to: Buffer.alloc(20),
+      data: Buffer.alloc(0),
+      dataHash: Buffer.alloc(32),
+      status: "confirmed" as const,
+      confirmedAt,
+    });
+    const hour = 3_600_000;
+    const released = bytesToHex(randomBytes(32));
+    const active = bytesToHex(randomBytes(32));
+    const rows = [
+      tx(
+        `KeelsonBondVault.lockCoverage:${released}`,
+        "lockCoverage",
+        new Date(Date.now() - 3 * hour),
+      ),
+      tx(
+        `KeelsonBondVault.releaseCoverage:${released}`,
+        "releaseCoverage",
+        new Date(Date.now() - 2 * hour),
+      ),
+      tx(`KeelsonBondVault.lockCoverage:${active}`, "lockCoverage", new Date(Date.now() - hour)),
+    ];
+    await testDb.insert(chainTxs).values(rows);
+    try {
+      expect(await releasableLocks(testDb, 1)).toEqual([active]);
+    } finally {
+      for (const r of rows) await testDb.delete(chainTxs).where(eq(chainTxs.key, r.key));
+    }
+  });
 });
 
 test("every Arbitrum Sepolia transport goes through the shared fallback", () => {
@@ -165,4 +207,40 @@ test("every Arbitrum Sepolia transport goes through the shared fallback", () => 
   };
   for (const dir of dirs) walk(join(root, dir));
   expect(offenders).toEqual([]);
+});
+
+test("every request is counted by provider host and method, without the key", async () => {
+  const primary = await endpoint(200, blockNumber());
+  const host = new URL(primary.url).host;
+  const before = rpcCalls().find((c) => c.provider === host && c.method === "eth_blockNumber");
+  const c = client([primary.url]);
+  await c.getBlockNumber({ cacheTime: 0 });
+  await c.getBlockNumber({ cacheTime: 0 });
+  const after = rpcCalls().find((c) => c.provider === host && c.method === "eth_blockNumber");
+  expect((after?.calls ?? 0) - (before?.calls ?? 0)).toBe(2);
+  expect(JSON.stringify(rpcCalls())).not.toContain("secret-key");
+});
+
+test("the hourly report warns when a provider's monthly projection passes the budget", async () => {
+  const primary = await endpoint(200, blockNumber());
+  const lines: { level: string; obj: Record<string, unknown> }[] = [];
+  const log = {
+    info: (obj: Record<string, unknown>) => lines.push({ level: "info", obj }),
+    warn: (obj: Record<string, unknown>) => lines.push({ level: "warn", obj }),
+  } as unknown as Parameters<typeof startRpcReport>[0];
+  const stop = startRpcReport(log, { budget: 1_000, intervalMs: 100 });
+  try {
+    // Labeled as Alchemy, sent to the local endpoint.
+    const transport = counted("https://arb-sepolia.g.alchemy.com/", http(primary.url));
+    const alchemy = createPublicClient({ chain: arbitrumSepolia, transport });
+    await alchemy.getBlockNumber({ cacheTime: 0 });
+    await client([primary.url]).getBlockNumber({ cacheTime: 0 });
+    await new Promise((r) => setTimeout(r, 150));
+  } finally {
+    stop();
+  }
+  const warned = lines.filter((l) => l.level === "warn").map((l) => l.obj.provider);
+  // The public and local hosts have no compute-unit budget.
+  expect(warned).toEqual(["arb-sepolia.g.alchemy.com"]);
+  expect(computeUnits("eth_getLogs", 2)).toBe(120);
 });

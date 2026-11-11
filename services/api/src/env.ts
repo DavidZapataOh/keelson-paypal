@@ -39,6 +39,8 @@ const schema = z
       .custom<`0x${string}`>((v) => typeof v === "string" && /^0x[0-9a-fA-F]{64}$/.test(v))
       .optional(),
     DEMO_AGENT_ID: z.coerce.bigint().positive().optional(),
+    /** Lets a Judge Mode session past the daily cap; the app forwards it from `/judge/?invite=`. */
+    JUDGE_INVITE_CODE: z.string().min(32).optional(),
     /** Keelson's treasury key: it pays in PYUSD the verdicts the chain refuses although they hold. */
     KEELSON_TREASURY_KEY: z
       .custom<`0x${string}`>((v) => typeof v === "string" && /^0x[0-9a-fA-F]{64}$/.test(v))

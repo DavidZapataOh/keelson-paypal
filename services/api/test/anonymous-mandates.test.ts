@@ -6,7 +6,7 @@ import {
   verifyAnonymousPurchase,
   verifyC3,
 } from "@keelson/alibi/verify";
-import { mandates, operators, passkey, purchases, user, userSetRoots } from "@keelson/db";
+import { chainTxs, mandates, operators, passkey, purchases, user, userSetRoots } from "@keelson/db";
 import { hSd, mandateChallenge } from "@keelson/mandate";
 import { pino } from "pino";
 import { ulid } from "ulid";
@@ -14,8 +14,8 @@ import { beforeAll, describe, expect, test } from "vitest";
 import c1 from "../../../contracts/test/vectors/c1-anonymous-recursive.json" with { type: "json" };
 import vector from "../../../packages/mandate/test/vectors/c3.json" with { type: "json" };
 import { createApp } from "../src/app.ts";
-import { awaitingC3, composable, proveAnonymousPurchase } from "../src/zk/c1c3.ts";
-import { proveAnonymousMandate } from "../src/zk/c3.ts";
+import { awaitingC3, c1c3Prover, composable, proveAnonymousPurchase } from "../src/zk/c1c3.ts";
+import { proveAnonymousMandate, rootKey } from "../src/zk/c3.ts";
 import { testDb, testKv } from "./setup.ts";
 
 const log = pino({ level: "silent" });
@@ -199,16 +199,45 @@ describe("proveAnonymousPurchase", () => {
     expect(await composable(testDb, purchaseId)).toBe(false);
     expect(await awaitingC3(testDb, id)).not.toContain(purchaseId);
 
+    expect(
+      (
+        JSON.parse(await (await get(`/v1/anonymous-purchases/${purchaseId}`)).text()) as {
+          root_tx?: string;
+        }
+      ).root_tx,
+    ).toBeUndefined();
+    const rootTx = `0x${randomBytes(32).toString("hex")}`;
+    await testDb.insert(chainTxs).values({
+      id: ulid(),
+      chainId: 421614,
+      key: rootKey(root),
+      contract: "RegisteredUserSet",
+      function: "publish",
+      sender: Buffer.alloc(20),
+      to: Buffer.alloc(20),
+      data: Buffer.alloc(0),
+      dataHash: Buffer.alloc(32),
+      hash: Buffer.from(rootTx.slice(2), "hex"),
+      status: "confirmed",
+      confirmedAt: new Date(),
+    });
     const res = await get(`/v1/anonymous-purchases/${purchaseId}`);
     expect(res.status).toBe(200);
     const text = await res.text();
-    const body = JSON.parse(text) as Parameters<typeof verifyAnonymousPurchase>[0];
+    const body = JSON.parse(text) as Parameters<typeof verifyAnonymousPurchase>[0] & {
+      root_tx?: string;
+    };
+    expect(body.root_tx).toBe(rootTx);
     const registered = async (r: string) => (await get(`/v1/user-set/roots/${r}`)).status === 200;
     expect(await verifyAnonymousPurchase(body, countersign, registered)).toBe(true);
     const other = { ...countersign, amount: "8501" };
     expect(await verifyAnonymousPurchase(body, other, registered)).toBe(false);
     const { x, y } = vector.mandate.user.cred.jwk;
     for (const secret of [x, y, userId, vector.publicKey]) expect(text).not.toContain(secret);
+  });
+
+  test("starts no composition for a purchase without both recursive proofs", async () => {
+    await expect(c1c3Prover({ db: testDb, log })(ulid())).resolves.toBeUndefined();
   });
 
   test("composes nothing for a purchase whose C1 is of another mandate", async () => {
