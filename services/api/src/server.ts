@@ -203,6 +203,7 @@ const app = createApp({
   proveAnonymousPurchase: proveC1C3,
   ...(env.PAYPAL_WEBHOOK_ID ? { paypalWebhook: { webhookId: env.PAYPAL_WEBHOOK_ID, certs } } : {}),
   ...(cards ? { cards } : {}),
+  ...(startDisputeWorkflow ? { startDisputeWorkflow } : {}),
   ...(operators ? { operators } : {}),
   ...(relayer ? { relayer } : {}),
   ...(env.CHANNEL3_API_KEY ? { channel3: createChannel3(env.CHANNEL3_API_KEY) } : {}),

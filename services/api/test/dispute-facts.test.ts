@@ -2,7 +2,12 @@ import type { AlibiBundle } from "@keelson/alibi";
 import type { Dispute } from "@keelson/paypal";
 import { describe, expect, test } from "vitest";
 import { copy, fixtures } from "../../../packages/alibi/test/fixtures.ts";
-import { disputeFacts, type FactsInput, type PayPalReads } from "../src/disputes/facts.ts";
+import {
+  cardDisputeFacts,
+  disputeFacts,
+  type FactsInput,
+  type PayPalReads,
+} from "../src/disputes/facts.ts";
 
 const [fixture] = fixtures;
 if (!fixture) throw new Error("no Alibi fixture");
@@ -133,5 +138,77 @@ describe("disputeFacts", () => {
     expect(() => disputeFacts(input({ reads: reads({ dispute: dispute("FRAUD") }) }))).toThrow(
       /unknown dispute reason/,
     );
+  });
+});
+
+describe("cardDisputeFacts", () => {
+  const countersigned = BigInt(bundle.tee.countersign.amount);
+  const card = (approved: number) => ({
+    ...copy(bundle),
+    card: {
+      issuer: "lithic",
+      card_token: "card",
+      last_four: "4242",
+      ref_salt: `0x${"00".repeat(32)}`,
+      controls: {},
+      authorizations: Array.from({ length: approved }, (_, i) => ({
+        id: `a${i}`,
+        amount_minor: countersigned.toString(),
+        currency: "USD",
+        mcc: "5814",
+        merchant_name: "BLUE HARBOR COFFEE",
+        merchant_country: "US",
+        network_id: "HSC000000000117",
+        approved: true,
+        verdicts: [],
+      })),
+    },
+  });
+
+  test("a chargeback is judged under the dispute reason it stands for", () => {
+    for (const [reason, want] of [
+      ["not_received", "MERCHANDISE_OR_SERVICE_NOT_RECEIVED"],
+      ["not_as_described", "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED"],
+      ["unauthorized", "UNAUTHORISED"],
+    ] as const) {
+      const { facts } = cardDisputeFacts({
+        chargeback: { reason, recoveredMinor: 0n },
+        settledMinor: countersigned,
+        bundle: card(1),
+        verified: true,
+        sameCartCountersigned: false,
+      });
+      expect(facts.reason).toBe(want);
+      expect(facts.tracking_delivered).toBe(false);
+      expect(facts.duplicate_capture).toBe(false);
+      expect(facts.captured_eq_countersigned).toBe(true);
+      expect(facts.refund_recorded).toBe(false);
+    }
+    expect(() =>
+      cardDisputeFacts({
+        chargeback: { reason: "other", recoveredMinor: null },
+        settledMinor: countersigned,
+        bundle: card(1),
+        verified: true,
+        sameCartCountersigned: false,
+      }),
+    ).toThrow();
+  });
+
+  test("what the chargeback returned is the refund on record, and the settlement is compared", () => {
+    const { facts } = cardDisputeFacts({
+      chargeback: { reason: "not_received", recoveredMinor: 100n },
+      settledMinor: countersigned + 1n,
+      bundle: card(2),
+      verified: false,
+      sameCartCountersigned: true,
+    });
+    expect(facts).toMatchObject({
+      proof_valid: false,
+      refund_recorded: true,
+      captured_eq_countersigned: false,
+      duplicate_capture: true,
+      duplicate_countersig: true,
+    });
   });
 });
