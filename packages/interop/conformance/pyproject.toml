@@ -1,0 +1,11 @@
+[project]
+name = "keelson-interop-conformance"
+version = "0"
+description = "Checks Keelson's standards exports with the standards' own reference verifiers"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "ap2 @ git+https://github.com/google-agentic-commerce/AP2@e1ea56db72a6385bce3e5c1112b3a56ce60acb43",
+]
+
+[tool.uv]
+package = false

@@ -23,7 +23,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "vendor": "node scripts/vendor.ts",
-    "bindings": "node scripts/bindings-json.ts"
+    "bindings": "node scripts/bindings-json.ts",
+    "conformance": "node conformance/write-exports.ts && uv run --python 3.12 --project conformance python conformance/verify.py"
   },
   "dependencies": {
     "@keelson/alibi": "workspace:*",

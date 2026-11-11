@@ -74,13 +74,14 @@ export async function issueAp2Open(
   issuer: ExportSigner,
 ): Promise<{ checkout: string; payment: string }> {
   const m = f.mandate;
-  const c = ap2Constraints(m);
+  const c = ap2Constraints(f);
   const extra = {
     keelson: {
       ...keelsonClaim(f, ref, AP2_OPEN),
       l2: f.l2,
       user_auth: f.userAuth,
       constraints: c.keelsonOnly,
+      refined: c.refined,
     },
   };
   const common = { cnf: m.agent?.cnf, iat: m.iat, exp: m.exp };
@@ -234,7 +235,7 @@ async function receipts(
     {
       ...base,
       reference: receiptReference(closed.checkout),
-      ...(success && f.orderId ? { order_id: f.orderId } : {}),
+      ...(success ? { order_id: f.orderId ?? f.alibiId } : {}),
       ...(status === "Error" ? failure : {}),
       keelson: keelsonClaim(f, ref, AP2_CHECKOUT_RECEIPT),
     },
@@ -431,4 +432,166 @@ export async function verifyAp2(
   checks.push({ id: "nonce", ok: nonceOk });
   checks.push({ id: "receipt_reference", ok: references });
   return { format: "ap2", ok: checks.every((c) => c.ok), checks, ms: performance.now() - started };
+}
+
+/** The segments of a `~~`-joined chain, each with its trailing `~`. */
+const segmentsOf = (chain: string): string[] =>
+  chain.split("~~").map((s) => (s.endsWith("~") ? s : `${s}~`));
+
+/** One segment's canonical form and binding hashes, as AP2's SDK computes them. */
+export interface SegmentHashes {
+  compact: string;
+  issuerJwt: string;
+  disclosures: string[];
+  kbJwt: string | null;
+  sdAlg: string | null;
+  sdJwt: string;
+  canonical: string;
+  sdHash: string;
+  issuerJwtHash: string;
+  disclosureDigests: Record<string, string>;
+}
+
+/** The canonical form and hashes of every segment of a chain. */
+export function segmentHashes(chain: string): SegmentHashes[] {
+  return segmentsOf(chain).map((sdJwt) => {
+    const [issuerJwt, ...rest] = sdJwt.split("~");
+    const disclosures = rest.slice(0, -1);
+    const sdAlg = (jwtPayload(issuerJwt as string)._sd_alg as string | undefined) ?? null;
+    return {
+      compact: sdJwt,
+      issuerJwt: issuerJwt as string,
+      disclosures,
+      kbJwt: null,
+      sdAlg,
+      sdJwt,
+      canonical: sdJwt,
+      sdHash: b64uSha256(sdJwt),
+      issuerJwtHash: b64uSha256(issuerJwt as string),
+      disclosureDigests: Object.fromEntries(disclosures.map((d) => [d, b64uSha256(d)])),
+    };
+  });
+}
+
+const TERMINAL = new Set(["kb+sd-jwt", "kb-sd-jwt"]);
+const INTERMEDIATE = new Set(["kb+sd-jwt+kb", "kb-sd-jwt+kb"]);
+/** AP2's default clock skew (`MandateClient.verify`). */
+const SKEW_SECONDS = 300;
+
+/** The delegate payloads a segment discloses, each matched to a digest its issuer signed. */
+function disclosedDelegates(segment: string): Record<string, unknown>[] {
+  const [jwt, ...rest] = segment.split("~");
+  const signed = jwtPayload(jwt as string).delegate_payload;
+  if (!Array.isArray(signed)) throw new RangeError("missing delegate_payload");
+  const byDigest = new Map(
+    rest
+      .slice(0, -1)
+      .map((d) => [b64uSha256(d), JSON.parse(new TextDecoder().decode(base64UrlDecode(d)))]),
+  );
+  return signed.map((slot) => {
+    const digest = (slot as { "..."?: string })["..."];
+    const disclosure = digest === undefined ? undefined : byDigest.get(digest);
+    if (!Array.isArray(disclosure)) throw new RangeError("delegate payload not disclosed");
+    return disclosure.at(-1) as Record<string, unknown>;
+  });
+}
+
+async function verifyEs256(jws: string, jwk: object): Promise<Record<string, unknown>> {
+  const { alg } = decodeProtectedHeader(jws);
+  if (alg !== "ES256") throw new RangeError("alg is not ES256");
+  const { payload } = await compactVerify(jws, await importJWK(jwk as never, "ES256"));
+  return JSON.parse(new TextDecoder().decode(payload));
+}
+
+function inTime(p: Record<string, unknown>, now: number): void {
+  if (typeof p.exp === "number" && now > p.exp + SKEW_SECONDS) throw new RangeError("expired");
+  if (typeof p.iat === "number" && p.iat > now + SKEW_SECONDS)
+    throw new RangeError("issued in the future");
+}
+
+/**
+ * Walks a delegated SD-JWT chain as AP2's `MandateClient.verify` does: the root under `rootKey`,
+ * each hop under the previous hop's `cnf.jwk`, bound by exactly one of `sd_hash` and
+ * `issuer_jwt_hash`, the terminal hop to `expectedAud` and `expectedNonce`. Returns each hop's
+ * delegate payload; throws on any failure.
+ */
+export async function verifyAp2Chain(input: {
+  chain: string;
+  rootKey: JsonWebKey;
+  currentTimeUnix: number;
+  expectedAud: string;
+  expectedNonce: string;
+}): Promise<Record<string, unknown>[]> {
+  const segments = segmentsOf(input.chain);
+  const payloads: Record<string, unknown>[] = [];
+  let key: object = input.rootKey;
+  for (const [i, segment] of segments.entries()) {
+    const jwt = segment.split("~")[0] as string;
+    const signed = await verifyEs256(jwt, key);
+    inTime(signed, input.currentTimeUnix);
+    const [delegate] = disclosedDelegates(segment);
+    if (!delegate) throw new RangeError("no delegate payload");
+    inTime(delegate, input.currentTimeUnix);
+    if (i > 0) {
+      const typ = decodeProtectedHeader(jwt).typ ?? "";
+      const terminal = i === segments.length - 1;
+      if (!(terminal ? TERMINAL : INTERMEDIATE).has(typ)) throw new RangeError("unexpected typ");
+      const prev = segments[i - 1] as string;
+      const bySd = "sd_hash" in signed;
+      const byIssuer = "issuer_jwt_hash" in signed;
+      if (bySd === byIssuer) throw new RangeError("exactly one binding claim required");
+      if (bySd && signed.sd_hash !== b64uSha256(prev)) throw new RangeError("sd_hash mismatch");
+      if (byIssuer && signed.issuer_jwt_hash !== b64uSha256(prev.split("~")[0] as string)) {
+        throw new RangeError("issuer_jwt_hash mismatch");
+      }
+      if (typeof signed.iat !== "number") throw new RangeError("missing iat");
+      if (terminal) {
+        if ("cnf" in delegate) throw new RangeError("terminal hop carries cnf");
+        if (signed.aud !== input.expectedAud) throw new RangeError("aud mismatch");
+        if (signed.nonce !== input.expectedNonce) throw new RangeError("nonce mismatch");
+      }
+    }
+    if (i < segments.length - 1) {
+      const next = (delegate.cnf as { jwk?: object } | undefined)?.jwk;
+      if (!next) throw new RangeError("intermediate requires cnf");
+      key = next;
+    }
+    payloads.push(delegate);
+  }
+  return payloads;
+}
+
+const RECEIPT_REQUIRED = {
+  payment: ["status", "iss", "iat", "reference", "payment_id"],
+  checkout: ["status", "iss", "iat", "reference"],
+} as const;
+
+/**
+ * Verifies a signed AP2 receipt: ES256 under `issuerPublicKey`, the fields its schema requires
+ * (with the `Success` or `Error` branch) and a `reference` to the final segment of `mandateChain`.
+ */
+export async function verifyAp2Receipt(input: {
+  receiptJwt: string;
+  issuerPublicKey: JsonWebKey;
+  kind: "payment" | "checkout";
+  mandateChain: string;
+}): Promise<void> {
+  const p = await verifyEs256(input.receiptJwt, input.issuerPublicKey);
+  for (const k of RECEIPT_REQUIRED[input.kind]) {
+    if (!(k in p)) throw new RangeError(`receipt missing ${k}`);
+  }
+  if (p.status === "Error") {
+    if (!("error" in p) || !("error_description" in p)) throw new RangeError("Error without error");
+  } else if (p.status === "Success") {
+    if (
+      input.kind === "payment" &&
+      !("psp_confirmation_id" in p && "network_confirmation_id" in p)
+    ) {
+      throw new RangeError("Success without confirmation ids");
+    }
+  } else {
+    throw new RangeError("unknown status");
+  }
+  if (p.reference !== receiptReference(input.mandateChain))
+    throw new RangeError("reference mismatch");
 }

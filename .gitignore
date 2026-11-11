@@ -20,3 +20,5 @@ target/
 packages/compiler/eval/results-*.json
 engine/tee/out/
 /services/log/log
+packages/interop/conformance/out/
+packages/interop/conformance/.venv/

@@ -71,7 +71,48 @@ describe("AP2 v0.2 open mandates", () => {
       (openPayload(card.payment).keelson as { constraints: { type: string }[] }).constraints.map(
         (c) => c.type,
       ),
-    ).toEqual(["keelson.category", "payment.card_controls"]);
+    ).toEqual([
+      "checkout.allowed_merchants",
+      "checkout.line_items",
+      "keelson.category",
+      "payment.card_controls",
+    ]);
+  });
+
+  test("a wildcard merchant is no AP2 constraint; it rides verbatim in keelson.constraints", async () => {
+    const o = await open(ALLOW_CARD);
+    expect(delegate(o.checkout).constraints.map((c) => c.type)).toEqual(["checkout.line_items"]);
+    const keelson = openPayload(o.checkout).keelson as { constraints: { type: string }[] };
+    expect(keelson.constraints).toContainEqual(
+      expect.objectContaining({
+        type: "checkout.allowed_merchants",
+        allowed: [expect.objectContaining({ id: "*" })],
+      }),
+    );
+  });
+
+  test("a wildcard line the enclaves allowed is stated as the item they checked, and marked refined", async () => {
+    const o = await open(ALLOW_CARD);
+    expect(delegate(o.checkout).constraints).toEqual([
+      {
+        type: "checkout.line_items",
+        items: [
+          {
+            id: "l1",
+            acceptable_items: [{ id: "hsc-house-blend-12oz", title: "hsc-house-blend-12oz" }],
+            quantity: 1,
+          },
+        ],
+      },
+    ]);
+    const keelson = openPayload(o.checkout).keelson as {
+      refined: string[];
+      constraints: { type: string }[];
+    };
+    expect(keelson.refined).toEqual(["checkout.line_items"]);
+    expect(keelson.constraints).toContainEqual(
+      expect.objectContaining({ type: "checkout.line_items" }),
+    );
   });
 
   test("carries the statement and the passkey-signed mandate byte-identical", async () => {

@@ -38,17 +38,27 @@ const failed = async (issuer: ExportSigner, x: Ap2Export) =>
   (await ok(issuer, x)).checks.filter((c) => !c.ok).map((c) => c.id);
 
 describe("AP2 v0.2 closed mandates and receipts", () => {
-  test("validate against the official schemas", async () => {
-    const { x } = await exported(ALLOW_PAYPAL);
-    expect(errors(`${AP2}/checkout_mandate.json`, leaf(x.checkout.closed as string))).toEqual([]);
-    expect(errors(`${AP2}/payment_mandate.json`, leaf(x.payment.closed as string))).toEqual([]);
-    expect(errors(`${AP2}/types/checkout.json`, jwtPayload(x.checkout.checkout_jwt))).toEqual([]);
-    expect(
-      errors(`${AP2}/checkout_receipt.json`, jwtPayload(x.checkout.receipt as string)),
-    ).toEqual([]);
-    expect(errors(`${AP2}/payment_receipt.json`, jwtPayload(x.payment.receipt as string))).toEqual(
-      [],
-    );
+  test.each([ALLOW_PAYPAL, ALLOW_CARD, DENY_PAYPAL])(
+    "%s validates against the official schemas",
+    async (id) => {
+      const { x } = await exported(id);
+      expect(errors(`${AP2}/checkout_mandate.json`, leaf(x.checkout.closed as string))).toEqual([]);
+      expect(errors(`${AP2}/payment_mandate.json`, leaf(x.payment.closed as string))).toEqual([]);
+      expect(errors(`${AP2}/types/checkout.json`, jwtPayload(x.checkout.checkout_jwt))).toEqual([]);
+      expect(
+        errors(`${AP2}/checkout_receipt.json`, jwtPayload(x.checkout.receipt as string)),
+      ).toEqual([]);
+      expect(
+        errors(`${AP2}/payment_receipt.json`, jwtPayload(x.payment.receipt as string)),
+      ).toEqual([]);
+    },
+  );
+
+  test("a successful checkout receipt names its order, as AP2's SDK requires", async () => {
+    for (const id of [ALLOW_PAYPAL, ALLOW_CARD]) {
+      const { x } = await exported(id);
+      expect(jwtPayload(x.checkout.receipt as string).order_id).toBeTypeOf("string");
+    }
   });
 
   test("verify as a dispute bundle: chains, checkout hash and receipt references", async () => {

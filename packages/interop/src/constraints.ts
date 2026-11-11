@@ -1,5 +1,6 @@
 import { CURRENCIES, type CurrencyCode } from "@keelson/core";
-import type { Disclosed, Mandate } from "@keelson/mandate";
+import { ANY_ITEM, ANY_MERCHANT } from "@keelson/mandate";
+import type { PurchaseFacts } from "./facts.ts";
 
 type Constraint = Record<string, unknown> & { type: string };
 
@@ -13,6 +14,11 @@ export interface StandardConstraints {
    * not know, so these travel in the `keelson` claim instead.
    */
   keelsonOnly: Constraint[];
+  /**
+   * Constraint types stated more narrowly than the mandate: a wildcard line the enclaves allowed
+   * is stated as the items they checked. The mandate's own constraint rides in `keelsonOnly`.
+   */
+  refined: string[];
 }
 
 const merchantOf = (m: { id?: string; name?: string; website?: string | undefined }) => ({
@@ -21,26 +27,45 @@ const merchantOf = (m: { id?: string; name?: string; website?: string | undefine
   ...(m.website ? { website: m.website } : {}),
 });
 
-/** Maps the disclosed constraints of a mandate to AP2's constraint types. */
-export function ap2Constraints(m: Disclosed<Mandate>): StandardConstraints {
-  const out: StandardConstraints = { checkout: [], payment: [], keelsonOnly: [] };
+/**
+ * Maps the disclosed constraints of a purchase's mandate to AP2's constraint types. AP2 has no
+ * wildcard: a wildcard merchant is no AP2 constraint, and a wildcard line of an allowed purchase is
+ * stated as the items the enclaves checked against it.
+ */
+export function ap2Constraints(f: PurchaseFacts): StandardConstraints {
+  const m = f.mandate;
+  const out: StandardConstraints = { checkout: [], payment: [], keelsonOnly: [], refined: [] };
   const merchants: { id?: string; name?: string; website?: string; paypal_merchant_id?: string }[] =
     [];
   for (const c of m.checkout?.constraints ?? []) {
     if (!c?.type) continue;
     if (c.type === "checkout.allowed_merchants") {
+      if ((c.allowed ?? []).some((x) => x?.id === ANY_MERCHANT)) {
+        out.keelsonOnly.push(c as Constraint);
+        continue;
+      }
       const allowed = (c.allowed ?? []).filter((x) => x?.id && x.name);
       merchants.push(...(allowed as typeof merchants));
       out.checkout.push({ type: c.type, allowed: allowed.map((x) => merchantOf(x ?? {})) });
     } else if (c.type === "checkout.line_items") {
+      const items = c.items ?? [];
+      const wildcard = items.some((l) =>
+        (l?.acceptable_items ?? []).some((a) => a?.id === ANY_ITEM),
+      );
+      const checked = f.decision === "allow" && items.length === 1 && f.lines?.length;
+      if (wildcard) out.keelsonOnly.push(c as Constraint);
+      if (wildcard && checked) out.refined.push(c.type);
       out.checkout.push({
         type: c.type,
-        items: (c.items ?? []).map((line) => ({
+        items: items.map((line) => ({
           id: line?.id,
-          acceptable_items: (line?.acceptable_items ?? []).map((a) => ({
-            id: a?.id,
-            title: a?.title ?? a?.id,
-          })),
+          acceptable_items:
+            wildcard && checked
+              ? (f.lines ?? []).map((l) => ({ id: l.sku, title: l.title }))
+              : (line?.acceptable_items ?? []).map((a) => ({
+                  id: a?.id,
+                  title: a?.title ?? a?.id,
+                })),
           quantity: line?.quantity,
         })),
       });
