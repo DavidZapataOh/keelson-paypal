@@ -491,3 +491,81 @@ test("a blocked cart shows, field by field, what the mandate allowed against the
   expect(await lines.nth(1).innerText()).toMatch(/Mandate Running shoes[\s\S]*Cart not as signed/);
   await context.close();
 });
+
+test("a captured purchase shows its anonymous proof, read from the live API", async () => {
+  const context = await browser.newContext();
+  const now = new Date().toISOString();
+  const later = new Date(Date.now() + 86_400_000).toISOString();
+  // A sandbox purchase whose C1 and C3 proofs were composed; the session and mandate are local.
+  const [mandateId, purchaseId] = ["01M7MANDATE000000000000000", "01M73AGWP5EJSW35XE6Q090MCH"];
+  await context.route("https://api.keelson.finance/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    const json = (value: unknown) =>
+      route.fulfill({ contentType: "application/json", body: JSON.stringify(value) });
+    if (path.startsWith("/v1/anonymous-purchases/") || path.startsWith("/v1/user-set/roots/")) {
+      const live = await route.fetch();
+      return route.fulfill({
+        status: live.status(),
+        contentType: "application/json",
+        body: await live.text(),
+      });
+    }
+    if (path === "/api/auth/get-session") {
+      return json({
+        session: {
+          id: "s",
+          userId: "u",
+          token: "t",
+          expiresAt: later,
+          createdAt: now,
+          updatedAt: now,
+        },
+        user: {
+          id: "u",
+          name: "Buyer",
+          email: "b@example.test",
+          emailVerified: false,
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+    }
+    if (path === `/v1/mandates/${mandateId}`) {
+      return json({
+        id: mandateId,
+        state: "ACTIVE",
+        mandateHash: null,
+        budget: { currency: "USD", maxMinor: "10000", remainingMinor: "9900" },
+        expiresAt: later,
+        hold: null,
+        card: { rows: [], warnings: [] },
+        purchases: [
+          {
+            id: purchaseId,
+            merchantId: "runfast",
+            amount: { currency: "USD", minor: "100" },
+            createdAt: "2026-11-10T18:11:32Z",
+            state: "CAPTURED",
+            mode: "2of2",
+            logIndex: "783",
+            disputes: [],
+          },
+        ],
+        pendingHolds: [],
+      });
+    }
+    return route.abort("connectionrefused");
+  });
+  const page = await context.newPage();
+  await page.goto(`${base}/purchase/?mandate=${mandateId}&id=${purchaseId}`);
+  await page.locator("[data-anonymous-proof=proven]").waitFor();
+  await page.getByText("you are one of 125 users").waitFor();
+  expect(
+    await page.getByRole("link", { name: "Verify the anonymous proof" }).getAttribute("href"),
+  ).toBe(`https://verify.keelson.finance/a/${purchaseId}?proof=anonymous`);
+  const { violations } = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"])
+    .analyze();
+  expect(violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
+  await context.close();
+});

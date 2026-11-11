@@ -17,6 +17,7 @@ import { money, when } from "../lib/format";
 import { purchaseStatus } from "../lib/status";
 import type { Dispute, Purchase } from "../lib/types";
 import { useMandate } from "../lib/use-mandate";
+import { AnonymousProof } from "./anonymous-proof";
 import { ErrorNotice, Eyebrow } from "./notice";
 
 const PARTY = {
@@ -267,6 +268,7 @@ export function PurchasePage() {
           </p>
         )}
         {fileError ? <ErrorNotice>{fileError}</ErrorNotice> : null}
+        {sealed ? <AnonymousProof id={p.id} createdAt={p.createdAt} /> : null}
       </section>
     </div>
   );

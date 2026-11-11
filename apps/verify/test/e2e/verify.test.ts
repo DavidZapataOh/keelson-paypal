@@ -258,6 +258,34 @@ describe("the verifier in Chromium", () => {
     await page.close();
   });
 
+  test("a composed anonymous proof verifies in the page and on chain, bound to the receipt", async () => {
+    const page = await browser.newPage();
+    // Served from its own origin, the one the API lets read receipts and proofs.
+    await page.route(`${VERIFY_ORIGIN}/**`, async (route) => {
+      const url = new URL(route.request().url());
+      const response = await route.fetch({
+        url: new URL(`${url.pathname}${url.search}`, base).href,
+      });
+      await route.fulfill({ response });
+    });
+    const origins = new Set<string>();
+    page.on("request", (r) => origins.add(new URL(r.url()).origin));
+    const started = Date.now();
+    await page.goto(`${VERIFY_ORIGIN}/a/01M73AGWP5EJSW35XE6Q090MCH?proof=anonymous`);
+    await page.locator("[data-anonymous=pass]").waitFor({ timeout: 30_000 });
+    const elapsed = Date.now() - started;
+    const steps = page.locator("[data-anon-step] [data-status]");
+    expect(await steps.evaluateAll((els) => els.map((e) => e.getAttribute("data-status")))).toEqual(
+      ["pass", "pass", "pass", "pass"],
+    );
+    await page.getByText("125 registered users").first().waitFor();
+    await page.getByText("$1.00").waitFor();
+    expect(elapsed).toBeLessThan(15_000);
+    origins.delete(VERIFY_ORIGIN);
+    expect([...origins].every((o) => ALLOWED.has(o))).toBe(true);
+    await page.close();
+  });
+
   test("an http or javascript RPC is refused", async () => {
     for (const rpc of ["http://example.com", "javascript:alert(1)"]) {
       const page = await browser.newPage();

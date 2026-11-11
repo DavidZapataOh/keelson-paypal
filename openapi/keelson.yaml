@@ -2317,6 +2317,11 @@ components:
             checks the proof only: `public_inputs` must also be the
             countersign's and the root one `GET /v1/user-set/roots/{root}`
             lists."
+        root_tx:
+          type: string
+          pattern: ^0x[0-9a-f]{64}$
+          description: The Arbitrum Sepolia transaction that published `user_set_root` to
+            `RegisteredUserSet`, once it is confirmed.
       required:
         - user_set_root
         - proof
@@ -4318,6 +4323,22 @@ components:
             - created_at
             - card
             - purchases
+        anonymous_purchase:
+          type:
+            - object
+            - "null"
+          properties:
+            id:
+              type: string
+            alibi_fragment:
+              type:
+                - string
+                - "null"
+          required:
+            - id
+            - alibi_fragment
+          description: The newest test purchase whose C1 and C3 proofs are composed into
+            one anonymous proof, served at `GET /v1/anonymous-purchases/{id}`.
         dispute_id:
           type:
             - string
@@ -4330,6 +4351,7 @@ components:
         - merchant_id
         - agent_id
         - mandate
+        - anonymous_purchase
         - dispute_id
         - campaign_id
     JudgeTourPurchase:
