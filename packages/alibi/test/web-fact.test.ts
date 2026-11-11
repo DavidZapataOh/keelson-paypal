@@ -7,6 +7,7 @@ import { describe, expect, test } from "vitest";
 import demo from "../../mandate/test/fixtures/demo-mandate.json" with { type: "json" };
 import type { AlibiBundle } from "../src/schema.ts";
 import { webFact } from "../src/verify/checks/web-fact.ts";
+import { bindWebFact } from "../src/web-fact.ts";
 
 const account = privateKeyToAccount(`0x${"11".repeat(32)}`);
 const VERIFYING = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
@@ -235,5 +236,64 @@ describe("the store's product endpoint, notarized", () => {
 
   test("a document that is not the disclosed item fails", async () => {
     await expect(run(bundleWith(await signedDoc(), `0x${"ab".repeat(32)}`))).rejects.toThrow();
+  });
+});
+
+describe("a store's variant JSON, notarized", () => {
+  const STORE = "https://store.keelson.finance";
+  const PAGE = `${STORE}/api/products/tempo-3/variants/RF-TMP3-11`;
+  const runFast = {
+    merchant: "mrc_runfast",
+    currency: "USD",
+    lines: [
+      {
+        sku: "RF-TMP3-11",
+        size: "11",
+        color: "blue",
+        category: "gpt:187",
+        qty: 1,
+        unit_minor: 12900,
+      },
+    ],
+    return_days: 30,
+    returns_free: true,
+  };
+  const variant = (o: Record<string, unknown> = {}) =>
+    toHex(
+      new TextEncoder().encode(
+        JSON.stringify({
+          sku: "RF-TMP3-11",
+          size: "11",
+          color: "blue",
+          unit_minor: 12900,
+          returns_free: true,
+          ...o,
+        }),
+      ),
+    ).slice(2);
+  const doc = (committed: string, url = PAGE) => ({
+    url,
+    web_fact: { tCapture: ISSUED_AT - 30 },
+    committed,
+  });
+
+  test("the variant the cart's line names, at its price, binds to the line", () => {
+    expect(bindWebFact(doc(variant()), runFast, STORE, ISSUED_AT)).toEqual({
+      line: runFast.lines[0],
+    });
+  });
+
+  test.each([
+    ["another SKU than its URL names", doc(variant({ sku: "RF-TMP3-10" }))],
+    ["another price", doc(variant({ unit_minor: 9900 }))],
+    ["a price as text", doc(variant({ unit_minor: "12900" }))],
+    [
+      "a page of another store",
+      doc(variant(), "https://store.example/api/products/tempo-3/variants/RF-TMP3-11"),
+    ],
+    ["a query", doc(variant(), `${PAGE}?size=11`)],
+    ["a nested path", doc(variant(), `${STORE}/api/products/tempo-3/variants/RF-TMP3-11/x`)],
+  ])("a variant JSON of %s does not bind", (_, d) => {
+    expect(bindWebFact(d, runFast, STORE, ISSUED_AT)).toHaveProperty("reason");
   });
 });

@@ -1,7 +1,7 @@
 /** An agent's request for a mandate, as the approval page reads it. */
 export interface ConnectionView {
   code: string;
-  kind: "connect" | "once";
+  kind: "connect" | "once" | "change";
   state: "PENDING" | "APPROVED" | "DENIED" | "EXPIRED";
   name: string;
   reason: string;
@@ -18,9 +18,19 @@ export interface ConnectionView {
     merchants: { id: string; name: string }[];
     until: string;
   };
-  parent: { mandateId: string; perPurchaseMinor: string; remainingMinor: string } | null;
+  /** The mandate a `once` cart is outside of, or a `change` replaces. */
+  parent: {
+    mandateId: string;
+    perPurchaseMinor: string;
+    totalMinor: string;
+    remainingMinor: string;
+    until: string;
+  } | null;
   mandateId: string | null;
+  /** The three numbers to pick the agent's from, until the user did; null when none is needed. */
+  match: { options: number[]; matched: boolean } | null;
   expiresAt: string;
+  createdAt: string;
 }
 
 export interface AgentRow {
@@ -55,7 +65,7 @@ export interface PendingApproval {
 /** The prompt a user pastes into their agent to connect it to Keelson. */
 export const CONNECT_PROMPT = `Connect to Keelson so you can buy for me within limits I approve.
 Use Keelson's MCP server at https://api.keelson.finance/mcp with your operator's Keelson client credentials, then call keelson.request_mandate with your name, why you need to buy, and the limits you need.
-Show me the link and the code it returns, then wait with keelson.await_approval. Do not buy anything before I approve, and do not ask again if I decline.`;
+Show me the link and the two-digit number it returns, then poll keelson.get_request as its answer says. Do not buy anything before I approve, and do not ask again if I decline.`;
 
 /** "in 14 min", "in 2 h", "in 3 days" until `iso`. */
 export function untilIn(iso: string, now = Date.now()): string {

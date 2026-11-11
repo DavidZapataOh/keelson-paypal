@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { oauthProviderAuthServerMetadata } from "@better-auth/oauth-provider";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { createKeelsonServer } from "@keelson/mcp";
@@ -87,20 +88,27 @@ export function registerMcp(
     expectedResource: new URL(apiAudience),
   });
 
-  const handler = createMcpHandler(({ authInfo }) =>
-    createKeelsonServer({
-      keelson: {
-        request(path, init) {
-          const headers = new Headers(init.headers);
-          headers.set("authorization", `Bearer ${authInfo?.token}`);
-          return app.request(path, { ...init, headers });
+  // Every instance seals the state of a URL elicitation with the same key, for the next round.
+  const stateKey = auth.$context.then(({ secret }) =>
+    createHmac("sha256", secret).update("keelson.mcp.requestState").digest(),
+  );
+  const handler = stateKey.then((key) =>
+    createMcpHandler(({ authInfo }) =>
+      createKeelsonServer({
+        keelson: {
+          request(path, init) {
+            const headers = new Headers(init.headers);
+            headers.set("authorization", `Bearer ${authInfo?.token}`);
+            return app.request(path, { ...init, headers });
+          },
         },
-      },
-      appOrigin: deps.appOrigin ?? "https://app.keelson.finance",
-      storeOrigin: deps.storeOrigin ?? "https://store.keelson.finance",
-      agentId: deps.demoAgentId,
-      scoped: true,
-    }),
+        appOrigin: deps.appOrigin ?? "https://app.keelson.finance",
+        storeOrigin: deps.storeOrigin ?? "https://store.keelson.finance",
+        agentId: deps.demoAgentId,
+        scoped: true,
+        stateKey: key,
+      }),
+    ),
   );
 
   // The largest call, `keelson.submit_evidence`, is about 100 KB.
@@ -120,6 +128,6 @@ export function registerMcp(
     if (refused) return refused;
     const authInfo = await gate(req);
     if (authInfo instanceof Response) return authInfo;
-    return handler.fetch(req, { authInfo });
+    return (await handler).fetch(req, { authInfo });
   });
 }

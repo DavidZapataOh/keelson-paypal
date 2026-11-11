@@ -19,9 +19,10 @@ export default function Page() {
           <p>
             The agent works under a signed mandate at a store that accepts PayPal and does not
             integrate Keelson. Its click on the final PayPal payment waits for Keelson's
-            countersignature of the cart, and only on the store the mandate names. A cart that
-            breaks the mandate is blocked before that click and nothing is charged. Keelson does not
-            cover these purchases, and no dispute is ever opened against these stores.
+            countersignature of the checkout's total, tax and shipping included, and only on the
+            store the mandate names. A cart that breaks the mandate is blocked before that click and
+            nothing is charged. Keelson does not cover these purchases, and no dispute is ever
+            opened against these stores.
           </p>
         }
       />

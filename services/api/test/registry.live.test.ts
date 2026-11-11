@@ -87,6 +87,23 @@ describe.skipIf(!run)("on-chain signer registration", { timeout: 300_000 }, () =
     console.log(`leg b admitted on-chain in ${latency} ms (${txs.length} transactions)`);
   });
 
+  test("renews a signer once less than 24 h of its validity remain, and not before", async () => {
+    const { chain } = deps();
+    const { attestation, verified } = await fresh("b");
+    await ensureRegisteredOnChain(chain, attestation, verified);
+    const [, , expiresAt] = await signer(verified.signer);
+
+    const early = new Date((expiresAt - 25 * 3600) * 1000);
+    expect((await ensureRegisteredOnChain(chain, attestation, verified, early)).txs).toEqual([]);
+
+    const due = new Date((expiresAt - 23 * 3600) * 1000);
+    const renewed = await ensureRegisteredOnChain(chain, attestation, verified, due);
+    expect(renewed.txs.length).toBeGreaterThan(0);
+    const [, , after] = await signer(verified.signer);
+    expect(after).toBeGreaterThanOrEqual(expiresAt);
+    expect(renewed.expiresAt.getTime()).toBe(after * 1000);
+  });
+
   test("refuses a Nitro document bound to another signer", async () => {
     const { attestation } = await fresh("b");
     expect(

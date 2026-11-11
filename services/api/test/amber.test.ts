@@ -134,7 +134,25 @@ describe("amberOf", () => {
 let mandateId = "";
 let agentId = 0n;
 
-async function purchase(state = "COVERED", evidence?: { cart: unknown; product: unknown }) {
+/** The `tlsn.web_fact` item of the store's answer for the variant, as the agent seals it. */
+const notarized = (answer: Record<string, unknown> = {}, url = VARIANT) => ({
+  url,
+  committed: Buffer.from(
+    JSON.stringify({
+      sku: "RF-TMP3-11",
+      size: "11",
+      color: "blue",
+      unit_minor: 12_900,
+      returns_free: true,
+      ...answer,
+    }),
+  ).toString("hex"),
+});
+
+async function purchase(
+  state = "COVERED",
+  evidence?: { cart: unknown; product: unknown; webFact?: unknown },
+) {
   const id = ulid();
   const root = randomBytes(32);
   if (evidence) {
@@ -144,6 +162,7 @@ async function purchase(state = "COVERED", evidence?: { cart: unknown; product: 
     const items = [
       ["api.product", evidence.product],
       ["api.cart", evidence.cart],
+      ...(evidence.webFact ? [["tlsn.web_fact", evidence.webFact] as const] : []),
     ] as const;
     for (const [index, [type, value]] of items.entries()) {
       const bytes = Buffer.from(JSON.stringify(value));
@@ -197,7 +216,7 @@ beforeAll(async () => {
 
 describe("fixAmber", () => {
   test("commits to the evidence's cart once, and every later attempt signs the same", async () => {
-    const id = await purchase("COUNTERSIGNED", { cart, product });
+    const id = await purchase("COUNTERSIGNED", { cart, product, webFact: notarized() });
     const first = await fixAmber(testDb, id);
     expect(first).toMatchObject({
       url: VARIANT,
@@ -223,6 +242,17 @@ describe("fixAmber", () => {
     expect(await fixAmber(testDb, id, false)).toBeNull();
     const [row] = await testDb.select().from(purchases).where(eq(purchases.id, id));
     expect(row?.amber).toBeNull();
+  });
+
+  test.each([
+    ["no notarized answer", undefined],
+    ["an answer of another size", notarized({ size: "10" })],
+    ["an answer with another field", notarized({ stock: 3 })],
+    ["an answer of another page", notarized({}, VARIANT.replace("RF-TMP3-11", "RF-TMP3-10"))],
+    ["bytes that are not JSON", { url: VARIANT, committed: "7b" }],
+  ])("evidence with %s leaves the coverage without one", async (_, webFact) => {
+    const id = await purchase("COUNTERSIGNED", { cart, product, webFact });
+    expect(await fixAmber(testDb, id)).toBeNull();
   });
 
   test("a cart it cannot attest leaves the coverage without one", async () => {
@@ -284,6 +314,7 @@ function slashCall(coverageId: Hex, amber: Hex, fieldId: number, proof: Hex): He
       "0x",
       fact,
       "0x",
+      { document: "0x", salt: zeroHash, index: 0n, size: 1n, path: [], digestAt: 0n },
       fieldId,
       proof,
     ],
@@ -377,12 +408,13 @@ describe("amber in dispute data", () => {
 
   beforeAll(async () => {
     convicted = await purchase("SLASHED", {
-      // The agent read a red Tempo 3; the store's own answer says blue.
+      // A red Tempo 3 attested, which the court convicted from the store's answer, blue.
       cart: { ...cart, lines: [{ ...line, color: "red" }] },
       product: { ...product, color: "red" },
+      webFact: notarized({ color: "red" }),
     });
     await fixAmber(testDb, convicted);
-    attestedOnly = await purchase("COVERED", { cart, product });
+    attestedOnly = await purchase("COVERED", { cart, product, webFact: notarized() });
     await fixAmber(testDb, attestedOnly);
     await purchase("COVERED");
     await testDb.insert(disputes).values({

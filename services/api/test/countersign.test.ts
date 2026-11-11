@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { cartHash } from "@keelson/core";
+import { cartHash, checkoutTotal, type Json, jcs, toPayPalAmount } from "@keelson/core";
 import { eq, mandates, operators, purchases, user } from "@keelson/db";
 import { buildSdPayload, parseMandate } from "@keelson/mandate";
 import { pino } from "pino";
@@ -315,6 +315,53 @@ describe("countersigning the same cart again", { timeout: 120_000 }, () => {
       expect(row).toBeUndefined();
     }
     expect((await send({})).row?.liveStore).toBe(STORE);
+  });
+
+  test("the whole checkout total is countersigned, with its breakdown bound by the evidence", async () => {
+    const m = await heldMandate();
+    const taxed = toPayPalAmount(checkoutTotal("USD", { items: 9400, tax: 564, shipping: 500 }));
+    const withAmount = async (amount: unknown) =>
+      evidence.store(app, m.id, await evidence.capture(cart), agent, {
+        type: "api.checkout",
+        mediaType: "application/json",
+        bytes: new TextEncoder().encode(jcs(amount as Json)),
+        salt: randomBytes(32),
+      });
+
+    const missing = await countersign(m, { unit: { amount: taxed } });
+    expect(missing.res.status).toBe(422);
+    expect(missing.body.type).toMatch(/evidence-checkout-missing$/);
+    expect(missing.row).toBeUndefined();
+
+    const other = toPayPalAmount(checkoutTotal("USD", { items: 9400, tax: 100 }));
+    const differs = await countersign(m, {
+      unit: { amount: taxed },
+      evidenceRoot: await withAmount(other),
+    });
+    expect(differs.res.status).toBe(422);
+    expect(differs.body.type).toMatch(/evidence-checkout-mismatch$/);
+    expect(differs.row).toBeUndefined();
+
+    for (const amount of [
+      { ...taxed, value: "104.65" },
+      toPayPalAmount(checkoutTotal("USD", { items: 9300, tax: 664, shipping: 500 })),
+      {
+        ...taxed,
+        breakdown: { ...taxed.breakdown, handling: { currency_code: "USD", value: "0.00" } },
+      },
+      toPayPalAmount(checkoutTotal("EUR", { items: 9400, tax: 564 })),
+    ]) {
+      const bad = await countersign(m, { unit: { amount } });
+      expect(bad.res.status, JSON.stringify(amount)).toBe(422);
+      expect(bad.body.type).toMatch(/invalid-amount$/);
+      expect(bad.row).toBeUndefined();
+    }
+
+    const ok = await countersign(m, {
+      unit: { amount: taxed },
+      evidenceRoot: await withAmount(taxed),
+    });
+    expect(ok.row?.amountMinor).toBe(10_464n);
   });
 
   test("a mandate whose merchant Keelson cannot capture for countersigns only live purchases", async () => {
