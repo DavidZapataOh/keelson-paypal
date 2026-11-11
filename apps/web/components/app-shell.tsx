@@ -7,6 +7,8 @@ import type { ReactNode } from "react";
 import { authClient } from "../lib/auth";
 import { useSessionHint } from "./header";
 
+const PUBLIC = new Set(["/live/", "/scoreboard/"]);
+
 const NAV = [
   { href: "/", label: "Home", icon: Home },
   { href: "/new/", label: "New mandate", icon: Plus },
@@ -20,6 +22,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const path = usePathname();
   const session = useSessionHint();
   const name = session?.user.name || session?.user.email || "";
+  const nav = session ? NAV : NAV.filter((n) => PUBLIC.has(n.href));
   const active = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
 
   return (
@@ -30,7 +33,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <img src="/keelson.svg" alt="" width={94} height={28} className="h-7 w-auto" />
         </Link>
         <nav aria-label="Main" className="grid gap-0.5">
-          {NAV.map(({ href, label, icon: Icon }) => (
+          {nav.map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
               href={href}
@@ -46,7 +49,15 @@ export function AppShell({ children }: { children: ReactNode }) {
           <span className="w-fit rounded-md border px-2 py-1 font-mono text-[11px] text-muted-foreground">
             PayPal sandbox
           </span>
-          <div className="flex items-center gap-3">
+          {session ? null : (
+            <Link
+              href="/"
+              className="grid h-11 place-items-center rounded-xl bg-graphite font-medium text-bone text-sm"
+            >
+              Get started
+            </Link>
+          )}
+          <div className={session ? "flex items-center gap-3" : "hidden"}>
             <span className="grid size-8 shrink-0 place-items-center rounded-full bg-graphite font-medium text-bone text-xs uppercase">
               {name.slice(0, 1)}
             </span>
@@ -81,9 +92,10 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <nav
         aria-label="Main"
-        className="fixed inset-x-3 bottom-[max(12px,env(safe-area-inset-bottom))] z-30 grid grid-cols-5 rounded-2xl border bg-card/95 p-1.5 shadow-[0_18px_40px_-18px_rgb(23_24_27/0.4)] backdrop-blur-md lg:hidden"
+        style={{ gridTemplateColumns: `repeat(${nav.length}, minmax(0, 1fr))` }}
+        className="fixed inset-x-3 bottom-[max(12px,env(safe-area-inset-bottom))] z-30 grid rounded-2xl border bg-card/95 p-1.5 shadow-[0_18px_40px_-18px_rgb(23_24_27/0.4)] backdrop-blur-md lg:hidden"
       >
-        {NAV.map(({ href, label, icon: Icon }) => (
+        {nav.map(({ href, label, icon: Icon }) => (
           <Link
             key={href}
             href={href}

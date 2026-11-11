@@ -1,7 +1,6 @@
 "use client";
 
 import { Amount } from "@keelson/ui/components/amount";
-import { Button } from "@keelson/ui/components/button";
 import { Empty, EmptyDescription, EmptyHeader } from "@keelson/ui/components/empty";
 import { Meter } from "@keelson/ui/components/meter";
 import { Status } from "@keelson/ui/components/status";
@@ -12,12 +11,23 @@ import { post } from "../lib/api";
 import { money, when } from "../lib/format";
 import { mandateLabel, purchaseStatus } from "../lib/status";
 import { useMandate } from "../lib/use-mandate";
+import { AppShell } from "./app-shell";
+import { HoldButton } from "./hold-button";
 import { LiveView } from "./live-view";
 import { MandateCard } from "./mandate-card";
-import { ErrorNotice, Eyebrow } from "./notice";
+import { MandateVisual } from "./mandate-visual";
+import { ErrorNotice } from "./notice";
 import { PayPalHold } from "./paypal-hold";
 
 export function MandatePage() {
+  return (
+    <AppShell>
+      <MandateDetail />
+    </AppShell>
+  );
+}
+
+function MandateDetail() {
   const id = useSearchParams().get("id");
   const { mandate, error, pending, countersigned, liveView, reload, signedIn, sessionPending } =
     useMandate(id);
@@ -60,25 +70,55 @@ export function MandatePage() {
   };
 
   return (
-    <div className="grid gap-12">
-      <section className="grid gap-6" aria-labelledby="budget">
-        <Eyebrow>
-          Mandate {mandate.id.slice(-8)} · {mandateLabel(mandate.state)}
-        </Eyebrow>
-        <h1 id="budget" className="grid gap-1">
-          <Amount value={left} currency={budget.currency} className="text-amount" />
-          <span className="font-normal text-base text-muted-foreground">
-            your agent may still spend
-          </span>
-        </h1>
-        <Meter label="Spent" value={max - left} max={max} format={dollars} className="max-w-md" />
-        <p className="text-muted-foreground text-sm">Valid until {when(mandate.expiresAt)}</p>
+    <div className="grid gap-8">
+      <section
+        className="grid items-center gap-8 lg:grid-cols-[1fr_400px]"
+        aria-labelledby="budget"
+      >
+        <div className="grid gap-5">
+          <Link
+            href="/"
+            className="w-fit py-2 text-muted-foreground text-sm underline-offset-4 hover:underline"
+          >
+            ← Home
+          </Link>
+          <h1 id="budget" className="grid gap-1">
+            <span className="font-normal text-base text-muted-foreground">
+              {mandateLabel(mandate.state)} · your agent may still spend
+            </span>
+            <Amount value={left} currency={budget.currency} className="text-[3rem]" />
+          </h1>
+          <Meter label="Spent" value={max - left} max={max} format={dollars} className="max-w-md" />
+          <p className="text-muted-foreground text-sm">Valid until {when(mandate.expiresAt)}</p>
+        </div>
+        <MandateVisual
+          className="mx-auto max-w-[400px]"
+          amount={max}
+          currency={budget.currency}
+          amountLabel="Up to"
+          what={
+            mandate.card?.rows.find((r) => r.field === "items")?.values.join(", ") ??
+            mandate.card?.rows.find((r) => r.field === "summary")?.values[0] ??
+            ""
+          }
+          chips={(
+            mandate.card?.rows.find((r) => r.field === "merchant")?.values ?? ["Any store"]
+          ).map((m) => m.split(" (")[0] ?? m)}
+          until={new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(
+            new Date(mandate.expiresAt),
+          )}
+          state={mandateLabel(mandate.state)}
+          seal="closed"
+        />
       </section>
 
       {liveView && mandate.state === "ACTIVE" ? <LiveView url={liveView} /> : null}
 
       {needsHold ? (
-        <section className="grid max-w-xl gap-4 rounded-xl border p-6" aria-labelledby="hold">
+        <section
+          className="grid max-w-xl gap-4 rounded-3xl border bg-card p-6"
+          aria-labelledby="hold"
+        >
           <h2 id="hold" className="font-semibold text-xl">
             Approve the hold on PayPal
           </h2>
@@ -96,7 +136,7 @@ export function MandatePage() {
       ) : null}
 
       {pending.map((p) => (
-        <section key={p.requestId} className="grid max-w-xl gap-4 rounded-xl border p-6">
+        <section key={p.requestId} className="grid max-w-xl gap-4 rounded-3xl border bg-card p-6">
           <h2 className="font-semibold text-xl">
             Approve {money(p.amountMinor, budget.currency)} at {p.merchant}
           </h2>
@@ -138,7 +178,7 @@ export function MandatePage() {
             </EmptyHeader>
           </Empty>
         ) : (
-          <ul className="grid divide-y rounded-xl border">
+          <ul className="grid divide-y rounded-3xl border bg-card">
             {mandate.purchases.map((p) => (
               <li key={p.id}>
                 <Link
@@ -176,14 +216,19 @@ export function MandatePage() {
       ) : null}
 
       {open ? (
-        <section className="grid max-w-xl gap-3">
+        <section className="grid max-w-xl gap-3 rounded-3xl border bg-card p-6">
           <h2 className="font-semibold text-xl">Stop this mandate</h2>
           <p className="text-muted-foreground">
             Your agent can no longer buy with it, and PayPal releases what is still held.
           </p>
-          <Button variant="outline" onClick={revoke} disabled={revoking} className="w-fit">
-            {revoking ? "Revoking…" : "Revoke mandate"}
-          </Button>
+          <HoldButton
+            hint="Hold for a second to stop the mandate."
+            onConfirm={revoke}
+            disabled={revoking}
+            className="h-11 w-fit rounded-xl border px-5 font-medium text-sm"
+          >
+            {revoking ? "Stopping" : "Hold to stop"}
+          </HoldButton>
         </section>
       ) : null}
     </div>
