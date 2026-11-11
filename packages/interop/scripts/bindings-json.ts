@@ -5,7 +5,7 @@ import { EXPORT_BINDINGS } from "../src/bindings.ts";
 writeFileSync(
   new URL("../bindings.json", import.meta.url),
   `${JSON.stringify(
-    Object.entries(EXPORT_BINDINGS).map(([typ, rows]) => ({ typ, rows })),
+    Object.entries(EXPORT_BINDINGS).map(([profile, { typ, rows }]) => ({ profile, typ, rows })),
     null,
     2,
   )}\n`,

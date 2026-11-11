@@ -1,6 +1,7 @@
 [
   {
-    "typ": "keelson.export/1",
+    "profile": "keelson.export/1",
+    "typ": "JWT",
     "rows": []
   }
 ]

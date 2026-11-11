@@ -21,12 +21,19 @@ export interface BindingRow {
   transform: Transform;
 }
 
+/** What the issuer signs for one export profile: its JWS `typ` and the values it binds. */
+export interface Profile {
+  typ: string;
+  rows: BindingRow[];
+}
+
 /**
- * For each `typ` the issuer signs, the payload values that must equal a fact of the purchase's
- * logged statement. Every payload must also carry `keelson.statement` and `keelson.facts`.
+ * The export profiles the issuer signs, by `keelson.profile`: each payload's JWS `typ`, and the
+ * payload values that must equal a fact of the purchase's logged statement. Every payload also
+ * carries `keelson.statement` and `keelson.facts`.
  */
-export const EXPORT_BINDINGS: Record<string, BindingRow[]> = {
-  "keelson.export/1": [],
+export const EXPORT_BINDINGS: Record<string, Profile> = {
+  "keelson.export/1": { typ: "JWT", rows: [] },
 };
 
 /** Why an export payload cannot be signed. */
@@ -108,7 +115,7 @@ function same(a: unknown, b: unknown): boolean {
 }
 
 /**
- * Throws unless `payload` may be signed as `typ` for the purchase whose logged statement is
+ * Throws unless `payload` may be signed with JWS `typ` for the purchase whose logged statement is
  * `statement` with `facts`: the checks leg A runs before it signs an export.
  */
 export function checkBinding(
@@ -117,12 +124,14 @@ export function checkBinding(
   facts: StatementFacts,
   statement: string,
 ): void {
-  const rows = EXPORT_BINDINGS[typ];
-  if (!rows) throw new BindingError("export.typ", typ);
+  const profile = valueAt(payload, "/keelson/profile");
+  const entry = typeof profile === "string" ? EXPORT_BINDINGS[profile] : undefined;
+  if (!entry || entry.typ !== typ)
+    throw new BindingError("export.typ", `${String(profile)} as ${typ}`);
   if (valueAt(payload, "/keelson/statement") !== statement)
     throw new BindingError("export.statement");
   if (!same(valueAt(payload, "/keelson/facts"), facts)) throw new BindingError("export.facts");
-  for (const row of rows) {
+  for (const row of entry.rows) {
     if (!same(valueAt(payload, row.pointer), transform(row.transform, facts[row.fact], facts))) {
       throw new BindingError("export.binding", row.pointer);
     }

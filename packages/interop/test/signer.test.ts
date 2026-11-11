@@ -17,6 +17,7 @@ import { ALLOW_PAYPAL, alibi } from "./fixtures.ts";
 
 const facts = statementFacts(purchaseFacts(alibi(ALLOW_PAYPAL)));
 const statement = "0oRYI6MBJgRUAA";
+const keelson = { profile: "keelson.export/1", statement, facts };
 
 async function testIssuer() {
   const { privateKey } = await generateKeyPair("ES256", { extractable: true });
@@ -25,24 +26,22 @@ async function testIssuer() {
 
 test("the issuer signs a bound payload as a compact ES256 JWS under its thumbprint", async () => {
   const issuer = await testIssuer();
-  const jws = await issuer.sign("keelson.export/1", { keelson: { statement, facts } }, statement);
+  const jws = await issuer.sign("JWT", { keelson }, statement);
   const header = decodeProtectedHeader(jws);
   expect(header).toEqual({
     alg: "ES256",
-    typ: "keelson.export/1",
+    typ: "JWT",
     kid: await calculateJwkThumbprint(issuer.jwk),
   });
   expect(issuer.jwk.kid).toBe(header.kid);
   const { payload } = await jwtVerify(jws, createLocalJWKSet(jwks(issuer.jwk)));
-  expect(payload.keelson).toEqual({ statement, facts });
+  expect(payload.keelson).toEqual(keelson);
 });
 
 test("the issuer refuses a payload whose facts differ, as leg A does", async () => {
   const issuer = await testIssuer();
-  const bad = { keelson: { statement, facts: { ...facts, amount_minor: 1 } } };
-  await expect(issuer.sign("keelson.export/1", bad, statement)).rejects.toBeInstanceOf(
-    BindingError,
-  );
+  const bad = { keelson: { ...keelson, facts: { ...facts, amount_minor: 1 } } };
+  await expect(issuer.sign("JWT", bad, statement)).rejects.toBeInstanceOf(BindingError);
 });
 
 test("sd_hash matches RFC 9901's presentation example", () => {

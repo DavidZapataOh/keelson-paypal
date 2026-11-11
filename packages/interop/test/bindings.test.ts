@@ -35,27 +35,24 @@ describe("statementFacts", () => {
   });
 });
 
+const PROFILE = "keelson.export/1";
+const bound = (f = facts, st = statement) => ({
+  keelson: { profile: PROFILE, statement: st, facts: f },
+});
+
 describe("checkBinding", () => {
   test("accepts a payload that carries the statement and its facts", () => {
-    expect(
-      codeOf(() =>
-        checkBinding("keelson.export/1", { keelson: { statement, facts } }, facts, statement),
-      ),
-    ).toBeUndefined();
+    expect(codeOf(() => checkBinding("JWT", bound(), facts, statement))).toBeUndefined();
   });
 
   test("refuses a fact that differs from the statement's", () => {
-    const payload = { keelson: { statement, facts: { ...facts, amount_minor: 101 } } };
-    expect(codeOf(() => checkBinding("keelson.export/1", payload, facts, statement))).toBe(
-      "export.facts",
-    );
+    const payload = bound({ ...facts, amount_minor: 101 });
+    expect(codeOf(() => checkBinding("JWT", payload, facts, statement))).toBe("export.facts");
   });
 
   test("refuses a payload that names another statement", () => {
-    const payload = { keelson: { statement: "other", facts } };
-    expect(codeOf(() => checkBinding("keelson.export/1", payload, facts, statement))).toBe(
-      "export.statement",
-    );
+    const payload = bound(facts, "other");
+    expect(codeOf(() => checkBinding("JWT", payload, facts, statement))).toBe("export.statement");
   });
 
   test("refuses a typ the table does not know", () => {
@@ -85,5 +82,7 @@ describe("transforms", () => {
 
 test("bindings.json is the table, for the engine", () => {
   const json = JSON.parse(readFileSync(new URL("../bindings.json", import.meta.url), "utf8"));
-  expect(json).toEqual(Object.entries(EXPORT_BINDINGS).map(([typ, rows]) => ({ typ, rows })));
+  expect(json).toEqual(
+    Object.entries(EXPORT_BINDINGS).map(([profile, { typ, rows }]) => ({ profile, typ, rows })),
+  );
 });
