@@ -6,6 +6,11 @@ on:
   schedule:
     - cron: "23 * * * *"
   workflow_dispatch:
+    inputs:
+      mirror_outage:
+        description: Make the runner's Ubuntu mirror unreachable, to drill a runner outage
+        type: boolean
+        default: false
 
 concurrency:
   group: judge-journey
@@ -27,6 +32,9 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Drill an unreachable Ubuntu mirror
+        if: inputs.mirror_outage
+        run: echo "0.0.0.0 azure.archive.ubuntu.com" | sudo tee -a /etc/hosts
       - run: pnpm --filter @keelson/web exec playwright install --with-deps chromium
       - name: Walk the tour on app.keelson.finance
         env:
