@@ -75,6 +75,7 @@ jobs:
       # lockfile can differ from a clean build, and its verifying key with it.
       - name: Build the program and the prover
         run: |
+          rm -rf target/elf-compilation
           cargo clean --release -p keelson-engine-proof
           cargo build --release --locked -p keelson-engine-proof
       # The prover's dependencies take most of the build: keep them even when the program fails.

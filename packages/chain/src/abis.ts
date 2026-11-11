@@ -542,20 +542,6 @@ export const amberContradictionCourtAbi = [
   },
   {
     type: "function",
-    name: "FACT_LAG",
-    inputs: [],
-    outputs: [{ name: "", type: "uint40", internalType: "uint40" }],
-    stateMutability: "view",
-  },
-  {
-    type: "function",
-    name: "FACT_LEAD",
-    inputs: [],
-    outputs: [{ name: "", type: "uint40", internalType: "uint40" }],
-    stateMutability: "view",
-  },
-  {
-    type: "function",
     name: "RETURNS_FREE",
     inputs: [],
     outputs: [{ name: "", type: "uint8", internalType: "uint8" }],
@@ -573,6 +559,31 @@ export const amberContradictionCourtAbi = [
     name: "UNIT_PRICE",
     inputs: [],
     outputs: [{ name: "", type: "uint8", internalType: "uint8" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "convictions",
+    inputs: [{ name: "coverageId", type: "bytes32", internalType: "bytes32" }],
+    outputs: [
+      {
+        name: "",
+        type: "tuple",
+        internalType: "struct AmberContradictionCourt.Conviction",
+        components: [
+          { name: "fieldId", type: "uint8", internalType: "uint8" },
+          { name: "provenAt", type: "uint40", internalType: "uint40" },
+          { name: "webFactDigest", type: "bytes32", internalType: "bytes32" },
+        ],
+      },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "payableAt",
+    inputs: [{ name: "coverageId", type: "bytes32", internalType: "bytes32" }],
+    outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
     stateMutability: "view",
   },
   {
@@ -639,6 +650,19 @@ export const amberContradictionCourtAbi = [
         ],
       },
       { name: "factSig", type: "bytes", internalType: "bytes" },
+      {
+        name: "item",
+        type: "tuple",
+        internalType: "struct AmberContradictionCourt.EvidenceItem",
+        components: [
+          { name: "document", type: "bytes", internalType: "bytes" },
+          { name: "salt", type: "bytes32", internalType: "bytes32" },
+          { name: "index", type: "uint64", internalType: "uint64" },
+          { name: "size", type: "uint64", internalType: "uint64" },
+          { name: "path", type: "bytes32[]", internalType: "bytes32[]" },
+          { name: "digestAt", type: "uint256", internalType: "uint256" },
+        ],
+      },
       { name: "fieldId", type: "uint8", internalType: "uint8" },
       { name: "proof", type: "bytes", internalType: "bytes" },
     ],
@@ -682,6 +706,7 @@ export const amberContradictionCourtAbi = [
     anonymous: false,
   },
   { type: "error", name: "AlreadyProven", inputs: [] },
+  { type: "error", name: "ConvictionWindowClosed", inputs: [] },
   { type: "error", name: "CountersignMismatch", inputs: [] },
   { type: "error", name: "InvalidCountersignature", inputs: [] },
   { type: "error", name: "InvalidProof", inputs: [] },
@@ -696,8 +721,16 @@ export const amberContradictionCourtAbi = [
       { name: "value", type: "uint256", internalType: "uint256" },
     ],
   },
-  { type: "error", name: "StaleWebFact", inputs: [] },
+  {
+    type: "error",
+    name: "StringsInsufficientHexLength",
+    inputs: [
+      { name: "value", type: "uint256", internalType: "uint256" },
+      { name: "length", type: "uint256", internalType: "uint256" },
+    ],
+  },
   { type: "error", name: "UnknownField", inputs: [] },
+  { type: "error", name: "WebFactNotInEvidence", inputs: [] },
 ] as const;
 
 export const baseZKHonkVerifierAbi = [
@@ -998,6 +1031,26 @@ export const iAmberVaultAbi = [
           { name: "status", type: "uint8", internalType: "enum IKeelsonBondVault.Status" },
           { name: "degraded", type: "bool", internalType: "bool" },
           { name: "pendingSlashes", type: "uint8", internalType: "uint8" },
+        ],
+      },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "params",
+    inputs: [],
+    outputs: [
+      {
+        name: "",
+        type: "tuple",
+        internalType: "struct IKeelsonBondVault.Params",
+        components: [
+          { name: "disputeWindow", type: "uint40", internalType: "uint40" },
+          { name: "vetoWindow", type: "uint40", internalType: "uint40" },
+          { name: "grace", type: "uint40", internalType: "uint40" },
+          { name: "withdrawalDelay", type: "uint40", internalType: "uint40" },
+          { name: "instantSlashCap", type: "uint96", internalType: "uint96" },
         ],
       },
     ],
