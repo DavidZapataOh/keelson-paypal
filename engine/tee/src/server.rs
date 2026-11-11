@@ -530,7 +530,8 @@ async fn c1(
     }
 }
 
-/// Leg A's own reading of the request's authorization, made now and not retried.
+/// Leg A's own reading of the request's authorization, made now and not retried; none when the
+/// request names no authorization.
 #[cfg(feature = "tdx")]
 async fn read_paypal(
     state: &AppState,
@@ -544,10 +545,11 @@ async fn read_paypal(
     if (chain_id == 42_161) != client.is_live() {
         return Err(EngineError::BadRequest("chain_id").into());
     }
-    let id = request
-        .authorization_id
-        .as_deref()
-        .ok_or(EngineError::BadRequest("authorization_id"))?;
+    // A card mandate is paid with a single-use card, so its countersign names no PayPal
+    // authorization; the engine then refuses a PayPal mandate, which cannot skip its reading.
+    let Some(id) = request.authorization_id.as_deref() else {
+        return Ok(None);
+    };
     match crate::paypal::observe(client, id).await {
         Ok(read) => Ok(Some(read)),
         Err(e) => {
