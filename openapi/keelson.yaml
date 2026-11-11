@@ -400,6 +400,30 @@ components:
               - cart
           description: For a `DENIED` cart, each failed field with what the mandate
             allowed and what the cart had, as text.
+        checks:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              mandate:
+                type:
+                  - string
+                  - "null"
+              cart:
+                type:
+                  - string
+                  - "null"
+              pass:
+                type: boolean
+            required:
+              - field
+              - mandate
+              - cart
+              - pass
+          description: For a purchase the engine checked, each mandate field with what the
+            mandate allowed, what the cart had and whether it held.
         live:
           type: object
           properties:
@@ -1402,6 +1426,30 @@ components:
               - cart
           description: For a `DENIED` cart, each failed field with what the mandate
             allowed and what the cart had, as text.
+        checks:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              mandate:
+                type:
+                  - string
+                  - "null"
+              cart:
+                type:
+                  - string
+                  - "null"
+              pass:
+                type: boolean
+            required:
+              - field
+              - mandate
+              - cart
+              - pass
+          description: For a purchase the engine checked, each mandate field with what the
+            mandate allowed, what the cart had and whether it held.
         live:
           type: object
           properties:
@@ -1698,6 +1746,30 @@ components:
               - cart
           description: For a `DENIED` cart, each failed field with what the mandate
             allowed and what the cart had, as text.
+        checks:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              mandate:
+                type:
+                  - string
+                  - "null"
+              cart:
+                type:
+                  - string
+                  - "null"
+              pass:
+                type: boolean
+            required:
+              - field
+              - mandate
+              - cart
+              - pass
+          description: For a purchase the engine checked, each mandate field with what the
+            mandate allowed, what the cart had and whether it held.
         live:
           type: object
           properties:
