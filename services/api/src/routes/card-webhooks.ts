@@ -70,7 +70,7 @@ const CREDITS = new Set(["CREDIT_AUTHORIZATION", "FINANCIAL_CREDIT_AUTHORIZATION
  */
 export function registerCardWebhooks(
   app: OpenAPIHono,
-  deps: Pick<Deps, "db" | "kv" | "log" | "tee" | "cards" | "paypal">,
+  deps: Pick<Deps, "db" | "kv" | "log" | "tee" | "cards" | "paypal" | "startDisputeWorkflow">,
 ): void {
   const limit = bodyLimit({
     maxSize: 64 * 1024,
