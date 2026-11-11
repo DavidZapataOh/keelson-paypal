@@ -1,6 +1,6 @@
 import fc from "fast-check";
 import { describe, expect, test } from "vitest";
-import { minorDigits, pageLocale, readAmounts } from "../src/amounts.ts";
+import { minorDigits, pageLocale, readAmounts, readPage } from "../src/amounts.ts";
 
 /** Every language ICU formats numbers for, with the regions and numbering systems that change how. */
 function locales(): string[] {
@@ -156,5 +156,53 @@ describe("the page's locale", () => {
     expect(pageLocale("pt-BR", "https://x.example/?locale.x=en_US")).toBe("pt-BR");
     expect(pageLocale("", "https://www.alfred.com/cart")).toBeUndefined();
     expect(pageLocale("not a tag!", "https://x.example/")).toBeUndefined();
+    expect(pageLocale("en_US", "https://x.example/")).toBe("en-US");
+  });
+});
+
+describe("what the gate cannot read for sure, it reports as unsure", () => {
+  const unsure = (text: string, locales: string[], currency = "USD") =>
+    readPage(text, locales, currency).unsure;
+
+  test.each([
+    [
+      "a space-grouped total in a comma-grouped locale",
+      "Subtotal 15.00 USD\nTotal 1 015.00 USD",
+      "en",
+    ],
+    ["a space-grouped euro total", "1 015,00 €", "de"],
+    ["a dollar total grouped with a space", "$1 015.00", "en"],
+    ["another dollar's symbol", "Total A$12.00", "en"],
+    ["Canadian and Mexican dollars", "CA$12.00 · MX$12.00", "en"],
+    ["a dollar amount named in another code", "Total $12.00 AUD", "en"],
+    ["a number written another locale's way", "Total: 15.00 USD — 1.015,00 USD", "en"],
+    ["cents set apart on the next line", "Total $15\n99", "en"],
+  ])("%s", (_, text, locale) => {
+    expect(unsure(text, [locale])).toBeDefined();
+  });
+
+  test("the currency's own code next to a peso symbol is another currency for MXN", () => {
+    expect(unsure("Total $15.00 USD", ["es-MX"], "MXN")).toBeDefined();
+  });
+
+  test("USDC is not the code of USD", () => {
+    expect(readPage("Total $2.95 · USDC", ["es-CO"], "USD").minor).toEqual([]);
+  });
+
+  test("a clean page is sure, in each of its locales", () => {
+    expect(readPage("Subtotal US$2,95\nTotal 2,95 US$", ["es"], "USD")).toEqual({
+      locale: "es",
+      minor: [295, 295],
+    });
+    expect(readPage("Total ¥1,500", ["ja"], "JPY").minor).toEqual([1500]);
+    expect(readPage("Total ￥1,500", ["ja"], "JPY").minor).toEqual([1500]);
+  });
+
+  test("two locales the page names that read it differently are unsure", () => {
+    expect(readPage("Total US$1.234", ["en", "es"], "USD").unsure).toBeDefined();
+    expect(readPage("Total US$2,95", ["es", "es-ES"], "USD")).toEqual({
+      locale: "es",
+      minor: [295],
+    });
   });
 });

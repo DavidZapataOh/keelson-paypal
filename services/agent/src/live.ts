@@ -79,7 +79,10 @@ export async function quoteShopify(store: LiveStore, proposal: ProposedCart): Pr
     if (!variant.available || !offer.in_stock) {
       throw new CheckoutError("the proposed variant is not available");
     }
-    if (Math.round(offer.price * 100) !== variant.price) {
+    // Shopify's `.js` writes hundredths of the currency's unit; the cart counts its minor units.
+    const digits = minorDigits(offer.currency_code);
+    const unit = (variant.price * 10 ** digits) / 100;
+    if (!Number.isInteger(unit) || Math.round(offer.price * 10 ** digits) !== unit) {
       throw new CheckoutError("the store's product endpoints disagree on the price");
     }
     if (currency !== undefined && currency !== offer.currency_code) {
@@ -93,7 +96,7 @@ export async function quoteShopify(store: LiveStore, proposal: ProposedCart): Pr
       color: null,
       category: store.category,
       qty: line.qty,
-      unit_minor: variant.price,
+      unit_minor: unit,
     });
   }
   const cart: Cart = {
@@ -106,7 +109,11 @@ export async function quoteShopify(store: LiveStore, proposal: ProposedCart): Pr
   const minor = lines.reduce((sum, l) => sum + l.qty * l.unit_minor, 0);
   return {
     cart,
-    total: { currency: cart.currency, minor, display: (minor / 100).toFixed(2) },
+    total: {
+      currency: cart.currency,
+      minor,
+      display: (minor / 10 ** minorDigits(cart.currency)).toFixed(minorDigits(cart.currency)),
+    },
     products,
   };
 }
@@ -265,7 +272,10 @@ export async function runCheckout(o: {
     product_url: l.product_url,
     variant: l.size,
     qty: l.qty,
-    unit: ((o.quote.cart.lines[i]?.unit_minor ?? 0) / 100).toFixed(2),
+    unit: (
+      (o.quote.cart.lines[i]?.unit_minor ?? 0) /
+      10 ** minorDigits(o.quote.cart.currency)
+    ).toFixed(minorDigits(o.quote.cart.currency)),
   }));
   const messages: Anthropic.Beta.BetaMessageParam[] = [
     {

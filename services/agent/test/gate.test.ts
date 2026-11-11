@@ -209,7 +209,7 @@ describe("the pay-click gate", () => {
     gate.allow({ minor: 295, currency: "USD" });
     await open("/checkouts/cn/nolang");
     expect((await click({ type: "ref", ref: await ref("Pay now") })).is_error).toBe(true);
-    expect(gate.held).toEqual([{ locale: null, amounts: [] }]);
+    expect(gate.held).toEqual([{ locale: null, amounts: [], unsure: "no locale" }]);
   });
 
   test("the store's own cart must hold the countersigned total too", async () => {
@@ -220,7 +220,7 @@ describe("the pay-click gate", () => {
     gate.allow({ minor: 295, currency: "USD" });
     await open("/checkouts/cn/abc");
     expect((await click({ type: "ref", ref: await ref("Pay now") })).is_error).toBe(true);
-    expect(gate.held[0]?.cart).toBe("USD 590");
+    expect(gate.held[0]?.cart).toBe("USD 5.90");
     cart = { currency: "USD", minor: 295 };
     expect((await click({ type: "ref", ref: await ref("Pay now") })).is_error).toBeFalsy();
   });

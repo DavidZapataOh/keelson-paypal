@@ -1,6 +1,6 @@
 import { ToolError } from "@anthropic-ai/sdk/helpers/beta/toolsets";
 import type { Locator, Page } from "playwright";
-import { type Money, minorDigits, pageLocale, readAmounts } from "./amounts.ts";
+import { type Money, minorDigits, pageLocales, readPage } from "./amounts.ts";
 
 /** Names of the controls that commit a payment, on a store's checkout or on PayPal. */
 const PAY =
@@ -38,7 +38,12 @@ export class PayGate {
    * Each page where a pay action was held for its total: the locale it was read in and the
    * amounts it showed in the cart's currency. Nothing else of the page.
    */
-  readonly held: { locale: string | null; amounts: string[]; cart?: string }[] = [];
+  readonly held: {
+    locale: string | null;
+    amounts: string[];
+    unsure?: string;
+    cart?: string;
+  }[] = [];
 
   /**
    * `cart` reads the store's own cart (Shopify's `/cart.js`), the structured total a pay action
@@ -131,21 +136,26 @@ export class PayGate {
         text: document.body.innerText,
       }))
       .catch(() => ({ lang: "", text: "" }));
-    const locale = pageLocale(lang, page.url());
-    const minor = locale ? readAmounts(text, locale, total.currency).minor : [];
+    const read = readPage(text, pageLocales(lang, page.url()), total.currency);
     const cart = this.#cart ? await this.#cart().catch(() => undefined) : undefined;
-    const show = (m: number) =>
-      `${total.currency} ${(m / 10 ** minorDigits(total.currency)).toFixed(minorDigits(total.currency))}`;
+    const digits = minorDigits(total.currency);
+    const show = (m: number) => `${total.currency} ${(m / 10 ** digits).toFixed(digits)}`;
     const cartOk = !this.#cart || (cart?.currency === total.currency && cart.minor === total.minor);
-    if (!locale || !minor.includes(total.minor) || Math.max(...minor) > total.minor || !cartOk) {
+    if (
+      read.unsure !== undefined ||
+      !read.minor.includes(total.minor) ||
+      Math.max(...read.minor) > total.minor ||
+      !cartOk
+    ) {
       this.held.push({
-        locale: locale ?? null,
-        amounts: minor.map(show),
-        ...(this.#cart ? { cart: cart ? `${cart.currency} ${cart.minor}` : "unread" } : {}),
+        locale: read.locale || null,
+        amounts: read.minor.map(show),
+        ...(read.unsure ? { unsure: read.unsure } : {}),
+        ...(this.#cart ? { cart: cart ? show(cart.minor) : "unread" } : {}),
       });
       this.#refuse(
-        !locale
-          ? "this page names no locale its amounts can be read in. Paying waits."
+        read.unsure !== undefined
+          ? `this page's amounts cannot be read for sure (${read.unsure}). Paying waits.`
           : `Keelson countersigned ${show(total.minor)}; this page or the store's cart does not show it as the total. Pay only for the countersigned cart.`,
       );
     }
