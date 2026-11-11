@@ -16,8 +16,9 @@ import {stdJson} from "forge-std/StdJson.sol";
 /// a `WebFact` the live leg A signed as the notary of a real TLS session with the store (`test/vectors/c2b-live.json`),
 /// sealed into the purchase's evidence as the agent seals it (`test/vectors/c2b-live-evidence.json`), and a real C2b
 /// proof over that session's committed range; the deployed `ViolationBondPool` pays the merchant once the vault and the
-/// reserve can no longer pay the coverage. On a fork of Arbitrum Sepolia at the vector's block; the court is
-/// `AMBER_COURT` when set, else one deployed on the fork. No coverage on chain carries a false amber commitment, so the
+/// reserve can no longer pay the coverage. On a fork of Arbitrum Sepolia at the vector's block, or `AMBER_FORK_BLOCK`;
+/// the court is `AMBER_COURT` when set (the deployed one, at a block after its deployment), else one deployed on the
+/// fork. No coverage on chain carries a false amber commitment, so the
 /// purchase is locked on the fork: its countersign is signed by two fork-only keys written into the forked
 /// `VerdictVerifier` under the live legs' measurements, the passkey is a fresh P-256 key and the operator's key one the
 /// demo agent moves to.
@@ -129,7 +130,9 @@ contract AmberContradictionLiveForkTest is ForkTest {
 
     function _vector() internal returns (string memory v) {
         v = vm.readFile(string.concat(vm.projectRoot(), "/test/vectors/c2b-live.json"));
-        vm.createSelectFork(vm.envString("ARBITRUM_SEPOLIA_RPC_URL"), v.readUint(".forkBlock"));
+        vm.createSelectFork(
+            vm.envString("ARBITRUM_SEPOLIA_RPC_URL"), vm.envOr("AMBER_FORK_BLOCK", v.readUint(".forkBlock"))
+        );
     }
 
     /// @dev The registry's vault and pool, and the court at `AMBER_COURT` when set, else one deployed here over the
