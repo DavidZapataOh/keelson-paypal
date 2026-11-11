@@ -13,6 +13,7 @@ import {
 import type { CurrencyCode } from "@keelson/core";
 import {
   and,
+  chainTxs,
   type Db,
   disputes,
   eq,
@@ -38,6 +39,7 @@ import {
 import { EXTERNAL, type Relayer, RelayerError, type TxRecord } from "@keelson/relayer";
 import type { Logger } from "pino";
 import {
+  BaseError,
   decodeFunctionData,
   type Hex,
   hexToBytes,
@@ -45,10 +47,12 @@ import {
   type LocalAccount,
   type PublicClient,
   parseEventLogs,
+  toHex,
   zeroHash,
 } from "viem";
 import { settlementOf } from "../merchants.ts";
 import { call, type PayPalDeps } from "../paypal.ts";
+import { respondToDispute } from "./respond.ts";
 import { pyusdDomain, TREASURY_PAYS, treasuryCheck, treasuryTransfer } from "./treasury.ts";
 
 export interface SettleDeps {
@@ -62,11 +66,17 @@ export interface SettleDeps {
   chain: { client: PublicClient };
   /** Signs the treasury's PYUSD transfers; without it a verdict the chain refuses on the `pyusd` rail stays unpaid. */
   treasury?: LocalAccount | undefined;
+  /**
+   * Whether a transaction, recorded at `block`, is in a block final on the parent chain. A refund
+   * or payout that follows a chain payment waits for it: PayPal's money cannot come back if a
+   * reorg undoes the payment. Without it they follow at once.
+   */
+  finalized?: ((tx: { hash: Hex; block: bigint }) => Promise<boolean>) | undefined;
 }
 
 export type Settlement =
   | { status: "settled"; disputeId: string; outcome: "paid" | "claimable"; txHash: Hex | null }
-  | { status: "pending"; disputeId: string; waiting: "veto" | "payout" | "chain" }
+  | { status: "pending"; disputeId: string; waiting: "veto" | "payout" | "chain" | "finality" }
   | { status: "failed"; disputeId: string; failure: string }
   | { status: "none" | "unattributed"; disputeId: string };
 
@@ -167,6 +177,8 @@ export async function settleDispute(deps: SettleDeps, disputeId: string): Promis
     const moved = await onChain(deps, deps.relayer, row);
     row = (await load(deps.db, disputeId)) as Row;
     if (moved && row.outcome === "queued") {
+      if (await awaitingFinality(deps, row))
+        return { status: "pending", disputeId, waiting: "finality" };
       await refund(deps, row);
       return moved;
     }
@@ -176,6 +188,8 @@ export async function settleDispute(deps: SettleDeps, disputeId: string): Promis
     if (unpaid) return unpaid;
     row = (await load(deps.db, disputeId)) as Row;
   }
+  if (await awaitingFinality(deps, row))
+    return { status: "pending", disputeId, waiting: "finality" };
   await refund(deps, row);
 
   if (row.rail === "paypal" && row.outcome === "paid") {
@@ -199,6 +213,27 @@ export async function settleDispute(deps: SettleDeps, disputeId: string): Promis
   );
   const txHash = row.txHash ? (`0x${Buffer.from(row.txHash).toString("hex")}` as Hex) : null;
   return { status: "settled", disputeId, outcome: row.outcome as "paid" | "claimable", txHash };
+}
+
+/**
+ * Whether the chain call that moved the verdict's money is in a block not yet final. Arbitrum's
+ * `latest` is the sequencer's soft confirmation; `finalized` is its batch final on Ethereum.
+ * https://docs.arbitrum.io/how-arbitrum-works/reference/finality-and-reorgs
+ */
+async function awaitingFinality(deps: SettleDeps, row: Row): Promise<boolean> {
+  if (!deps.finalized || !row.txId || row.finalTxId === row.txId) return false;
+  const [tx] = await deps.db
+    .select({ hash: chainTxs.hash, block: chainTxs.blockNumber })
+    .from(chainTxs)
+    .where(eq(chainTxs.id, row.txId));
+  if (!tx?.hash || !tx.block) return true;
+  if (!(await deps.finalized({ hash: toHex(tx.hash), block: tx.block }))) return true;
+  await deps.db
+    .update(verdicts)
+    .set({ finalTxId: row.txId })
+    .where(and(eq(verdicts.id, row.id), eq(verdicts.txId, row.txId)));
+  row.finalTxId = row.txId;
+  return false;
 }
 
 async function load(db: Db, disputeId: string): Promise<Row | undefined> {
@@ -369,6 +404,10 @@ async function record(
     ? { status: "pending", disputeId: row.disputeId, waiting: "veto" }
     : undefined;
 }
+
+/** Only viem's short message: the full one carries the request URL, which embeds the provider's key. */
+const brief = (err: unknown) =>
+  err instanceof BaseError ? err.shortMessage : err instanceof Error ? err.message : String(err);
 
 /** Refusals of the pool that leave the verdict to the vault's slash. */
 const POOL_DECLINES = new Set([
@@ -877,9 +916,41 @@ export async function resumeSettlements(deps: SettleDeps): Promise<number> {
     )
     .orderBy(verdicts.createdAt)
     .limit(5);
+  // Apart too: settlements whose chain payment waits for its block to be final.
+  const unfinal = deps.finalized
+    ? await deps.db
+        .select({ disputeId: verdicts.disputeId })
+        .from(verdicts)
+        .where(
+          and(
+            inArray(verdicts.outcome, ["paid", "queued", "claimable"]),
+            sql`${verdicts.txId} is not null`,
+            sql`${verdicts.finalTxId} is distinct from ${verdicts.txId}`,
+            sql`${verdicts.createdAt} > now() - interval '1 day'`,
+          ),
+        )
+        .orderBy(verdicts.createdAt)
+        .limit(5)
+    : [];
+  for (const { disputeId } of unfinal) {
+    const settled = await settleDispute(deps, disputeId).catch((err: unknown) => {
+      deps.log.warn({ err: brief(err), disputeId }, "settlement retry failed");
+      return undefined;
+    });
+    // The run that met the gate did not answer PayPal; once past it, the answer follows.
+    if (
+      settled &&
+      !(settled.status === "pending" && settled.waiting === "finality") &&
+      deps.paypal
+    ) {
+      await respondToDispute({ db: deps.db, log: deps.log, paypal: deps.paypal }, disputeId).catch(
+        (err: unknown) => deps.log.warn({ err: brief(err), disputeId }, "dispute response failed"),
+      );
+    }
+  }
   for (const { disputeId } of waiting) {
     await settleDispute(deps, disputeId).catch((err: unknown) =>
-      deps.log.warn({ err, disputeId }, "settlement retry failed"),
+      deps.log.warn({ err: brief(err), disputeId }, "settlement retry failed"),
     );
   }
   for (const { disputeId } of owed) {

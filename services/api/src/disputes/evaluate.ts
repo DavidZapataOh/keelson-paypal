@@ -21,6 +21,7 @@ import { ulid } from "ulid";
 import type { Hex, PublicClient } from "viem";
 import { type AnchorDeps, reanchorAlibi, recordAnchor } from "../alibi/anchors.ts";
 import { loadAlibi } from "../alibi/issue.ts";
+import { catchUp } from "../chain/events.ts";
 import { arbitrumSepoliaRpcUrls } from "../chain/rpc.ts";
 import type { LogConfig } from "../log/append.ts";
 import { payeeFor, settlementOf } from "../merchants.ts";
@@ -130,12 +131,14 @@ export async function evaluateDispute(deps: EvaluateDeps, disputeId: string): Pr
     if ((await reanchorAlibi(anchorDeps, p.id)) === "not_covered") {
       const tx = await anchorNow(deps.tlog, chainId);
       if (tx) await recordAnchor(deps, chainId, tx);
-      // An anchor sent before this one reaches the scan of the chain's logs some blocks after its
-      // receipt; waiting here is cheaper than a retry.
+      // An anchor another process sent reaches the stored events with the subscription, a second
+      // or so after its block; without one, the blocks past the cursor are read every few seconds.
+      const logs = deps.chain.logs;
       const until = Date.now() + ANCHOR_VISIBLE_MS;
-      while ((await reanchorAlibi(anchorDeps, p.id)) === "not_covered") {
+      for (let i = 0; (await reanchorAlibi(anchorDeps, p.id)) === "not_covered"; i++) {
         if (Date.now() > until)
           throw new Error(`no anchor covers the leaf of purchase ${p.id} yet`);
+        if (!tx && logs && i % 5 === 0) await catchUp({ db: deps.db, logs, log: deps.log });
         await new Promise((r) => setTimeout(r, 1_000));
       }
     }

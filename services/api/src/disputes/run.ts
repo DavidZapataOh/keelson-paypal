@@ -44,6 +44,11 @@ export async function runDispute(
     const evaluation = await evaluateDispute(deps, disputeId);
     if (evaluation.status !== "attributed") return { evaluation };
     const settlement = await settleDispute(deps, disputeId);
+    // Answering now could accept the claim, a refund, before the chain payment is final; the
+    // settlement sweeper answers once it is.
+    if (settlement.status === "pending" && settlement.waiting === "finality") {
+      return { evaluation, settlement };
+    }
     return { evaluation, settlement, response: await respondToDispute(deps, disputeId) };
   } finally {
     await deps.kv.eval(RELEASE, { keys: [key], arguments: [token] });

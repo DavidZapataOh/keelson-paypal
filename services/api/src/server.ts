@@ -11,16 +11,11 @@ import { identityToRecipient } from "age-encryption";
 import { pino } from "pino";
 import { createPublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
-import { startAnchorWatcher } from "./alibi/anchors.ts";
+import { anchorCovered } from "./alibi/anchors.ts";
 import { createApp } from "./app.ts";
 import { createAuth } from "./auth.ts";
-import {
-  ARBITRUM_SEPOLIA_PUBLIC_RPC,
-  arbitrumSepoliaTransport,
-  POLLING_INTERVAL_MS,
-  rpcTransport,
-  startRpcReport,
-} from "./chain/rpc.ts";
+import { followChainEvents, isFinal, wssUrl } from "./chain/events.ts";
+import { arbitrumSepoliaTransport, POLLING_INTERVAL_MS, startRpcReport } from "./chain/rpc.ts";
 import { createChannel3 } from "./channel3/client.ts";
 import { operatorAgent, termsConsent } from "./compile-sources.ts";
 import { type RunDeps, runDispute } from "./disputes/run.ts";
@@ -31,7 +26,7 @@ import { createKv } from "./kv.ts";
 import { createLogger } from "./logger.ts";
 import { authenticate } from "./middleware/auth.ts";
 import { relayerFromEnv } from "./onchain/relayer.ts";
-import { startValidationSweeper } from "./onchain/validations.ts";
+import { recordOutcomes, startValidationSweeper } from "./onchain/validations.ts";
 import { operatorSigners } from "./operators/signer.ts";
 import { startPayPalPoller } from "./paypal/poll.ts";
 import { startPayPalEventWorker } from "./paypal/worker.ts";
@@ -83,7 +78,8 @@ const stamps = startStampWorker(
     },
   },
 );
-// The chain's public RPC serves `eth_getLogs` over ranges that provider free tiers refuse.
+// Reads and receipts go to the configured provider; `eth_getLogs` and the reconciler to dRPC, with
+// the chain's public RPC behind it, so the provider's quota stays for writes and the subscription.
 const chains = {
   [arbitrumSepolia.id]: {
     client: createPublicClient({
@@ -93,7 +89,7 @@ const chains = {
     }),
     logs: createPublicClient({
       chain: arbitrumSepolia,
-      transport: rpcTransport([ARBITRUM_SEPOLIA_PUBLIC_RPC]),
+      transport: arbitrumSepoliaTransport(env.DRPC_ARBITRUM_SEPOLIA_URL),
     }),
   },
 };
@@ -128,6 +124,7 @@ const disputeRun: RunDeps | undefined =
         tlog: { url: env.LOG_URL, token: env.LOG_WRITE_TOKEN },
         relayer,
         treasury,
+        finalized: isFinal(db, chains[arbitrumSepolia.id].logs),
         anthropic: env.ANTHROPIC_API_KEY
           ? new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
           : undefined,
@@ -233,16 +230,10 @@ const stopResumer = startPipelineResumer({
 const stopHolds = startHoldMaintenance({ db, kv, log, paypal });
 const poller = startPayPalPoller({ db, kv, log, paypal, paypalEvents, startDisputeWorkflow });
 const stopReconciler = relayer?.startReconciler();
-const stopValidations = relayer
-  ? startValidationSweeper({
-      db,
-      kv,
-      log,
-      relayer,
-      operators,
-      chain: chains[arbitrumSepolia.id],
-    })
+const sweeperDeps = relayer
+  ? { db, log, relayer, operators, chain: chains[arbitrumSepolia.id] }
   : undefined;
+const stopValidations = sweeperDeps ? startValidationSweeper(sweeperDeps) : undefined;
 
 const stopSettlements = relayer
   ? startSettlementSweeper({
@@ -252,19 +243,30 @@ const stopSettlements = relayer
       relayer,
       treasury,
       chain: chains[arbitrumSepolia.id],
+      finalized: isFinal(db, chains[arbitrumSepolia.id].logs),
     })
   : undefined;
 
-const anchors =
-  env.LOG_URL && env.LOG_WRITE_TOKEN && chains[arbitrumSepolia.id]
-    ? startAnchorWatcher({
+const anchorDeps =
+  env.LOG_URL && env.LOG_WRITE_TOKEN
+    ? {
         db,
-        kv,
         log,
         chain: chains[arbitrumSepolia.id],
         tlog: { url: env.LOG_URL, token: env.LOG_WRITE_TOKEN },
-      })
+      }
     : undefined;
+const chainEvents = followChainEvents({
+  db,
+  kv,
+  log,
+  logs: chains[arbitrumSepolia.id].logs,
+  wss: wssUrl(env),
+  async handle() {
+    if (sweeperDeps) await recordOutcomes(sweeperDeps);
+    if (anchorDeps) await anchorCovered(anchorDeps);
+  },
+});
 
 const stopRpcReport = startRpcReport(log);
 
@@ -287,7 +289,9 @@ process.once("SIGTERM", () => {
   stopValidations?.();
   stopRpcReport();
   void closeServer(server, shutdown)
-    .then(() => Promise.all([stamps.stop(), poller.stop(), paypalEvents.stop(), anchors?.stop()]))
+    .then(() =>
+      Promise.all([stamps.stop(), poller.stop(), paypalEvents.stop(), chainEvents.stop()]),
+    )
     .then(() => Promise.all([pool.end(), kv.close()]))
     .then(
       () => 0,
