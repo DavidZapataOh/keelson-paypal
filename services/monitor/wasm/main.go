@@ -149,18 +149,33 @@ func verifyInclusion(args []js.Value) (any, error) {
 	return true, nil
 }
 
-// parseLeaf(bytes) checks the leaf's format and returns its mode and hash.
+// parseLeaf(bytes) checks the leaf's format and returns what it states and its hash: an
+// Alibi's mode, or the mandates a stop ends.
 func parseLeaf(args []js.Value) (any, error) {
 	leaf, err := base64.StdEncoding.DecodeString(args[0].String())
 	if err != nil {
 		return nil, err
 	}
+	h := alibilog.LeafHash(leaf)
+	if alibilog.IsStop(leaf) {
+		s, err := alibilog.ParseStop(leaf)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{
+			"kind":         "stop",
+			"stopId":       s.StopID,
+			"mandateCount": s.MandateCount,
+			"issuedAt":     s.IssuedAt.UTC().Format("2006-01-02T15:04:05Z"),
+			"leafHash":     b64(h[:]),
+		}, nil
+	}
 	l, err := alibilog.Parse(leaf)
 	if err != nil {
 		return nil, err
 	}
-	h := alibilog.LeafHash(leaf)
 	return map[string]any{
+		"kind":     "alibi",
 		"alibiId":  l.AlibiID,
 		"mode":     l.Mode,
 		"issuedAt": l.IssuedAt.UTC().Format("2006-01-02T15:04:05Z"),

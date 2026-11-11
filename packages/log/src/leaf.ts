@@ -111,6 +111,44 @@ export function leafBytes(f: LeafFields): Uint8Array {
   return leaf;
 }
 
+/** The domain prefix of a stop leaf: a user stopped every agent at once. */
+export const STOP_PREFIX = "keelson.finance/stop/v1\n";
+/** The most mandates one stop names. */
+export const MAX_STOP_MANDATES = 10_000;
+
+/**
+ * What a stop leaf commits to: SHA-256 of the stopped mandates' 32-byte hashes, sorted bytewise
+ * and concatenated, repeats dropped.
+ */
+export function mandatesDigest(mandateHashes: readonly Uint8Array[]): Uint8Array {
+  const unique = [...new Set(mandateHashes.map((h) => bytesToHex(h)))].sort();
+  return sha256(hexToBytes(unique.join("")));
+}
+
+/**
+ * A stop leaf: from its index on, no Alibi leaf may carry one of the mandate hashes it commits
+ * to. `issuedAt` is unix seconds.
+ */
+export function stopLeafBytes(f: {
+  stopId: string;
+  issuedAt: number;
+  mandateHashes: readonly Uint8Array[];
+}): Uint8Array {
+  if (!/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/.test(f.stopId)) throw new TypeError("stopId is not a ULID");
+  if (f.mandateHashes.some((h) => h.length !== 32))
+    throw new TypeError("a mandate hash is not 32 bytes");
+  const count = new Set(f.mandateHashes.map((h) => bytesToHex(h))).size;
+  if (count > MAX_STOP_MANDATES)
+    throw new RangeError(`a stop names at most ${MAX_STOP_MANDATES} mandates`);
+  const body = {
+    issued_at: rfc3339(f.issuedAt),
+    mandate_count: count,
+    mandates_digest: base64url(mandatesDigest(f.mandateHashes)),
+    stop_id: f.stopId,
+  };
+  return encoder.encode(STOP_PREFIX + jcs(body));
+}
+
 /** The RFC 6962 leaf hash, `SHA-256(0x00 ‖ leaf)`. */
 export function leafHash(leaf: Uint8Array): Uint8Array {
   const input = new Uint8Array(leaf.length + 1);

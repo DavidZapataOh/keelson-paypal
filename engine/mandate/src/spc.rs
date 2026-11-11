@@ -5,6 +5,9 @@ use crate::Error;
 
 /// The WebAuthn RP ID every passkey is scoped to.
 pub const RP_ID: &str = "keelson.finance";
+/// The origin of the approval page agent platforms frame. A passkey assertion made in it is
+/// cross-origin, and its mandate names the top-level page in `embed.top_origin`.
+pub const EMBED_ORIGIN: &str = "https://api.keelson.finance";
 /// The Secure Payment Confirmation payee name.
 pub const SPC_PAYEE_NAME: &str = "Keelson";
 /// The SPC payee origin: Keelson at its RP ID domain.

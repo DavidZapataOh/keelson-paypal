@@ -1,5 +1,5 @@
 {
-  "id": "7daba89b-db3c-48e2-8e75-57d3ad59652e",
+  "id": "2de0142e-e838-49de-8077-d6aad1287396",
   "prevId": "73d4b31f-3fe5-4430-8f04-d44a9cb4296d",
   "version": "7",
   "dialect": "postgresql",
@@ -2088,419 +2088,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.card_authorizations": {
-      "name": "card_authorizations",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "transaction_token": {
-          "name": "transaction_token",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "purchase_id": {
-          "name": "purchase_id",
-          "type": "char(26)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "amount_minor": {
-          "name": "amount_minor",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "currency": {
-          "name": "currency",
-          "type": "char(3)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "mcc": {
-          "name": "mcc",
-          "type": "char(4)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "merchant_name": {
-          "name": "merchant_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "merchant_country": {
-          "name": "merchant_country",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "network_id": {
-          "name": "network_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "approved": {
-          "name": "approved",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "failed_mask": {
-          "name": "failed_mask",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "tdx": {
-          "name": "tdx",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "nitro": {
-          "name": "nitro",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "latency_ms": {
-          "name": "latency_ms",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "card_authorizations_purchase_id_created_at_idx": {
-          "name": "card_authorizations_purchase_id_created_at_idx",
-          "columns": [
-            {
-              "expression": "purchase_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "card_authorizations_one_approved_idx": {
-          "name": "card_authorizations_one_approved_idx",
-          "columns": [
-            {
-              "expression": "purchase_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"card_authorizations\".\"approved\"",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "card_authorizations_purchase_id_purchases_id_fk": {
-          "name": "card_authorizations_purchase_id_purchases_id_fk",
-          "tableFrom": "card_authorizations",
-          "tableTo": "purchases",
-          "columnsFrom": ["purchase_id"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "card_authorizations_mcc": {
-          "name": "card_authorizations_mcc",
-          "value": "\"card_authorizations\".\"mcc\" ~ '^[0-9]{4}$'"
-        },
-        "card_authorizations_approved_signed": {
-          "name": "card_authorizations_approved_signed",
-          "value": "not \"card_authorizations\".\"approved\" or (\"card_authorizations\".\"tdx\" is not null and \"card_authorizations\".\"nitro\" is not null)"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.card_chargebacks": {
-      "name": "card_chargebacks",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "purchase_id": {
-          "name": "purchase_id",
-          "type": "char(26)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "amount_minor": {
-          "name": "amount_minor",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "resolution": {
-          "name": "resolution",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "recovered_minor": {
-          "name": "recovered_minor",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "evidence_uploaded": {
-          "name": "evidence_uploaded",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "card_chargebacks_one_open_idx": {
-          "name": "card_chargebacks_one_open_idx",
-          "columns": [
-            {
-              "expression": "purchase_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"card_chargebacks\".\"status\" not in ('CASE_WON', 'CASE_CLOSED')",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "card_chargebacks_purchase_id_purchases_id_fk": {
-          "name": "card_chargebacks_purchase_id_purchases_id_fk",
-          "tableFrom": "card_chargebacks",
-          "tableTo": "purchases",
-          "columnsFrom": ["purchase_id"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "card_chargebacks_amount_positive": {
-          "name": "card_chargebacks_amount_positive",
-          "value": "\"card_chargebacks\".\"amount_minor\" > 0"
-        },
-        "card_chargebacks_reason_valid": {
-          "name": "card_chargebacks_reason_valid",
-          "value": "\"card_chargebacks\".\"reason\" in ('not_received', 'not_as_described', 'unauthorized')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.purchase_cards": {
-      "name": "purchase_cards",
-      "schema": "",
-      "columns": {
-        "purchase_id": {
-          "name": "purchase_id",
-          "type": "char(26)",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "issuer": {
-          "name": "issuer",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "card_token": {
-          "name": "card_token",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "last_four": {
-          "name": "last_four",
-          "type": "char(4)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "controls": {
-          "name": "controls",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "state": {
-          "name": "state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "transaction_token": {
-          "name": "transaction_token",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "settled_minor": {
-          "name": "settled_minor",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "settled_at": {
-          "name": "settled_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "purchase_cards_open_expires_at_idx": {
-          "name": "purchase_cards_open_expires_at_idx",
-          "columns": [
-            {
-              "expression": "expires_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"purchase_cards\".\"state\" in ('PAUSED', 'OPEN')",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "purchase_cards_purchase_id_purchases_id_fk": {
-          "name": "purchase_cards_purchase_id_purchases_id_fk",
-          "tableFrom": "purchase_cards",
-          "tableTo": "purchases",
-          "columnsFrom": ["purchase_id"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "purchase_cards_card_token_unique": {
-          "name": "purchase_cards_card_token_unique",
-          "nullsNotDistinct": false,
-          "columns": ["card_token"]
-        },
-        "purchase_cards_transaction_token_unique": {
-          "name": "purchase_cards_transaction_token_unique",
-          "nullsNotDistinct": false,
-          "columns": ["transaction_token"]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "purchase_cards_last_four": {
-          "name": "purchase_cards_last_four",
-          "value": "\"purchase_cards\".\"last_four\" ~ '^[0-9]{4}$'"
-        },
-        "purchase_cards_state_valid": {
-          "name": "purchase_cards_state_valid",
-          "value": "\"purchase_cards\".\"state\" in ('PAUSED', 'OPEN', 'USED', 'CLOSED')"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.chain_cursors": {
       "name": "chain_cursors",
       "schema": "",
@@ -3364,6 +2951,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "match_number": {
+          "name": "match_number",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "matched_at": {
+          "name": "matched_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "poll_interval": {
           "name": "poll_interval",
           "type": "integer",
@@ -3511,6 +3110,10 @@
         "agent_connections_limits": {
           "name": "agent_connections_limits",
           "value": "\"agent_connections\".\"per_purchase_minor\" > 0 and \"agent_connections\".\"per_purchase_minor\" <= \"agent_connections\".\"total_minor\" and (\"agent_connections\".\"ask_above_minor\" is null or \"agent_connections\".\"ask_above_minor\" between 1 and \"agent_connections\".\"per_purchase_minor\")"
+        },
+        "agent_connections_match_number": {
+          "name": "agent_connections_match_number",
+          "value": "\"agent_connections\".\"match_number\" is null or \"agent_connections\".\"match_number\" between 10 and 99"
         },
         "agent_connections_approved": {
           "name": "agent_connections_approved",
@@ -4352,13 +3955,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "rail": {
-          "name": "rail",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'paypal'"
-        },
         "hold_mode": {
           "name": "hold_mode",
           "type": "text",
@@ -4521,10 +4117,6 @@
         "mandates_hold_mode_valid": {
           "name": "mandates_hold_mode_valid",
           "value": "\"mandates\".\"hold_mode\" in ('mandate', 'per_purchase')"
-        },
-        "mandates_rail_valid": {
-          "name": "mandates_rail_valid",
-          "value": "\"mandates\".\"rail\" in ('paypal', 'card')"
         }
       },
       "isRLSEnabled": false
@@ -4950,13 +4542,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "rail": {
-          "name": "rail",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'paypal'"
-        },
         "currency": {
           "name": "currency",
           "type": "char(3)",
@@ -5312,10 +4897,6 @@
         "purchases_amount_positive": {
           "name": "purchases_amount_positive",
           "value": "\"purchases\".\"amount_minor\" > 0"
-        },
-        "purchases_rail_valid": {
-          "name": "purchases_rail_valid",
-          "value": "\"purchases\".\"rail\" in ('paypal', 'card')"
         },
         "purchases_countersign_mode_valid": {
           "name": "purchases_countersign_mode_valid",

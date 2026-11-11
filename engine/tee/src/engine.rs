@@ -12,7 +12,7 @@ use keelson_canon::{Cart, canonicalize, cart_hash};
 use keelson_core::eip712::{CardAuthorization, Countersign, WebFact};
 use keelson_core::{AcirField, Dst, currency_numeric};
 use keelson_mandate::{
-    CATEGORY_IDS, ClosedMandateVerifyOptions, Expected, Fr, Jwk, OpenMandateParams,
+    CATEGORY_IDS, ClosedMandateVerifyOptions, EMBED_ORIGIN, Expected, Fr, Jwk, OpenMandateParams,
     OpenMandateVerifyOptions, PasskeyCredential, RP_ID, USER_CREDENTIAL_TYP, UserAuth,
     UserCredentialParams, WebAuthnError, decode_mandate, h_sd, issue_open_mandate,
     issue_user_credential, mandate_challenge, mandate_commitment, mandate_opening, merchant_leaf,
@@ -464,6 +464,10 @@ impl Engine {
         }
         let h = h_sd(&r.payload_sd).map_err(|_| bad("mandate"))?;
         let mandate_hash = mandate_challenge(&h, &cm);
+        // Every verifier, the Alibi's included, reads `embed` in clear.
+        if r.payload_sd.get("embed") != m.get("embed") {
+            return Err(bad("embed"));
+        }
         verify_user_auth(
             &(&r.assertion).into(),
             &m,
@@ -1318,6 +1322,9 @@ impl Engine {
             client_data_json: part("clientDataJSON"),
             signature: part("signature"),
         };
+        if open.payload.get("embed") != mandate.get("embed") {
+            return Err(auth("open_mandate"));
+        }
         verify_user_auth(&assertion, &mandate, mandate_hash, &self.config.origin)?;
         Ok(Authenticated {
             mandate,
@@ -1519,7 +1526,8 @@ fn bind_hold(
 }
 
 /// Verifies the passkey assertion over `M` against the mandate's `user.cred`, on the RP ID
-/// every Keelson passkey is scoped to.
+/// every Keelson passkey is scoped to. A mandate with `embed` was signed in Keelson's approval
+/// framed by `embed.top_origin`; any other on `origin`, at the top level.
 fn verify_user_auth(
     a: &keelson_mandate::Assertion,
     m: &Value,
@@ -1530,9 +1538,17 @@ fn verify_user_auth(
     if cred["rp_id"] != RP_ID {
         return Err(auth("webauthn_rp_id"));
     }
+    let (origin, top_origin) = match m.get("embed") {
+        None => (origin, None),
+        Some(embed) => {
+            let top = embed["top_origin"].as_str().ok_or_else(|| bad("mandate"))?;
+            (EMBED_ORIGIN, Some(top.to_owned()))
+        }
+    };
     let expected = Expected {
         challenge,
         origin: origin.into(),
+        top_origin,
         rp_id: RP_ID.into(),
         public_key_sec1: sec1(&cred["jwk"]),
         spc: spc_details(m).map_err(|_| bad("mandate"))?,

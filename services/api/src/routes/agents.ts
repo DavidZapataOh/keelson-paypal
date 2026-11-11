@@ -18,6 +18,7 @@ import { MERCHANTS } from "../merchants.ts";
 import { requireSession } from "../middleware/auth.ts";
 import { type Principal, principalChannel } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
+import { stopAgents, userStops } from "../stop.ts";
 import { REVOCABLE, revokeMandate } from "./revoke.ts";
 
 const problemContent = { "application/problem+json": { schema: ProblemSchema } };
@@ -117,17 +118,57 @@ const disconnect = createRoute({
   },
 });
 
-const freeze = createRoute({
+const StopSchema = z
+  .object({
+    id: z.string(),
+    revoked: z.int().openapi({ description: "Mandates ended." }),
+    released: z
+      .array(z.object({ currency: z.string(), minor: z.string() }))
+      .openapi({ description: "What PayPal held for them, per currency, now released." }),
+    mandateHashes: z.array(z.string()).openapi({
+      description:
+        "Hex of the stopped mandates' hashes. The stop leaf commits to their digest: no Alibi leaf after it may carry one.",
+    }),
+    releasing: z.array(z.object({ currency: z.string(), minor: z.string() })).openapi({
+      description:
+        "Holds backing purchases already countersigned: released once those are captured.",
+    }),
+    logIndexes: z.record(z.string(), z.string()).openapi({
+      description:
+        "The stop leaf's index in each Alibi log origin. It is appended once no purchase of the stopped mandates can still be logged, so no Alibi leaf after it carries one of their hashes.",
+    }),
+    logged: z.boolean(),
+    createdAt: z.string(),
+  })
+  .openapi("AgentStop");
+
+const stopRoute = createRoute({
   method: "post",
-  path: "/v1/agents/freeze",
+  path: "/v1/agents/stop",
   tags: ["agents"],
-  summary: "Freeze all agents",
+  summary: "Stop all agents",
   description:
-    "Revokes every live mandate of yours and ends every connection. Keelson refuses every countersign for you from now on; purchases already countersigned may still be captured.",
+    "The kill switch. Keelson refuses every countersign of a mandate of yours stored before now, revokes every live mandate and voids its PayPal holds, denies every open request, revokes every agent's OAuth grant, and logs the stop as a `keelson.finance/stop/v1` leaf in the Alibi log. Purchases already countersigned may still be captured.",
   middleware: [requireSession()],
   request: { headers: z.object({ "idempotency-key": z.string().min(1).max(255) }) },
   responses: {
-    200: { description: "Frozen", content: { "application/json": { schema: Revoked } } },
+    200: { description: "Stopped", content: { "application/json": { schema: StopSchema } } },
+    401: { description: "Not signed in", content: problemContent },
+  },
+});
+
+const stops = createRoute({
+  method: "get",
+  path: "/v1/agents/stops",
+  tags: ["agents"],
+  summary: "Your stops",
+  description: "Each time you stopped all agents, newest first, with its log index.",
+  middleware: [requireSession()],
+  responses: {
+    200: {
+      description: "The stops",
+      content: { "application/json": { schema: z.object({ stops: z.array(StopSchema) }) } },
+    },
     401: { description: "Not signed in", content: problemContent },
   },
 });
@@ -136,7 +177,7 @@ const LIVE = [...REVOCABLE];
 
 export function registerAgents(
   app: OpenAPIHono,
-  deps: Pick<Deps, "db" | "kv" | "log" | "paypal">,
+  deps: Pick<Deps, "db" | "kv" | "log" | "paypal" | "tlog">,
 ): void {
   const { db } = deps;
 
@@ -332,9 +373,14 @@ export function registerAgents(
     );
   });
 
-  app.openapi(freeze, async (c) => {
+  app.openapi(stopRoute, async (c) => {
     const userId = (c.get("principal") as Principal).subject;
-    return c.json({ revoked: await stop(userId) }, 200);
+    return c.json(await stopAgents(deps, userId), 200);
+  });
+
+  app.openapi(stops, async (c) => {
+    const userId = (c.get("principal") as Principal).subject;
+    return c.json({ stops: await userStops(db, userId) }, 200);
   });
 
   app.openapi(disconnect, async (c) => {

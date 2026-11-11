@@ -1,16 +1,18 @@
 // Builds test/vectors/webauthn.json from real passkey assertions. With `--capture`, the API's
 // Playwright suite first signs fresh mandates in Chromium with a virtual authenticator and
-// writes them to test/vectors/webauthn-captures.json; otherwise the stored captures are reused,
-// so the output is deterministic.
+// writes them to test/vectors/webauthn-captures.json; with `--capture-framed`, Chromium signs
+// an embedded mandate in Keelson's approval framed by another site. Otherwise the stored
+// captures are reused, so the output is deterministic.
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { p256 } from "@noble/curves/nist.js";
+import { prepareSigning } from "../src/card.ts";
 import { type Mandate, parseMandate } from "../src/schema.ts";
 import { decodeMandate } from "../src/sd.ts";
-import { spcDetails } from "../src/spc.ts";
+import { EMBED_ORIGIN, RP_ID, spcDetails } from "../src/spc.ts";
 import demo from "../test/fixtures/demo-mandate.json" with { type: "json" };
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -33,6 +35,116 @@ interface Captures {
   rpId: string;
   publicKey: string;
   signed: Record<"payment" | "webauthn" | "shownTotal" | "shownPayee" | "unverified", Signed>;
+  /** A mandate signed in the approval at `origin`, framed by `topOrigin`. */
+  framed: { origin: string; topOrigin: string; publicKey: string; signed: Signed };
+}
+
+const TOP_ORIGIN = "https://agents.example.com";
+
+/**
+ * Signs an embedded mandate in Chromium: `TOP_ORIGIN` frames `EMBED_ORIGIN` with the passkey
+ * features delegated, and a virtual authenticator creates the passkey and signs in the frame.
+ * Playwright serves both pages, so the origins are the production ones.
+ */
+async function captureFramed(): Promise<Captures["framed"]> {
+  const { chromium } = await import("playwright");
+  const frame = `<!doctype html><html lang="en"><title>Approve</title><button id="create">Create</button><script>
+const b64u = (b) => btoa(String.fromCharCode(...new Uint8Array(b))).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+const bytes = (s) => Uint8Array.from(atob(s.replaceAll("-", "+").replaceAll("_", "/")), (c) => c.charCodeAt(0));
+document.getElementById("create").onclick = () => {
+  window.created = navigator.credentials.create({ publicKey: {
+    challenge: crypto.getRandomValues(new Uint8Array(32)),
+    rp: { id: "${RP_ID}", name: "Keelson" },
+    user: { id: crypto.getRandomValues(new Uint8Array(16)), name: "user", displayName: "User" },
+    pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+    authenticatorSelection: { residentKey: "required", userVerification: "required" },
+  } }).then(async (c) => {
+    const spki = c.response.getPublicKey();
+    const jwk = await crypto.subtle.exportKey("jwk", await crypto.subtle.importKey("spki", spki, { name: "ECDSA", namedCurve: "P-256" }, true, ["verify"]));
+    return { id: c.id, x: jwk.x, y: jwk.y };
+  });
+};
+window.sign = (challenge, id) => navigator.credentials.get({ publicKey: {
+  challenge: bytes(challenge), rpId: "${RP_ID}", userVerification: "required",
+  allowCredentials: [{ type: "public-key", id: bytes(id) }],
+} }).then((a) => ({
+  authenticatorData: b64u(a.response.authenticatorData),
+  clientDataJSON: b64u(a.response.clientDataJSON),
+  signature: b64u(a.response.signature),
+  credentialId: a.id,
+}));
+</script></html>`;
+  const browser = await chromium.launch();
+  try {
+    const context = await browser.newContext();
+    await context.route(`${TOP_ORIGIN}/`, (r) =>
+      r.fulfill({
+        contentType: "text/html",
+        body: `<!doctype html><html lang="en"><title>Agents</title><iframe title="Keelson" src="${EMBED_ORIGIN}/embed" allow="publickey-credentials-get; publickey-credentials-create"></iframe></html>`,
+      }),
+    );
+    await context.route(`${EMBED_ORIGIN}/embed`, (r) =>
+      r.fulfill({
+        contentType: "text/html",
+        body: frame,
+        headers: {
+          "permissions-policy":
+            "publickey-credentials-get=(self), publickey-credentials-create=(self)",
+        },
+      }),
+    );
+    const page = await context.newPage();
+    const cdp = await context.newCDPSession(page);
+    await cdp.send("WebAuthn.enable");
+    await cdp.send("WebAuthn.addVirtualAuthenticator", {
+      options: {
+        protocol: "ctap2",
+        transport: "internal",
+        hasResidentKey: true,
+        hasUserVerification: true,
+        isUserVerified: true,
+        automaticPresenceSimulation: true,
+      },
+    });
+    await page.goto(`${TOP_ORIGIN}/`);
+    const inFrame = page.frames().find((f) => f.url().startsWith(EMBED_ORIGIN));
+    if (!inFrame) throw new Error("the approval frame did not load");
+    // Creating a passkey in a cross-origin frame takes a user activation there.
+    await page.frameLocator("iframe").locator("#create").click();
+    const cred = (await inFrame.evaluate("window.created")) as { id: string; x: string; y: string };
+    const m = structuredClone(demo) as unknown as Mandate;
+    m.user.cred = {
+      id: cred.id,
+      rp_id: RP_ID,
+      jwk: { kty: "EC", crv: "P-256", x: cred.x, y: cred.y },
+    };
+    m.embed = { top_origin: TOP_ORIGIN };
+    const s = await prepareSigning(
+      m,
+      new Uint8Array(16).fill(7),
+      { merchantSignedCheckout: false, zkTlsFields: new Set() },
+      [],
+    );
+    const assertion = (await inFrame.evaluate(
+      ([challenge, id]) =>
+        (window as unknown as { sign(c: string, i: string): Promise<unknown> }).sign(challenge, id),
+      [b64u(s.challenge), cred.id] as const,
+    )) as Assertion;
+    const point = Buffer.concat([Buffer.from([4]), fromB64u(cred.x), fromB64u(cred.y)]);
+    return {
+      origin: EMBED_ORIGIN,
+      topOrigin: TOP_ORIGIN,
+      publicKey: coseEc2(point),
+      signed: {
+        payloadSd: s.payloadSd as Record<string, unknown>,
+        disclosures: s.disclosures,
+        commitment: s.commitment,
+        assertion,
+      },
+    };
+  } finally {
+    await browser.close();
+  }
 }
 
 if (process.argv.includes("--capture")) {
@@ -52,11 +164,25 @@ if (process.argv.includes("--capture")) {
   );
 }
 
-const captures = JSON.parse(readFileSync(capturesPath, "utf8")) as Captures;
-const { signed } = captures;
-
 const fromB64u = (s: string): Buffer => Buffer.from(s, "base64url");
 const b64u = (b: Uint8Array): string => Buffer.from(b).toString("base64url");
+const coseEc2 = (point: Uint8Array): string =>
+  Buffer.concat([
+    // {1: 2, 3: -7, -1: 1, -2: x, -3: y} (RFC 9053 section 7.1.1)
+    Buffer.from("a5010203262001215820", "hex"),
+    point.subarray(1, 33),
+    Buffer.from("225820", "hex"),
+    point.subarray(33),
+  ]).toString("base64");
+
+if (process.argv.includes("--capture-framed")) {
+  const stored = JSON.parse(readFileSync(capturesPath, "utf8")) as Captures;
+  stored.framed = await captureFramed();
+  writeFileSync(capturesPath, `${JSON.stringify(stored, null, 2)}\n`);
+}
+
+const captures = JSON.parse(readFileSync(capturesPath, "utf8")) as Captures;
+const { signed } = captures;
 const P256_N = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
 
 function publicKeySec1(s: Signed): string {
@@ -112,6 +238,8 @@ interface VerifyCase {
   /** The signed mandate the verifier expects; defaults to the capture. */
   mandate?: Signed;
   origin?: string;
+  /** The embedding page the verifier expects, for a mandate signed in a frame. */
+  topOrigin?: string;
   rpId?: string;
   /** The passkey the verifier expects; defaults to the captured one. */
   key?: PublicKey;
@@ -134,6 +262,7 @@ function verifyVector(name: string, s: Signed, c: VerifyCase, expected: string) 
       disclosures: m.disclosures,
       cm: m.commitment,
       origin: c.origin ?? captures.origin,
+      ...(c.topOrigin && { topOrigin: c.topOrigin }),
       rpId: c.rpId ?? captures.rpId,
       publicKey: c.key?.cose ?? captures.publicKey,
       publicKeySec1: c.key?.sec1 ?? publicKeySec1(m),
@@ -147,14 +276,6 @@ function verifyVector(name: string, s: Signed, c: VerifyCase, expected: string) 
 /** A deterministic P-256 key that stands in for the authenticator in synthetic vectors. */
 const testSecret = createHash("sha256").update("keelson/vectors/webauthn/key").digest();
 const testPoint = p256.getPublicKey(testSecret, false);
-const coseEc2 = (point: Uint8Array): string =>
-  Buffer.concat([
-    // {1: 2, 3: -7, -1: 1, -2: x, -3: y} (RFC 9053 section 7.1.1)
-    Buffer.from("a5010203262001215820", "hex"),
-    point.subarray(1, 33),
-    Buffer.from("225820", "hex"),
-    point.subarray(33),
-  ]).toString("base64");
 const testKey: PublicKey = {
   cose: coseEc2(testPoint),
   sec1: `0x${Buffer.from(testPoint).toString("hex")}`,
@@ -171,21 +292,34 @@ interface Synthetic {
  * test key so that only the edited check can fail.
  */
 function synthetic(name: string, edit: Synthetic, expected: string, extra: VerifyCase = {}) {
-  const c = JSON.parse(clientData(p.assertion)) as Record<string, unknown>;
+  return resigned(`synthetic/${name}`, p, edit, expected, extra);
+}
+
+/** `base`'s client data and authenticator data with one edit, signed again with the test key. */
+function resigned(
+  name: string,
+  base: Signed,
+  edit: Synthetic,
+  expected: string,
+  extra: VerifyCase,
+) {
+  const c = JSON.parse(clientData(base.assertion)) as Record<string, unknown>;
   const json = edit.clientData?.(c) ?? JSON.stringify(c);
   const cdj = Buffer.from(json, "utf8");
-  const auth = (edit.authData ?? ((b) => b))(Buffer.from(fromB64u(p.assertion.authenticatorData)));
+  const auth = (edit.authData ?? ((b) => b))(
+    Buffer.from(fromB64u(base.assertion.authenticatorData)),
+  );
   const hash = createHash("sha256").update(cdj).digest();
   const signature = p256.sign(Buffer.concat([auth, hash]), testSecret, { format: "der" });
   return verifyVector(
-    `synthetic/${name}`,
-    p,
+    name,
+    base,
     {
       ...extra,
       source: "synthetic",
       key: testKey,
       assertion: {
-        ...p.assertion,
+        ...base.assertion,
         clientDataJSON: b64u(cdj),
         authenticatorData: b64u(auth),
         signature: b64u(signature),
@@ -415,6 +549,88 @@ verify.push(
     "error/authenticator-data-1025-bytes",
     { authData: flagged(0, "00".repeat(1025 - 37)) },
     "authenticator-data",
+  ),
+);
+
+// A mandate signed in the approval framed by an agent platform: Chromium's capture of
+// `webauthn.get`, and `payment.get` as Chromium writes it in a frame (the payment capture's SPC
+// data, with `crossOrigin`, `topOrigin` and `payment.topOrigin` naming the platform).
+const { framed } = captures;
+const f = framed.signed;
+const inFrame: VerifyCase = {
+  origin: framed.origin,
+  topOrigin: framed.topOrigin,
+  key: { cose: framed.publicKey, sec1: publicKeySec1(f) },
+};
+const framedSpc = (c: Record<string, unknown>) => {
+  const shown = JSON.parse(clientData(p.assertion)) as Record<string, unknown>;
+  const spcShown = spcDetails(decodeMandate(f.payloadSd, f.disclosures) as Mandate);
+  c.type = "payment.get";
+  delete c.other_keys_can_be_added_here;
+  c.payment = {
+    ...(shown.payment as Record<string, unknown>),
+    topOrigin: framed.topOrigin,
+    total: { value: spcShown.total.value, currency: spcShown.total.currency },
+  };
+};
+const framedEdit =
+  (...edits: ((c: Record<string, unknown>) => void)[]) =>
+  (c: Record<string, unknown>): undefined => {
+    for (const edit of edits) edit(c);
+  };
+verify.push(
+  verifyVector("ok/framed-webauthn.get", f, inFrame, "ok"),
+  verifyVector(
+    "error/framed-at-top-level",
+    f,
+    { origin: framed.origin, key: inFrame.key as PublicKey },
+    "cross-origin",
+  ),
+  verifyVector(
+    "error/framed-other-platform",
+    f,
+    { ...inFrame, topOrigin: "https://evil.example" },
+    "cross-origin",
+  ),
+  verifyVector("error/framed-app-origin", f, { ...inFrame, origin: captures.origin }, "origin"),
+  verifyVector("error/framed-other-mandate", f, { ...inFrame, mandate: w }, "challenge"),
+  verifyVector("error/top-level-as-framed", w, { topOrigin: framed.topOrigin }, "cross-origin"),
+  resigned(
+    "synthetic/ok/framed-payment.get",
+    f,
+    { clientData: framedEdit(framedSpc) },
+    "ok",
+    inFrame,
+  ),
+  resigned(
+    "synthetic/error/framed-payment-top-origin",
+    f,
+    {
+      clientData: framedEdit(
+        framedSpc,
+        (c) => (payment(c).topOrigin = "https://evil.example" as never),
+      ),
+    },
+    "payment",
+    { ...inFrame, paymentField: "topOrigin" },
+  ),
+  ...(
+    [
+      ["cross-origin-false", set("crossOrigin", false)],
+      ["cross-origin-absent", (c) => void delete c.crossOrigin],
+      ["cross-origin-string", set("crossOrigin", "true")],
+      ["top-origin-absent", (c) => void delete c.topOrigin],
+      ["top-origin-slash", set("topOrigin", `${framed.topOrigin}/`)],
+      ["top-origin-null", set("topOrigin", null)],
+    ] as [string, (c: Record<string, unknown>) => void][]
+  ).map(([name, edit]) =>
+    resigned(
+      `synthetic/error/framed-${name}`,
+      f,
+      { clientData: framedEdit(edit) },
+      "cross-origin",
+      inFrame,
+    ),
   ),
 );
 

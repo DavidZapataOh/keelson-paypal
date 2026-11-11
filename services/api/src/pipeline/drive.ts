@@ -157,7 +157,7 @@ function shown(field: string, value: unknown, currency: string): string | null {
 }
 
 /** One mandate field as the engine checked it: both values and whether it held. */
-interface FieldCheck extends BlockReason {
+export interface FieldCheck extends BlockReason {
   pass: boolean;
 }
 
@@ -166,7 +166,7 @@ interface FieldCheck extends BlockReason {
  * if every policy reading it passed. The cart's own sanity check has no mandate side and is left
  * out.
  */
-function fieldChecks(trace: unknown, currency: string): FieldCheck[] {
+export function fieldChecks(trace: unknown, currency: string): FieldCheck[] {
   const fields = (trace as { fields?: FieldTrace[] } | null)?.fields;
   if (!Array.isArray(fields)) return [];
   const byField = new Map<string, FieldCheck>();

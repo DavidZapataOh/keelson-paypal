@@ -52,6 +52,7 @@ import { publishPurchase } from "../pipeline/events.ts";
 import { logStep } from "../pipeline/log-step.ts";
 import { principalKey } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
+import { stoppedSince } from "../stop.ts";
 import { LegError } from "../tee/client.ts";
 import { VERIFYING_CONTRACT } from "../tee/config.ts";
 import {
@@ -81,7 +82,7 @@ const bytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value));
 const OBSERVATION_TTL_SEC = 900;
 const fold = (s: string) => s.normalize("NFKC").trim().toUpperCase().toLowerCase();
 
-const CartSchema = z
+export const CartSchema = z
   .object({
     merchant: z.string().min(1).max(MAX_STRING),
     currency: z.string().length(3),
@@ -169,6 +170,9 @@ const Approval = z
     verification_uri_complete: z.string(),
     expires_in: z.int(),
     interval: z.int(),
+    request_id: z.string().openapi({
+      description: "Read the request's state with `GET /v1/connections/requests/{id}`.",
+    }),
   })
   .openapi("OnceApproval");
 
@@ -549,7 +553,11 @@ export function registerCountersign(
   ) {
     const clientId = c.var.principal?.subject as string;
     const [open] = await db
-      .select({ userCode: agentConnections.userCode, expiresAt: agentConnections.expiresAt })
+      .select({
+        id: agentConnections.id,
+        userCode: agentConnections.userCode,
+        expiresAt: agentConnections.expiresAt,
+      })
       .from(agentConnections)
       .where(
         and(
@@ -562,7 +570,7 @@ export function registerCountersign(
       )
       .limit(1);
     if (open) {
-      const { device_code: _, ...shown } = deviceAuthorization(appOrigin, open.userCode, "");
+      const { device_code: _, ...shown } = deviceAuthorization(appOrigin, open, "");
       return {
         approval: {
           ...shown,
@@ -1073,6 +1081,10 @@ export function registerCountersign(
           )
           .for("share");
         if (!live) return { revoked: true as const };
+        // A stop of every agent stored first refuses each mandate stored before it, flagged or not.
+        if (await stoppedSince(tx, mandate.userId, mandate.createdAt)) {
+          return { revoked: true as const };
+        }
         // A card's charge is collected from the hold after the fact, so the budget a card
         // mandate's live cards may still charge is checked here too, one cart at a time.
         if (card) {

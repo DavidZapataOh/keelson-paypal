@@ -32,7 +32,14 @@ import { POLICY_SET_HASH } from "@keelson/policy/hashes";
 import type { Deps } from "../app.ts";
 import { Amount, breakdowns, withBreakdown } from "../checkout.ts";
 import { agentBond, agentCnf, termsConsent } from "../compile-sources.ts";
-import { type Connection, looserThan, normalizeUserCode, openRequest } from "../connections.ts";
+import {
+  type Connection,
+  kindOf,
+  looserThan,
+  normalizeUserCode,
+  openRequest,
+  unmatched,
+} from "../connections.ts";
 import { publishEvent } from "../events.ts";
 import { passkeyJwk, SignatureError, verifyMandateSignature } from "../mandate-signature.ts";
 import { requireSession } from "../middleware/auth.ts";
@@ -42,6 +49,7 @@ import { ProblemSchema, problem } from "../problem.ts";
 import { LegError, type MandateIssued } from "../tee/client.ts";
 import { unboundPolicy } from "../tee/engine-source.ts";
 import { PurchaseProgress } from "./purchases.ts";
+import { REVOCABLE, revokeMandate } from "./revoke.ts";
 
 const Hex32 = z.string().regex(/^0x[0-9a-f]{64}$/);
 const MANDATES_SHOWN = 50;
@@ -335,7 +343,7 @@ export function registerMandates(
   app: OpenAPIHono,
   deps: Pick<
     Deps,
-    "db" | "kv" | "log" | "appOrigin" | "passkeyRpId" | "tee" | "proveAnonymousMandate"
+    "db" | "kv" | "log" | "appOrigin" | "passkeyRpId" | "tee" | "proveAnonymousMandate" | "paypal"
   >,
 ): void {
   const { db } = deps;
@@ -366,6 +374,7 @@ export function registerMandates(
     if (body.commitment !== m.zk.commitment) {
       return invalid("commitment differs from zk.commitment");
     }
+    if (m.embed) return invalid("embed is only set by the embedded approval that signs it");
     const now = Date.now();
     if (m.exp * 1000 <= now) return invalid("exp has passed");
     if (m.nbf * 1000 > now) return invalid("nbf is in the future");
@@ -455,7 +464,12 @@ export function registerMandates(
       if (
         !request ||
         (request.userId !== null && request.userId !== userId) ||
-        (request.kind === "once" && (parent?.state !== "ACTIVE" || parent.revokeRequestedAt))
+        (request.kind === "once" && (parent?.state !== "ACTIVE" || parent.revokeRequestedAt)) ||
+        (kindOf(request) === "change" &&
+          (!parent ||
+            !(REVOCABLE as readonly string[]).includes(parent.state) ||
+            parent.revokeRequestedAt)) ||
+        (request.parentMandateId !== null && parent?.userId !== userId)
       ) {
         return problem(
           c,
@@ -463,6 +477,15 @@ export function registerMandates(
           "connection-closed",
           "Request closed",
           "The agent's request was already decided, expired or does not exist.",
+        );
+      }
+      if (unmatched(request)) {
+        return problem(
+          c,
+          409,
+          "number-not-matched",
+          "Number not matched",
+          "Pick the number your agent shows first.",
         );
       }
       const askAbove = body.connection.askAboveMinor;
@@ -626,6 +649,13 @@ export function registerMandates(
             )
             .returning({ id: agentConnections.id });
           if (approved.length !== 1) throw new RequestClosed();
+          // A change replaces its mandate: countersigns under the old one stop with this commit.
+          if (kindOf(request) === "change" && request.parentMandateId) {
+            await tx
+              .update(mandates)
+              .set({ revokeRequestedAt: sql`coalesce(${mandates.revokeRequestedAt}, now())` })
+              .where(eq(mandates.id, request.parentMandateId));
+          }
         }
       });
     } catch (err) {
@@ -659,6 +689,15 @@ export function registerMandates(
         request.id,
         { type: "connection.approved", userCode: request.userCode, mandateId: m.mid },
       );
+      // Its hold is released now; the sweeper voids it if PayPal is down.
+      if (kindOf(request) === "change" && request.parentMandateId) {
+        const parent = await queries.mandateById(request.parentMandateId);
+        if (parent && (REVOCABLE as readonly string[]).includes(parent.state)) {
+          await revokeMandate(deps, parent).catch((err: unknown) =>
+            deps.log.warn({ err, mandateId: parent.id }, "replaced mandate not revoked yet"),
+          );
+        }
+      }
     }
 
     c.header("location", `/v1/mandates/${m.mid}`);

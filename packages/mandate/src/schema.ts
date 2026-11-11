@@ -109,6 +109,20 @@ function isWebsite(s: string): boolean {
   );
 }
 
+/**
+ * Whether `s` is a serialized https origin as `URL.origin` writes it: `https://`, a host name as
+ * {@link isWebsite} takes it and an optional port other than 443, without leading zeros.
+ */
+function isHttpsOrigin(s: string): boolean {
+  const m = /^https:\/\/([^/:]+)(?::([1-9][0-9]{0,4}))?$/.exec(s);
+  const port = m?.[2] === undefined ? undefined : Number(m[2]);
+  return (
+    m !== null &&
+    (port === undefined || (port <= 65_535 && port !== 443)) &&
+    isWebsite(`https://${m[1]}`)
+  );
+}
+
 const amount = z.number().int().nonnegative().safe();
 const b64url = z.string().regex(/^[A-Za-z0-9_-]+$/);
 // Unpadded base64url with zero trailing bits: 22 chars decode to 16 bytes, 43 chars to 32 bytes.
@@ -253,6 +267,13 @@ export const MandateSchema = z.strictObject({
     device_fp: text(STRING_LIMITS.short, true),
     ip: text(STRING_LIMITS.short, true),
   }),
+  /**
+   * Present when the user signed in Keelson's approval framed by an agent platform: the top-level
+   * origin of that page. The passkey assertion must then be cross-origin with this `topOrigin`.
+   */
+  embed: z
+    .strictObject({ top_origin: z.string().refine(isHttpsOrigin, "invalid format") })
+    .optional(),
 });
 
 /** A `keelson.mandate.1` payload. */
