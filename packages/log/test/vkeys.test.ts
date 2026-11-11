@@ -1,12 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
-import {
-  LOG_ORIGINS,
-  LOG_VKEYS,
-  LOG_WITNESSES,
-  logVkeySets,
-  parseWitnessPolicy,
-} from "../src/index.ts";
+import { LOG_ORIGINS, LOG_VKEYS, LOG_WITNESSES, parseWitnessPolicy } from "../src/index.ts";
 
 const read = (name: string) =>
   readFileSync(new URL(`../../../services/log/${name}`, import.meta.url), "utf8");
@@ -28,8 +22,7 @@ test.each([
 ])("the witnesses of chain %i are its log's policy", (chainId, file) => {
   const origin = LOG_ORIGINS[chainId] as string;
   const policy = parseWitnessPolicy(read(`policy/${file}.policy`));
-  const keys = new Set(logVkeySets(origin).flatMap((set) => set.vkeys));
-  expect(new Set(policy.logs)).toEqual(keys);
+  expect(policy.logs).toEqual(LOG_VKEYS[origin]);
   expect(policy.quorum).toEqual({ group: "own", k: 2, members: ["w1", "w2", "w3"] });
   expect({
     vkeys: policy.quorum.members.map((m) => policy.witnesses.get(m)),
