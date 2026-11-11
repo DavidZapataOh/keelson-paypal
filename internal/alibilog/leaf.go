@@ -70,6 +70,8 @@ type Leaf struct {
 	Countersign       *Countersign
 	ChainID           uint64
 	VerifyingContract [20]byte
+	// Predecessor is the v1 leaf hash a bridge statement carries into v2.
+	Predecessor *[32]byte
 	// Parent is the purchase leaf hash a card statement links to.
 	Parent *[32]byte
 	// CardRef is a card statement's commitment to the issuer and card token.

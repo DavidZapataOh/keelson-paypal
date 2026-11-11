@@ -268,3 +268,53 @@ fn card_statement_vectors_match() {
         );
     }
 }
+
+#[test]
+fn bridge_vectors_match() {
+    for raw in [
+        include_str!("../../../internal/alibilog/testdata/statement-v2/bridge-2of2.json"),
+        include_str!("../../../internal/alibilog/testdata/statement-v2/bridge-degraded.json"),
+    ] {
+        let v: Value = serde_json::from_str(raw).unwrap();
+        let i = &v["inputs"];
+        let cs = countersign(&i["countersign"]);
+        let legs = legs_of(i);
+        let verifying_contract: Address =
+            i["verifying_contract"].as_str().unwrap().parse().unwrap();
+        let claims = keelson_core::statement::BridgeClaims {
+            countersign: &cs,
+            chain_id: i["chain_id"].as_u64().unwrap(),
+            verifying_contract: verifying_contract.into_array(),
+            mode: if i["mode"] == "2of2" {
+                Mode::TwoOfTwo
+            } else {
+                Mode::Degraded
+            },
+            legs: &legs,
+            predecessor: fixed(i["predecessor"].as_str().unwrap()),
+        };
+        let payload = keelson_core::statement::bridge_claims_bytes(&claims);
+        assert_eq!(hex_of(&payload), v["claims_hex"], "{} claims", v["name"]);
+        let protected = protected_header(
+            fixed(i["bridge_signer"].as_str().unwrap()),
+            i["alibi_id"].as_str().unwrap(),
+            cs.issuedAt.to::<u64>(),
+            keelson_core::statement::BRIDGE_CONTENT_TYPE,
+        );
+        assert_eq!(
+            hex_of(&protected),
+            v["protected_hex"],
+            "{} protected",
+            v["name"]
+        );
+        let decoded =
+            CoseSign1::from_tagged_slice(&hex_bytes(v["statement_hex"].as_str().unwrap())).unwrap();
+        let signature: [u8; 64] = decoded.signature.clone().try_into().unwrap();
+        assert_eq!(
+            hex_of(&statement(protected, payload, signature)),
+            v["statement_hex"],
+            "{} statement",
+            v["name"]
+        );
+    }
+}

@@ -13,6 +13,8 @@ pub const CARD_AUTHORIZATION_CONTENT_TYPE: &str =
 /// The content type of a card settlement's payload.
 pub const CARD_SETTLEMENT_CONTENT_TYPE: &str =
     "application/vnd.keelson.card-settlement-claims+cbor";
+/// The content type of a bridge statement: a v1 Alibi's countersigned facts carried into v2.
+pub const BRIDGE_CONTENT_TYPE: &str = "application/vnd.keelson.alibi-bridge-claims+cbor";
 /// The issuer every Alibi statement names in its CWT claims.
 pub const STATEMENT_ISSUER: &str = "https://keelson.finance";
 /// COSE algorithm ES256K (RFC 8812).
@@ -129,10 +131,47 @@ fn signed_entries(
     ]
 }
 
+/// A v1 Alibi's countersigned facts, its own legs and the hash of its v1 leaf; no payment commit.
+#[derive(Clone, Copy)]
+pub struct BridgeClaims<'a> {
+    pub countersign: &'a Countersign,
+    pub chain_id: u64,
+    pub verifying_contract: [u8; 20],
+    pub mode: Mode,
+    pub legs: &'a [LegSignature],
+    pub predecessor: [u8; 32],
+}
+
 /// The payload: the claims as an integer-keyed map in deterministic CBOR.
 pub fn claims_bytes(c: &StatementClaims<'_>) -> Vec<u8> {
-    let n = c.countersign;
-    let mut map = vec![
+    let mut map = countersign_entries(c.countersign);
+    map.extend(signed_entries(
+        c.chain_id,
+        c.verifying_contract,
+        c.mode,
+        c.legs,
+    ));
+    if let Some(r) = c.pay_ref {
+        map.push((int(22), bytes(&r)));
+    }
+    encode(Value::Map(map))
+}
+
+/// A bridge statement's payload: the purchase claims without a payment commit, with key 23.
+pub fn bridge_claims_bytes(c: &BridgeClaims<'_>) -> Vec<u8> {
+    let mut map = countersign_entries(c.countersign);
+    map.extend(signed_entries(
+        c.chain_id,
+        c.verifying_contract,
+        c.mode,
+        c.legs,
+    ));
+    map.push((int(23), bytes(&c.predecessor)));
+    encode(Value::Map(map))
+}
+
+fn countersign_entries(n: &Countersign) -> Vec<(Value, Value)> {
+    vec![
         (int(1), int(2)),
         (int(2), bytes(n.requestId.as_slice())),
         (int(3), bytes(n.mandateHash.as_slice())),
@@ -150,17 +189,7 @@ pub fn claims_bytes(c: &StatementClaims<'_>) -> Vec<u8> {
         (int(15), int(n.failedFieldsMask)),
         (int(16), int(n.issuedAt.to::<u64>())),
         (int(17), int(n.expiresAt.to::<u64>())),
-    ];
-    map.extend(signed_entries(
-        c.chain_id,
-        c.verifying_contract,
-        c.mode,
-        c.legs,
-    ));
-    if let Some(r) = c.pay_ref {
-        map.push((int(22), bytes(&r)));
-    }
-    encode(Value::Map(map))
+    ]
 }
 
 /// One card network authorization decision, linked to its purchase leaf.

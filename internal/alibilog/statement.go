@@ -14,11 +14,13 @@ const (
 	KindPurchase          = "purchase"
 	KindCardAuthorization = "card-authorization"
 	KindCardSettlement    = "card-settlement"
+	KindBridge            = "bridge"
 )
 
 // Statement constants shared with the TypeScript and Rust encoders.
 const (
 	ClaimsContentType = "application/vnd.keelson.alibi-claims+cbor"
+	BridgeContentType = "application/vnd.keelson.alibi-bridge-claims+cbor"
 	StatementIssuer   = "https://keelson.finance"
 )
 
@@ -95,7 +97,10 @@ func bigUint(v any, name string) (*big.Int, error) {
 	return nil, leafErr("leaf.field", "%s is not a uint256", name)
 }
 
-var purchaseKeys = keySet(1, 22)
+var (
+	purchaseKeys = keySet(1, 22)
+	bridgeKeys   = keySet(1, 21, 23)
+)
 
 func keySet(from, to int64, extra ...int64) map[int64]bool {
 	s := map[int64]bool{}
@@ -213,6 +218,7 @@ func ParseStatement(leaf []byte) (*Leaf, error) {
 		ClaimsContentType:            KindPurchase,
 		CardAuthorizationContentType: KindCardAuthorization,
 		CardSettlementContentType:    KindCardSettlement,
+		BridgeContentType:            KindBridge,
 	}[h[3]]
 	if kind == "" {
 		return nil, leafErr("leaf.format", "not an Alibi statement content type")
@@ -243,6 +249,7 @@ func ParseStatement(leaf []byte) (*Leaf, error) {
 		KindPurchase:          purchaseKeys,
 		KindCardAuthorization: cardAuthorizationKeys,
 		KindCardSettlement:    cardSettlementKeys,
+		KindBridge:            bridgeKeys,
 	}[kind]
 	for k := range m {
 		if !allowed[k] {
@@ -270,7 +277,7 @@ func ParseStatement(leaf []byte) (*Leaf, error) {
 	var requestID [32]byte
 	var issuedAt uint64
 	switch kind {
-	case KindPurchase:
+	case KindPurchase, KindBridge:
 		c, err := purchaseCountersign(m)
 		if err != nil {
 			return nil, err
@@ -285,6 +292,14 @@ func ParseStatement(leaf []byte) (*Leaf, error) {
 				return nil, err
 			}
 			l.PaypalRefCommit = [32]byte(r)
+		}
+		if kind == KindBridge {
+			p, err := fixedBytes(m, 23, 32, "predecessor")
+			if err != nil {
+				return nil, err
+			}
+			pred := [32]byte(p)
+			l.Predecessor = &pred
 		}
 		digest = Digest(*c, signed.chainID, signed.verifyingContract)
 		requestID, issuedAt = c.RequestID, c.IssuedAt
@@ -305,7 +320,11 @@ func ParseStatement(leaf []byte) (*Leaf, error) {
 	if iat < 0 || uint64(iat) != issuedAt {
 		return nil, leafErr("leaf.field", "iat")
 	}
+	// A bridge is signed by leg A's current signer, which admission checks against the registry.
 	expected := signed.signers[len(signed.signers)-1]
+	if kind == KindBridge {
+		expected = [20]byte(kid)
+	}
 	if [20]byte(kid) != expected {
 		return nil, leafErr("leaf.signer", "the statement is signed by %x, not the %s leg's signer", kid, map[string]string{Mode2of2: "nitro", ModeDegraded: "tdx"}[signed.mode])
 	}

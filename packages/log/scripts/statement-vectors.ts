@@ -22,6 +22,8 @@ import { Tag } from "cbor2";
 import { getAddress, type Hex } from "viem";
 import { cardRefCommit, paypalRefCommit } from "../src/leaf.ts";
 import {
+  BRIDGE_CONTENT_TYPE,
+  bridgeClaimsBytes,
   CARD_AUTHORIZATION_CONTENT_TYPE,
   CARD_SETTLEMENT_CONTENT_TYPE,
   cardAuthorizationClaimsBytes,
@@ -284,6 +286,69 @@ function cardVectors() {
   );
 }
 
+/** Bridges of the two real v1 fixtures: their own legs, a third test key as leg A's current signer. */
+function bridgeVector(name: string, id: string) {
+  const f = fixture(id);
+  const bridgeKey = hexToBytes("03".repeat(32));
+  const raw = f.tee.countersign as Record<string, string>;
+  const countersign = Object.fromEntries(
+    Object.entries(raw).map(([k, v]) => [k, UINTS.includes(k) ? BigInt(v) : v]),
+  ) as unknown as Countersign;
+  const legs = (f.tee.signatures as { kind: "tdx" | "nitro"; signer: Hex; signature: Hex }[]).map(
+    (s, i) => ({
+      kind: s.kind,
+      signer: getAddress(s.signer),
+      signature: s.signature,
+      measurement: `0x${f.tee.attestations[i].measurement.split(":")[1]}` as Hex,
+    }),
+  ) as StatementClaims["legs"];
+  const predecessor =
+    `0x${bytesToHex(leafHash(Uint8Array.from(Buffer.from(f.leaf, "base64"))))}` as Hex;
+  const claims = {
+    countersign,
+    chainId: f.tee.domain.chain_id as number,
+    verifyingContract: f.tee.domain.verifying_contract as Hex,
+    mode: f.tee.mode as "2of2" | "degraded",
+    legs,
+    predecessor,
+  };
+  const signer = address(bridgeKey);
+  const alibiId = ulidOfRequestId(countersign.requestId);
+  const prot = statementProtected(
+    signer,
+    alibiId,
+    Number(countersign.issuedAt),
+    BRIDGE_CONTENT_TYPE,
+  );
+  const payload = bridgeClaimsBytes(claims);
+  const s = signEs256k(prot, payload, bridgeKey);
+  const statement = encode(new Tag(18, [s.protected, s.unprotected, s.payload, s.signature]));
+  writeFileSync(
+    new URL(`${name}.json`, out),
+    `${JSON.stringify(
+      {
+        name,
+        inputs: {
+          alibi_id: alibiId,
+          countersign: raw,
+          chain_id: claims.chainId,
+          verifying_contract: claims.verifyingContract,
+          mode: claims.mode,
+          legs,
+          predecessor,
+          bridge_signer: signer,
+        },
+        claims_hex: bytesToHex(payload),
+        protected_hex: bytesToHex(prot),
+        statement_hex: bytesToHex(statement),
+        leaf_hash_hex: bytesToHex(leafHash(statement)),
+      },
+      null,
+      2,
+    )}\n`,
+  );
+}
+
 mkdirSync(out, { recursive: true });
 vector("allow-2of2", "01M6ZWZJHWRRHQEYNJAT7NMSV8", "2of2", {}, true);
 vector(
@@ -296,3 +361,5 @@ vector(
 vector("allow-degraded", "01M6ZX07MFWDDDW4199FDJHWEG", "degraded", {}, true);
 vector("card-2of2", "01M6ZWZJHWRRHQEYNJAT7NMSV8", "2of2", {}, false);
 cardVectors();
+bridgeVector("bridge-2of2", "01M6ZWZJHWRRHQEYNJAT7NMSV8");
+bridgeVector("bridge-degraded", "01M6ZX07MFWDDDW4199FDJHWEG");
