@@ -4,15 +4,19 @@ import { Skeleton } from "@keelson/ui/components/skeleton";
 import { ArrowUpRight, ChevronRight, Hand, Plus, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { get, post } from "../lib/api";
+import { authClient } from "../lib/auth";
 import { VERIFY } from "../lib/config";
+import type { AgentRow, PendingApproval } from "../lib/connections";
+import { useEvents, userChannel } from "../lib/events";
 import { major, money } from "../lib/format";
 import { purchaseStatus } from "../lib/status";
 import type { MandateSummary, MandateView, Purchase } from "../lib/types";
 import { useMandate } from "../lib/use-mandate";
 import { AppShell } from "./app-shell";
 import { HoldButton } from "./hold-button";
+import { GetStarted, PausedApprovals } from "./home-agents";
 import { CardAmount, MandateVisual } from "./mandate-visual";
 import { ErrorNotice } from "./notice";
 import { Mark, type MarkKind, Panel } from "./surface";
@@ -155,7 +159,13 @@ function Action({
 
 const FILTERS = ["All", "Bought", "Blocked"] as const;
 
-function Focus({ id }: { id: string }) {
+function Focus({
+  id,
+  setup,
+}: {
+  id: string;
+  setup: { connected: boolean; approved: boolean } | null;
+}) {
   const { mandate, error, reload } = useMandate(id);
   const [stopping, setStopping] = useState(false);
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("All");
@@ -192,6 +202,13 @@ function Focus({ id }: { id: string }) {
   return (
     <div className="grid gap-6">
       <h1 className="sr-only">Home</h1>
+      {setup ? (
+        <GetStarted
+          connected={setup.connected}
+          approved={setup.approved}
+          bought={purchases.some((p) => kindOf(p) === "bought")}
+        />
+      ) : null}
       <div className="grid items-center gap-8 lg:grid-cols-[1fr_400px]">
         <div className="grid gap-6">
           <div className="grid gap-1">
@@ -404,7 +421,10 @@ function Focus({ id }: { id: string }) {
 /** Home: what the agent bought, what Keelson blocked, and who answers if it goes wrong. */
 export function Dashboard() {
   const router = useRouter();
+  const session = authClient.useSession();
   const [mandates, setMandates] = useState<MandateSummary[]>();
+  const [agents, setAgents] = useState<AgentRow[]>();
+  const [approvals, setApprovals] = useState<PendingApproval[]>([]);
   const [error, setError] = useState<string>();
 
   useEffect(() => {
@@ -417,12 +437,44 @@ export function Dashboard() {
       .catch((e: Error) => setError(e.message));
   }, [router]);
 
+  const loadAgents = useCallback(() => {
+    get<{ agents: AgentRow[] }>("/v1/agents")
+      .then((r) => setAgents(r.agents))
+      .catch(() => setAgents([]));
+    get<{ approvals: PendingApproval[] }>("/v1/approvals")
+      .then((r) => setApprovals(r.approvals))
+      .catch(() => setApprovals([]));
+  }, []);
+  useEffect(loadAgents, [loadAgents]);
+  useEvents(
+    session.data ? userChannel(session.data.user.id, "agents") : undefined,
+    loadAgents,
+    loadAgents,
+  );
+
   const focus = mandates?.find((m) => m.state === "ACTIVE") ?? mandates?.[0];
 
   return (
     <AppShell>
       {error ? <ErrorNotice>{error}</ErrorNotice> : null}
-      {focus ? <Focus id={focus.id} /> : null}
+      <div className="grid gap-6">
+        <PausedApprovals approvals={approvals} onAnswered={loadAgents} />
+        {focus ? (
+          <Focus
+            id={focus.id}
+            setup={
+              agents === undefined
+                ? null
+                : {
+                    connected: agents.some((a) => a.connected),
+                    approved: (mandates ?? []).some((m) =>
+                      ["SIGNED", "HOLD_PENDING", "ACTIVE", "EXHAUSTED"].includes(m.state),
+                    ),
+                  }
+            }
+          />
+        ) : null}
+      </div>
     </AppShell>
   );
 }

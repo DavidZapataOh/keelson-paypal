@@ -264,6 +264,7 @@ describe("merchant console reads", () => {
       outcome: "paid",
       paid_by: "chain",
       has_alibi: true,
+      amber: null,
     });
     expect(row?.explorer_url).toMatch(/^https:\/\/.+\/tx\/0x[0-9a-f]{64}$/);
   });

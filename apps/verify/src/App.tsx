@@ -9,6 +9,7 @@ import { parseRoute, type Route, verifyLinkOf } from "./route.ts";
 import { loader, memoized, verifier } from "./verifier.ts";
 
 const Cheat = lazy(() => import("./Cheat.tsx"));
+const Amber = lazy(() => import("./Amber.tsx"));
 const VERIFY_ORIGIN = "https://verify.keelson.finance";
 
 interface Run {
@@ -335,6 +336,9 @@ export function App() {
             {!route.anonymous && current && <Anonymous alibi={current} rpc={rpc} />}
             <EngineProof alibi={loaded.alibi} rpc={rpc} />
             <Bonds rpc={route.rpc} />
+            <Suspense fallback={null}>
+              <Amber alibiId={loaded.alibi.alibi_id} rpc={rpc} />
+            </Suspense>
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"

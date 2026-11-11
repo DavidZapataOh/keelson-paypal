@@ -1,0 +1,10 @@
+[package]
+name = "amber_contradiction"
+type = "bin"
+authors = [""]
+compiler_version = ">=1.0.0"
+
+[dependencies]
+json_parser = { tag = "v0.5.0", git = "https://github.com/noir-lang/noir_json_parser" }
+poseidon = { tag = "v0.4.0", git = "https://github.com/noir-lang/poseidon" }
+sha256 = { tag = "v0.3.0", git = "https://github.com/noir-lang/sha256" }

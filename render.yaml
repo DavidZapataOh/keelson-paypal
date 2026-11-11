@@ -80,6 +80,8 @@ services:
       # The relayer signs with KMS keys only this IAM user may use; reads go through the provider RPC.
       - key: ARBITRUM_SEPOLIA_RPC_URL
         sync: false
+      - key: ARBITRUM_SEPOLIA_WSS_URL
+        sync: false
       - key: RELAYER_KMS_KEY_SANDBOX
         value: alias/keelson-relayer-arbitrum-sepolia
       - key: RELAYER_AWS_ACCESS_KEY_ID
@@ -340,6 +342,20 @@ services:
       # Bearer token of the red team's listing calls.
       - key: STORE_ATTACK_TOKEN
         generateValue: true
+      # The demo agent platform at /platform asks Keelson for mandates as the demo agent's client,
+      # and embeds the approval on the store's onrender.com origin, a site other than Keelson's.
+      - key: PLATFORM_ORIGIN
+        value: https://keelson-store.onrender.com
+      - key: KEELSON_CLIENT_ID
+        fromService:
+          type: web
+          name: keelson-api
+          envVarKey: KEELSON_CLIENT_ID
+      - key: KEELSON_CLIENT_SECRET
+        fromService:
+          type: web
+          name: keelson-api
+          envVarKey: KEELSON_CLIENT_SECRET
 
   - type: web
     runtime: static
@@ -432,10 +448,24 @@ services:
         - render.yaml
     domains:
       - app.keelson.finance
+    envVars:
+      # The embedded approval's markup is served by the API, so its assets are absolute.
+      - key: NEXT_PUBLIC_ASSET_ORIGIN
+        value: https://app.keelson.finance
     headers:
       - path: /_next/static/*
         name: Cache-Control
         value: public, max-age=31536000, immutable
+      # Fonts load cross-origin into the embedded approval, which the API serves.
+      - path: /_next/static/*
+        name: Access-Control-Allow-Origin
+        value: https://api.keelson.finance
+      - path: /embed/v1.js
+        name: Cache-Control
+        value: public, max-age=300
+      - path: /embed/v1.js
+        name: Cross-Origin-Resource-Policy
+        value: cross-origin
       - path: /*
         name: Content-Security-Policy
         value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://*.paypal.com https://*.paypalobjects.com; style-src 'self' 'unsafe-inline'; connect-src 'self' data: https://api.keelson.finance https://*.paypal.com https://*.paypalobjects.com; img-src 'self' data: blob: https://*.paypal.com https://*.paypalobjects.com; frame-src https://*.paypal.com https://*.kernel.sh https://verify.keelson.finance; worker-src 'self' blob:; font-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"

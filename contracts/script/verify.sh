@@ -64,7 +64,7 @@ etherscan_source() {
 # bb names every generated verifier HonkVerifier; the reference one is linked to two libraries.
 target_of() {
   case "$1" in
-    Mandate*Verifier | Anonymous*Verifier) echo "src/verifiers/$1.sol:HonkVerifier" ;;
+    Mandate*Verifier | Anonymous*Verifier | Amber*Verifier) echo "src/verifiers/$1.sol:HonkVerifier" ;;
     *) source_of "$(contract_of "$1")" ;;
   esac
 }
@@ -72,7 +72,7 @@ target_of() {
 # The verifiers and the SCL library are compiled without via-IR (foundry.toml `compilation_restrictions`); everything else in this
 # project with the default profile. External roots have a single profile of their own.
 profile_of() {
-  if [[ "$1" =~ ^(Mandate|Anonymous).*Verifier$ || "$1" =~ ^(Ed25519Verifier|SCL_EIP6565)$ ]]; then
+  if [[ "$1" =~ ^(Mandate|Anonymous|Amber).*Verifier$ || "$1" =~ ^(Ed25519Verifier|SCL_EIP6565)$ ]]; then
     echo "--compilation-profile legacy"
   elif [[ "$(root_of "$(contract_of "$1")")" == . ]]; then
     echo "--compilation-profile default"
@@ -85,7 +85,7 @@ libraries_of() {
     echo "--libraries lib/crypto-lib/src/lib/libSCL_EIP6565.sol:SCL_EIP6565:$(jq -r .contracts.SCL_EIP6565 "deployments/$2.json")"
     return
   fi
-  [[ "$1" =~ ^(Mandate|Anonymous).*ReferenceVerifier$ ]] || return 0
+  [[ "$1" =~ ^(Mandate|Anonymous|Amber).*ReferenceVerifier$ ]] || return 0
   local lib address
   for lib in RelationsLib ZKTranscriptLib; do
     address=$(forge script script/DeployMandatePredicateVerifier.s.sol --sig "predict(string)" "$1.$lib" \

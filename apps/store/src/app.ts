@@ -8,10 +8,19 @@ import { NONCE, type SecureHeadersVariables, secureHeaders } from "hono/secure-h
 import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
 import { z } from "zod";
-import { display, PRODUCTS, product, productJson, QuoteError, quote } from "./catalog.ts";
+import {
+  display,
+  PRODUCTS,
+  product,
+  productJson,
+  QuoteError,
+  quote,
+  variantJson,
+} from "./catalog.ts";
 import { deleteListing, getListing, ListingRequest, putListing } from "./listings.ts";
 import { captureOrder, createOrder, storeOrder } from "./orders.ts";
 import { catalogPage, notFoundPage, orderPage, productPage } from "./pages.ts";
+import { type PlatformDeps, registerPlatform } from "./platform.ts";
 
 export interface StoreDeps {
   paypal: PayPal;
@@ -24,6 +33,8 @@ export interface StoreDeps {
   /** The store's public origin, e.g. `https://store.keelson.finance`. */
   origin: string;
   log: Logger;
+  /** The demo agent platform that embeds Keelson's approval; not served without it. */
+  platform?: Omit<PlatformDeps, "kv" | "log">;
 }
 
 const PAYPAL = ["https://*.paypal.com", "https://*.paypalobjects.com", "https://*.venmo.com"];
@@ -107,6 +118,7 @@ export function createApp(deps: StoreDeps): Hono<{ Variables: SecureHeadersVaria
       "request",
     );
   });
+  if (deps.platform) registerPlatform(app, { ...deps.platform, kv: deps.kv, log: deps.log });
   app.use(
     secureHeaders({
       contentSecurityPolicy: {
@@ -181,6 +193,11 @@ export function createApp(deps: StoreDeps): Hono<{ Variables: SecureHeadersVaria
   app.get("/api/products", (c) =>
     c.json(PRODUCTS.map((p) => productJson(p, `${deps.origin}/products/${p.handle}`))),
   );
+  app.get("/api/products/:handle/variants/:sku", (c) => {
+    const p = product(c.req.param("handle"));
+    const v = p && variantJson(p, c.req.param("sku"));
+    return v ? c.json(v) : c.notFound();
+  });
   app.get("/api/products/:handle", (c) => {
     const p = product(c.req.param("handle"));
     return p ? c.json(productJson(p, `${deps.origin}/products/${p.handle}`)) : c.notFound();

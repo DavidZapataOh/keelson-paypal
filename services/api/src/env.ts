@@ -30,6 +30,8 @@ const schema = z
       .custom<`0x${string}`>((v) => typeof v === "string" && /^0x[0-9a-f]{64}$/.test(v))
       .optional(),
     ARBITRUM_SEPOLIA_RPC_URL: z.url().optional(),
+    /** The provider's WebSocket for the event subscription; Alchemy's is derived from the RPC URL. */
+    ARBITRUM_SEPOLIA_WSS_URL: z.url().optional(),
     /** Registers the legs' signers in the VerdictVerifier; without it signers are admitted off-chain only. */
     KEELSON_REGISTRAR_KEY: z
       .custom<`0x${string}`>((v) => typeof v === "string" && /^0x[0-9a-fA-F]{64}$/.test(v))

@@ -25,6 +25,7 @@ import {
   tour as tourOf,
 } from "../../lib/judge";
 import { percent, type Scoreboard, scoreboard } from "../../lib/scoreboard";
+import { AmberCase } from "../amber-case";
 import { AppShell, type NavItem } from "../app-shell";
 import { EngineProof } from "../engine-proof";
 import { LogBonds } from "../log-bond";
@@ -215,7 +216,7 @@ function Welcome({
             Judge Mode
           </h1>
           <p className="text-pretty text-lg text-muted-foreground leading-snug">
-            Ten steps on the live sandbox. No keys, no sign-up.
+            {STEPS.length} steps on the live sandbox. No keys, no sign-up.
           </p>
         </div>
         <section
@@ -699,6 +700,9 @@ function DisputeStep({ id, part }: { id: string | null; part: "dispute" | "verdi
           </>
         ) : null}
       </DataList>
+      {d.amber ? (
+        <AmberCase amber={d.amber} purchaseId={d.purchase_id} className="max-w-2xl" />
+      ) : null}
       <div className="max-w-xl">
         <EngineProof purchaseId={d.purchase_id} />
       </div>

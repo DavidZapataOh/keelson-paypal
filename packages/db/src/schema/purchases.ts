@@ -18,6 +18,18 @@ import { purchaseState } from "./enums.ts";
 import { mandates } from "./mandates.ts";
 import { bytea, createdAt, updatedAt } from "./types.ts";
 
+/** A purchase's amber attestation; the salt and the commitment as 0x hex, `unit_minor` decimal. */
+export interface StoredAmber {
+  url: string;
+  sku: string;
+  size: string;
+  color: string;
+  unit_minor: string;
+  returns_free: boolean;
+  salt: string;
+  commitment: string;
+}
+
 export const openPurchase = (state: AnyPgColumn) =>
   sql`${state} not in ('SETTLED', 'DENIED', 'FAILED', 'SLASHED', 'WARRANTY_PAID', 'DEFENDED', 'MERCHANT_LIABLE')`;
 
@@ -115,6 +127,11 @@ export const purchases = pgTable(
      * countersign's `evalHash`, and the `EngineProofVerifier.record` transaction that verified it.
      */
     engineProof: jsonb().$type<EngineProof>(),
+    /**
+     * What the operator attested about the item the coverage backs, fixed by the first cover
+     * attempt: the product page, the amber fields, the salt and their `amberCommitment`.
+     */
+    amber: jsonb().$type<StoredAmber>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

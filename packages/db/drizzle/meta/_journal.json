@@ -278,8 +278,29 @@
     {
       "idx": 39,
       "version": "7",
-      "when": 1794372718369,
-      "tag": "0039_engine_proof",
+      "when": 1794373166112,
+      "tag": "0039_chain_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1794375573380,
+      "tag": "0040_amber",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1794378640639,
+      "tag": "0041_embed_origins",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1794382053781,
+      "tag": "0042_engine_proof",
       "breakpoints": true
     }
   ]

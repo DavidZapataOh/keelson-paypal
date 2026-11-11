@@ -8,8 +8,19 @@ import { ErrorNotice } from "./notice";
 import { OnboardingFrame } from "./onboarding/frame";
 import { GateScene } from "./onboarding/gate-scene";
 
-/** Step one: connect the PayPal account the agent will pay with. */
-export function Welcome() {
+/**
+ * Step one: connect the PayPal account the agent will pay with. Pages a signed-out visitor reaches
+ * mid-task (an agent's approval link, an app's sign-in) say why and come back to `returnTo`.
+ */
+export function Welcome({
+  title = "Connect your PayPal",
+  line = "Your agent pays with it. Keelson checks every cart first.",
+  returnTo,
+}: {
+  title?: string;
+  line?: string;
+  returnTo?: string | undefined;
+} = {}) {
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState<"paypal" | "passkey">();
 
@@ -18,7 +29,7 @@ export function Welcome() {
     setError(undefined);
     const { error } = await authClient.signIn.social({
       provider: "paypal",
-      callbackURL: `${location.origin}/`,
+      callbackURL: returnTo ?? `${location.origin}/`,
     });
     if (error) {
       setError(error.message ?? "PayPal sign-in could not start.");
@@ -35,7 +46,7 @@ export function Welcome() {
       setBusy(undefined);
       return;
     }
-    location.assign("/");
+    location.assign(returnTo ?? "/");
   };
 
   return (
@@ -72,11 +83,9 @@ export function Welcome() {
     >
       <div className="grid gap-3">
         <h1 className="text-balance font-semibold text-[1.75rem] leading-[1.1] tracking-[-0.025em] sm:text-[2rem]">
-          Connect your PayPal
+          {title}
         </h1>
-        <p className="text-pretty text-lg text-muted-foreground leading-snug">
-          Your agent pays with it. Keelson checks every cart first.
-        </p>
+        <p className="text-pretty text-lg text-muted-foreground leading-snug">{line}</p>
       </div>
       {error ? (
         <div className="mt-6">

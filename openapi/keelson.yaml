@@ -946,6 +946,56 @@ components:
           minLength: 1
       required:
         - limits
+    EmbedOrigins:
+      type: object
+      properties:
+        origins:
+          type: array
+          items:
+            type: string
+            maxLength: 255
+          minItems: 1
+          maxItems: 5
+          example:
+            - https://agents.example.com
+      required:
+        - origins
+    EmbedUrl:
+      type: object
+      properties:
+        url:
+          type: string
+        ref:
+          type: string
+        expires_in:
+          type: integer
+      required:
+        - url
+        - ref
+        - expires_in
+    EmbedSession:
+      type: object
+      properties:
+        session:
+          type: string
+        embed:
+          $ref: "#/components/schemas/EmbedRequest"
+      required:
+        - session
+        - embed
+    EmbedRequest:
+      type: object
+      properties:
+        ref:
+          type: string
+        origin:
+          type: string
+        request:
+          $ref: "#/components/schemas/Connection"
+      required:
+        - ref
+        - origin
+        - request
     Agent:
       type: object
       properties:
@@ -3263,6 +3313,8 @@ components:
               - sent_at
           description: What Keelson sent PayPal for the party at fault. The action and the
             evidence types follow from the rule; a model only drafts the text.
+        amber:
+          $ref: "#/components/schemas/AmberCase"
       required:
         - dispute_id
         - purchase_id
@@ -3276,6 +3328,124 @@ components:
         - verdict
         - settlement
         - responses
+        - amber
+    AmberCase:
+      type:
+        - object
+        - "null"
+      properties:
+        commitment:
+          type: string
+          pattern: ^0x[0-9a-f]+$
+          description: "The `amberCommitment` the operator signed into the coverage:
+            Poseidon2 over the product page, the fields below and a salt."
+        attested:
+          type:
+            - object
+            - "null"
+          properties:
+            url:
+              type: string
+              format: uri
+              description: The store's JSON page for the SKU.
+            sku:
+              type: string
+            size:
+              type: string
+            color:
+              type: string
+            unit_minor:
+              type: string
+              pattern: ^\d+$
+            returns_free:
+              type: boolean
+          required:
+            - url
+            - sku
+            - size
+            - color
+            - unit_minor
+            - returns_free
+          description: "What the operator attested. Null on the public dispute read: what
+            was bought stays with the consoles."
+        conviction:
+          type:
+            - object
+            - "null"
+          properties:
+            field:
+              type: string
+              enum:
+                - size
+                - color
+                - unit_price
+                - returns_free
+            attested_value:
+              type:
+                - string
+                - "null"
+              description: What the operator attested of the field, which the store's answer
+                contradicts. Null on the public dispute read.
+            proven_at:
+              type: string
+              format: date-time
+            web_fact_digest:
+              type: string
+              pattern: ^0x[0-9a-f]+$
+              description: The EIP-712 digest of the `WebFact` leg A signed over the store's
+                answer.
+            captured_at:
+              type:
+                - string
+                - "null"
+              format: date-time
+            tx_hash:
+              type: string
+              pattern: ^0x[0-9a-f]+$
+            explorer_url:
+              type: string
+              format: uri
+            proof:
+              type:
+                - object
+                - "null"
+              properties:
+                bytes:
+                  type: integer
+                hash:
+                  type: string
+                  pattern: ^0x[0-9a-f]+$
+                  description: keccak256 of the proof.
+                public_inputs:
+                  type: array
+                  items:
+                    type: string
+                    pattern: ^0x[0-9a-f]+$
+                  description: "`range_hi, range_lo, amber_commitment, product, field_id`, as the
+                    court gave the verifier."
+              required:
+                - bytes
+                - hash
+                - public_inputs
+          required:
+            - field
+            - attested_value
+            - proven_at
+            - web_fact_digest
+            - captured_at
+            - tx_hash
+            - explorer_url
+            - proof
+          description: "`AmberContradictionCourt`'s conviction on Arbitrum Sepolia: a C2b
+            proof that the store's own answer, notarized by leg A, holds another
+            value of `field`. Null while there is none."
+      required:
+        - commitment
+        - attested
+        - conviction
+      description: What the operator attested about the item it bought, and whether it
+        was proven false. Null when the purchase carries no attestation (a cart
+        of several lines, or bought before attestations).
     Passkeys:
       type: object
       properties:
@@ -4352,6 +4522,8 @@ components:
           format: uri
         has_alibi:
           type: boolean
+        amber:
+          $ref: "#/components/schemas/AmberCase"
       required:
         - dispute_id
         - purchase_id
@@ -4372,6 +4544,7 @@ components:
         - settled_at
         - explorer_url
         - has_alibi
+        - amber
     MerchantOrder:
       type: object
       properties:
@@ -4767,6 +4940,50 @@ components:
             - string
             - "null"
           format: date-time
+        amber:
+          type: string
+          enum:
+            - none
+            - attested
+            - contradicted
+          description: "`attested`: you signed an amber commitment of the item into the
+            coverage. `contradicted`: `AmberContradictionCourt` convicted it
+            with a C2b proof."
+        amberCommitment:
+          type:
+            - string
+            - "null"
+        amberField:
+          type:
+            - string
+            - "null"
+          enum:
+            - size
+            - color
+            - unit_price
+            - returns_free
+            - null
+          description: The field the court found false.
+        amberClaimed:
+          type:
+            - string
+            - "null"
+          description: What you attested of that field.
+        amberProvenAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        amberWebFact:
+          type:
+            - string
+            - "null"
+          description: The digest of the `WebFact` the proof opened.
+        amberTx:
+          type:
+            - string
+            - "null"
+          format: uri
       required:
         - id
         - createdAt
@@ -4788,6 +5005,13 @@ components:
         - paidBy
         - settlementTx
         - settledAt
+        - amber
+        - amberCommitment
+        - amberField
+        - amberClaimed
+        - amberProvenAt
+        - amberWebFact
+        - amberTx
     CoverageRowsRequest:
       type: object
       properties:
@@ -4818,6 +5042,7 @@ components:
                   - liable
                   - outcome
                   - paidBy
+                  - amber
               sort:
                 type: string
                 enum:
@@ -5063,6 +5288,7 @@ components:
             liable: *a1
             outcome: *a1
             paidBy: *a1
+            amber: *a1
       required:
         - startRow
         - endRow
@@ -5478,6 +5704,20 @@ paths:
                           lastWebhookAgeMs:
                             type: integer
                           lastPollAgeMs:
+                            type: integer
+                        required:
+                          - status
+                      chainEvents:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                            enum:
+                              - up
+                              - down
+                          finalizedBlock:
+                            type: string
+                          reconciledAgeMs:
                             type: integer
                         required:
                           - status
@@ -6368,6 +6608,180 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "503":
           description: The operator's agent key or bond is not set
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/embed/origins:
+    put:
+      tags:
+        - embed
+      summary: Set the origins that may frame approvals
+      description: Replaces the https origins this client's agent platform may embed
+        Keelson's approval in. Each becomes the page's `frame-ancestors` for
+        that client's requests, and the only origin the frame talks to with
+        `postMessage`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmbedOrigins"
+      responses:
+        "200":
+          description: The origins now allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbedOrigins"
+        "401":
+          description: No valid access token
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: An origin is not a bare https origin
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/connections/embed:
+    post:
+      tags:
+        - embed
+      summary: Embed the approval of a request
+      description: For a pending request this client made, a URL to frame in the agent
+        platform's page at `origin`, one of the client's embed origins. The
+        URL's fragment carries a single-use token the frame redeems within five
+        minutes; mint another to frame it again. The user approves in a Keelson
+        window the frame opens, with a passkey; poll `POST
+        /v1/connections/token` as usual for the answer.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                device_code:
+                  type: string
+                  maxLength: 256
+                origin:
+                  type: string
+                  maxLength: 255
+              required:
+                - device_code
+                - origin
+      responses:
+        "201":
+          description: Frame `url`; it opens to the request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbedUrl"
+        "401":
+          description: No valid access token
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The origin is not one of this client's
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: No pending request with this device code
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/embed/sessions:
+    post:
+      tags:
+        - embed
+      summary: Open the embedded approval
+      description: The frame spends its token, once, for a session it keeps in memory
+        and sends in `Keelson-Embed`. No cookie is read or set.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+                  maxLength: 64
+              required:
+                - token
+      responses:
+        "201":
+          description: The session and the request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbedSession"
+        "401":
+          description: The token is unknown, spent or expired
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/embed/request:
+    get:
+      tags:
+        - embed
+      summary: Read the embedded request
+      parameters:
+        - schema:
+            type: string
+            maxLength: 64
+          required: false
+          name: keelson-embed
+          in: header
+      responses:
+        "200":
+          description: The request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbedRequest"
+        "401":
+          description: No live embed session
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/embed/deny:
+    post:
+      tags:
+        - embed
+      summary: Decline the embedded request
+      parameters:
+        - schema:
+            type: string
+            maxLength: 64
+          required: false
+          name: keelson-embed
+          in: header
+      responses:
+        "200":
+          description: Declined
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbedRequest"
+        "401":
+          description: No live embed session
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: The request is no longer pending
           content:
             application/problem+json:
               schema:
@@ -7489,9 +7903,10 @@ paths:
         - Disputes
       summary: A dispute's attribution
       description: "Where a PayPal dispute over a Keelson purchase stands: the party
-        at fault, the `Verdict` both TEE legs signed and the time from the
-        dispute's arrival to its verdict. No authentication; it holds no
-        personal data."
+        at fault, the `Verdict` both TEE legs signed, the time from the
+        dispute's arrival to its verdict, and the operator's amber commitment
+        with any conviction of it. No authentication; it holds no personal data,
+        so what the operator attested is left out."
       parameters:
         - schema:
             type: string

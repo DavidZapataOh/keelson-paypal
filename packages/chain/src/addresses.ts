@@ -8,6 +8,9 @@ export type ChainId = (typeof chainIds)[number];
 export const addresses: Record<ChainId, Readonly<Record<string, Address>>> = {
   421614: {
     AccessManager: "0x57c30a4a175978673bAD2B2B2D3667966cd58314",
+    AmberContradictionCourt: "0x193984661a2be5da3725f1CF1bB436501eA744Bc",
+    AmberContradictionReferenceVerifier: "0x87F47494Fdc0F6e4f2f01Ab7c40538F5164EcA8A",
+    AmberContradictionVerifier: "0x378b1DBdf260460c93DDec38F0245E95f36A2414",
     AnonymousMandateReferenceVerifier: "0x07639DbF0E01E4c134B51Dc6210968600b499c6B",
     AnonymousMandateVerifier: "0x103CC9650C1f1d9568e5EdF45Cd1A3C0978BFc7C",
     AnonymousPurchaseReferenceVerifier: "0x9e4AbD6603F21aB9d72De73c83eaa2E8b5CFfaA1",
