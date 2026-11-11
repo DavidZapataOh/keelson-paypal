@@ -74,6 +74,16 @@ function Steps({ p }: { p: Purchase }) {
   const blocked = p.state === "DENIED";
   const paid = CAPTURED.has(p.state);
   const amount = money(p.amount.minor, p.amount.currency);
+  // The timeline closes on the outcome once nothing is still moving.
+  const settled = p.disputes.every((d) => d.state === "RESOLVED");
+  const outcome =
+    blocked || p.failure
+      ? "nothing was paid"
+      : paid && settled
+        ? p.disputes.length > 0
+          ? `${amount} paid; the dispute is closed`
+          : `${amount} paid`
+        : undefined;
   return (
     <Timeline aria-label="What happened">
       <TimelineItem state="done" actor="You">
@@ -112,6 +122,11 @@ function Steps({ p }: { p: Purchase }) {
           {d.state === "OPEN" ? "is open; Keelson is attributing it" : "has been attributed"}
         </TimelineItem>
       ))}
+      {outcome ? (
+        <TimelineItem state="done" actor="Outcome">
+          {outcome}
+        </TimelineItem>
+      ) : null}
     </Timeline>
   );
 }

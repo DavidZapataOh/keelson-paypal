@@ -468,6 +468,9 @@ describe("receipts and disputes", () => {
     );
     const checks = page.getByRole("list", { name: "What Keelson checked" });
     await checks.waitFor();
+    expect(
+      await page.getByRole("list", { name: "What happened" }).getByText("$89.00 paid").count(),
+    ).toBe(1);
     expect(await checks.getByRole("listitem").count()).toBe(2);
     expect(await checks.getByRole("listitem").first().textContent()).toMatch(
       /\$89\.00\s+within\s+\$100\.00/,
