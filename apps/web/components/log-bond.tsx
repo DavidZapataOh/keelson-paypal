@@ -37,7 +37,7 @@ function SignedNote({ label, note }: { label: string; note: string }) {
 function LogBondCard({ bond }: { bond: LogBond }) {
   const e = bond.equivocation;
   return (
-    <article className="grid gap-5 rounded-lg border bg-card p-5">
+    <article className="grid gap-5 rounded-2xl bg-bone-2/60 p-5">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <h3 className="font-mono text-sm">{bond.origin}</h3>
         {bond.test ? <Badge variant="outline">Test origin · drill</Badge> : null}

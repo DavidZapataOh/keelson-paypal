@@ -14,6 +14,9 @@ const OWN_CHROME = new Set([
   "/live/",
   "/scoreboard/",
   "/scoreboard/methodology/",
+  "/merchant/",
+  "/operator/",
+  "/judge/",
   "/passkeys/",
 ]);
 

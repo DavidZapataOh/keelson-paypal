@@ -2,13 +2,15 @@
 
 import { Badge } from "@keelson/ui/components/badge";
 import { Button } from "@keelson/ui/components/button";
+import { Fingerprint } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, del, get } from "../lib/api";
 import { authClient } from "../lib/auth";
 import { addPasskey, localPasskeys, type Passkey } from "../lib/passkeys";
 import { AppShell } from "./app-shell";
-import { ErrorNotice, Eyebrow } from "./notice";
+import { ErrorNotice } from "./notice";
+import { PageHead } from "./page-head";
 
 const added = new Intl.DateTimeFormat("en-US", { dateStyle: "medium" });
 
@@ -102,15 +104,8 @@ export function PasskeySettings() {
 
   return (
     <AppShell>
-      <div className="grid max-w-2xl gap-8">
-        <div className="grid gap-3">
-          <Eyebrow>Account</Eyebrow>
-          <h1 className="text-balance font-semibold text-3xl tracking-[-0.03em]">Passkeys</h1>
-          <p className="text-pretty text-muted-foreground">
-            Any of your passkeys signs you in and signs your mandates. Add one on each device you
-            sign from. You keep at least one.
-          </p>
-        </div>
+      <div className="grid max-w-2xl gap-6">
+        <PageHead title="Passkeys" line="Each one signs you in and signs your mandates." />
 
         {passkeys === undefined ? (
           error ? null : (
@@ -119,9 +114,15 @@ export function PasskeySettings() {
             </p>
           )
         ) : (
-          <ul className="divide-y divide-border rounded-lg border">
+          <ul className="grid gap-1 rounded-3xl border bg-card p-3" aria-label="Your passkeys">
             {passkeys.map((p) => (
-              <li key={p.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+              <li
+                key={p.id}
+                className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl px-3 py-3"
+              >
+                <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-bone-2">
+                  <Fingerprint className="size-5" aria-hidden="true" />
+                </span>
                 <div className="mr-auto grid gap-0.5">
                   <span className="flex items-center gap-2 font-medium">
                     {p.name ?? "Passkey"}
@@ -156,7 +157,7 @@ export function PasskeySettings() {
         )}
 
         {stale ? (
-          <div className="grid gap-3 rounded-lg border p-4">
+          <div className="grid gap-3 rounded-3xl border bg-card p-5">
             <p className="text-pretty">
               {judge
                 ? "To change your passkeys, confirm it's you: sign in again with a passkey you have."
@@ -178,7 +179,7 @@ export function PasskeySettings() {
             size="lg"
             onClick={add}
             disabled={passkeys === undefined || busy !== undefined}
-            className="sm:w-fit"
+            className="h-12 rounded-xl sm:w-fit"
           >
             {busy === "add" ? "Waiting for your device…" : "Add a passkey on this device"}
           </Button>
