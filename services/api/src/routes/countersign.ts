@@ -685,7 +685,8 @@ export function registerCountersign(
           JSON.parse(notarized.toString("utf8")) as WebFactFields,
           body.cart as Cart,
           website,
-          Math.floor(Date.now() / 1000),
+          // The legs sign a little later than now: the Alibi measures the WebFact's age from then.
+          Math.floor(Date.now() / 1000) + 60,
         );
       } catch {
         bound = undefined;

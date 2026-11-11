@@ -11,12 +11,13 @@ import {
 } from "@keelson/alibi";
 import { renderAlibiPdf } from "@keelson/alibi/pdf";
 import { verifyAlibi } from "@keelson/alibi/verify";
-import { and, eq, evidenceBundles, mandates, purchases } from "@keelson/db";
+import { and, eq, evidenceBundles, mandates, purchases, user } from "@keelson/db";
 import type { Context } from "hono";
 import { loadAlibi } from "../alibi/issue.ts";
 import type { Deps } from "../app.ts";
 import type { Principal } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
+import { publicDenial } from "./purchases.ts";
 
 const Id = z
   .string()
@@ -155,7 +156,7 @@ const verifyRoute = createRoute({
 /**
  * Whether the principal is the mandate's user or the client that uploaded the evidence. The
  * Alibi of a live purchase is public once its PayPal transaction is recorded; a live cart denied
- * before any payment is public when Keelson's own demo operator ran it.
+ * before any payment is public when it is one of Keelson's own test runs ({@link publicDenial}).
  */
 async function mayRead(
   deps: Pick<Deps, "db" | "demoAgentId">,
@@ -163,13 +164,15 @@ async function mayRead(
   b: AlibiBundle,
 ) {
   if (b.paypal.transaction_id !== undefined) return true;
-  if (deps.demoAgentId !== undefined) {
+  const denial = publicDenial(deps.demoAgentId);
+  if (denial) {
     const [p] = await deps.db
-      .select({ liveStore: purchases.liveStore, state: purchases.state })
+      .select({ id: purchases.id })
       .from(purchases)
       .innerJoin(mandates, eq(mandates.id, purchases.mandateId))
-      .where(and(eq(purchases.id, b.alibi_id), eq(mandates.operatorAgentId, deps.demoAgentId)));
-    if (p !== undefined && p.liveStore !== null && p.state === "DENIED") return true;
+      .innerJoin(user, eq(user.id, mandates.userId))
+      .where(and(eq(purchases.id, b.alibi_id), denial));
+    if (p) return true;
   }
   if (!principal) return false;
   if (principal.kind === "user") {

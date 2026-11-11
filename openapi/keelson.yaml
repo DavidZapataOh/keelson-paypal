@@ -5387,10 +5387,10 @@ paths:
         - purchases
       summary: Live purchases
       description: Purchases the shopping agent made with real money at real stores'
-        own checkouts, and the carts Keelson denied there before the payment
-        when Keelson's demo operator ran them, newest first. Each has a public
-        Alibi; a paid one names the PayPal transaction it paid. Keelson
-        countersigned and logged them; it covers none of them.
+        own checkouts, and the carts Keelson denied there before the payment for
+        Keelson's own test users, newest first. Each has a public Alibi; a paid
+        one names the PayPal transaction it paid. Keelson countersigned and
+        logged them; it covers none of them.
       responses:
         "200":
           description: The live purchases

@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { decodeAlibi, leafHashOf } from "@keelson/alibi";
-import { alibis, eq, mandates, purchases, sql } from "@keelson/db";
+import { alibis, eq, mandates, purchases, sql, user } from "@keelson/db";
 import { pino } from "pino";
 import { ulid } from "ulid";
 import { beforeAll, describe, expect, test } from "vitest";
@@ -231,14 +231,27 @@ describe.skipIf(!g)("denied live carts", () => {
     });
   });
 
-  test("other denied carts and unpaid live purchases stay private", async () => {
+  test("other denied carts, a real user's and unpaid live purchases stay private", async () => {
     const sandbox = await insert(null, "DENIED");
     const unpaid = await insert(STORE, "LOGGED");
     const another = await insert(STORE, "DENIED", await channel3Mandate());
-    for (const id of [sandbox, unpaid, another]) {
+    // A real user's mandate under the demo operator.
+    const real = await channel3Mandate();
+    const [demoMandate] = await testDb.select().from(mandates).where(eq(mandates.id, mandateId));
+    const [realMandate] = await testDb
+      .update(mandates)
+      .set({ operatorAgentId: demoMandate?.operatorAgentId as bigint })
+      .where(eq(mandates.id, real))
+      .returning();
+    await testDb
+      .update(user)
+      .set({ email: `${ulid()}@gmail.com` })
+      .where(eq(user.id, realMandate?.userId as string));
+    const person = await insert(STORE, "DENIED", real);
+    for (const id of [sandbox, unpaid, another, person]) {
       expect((await demo.request(`/v1/alibis/${id}`)).status).toBe(404);
     }
     const ids = (await listed()).map((p) => p.id);
-    expect(ids.some((id) => id === sandbox || id === unpaid || id === another)).toBe(false);
+    expect(ids.some((id) => [sandbox, unpaid, another, person].includes(id))).toBe(false);
   });
 });
