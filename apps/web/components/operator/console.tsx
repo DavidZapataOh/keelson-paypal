@@ -8,6 +8,7 @@ import { authClient, SESSION_HINT } from "../../lib/auth";
 import { CHAIN_ID, injectedWallet, me, type OperatorSelf, signIn } from "../../lib/operator";
 import { AppShell, type NavItem } from "../app-shell";
 import { ConsoleSignIn } from "../console-sign-in";
+import { LogBonds } from "../log-bond";
 import { Standing } from "./standing";
 
 // AG Grid renders only in the browser; the static export ships the console's shell.
@@ -162,6 +163,20 @@ export function OperatorConsole() {
         </header>
         <Standing key={`standing-${agentId}`} agentId={agentId} owner={wallet} />
         <CoverageBook key={`book-${agentId}`} agentId={agentId} />
+        <section
+          aria-labelledby="log-bond-title"
+          className="grid gap-4 rounded-3xl border bg-card p-5 sm:p-6"
+        >
+          <div className="grid max-w-prose gap-1">
+            <h2 id="log-bond-title" className="font-semibold text-lg tracking-tight">
+              The log is bonded too
+            </h2>
+            <p className="text-pretty text-muted-foreground text-sm">
+              If it ever signs two histories, anyone takes its bond with the two checkpoints.
+            </p>
+          </div>
+          <LogBonds />
+        </section>
       </div>
     </AppShell>
   );

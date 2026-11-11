@@ -8,12 +8,13 @@ import { CopyValue } from "@keelson/ui/components/copy-value";
 import { DataItem, DataList } from "@keelson/ui/components/data-list";
 import { Status } from "@keelson/ui/components/status";
 import { Timeline, TimelineItem } from "@keelson/ui/components/timeline";
-import { ChevronRight, MessageSquareWarning } from "lucide-react";
+import { Check, ChevronRight, MessageSquareWarning, X } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { get } from "../lib/api";
 import { API, VERIFY } from "../lib/config";
+import { DISPUTE_KINDS, kindOf } from "../lib/dispute-kinds";
 import { money, when } from "../lib/format";
 import { purchaseStatus } from "../lib/status";
 import type { Dispute, Purchase } from "../lib/types";
@@ -73,6 +74,16 @@ function Steps({ p }: { p: Purchase }) {
   const blocked = p.state === "DENIED";
   const paid = CAPTURED.has(p.state);
   const amount = money(p.amount.minor, p.amount.currency);
+  // The timeline closes on the outcome once nothing is still moving.
+  const settled = p.disputes.every((d) => d.state === "RESOLVED");
+  const outcome =
+    blocked || p.failure
+      ? "nothing was paid"
+      : paid && settled
+        ? p.disputes.length > 0
+          ? `${amount} paid; the dispute is closed`
+          : `${amount} paid`
+        : undefined;
   return (
     <Timeline aria-label="What happened">
       <TimelineItem state="done" actor="You">
@@ -111,6 +122,11 @@ function Steps({ p }: { p: Purchase }) {
           {d.state === "OPEN" ? "is open; Keelson is attributing it" : "has been attributed"}
         </TimelineItem>
       ))}
+      {outcome ? (
+        <TimelineItem state="done" actor="Outcome">
+          {outcome}
+        </TimelineItem>
+      ) : null}
     </Timeline>
   );
 }
@@ -150,7 +166,9 @@ function DisputeCard({ id }: { id: string }) {
                 ? `${PARTY[d.liable]} answers`
                 : "Keelson is reading the evidence"}
           </p>
-          <p className="font-mono text-muted-foreground text-xs">{d.dispute_id}</p>
+          <p className="text-muted-foreground text-xs">
+            {DISPUTE_KINDS[kindOf(d)].label} · <span className="font-mono">{d.dispute_id}</span>
+          </p>
         </div>
       </div>
       <p className="text-muted-foreground text-sm">
@@ -284,6 +302,34 @@ function Receipt() {
           <h2 className="mb-4 font-semibold text-lg">What happened</h2>
           <Steps p={p} />
         </div>
+        {p.checks?.length ? (
+          <div className="rounded-3xl border bg-card p-5 sm:p-6">
+            <h2 className="mb-3 font-semibold text-lg">What Keelson checked</h2>
+            <ul className="grid divide-y" aria-label="What Keelson checked">
+              {p.checks.map((c) => (
+                <li key={c.field} className="flex items-center gap-3 py-2.5 text-sm">
+                  <span
+                    className={`grid size-5 shrink-0 place-items-center rounded-[4px] ${c.pass ? "bg-ok text-bone" : "bg-vermilion text-graphite"}`}
+                  >
+                    {c.pass ? (
+                      <Check className="size-3.5" strokeWidth={3} aria-label="held" />
+                    ) : (
+                      <X className="size-3.5" strokeWidth={3} aria-label="failed" />
+                    )}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">
+                    {mandate.card?.rows.find((r) => r.field === c.field)?.label ?? c.field}
+                  </span>
+                  <span className="font-mono tnum">
+                    {c.cart ?? "—"}{" "}
+                    <span className="text-muted-foreground">{c.pass ? "within" : "outside"}</span>{" "}
+                    {c.mandate ?? "—"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         {p.disputes.map((d) => (
           <DisputeCard key={d.id} id={d.id} />
         ))}

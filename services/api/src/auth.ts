@@ -29,6 +29,16 @@ const paymentExtension = { payment: { isPayment: true } } as AuthenticationExten
 const PAYMENT_CEREMONY = "passkey-payment:";
 const PAYMENT_CEREMONY_MS = 10 * 60_000;
 
+/**
+ * A user who already has a passkey adds another only within this long of signing in, with PayPal
+ * or with one of their passkeys.
+ */
+export const PASSKEY_FRESH_MS = 10 * 60_000;
+const PASSKEY_REGISTRATION = new Set([
+  "/passkey/generate-register-options",
+  "/passkey/verify-registration",
+]);
+
 /** Arbitrum Sepolia and Arbitrum One, the chains a merchant's settlement wallet signs on. */
 const SIWE_CHAINS = new Set([421614, 42161]);
 
@@ -94,8 +104,9 @@ export function createAuth(
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.BETTER_AUTH_URL,
     trustedOrigins: [env.APP_ORIGIN],
-    // Judges are created only through `POST /v1/judge/sessions`, which limits them.
-    disabledPaths: ["/token", "/sign-in/anonymous"],
+    // Judges are created only through `POST /v1/judge/sessions`, which limits them. Passkeys are
+    // removed through `DELETE /v1/passkeys/{id}`, which keeps the last one.
+    disabledPaths: ["/token", "/sign-in/anonymous", "/passkey/delete-passkey"],
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
         // Open registration is for public clients only: a confidential client is created by an
@@ -123,11 +134,31 @@ export function createAuth(
           if (query.authorization_details === undefined) return;
           return { context: { query: { ...query, prompt: "consent" } } };
         }
-        // A judge's tenant is temporary: it cannot take a PayPal account the reset would then strand.
-        if (ctx.path !== "/link-social") return;
-        const session = await getSessionFromCtx(ctx);
-        if ((session?.user as { isAnonymous?: boolean | null } | undefined)?.isAnonymous) {
-          throw new APIError("FORBIDDEN", { message: "Judge Mode cannot link an account." });
+        if (ctx.path === "/link-social") {
+          const session = await getSessionFromCtx(ctx);
+          if ((session?.user as { isAnonymous?: boolean | null } | undefined)?.isAnonymous) {
+            throw new APIError("FORBIDDEN", { message: "Judge Mode cannot link an account." });
+          }
+          return;
+        }
+        // Another passkey can sign for the user, so it takes a recent sign-in, as a first one
+        // took the sign-up.
+        if (PASSKEY_REGISTRATION.has(ctx.path)) {
+          const session = await getSessionFromCtx(ctx);
+          if (!session) return;
+          const age = Date.now() - new Date(session.session.createdAt).getTime();
+          if (age < PASSKEY_FRESH_MS) return;
+          const [existing] = await db
+            .select({ id: passkeyTable.id })
+            .from(passkeyTable)
+            .where(sql`${passkeyTable.userId} = ${session.user.id}`)
+            .limit(1);
+          if (existing) {
+            throw APIError.from("FORBIDDEN", {
+              code: "SESSION_NOT_FRESH",
+              message: "Sign in again to add a passkey.",
+            });
+          }
         }
       }),
       // A passkey is payment-capable only if the server issued the `payment` extension for its

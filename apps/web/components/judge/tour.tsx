@@ -26,6 +26,7 @@ import {
 } from "../../lib/judge";
 import { percent, type Scoreboard, scoreboard } from "../../lib/scoreboard";
 import { AppShell, type NavItem } from "../app-shell";
+import { LogBonds } from "../log-bond";
 import { LiabilityLegend, MandateCard } from "../mandate-card";
 import { ErrorNotice } from "../notice";
 import { Mark, Panel } from "../surface";
@@ -57,6 +58,12 @@ const STEPS: { id: string; title: string; role: Role; line: string }[] = [
     title: "Anonymous, and still accountable",
     role: "Shopper",
     line: "A real, registered person approved it. Nobody learns who.",
+  },
+  {
+    id: "equivocation",
+    title: "Catch the log lying",
+    role: "Shopper",
+    line: "Two signed histories of the same log are proof, and its bond pays out.",
   },
   {
     id: "dispute",
@@ -377,6 +384,8 @@ function StepBody({ id, tour }: { id: string; tour: Tour }) {
       return <AlibiStep captured={captured} />;
     case "anonymous":
       return <AnonymousStep purchase={tour.anonymous_purchase} />;
+    case "equivocation":
+      return <EquivocationStep />;
     case "dispute":
     case "verdict":
       return <DisputeStep id={tour.dispute_id} part={id} />;
@@ -571,6 +580,21 @@ function AnonymousStep({ purchase }: { purchase: Tour["anonymous_purchase"] }) {
       <a className="text-sm underline" href={link} target="_blank" rel="noopener">
         Open in the full verifier ↗
       </a>
+    </div>
+  );
+}
+
+function EquivocationStep() {
+  return (
+    <div className="grid gap-5">
+      <Lead>
+        Every Alibi sits in a public log. If the log ever signed two different histories of the same
+        size, those two checkpoints are proof, and they slash the bond on its key: a bounty to
+        whoever submits them, the rest to Keelson&apos;s reserve. The contract checks both Ed25519
+        signatures itself; no one at Keelson is asked. Below is a real slash on Arbitrum Sepolia,
+        from our drill on a test origin.
+      </Lead>
+      <LogBonds />
     </div>
   );
 }

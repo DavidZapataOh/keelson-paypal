@@ -17,7 +17,6 @@ import {
   purchases,
   sql,
   transition,
-  user,
 } from "@keelson/db";
 import {
   decodeMandate,
@@ -520,10 +519,6 @@ export function registerMandates(
     let issued: MandateIssued | undefined;
     if (deps.tee) {
       if (!body.salt) return invalid("salt is required");
-      const holder = await db.query.user.findFirst({
-        columns: { userCredential: true },
-        where: (row, { eq: is }) => is(row.id, userId),
-      });
       try {
         issued = await deps.tee.client.a.registerMandate({
           sub: userId,
@@ -535,7 +530,7 @@ export function registerMandates(
             signature: assertion.signature,
           },
           salt: body.salt as `0x${string}`,
-          ...(holder?.userCredential ? { user_credential: holder.userCredential } : {}),
+          ...(key.userCredential ? { user_credential: key.userCredential } : {}),
         });
       } catch (err) {
         if (!(err instanceof LegError)) throw err;
@@ -560,7 +555,10 @@ export function registerMandates(
       await db.transaction(async (tx) => {
         const counted = await tx
           .update(passkey)
-          .set({ counter: newCounter })
+          .set({
+            counter: newCounter,
+            ...(issued ? { userCredential: issued.user_credential } : {}),
+          })
           .where(
             sql`${passkey.id} = ${key.id} and (${newCounter} = 0 or ${passkey.counter} < ${newCounter})`,
           );
@@ -588,12 +586,6 @@ export function registerMandates(
               }
             : {}),
         });
-        if (issued) {
-          await tx
-            .update(user)
-            .set({ userCredential: issued.user_credential })
-            .where(eq(user.id, userId));
-        }
         if (!(await transition(tx, "mandates", m.mid, "DRAFT", "COMPILED"))) {
           throw new Error("mandate left DRAFT concurrently");
         }

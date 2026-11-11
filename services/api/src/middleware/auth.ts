@@ -40,7 +40,11 @@ export function authenticate(auth: Auth, baseURL: string): MiddlewareHandler {
       // A judge's tenant ends 12 hours after it opened, whatever its sessions say.
       const judge = session?.user as { isAnonymous?: boolean | null; createdAt: Date } | undefined;
       if (session && !(judge?.isAnonymous && judgeExpired(judge.createdAt))) {
-        c.set("principal", { kind: "user", subject: session.user.id });
+        c.set("principal", {
+          kind: "user",
+          subject: session.user.id,
+          session: { id: session.session.id, createdAt: new Date(session.session.createdAt) },
+        });
       }
     }
     await next();
