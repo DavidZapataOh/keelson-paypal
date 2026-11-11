@@ -103,8 +103,16 @@ export interface Deps {
   storeOrigin?: string;
   /** Lets a Judge Mode session past the daily cap over every address; unset, no invite does. */
   judgeInvite?: string | undefined;
-  /** The operator MCP tool calls act for when they name none. */
+  /**
+   * Keelson's hosted operator: the operator MCP tool calls act for when they name none, and the
+   * one an app acting for a user goes through when it has no operator of its own.
+   */
   demoAgentId?: bigint | undefined;
+  /**
+   * The hosted operator's private `cnf` key; the API closes delegated apps' mandates of that
+   * operator with it, and nothing else (see `delegated.ts`). Their countersigns answer 503 without it.
+   */
+  hostedAgentKey?: CryptoKey;
   /** Browser origin of the public verifier, allowed to read public Alibis, receipts and timestamps without credentials. */
   verifyOrigin?: string;
   /** Reads the anchor and signer registry for `POST /v1/alibis/verify`; it verifies offline without it. */

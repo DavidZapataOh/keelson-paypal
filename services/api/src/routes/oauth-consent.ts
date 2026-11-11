@@ -37,7 +37,17 @@ const Consent = z
           "Whether the client is bound to a registered agent operator; a dynamically registered client never is until its operator links it.",
       }),
     }),
-    agent: z.object({ agentId: z.string(), operator: z.string() }).nullable(),
+    agent: z
+      .object({
+        agentId: z.string(),
+        operator: z.string(),
+        hosted: z.boolean().openapi({
+          description:
+            "Whether the client has no operator of its own and acts through Keelson's hosted operator, whose bond covers its purchases.",
+        }),
+      })
+      .nullable()
+      .openapi({ description: "The operator the client's mandates name, if it can be given any." }),
     scopes: z.array(z.string()),
     spending: ConnectionRequest.nullable().openapi({
       description: `The limits the client asks for in \`authorization_details\` of type \`${MANDATE_DETAILS_TYPE}\`.`,
@@ -94,7 +104,9 @@ const connect = createRoute({
 
 interface Parsed {
   client: typeof oauthClient.$inferSelect;
+  /** The client's own operator, or else the hosted one. */
   operator: typeof operators.$inferSelect | undefined;
+  hosted: boolean;
   scopes: string[];
   spending: z.infer<typeof ConnectionRequest> | null;
   spendingError: string | null;
@@ -127,7 +139,10 @@ function spendingOf(raw: string | null): {
   return invalid ? { spending: null, error: invalid } : { spending: parsed.data, error: null };
 }
 
-export function registerOAuthConsent(app: OpenAPIHono, deps: Pick<Deps, "db" | "auth">): void {
+export function registerOAuthConsent(
+  app: OpenAPIHono,
+  deps: Pick<Deps, "db" | "auth" | "demoAgentId">,
+): void {
   const { db, auth } = deps;
   if (!auth) return;
 
@@ -146,17 +161,23 @@ export function registerOAuthConsent(app: OpenAPIHono, deps: Pick<Deps, "db" | "
     const clientId = query.get("client_id") ?? "";
     const [client] = await db.select().from(oauthClient).where(eq(oauthClient.clientId, clientId));
     if (!client || client.disabled) return problem(c, 404, "not-found", "Not found");
-    const [operator] = await db.select().from(operators).where(eq(operators.clientId, clientId));
+    const [own] = await db.select().from(operators).where(eq(operators.clientId, clientId));
+    const [hosted] =
+      own || deps.demoAgentId === undefined
+        ? []
+        : await db.select().from(operators).where(eq(operators.agentId, deps.demoAgentId));
+    const operator = own ?? hosted;
     const { spending, error } = spendingOf(query.get("authorization_details"));
     return {
       client,
       operator,
+      hosted: !own && hosted !== undefined,
       scopes: (query.get("scope") ?? "").split(" ").filter(Boolean),
       spending,
       spendingError:
         error ??
         (spending && !operator
-          ? "This app is not linked to a registered agent, so it cannot be given spending limits."
+          ? "No registered agent operator can answer for this app, so it cannot be given spending limits."
           : null),
     };
   }
@@ -164,16 +185,18 @@ export function registerOAuthConsent(app: OpenAPIHono, deps: Pick<Deps, "db" | "
   app.openapi(read, async (c) => {
     const parsed = await parse(c, auth, c.req.valid("json").oauthQuery);
     if (parsed instanceof Response) return parsed as never;
-    const { client, operator } = parsed;
+    const { client, operator, hosted } = parsed;
     return c.json(
       {
         client: {
           id: client.clientId,
           name: client.name ?? client.clientId,
           uri: client.uri,
-          verified: operator !== undefined,
+          verified: operator !== undefined && !hosted,
         },
-        agent: operator ? { agentId: operator.agentId.toString(), operator: operator.name } : null,
+        agent: operator
+          ? { agentId: operator.agentId.toString(), operator: operator.name, hosted }
+          : null,
         scopes: parsed.scopes,
         spending: parsed.spendingError ? null : parsed.spending,
         spendingError: parsed.spendingError,

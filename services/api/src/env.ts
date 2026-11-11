@@ -41,6 +41,11 @@ const schema = z
       .custom<`0x${string}`>((v) => typeof v === "string" && /^0x[0-9a-fA-F]{64}$/.test(v))
       .optional(),
     DEMO_AGENT_ID: z.coerce.bigint().positive().optional(),
+    /**
+     * The private P-256 JWK of the `cnf` key `DEMO_AGENT_ID` names: the API closes the mandates of
+     * apps that act for a user through Keelson's hosted operator with it (see `delegated.ts`).
+     */
+    KEELSON_AGENT_KEY: z.string().min(1).optional(),
     /** Lets a Judge Mode session past the daily cap; the app forwards it from `/judge/?invite=`. */
     JUDGE_INVITE_CODE: z.string().min(32).optional(),
     /** Keelson's treasury key: it pays in PYUSD the verdicts the chain refuses although they hold. */
@@ -91,6 +96,10 @@ const schema = z
   .refine((env) => (env.KEELSON_OPERATOR_KEY === undefined) === (env.DEMO_AGENT_ID === undefined), {
     message: "KEELSON_OPERATOR_KEY and DEMO_AGENT_ID are set together",
     path: ["KEELSON_OPERATOR_KEY"],
+  })
+  .refine((env) => env.KEELSON_AGENT_KEY === undefined || env.DEMO_AGENT_ID !== undefined, {
+    message: "KEELSON_AGENT_KEY needs DEMO_AGENT_ID",
+    path: ["KEELSON_AGENT_KEY"],
   })
   .refine((env) => (env.LOG_URL === undefined) === (env.LOG_WRITE_TOKEN === undefined), {
     message: "LOG_URL and LOG_WRITE_TOKEN are set together",

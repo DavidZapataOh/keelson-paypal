@@ -1,7 +1,18 @@
 import { createHash } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { addresses, keelsonBondVaultAbi, keelsonValidationRegistryAbi } from "@keelson/chain";
-import { and, desc, eq, isNotNull, mandates, operators, sql } from "@keelson/db";
+import {
+  agentConnections,
+  and,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  mandates,
+  operators,
+  sql,
+} from "@keelson/db";
 import {
   agentRegistry,
   ERC8004,
@@ -16,8 +27,9 @@ import { calculateJwkThumbprint } from "jose";
 import { type Address, BaseError, ContractFunctionRevertedError, getAddress, type Hex } from "viem";
 import type { Deps } from "../app.ts";
 import { blockScoped, chainUnavailable } from "../chain/reader.ts";
+import { isDelegated } from "../delegated.ts";
 import { publishEvent } from "../events.ts";
-import { requireClient } from "../middleware/auth.ts";
+import { requireAgent, requireClient } from "../middleware/auth.ts";
 import { principalChannel } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 
@@ -241,8 +253,8 @@ const operatorMandates = createRoute({
   tags: ["operators"],
   summary: "The active mandates naming the operator",
   description:
-    "Lists the active mandates whose operator is `agentId`, with their open mandates and holds, so that the operator's agent can buy under them. Only the OAuth client that linked the operator (`POST /v1/operators`) reads them; any other caller gets 404.",
-  middleware: [requireClient(["countersign:write"])],
+    "Lists the active mandates whose operator is `agentId`, with their open mandates and holds, so that the operator's agent can buy under them. Only the OAuth client that linked the operator (`POST /v1/operators`) reads them; any other caller gets 404. An app acting for a user (`mandates:request`) reads only the mandates naming `agentId` that this user approved for it.",
+  middleware: [requireAgent("mandates:request")],
   request: { params: z.object({ agentId: AgentId }) },
   responses: {
     200: {
@@ -588,12 +600,17 @@ export function registerOperators(
 
   app.openapi(operatorMandates, async (c) => {
     const agentId = BigInt(c.req.valid("param").agentId);
+    const principal = c.var.principal;
+    const delegated = isDelegated(principal) ? principal : undefined;
     const [operator] = await db
       .select({ clientId: operators.clientId })
       .from(operators)
       .where(eq(operators.agentId, agentId));
     // The same answer for an unknown operator and another client's, so neither is disclosed.
-    if (!operator?.clientId || operator.clientId !== c.var.principal?.subject) {
+    if (
+      !operator ||
+      (!delegated && (!operator.clientId || operator.clientId !== principal?.subject))
+    ) {
       return problem(c, 404, "not-found", "Not found", "No operator this client linked.");
     }
     const rows = await db
@@ -604,6 +621,25 @@ export function registerOperators(
           eq(mandates.operatorAgentId, agentId),
           eq(mandates.state, "ACTIVE"),
           isNotNull(mandates.openMandate),
+          delegated
+            ? and(
+                eq(mandates.userId, delegated.user),
+                inArray(
+                  mandates.id,
+                  db
+                    .select({ id: sql<string>`${agentConnections.mandateId}` })
+                    .from(agentConnections)
+                    .where(
+                      and(
+                        eq(agentConnections.clientId, delegated.subject),
+                        eq(agentConnections.userId, delegated.user),
+                        eq(agentConnections.state, "APPROVED"),
+                        isNull(agentConnections.disconnectedAt),
+                      ),
+                    ),
+                ),
+              )
+            : undefined,
         ),
       )
       .orderBy(desc(mandates.createdAt));

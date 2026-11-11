@@ -30,9 +30,10 @@ import {
   unmatched,
   withFreshUserCode,
 } from "../connections.ts";
+import { isDelegated } from "../delegated.ts";
 import { publishEvent } from "../events.ts";
 import { MERCHANTS } from "../merchants.ts";
-import { requireClient, requireSession } from "../middleware/auth.ts";
+import { requireAgent, requireClient, requireSession } from "../middleware/auth.ts";
 import { rateLimit } from "../middleware/rate-limit.ts";
 import { type Principal, principalChannel } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
@@ -247,8 +248,8 @@ const requestState = createRoute({
   tags: ["connections"],
   summary: "Read your request's state",
   description:
-    "The state of a request this client made, as often as needed: reading it changes nothing and does not spend the device code. Wait `interval` seconds between reads.",
-  middleware: [requireClient(["countersign:write"])],
+    "The state of a request this client made, as often as needed: reading it changes nothing and does not spend the device code. Wait `interval` seconds between reads. An app acting for a user (`mandates:request`) reads only that user's requests.",
+  middleware: [requireAgent("mandates:request")],
   request: { params: z.object({ id: z.string().regex(/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/) }) },
   responses: {
     200: {
@@ -275,8 +276,8 @@ const create = createRoute({
   tags: ["connections"],
   summary: "Ask the user for a mandate",
   description:
-    "The agent's operator asks its user for a mandate with these limits, as an RFC 8628 device authorization: the user opens `verification_uri_complete`, compares `user_code` and approves on Keelson's page with a passkey, lowering any limit. Only a client that linked an operator may ask, and the mandate names that operator. The code expires in 15 minutes and is single use.",
-  middleware: [requireClient(["countersign:write"])],
+    "The agent's operator asks its user for a mandate with these limits, as an RFC 8628 device authorization: the user opens `verification_uri_complete`, compares `user_code` and approves on Keelson's page with a passkey, lowering any limit. Only a client that linked an operator may ask, and the mandate names that operator. The code expires in 15 minutes and is single use.\n\nAn app acting for a user with a token they granted it (`mandates:request`) asks that user only: the request is theirs from the start, so it carries no number to match. The mandate names the app's own operator, or Keelson's hosted operator when the app has none.",
+  middleware: [requireAgent("mandates:request")],
   request: {
     headers: z.object({ "idempotency-key": z.string().min(1).max(255) }),
     body: { required: true, content: { "application/json": { schema: ConnectionRequest } } },
@@ -287,7 +288,10 @@ const create = createRoute({
       content: { "application/json": { schema: DeviceAuthorizationSchema } },
     },
     401: { description: "No valid access token", content: problemContent },
-    403: { description: "The client linked no operator", content: problemContent },
+    403: {
+      description: "The client linked no operator, and no hosted operator serves it",
+      content: problemContent,
+    },
     409: { description: "The client linked several operators", content: problemContent },
     422: { description: "The request is invalid", content: problemContent },
   },
@@ -617,26 +621,47 @@ export function registerConnections(
   app: OpenAPIHono,
   deps: Pick<
     Deps,
-    "db" | "kv" | "log" | "appOrigin" | "passkeyRpId" | "rateLimit" | "compileSources"
+    | "db"
+    | "kv"
+    | "log"
+    | "appOrigin"
+    | "passkeyRpId"
+    | "rateLimit"
+    | "compileSources"
+    | "demoAgentId"
   >,
 ): void {
   const { db } = deps;
   const appOrigin = deps.appOrigin ?? "https://app.keelson.finance";
 
   app.openapi(create, async (c) => {
-    const clientId = (c.get("principal") as Principal).subject;
+    const principal = c.get("principal") as Principal;
+    const clientId = principal.subject;
+    const delegated = isDelegated(principal);
     const body = c.req.valid("json");
-    const [operator, another] = await db
+    const [linked, another] = await db
       .select({ agentId: operators.agentId })
       .from(operators)
       .where(eq(operators.clientId, clientId));
+    const hosted =
+      delegated && !linked && deps.demoAgentId !== undefined
+        ? (
+            await db
+              .select({ agentId: operators.agentId })
+              .from(operators)
+              .where(eq(operators.agentId, deps.demoAgentId))
+          )[0]
+        : undefined;
+    const operator = linked ?? hosted;
     if (!operator) {
       return problem(
         c,
         403,
         "no-operator",
         "No operator",
-        "Link this client to its operator with POST /v1/operators/{agentId}/link first.",
+        delegated
+          ? "No hosted operator serves apps without an operator of their own."
+          : "Link this client to its operator with POST /v1/operators/{agentId}/link first.",
       );
     }
     // The mandate names one agent; a client acting for several cannot say which here.
@@ -657,6 +682,8 @@ export function registerConnections(
       name: body.name,
       reason: body.reason,
       limits: body.limits,
+      // Asked with the user's own grant: theirs from the start, so no number to match.
+      ...(delegated ? { userId: principal.user } : {}),
     });
     return c.json(deviceAuthorization(appOrigin, stored, stored.deviceCode), 201, {
       "cache-control": "no-store",
@@ -800,14 +827,15 @@ export function registerConnections(
   });
 
   app.openapi(requestState, async (c) => {
-    const clientId = (c.get("principal") as Principal).subject;
+    const principal = c.get("principal") as Principal;
     const [row] = await db
       .select()
       .from(agentConnections)
       .where(
         and(
           eq(agentConnections.id, c.req.valid("param").id),
-          eq(agentConnections.clientId, clientId),
+          eq(agentConnections.clientId, principal.subject),
+          isDelegated(principal) ? eq(agentConnections.userId, principal.user) : undefined,
         ),
       );
     if (!row) return problem(c, 404, "not-found", "Not found");

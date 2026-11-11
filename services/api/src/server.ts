@@ -3,6 +3,7 @@ import "./tee/attest.ts";
 import "./telemetry.ts";
 import Anthropic from "@anthropic-ai/sdk";
 import { serve } from "@hono/node-server";
+import { agentKey } from "@keelson/agent/keelson";
 import { createChainReader } from "@keelson/alibi/verify";
 import { createDb } from "@keelson/db";
 import { CertStore } from "@keelson/paypal";
@@ -170,6 +171,11 @@ const operators =
   env.KEELSON_OPERATOR_KEY && env.DEMO_AGENT_ID
     ? operatorSigners(env.DEMO_AGENT_ID, env.KEELSON_OPERATOR_KEY)
     : undefined;
+// Keelson's hosted operator closes, with its own cnf key, the mandates of apps that have no
+// operator of their own (see delegated.ts).
+const hostedAgentKey = env.KEELSON_AGENT_KEY
+  ? (await agentKey(env.KEELSON_AGENT_KEY)).privateKey
+  : undefined;
 const app = createApp({
   db,
   kv,
@@ -184,6 +190,7 @@ const app = createApp({
   authenticate: authenticate(auth, env.BETTER_AUTH_URL, kv),
   authBaseUrl: env.BETTER_AUTH_URL,
   demoAgentId: env.DEMO_AGENT_ID,
+  ...(hostedAgentKey ? { hostedAgentKey } : {}),
   judgeInvite: env.JUDGE_INVITE_CODE,
   rateLimit: { trustProxy: process.env.RENDER === "true" },
   shutdown: shutdown.signal,

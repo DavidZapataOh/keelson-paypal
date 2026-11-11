@@ -2,7 +2,7 @@ import { isAPIError } from "better-auth/api";
 import { requestToResourceInput, verifyAccessTokenRequest } from "better-auth/oauth2";
 import type { Context, MiddlewareHandler } from "hono";
 import type { RedisClientType } from "redis";
-import { type Auth, apiAudience, tokenScopes } from "../auth.ts";
+import { type Auth, apiAudience, delegatedUser, tokenScopes } from "../auth.ts";
 import { judgeExpired } from "../judge.ts";
 import { problem } from "../problem.ts";
 import { tokenStopped } from "../stopped.ts";
@@ -36,10 +36,12 @@ export function authenticate(auth: Auth, baseURL: string, kv?: RedisClientType):
         ) {
           c.set("invalidToken", true);
         } else {
+          const user = delegatedUser(payload);
           c.set("principal", {
             kind: "client",
             subject: payload.azp as string,
             scopes: tokenScopes(payload),
+            ...(user === undefined ? {} : { user }),
           });
         }
       } catch (err) {
@@ -101,6 +103,18 @@ export function requireClient(scopes: string[]): MiddlewareHandler {
       );
     }
     await next();
+  };
+}
+
+/**
+ * Admits an agent: an operator's own client with `countersign:write`, or an app acting for a user
+ * (`principal.user`) with `delegated`, the scope that grants it this route for that user only.
+ */
+export function requireAgent(delegated: string): MiddlewareHandler {
+  return (c, next) => {
+    const principal = c.var.principal;
+    const scope = principal?.kind === "client" && principal.user ? delegated : "countersign:write";
+    return requireClient([scope])(c, next);
   };
 }
 

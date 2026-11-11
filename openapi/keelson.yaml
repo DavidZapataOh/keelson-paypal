@@ -2265,7 +2265,21 @@ components:
           minLength: 1
           maxLength: 131072
           description: The open mandate closed by the agent's key binding over the request
-            and cart.
+            and cart. Required, except of an app acting for a user under a
+            mandate of Keelson's hosted operator, which sends `mandateId`
+            instead.
+        mandateId:
+          type: string
+          pattern: ^[0-7][0-9A-HJKMNP-TV-Z]{25}$
+          description: "Only for an app acting for a user (`purchases:write`) under a
+            mandate of Keelson's hosted operator that the user approved for it:
+            Keelson closes the mandate with the hosted operator's key over
+            `requestId` and this cart."
+        requestId:
+          type: string
+          pattern: ^[0-7][0-9A-HJKMNP-TV-Z]{25}$
+          description: "With `mandateId`: the request ULID the closed mandate binds, and
+            the purchase's id; a new one when left out."
         cart:
           $ref: "#/components/schemas/Cart"
         unit:
@@ -2317,7 +2331,6 @@ components:
             the `409 purchase-exists` answer names the purchase already made."
       required:
         - authorizationId
-        - closedMandate
         - cart
         - unit
         - evidenceRoot
@@ -6470,12 +6483,19 @@ paths:
       tags:
         - connections
       summary: Ask the user for a mandate
-      description: "The agent's operator asks its user for a mandate with these
-        limits, as an RFC 8628 device authorization: the user opens
+      description: >-
+        The agent's operator asks its user for a mandate with these limits, as
+        an RFC 8628 device authorization: the user opens
         `verification_uri_complete`, compares `user_code` and approves on
         Keelson's page with a passkey, lowering any limit. Only a client that
         linked an operator may ask, and the mandate names that operator. The
-        code expires in 15 minutes and is single use."
+        code expires in 15 minutes and is single use.
+
+
+        An app acting for a user with a token they granted it
+        (`mandates:request`) asks that user only: the request is theirs from the
+        start, so it carries no number to match. The mandate names the app's own
+        operator, or Keelson's hosted operator when the app has none.
       parameters:
         - schema:
             type: string
@@ -6504,7 +6524,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
         "403":
-          description: The client linked no operator
+          description: The client linked no operator, and no hosted operator serves it
           content:
             application/problem+json:
               schema:
@@ -6727,7 +6747,8 @@ paths:
       summary: Read your request's state
       description: "The state of a request this client made, as often as needed:
         reading it changes nothing and does not spend the device code. Wait
-        `interval` seconds between reads."
+        `interval` seconds between reads. An app acting for a user
+        (`mandates:request`) reads only that user's requests."
       parameters:
         - schema:
             type: string
@@ -6869,7 +6890,9 @@ paths:
         the user reads verbatim. The user may lower what is asked and approves
         with a passkey; the new mandate then replaces this one, whose hold is
         released. Nothing changes until the user signs. Poll `GET
-        /v1/connections/requests/{id}` for the answer.
+        /v1/connections/requests/{id}` for the answer. An app acting for a user
+        (`mandates:request`) asks only about a mandate that user approved for
+        it.
       parameters:
         - schema:
             type: string
@@ -6921,7 +6944,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
         "404":
-          description: No such mandate of an operator this client linked
+          description: No such mandate of an operator this client linked, or that the user
+            approved for this app
           content:
             application/problem+json:
               schema:
@@ -6946,7 +6970,9 @@ paths:
       summary: Check a cart against a mandate
       description: "A dry run: what a countersign of this cart would find, field by
         field, from the same policy set the TEE legs run, with nothing signed,
-        reserved or logged. The countersign stays the only decision."
+        reserved or logged. The countersign stays the only decision. An app
+        acting for a user (`purchases:write`) checks only under a mandate that
+        user approved for it."
       parameters:
         - schema:
             type: string
@@ -7405,7 +7431,11 @@ paths:
         - tee
       summary: Countersign a cart
       description: "Sends the cart to the TEE legs in order and returns the
-        countersignatures only when both agree. A DENY is countersigned too. A
+        countersignatures only when both agree. A DENY is countersigned too. An
+        app acting for a user (`purchases:write`) countersigns only under a
+        mandate that user approved for it; under a mandate of Keelson's hosted
+        operator it sends `mandateId` and Keelson closes the mandate with that
+        operator's key over the request id and this cart, and nothing else. A
         cart is bought once per mandate: while a purchase of the same cart is in
         flight, or for ten minutes after it was captured, another request for it
         is answered `409 purchase-exists` with that purchase's id, whatever its
@@ -7464,7 +7494,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
         "404":
-          description: No such mandate of an operator this client linked
+          description: No such mandate of an operator this client linked, or that the user
+            approved for this app
           content:
             application/problem+json:
               schema:
@@ -7507,7 +7538,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
         "503":
-          description: A leg needed to sign, or PayPal, is unavailable
+          description: A leg needed to sign, or PayPal, is unavailable, or the hosted
+            operator's key is not configured
           content:
             application/problem+json:
               schema:
@@ -7586,7 +7618,8 @@ paths:
       summary: A purchase
       description: "The purchase's state: its log index, its coverage and its capture
         once each is recorded. Readable by the mandate's owner and by the client
-        that asked for the countersign."
+        that asked for the countersign; an app acting for a user, only for that
+        user."
       parameters:
         - schema:
             type: string
@@ -7613,7 +7646,8 @@ paths:
         - evidence
       summary: Store sealed evidence
       description: Stores what the agent saw at decision time for an active mandate of
-        an operator this client linked. The manifest is rebuilt from the items
+        an operator this client linked or, for an app acting for a user, one
+        that user approved for the app. The manifest is rebuilt from the items
         and must match, every item has its own salt, no public item may still
         hold an email address or phone number, and every `.original` must open
         with the evidence identity. A countersign may only bind a stored root,
@@ -7888,7 +7922,7 @@ paths:
         notary (MPC-TLS, or Proxy-TLS when MPC-TLS fails), commits to the body
         or to the object around `anchor`, and returns the EIP-712 `WebFact` leg
         A signed with its attested key. Runs apart from any countersign and
-        never delays one.
+        never delays one. An app acting for a user needs `evidence:write`.
       parameters:
         - schema:
             type: string
@@ -8570,7 +8604,9 @@ paths:
       description: Lists the active mandates whose operator is `agentId`, with their
         open mandates and holds, so that the operator's agent can buy under
         them. Only the OAuth client that linked the operator (`POST
-        /v1/operators`) reads them; any other caller gets 404.
+        /v1/operators`) reads them; any other caller gets 404. An app acting for
+        a user (`mandates:request`) reads only the mandates naming `agentId`
+        that this user approved for it.
       parameters:
         - schema:
             type: string

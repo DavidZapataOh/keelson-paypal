@@ -15,7 +15,8 @@ import { isAPIError } from "better-auth/api";
 import { verifyBearerToken } from "better-auth/oauth2";
 import { bodyLimit } from "hono/body-limit";
 import type { Deps } from "./app.ts";
-import { apiAudience, tokenScopes } from "./auth.ts";
+import { apiAudience, delegatedUser, tokenScopes } from "./auth.ts";
+import { tokenStopped } from "./stopped.ts";
 
 /**
  * Keelson's MCP server on Streamable HTTP at `/mcp`, stateless: one server per request, built for
@@ -24,7 +25,7 @@ import { apiAudience, tokenScopes } from "./auth.ts";
  */
 export function registerMcp(
   app: OpenAPIHono,
-  deps: Pick<Deps, "auth" | "authBaseUrl" | "appOrigin" | "storeOrigin" | "demoAgentId"> &
+  deps: Pick<Deps, "kv" | "auth" | "authBaseUrl" | "appOrigin" | "storeOrigin" | "demoAgentId"> &
     Pick<Required<Deps>, "authenticate">,
   limit: Parameters<OpenAPIHono["use"]>[1],
 ): void {
@@ -68,15 +69,21 @@ export function registerMcp(
               requiredClaims: ["azp"],
             },
           });
+          const user = delegatedUser(payload);
+          // A token the user granted before stopping every agent is refused, though it verifies.
+          if (user !== undefined && (await tokenStopped(deps.kv, user, payload.iat))) {
+            throw new OAuthError(OAuthErrorCode.InvalidToken, "The access token was revoked.");
+          }
           return {
             token,
             clientId: payload.azp as string,
             scopes: tokenScopes(payload),
             ...(payload.exp ? { expiresAt: payload.exp } : {}),
             resource: new URL(apiAudience),
+            ...(user === undefined ? {} : { extra: { user } }),
           };
         } catch (err) {
-          if (!isAPIError(err)) throw err;
+          if (err instanceof OAuthError || !isAPIError(err)) throw err;
           throw new OAuthError(
             OAuthErrorCode.InvalidToken,
             "The access token is invalid or expired.",
@@ -105,6 +112,8 @@ export function registerMcp(
         appOrigin: deps.appOrigin ?? "https://app.keelson.finance",
         storeOrigin: deps.storeOrigin ?? "https://store.keelson.finance",
         agentId: deps.demoAgentId,
+        // An app acting for a user has its mandates of the hosted operator closed by the API.
+        delegated: typeof authInfo?.extra?.user === "string",
         scoped: true,
         stateKey: key,
       }),

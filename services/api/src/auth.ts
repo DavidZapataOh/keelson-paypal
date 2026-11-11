@@ -64,21 +64,36 @@ export const OAUTH_SCOPES = [
   "disputes:read",
   "operators:write",
   "merchants:write",
+  "mandates:request",
+  "purchases:write",
+  "offline_access",
 ] as const;
 
 /**
- * What a token a user delegated to an app may do, whatever that app's registration holds: read
- * the user's Alibis. Spending and every write stay with an agent's own client credentials.
+ * What a token a user delegated to an app (an MCP host) may do, whatever that app's registration
+ * holds, and only for that user: read their Alibis, ask them for a mandate or a change of one,
+ * seal evidence and countersign under a mandate they approved for that app. Everything an
+ * operator does for itself (linking, bonds, holds, `countersign:write`) stays with an agent's own
+ * client credentials.
  */
-const DELEGATED_SCOPES = ["alibis:read"] as const;
+const DELEGATED_SCOPES = [
+  "alibis:read",
+  "mandates:request",
+  "evidence:write",
+  "purchases:write",
+] as const;
 
 /** The scopes a verified access token grants: a delegated one (`sub` is a user) never more than `DELEGATED_SCOPES`. */
 export function tokenScopes(payload: { scope?: unknown; sub?: unknown; azp?: unknown }): string[] {
   const scopes = typeof payload.scope === "string" ? payload.scope.split(" ") : [];
-  const delegated = typeof payload.sub === "string" && payload.sub !== payload.azp;
-  return delegated
-    ? scopes.filter((s) => (DELEGATED_SCOPES as readonly string[]).includes(s))
-    : scopes;
+  return delegatedUser(payload) === undefined
+    ? scopes
+    : scopes.filter((s) => (DELEGATED_SCOPES as readonly string[]).includes(s));
+}
+
+/** The user a verified access token acts for, when a user granted it to the app (`azp`). */
+export function delegatedUser(payload: { sub?: unknown; azp?: unknown }): string | undefined {
+  return typeof payload.sub === "string" && payload.sub !== payload.azp ? payload.sub : undefined;
 }
 
 export interface AuthEnv {
@@ -219,8 +234,8 @@ export function createAuth(
       jwt(),
       // Agents act for themselves with client credentials. MCP clients act for a user with the
       // authorization code grant and PKCE (S256 only, required of public clients), registering
-      // themselves (RFC 7591) as the MCP authorization spec asks; such a client reads only, and
-      // spends only under a mandate the user signs on the consent's approval page.
+      // themselves (RFC 7591) as the MCP authorization spec asks; such a client gets the
+      // delegated scopes, and spends only under a mandate the user approves with a passkey.
       oauthProvider({
         loginPage: `${env.APP_ORIGIN}/sign-in`,
         consentPage: `${env.APP_ORIGIN}/consent`,
@@ -228,7 +243,9 @@ export function createAuth(
         grantTypes: ["client_credentials", "authorization_code", "refresh_token"],
         allowDynamicClientRegistration: true,
         allowUnauthenticatedClientRegistration: true,
-        clientRegistrationDefaultScopes: [...DELEGATED_SCOPES],
+        // `offline_access` (OpenID Connect Core §11) gets an app a refresh token, which stopping
+        // every agent revokes.
+        clientRegistrationDefaultScopes: [...DELEGATED_SCOPES, "offline_access"],
         clientRegistrationDefaultApplicationType: "infer",
         clientRegistrationAllowedResources: [apiAudience],
         resources: [apiAudience],

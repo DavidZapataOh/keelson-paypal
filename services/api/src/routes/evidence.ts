@@ -27,6 +27,7 @@ import {
 } from "@keelson/evidence";
 import { Decrypter } from "age-encryption";
 import type { Deps } from "../app.ts";
+import { approvedMandate, isDelegated } from "../delegated.ts";
 import { requireClient } from "../middleware/auth.ts";
 import { principalKey } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
@@ -104,7 +105,7 @@ const upload = createRoute({
   tags: ["evidence"],
   summary: "Store sealed evidence",
   description:
-    "Stores what the agent saw at decision time for an active mandate of an operator this client linked. The manifest is rebuilt from the items and must match, every item has its own salt, no public item may still hold an email address or phone number, and every `.original` must open with the evidence identity. A countersign may only bind a stored root, once.",
+    "Stores what the agent saw at decision time for an active mandate of an operator this client linked or, for an app acting for a user, one that user approved for the app. The manifest is rebuilt from the items and must match, every item has its own salt, no public item may still hold an email address or phone number, and every `.original` must open with the evidence identity. A countersign may only bind a stored root, once.",
   middleware: [requireClient(["evidence:write"])],
   request: {
     headers: z.object({ "idempotency-key": z.string().min(1).max(255) }),
@@ -233,17 +234,19 @@ export function registerEvidence(
 
   app.openapi(upload, async (c) => {
     const body = c.req.valid("json");
-    const client = c.var.principal?.subject as string;
+    const principal = c.var.principal;
+    const client = principal?.subject as string;
 
-    const [mandate] = await db
-      .select({ id: mandates.id, state: mandates.state, clientId: operators.clientId })
-      .from(mandates)
-      .innerJoin(operators, eq(operators.agentId, mandates.operatorAgentId))
-      .where(eq(mandates.id, body.mandateId));
+    const [mandate] = isDelegated(principal)
+      ? [await approvedMandate(db, principal, body.mandateId)]
+      : await db
+          .select({ id: mandates.id, state: mandates.state, clientId: operators.clientId })
+          .from(mandates)
+          .innerJoin(operators, eq(operators.agentId, mandates.operatorAgentId))
+          .where(eq(mandates.id, body.mandateId))
+          .then((rows) => rows.filter((m) => m.clientId !== null && m.clientId === client));
     // The same answer for an unknown mandate and another client's, so neither is disclosed.
-    if (!mandate?.clientId || mandate.clientId !== client) {
-      return problem(c, 404, "not-found", "Not found");
-    }
+    if (!mandate) return problem(c, 404, "not-found", "Not found");
     if (!USABLE.has(mandate.state)) {
       return problem(
         c,
@@ -255,7 +258,7 @@ export function registerEvidence(
     }
 
     const window = Math.floor(Date.now() / 1000 / RATE_WINDOW_SEC);
-    const key = `rl:evidence:${principalKey({ kind: "client", subject: client })}:${mandate.id}:${window}`;
+    const key = `rl:evidence:${principalKey(principal as NonNullable<typeof principal>)}:${mandate.id}:${window}`;
     try {
       const [count] = await kv.multi().incr(key).expire(key, RATE_WINDOW_SEC, "NX").exec();
       if (Number(count) > RATE_PER_MANDATE) {

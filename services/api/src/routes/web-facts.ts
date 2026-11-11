@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { isIP } from "node:net";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { Deps } from "../app.ts";
-import { requireClient } from "../middleware/auth.ts";
+import { requireAgent } from "../middleware/auth.ts";
 import { principalKey } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 import { VERIFYING_CONTRACT } from "../tee/config.ts";
@@ -94,8 +94,8 @@ const create = createRoute({
   tags: ["evidence"],
   summary: "Notarize a product endpoint with TLSNotary",
   description:
-    "Fetches the endpoint once over TLS with leg A as the TLSNotary notary (MPC-TLS, or Proxy-TLS when MPC-TLS fails), commits to the body or to the object around `anchor`, and returns the EIP-712 `WebFact` leg A signed with its attested key. Runs apart from any countersign and never delays one.",
-  middleware: [requireClient(["countersign:write"])],
+    "Fetches the endpoint once over TLS with leg A as the TLSNotary notary (MPC-TLS, or Proxy-TLS when MPC-TLS fails), commits to the body or to the object around `anchor`, and returns the EIP-712 `WebFact` leg A signed with its attested key. Runs apart from any countersign and never delays one. An app acting for a user needs `evidence:write`.",
+  middleware: [requireAgent("evidence:write")],
   request: {
     headers: z.object({ "idempotency-key": z.string().min(1).max(255) }),
     body: { required: true, content: { "application/json": { schema: Body } } },
@@ -140,9 +140,9 @@ export function registerWebFacts(
       );
     }
     const body = c.req.valid("json");
-    const client = c.var.principal?.subject as string;
+    const principal = c.var.principal as NonNullable<typeof c.var.principal>;
     const now = Math.floor(Date.now() / 1000);
-    const day = `rl:web-fact-day:${principalKey({ kind: "client", subject: client })}:${Math.floor(now / DAY_SEC)}`;
+    const day = `rl:web-fact-day:${principalKey(principal)}:${Math.floor(now / DAY_SEC)}`;
     let count: number;
     try {
       const replies = await kv.multi().incr(day).expire(day, DAY_SEC, "NX").exec();
