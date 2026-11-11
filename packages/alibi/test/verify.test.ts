@@ -1,5 +1,6 @@
+import { isPersonalDisclosure, withholdPersonal } from "@keelson/mandate";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { fromBase64, toBase64 } from "../src/b64.ts";
+import { fromBase64, fromBase64url, toBase64 } from "../src/b64.ts";
 import { receiptOf } from "../src/codec.ts";
 import type { AlibiBundle } from "../src/schema.ts";
 import { verifyAlibi } from "../src/verify/index.ts";
@@ -48,6 +49,43 @@ describe.each(fixtures.map((f) => [f.id, f] as const))("alibi %s", (_, f) => {
     expect(anchor?.status).toBe(f.anchored ? "pass" : "pending");
     expect(report.checks.find((c) => c.id === "zk.c1")?.status).toBe("absent");
     expect(report.checks.find((c) => c.id === "zk.c3")?.status).toBe("absent");
+  });
+
+  test("its public copy withholds the login id and risk data and still verifies", async () => {
+    const pub = copy(b);
+    pub.mandate.sd_jwt = withholdPersonal(pub.mandate.sd_jwt);
+    pub.mandate.disclosures = pub.mandate.disclosures.filter((d) => !isPersonalDisclosure(d));
+    const names = (ds: string[]) =>
+      ds.map((d) => JSON.parse(new TextDecoder().decode(fromBase64url(d)))[1]);
+    expect(names(b.mandate.disclosures)).toEqual(
+      expect.arrayContaining(["app_login_id", "risk_data"]),
+    );
+    expect(names(pub.mandate.disclosures)).not.toContain("app_login_id");
+    expect(names(pub.mandate.disclosures)).not.toContain("risk_data");
+    expect(b.mandate.sd_jwt.split("~").length - pub.mandate.sd_jwt.split("~").length).toBe(2);
+    const report = await verifyAlibi(pub);
+    expect(report.checks.filter((c) => c.status === "fail")).toEqual([]);
+    expect(report.verdict).toBe("verified-offline");
+  });
+
+  test("a public copy that withholds any other disclosure fails", async () => {
+    const pub = copy(b);
+    const sub = pub.mandate.disclosures.find(
+      (d) => JSON.parse(new TextDecoder().decode(fromBase64url(d)))[1] === "sub",
+    ) as string;
+    pub.mandate.sd_jwt = withholdPersonal(pub.mandate.sd_jwt).replace(`~${sub}~`, "~");
+    pub.mandate.disclosures = pub.mandate.disclosures.filter(
+      (d) => d !== sub && !isPersonalDisclosure(d),
+    );
+    await fails(pub, "mandate.credentials", "/mandate/sd_jwt", "digest");
+  });
+
+  test("a copy whose disclosures leave out one the open mandate presents fails", async () => {
+    const pub = copy(b);
+    pub.mandate.disclosures = pub.mandate.disclosures.filter(
+      (d) => JSON.parse(new TextDecoder().decode(fromBase64url(d)))[1] !== "max",
+    );
+    await fails(pub, "mandate.credentials", "/mandate/disclosures");
   });
 
   test("its receipt verifies what the log publishes and discloses nothing else", async () => {

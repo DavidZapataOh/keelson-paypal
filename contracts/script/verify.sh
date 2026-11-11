@@ -16,8 +16,14 @@ if [[ "${1:-}" == "--check-only" ]]; then
 fi
 [[ $# -gt 0 ]] || { echo "usage: $0 [--check-only] <chainId>..." >&2; exit 2; }
 
-# A registry name with the `Preview` suffix is the same contract deployed at another salt.
-contract_of() { echo "${1%Preview}"; }
+# A registry name with the `Preview` suffix is the same contract deployed at another salt, and every `LogBond*` is a
+# `LogBond` on another origin.
+contract_of() {
+  case "$1" in
+    LogBond*) echo LogBond ;;
+    *) echo "${1%Preview}" ;;
+  esac
+}
 
 # out/<File>.sol/<Name>.json names its source in the compilation target. Contracts built with their own
 # settings (Base's nitro-validator) are verified from their own project root.
@@ -63,10 +69,10 @@ target_of() {
   esac
 }
 
-# The verifiers are compiled without via-IR (foundry.toml `compilation_restrictions`); everything else in this
+# The verifiers and the SCL library are compiled without via-IR (foundry.toml `compilation_restrictions`); everything else in this
 # project with the default profile. External roots have a single profile of their own.
 profile_of() {
-  if [[ "$1" =~ ^(Mandate|Anonymous).*Verifier$ ]]; then
+  if [[ "$1" =~ ^(Mandate|Anonymous).*Verifier$ || "$1" =~ ^(Ed25519Verifier|SCL_EIP6565)$ ]]; then
     echo "--compilation-profile legacy"
   elif [[ "$(root_of "$(contract_of "$1")")" == . ]]; then
     echo "--compilation-profile default"
@@ -75,6 +81,10 @@ profile_of() {
 
 # The libraries' CREATE3 addresses, predicted from the chain's registry.
 libraries_of() {
+  if [[ "$1" == Ed25519Verifier ]]; then
+    echo "--libraries lib/crypto-lib/src/lib/libSCL_EIP6565.sol:SCL_EIP6565:$(jq -r .contracts.SCL_EIP6565 "deployments/$2.json")"
+    return
+  fi
   [[ "$1" =~ ^(Mandate|Anonymous).*ReferenceVerifier$ ]] || return 0
   local lib address
   for lib in RelationsLib ZKTranscriptLib; do

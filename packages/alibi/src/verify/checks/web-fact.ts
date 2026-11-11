@@ -1,6 +1,6 @@
 import { type Cart, fromHex, type Json, jcs, sha256, toHex } from "@keelson/core";
 import { hashKeelson, keelsonDomain, reportData } from "@keelson/core/eip712";
-import { decodeMandate } from "@keelson/mandate";
+import { decodeDisclosed } from "@keelson/mandate";
 import { getAddress, type Hex, keccak256, recoverAddress, stringToHex } from "viem";
 import { bindWebFact } from "../../web-fact.ts";
 import { type CheckDef, expect, pass } from "../check.ts";
@@ -105,11 +105,14 @@ export const webFact: CheckDef = {
     expect(cart, "the WebFact is not tied to a disclosed cart", ["/web_fact", "/cart"]);
     let website: string | undefined;
     try {
-      const m = decodeMandate(input.mandate.payload_sd, input.mandate.disclosures);
-      const merchants = m.checkout.constraints.find((c) => c.type === "checkout.allowed_merchants");
+      const m = decodeDisclosed(input.mandate.payload_sd, input.mandate.disclosures);
+      // Decoded from the signed payload; a withheld merchant leaves no website, and fails.
+      const merchants = m.checkout?.constraints?.find(
+        (c) => c?.type === "checkout.allowed_merchants",
+      );
       website =
         merchants?.type === "checkout.allowed_merchants"
-          ? merchants.allowed.find((x) => x.id === cart.merchant)?.website
+          ? merchants.allowed?.find((x) => x?.id === cart.merchant)?.website
           : undefined;
     } catch {
       website = undefined;

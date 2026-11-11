@@ -85,10 +85,20 @@ type anchorTarget struct {
 	chainID  uint64
 	client   *ethclient.Client
 	contract *bind.BoundContract
-	// anchored is the latest anchored size read from the chain.
+	// anchored is the latest anchored size, read from the chain or set by
+	// this process's own anchor.
 	anchored atomic.Uint64
+	// cache is the latest anchor's size and time, nil until the chain was
+	// read once.
+	cache atomic.Pointer[anchorState]
 	// last is the latest anchor this process sent.
 	last *anchorResult
+}
+
+// anchorState is an origin's latest anchor as last read or made.
+type anchorState struct {
+	size uint64
+	at   time.Time
 }
 
 // anchorResult is the answer to a request to anchor an origin now.
@@ -101,7 +111,7 @@ type anchorResult struct {
 
 // anchorer anchors the witnessed checkpoints of each origin with a chain on
 // that chain's CheckpointAnchor, signed by both TEE legs. The chain is its only
-// state.
+// state: it is read once per origin, then again only when an anchor is due.
 type anchorer struct {
 	targets           map[string]*anchorTarget
 	legs              [2]*legClient
@@ -164,8 +174,23 @@ func (t *anchorTarget) latest(ctx context.Context) (uint64, [32]byte, time.Time,
 		return 0, [32]byte{}, time.Time{}, chainError("latest", err)
 	}
 	size, root, at := out[0].(uint64), out[1].([32]byte), out[2].(*big.Int)
-	t.anchored.Store(size)
+	t.remember(size, time.Unix(at.Int64(), 0))
 	return size, root, time.Unix(at.Int64(), 0), nil
+}
+
+func (t *anchorTarget) remember(size uint64, at time.Time) {
+	t.anchored.Store(size)
+	t.cache.Store(&anchorState{size: size, at: at})
+}
+
+// cached is the latest anchor as last read or made, reading the chain only
+// when nothing is known yet.
+func (t *anchorTarget) cached(ctx context.Context) (uint64, time.Time, error) {
+	if c := t.cache.Load(); c != nil {
+		return c.size, c.at, nil
+	}
+	size, _, at, err := t.latest(ctx)
+	return size, at, err
 }
 
 // run checks every origin each anchorTick and anchors those that are due.
@@ -189,7 +214,7 @@ func (a *anchorer) tick(ctx context.Context) {
 			a.log.Error("anchor", "origin", t.origin.name, "err", err)
 			continue
 		}
-		size, _, at, err := t.latest(ctx)
+		size, at, err := t.cached(ctx)
 		if err != nil {
 			a.log.Error("anchor", "origin", t.origin.name, "err", err)
 			continue
@@ -301,7 +326,7 @@ func (a *anchorer) now(ctx context.Context, t *anchorTarget) (*anchorResult, err
 	if receipt.Status != 1 {
 		return nil, fmt.Errorf("%w: %s reverted", errChain, h)
 	}
-	t.anchored.Store(uint64(c.N))
+	t.remember(uint64(c.N), a.clock())
 	hash := tx.Hash().Hex()
 	t.last = &anchorResult{Size: strconv.FormatInt(c.N, 10), Root: hex0x(c.Hash[:]), Tx: &hash, Fresh: true}
 	a.log.Info("anchor", "origin", t.origin.name, "size", c.N, "tx", hash, "gasUsed", receipt.GasUsed, "ms", time.Since(start).Milliseconds())

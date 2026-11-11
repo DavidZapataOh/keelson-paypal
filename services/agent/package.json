@@ -38,6 +38,7 @@
   "devDependencies": {
     "@keelson/erc8004": "workspace:*",
     "@types/node": "26.6.6",
+    "fast-check": "4.10.2",
     "jose": "6.2.15",
     "typescript": "catalog:",
     "viem": "catalog:",

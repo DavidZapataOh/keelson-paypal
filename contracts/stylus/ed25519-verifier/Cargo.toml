@@ -1,0 +1,37 @@
+[package]
+name = "ed25519-verifier"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+description = "Ed25519 signature verification for the EVM, as an Arbitrum Stylus contract"
+
+[dependencies]
+alloy-primitives = "1.5.7"
+alloy-sol-types = "1.5.7"
+ed25519-compact = { version = "2.6.1", default-features = false, features = ["opt_size"] }
+stylus-sdk = "0.10.10"
+
+[dev-dependencies]
+ed25519-compact = { version = "2.6.1", default-features = false, features = ["opt_size", "random"] }
+serde_json = "1"
+stylus-sdk = { version = "0.10.10", features = ["stylus-test"] }
+
+[features]
+default = ["mini-alloc"]
+export-abi = ["stylus-sdk/export-abi"]
+mini-alloc = ["stylus-sdk/mini-alloc"]
+contract-client-gen = []
+
+[lib]
+crate-type = ["lib", "cdylib"]
+
+[profile.release]
+codegen-units = 1
+strip = true
+lto = true
+panic = "abort"
+opt-level = "s"
+
+# Not a member of the engine workspace: Stylus pins its own toolchain and target.
+[workspace]
