@@ -7,7 +7,7 @@ type Hex = `0x${string}`;
 const API = "https://api.keelson.finance";
 
 interface EngineProofStatus {
-  status: "proven" | "proving";
+  status: "proven" | "proving" | "failed";
   countersign_eval_hash: Hex;
   countersign_digest: Hex;
   proof: {
@@ -29,7 +29,8 @@ type State =
   | { kind: "checking" }
   | { kind: "pass"; p: NonNullable<EngineProofStatus["proof"]>; ms: number }
   | { kind: "fail"; reason: string; p?: NonNullable<EngineProofStatus["proof"]> }
-  | { kind: "unreachable"; reason: string };
+  | { kind: "unreachable"; reason: string }
+  | { kind: "missing"; reason: string };
 
 const short = (h: string) => `${h.slice(0, 10)}…${h.slice(-6)}`;
 
@@ -55,7 +56,13 @@ export function EngineProof({
       if (res.status === 404) return set({ kind: "none" });
       if (!res.ok) return set({ kind: "unreachable", reason: `The API answered ${res.status}.` });
       const e = (await res.json()) as EngineProofStatus;
-      if (!e.proof) return set({ kind: "proving" });
+      if (!e.proof) {
+        return set(
+          e.status === "failed"
+            ? { kind: "missing", reason: "No SP1 proof of this evaluation was recorded." }
+            : { kind: "proving" },
+        );
+      }
       const p = e.proof;
       set({ kind: "checking" });
       // A full Alibi states its own countersign; a public receipt leaves the API's word.
@@ -66,7 +73,6 @@ export function EngineProof({
       const { verifyEngineProof } = await verifier;
       const answer = await verifyEngineProof(
         p.verifier.chain_id,
-        p.verifier.address,
         p.public_values,
         p.proof,
         rpc ? { rpc: { [p.verifier.chain_id]: rpc } } : {},
@@ -93,8 +99,12 @@ export function EngineProof({
       ? { dot: "bg-ok", text: "text-ok", word: "Pass" }
       : state.kind === "fail"
         ? { dot: "bg-vermilion", text: "text-vermilion-deep", word: "Fail" }
-        : state.kind === "unreachable"
-          ? { dot: "bg-warn", text: "text-warn", word: "Unreachable" }
+        : state.kind === "unreachable" || state.kind === "missing"
+          ? {
+              dot: "bg-warn",
+              text: "text-warn",
+              word: state.kind === "missing" ? "Not proven" : "Unreachable",
+            }
           : { dot: "bg-border", text: "text-muted-foreground", word: "Pending" };
   const p = "p" in state ? state.p : undefined;
 

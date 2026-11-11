@@ -8,7 +8,7 @@ import { ApiError, get } from "../lib/api";
 /** `GET /v1/engine-proofs/{id}`: public. */
 export interface EngineProofStatus {
   purchase_id: string;
-  status: "proven" | "proving";
+  status: "proven" | "proving" | "failed";
   countersign_eval_hash: string;
   countersign_digest: string;
   proof: {
@@ -77,16 +77,29 @@ export function EngineProof({
   if (!p || "error" in p) return null;
 
   const proof = p.proof;
+  const failed = p.status === "failed";
   const heading = (
     <p className="flex items-center gap-1.5 font-medium">
-      <span className={proof ? (proof.matches ? "text-ok" : "text-warn") : "text-muted-foreground"}>
-        <Check ok={!proof || proof.matches} />
+      <span
+        className={
+          proof
+            ? proof.matches
+              ? "text-ok"
+              : "text-warn"
+            : failed
+              ? "text-warn"
+              : "text-muted-foreground"
+        }
+      >
+        <Check ok={proof ? proof.matches : !failed} />
       </span>
       {proof
         ? proof.matches
           ? "Engine re-proven in SP1, verified on chain"
           : "The SP1 proof does not match the countersign"
-        : "Re-proving the engine evaluation in SP1"}
+        : failed
+          ? "No SP1 proof of the engine evaluation was recorded"
+          : "Re-proving the engine evaluation in SP1"}
     </p>
   );
 
@@ -96,7 +109,9 @@ export function EngineProof({
       <p className="text-muted-foreground text-xs">
         {proof
           ? "The same canonicalizer and Cedar evaluation the TEEs ran, executed again in the SP1 zkVM over this purchase's inputs. Its result hashes to the evalHash both TEEs signed."
-          : "The same canonicalizer and Cedar evaluation the TEEs ran is being executed in the SP1 zkVM. The Groth16 proof takes a few minutes."}
+          : failed
+            ? "The dispute is decided on the TEEs' signed verdict alone; the zkVM re-run did not finish."
+            : "The same canonicalizer and Cedar evaluation the TEEs ran is being executed in the SP1 zkVM. The Groth16 proof takes a few minutes."}
       </p>
       {proof ? (
         <DataList layout={compact ? "stacked" : "row"} className={compact ? "gap-2" : undefined}>

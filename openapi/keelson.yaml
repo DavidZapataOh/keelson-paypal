@@ -2347,8 +2347,10 @@ components:
           enum:
             - proven
             - proving
+            - failed
           description: "`proving`: the purchase is disputed and its proof is being made.
-            `proven`: the proof is recorded on chain."
+            `proven`: the proof is recorded on chain. `failed`: no proof was
+            recorded within the workflow's time, retries included."
         countersign_eval_hash:
           type: string
           pattern: ^0x[0-9a-f]{64}$

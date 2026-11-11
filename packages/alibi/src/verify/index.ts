@@ -31,6 +31,7 @@ export {
   type EngineProofAnswer,
   verifyEngineProof,
 } from "./chain.ts";
+export { ENGINE_PROGRAM_VKEY } from "./engine-vk.ts";
 export { collapse, diffPointers, expand, pointers, UNBOUND, valueAt } from "./expand.ts";
 export type { Answers, FieldRow } from "./fields.ts";
 export type { Check, CheckId, CheckStatus, Report, Verdict, VerifyOptions } from "./report.ts";

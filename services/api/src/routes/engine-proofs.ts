@@ -4,14 +4,17 @@ import { CHAINS, isChainId } from "@keelson/relayer";
 import type { Deps } from "../app.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 
+/** The `proveEngine` workflow task's timeout times its two attempts, plus the queue. */
+const PROVING_MS = 7 * 3_600_000;
+
 const Hex32 = z.string().regex(/^0x[0-9a-f]{64}$/);
 
 const EngineProofSchema = z
   .object({
     purchase_id: z.string(),
-    status: z.enum(["proven", "proving"]).openapi({
+    status: z.enum(["proven", "proving", "failed"]).openapi({
       description:
-        "`proving`: the purchase is disputed and its proof is being made. `proven`: the proof is recorded on chain.",
+        "`proving`: the purchase is disputed and its proof is being made. `proven`: the proof is recorded on chain. `failed`: no proof was recorded within the workflow's time, retries included.",
     }),
     countersign_eval_hash: Hex32.openapi({ description: "The `evalHash` both TEE legs signed." }),
     countersign_digest: Hex32.openapi({ description: "The EIP-712 digest of their countersign." }),
@@ -76,6 +79,7 @@ export function registerEngineProofs(app: OpenAPIHono, deps: Pick<Deps, "db">): 
         input: purchases.engineInput,
         proof: purchases.engineProof,
         disputeId: disputes.id,
+        disputedAt: disputes.createdAt,
       })
       .from(purchases)
       .leftJoin(disputes, eq(disputes.purchaseId, purchases.id))
@@ -87,11 +91,13 @@ export function registerEngineProofs(app: OpenAPIHono, deps: Pick<Deps, "db">): 
     const evalHash = row.countersign.evalHash as string;
     const digest = `0x${Buffer.from(row.digest).toString("hex")}`;
     const p = row.proof;
+    const failed =
+      !p && row.disputedAt !== null && Date.now() - row.disputedAt.getTime() > PROVING_MS;
     c.header("Cache-Control", p ? "public, max-age=3600" : "no-store");
     return c.json(
       {
         purchase_id: id,
-        status: p ? ("proven" as const) : ("proving" as const),
+        status: p ? ("proven" as const) : failed ? ("failed" as const) : ("proving" as const),
         countersign_eval_hash: evalHash,
         countersign_digest: digest,
         proof: p

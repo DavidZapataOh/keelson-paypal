@@ -146,6 +146,21 @@ describe("GET /v1/engine-proofs/{id}", () => {
     expect(changed.proof.matches).toBe(false);
   });
 
+  test("is failed once the workflow's time has passed without a proof", async () => {
+    await testDb.insert(disputes).values({
+      id: `PP-D-${randomBytes(4).toString("hex")}`,
+      purchaseId: undisputed,
+      reason: "UNAUTHORISED",
+      raw: {},
+      createdAt: new Date(Date.now() - 8 * 3_600_000),
+    });
+    const body = (await (await app.request(`/v1/engine-proofs/${undisputed}`)).json()) as {
+      status: string;
+    };
+    expect(body.status).toBe("failed");
+    await testDb.delete(disputes).where(eq(disputes.purchaseId, undisputed));
+  });
+
   test("is 404 for an undisputed purchase and an unknown one", async () => {
     expect((await app.request(`/v1/engine-proofs/${undisputed}`)).status).toBe(404);
     expect((await app.request(`/v1/engine-proofs/${ulid()}`)).status).toBe(404);
