@@ -288,20 +288,48 @@ function opensUrls(server: McpServer, ctx: ServerContext): boolean {
 const LIABILITY = { green: "verified", amber: "attested" } as const;
 const API_ORIGIN = "https://api.keelson.finance";
 
+/** How an Alibi is enveloped: what the card says of its format, statement and issue time. */
+export interface Envelope {
+  envelope: "scitt" | "v1";
+  statementUrl: string | null;
+  issuedAt: string | null;
+  timestamps: number;
+}
+
 /**
- * The card of a purchase, with what its Alibi proves once Keelson issued it.
+ * The envelope of an Alibi: a v2 Alibi is a SCITT transparent statement served at its `.cose`
+ * URL, issued at its CWT `iat`, with label 270's token counted among its timestamps.
  *
  * @internal
  */
-export function cardOf(
-  p: Purchase,
-  alibi: AlibiBundle | AlibiBundleV2 | null,
-  apiOrigin = API_ORIGIN,
-): AlibiCard {
-  const v2 = alibi?.type === ALIBI_MEDIA_TYPE_V2 ? (alibi as AlibiBundleV2) : null;
-  const v1 = alibi && !v2 ? (alibi as AlibiBundle) : null;
-  const sign1 = v2 ? decodeSign1(statementOf(v2)) : null;
-  const iat = sign1 ? (protectedHeader(sign1).get(15) as Map<number, unknown>).get(6) : undefined;
+export function envelopeOf(
+  alibi: AlibiBundle | AlibiBundleV2,
+  apiOrigin: string = API_ORIGIN,
+): Envelope {
+  if (alibi.type !== ALIBI_MEDIA_TYPE_V2) {
+    const v1 = alibi as AlibiBundle;
+    return {
+      envelope: "v1",
+      statementUrl: null,
+      issuedAt: (v1.leaf_view.issued_at as string | undefined) ?? null,
+      timestamps: v1.timestamps.length,
+    };
+  }
+  const v2 = alibi as AlibiBundleV2;
+  const sign1 = decodeSign1(statementOf(v2));
+  const iat = (protectedHeader(sign1).get(15) as Map<number, unknown>).get(6);
+  return {
+    envelope: "scitt",
+    statementUrl: `${apiOrigin}/v1/alibis/${v2.alibi_id}.cose`,
+    issuedAt:
+      iat === undefined ? null : new Date(Number(iat) * 1000).toISOString().replace(".000Z", "Z"),
+    timestamps: (v2.timestamps?.length ?? 0) + (sign1.unprotected.has(TST_CTT) ? 1 : 0),
+  };
+}
+
+/** The card of a purchase, with what its Alibi proves once Keelson issued it. */
+function cardOf(p: Purchase, alibi: AlibiBundle | AlibiBundleV2 | null): AlibiCard {
+  const env = alibi ? envelopeOf(alibi) : null;
   const context = (alibi?.eval.context ?? {}) as {
     merchant?: string;
     variants?: { sku: string; size?: string | null }[];
@@ -327,7 +355,7 @@ export function cardOf(
       pass: f.pass,
     })),
     logIndex: p.logIndex ?? null,
-    timestamps: (alibi?.timestamps?.length ?? 0) + (sign1?.unprotected.has(TST_CTT) ? 1 : 0),
+    timestamps: env?.timestamps ?? 0,
     anchor: alibi?.anchor
       ? {
           chainId: alibi.anchor.chain_id,
@@ -338,12 +366,9 @@ export function cardOf(
     capture: p.capture ? { id: p.capture.id, status: p.capture.status } : null,
     failure: p.failure ?? null,
     verifyUrl: alibi ? verifyUrl(alibi) : null,
-    issuedAt:
-      iat !== undefined
-        ? new Date(Number(iat) * 1000).toISOString().replace(".000Z", "Z")
-        : ((v1?.leaf_view.issued_at as string | undefined) ?? null),
-    envelope: alibi ? (v2 ? "scitt" : "v1") : null,
-    statementUrl: v2 ? `${apiOrigin}/v1/alibis/${v2.alibi_id}.cose` : null,
+    issuedAt: env?.issuedAt ?? null,
+    envelope: env?.envelope ?? null,
+    statementUrl: env?.statementUrl ?? null,
   };
 }
 

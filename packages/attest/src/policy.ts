@@ -7,10 +7,10 @@ import type { TdxResult } from "./tdx.ts";
  * The TD attributes and XFAM the TDX leg runs with, as the quote states them (little-endian
  * bytes, hex). Taken from the leg's captured quote: DEBUG clear, SEPT_VE_DISABLE set.
  */
-export const TDX_POLICY = {
+export const TDX_POLICY: { tdAttributes: readonly Hex[]; xfam: readonly Hex[] } = {
   tdAttributes: ["0x0000001000000000"],
   xfam: ["0x0702000000000000"],
-} as const satisfies { tdAttributes: readonly Hex[]; xfam: readonly Hex[] };
+};
 
 /** dstack device ids (SHA-256 of the platform's PPID) the TDX leg may run on. */
 export const TDX_DEVICES: readonly Hex[] = [
@@ -54,14 +54,10 @@ export function appraiseTd(
   const attributes = hexToBytes(r.tdAttributes);
   const debug = ((attributes[0] ?? 0) & 0x01) !== 0;
   const septVeDisabled = ((attributes[3] ?? 0) & 0x10) !== 0;
-  if (
-    debug ||
-    !septVeDisabled ||
-    !(TDX_POLICY.tdAttributes as readonly Hex[]).includes(r.tdAttributes)
-  ) {
+  if (debug || !septVeDisabled || !TDX_POLICY.tdAttributes.includes(r.tdAttributes)) {
     throw new AttestError("td_attributes", `the TD attributes are ${r.tdAttributes}`);
   }
-  if (!(TDX_POLICY.xfam as readonly Hex[]).includes(r.xfam)) {
+  if (!TDX_POLICY.xfam.includes(r.xfam)) {
     throw new AttestError("xfam", `the XFAM is ${r.xfam}`);
   }
   if (
