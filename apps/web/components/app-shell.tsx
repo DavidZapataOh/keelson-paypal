@@ -1,6 +1,6 @@
 "use client";
 
-import { Home, LogOut, type LucideIcon, Plus, Radio, Scale, Trophy } from "lucide-react";
+import { Home, KeyRound, LogOut, type LucideIcon, Plus, Radio, Scale, Trophy } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
@@ -23,6 +23,7 @@ const NAV: NavItem[] = [
   { href: "/disputes/", label: "Disputes", icon: Scale },
   { href: "/live/", label: "Live", icon: Radio },
   { href: "/scoreboard/", label: "Scoreboard", icon: Trophy },
+  { href: "/passkeys/", label: "Passkeys", icon: KeyRound },
 ];
 
 /** Who is signed in to a console, when it is not the shopper's session. */
