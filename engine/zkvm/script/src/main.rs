@@ -4,16 +4,22 @@
 //! keelson-engine-proof vkey
 //! keelson-engine-proof execute <input.json>
 //! keelson-engine-proof prove <input.json> <proof.json>
+//! keelson-engine-proof request <input.json>
+//! keelson-engine-proof wait <input.json> <request-id> <proof.json>
 //! ```
 //!
-//! The input is a `CountersignInput` as JSON. Both commands first recompute the countersign
-//! natively and refuse to go on unless the zkVM commits the same `evalHash` and digest.
+//! The input is a `CountersignInput` as JSON. Every command first recomputes the countersign
+//! natively and refuses to go on unless the zkVM commits the same `evalHash` and digest.
 //!
-//! `SP1_PROVER` selects the prover: `cpu` by default, or `network` for the Succinct Prover Network
-//! on mainnet with `NETWORK_PRIVATE_KEY`. A network proof also needs `ENGINE_PROOF_MAX_COST`, the
-//! most PROVE (in wei) one request may cost: it is refused unless the Groth16 base fee plus the
-//! simulated gas at the price bid fits under it.
+//! `prove` proves on this machine. `request` and `wait` prove on the Succinct Prover Network on
+//! mainnet with `NETWORK_PRIVATE_KEY`, in two steps so that a paid request is never lost: `request`
+//! prints the request's id as soon as the network takes it, and `wait` waits for that request,
+//! which a caller that died in between can do again without paying for another. `request` needs
+//! `ENGINE_PROOF_MAX_COST`, the most PROVE (in wei) the request may cost: it is refused unless the
+//! Groth16 base fee plus the simulated gas at the price bid fits under it, and cancelled unless the
+//! base fee the request was signed with does.
 
+use std::io::Write;
 use std::time::{Duration, Instant};
 
 use alloy_primitives::{U256, hex};
@@ -21,7 +27,9 @@ use keelson_policy::{CountersignInput, recompute};
 use serde::Serialize;
 use sp1_sdk::blocking::{NetworkProver, ProveRequest, Prover, ProverClient};
 use sp1_sdk::network::proto::GetProofRequestParamsResponse;
-use sp1_sdk::network::{DEFAULT_MAX_PRICE_PER_PGU_BUFFER, NetworkMode, get_explorer_url_for_mode};
+use sp1_sdk::network::{
+    B256, DEFAULT_MAX_PRICE_PER_PGU_BUFFER, NetworkMode, get_explorer_url_for_mode,
+};
 use sp1_sdk::{
     Elf, HashableKey, ProvingKey, SP1ProofMode, SP1ProofWithPublicValues, SP1Stdin, include_elf,
 };
@@ -51,14 +59,23 @@ struct Proved {
     network: Option<NetworkRequest>,
 }
 
+/// A request the Succinct Prover Network took. Amounts are PROVE wei.
+#[derive(Serialize)]
+struct Requested {
+    request_id: String,
+    explorer: String,
+    cycle_limit: u64,
+    gas_limit: u64,
+    max_cost: String,
+}
+
 /// A proof request fulfilled by the Succinct Prover Network. Amounts are PROVE wei.
 #[derive(Serialize)]
 struct NetworkRequest {
     request_id: String,
     explorer: String,
-    gas_limit: u64,
+    gas_limit: Option<u64>,
     gas_used: Option<u64>,
-    max_cost: String,
     cost: Option<String>,
     balance: Option<String>,
 }
@@ -95,18 +112,27 @@ fn main() {
             });
         }
         ["prove", input, out] => {
+            assert!(
+                std::env::var("SP1_PROVER").as_deref() != Ok("network"),
+                "the network proves with `request` and `wait`"
+            );
             let (stdin, expected) = load(input);
-            let proved = if std::env::var("SP1_PROVER").as_deref() == Ok("network") {
-                prove_on_network(stdin, &expected)
-            } else {
-                prove_locally(stdin, &expected)
-            };
-            std::fs::write(out, serde_json::to_vec_pretty(&proved).expect("JSON"))
-                .expect("the proof is written");
-            print(&proved);
+            write(out, &prove_locally(stdin, &expected));
+        }
+        ["request", input] => {
+            let (stdin, _) = load(input);
+            request(stdin);
+        }
+        ["wait", input, request_id, out] => {
+            let (_, expected) = load(input);
+            let request_id: B256 = request_id.parse().expect("a request id");
+            write(out, &wait(request_id, &expected));
         }
         _ => {
-            eprintln!("usage: keelson-engine-proof vkey | execute <input> | prove <input> <out>");
+            eprintln!(
+                "usage: keelson-engine-proof vkey | execute <input> | prove <input> <out> \
+                 | request <input> | wait <input> <request-id> <out>"
+            );
             std::process::exit(2);
         }
     }
@@ -140,15 +166,27 @@ fn prove_locally(stdin: SP1Stdin, expected: &[u8; 64]) -> Proved {
     )
 }
 
-/// Proves on the Succinct Prover Network's mainnet auction, within `ENGINE_PROOF_MAX_COST`.
-fn prove_on_network(stdin: SP1Stdin, expected: &[u8; 64]) -> Proved {
+fn network() -> NetworkProver {
+    ProverClient::builder()
+        .network_for(NetworkMode::Mainnet)
+        .build()
+}
+
+fn explorer(request_id: B256) -> String {
+    format!(
+        "{}/request/{request_id}",
+        get_explorer_url_for_mode(NetworkMode::Mainnet)
+    )
+}
+
+/// Requests a Groth16 proof from the Succinct Prover Network's mainnet auction, within
+/// `ENGINE_PROOF_MAX_COST`, and prints the request before anything else can fail.
+fn request(stdin: SP1Stdin) {
     let max_cost: U256 = std::env::var("ENGINE_PROOF_MAX_COST")
         .expect("ENGINE_PROOF_MAX_COST is set")
         .parse()
         .expect("ENGINE_PROOF_MAX_COST is a PROVE amount in wei");
-    let client = ProverClient::builder()
-        .network_for(NetworkMode::Mainnet)
-        .build();
+    let client = network();
 
     // The simulation gives the request its cycle and gas limits: the network never charges more
     // gas than the limit, so the base fee plus the limit at the bid price bounds the cost.
@@ -157,7 +195,7 @@ fn prove_on_network(stdin: SP1Stdin, expected: &[u8; 64]) -> Proved {
         .calculate_gas(true)
         .run()
         .expect("the program runs");
-    let cycles = report.total_instruction_count();
+    let cycle_limit = report.total_instruction_count();
     let gas_limit = report.gas().expect("the simulation measures gas");
     let (base_fee, max_price_per_pgu) = auction_price(&client);
     let worst = U256::from(base_fee) + U256::from(gas_limit) * U256::from(max_price_per_pgu);
@@ -167,36 +205,58 @@ fn prove_on_network(stdin: SP1Stdin, expected: &[u8; 64]) -> Proved {
     );
 
     let pk = client.setup(ELF).expect("the program sets up");
-    let started = Instant::now();
     let request_id = client
         .prove(&pk, stdin)
         .groth16()
-        .cycle_limit(cycles)
+        .cycle_limit(cycle_limit)
         .gas_limit(gas_limit)
         .max_price_per_pgu(max_price_per_pgu)
         .min_auction_period(MIN_AUCTION_PERIOD)
         .timeout(NETWORK_TIMEOUT)
         .request()
         .expect("the network takes the request");
+    print(&Requested {
+        request_id: request_id.to_string(),
+        explorer: explorer(request_id),
+        cycle_limit,
+        gas_limit,
+        max_cost: worst.to_string(),
+    });
+    std::io::stdout().flush().expect("the request is printed");
+
     // The SDK reads the auction parameters again to sign the request: a base fee that rose in
-    // between is caught here and the request cancelled while it is still in its auction.
-    let requested = client
+    // between, or one the network does not report, cancels the request while it is in its auction.
+    let signed_fee = client
         .get_proof_request(request_id)
-        .expect("the request reads")
-        .expect("the request exists");
-    let signed_fee: U256 = requested
-        .base_fee
-        .as_deref()
-        .map_or(U256::ZERO, |f| f.parse().expect("a base fee"));
-    let worst = signed_fee + U256::from(gas_limit) * U256::from(max_price_per_pgu);
-    if worst > max_cost {
+        .ok()
+        .flatten()
+        .and_then(|r| r.base_fee)
+        .and_then(|f| f.parse::<U256>().ok());
+    let refused = match signed_fee {
+        None => Some(format!("request {request_id} reports no base fee")),
+        Some(fee) => {
+            let worst = fee + U256::from(gas_limit) * U256::from(max_price_per_pgu);
+            (worst > max_cost).then(|| {
+                format!(
+                    "the base fee rose to {fee} PROVE wei, over ENGINE_PROOF_MAX_COST {max_cost}"
+                )
+            })
+        }
+    };
+    if let Some(reason) = refused {
         client
             .cancel_request(request_id)
             .expect("the request cancels");
-        panic!(
-            "the base fee rose to {signed_fee} PROVE wei, over ENGINE_PROOF_MAX_COST {max_cost}"
-        );
+        panic!("{reason}: request {request_id} is cancelled");
     }
+}
+
+/// Waits for the network to fulfil request `request_id`, verifies its proof here and adds the
+/// request's accounting, which is best effort and never loses the paid proof.
+fn wait(request_id: B256, expected: &[u8; 64]) -> Proved {
+    let client = network();
+    let pk = client.setup(ELF).expect("the program sets up");
+    let started = Instant::now();
     let proof = client
         .wait_proof(request_id, Some(NETWORK_TIMEOUT), Some(AUCTION_TIMEOUT))
         .expect("the network fulfils the request");
@@ -205,7 +265,6 @@ fn prove_on_network(stdin: SP1Stdin, expected: &[u8; 64]) -> Proved {
         .verify(&proof, pk.verifying_key(), None)
         .expect("the proof verifies");
 
-    // The proof is paid for by now: its accounting is best effort and never loses it.
     let request = client.get_proof_request(request_id).ok().flatten();
     let amount = |a: Option<&String>| a.and_then(|a| a.parse::<U256>().ok());
     let cost = request.as_ref().and_then(|r| {
@@ -215,16 +274,13 @@ fn prove_on_network(stdin: SP1Stdin, expected: &[u8; 64]) -> Proved {
     });
     let network = NetworkRequest {
         request_id: request_id.to_string(),
-        explorer: format!(
-            "{}/request/{request_id}",
-            get_explorer_url_for_mode(NetworkMode::Mainnet)
-        ),
-        gas_limit,
+        explorer: explorer(request_id),
+        gas_limit: request.as_ref().map(|r| r.gas_limit),
         gas_used: request.as_ref().and_then(|r| r.gas_used),
-        max_cost: worst.to_string(),
         cost,
         balance: client.get_balance().ok().map(|b| b.to_string()),
     };
+    let cycles = request.as_ref().and_then(|r| r.cycles).unwrap_or_default();
     proved(
         &proof,
         pk.verifying_key().bytes32(),
@@ -298,6 +354,12 @@ fn check(public_values: &[u8], expected: &[u8; 64]) {
         public_values, expected,
         "the zkVM committed another evalHash or digest than the native engine"
     );
+}
+
+fn write(path: &str, proved: &Proved) {
+    std::fs::write(path, serde_json::to_vec_pretty(proved).expect("JSON"))
+        .expect("the proof is written");
+    print(proved);
 }
 
 fn print(v: &impl Serialize) {
