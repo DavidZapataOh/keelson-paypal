@@ -1,0 +1,42 @@
+{
+  "name": "@keelson/interop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./visa-pdf": {
+      "types": "./dist/visa-pdf.d.ts",
+      "node": "./dist/visa-pdf.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "conformance": "node conformance/export.ts && uv run --project conformance conformance/verify.py"
+  },
+  "dependencies": {
+    "@keelson/alibi": "workspace:*",
+    "@keelson/core": "workspace:*",
+    "@keelson/mandate": "workspace:*",
+    "http-message-sig": "0.3.0",
+    "jose": "6.2.15",
+    "pdfkit": "0.20.2"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "@types/pdfkit": "0.17.7",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "pdfjs-dist": "6.4.299",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

@@ -1,0 +1,11 @@
+[project]
+name = "keelson-interop-conformance"
+version = "0"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "ap2 @ git+https://github.com/google-agentic-commerce/AP2@b4587ac1d055888a73b4b21750973cffba961793",
+  "verifiable-intent @ git+https://github.com/agent-intent/verifiable-intent@356c29635f1c44df7de02edb58699ca9f29bece6",
+]
+
+[tool.uv]
+package = false
