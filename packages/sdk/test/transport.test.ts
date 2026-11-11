@@ -146,3 +146,47 @@ describe("errors", () => {
     expect(new Set(s.seen.map((r) => r.headers["idempotency-key"])).size).toBe(1);
   });
 });
+
+describe("a countersign still running on the server", () => {
+  test("idempotency-in-progress until retries run out is OutcomeUnknownError", async () => {
+    s.script(
+      problem(409, "idempotency-in-progress"),
+      problem(409, "idempotency-in-progress"),
+      problem(409, "idempotency-in-progress"),
+    );
+    const err = await keelson
+      .request("POST", "/v1/countersign", { body: { requestId: "01JX0000000000000000000001" } })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(OutcomeUnknownError);
+  });
+
+  test("an answer cut off mid-body is retried with the same key", async () => {
+    s.script(
+      (res) => {
+        res.writeHead(201, { "content-type": "application/json", "content-length": "100" });
+        res.write('{"ok":');
+        setTimeout(() => res.socket?.destroy(), 20);
+      },
+      json(201, { ok: true }),
+    );
+    const { data } = await keelson.request("POST", "/v1/evidence", { body: { a: 1 } });
+    expect(data).toEqual({ ok: true });
+    expect(new Set(s.seen.map((r) => r.headers["idempotency-key"])).size).toBe(1);
+  });
+});
+
+describe("streams", () => {
+  test("a stream outlives the per-attempt timeout while it keeps sending", async () => {
+    s.script((res) => {
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      let n = 0;
+      const t = setInterval(() => {
+        res.write(++n < 8 ? ": heartbeat\n\n" : "id: 1\ndata: hello\n\n");
+        if (n >= 8) clearInterval(t);
+      }, 100);
+    });
+    const k = new Keelson({ baseUrl: s.url, auth: staticToken("t"), timeoutMs: 300 });
+    const first = await k.events.stream("public:test").next();
+    expect(first.value).toMatchObject({ id: "1", data: "hello" });
+  });
+});

@@ -1,4 +1,4 @@
-import { errorFor } from "./errors.ts";
+import { APIConnectionError, errorFor } from "./errors.ts";
 import type { AuthProvider } from "./transport.ts";
 
 /** RFC 8707 resource of Keelson's API: the audience of every token it accepts. */
@@ -23,11 +23,19 @@ export async function tokenRequest(
   refresh_token?: string;
   scope?: string;
 }> {
-  const res = await fetcher(new URL("/api/auth/oauth2/token", baseUrl), {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded", ...headers },
-    body: new URLSearchParams({ resource: AUDIENCE, ...form }),
-  });
+  let res: Response;
+  try {
+    res = await fetcher(new URL("/api/auth/oauth2/token", baseUrl), {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", ...headers },
+      body: new URLSearchParams({ resource: AUDIENCE, ...form }),
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch (cause) {
+    throw new APIConnectionError(`Could not reach ${new URL(baseUrl).origin} for a token`, {
+      cause,
+    });
+  }
   const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) throw errorFor(res.status, body, res.headers.get("x-request-id"));
   return body as { access_token: string; expires_in: number };

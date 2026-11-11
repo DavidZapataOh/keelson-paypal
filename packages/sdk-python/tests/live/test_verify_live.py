@@ -50,3 +50,14 @@ def test_a_tampered_alibi_fails(alibi: bytes) -> None:
     doc = json.loads(alibi)
     doc["alibi_id"] = doc["alibi_id"][:-1] + ("1" if doc["alibi_id"].endswith("0") else "0")
     assert keelson.verify_alibi(doc)["verdict"] == "failed"
+
+
+def test_base64_bytes_and_parsed_verify_the_same(alibi: bytes) -> None:
+    import base64
+
+    verdicts = {
+        keelson.verify_alibi(alibi)["verdict"],
+        keelson.verify_alibi(base64.b64encode(alibi).decode())["verdict"],
+        keelson.verify_alibi(json.loads(alibi))["verdict"],
+    }
+    assert len(verdicts) == 1

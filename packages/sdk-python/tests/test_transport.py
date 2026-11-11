@@ -120,3 +120,19 @@ def test_the_blocking_client_runs_the_same_calls(server: Scripted) -> None:
     assert k.request("POST", "/v1/evidence", body={"a": 1}) == {"ok": True}
     assert len({r["headers"]["idempotency-key"] for r in server.seen}) == 1
     k.close()
+
+
+async def test_a_countersign_still_in_progress_after_retries_is_outcome_unknown(server: Scripted) -> None:
+    server.script(*[problem(409, "idempotency-in-progress")] * 3)
+    with pytest.raises(keelson.OutcomeUnknownError):
+        await client(server).request("POST", "/v1/countersign", body={"requestId": "01JX0000000000000000000001"})
+
+
+def test_closing_the_blocking_client_stops_its_thread(server: Scripted) -> None:
+    import threading
+
+    before = threading.active_count()
+    k = Keelson(static_token("t0"), base_url=server.url)
+    k.close()
+    time.sleep(0.2)
+    assert threading.active_count() <= before

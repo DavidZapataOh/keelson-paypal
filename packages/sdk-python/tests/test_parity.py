@@ -59,3 +59,9 @@ def test_the_wheel_is_at_most_60_kb_with_two_dependencies(tmp_path: Path) -> Non
             if line.startswith("Requires-Dist:") and "extra ==" not in line
         ]
     assert sorted(re.split(r"[<>=; ]", r)[0] for r in requires) == ["httpx2", "pydantic"]
+
+
+def test_verify_reports_a_broken_verifier_as_a_keelson_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KEELSON_VERIFY_COMMAND", "echo not-json")
+    with pytest.raises(keelson.KeelsonError):
+        keelson.verify_alibi(b"{}")

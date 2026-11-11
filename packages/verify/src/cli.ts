@@ -24,10 +24,11 @@ if (values.help || !target) {
 }
 
 const chain = values.rpc ? { rpcUrl: values.rpc } : values.chain;
-async function stdin(): Promise<Uint8Array> {
+/** The Alibi on stdin: as issued, as JSON text or as base64. */
+async function stdin(): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const c of process.stdin) chunks.push(c as Buffer);
-  return new Uint8Array(Buffer.concat(chunks));
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 let report: Report;

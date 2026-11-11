@@ -88,6 +88,9 @@ class _Loop:
         self.loop = asyncio.new_event_loop()
         threading.Thread(target=self.loop.run_forever, daemon=True, name="keelson").start()
 
+    def stop(self) -> None:
+        self.loop.call_soon_threadsafe(self.loop.stop)
+
     def run(self, coro: Any) -> Any:
         return asyncio.run_coroutine_threadsafe(coro, self.loop).result()
 
@@ -142,3 +145,4 @@ class Keelson:
 
     def close(self) -> None:
         self._loop.run(self._async.aclose())
+        self._loop.stop()

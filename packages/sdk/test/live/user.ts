@@ -55,6 +55,7 @@ export async function judge(o: { cache?: string } = {}): Promise<User> {
     .then((t) => JSON.parse(t) as Cached)
     .catch(() => undefined);
   const reuse = cached && Date.now() - cached.at < CACHE_MS ? cached : undefined;
+  let at = reuse?.at;
   const context: BrowserContext = await browser.newContext({
     locale: "en-US",
     ...(reuse ? { storageState: reuse.storageState } : {}),
@@ -82,13 +83,23 @@ export async function judge(o: { cache?: string } = {}): Promise<User> {
   const save = async () => {
     const { credentials } = await cdp.send("WebAuthn.getCredentials", { authenticatorId });
     const entry: Cached = {
-      at: reuse?.at ?? Date.now(),
+      at: (at ??= Date.now()),
       storageState: await context.storageState(),
       credentials,
     };
     await writeFile(CACHE, JSON.stringify(entry), { mode: 0o600 });
   };
-  if (!reuse) {
+  // The nightly reset ends a judge's session before the cache expires; start a new judge then.
+  const alive =
+    reuse &&
+    (await page.request
+      .get(`${process.env.KEELSON_API_URL ?? "https://api.keelson.finance"}/v1/passkeys`, {
+        headers: { origin: APP_ORIGIN },
+      })
+      .then((r) => r.status() !== 401)
+      .catch(() => false));
+  if (!alive) {
+    await context.clearCookies();
     await page.goto(`${APP_ORIGIN}/judge/`);
     const started = page.waitForResponse((r) => r.url().endsWith("/v1/judge/sessions"));
     await page.getByRole("button", { name: "Start Judge Mode" }).click();

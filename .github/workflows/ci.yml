@@ -188,6 +188,10 @@ jobs:
     needs: changes
     if: needs.changes.outputs.ts == 'true'
     runs-on: ubuntu-24.04
+    # bash with pipefail, so a failing test piped into the summary fails the step.
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -222,6 +226,9 @@ jobs:
     needs: changes
     if: github.event_name != 'pull_request' && needs.changes.outputs.ts == 'true'
     runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
     env:
       KEELSON_LIVE: "1"
       PAYPAL_SANDBOX_BUYER_EMAIL: ${{ secrets.PAYPAL_SANDBOX_BUYER_EMAIL }}
@@ -239,7 +246,7 @@ jobs:
       - run: pnpm --filter @keelson/sdk exec playwright install --with-deps chromium
       - name: TypeScript SDK and verifier
         run: |
-          pnpm --filter @keelson/sdk exec vitest run --reporter=verbose test/live | tee -a "$GITHUB_STEP_SUMMARY"
+          pnpm --filter @keelson/sdk exec vitest run --no-file-parallelism --reporter=verbose test/live | tee -a "$GITHUB_STEP_SUMMARY"
           pnpm --filter @keelson/verifier exec vitest run --reporter=verbose | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Python SDK
         working-directory: packages/sdk-python

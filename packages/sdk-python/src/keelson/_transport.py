@@ -160,7 +160,8 @@ async def send(
                 await asyncio.sleep(_delay(attempt, response))
                 attempt += 1
                 continue
-            raise _lost(method, path, body, api_err) if response.status_code >= 500 else api_err
+            lost = response.status_code >= 500 or api_err.type == "idempotency-in-progress"
+            raise _lost(method, path, body, api_err) if lost else api_err
         if attempt < t.max_retries:
             await asyncio.sleep(_delay(attempt))
             attempt += 1

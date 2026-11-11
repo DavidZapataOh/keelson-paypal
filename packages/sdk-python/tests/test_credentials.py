@@ -76,3 +76,21 @@ async def test_reads_the_file_the_typescript_cli_writes(server: Scripted, tmp_pa
     ts = {"apiUrl": server.url, "clientId": "c", "refreshToken": "r", "accessToken": "a", "expiresAt": 9e12}
     path.write_text(json.dumps(ts, indent=2) + "\n")
     assert await stored_login(path).token() == "a"
+
+
+async def test_two_refreshes_at_once_send_one_request(server: Scripted, tmp_path: Path) -> None:
+    import asyncio
+
+    path = tmp_path / "e.json"
+    write_credentials(saved(server, expiresAt=0), path)
+
+    def slow(h: object) -> None:
+        time.sleep(0.2)
+        json_reply(200, {"access_token": "a9", "refresh_token": "r9", "expires_in": 3600})(h)  # type: ignore[arg-type]
+
+    server.script(slow)
+    one = stored_login(path)
+    tokens = await asyncio.gather(one.token(), one.token(), stored_login(path).token())
+    assert tokens == ["a9", "a9", "a9"]
+    assert len(server.seen) == 1
+    assert not (tmp_path / "e.json.lock").exists()

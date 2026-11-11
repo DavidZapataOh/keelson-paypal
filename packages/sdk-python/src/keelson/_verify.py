@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import os
 import shlex
@@ -33,7 +34,7 @@ def verify_alibi(
     ``verified-offline``. Returns the report: ``verdict``, ``checks``, ``mode``...
     """
     data = (
-        alibi.encode()
+        (alibi.encode() if alibi.lstrip().startswith("{") else base64.b64decode(alibi))
         if isinstance(alibi, str)
         else bytes(alibi)
         if isinstance(alibi, bytes | bytearray)
@@ -46,6 +47,8 @@ def verify_alibi(
         args.append("--chain")
     try:
         done = subprocess.run([*args, "-"], input=data, capture_output=True, timeout=300, check=False)
+    except subprocess.TimeoutExpired as err:
+        raise KeelsonError("The verifier took more than 5 minutes.") from err
     except FileNotFoundError as err:
         raise VerifierUnavailable(
             f"Verifying an Alibi offline runs `npx {VERIFIER}`, which needs Node.js 20 or later."
@@ -56,5 +59,8 @@ def verify_alibi(
                 f"Verifying an Alibi offline runs `npx {VERIFIER}`, which needs Node.js 20 or later."
             )
         raise KeelsonError(f"The verifier failed: {done.stderr.decode().strip()[:500]}")
-    report: dict[str, Any] = json.loads(done.stdout)
+    try:
+        report: dict[str, Any] = json.loads(done.stdout)
+    except ValueError as err:
+        raise KeelsonError(f"The verifier did not answer with a report: {done.stdout[:200]!r}") from err
     return report

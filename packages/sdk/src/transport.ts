@@ -119,14 +119,27 @@ export async function send<T>(
   for (let attempt = 0; ; attempt++) {
     if (provider) headers.set("authorization", `Bearer ${await provider.token({ force })}`);
     force = false;
-    const timeout = AbortSignal.timeout(o.timeoutMs);
-    const signal = opts.signal ? AbortSignal.any([opts.signal, timeout]) : timeout;
+    // The timeout covers the whole answer, except a stream's body, which lasts as long as it lasts.
+    const timer = new AbortController();
+    const timeout = setTimeout(() => timer.abort(), o.timeoutMs);
+    const signal = opts.signal ? AbortSignal.any([opts.signal, timer.signal]) : timer.signal;
     let response: Response;
+    let data: unknown;
     try {
       response = await o.fetch(url, { method, headers, body, signal });
+      if (response.ok) {
+        if (opts.as === "stream") clearTimeout(timeout);
+        data =
+          opts.as === "stream" || opts.as === "none" || response.status === 204
+            ? undefined
+            : opts.as === "bytes"
+              ? new Uint8Array(await response.arrayBuffer())
+              : await response.json();
+      }
     } catch (cause) {
+      clearTimeout(timeout);
       if (opts.signal?.aborted) throw opts.signal.reason;
-      const err = timeout.aborted
+      const err = timer.signal.aborted
         ? new APIConnectionTimeoutError(`No answer from ${url.origin} in ${o.timeoutMs} ms`, {
             cause,
           })
@@ -137,17 +150,9 @@ export async function send<T>(
       }
       throw lost(method, path, opts.body, err);
     }
+    if (opts.as !== "stream") clearTimeout(timeout);
     const requestId = response.headers.get("x-request-id");
-    if (response.ok) {
-      if (opts.as === "stream") return { data: undefined as T, response, requestId };
-      const data =
-        opts.as === "bytes"
-          ? new Uint8Array(await response.arrayBuffer())
-          : opts.as === "none" || response.status === 204
-            ? undefined
-            : await response.json();
-      return { data: data as T, response, requestId };
-    }
+    if (response.ok) return { data: data as T, response, requestId };
     const problem = (await response.json().catch(() => ({}))) as Record<string, unknown>;
     const err = errorFor(response.status, problem, requestId);
     if (
@@ -165,7 +170,9 @@ export async function send<T>(
       await sleep(delayMs(attempt, response), opts.signal);
       continue;
     }
-    throw response.status >= 500 ? lost(method, path, opts.body, err) : err;
+    throw response.status >= 500 || err.type === "idempotency-in-progress"
+      ? lost(method, path, opts.body, err)
+      : err;
   }
 }
 

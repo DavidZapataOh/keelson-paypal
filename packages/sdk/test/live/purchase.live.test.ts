@@ -25,7 +25,7 @@ describe.skipIf(!live)(
     let user: User;
     let keelson: Keelson;
     beforeAll(async () => {
-      user = await judge({ cache: "purchase" });
+      user = await judge();
       const path = join(await mkdtemp(join(tmpdir(), "keelson-purchase-")), "credentials.json");
       await login({ path, open: (url) => user.approveLogin(url), log: () => {} });
       keelson = new Keelson({ auth: storedLogin({ path }) });
@@ -78,8 +78,15 @@ describe.skipIf(!live)(
       let purchaseId: string;
 
       test("buys a sandbox pair and gets its Alibi", async () => {
+        // What one user may spend through an app Keelson does not know is capped: this suite buys
+        // as a user of its own.
+        const buyer = await judge({ cache: "purchase" });
+        const path = join(await mkdtemp(join(tmpdir(), "keelson-buyer-")), "credentials.json");
+        await login({ path, open: (url) => buyer.approveLogin(url), log: () => {} });
+        keelson = new Keelson({ auth: storedLogin({ path }) });
         const req = await ask("$100");
-        await user.approveRequest(req.approvalUrl, { hold: true });
+        await buyer.approveRequest(req.approvalUrl, { hold: true });
+        await buyer.close();
         mandate = await keelson.mandates.waitForApproval(req.id, { timeoutMs: 120_000 });
         expect(mandate.authorizationId).toBeTruthy();
         const { cart, sources } = await quote([{ productUrl: SHOE, size: "10", qty: 1 }]);

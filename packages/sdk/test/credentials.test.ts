@@ -85,3 +85,23 @@ test("no saved sign-in says how to sign in", async () => {
   expect(err).toBeInstanceOf(AuthenticationError);
   expect((err as Error).message).toContain("npx keelson login");
 });
+
+test("two refreshes at once send one request, so a rotated token is never reused", async () => {
+  const path = join(dir, "e.json");
+  await writeCredentials(saved({ expiresAt: 0 }), path);
+  s.script((res) => {
+    setTimeout(
+      () =>
+        json(200, { access_token: "a9", refresh_token: "r9", expires_in: 3600 })(
+          res,
+          s.seen[0] as never,
+        ),
+      200,
+    );
+  });
+  const one = storedLogin({ path });
+  const [a, b, c] = await Promise.all([one.token(), one.token(), storedLogin({ path }).token()]);
+  expect([a, b, c]).toEqual(["a9", "a9", "a9"]);
+  expect(s.seen).toHaveLength(1);
+  expect(await readdir(dir)).not.toContain("e.json.lock");
+});
