@@ -1,0 +1,118 @@
+---
+title: PayPal Agent Mandate Extension
+description: An open convention that ties each PayPal order, capture, refund and payout to the mandate a user signed. Version 1.0.0.
+section: Reference
+order: 2
+---
+
+Version 1.0.0, 2026-11-12. This is an open convention: anyone may implement it, and it needs no change on PayPal's side. The reference implementation is [`packages/paypal/src/ids.ts`](https://github.com/DavidZapataOh/keelson-paypal/blob/main/packages/paypal/src/ids.ts), and Alibi verification checks it in [`packages/alibi/src/verify/checks/paypal.ts`](https://github.com/DavidZapataOh/keelson-paypal/blob/main/packages/alibi/src/verify/checks/paypal.ts).
+
+When an AI agent pays through PayPal, the payment carries no sign of who authorized it or under what limits, and a later dispute carries none either. This extension writes short, canonical identifiers into fields PayPal already has, so that each order, capture, refund and payout names the mandate the user signed and the public record of the purchase. The identifiers are the same ones the [specification](/reference/spec/) defines.
+
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in BCP 14 [RFC 2119] [RFC 8174] when, and only when, they appear in all capitals, as shown here.
+
+## Fields used
+
+| PayPal object | Field | PayPal limit | What it carries |
+| --- | --- | --- | --- |
+| Order (Orders v2), `purchase_units[]` | `custom_id` | 255 characters | `ks-custom`: the mandate or the purchase, and a digest binding it |
+| Order, `purchase_units[]` | `reference_id` | | The mandate id, or the purchase's request id |
+| Order, `purchase_units[]` | `description` | | A human-readable line naming the mandate, and for a single purchase the verifier link |
+| Capture (Payments v2) | `invoice_id` | 127 characters, unique per merchant | `ks-invoice`: the purchase, its sequence on the hold and a digest |
+| Refund (Payments v2) | `custom_id` | 127 characters | `ks-verdict`: the verdict that ordered it |
+| Payout item (Payouts v1) | `sender_item_id` | 63 characters | `ks-verdict` |
+| Every create call | `PayPal-Request-Id` header | | A value derived from the signed object, so a retry is the same operation |
+
+A capture has no `custom_id`, so each purchase is named by its capture's `invoice_id`. PayPal's Disputes API returns the order's `custom_id` and the capture's `invoice_id` with the disputed transaction (`disputed_transactions[].custom` and `invoice_number`), so a dispute leads back to the purchase.
+
+## Grammar
+
+The grammar uses ABNF ([RFC 5234](https://www.rfc-editor.org/rfc/rfc5234)) with case-sensitive strings ([RFC 7405](https://www.rfc-editor.org/rfc/rfc7405)).
+
+```abnf
+; Order: purchase_units[].custom_id
+ks-custom  = %s"ks1." env kind "." ulid "." digest32     ; 77 characters
+env        = %s"s" / %s"p"                               ; sandbox / production
+kind       = %s"m" / %s"a"                               ; m: a mandate's hold, a: one purchase's hold
+
+; Capture: invoice_id
+ks-invoice = %s"KS1-" ulid "-" seq "-" digest16          ; 60 characters
+seq        = "0" %x31-39 / %x31-39 DIGIT                ; 01 to 99
+
+; Refund: custom_id; payout item: sender_item_id
+ks-verdict = %s"ksv1." ulid "." digest12                 ; 48 characters
+
+ulid       = %x30-37 25CROCKFORD                         ; 128 bits
+digest16   = %x30-37 25CROCKFORD                         ; 16 bytes, big-endian
+digest32   = 43B64URL                                    ; 32 bytes, unpadded
+digest12   = 16B64URL                                    ; 12 bytes, unpadded
+
+CROCKFORD  = DIGIT / %x41-48 / %x4A-4B / %x4D-4E / %x50-54 / %x56-5A   ; 0-9 A-Z without I L O U
+B64URL     = ALPHA / DIGIT / "-" / "_"
+```
+
+Encodings are canonical. Crockford base32 MUST be upper case. Base64url ([RFC 4648, section 5](https://www.rfc-editor.org/rfc/rfc4648#section-5)) MUST NOT be padded, and the unused low bits of its last character MUST be zero. A parser MUST reject any other spelling, so each digest has exactly one. A value that does not match the grammar is not under this extension.
+
+## Digests
+
+`H(dst, v)` is the domain-separated hash `SHA-256(utf8(dst) ‖ 0x00 ‖ utf8(JCS(v)))`, with JCS from [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785). Inside `v`, a hash is a `0x`-prefixed lower-case hex string, `amount` is PayPal's decimal string for the amount (`"1.00"`), and `currency` is its ISO 4217 code.
+
+| Form | `ulid` | Digest |
+| --- | --- | --- |
+| `ks1.<env>m.` | The mandate id (`mid`) | The mandate hash `M = SHA-256(utf8("keelson/mandate-challenge/v1") ‖ 0x00 ‖ H_sd ‖ C_m)`, the challenge the user's passkey signed. `H_sd = H("keelson/mandate/v1", payload_sd)` and `C_m` is the mandate commitment as 32 bytes big-endian. |
+| `ks1.<env>a.` | The purchase's request id | `H("keelson/alibi/v1", {mandate_hash, cart_hash, merchant_id, amount, currency})`, where `merchant_id` is the Keelson merchant id the mandate allows |
+| `KS1-` | The Alibi id | The first 16 bytes of `H("keelson/alibi/v1", {mandate_hash, cart_hash, policy_set_hash, countersign_digest, merchant_id, amount, currency, paypal_order_id})`, where `merchant_id` is the PayPal merchant id of the payee and `paypal_order_id` the order the hold belongs to |
+| `ksv1.` | The verdict id | The first 12 bytes of the verdict's EIP-712 digest |
+
+The sequence in `KS1-` counts the captures taken from one hold. An issuer MUST take it once per purchase, starting at `01`, and MUST NOT issue more than 99 captures from one hold. A parser MUST reject `00`.
+
+`PayPal-Request-Id` is the first 36 hex characters of a digest: the countersign digest for a capture, the verdict digest for a refund or a payout, `M` for a mandate's hold, and `SHA-256(utf8(custom_id))` for a single purchase's hold.
+
+## Verifying a payment
+
+Given a PayPal order, capture or dispute, and the purchase's Alibi:
+
+1. The verifier MUST parse `custom_id` and `invoice_id` with the grammar, and MUST treat a value that does not parse as outside this extension.
+2. The `env` of `custom_id` MUST be `s` for an Alibi anchored on Arbitrum Sepolia (chain 421614) and `p` for one anchored on Arbitrum One (chain 42161).
+3. For `kind` `m`, the digest MUST equal the Alibi's `/tee/countersign/mandateHash`, and that hash MUST be the challenge of `/mandate/payload_sd` and `/tee/countersign/mandateCommitment`. For `kind` `a`, the `ulid` MUST be the Alibi id and the digest MUST equal the `ks1.<env>a.` digest of the countersigned fields.
+4. A capture MUST have an `invoice_id`. Its `ulid` MUST be the Alibi id, and its digest MUST equal the first 16 bytes of the `KS1-` digest of the countersign, `/tee/digest`, `/paypal/merchant_id` and `/paypal/order_id`.
+5. The verifier SHOULD fetch the public record at `https://verify.keelson.finance/a/<ulid>` and check its leaf in the log at `log.keelson.finance`. A match binds the PayPal object to the mandate the user signed and to the cart the TEE legs countersigned.
+
+## Test vectors
+
+The vectors file is [`packages/paypal/test/vectors/ks1-v1.json`](https://github.com/DavidZapataOh/keelson-paypal/blob/main/packages/paypal/test/vectors/ks1-v1.json). Its `valid` entries give each value with its parsed fields, and an implementation MUST parse each to those fields and encode the fields back to the same value. Its `invalid` entries cover lower-case Crockford, the letters I, L, O and U, `=` padding, non-zero trailing bits, a leading `8`, wrong lengths, an unknown `env` or `kind`, and other versions, and an implementation MUST reject every one.
+
+The `custom_id` and `invoice_id` vectors were written by PayPal's sandbox on one hold: the order `8MY937060S1606416` and its captures `5VK089183A260134T` and `8E547963J1687504T`. The verdict reference was generated with `encodeVerdictRef`.
+
+| Field | Value | Source |
+| --- | --- | --- |
+| `custom_id` | `ks1.sm.01M6ZWXSB31RY6D753ET0RGPZF.JeYgDHlgnVwNJEpAhS0JFmn8D_0Rzg3Zw2Va0K2LXK4` | The mandate hold of both Alibis |
+| `invoice_id` | `KS1-01M6ZWZJHWRRHQEYNJAT7NMSV8-01-1H6DNY2FEJ24A4TXAY209K6SXS` | Alibi `01M6ZWZJHWRRHQEYNJAT7NMSV8`, first capture |
+| `invoice_id` | `KS1-01M6ZX07MFWDDDW4199FDJHWEG-02-1XENCQNVGYZTY0H0E8K2HHSY8W` | Alibi `01M6ZX07MFWDDDW4199FDJHWEG`, second capture |
+| `custom_id` of a refund | `ksv1.01M6ZX3QW8T2H5N7K9P1R4S6V8.ZxJoTl1yXFfDHgnl` | Generated with `encodeVerdictRef` |
+
+The digest of the `custom_id` above is the mandate hash `0x25e6200c79609d5c0d244a40852d091669fc0ffd11ce0dd9c3655ad0ad8b5cae`, and both Alibis are in [`packages/alibi/test/fixtures`](https://github.com/DavidZapataOh/keelson-paypal/tree/main/packages/alibi/test/fixtures), so the digests can be recomputed from their fields.
+
+## Security considerations
+
+**Replay and retries.** Every create call carries a `PayPal-Request-Id` derived from the object it executes, so a retried capture, refund or payout is the same request to PayPal and is not executed twice. Because `invoice_id` is unique per merchant, PayPal also refuses a second capture under the same `KS1-` value.
+
+**Binding.** Each digest covers the signed object it names: a `KS1-` value cannot be moved to another order, merchant, amount or countersign without its digest failing to verify. A value that parses but whose digest does not match MUST be treated as unverified.
+
+**No personal data.** `invoice_id` is shown to the payer, and every field here is visible to PayPal and the merchant. Each form holds only ULIDs and hashes, never a name, an address, an email or the cart's contents.
+
+**The unsigned capture id.** PayPal assigns `capture_id` after the countersign, so no signature covers it. A verifier MUST show it as unverified metadata and MUST locate the capture by its `invoice_id`.
+
+## Privacy considerations
+
+The values reveal that a payment was made under an agent mandate, and which mandate, to anyone who sees the PayPal object. A ULID encodes its creation time to the millisecond. Purchases captured from one mandate's hold share its `custom_id`, so they can be linked to each other; a per-purchase hold (`kind` `a`) gives each purchase its own value. The digests reveal nothing about their inputs: each covers a salted or signed value (the mandate's selective-disclosure digests, the countersign digest), so they cannot be reversed by guessing a cart or an amount.
+
+## Proposal for PayPal's Agent Toolkit
+
+PayPal's [Agent Toolkit](https://github.com/paypal/agent-toolkit) `create_order` tool does not let an agent set `intent` or `custom_id`, so an agent using it can neither place a hold nor tag an order. Adding both, with the limits of the Orders v2 API, is enough for any agent to follow this extension.
+
+The change is proposed upstream in [paypal/agent-toolkit#127](https://github.com/paypal/agent-toolkit/pull/127). This convention is also offered for agent-placed orders under disputes in [#113](https://github.com/paypal/agent-toolkit/issues/113#issuecomment-6804356281), and the per-call idempotency it relies on is tracked in [#98](https://github.com/paypal/agent-toolkit/issues/98#issuecomment-6804357607).
+
+## Changelog
+
+1.0.0 — 2026-11-12: first published version.

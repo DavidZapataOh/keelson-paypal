@@ -1,0 +1,9 @@
+include_fragments = "full"
+max_retries = 2
+timeout = 20
+accept = ["200", "206", "429"]
+# API endpoints in code samples are exercised by the documentation's checks, not fetched as pages;
+# the MCP endpoint answers 401 until a client authenticates, by design.
+exclude = ['^https://api\.keelson\.finance/(v1/|mcp$)']
+extensions = ["md", "mdoc", "html"]
+exclude_path = ["(^|/)node_modules/", "(^|/)dist/"]

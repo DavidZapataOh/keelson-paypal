@@ -329,6 +329,13 @@ a {
 .prose > p {
   margin: 0 0 1.5rem;
 }
+.prose > h2 {
+  font-size: 22px;
+  line-height: 30px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 3rem 0 0.75rem;
+}
 .prose a {
   color: var(--link);
   text-underline-offset: 3px;
@@ -918,4 +925,42 @@ a {
   .api-group .api-summary {
     grid-column: 2;
   }
+}
+
+/* Tables */
+.prose table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 0 0 2rem;
+  font-size: 14px;
+  line-height: 21px;
+}
+.prose th {
+  text-align: left;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--muted);
+  padding: 0 1.25rem 0.5rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+.prose td {
+  padding: 0.625rem 1.25rem 0.625rem 0;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+}
+
+/* Diagrams: the source stays hidden until Mermaid draws it */
+pre.mermaid {
+  margin: 0 0 2rem;
+  padding: 1.25rem;
+  background: var(--paper);
+  border-radius: 16px;
+  text-align: center;
+  white-space: pre;
+}
+pre.mermaid:not([data-processed]) {
+  color: transparent;
+  min-height: 12rem;
 }

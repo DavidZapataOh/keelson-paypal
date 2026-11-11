@@ -1,0 +1,57 @@
+---
+title: Connect an agent
+description: Give an AI agent Keelson's tools over MCP, as a host acting for a user or as the agent's own client.
+estimate: 10 minutes
+section: Start
+order: 3
+---
+
+Keelson's MCP server is served by the API at `https://api.keelson.finance/mcp` (Streamable HTTP, stateless). It is an OAuth 2.1 protected resource: a client finds the authorization server in the resource's metadata.
+
+```sh {% check="mcp-protected-resource" %}
+curl -s https://api.keelson.finance/.well-known/oauth-protected-resource | jq -r '"\(.resource) \(.authorization_servers[0])"'
+# expect: ^https://api\.keelson\.finance https://api\.keelson\.finance/api/auth$
+```
+
+## A host acting for a user
+
+Claude, ChatGPT, Cursor and Claude Code register themselves and get a token with the authorization code grant, then buy under the mandates the user approves for them. In Claude Code:
+
+```sh
+claude mcp add --transport http keelson https://api.keelson.finance/mcp
+```
+
+Then run `/mcp` to sign in. The user approves each request at `https://app.keelson.finance/connect/` with a passkey, after picking the two-digit match number the host shows.
+
+## The agent's own client
+
+An agent that buys on its own uses an OAuth client created for its operator, with `countersign:write`, `evidence:write` and `alibis:read`, and the client credentials grant for the resource `https://api.keelson.finance`. The client must be the one that linked the operator with `POST /v1/operators`.
+
+Closing a mandate for a countersign takes the agent's own key, which Keelson never holds, so `keelson.request_countersign` is offered by the STDIO server, run in the agent's process. From a checkout of the repository, after `pnpm install && pnpm build`, add it to Claude Desktop's `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "keelson": {
+      "command": "node",
+      "args": ["/path/to/keelson-paypal/services/mcp/dist/stdio.js"],
+      "env": {
+        "KEELSON_CLIENT_ID": "…",
+        "KEELSON_CLIENT_SECRET": "…",
+        "KEELSON_AGENT_KEY": "{\"kty\":\"EC\",…}",
+        "AGENT_ID": "351"
+      }
+    }
+  }
+}
+```
+
+`KEELSON_AGENT_KEY` is the private P-256 JWK of the `cnf` key the mandates name. The MCP Inspector runs the same server with `npx @modelcontextprotocol/inspector node services/mcp/dist/stdio.js`.
+
+## Tools
+
+`keelson.compile_mandate`, `keelson.request_mandate`, `keelson.get_request`, `keelson.request_mandate_change`, `keelson.confirm_mandate`, `keelson.submit_evidence`, `keelson.check_cart`, `keelson.request_countersign`, `keelson.get_purchase`, `keelson.get_alibi`, `keelson.verify_alibi` and `keelson.get_trust_grade`. Each asks for the scope its API calls need, and `keelson.get_alibi` renders the Alibi as an MCP App.
+
+Every write tool answers `{status, next, message}`. `status` is `pending_approval`, `approved`, `denied`, `blocked`, `success` or `error`; `next` says what to do next, with the tool, its arguments and when. A purchase also carries `outcome`: on `unknown` the money may have moved, so the agent polls `keelson.get_purchase` and never starts the purchase again.
+
+The API's every endpoint is in the [API reference](/reference/api/).

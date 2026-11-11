@@ -1,4 +1,25 @@
-<div class="walk" data-walk><slot /></div>
+---
+// Narrow screens hide the shared panel, so each step carries its own lines. They are cut
+// from the rendered panes here, on the server, so nothing shifts when scripts run.
+const rendered = await Astro.slots.render("default");
+const html = rendered.replace(
+  /<div class="inline-code" data-inline="([^"]+)"><\/div>/g,
+  (tag, ref: string) => {
+    const [file, lines = ""] = ref.split(":");
+    const pre = new RegExp(`data-pane="${file}"[^>]*>(<pre[^>]*>)<code>([\\s\\S]*?)</code></pre>`)
+      .exec(rendered)
+      ?.slice(1);
+    if (!pre) return tag;
+    const [a = 0, b = a] = lines.split("-").map(Number);
+    const kept = (pre[1] ?? "")
+      .split("\n")
+      .slice(a - 1, b)
+      .join("\n");
+    return `<div class="inline-code">${(pre[0] ?? "").replace(' tabindex="0"', "")}<code>${kept}</code></pre></div>`;
+  },
+);
+---
+<div class="walk" data-walk set:html={html} />
 <script>
   const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
   const range = (el: HTMLElement) => (el.dataset.lines ?? "").split("-").map(Number);
@@ -43,23 +64,5 @@
       button.textContent = "Copied";
       setTimeout(() => (button.textContent = "Copy"), 1200);
     });
-
-    // Narrow screens hide the shared panel; each step carries its own lines instead.
-    for (const s of steps) {
-      const [a, b] = range(s);
-      const source = panes.find((p) => p.dataset.pane === s.dataset.file)?.querySelector("pre");
-      if (!a || !source) continue;
-      const pre = source.cloneNode(true) as HTMLElement;
-      pre.removeAttribute("tabindex");
-      for (const [i, l] of [...pre.querySelectorAll(".line")].entries()) {
-        if (i + 1 >= a && i + 1 <= (b || a)) continue;
-        if (l.nextSibling?.nodeType === Node.TEXT_NODE) l.nextSibling.remove();
-        l.remove();
-      }
-      const box = document.createElement("div");
-      box.className = "inline-code";
-      box.append(pre);
-      s.querySelector(".step-body")?.append(box);
-    }
   }
 </script>

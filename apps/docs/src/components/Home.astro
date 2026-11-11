@@ -1,6 +1,6 @@
 ---
 import { Code } from "astro:components";
-import live from "../data/live.json";
+import { builtOn, live } from "../lib/live";
 import { docs, href } from "../lib/docs";
 import { operations } from "../lib/openapi";
 
@@ -39,7 +39,7 @@ const command = `ALIBI=https://docs.keelson.finance/samples/01M6ZWZJHWRRHQEYNJAT
 curl -sL "$ALIBI" \\
 | curl -s https://api.keelson.finance/v1/alibis/verify \\
     -H 'content-type: application/vnd.keelson.alibi.v1+json' \\
-    -H "idempotency-key: docs-$RANDOM" --data-binary @- \\
+    -H "idempotency-key: docs-$RANDOM$RANDOM" --data-binary @- \\
 | jq -r '"\\(.verdict) \\(.mode)"'`;
 ---
 <div class="home">
@@ -56,11 +56,17 @@ curl -sL "$ALIBI" \\
     </div>
   </section>
   <section class="live" aria-label="Live system">
-    <p><span class="dot" aria-hidden="true"></span>TEE leg A · Intel TDX · {live.teeA}</p>
-    <p><span class="dot" aria-hidden="true"></span>TEE leg B · AWS Nitro · {live.teeB}</p>
-    <p>Alibi log · {live.log.size.toLocaleString("en-US")} leaves · {live.log.witnesses} witnesses</p>
-    <p>Payments · PayPal {live.paypal}</p>
-    <p class="live-note">Read from production when this site was built. The API reference covers {operations().length} operations.</p>
+    {live.available ? (
+      <>
+        <p><span class="dot" aria-hidden="true"></span>TEE leg A · Intel TDX · {live.teeA}</p>
+        <p><span class="dot" aria-hidden="true"></span>TEE leg B · AWS Nitro · {live.teeB}</p>
+        <p>Alibi log · {live.log.size.toLocaleString("en-US")} leaves · {live.log.witnesses} witnesses</p>
+        <p>Payments · PayPal {live.paypal}</p>
+        <p class="live-note">Read from production on {builtOn(live.fetchedAt)}, when this site was built. The API reference covers {operations().length} operations.</p>
+      </>
+    ) : (
+      <p class="live-note">Production could not be read when this site was built. <a href="https://app.keelson.finance/status">Current status</a>.</p>
+    )}
   </section>
   <section class="cols">
     {columns.map((c) => (

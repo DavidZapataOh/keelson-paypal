@@ -243,6 +243,7 @@ const app = createApp({
   appOrigin: env.APP_ORIGIN,
   ...(env.APP_ORIGIN ? { embedPage: appEmbedPage(env.APP_ORIGIN) } : {}),
   verifyOrigin: env.VERIFY_ORIGIN,
+  docsOrigin: env.DOCS_ORIGIN,
   // The public RPCs the browser verifier uses: a report never names the API's keyed RPC URL.
   alibiChain: createChainReader(),
   passkeyRpId: env.PASSKEY_RP_ID,

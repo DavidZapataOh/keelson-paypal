@@ -30,7 +30,7 @@ Download [the same file](/samples/01M6ZWZJHWRRHQEYNJAT7NMSV8.alibi) and drop it 
 {% /step %}
 {% /steps %}
 {% files %}
-```sh {% file="verify.sh" %}
+```sh {% file="verify.sh" check="verify-one-command" %}
 # A real Alibi from the PayPal sandbox, countersigned by both TEEs
 ALIBI=https://raw.githubusercontent.com/DavidZapataOh/keelson-paypal/main/packages/alibi/test/fixtures/01M6ZWZJHWRRHQEYNJAT7NMSV8.alibi
 
@@ -41,7 +41,7 @@ curl -sL "$ALIBI" \
     --data-binary @- \
 | jq -r '"\(.verdict) \(.mode)"'
 
-# verified 2of2
+# expect: ^verified 2of2$
 ```
 ```ts {% file="verify.ts" %}
 const alibi = await fetch(
@@ -174,6 +174,43 @@ console.log(verdict, mode); // verified 2of2
 ```
 {% /files %}
 {% /walkthrough %}
+
+## In your browser
+
+The command above asks Keelson's API to run the checks. To trust no Keelson server at all, download [the same Alibi](/samples/01M6ZWZJHWRRHQEYNJAT7NMSV8.alibi) and drop it on [verify.keelson.finance](https://verify.keelson.finance). The page runs every check in your browser against trust roots pinned in its code; it reads the chain from a public Arbitrum RPC that you can replace with your own.
+
+## What each check means
+
+Each row is one check the verifier runs, the party whose signature or record it rests on, and how it came out for this Alibi.
+
+| Check | What it checks | Who answers for it | This Alibi |
+| --- | --- | --- | --- |
+| `bundle.format` | Bundle format | Keelson | Passed |
+| `leaf.view` | Log leaf matches the bundle | Keelson | Passed |
+| `qr.leaf` | Matches the QR link | Keelson | Not used by this purchase |
+| `evidence.manifest` | Evidence manifest | Agent operator | Passed |
+| `evidence.web_fact` | Store's product endpoint, notarized (TLSNotary) | Keelson | Not used by this purchase |
+| `evidence.checkout` | Checkout total and its breakdown | Agent operator | Not used by this purchase |
+| `evidence.conversion` | Currency conversion within the mandate's spread | Agent operator | Not used by this purchase |
+| `paypal.ids` | PayPal ids | Keelson | Passed |
+| `card.authorizations` | Card charges approved by both TEEs | Keelson | Not used by this purchase |
+| `mandate.challenge` | Mandate challenge | User | Passed |
+| `mandate.passkey` | User's passkey signature | User | Passed |
+| `mandate.credentials` | Mandate credentials | Keelson | Passed |
+| `tee.attestation.tdx` | Intel TDX attestation | Keelson | Passed |
+| `tee.attestation.nitro` | AWS Nitro attestation | Keelson | Passed |
+| `tee.registry` | Signers registered on-chain | Keelson | Passed |
+| `tee.countersign` | TEE countersignature | Keelson | Passed |
+| `policy.replay` | Policy decision replayed with Cedar | Keelson | Passed |
+| `log.policy` | Log policy is the pinned one | Keelson | Passed |
+| `log.inclusion` | Included in the log | Keelson | Passed |
+| `log.witnesses` | Witness cosignatures | Witnesses | Passed |
+| `anchor.consistency` | Anchor consistent with the log | Keelson | Passed |
+| `anchor.root` | Root anchored on-chain | Arbitrum | Passed |
+| `anchor.tx` | Anchor transaction | Arbitrum | Passed |
+| `timestamps` | RFC 3161 timestamps | Timestamp authorities | Passed |
+| `zk.c1` | Zero-knowledge proof | Keelson | Not used by this purchase |
+| `zk.c3` | Signed by a registered user, anonymously | Arbitrum | Not used by this purchase |
 
 {% callout type="caution" title="Sandbox and testnet" %}
 The purchase was paid on the PayPal sandbox and its bond lives on Arbitrum Sepolia. The TEEs, the public log and its witnesses run in production.

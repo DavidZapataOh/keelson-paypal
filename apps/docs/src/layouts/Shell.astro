@@ -6,7 +6,7 @@ import instrumentSans from "@fontsource-variable/instrument-sans/files/instrumen
 import "../styles/base.css";
 import "../styles/theme.css";
 import Search from "../components/Search.astro";
-import live from "../data/live.json";
+import { builtOn, live } from "../lib/live";
 import { type NavSection, nav } from "../lib/docs";
 
 interface Props {
@@ -20,7 +20,7 @@ interface Props {
 const { title, description, current, home = false, sidebar } = Astro.props;
 const sections = await nav();
 const side = sidebar ?? sections;
-const operational = live.status === "ok";
+const operational = live.available && live.status === "ok";
 ---
 <!doctype html>
 <html lang="en">
@@ -77,11 +77,13 @@ const operational = live.status === "ok";
               </ul>
             </div>
           ))}
-          <a class="nav-status" href="https://app.keelson.finance/status">
-            <span class:list={["dot", { down: !operational }]} aria-hidden="true"></span>
-            {operational ? "All systems operational" : "Degraded service"}
-            <small>Log size {live.log.size.toLocaleString("en-US")}</small>
-          </a>
+          {live.available && (
+            <a class="nav-status" href="https://app.keelson.finance/status">
+              <span class:list={["dot", { down: !operational }]} aria-hidden="true"></span>
+              {operational ? "Operational at build" : "Degraded at build"}
+              <small>{builtOn(live.fetchedAt)} · log size {live.log.size.toLocaleString("en-US")}</small>
+            </a>
+          )}
         </nav>
       )}
       <main id="main" class="main"><slot /></main>

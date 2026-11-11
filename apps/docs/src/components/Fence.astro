@@ -10,7 +10,9 @@ interface Props {
 const { content, language = "text", file, check } = Astro.props;
 const code = content.replace(/\n$/, "");
 ---
-{file ? (
+{language === "mermaid" ? (
+  <pre class="mermaid" data-diagram>{code}</pre>
+) : file ? (
   <div class="pane" id={`pane-${file}`} role="tabpanel" aria-labelledby={`tab-${file}`} data-pane={file} data-lang={language} data-check={check}>
     <Code code={code} lang={language as never} theme="css-variables" />
   </div>
@@ -20,3 +22,12 @@ const code = content.replace(/\n$/, "");
     <Code code={code} lang={language as never} theme="css-variables" />
   </figure>
 )}
+<script>
+  const diagrams = document.querySelectorAll<HTMLElement>("pre[data-diagram]");
+  if (diagrams.length > 0) {
+    const { default: mermaid } = await import("mermaid");
+    const dark = document.documentElement.dataset.theme === "dark";
+    mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: dark ? "dark" : "neutral", fontFamily: "Instrument Sans Variable, system-ui, sans-serif" });
+    await mermaid.run({ nodes: [...diagrams] });
+  }
+</script>

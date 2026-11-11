@@ -154,6 +154,14 @@ export function isDebugMode(pcrs: NitroPcrs): boolean {
  * Verifies an AWS Nitro attestation document: the COSE_Sign1 signature, the certificate chain
  * up to the bundled AWS root, and that the enclave was not started in debug mode.
  */
+/**
+ * When the hypervisor produced an attestation document, read without verifying it: an archived
+ * document is checked with `verifyNitro(document, { now: nitroTimestamp(document) })`.
+ */
+export function nitroTimestamp(document: Uint8Array): Date {
+  return new Date(field<number>(decode(document).body, "timestamp", "number"));
+}
+
 export async function verifyNitro(document: Uint8Array, opts: { now: Date }): Promise<NitroResult> {
   const { protectedHeader, payload, signature, body } = decode(document);
   const timestamp = field<number>(body, "timestamp", "number");

@@ -8,5 +8,5 @@ const { title, file, lines } = Astro.props;
 ---
 <li class="step" data-step data-file={file} data-lines={lines}>
   <h2 class="step-title">{title}</h2>
-  <div class="step-body"><slot /></div>
+  <div class="step-body"><slot />{lines && <div class="inline-code" data-inline={`${file}:${lines}`} />}</div>
 </li>

@@ -444,7 +444,11 @@ services:
   - type: web
     runtime: static
     name: keelson-docs
-    buildCommand: npm install -g pnpm@12.16.1 && pnpm install --frozen-lockfile && pnpm turbo run build --filter=@keelson/docs
+    buildCommand: npm install -g pnpm@12.16.1 && pnpm install --frozen-lockfile && pnpm turbo run build --filter=@keelson/docs...
+    envVars:
+      # The deployed build needs production's live values; without them it fails and the last deploy stays up.
+      - key: DOCS_REQUIRE_LIVE
+        value: "1"
     staticPublishPath: ./apps/docs/dist
     autoDeployTrigger: checksPass
     buildFilter:
