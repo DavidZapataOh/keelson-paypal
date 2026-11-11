@@ -3,6 +3,7 @@
 import {
   Bell,
   Bot,
+  Code,
   History,
   Home,
   KeyRound,
@@ -35,6 +36,7 @@ const ACCOUNT = new Set(["/alerts/", "/passkeys/"]);
 const NAV: NavItem[] = [
   { href: "/", label: "Home", icon: Home },
   { href: "/agents/", label: "Agents", icon: Bot },
+  { href: "/developers/", label: "Developers", icon: Code },
   { href: "/activity/", label: "Activity", icon: History },
   { href: "/new/", label: "New mandate", short: "New", icon: Plus },
   { href: "/disputes/", label: "Disputes", icon: Scale },
