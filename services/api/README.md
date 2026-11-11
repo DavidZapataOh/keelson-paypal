@@ -230,6 +230,15 @@ authorization against it (status `CREATED`, amount, currency, `custom_id` and pa
 does not match is voided (`422 hold-mismatch`). An authorization PayPal holds as `PENDING` leaves
 the mandate in `HOLD_PENDING` until it is created.
 
+When the user has saved PayPal (below), `POST /hold` creates the order with
+`payment_source.paypal.vault_id` and `stored_credential {payment_initiator: MERCHANT, usage_pattern:
+UNSCHEDULED_PREPAID}`, so PayPal authorizes it as it creates it, with no PayPal window
+([Create and authorize an order for a PayPal wallet vaulted account holder](https://developer.paypal.com/api/orders/v2/#orders_create)).
+It answers `approved: true` and records the vault id on the mandate. `POST /hold/authorize` then
+reads the order (Show Order) instead of authorizing it, and checks the authorization the same way.
+If PayPal still asks the buyer, `approved` is `false` and the buyer approves the order in PayPal as
+usual. A replacement order is always approved in PayPal.
+
 An authorization is valid for 29 days and its funds are honored for the first 3
 ([Authorization and capture](https://developer.paypal.com/docs/checkout/standard/customize/authorization/)).
 Keelson reauthorizes each hold once, on the first maintenance run after day 3, for what is left

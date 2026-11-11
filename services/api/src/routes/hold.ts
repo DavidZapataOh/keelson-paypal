@@ -1,12 +1,13 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { sha256 } from "@keelson/core";
-import { and, createQueries, eq, mandates, sql, transition } from "@keelson/db";
+import { and, createQueries, eq, mandates, paypalWallets, sql, transition } from "@keelson/db";
 import {
   checkAuthorization,
   HoldMismatchError,
   holdOrderRequest,
   ids,
   PayPalError,
+  vaultedHoldOrder,
 } from "@keelson/paypal";
 import type { Context } from "hono";
 import type { Deps } from "../app.ts";
@@ -40,7 +41,14 @@ const PayPalClient = z
   .openapi("PayPalClient");
 
 const HoldOrder = z
-  .object({ orderId: z.string(), state: z.literal("HOLD_PENDING") })
+  .object({
+    orderId: z.string(),
+    state: z.literal("HOLD_PENDING"),
+    approved: z.boolean().openapi({
+      description:
+        "The user's saved PayPal paid the order, so PayPal shows the buyer nothing: authorize it next.",
+    }),
+  })
   .openapi("HoldOrder");
 
 const AuthorizeHold = z
@@ -85,7 +93,7 @@ const hold = createRoute({
   tags: ["mandates"],
   summary: "Hold a mandate's budget",
   description:
-    "Creates the PayPal `AUTHORIZE` order for the budget of a signed mandate, bound to the signed mandate hash by its `custom_id`, and moves the mandate to `HOLD_PENDING`. While the mandate waits for approval the same order is returned; an order PayPal no longer offers is replaced.",
+    "Creates the PayPal `AUTHORIZE` order for the budget of a signed mandate, bound to the signed mandate hash by its `custom_id`, and moves the mandate to `HOLD_PENDING`. With the user's saved PayPal, PayPal authorizes the order as it creates it (`approved`); otherwise the buyer approves it in PayPal. While the mandate waits for approval the same order is returned; an order PayPal no longer offers is replaced.",
   middleware: [requireSession()],
   request: { params, headers: idempotencyKey },
   responses: {
@@ -184,7 +192,15 @@ export function registerHold(
     return row && row.userId === userId ? row : undefined;
   };
 
-  const createOrder = async (paypal: PayPalDeps, row: MandateRow, requestId?: string) => {
+  /**
+   * Creates the hold's order, paid with the user's saved PayPal when there is one (`vaultId`).
+   * Only the first order of a mandate uses it: a replacement is approved in PayPal.
+   */
+  const createOrder = async (
+    paypal: PayPalDeps,
+    row: MandateRow,
+    requestId?: string,
+  ): Promise<{ orderId: string; vaultId?: string }> => {
     const url = returnUrl(deps.appOrigin, row.id);
     const order = holdOrderRequest({
       env: paypal.env,
@@ -194,14 +210,25 @@ export function registerHold(
       returnUrl: url,
       cancelUrl: url,
     });
+    const [wallet] =
+      requestId === undefined
+        ? await db
+            .select({ vaultId: paypalWallets.vaultId })
+            .from(paypalWallets)
+            .where(eq(paypalWallets.userId, row.userId))
+        : [];
+    const request = wallet ? vaultedHoldOrder(order, wallet.vaultId) : order;
     const created = await call(
       paypal.paypal.orders.createOrder({
-        paypalRequestId: requestId ?? order.paypalRequestId,
-        body: order.body,
+        paypalRequestId: requestId ?? request.paypalRequestId,
+        body: request.body,
       }),
     );
     if (!created.id) throw new Error("PayPal created an order without an id");
-    return created.id;
+    // PayPal may still ask the buyer, e.g. to approve the saved PayPal again.
+    return wallet && created.status === "COMPLETED"
+      ? { orderId: created.id, vaultId: wallet.vaultId }
+      : { orderId: created.id };
   };
 
   app.openapi(hold, async (c) => {
@@ -218,7 +245,8 @@ export function registerHold(
         "This mandate holds each purchase separately.",
       );
     }
-    const pending = (orderId: string) => c.json({ orderId, state: "HOLD_PENDING" as const }, 200);
+    const pending = (orderId: string, approved: boolean) =>
+      c.json({ orderId, state: "HOLD_PENDING" as const, approved }, 200);
     try {
       if (row.state === "SIGNED") {
         if (!holdable(paypal, row)) {
@@ -230,13 +258,14 @@ export function registerHold(
             "The mandate allows no payee Keelson can hold its budget with.",
           );
         }
-        const orderId = await createOrder(paypal, row);
+        const { orderId, vaultId } = await createOrder(paypal, row);
         // Measured with the move, so concurrent holds cannot together pass the hosted total cap.
         const moved = await db.transaction(async (tx) => {
           const over = await fundingCapError(tx, deps, row.id, row.remainingMinor);
           if (over) return over;
           return transition(tx, "mandates", row.id, "SIGNED", "HOLD_PENDING", {
             paypalOrderId: orderId,
+            paypalVaultId: vaultId ?? null,
           });
         });
         if (typeof moved === "string") {
@@ -244,11 +273,13 @@ export function registerHold(
         }
         if (moved) {
           await publishHold(deps, row, { state: "HOLD_PENDING", orderId });
-          return pending(orderId);
+          return pending(orderId, vaultId !== undefined);
         }
         // A concurrent request moved it first, with the same order: the request id is the same.
         const now = await queries.mandateById(row.id);
-        if (now?.state === "HOLD_PENDING" && now.paypalOrderId) return pending(now.paypalOrderId);
+        if (now?.state === "HOLD_PENDING" && now.paypalOrderId) {
+          return pending(now.paypalOrderId, now.paypalVaultId !== null);
+        }
       } else if (row.state === "HOLD_PENDING" && row.paypalOrderId) {
         const current = row.paypalOrderId;
         const status = await call(paypal.paypal.orders.getOrder({ id: current })).then(
@@ -258,15 +289,22 @@ export function registerHold(
             throw err;
           },
         );
-        if (status !== undefined && LIVE_ORDER.has(status)) return pending(current);
-        const orderId = await createOrder(
+        if (status !== undefined && LIVE_ORDER.has(status)) {
+          return pending(current, row.paypalVaultId !== null);
+        }
+        const { orderId } = await createOrder(
           paypal,
           row,
           replacementRequestId(row.mandateHash as Buffer, current),
         );
         const replaced = await db
           .update(mandates)
-          .set({ paypalOrderId: orderId, paypalParentAuthorizationId: null, updatedAt: sql`now()` })
+          .set({
+            paypalOrderId: orderId,
+            paypalParentAuthorizationId: null,
+            paypalVaultId: null,
+            updatedAt: sql`now()`,
+          })
           .where(
             and(
               eq(mandates.id, row.id),
@@ -278,7 +316,9 @@ export function registerHold(
           await publishHold(deps, row, { state: "HOLD_PENDING", orderId });
         }
         const now = await queries.mandateById(row.id);
-        if (now?.state === "HOLD_PENDING" && now.paypalOrderId) return pending(now.paypalOrderId);
+        if (now?.state === "HOLD_PENDING" && now.paypalOrderId) {
+          return pending(now.paypalOrderId, now.paypalVaultId !== null);
+        }
       }
     } catch (err) {
       const answer = paypalProblem(c, err);
@@ -330,11 +370,14 @@ export function registerHold(
     }
 
     try {
+      // An order paid with the saved PayPal was authorized when PayPal created it.
       const authorized = await call(
-        paypal.paypal.orders.authorizeOrder({
-          id: orderId,
-          paypalRequestId: ids.operationRequestId(orderId, "authorize"),
-        }),
+        row.paypalVaultId !== null
+          ? paypal.paypal.orders.getOrder({ id: orderId })
+          : paypal.paypal.orders.authorizeOrder({
+              id: orderId,
+              paypalRequestId: ids.operationRequestId(orderId, "authorize"),
+            }),
       );
       const authorizationId =
         authorized.purchaseUnits?.[0]?.payments?.authorizations?.[0]?.id ?? undefined;

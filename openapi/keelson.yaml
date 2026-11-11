@@ -639,9 +639,14 @@ components:
           type: string
           enum:
             - HOLD_PENDING
+        approved:
+          type: boolean
+          description: "The user's saved PayPal paid the order, so PayPal shows the buyer
+            nothing: authorize it next."
       required:
         - orderId
         - state
+        - approved
     AuthorizedHold:
       type: object
       properties:
@@ -7198,8 +7203,10 @@ paths:
       summary: Hold a mandate's budget
       description: Creates the PayPal `AUTHORIZE` order for the budget of a signed
         mandate, bound to the signed mandate hash by its `custom_id`, and moves
-        the mandate to `HOLD_PENDING`. While the mandate waits for approval the
-        same order is returned; an order PayPal no longer offers is replaced.
+        the mandate to `HOLD_PENDING`. With the user's saved PayPal, PayPal
+        authorizes the order as it creates it (`approved`); otherwise the buyer
+        approves it in PayPal. While the mandate waits for approval the same
+        order is returned; an order PayPal no longer offers is replaced.
       parameters:
         - schema:
             type: string

@@ -26,8 +26,11 @@ export interface ApproveHoldOptions {
   container: HTMLElement;
   /** The ISO 4217 code of the hold, for the eligibility check. */
   currencyCode: string;
-  /** Creates (or returns the pending) order of the hold. */
-  createOrder: () => Promise<{ orderId: string }>;
+  /**
+   * Creates (or returns the pending) order of the hold. `approved` is true when the user's saved
+   * PayPal already paid it, so PayPal has nothing to show.
+   */
+  createOrder: () => Promise<{ orderId: string; approved?: boolean }>;
   /** Authorizes the order the buyer approved. */
   authorize: (orderId: string) => Promise<void>;
   /** The buyer closed PayPal without approving; the same order is offered on the next click. */
@@ -106,13 +109,29 @@ export function mandateHold(
   const base = `${api}/v1/mandates/${encodeURIComponent(mandateId)}/hold`;
   return {
     createOrder: async () => {
-      const { orderId } = await post<{ orderId: string }>(base);
-      return { orderId };
+      const { orderId, approved } = await post<{ orderId: string; approved?: boolean }>(base);
+      return { orderId, approved: approved === true };
     },
     authorize: async (orderId) => {
       await post(`${base}/authorize`, { orderId });
     },
   };
+}
+
+/**
+ * Holds a mandate's budget with the user's saved PayPal, with no PayPal window: `"active"` once
+ * it is authorized, or `"approve"` when PayPal still needs the buyer, which the PayPal button of
+ * {@link approveHold} then offers with the same order.
+ */
+export async function holdWithSavedPayPal(
+  api: string,
+  mandateId: string,
+): Promise<"active" | "approve"> {
+  const calls = mandateHold(api, mandateId);
+  const { orderId, approved } = await calls.createOrder();
+  if (!approved) return "approve";
+  await calls.authorize(orderId);
+  return "active";
 }
 
 /**

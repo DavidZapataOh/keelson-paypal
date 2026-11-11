@@ -1,13 +1,12 @@
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { newId } from "@keelson/core";
-import type { Order, PaymentTokenResponse } from "@paypal/paypal-server-sdk";
+import type { PaymentTokenResponse } from "@paypal/paypal-server-sdk";
 import { describe, expect, it } from "vitest";
 import { holdOrderRequest } from "../src/hold.ts";
 import {
   savedWallet,
   VaultError,
-  vaultedAuthorizationId,
   vaultedHoldOrder,
   WALLET_DESCRIPTION,
   walletPaymentTokenRequest,
@@ -103,33 +102,5 @@ describe("savedWallet", () => {
     const { id: _, ...withoutId } = token;
     expect(() => savedWallet(withoutId)).toThrow(VaultError);
     expect(() => savedWallet({ ...token, customer: {} })).toThrow(VaultError);
-  });
-});
-
-describe("vaultedAuthorizationId", () => {
-  const completed = fixture<Order>("vaulted-authorize-order");
-  const unit = completed.purchaseUnits?.[0];
-  const auth = unit?.payments?.authorizations?.[0];
-  const withAuthorizations = (authorizations: unknown[]): Order => ({
-    ...completed,
-    purchaseUnits: [{ ...unit, payments: { authorizations } } as never],
-  });
-
-  it("reads the one authorization of a completed order", () => {
-    expect(vaultedAuthorizationId(completed)).toBe("7X550106NA4440028");
-  });
-
-  it("refuses an order the buyer still has to approve", () => {
-    expect(() =>
-      vaultedAuthorizationId({ ...completed, status: "PAYER_ACTION_REQUIRED" } as Order),
-    ).toThrow(VaultError);
-  });
-
-  it("refuses no authorization, two, or one PayPal holds as pending", () => {
-    expect(() => vaultedAuthorizationId(withAuthorizations([]))).toThrow(VaultError);
-    expect(() => vaultedAuthorizationId(withAuthorizations([auth, auth]))).toThrow(VaultError);
-    expect(() =>
-      vaultedAuthorizationId(withAuthorizations([{ ...auth, status: "PENDING" }])),
-    ).toThrow(VaultError);
   });
 });

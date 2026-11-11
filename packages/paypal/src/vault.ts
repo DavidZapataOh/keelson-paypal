@@ -1,8 +1,5 @@
 import {
-  AuthorizationStatus,
   ExperienceContextShippingPreference,
-  type Order,
-  OrderStatus,
   PaymentInitiator,
   type PaymentTokenRequest,
   type PaymentTokenResponse,
@@ -24,7 +21,7 @@ export const WALLET_DESCRIPTION = "Keelson holds your agent's budget, only under
  */
 const USAGE_PATTERN = UsagePattern.UnscheduledPrepaid;
 
-/** PayPal answered with something that is not a usable saved PayPal or vaulted hold. */
+/** PayPal answered with something that is not a usable saved PayPal. */
 export class VaultError extends Error {
   constructor(message: string) {
     super(message);
@@ -101,20 +98,4 @@ export function savedWallet(token: PaymentTokenResponse): SavedWallet {
   if (!customerId) throw new VaultError("the payment token has no customer");
   const email = token.paymentSource?.paypal?.emailAddress;
   return { vaultId, customerId, ...(email ? { email } : {}) };
-}
-
-/** The authorization of a vaulted hold: a `COMPLETED` order with exactly one `CREATED` one. */
-export function vaultedAuthorizationId(order: Order): string {
-  if (order.status !== OrderStatus.Completed) {
-    throw new VaultError(`the vaulted order is ${order.status ?? "without a status"}`);
-  }
-  const authorizations = order.purchaseUnits?.[0]?.payments?.authorizations ?? [];
-  const [auth] = authorizations;
-  if (authorizations.length !== 1 || !auth?.id) {
-    throw new VaultError(`the vaulted order has ${authorizations.length} authorizations`);
-  }
-  if (auth.status !== AuthorizationStatus.Created) {
-    throw new VaultError(`the vaulted authorization is ${auth.status}`);
-  }
-  return auth.id;
 }
