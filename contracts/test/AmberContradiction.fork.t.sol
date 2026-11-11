@@ -152,6 +152,14 @@ contract AmberContradictionForkTest is ViolationBase {
         _slash(k);
     }
 
+    function test_afterTheCoveragesWindow_reverts() public {
+        AmberCase memory k = _lockedAmber("size", amber.SIZE());
+        vm.warp(vault.coverages(k.coverage.coverageId).releaseAfter + 1);
+        _expectRevert(k, AmberContradictionCourt.ConvictionWindowClosed.selector);
+        vm.warp(vault.coverages(k.coverage.coverageId).releaseAfter);
+        _slash(k);
+    }
+
     function test_replay_reverts() public {
         AmberCase memory k = _lockedAmber("size", amber.SIZE());
         _slash(k);

@@ -89,6 +89,8 @@ contract AmberContradictionCourt is IConvictions {
     /// @notice The coverage is not one the vault locked, or not as given.
     error NotCovered();
     error NoAmberAttestation();
+    /// @notice The coverage's dispute window closed.
+    error ConvictionWindowClosed();
     /// @notice The countersign is not the ALLOW the coverage was locked with.
     error CountersignMismatch();
     /// @notice The countersign does not carry both legs' signatures.
@@ -127,6 +129,8 @@ contract AmberContradictionCourt is IConvictions {
         bytes32 locked = vault.coverageHash(c.coverageId);
         if (locked == 0 || locked != KeelsonTypes.hash(c)) revert NotCovered();
         if (c.amberCommitment == 0) revert NoAmberAttestation();
+        // A conviction after the coverage's window could never be paid, and would block one that could.
+        if (block.timestamp > vault.coverages(c.coverageId).releaseAfter) revert ConvictionWindowClosed();
         if (
             cs.requestId != c.coverageId || cs.agentId != c.agentId || cs.mandateHash != c.mandateHash
                 || cs.decision != ALLOW || cs.currency != USD || uint256(cs.amount) * PYUSD_PER_MINOR != c.amount
@@ -185,10 +189,10 @@ contract AmberContradictionCourt is IConvictions {
         return uint256(vault.coverages(coverageId).releaseAfter) + vault.params().disputeWindow;
     }
 
-    /// @dev Whether `item` is the `tlsn.web_fact` leaf of the evidence tree with root `root` and its document names
-    /// `factDigest`. The leaf is `SHA-256(0x00 ‖ "keelson/evidence-item/v1" ‖ salt ‖ type ‖ 0x00 ‖ media_type ‖ 0x00 ‖
-    /// SHA-256(document))`. In JSON, `"digest":"` can only be a member named `digest`: a quote inside a string is
-    /// escaped.
+    /// @dev Whether `item` is the `tlsn.web_fact` leaf of the evidence tree with root `root` and its document carries
+    /// `"digest":"<factDigest>"` at `digestAt`. The leaf is `SHA-256(0x00 ‖ "keelson/evidence-item/v1" ‖ salt ‖ type ‖
+    /// 0x00 ‖ media_type ‖ 0x00 ‖ SHA-256(document))`. The document is the operator's own evidence, sealed before the
+    /// countersign: no one else can choose its bytes.
     function _inEvidence(bytes32 root, bytes32 factDigest, EvidenceItem calldata item) internal view returns (bool) {
         bytes32 leaf = sha256(
             abi.encodePacked(
