@@ -35,7 +35,10 @@ const ENGINE_PROOF_FROM_BLOCK = 328_028_156n;
 const ENGINE_PROOF_MAX_COST = 2n * 10n ** 18n;
 /** The network's auction, proving and the requester's local simulation and verification. */
 const PROVE_TIMEOUT_MS = 40 * 60 * 1000;
+/** The free run of the program that checks a dispute's input before a proof of it is paid for. */
+const EXECUTE_TIMEOUT_MS = 5 * 60 * 1000;
 const RECORD_WAIT_MS = 120_000;
+const RECORD_ATTEMPTS = 2;
 
 /** The `CountersignInput` the SP1 program reads, as JSON. */
 interface CountersignInput {
@@ -137,6 +140,25 @@ async function prover(): Promise<string> {
   return path;
 }
 
+/** Runs the program over `input` without proving it, which costs nothing, for its public values. */
+async function executeInput(
+  input: CountersignInput,
+): Promise<{ eval_hash: string; countersign_digest: string }> {
+  const dir = await mkdtemp(join(tmpdir(), "engine-execute-"));
+  try {
+    const inputPath = join(dir, "input.json");
+    await writeFile(inputPath, JSON.stringify(input));
+    const { stdout } = await run(await prover(), ["execute", inputPath], {
+      timeout: EXECUTE_TIMEOUT_MS,
+      maxBuffer: 16 * 1024 * 1024,
+      env: { PATH: process.env.PATH, HOME: process.env.HOME, RUST_LOG: "warn" },
+    });
+    return JSON.parse(stdout);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
 /** Proves `input` to a Groth16 proof on the Succinct Prover Network, paid by `NETWORK_PRIVATE_KEY`. */
 async function proveInput(input: CountersignInput): Promise<EngineProved> {
   if (!process.env.NETWORK_PRIVATE_KEY) throw new Error("NETWORK_PRIVATE_KEY is not set");
@@ -215,8 +237,13 @@ export async function proveEngine(
   if (!verifier) throw new Error("EngineProofVerifier is not deployed");
 
   // A proof paid for by an earlier run that did not get recorded is recorded, not bought again.
-  let proved = existing?.proved;
+  let proved = existing?.proved?.vkey === ENGINE_PROVER.vkey ? existing.proved : undefined;
   if (!proved) {
+    // A mismatch here would repeat on every paid attempt, so it is caught before paying.
+    const executed = await executeInput(input);
+    if (executed.eval_hash !== evalHash || executed.countersign_digest !== digest) {
+      throw new Error(`purchase ${purchaseId}: its engine input does not give its countersign`);
+    }
     proved = await proveInput(input);
     if (proved.vkey !== ENGINE_PROVER.vkey) throw new Error(`engine prover vkey ${proved.vkey}`);
     if (proved.eval_hash !== evalHash || proved.countersign_digest !== digest) {
@@ -229,27 +256,31 @@ export async function proveEngine(
     );
   }
 
-  // The relayer key makes a retry find the transaction already sent rather than send another.
-  let record = await relayer.submit({
-    chainId: ENGINE_PROOF_CHAIN_ID,
-    contract: "EngineProofVerifier",
-    functionName: "record",
-    args: [proved.public_values as Hex, proved.proof as Hex],
-    key: `EngineProofVerifier.record:${digest}`,
-  });
-  const deadline = Date.now() + RECORD_WAIT_MS;
-  while (record.status === "pending" && Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 500));
-    record = (await relayer.getById(record.id)) ?? record;
-  }
-  const tx =
-    record.status === "confirmed" && record.hash
-      ? (record.hash as Hex)
-      : await recordedBy(chain, verifier, digest, evalHash);
-  if (!tx) {
-    throw new Error(
-      `engine proof of ${purchaseId} is ${record.status}${record.errorCode ? ` (${record.errorCode})` : ""}`,
-    );
+  // The task is not retried, since a retry could pay twice, so recording gets a second attempt
+  // here. The relayer key makes it find the transaction already sent rather than send another.
+  let tx: Hex | undefined;
+  for (let attempt = 1; !tx; attempt++) {
+    let record = await relayer.submit({
+      chainId: ENGINE_PROOF_CHAIN_ID,
+      contract: "EngineProofVerifier",
+      functionName: "record",
+      args: [proved.public_values as Hex, proved.proof as Hex],
+      key: `EngineProofVerifier.record:${digest}`,
+    });
+    const deadline = Date.now() + RECORD_WAIT_MS;
+    while (record.status === "pending" && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 500));
+      record = (await relayer.getById(record.id)) ?? record;
+    }
+    tx =
+      record.status === "confirmed" && record.hash
+        ? (record.hash as Hex)
+        : await recordedBy(chain, verifier, digest, evalHash);
+    if (!tx && attempt === RECORD_ATTEMPTS) {
+      throw new Error(
+        `engine proof of ${purchaseId} is ${record.status}${record.errorCode ? ` (${record.errorCode})` : ""}`,
+      );
+    }
   }
   const receipt = await chain.getTransactionReceipt({ hash: tx });
 

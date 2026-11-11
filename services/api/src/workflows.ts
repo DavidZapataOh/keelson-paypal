@@ -185,13 +185,13 @@ task(
  * `evalHash`, and records the Groth16 proof with `EngineProofVerifier`. The Succinct Prover
  * Network proves; this instance only simulates the program, waits and verifies the proof, so it
  * needs a fraction of the 45 GB a local proof does. Each attempt is a paid network request, so a
- * failure is not retried.
+ * failure is not retried; the 50 minutes hold the network's 40 and two recording attempts.
  */
 task(
   {
     name: "proveEngine",
     retry: { maxRetries: 0, waitDurationMs: 10_000 },
-    timeoutSeconds: 45 * 60,
+    timeoutSeconds: 50 * 60,
     plan: "2c-8g",
   },
   async function proveEngineTask(_ctx, purchaseId: string) {

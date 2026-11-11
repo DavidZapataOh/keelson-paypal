@@ -146,13 +146,13 @@ export const purchases = pgTable(
   ],
 );
 
-/** An SP1 proof of a purchase's engine evaluation, as `purchases.engine_proof` stores it. */
 /** An engine proof as the prover returns it, before it is recorded. */
 export type EngineProved = Omit<
   EngineProof,
   "chain_id" | "verifier" | "tx" | "gas_used" | "proven_at"
 >;
 
+/** An SP1 proof of a purchase's engine evaluation, as `purchases.engine_proof` stores it. */
 export interface EngineProof {
   vkey: string;
   public_values: string;
@@ -171,7 +171,7 @@ export interface EngineProof {
     gas_used: number | null;
     max_cost: string;
     cost: string | null;
-    balance: string;
+    balance: string | null;
   };
   chain_id: number;
   verifier: string;
