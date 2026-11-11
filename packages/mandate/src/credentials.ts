@@ -11,7 +11,7 @@ import {
 import { SDJwtVcInstance } from "@sd-jwt/sd-jwt-vc";
 import { compactVerify, decodeJwt, decodeProtectedHeader, importJWK } from "jose";
 import { type Mandate, parseMandate } from "./schema.ts";
-import { assertSdAlg, sdHasher } from "./sd.ts";
+import { assertSdAlg, decodeMandate, sdHasher } from "./sd.ts";
 import {
   assertDigestsResolved,
   assertStrictJson,
@@ -439,6 +439,25 @@ export async function verifyOpenMandate(
     userAuth: claims.user_auth,
     userCredential,
   };
+}
+
+/**
+ * The mandate an open mandate delegates: its one delegate payload with every disclosure resolved.
+ * No signature is checked; use {@link verifyCredential} where the token is not already trusted.
+ */
+export function readOpenMandate(openMandate: string): Mandate {
+  if (!openMandate.includes("~~")) throw new RangeError("not an open mandate");
+  const disclosures = finalKbSdJwt(openMandate).split("~").slice(1, -1);
+  const delegate = disclosures.findIndex((d) => {
+    const value = (decodeStrictJson(d) as unknown[]).at(-1) as { v?: unknown } | null;
+    return value?.v === "keelson.mandate.1";
+  });
+  if (delegate < 0) throw new RangeError("the open mandate delegates no mandate");
+  const payloadSd = (decodeStrictJson(disclosures[delegate] as string) as unknown[]).at(-1);
+  return decodeMandate(
+    payloadSd as object,
+    disclosures.filter((_, i) => i !== delegate),
+  );
 }
 
 /** The final KB-SD-JWT of a dSD-JWT and its disclosures, which the closing KB-JWT's `sd_hash` covers. */

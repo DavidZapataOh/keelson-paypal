@@ -70,6 +70,7 @@ export {
   type OpenMandateParams,
   type OpenMandateVerifyOptions,
   type P256PublicJwk,
+  readOpenMandate,
   type SaltGenerator,
   USER_CREDENTIAL_TYP,
   USER_CREDENTIAL_VCT,
