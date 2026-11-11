@@ -11,10 +11,10 @@ export interface AmberCase {
     color: string;
     unit_minor: string;
     returns_free: boolean;
-  };
+  } | null;
   conviction: {
     field: AmberField;
-    attested_value: string;
+    attested_value: string | null;
     proven_at: string;
     web_fact_digest: string;
     captured_at: string | null;

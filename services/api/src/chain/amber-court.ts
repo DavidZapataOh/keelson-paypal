@@ -17,8 +17,11 @@ export const AMBER_CHAIN_ID = 421614;
 export const AMBER_COURT_DEPLOYED_AT = 327_211_576n;
 /** The block range of one `eth_getLogs` call. */
 const LOG_RANGE = 100_000n;
-/** About 5 s of Arbitrum blocks, so a block the RPC has not indexed yet is scanned on a later pass. */
-const CONFIRMATIONS = 20n;
+/**
+ * About a minute of Arbitrum blocks: a block a lagging node behind the RPC's load balancer has not
+ * indexed yet is scanned on a later pass, never passed by the cursor.
+ */
+const CONFIRMATIONS = 240n;
 /** Reads of dispute data within this long of a scan reuse it. */
 const SCAN_EVERY_MS = 30_000;
 /** After a failed scan, how long reads wait before another. */

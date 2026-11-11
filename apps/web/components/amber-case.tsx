@@ -9,7 +9,7 @@ import { VERIFY } from "../lib/config";
 
 const FIELDS: AmberField[] = ["size", "color", "unit_price", "returns_free"];
 
-function attestedOf(a: Case["attested"], field: AmberField): string {
+function attestedOf(a: NonNullable<Case["attested"]>, field: AmberField): string {
   return amberValue(
     field,
     {
@@ -53,7 +53,10 @@ export function AmberCase({
   className?: string;
 }) {
   const v = amber.conviction;
+  const a = amber.attested;
   const headingId = `amber-${purchaseId}`;
+  // A card of its own on a page; a section of the widget it sits in.
+  const Heading = compact ? "h3" : "h2";
   return (
     <section
       aria-labelledby={headingId}
@@ -66,12 +69,12 @@ export function AmberCase({
     >
       <header className="grid gap-1.5">
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-          <h3
+          <Heading
             id={headingId}
             className={cn("font-semibold tracking-tight", compact ? "text-base" : "text-lg")}
           >
             What the operator attested
-          </h3>
+          </Heading>
           <span
             role="status"
             className={cn(
@@ -88,45 +91,57 @@ export function AmberCase({
         </div>
         <p className="max-w-prose text-muted-foreground text-sm">
           {v
-            ? `The store's own answer for ${amber.attested.sku}, notarized by Keelson's TLSNotary leg, holds another ${AMBER_LABEL[v.field].toLowerCase()}. A zero-knowledge proof showed it without revealing the answer.`
+            ? `The store's own answer for ${a?.sku ?? "the item"}, notarized by Keelson's TLSNotary leg, holds another ${AMBER_LABEL[v.field].toLowerCase()}. A zero-knowledge proof showed it without revealing the answer.`
             : "Signed into the coverage as one commitment and backed by the operator's bond. If the store's own notarized answer contradicts a field, anyone can prove it on chain."}
         </p>
       </header>
 
-      <ul className="grid gap-1 rounded-2xl bg-bone-2/70 p-1.5 text-sm">
-        {FIELDS.map((field) => {
-          const contradicted = v?.field === field;
-          return (
-            <li
-              key={field}
-              data-contradicted={contradicted || undefined}
-              className={cn(
-                "flex min-h-10 flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-xl px-3 py-2",
-                contradicted && "bg-card shadow-[0_1px_3px_rgb(23_24_27/0.12)]",
-              )}
-            >
-              <span className="flex min-w-0 items-baseline gap-2">
-                <span className="w-24 shrink-0 text-muted-foreground">{AMBER_LABEL[field]}</span>
-                <span
-                  className={cn(
-                    "font-medium tabular-nums",
-                    contradicted && "line-through decoration-vermilion decoration-2",
-                  )}
-                >
-                  {attestedOf(amber.attested, field)}
+      {a ? (
+        <ul className="grid gap-1 rounded-2xl bg-bone-2/70 p-1.5 text-sm">
+          {FIELDS.map((field) => {
+            const contradicted = v?.field === field;
+            return (
+              <li
+                key={field}
+                data-contradicted={contradicted || undefined}
+                className={cn(
+                  "flex min-h-10 flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-xl px-3 py-2",
+                  contradicted && "bg-card shadow-[0_1px_3px_rgb(23_24_27/0.12)]",
+                )}
+              >
+                <span className="flex min-w-0 items-baseline gap-2">
+                  <span className="w-24 shrink-0 text-muted-foreground">{AMBER_LABEL[field]}</span>
+                  <span
+                    className={cn(
+                      "font-medium tabular-nums",
+                      contradicted && "line-through decoration-vermilion decoration-2",
+                    )}
+                  >
+                    {attestedOf(a, field)}
+                  </span>
                 </span>
-              </span>
-              {contradicted ? (
-                <span className="font-medium text-vermilion-deep text-xs dark:text-vermilion">
-                  The store says otherwise
-                </span>
-              ) : (
-                <LiabilityMark kind="attested" />
-              )}
-            </li>
-          );
-        })}
-      </ul>
+                {contradicted ? (
+                  <span className="font-medium text-vermilion-deep text-xs dark:text-vermilion">
+                    The store says otherwise
+                  </span>
+                ) : (
+                  <LiabilityMark kind="attested" />
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      ) : v ? (
+        <div className="grid min-h-10 gap-1 rounded-2xl bg-bone-2/70 px-4 py-2.5 text-sm sm:flex sm:items-center sm:justify-between sm:gap-4">
+          <p className="flex items-baseline gap-2">
+            <span className="text-muted-foreground">Proven false</span>
+            <span className="font-medium">{AMBER_LABEL[v.field]}</span>
+          </p>
+          <p className="text-muted-foreground text-xs">
+            Its value stays with the buyer, merchant and operator
+          </p>
+        </div>
+      ) : null}
 
       {v && !compact ? (
         <Timeline aria-label="How the attestation was convicted">
@@ -137,9 +152,9 @@ export function AmberCase({
             state="done"
             actor="Keelson's TLSNotary leg"
             {...(v.captured_at ? { time: v.captured_at } : {})}
-            proof={{ href: amber.attested.url, label: "Store page" }}
+            {...(a ? { proof: { href: a.url, label: "Store page" } } : {})}
           >
-            notarized the store's answer for {amber.attested.sku}
+            notarized the store's answer for {a?.sku ?? "the item"}
           </TimelineItem>
           <TimelineItem
             state="blocked"

@@ -715,7 +715,7 @@ export function registerOperatorConsole(
 
   app.openapi(rowsRoute, async (c) => {
     const agentId = BigInt(c.req.valid("param").agentId);
-    await syncAmber(deps);
+    syncAmber(deps);
     const started = performance.now();
     try {
       const block = await coverageRows(db, agentId, c.req.valid("json"));

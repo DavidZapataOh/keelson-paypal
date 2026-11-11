@@ -35,6 +35,7 @@ export function amberOf(
     returns_free?: unknown;
   } | null;
   const p = product as {
+    merchant?: unknown;
     url?: unknown;
     handle?: unknown;
     sku?: unknown;
@@ -70,7 +71,15 @@ export function amberOf(
     return undefined;
   }
   const origin = new URL(website).origin;
-  if (page.origin !== origin || !/^[a-z0-9-]+$/.test(p.handle)) return undefined;
+  // The page attested is the one the agent captured, so a proof can always read the store's answer.
+  if (
+    p.merchant !== merchantId ||
+    page.origin !== origin ||
+    !/^[a-z0-9-]+$/.test(p.handle) ||
+    page.pathname !== `/products/${p.handle}`
+  ) {
+    return undefined;
+  }
   return {
     url: new URL(`/api/products/${p.handle}/variants/${encodeURIComponent(line.sku)}`, origin),
     amber: {
@@ -154,11 +163,12 @@ export const AMBER_FIELD = ["size", "color", "unit_price", "returns_free"] as co
 /** A purchase's amber attestation and the court's conviction of it, as dispute data shows them. */
 export interface AmberCase {
   commitment: string;
-  attested: Omit<StoredAmber, "salt" | "commitment">;
+  /** Null where the read is public: what was bought stays with the user, merchant and operator. */
+  attested: Omit<StoredAmber, "salt" | "commitment"> | null;
   conviction: {
     field: (typeof AMBER_FIELD)[number];
     /** What the operator attested of the field, which the store's own answer contradicted. */
-    attested_value: string;
+    attested_value: string | null;
     proven_at: string;
     web_fact_digest: string;
     /** When leg A notarized the store's answer. */
@@ -171,10 +181,14 @@ export interface AmberCase {
 
 const hex = (b: Buffer) => `0x${b.toString("hex")}`;
 
-/** The amber cases of `purchaseIds`, read from the purchases and the projected convictions. */
+/**
+ * The amber cases of `purchaseIds`, read from the purchases and the projected convictions.
+ * `redact` drops what the operator attested, for reads without authentication.
+ */
 export async function amberCases(
   db: Db,
   purchaseIds: readonly string[],
+  { redact = false }: { redact?: boolean } = {},
 ): Promise<Map<string, AmberCase>> {
   const out = new Map<string, AmberCase>();
   if (purchaseIds.length === 0) return out;
@@ -194,19 +208,21 @@ export async function amberCases(
     const tx = v ? hex(v.txHash) : undefined;
     out.set(id, {
       commitment,
-      attested: fields,
+      attested: redact ? null : fields,
       conviction:
         v && field && tx
           ? {
               field,
-              attested_value: String(
-                {
-                  size: fields.size,
-                  color: fields.color,
-                  unit_price: fields.unit_minor,
-                  returns_free: fields.returns_free,
-                }[field],
-              ),
+              attested_value: redact
+                ? null
+                : String(
+                    {
+                      size: fields.size,
+                      color: fields.color,
+                      unit_price: fields.unit_minor,
+                      returns_free: fields.returns_free,
+                    }[field],
+                  ),
               proven_at: v.provenAt.toISOString(),
               web_fact_digest: hex(v.webFactDigest),
               captured_at: v.proof

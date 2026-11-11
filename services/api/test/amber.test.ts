@@ -18,7 +18,7 @@ import { pino } from "pino";
 import { ulid } from "ulid";
 import { encodeFunctionData, type Hex, keccak256, stringToHex, zeroHash } from "viem";
 import { beforeAll, describe, expect, test } from "vitest";
-import { amberOf, fixAmber } from "../src/amber.ts";
+import { amberCases, amberOf, fixAmber } from "../src/amber.ts";
 import { createApp } from "../src/app.ts";
 import { c2bOfCall, purchaseOfCoverage } from "../src/chain/amber-court.ts";
 import { coverageRows } from "../src/routes/operator-console.ts";
@@ -107,6 +107,15 @@ describe("amberOf", () => {
     expect(amberOf("mrc_runfast", one({ size: "12", sku: "RF-TMP3-12" }), product)).toBeUndefined();
     expect(amberOf("mrc_runfast", one({ sku: "RF-OTHER-11" }), product)).toBeUndefined();
     expect(amberOf("mrc_runfast", { ...cart, returns_free: false }, product)).toBeUndefined();
+  });
+
+  test("attests only the page the agent captured, of the cart's merchant", () => {
+    // A handle that is not the captured page's would name a page no proof can ever read.
+    expect(amberOf("mrc_runfast", cart, { ...product, handle: "ghost" })).toBeUndefined();
+    expect(
+      amberOf("mrc_runfast", cart, { ...product, url: `${product.url}-ghost` }),
+    ).toBeUndefined();
+    expect(amberOf("mrc_runfast", cart, { ...product, merchant: "mrc_other" })).toBeUndefined();
   });
 });
 
@@ -329,13 +338,13 @@ describe("amber in dispute data", () => {
     });
   });
 
-  test("a dispute shows the attestation, the field proven false and the proof", async () => {
+  test("the public dispute shows the field proven false and the proof, not what was bought", async () => {
     const body = await (await app.request(`/v1/disputes/${disputeId}`)).json();
     expect(body.amber).toMatchObject({
-      attested: { url: VARIANT, sku: "RF-TMP3-11", color: "red", returns_free: true },
+      attested: null,
       conviction: {
         field: "color",
-        attested_value: "red",
+        attested_value: null,
         proven_at: "2026-11-10T12:00:00.000Z",
         web_fact_digest: `0x${"ab".repeat(32)}`,
         captured_at: new Date(fact.tCapture * 1000).toISOString(),
@@ -344,8 +353,21 @@ describe("amber in dispute data", () => {
         proof: { bytes: (v.proof.length - 2) / 2, public_inputs: v.publicInputs },
       },
     });
-    expect(body.amber.attested).not.toHaveProperty("salt");
+    expect(JSON.stringify(body.amber)).not.toContain("RF-TMP3");
     expect(body.amber.commitment).toMatch(/^0x[0-9a-f]{64}$/);
+  });
+
+  test("the authenticated read keeps what the operator attested, never the salt", async () => {
+    const cases = await amberCases(testDb, [convicted]);
+    expect(cases.get(convicted)).toMatchObject({
+      attested: { url: VARIANT, sku: "RF-TMP3-11", color: "red", returns_free: true },
+      conviction: { field: "color", attested_value: "red" },
+    });
+    expect(cases.get(convicted)?.attested).not.toHaveProperty("salt");
+    expect((await amberCases(testDb, [convicted], { redact: true })).get(convicted)).toMatchObject({
+      attested: null,
+      conviction: { attested_value: null },
+    });
   });
 
   test("the operator's book filters and shows the amber state", async () => {

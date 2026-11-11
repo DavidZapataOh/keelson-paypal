@@ -19,20 +19,26 @@ export const AmberCaseSchema = z
       description:
         "The `amberCommitment` the operator signed into the coverage: Poseidon2 over the product page, the fields below and a salt.",
     }),
-    attested: z.object({
-      url: z.url().openapi({ description: "The store's JSON page for the SKU." }),
-      sku: z.string(),
-      size: z.string(),
-      color: z.string(),
-      unit_minor: z.string().regex(/^\d+$/),
-      returns_free: z.boolean(),
-    }),
+    attested: z
+      .object({
+        url: z.url().openapi({ description: "The store's JSON page for the SKU." }),
+        sku: z.string(),
+        size: z.string(),
+        color: z.string(),
+        unit_minor: z.string().regex(/^\d+$/),
+        returns_free: z.boolean(),
+      })
+      .nullable()
+      .openapi({
+        description:
+          "What the operator attested. Null on the public dispute read: what was bought stays with the consoles.",
+      }),
     conviction: z
       .object({
         field: z.enum(AMBER_FIELD),
-        attested_value: z.string().openapi({
+        attested_value: z.string().nullable().openapi({
           description:
-            "What the operator attested of the field, which the store's answer contradicts.",
+            "What the operator attested of the field, which the store's answer contradicts. Null on the public dispute read.",
         }),
         proven_at: z.iso.datetime(),
         web_fact_digest: Hex.openapi({
@@ -63,25 +69,23 @@ export const AmberCaseSchema = z
       "What the operator attested about the item it bought, and whether it was proven false. Null when the purchase carries no attestation (a cart of several lines, or bought before attestations).",
   });
 
-/** Brings the convictions up to the chain when the API reads it; a dispute read never waits longer than this. */
-const SYNC_WAIT_MS = 3_000;
-
-export async function syncAmber(deps: Pick<Deps, "db" | "kv" | "log" | "chains">): Promise<void> {
+/**
+ * Starts bringing the convictions up to the chain and returns at once: a read serves the
+ * projection as it stands, and a conviction the scan finds shows on a later read.
+ */
+export function syncAmber(deps: Pick<Deps, "db" | "kv" | "log" | "chains">): void {
   const chain = deps.chains?.[AMBER_CHAIN_ID];
-  if (!chain) return;
-  await Promise.race([
-    syncAmberConvictions({ ...deps, chain }),
-    new Promise((r) => setTimeout(r, SYNC_WAIT_MS).unref()),
-  ]);
+  if (chain) void syncAmberConvictions({ ...deps, chain });
 }
 
-/** The amber cases of `purchaseIds`, with the convictions brought up to the chain first. */
-export async function amberOfPurchases(
+/** The amber cases of `purchaseIds`, starting a scan of the court's new convictions. */
+export function amberOfPurchases(
   deps: Pick<Deps, "db" | "kv" | "log" | "chains">,
   purchaseIds: readonly string[],
+  options?: { redact?: boolean },
 ) {
-  await syncAmber(deps);
-  return amberCases(deps.db, purchaseIds);
+  syncAmber(deps);
+  return amberCases(deps.db, purchaseIds, options);
 }
 
 const DisputeStatus = z
@@ -180,7 +184,7 @@ const route = createRoute({
   tags: ["Disputes"],
   summary: "A dispute's attribution",
   description:
-    "Where a PayPal dispute over a Keelson purchase stands: the party at fault, the `Verdict` both TEE legs signed, the time from the dispute's arrival to its verdict, and the operator's amber attestation with any conviction of it. No authentication; it holds no personal data.",
+    "Where a PayPal dispute over a Keelson purchase stands: the party at fault, the `Verdict` both TEE legs signed, the time from the dispute's arrival to its verdict, and the operator's amber commitment with any conviction of it. No authentication; it holds no personal data, so what the operator attested is left out.",
   request: { params: z.object({ id: z.string().regex(/^PP-[A-Z]-[0-9A-Za-z-]{1,40}$/) }) },
   responses: {
     200: { description: "The dispute", content: { "application/json": { schema: DisputeStatus } } },
@@ -215,7 +219,9 @@ export function registerDisputes(
       .from(disputeResponses)
       .where(eq(disputeResponses.disputeId, id))
       .orderBy(asc(disputeResponses.createdAt));
-    const amber = (await amberOfPurchases(deps, [row.purchaseId])).get(row.purchaseId) ?? null;
+    const amber =
+      (await amberOfPurchases(deps, [row.purchaseId], { redact: true })).get(row.purchaseId) ??
+      null;
     const v = row.verdict;
     const txHash = v?.txHash ? `0x${Buffer.from(v.txHash).toString("hex")}` : null;
     const received = row.receivedAt ? new Date(row.receivedAt) : null;

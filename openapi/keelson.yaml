@@ -2765,7 +2765,9 @@ components:
           description: "The `amberCommitment` the operator signed into the coverage:
             Poseidon2 over the product page, the fields below and a salt."
         attested:
-          type: object
+          type:
+            - object
+            - "null"
           properties:
             url:
               type: string
@@ -2789,6 +2791,8 @@ components:
             - color
             - unit_minor
             - returns_free
+          description: "What the operator attested. Null on the public dispute read: what
+            was bought stays with the consoles."
         conviction:
           type:
             - object
@@ -2802,9 +2806,11 @@ components:
                 - unit_price
                 - returns_free
             attested_value:
-              type: string
+              type:
+                - string
+                - "null"
               description: What the operator attested of the field, which the store's answer
-                contradicts.
+                contradicts. Null on the public dispute read.
             proven_at:
               type: string
               format: date-time
@@ -6680,9 +6686,9 @@ paths:
       summary: A dispute's attribution
       description: "Where a PayPal dispute over a Keelson purchase stands: the party
         at fault, the `Verdict` both TEE legs signed, the time from the
-        dispute's arrival to its verdict, and the operator's amber attestation
-        with any conviction of it. No authentication; it holds no personal
-        data."
+        dispute's arrival to its verdict, and the operator's amber commitment
+        with any conviction of it. No authentication; it holds no personal data,
+        so what the operator attested is left out."
       parameters:
         - schema:
             type: string
