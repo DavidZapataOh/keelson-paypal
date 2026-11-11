@@ -707,6 +707,13 @@ export { toHex };
  * {@link testAgent} as its agent.
  */
 export async function seedUser(db: Db, passkey: Passkey, sub: string): Promise<void> {
+  await db.insert(user).values({ id: sub, name: "Tester", email: `${sub}@example.test` });
+  await seedPasskey(db, passkey, sub);
+  await seedOperator(db, 42n);
+}
+
+/** Registers `passkey` to the user `sub`, as another device of theirs would. */
+export async function seedPasskey(db: Db, passkey: Passkey, sub: string): Promise<void> {
   const x = Buffer.from(passkey.jwk.x, "base64url");
   const y = Buffer.from(passkey.jwk.y, "base64url");
   const cose = isoCBOR.encode(
@@ -718,7 +725,6 @@ export async function seedUser(db: Db, passkey: Passkey, sub: string): Promise<v
       [-3, y],
     ]),
   );
-  await db.insert(user).values({ id: sub, name: "Tester", email: `${sub}@example.test` });
   await db.insert(passkeyTable).values({
     id: randomBytes(8).toString("hex"),
     publicKey: Buffer.from(cose).toString("base64"),
@@ -728,7 +734,6 @@ export async function seedUser(db: Db, passkey: Passkey, sub: string): Promise<v
     deviceType: "multiDevice",
     backedUp: true,
   });
-  await seedOperator(db, 42n);
 }
 
 /** The OAuth client {@link asAgent} acts as: the client the seeded operators are linked to. */

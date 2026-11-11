@@ -4,6 +4,8 @@ export interface Principal {
   kind: "user" | "client";
   subject: string;
   scopes?: string[];
+  /** The Better Auth session a user principal came with. */
+  session?: { id: string; createdAt: Date };
 }
 
 declare module "hono" {

@@ -540,6 +540,12 @@ test("a signed-out visitor who opens the mandate form is sent to the welcome", a
   await context.close();
 });
 
+test("a signed-out visitor who opens the passkeys is sent to the welcome", async () => {
+  const { context, page } = await visit("desktop", "/passkeys/");
+  await page.waitForURL(`${base}/`);
+  await context.close();
+});
+
 test("the welcome stays inside its budgets", async () => {
   const html = await readFile(join(out, "index.html"), "utf8");
   const assets = [...new Set(html.match(/\/_next\/static\/[^"]+\.(js|css)/g) ?? [])];
