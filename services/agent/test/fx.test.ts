@@ -109,7 +109,7 @@ describe("PayPal's review page in English, as the sandbox shows it", () => {
   const page = [
     "$2.95",
     "Pay with",
-    "Checking ••••0685",
+    "Checking ••••0000",
     "$2.95",
     "Pay in 4",
     "4 interest-free payments on eligible purchases of $10.00-$2,000.00. Not available for this transaction.",
