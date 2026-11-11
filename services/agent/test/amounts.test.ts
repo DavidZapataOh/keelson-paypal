@@ -1,6 +1,6 @@
 import fc from "fast-check";
 import { describe, expect, test } from "vitest";
-import { minorDigits, pageLocale, readAmounts, readPage } from "../src/amounts.ts";
+import { charges, minorDigits, pageLocale, readAmounts, readPage, values } from "../src/amounts.ts";
 
 /** Every language ICU formats numbers for, with the regions and numbering systems that change how. */
 function locales(): string[] {
@@ -127,15 +127,60 @@ describe("reading amounts in any locale", () => {
     expect(readAmounts("Total $2.95 USD", "en-US", "USD").minor).toEqual([295]);
   });
 
-  test("a number written another locale's way is not read in part", () => {
-    expect(readAmounts("Total $2.95 USD", "es-CO", "USD").minor).toEqual([]);
-  });
-
-  test("the locale decides 1.234 from 1,234", () => {
+  test("a number's separators are read by its shape, as PayPal mixes them on one page", () => {
+    expect(readAmounts("Total $2.95 USD", "es-CO", "USD").minor).toEqual([295]);
+    expect(readAmounts("Total $2,95 USD", "en-US", "USD").minor).toEqual([295]);
     expect(readAmounts("US$1.234", "es-ES", "USD").minor).toEqual([123_400]);
     expect(readAmounts("US$1,234", "en-US", "USD").minor).toEqual([123_400]);
-    expect(readAmounts("US$1,23", "en-US", "USD").minor).toEqual([]);
-    expect(readAmounts("1,23 US$", "es-ES", "USD").minor).toEqual([123]);
+    expect(readAmounts("US$1,23", "en-US", "USD").minor).toEqual([123]);
+    expect(readAmounts("USD 3,500.00 · 2,50 USD", "es-CO", "USD").minor).toEqual([350_000, 250]);
+  });
+
+  test("only 3 minor digits make 1.234 two numbers; the page's decimal decides", () => {
+    expect(values("1.234", 3)).toEqual([1234, 1_234_000]);
+    expect(readAmounts("KWD 1.234", "en-US", "KWD").minor).toEqual([1234]);
+    expect(readAmounts("KWD 1.234", "de-DE", "KWD").minor).toEqual([1_234_000]);
+  });
+
+  test("no locale writes these, so they are no number", () => {
+    for (const run of ["2.9", "15 99", "1.000.000,5", "1,2,3", "1.234,567", "1.2345"]) {
+      expect(values(run, 2), run).toEqual([]);
+    }
+  });
+
+  test("whatever a number's shape, a currency with 0 or 2 minor digits reads it one way at most", () => {
+    fc.assert(
+      fc.property(
+        fc.stringMatching(/^\d{1,4}(?:[.,' ]\d{1,4}){0,4}$/),
+        fc.constantFrom(0, 2),
+        (run, fraction) => {
+          expect(values(run, fraction).length).toBeLessThanOrEqual(1);
+        },
+      ),
+      { numRuns: 20_000 },
+    );
+  });
+
+  test("a group never reads as cents nor cents as a group, so no amount reads smaller", () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom(...LOCALES),
+        fc.constantFrom(...CURRENCIES),
+        fc.integer({ min: 0, max: 99_999_999 }),
+        (locale, currency, minor) => {
+          const digits = minorDigits(currency);
+          const n = new Intl.NumberFormat(locale, {
+            minimumFractionDigits: digits,
+            maximumFractionDigits: digits,
+          }).format(minor / 10 ** digits);
+          const read = readAmounts(`Total ${n} ${currency}`, locale, currency).minor;
+          // 1.234 of a currency with 3 minor digits, where the locale's decimal is unclear, holds.
+          if (digits === 3) expect(read.every((r) => r >= minor)).toBe(true);
+          else expect(read, `${locale} ${n}`).toEqual([minor]);
+        },
+      ),
+      { numRuns: 20_000 },
+    );
   });
 
   test("currencies keep their own minor units", () => {
@@ -160,40 +205,41 @@ describe("the page's locale", () => {
   });
 });
 
-describe("what the gate cannot read for sure, it reports as unsure", () => {
-  const unsure = (text: string, locales: string[], currency = "USD") =>
-    readPage(text, locales, currency).unsure;
+describe("a page is paid only where it charges the countersigned total and nothing more", () => {
+  const pays = (text: string, locales: string[], minor: number, currency = "USD") =>
+    charges(readPage(text, locales, currency), minor);
 
   test.each([
-    [
-      "a space-grouped total in a comma-grouped locale",
-      "Subtotal 15.00 USD\nTotal 1 015.00 USD",
-      "en",
-    ],
-    ["a space-grouped euro total", "1 015,00 €", "de"],
-    ["a dollar total grouped with a space", "$1 015.00", "en"],
-    ["another dollar's symbol", "Total A$12.00", "en"],
-    ["Canadian and Mexican dollars", "CA$12.00 · MX$12.00", "en"],
-    ["a dollar amount named in another code", "Total $12.00 AUD", "en"],
+    ["a space-grouped total", "Subtotal 15.00 USD\nTotal 1 015.00 USD", "en"],
+    ["a space-grouped euro total", "Artikel 15,00 € Gesamt 1 015,00 €", "de", "EUR"],
+    ["a dollar total grouped with a space", "Item $15.00 Total $1 015.00", "en"],
+    ["another dollar's symbol", "Item $15.00 Total A$15.00", "en"],
+    ["Canadian and Mexican dollars", "Total CA$15.00 · MX$15.00", "en"],
+    ["a dollar amount named in another code", "Total $15.00 AUD", "en"],
     ["a number written another locale's way", "Total: 15.00 USD — 1.015,00 USD", "en"],
     ["cents set apart on the next line", "Total $15\n99", "en"],
-  ])("%s", (_, text, locale) => {
-    expect(unsure(text, [locale])).toBeDefined();
+    ["a total in another currency only", "Item $15.00 USD Total $51.231 COP", "es"],
+    ["a total in RMB, which is no ISO code", "Item $15.00 Total RMB 1,015.00", "en"],
+    ["a larger amount labeled as tax", "Item $15.00 VAT 1,015.00 Total $15.00", "en"],
+    ["the total labeled nowhere", "Item $15.00 USD", "en"],
+    ["a larger amount in a row of its own", "Total $15.00 USD Fee $1,015.00 USD", "en"],
+  ])("%s is held", (_, text, locale, currency = "USD") => {
+    expect(pays(text, [locale], 1500, currency)).toBe(false);
   });
 
   test("the currency's own code next to a peso symbol is another currency for MXN", () => {
-    expect(unsure("Total $15.00 USD", ["es-MX"], "MXN")).toBeDefined();
+    expect(pays("Total $15.00 USD", ["es-MX"], 1500, "MXN")).toBe(false);
+    expect(pays("Total $15.00 MXN", ["es-MX"], 1500, "MXN")).toBe(true);
   });
 
-  test("a tax abbreviation before an amount labels it; three capitals no tax uses still hold", () => {
+  test("a tax abbreviation before an amount labels it", () => {
     expect(readPage("Item $2.95 VAT $0.18 Total $3.13", ["en"], "USD")).toMatchObject({
       minor: [295, 18, 313],
       labels: ["Item", "VAT", "Total"],
+      totals: [313],
     });
-    expect(readPage("Total 3,13 US$ IVA 0,18 US$", ["es"], "USD").unsure).toBeUndefined();
-    expect(readPage("Total 3,13 € TVA 0,18 €", ["fr"], "EUR").unsure).toBeUndefined();
-    expect(readPage("Item $2.95 Total RMB 1,015.00", ["en"], "USD").unsure).toBeDefined();
-    expect(readPage("Item $2.95 VAT 1,015.00", ["en"], "USD").unsure).toBeDefined();
+    expect(pays("Total 3,13 US$ IVA 0,18 US$", ["es"], 313)).toBe(true);
+    expect(pays("Total 3,13 € TVA 0,18 €", ["fr"], 313, "EUR")).toBe(true);
   });
 
   test("USDC is not the code of USD", () => {
@@ -205,37 +251,40 @@ describe("what the gate cannot read for sure, it reports as unsure", () => {
       locale: "es",
       minor: [295, 295],
       labels: ["Subtotal", "Total"],
+      totals: [295],
+      loose: [],
     });
-    expect(readPage("Total ¥1,500", ["ja"], "JPY").minor).toEqual([1500]);
-    expect(readPage("Total ￥1,500", ["ja"], "JPY").minor).toEqual([1500]);
+    expect(pays("Total ¥1,500", ["ja"], 1500, "JPY")).toBe(true);
+    expect(pays("Total ￥1,500", ["ja"], 1500, "JPY")).toBe(true);
   });
 
   test("two locales the page names that read it differently are unsure", () => {
-    expect(readPage("Total US$1.234", ["en", "es"], "USD").unsure).toBeDefined();
-    expect(readPage("Total US$2,95", ["es", "es-ES"], "USD")).toEqual({
-      locale: "es",
-      minor: [295],
-      labels: ["Total"],
-    });
+    expect(readPage("Total KWD 1.234", ["en", "de"], "KWD").unsure).toBeDefined();
+    expect(pays("Total US$2,95", ["es", "es-ES"], 295)).toBe(true);
   });
-});
-
-describe("a larger total the reader cannot place makes the page unsure", () => {
-  const unsure = (text: string, locale: string, currency = "USD") =>
-    readPage(text, [locale], currency).unsure;
 
   test.each([
     ["Arabic-Indic digits in an English page", "Item $15.00 Total $١٬٠١٥٫٠٠", "en"],
-    ["Devanagari digits in a page Intl formats with Latin ones", "वस्तु ₹15.00 कुल ₹१,०१५.००", "hi"],
+    [
+      "Devanagari digits in a page Intl formats with Latin ones",
+      "वस्तु ₹15.00 कुल ₹१,०१५.००",
+      "hi",
+      "INR",
+    ],
     ["a total in words", "Item $15.00 Total: 1,015.00 dollars", "en"],
-    ["a total under a currency header", "Item $15.00\nOrder total (USD)\n1,015.00", "en"],
-    ["a total with a lowercase code", "Item $15.00 Total usd 1,015.00", "en"],
-    ["a total behind a dash", "Item $15.00 Total: $  —  1,015.00", "en"],
-    ["rupees written Rs.", "Item ₹15.00 Total Rs. 1,015.00", "en-IN", "INR"],
-    ["francs written Fr.", "CHF 15.00 Total Fr. 1’015.00", "de-CH", "CHF"],
-    ["a total in zloty on a dollar page", "Item $15.00 Total: 1 015,00 zł", "en"],
-  ])("%s", (_, text, locale, currency = "USD") => {
-    expect(unsure(text, locale, currency)).toBeDefined();
+    [
+      "a total under a currency header",
+      "Item $15.00 Total $15.00\nOrder total (USD)\n1,015.00",
+      "en",
+    ],
+    ["a total with a lowercase code", "Item $15.00 Total $15.00 usd 1,015.00", "en"],
+    ["a total behind a dash", "Total $15.00 Total: $  —  1,015.00", "en"],
+    ["rupees written Rs.", "Item ₹15.00 Total ₹15.00 Rs. 1,015.00", "en-IN", "INR"],
+    ["francs written Fr.", "Total CHF 15.00 Total Fr. 1’015.00", "de-CH", "CHF"],
+    ["a total in zloty on a dollar page", "Total $15.00 Total: 1 015,00 zł", "en"],
+    ["a dollar sign COP shares", "Total $15.00 USD Pagarás $1.015 · 1 USD = 3.468 COP", "es"],
+  ])("a larger total the reader cannot place holds: %s", (_, text, locale, currency = "USD") => {
+    expect(pays(text, [locale], 1500, currency)).toBe(false);
   });
 
   test.each([
@@ -248,11 +297,79 @@ describe("a larger total the reader cannot place makes the page unsure", () => {
   });
 
   test("yen written 円 is read as yen, and a larger one is not missed", () => {
-    expect(readPage("合計 1,500円", ["ja"], "JPY")).toEqual({
+    expect(readPage("合計 1,500円", ["ja"], "JPY")).toMatchObject({
       locale: "ja",
       minor: [1500],
       labels: ["合計"],
+      totals: [1500],
     });
     expect(readPage("商品 ¥1,500 合計 101,500 円（税込）", ["ja"], "JPY").minor).toContain(101_500);
+  });
+});
+
+describe("the currency a number's marks name", () => {
+  test("two currencies on one number make it uncertain, and a larger one holds", () => {
+    expect(charges(readPage("Total $2.95 USD €5.00 USD", ["en"], "USD"), 295)).toBe(false);
+    expect(charges(readPage("Total US$2.95 · US$5.00 COP", ["en"], "USD"), 295)).toBe(false);
+  });
+
+  test("a mark written onto one number is not the next one's", () => {
+    expect(readPage("Total $2.95 USD 4242", ["en"], "USD")).toMatchObject({
+      minor: [295],
+      loose: [],
+    });
+    expect(readPage("Ref 110221 $2.95 USD", ["en"], "USD")).toMatchObject({ minor: [295] });
+  });
+});
+
+describe("PayPal's review page for a buyer whose account converts the total", () => {
+  /** A synthetic page shaped like PayPal's: USD written "$2.95 USD", COP grouped with a point. */
+  const review = (o: { usd: number; cop: number; balance: number; total: string }) => {
+    const usd = (m: number) => `$${(m / 100).toFixed(2)} USD`;
+    const cop = (n: number) =>
+      `$${new Intl.NumberFormat("es-CO", { maximumFractionDigits: 0 }).format(n)} COP`;
+    const rate = new Intl.NumberFormat("es-CO").format(o.cop / (o.usd / 100));
+    return [
+      `Revisar pedido ${usd(o.usd)}`,
+      `The Change ${usd(o.usd)}`,
+      `Envío ${usd(0)}`,
+      `Total ${o.total}`,
+      `Saldo de PayPal ${cop(o.balance)}`,
+      `Tasa de conversión de PayPal: 1 USD = ${rate} COP`,
+      `Pagarás ${cop(o.cop)}`,
+      "Ver opciones de conversión",
+    ].join("\n");
+  };
+  const usdTotal = (minor: number) => `$${(minor / 100).toFixed(2)} USD`;
+  const page = fc.record({
+    usd: fc.integer({ min: 1, max: 1_000_000 }),
+    cop: fc.integer({ min: 1, max: 9_000_000_000 }),
+    balance: fc.integer({ min: 0, max: 9_000_000_000 }),
+    locale: fc.constantFrom("es", "es-CO", "es-419", "es-MX", "en", "en-US", "pt-BR"),
+  });
+
+  test("pays exactly the countersigned USD total, whatever the COP amounts", () => {
+    fc.assert(
+      fc.property(page, (o) => {
+        const text = review({ ...o, total: usdTotal(o.usd) });
+        const read = readPage(text, [o.locale], "USD");
+        expect(charges(read, o.usd), text).toBe(true);
+        expect(charges(read, o.usd + 1), text).toBe(false);
+        if (o.usd > 1) expect(charges(read, o.usd - 1), text).toBe(false);
+      }),
+      { numRuns: 5_000 },
+    );
+  });
+
+  test("holds when the total is only in COP, or a larger USD amount shows", () => {
+    fc.assert(
+      fc.property(page, fc.integer({ min: 1, max: 1_000_000 }), (o, more) => {
+        const onlyCop = review({ ...o, total: `$${o.cop} COP` });
+        expect(charges(readPage(onlyCop, [o.locale], "USD"), o.usd), onlyCop).toBe(false);
+        const larger = `${review({ ...o, total: usdTotal(o.usd) })}\nCargo ${usdTotal(o.usd + more)}`;
+        expect(charges(readPage(larger, [o.locale], "USD"), o.usd), larger).toBe(false);
+      }),
+      { numRuns: 5_000 },
+    );
   });
 });
