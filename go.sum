@@ -237,6 +237,8 @@ github.com/transparency-dev/tessera v1.0.4 h1:IXjGowubcLR0T3zUQrysSMKgtTh9KGKQ0i
 github.com/transparency-dev/tessera v1.0.4/go.mod h1:WD/EMM6RXWRyImk9yyJ2hrs8xdknN/lpwUrFR2GemfU=
 github.com/urfave/cli/v2 v2.27.5 h1:WoHEJLdsXr6dDWoJgMq/CboDmyY/8HMMH1fTECbih+w=
 github.com/urfave/cli/v2 v2.27.5/go.mod h1:3Sevf16NykTbInEnD0yKkjDAeZDS0A6bzhBH5hrMvTQ=
+github.com/veraison/cmw v0.3.0 h1:Uu+Kf76sGseSBXPY6MIGo6CZAqkUUFDt7r6sBN7sB7k=
+github.com/veraison/cmw v0.3.0/go.mod h1:V7OMAyNVrMEWGu1d1LItZRuGJzlO0/KN84ju9XIXmFE=
 github.com/veraison/go-cose v1.3.0 h1:2/H5w8kdSpQJyVtIhx8gmwPJ2uSz1PkyWFx0idbd7rk=
 github.com/veraison/go-cose v1.3.0/go.mod h1:df09OV91aHoQWLmy1KsDdYiagtXgyAwAl8vFeFn1gMc=
 github.com/wlynxg/anet v0.0.5 h1:J3VJGi1gvo0JwZ/P1/Yc/8p63SoW98B5dHkYDmpgvvU=

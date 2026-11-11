@@ -1,7 +1,7 @@
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { Tag } from "cbor2";
-import { decodeStrict, encode, ScittFormatError } from "./cbor.ts";
+import { decodeStrict, encode, type ScittFormatError } from "./cbor.ts";
 import { ALG_ED25519, decodeSign1, protectedHeader, verifyEd25519 } from "./sign1.ts";
 
 /** COSE header labels (RFC 9942, RFC 9921). */
@@ -179,5 +179,3 @@ export function verifyReceipt(
   if (!verifyEd25519(s, key, root)) throw new ScittReceiptError("signature", "bad signature");
   return { treeSize, leafIndex, root, kid: bytesToHex(kid) };
 }
-
-

@@ -6,6 +6,30 @@ export {
   ScittFormatError,
 } from "./cbor.ts";
 export {
+  type CmwCollection,
+  type CmwRecord,
+  readCollection,
+  TEE_EVIDENCE_TYPE,
+  TEE_LEGS_COLLECTION,
+  teeCollection,
+} from "./cmw.ts";
+export { EAR_PROFILE, type EarAppraisal, type EarStatus, earClaims } from "./ear.ts";
+export {
+  buildReceipt,
+  leafHash,
+  RECEIPTS,
+  RFC9162_SHA256,
+  receiptProtected,
+  rootFromInclusion,
+  type ScittReceiptCode,
+  ScittReceiptError,
+  TST_CTT,
+  VDP,
+  VDS,
+  type VerifiedReceipt,
+  verifyReceipt,
+} from "./receipt.ts";
+export {
   ALG_ED25519,
   ALG_ES256K,
   addressOf,
@@ -20,18 +44,3 @@ export {
   verifyEs256k,
   verifyEs256kMessage,
 } from "./sign1.ts";
-export {
-  buildReceipt,
-  leafHash,
-  RECEIPTS,
-  RFC9162_SHA256,
-  receiptProtected,
-  rootFromInclusion,
-  type ScittReceiptCode,
-  ScittReceiptError,
-  TST_CTT,
-  type VerifiedReceipt,
-  VDP,
-  VDS,
-  verifyReceipt,
-} from "./receipt.ts";
