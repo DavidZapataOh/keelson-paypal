@@ -1,6 +1,6 @@
 {
-  "id": "ac1cee68-a9f3-4a84-a59a-f9142b98e7b0",
-  "prevId": "ea5bf8a4-76c2-4e5c-a026-68bd2f4084f5",
+  "id": "d3c434b8-fed3-4559-b9b5-da745ab072cb",
+  "prevId": "d367d664-37b2-4b6d-965e-6f11729a1e41",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1664,6 +1664,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
+        },
+        "user_credential": {
+          "name": "user_credential",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -4241,12 +4247,6 @@
         },
         "engine_proof": {
           "name": "engine_proof",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "engine_proved": {
-          "name": "engine_proved",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false

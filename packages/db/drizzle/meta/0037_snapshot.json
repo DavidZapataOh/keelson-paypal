@@ -1,5 +1,5 @@
 {
-  "id": "ea5bf8a4-76c2-4e5c-a026-68bd2f4084f5",
+  "id": "d367d664-37b2-4b6d-965e-6f11729a1e41",
   "prevId": "4dc1512d-95af-4f37-b9f7-6e4e20fe8782",
   "version": "7",
   "dialect": "postgresql",
@@ -1590,6 +1590,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
+        },
+        "user_credential": {
+          "name": "user_credential",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -4052,18 +4058,6 @@
         },
         "c1c3_proof": {
           "name": "c1c3_proof",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "engine_input": {
-          "name": "engine_input",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "engine_proof": {
-          "name": "engine_proof",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false

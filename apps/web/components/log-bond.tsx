@@ -114,8 +114,8 @@ function LogBondCard({ bond }: { bond: LogBond }) {
       ) : (
         <p className="text-muted-foreground text-sm">
           No equivocation proven. Anyone holding two checkpoints of this key with different roots
-          for one size can call <span className="font-mono">proveEquivocation</span> and take the
-          whole bond.
+          for one size can call <span className="font-mono">proveEquivocation</span>: the bond is
+          slashed, {bond.bountyBps / 100}% of it to them.
         </p>
       )}
     </article>

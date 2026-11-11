@@ -1,5 +1,13 @@
 import { cartHash, sha256, toHex } from "@keelson/core";
-import { channel3Observations, eq, mandates, purchases, teeSignatures, user } from "@keelson/db";
+import {
+  channel3Observations,
+  eq,
+  mandates,
+  passkey as passkeyTable,
+  purchases,
+  teeSignatures,
+  user,
+} from "@keelson/db";
 import { closeMandate, OPEN_MANDATE_TYP, verifyCredential } from "@keelson/mandate";
 import { pino } from "pino";
 import { ulid } from "ulid";
@@ -106,8 +114,11 @@ describe.skipIf(!live)("POST /v1/countersign (live legs)", { timeout: 180_000 },
     const [row] = await testDb.select().from(mandates).where(eq(mandates.id, mandateId));
     expect(row?.openMandate).toBe(openMandate);
     expect(row?.sealedSalt?.length).toBeGreaterThan(16);
-    const [holder] = await testDb.select().from(user).where(eq(user.id, sub));
-    expect(holder?.userCredential).toMatch(/~$/);
+    const [key] = await testDb
+      .select()
+      .from(passkeyTable)
+      .where(eq(passkeyTable.credentialID, passkey.credentialId));
+    expect(key?.userCredential).toMatch(/~$/);
 
     const issuer = await tee.client.a
       .health()

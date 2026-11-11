@@ -19,9 +19,9 @@ export function Bonds({ rpc }: { rpc?: string | undefined }) {
           The log's bonds · Arbitrum Sepolia
         </h3>
         <p className="mt-1 max-w-prose text-sm text-muted-foreground">
-          Two checkpoints signed by the log's key with different roots for one size pay a bond to
-          whoever submits them. The contract verifies both Ed25519 signatures; read from the chain,
-          not from Keelson.
+          Two checkpoints signed by the log's key with different roots for one size slash its bond:
+          a bounty to whoever submits them, the rest to Keelson's reserve. The contract verifies
+          both Ed25519 signatures; read from the chain, not from Keelson.
         </p>
       </div>
       {!bonds ? (
@@ -46,7 +46,7 @@ export function Bonds({ rpc }: { rpc?: string | undefined }) {
                   data-slashed={Boolean(b.slash)}
                 >
                   {b.slash
-                    ? `Slashed: ${pyusd(b.slash.amount)} to ${short(b.slash.prover)}`
+                    ? `Slashed ${pyusd(b.slash.amount)}: ${pyusd(b.slash.bounty)} to ${short(b.slash.prover)}, the rest to Keelson's reserve`
                     : `Bonded: ${pyusd(b.balance)}`}
                 </p>
               </div>
