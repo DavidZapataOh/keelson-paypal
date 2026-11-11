@@ -1,7 +1,8 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { request } from "playwright";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { bare, type LiveStore, quoteShopify } from "../src/live.ts";
+import { bare, type LiveStore, quoteShopify, shopifyCart } from "../src/live.ts";
 
 const product = (price: number) => ({
   id: 1,
@@ -88,5 +89,25 @@ describe("pricing a cart from a Shopify store's public product JSON", () => {
     expect(bare("https://www.paypal.com/checkoutnow?token=EC-123&useraction=commit#x")).toBe(
       "https://www.paypal.com/checkoutnow",
     );
+  });
+
+  test("the store's cart is read in the currency's minor units", async () => {
+    const api = await request.newContext();
+    try {
+      routes["/cart.js"] = { currency: "USD", total_price: 295 };
+      expect(await shopifyCart({ request: api }, store.origin)()).toEqual({
+        currency: "USD",
+        minor: 295,
+      });
+      routes["/cart.js"] = { currency: "JPY", total_price: 123_400 };
+      expect(await shopifyCart({ request: api }, store.origin)()).toEqual({
+        currency: "JPY",
+        minor: 1234,
+      });
+      routes["/cart.js"] = { currency: "USD" };
+      expect(await shopifyCart({ request: api }, store.origin)()).toBeUndefined();
+    } finally {
+      await api.dispose();
+    }
   });
 });
