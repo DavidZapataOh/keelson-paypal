@@ -101,7 +101,7 @@ func openOrigin(ctx context.Context, spec originSpec, dir string, verifyingContr
 // appendResult is the answer to an admitted append.
 type appendResult struct {
 	Index      string `json:"index"`
-	LeafHash   string `json:"leafHash"`
+	LeafHash   string `json:"leafHash,omitempty"`
 	Proof      string `json:"proof"`
 	Checkpoint string `json:"checkpoint"`
 	// Receipt is the RFC 9942 receipt of the leaf in the same checkpoint, base64; absent when the
@@ -139,6 +139,42 @@ func (o *origin) append(ctx context.Context, leaf []byte) (*appendResult, error)
 		Checkpoint: string(cp),
 	}
 	if r := o.receiptOf(uint64(c.N), idx.Index, [32]byte(c.Hash), path); r != nil {
+		res.Receipt = base64.StdEncoding.EncodeToString(r)
+	}
+	return res, nil
+}
+
+var errRange = errors.New("no leaf at that index in the latest checkpoint")
+
+// prove is the inclusion proof (c2sp.org/tlog-proof@v1) and, when the origin issues them, the
+// RFC 9942 receipt of the leaf at index in the latest published checkpoint.
+func (o *origin) prove(ctx context.Context, index uint64) (*appendResult, error) {
+	cp, err := o.reader.ReadCheckpoint(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c, err := torchwood.ParseCheckpoint(checkpointBody(cp))
+	if err != nil {
+		return nil, err
+	}
+	if index >= uint64(c.N) {
+		return nil, errRange
+	}
+	i := int64(index)
+	p, err := tlog.ProveRecord(c.N, i, torchwood.TileHashReaderWithContext(ctx, c.Tree, tesserax.NewTileReader(o.reader)))
+	if err != nil {
+		return nil, fmt.Errorf("inclusion proof: %w", err)
+	}
+	path := make([][]byte, len(p))
+	for k := range p {
+		path[k] = p[k][:]
+	}
+	res := &appendResult{
+		Index:      strconv.FormatUint(index, 10),
+		Proof:      string(torchwood.FormatProof(i, p, cp)),
+		Checkpoint: string(cp),
+	}
+	if r := o.receiptOf(uint64(c.N), index, [32]byte(c.Hash), path); r != nil {
 		res.Receipt = base64.StdEncoding.EncodeToString(r)
 	}
 	return res, nil
@@ -278,6 +314,27 @@ func (s *server) private() http.Handler {
 				}
 			})
 		}
+		mux.HandleFunc("GET /"+o.path+"/proof", func(w http.ResponseWriter, r *http.Request) {
+			if !s.authorized(r) {
+				writeJSON(w, http.StatusUnauthorized, map[string]string{"code": "unauthorized"})
+				return
+			}
+			index, err := strconv.ParseUint(r.URL.Query().Get("index"), 10, 64)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"code": "range"})
+				return
+			}
+			res, err := o.prove(r.Context(), index)
+			switch {
+			case errors.Is(err, errRange):
+				writeJSON(w, http.StatusBadRequest, map[string]string{"code": "range"})
+			case err != nil:
+				s.log.Error("proof", "origin", o.name, "err", err)
+				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"code": "unavailable"})
+			default:
+				writeJSON(w, http.StatusOK, res)
+			}
+		})
 		mux.HandleFunc("GET /"+o.path+"/consistency", func(w http.ResponseWriter, r *http.Request) {
 			if !s.authorized(r) {
 				writeJSON(w, http.StatusUnauthorized, map[string]string{"code": "unauthorized"})
