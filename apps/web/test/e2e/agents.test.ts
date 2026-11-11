@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { buildSdPayload, parseMandate, renderCard } from "@keelson/mandate";
-import { type Browser, chromium, devices, type Page } from "playwright";
+import { type Browser, type BrowserContextOptions, chromium, devices, type Page } from "playwright";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { serveOut } from "./static";
 
@@ -100,11 +100,11 @@ async function draft() {
 
 /** A signed-in buyer whose API answers come from `answer`; anything else is refused. */
 async function signedIn(
-  kind: Kind,
+  kind: Kind | BrowserContextOptions,
   path: string,
   answer: (path: string, body: string | null, method: string) => unknown | Promise<unknown>,
 ) {
-  const context = await browser.newContext(VIEWPORTS[kind]);
+  const context = await browser.newContext(typeof kind === "string" ? VIEWPORTS[kind] : kind);
   // A platform authenticator that signs whatever it is asked, as the user's passkey would.
   await context.addInitScript(() => {
     const bytes = (n: number) => new Uint8Array(n).fill(7).buffer;
@@ -570,6 +570,70 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("agents on %s", (kind) => {
     await page.getByRole("heading", { level: 2, name: "No agents yet" }).waitFor();
     expect(await page.getByText("Hold to stop all agents").count()).toBe(0);
     await axe(page);
+    await context.close();
+  });
+});
+
+const MCP_URL = "https://api.keelson.finance/mcp";
+
+describe.each([
+  [1440, { viewport: { width: 1440, height: 900 } }],
+  [390, { ...devices["iPhone 15"], viewport: { width: 390, height: 844 } }],
+] as const)("connect steps for each host at %i wide", (width, options) => {
+  test("a keyboard tablist: Claude, ChatGPT, Cursor and Claude Code, each with exact steps", async () => {
+    const { context, page } = await signedIn(
+      { ...options, permissions: ["clipboard-read", "clipboard-write"] },
+      "/connect/",
+      () => undefined,
+    );
+    const hosts = page.getByRole("tablist", { name: "Your agent's app" });
+    await hosts.waitFor();
+    expect(await hosts.getByRole("tab").allInnerTexts()).toEqual([
+      "Claude",
+      "ChatGPT",
+      "Cursor",
+      "Claude Code",
+    ]);
+    const panel = page.getByRole("tabpanel");
+    const claude = page.getByRole("tab", { name: "Claude", exact: true });
+    expect(await claude.getAttribute("aria-selected")).toBe("true");
+    expect(await panel.getByText("Add custom connector").count()).toBe(1);
+    expect(await panel.getByText(MCP_URL, { exact: true }).count()).toBe(1);
+    expect(await panel.getByText(/turn Keelson on in each chat/).count()).toBe(1);
+    await axe(page);
+
+    await claude.focus();
+    await page.keyboard.press("ArrowRight");
+    const chatgpt = page.getByRole("tab", { name: "ChatGPT" });
+    await expect.poll(() => chatgpt.getAttribute("aria-selected")).toBe("true");
+    expect(await chatgpt.evaluate((el) => el === document.activeElement)).toBe(true);
+    expect(await panel.getByText("Add custom MCP server").count()).toBe(1);
+    expect(await panel.getByText(/not .No authentication./).count()).toBe(1);
+
+    await page.keyboard.press("ArrowRight");
+    await expect.poll(() => panel.getByText('"mcpServers"', { exact: false }).count()).toBe(1);
+    expect(await panel.getByText('"mcpServers"', { exact: false }).count()).toBe(1);
+    expect(await panel.getByText("~/.cursor/mcp.json").count()).toBeGreaterThan(0);
+    await axe(page);
+
+    await page.keyboard.press("End");
+    const command = `claude mcp add --transport http keelson ${MCP_URL}`;
+    await expect.poll(() => panel.getByText(command, { exact: true }).count()).toBe(1);
+    expect(await panel.getByText(command, { exact: true }).count()).toBe(1);
+    await panel.getByRole("button", { name: "Copy the command" }).click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(command);
+    await axe(page);
+
+    await page.getByRole("tab", { name: "Claude Code" }).focus();
+    await page.keyboard.press("Home");
+    await expect.poll(() => claude.getAttribute("aria-selected")).toBe("true");
+    const [scroll, inner] = await page.evaluate(() => [
+      document.documentElement.scrollWidth,
+      innerWidth,
+    ]);
+    expect(scroll).toBeLessThanOrEqual(inner);
+    expect(inner).toBe(width);
+    await shot(page, width === 390 ? "mobile" : "desktop", "connect-hosts");
     await context.close();
   });
 });

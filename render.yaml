@@ -24,6 +24,8 @@ services:
         - .node-version
         - render.yaml
         - engine/tee/measurements.json
+        - apps/landing/public/llms.txt
+        - apps/landing/public/skill.md
     domains:
       - api.keelson.finance
     envVars:

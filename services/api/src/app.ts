@@ -29,6 +29,7 @@ import type { OperatorSigners } from "./operators/signer.ts";
 import type { PayPalDeps } from "./paypal.ts";
 import { ProblemSchema, problem } from "./problem.ts";
 import { registerAdminClients } from "./routes/admin-clients.ts";
+import { registerAgentDocs } from "./routes/agent-docs.ts";
 import { registerAgents } from "./routes/agents.ts";
 import { registerAlibis } from "./routes/alibis.ts";
 import { registerAnonymousMandates } from "./routes/anonymous-mandates.ts";
@@ -309,6 +310,7 @@ export function createApp(deps: Deps): OpenAPIHono {
     );
   }
   registerHealth(app);
+  registerAgentDocs(app);
   registerStatus(app, deps);
   registerEvents(app, deps);
   registerMandates(app, deps);
