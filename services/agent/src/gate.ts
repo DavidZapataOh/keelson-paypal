@@ -1,6 +1,8 @@
 import { ToolError } from "@anthropic-ai/sdk/helpers/beta/toolsets";
+import type { CheckoutTotal } from "@keelson/core";
 import type { Locator, Page } from "playwright";
 import { type Money, minorDigits, pageLocales, readPage } from "./amounts.ts";
+import { requote } from "./requote.ts";
 
 /** Names of the controls that commit a payment, on a store's checkout or on PayPal. */
 const PAY =
@@ -21,17 +23,20 @@ export type PayAction =
 /**
  * Holds every action that could commit a payment until Keelson countersigned the cart: any action
  * on a checkout page (a checkout host such as PayPal, or a store's `/checkout`) and a click on a
- * pay control anywhere. Once Keelson allowed the cart, those actions go through only on a page
- * whose largest amount in the cart's currency, read in the page's own locale, is its total, and
- * only while the store's own cart (when it serves one) is that total too. Whatever the gate cannot
- * read, it holds. On a checkout page, clicks by coordinate, keys and typed text
+ * pay control anywhere. Once Keelson countersigned the checkout's total, those actions go through
+ * only on a page whose largest amount in its currency, read in the page's own locale, is that
+ * total, and only while the store's own cart (when it serves one) holds the countersigned items
+ * less discounts. Whatever the gate cannot read, it holds. A page that shows another total, made
+ * of the countersigned items and the tax and shipping it labels, is held with that total as its
+ * re-quote: paying it waits for Keelson to countersign it too. On a checkout page, clicks by coordinate, keys and typed text
  * are refused always, as are saving a payment method, installments and credit. Checkout hosts
  * are written like the browser's allowlist: exact, or `*.example.com` for its subdomains.
  */
 export class PayGate {
   readonly #checkoutHosts: readonly string[];
   readonly #cart: (() => Promise<Money | undefined>) | undefined;
-  #total: Money | undefined;
+  #total: CheckoutTotal | undefined;
+  #requote: CheckoutTotal | undefined;
   /** Actions refused so far. */
   refused = 0;
   /**
@@ -43,20 +48,33 @@ export class PayGate {
     amounts: string[];
     unsure?: string;
     cart?: string;
+    requote?: string;
   }[] = [];
 
   /**
-   * `cart` reads the store's own cart (Shopify's `/cart.js`), the structured total a pay action
-   * is checked against besides the page's text; undefined when it cannot be read.
+   * `cart` reads what the store's own cart (Shopify's `/cart.js`) charges for its items, after
+   * discounts and before tax and shipping: the structured amount a pay action is checked against
+   * besides the page's text; undefined when it cannot be read.
    */
   constructor(o: { checkoutHosts: readonly string[]; cart?: () => Promise<Money | undefined> }) {
     this.#checkoutHosts = o.checkoutHosts;
     this.#cart = o.cart;
   }
 
-  /** Opens the gate for the countersigned total. */
-  allow(total: Money): void {
+  /** Opens the gate for the countersigned checkout total, and only for it. */
+  allow(total: CheckoutTotal): void {
     this.#total = total;
+    this.#requote = undefined;
+  }
+
+  /**
+   * The checkout total of the last page held for showing another one, made of the countersigned
+   * items and its labeled tax and shipping; taken once. Paying it needs its own countersign.
+   */
+  takeRequote(): CheckoutTotal | undefined {
+    const next = this.#requote;
+    this.#requote = undefined;
+    return next;
   }
 
   get open(): boolean {
@@ -143,23 +161,36 @@ export class PayGate {
     const cart = this.#cart ? await this.#cart().catch(() => undefined) : undefined;
     const digits = minorDigits(total.currency);
     const show = (m: number) => `${total.currency} ${(m / 10 ** digits).toFixed(digits)}`;
-    const cartOk = !this.#cart || (cart?.currency === total.currency && cart.minor === total.minor);
+    const cartOk =
+      !this.#cart ||
+      (cart?.currency === total.currency && cart.minor === total.items - total.discount);
     if (
       read.unsure !== undefined ||
       !read.minor.includes(total.minor) ||
       Math.max(...read.minor) > total.minor ||
       !cartOk
     ) {
+      let next: CheckoutTotal | undefined;
+      try {
+        next = cartOk ? requote(total, read) : undefined;
+      } catch {
+        // A part PayPal cannot write, or out of range: no re-quote, the page stays held.
+        next = undefined;
+      }
+      this.#requote = next && next.minor !== total.minor ? next : undefined;
       this.held.push({
         locale: read.locale || null,
         amounts: read.minor.map(show),
         ...(read.unsure ? { unsure: read.unsure } : {}),
         ...(this.#cart ? { cart: cart ? show(cart.minor) : "unread" } : {}),
+        ...(this.#requote ? { requote: show(this.#requote.minor) } : {}),
       });
       this.#refuse(
         read.unsure !== undefined
           ? `this page's amounts cannot be read for sure (${read.unsure}). Paying waits.`
-          : `Keelson countersigned ${show(total.minor)}; this page or the store's cart does not show it as the total. Pay only for the countersigned cart.`,
+          : this.#requote
+            ? `this checkout's total is now ${show(this.#requote.minor)}, not the ${show(total.minor)} Keelson countersigned. Paying waits for Keelson to countersign the new total.`
+            : `Keelson countersigned ${show(total.minor)}; this page or the store's cart does not show it as the total. Pay only for the countersigned cart.`,
       );
     }
   }

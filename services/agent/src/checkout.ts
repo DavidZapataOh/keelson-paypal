@@ -1,15 +1,29 @@
-import { type Cart, cartHash, toHex } from "@keelson/core";
-import { buildManifest, itemRank, type SealedItem } from "@keelson/evidence";
+import {
+  type Cart,
+  type CheckoutTotal,
+  cartHash,
+  checkoutTotal,
+  toHex,
+  toPayPalAmount,
+} from "@keelson/core";
+import {
+  buildManifest,
+  canonicalBytes,
+  itemRank,
+  MEDIA_TYPES,
+  type SealedItem,
+} from "@keelson/evidence";
 import { type Capture, captureEvidence } from "@keelson/evidence/capture";
 import { closeMandate } from "@keelson/mandate";
 import { ulid } from "ulid";
 import type { ProposedCart } from "./agent.ts";
 import type { Session } from "./kernel.ts";
 
-/** The store's answer to `POST /api/cart`: the cart as Keelson's engine hashes it. */
+/** A store's price for a cart: the cart as Keelson's engine hashes it and what its checkout charges. */
 export interface Quote {
   cart: Cart;
-  total: { currency: string; minor: number; display: string };
+  /** The checkout total: the cart's items, plus tax and shipping, less discounts, as far as known. */
+  total: CheckoutTotal;
   /** The product JSON of each line, as the store's API serves it. */
   products: unknown[];
 }
@@ -54,8 +68,16 @@ export async function quoteCart(storeOrigin: string, proposal: ProposedCart): Pr
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ lines }),
   });
-  const quoted = await json<Omit<Quote, "products">>(res, "cart");
-  return { ...quoted, products };
+  const quoted = await json<{ cart: Cart; total: { currency: string; minor: number } }>(
+    res,
+    "cart",
+  );
+  // The store charges no tax or shipping on top of its prices.
+  return {
+    cart: quoted.cart,
+    total: checkoutTotal(quoted.total.currency, { items: quoted.total.minor }),
+    products,
+  };
 }
 
 /** The API Keelson serves to agents: `fetch` against its origin, or the app in process. */
@@ -109,6 +131,8 @@ export async function checkout(o: {
   observe?: (capture: Capture) => Promise<SealedItem[]>;
   /** The buyer pays at this store's own checkout; Keelson logs the purchase only. */
   live?: { store: string };
+  /** The purchase of this cart this one replaces: its checkout was re-quoted at another total. */
+  repeatOf?: string;
 }): Promise<CheckoutResult> {
   const timings: Record<string, number> = {};
   let t = performance.now();
@@ -120,13 +144,21 @@ export async function checkout(o: {
     recipient: o.recipient,
   });
   timings.capture = performance.now() - t;
+  // The PayPal amount Keelson countersigns, so the Alibi discloses the total's breakdown.
+  const amount = toPayPalAmount(o.quote.total);
+  capture.items.push({
+    type: "api.checkout",
+    mediaType: MEDIA_TYPES["api.checkout"],
+    bytes: canonicalBytes(amount),
+    salt: crypto.getRandomValues(new Uint8Array(32)),
+  });
   if (o.observe) {
     t = performance.now();
     capture.items.push(...(await o.observe(capture)));
-    capture.items.sort((a, b) => itemRank(a.type) - itemRank(b.type));
-    capture.manifest = buildManifest(capture.items);
     timings.observe = performance.now() - t;
   }
+  capture.items.sort((a, b) => itemRank(a.type) - itemRank(b.type));
+  capture.manifest = buildManifest(capture.items);
 
   t = performance.now();
   const stored = await post(o.keelson, "/v1/evidence", o.headers, {
@@ -147,8 +179,7 @@ export async function checkout(o: {
 
   t = performance.now();
   const requestId = ulid();
-  const { cart, total } = o.quote;
-  const value = (total.minor / 100).toFixed(2);
+  const { cart } = o.quote;
   const answer = await post(o.keelson, "/v1/countersign", o.headers, {
     authorizationId: o.hold.authorizationId,
     closedMandate: await closeMandate(
@@ -157,15 +188,10 @@ export async function checkout(o: {
       o.hold.agentKey,
     ),
     cart,
-    unit: {
-      amount: {
-        currency_code: total.currency,
-        value,
-        breakdown: { item_total: { currency_code: total.currency, value } },
-      },
-    },
+    unit: { amount },
     evidenceRoot,
     ...(o.live ? { live: o.live } : {}),
+    ...(o.repeatOf ? { repeatOf: o.repeatOf } : {}),
   });
   timings.countersign = performance.now() - t;
   return {

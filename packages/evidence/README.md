@@ -34,7 +34,9 @@ guessed from its hash. Items appear in this order, and an item that does not app
 | 8   | `mhtml`                | `multipart/related`                   | boundary and `Date` normalized, PII redacted                                          |
 | 9   | `har`                  | `application/json`                    | RFC 8785 JSON of the normalized HAR, PII redacted                                     |
 | 10  | `channel3.observation` | `application/json`                    | RFC 8785 JSON `keelson.channel3.observation/1`, issued by the API, never redacted     |
-| 11+ | `<type>.original`      | `application/octet-stream`            | age ciphertext of the unredacted bytes, for each item that had PII, in the same order |
+| 11  | `tlsn.web_fact`        | `application/json`                    | RFC 8785 JSON of the store's product endpoint notarized with TLSNotary                |
+| 12  | `api.checkout`         | `application/json`                    | RFC 8785 JSON of the PayPal amount countersigned: the total and its breakdown         |
+| 13+ | `<type>.original`      | `application/octet-stream`            | age ciphertext of the unredacted bytes, for each item that had PII, in the same order |
 
 The public manifest is `{ v: "keelson.manifest/1", root, items: [{ type, media_type, leaf }] }`.
 Anyone can rebuild `root` from the leaves (`verifyManifest`), but nothing public is an unsalted

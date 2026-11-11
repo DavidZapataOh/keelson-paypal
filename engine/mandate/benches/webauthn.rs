@@ -36,6 +36,7 @@ fn input(name: &str) -> (Assertion, Expected) {
         Expected {
             challenge: mandate_challenge(&h_sd(&i["payloadSd"]).unwrap(), &cm),
             origin: text(&i["origin"]),
+            top_origin: i["topOrigin"].as_str().map(str::to_owned),
             rp_id: text(&i["rpId"]),
             public_key_sec1: (0..sec1.len())
                 .step_by(2)

@@ -339,6 +339,8 @@ components:
               type: string
             minor:
               type: string
+            breakdown:
+              $ref: "#/components/schemas/CheckoutBreakdown"
           required:
             - currency
             - minor
@@ -479,6 +481,25 @@ components:
         - createdAt
         - state
         - disputes
+    CheckoutBreakdown:
+      type: object
+      properties:
+        items:
+          type: string
+        tax:
+          type: string
+        shipping:
+          type: string
+        discount:
+          type: string
+      required:
+        - items
+        - tax
+        - shipping
+        - discount
+      description: "What the countersigned total is made of, in minor units: the
+        items, plus tax and shipping, less discounts. Absent for purchases
+        countersigned without it."
     PendingPurchaseHold:
       type: object
       properties:
@@ -590,7 +611,8 @@ components:
         amountMinor:
           type: string
           pattern: ^[1-9]\d{0,17}$
-          description: The cart total, in minor units.
+          description: The checkout total the purchase is countersigned for, tax and
+            shipping included, in minor units.
         cartHash:
           type: string
           pattern: ^0x[0-9a-f]{64}$
@@ -2000,6 +2022,14 @@ components:
             - device_fp
             - ip
           additionalProperties: false
+        embed:
+          type: object
+          properties:
+            top_origin:
+              type: string
+          required:
+            - top_origin
+          additionalProperties: false
       required:
         - v
         - mid
@@ -2285,7 +2315,14 @@ components:
         unit:
           type: object
           additionalProperties: {}
-          description: The PayPal purchase unit the cart is checked against.
+          description: "The PayPal purchase unit the cart is checked against: `{amount}`,
+            the checkout total the buyer pays as a PayPal Orders v2 amount,
+            whose `breakdown` has the `item_total` of the cart's lines and, when
+            the checkout charges them, `tax_total`, `shipping` and `discount`.
+            Keelson countersigns `amount.value`, which must be `item_total +
+            tax_total + shipping − discount`, and checks it against the
+            mandate's budget. `handling`, `insurance` and `shipping_discount`
+            are refused: fold them into `shipping`."
         evidence:
           type: object
           additionalProperties:
@@ -2351,6 +2388,8 @@ components:
               type: string
             minor:
               type: string
+            breakdown:
+              $ref: "#/components/schemas/CheckoutBreakdown"
           required:
             - currency
             - minor
@@ -2406,6 +2445,8 @@ components:
               type: string
             minor:
               type: string
+            breakdown:
+              $ref: "#/components/schemas/CheckoutBreakdown"
           required:
             - currency
             - minor
@@ -2566,7 +2607,7 @@ components:
               - salt
               - bytes
           minItems: 1
-          maxItems: 22
+          maxItems: 24
       required:
         - mandateId
         - manifest
@@ -2600,7 +2641,7 @@ components:
               - media_type
               - leaf
           minItems: 1
-          maxItems: 22
+          maxItems: 24
       required:
         - v
         - root
@@ -7516,11 +7557,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
         "422":
-          description: The request is invalid, the authorization is not this purchase's
-            hold, the cart is not the one held for this request, the evidence
-            holds another cart, its Channel3 observation is not usable, its
-            WebFact is not this purchase's, or a live store is not the website
-            the mandate allows
+          description: The request is invalid, the purchase unit's amount does not
+            reconcile with the cart (`invalid-amount`), the authorization is not
+            this purchase's hold, the cart is not the one held for this request,
+            the evidence holds another cart or another checkout amount, its
+            Channel3 observation is not usable, its WebFact is not this
+            purchase's, or a live store is not the website the mandate allows
           content:
             application/problem+json:
               schema:
@@ -7758,7 +7800,7 @@ paths:
               - integer
               - "null"
             minimum: 0
-            maximum: 21
+            maximum: 23
           required: true
           name: index
           in: path

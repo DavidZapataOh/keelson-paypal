@@ -22,6 +22,7 @@ import { useMandate } from "../lib/use-mandate";
 import { AnonymousProof } from "./anonymous-proof";
 import { AppShell } from "./app-shell";
 import { RiveMoment } from "./brand";
+import { CheckoutBreakdown } from "./checkout-breakdown";
 import { DisputeSheet } from "./dispute-sheet";
 import { ErrorNotice } from "./notice";
 
@@ -263,6 +264,7 @@ function Receipt() {
             {...(p.failure || blocked ? { struck: "Not paid" } : {})}
           />
         </h1>
+        <CheckoutBreakdown amount={p.amount} layout="ledger" />
 
         {blocked ? (
           <div className="flex gap-4 rounded-3xl border border-vermilion/35 bg-vermilion/[0.06] p-5">

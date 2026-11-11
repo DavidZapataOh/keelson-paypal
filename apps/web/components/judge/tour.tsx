@@ -186,6 +186,7 @@ function Welcome({
 }) {
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string>();
+  const { refetch } = authClient.useSession();
   const problem = failure ?? error;
   async function start() {
     setBusy(true);
@@ -194,6 +195,9 @@ function Welcome({
       if (signedIn) await authClient.signOut();
       await startJudge(invite.current);
       invite.current = undefined;
+      // The tenant's cookie was set outside the auth client: without a refetch its session stays
+      // null, and every shell that mounts next clears the session hint the consoles read.
+      await refetch();
       localStorage.setItem(SESSION_HINT, "1");
       localStorage.setItem(STEP_KEY, "0");
       localStorage.setItem(STARTED_KEY, String(Date.now()));

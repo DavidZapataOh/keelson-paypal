@@ -49,7 +49,13 @@ import type { TeeConfig } from "../tee/signers.ts";
 import { rootKey } from "../zk/c3.ts";
 
 /** The item types an Alibi discloses: the PII-redacted public ones. */
-const DISCLOSED = ["api.product", "api.cart", "channel3.observation", "tlsn.web_fact"] as const;
+const DISCLOSED = [
+  "api.product",
+  "api.cart",
+  "channel3.observation",
+  "tlsn.web_fact",
+  "api.checkout",
+] as const;
 const ENV: Readonly<Record<number, "s" | "p">> = { 421614: "s", 42161: "p" };
 const KIND = { 1: "tdx", 2: "nitro" } as const;
 
@@ -348,6 +354,7 @@ export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<vo
     ...(evidence.cart ? { cart: evidence.cart } : {}),
     ...(evidence.observation ? { channel3_observation: evidence.observation } : {}),
     ...(evidence.webFact ? { web_fact: evidence.webFact } : {}),
+    ...(evidence.checkout ? { checkout: evidence.checkout } : {}),
     ...(c1 || c3
       ? {
           zk: {
@@ -446,11 +453,14 @@ async function disclosures(db: Db, root: Buffer) {
   const webFact = wf?.bytes ? json(JSON.parse(Buffer.from(wf.bytes).toString())) : undefined;
   const ct = items.find((i) => i.type === "api.cart");
   const cart = ct?.bytes ? json(JSON.parse(Buffer.from(ct.bytes).toString())) : undefined;
+  const co = items.find((i) => i.type === "api.checkout");
+  const checkout = co?.bytes ? json(JSON.parse(Buffer.from(co.bytes).toString())) : undefined;
   return {
     root,
     manifest: manifest as AlibiBundle["manifest"]["public"],
     disclosures: out,
     cart,
+    checkout,
     observation,
     webFact,
     opened: items.map((i) => i.index),
