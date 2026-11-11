@@ -519,6 +519,187 @@ export const accessManagerAbi = [
   },
 ] as const;
 
+export const amberContradictionCourtAbi = [
+  {
+    type: "constructor",
+    inputs: [
+      { name: "vault_", type: "address", internalType: "contract IAmberVault" },
+      { name: "teeVerifier_", type: "address", internalType: "contract IVerdictVerifier" },
+      {
+        name: "proofVerifier_",
+        type: "address",
+        internalType: "contract IAmberContradictionVerifier",
+      },
+    ],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "COLOR",
+    inputs: [],
+    outputs: [{ name: "", type: "uint8", internalType: "uint8" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "FACT_LAG",
+    inputs: [],
+    outputs: [{ name: "", type: "uint40", internalType: "uint40" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "FACT_LEAD",
+    inputs: [],
+    outputs: [{ name: "", type: "uint40", internalType: "uint40" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "RETURNS_FREE",
+    inputs: [],
+    outputs: [{ name: "", type: "uint8", internalType: "uint8" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "SIZE",
+    inputs: [],
+    outputs: [{ name: "", type: "uint8", internalType: "uint8" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "UNIT_PRICE",
+    inputs: [],
+    outputs: [{ name: "", type: "uint8", internalType: "uint8" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "proofVerifier",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "contract IAmberContradictionVerifier" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "slashAmber",
+    inputs: [
+      {
+        name: "c",
+        type: "tuple",
+        internalType: "struct KeelsonTypes.Coverage",
+        components: [
+          { name: "coverageId", type: "bytes32", internalType: "bytes32" },
+          { name: "agentId", type: "uint256", internalType: "uint256" },
+          { name: "merchant", type: "address", internalType: "address" },
+          { name: "amount", type: "uint96", internalType: "uint96" },
+          { name: "premium", type: "uint96", internalType: "uint96" },
+          { name: "expiresAt", type: "uint40", internalType: "uint40" },
+          { name: "mandateHash", type: "bytes32", internalType: "bytes32" },
+          { name: "amberCommitment", type: "bytes32", internalType: "bytes32" },
+          { name: "userKeyHash", type: "bytes32", internalType: "bytes32" },
+        ],
+      },
+      {
+        name: "cs",
+        type: "tuple",
+        internalType: "struct KeelsonTypes.Countersign",
+        components: [
+          { name: "requestId", type: "bytes32", internalType: "bytes32" },
+          { name: "mandateHash", type: "bytes32", internalType: "bytes32" },
+          { name: "mandateCommitment", type: "bytes32", internalType: "bytes32" },
+          { name: "cartHash", type: "bytes32", internalType: "bytes32" },
+          { name: "agentId", type: "uint256", internalType: "uint256" },
+          { name: "merchantId", type: "bytes32", internalType: "bytes32" },
+          { name: "amount", type: "uint64", internalType: "uint64" },
+          { name: "currency", type: "uint16", internalType: "uint16" },
+          { name: "category", type: "uint8", internalType: "uint8" },
+          { name: "evidenceRoot", type: "bytes32", internalType: "bytes32" },
+          { name: "evalHash", type: "bytes32", internalType: "bytes32" },
+          { name: "policySetHash", type: "bytes32", internalType: "bytes32" },
+          { name: "decision", type: "uint8", internalType: "uint8" },
+          { name: "failedFieldsMask", type: "uint32", internalType: "uint32" },
+          { name: "issuedAt", type: "uint40", internalType: "uint40" },
+          { name: "expiresAt", type: "uint40", internalType: "uint40" },
+        ],
+      },
+      { name: "countersigs", type: "bytes", internalType: "bytes" },
+      {
+        name: "fact",
+        type: "tuple",
+        internalType: "struct KeelsonTypes.WebFact",
+        components: [
+          { name: "hostHash", type: "bytes32", internalType: "bytes32" },
+          { name: "urlPathHash", type: "bytes32", internalType: "bytes32" },
+          { name: "tCapture", type: "uint40", internalType: "uint40" },
+          { name: "rangeCommitment", type: "bytes32", internalType: "bytes32" },
+          { name: "attId", type: "bytes32", internalType: "bytes32" },
+        ],
+      },
+      { name: "factSig", type: "bytes", internalType: "bytes" },
+      { name: "fieldId", type: "uint8", internalType: "uint8" },
+      { name: "proof", type: "bytes", internalType: "bytes" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "teeVerifier",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "contract IVerdictVerifier" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "vault",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "contract IAmberVault" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "violations",
+    inputs: [{ name: "coverageId", type: "bytes32", internalType: "bytes32" }],
+    outputs: [
+      { name: "code", type: "uint8", internalType: "uint8" },
+      { name: "provenAt", type: "uint40", internalType: "uint40" },
+      { name: "evidenceDigest", type: "bytes32", internalType: "bytes32" },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "event",
+    name: "AmberContradictionProven",
+    inputs: [
+      { name: "coverageId", type: "bytes32", indexed: true, internalType: "bytes32" },
+      { name: "agentId", type: "uint256", indexed: true, internalType: "uint256" },
+      { name: "fieldId", type: "uint8", indexed: false, internalType: "uint8" },
+      { name: "webFactDigest", type: "bytes32", indexed: false, internalType: "bytes32" },
+    ],
+    anonymous: false,
+  },
+  { type: "error", name: "AlreadyProven", inputs: [] },
+  { type: "error", name: "CountersignMismatch", inputs: [] },
+  { type: "error", name: "InvalidCountersignature", inputs: [] },
+  { type: "error", name: "InvalidProof", inputs: [] },
+  { type: "error", name: "InvalidWebFact", inputs: [] },
+  { type: "error", name: "NoAmberAttestation", inputs: [] },
+  { type: "error", name: "NotCovered", inputs: [] },
+  {
+    type: "error",
+    name: "SafeCastOverflowedUintDowncast",
+    inputs: [
+      { name: "bits", type: "uint8", internalType: "uint8" },
+      { name: "value", type: "uint256", internalType: "uint256" },
+    ],
+  },
+  { type: "error", name: "StaleWebFact", inputs: [] },
+  { type: "error", name: "UnknownField", inputs: [] },
+] as const;
+
 export const baseZKHonkVerifierAbi = [
   {
     type: "function",
@@ -702,6 +883,50 @@ export const honkVerifierAbi = [
       { name: "", type: "bytes32[]", internalType: "bytes32[]" },
     ],
     outputs: [{ name: "", type: "bool", internalType: "bool" }],
+    stateMutability: "view",
+  },
+] as const;
+
+export const iAmberContradictionVerifierAbi = [
+  {
+    type: "function",
+    name: "verify",
+    inputs: [
+      { name: "proof", type: "bytes", internalType: "bytes" },
+      { name: "publicInputs", type: "bytes32[]", internalType: "bytes32[]" },
+    ],
+    outputs: [{ name: "", type: "bool", internalType: "bool" }],
+    stateMutability: "view",
+  },
+] as const;
+
+export const iAmberVaultAbi = [
+  {
+    type: "function",
+    name: "coverageHash",
+    inputs: [{ name: "coverageId", type: "bytes32", internalType: "bytes32" }],
+    outputs: [{ name: "", type: "bytes32", internalType: "bytes32" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "coverages",
+    inputs: [{ name: "coverageId", type: "bytes32", internalType: "bytes32" }],
+    outputs: [
+      {
+        name: "",
+        type: "tuple",
+        internalType: "struct IKeelsonBondVault.CoverageState",
+        components: [
+          { name: "amount", type: "uint96", internalType: "uint96" },
+          { name: "agentId", type: "uint64", internalType: "uint64" },
+          { name: "releaseAfter", type: "uint40", internalType: "uint40" },
+          { name: "status", type: "uint8", internalType: "enum IKeelsonBondVault.Status" },
+          { name: "degraded", type: "bool", internalType: "bool" },
+          { name: "pendingSlashes", type: "uint8", internalType: "uint8" },
+        ],
+      },
+    ],
     stateMutability: "view",
   },
 ] as const;

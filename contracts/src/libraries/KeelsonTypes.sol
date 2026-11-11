@@ -62,6 +62,17 @@ library KeelsonTypes {
         bytes32 userKeyHash;
     }
 
+    /// @notice What the TLSNotary notary (leg A) signs for a session it accepted: `keccak256` of the server's lowercase
+    /// host and of the request target, the capture time and `SHA-256(range ‖ blinder)` of the committed body range;
+    /// `attId` is the first half of the report data its attestation covers.
+    struct WebFact {
+        bytes32 hostHash;
+        bytes32 urlPathHash;
+        uint40 tCapture;
+        bytes32 rangeCommitment;
+        bytes32 attId;
+    }
+
     /// @notice Coverage for many purchases at once: `root` is the OpenZeppelin standard Merkle tree (leaf encoding
     /// `["bytes32"]`) of their `Coverage` struct hashes, all logged by `treeSize` in the checkpoint `checkpointRoot`.
     struct CoverageBatch {
@@ -108,6 +119,10 @@ library KeelsonTypes {
     bytes32 internal constant CLAIM_TYPEHASH =
         keccak256("Claim(address account,address to,uint256 nonce,uint256 deadline)");
 
+    bytes32 internal constant WEB_FACT_TYPEHASH = keccak256(
+        "WebFact(bytes32 hostHash,bytes32 urlPathHash,uint40 tCapture,bytes32 rangeCommitment,bytes32 attId)"
+    );
+
     /// @dev Every member is a static type, so the encoding is the typehash followed by the struct's ABI encoding.
     function hash(Countersign memory c) internal pure returns (bytes32) {
         return keccak256(abi.encode(COUNTERSIGN_TYPEHASH, c));
@@ -123,6 +138,10 @@ library KeelsonTypes {
 
     function hash(Coverage memory c) internal pure returns (bytes32) {
         return keccak256(abi.encode(COVERAGE_TYPEHASH, c));
+    }
+
+    function hash(WebFact memory f) internal pure returns (bytes32) {
+        return keccak256(abi.encode(WEB_FACT_TYPEHASH, f));
     }
 
     function hash(CoverageBatch memory b) internal pure returns (bytes32) {
