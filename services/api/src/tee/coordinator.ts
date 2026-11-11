@@ -34,7 +34,8 @@ type CoordinatorSlug =
   | "paypal-unavailable"
   | "tee-divergence"
   | "tee-unregistered-signer"
-  | "tee-contradiction";
+  | "tee-contradiction"
+  | "clock-unverified";
 
 /** A refusal to countersign; it never carries a signature. */
 export class CoordinatorError extends Error {
@@ -446,6 +447,15 @@ export async function countersign2of2(
 
   const { trace } = first;
   if (!b) {
+    // Leg A alone answers for the time a mandate's `exp` and the countersign window are read on:
+    // only a clock it authenticated at boot may.
+    if ((await legCapabilities(deps, "a")).clock === "unverified") {
+      throw new CoordinatorError(
+        "clock-unverified",
+        "Leg B is down and leg A's clock is not authenticated, so nothing is countersigned now.",
+        503,
+      );
+    }
     await record(deps, req.request_id, [first]);
     deps.log.warn({ requestId: req.request_id }, "leg b is down, countersigned by leg a alone");
     emit(deps, "tee.degraded", req.request_id, { digest: first.digest });

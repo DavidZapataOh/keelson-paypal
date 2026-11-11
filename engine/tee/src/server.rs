@@ -43,6 +43,9 @@ pub struct AppState {
     c1_queue: std::sync::OnceLock<std::sync::mpsc::SyncSender<String>>,
     token_hash: [u8; 32],
     clock: fn() -> OffsetDateTime,
+    /// The CVM booted with dstack's `secure_time`: its clock was set from NTS (RFC 8915) before
+    /// any key was released. The compose that sets it is part of the measurement.
+    secure_time: bool,
     #[cfg(feature = "tdx")]
     attestation: Option<std::sync::RwLock<Attested>>,
     #[cfg(feature = "tdx")]
@@ -74,6 +77,7 @@ impl AppState {
             c1_queue: std::sync::OnceLock::new(),
             token_hash,
             clock: OffsetDateTime::now_utc,
+            secure_time: false,
             #[cfg(feature = "tdx")]
             attestation: None,
             #[cfg(feature = "tdx")]
@@ -175,6 +179,12 @@ impl AppState {
     /// Reads the time from `clock` instead of the system clock.
     pub fn with_clock(mut self, clock: fn() -> OffsetDateTime) -> Self {
         self.clock = clock;
+        self
+    }
+
+    /// Says the CVM booted with an authenticated clock (dstack `secure_time`).
+    pub fn with_secure_time(mut self, secure_time: bool) -> Self {
+        self.secure_time = secure_time;
         self
     }
 }
@@ -374,6 +384,9 @@ struct Health {
     decoys: u8,
     /// `1`: a mandate with a status list entry is checked against the list on every countersign.
     status_list: u8,
+    /// On the TDX leg: `verified` when its clock was set from authenticated time at boot.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    clock: Option<&'static str>,
     signer: Address,
     boot_epoch: u64,
     oci_digest: String,
@@ -415,6 +428,11 @@ async fn health(State(state): State<Arc<AppState>>) -> Json<Health> {
         statements: 1,
         decoys: 1,
         status_list: 1,
+        clock: (engine.config().tee_kind == TeeKind::Tdx).then_some(if state.secure_time {
+            "verified"
+        } else {
+            "unverified"
+        }),
         signer: engine.signer(),
         boot_epoch: engine.boot_epoch(),
         oci_digest: engine.config().oci_digest.clone(),

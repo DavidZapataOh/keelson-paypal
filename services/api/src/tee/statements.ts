@@ -24,6 +24,8 @@ export interface Capabilities {
   decoys: boolean;
   /** It checks a mandate's status list entry, and leg A signs the list. */
   status_list: boolean;
+  /** Leg A's clock: `verified` when set from authenticated time at boot; absent on older engines. */
+  clock?: "verified" | "unverified";
 }
 
 /** The {@link Capabilities} a leg's `/v1/health` reports. */
@@ -33,6 +35,7 @@ export function capabilitiesOf(health: unknown): Capabilities {
     statements: h.statements === 1,
     decoys: h.decoys === 1,
     status_list: h.status_list === 1,
+    ...(h.clock === "verified" || h.clock === "unverified" ? { clock: h.clock } : {}),
   };
 }
 

@@ -31,6 +31,13 @@ describe("engine capabilities", () => {
     });
   });
 
+  test("leg A's clock is read when it reports one, and absent on an older engine", () => {
+    expect(capabilitiesOf(deployedLegB).clock).toBeUndefined();
+    expect(capabilitiesOf({ ...deployedLegB, clock: "unverified" }).clock).toBe("unverified");
+    expect(capabilitiesOf({ ...deployedLegB, clock: "verified" }).clock).toBe("verified");
+    expect(capabilitiesOf({ ...deployedLegB, clock: "soon" }).clock).toBeUndefined();
+  });
+
   test("without TEE legs the API offers no decoys", async () => {
     const app = createApp({ db: testDb, kv: testKv, log: pino({ level: "silent" }) });
     const res = await app.request("/v1/engine/capabilities");

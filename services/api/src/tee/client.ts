@@ -215,6 +215,8 @@ const HealthSchema = z.looseObject({
   decoys: z.number().optional(),
   /** 1 on a leg that checks the mandate status list. */
   status_list: z.number().optional(),
+  /** On the TDX leg: whether its clock was set from authenticated time at boot. */
+  clock: z.enum(["verified", "unverified"]).optional(),
 });
 type Health = z.infer<typeof HealthSchema>;
 

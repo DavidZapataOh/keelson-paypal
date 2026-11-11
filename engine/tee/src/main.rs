@@ -180,10 +180,13 @@ async fn tdx_state(
             .map_err(|e| format!("cannot start the C1 prover: {e}"))?;
         engine = engine.with_prover(Arc::new(prover));
     }
+    // The compose sets it with `secure_time`; both are in the compose hash the measurement pins.
+    let secure_time = std::env::var("KEELSON_SECURE_TIME").as_deref() == Ok("1");
     let mut state = AppState::new(engine, token_hash)
         .with_attestation(attestation, at)
         .with_paypal(paypal)
-        .with_notary();
+        .with_notary()
+        .with_secure_time(secure_time);
     if let Some(lithic) = keelson_tee::issuer::LithicClient::from_env()? {
         state = state.with_lithic(lithic);
     }
