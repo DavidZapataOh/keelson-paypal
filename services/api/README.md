@@ -334,8 +334,11 @@ prices nothing. When it is unavailable, the gate holds every converted charge an
 in the store's currency.
 
 The agent reports PayPal's order and the conversion with the transaction id
-(`PUT /v1/purchases/{id}/paypal-transaction`). The API checks the conversion against the evidence
-and the mandate. The Alibi then carries them, marked as not signed, with the reference rate it used
+(`PUT /v1/purchases/{id}/paypal-transaction`). The API checks the payee against the mandate's
+`payment.allowed_payees`, when they name a PayPal merchant id, and the conversion against the
+evidence and the mandate. The transaction id is recorded either way, since the payment happened;
+a report that does not hold is refused (`422 invalid-order-report`). Keelson's legs never see the
+conversion, so it is the agent's reading of PayPal checked for consistency, not an attestation. The Alibi then carries them, marked as not signed, with the reference rate it used
 disclosed from the evidence, and `evidence.conversion` checks their arithmetic. For an `AUTHORIZE`
 order, the Alibi also records how much PayPal lets the store capture: 115% of the authorization or
 USD 75 more, whichever is less.

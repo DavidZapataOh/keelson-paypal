@@ -300,6 +300,11 @@ const ASIDE = [
   "solde",
   "taux de change",
   "wechselkurs",
+  "eligible",
+  "elegible",
+  "elegibles",
+  "elegíveis",
+  "qualifying",
 ];
 
 /** Where in `label` a total word last ends, or -1; "subtotal" and "sub-total" are no total. */
@@ -326,6 +331,8 @@ export type Context = "total" | "aside" | "line";
 export function contextOf(label: string, previous: Context): Context {
   const text = label.normalize("NFKC").toLowerCase();
   // A balance or a rate labels its own amount only: rows run together in the page's text.
+  // The upper end of a range (`$10.00-$2,000.00`) is what its lower end is.
+  if (/^[-–—]$/u.test(text.trim()) && previous === "aside") return "aside";
   if (!/\p{L}/u.test(text)) return previous === "aside" ? "line" : previous;
   const total = totalEnd(text);
   const aside = wordEnd(text, ASIDE);
@@ -546,6 +553,11 @@ export interface PageReading {
   /** The amounts of `minor` the page labels its total or charge, and not a balance or rate. */
   totals: number[];
   /**
+   * The amounts of `minor` the page labels as money it does not charge: a balance, the range a
+   * credit offer is eligible for.
+   */
+  offers: number[];
+  /**
    * The largest value each number that may be the currency can take: one with no mark, with a
    * mark several currencies share, or written as no locale writes an amount.
    */
@@ -627,12 +639,26 @@ function rateOf(run: string): string | undefined {
 const ceiling = (run: string, fraction: number) =>
   Number(run.replace(/\D/g, "").slice(0, 15)) * 10 ** fraction;
 
+/**
+ * Whether an amount of the currency is money the page does not charge: labeled a balance or a
+ * credit offer's range right before it (at most two words after that label: "eligible purchases
+ * of"), or the upper end of a range whose lower end is one (`after` a dash).
+ */
+function offer(token: Token, afterOffer: boolean): boolean {
+  if (token.context !== "aside") return false;
+  if (afterOffer && /^[-–—]$/u.test(token.label)) return true;
+  const label = token.label.normalize("NFKC").toLowerCase();
+  const end = wordEnd(label, ASIDE);
+  return end >= 0 && (label.slice(end).match(/\p{L}+/gu) ?? []).length <= 2;
+}
+
 function read(text: string, locale: string, currency: string): Omit<PageReading, "locale"> {
   const fraction = minorDigits(currency);
   const tokens = scan(text, locale, currency);
   const t = plain(text);
   const minor: number[] = [];
   const labels: string[] = [];
+  const offers: number[] = [];
   const totals: number[] = [];
   const loose: number[] = [];
   const conversions: PageReading["conversions"] = [];
@@ -665,6 +691,7 @@ function read(text: string, locale: string, currency: string): Omit<PageReading,
       }
       minor.push(value);
       labels.push(token.label);
+      if (offer(token, minor.length > 1 && offers.at(-1) === minor.at(-2))) offers.push(value);
       if (token.context === "total") totals.push(value);
     } else if (token.kind === "loose") {
       if (token.values.length > 0) loose.push(Math.max(...token.values));
@@ -692,6 +719,7 @@ function read(text: string, locale: string, currency: string): Omit<PageReading,
   return {
     minor,
     labels,
+    offers,
     totals,
     loose,
     conversions,
@@ -726,6 +754,7 @@ export function readPage(text: string, locales: readonly string[], currency: str
       minor: [],
       labels: [],
       totals: [],
+      offers: [],
       loose: [],
       conversions: [],
       rates: {},
@@ -739,6 +768,7 @@ export function readPage(text: string, locales: readonly string[], currency: str
   const same = (r: Omit<PageReading, "locale">) =>
     r.minor.join() === reading.minor.join() &&
     r.totals.join() === reading.totals.join() &&
+    r.offers.join() === reading.offers.join() &&
     r.loose.join() === reading.loose.join() &&
     JSON.stringify([r.conversions, r.rates]) ===
       JSON.stringify([reading.conversions, reading.rates]);
@@ -788,8 +818,9 @@ export function judge(
 ): Judgment {
   const no = (reason: string): Judgment => ({ ok: false, reason });
   if (page.unsure !== undefined) return no(page.unsure);
-  if (Math.max(...page.minor, ...page.loose) > minor)
-    return no("a larger amount that may be charged");
+  // Where PayPal's order states the charge, the page's balances and credit offers are no charge.
+  const payable = labeled ? page.minor : without(page.minor, page.offers);
+  if (Math.max(...payable, ...page.loose) > minor) return no("a larger amount that may be charged");
   if (page.totals.some((t) => t !== minor)) return no("another total");
   if (known && page.rates[known.currency] !== undefined) {
     if (Number(page.rates[known.currency]) !== Number(known.rate)) {
@@ -830,6 +861,17 @@ export function judge(
     return no("converted totals that disagree");
   }
   return { ok: true, conversion: { currency: code, rate, buyer, locale: page.locale } };
+}
+
+/** `all` less one of each of `some`. */
+function without(all: readonly number[], some: readonly number[]): number[] {
+  const left = [...some];
+  return all.filter((x) => {
+    const i = left.indexOf(x);
+    if (i < 0) return true;
+    left.splice(i, 1);
+    return false;
+  });
 }
 
 /** Whether a page charges `minor` of its currency and nothing more: {@link judge} allows it. */

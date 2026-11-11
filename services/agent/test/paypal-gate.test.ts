@@ -31,7 +31,7 @@ interface Case {
   lines: (locale: string) => string[];
   lang: string;
   details?: unknown;
-  /** PayPal's conversion, which the page itself asks for as PayPal's review page does. */
+  /** PayPal's conversions of the order for the buyer's funding options, signed in only. */
   funding?: unknown;
   status?: number;
 }
@@ -102,10 +102,8 @@ describe("the pay-click gate on PayPal's review page", () => {
       }
       const english = url.searchParams.get("locale.x") === "en_US";
       const lang = english ? "en" : c.lang;
-      // PayPal's review page asks for the buyer's funding options, with their conversion.
-      const script = `fetch("/graphql?GetFundingOptions", { method: "POST", headers: { "content-type": "application/json", "paypal-client-context": ${JSON.stringify(token)} }, body: JSON.stringify({ query: "query { checkoutSession { fundingOptions { currencyConversion { rate from { currencyValue currencyCode } to { currencyValue currencyCode } } } } }" }) });`;
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-      res.end(reviewPage(c.lines(english ? "en-US" : c.lang), lang, script));
+      res.end(reviewPage(c.lines(english ? "en-US" : c.lang), lang));
     });
     await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
     origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -126,6 +124,8 @@ describe("the pay-click gate on PayPal's review page", () => {
       maxSpreadBps?: number;
       payee?: string;
       clicks?: number;
+      /** The review page's query, `token=…` by default. */
+      query?: string;
     } = {},
   ) => {
     const tab: Page = await context.newPage();
@@ -137,7 +137,9 @@ describe("the pay-click gate on PayPal's review page", () => {
     });
     const driver = await StoreBrowser.attach(context, tab, { hosts: ["127.0.0.1"], gate });
     gate.allow(o.total ?? USD_295, o.reference === null ? undefined : (o.reference ?? reference()));
-    await driver.toolResult(call("navigate", { url: `${origin}/review?token=${token}` }));
+    await driver.toolResult(
+      call("navigate", { url: `${origin}/review?${o.query ?? `token=${token}`}` }),
+    );
     await tab.waitForLoadState("networkidle");
     const results: string[] = [];
     let error = false;
@@ -255,6 +257,69 @@ describe("the pay-click gate on PayPal's review page", () => {
       expect(r.clicked).toBe(false);
       expect(r.results.at(-1)).toMatch(/third currency/);
     });
+  });
+
+  test("a page that names two orders is held", async () => {
+    const [cop] = BUYERS as [Buyer];
+    const a = order(buyerCase(cop));
+    const b = order(buyerCase(cop, { pays: convert(395, cop.rate, cop.shown) }));
+    const r = await pay(a, { query: `token=${a}&token=${b}` });
+    expect(r.clicked).toBe(false);
+    expect(r.results.at(-1)).toMatch(/could not be read/);
+  });
+
+  test("several conversions PayPal states are paid only for the one the page shows, within the cap", async () => {
+    const [cop, brl] = BUYERS as [Buyer, Buyer];
+    const two = (rates: [string, string]) => ({
+      data: {
+        checkoutSession: {
+          fundingOptions: [
+            fundingOptions({
+              from: "2.95",
+              to: convert(295, rates[0], 0),
+              currency: "COP",
+              rate: rates[0],
+            }).data.checkoutSession.fundingOptions[0],
+            fundingOptions({
+              from: "2.95",
+              to: convert(295, rates[1], 2),
+              currency: "BRL",
+              rate: rates[1],
+            }).data.checkoutSession.fundingOptions[0],
+          ],
+        },
+      },
+    });
+    const shown = await pay(order({ ...buyerCase(cop), funding: two([cop.rate, brl.rate]) }), {
+      clicks: 1,
+    });
+    expect(shown.clicked, shown.results.join("\n")).toBe(true);
+    expect(shown.gate.paid?.conversion?.buyer.currency).toBe("COP");
+    // The page shows no rate: which conversion PayPal charges is not known.
+    const hidden = await pay(
+      order({ ...buyerCase(cop, { rate: null }), funding: two([cop.rate, brl.rate]) }),
+      { clicks: 1 },
+    );
+    expect(hidden.clicked).toBe(false);
+    expect(hidden.results[0]).toMatch(/several conversions/);
+    // A conversion the buyer could switch to that is over the cap holds too.
+    const over = (Number(brl.rate) * 1.2).toFixed(4);
+    const r = await pay(order({ ...buyerCase(cop), funding: two([cop.rate, over]) }), {
+      clicks: 1,
+    });
+    expect(r.clicked).toBe(false);
+    expect(r.results[0]).toMatch(/over the mandate's cap/);
+  });
+
+  test("a new countersign drops the last one's reference rates and payment", async () => {
+    const [cop] = BUYERS as [Buyer];
+    const r = await pay(order(buyerCase(cop)));
+    expect(r.clicked).toBe(true);
+    expect(r.gate.paid).toBeDefined();
+    r.gate.allow(USD_295);
+    expect(r.gate.paid).toBeUndefined();
+    const again = await pay(order(buyerCase(cop)), { reference: null });
+    expect(again.clicked).toBe(false);
   });
 
   test("a conversion with no reference rate, or a stale one, is held", async () => {

@@ -93,12 +93,12 @@ export function reviewText(o: {
 }
 
 /** A review page as HTML, its rows as the page lays them out, with a pay button. */
-export function reviewPage(lines: readonly string[], lang: string, script = ""): string {
+export function reviewPage(lines: readonly string[], lang: string): string {
   const rows = lines.map((l) => `<div>${l}</div>`).join("\n");
   return `<!doctype html><html lang="${lang}"><body><h1>PayPal</h1>
 <section aria-label="Pagar con"><p>Ana Prueba · ana.prueba@example.test</p>${rows}</section>
 <button>Pay Now</button><p id="out"></p>
-<script>for (const b of document.querySelectorAll("button")) b.onclick = () => { document.getElementById("out").textContent = "clicked " + b.textContent; };${script}</script>
+<script>for (const b of document.querySelectorAll("button")) b.onclick = () => { document.getElementById("out").textContent = "clicked " + b.textContent; };</script>
 </body></html>`;
 }
 

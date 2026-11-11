@@ -108,7 +108,6 @@ export class StoreBrowser extends BetaAbstractBrowserToolset20260801 {
     options: StoreBrowserOptions,
   ): Promise<StoreBrowser> {
     const browser = new StoreBrowser(page, options);
-    options.gate?.watch(context);
     await context.route("**/*", (route) => {
       const request = route.request();
       if (isAllowed(request.url(), options.hosts)) return route.continue();

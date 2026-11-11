@@ -254,6 +254,7 @@ describe("a page is paid only where it charges the countersigned total and nothi
       minor: [295, 295],
       labels: ["Subtotal", "Total"],
       totals: [295],
+      offers: [],
       loose: [],
       conversions: [],
       rates: {},

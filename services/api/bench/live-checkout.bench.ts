@@ -21,7 +21,7 @@ import {
 } from "@keelson/agent";
 import { decodeAlibi } from "@keelson/alibi";
 import { verifyAlibi } from "@keelson/alibi/verify";
-import type { CheckoutTotal } from "@keelson/core";
+import type { CheckoutTotal, FxReference } from "@keelson/core";
 import { alibis, eq, purchases } from "@keelson/db";
 import { startRecorder } from "@keelson/evidence/capture";
 import { maxSpreadBps, parseMandate } from "@keelson/mandate";
@@ -165,8 +165,10 @@ try {
     const requotes: Record<string, unknown>[] = [];
     // A re-quoted total is countersigned on evidence captured in a tab of its own on the product
     // page, so nothing of the checkout's pages, which show the buyer's address, is sealed.
-    const requote = async (total: CheckoutTotal): Promise<boolean> => {
-      if (total.minor > CEILING_MINOR) return false;
+    const requote = async (
+      total: CheckoutTotal,
+    ): Promise<{ allowed: boolean; reference?: FxReference }> => {
+      if (total.minor > CEILING_MINOR) return { allowed: false };
       const tab = await session.context.newPage();
       const recorder = await startRecorder(tab);
       try {
@@ -206,7 +208,7 @@ try {
           problem: again.status >= 400 ? again.body.type : undefined,
         });
         if (ok) paid = again.requestId;
-        return ok;
+        return { allowed: ok, ...(again.reference ? { reference: again.reference } : {}) };
       } finally {
         await recorder.stop().catch(() => {});
         await tab.close();

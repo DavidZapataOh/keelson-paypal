@@ -15,10 +15,12 @@ import {
   sql,
   user,
 } from "@keelson/db";
+import { buildSdPayload, parseMandate } from "@keelson/mandate";
 import { pino } from "pino";
 import { ulid } from "ulid";
 import { beforeAll, describe, expect, test } from "vitest";
 import { fixtures } from "../../../packages/alibi/test/fixtures.ts";
+import demo from "../../../packages/mandate/test/fixtures/demo-mandate.json" with { type: "json" };
 import { createApp } from "../src/app.ts";
 import { commitmentBytes } from "../src/fx.ts";
 import { drivePurchase, resumePurchases } from "../src/pipeline/drive.ts";
@@ -145,7 +147,13 @@ describe("live purchases", () => {
       max_spread_bps: DEFAULT_MAX_SPREAD_BPS,
       locale: "es-CO",
     };
-    const order = { intent: "AUTHORIZE", payee: "SANDBOXPAYEE01" };
+    // A mandate signed as the demo one, which allows paying MERCH7XK2Q9LD.
+    const sd = await buildSdPayload(parseMandate(demo), () => randomBytes(16));
+    await testDb
+      .update(mandates)
+      .set({ payloadSd: sd.payloadSd, disclosures: sd.disclosures })
+      .where(eq(mandates.id, mandateId));
+    const order = { intent: "AUTHORIZE", payee: "MERCH7XK2Q9LD" };
     const put = async (id: string, transactionId: string, body: Record<string, unknown>) =>
       app.request(`/v1/purchases/${id}/paypal-transaction`, {
         method: "PUT",
@@ -183,12 +191,25 @@ describe("live purchases", () => {
     }
     const unbound = await purchase(mandateId, "LOGGED", STORE);
     expect((await put(unbound, "7AB23456CD789012E", { conversion })).status).toBe(422);
+    // Another payee: the transaction is recorded, the report is not.
+    const elsewhere = await live();
+    const res = await put(elsewhere, "9AB23456CD789012E", {
+      conversion,
+      order: { ...order, payee: "OTHERPAYEE01" },
+    });
+    expect(res.status).toBe(422);
+    const [kept] = await testDb.select().from(purchases).where(eq(purchases.id, elsewhere));
+    expect(kept).toMatchObject({
+      paypalTransactionId: "9AB23456CD789012E",
+      paypalPayeeId: null,
+      conversion: null,
+    });
     const id = await live();
     expect((await put(id, "8AB23456CD789012E", { conversion })).status).toBe(200);
     const [row] = await testDb.select().from(purchases).where(eq(purchases.id, id));
     expect(row).toMatchObject({
       paypalOrderIntent: "AUTHORIZE",
-      paypalPayeeId: "SANDBOXPAYEE01",
+      paypalPayeeId: "MERCH7XK2Q9LD",
       conversion,
     });
   });

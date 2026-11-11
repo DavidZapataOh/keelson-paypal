@@ -103,3 +103,28 @@ describe("a PayPal review page that converts a USD order", () => {
     );
   });
 });
+
+describe("PayPal's review page in English, as the sandbox shows it", () => {
+  // The rows of the sandbox's review page for a USD buyer, with the buyer's details left out.
+  const page = [
+    "$2.95",
+    "Pay with",
+    "Checking ••••0685",
+    "$2.95",
+    "Pay in 4",
+    "4 interest-free payments on eligible purchases of $10.00-$2,000.00. Not available for this transaction.",
+    "Pay Monthly",
+    "Pay over time for eligible purchases of $49.00-$10,000.00. Not available for this transaction.",
+    "Complete Purchase",
+  ].join("\n");
+
+  test("its credit offers are no charge where PayPal's order states it, and a charge elsewhere", () => {
+    const read = readPage(page, ["en"], "USD");
+    expect(read.offers).toEqual([1000, 200000, 4900, 1000000]);
+    expect(judge(read, 295, "USD", true, false).ok).toBe(true);
+    expect(judge(read, 295, "USD", false).ok).toBe(false);
+    expect(judge(readPage(`${page}\nFee $20.00`, ["en"], "USD"), 295, "USD", true, false).ok).toBe(
+      false,
+    );
+  });
+});

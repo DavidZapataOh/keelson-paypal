@@ -25,6 +25,7 @@ import {
   type SQL,
   user,
 } from "@keelson/db";
+import { decodeMandate } from "@keelson/mandate";
 import type { Deps } from "../app.ts";
 import { Amount, breakdowns, withBreakdown } from "../checkout.ts";
 import { requireClient, requirePrincipal } from "../middleware/auth.ts";
@@ -244,7 +245,7 @@ const transactionRoute = createRoute({
     },
     422: {
       description:
-        "The conversion is not the countersigned amount at PayPal's rate, does not use the reference rate the evidence binds, or is over the mandate's spread",
+        "The order's payee is not one the mandate allows, or the conversion is not the countersigned amount at PayPal's rate, does not use the reference rate the evidence binds, or is over the mandate's spread. The transaction id is recorded without them.",
       content: problemContent,
     },
   },
@@ -344,6 +345,26 @@ const liveRoute = createRoute({
     },
   },
 });
+
+/**
+ * Why `payee` is not a payee the mandate allows, or undefined: a merchant id among its
+ * `payment.allowed_payees`, when they name any.
+ */
+async function payeeInvalid(db: Db, mandateId: string, payee: string): Promise<string | undefined> {
+  const [m] = await db
+    .select({ payloadSd: mandates.payloadSd, disclosures: mandates.disclosures })
+    .from(mandates)
+    .where(eq(mandates.id, mandateId));
+  if (!m?.payloadSd || !m.disclosures) return "the mandate is not signed";
+  const allowed = decodeMandate(m.payloadSd, m.disclosures).payment.constraints.flatMap((k) =>
+    k.type === "payment.allowed_payees" ? k.allowed.map((a) => a.paypal_merchant_id) : [],
+  );
+  // A mandate that names no PayPal merchant id (a store whose id is not known yet) binds none.
+  const ids = allowed.filter((id) => /^[0-9A-Z]{8,20}$/.test(id));
+  return ids.length === 0 || ids.includes(payee)
+    ? undefined
+    : "PayPal's order pays a merchant the mandate does not allow";
+}
 
 /**
  * Why `conversion` is not the one the pay-click gate could have let through for `row`, or
@@ -488,18 +509,16 @@ export function registerPurchases(
         "Transaction recorded",
         "Another PayPal transaction id is recorded for this purchase, or this one for another.",
       );
-    if (conversion) {
-      const why = await conversionInvalid(deps.db, row, conversion);
-      if (why) {
-        return problem(c, 422, "invalid-conversion", "Invalid conversion", `${why}.`);
-      }
-    }
+    // The payment happened: its transaction is recorded whether or not its report holds.
+    const why =
+      (order && (await payeeInvalid(deps.db, row.mandateId, order.payee))) ||
+      (conversion && (await conversionInvalid(deps.db, row, conversion)));
     const set = await deps.db
       .update(purchases)
       .set({
         paypalTransactionId: transactionId,
-        ...(order ? { paypalOrderIntent: order.intent, paypalPayeeId: order.payee } : {}),
-        ...(conversion ? { conversion } : {}),
+        ...(order && !why ? { paypalOrderIntent: order.intent, paypalPayeeId: order.payee } : {}),
+        ...(conversion && !why ? { conversion } : {}),
       })
       .where(and(eq(purchases.id, id), isNull(purchases.paypalTransactionId)))
       .returning()
@@ -512,6 +531,15 @@ export function registerPurchases(
     if (set === null) return taken();
     const now = set ?? row;
     if (!set && row.paypalTransactionId !== transactionId) return taken();
+    if (why) {
+      return problem(
+        c,
+        422,
+        "invalid-order-report",
+        "Invalid order report",
+        `${why}. The transaction is recorded without it.`,
+      );
+    }
     c.header("Cache-Control", "no-store");
     return c.json(purchaseView(now), 200);
   });

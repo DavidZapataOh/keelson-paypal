@@ -30,13 +30,21 @@ const TOKEN = /^(?:EC-)?[0-9A-Z]{17}$/;
 const VALUE = /^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/;
 
 /** Whether `token` is an order id or its legacy EC token. */
-export const isOrderToken = (token: string): boolean => TOKEN.test(token);
+const isOrderToken = (token: string): boolean => TOKEN.test(token);
 
-/** The order a PayPal checkout page is for: its `token`, or undefined. */
+/**
+ * The order a PayPal checkout page is for: its one `token`, or undefined. A URL that carries two
+ * names no order for sure.
+ */
 export function orderToken(url: string): string | undefined {
-  const token = URL.parse(url)?.searchParams.get("token") ?? "";
-  return isOrderToken(token) ? token : undefined;
+  const tokens = URL.parse(url)?.searchParams.getAll("token") ?? [];
+  const [token] = tokens;
+  return tokens.length === 1 && token && isOrderToken(token) ? token : undefined;
 }
+
+/** The buyer's funding options and PayPal's conversion of the order for each, signed in only. */
+const FUNDING =
+  "query GetFundingOptions($orderID: String!) { checkoutSession(token: $orderID) { fundingOptions { currencyConversion { rate from { currencyValue currencyCode } to { currencyValue currencyCode } } } } }";
 
 /** The charge a `GetCheckoutDetails` answer states, or undefined unless it states exactly one. */
 export function chargeOf(answer: unknown): PayPalCharge | undefined {
@@ -112,33 +120,38 @@ export function chargeProblem(charge: PayPalCharge, total: CheckoutTotal): strin
 }
 
 /**
- * The charge of the order the PayPal page in `page` is for, read from PayPal itself: the page asks
- * its own origin's GraphQL for the checkout session, with the session's cookies, as PayPal's
- * buttons do. Undefined when the page names no order or PayPal does not answer one charge. Neither
- * the token nor the answer leaves this function but as the charge.
+ * The charge of the order the PayPal page in `page` is for, read from PayPal itself as PayPal's
+ * buttons read it, and PayPal's conversions of it for the buyer's funding options. The requests go
+ * to the page's origin with the session's cookies, outside the page, so no script on it can answer
+ * them. Undefined when the page names no order or PayPal does not answer one charge. Neither the
+ * token nor the answers leave this function but as the charge and the conversions.
  */
-export async function readCharge(page: Page): Promise<PayPalCharge | undefined> {
+export async function readCharge(
+  page: Page,
+): Promise<{ charge: PayPalCharge; conversions: KnownConversion[] } | undefined> {
   const token = orderToken(page.url());
-  if (!token) return undefined;
-  const answer = await page
-    .evaluate(
-      async ({ token, query }) => {
-        const res = await fetch(`${location.origin}/graphql?GetCheckoutDetails`, {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "content-type": "application/json",
-            "x-app-name": "smart-payment-buttons",
-            "paypal-client-context": token,
-          },
-          body: JSON.stringify({ query, variables: { orderID: token } }),
-        });
-        return res.ok ? ((await res.json()) as unknown) : null;
-      },
-      { token, query: QUERY },
-    )
-    .catch(() => null);
-  return chargeOf(answer);
+  const origin = URL.parse(page.url())?.origin;
+  if (!token || !origin) return undefined;
+  const ask = (name: string, query: string) =>
+    page
+      .context()
+      .request.post(`${origin}/graphql?${name}`, {
+        headers: {
+          "content-type": "application/json",
+          "x-app-name": "smart-payment-buttons",
+          "paypal-client-context": token,
+        },
+        data: { query, variables: { orderID: token } },
+        timeout: 15_000,
+      })
+      .then((res) => (res.ok() ? (res.json() as Promise<unknown>) : null))
+      .catch(() => null);
+  const [details, funding] = await Promise.all([
+    ask("GetCheckoutDetails", QUERY),
+    ask("GetFundingOptions", FUNDING),
+  ]);
+  const charge = chargeOf(details);
+  return charge ? { charge, conversions: conversionsOf(funding) } : undefined;
 }
 
 /** PayPal's conversion of an order's total to the buyer's funding currency. */

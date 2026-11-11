@@ -7,7 +7,7 @@ import {
   type FxReference,
   spreadBps,
 } from "@keelson/core";
-import type { BrowserContext, Locator, Page } from "playwright";
+import type { Locator, Page } from "playwright";
 import {
   decimalText,
   judge,
@@ -21,8 +21,6 @@ import {
 import { rows, type Seen, sanitize } from "./capture.ts";
 import {
   chargeProblem,
-  conversionsOf,
-  isOrderToken,
   type KnownConversion,
   orderToken,
   type PayPalCharge,
@@ -87,8 +85,6 @@ export class PayGate {
   readonly #maxSpreadBps: number;
   #total: CheckoutTotal | undefined;
   #reference: FxReference | undefined;
-  /** PayPal's conversions of each order, by its token, as its review page's GraphQL stated them. */
-  readonly #conversions = new Map<string, KnownConversion[]>();
   /** The orders whose page was switched to English to read a conversion. */
   readonly #english = new Set<string>();
   /**
@@ -141,8 +137,9 @@ export class PayGate {
    */
   allow(total: CheckoutTotal, reference?: FxReference): void {
     this.#total = total;
-    this.#reference = reference ?? this.#reference;
+    this.#reference = reference;
     this.#requote = undefined;
+    this.paid = undefined;
   }
 
   /**
@@ -234,14 +231,17 @@ export class PayGate {
           .map((f) => f.evaluate(() => document.body?.innerText ?? "").catch(() => "")),
       )
     ).join("\n");
-    const read = readPage(text, pageLocales(lang, page.url()), total.currency);
+    const converts = PayGate.#matches(this.#convertHosts, URL.parse(page.url())?.hostname ?? "");
+    // PayPal's `locale.x` names the locale it was asked for, not always the one it renders in
+    // (`es_XC` on a page in English): there the page's own language decides.
+    const locales = converts && lang ? pageLocales(lang, "") : pageLocales(lang, page.url());
+    const read = readPage(text, locales, total.currency);
     const cart = this.#cart ? await this.#cart().catch(() => undefined) : undefined;
     const digits = minorDigits(total.currency);
     const show = (m: number) => `${total.currency} ${(m / 10 ** digits).toFixed(digits)}`;
     const cartOk =
       !this.#cart ||
       (cart?.currency === total.currency && cart.minor === total.items - total.discount);
-    const converts = PayGate.#matches(this.#convertHosts, URL.parse(page.url())?.hostname ?? "");
     let paypal: { charge: PayPalCharge; known?: KnownConversion } | undefined;
     if (converts) {
       paypal = await this.#order(page, total, show, read);
@@ -333,7 +333,7 @@ export class PayGate {
     show: (m: number) => string,
     read: PageReading,
   ): Promise<{ charge: PayPalCharge; known?: KnownConversion }> {
-    const charge = await readCharge(page);
+    const answer = await readCharge(page);
     const fail = async (reason: string): Promise<never> => {
       this.held.push({
         locale: read.locale || null,
@@ -345,7 +345,8 @@ export class PayGate {
       });
       this.#refuse(reason);
     };
-    if (!charge) return fail("PayPal's order for this page could not be read. Paying waits.");
+    if (!answer) return fail("PayPal's order for this page could not be read. Paying waits.");
+    const { charge, conversions } = answer;
     const problem = chargeProblem(charge, total);
     if (problem) {
       const next = requoteOf(charge, total);
@@ -361,19 +362,35 @@ export class PayGate {
     if (this.#payee !== undefined && charge.payee !== this.#payee) {
       await fail("PayPal's order pays another merchant than the mandate names. Paying waits.");
     }
-    const token = orderToken(page.url()) as string;
-    const options = (this.#conversions.get(token) ?? []).filter(
-      (c) => c.from.currency === charge.currency && c.from.value === charge.value,
-    );
-    const distinct = new Map(options.map((c) => [`${c.currency}|${c.buyer}|${c.rate}`, c]));
-    const [only, ...more] = distinct.values();
-    if (only && more.length === 0) {
-      if (!convertsTo(charge.value, only.rate, only.buyer)) {
-        await fail("PayPal's conversion of the order does not add up. Paying waits.");
-      }
-      return { charge, known: only };
+    const options = [
+      ...new Map(
+        conversions.map((c) => [
+          `${c.from.currency}|${c.from.value}|${c.currency}|${c.buyer}|${c.rate}`,
+          c,
+        ]),
+      ).values(),
+    ];
+    if (options.some((c) => c.from.currency !== charge.currency || c.from.value !== charge.value)) {
+      await fail("PayPal converts another amount than its order's total. Paying waits.");
     }
-    return { charge };
+    if (options.some((c) => !convertsTo(charge.value, c.rate, c.buyer))) {
+      await fail("PayPal's conversion of the order does not add up. Paying waits.");
+    }
+    // Whichever funding option the buyer pays with, its conversion is within the mandate's spread.
+    for (const c of options) {
+      this.#conversion(total, { ...c, locale: read.locale || "en" });
+    }
+    const [only, ...more] = options;
+    if (!only) return { charge };
+    if (more.length === 0) return { charge, known: only };
+    // Several: the page must show which one the buyer pays with, by its rate.
+    const shown = options.filter((c) => Number(read.rates[c.currency]) === Number(c.rate));
+    if (shown.length !== 1) {
+      await fail(
+        "PayPal states several conversions and the page does not show which one it charges. Paying waits.",
+      );
+    }
+    return { charge, known: shown[0] as KnownConversion };
   }
 
   /**
@@ -407,27 +424,5 @@ export class PayGate {
       max_spread_bps: this.#maxSpreadBps,
       locale: shown.locale,
     };
-  }
-
-  /**
-   * Keeps PayPal's own conversions of each order to the buyer's funding currency, as the review
-   * page's GraphQL answers state them (`checkoutSession.fundingOptions[].currencyConversion`).
-   * Only the amounts, codes and rates are kept.
-   */
-  watch(context: BrowserContext): void {
-    context.on("response", (response) => {
-      const url = URL.parse(response.url());
-      if (url?.pathname !== "/graphql" || !response.ok()) return;
-      if (!PayGate.#matches(this.#convertHosts, url.hostname)) return;
-      const token = response.request().headers()["paypal-client-context"] ?? "";
-      if (!isOrderToken(token)) return;
-      response
-        .json()
-        .then((answer: unknown) => {
-          const found = conversionsOf(answer);
-          if (found.length > 0) this.#conversions.set(token, found);
-        })
-        .catch(() => {});
-    });
   }
 }
