@@ -19,8 +19,7 @@ import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/cli
 import { chromium } from "playwright";
 
 const api = process.env.KEELSON_API ?? "https://api.keelson.finance";
-const productUrl =
-  process.env.PRODUCT_URL ?? "https://store.keelson.finance/products/pace-lite";
+const productUrl = process.env.PRODUCT_URL ?? "https://store.keelson.finance/products/pace-lite";
 const size = process.env.SIZE ?? "10";
 
 const step = (what: string) => console.log(`\n▸ ${what}`);
