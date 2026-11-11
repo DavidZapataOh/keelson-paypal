@@ -17,6 +17,7 @@ import type { CountersignJson } from "../tee/client.ts";
 import { legSupportsStatements } from "../tee/coordinator.ts";
 import type { TeeConfig } from "../tee/signers.ts";
 
+/** @internal */
 export interface BridgeDeps {
   db: Db;
   log: Logger;
@@ -24,7 +25,12 @@ export interface BridgeDeps {
   tlog: LogConfig;
 }
 
-/** `bridged`; `v2`: the purchase has its own statement; `done`: bridged before; `legs`: leg A cannot yet. */
+/**
+ * `bridged`; `v2`: the purchase has its own statement; `done`: bridged before; `legs`: leg A cannot
+ * yet.
+ *
+ * @internal
+ */
 export type BridgeOutcome = "bridged" | "v2" | "done" | "legs" | "unissued";
 
 /**
@@ -81,7 +87,11 @@ export async function bridgeAlibi(deps: BridgeDeps, purchaseId: string): Promise
   return "bridged";
 }
 
-/** The v1 Alibis not bridged yet, oldest first. */
+/**
+ * The v1 Alibis not bridged yet, oldest first.
+ *
+ * @internal
+ */
 export async function unbridged(db: Db, limit: number): Promise<string[]> {
   const rows = await db
     .select({ id: alibis.purchaseId })

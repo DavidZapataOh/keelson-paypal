@@ -7,6 +7,7 @@ import type { TeeConfig } from "./tee/signers.ts";
 /** A token older than this is signed again before a countersign carries it (the TEEs accept 300 s). */
 const REFRESH_MS = 240_000;
 
+/** @internal */
 export interface StatusListDeps {
   db: Db;
   log: Logger;

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
-import { chosenStatement, statementAsk, supportsStatements } from "../src/tee/statements.ts";
+import { capabilitiesOf, chosenStatement, statementAsk } from "../src/tee/statements.ts";
 
 const oldHealth = JSON.parse(
   readFileSync(new URL("./fixtures/health-b-62dcd607.json", import.meta.url), "utf8"),
@@ -18,9 +18,9 @@ const legA = {
 
 describe("SCITT statements from the legs", () => {
   test("a leg on today's engine does not sign statements; one that says so does", () => {
-    expect(supportsStatements(oldHealth)).toBe(false);
-    expect(supportsStatements(newHealth)).toBe(true);
-    expect(supportsStatements({ ...oldHealth, statements: 2 })).toBe(false);
+    expect(capabilitiesOf(oldHealth).statements).toBe(false);
+    expect(capabilitiesOf(newHealth).statements).toBe(true);
+    expect(capabilitiesOf({ ...oldHealth, statements: 2 }).statements).toBe(false);
   });
 
   test("leg A is asked with the measurements and, for PayPal, the ref salt", () => {

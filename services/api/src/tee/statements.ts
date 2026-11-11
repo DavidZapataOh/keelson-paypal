@@ -7,11 +7,6 @@ export interface StatementAsk {
   leg_a?: { signer: Address | string; signature: Hex };
 }
 
-/** Whether a leg's `/v1/health` says it signs SCITT statements; a leg on an older engine does not. */
-export function supportsStatements(health: unknown): boolean {
-  return capabilitiesOf(health).statements;
-}
-
 /**
  * What a leg's engine does beyond the countersign of the oldest build still deployed, from its
  * `/v1/health`: each is off for an engine that does not report it, since an older engine refuses

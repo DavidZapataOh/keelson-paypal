@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { createTee } from "../src/tee/config.ts";
-import { supportsStatements } from "../src/tee/statements.ts";
+import { capabilitiesOf } from "../src/tee/statements.ts";
 import { liveEnv } from "./tee-live.ts";
 
 const live = process.env.KEELSON_LIVE === "1";
@@ -16,6 +16,6 @@ describe.skipIf(!live)("statements from the deployed legs", { timeout: 60_000 },
     const h = (await tee.client[leg].health()) as { statements?: number };
     // A build that predates statements sends no such field, and is never sent one.
     expect([undefined, 1]).toContain(h.statements);
-    expect(supportsStatements(h)).toBe(h.statements === 1);
+    expect(capabilitiesOf(h).statements).toBe(h.statements === 1);
   });
 });
