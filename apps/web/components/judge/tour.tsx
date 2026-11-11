@@ -700,7 +700,7 @@ function DisputeStep({ id, part }: { id: string | null; part: "dispute" | "verdi
         ) : null}
       </DataList>
       {d.amber ? (
-        <AmberCase amber={d.amber} purchaseId={d.purchase_id} className="max-w-xl" />
+        <AmberCase amber={d.amber} purchaseId={d.purchase_id} className="max-w-2xl" />
       ) : null}
     </div>
   );
