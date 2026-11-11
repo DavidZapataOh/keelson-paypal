@@ -39,6 +39,8 @@ export interface PurchaseFacts {
   rail: "paypal" | "card";
   /** The PayPal capture id, or the approved card authorization's id. */
   confirmationId?: string;
+  /** The PayPal authorization id, or the approved card authorization's id. */
+  authorizationId?: string;
   orderId?: string;
   card?: { issuer: string; lastFour: string };
   lines?: Line[];
@@ -147,6 +149,7 @@ export function purchaseFacts(b: AlibiBundle): PurchaseFacts {
   }
 
   const confirmationId = card ? approved?.id : b.paypal?.capture_id;
+  const authorizationId = card ? approved?.id : b.paypal?.authorization_id;
   const total = b.checkout ? fromPayPalAmount(b.checkout, cart) : undefined;
   const personal = {
     ...(mandate.user?.app_login_id ? { appLoginId: mandate.user.app_login_id } : {}),
@@ -167,6 +170,7 @@ export function purchaseFacts(b: AlibiBundle): PurchaseFacts {
     payee,
     rail: card ? "card" : "paypal",
     ...(confirmationId ? { confirmationId } : {}),
+    ...(authorizationId ? { authorizationId } : {}),
     ...(!card && b.paypal?.order_id ? { orderId: b.paypal.order_id } : {}),
     ...(card ? { card: { issuer: card.issuer, lastFour: card.last_four } } : {}),
     ...(cart

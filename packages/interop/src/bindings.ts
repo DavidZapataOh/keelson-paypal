@@ -35,6 +35,21 @@ export interface Profile {
 export const EXPORT_BINDINGS: Record<string, Profile> = {
   "keelson.export/1": { typ: "JWT", rows: [] },
   "ap2.open/1": { typ: "sd+jwt", rows: [] },
+  "ap2.checkout_jwt/1": {
+    typ: "JWT",
+    rows: [
+      { pointer: "/totals/0/amount", fact: "amount_minor", transform: "Minor" },
+      { pointer: "/currency", fact: "currency", transform: "UpperCurrency" },
+    ],
+  },
+  "ap2.checkout_receipt/1": {
+    typ: "JWT",
+    rows: [{ pointer: "/status", fact: "decision", transform: "StatusOfDecision" }],
+  },
+  "ap2.payment_receipt/1": {
+    typ: "JWT",
+    rows: [{ pointer: "/status", fact: "decision", transform: "StatusOfDecision" }],
+  },
 };
 
 /** Why an export payload cannot be signed. */

@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { type AlibiBundle, decodeAlibi, leafHashOf } from "@keelson/alibi";
-import { base64url, exportJWK, generateKeyPair } from "jose";
-import { purchaseFacts, statementFacts } from "../src/facts.ts";
-import type { ExportSigner } from "../src/signer.ts";
+import { base64url, calculateJwkThumbprint, exportJWK, generateKeyPair, type JWK } from "jose";
+import { type PurchaseFacts, purchaseFacts, statementFacts } from "../src/facts.ts";
+import type { AgentSigner, ExportSigner } from "../src/signer.ts";
 import type { AlibiRef } from "../src/statement.ts";
 import { localExportSigner } from "../src/testing.ts";
 
@@ -40,4 +40,32 @@ export async function testIssuer(id: string): Promise<ExportSigner> {
   const { privateKey } = await generateKeyPair("ES256", { extractable: true });
   const facts = statementFacts(purchaseFacts(alibi(id)));
   return localExportSigner(await exportJWK(privateKey), () => facts);
+}
+
+/** A fresh agent key, for tests that close mandates: the facts' mandate is re-pointed at it. */
+export async function testAgent(): Promise<AgentSigner & { privateJwk: JWK }> {
+  const { privateKey, publicKey } = await generateKeyPair("ES256", { extractable: true });
+  const pub = await exportJWK(publicKey);
+  const jwk = {
+    kty: "EC",
+    crv: "P-256",
+    x: pub.x,
+    y: pub.y,
+    kid: await calculateJwkThumbprint(pub),
+  };
+  return {
+    jwk: jwk as AgentSigner["jwk"],
+    key: privateKey as CryptoKey,
+    privateJwk: await exportJWK(privateKey),
+  };
+}
+
+/** The fixture's facts with the mandate's `cnf` set to `agent`'s key. */
+export function factsFor(id: string, agent?: AgentSigner): PurchaseFacts {
+  const f = purchaseFacts(alibi(id));
+  if (!agent) return f;
+  return {
+    ...f,
+    mandate: { ...f.mandate, agent: { ...f.mandate.agent, cnf: { jwk: agent.jwk } } },
+  };
 }
