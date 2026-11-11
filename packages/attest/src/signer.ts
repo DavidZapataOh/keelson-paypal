@@ -1,10 +1,12 @@
 import { reportData, type SignerBinding, TeeKind } from "@keelson/core/eip712";
 import { type Address, getAddress, type Hex, hexToBytes, keccak256, type PublicClient } from "viem";
+import { AttestationCache } from "./cache.ts";
 import { AttestError } from "./errors.ts";
 import type { DstackEvent } from "./eventlog.ts";
 import { nitroMeasurement, tdxMeasurement } from "./measurement.ts";
 import { verifyNitro } from "./nitro.ts";
 import { type Collateral, verifyTdx } from "./tdx.ts";
+import type { Validity } from "./validity.ts";
 
 /** A signer binding as the engine serves it: numbers that exceed 53 bits are decimal strings. */
 export interface AttestedBinding {
@@ -54,6 +56,8 @@ export interface Expectations {
   rpc?: PublicClient;
   /** When set, the issuer key the attestation must commit to. */
   issuerJwkThumbprint?: Hex;
+  /** When set, a platform verification of the same evidence and allowlist is reused while valid. */
+  cache?: AttestationCache;
 }
 
 export interface VerifiedSigner {
@@ -90,8 +94,17 @@ function fromBinding(b: AttestedBinding): SignerBinding {
   };
 }
 
+interface Platform {
+  reportData: Hex;
+  measurement: string;
+  extra: { tcbStatus?: string; advisoryIds?: string[] };
+}
+
 /** The platform evidence checked, and what it attests about `report_data`. */
-async function platform(att: SignerAttestation, now: Date) {
+async function platform(
+  att: SignerAttestation,
+  now: Date,
+): Promise<Platform & { validity: Validity }> {
   if (att.tee === "tdx") {
     const bytes = hexToBytes(`0x${att.quote}`);
     const tdx = await verifyTdx(
@@ -102,6 +115,7 @@ async function platform(att: SignerAttestation, now: Date) {
       reportData: tdx.reportData,
       measurement: tdxMeasurement(tdx),
       extra: { tcbStatus: tdx.tcbStatus, advisoryIds: tdx.advisoryIds },
+      validity: tdx.validity,
     };
   }
   const nitro = await verifyNitro(
@@ -116,7 +130,24 @@ async function platform(att: SignerAttestation, now: Date) {
   }
   if (!same(nitro.nonce, att.block.hash))
     throw mismatch("the document nonce is not the block hash");
-  return { reportData: nitro.userData, measurement: nitroMeasurement(nitro), extra: {} };
+  return {
+    reportData: nitro.userData,
+    measurement: nitroMeasurement(nitro),
+    extra: {},
+    validity: nitro.validity,
+  };
+}
+
+/** {@link platform}, through `expect.cache` when set. */
+async function cachedPlatform(att: SignerAttestation, expect: Expectations): Promise<Platform> {
+  const { cache, now } = expect;
+  if (!cache) return platform(att, now);
+  const key = AttestationCache.key(att, expect.measurements);
+  const hit = cache.get<Platform>(key, now);
+  if (hit) return hit;
+  const { validity, ...verified } = await platform(att, now);
+  if (expect.measurements.includes(verified.measurement)) cache.set(key, verified, validity);
+  return verified;
 }
 
 async function checkBlock(att: SignerAttestation, expect: Expectations, rpc: PublicClient) {
@@ -135,7 +166,7 @@ export async function verifySigner(
   att: SignerAttestation,
   expect: Expectations,
 ): Promise<VerifiedSigner> {
-  const verified = await platform(att, expect.now);
+  const verified = await cachedPlatform(att, expect);
 
   const b = att.binding;
   const kind = att.tee === "tdx" ? TeeKind.TDX : TeeKind.NITRO;

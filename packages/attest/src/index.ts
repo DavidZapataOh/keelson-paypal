@@ -1,3 +1,4 @@
+export { AttestationCache } from "./cache.ts";
 export { type AttestCode, AttestError } from "./errors.ts";
 export { type DstackEvent, replayRtmr3 } from "./eventlog.ts";
 export { nitroMeasurement, tdxMeasurement } from "./measurement.ts";
@@ -12,3 +13,4 @@ export {
   verifySigner,
 } from "./signer.ts";
 export { acceptTcbStatus, type Collateral, type TdxResult, verifyTdx } from "./tdx.ts";
+export type { Validity } from "./validity.ts";

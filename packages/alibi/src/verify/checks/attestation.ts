@@ -1,4 +1,9 @@
-import { type DstackEvent, type SignerAttestation, verifySigner } from "@keelson/attest";
+import {
+  AttestationCache,
+  type DstackEvent,
+  type SignerAttestation,
+  verifySigner,
+} from "@keelson/attest";
 import { deploymentsFor } from "@keelson/chain";
 import { fromHex } from "@keelson/core";
 import { calculateJwkThumbprint, type JWK } from "jose";
@@ -65,6 +70,9 @@ async function tdxDocument(doc: Record<string, unknown>, at: string): Promise<vo
   );
 }
 
+/** One per process: the legs' documents repeat across the Alibis issued while they are current. */
+const cache = new AttestationCache();
+
 function attestation(kind: "tdx" | "nitro", step: number): CheckDef {
   return {
     id: kind === "tdx" ? "tee.attestation.tdx" : "tee.attestation.nitro",
@@ -91,8 +99,13 @@ function attestation(kind: "tdx" | "nitro", step: number): CheckDef {
       const bondVault = deploymentsFor(chainId).KeelsonBondVault;
       expect(bondVault, "no bond vault on this chain", ["/tee/domain/chain_id"]);
       const now = new Date(Number(input.tee.countersign.issuedAt) * 1000);
+      const attested = String(doc.binding?.engineBuildId).toLowerCase();
+      const builds = TEE_BUILDS.filter((b) => b.engineBuildId.toLowerCase() === attested);
+      expect(builds.length > 0, "the attested engine build is not a published one", [
+        `${at}/binding`,
+      ]);
       let last: unknown;
-      for (const build of TEE_BUILDS) {
+      for (const build of builds) {
         let v: Awaited<ReturnType<typeof verifySigner>>;
         try {
           v = await verifySigner(doc, {
@@ -103,6 +116,7 @@ function attestation(kind: "tdx" | "nitro", step: number): CheckDef {
             measurements: [build[kind]],
             now,
             issuerJwkThumbprint: (await issuerThumbprint(input)) as `0x${string}`,
+            cache,
           });
           expect(
             v.signer === getAddress(a.signer) && v.measurement === a.measurement,
