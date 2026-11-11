@@ -58,7 +58,18 @@ export function AppShell({
         ? { name: session.user.name || session.user.email || "" }
         : null;
   const nav = own ?? (session ? NAV : NAV.filter((n) => PUBLIC.has(n.href)));
-  const active = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
+  // A phone's tab bar holds five at most: the public proof pages share one tab there.
+  const tabs =
+    nav.length > 5
+      ? [
+          ...nav.filter((n) => !PUBLIC.has(n.href)),
+          { href: "/live/", label: "Proof", icon: Radio } satisfies NavItem,
+        ]
+      : nav;
+  const active = (href: string) =>
+    href === "/"
+      ? path === "/"
+      : path.startsWith(href) || (href === "/live/" && path.startsWith("/scoreboard/"));
   const signOut =
     person?.onSignOut ?? (() => authClient.signOut().then(() => location.assign("/")));
 
@@ -136,10 +147,10 @@ export function AppShell({
 
       <nav
         aria-label="Main"
-        style={{ gridTemplateColumns: `repeat(${nav.length}, minmax(0, 1fr))` }}
+        style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
         className="fixed inset-x-3 bottom-[max(12px,env(safe-area-inset-bottom))] z-30 grid rounded-2xl border bg-card/95 p-1.5 shadow-[0_18px_40px_-18px_rgb(23_24_27/0.4)] backdrop-blur-md lg:hidden"
       >
-        {nav.map(({ href, label, short, icon: Icon }) => (
+        {tabs.map(({ href, label, short, icon: Icon }) => (
           <Link
             key={href}
             href={href}

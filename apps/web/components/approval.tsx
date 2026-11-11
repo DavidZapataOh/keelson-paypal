@@ -450,13 +450,13 @@ export function Approval({
             ? over > 0
               ? `${money(BigInt(over), currency)} above this mandate. Paused until you answer.`
               : "At a store this mandate does not allow. Paused until you answer."
-            : "Check the code matches what your agent shows. Only continue if you started this."}
+            : "Only continue if you started this."}
         </p>
       </div>
 
       {once ? null : (
         <figure className="mt-5 grid gap-1.5">
-          <figcaption className="text-muted-foreground text-xs">In its words</figcaption>
+          <figcaption className="sr-only">In the agent's words</figcaption>
           <blockquote className="max-h-40 overflow-y-auto rounded-xl bg-bone-2 px-3.5 py-3 font-mono text-[13px] leading-relaxed">
             {request.reason}
           </blockquote>
