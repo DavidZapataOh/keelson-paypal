@@ -1,3 +1,4 @@
+export { AttestationCache } from "./cache.ts";
 export { type AttestCode, AttestError } from "./errors.ts";
 export { type DstackEvent, replayRtmr3 } from "./eventlog.ts";
 export { nitroMeasurement, tdxMeasurement } from "./measurement.ts";
