@@ -589,9 +589,10 @@ function EquivocationStep() {
     <div className="grid gap-5">
       <Lead>
         Every Alibi sits in a public log. If the log ever signed two different histories of the same
-        size, those two checkpoints are proof, and a bond on its key pays whoever submits them. The
-        contract checks both Ed25519 signatures itself; no one at Keelson is asked. Below is a real
-        slash on Arbitrum Sepolia, from our drill on a test origin.
+        size, those two checkpoints are proof, and they slash the bond on its key: a bounty to
+        whoever submits them, the rest to Keelson&apos;s reserve. The contract checks both Ed25519
+        signatures itself; no one at Keelson is asked. Below is a real slash on Arbitrum Sepolia,
+        from our drill on a test origin.
       </Lead>
       <LogBonds />
     </div>

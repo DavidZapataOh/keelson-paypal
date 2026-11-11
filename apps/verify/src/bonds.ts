@@ -80,12 +80,15 @@ export async function readBonds(rpc?: string): Promise<BondView[]> {
         });
         let notes: [string, string] | null = null;
         if (log) {
+          // Shown only when they are the call's arguments and hash to what the event recorded.
           const tx = await client.getTransaction({ hash: log.transactionHash });
-          const [a, b] = decodeFunctionData({ abi: logBondAbi, data: tx.input }).args as readonly [
-            Hex,
-            Hex,
-          ];
-          notes = [hexToString(a), hexToString(b)];
+          try {
+            const [a, b] = decodeFunctionData({ abi: logBondAbi, data: tx.input })
+              .args as readonly [Hex, Hex];
+            if (keccak256(a) === log.args.noteHashA && keccak256(b) === log.args.noteHashB) {
+              notes = [hexToString(a), hexToString(b)];
+            }
+          } catch {}
         }
         slash = {
           prover: e.prover,
