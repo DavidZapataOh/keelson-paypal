@@ -940,6 +940,86 @@ components:
           type:
             - string
             - "null"
+        cart:
+          type:
+            - object
+            - "null"
+          properties:
+            merchant:
+              type: object
+              properties:
+                id:
+                  type: string
+                name:
+                  type: string
+              required:
+                - id
+                - name
+            currency:
+              type: string
+            totalMinor:
+              type: string
+            lines:
+              type: array
+              items:
+                type: object
+                properties:
+                  sku:
+                    type: string
+                  size:
+                    type:
+                      - string
+                      - "null"
+                  color:
+                    type:
+                      - string
+                      - "null"
+                  category:
+                    type: string
+                  qty:
+                    type: integer
+                  unitMinor:
+                    type: string
+                required:
+                  - sku
+                  - size
+                  - color
+                  - category
+                  - qty
+                  - unitMinor
+          required:
+            - merchant
+            - currency
+            - totalMinor
+            - lines
+          description: "For `once`: the cart the agent tried, as it saw it."
+        checks:
+          type:
+            - array
+            - "null"
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              mandate:
+                type:
+                  - string
+                  - "null"
+              cart:
+                type:
+                  - string
+                  - "null"
+              pass:
+                type: boolean
+            required:
+              - field
+              - mandate
+              - cart
+              - pass
+          description: "For `once`: each mandate field against the cart; the failing ones
+            are why it is paused. `askAbove` fails when the cart is above the
+            user's ask-me amount."
         match:
           type:
             - object
@@ -970,6 +1050,8 @@ components:
         - limits
         - parent
         - mandateId
+        - cart
+        - checks
         - match
         - expiresAt
         - createdAt
@@ -1251,15 +1333,107 @@ components:
           type: string
         request:
           $ref: "#/components/schemas/Connection"
+        signer:
+          $ref: "#/components/schemas/EmbedSigner"
+        matchNumber:
+          type:
+            - integer
+            - "null"
       required:
         - ref
         - origin
         - request
+        - signer
+        - matchNumber
+    EmbedSigner:
+      type:
+        - object
+        - "null"
+      properties:
+        passkeys:
+          type: array
+          items:
+            type: object
+            properties:
+              credentialId:
+                type: string
+              payment:
+                type: boolean
+            required:
+              - credentialId
+              - payment
+        credentialId:
+          type:
+            - string
+            - "null"
+      required:
+        - passkeys
+        - credentialId
+    WebAuthnResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          maxLength: 1024
+        rawId:
+          type: string
+          maxLength: 1024
+        type:
+          type: string
+          enum:
+            - public-key
+        response:
+          type: object
+          additionalProperties: {}
+        authenticatorAttachment:
+          type: string
+          maxLength: 32
+        clientExtensionResults:
+          type: object
+          additionalProperties: {}
+          default: {}
+      required:
+        - id
+        - rawId
+        - type
+        - response
+      description: "`PublicKeyCredential.toJSON()` of the ceremony the frame started."
+    EmbedLink:
+      type: object
+      properties:
+        nonce:
+          type: string
+        expires_in:
+          type: integer
+      required:
+        - nonce
+        - expires_in
+    EmbedLinked:
+      type: object
+      properties:
+        origin:
+          type: string
+        grant:
+          type: string
+        expires_in:
+          type: integer
+      required:
+        - origin
+        - grant
+        - expires_in
     Agent:
       type: object
       properties:
         agentId:
           type: string
+        clientId:
+          type:
+            - string
+            - "null"
+          description: "The app acting through Keelson's hosted operator, which many apps
+            share: disconnect it alone with `?client=`. Null for an agent's own
+            operator, and for the hosted operator's mandates no app holds
+            (`Unknown app`)."
         name:
           type: string
         operator:
@@ -1300,6 +1474,7 @@ components:
           type: string
       required:
         - agentId
+        - clientId
         - name
         - operator
         - connected
@@ -1405,6 +1580,139 @@ components:
           description: Mandates stopped.
       required:
         - revoked
+    ActivityRow:
+      type: object
+      properties:
+        id:
+          type: string
+        at:
+          type: string
+        tone:
+          type: string
+          enum:
+            - good
+            - warn
+            - bad
+        line:
+          type: string
+          example: Claude Code bought $94.00 at RunFast.
+        agentId:
+          type:
+            - string
+            - "null"
+        purchaseId:
+          type:
+            - string
+            - "null"
+        mandateId:
+          type:
+            - string
+            - "null"
+        href:
+          type:
+            - string
+            - "null"
+        alibiUrl:
+          type:
+            - string
+            - "null"
+        logIndex:
+          type:
+            - string
+            - "null"
+      required:
+        - id
+        - at
+        - tone
+        - line
+        - agentId
+        - purchaseId
+        - mandateId
+        - href
+        - alibiUrl
+        - logIndex
+    PushSubscription:
+      type: object
+      properties:
+        endpoint:
+          type: string
+          maxLength: 2048
+          format: uri
+        expirationTime:
+          type:
+            - number
+            - "null"
+        keys:
+          type: object
+          properties:
+            p256dh:
+              type: string
+              pattern: ^[A-Za-z0-9_-]{80,100}$
+            auth:
+              type: string
+              pattern: ^[A-Za-z0-9_-]{16,32}$
+          required:
+            - p256dh
+            - auth
+      required:
+        - endpoint
+        - keys
+    AlertEmail:
+      type: object
+      properties:
+        address:
+          type:
+            - string
+            - "null"
+        confirmed:
+          type: boolean
+      required:
+        - address
+        - confirmed
+    SentEmail:
+      type: object
+      properties:
+        id:
+          type: string
+        address:
+          type: string
+        event:
+          type: string
+        subject:
+          type: string
+        subjectId:
+          type:
+            - string
+            - "null"
+        logIndex:
+          type:
+            - string
+            - "null"
+        alibiUrl:
+          type:
+            - string
+            - "null"
+        sentAt:
+          type:
+            - string
+            - "null"
+        error:
+          type:
+            - string
+            - "null"
+        createdAt:
+          type: string
+      required:
+        - id
+        - address
+        - event
+        - subject
+        - subjectId
+        - logIndex
+        - alibiUrl
+        - sentAt
+        - error
+        - createdAt
     CompiledMandate:
       type: object
       properties:
@@ -2348,7 +2656,21 @@ components:
           minLength: 1
           maxLength: 131072
           description: The open mandate closed by the agent's key binding over the request
-            and cart.
+            and cart. Required, except of an app acting for a user under a
+            mandate of Keelson's hosted operator, which sends `mandateId`
+            instead.
+        mandateId:
+          type: string
+          pattern: ^[0-7][0-9A-HJKMNP-TV-Z]{25}$
+          description: "Only for an app acting for a user (`purchases:write`) under a
+            mandate of Keelson's hosted operator that the user approved for it:
+            Keelson closes the mandate with the hosted operator's key over
+            `requestId` and this cart."
+        requestId:
+          type: string
+          pattern: ^[0-7][0-9A-HJKMNP-TV-Z]{25}$
+          description: "With `mandateId`: the request ULID the closed mandate binds, and
+            the purchase's id; a new one when left out."
         cart:
           $ref: "#/components/schemas/Cart"
         unit:
@@ -2407,7 +2729,6 @@ components:
             the `409 purchase-exists` answer names the purchase already made."
       required:
         - authorizationId
-        - closedMandate
         - cart
         - unit
         - evidenceRoot
@@ -6262,7 +6583,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
         "422":
-          description: Keelson cannot capture for the mandate's merchant, or PayPal refused
+          description: Keelson cannot capture for the mandate's merchant, PayPal refused,
+            or the hold would pass the hosted operator's total cap
+            (`hosted-cap`)
           content:
             application/problem+json:
               schema:
@@ -6406,8 +6729,9 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "422":
           description: The cart is outside the mandate, its open cart holds with this one
-            exceed the remaining budget, Keelson cannot capture for it, or
-            PayPal refused
+            exceed the remaining budget, Keelson cannot capture for it, PayPal
+            refused, or the hold would pass the hosted operator's total cap
+            (`hosted-cap`)
           content:
             application/problem+json:
               schema:
@@ -6564,12 +6888,24 @@ paths:
       tags:
         - connections
       summary: Ask the user for a mandate
-      description: "The agent's operator asks its user for a mandate with these
-        limits, as an RFC 8628 device authorization: the user opens
+      description: >-
+        The agent's operator asks its user for a mandate with these limits, as
+        an RFC 8628 device authorization: the user opens
         `verification_uri_complete`, compares `user_code` and approves on
         Keelson's page with a passkey, lowering any limit. Only a client that
         linked an operator may ask, and the mandate names that operator. The
-        code expires in 15 minutes and is single use."
+        code expires in 15 minutes and is single use.
+
+
+        An app acting for a user with a token they granted it
+        (`mandates:request`) asks that user only: the request is theirs from the
+        start, so it carries no number to match. The mandate names the app's own
+        operator, or Keelson's hosted operator when the app has none. Through
+        the hosted operator, every app is capped (`hosted-cap`): one user's open
+        mandates and purchases of the last 180 days with apps whose redirect
+        URIs are not a known host's may not pass `HOSTED_CAP_PER_USER_MINOR`,
+        and with all such apps `HOSTED_CAP_KNOWN_PER_USER_MINOR`; every user's
+        funded exposure may not pass `HOSTED_CAP_TOTAL_MINOR`.
       parameters:
         - schema:
             type: string
@@ -6598,7 +6934,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
         "403":
-          description: The client linked no operator
+          description: The client linked no operator, and no hosted operator serves it
           content:
             application/problem+json:
               schema:
@@ -6610,7 +6946,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
         "422":
-          description: The request is invalid
+          description: The request is invalid, or over the hosted operator's cap
+            (`hosted-cap`)
           content:
             application/problem+json:
               schema:
@@ -6821,7 +7158,8 @@ paths:
       summary: Read your request's state
       description: "The state of a request this client made, as often as needed:
         reading it changes nothing and does not spend the device code. Wait
-        `interval` seconds between reads."
+        `interval` seconds between reads. An app acting for a user
+        (`mandates:request`) reads only that user's requests."
       parameters:
         - schema:
             type: string
@@ -6963,7 +7301,9 @@ paths:
         the user reads verbatim. The user may lower what is asked and approves
         with a passkey; the new mandate then replaces this one, whose hold is
         released. Nothing changes until the user signs. Poll `GET
-        /v1/connections/requests/{id}` for the answer.
+        /v1/connections/requests/{id}` for the answer. An app acting for a user
+        (`mandates:request`) asks only about a mandate that user approved for
+        it.
       parameters:
         - schema:
             type: string
@@ -7015,7 +7355,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
         "404":
-          description: No such mandate of an operator this client linked
+          description: No such mandate of an operator this client linked, or that the user
+            approved for this app
           content:
             application/problem+json:
               schema:
@@ -7028,7 +7369,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
         "422":
-          description: The limits are invalid
+          description: The limits are invalid, or over the hosted operator's cap
+            (`hosted-cap`)
           content:
             application/problem+json:
               schema:
@@ -7040,7 +7382,9 @@ paths:
       summary: Check a cart against a mandate
       description: "A dry run: what a countersign of this cart would find, field by
         field, from the same policy set the TEE legs run, with nothing signed,
-        reserved or logged. The countersign stays the only decision."
+        reserved or logged. The countersign stays the only decision. An app
+        acting for a user (`purchases:write`) checks only under a mandate that
+        user approved for it."
       parameters:
         - schema:
             type: string
@@ -7252,6 +7596,499 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+  /v1/embed/sign-in/options:
+    post:
+      tags:
+        - embed
+      summary: Start a passkey sign-in in the embedded approval
+      description: WebAuthn request options for any of the user's passkeys, with a
+        challenge for this embed session only. The frame passes them to
+        `navigator.credentials.get`.
+      parameters:
+        - schema:
+            type: string
+            maxLength: 64
+          required: false
+          name: keelson-embed
+          in: header
+      responses:
+        "200":
+          description: The options
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+        "401":
+          description: No live embed session
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/embed/sign-in:
+    post:
+      tags:
+        - embed
+      summary: Sign in with a passkey in the embedded approval
+      description: Verifies the assertion against the session's challenge. It must
+        come from the approval in a frame whose top-level origin is the embed's
+        platform (`crossOrigin` true, `topOrigin` that origin). The session then
+        signs for the passkey's user.
+      parameters:
+        - schema:
+            type: string
+            maxLength: 64
+          required: false
+          name: keelson-embed
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebAuthnResponse"
+      responses:
+        "200":
+          description: Who the frame signs for
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbedSigner"
+        "401":
+          description: No live embed session, or the passkey did not verify
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/embed/links:
+    post:
+      tags:
+        - embed
+      summary: Link the embedded approval to a Keelson window
+      description: "A single-use nonce for the Keelson window the frame opens for a
+        user without a passkey here: once they sign in there and confirm, this
+        session signs for them."
+      parameters:
+        - schema:
+            type: string
+            maxLength: 64
+          required: false
+          name: keelson-embed
+          in: header
+      responses:
+        "201":
+          description: The nonce
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbedLink"
+        "401":
+          description: No live embed session
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/embed/links/inspect:
+    post:
+      tags:
+        - embed
+      summary: Read a link in the Keelson window
+      description: The agent platform and the request an unspent link was opened for,
+        so the window can show the user which page they are about to link before
+        they confirm.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nonce:
+                  type: string
+                  maxLength: 64
+              required:
+                - nonce
+      responses:
+        "200":
+          description: The link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbedLink"
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: The link is unknown, spent or expired
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/embed/links/confirm:
+    post:
+      tags:
+        - embed
+      summary: Confirm a link from the Keelson window
+      description: The signed-in user confirms the embedded approval that opened this
+        window, named by its `ref`. The answer is a single-use grant the window
+        hands only to that frame, its opener on Keelson's origin; the frame
+        claims it with `POST /v1/embed/links/claim`. The frame may create a
+        passkey only for a user who has none.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nonce:
+                  type: string
+                  maxLength: 64
+                ref:
+                  type: string
+                  maxLength: 26
+              required:
+                - nonce
+                - ref
+      responses:
+        "200":
+          description: The grant for the frame
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbedLinked"
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: The link is unknown, spent, expired or for another request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/embed/links/claim:
+    post:
+      tags:
+        - embed
+      summary: Claim a link's grant in the embedded approval
+      description: The frame redeems the grant its Keelson window handed it. It works
+        once, and only for the session that opened the link; the session then
+        signs for that user.
+      parameters:
+        - schema:
+            type: string
+            maxLength: 64
+          required: false
+          name: keelson-embed
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                grant:
+                  type: string
+                  maxLength: 64
+              required:
+                - grant
+      responses:
+        "200":
+          description: Who the frame signs for
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbedSigner"
+        "401":
+          description: No live embed session, or the grant is not this session's
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/embed/passkeys/options:
+    post:
+      tags:
+        - embed
+      summary: Start creating a passkey in the embedded approval
+      description: WebAuthn creation options for the session's user, who linked a
+        Keelson window. With `platform`, the passkey is created on this device's
+        platform authenticator with the SPC `payment` extension.
+      parameters:
+        - schema:
+            type: string
+            maxLength: 64
+          required: false
+          name: keelson-embed
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                platform:
+                  type: boolean
+              required:
+                - platform
+      responses:
+        "200":
+          description: The options
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+        "401":
+          description: No live embed session, or no user linked
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/embed/passkeys:
+    post:
+      tags:
+        - embed
+      summary: Create a passkey in the embedded approval
+      description: Verifies the new credential against the session's challenge, made
+        in the approval framed by the embed's platform, and stores it as the
+        user's passkey (ES256 only).
+      parameters:
+        - schema:
+            type: string
+            maxLength: 64
+          required: false
+          name: keelson-embed
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebAuthnResponse"
+      responses:
+        "201":
+          description: Who the frame signs for, with the new passkey
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbedSigner"
+        "401":
+          description: No live embed session, or no user linked
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: The credential did not verify
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/embed/draft:
+    post:
+      tags:
+        - embed
+      summary: Draft the mandate in the embedded approval
+      description: As `POST /v1/connections/{code}/draft`, for the embedded request
+        and the session's user. The mandate carries `embed.top_origin`, the
+        platform's origin, so only an assertion made in this frame signs it.
+      parameters:
+        - schema:
+            type: string
+            maxLength: 64
+          required: false
+          name: keelson-embed
+          in: header
+        - schema:
+            type: string
+          required: false
+          name: keelson-device
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectionDraft"
+      responses:
+        "200":
+          description: The draft mandate and its card
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mandateDraft:
+                    type: object
+                    additionalProperties: {}
+                  card:
+                    $ref: "#/components/schemas/MandateCard"
+                  ambiguous:
+                    type: array
+                    items:
+                      type: string
+                  check:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        enum:
+                          - skipped
+                      discrepancies:
+                        type: "null"
+                    required:
+                      - status
+                      - discrepancies
+                required:
+                  - mandateDraft
+                  - card
+                  - ambiguous
+                  - check
+        "401":
+          description: No live embed session, or no user
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The passkey is not the user's
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: The request is no longer open
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: The user has no passkey
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: A limit is above what the agent asked
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: The operator's agent key or bond is not set
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/embed/mandates:
+    post:
+      tags:
+        - embed
+      summary: Approve the embedded request with a signed mandate
+      description: As `POST /v1/mandates` with `connection`, for the embedded request
+        and the session's user. The mandate's `embed.top_origin` must be the
+        platform's origin, still registered, and the assertion must be made in
+        this frame under it.
+      parameters:
+        - schema:
+            type: string
+            maxLength: 64
+          required: false
+          name: keelson-embed
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payloadSd:
+                  type: object
+                  additionalProperties: {}
+                  description: The SD-JWT payload with its `_sd` digests, as signed.
+                disclosures:
+                  type: array
+                  items:
+                    type: string
+                  maxItems: 1024
+                  description: Every disclosure of the payload; each digest must resolve.
+                commitment:
+                  type: string
+                  pattern: ^0x[0-9a-f]{64}$
+                  description: "`C_m`; must equal the payload's `zk.commitment`."
+                salt:
+                  type: string
+                  pattern: ^0x[0-9a-f]{32}$
+                  description: The salt that opens `C_m`; the TEE needs it to issue the mandate.
+                assertion:
+                  $ref: "#/components/schemas/PasskeyAssertion"
+                askAboveMinor:
+                  type: integer
+                  exclusiveMinimum: 0
+                  maximum: 9007199254740991
+              required:
+                - payloadSd
+                - disclosures
+                - commitment
+                - assertion
+      responses:
+        "201":
+          description: The mandate; the request is approved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedMandate"
+        "401":
+          description: No live embed session, no user, or a bad signature
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The passkey is not the user's, or the origin is no longer registered
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: The request is no longer open
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: The request was already answered
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: The mandate is invalid
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Too many approvals
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: Leg A cannot issue the mandate now
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
   /v1/agents:
     get:
       tags:
@@ -7369,9 +8206,18 @@ paths:
       tags:
         - agents
       summary: Disconnect an agent
-      description: Revokes every live mandate of yours that names the agent and ends
-        its connections. Keelson refuses its countersigns from now on; purchases
+      description: >-
+        Revokes every live mandate of yours that names the agent and ends its
+        connections. Keelson refuses its countersigns from now on; purchases
         already countersigned may still be captured.
+
+
+        With `client`, only that app, of the apps acting through the agent: the
+        mandates you approved for it, its requests, its OAuth grant and refresh
+        tokens, and the access tokens it holds for you. Apps acting through
+        Keelson's hosted operator are disconnected this way; without `client`,
+        the hosted operator ends only your mandates of it that no app holds (its
+        `Unknown app` row).
       parameters:
         - schema:
             type: string
@@ -7379,6 +8225,13 @@ paths:
           required: true
           name: agentId
           in: path
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: false
+          name: client
+          in: query
         - schema:
             type: string
             minLength: 1
@@ -7401,6 +8254,368 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "404":
           description: No agent of yours with this id
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/activity:
+    get:
+      tags:
+        - agents
+      summary: Read your activity
+      description: "What your agents and Keelson did, newest first, one plain line
+        each: requests, purchases, blocks and stops. Purchases link to their
+        Alibi and log entry."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^(0|[1-9]\d{0,77})$
+            description: Only this agent's rows, and stops of every agent.
+          required: false
+          description: Only this agent's rows, and stops of every agent.
+          name: agent
+          in: query
+      responses:
+        "200":
+          description: The feed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ActivityRow"
+                required:
+                  - rows
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/push/key:
+    get:
+      tags:
+        - alerts
+      summary: Read the push key
+      description: The VAPID public key (RFC 8292) to pass as `applicationServerKey`
+        to `PushManager.subscribe()`.
+      responses:
+        "200":
+          description: The key, base64url
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  publicKey:
+                    type: string
+                required:
+                  - publicKey
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: Alerts are not configured
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/push/subscriptions:
+    post:
+      tags:
+        - alerts
+      summary: Get alerts on this browser
+      description: "Stores the browser's push subscription: agent requests, blocked
+        carts and stops are pushed to it."
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushSubscription"
+      responses:
+        "201":
+          description: Subscribed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                required:
+                  - id
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    delete:
+      tags:
+        - alerts
+      summary: Stop alerts on this browser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                endpoint:
+                  type: string
+                  maxLength: 2048
+              required:
+                - endpoint
+      responses:
+        "204":
+          description: Removed
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/push/test:
+    post:
+      tags:
+        - alerts
+      summary: Send a test notification
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      responses:
+        "200":
+          description: How many browsers' push services accepted it
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sent:
+                    type: integer
+                required:
+                  - sent
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: Alerts are not configured
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/alerts/email:
+    get:
+      tags:
+        - alerts
+      summary: Read your alert address
+      responses:
+        "200":
+          description: The address
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertEmail"
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    put:
+      tags:
+        - alerts
+      summary: Set your alert address
+      description: Stores the address unconfirmed and sends it a confirmation link,
+        signed, single use and valid for 24 hours. Alerts are emailed only once
+        it is confirmed. Never the sign-in address unless entered here.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                address:
+                  type: string
+                  maxLength: 254
+                  format: email
+              required:
+                - address
+      responses:
+        "202":
+          description: The confirmation link was sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertEmail"
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: A link was sent less than a minute ago
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: Alerts are not configured
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    delete:
+      tags:
+        - alerts
+      summary: Stop email alerts
+      responses:
+        "204":
+          description: Removed
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/alerts/email/confirm:
+    post:
+      tags:
+        - alerts
+      summary: Confirm an alert address
+      description: Opened from the confirmation link; needs no session. A link works once.
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+                  maxLength: 1024
+              required:
+                - token
+      responses:
+        "200":
+          description: Confirmed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  address:
+                    type: string
+                required:
+                  - address
+        "404":
+          description: The link is invalid, used or expired
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: Alerts are not configured
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/alerts/unsubscribe:
+    post:
+      tags:
+        - alerts
+      summary: Unsubscribe in one click
+      description: "The `List-Unsubscribe` URI of every alert email (RFC 8058): the
+        mail client posts `List-Unsubscribe=One-Click` to it, with no session or
+        other context. The token in the query names the address."
+      parameters:
+        - schema:
+            type: string
+            maxLength: 1024
+          required: true
+          name: token
+          in: query
+      responses:
+        "200":
+          description: No more email goes to the address
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  unsubscribed:
+                    type: boolean
+                    enum:
+                      - true
+                required:
+                  - unsubscribed
+        "404":
+          description: The link is invalid
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: Alerts are not configured
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/alerts/emails:
+    get:
+      tags:
+        - alerts
+      summary: List the emails sent to you
+      description: Every alert email composed for you, newest first, with what it reported.
+      responses:
+        "200":
+          description: The emails
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  emails:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SentEmail"
+                required:
+                  - emails
+        "401":
+          description: Not signed in
           content:
             application/problem+json:
               schema:
@@ -7499,7 +8714,11 @@ paths:
         - tee
       summary: Countersign a cart
       description: "Sends the cart to the TEE legs in order and returns the
-        countersignatures only when both agree. A DENY is countersigned too. A
+        countersignatures only when both agree. A DENY is countersigned too. An
+        app acting for a user (`purchases:write`) countersigns only under a
+        mandate that user approved for it; under a mandate of Keelson's hosted
+        operator it sends `mandateId` and Keelson closes the mandate with that
+        operator's key over the request id and this cart, and nothing else. A
         cart is bought once per mandate: while a purchase of the same cart is in
         flight, or for ten minutes after it was captured, another request for it
         is answered `409 purchase-exists` with that purchase's id, whatever its
@@ -7558,7 +8777,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
         "404":
-          description: No such mandate of an operator this client linked
+          description: No such mandate of an operator this client linked, or that the user
+            approved for this app
           content:
             application/problem+json:
               schema:
@@ -7602,7 +8822,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
         "503":
-          description: A leg needed to sign, or PayPal, is unavailable
+          description: A leg needed to sign, or PayPal, is unavailable, or the hosted
+            operator's key is not configured
           content:
             application/problem+json:
               schema:
@@ -7681,7 +8902,8 @@ paths:
       summary: A purchase
       description: "The purchase's state: its log index, its coverage and its capture
         once each is recorded. Readable by the mandate's owner and by the client
-        that asked for the countersign."
+        that asked for the countersign; an app acting for a user, only for that
+        user."
       parameters:
         - schema:
             type: string
@@ -7708,7 +8930,8 @@ paths:
         - evidence
       summary: Store sealed evidence
       description: Stores what the agent saw at decision time for an active mandate of
-        an operator this client linked. The manifest is rebuilt from the items
+        an operator this client linked or, for an app acting for a user, one
+        that user approved for the app. The manifest is rebuilt from the items
         and must match, every item has its own salt, no public item may still
         hold an email address or phone number, and every `.original` must open
         with the evidence identity. A countersign may only bind a stored root,
@@ -7983,7 +9206,7 @@ paths:
         notary (MPC-TLS, or Proxy-TLS when MPC-TLS fails), commits to the body
         or to the object around `anchor`, and returns the EIP-712 `WebFact` leg
         A signed with its attested key. Runs apart from any countersign and
-        never delays one.
+        never delays one. An app acting for a user needs `evidence:write`.
       parameters:
         - schema:
             type: string
@@ -8665,7 +9888,9 @@ paths:
       description: Lists the active mandates whose operator is `agentId`, with their
         open mandates and holds, so that the operator's agent can buy under
         them. Only the OAuth client that linked the operator (`POST
-        /v1/operators`) reads them; any other caller gets 404.
+        /v1/operators`) reads them; any other caller gets 404. An app acting for
+        a user (`mandates:request`) reads only the mandates naming `agentId`
+        that this user approved for it.
       parameters:
         - schema:
             type: string

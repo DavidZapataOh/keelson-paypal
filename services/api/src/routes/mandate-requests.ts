@@ -1,15 +1,16 @@
-import { getCedarLangVersion, getCedarVersion } from "@cedar-policy/cedar-wasm";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { type Cart, cartHash } from "@keelson/core";
+import type { Cart } from "@keelson/core";
 import { agentConnections, and, eq, gt, mandates, operators, sql } from "@keelson/db";
 import { decodeMandate } from "@keelson/mandate";
-import { cartContext, type EngineMeta, evaluate, mandateAgent } from "@keelson/policy";
 import type { Context } from "hono";
 import type { Deps } from "../app.ts";
+import { cartChecks } from "../cart-checks.ts";
 import { grantOf, REQUEST_TTL_SEC, requestChange } from "../connections.ts";
+import { approvedMandate, isDelegated, notAnotherApps } from "../delegated.ts";
+import { hostedCapError } from "../hosted-caps.ts";
 import { MERCHANTS } from "../merchants.ts";
-import { requireClient } from "../middleware/auth.ts";
-import { fieldChecks } from "../pipeline/drive.ts";
+import { requireAgent } from "../middleware/auth.ts";
+import { notify, requestAlert } from "../notify/notifier.ts";
 import type { Principal } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 import { stoppedSince } from "../stop.ts";
@@ -19,17 +20,6 @@ import { REVOCABLE } from "./revoke.ts";
 const problemContent = { "application/problem+json": { schema: ProblemSchema } };
 const Id = z.object({ id: z.string().regex(/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/) });
 const Minor = z.int().positive().max(Number.MAX_SAFE_INTEGER);
-
-/** The evaluator a check runs: the policy set the TEE legs run, in process, with no proof bundle. */
-const EVALUATOR: EngineMeta = {
-  cedar_policy: getCedarVersion(),
-  lang: getCedarLangVersion(),
-  symcc: "",
-  cvc5: "",
-  oci_digest: "",
-  canonicalizer: "@keelson/api check",
-  proof_bundle_hash: "",
-};
 
 /** The fields one approval of the user may lift: how much, and at which store. */
 const LIFTABLE = new Set(["total", "budget", "merchant"]);
@@ -91,8 +81,8 @@ const change = createRoute({
   tags: ["mandates"],
   summary: "Ask the user to change a mandate",
   description:
-    "The agent asks its user for different limits, with a one-line note the user reads verbatim. The user may lower what is asked and approves with a passkey; the new mandate then replaces this one, whose hold is released. Nothing changes until the user signs. Poll `GET /v1/connections/requests/{id}` for the answer.",
-  middleware: [requireClient(["countersign:write"])],
+    "The agent asks its user for different limits, with a one-line note the user reads verbatim. The user may lower what is asked and approves with a passkey; the new mandate then replaces this one, whose hold is released. Nothing changes until the user signs. Poll `GET /v1/connections/requests/{id}` for the answer. An app acting for a user (`mandates:request`) asks only about a mandate that user approved for it.",
+  middleware: [requireAgent("mandates:request")],
   request: {
     params: Id,
     headers: z.object({ "idempotency-key": z.string().min(1).max(255) }),
@@ -115,7 +105,8 @@ const change = createRoute({
     },
     401: { description: "No valid access token", content: problemContent },
     404: {
-      description: "No such mandate of an operator this client linked",
+      description:
+        "No such mandate of an operator this client linked, or that the user approved for this app",
       content: problemContent,
     },
     409: {
@@ -123,7 +114,10 @@ const change = createRoute({
         "The mandate has ended, or a change of it is already waiting for the user (`change-pending`, with its `requestId`)",
       content: problemContent,
     },
-    422: { description: "The limits are invalid", content: problemContent },
+    422: {
+      description: "The limits are invalid, or over the hosted operator's cap (`hosted-cap`)",
+      content: problemContent,
+    },
   },
 });
 
@@ -133,8 +127,8 @@ const check = createRoute({
   tags: ["mandates"],
   summary: "Check a cart against a mandate",
   description:
-    "A dry run: what a countersign of this cart would find, field by field, from the same policy set the TEE legs run, with nothing signed, reserved or logged. The countersign stays the only decision.",
-  middleware: [requireClient(["countersign:write"])],
+    "A dry run: what a countersign of this cart would find, field by field, from the same policy set the TEE legs run, with nothing signed, reserved or logged. The countersign stays the only decision. An app acting for a user (`purchases:write`) checks only under a mandate that user approved for it.",
+  middleware: [requireAgent("purchases:write")],
   request: {
     params: Id,
     body: {
@@ -152,15 +146,20 @@ const check = createRoute({
   },
 });
 
-/** The mandate if an operator this client linked holds it. */
+/**
+ * The mandate if an operator this client linked holds it or, for an app acting for a user, if
+ * that user approved it for the app.
+ */
 async function clientMandate(c: Context, db: Deps["db"], id: string) {
+  const principal = c.get("principal") as Principal;
+  if (isDelegated(principal)) return approvedMandate(db, principal, id);
   const [found] = await db
     .select({ mandate: mandates, clientId: operators.clientId })
     .from(mandates)
     .innerJoin(operators, eq(operators.agentId, mandates.operatorAgentId))
-    .where(eq(mandates.id, id));
+    .where(and(eq(mandates.id, id), notAnotherApps(principal.subject)));
   // The same answer for an unknown mandate and another client's, so neither is disclosed.
-  if (!found?.clientId || found.clientId !== (c.get("principal") as Principal).subject) {
+  if (!found?.clientId || found.clientId !== principal.subject) {
     return undefined;
   }
   return found.mandate;
@@ -173,7 +172,7 @@ const decoded = (m: typeof mandates.$inferSelect) =>
 
 export function registerMandateRequests(
   app: OpenAPIHono,
-  deps: Pick<Deps, "db" | "kv" | "appOrigin">,
+  deps: Pick<Deps, "db" | "kv" | "appOrigin" | "notifier" | "demoAgentId" | "hostedCaps">,
 ): void {
   const { db } = deps;
   const appOrigin = deps.appOrigin ?? "https://app.keelson.finance";
@@ -226,6 +225,15 @@ export function registerMandateRequests(
               ? "until is more than 30 days away"
               : undefined;
     if (invalid) return problem(c, 422, "invalid-limits", "Invalid limits", invalid);
+    const over = await hostedCapError(db, deps, {
+      clientId: (c.get("principal") as Principal).subject,
+      operatorAgentId: mandate.operatorAgentId,
+      userId: mandate.userId,
+      currency: grant.currency,
+      amountMinor: total,
+      replaces: mandate.id,
+    });
+    if (over) return problem(c, 422, "hosted-cap", "Over the hosted operator's cap", over);
     // One change of a mandate waits for the user at a time.
     const auth = await db.transaction(async (tx) => {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`change:${mandate.id}`}))`);
@@ -269,6 +277,7 @@ export function registerMandateRequests(
       );
     });
     if (auth instanceof Response) return auth;
+    notify(deps.notifier, (n) => requestAlert(n, auth.request_id));
     const { device_code: _, ...shown } = auth;
     return c.json(shown, 201, { "cache-control": "no-store" });
   });
@@ -300,40 +309,18 @@ export function registerMandateRequests(
         next: "Stop. Do not buy or ask again unless the user tells you to.",
       });
     }
-    let m: ReturnType<typeof decodeMandate> | undefined;
-    try {
-      m = decoded(mandate);
-    } catch {
-      m = undefined;
-    }
-    let checks: ReturnType<typeof fieldChecks> = [];
-    if (m && mandate.mandateHash) {
-      const trace = evaluate(
-        {
-          mandate: m,
-          budgetLeftMinor: Number(mandate.remainingMinor),
-          agent: mandateAgent(m),
-          context: cartContext(cart),
-          now: new Date(),
-          evidence: {},
-          mandateHash: mandate.mandateHash,
-          cartHash: cartHash(cart),
-        },
-        EVALUATOR,
-      );
-      checks = fieldChecks(trace, cart.currency);
-      const onboarded = MERCHANTS.some((x) => x.id === cart.merchant);
-      for (const f of checks.filter((x) => !x.pass)) {
-        const liftable = LIFTABLE.has(f.field) && onboarded;
-        blockers.push({
-          code: `field:${f.field}`,
-          field: f.field,
-          message: `${f.field}: the mandate allows ${f.mandate ?? "nothing"}, the cart has ${f.cart ?? "nothing"}.`,
-          next: liftable
-            ? "The countersign pauses this cart for the user's one-time approval, or ask for more room with keelson.request_mandate_change."
-            : "Change the cart: one approval cannot lift this field.",
-        });
-      }
+    const checks = cartChecks(mandate, cart);
+    const onboarded = MERCHANTS.some((x) => x.id === cart.merchant);
+    for (const f of checks.filter((x) => !x.pass)) {
+      const liftable = LIFTABLE.has(f.field) && onboarded;
+      blockers.push({
+        code: `field:${f.field}`,
+        field: f.field,
+        message: `${f.field}: the mandate allows ${f.mandate ?? "nothing"}, the cart has ${f.cart ?? "nothing"}.`,
+        next: liftable
+          ? "The countersign pauses this cart for the user's one-time approval, or ask for more room with keelson.request_mandate_change."
+          : "Change the cart: one approval cannot lift this field.",
+      });
     }
     const [answered] = await db
       .select({ askAbove: agentConnections.askAboveMinor })

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"filippo.io/torchwood"
+	"golang.org/x/mod/sumdb/note"
 )
 
 func TestFollowerAuditsEveryCheckpointAndLeaf(t *testing.T) {
@@ -154,5 +155,51 @@ func TestLogResponsesAreBounded(t *testing.T) {
 	var tooLarge *http.MaxBytesError
 	if _, err := io.ReadAll(res.Body); !errors.As(err, &tooLarge) {
 		t.Fatalf("an oversized response read with %v", err)
+	}
+}
+
+func TestFollowerFollowsTheLogToANewKey(t *testing.T) {
+	vectors := loadVectors(t)
+	old := newLogKeys(t, testOrigin)
+	ws := old.startWitnesses(t, testOrigin, nil)
+	dir := filepath.Join(t.TempDir(), "log")
+	l := openTestLog(t, dir, old.signer, witnessPolicy(old.vkey, ws))
+	srv := serveLog(t, dir)
+	l.append(t, freshLeaves(t, vectors["allow"], 20)...)
+
+	dataDir := t.TempDir()
+	m := startMonitor(t, dataDir, testOriginAt(t, srv.URL, witnessPolicy(old.vkey, ws)))
+	m.waitFor(t, 10*time.Second, func(r Report) bool { return r.Size == 20 })
+	m.stop()
+
+	// The log moves to a new key; the witnesses now cosign checkpoints signed with it.
+	l.close(t)
+	moved := newLogKeys(t, testOrigin)
+	ws = moved.startWitnesses(t, testOrigin, ws)
+	p := witnessPolicy(moved.vkey, ws)
+	l = openTestLog(t, dir, moved.signer, p)
+	l.append(t, freshLeaves(t, vectors["allow"], 10)...)
+	retired, err := note.NewVerifier(old.vkey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Without the old key, or with it bounded below the saved view, the view does not open.
+	for _, retire := range [][]RetiredKey{nil, {{Verifier: retired, UntilSize: 19}}} {
+		o := testOriginAt(t, srv.URL, p)
+		o.Retired = retire
+		m = startMonitor(t, dataDir, o)
+		if r := m.waitFor(t, 10*time.Second, func(r Report) bool { return r.Error != "" }); r.Size != 20 {
+			t.Fatalf("the monitor moved without a key for its view: %+v", r)
+		}
+		m.stop()
+	}
+
+	o := testOriginAt(t, srv.URL, p)
+	o.Retired = []RetiredKey{{Verifier: retired, UntilSize: 20}}
+	m = startMonitor(t, dataDir, o)
+	r := m.waitFor(t, 10*time.Second, func(r Report) bool { return r.Size == 30 })
+	if r.LeavesAudited != 30 || hasFinding(r, "equivocation") {
+		t.Fatalf("report: %+v", r)
 	}
 }

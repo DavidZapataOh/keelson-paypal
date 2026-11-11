@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { type Draft, toMandate } from "@keelson/compiler";
-import { CURRENCIES, type CurrencyCode } from "@keelson/core";
+import { type Cart, CURRENCIES, type CurrencyCode } from "@keelson/core";
 import { agentConnections, and, eq, isNull, mandates, operators, or, sql } from "@keelson/db";
 import {
   buildSdPayload,
@@ -30,10 +30,13 @@ import {
   unmatched,
   withFreshUserCode,
 } from "../connections.ts";
+import { isDelegated } from "../delegated.ts";
 import { publishEvent } from "../events.ts";
+import { hostedCapError } from "../hosted-caps.ts";
 import { MERCHANTS } from "../merchants.ts";
-import { requireClient, requireSession } from "../middleware/auth.ts";
+import { requireAgent, requireClient, requireSession } from "../middleware/auth.ts";
 import { rateLimit } from "../middleware/rate-limit.ts";
+import { notify, requestAlert } from "../notify/notifier.ts";
 import { type Principal, principalChannel } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 import { signingContext } from "./compile.ts";
@@ -168,6 +171,38 @@ export const ConnectionView = z
       })
       .nullable(),
     mandateId: z.string().nullable(),
+    cart: z
+      .object({
+        merchant: z.object({ id: z.string(), name: z.string() }),
+        currency: z.string(),
+        totalMinor: z.string(),
+        lines: z.array(
+          z.object({
+            sku: z.string(),
+            size: z.string().nullable(),
+            color: z.string().nullable(),
+            category: z.string(),
+            qty: z.int(),
+            unitMinor: z.string(),
+          }),
+        ),
+      })
+      .nullable()
+      .openapi({ description: "For `once`: the cart the agent tried, as it saw it." }),
+    checks: z
+      .array(
+        z.object({
+          field: z.string(),
+          mandate: z.string().nullable(),
+          cart: z.string().nullable(),
+          pass: z.boolean(),
+        }),
+      )
+      .nullable()
+      .openapi({
+        description:
+          "For `once`: each mandate field against the cart; the failing ones are why it is paused. `askAbove` fails when the cart is above the user's ask-me amount.",
+      }),
     match: z
       .object({ options: z.array(z.int()), matched: z.boolean() })
       .nullable()
@@ -196,7 +231,7 @@ const RequestState = z
   })
   .openapi("ConnectionRequestState");
 
-const DraftRequest = z
+export const DraftRequest = z
   .object({
     limits: z.object({
       perPurchaseMinor: Minor,
@@ -247,8 +282,8 @@ const requestState = createRoute({
   tags: ["connections"],
   summary: "Read your request's state",
   description:
-    "The state of a request this client made, as often as needed: reading it changes nothing and does not spend the device code. Wait `interval` seconds between reads.",
-  middleware: [requireClient(["countersign:write"])],
+    "The state of a request this client made, as often as needed: reading it changes nothing and does not spend the device code. Wait `interval` seconds between reads. An app acting for a user (`mandates:request`) reads only that user's requests.",
+  middleware: [requireAgent("mandates:request")],
   request: { params: z.object({ id: z.string().regex(/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/) }) },
   responses: {
     200: {
@@ -275,8 +310,8 @@ const create = createRoute({
   tags: ["connections"],
   summary: "Ask the user for a mandate",
   description:
-    "The agent's operator asks its user for a mandate with these limits, as an RFC 8628 device authorization: the user opens `verification_uri_complete`, compares `user_code` and approves on Keelson's page with a passkey, lowering any limit. Only a client that linked an operator may ask, and the mandate names that operator. The code expires in 15 minutes and is single use.",
-  middleware: [requireClient(["countersign:write"])],
+    "The agent's operator asks its user for a mandate with these limits, as an RFC 8628 device authorization: the user opens `verification_uri_complete`, compares `user_code` and approves on Keelson's page with a passkey, lowering any limit. Only a client that linked an operator may ask, and the mandate names that operator. The code expires in 15 minutes and is single use.\n\nAn app acting for a user with a token they granted it (`mandates:request`) asks that user only: the request is theirs from the start, so it carries no number to match. The mandate names the app's own operator, or Keelson's hosted operator when the app has none. Through the hosted operator, every app is capped (`hosted-cap`): one user's open mandates and purchases of the last 180 days with apps whose redirect URIs are not a known host's may not pass `HOSTED_CAP_PER_USER_MINOR`, and with all such apps `HOSTED_CAP_KNOWN_PER_USER_MINOR`; every user's funded exposure may not pass `HOSTED_CAP_TOTAL_MINOR`.",
+  middleware: [requireAgent("mandates:request")],
   request: {
     headers: z.object({ "idempotency-key": z.string().min(1).max(255) }),
     body: { required: true, content: { "application/json": { schema: ConnectionRequest } } },
@@ -287,9 +322,15 @@ const create = createRoute({
       content: { "application/json": { schema: DeviceAuthorizationSchema } },
     },
     401: { description: "No valid access token", content: problemContent },
-    403: { description: "The client linked no operator", content: problemContent },
+    403: {
+      description: "The client linked no operator, and no hosted operator serves it",
+      content: problemContent,
+    },
     409: { description: "The client linked several operators", content: problemContent },
-    422: { description: "The request is invalid", content: problemContent },
+    422: {
+      description: "The request is invalid, or over the hosted operator's cap (`hosted-cap`)",
+      content: problemContent,
+    },
   },
 });
 
@@ -417,6 +458,28 @@ function parentGrant(m: typeof mandates.$inferSelect) {
   }
 }
 
+function cartView(cart: Cart | null) {
+  if (!cart) return null;
+  return {
+    merchant: {
+      id: cart.merchant,
+      name: MERCHANTS.find((m) => m.id === cart.merchant)?.name ?? cart.merchant,
+    },
+    currency: cart.currency,
+    totalMinor: cart.lines
+      .reduce((s, l) => s + BigInt(l.qty) * BigInt(l.unit_minor), 0n)
+      .toString(),
+    lines: cart.lines.map((l) => ({
+      sku: l.sku,
+      size: l.size ?? null,
+      color: l.color ?? null,
+      category: l.category,
+      qty: l.qty,
+      unitMinor: String(l.unit_minor),
+    })),
+  };
+}
+
 /** A request as the approval pages read it. */
 export async function connectionView(
   db: Deps["db"],
@@ -462,6 +525,8 @@ export async function connectionView(
         }
       : null,
     mandateId: request.mandateId,
+    cart: cartView(request.cart as Cart | null),
+    checks: request.checks ?? null,
     match:
       request.matchNumber === null
         ? null
@@ -613,30 +678,138 @@ const tokenError = (
     { "cache-control": "no-store" },
   );
 
-export function registerConnections(
-  app: OpenAPIHono,
-  deps: Pick<
-    Deps,
-    "db" | "kv" | "log" | "appOrigin" | "passkeyRpId" | "rateLimit" | "compileSources"
-  >,
-): void {
+/**
+ * The unsigned mandate approving `request` with the limits `userId` chose, which may only be
+ * lower than what it asked. `embedOrigin` names the agent platform whose embedded approval
+ * the user signs it in.
+ */
+export async function draftMandate(
+  c: Context,
+  deps: ConnectionDeps,
+  userId: string,
+  request: Connection,
+  body: z.infer<typeof DraftRequest>,
+  embedOrigin?: string,
+) {
+  const { db } = deps;
+  const over = raised(body.limits, request);
+  if (over.length > 0) {
+    return problem(
+      c,
+      422,
+      "limits-raised",
+      "Limits raised",
+      `${over.join(", ")} must not be above what ${request.name} asked for; raising it takes a new request.`,
+      { fields: over },
+    );
+  }
+  const mode = request.kind === "once" ? "immediate" : "autonomous";
+  const context = await signingContext(
+    c,
+    deps as Parameters<typeof signingContext>[1],
+    userId,
+    { credentialId: body.credentialId, mode },
+    operatorAgent(db, request.operatorAgentId),
+  );
+  if (context instanceof Response) return context;
+  const iat = Math.floor(Date.now() / 1000);
+  const until = Math.min(
+    Math.floor(Date.parse(body.limits.until) / 1000),
+    Math.floor(request.notAfter.getTime() / 1000),
+  );
+  if (until <= iat) {
+    return problem(c, 422, "invalid-limits", "Invalid limits", "until has passed");
+  }
+  const { mandate, ambiguous } = toMandate(
+    {
+      currency: request.currency as CurrencyCode,
+      maxTotalMinor: body.limits.perPurchaseMinor,
+      budgetMinor: body.limits.totalMinor,
+      merchants: body.limits.merchants.map((id) => MERCHANTS.find((m) => m.id === id)?.name ?? id),
+      ...(await inherited(db, request)),
+      notAfter: new Date(until * 1000).toISOString(),
+      quantityPerLine: 1,
+      item: request.kind === "once" ? "This cart only" : "Any item at the stores allowed",
+      subjective: [],
+      summary: request.reason,
+    },
+    {
+      ...context,
+      mid: ulid(),
+      iat,
+      nonce: randomBytes(16).toString("base64url"),
+      merchants: MERCHANTS,
+    },
+    {
+      promptHash: `sha256:${createHash("sha256").update(request.reason, "utf8").digest("hex")}`,
+    },
+  );
+  const signed: Mandate = embedOrigin
+    ? { ...mandate, embed: { top_origin: embedOrigin } }
+    : mandate;
+  const { payloadSd, disclosures } = await buildSdPayload(signed, () => randomBytes(16));
+  const card = renderCard(payloadSd, disclosures, {
+    merchantSignedCheckout: false,
+    zkTlsFields: new Set(),
+    ambiguous: new Set(ambiguous),
+  });
+  return c.json(
+    {
+      mandateDraft: signed as unknown as Record<string, unknown>,
+      card,
+      ambiguous,
+      check: { status: "skipped" as const, discrepancies: null },
+    },
+    200,
+  );
+}
+
+type ConnectionDeps = Pick<
+  Deps,
+  | "db"
+  | "kv"
+  | "log"
+  | "appOrigin"
+  | "passkeyRpId"
+  | "rateLimit"
+  | "compileSources"
+  | "demoAgentId"
+  | "hostedCaps"
+  | "notifier"
+>;
+
+export function registerConnections(app: OpenAPIHono, deps: ConnectionDeps): void {
   const { db } = deps;
   const appOrigin = deps.appOrigin ?? "https://app.keelson.finance";
 
   app.openapi(create, async (c) => {
-    const clientId = (c.get("principal") as Principal).subject;
+    const principal = c.get("principal") as Principal;
+    const clientId = principal.subject;
+    const delegated = isDelegated(principal);
     const body = c.req.valid("json");
-    const [operator, another] = await db
+    const [linked, another] = await db
       .select({ agentId: operators.agentId })
       .from(operators)
       .where(eq(operators.clientId, clientId));
+    const hosted =
+      delegated && !linked && deps.demoAgentId !== undefined
+        ? (
+            await db
+              .select({ agentId: operators.agentId })
+              .from(operators)
+              .where(eq(operators.agentId, deps.demoAgentId))
+          )[0]
+        : undefined;
+    const operator = linked ?? hosted;
     if (!operator) {
       return problem(
         c,
         403,
         "no-operator",
         "No operator",
-        "Link this client to its operator with POST /v1/operators/{agentId}/link first.",
+        delegated
+          ? "No hosted operator serves apps without an operator of their own."
+          : "Link this client to its operator with POST /v1/operators/{agentId}/link first.",
       );
     }
     // The mandate names one agent; a client acting for several cannot say which here.
@@ -651,13 +824,27 @@ export function registerConnections(
     }
     const invalid = invalidLimits(body.limits);
     if (invalid) return problem(c, 422, "invalid-limits", "Invalid limits", invalid);
+    if (delegated) {
+      const over = await hostedCapError(db, deps, {
+        clientId,
+        operatorAgentId: operator.agentId,
+        userId: principal.user,
+        currency: body.limits.currency,
+        amountMinor: BigInt(body.limits.totalMinor),
+      });
+      if (over) return problem(c, 422, "hosted-cap", "Over the hosted operator's cap", over);
+    }
     const stored = await storeRequest(deps, {
       clientId,
       operatorAgentId: operator.agentId,
       name: body.name,
       reason: body.reason,
       limits: body.limits,
+      // Asked with the user's own grant: theirs from the start, so no number to match.
+      ...(delegated ? { userId: principal.user } : {}),
     });
+    // The user owns the request already, so it reaches their phone and inbox now.
+    if (delegated) notify(deps.notifier, (n) => requestAlert(n, stored.id));
     return c.json(deviceAuthorization(appOrigin, stored, stored.deviceCode), 201, {
       "cache-control": "no-store",
     });
@@ -800,14 +987,15 @@ export function registerConnections(
   });
 
   app.openapi(requestState, async (c) => {
-    const clientId = (c.get("principal") as Principal).subject;
+    const principal = c.get("principal") as Principal;
     const [row] = await db
       .select()
       .from(agentConnections)
       .where(
         and(
           eq(agentConnections.id, c.req.valid("param").id),
-          eq(agentConnections.clientId, clientId),
+          eq(agentConnections.clientId, principal.subject),
+          isDelegated(principal) ? eq(agentConnections.userId, principal.user) : undefined,
         ),
       );
     if (!row) return problem(c, 404, "not-found", "Not found");
@@ -839,75 +1027,6 @@ export function registerConnections(
       return problem(c, 404, "not-found", "Not found");
     }
     if (unmatched(request)) return notMatched(c);
-    const body = c.req.valid("json");
-    const over = raised(body.limits, request);
-    if (over.length > 0) {
-      return problem(
-        c,
-        422,
-        "limits-raised",
-        "Limits raised",
-        `${over.join(", ")} must not be above what ${request.name} asked for; raising it takes a new request.`,
-        { fields: over },
-      );
-    }
-    const mode = request.kind === "once" ? "immediate" : "autonomous";
-    const context = await signingContext(
-      c,
-      deps,
-      userId,
-      { credentialId: body.credentialId, mode },
-      operatorAgent(db, request.operatorAgentId),
-    );
-    if (context instanceof Response) return context;
-    const iat = Math.floor(Date.now() / 1000);
-    const until = Math.min(
-      Math.floor(Date.parse(body.limits.until) / 1000),
-      Math.floor(request.notAfter.getTime() / 1000),
-    );
-    if (until <= iat) {
-      return problem(c, 422, "invalid-limits", "Invalid limits", "until has passed");
-    }
-    const { mandate, ambiguous } = toMandate(
-      {
-        currency: request.currency as CurrencyCode,
-        maxTotalMinor: body.limits.perPurchaseMinor,
-        budgetMinor: body.limits.totalMinor,
-        merchants: body.limits.merchants.map(
-          (id) => MERCHANTS.find((m) => m.id === id)?.name ?? id,
-        ),
-        ...(await inherited(db, request)),
-        notAfter: new Date(until * 1000).toISOString(),
-        quantityPerLine: 1,
-        item: request.kind === "once" ? "This cart only" : "Any item at the stores allowed",
-        subjective: [],
-        summary: request.reason,
-      },
-      {
-        ...context,
-        mid: ulid(),
-        iat,
-        nonce: randomBytes(16).toString("base64url"),
-        merchants: MERCHANTS,
-      },
-      {
-        promptHash: `sha256:${createHash("sha256").update(request.reason, "utf8").digest("hex")}`,
-      },
-    );
-    const { payloadSd, disclosures } = await buildSdPayload(mandate, () => randomBytes(16));
-    const card = renderCard(payloadSd, disclosures, {
-      merchantSignedCheckout: false,
-      zkTlsFields: new Set(),
-      ambiguous: new Set(ambiguous),
-    });
-    return c.json(
-      {
-        mandateDraft: mandate as unknown as Record<string, unknown>,
-        card,
-        ambiguous,
-        check: { status: "skipped" as const, discrepancies: null },
-      },
-      200,
-    );
+    return draftMandate(c, deps, userId, request, c.req.valid("json"));
   });
 }

@@ -13,6 +13,7 @@ import { money } from "../lib/format";
 import { AppShell } from "./app-shell";
 import { HoldButton } from "./hold-button";
 import { ErrorNotice } from "./notice";
+import { PhoneApprovalsOffer } from "./phone-approvals";
 
 const ago = (iso: string) => {
   const s = Math.round((Date.now() - Date.parse(iso)) / 1000);
@@ -108,11 +109,14 @@ function RevokeMenu({ agent, onDone }: { agent: AgentRow; onDone: () => void }) 
       <dialog
         ref={ref}
         onClose={() => setOpen(false)}
-        aria-labelledby={`revoke-${agent.agentId}`}
+        aria-labelledby={`revoke-${agent.agentId}-${agent.clientId ?? ""}`}
         className="m-auto w-[min(440px,calc(100vw-2rem))] rounded-3xl border bg-card p-0 text-foreground shadow-[0_30px_60px_-30px_rgb(23_24_27/0.55)] backdrop:bg-graphite/40"
       >
         <div className="grid gap-4 p-5 sm:p-6">
-          <h2 id={`revoke-${agent.agentId}`} className="font-semibold text-lg">
+          <h2
+            id={`revoke-${agent.agentId}-${agent.clientId ?? ""}`}
+            className="font-semibold text-lg"
+          >
             Stop {agent.name}
           </h2>
           <p className="text-muted-foreground text-sm">{EFFECT}</p>
@@ -132,14 +136,26 @@ function RevokeMenu({ agent, onDone }: { agent: AgentRow; onDone: () => void }) 
               </HoldButton>
             ) : null}
             <HoldButton
-              hint={`Hold to disconnect ${agent.name}: every mandate of yours that names it ends.`}
+              hint={
+                agent.clientId
+                  ? `Hold to disconnect ${agent.name}: the mandates you approved for it and its access end. Other apps stay connected.`
+                  : `Hold to disconnect ${agent.name}: every mandate of yours that names it ends.`
+              }
               disabled={busy}
-              onConfirm={() => act(() => post(`/v1/agents/${agent.agentId}/disconnect`))}
+              onConfirm={() =>
+                act(() =>
+                  post(
+                    `/v1/agents/${agent.agentId}/disconnect${agent.clientId ? `?client=${encodeURIComponent(agent.clientId)}` : ""}`,
+                  ),
+                )
+              }
               className="grid h-auto gap-0.5 rounded-xl border px-4 py-3 text-left"
             >
               <span className="font-medium">Disconnect this agent</span>
               <span className="text-muted-foreground text-sm">
-                Ends every mandate that names it. It must ask again. Hold to confirm.
+                {agent.clientId
+                  ? "Ends the mandates you approved for it and signs it out. It must ask again. Hold to confirm."
+                  : "Ends every mandate that names it. It must ask again. Hold to confirm."}
               </span>
             </HoldButton>
           </div>
@@ -279,6 +295,7 @@ export function AgentsPage() {
           </div>
         </div>
         {stopped ? <Stopped stop={stopped} /> : null}
+        {live.length > 0 ? <PhoneApprovalsOffer /> : null}
         {error ? <ErrorNotice>{error}</ErrorNotice> : null}
 
         <section aria-label="Your agents" className="rounded-3xl border bg-card px-5 sm:px-6">
@@ -302,7 +319,7 @@ export function AgentsPage() {
           ) : (
             <ul className="divide-y">
               {agents.map((a) => (
-                <Row key={a.agentId} agent={a} onChange={load} />
+                <Row key={`${a.agentId}:${a.clientId ?? ""}`} agent={a} onChange={load} />
               ))}
             </ul>
           )}

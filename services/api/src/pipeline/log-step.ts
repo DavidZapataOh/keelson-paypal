@@ -6,6 +6,7 @@ import { appendLeaf, type LogConfig } from "../log/append.ts";
 import type { PayPalDeps } from "../paypal.ts";
 import type { TeeConfig } from "../tee/signers.ts";
 import type { StampWorker } from "../timestamps/worker.ts";
+import { span } from "../tracing.ts";
 import { countersignOf, purchaseLeaf } from "./leaf.ts";
 import { done, final, type Outcome, retry } from "./outcome.ts";
 
@@ -28,20 +29,25 @@ export async function logStep(
   deps: LogStepDeps,
   purchaseId: string,
 ): Promise<Outcome<{ index: bigint; leafHash: Uint8Array }>> {
-  if (!deps.tlog) return final("log:not-configured");
+  const tlog = deps.tlog;
+  if (!tlog) return final("log:not-configured");
   const out = await countersignOf(deps.db, purchaseId);
   const leaf = await purchaseLeaf(deps.db, purchaseId, out);
   try {
-    const append = await appendLeaf(
-      { db: deps.db, log: deps.log, tlog: deps.tlog, stamps: deps.stamps },
-      purchaseId,
-      leaf,
-      out.countersign,
+    const append = await span("log.append", {}, () =>
+      appendLeaf(
+        { db: deps.db, log: deps.log, tlog, stamps: deps.stamps },
+        purchaseId,
+        leaf,
+        out.countersign,
+      ),
     );
     try {
-      await issueAlibi(
-        { db: deps.db, log: deps.log, tee: deps.tee, merchantId: deps.paypal?.merchantId },
-        { purchaseId, append },
+      await span("alibi.issue", {}, () =>
+        issueAlibi(
+          { db: deps.db, log: deps.log, tee: deps.tee, merchantId: deps.paypal?.merchantId },
+          { purchaseId, append },
+        ),
       );
     } catch (err) {
       if (err instanceof AlibiIssueError) {

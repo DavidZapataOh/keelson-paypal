@@ -4,6 +4,7 @@ import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
 import { type Hex, type PublicClient, toHex } from "viem";
 import type { LogConfig } from "../log/append.ts";
+import type { Notifier } from "../notify/notifier.ts";
 import type { OperatorSigners } from "../operators/signer.ts";
 import type { PayPalDeps } from "../paypal.ts";
 import type { CountersignJson } from "../tee/client.ts";
@@ -34,6 +35,7 @@ export interface PipelineDeps {
   paypal?: PayPalDeps | undefined;
   tee?: Pick<TeeConfig, "client"> | undefined;
   proveAnonymousPurchase?: ((purchaseId: string) => Promise<void>) | undefined;
+  notifier?: Notifier | undefined;
 }
 
 /** What `POST /v1/countersign` and `GET /v1/purchases/{id}` say about a purchase. */

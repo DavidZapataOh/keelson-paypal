@@ -74,9 +74,14 @@ type SpcPaymentRequest = typeof PaymentRequest & {
   securePaymentConfirmationAvailability?: () => Promise<string>;
 };
 
+/** Whether SPC can be used; a browser whose SPC service fails to answer counts as without it. */
 async function spcAvailable(): Promise<boolean> {
   const request = globalThis.PaymentRequest as SpcPaymentRequest | undefined;
-  return (await request?.securePaymentConfirmationAvailability?.()) === "available";
+  try {
+    return (await request?.securePaymentConfirmationAvailability?.()) === "available";
+  } catch {
+    return false;
+  }
 }
 
 /** Per-request passkey registration options: universal unless SPC can be used on this device. */
@@ -156,18 +161,18 @@ async function signWithSpc(
 /**
  * Signs `challenge` with one of `passkeys`, requiring user verification. With `opts.spc` (the
  * `spc` of `prepareSigning`), a browser that supports Secure Payment Confirmation and at least one
- * passkey that is payment-capable and was registered in this browser
- * ({@link rememberPaymentPasskey}), the browser shows the payee and total in its own confirmation
- * dialog and only those passkeys are offered. Otherwise, or when SPC is unsupported, a plain
- * WebAuthn assertion is requested from every passkey; a cancelled or failed SPC prompt is never
- * retried.
+ * passkey that is payment-capable and known to be on this device (registered in this browser,
+ * {@link rememberPaymentPasskey}, or in `opts.onDevice`, those the user just used here), the
+ * browser shows the payee and total in its own confirmation dialog and only those passkeys are
+ * offered. Otherwise, or when SPC is unsupported, a plain WebAuthn assertion is requested from
+ * every passkey; a cancelled or failed SPC prompt is never retried.
  */
 export async function signMandate(
   challenge: Uint8Array,
   passkeys: readonly PasskeyRef[],
-  opts?: { spc?: SpcDetails },
+  opts?: { spc?: SpcDetails; onDevice?: readonly string[] },
 ): Promise<SignedChallenge> {
-  const local = localPaymentPasskeys();
+  const local = new Set([...localPaymentPasskeys(), ...(opts?.onDevice ?? [])]);
   const payment = passkeys
     .filter((p) => p.payment && local.has(p.credentialId))
     .map((p) => p.credentialId);
