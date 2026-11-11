@@ -144,6 +144,7 @@ test("a client with client credentials lists the tools, each with an output sche
     "keelson.check_cart",
     "keelson.compile_mandate",
     "keelson.confirm_mandate",
+    "keelson.export_alibi",
     "keelson.get_alibi",
     "keelson.get_purchase",
     "keelson.get_request",
@@ -379,6 +380,22 @@ test.skipIf(!fixtures[0])("verifying an Alibi returns the API verifier's report"
   await client.close();
 });
 
+test("export_alibi says why a v1 Alibi without a bridge statement is not exported", async () => {
+  const creds = await registerClient(["alibis:read"]);
+  const id = await v1AlibiOf(creds.id);
+  const client = await connect(["alibis:read"], creds);
+  const result = await client.callTool({
+    name: "keelson.export_alibi",
+    arguments: { purchaseId: id, format: "ap2" },
+  });
+  expect(result.structuredContent).toMatchObject({
+    status: "blocked",
+    reason: "v1_alibi",
+    next: { action: "tell_user" },
+  });
+  await client.close();
+});
+
 test("an agent asks its user for a mandate and hears the answer through the tools", async () => {
   const creds = await registerClient(["countersign:write"]);
   await testDb.insert(operators).values({
@@ -599,3 +616,54 @@ test("an agent checks a cart, asks for more room and polls a purchase, each in t
   }
   await client.close();
 });
+
+/** A v1 Alibi, without a bridge statement, of a purchase `clientId` made. */
+async function v1AlibiOf(clientId: string): Promise<string> {
+  const b = fixtures[1]?.bundle as NonNullable<(typeof fixtures)[1]>["bundle"];
+  const c = b.tee.countersign;
+  const owner = `kls_usr_${randomBytes(8).toString("hex")}`;
+  const id = ulid();
+  const mandateId = ulid();
+  await testDb.insert(users).values({ id: owner, name: "Tester", email: `${owner}@example.test` });
+  await testDb
+    .insert(operators)
+    .values({
+      agentId: BigInt(c.agentId),
+      chainId: 421614,
+      agentRegistry: "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+      name: "op",
+      cnfJwk: {},
+    })
+    .onConflictDoNothing();
+  await testDb.insert(mandates).values({
+    id: mandateId,
+    userId: owner,
+    operatorAgentId: BigInt(c.agentId),
+    state: "ACTIVE",
+    currency: "USD",
+    maxMinor: 10_000n,
+    remainingMinor: 10_000n,
+    merchantIds: ["store"],
+    expiresAt: new Date(Date.now() + 86_400_000),
+  });
+  await testDb.insert(evidenceBundles).values({
+    root: Buffer.from(c.evidenceRoot.slice(2), "hex"),
+    mandateId,
+    manifest: b.manifest.public,
+    uploadedBy: clientId,
+  });
+  await testDb.insert(purchases).values({
+    id,
+    mandateId,
+    clientId,
+    state: "CAPTURED",
+    merchantId: "store",
+    currency: "USD",
+    amountMinor: BigInt(c.amount),
+    cartHash: randomBytes(32),
+  });
+  await testDb
+    .insert(alibis)
+    .values({ purchaseId: id, leafHash: randomBytes(32), bundle: { ...b, alibi_id: id } });
+  return id;
+}
