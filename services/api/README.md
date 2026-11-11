@@ -411,7 +411,8 @@ API never grants it `countersign:write` or any operator scope.
 A request the host makes is the user's from the start, so it has no number to match. Every other
 route reaches only a mandate whose `agent_connections` row names this host, this user and this
 mandate, approved and not disconnected: a host never acts under a mandate the user approved for
-another host, nor under another user's.
+another host, nor under another user's. An operator's own client, the hosted operator's included,
+never reaches a mandate the user approved for a host.
 
 **The operator rule.** The operator, its bond and the `cnf` key a mandate names stay a registered
 agent operator's. A host linked to an operator of its own (`operators.clientId`) asks for mandates

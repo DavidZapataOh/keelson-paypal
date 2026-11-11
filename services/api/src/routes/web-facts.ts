@@ -142,7 +142,11 @@ export function registerWebFacts(
     const body = c.req.valid("json");
     const principal = c.var.principal as NonNullable<typeof c.var.principal>;
     const now = Math.floor(Date.now() / 1000);
-    const day = `rl:web-fact-day:${principalKey(principal)}:${Math.floor(now / DAY_SEC)}`;
+    // An app acting for a user counts against that user, however many apps they connect.
+    const owner = principal.user
+      ? principalKey({ kind: "user", subject: principal.user })
+      : principalKey(principal);
+    const day = `rl:web-fact-day:${owner}:${Math.floor(now / DAY_SEC)}`;
     let count: number;
     try {
       const replies = await kv.multi().incr(day).expire(day, DAY_SEC, "NX").exec();

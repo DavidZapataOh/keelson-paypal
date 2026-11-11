@@ -1,5 +1,5 @@
 import { type Cart, cartHash, toHex } from "@keelson/core";
-import { agentConnections, and, type Db, eq, isNull, mandates } from "@keelson/db";
+import { agentConnections, and, type Db, eq, isNull, mandates, sql } from "@keelson/db";
 import { closeMandate } from "@keelson/mandate";
 import type { Principal } from "./principal.ts";
 
@@ -15,7 +15,9 @@ import type { Principal } from "./principal.ts";
  *   with that operator's `cnf` key (`KEELSON_AGENT_KEY`) over the request id and the hash of the
  *   cart the app submitted, which is the cart the TEE legs countersign. The key signs nothing else.
  *
- * Either way, a delegated token reaches only mandates its user approved for that same app.
+ * Either way, a delegated token reaches only mandates its user approved for that same app, and
+ * an operator's own client never reaches a mandate the user approved for another app, the hosted
+ * operator's client included.
  */
 export type Delegated = Principal & { kind: "client"; user: string };
 
@@ -66,3 +68,10 @@ export function closeForHost(
     hostedKey,
   );
 }
+
+/**
+ * For an operator's own client: the mandate was not approved for another app. A mandate the user
+ * approved for an app acting for them is that app's alone, even when it names the caller's operator.
+ */
+export const notAnotherApps = (clientId: string) =>
+  sql`not exists (select 1 from ${agentConnections} where ${agentConnections.mandateId} = ${mandates.id} and ${agentConnections.state} = 'APPROVED' and ${agentConnections.clientId} <> ${clientId})`;

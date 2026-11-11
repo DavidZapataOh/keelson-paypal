@@ -27,7 +27,7 @@ import { calculateJwkThumbprint } from "jose";
 import { type Address, BaseError, ContractFunctionRevertedError, getAddress, type Hex } from "viem";
 import type { Deps } from "../app.ts";
 import { blockScoped, chainUnavailable } from "../chain/reader.ts";
-import { isDelegated } from "../delegated.ts";
+import { isDelegated, notAnotherApps } from "../delegated.ts";
 import { publishEvent } from "../events.ts";
 import { requireAgent, requireClient } from "../middleware/auth.ts";
 import { principalChannel } from "../principal.ts";
@@ -639,7 +639,7 @@ export function registerOperators(
                     ),
                 ),
               )
-            : undefined,
+            : notAnotherApps(principal?.subject as string),
         ),
       )
       .orderBy(desc(mandates.createdAt));

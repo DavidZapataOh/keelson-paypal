@@ -50,7 +50,7 @@ const SCOPE_WORDS: Record<string, { title: string; detail: string }> = {
     detail: "The Alibi that proves what was bought, and who answers for it.",
   },
   offline_access: {
-    title: "Stay connected until you disconnect it",
+    title: "Stay connected until you stop it",
     detail: "So it does not ask you to sign in again every hour.",
   },
   "countersign:write": {

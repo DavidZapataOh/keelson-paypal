@@ -120,6 +120,8 @@ export async function stopAgents(deps: StopDeps, userId: string): Promise<StopRe
     .set({ revoked: new Date() })
     .where(and(eq(oauthRefreshToken.userId, userId), isNull(oauthRefreshToken.revoked)));
   await db.delete(oauthConsent).where(eq(oauthConsent.userId, userId));
+  // Again, so that a token refreshed while the grants were being revoked is refused too.
+  await deps.kv.set(stoppedKey(userId), String(Math.floor(Date.now() / 1000))).catch(() => {});
 
   const released = new Map<string, bigint>();
   const releasing = new Map<string, bigint>();

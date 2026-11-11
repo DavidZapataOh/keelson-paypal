@@ -7,7 +7,7 @@ import { cartContext, type EngineMeta, evaluate, mandateAgent } from "@keelson/p
 import type { Context } from "hono";
 import type { Deps } from "../app.ts";
 import { grantOf, REQUEST_TTL_SEC, requestChange } from "../connections.ts";
-import { approvedMandate, isDelegated } from "../delegated.ts";
+import { approvedMandate, isDelegated, notAnotherApps } from "../delegated.ts";
 import { MERCHANTS } from "../merchants.ts";
 import { requireAgent } from "../middleware/auth.ts";
 import { fieldChecks } from "../pipeline/drive.ts";
@@ -165,7 +165,7 @@ async function clientMandate(c: Context, db: Deps["db"], id: string) {
     .select({ mandate: mandates, clientId: operators.clientId })
     .from(mandates)
     .innerJoin(operators, eq(operators.agentId, mandates.operatorAgentId))
-    .where(eq(mandates.id, id));
+    .where(and(eq(mandates.id, id), notAnotherApps(principal.subject)));
   // The same answer for an unknown mandate and another client's, so neither is disclosed.
   if (!found?.clientId || found.clientId !== principal.subject) {
     return undefined;

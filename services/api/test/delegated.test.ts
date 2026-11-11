@@ -510,6 +510,36 @@ describe("confused deputy", () => {
   });
 });
 
+describe("the hosted operator's own client", () => {
+  test("reaches no mandate a user approved for an app acting for them", async () => {
+    const a = await newUser();
+    const host = newHost();
+    const m = await approved(a, host);
+    const root = await sealed(asHost(host, a), m.id);
+    const keelson = asOperator(KEELSON_CLIENT);
+    const listed = await app.request(`/v1/operators/${HOSTED}/mandates`, { headers: keelson });
+    expect(listed.status).toBe(200);
+    const ids = ((await listed.json()) as { mandates: { id: string }[] }).mandates.map((x) => x.id);
+    expect(ids).not.toContain(m.id);
+    expect((await send(`/v1/mandates/${m.id}/check`, keelson, { cart })).status).toBe(404);
+    expect((await evidence(keelson, m.id)).status).toBe(404);
+    const closed = [
+      "e30.e30.sig",
+      b64(["salt", "mandate", { v: "keelson.mandate.1", mid: m.id }]),
+      `e30.${b64({ nonce: ulid() })}.sig`,
+    ].join("~");
+    const res = await send("/v1/countersign", keelson, {
+      authorizationId: m.authorizationId,
+      closedMandate: closed,
+      cart,
+      unit,
+      evidenceRoot: root,
+    });
+    expect(res.status).toBe(404);
+    expect(await purchasesOf(m.id)).toEqual([]);
+  });
+});
+
 describe("scope escalation", () => {
   test("a token a user delegated never carries more than the delegated scopes", () => {
     const all =

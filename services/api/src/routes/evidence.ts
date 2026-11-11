@@ -27,7 +27,7 @@ import {
 } from "@keelson/evidence";
 import { Decrypter } from "age-encryption";
 import type { Deps } from "../app.ts";
-import { approvedMandate, isDelegated } from "../delegated.ts";
+import { approvedMandate, isDelegated, notAnotherApps } from "../delegated.ts";
 import { requireClient } from "../middleware/auth.ts";
 import { principalKey } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
@@ -243,7 +243,7 @@ export function registerEvidence(
           .select({ id: mandates.id, state: mandates.state, clientId: operators.clientId })
           .from(mandates)
           .innerJoin(operators, eq(operators.agentId, mandates.operatorAgentId))
-          .where(eq(mandates.id, body.mandateId))
+          .where(and(eq(mandates.id, body.mandateId), notAnotherApps(client)))
           .then((rows) => rows.filter((m) => m.clientId !== null && m.clientId === client));
     // The same answer for an unknown mandate and another client's, so neither is disclosed.
     if (!mandate) return problem(c, 404, "not-found", "Not found");

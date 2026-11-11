@@ -44,7 +44,7 @@ import { ulid } from "ulid";
 import { hexToBytes } from "viem";
 import type { Deps } from "../app.ts";
 import { deviceAuthorization, grantOf, requestOnce } from "../connections.ts";
-import { approvedMandate, closeForHost, isDelegated } from "../delegated.ts";
+import { approvedMandate, closeForHost, isDelegated, notAnotherApps } from "../delegated.ts";
 import { capturable, merchantWebsite } from "../hold/state.ts";
 import { MERCHANTS } from "../merchants.ts";
 import { requireAgent } from "../middleware/auth.ts";
@@ -700,7 +700,7 @@ export function registerCountersign(
           .select({ mandate: mandates, clientId: operators.clientId })
           .from(mandates)
           .innerJoin(operators, eq(operators.agentId, mandates.operatorAgentId))
-          .where(eq(mandates.id, ids.mid))
+          .where(and(eq(mandates.id, ids.mid), notAnotherApps(principal.subject)))
           .then(([found]) =>
             found?.clientId && found.clientId === principal.subject ? found.mandate : undefined,
           );
@@ -1107,16 +1107,6 @@ export function registerCountersign(
       );
     }
 
-    // Signed only now that every check passed: over this request and the cart sent to the legs.
-    const closedMandate = hostedKey
-      ? await closeForHost(
-          mandate.openMandate as string,
-          ids.requestId,
-          body.cart as Cart,
-          hostedKey,
-        )
-      : (body.closedMandate as string);
-
     const [bound] = await db
       .select({ id: purchases.id })
       .from(purchases)
@@ -1229,6 +1219,32 @@ export function registerCountersign(
       if (claimed.length === 0) {
         await failPurchase(db, purchaseId, "observation-invalid");
         return observationInvalid(c, "The Channel3 observation already serves another purchase.");
+      }
+    }
+
+    // Signed only once the purchase is claimed: over this request and the cart sent to the legs.
+    let closedMandate = body.closedMandate as string;
+    if (hostedKey) {
+      try {
+        closedMandate = await closeForHost(
+          mandate.openMandate as string,
+          ids.requestId,
+          body.cart as Cart,
+          hostedKey,
+        );
+      } catch (err) {
+        log.error(
+          { err, mandateId: mandate.id },
+          "the hosted operator could not close the mandate",
+        );
+        await failPurchase(db, purchaseId, "hosted-key-unavailable");
+        return problem(
+          c,
+          503,
+          "hosted-key-unavailable",
+          "Hosted operator unavailable",
+          "Keelson's hosted operator cannot countersign now.",
+        );
       }
     }
 
