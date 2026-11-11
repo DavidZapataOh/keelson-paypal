@@ -29,6 +29,7 @@ interface VerifyInput {
   disclosures: string[];
   cm: string;
   origin: string;
+  topOrigin?: string;
   rpId: string;
   publicKey: string;
   assertion: SignedChallenge;
@@ -55,6 +56,7 @@ test.each(cases.map((v) => [v.name, v.input as VerifyInput, v.expected as string
         counter: 0,
       } as Passkey,
       expectedOrigin: input.origin,
+      expectedTopOrigin: input.topOrigin,
       expectedRpId: input.rpId,
       spc: spcDetails(decodeMandate(input.payloadSd, input.disclosures) as Mandate),
     });
