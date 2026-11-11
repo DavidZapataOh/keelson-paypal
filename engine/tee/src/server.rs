@@ -47,6 +47,8 @@ pub struct AppState {
     attestation: Option<std::sync::RwLock<Attested>>,
     #[cfg(feature = "tdx")]
     paypal: Option<crate::paypal::PayPalClient>,
+    #[cfg(feature = "tdx")]
+    lithic: Option<crate::issuer::LithicClient>,
     #[cfg(feature = "nitro")]
     nitro: Option<crate::nitro::Nitro>,
     #[cfg(feature = "tdx")]
@@ -76,6 +78,8 @@ impl AppState {
             attestation: None,
             #[cfg(feature = "tdx")]
             paypal: None,
+            #[cfg(feature = "tdx")]
+            lithic: None,
             #[cfg(feature = "nitro")]
             nitro: None,
             #[cfg(feature = "tdx")]
@@ -119,6 +123,13 @@ impl AppState {
     /// Makes leg A read the request's PayPal authorization through `client` before every
     /// countersign.
     #[cfg(feature = "tdx")]
+    /// Leg A reads card settlements from the issuer with this client.
+    #[cfg(feature = "tdx")]
+    pub fn with_lithic(mut self, client: crate::issuer::LithicClient) -> Self {
+        self.lithic = Some(client);
+        self
+    }
+
     pub fn with_paypal(mut self, client: crate::paypal::PayPalClient) -> Self {
         self.paypal = Some(client);
         self
@@ -182,6 +193,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/v1/mandates/register", post(register))
         .route("/v1/verdict", post(verdict))
         .route("/v1/card/authorize", post(card_authorize))
+        .route("/v1/card/settlement", post(card_settlement))
         .route(
             "/v1/statements/card-authorization",
             post(card_authorization_statement),
@@ -620,6 +632,47 @@ async fn card_authorization_statement(
 ) -> Result<Json<crate::wire::StatementSigned>, Problem> {
     let request: crate::wire::CardStatementRequest = parse(body)?;
     blocking(move || state.engine.card_authorization_statement(&request)).await
+}
+
+async fn card_settlement(
+    State(state): State<Arc<AppState>>,
+    body: Result<Bytes, BytesRejection>,
+) -> Result<Json<crate::wire::CardSettled>, Problem> {
+    let request: crate::wire::CardSettlementRequest = parse(body)?;
+    let observed = match &request.observation {
+        Some(o) => o.clone(),
+        None => read_settlement(&state, &request).await?,
+    };
+    blocking(move || state.engine.card_settlement(&request, &observed)).await
+}
+
+/// Leg A's own reading of the settlement; refused on a leg that cannot read the issuer.
+#[cfg(feature = "tdx")]
+async fn read_settlement(
+    state: &AppState,
+    r: &crate::wire::CardSettlementRequest,
+) -> Result<crate::wire::SettlementObservation, Problem> {
+    let Some(client) = &state.lithic else {
+        return Err(Problem::new(StatusCode::BAD_REQUEST, "observation"));
+    };
+    let (transaction, card) = client
+        .read(&r.transaction_token, &r.card_token)
+        .await
+        .map_err(|_| Problem::new(StatusCode::SERVICE_UNAVAILABLE, "issuer"))?;
+    let observed_at = u64::try_from((state.clock)().unix_timestamp()).unwrap_or_default();
+    Ok(crate::wire::SettlementObservation {
+        transaction: crate::wire::Base64(transaction),
+        card: crate::wire::Base64(card),
+        observed_at,
+    })
+}
+
+#[cfg(not(feature = "tdx"))]
+async fn read_settlement(
+    _state: &AppState,
+    _r: &crate::wire::CardSettlementRequest,
+) -> Result<crate::wire::SettlementObservation, Problem> {
+    Err(Problem::new(StatusCode::BAD_REQUEST, "observation"))
 }
 
 async fn card_authorize(

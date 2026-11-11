@@ -650,3 +650,61 @@ pub struct LegSignatures {
 pub struct StatementSigned {
     pub statement: Base64,
 }
+
+/// Asks the legs to sign one card settlement: leg A reads it from the issuer, leg B checks leg A's
+/// reading byte for byte.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CardSettlementRequest {
+    pub request_id: Ulid,
+    pub transaction_token: String,
+    pub card_token: String,
+    pub issuer: String,
+    /// The purchase leaf's RFC 6962 hash.
+    pub parent: Hex32,
+    pub ref_salt: Hex32,
+    pub measurements: LegMeasurements,
+    /// Leg A's reading, on leg B.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observation: Option<SettlementObservation>,
+    /// Leg A's signature over the settlement, on leg B.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leg_a: Option<LegA>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chain_id: Option<u64>,
+}
+
+/// The issuer's raw answers leg A read, and when.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SettlementObservation {
+    pub transaction: Base64,
+    pub card: Base64,
+    pub observed_at: u64,
+}
+
+/// The EIP-712 `CardSettlement` with integers as decimal strings.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CardSettlementJson {
+    pub request_id: Hex32,
+    pub card_ref: Hex32,
+    pub transaction_hash: Hex32,
+    pub settled_minor: String,
+    pub currency: String,
+    pub status: String,
+    pub settled_at: String,
+    pub observed_at: String,
+}
+
+/// A leg's signed settlement, the reading it signed, and its statement.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CardSettled {
+    pub settlement: CardSettlementJson,
+    pub digest: Hex32,
+    pub signature: Hex65,
+    pub signer: Address,
+    pub observation: SettlementObservation,
+    pub statement: Base64,
+}

@@ -137,6 +137,11 @@ impl Signer {
         self.sign_digest(digest)
     }
 
+    /// Signs an EIP-712 digest the caller computed from a Keelson type.
+    pub fn sign_digest_of(&self, digest: &[u8; 32]) -> Result<[u8; 65], Error> {
+        self.sign_digest(digest)
+    }
+
     /// Signs a COSE `Sig_structure` with ES256K (RFC 8812): SHA-256, low-S, `r ‖ s`.
     pub fn sign_statement(&self, to_be_signed: &[u8]) -> Result<[u8; 64], Error> {
         let digest: [u8; 32] = sha2::Sha256::digest(to_be_signed).into();

@@ -9,6 +9,8 @@ pub mod checkpoint;
 mod countersign;
 mod engine;
 mod error;
+#[cfg(feature = "tdx")]
+pub mod issuer;
 mod keys;
 pub mod kms;
 pub mod logsign;

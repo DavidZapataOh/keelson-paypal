@@ -991,6 +991,162 @@ impl Engine {
         })
     }
 
+    /// Signs a card settlement from the issuer's raw answers: the transaction must be the card's,
+    /// the card the one issued for this purchase (its memo names the request), and the status a
+    /// final one. Leg A answers with a degraded statement; leg B, given leg A's reading and
+    /// signature over the same facts, with the 2of2 one.
+    pub fn card_settlement(
+        &self,
+        r: &wire::CardSettlementRequest,
+        observed: &wire::SettlementObservation,
+    ) -> Result<wire::CardSettled, EngineError> {
+        use keelson_core::eip712::CardSettlement;
+        use keelson_core::statement::{
+            CARD_SETTLEMENT_CONTENT_TYPE, CardSettlementClaims, LegSignature, Mode, card_ref,
+            card_settlement_claims_bytes, protected_header, statement, to_be_signed,
+        };
+        #[derive(serde::Deserialize)]
+        struct Amount {
+            amount: i64,
+            currency: String,
+        }
+        #[derive(serde::Deserialize)]
+        struct Amounts {
+            settlement: Amount,
+        }
+        #[derive(serde::Deserialize)]
+        struct Transaction {
+            token: String,
+            card_token: String,
+            status: String,
+            settled_amount: i64,
+            amounts: Amounts,
+            updated: String,
+        }
+        #[derive(serde::Deserialize)]
+        struct Card {
+            token: String,
+            memo: Option<String>,
+        }
+        within(&r.issuer, MAX_STRING, "issuer")?;
+        within(&r.card_token, MAX_STRING, "card_token")?;
+        within(&r.transaction_token, MAX_STRING, "transaction_token")?;
+        let t: Transaction = serde_json::from_slice(&observed.transaction.0)
+            .map_err(|_| bad("settlement.transaction"))?;
+        let card: Card =
+            serde_json::from_slice(&observed.card.0).map_err(|_| bad("settlement.card"))?;
+        if t.token != r.transaction_token
+            || t.card_token != r.card_token
+            || card.token != r.card_token
+            || card.memo.as_deref() != Some(format!("Keelson {}", r.request_id).as_str())
+        {
+            return Err(bad("settlement.card"));
+        }
+        let status: u8 = match t.status.as_str() {
+            "SETTLED" => 1,
+            "VOIDED" => 2,
+            "EXPIRED" => 3,
+            _ => return Err(bad("settlement.status")),
+        };
+        if t.settled_amount != t.amounts.settlement.amount || t.settled_amount < 0 {
+            return Err(bad("settlement.amount"));
+        }
+        let settled_at =
+            OffsetDateTime::parse(&t.updated, &time::format_description::well_known::Rfc3339)
+                .map_err(|_| bad("settlement.updated"))?
+                .unix_timestamp();
+        let chain_id = r.chain_id.unwrap_or(self.config.chain_id);
+        let domain = keelson_core::domain(chain_id, self.config.verifying_contract)
+            .map_err(|_| bad("chain_id"))?;
+        let mut request_id = [0u8; 32];
+        request_id[16..].copy_from_slice(&r.request_id.to_bytes());
+        let reference = card_ref(&r.ref_salt.0, &r.issuer, &r.card_token);
+        let settlement = CardSettlement {
+            requestId: B256::new(request_id),
+            cardRef: B256::new(reference),
+            transactionHash: B256::new(Sha256::digest(&observed.transaction.0).into()),
+            settledMinor: u64::try_from(t.settled_amount).map_err(|_| bad("settlement.amount"))?,
+            currency: currency_numeric(&t.amounts.settlement.currency)
+                .ok_or(bad("settlement.currency"))?,
+            status,
+            settledAt: U40::from(u64::try_from(settled_at).map_err(|_| bad("settlement.updated"))?),
+            observedAt: U40::from(observed.observed_at),
+        };
+        let digest: [u8; 32] =
+            alloy_sol_types::SolStruct::eip712_signing_hash(&settlement, &domain).0;
+        let signature = self
+            .signer
+            .sign_digest_of(&digest)
+            .map_err(EngineError::Signer)?;
+        let own = LegSignature {
+            kind: self.config.tee_kind.into(),
+            signer: self.signer.address().into_array(),
+            signature,
+            measurement: match self.config.tee_kind {
+                TeeKind::Tdx => r.measurements.tdx.0,
+                TeeKind::Nitro => r.measurements.nitro.ok_or(bad("measurements"))?.0,
+            },
+        };
+        let legs = match (self.config.tee_kind, &r.leg_a) {
+            (TeeKind::Tdx, _) => vec![own],
+            (TeeKind::Nitro, Some(a)) => {
+                if crate::recover_address(&digest, &a.signature.0) != Some(a.signer) {
+                    return Err(bad("leg_a"));
+                }
+                vec![
+                    LegSignature {
+                        kind: TeeKind::Tdx.into(),
+                        signer: a.signer.into_array(),
+                        signature: a.signature.0,
+                        measurement: r.measurements.tdx.0,
+                    },
+                    own,
+                ]
+            }
+            (TeeKind::Nitro, None) => return Err(bad("leg_a")),
+        };
+        let claims = CardSettlementClaims {
+            settlement: &settlement,
+            parent: r.parent.0,
+            chain_id,
+            verifying_contract: self.config.verifying_contract.into_array(),
+            mode: if legs.len() == 2 {
+                Mode::TwoOfTwo
+            } else {
+                Mode::Degraded
+            },
+            legs: &legs,
+        };
+        let payload = card_settlement_claims_bytes(&claims);
+        let protected = protected_header(
+            self.signer.address().into_array(),
+            &r.request_id.to_string(),
+            observed.observed_at,
+            CARD_SETTLEMENT_CONTENT_TYPE,
+        );
+        let sig = self
+            .signer
+            .sign_statement(&to_be_signed(&protected, &payload))
+            .map_err(EngineError::Signer)?;
+        Ok(wire::CardSettled {
+            settlement: wire::CardSettlementJson {
+                request_id: Hex(request_id),
+                card_ref: Hex(reference),
+                transaction_hash: Hex(settlement.transactionHash.0),
+                settled_minor: settlement.settledMinor.to_string(),
+                currency: settlement.currency.to_string(),
+                status: status.to_string(),
+                settled_at: settled_at.to_string(),
+                observed_at: observed.observed_at.to_string(),
+            },
+            digest: Hex(digest),
+            signature: Hex(signature),
+            signer: self.signer.address(),
+            observation: observed.clone(),
+            statement: Base64(statement(protected, payload, sig)),
+        })
+    }
+
     pub fn countersign_with(
         &self,
         r: &CountersignRequest,

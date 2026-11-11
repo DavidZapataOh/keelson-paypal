@@ -184,6 +184,9 @@ async fn tdx_state(
         .with_attestation(attestation, at)
         .with_paypal(paypal)
         .with_notary();
+    if let Some(lithic) = keelson_tee::issuer::LithicClient::from_env()? {
+        state = state.with_lithic(lithic);
+    }
     let Ok(address) = std::env::var("KEELSON_RATLS_LISTEN") else {
         return Ok((state, None));
     };
