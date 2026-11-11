@@ -8,6 +8,7 @@ publish.workspace = true
 [dependencies]
 ciborium = "0.2.2"
 coset = "0.4.2"
+ed25519-dalek = { version = "3.0.0", default-features = false }
 acir = "1.0.0"
 alloy-primitives = "1.7.3"
 alloy-sol-types = "1.7.3"

@@ -1252,6 +1252,82 @@ impl Engine {
         })
     }
 
+    /// Signs a standard export with leg A's credential-issuer key (compact ES256 JWS), only when
+    /// the statement it carries was logged under this leg's own receipt key, its signatures hold,
+    /// `keelson.facts` is the statement's, and its profile's bound pointers hold their facts.
+    pub fn sign_export(&self, r: &wire::ExportRequest) -> Result<wire::ExportSigned, EngineError> {
+        use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
+        use keelson_core::statement::{read_purchase, to_be_signed, verify_receipt};
+        let (Some(log), Some(root), Some(issuer)) = (self.log.as_deref(), &self.root, &self.issuer)
+        else {
+            return Err(bad("export.leg"));
+        };
+        let read = read_purchase(&r.statement.0).ok_or(bad("export.statement"))?;
+        let keys: Vec<[u8; 32]> = log.keys().iter().map(|k| k.receipt_public_key()).collect();
+        read.receipts
+            .first()
+            .and_then(|receipt| verify_receipt(receipt, &read.registered, &keys))
+            .ok_or(bad("export.receipt"))?;
+        // The statement's ES256K signature is by the leg its mode names; the legs signed its facts.
+        let expected = read.legs.last().ok_or(bad("export.statement"))?.signer;
+        let digest: [u8; 32] =
+            Sha256::digest(to_be_signed(&read.protected, &read.claims_bytes)).into();
+        let by_kid = [27u8, 28].iter().any(|v| {
+            let mut sig = [0u8; 65];
+            sig[..64].copy_from_slice(&read.signature);
+            sig[64] = *v;
+            crate::recover_address(&digest, &sig).map(|a| a.into_array()) == Some(read.kid)
+        });
+        let domain = keelson_core::domain(read.chain_id, self.config.verifying_contract)
+            .map_err(|_| bad("export.statement"))?;
+        let countersign = crate::countersign_digest(&read.countersign, &domain);
+        let legs_signed = read.legs.iter().all(|l| {
+            crate::recover_address(&countersign, &l.signature).map(|a| a.into_array())
+                == Some(l.signer)
+        });
+        if read.kid != expected || !by_kid || !legs_signed {
+            return Err(bad("export.statement"));
+        }
+        let k = &r.payload["keelson"];
+        if k["statement"].as_str() != Some(B64.encode(&r.statement.0).as_str())
+            || k["facts"] != crate::exports::facts(&read.countersign, &read.alibi_id)
+        {
+            return Err(bad("export.facts"));
+        }
+        let profile = crate::exports::profiles()
+            .iter()
+            .find(|p| Some(p.profile.as_str()) == k["profile"].as_str())
+            .ok_or(bad("export.profile"))?;
+        if profile.typ != r.typ {
+            return Err(bad("export.typ"));
+        }
+        for row in &profile.rows {
+            let value = r
+                .payload
+                .pointer(&row.pointer)
+                .ok_or(bad("export.binding"))?;
+            let fact = &k["facts"][row.fact.as_str()];
+            if !crate::exports::holds(value, fact, row.transform.as_deref(), &read.countersign) {
+                return Err(bad("export.binding"));
+            }
+        }
+        let header = serde_json::json!({
+            "alg": "ES256",
+            "kid": B64.encode(issuer.thumbprint()),
+            "typ": r.typ,
+        });
+        let signing_input = format!(
+            "{}.{}",
+            B64.encode(crate::exports::ascii_json(&header)),
+            B64.encode(crate::exports::ascii_json(&r.payload))
+        );
+        let signature: p256::ecdsa::Signature =
+            p256::ecdsa::signature::Signer::sign(&root.issuer_key(), signing_input.as_bytes());
+        Ok(wire::ExportSigned {
+            jws: format!("{signing_input}.{}", B64.encode(signature.to_bytes())),
+        })
+    }
+
     pub fn countersign_with(
         &self,
         r: &CountersignRequest,

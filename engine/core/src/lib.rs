@@ -17,5 +17,5 @@ pub use eip712::domain;
 pub use error::Error;
 pub use hash::{Dst, hash_object};
 pub use jcs::jcs;
-pub use money::{Money, currency_numeric, from_paypal_value, to_paypal_value};
+pub use money::{Money, currency_code, currency_numeric, from_paypal_value, to_paypal_value};
 pub use poseidon2::{field_from_ascii, poseidon2};

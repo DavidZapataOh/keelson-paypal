@@ -720,3 +720,22 @@ pub struct BridgeRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chain_id: Option<u64>,
 }
+
+/// Asks leg A to sign a standard export (`POST /v1/exports/sign`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExportRequest {
+    /// The JWS `typ` the standard requires.
+    pub typ: String,
+    /// The JWT claims; `keelson.profile`, `keelson.statement` and `keelson.facts` are required.
+    pub payload: Value,
+    /// The transparent statement the export carries, with a receipt this leg's log key signed.
+    pub statement: Base64,
+}
+
+/// A compact ES256 JWS.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExportSigned {
+    pub jws: String,
+}
