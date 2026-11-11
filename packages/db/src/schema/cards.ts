@@ -100,3 +100,39 @@ export const cardAuthorizations = pgTable(
     uniqueIndex("card_authorizations_one_approved_idx").on(t.purchaseId).where(sql`${t.approved}`),
   ],
 );
+
+/**
+ * A chargeback the user filed through the card issuer over a card purchase, with the purchase's
+ * Alibi as evidence. What it recovered is subtracted from any bond claim over the same purchase.
+ */
+export const cardChargebacks = pgTable(
+  "card_chargebacks",
+  {
+    /** The issuer's dispute token. */
+    id: text().primaryKey(),
+    purchaseId: char({ length: 26 })
+      .notNull()
+      .references(() => purchases.id),
+    reason: text({ enum: ["not_received", "not_as_described", "unauthorized"] }).notNull(),
+    amountMinor: bigint({ mode: "bigint" }).notNull(),
+    /** The issuer's dispute status, e.g. `NEW`, `SUBMITTED`, `CASE_WON` or `CASE_CLOSED`. */
+    status: text().notNull(),
+    resolution: text(),
+    /** What the chargeback returned to the cardholder; known once the case is decided. */
+    recoveredMinor: bigint({ mode: "bigint" }),
+    evidenceUploaded: boolean().notNull().default(false),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    check("card_chargebacks_amount_positive", sql`${t.amountMinor} > 0`),
+    check(
+      "card_chargebacks_reason_valid",
+      sql`${t.reason} in ('not_received', 'not_as_described', 'unauthorized')`,
+    ),
+    // One open chargeback per purchase: the card network takes one at a time.
+    uniqueIndex("card_chargebacks_one_open_idx")
+      .on(t.purchaseId)
+      .where(sql`${t.status} not in ('CASE_WON', 'CASE_CLOSED')`),
+  ],
+);

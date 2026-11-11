@@ -83,7 +83,22 @@ export interface PurchaseCard {
   expiresAt: string;
   controls: { spend_limit_minor?: string; currency?: string; mcc?: string[]; countries?: string[] };
   settledMinor: string | null;
+  chargebacks: Chargeback[];
+  /** The most a bond claim may still pay: the settled amount less what chargebacks returned. */
+  bondClaimMinor: string;
   authorizations: CardAuthorization[];
+}
+
+/** A chargeback filed through the card issuer over a card purchase. */
+export interface Chargeback {
+  id: string;
+  reason: "not_received" | "not_as_described" | "unauthorized";
+  networkCodes: { visa: string; mastercard: string };
+  amountMinor: string;
+  status: string;
+  resolution: string | null;
+  recoveredMinor: string | null;
+  evidenceUploaded: boolean;
 }
 
 export interface MandateView {

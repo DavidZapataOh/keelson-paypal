@@ -24,6 +24,7 @@ import { AnonymousProof } from "./anonymous-proof";
 import { AppShell } from "./app-shell";
 import { RiveMoment } from "./brand";
 import { CardLeg } from "./card-leg";
+import { ChargebackSheet } from "./chargeback-sheet";
 import { CheckoutBreakdown } from "./checkout-breakdown";
 import { DisputeSheet } from "./dispute-sheet";
 import { ErrorNotice } from "./notice";
@@ -263,9 +264,10 @@ export function PurchasePage() {
 
 function Receipt() {
   const params = useSearchParams();
-  const { mandate, error } = useMandate(params.get("mandate"));
+  const { mandate, error, reload } = useMandate(params.get("mandate"));
   const [fileError, setFileError] = useState<string>();
   const [disputing, setDisputing] = useState(false);
+  const [filed, setFiled] = useState(false);
   if (error) return <ErrorNotice>{error}</ErrorNotice>;
   const p = mandate?.purchases.find((x) => x.id === params.get("id"));
   if (!mandate)
@@ -330,7 +332,11 @@ function Receipt() {
           </div>
         ) : null}
 
-        {!blocked && CAPTURED.has(p.state) && p.disputes.length === 0 ? (
+        {!blocked &&
+        CAPTURED.has(p.state) &&
+        p.disputes.length === 0 &&
+        !filed &&
+        !p.card?.chargebacks?.length ? (
           <button
             type="button"
             onClick={() => setDisputing(true)}
@@ -385,7 +391,17 @@ function Receipt() {
         {p.disputes.map((d) => (
           <DisputeCard key={d.id} id={d.id} />
         ))}
-        {mandate.card ? (
+        {p.card ? (
+          <ChargebackSheet
+            open={disputing}
+            onOpenChange={setDisputing}
+            purchaseId={p.id}
+            onFiled={() => {
+              setFiled(true);
+              reload();
+            }}
+          />
+        ) : mandate.card ? (
           <DisputeSheet
             open={disputing}
             onOpenChange={setDisputing}

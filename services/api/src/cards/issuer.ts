@@ -1,4 +1,5 @@
-import Lithic from "lithic";
+import Lithic, { toFile } from "lithic";
+import { CHARGEBACK_REASONS, type ChargebackReason } from "./chargeback.ts";
 
 /** The issuer-side controls of a single-use card, set when it is issued. */
 export interface CardControls {
@@ -31,6 +32,18 @@ export interface CardIssuer {
    * for the agent's browser: the details go from the issuer to that browser only.
    */
   embedUrl(token: string, ttlSeconds: number): string;
+  /**
+   * Files a chargeback with the card network over the card's settled transaction, for the
+   * cardholder: the issuer's side of the dispute.
+   */
+  chargeback(input: {
+    transactionToken: string;
+    amountMinor: bigint;
+    reason: ChargebackReason;
+    note: string;
+  }): Promise<{ token: string; status: string }>;
+  /** Attaches a file to a chargeback as the cardholder's evidence. */
+  attachEvidence(token: string, filename: string, bytes: Uint8Array): Promise<void>;
   /** Parses a request the issuer signed with `secret`; throws when the signature does not verify. */
   verify(body: string, headers: Headers, secret: string): unknown;
 }
@@ -126,6 +139,29 @@ export class LithicIssuer implements CardIssuer {
 
   async close(token: string): Promise<void> {
     await this.client.cards.update(token, { state: "CLOSED" });
+  }
+
+  async chargeback(input: {
+    transactionToken: string;
+    amountMinor: bigint;
+    reason: ChargebackReason;
+    note: string;
+  }): Promise<{ token: string; status: string }> {
+    const d = await this.client.disputes.create({
+      transaction_token: input.transactionToken,
+      amount: Number(input.amountMinor),
+      reason: CHARGEBACK_REASONS[input.reason].issuer,
+      customer_filed_date: new Date().toISOString(),
+      customer_note: input.note,
+    });
+    return { token: d.token, status: d.status };
+  }
+
+  async attachEvidence(token: string, filename: string, bytes: Uint8Array): Promise<void> {
+    await this.client.disputes.uploadEvidence(
+      token,
+      await toFile(bytes, filename, { type: "application/pdf" }),
+    );
   }
 
   verify(body: string, headers: Headers, secret: string): unknown {

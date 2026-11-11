@@ -467,6 +467,16 @@ components:
               type:
                 - string
                 - "null"
+            chargebacks:
+              type: array
+              items:
+                type: object
+                additionalProperties: {}
+              description: Chargebacks filed through the card issuer over this purchase.
+            bondClaimMinor:
+              type: string
+              description: "The most a bond claim over this purchase may pay: the settled
+                amount less what chargebacks returned; 0 while one is open."
             authorizations:
               type: array
               items:
@@ -526,6 +536,8 @@ components:
             - expiresAt
             - controls
             - settledMinor
+            - chargebacks
+            - bondClaimMinor
             - authorizations
           description: "A card purchase: its single-use card (never its number) and every
             authorization the card network sent it, with both legs' decision.
@@ -2079,6 +2091,16 @@ components:
               type:
                 - string
                 - "null"
+            chargebacks:
+              type: array
+              items:
+                type: object
+                additionalProperties: {}
+              description: Chargebacks filed through the card issuer over this purchase.
+            bondClaimMinor:
+              type: string
+              description: "The most a bond claim over this purchase may pay: the settled
+                amount less what chargebacks returned; 0 while one is open."
             authorizations:
               type: array
               items:
@@ -2138,6 +2160,8 @@ components:
             - expiresAt
             - controls
             - settledMinor
+            - chargebacks
+            - bondClaimMinor
             - authorizations
           description: "A card purchase: its single-use card (never its number) and every
             authorization the card network sent it, with both legs' decision.
@@ -2553,6 +2577,16 @@ components:
               type:
                 - string
                 - "null"
+            chargebacks:
+              type: array
+              items:
+                type: object
+                additionalProperties: {}
+              description: Chargebacks filed through the card issuer over this purchase.
+            bondClaimMinor:
+              type: string
+              description: "The most a bond claim over this purchase may pay: the settled
+                amount less what chargebacks returned; 0 while one is open."
             authorizations:
               type: array
               items:
@@ -2612,6 +2646,8 @@ components:
             - expiresAt
             - controls
             - settledMinor
+            - chargebacks
+            - bondClaimMinor
             - authorizations
           description: "A card purchase: its single-use card (never its number) and every
             authorization the card network sent it, with both legs' decision.
@@ -3039,6 +3075,53 @@ components:
             text (a variant's `"id":123`) instead of the whole body.
       required:
         - url
+    CardChargeback:
+      type: object
+      properties:
+        id:
+          type: string
+        purchaseId:
+          type: string
+        reason:
+          type: string
+          enum:
+            - not_received
+            - not_as_described
+            - unauthorized
+        networkCodes:
+          type: object
+          properties:
+            visa:
+              type: string
+            mastercard:
+              type: string
+          required:
+            - visa
+            - mastercard
+        amountMinor:
+          type: string
+        status:
+          type: string
+        resolution:
+          type:
+            - string
+            - "null"
+        recoveredMinor:
+          type:
+            - string
+            - "null"
+        evidenceUploaded:
+          type: boolean
+      required:
+        - id
+        - purchaseId
+        - reason
+        - networkCodes
+        - amountMinor
+        - status
+        - resolution
+        - recoveredMinor
+        - evidenceUploaded
     TeeLeg:
       type: object
       properties:
@@ -7852,6 +7935,81 @@ paths:
         "503":
           description: No prover is configured, leg A has no admitted signer, or the rate
             limit store is unreachable
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/purchases/{id}/chargeback:
+    post:
+      tags:
+        - purchases
+      summary: Charge back a card purchase
+      description: "Files a chargeback through the card issuer over a card purchase's
+        settled transaction, with the purchase's Alibi as the cardholder's
+        evidence: Visa 13.1 or Mastercard 4853 for an item not received, Visa
+        13.3 or 4853 for one not as described, Visa 10.4 or Mastercard 4837 for
+        a charge the user did not authorize. What the chargeback returns is
+        subtracted from any bond claim over the purchase, and no bond claim is
+        paid while it is open. Only the mandate's owner files it, one at a
+        time."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^[0-7][0-9A-HJKMNP-TV-Z]{25}$
+          required: true
+          name: id
+          in: path
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  enum:
+                    - not_received
+                    - not_as_described
+                    - unauthorized
+                note:
+                  type: string
+                  maxLength: 1000
+                  default: ""
+                amountMinor:
+                  type: string
+                  pattern: ^[1-9][0-9]{0,15}$
+                  description: Defaults to the settled amount, and cannot exceed it.
+              required:
+                - reason
+              additionalProperties: false
+      responses:
+        "201":
+          description: Filed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardChargeback"
+        "404":
+          description: No such card purchase of this user
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: The card is not settled yet, or a chargeback is already open
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: The amount is above what was settled
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: The card issuer is not configured or unavailable
           content:
             application/problem+json:
               schema:

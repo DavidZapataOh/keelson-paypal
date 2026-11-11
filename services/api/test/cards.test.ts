@@ -2,6 +2,7 @@ import { createHmac, randomBytes } from "node:crypto";
 import { cardAuthorizationDigest, countersignDigest, keelsonDomain } from "@keelson/core/eip712";
 import {
   cardAuthorizations,
+  cardChargebacks,
   eq,
   mandates,
   operators,
@@ -20,11 +21,14 @@ import { beforeAll, describe, expect, test } from "vitest";
 import demo from "../../../packages/mandate/test/fixtures/demo-mandate.json" with { type: "json" };
 import { createApp } from "../src/app.ts";
 import { type CardVetoDeps, decide, type NetworkAuthorization } from "../src/cards/authorize.ts";
+import { bondClaimMinor, chargebackRecovered } from "../src/cards/chargeback.ts";
 import type { CardIssuer } from "../src/cards/issuer.ts";
+import { applyChargeback } from "../src/routes/chargebacks.ts";
 import type { CardAuthorized, CardAuthorizeRequest, CountersignJson } from "../src/tee/client.ts";
 import { VERIFYING_CONTRACT } from "../src/tee/config.ts";
 import { countersignMessage } from "../src/tee/coordinator.ts";
 import { testDb, testKv } from "./setup.ts";
+import { headerPrincipal } from "./tee-live.ts";
 
 const log = pino({ level: "silent" });
 const domain = keelsonDomain(421614, VERIFYING_CONTRACT);
@@ -281,6 +285,8 @@ describe("POST /webhooks/lithic/asa", () => {
     open: async () => {},
     close: async () => {},
     embedUrl: () => "https://sandbox.lithic.com/v1/embed/card",
+    chargeback: async () => ({ token: "dsp", status: "NEW" }),
+    attachEvidence: async () => {},
     verify(body, headers, key) {
       const id = headers.get("webhook-id") ?? "";
       const ts = headers.get("webhook-timestamp") ?? "";
@@ -363,5 +369,135 @@ describe("POST /webhooks/lithic/asa", () => {
       body,
     });
     expect(await res.json()).toEqual({ result: "SUSPECTED_FRAUD" });
+  });
+});
+
+describe("chargebacks and the bond", () => {
+  test("a chargeback that returned the money leaves nothing for the bond to pay twice", () => {
+    expect(chargebackRecovered("SUBMITTED", null, 450n)).toBeNull();
+    expect(chargebackRecovered("CASE_WON", "WON_FIRST_CHARGEBACK", 450n)).toBe(450n);
+    expect(chargebackRecovered("CASE_CLOSED", "REFUNDED", 450n)).toBe(450n);
+    expect(chargebackRecovered("CASE_CLOSED", "CASE_LOST", 450n)).toBe(0n);
+    // Nothing is claimed while a chargeback is open.
+    expect(bondClaimMinor(450n, [{ status: "SUBMITTED", recoveredMinor: null }])).toBe(0n);
+    expect(bondClaimMinor(450n, [{ status: "CASE_WON", recoveredMinor: 450n }])).toBe(0n);
+    expect(bondClaimMinor(450n, [{ status: "CASE_CLOSED", recoveredMinor: 200n }])).toBe(250n);
+    expect(bondClaimMinor(450n, [{ status: "CASE_CLOSED", recoveredMinor: 0n }])).toBe(450n);
+    expect(bondClaimMinor(450n, [])).toBe(450n);
+  });
+});
+
+describe("POST /v1/purchases/{id}/chargeback", () => {
+  const filed: { reason: string; amountMinor: bigint }[] = [];
+  const evidence: string[] = [];
+  const issuer: CardIssuer = {
+    name: "lithic",
+    issue: async () => ({ token: "t", lastFour: "0000" }),
+    open: async () => {},
+    close: async () => {},
+    embedUrl: () => "",
+    chargeback: async (i) => {
+      filed.push(i);
+      return { token: `dsp-${ulid()}`, status: "NEW" };
+    },
+    attachEvidence: async (_token, name) => {
+      evidence.push(name);
+    },
+    verify: () => ({}),
+  };
+
+  async function settled() {
+    const p = await cardPurchase();
+    const [row] = await testDb
+      .select({ userId: mandates.userId })
+      .from(purchases)
+      .innerJoin(mandates, eq(mandates.id, purchases.mandateId))
+      .where(eq(purchases.id, p.id));
+    await testDb.update(purchases).set({ state: "CAPTURED" }).where(eq(purchases.id, p.id));
+    await testDb
+      .update(purchaseCards)
+      .set({ state: "CLOSED", transactionToken: `txn-${ulid()}`, settledMinor: 450n })
+      .where(eq(purchaseCards.purchaseId, p.id));
+    return { ...p, userId: row?.userId as string };
+  }
+
+  const as = (userId: string) => ({
+    "content-type": "application/json",
+    "idempotency-key": ulid(),
+    "x-test-principal": JSON.stringify({ kind: "user", subject: userId }),
+  });
+
+  test("files through the issuer once, and the bond waits for its outcome", async () => {
+    const app = createApp({
+      db: testDb,
+      kv: testKv,
+      log,
+      authenticate: headerPrincipal,
+      cards: { issuer },
+    });
+    const { id, userId } = await settled();
+    const res = await app.request(`/v1/purchases/${id}/chargeback`, {
+      method: "POST",
+      headers: as(userId),
+      body: JSON.stringify({ reason: "not_as_described", note: "Wrong roast" }),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { id: string; networkCodes: unknown; amountMinor: string };
+    expect(body.networkCodes).toEqual({ visa: "13.3", mastercard: "4853" });
+    expect(body.amountMinor).toBe("450");
+    expect(filed.at(-1)?.amountMinor).toBe(450n);
+
+    const again = await app.request(`/v1/purchases/${id}/chargeback`, {
+      method: "POST",
+      headers: as(userId),
+      body: JSON.stringify({ reason: "not_received" }),
+    });
+    expect(again.status).toBe(409);
+
+    const other = await app.request(`/v1/purchases/${id}/chargeback`, {
+      method: "POST",
+      headers: as("user-someone-else"),
+      body: JSON.stringify({ reason: "not_received" }),
+    });
+    expect(other.status).toBe(404);
+
+    await applyChargeback(
+      { db: testDb },
+      { token: body.id, status: "CASE_WON", resolution: "WON_FIRST_CHARGEBACK" },
+    );
+    const [stored] = await testDb
+      .select()
+      .from(cardChargebacks)
+      .where(eq(cardChargebacks.id, body.id));
+    expect(stored?.recoveredMinor).toBe(450n);
+  });
+
+  test("refuses more than was settled, and a card not settled yet", async () => {
+    const app = createApp({
+      db: testDb,
+      kv: testKv,
+      log,
+      authenticate: headerPrincipal,
+      cards: { issuer },
+    });
+    const { id, userId } = await settled();
+    const over = await app.request(`/v1/purchases/${id}/chargeback`, {
+      method: "POST",
+      headers: as(userId),
+      body: JSON.stringify({ reason: "not_received", amountMinor: "451" }),
+    });
+    expect(over.status).toBe(422);
+    const open = await cardPurchase();
+    const [row] = await testDb
+      .select({ userId: mandates.userId })
+      .from(purchases)
+      .innerJoin(mandates, eq(mandates.id, purchases.mandateId))
+      .where(eq(purchases.id, open.id));
+    const early = await app.request(`/v1/purchases/${open.id}/chargeback`, {
+      method: "POST",
+      headers: as(row?.userId as string),
+      body: JSON.stringify({ reason: "not_received" }),
+    });
+    expect(early.status).toBe(409);
   });
 });

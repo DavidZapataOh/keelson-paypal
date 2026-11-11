@@ -10,6 +10,7 @@ import { rateLimit } from "../middleware/rate-limit.ts";
 import { publishPurchase } from "../pipeline/events.ts";
 import { problem } from "../problem.ts";
 import { span } from "../tracing.ts";
+import { applyChargeback } from "./chargebacks.ts";
 
 /** The latest the API answers an authorization: past it, the issuer is told to decline. */
 const ANSWER_DEADLINE_MS = 2_500;
@@ -27,6 +28,13 @@ const AsaRequest = z.looseObject({
     mcc: z.string().max(8),
     country: z.string().max(8),
   }),
+});
+
+const DisputeEvent = z.looseObject({
+  event_type: z.literal("dispute.updated"),
+  token: z.string(),
+  status: z.string(),
+  resolution_reason: z.string().nullable().optional(),
 });
 
 const TransactionEvent = z.looseObject({
@@ -130,6 +138,15 @@ export function registerCardWebhooks(
     if (!issuer || !secret) return problem(c, 503, "cards-unconfigured", "Cards unconfigured");
     const raw = await verified(c, issuer, secret);
     if (raw === undefined) return problem(c, 400, "invalid-signature", "Invalid signature");
+    const d = DisputeEvent.safeParse(raw);
+    if (d.success) {
+      await applyChargeback(deps, {
+        token: d.data.token,
+        status: d.data.status,
+        resolution: d.data.resolution_reason ?? null,
+      });
+      return c.body(null, 200);
+    }
     const e = TransactionEvent.safeParse(raw);
     if (!e.success || e.data.event_type !== "card_transaction.updated" || !e.data.card_token) {
       return c.body(null, 200);

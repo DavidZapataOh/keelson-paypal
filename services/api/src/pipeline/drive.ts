@@ -1,6 +1,7 @@
 import {
   and,
   cardAuthorizations,
+  cardChargebacks,
   type Db,
   eq,
   inArray,
@@ -15,6 +16,7 @@ import type { Relayer } from "@keelson/relayer";
 import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
 import { type Hex, type PublicClient, toHex } from "viem";
+import { bondClaimMinor, chargebackView } from "../cards/chargeback.ts";
 import type { CardIssuer } from "../cards/issuer.ts";
 import type { LogConfig } from "../log/append.ts";
 import type { OperatorSigners } from "../operators/signer.ts";
@@ -82,6 +84,9 @@ export interface CardView {
   expiresAt: string;
   controls: Record<string, unknown>;
   settledMinor: string | null;
+  /** Chargebacks filed through the issuer, and what a bond claim may still pay after them. */
+  chargebacks: ReturnType<typeof chargebackView>[];
+  bondClaimMinor: string;
   authorizations: {
     id: string;
     amountMinor: string;
@@ -234,11 +239,18 @@ export async function cardViewOf(db: Db, purchaseId: string): Promise<CardView |
     .from(purchaseCards)
     .where(eq(purchaseCards.purchaseId, purchaseId));
   if (!card) return undefined;
-  const auths = await db
-    .select()
-    .from(cardAuthorizations)
-    .where(eq(cardAuthorizations.purchaseId, purchaseId))
-    .orderBy(cardAuthorizations.createdAt);
+  const [auths, chargebacks] = await Promise.all([
+    db
+      .select()
+      .from(cardAuthorizations)
+      .where(eq(cardAuthorizations.purchaseId, purchaseId))
+      .orderBy(cardAuthorizations.createdAt),
+    db
+      .select()
+      .from(cardChargebacks)
+      .where(eq(cardChargebacks.purchaseId, purchaseId))
+      .orderBy(cardChargebacks.createdAt),
+  ]);
   return {
     issuer: card.issuer,
     lastFour: card.lastFour,
@@ -246,6 +258,8 @@ export async function cardViewOf(db: Db, purchaseId: string): Promise<CardView |
     expiresAt: card.expiresAt.toISOString(),
     controls: card.controls,
     settledMinor: card.settledMinor?.toString() ?? null,
+    chargebacks: chargebacks.map(chargebackView),
+    bondClaimMinor: bondClaimMinor(card.settledMinor ?? 0n, chargebacks).toString(),
     authorizations: auths.map((a) => ({
       id: a.id,
       amountMinor: a.amountMinor.toString(),

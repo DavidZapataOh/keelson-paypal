@@ -36,6 +36,7 @@ import { registerAnonymousMandates } from "./routes/anonymous-mandates.ts";
 import { registerBonds } from "./routes/bonds.ts";
 import { registerCardWebhooks } from "./routes/card-webhooks.ts";
 import { registerChannel3Webhook } from "./routes/channel3-webhook.ts";
+import { registerChargebacks } from "./routes/chargebacks.ts";
 import { type CompileSources, registerCompile } from "./routes/compile.ts";
 import { registerConnections } from "./routes/connections.ts";
 import { registerCountersign } from "./routes/countersign.ts";
@@ -331,6 +332,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerChannel3Webhook(app, deps);
   registerPayPalWebhook(app, deps);
   registerCardWebhooks(app, deps);
+  registerChargebacks(app, deps);
   registerTee(app, deps);
   registerTimestamps(app, deps);
   registerAlibis(app, deps);

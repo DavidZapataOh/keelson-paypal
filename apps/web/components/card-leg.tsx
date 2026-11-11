@@ -3,7 +3,8 @@
 import { MCC_LABELS } from "@keelson/mandate/browser";
 import { Check, CreditCard, X } from "lucide-react";
 import { money, when } from "../lib/format";
-import type { CardAuthorization, PurchaseCard } from "../lib/types";
+import type { CardAuthorization, Chargeback, PurchaseCard } from "../lib/types";
+import { CHARGEBACKS } from "./chargeback-sheet";
 
 /** Why the enclaves declined a card authorization, by `CARD_BITS` bit, in words. */
 const BITS: readonly [number, string][] = [
@@ -83,6 +84,22 @@ function Authorization({ a }: { a: CardAuthorization }) {
   );
 }
 
+function ChargebackLine({ c, currency }: { c: Chargeback; currency: string }) {
+  const decided = c.recoveredMinor !== null;
+  return (
+    <li className="grid gap-0.5">
+      <span className="font-medium">
+        Chargeback of {money(c.amountMinor, currency)}: {CHARGEBACKS[c.reason].label.toLowerCase()}
+      </span>
+      <span className="text-muted-foreground">
+        {CHARGEBACKS[c.reason].codes} · {c.status.replaceAll("_", " ").toLowerCase()}
+        {decided ? ` · returned ${money(c.recoveredMinor ?? "0", currency)}` : ""}
+        {c.evidenceUploaded ? " · Alibi attached as evidence" : ""}
+      </span>
+    </li>
+  );
+}
+
 /**
  * The card leg of a card purchase: the single-use card Keelson issued after the ALLOW, the
  * limits the issuer enforces on it, and every charge the card network sent, with what each
@@ -138,6 +155,17 @@ export function CardLeg({ card, currency }: { card: PurchaseCard; currency: stri
           Settled {money(settled, currency)}{" "}
           <span className="text-muted-foreground">(reported by the issuer, not signed)</span>
         </p>
+      ) : null}
+      {(card.chargebacks ?? []).length > 0 ? (
+        <ul className="mt-3 grid gap-2 border-t pt-3 text-sm" aria-label="Chargebacks">
+          {card.chargebacks.map((c) => (
+            <ChargebackLine key={c.id} c={c} currency={currency} />
+          ))}
+          <li className="text-muted-foreground">
+            The agent's bond can still pay at most {money(card.bondClaimMinor, currency)} over this
+            purchase.
+          </li>
+        </ul>
       ) : null}
     </section>
   );

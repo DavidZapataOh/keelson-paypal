@@ -565,6 +565,8 @@ describe("receipts and disputes", () => {
         expiresAt: later(),
         controls: { spend_limit_minor: "450", mcc: ["5814", "5499"], countries: ["US"] },
         settledMinor: "450",
+        chargebacks: [],
+        bondClaimMinor: "450",
         authorizations: [
           {
             ...charge,
@@ -630,6 +632,59 @@ describe("receipts and disputes", () => {
       expect(violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
       await context.close();
     }
+  });
+
+  test("a card purchase is charged back through the issuer, with the Alibi as evidence", async () => {
+    const filedBack = {
+      id: "dsp_1",
+      reason: "not_as_described",
+      networkCodes: { visa: "13.3", mastercard: "4853" },
+      amountMinor: "450",
+      status: "SUBMITTED",
+      resolution: null,
+      recoveredMinor: null,
+      evidenceUploaded: true,
+    };
+    let filed = false;
+    const card = (chargebacks: unknown[], bondClaimMinor: string) => ({
+      issuer: "lithic",
+      lastFour: "4242",
+      state: "CLOSED",
+      expiresAt: later(),
+      controls: { spend_limit_minor: "450", mcc: ["5814"], countries: ["US"] },
+      settledMinor: "450",
+      chargebacks,
+      bondClaimMinor,
+      authorizations: [],
+    });
+    const paid = () => ({
+      ...bought,
+      id: "01M7PURCHASE00000000000010",
+      merchantId: "*",
+      amount: { currency: "USD", minor: "450" },
+      card: filed ? card([filedBack], "0") : card([], "450"),
+    });
+    const { context, page } = await signedIn(
+      "desktop",
+      `/purchase/?mandate=${id}&id=01M7PURCHASE00000000000010`,
+      (path) => {
+        if (path === `/v1/mandates/${id}`) return viewIn(id, "ACTIVE", [paid()]);
+        if (path === "/v1/purchases/01M7PURCHASE00000000000010/chargeback") {
+          filed = true;
+          return filedBack;
+        }
+        return undefined;
+      },
+    );
+    await page.getByRole("button", { name: /Not what you asked for/ }).click();
+    await page.getByRole("heading", { name: "Charge it back" }).waitFor();
+    expect(await page.getByText("Visa 10.4 · Mastercard 4837").count()).toBe(1);
+    await page.getByRole("button", { name: "File the chargeback" }).click();
+    const list = page.getByRole("list", { name: "Chargebacks" });
+    await list.waitFor();
+    expect(await list.getByText(/Alibi attached as evidence/).count()).toBe(1);
+    expect(await list.getByText(/bond can still pay at most \$0\.00/).count()).toBe(1);
+    await context.close();
   });
 
   test("the disputes list shows every dispute, and says so when there is none", async () => {

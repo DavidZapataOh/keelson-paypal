@@ -74,6 +74,13 @@ export const PurchaseProgress = z.object({
       expiresAt: z.string(),
       controls: z.record(z.string(), z.unknown()),
       settledMinor: z.string().nullable(),
+      chargebacks: z.array(z.record(z.string(), z.unknown())).openapi({
+        description: "Chargebacks filed through the card issuer over this purchase.",
+      }),
+      bondClaimMinor: z.string().openapi({
+        description:
+          "The most a bond claim over this purchase may pay: the settled amount less what chargebacks returned; 0 while one is open.",
+      }),
       authorizations: z.array(
         z.object({
           id: z.string(),
