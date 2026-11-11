@@ -9,6 +9,7 @@ import {
   like,
   mandates,
   or,
+  purchaseCards,
   purchases,
   type SQL,
   user,
@@ -16,7 +17,7 @@ import {
 import type { Deps } from "../app.ts";
 import { Amount, breakdowns, withBreakdown } from "../checkout.ts";
 import { requireClient, requirePrincipal } from "../middleware/auth.ts";
-import { failedFields, type PurchaseView, purchaseView } from "../pipeline/drive.ts";
+import { cardViewOf, failedFields, type PurchaseView, purchaseView } from "../pipeline/drive.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 
 /** How far the purchase got after its countersign. */
@@ -65,6 +66,36 @@ export const PurchaseProgress = z.object({
       description:
         "For a purchase the engine checked, each mandate field with what the mandate allowed, what the cart had and whether it held.",
     }),
+  card: z
+    .object({
+      issuer: z.string(),
+      lastFour: z.string(),
+      state: z.string(),
+      expiresAt: z.string(),
+      controls: z.record(z.string(), z.unknown()),
+      settledMinor: z.string().nullable(),
+      authorizations: z.array(
+        z.object({
+          id: z.string(),
+          amountMinor: z.string(),
+          currency: z.string(),
+          mcc: z.string(),
+          merchantName: z.string(),
+          merchantCountry: z.string(),
+          approved: z.boolean(),
+          failedMask: z.number().int(),
+          reason: z.string().nullable(),
+          legs: z.object({ tdx: z.boolean(), nitro: z.boolean() }),
+          latencyMs: z.number().int(),
+          at: z.string(),
+        }),
+      ),
+    })
+    .optional()
+    .openapi({
+      description:
+        "A card purchase: its single-use card (never its number) and every authorization the card network sent it, with both legs' decision. `CAPTURED` once the merchant's capture settles.",
+    }),
   live: z.object({ store: z.string(), transactionId: z.string().nullable() }).optional().openapi({
     description:
       "A purchase the buyer pays at the store's own checkout: the store's origin and the PayPal transaction id once the agent recorded it. Never covered nor captured.",
@@ -73,7 +104,8 @@ export const PurchaseProgress = z.object({
 
 export function progressOf(view: PurchaseView | undefined): z.infer<typeof PurchaseProgress> {
   if (!view) return {};
-  const { state, logIndex, coverage, capture, failure, blocked, reasons, checks, live } = view;
+  const { state, logIndex, coverage, capture, failure, blocked, reasons, checks, live, card } =
+    view;
   return {
     state,
     ...(logIndex ? { logIndex } : {}),
@@ -84,6 +116,7 @@ export function progressOf(view: PurchaseView | undefined): z.infer<typeof Purch
     ...(reasons ? { reasons } : {}),
     ...(checks ? { checks } : {}),
     ...(live ? { live } : {}),
+    ...(card ? { card } : {}),
   };
 }
 
@@ -216,7 +249,10 @@ const liveRoute = createRoute({
   },
 });
 
-export function registerPurchases(app: OpenAPIHono, deps: Pick<Deps, "db" | "demoAgentId">): void {
+export function registerPurchases(
+  app: OpenAPIHono,
+  deps: Pick<Deps, "db" | "demoAgentId" | "cards">,
+): void {
   app.openapi(liveRoute, async (c) => {
     const rows = await deps.db
       .select({ purchase: purchases })
@@ -320,7 +356,75 @@ export function registerPurchases(app: OpenAPIHono, deps: Pick<Deps, "db" | "dem
     if (!row || !mine) return problem(c, 404, "not-found", "Not found");
     const p = row.purchase;
     const parts = await breakdowns(deps.db, [p.evidenceRoot]);
+    const card = p.rail === "card" ? await cardViewOf(deps.db, p.id) : undefined;
     c.header("Cache-Control", "no-store");
-    return c.json(withBreakdown(purchaseView(p), p.evidenceRoot, parts), 200);
+    return c.json(
+      withBreakdown({ ...purchaseView(p), ...(card ? { card } : {}) }, p.evidenceRoot, parts),
+      200,
+    );
+  });
+
+  // The card goes to the agent's browser, never to the agent: the issuer's hosted page shows it
+  // there, for a minute, and Keelson never reads its number.
+  app.openapi(cardRoute, async (c) => {
+    const id = c.req.valid("param").id;
+    const [row] = await deps.db
+      .select({ purchase: purchases, card: purchaseCards })
+      .from(purchases)
+      .innerJoin(purchaseCards, eq(purchaseCards.purchaseId, purchases.id))
+      .where(eq(purchases.id, id));
+    if (!row || row.purchase.clientId !== c.var.principal?.subject) {
+      return problem(c, 404, "not-found", "Not found");
+    }
+    const usable =
+      row.card.state === "OPEN" &&
+      row.purchase.state === "COVERED" &&
+      row.card.expiresAt.getTime() > Date.now();
+    if (!usable || !deps.cards) {
+      return problem(
+        c,
+        409,
+        "card-not-open",
+        "Card not open",
+        "The card opens once the purchase is logged and covered, and closes after its one use or when its countersign expires.",
+      );
+    }
+    c.header("Cache-Control", "no-store");
+    return c.json(
+      {
+        lastFour: row.card.lastFour,
+        expiresAt: row.card.expiresAt.toISOString(),
+        embedUrl: deps.cards.issuer.embedUrl(row.card.cardToken, CARD_EMBED_TTL_SEC),
+      },
+      200,
+    );
   });
 }
+
+/** How long the card's hosted page link works. */
+const CARD_EMBED_TTL_SEC = 60;
+
+const cardRoute = createRoute({
+  method: "get",
+  path: "/v1/purchases/{id}/card",
+  tags: ["purchases"],
+  summary: "The single-use card of a card purchase",
+  description:
+    "For the agent's browser: a one-minute link to the card issuer's hosted page showing the card's number, expiry and code. Open it in the browser session that pays; never put its contents in a model's context or a log. Only the client that asked for the countersign reads it, and only while the card is open.",
+  middleware: [requireClient(["countersign:write"])],
+  request: { params: z.object({ id: Id }) },
+  responses: {
+    200: {
+      description: "The card's hosted page",
+      content: {
+        "application/json": {
+          schema: z
+            .object({ lastFour: z.string(), expiresAt: z.string(), embedUrl: z.string() })
+            .openapi("PurchaseCard"),
+        },
+      },
+    },
+    404: { description: "No such card purchase of this client", content: problemContent },
+    409: { description: "The card is not open", content: problemContent },
+  },
+});

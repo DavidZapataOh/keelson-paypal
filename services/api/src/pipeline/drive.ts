@@ -1,8 +1,21 @@
-import { and, type Db, eq, inArray, isNull, lt, or, purchases, sql } from "@keelson/db";
+import {
+  and,
+  cardAuthorizations,
+  type Db,
+  eq,
+  inArray,
+  isNull,
+  lt,
+  or,
+  purchaseCards,
+  purchases,
+  sql,
+} from "@keelson/db";
 import type { Relayer } from "@keelson/relayer";
 import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
 import { type Hex, type PublicClient, toHex } from "viem";
+import type { CardIssuer } from "../cards/issuer.ts";
 import type { LogConfig } from "../log/append.ts";
 import type { OperatorSigners } from "../operators/signer.ts";
 import type { PayPalDeps } from "../paypal.ts";
@@ -11,6 +24,7 @@ import type { TeeConfig } from "../tee/signers.ts";
 import type { StampWorker } from "../timestamps/worker.ts";
 import { span } from "../tracing.ts";
 import { CAPTURE_WINDOW_SEC, captureStep } from "./capture-step.ts";
+import { issueCardStep, openCardStep } from "./card-step.ts";
 import { coverStep } from "./cover-step.ts";
 import { publishPurchase } from "./events.ts";
 import { logStep } from "./log-step.ts";
@@ -33,6 +47,8 @@ export interface PipelineDeps {
   chain?: { client: PublicClient } | undefined;
   paypal?: PayPalDeps | undefined;
   tee?: Pick<TeeConfig, "client"> | undefined;
+  /** Issues the single-use cards of card purchases; they fail before logging without it. */
+  cardIssuer?: CardIssuer | undefined;
   proveAnonymousPurchase?: ((purchaseId: string) => Promise<void>) | undefined;
 }
 
@@ -54,6 +70,32 @@ export interface PurchaseView {
   checks?: FieldCheck[];
   /** A purchase the buyer pays at the store's own checkout: the store and PayPal's transaction. */
   live?: { store: string; transactionId: string | null };
+  /** A card purchase: its single-use card and each authorization the card network sent it. */
+  card?: CardView;
+}
+
+/** A purchase's single-use card, as the purchase shows it: never its number. */
+export interface CardView {
+  issuer: string;
+  lastFour: string;
+  state: string;
+  expiresAt: string;
+  controls: Record<string, unknown>;
+  settledMinor: string | null;
+  authorizations: {
+    id: string;
+    amountMinor: string;
+    currency: string;
+    mcc: string;
+    merchantName: string;
+    merchantCountry: string;
+    approved: boolean;
+    failedMask: number;
+    reason: string | null;
+    legs: { tdx: boolean; nitro: boolean };
+    latencyMs: number;
+    at: string;
+  }[];
 }
 
 type Row = typeof purchases.$inferSelect;
@@ -185,9 +227,47 @@ export function purchaseView(p: Row): PurchaseView {
   };
 }
 
+/** The single-use card of a card purchase and its authorizations, oldest first. */
+export async function cardViewOf(db: Db, purchaseId: string): Promise<CardView | undefined> {
+  const [card] = await db
+    .select()
+    .from(purchaseCards)
+    .where(eq(purchaseCards.purchaseId, purchaseId));
+  if (!card) return undefined;
+  const auths = await db
+    .select()
+    .from(cardAuthorizations)
+    .where(eq(cardAuthorizations.purchaseId, purchaseId))
+    .orderBy(cardAuthorizations.createdAt);
+  return {
+    issuer: card.issuer,
+    lastFour: card.lastFour,
+    state: card.state,
+    expiresAt: card.expiresAt.toISOString(),
+    controls: card.controls,
+    settledMinor: card.settledMinor?.toString() ?? null,
+    authorizations: auths.map((a) => ({
+      id: a.id,
+      amountMinor: a.amountMinor.toString(),
+      currency: a.currency,
+      mcc: a.mcc,
+      merchantName: a.merchantName,
+      merchantCountry: a.merchantCountry,
+      approved: a.approved,
+      failedMask: a.failedMask,
+      reason: a.reason,
+      legs: { tdx: a.tdx !== null, nitro: a.nitro !== null },
+      latencyMs: a.latencyMs,
+      at: a.createdAt.toISOString(),
+    })),
+  };
+}
+
 export async function viewOf(db: Db, purchaseId: string): Promise<PurchaseView | undefined> {
   const [p] = await db.select().from(purchases).where(eq(purchases.id, purchaseId));
-  return p ? purchaseView(p) : undefined;
+  if (!p) return undefined;
+  const card = p.rail === "card" ? await cardViewOf(db, purchaseId) : undefined;
+  return { ...purchaseView(p), ...(card ? { card } : {}) };
 }
 
 /**
@@ -245,7 +325,13 @@ async function fail(
   });
 }
 
-const REACHES = { log: "LOGGED", cover: "COVERED", capture: "CAPTURED" } as const;
+const REACHES = {
+  card: "CARD_ISSUED",
+  log: "LOGGED",
+  cover: "COVERED",
+  open: "CARD_OPEN",
+  capture: "CAPTURED",
+} as const;
 
 /**
  * Runs a step in a span named for the state it reaches; a step that throws is retried on the
@@ -336,6 +422,19 @@ export async function drivePurchase(deps: PipelineDeps, purchaseId: string): Pro
       return (await viewOf(deps.db, purchaseId)) as PurchaseView;
     }
 
+    // A card purchase's card is issued before its leaf is logged, which commits to it.
+    if (row.rail === "card" && state === "COUNTERSIGNED") {
+      const issued = await run(deps, purchaseId, "card", () => issueCardStep(deps, purchaseId));
+      if (issued.kind === "final") {
+        await fail(deps, purchaseId, state, issued.reason);
+        return (await viewOf(deps.db, purchaseId)) as PurchaseView;
+      }
+      if (issued.kind === "retry") {
+        if (windowClosed()) await fail(deps, purchaseId, state, "card:window-closed");
+        return (await viewOf(deps.db, purchaseId)) as PurchaseView;
+      }
+    }
+
     if (state === "COUNTERSIGNED" || state === "LOGGED") {
       const logged =
         state === "COUNTERSIGNED" ? toLog() : Promise.resolve({ kind: "done" } as const);
@@ -395,6 +494,15 @@ export async function drivePurchase(deps: PipelineDeps, purchaseId: string): Pro
     }
 
     if (lost) return (await viewOf(deps.db, purchaseId)) as PurchaseView;
+    // A card purchase is captured by the merchant, through the card network: its card opens now.
+    if (row.rail === "card") {
+      const opened = await run(deps, purchaseId, "open", () => openCardStep(deps, purchaseId));
+      if (opened.kind === "final") await fail(deps, purchaseId, "COVERED", opened.reason);
+      else if (opened.kind === "done") {
+        await publishPurchase(deps, purchaseId, { type: "purchase.card_open" });
+      }
+      return (await viewOf(deps.db, purchaseId)) as PurchaseView;
+    }
     const capture = await run(
       deps,
       purchaseId,
@@ -427,6 +535,8 @@ export async function resumePurchases(deps: PipelineDeps): Promise<number> {
         inArray(purchases.state, [...DRIVEN]),
         // A live purchase has nothing left to drive once logged.
         or(isNull(purchases.liveStore), eq(purchases.state, "COUNTERSIGNED")),
+        // Nor a card purchase once its card is open: the card network captures it.
+        sql`not (${purchases.state} = 'COVERED' and exists (select 1 from purchase_cards pc where pc.purchase_id = ${purchases.id} and pc.state <> 'PAUSED'))`,
         or(
           lt(purchases.leaseUntil, sql`now()`),
           and(

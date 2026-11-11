@@ -104,9 +104,9 @@ const CartSchema = z
 
 const Body = z
   .object({
-    authorizationId: z.string().min(1).max(64).openapi({
+    authorizationId: z.string().min(1).max(64).optional().openapi({
       description:
-        "The PayPal authorization that holds the mandate's funds, or this request's own hold when the mandate holds each purchase separately; leg A reads it.",
+        "The PayPal authorization that holds the mandate's funds, or this request's own hold when the mandate holds each purchase separately; leg A reads it. Absent for a card mandate, whose purchase is paid with a single-use card issued after the ALLOW.",
     }),
     closedMandate: z.string().min(1).max(131_072).openapi({
       description: "The open mandate closed by the agent's key binding over the request and cart.",
@@ -355,7 +355,7 @@ async function redrive(
   want: CountersignExpectation,
   cart: { merchant: string; currency: string },
   evidenceRoot: Buffer,
-  hold: { orderId: string; authorizationId: string },
+  hold: { orderId: string | null; authorizationId: string | null },
 ): Promise<boolean> {
   const [row] = await db.select().from(purchases).where(eq(purchases.id, id));
   if (!row) return false;
@@ -522,11 +522,16 @@ export function registerCountersign(
     | "operators"
     | "chains"
     | "paypal"
+    | "cards"
     | "appOrigin"
   >,
 ): void {
   const { db, kv, log, tee } = deps;
-  const pipeline: PipelineDeps = { ...deps, chain: deps.chains?.[421614] };
+  const pipeline: PipelineDeps = {
+    ...deps,
+    chain: deps.chains?.[421614],
+    cardIssuer: deps.cards?.issuer,
+  };
   const appOrigin = deps.appOrigin ?? "https://app.keelson.finance";
 
   /**
@@ -648,6 +653,20 @@ export function registerCountersign(
       return problem(c, 404, "not-found", "Not found");
     }
     const { mandate } = found;
+    const card = mandate.rail === "card";
+    if (
+      card ? body.authorizationId !== undefined || body.live : body.authorizationId === undefined
+    ) {
+      return problem(
+        c,
+        422,
+        "invalid-request",
+        "Invalid request",
+        card
+          ? "A card mandate's purchase is paid with the card issued after the ALLOW: send no authorizationId and no live store."
+          : "authorizationId is required: the PayPal authorization that holds the funds.",
+      );
+    }
     // A countersign is only worth something against a live hold.
     if (
       mandate.state !== "ACTIVE" ||
@@ -686,6 +705,7 @@ export function registerCountersign(
     // A mandate whose merchant Keelson cannot capture for holds a budget only: the buyer pays
     // its purchases at the store's own checkout.
     if (
+      !card &&
       !body.live &&
       deps.paypal &&
       mandate.holdMode !== "per_purchase" &&
@@ -706,7 +726,10 @@ export function registerCountersign(
     let held: typeof purchaseHolds.$inferSelect | undefined;
     let holdsAuthorization: boolean;
     let orderId: string | null;
-    if (mandate.holdMode === "per_purchase") {
+    if (card) {
+      holdsAuthorization = true;
+      orderId = null;
+    } else if (mandate.holdMode === "per_purchase") {
       [held] = await db
         .select()
         .from(purchaseHolds)
@@ -720,7 +743,7 @@ export function registerCountersign(
       holdsAuthorization = mandate.paypalAuthorizationId === body.authorizationId;
       orderId = mandate.paypalOrderId;
     }
-    if (!holdsAuthorization || orderId === null) {
+    if (!holdsAuthorization || (!card && orderId === null)) {
       return problem(
         c,
         422,
@@ -1064,8 +1087,9 @@ export function registerCountersign(
             amountMinor: total,
             cartHash: Buffer.from(want.cartHash.slice(2), "hex"),
             evidenceRoot,
+            rail: mandate.rail,
             paypalOrderId: orderId,
-            paypalAuthorizationId: body.authorizationId,
+            paypalAuthorizationId: body.authorizationId ?? null,
             paypalRefSalt: randomBytes(32),
             ...(body.live ? { liveStore: body.live.store } : {}),
             ...(c.var.principal?.kind === "client" ? { clientId: c.var.principal.subject } : {}),
@@ -1078,7 +1102,7 @@ export function registerCountersign(
             ? await transition(tx, "purchases", purchaseId, "PROPOSED", "EVALUATING")
             : await redrive(tx, purchaseId, mandate.id, want, body.cart, evidenceRoot, {
                 orderId,
-                authorizationId: body.authorizationId,
+                authorizationId: body.authorizationId ?? null,
               });
         return { driven };
       })
@@ -1150,7 +1174,7 @@ export function registerCountersign(
             unit: body.unit,
             evidence: evidenceSources,
             evidence_root: body.evidenceRoot as `0x${string}`,
-            authorization_id: body.authorizationId,
+            ...(body.authorizationId ? { authorization_id: body.authorizationId } : {}),
             ...(mandate.sealedSalt
               ? { sealed_salt: Buffer.from(mandate.sealedSalt).toString("base64") }
               : {}),

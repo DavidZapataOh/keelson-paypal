@@ -85,6 +85,47 @@ const CountersignedSchema = z.strictObject({
 });
 export type Countersigned = z.infer<typeof CountersignedSchema>;
 
+const CardAuthorizedSchema = z.strictObject({
+  authorization: z.strictObject({
+    requestId: Hex32,
+    countersignDigest: Hex32,
+    authorizationHash: Hex32,
+    merchantHash: Hex32,
+    mcc: z.string(),
+    country: hex(/^0x[0-9a-f]{4}$/),
+    amount: z.string(),
+    currency: z.string(),
+    decision: z.string(),
+    failedMask: z.string(),
+    issuedAt: z.string(),
+  }),
+  chain_id: z.number(),
+  digest: Hex32,
+  signature: Hex65,
+  signer: Address,
+  tee: z.number(),
+});
+export type CardAuthorized = z.infer<typeof CardAuthorizedSchema>;
+
+/** A card network authorization, as the card issuer's real-time request reported it. */
+export interface CardNetworkAuthorization {
+  id: string;
+  amount_minor: number;
+  currency: string;
+  mcc: string;
+  merchant_name: string;
+  merchant_country: string;
+  network_id: string;
+}
+
+export interface CardAuthorizeRequest {
+  countersign: CountersignJson;
+  signature: Hex;
+  payload_sd: unknown;
+  disclosures: string[];
+  authorization: CardNetworkAuthorization;
+}
+
 const MandateIssuedSchema = z.strictObject({
   mandate_hash: Hex32,
   user_credential: z.string(),
@@ -331,6 +372,14 @@ export class LegClient {
 
   async verdict(req: VerdictRequest): Promise<VerdictSigned> {
     return this.parse(VerdictSignedSchema, await this.call("POST", "/v1/verdict", req));
+  }
+
+  /** Checks a card authorization against this leg's ALLOW; within the card issuer's deadline. */
+  async cardAuthorize(req: CardAuthorizeRequest, timeoutMs: number): Promise<CardAuthorized> {
+    return this.parse(
+      CardAuthorizedSchema,
+      await this.call("POST", "/v1/card/authorize", req, { timeoutMs }),
+    );
   }
 
   async registerMandate(req: RegisterMandate): Promise<MandateIssued> {

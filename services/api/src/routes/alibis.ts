@@ -165,7 +165,7 @@ async function access(
   b: AlibiBundle,
 ): Promise<"full" | "public" | null> {
   if (principal && (await isOwner(deps, principal, b))) return "full";
-  if (b.paypal.transaction_id !== undefined) return "public";
+  if (b.paypal?.transaction_id !== undefined) return "public";
   const denial = publicDenial(deps.demoAgentId);
   if (!denial) return null;
   const [p] = await deps.db

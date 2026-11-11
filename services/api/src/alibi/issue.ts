@@ -14,6 +14,7 @@ import {
   alibis,
   and,
   asc,
+  cardAuthorizations,
   chainTxs,
   channel3Observations,
   type Db,
@@ -23,6 +24,7 @@ import {
   evidenceItems,
   inArray,
   mandates,
+  purchaseCards,
   purchaseHolds,
   purchases,
   teeSigners,
@@ -236,9 +238,18 @@ export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<vo
     throw new AlibiIssueError("leaf", "the logged leaf is not the purchase's");
   }
   const [p] = await db.select().from(purchases).where(eq(purchases.id, purchaseId));
-  if (!p?.evalTrace || !p.paypalRefSalt || !p.paypalOrderId || !p.paypalAuthorizationId) {
-    throw new AlibiIssueError("data", `purchase ${purchaseId} has no trace or PayPal reference`);
+  const paidByCard = p?.rail === "card";
+  if (
+    !p?.evalTrace ||
+    !p.paypalRefSalt ||
+    (!paidByCard && (!p.paypalOrderId || !p.paypalAuthorizationId))
+  ) {
+    throw new AlibiIssueError("data", `purchase ${purchaseId} has no trace or payment reference`);
   }
+  const [card] = paidByCard
+    ? await db.select().from(purchaseCards).where(eq(purchaseCards.purchaseId, purchaseId))
+    : [];
+  if (paidByCard && !card) throw new AlibiIssueError("data", `purchase ${purchaseId} has no card`);
   const [m] = await db.select().from(mandates).where(eq(mandates.id, p.mandateId));
   if (!m?.openMandate || !m.payloadSd || !m.disclosures || !m.userAuth || !m.mandateHash) {
     throw new AlibiIssueError("data", `mandate ${p.mandateId} is not signed`);
@@ -281,8 +292,10 @@ export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<vo
     c3Of(deps, m, chainId),
   ]);
 
-  let customId: string;
-  if (m.holdMode === "per_purchase") {
+  let customId = "";
+  if (paidByCard) {
+    // A card purchase holds nothing on PayPal.
+  } else if (m.holdMode === "per_purchase") {
     const [h] = await db
       .select()
       .from(purchaseHolds)
@@ -363,13 +376,26 @@ export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<vo
           },
         }
       : {}),
-    paypal: {
-      order_id: p.paypalOrderId,
-      authorization_id: p.paypalAuthorizationId,
-      custom_id: customId,
-      ref_salt: toHex(p.paypalRefSalt),
-      merchant_id: merchantId,
-    },
+    ...(card
+      ? {
+          card: {
+            issuer: card.issuer,
+            card_token: card.cardToken,
+            last_four: card.lastFour,
+            ref_salt: toHex(p.paypalRefSalt),
+            controls: json(card.controls),
+            authorizations: [],
+          },
+        }
+      : {
+          paypal: {
+            order_id: p.paypalOrderId as string,
+            authorization_id: p.paypalAuthorizationId as string,
+            custom_id: customId,
+            ref_salt: toHex(p.paypalRefSalt),
+            merchant_id: merchantId,
+          },
+        }),
   };
   let bytes: Uint8Array;
   try {
@@ -503,13 +529,74 @@ export async function loadAlibi(db: Db, purchaseId: string): Promise<AlibiBundle
     ...(core.cart === undefined ? await cartOf(db, core) : {}),
     ...(row.anchor ? { anchor: row.anchor } : {}),
     timestamps: tokens.map((t) => ({ tsa: t.tsa, token: toBase64(t.token as Uint8Array) })),
-    paypal: {
-      ...core.paypal,
-      ...(row.captureId ? { capture_id: row.captureId } : {}),
-      ...(row.invoiceId ? { invoice_id: row.invoiceId } : {}),
-      ...(row.transactionId ? { transaction_id: row.transactionId } : {}),
-    },
+    ...(core.paypal
+      ? {
+          paypal: {
+            ...core.paypal,
+            ...(row.captureId ? { capture_id: row.captureId } : {}),
+            ...(row.invoiceId ? { invoice_id: row.invoiceId } : {}),
+            ...(row.transactionId ? { transaction_id: row.transactionId } : {}),
+          },
+        }
+      : {}),
+    ...(core.card ? { card: await cardSection(db, purchaseId, core.card) } : {}),
   });
+}
+
+const LEG: Readonly<Record<number, "tdx" | "nitro">> = { 1: "tdx", 2: "nitro" };
+
+/**
+ * A card purchase's card section as it stands now: the card as issued, every card network
+ * authorization with both legs' signed answers, and the capture once the issuer settled it.
+ */
+async function cardSection(
+  db: Db,
+  purchaseId: string,
+  issued: NonNullable<AlibiBundle["card"]>,
+): Promise<NonNullable<AlibiBundle["card"]>> {
+  const [card] = await db
+    .select()
+    .from(purchaseCards)
+    .where(eq(purchaseCards.purchaseId, purchaseId));
+  const auths = await db
+    .select()
+    .from(cardAuthorizations)
+    .where(eq(cardAuthorizations.purchaseId, purchaseId))
+    .orderBy(asc(cardAuthorizations.createdAt));
+  return {
+    ...issued,
+    authorizations: auths.map((a) => ({
+      id: a.id,
+      amount_minor: a.amountMinor.toString(),
+      currency: a.currency,
+      mcc: a.mcc,
+      merchant_name: a.merchantName,
+      merchant_country: a.merchantCountry,
+      approved: a.approved,
+      verdicts: [a.tdx, a.nitro].flatMap((v) =>
+        v
+          ? [
+              {
+                kind: LEG[v.tee] ?? "tdx",
+                authorization: v.authorization,
+                digest: v.digest,
+                signature: v.signature,
+                signer: getAddress(v.signer),
+              },
+            ]
+          : [],
+      ),
+    })),
+    ...(card?.transactionToken && card.settledMinor !== null && card.settledAt
+      ? {
+          settlement: {
+            transaction_token: card.transactionToken,
+            settled_minor: card.settledMinor.toString(),
+            settled_at: card.settledAt.toISOString(),
+          },
+        }
+      : {}),
+  };
 }
 
 /** The disclosed cart of an Alibi issued before its bundle carried one. */

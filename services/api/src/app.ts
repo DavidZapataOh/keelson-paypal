@@ -17,6 +17,7 @@ import type { RedisClientType } from "redis";
 import { ulid } from "ulid";
 import { type Address, BaseError, HttpRequestError, TimeoutError } from "viem";
 import type { Auth } from "./auth.ts";
+import type { CardIssuer } from "./cards/issuer.ts";
 import type { ChainReaders } from "./chain/reader.ts";
 import type { Channel3Lookup } from "./channel3/client.ts";
 import type { LogConfig } from "./log/append.ts";
@@ -33,6 +34,7 @@ import { registerAgents } from "./routes/agents.ts";
 import { registerAlibis } from "./routes/alibis.ts";
 import { registerAnonymousMandates } from "./routes/anonymous-mandates.ts";
 import { registerBonds } from "./routes/bonds.ts";
+import { registerCardWebhooks } from "./routes/card-webhooks.ts";
 import { registerChannel3Webhook } from "./routes/channel3-webhook.ts";
 import { type CompileSources, registerCompile } from "./routes/compile.ts";
 import { registerConnections } from "./routes/connections.ts";
@@ -143,6 +145,15 @@ export interface Deps {
   paypal?: PayPalDeps;
   /** The webhook PayPal delivers to; the PayPal webhook answers 503 without it. */
   paypalWebhook?: { webhookId: string; certs: CertStore; now?: () => Date };
+  /**
+   * The card issuer of card purchases and the secrets it signs its real-time authorization
+   * requests and its events with; card purchases fail before logging without it.
+   */
+  cards?: {
+    issuer: CardIssuer;
+    asaSecret?: string | undefined;
+    webhookSecret?: string | undefined;
+  };
   /** Applies stored PayPal events; woken when a delivery is stored. */
   paypalEvents?: { wake(): void };
   /**
@@ -319,6 +330,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerWebFacts(app, deps);
   registerChannel3Webhook(app, deps);
   registerPayPalWebhook(app, deps);
+  registerCardWebhooks(app, deps);
   registerTee(app, deps);
   registerTimestamps(app, deps);
   registerAlibis(app, deps);

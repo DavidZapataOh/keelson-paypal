@@ -7,7 +7,7 @@ import { disputeFacts, type FactsInput, type PayPalReads } from "../src/disputes
 const [fixture] = fixtures;
 if (!fixture) throw new Error("no Alibi fixture");
 const bundle = fixture.bundle;
-const invoice = bundle.paypal.invoice_id as string;
+const invoice = bundle.paypal?.invoice_id as string;
 const total = (Number(bundle.tee.countersign.amount) / 100).toFixed(2);
 
 const dispute = (reason: string): Dispute => ({

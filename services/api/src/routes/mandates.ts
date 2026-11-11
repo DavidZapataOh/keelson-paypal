@@ -224,7 +224,7 @@ const create = createRoute({
   tags: ["mandates"],
   summary: "Store a passkey-signed mandate",
   description:
-    'Verifies the passkey assertion over `M = SHA-256("keelson/mandate-challenge/v1" || 0x00 || H_sd || C_m)` and stores the mandate as `SIGNED`, or `ACTIVE` when it allows several merchants.',
+    'Verifies the passkey assertion over `M = SHA-256("keelson/mandate-challenge/v1" || 0x00 || H_sd || C_m)` and stores the mandate as `SIGNED`, or `ACTIVE` when it allows several merchants or pays with single-use cards.',
   middleware: [requireSession()],
   request: {
     headers: z.object({ "idempotency-key": z.string().min(1).max(255) }),
@@ -550,8 +550,10 @@ export function registerMandates(
     }
 
     // PayPal holds one payee's funds per authorization, so a mandate allowing several merchants
-    // holds each cart on its own and needs no budget hold to be usable.
-    const holdMode = merchants.allowed.length > 1 ? "per_purchase" : "mandate";
+    // holds each cart on its own and needs no budget hold to be usable. A card mandate pays each
+    // cart with its own single-use card, so it holds nothing either.
+    const rail = m.payment.rail;
+    const holdMode = rail === "card" || merchants.allowed.length > 1 ? "per_purchase" : "mandate";
     try {
       await db.transaction(async (tx) => {
         const counted = await tx
@@ -566,6 +568,7 @@ export function registerMandates(
         if (counted.rowCount !== 1) throw new CounterError();
         await tx.insert(mandates).values({
           id: m.mid,
+          rail,
           holdMode,
           userId,
           operatorAgentId: operator.agentId,
