@@ -1423,6 +1423,7 @@ components:
               - currency
               - budget
               - merchant
+              - card
               - deadline
               - quantity
               - items
@@ -1618,6 +1619,7 @@ components:
               type: string
               enum:
                 - paypal
+                - card
             currency:
               type: string
               enum:
@@ -1765,6 +1767,25 @@ components:
                       - type
                       - not_after
                     additionalProperties: false
+                  - type: object
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - payment.card_controls
+                      single_use:
+                        type: boolean
+                        enum:
+                          - true
+                      mcc_table:
+                        type: string
+                        enum:
+                          - v1
+                    required:
+                      - type
+                      - single_use
+                      - mcc_table
+                    additionalProperties: false
           required:
             - rail
             - currency
@@ -1796,11 +1817,43 @@ components:
                               type: string
                             paypal_merchant_id:
                               type: string
+                            mcc:
+                              type: array
+                              items:
+                                type: string
+                                enum:
+                                  - "4111"
+                                  - "4121"
+                                  - "5300"
+                                  - "5310"
+                                  - "5311"
+                                  - "5411"
+                                  - "5441"
+                                  - "5462"
+                                  - "5499"
+                                  - "5651"
+                                  - "5661"
+                                  - "5691"
+                                  - "5732"
+                                  - "5734"
+                                  - "5812"
+                                  - "5814"
+                                  - "5912"
+                                  - "5941"
+                                  - "5942"
+                                  - "5945"
+                                  - "5977"
+                                  - "5992"
+                                  - "5995"
+                                  - "5999"
+                                  - "7832"
+                              minItems: 1
+                            country:
+                              type: string
+                              pattern: ^[A-Z]{2}$
                           required:
                             - id
                             - name
-                            - website
-                            - paypal_merchant_id
                           additionalProperties: false
                         minItems: 1
                     required:

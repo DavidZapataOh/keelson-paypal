@@ -75,15 +75,19 @@ pub(crate) fn paypal_check(
     if obs.expires_at_ms <= obs.read_at_ms {
         return Err(PayPalDeny::Expired);
     }
-    let payee = m["payment"]["constraints"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .find(|c| c["type"] == "payment.allowed_payees")
-        .and_then(|c| c["allowed"].as_array())
-        .into_iter()
-        .flatten()
-        .any(|p| p["paypal_merchant_id"].as_str() == Some(obs.payee_merchant_id.as_str()));
+    // A card mandate's hold is on Keelson's account, which pays its cards' charges; its
+    // `custom_id` binds it to the mandate.
+    let card = m["payment"]["rail"] == "card";
+    let payee = card
+        || m["payment"]["constraints"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|c| c["type"] == "payment.allowed_payees")
+            .and_then(|c| c["allowed"].as_array())
+            .into_iter()
+            .flatten()
+            .any(|p| p["paypal_merchant_id"].as_str() == Some(obs.payee_merchant_id.as_str()));
     if !payee {
         return Err(PayPalDeny::Payee);
     }
@@ -92,6 +96,9 @@ pub(crate) fn paypal_check(
     }
     let mid = m["mid"].as_str().unwrap_or_default();
     let kind = hold_kind(&obs.custom_id, mid, request_id, live).ok_or(PayPalDeny::Mandate)?;
+    if card && kind != HoldKind::Mandate {
+        return Err(PayPalDeny::Mandate);
+    }
     let nothing_captured = obs.status == "PARTIALLY_CAPTURED" && obs.captured_minor == 0;
     if nothing_captured || obs.captured_minor > obs.authorized_minor {
         return Err(PayPalDeny::Inconsistent);
