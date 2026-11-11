@@ -152,6 +152,18 @@ describe("parseMandate", () => {
     expect(fieldOf(n)).toBe("checkout.constraints.5.type");
   });
 
+  it("takes an optional FX spread cap in whole basis points up to 30%", () => {
+    const m = clone();
+    m.fx = { max_spread_bps: 600 };
+    expect(parseMandate(m).fx).toEqual({ max_spread_bps: 600 });
+    for (const bad of [-1, 3_001, 1.5, "600"]) {
+      m.fx = { max_spread_bps: bad };
+      expect(fieldOf(m)).toBe("fx.max_spread_bps");
+    }
+    m.fx = { max_spread_bps: 600, extra: 1 };
+    expect(fieldOf(m)).toBe("fx");
+  });
+
   it("rejects a constraint currency that differs from the payment currency", () => {
     const m = clone();
     m.payment.constraints[1].currency = "EUR";

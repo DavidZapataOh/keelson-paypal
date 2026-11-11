@@ -19,6 +19,10 @@ export const CHECKS: Record<CheckId, { label: string; who: string }> = {
   "evidence.manifest": { label: "Evidence manifest", who: "Agent operator" },
   "evidence.web_fact": { label: "Store's product endpoint, notarized (TLSNotary)", who: "Keelson" },
   "evidence.checkout": { label: "Checkout total and its breakdown", who: "Agent operator" },
+  "evidence.conversion": {
+    label: "Currency conversion within the mandate's spread",
+    who: "Agent operator",
+  },
   "paypal.ids": { label: "PayPal ids", who: "Keelson" },
   "card.authorizations": { label: "Card charges approved by both TEEs", who: "Keelson" },
   "mandate.challenge": { label: "Mandate challenge", who: "User" },

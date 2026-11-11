@@ -21,10 +21,10 @@ import {
 } from "@keelson/agent";
 import { decodeAlibi } from "@keelson/alibi";
 import { verifyAlibi } from "@keelson/alibi/verify";
-import type { CheckoutTotal } from "@keelson/core";
+import type { CheckoutTotal, FxReference } from "@keelson/core";
 import { alibis, eq, purchases } from "@keelson/db";
 import { startRecorder } from "@keelson/evidence/capture";
-import { parseMandate } from "@keelson/mandate";
+import { maxSpreadBps, parseMandate } from "@keelson/mandate";
 import { loadAlibi } from "../src/alibi/issue.ts";
 import { renderHarness } from "../test/render-live.ts";
 
@@ -154,15 +154,21 @@ try {
     const gate = new PayGate({
       checkoutHosts: ALFRED.checkoutHosts,
       cart: shopifyCart(session.context, ALFRED.origin),
+      maxSpreadBps: maxSpreadBps(parseMandate(structuredClone(mandate))),
+      ...(process.env.ALFRED_PAYPAL_MERCHANT_ID
+        ? { payee: process.env.ALFRED_PAYPAL_MERCHANT_ID }
+        : {}),
     });
-    if (allowed) gate.allow(quote.total);
+    if (allowed) gate.allow(quote.total, result.reference);
     // The purchase the payment is for: the first countersign, or the last re-quote Keelson allowed.
     let paid = result.requestId;
     const requotes: Record<string, unknown>[] = [];
     // A re-quoted total is countersigned on evidence captured in a tab of its own on the product
     // page, so nothing of the checkout's pages, which show the buyer's address, is sealed.
-    const requote = async (total: CheckoutTotal): Promise<boolean> => {
-      if (total.minor > CEILING_MINOR) return false;
+    const requote = async (
+      total: CheckoutTotal,
+    ): Promise<{ allowed: boolean; reference?: FxReference }> => {
+      if (total.minor > CEILING_MINOR) return { allowed: false };
       const tab = await session.context.newPage();
       const recorder = await startRecorder(tab);
       try {
@@ -202,7 +208,7 @@ try {
           problem: again.status >= 400 ? again.body.type : undefined,
         });
         if (ok) paid = again.requestId;
-        return ok;
+        return { allowed: ok, ...(again.reference ? { reference: again.reference } : {}) };
       } finally {
         await recorder.stop().catch(() => {});
         await tab.close();
@@ -237,7 +243,15 @@ try {
         const res = await agentApi.request(`/v1/purchases/${paid}/paypal-transaction`, {
           method: "PUT",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ transactionId }),
+          body: JSON.stringify({
+            transactionId,
+            ...(gate.paid
+              ? {
+                  order: { intent: gate.paid.charge.intent, payee: gate.paid.charge.payee },
+                  ...(gate.paid.conversion ? { conversion: gate.paid.conversion } : {}),
+                }
+              : {}),
+          }),
         });
         recorded = res.status;
       }
@@ -274,6 +288,13 @@ try {
         ms: run.ms,
         usd: run.usage.usd,
         refusedByGate: gate.refused,
+        // PayPal's order and its conversion, as the gate let the payment through.
+        paypalOrder: gate.paid?.charge && {
+          intent: gate.paid.charge.intent,
+          value: `${gate.paid.charge.currency} ${gate.paid.charge.value}`,
+          payee: gate.paid.charge.payee,
+        },
+        conversion: gate.paid?.conversion,
         // Only the amounts read on each page where a pay action was held.
         heldAmounts: gate.held,
       },

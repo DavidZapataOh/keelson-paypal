@@ -1,3 +1,4 @@
+import type { Conversion } from "@keelson/core";
 import { API } from "./config";
 import type { Amount } from "./types";
 
@@ -14,6 +15,8 @@ export interface LivePurchase {
   decision: "allow" | "deny";
   /** The PayPal transaction the store was paid by; `null` for a DENY. */
   transactionId: string | null;
+  /** When PayPal converted the charge to the buyer's currency, as the pay-click gate checked it. */
+  conversion?: Conversion;
   /** For a DENY, the mandate fields that failed, or leg A's PayPal reason. */
   blocked: string[];
   /** A card purchase: the merchant the card network named and what both enclaves decided. */

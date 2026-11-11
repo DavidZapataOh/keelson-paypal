@@ -371,3 +371,17 @@ fn jwk_thumbprint_is_rfc_7638() {
         .collect();
     assert_eq!(hex, expected);
 }
+
+#[test]
+fn fx_spread_cap() {
+    let mut m = demo();
+    m["fx"] = json!({ "max_spread_bps": 600 });
+    assert!(parse_mandate(&m).is_ok());
+    for bad in [json!(-1), json!(3_001), json!(1.5), json!("600")] {
+        m["fx"] = json!({ "max_spread_bps": bad });
+        let err = parse_mandate(&m).unwrap_err().to_string();
+        assert!(err.contains("fx.max_spread_bps"), "{err}");
+    }
+    m["fx"] = json!({ "max_spread_bps": 600, "extra": 1 });
+    assert!(parse_mandate(&m).is_err());
+}

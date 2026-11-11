@@ -254,6 +254,7 @@ describe("a page is paid only where it charges the countersigned total and nothi
       minor: [295, 295],
       labels: ["Subtotal", "Total"],
       totals: [295],
+      offers: [],
       loose: [],
       conversions: [],
       rates: {},
@@ -357,8 +358,8 @@ describe("PayPal's review page for a buyer whose account converts the total", ()
   const page = fc.record({
     // A total under one unit holds where a rate shows: its unit is set aside.
     usd: fc.integer({ min: 100, max: 1_000_000 }),
-    /** COP per USD, in hundredths: 1.00 to 10,000.00. */
-    rate: fc.integer({ min: 100, max: 1_000_000 }),
+    /** COP per USD, in hundredths: 10.00 to 10,000.00, with the 4 significant digits PayPal shows. */
+    rate: fc.integer({ min: 1000, max: 1_000_000 }),
     balance: fc.integer({ min: 0, max: 9_000_000_000 }),
     locale: fc.constantFrom("es", "es-CO", "es-419", "es-MX", "en", "en-US", "pt-BR"),
   });
@@ -376,13 +377,27 @@ describe("PayPal's review page for a buyer whose account converts the total", ()
     );
   });
 
-  test("holds when the total is only in COP, or a larger USD amount shows", () => {
+  test("pays a total labeled only in COP that is the USD total at the page's rate", () => {
+    fc.assert(
+      fc.property(page, (o) => {
+        const cop = (n: number) =>
+          `$${new Intl.NumberFormat("es-CO", { maximumFractionDigits: 0 }).format(n)} COP`;
+        const onlyCop = review({ ...o, total: cop(converted(o)) });
+        const read = readPage(onlyCop, [o.locale], "USD");
+        expect(charges(read, o.usd, "USD", true), onlyCop).toBe(true);
+        expect(charges(read, o.usd, "USD", false), onlyCop).toBe(false);
+        // Off by more than a peso and the rate's rounding: another total.
+        const off = Math.ceil((o.usd / 100) * 0.005) + 2;
+        const wrong = review({ ...o, total: cop(converted(o) + off), pay: converted(o) + off });
+        expect(charges(readPage(wrong, [o.locale], "USD"), o.usd, "USD", true), wrong).toBe(false);
+      }),
+      { numRuns: 5_000 },
+    );
+  });
+
+  test("holds when a COP charge is off the rate, no rate shows, or a larger USD amount shows", () => {
     fc.assert(
       fc.property(page, fc.integer({ min: 1, max: 1_000_000 }), (o, more) => {
-        const onlyCop = review({ ...o, total: `$${converted(o)} COP` });
-        expect(charges(readPage(onlyCop, [o.locale], "USD"), o.usd, "USD", true), onlyCop).toBe(
-          false,
-        );
         // A converted charge the rate does not account for, or no rate to check it against.
         const off = review({ ...o, total: usdTotal(o.usd), pay: converted(o) * 2 + 2 });
         expect(charges(readPage(off, [o.locale], "USD"), o.usd, "USD", true), off).toBe(false);

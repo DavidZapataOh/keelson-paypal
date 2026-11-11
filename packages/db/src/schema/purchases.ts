@@ -82,6 +82,17 @@ export const purchases = pgTable(
     liveStore: text(),
     /** The PayPal transaction id of a live purchase, as PayPal reported it to the buyer. */
     paypalTransactionId: text().unique("purchases_paypal_transaction_id_unique"),
+    /**
+     * A live purchase's PayPal order as PayPal's own checkout stated it right before the pay
+     * click: its intent and its payee's merchant id. Reported by the agent with the transaction.
+     */
+    paypalOrderIntent: text(),
+    paypalPayeeId: text(),
+    /**
+     * A live purchase PayPal converted to the buyer's currency: the `keelson.conversion/1` record,
+     * checked against the reference rates its evidence binds.
+     */
+    conversion: jsonb().$type<Record<string, unknown>>(),
     /** The salt of the leaf's `paypal_ref_commit`. */
     paypalRefSalt: bytea(),
     /** The capture's sequence number among the mandate's captures, as its `invoice_id` states it. */
@@ -148,6 +159,10 @@ export const purchases = pgTable(
     check("purchases_countersign_digest_len", sql`octet_length(${t.countersignDigest}) = 32`),
     check("purchases_paypal_ref_salt_len", sql`octet_length(${t.paypalRefSalt}) = 32`),
     check("purchases_premium_bps_range", sql`${t.premiumBps} between 0 and 10000`),
+    check(
+      "purchases_paypal_order_intent_valid",
+      sql`${t.paypalOrderIntent} is null or ${t.paypalOrderIntent} in ('SALE', 'AUTHORIZE')`,
+    ),
     check(
       "purchases_paypal_transaction_id_live",
       sql`${t.paypalTransactionId} is null or ${t.liveStore} is not null`,
