@@ -6,8 +6,10 @@ import { type Browser, type BrowserContext, chromium, type Page } from "playwrig
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import { StoreBrowser } from "../src/driver.ts";
 import { PayGate } from "../src/gate.ts";
+import { checkoutDetails, reference } from "./fixtures/paypal-pages.ts";
 
 const USD_295 = checkoutTotal("USD", { items: 295 });
+const TOKEN = "0TEST000000000295";
 
 let n = 0;
 const call = (name: string, input: Record<string, unknown>): Anthropic.Beta.BetaToolUseBlock =>
@@ -133,7 +135,13 @@ describe("the pay-click gate", () => {
 
   beforeAll(async () => {
     server = createServer((req, res) => {
-      const body = PAGES[req.url ?? ""];
+      // PayPal's GraphQL: the order every page served as PayPal's is for.
+      if (req.method === "POST" && req.url?.startsWith("/graphql")) {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(checkoutDetails({ value: "2.95" })));
+        return;
+      }
+      const body = PAGES[new URL(req.url ?? "", "http://x").pathname];
       res.writeHead(body ? 200 : 404, { "content-type": "text/html; charset=utf-8" });
       res.end(body ?? "");
     });
@@ -330,20 +338,29 @@ describe("the pay-click gate", () => {
 
   test("PayPal's page with the total in USD and its conversion to COP is paid", async () => {
     await asPayPal();
-    gate.allow(USD_295);
-    await open("/pay/converted");
+    gate.allow(USD_295, reference());
+    await open(`/pay/converted?token=${TOKEN}`);
+    // With no conversion from PayPal's own answers, the page is read again in English, once.
+    const first = await click({ type: "ref", ref: await ref("Pagar ahora") });
+    expect(text(first)).toMatch(/switched PayPal's page to English/);
+    expect(new URL(tab.url()).searchParams.get("locale.x")).toBe("en_US");
     const r = await click({ type: "ref", ref: await ref("Pagar ahora") });
     expect(r.is_error, JSON.stringify(gate.held)).toBeFalsy();
     expect(await out()).toBe("clicked Pagar ahora");
+    expect(gate.paid).toMatchObject({
+      charge: { intent: "SALE", currency: "USD", value: "2.95" },
+      conversion: { buyer: { currency: "COP", value: "10231" }, rate: "3468.14", spread_bps: 500 },
+    });
   });
 
-  test("PayPal's page with the total only in COP is held, and the log keeps no buyer data", async () => {
+  test("PayPal's page with a number that may be a larger amount is held, and the log keeps no buyer data", async () => {
     await asPayPal();
-    gate.allow(USD_295);
-    await open("/pay/cop-total");
+    gate.allow(USD_295, reference());
+    await open(`/pay/cop-total?token=${TOKEN}`);
+    await click({ type: "ref", ref: await ref("Pagar ahora") });
     const r = await click({ type: "ref", ref: await ref("Pagar ahora") });
     expect(r.is_error).toBe(true);
-    expect(text(r)).toMatch(/does not label USD 2\.95 as its total/);
+    expect(text(r)).toMatch(/a larger amount that may be charged/);
     expect(await out()).toBe("");
     const [held] = gate.held;
     // "1 USD = 3.468,14 COP" is a rate, not an amount.
@@ -371,7 +388,7 @@ describe("the pay-click gate", () => {
   test("on PayPal's page, the log keeps amounts, checkout words and regions only", async () => {
     await asPayPal();
     gate.allow(checkoutTotal("USD", { items: 100 }));
-    await open("/pay/converted");
+    await open(`/pay/converted?token=${TOKEN}`);
     expect((await click({ type: "ref", ref: await ref("Pagar ahora") })).is_error).toBe(true);
     const log = JSON.stringify(gate.held);
     for (const secret of ["Ana", "Prueba", "example", "Calle", "85", "53", "Bogot", "4242"]) {
@@ -407,7 +424,7 @@ describe("the pay-click gate", () => {
   test("a bare dollar amount on a page that names COP may be USD, so a larger one holds", async () => {
     await asPayPal();
     gate.allow(USD_295);
-    await open("/pay/bare");
+    await open(`/pay/bare?token=${TOKEN}`);
     expect((await click({ type: "ref", ref: await ref("Pagar ahora") })).is_error).toBe(true);
   });
 

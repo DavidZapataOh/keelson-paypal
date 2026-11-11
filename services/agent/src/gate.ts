@@ -1,8 +1,32 @@
 import { ToolError } from "@anthropic-ai/sdk/helpers/beta/toolsets";
-import type { CheckoutTotal } from "@keelson/core";
+import {
+  type CheckoutTotal,
+  type Conversion,
+  convertsTo,
+  DEFAULT_MAX_SPREAD_BPS,
+  type FxReference,
+  spreadBps,
+} from "@keelson/core";
 import type { Locator, Page } from "playwright";
-import { charges, type Money, minorDigits, pageLocales, readPage } from "./amounts.ts";
+import {
+  decimalText,
+  judge,
+  type Money,
+  minorDigits,
+  type PageReading,
+  pageLocales,
+  readPage,
+  type ShownConversion,
+} from "./amounts.ts";
 import { rows, type Seen, sanitize } from "./capture.ts";
+import {
+  chargeProblem,
+  type KnownConversion,
+  orderToken,
+  type PayPalCharge,
+  readCharge,
+  requoteOf,
+} from "./paypal-order.ts";
 import { requote } from "./requote.ts";
 
 /** Names of the controls that commit a payment, on a store's checkout or on PayPal. */
@@ -16,6 +40,10 @@ const NEVER =
  * rate PayPal writes on it.
  */
 const PAYPAL_HOSTS = ["paypal.com", "*.paypal.com"];
+/** The order intents a buyer's payment has: captured at once (`SALE`) or authorized first. */
+const INTENTS: ReadonlySet<string> = new Set(["SALE", "AUTHORIZE"]);
+/** How old the reference's rates may be: the provider updates them once a day. */
+const REFERENCE_MAX_AGE_MS = 48 * 3600_000;
 /** A store's checkout, on its own host: Shopify's `/checkouts/…`, and the usual `/checkout`. */
 const CHECKOUT_PATH = /\/checkouts?(?:\/|$)/;
 
@@ -40,12 +68,30 @@ export type PayAction =
  * coordinate, keys and typed text are refused always, as are saving a payment method,
  * installments and credit. Checkout hosts
  * are written like the browser's allowlist: exact, or `*.example.com` for its subdomains.
+ *
+ * On PayPal, the order itself decides: the page asks PayPal for its checkout session as PayPal's
+ * own buttons do, and pays only an order whose total is exactly the countersigned value and
+ * currency, whose intent is a payment and whose only payee is the one the mandate names, when it
+ * names one. The page's text is then a cross-check: it must show no larger charge. When it shows
+ * the total converted to the buyer's currency, the converted total must be the countersigned one
+ * at the one rate the page writes, and that rate within the mandate's spread of the reference
+ * rate Keelson fetched when it countersigned.
  */
 export class PayGate {
   readonly #checkoutHosts: readonly string[];
   readonly #convertHosts: readonly string[];
   readonly #cart: (() => Promise<Money | undefined>) | undefined;
+  readonly #payee: string | undefined;
+  readonly #maxSpreadBps: number;
   #total: CheckoutTotal | undefined;
+  #reference: FxReference | undefined;
+  /** The orders whose page was switched to English to read a conversion. */
+  readonly #english = new Set<string>();
+  /**
+   * What the last pay action let through on PayPal paid: PayPal's order, and its conversion to the
+   * buyer's currency when the page showed one.
+   */
+  paid: { charge: PayPalCharge; conversion?: Conversion } | undefined;
   #requote: CheckoutTotal | undefined;
   /** Actions refused so far. */
   refused = 0;
@@ -73,16 +119,27 @@ export class PayGate {
     checkoutHosts: readonly string[];
     cart?: () => Promise<Money | undefined>;
     convertHosts?: readonly string[];
+    /** The PayPal merchant id the mandate allows paying, when it names one. */
+    payee?: string;
+    /** The mandate's `fx.max_spread_bps`. */
+    maxSpreadBps?: number;
   }) {
     this.#checkoutHosts = o.checkoutHosts;
     this.#convertHosts = o.convertHosts ?? PAYPAL_HOSTS;
     this.#cart = o.cart;
+    this.#payee = o.payee;
+    this.#maxSpreadBps = o.maxSpreadBps ?? DEFAULT_MAX_SPREAD_BPS;
   }
 
-  /** Opens the gate for the countersigned checkout total, and only for it. */
-  allow(total: CheckoutTotal): void {
+  /**
+   * Opens the gate for the countersigned checkout total, and only for it, with the reference
+   * rates bound into its evidence, if any: without them, a conversion is never paid.
+   */
+  allow(total: CheckoutTotal, reference?: FxReference): void {
     this.#total = total;
+    this.#reference = reference;
     this.#requote = undefined;
+    this.paid = undefined;
   }
 
   /**
@@ -174,22 +231,63 @@ export class PayGate {
           .map((f) => f.evaluate(() => document.body?.innerText ?? "").catch(() => "")),
       )
     ).join("\n");
-    const read = readPage(text, pageLocales(lang, page.url()), total.currency);
+    const converts = PayGate.#matches(this.#convertHosts, URL.parse(page.url())?.hostname ?? "");
+    // PayPal's `locale.x` names the locale it was asked for, not always the one it renders in
+    // (`es_XC` on a page in English): there the page's own language decides.
+    const locales = converts && lang ? pageLocales(lang, "") : pageLocales(lang, page.url());
+    const read = readPage(text, locales, total.currency);
     const cart = this.#cart ? await this.#cart().catch(() => undefined) : undefined;
     const digits = minorDigits(total.currency);
     const show = (m: number) => `${total.currency} ${(m / 10 ** digits).toFixed(digits)}`;
     const cartOk =
       !this.#cart ||
       (cart?.currency === total.currency && cart.minor === total.items - total.discount);
-    const converts = PayGate.#matches(this.#convertHosts, URL.parse(page.url())?.hostname ?? "");
-    if (!charges(read, total.minor, total.currency, converts) || !cartOk) {
+    let paypal: { charge: PayPalCharge; known?: KnownConversion } | undefined;
+    if (converts) {
+      paypal = await this.#order(page, total, show, read);
+      // Without PayPal's own conversion, the page's text is read in English, where PayPal writes
+      // each amount with its ISO code; once per order, through the page's own locale parameter.
+      const token = orderToken(page.url()) as string;
+      const shows = Object.keys(read.rates).length > 0 || read.conversions.length > 0;
+      if (!paypal.known && shows && !/^en\b/.test(read.locale) && !this.#english.has(token)) {
+        this.#english.add(token);
+        const url = new URL(page.url());
+        url.searchParams.set("locale.x", "en_US");
+        await page.goto(url.href, { waitUntil: "load" }).catch(() => {});
+        this.#refuse(
+          "Keelson switched PayPal's page to English to read its currency conversion. Read the page again, then repeat the action.",
+        );
+      }
+    }
+    const known = paypal?.known;
+    const judged = judge(
+      read,
+      total.minor,
+      total.currency,
+      converts,
+      !converts,
+      known && { currency: known.currency, rate: known.rate },
+    );
+    // PayPal's own conversion when it states one; else the one the page writes.
+    const shown = known
+      ? {
+          currency: known.currency,
+          rate: known.rate,
+          buyer: known.buyer,
+          locale: read.locale || "en",
+        }
+      : judged.ok
+        ? judged.conversion
+        : undefined;
+    const conversion = judged.ok && shown ? this.#conversion(total, shown) : undefined;
+    if (!judged.ok || !cartOk) {
       // A re-quote is the page's largest amount, which it must label its total, with nothing
       // that may be the currency above it.
       const top = Math.max(...read.minor);
       let next: CheckoutTotal | undefined;
       try {
         next =
-          cartOk && read.totals.includes(top) && Math.max(...read.loose) <= top
+          cartOk && !converts && read.totals.includes(top) && Math.max(...read.loose) <= top
             ? requote(total, read)
             : undefined;
       } catch {
@@ -202,7 +300,7 @@ export class PayGate {
         locale: read.locale || null,
         amounts: read.minor.map(show),
         totals: read.totals.map(show),
-        ...(read.unsure ? { unsure: read.unsure } : {}),
+        ...(read.unsure ? { unsure: read.unsure } : !judged.ok ? { unsure: judged.reason } : {}),
         ...(this.#cart ? { cart: cart ? show(cart.minor) : "unread" } : {}),
         ...(this.#requote ? { requote: show(this.#requote.minor) } : {}),
         seen,
@@ -210,12 +308,121 @@ export class PayGate {
       this.#refuse(
         read.unsure !== undefined
           ? `this page's amounts cannot be read for sure (${read.unsure}). Paying waits.`
-          : !read.totals.includes(total.minor) && !this.#requote && cartOk
-            ? `this page does not label ${show(total.minor)} as its total. Pay only where the total is the ${show(total.minor)} Keelson countersigned.`
-            : this.#requote
-              ? `this checkout's total is now ${show(this.#requote.minor)}, not the ${show(total.minor)} Keelson countersigned. Paying waits for Keelson to countersign the new total.`
-              : `Keelson countersigned ${show(total.minor)}; this page or the store's cart does not show it as the total. Pay only for the countersigned cart.`,
+          : !judged.ok && converts
+            ? `this page does not show PayPal's order as the ${show(total.minor)} Keelson countersigned (${judged.reason}). Paying waits.`
+            : !read.totals.includes(total.minor) && !this.#requote && cartOk
+              ? `this page does not label ${show(total.minor)} as its total. Pay only where the total is the ${show(total.minor)} Keelson countersigned.`
+              : this.#requote
+                ? `this checkout's total is now ${show(this.#requote.minor)}, not the ${show(total.minor)} Keelson countersigned. Paying waits for Keelson to countersign the new total.`
+                : `Keelson countersigned ${show(total.minor)}; this page or the store's cart does not show it as the total. Pay only for the countersigned cart.`,
       );
     }
+    if (paypal) this.paid = { charge: paypal.charge, ...(conversion ? { conversion } : {}) };
+  }
+
+  /**
+   * PayPal's order for the page, read from PayPal right before the action: refused unless it
+   * charges exactly `total`, is a payment, and pays the payee the mandate names. An order whose
+   * breakdown adds tax or shipping to the countersigned items is held with that total as its
+   * re-quote. With it, PayPal's own conversion of the total to the buyer's funding currency, when
+   * the page's GraphQL traffic stated exactly one.
+   */
+  async #order(
+    page: Page,
+    total: CheckoutTotal,
+    show: (m: number) => string,
+    read: PageReading,
+  ): Promise<{ charge: PayPalCharge; known?: KnownConversion }> {
+    const answer = await readCharge(page);
+    const fail = async (reason: string): Promise<never> => {
+      this.held.push({
+        locale: read.locale || null,
+        amounts: read.minor.map(show),
+        totals: read.totals.map(show),
+        unsure: reason,
+        ...(this.#requote ? { requote: show(this.#requote.minor) } : {}),
+        seen: sanitize(await rows(page), read.locale || "en", total.currency),
+      });
+      this.#refuse(reason);
+    };
+    if (!answer) return fail("PayPal's order for this page could not be read. Paying waits.");
+    const { charge, conversions } = answer;
+    const problem = chargeProblem(charge, total);
+    if (problem) {
+      const next = requoteOf(charge, total);
+      this.#requote = next;
+      return fail(
+        next
+          ? `this checkout's total is now ${show(next.minor)}, not the ${show(total.minor)} Keelson countersigned. Paying waits for Keelson to countersign the new total.`
+          : `${problem}, not the ${show(total.minor)} Keelson countersigned. Paying waits.`,
+      );
+    }
+    if (!INTENTS.has(charge.intent))
+      await fail(`PayPal's order is not a payment (${charge.intent}).`);
+    if (this.#payee !== undefined && charge.payee !== this.#payee) {
+      await fail("PayPal's order pays another merchant than the mandate names. Paying waits.");
+    }
+    const options = [
+      ...new Map(
+        conversions.map((c) => [
+          `${c.from.currency}|${c.from.value}|${c.currency}|${c.buyer}|${c.rate}`,
+          c,
+        ]),
+      ).values(),
+    ];
+    if (options.some((c) => c.from.currency !== charge.currency || c.from.value !== charge.value)) {
+      await fail("PayPal converts another amount than its order's total. Paying waits.");
+    }
+    if (options.some((c) => !convertsTo(charge.value, c.rate, c.buyer))) {
+      await fail("PayPal's conversion of the order does not add up. Paying waits.");
+    }
+    // Whichever funding option the buyer pays with, its conversion is within the mandate's spread.
+    for (const c of options) {
+      this.#conversion(total, { ...c, locale: read.locale || "en" });
+    }
+    const [only, ...more] = options;
+    if (!only) return { charge };
+    if (more.length === 0) return { charge, known: only };
+    // Several: the page must show which one the buyer pays with, by its rate.
+    const shown = options.filter((c) => Number(read.rates[c.currency]) === Number(c.rate));
+    if (shown.length !== 1) {
+      await fail(
+        "PayPal states several conversions and the page does not show which one it charges. Paying waits.",
+      );
+    }
+    return { charge, known: shown[0] as KnownConversion };
+  }
+
+  /**
+   * The conversion PayPal shows, checked against the reference rate bound into the countersign's
+   * evidence: refused without a current reference, or over the mandate's spread.
+   */
+  #conversion(total: CheckoutTotal, shown: ShownConversion): Conversion {
+    const ref = this.#reference;
+    const rate = ref?.base === total.currency ? ref.rates[shown.currency] : undefined;
+    if (!ref || rate === undefined || Date.now() - Date.parse(ref.as_of) > REFERENCE_MAX_AGE_MS) {
+      this.#refuse(
+        `PayPal converts this total to ${shown.currency}, and Keelson has no current reference rate from ${total.currency} to ${shown.currency} to check PayPal's rate against. Paying waits.`,
+      );
+    }
+    const spread = spreadBps(shown.rate, rate);
+    if (spread > this.#maxSpreadBps) {
+      this.#refuse(
+        `PayPal's rate of ${shown.rate} ${shown.currency} per ${total.currency} is ${spread} basis points from the reference rate of ${rate}, over the mandate's cap of ${this.#maxSpreadBps}. Paying waits.`,
+      );
+    }
+    return {
+      v: "keelson.conversion/1",
+      merchant: {
+        currency: total.currency,
+        value: decimalText(total.minor, minorDigits(total.currency)),
+      },
+      buyer: { currency: shown.currency, value: shown.buyer },
+      rate: shown.rate,
+      reference: { rate, provider: ref.provider, source: ref.source, as_of: ref.as_of },
+      spread_bps: spread,
+      max_spread_bps: this.#maxSpreadBps,
+      locale: shown.locale,
+    };
   }
 }

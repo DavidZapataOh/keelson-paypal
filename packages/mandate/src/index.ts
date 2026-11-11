@@ -90,9 +90,11 @@ export {
   CATEGORY_TABLE,
   isMerchantId,
   MAX_LIFETIME_SECONDS,
+  MAX_SPREAD_BPS,
   type Mandate,
   MandateError,
   MandateSchema,
+  maxSpreadBps,
   parseMandate,
   STRING_LIMITS,
 } from "./schema.ts";

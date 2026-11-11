@@ -61,7 +61,9 @@ ast = true
 timeout = 120
 
 [rpc_endpoints]
-arbitrum_sepolia = "${ARBITRUM_SEPOLIA_RPC_URL}"
+# Fuzzed fork tests read uncached storage on every run and share the RPC key with other jobs: a rate-limited read is
+# retried, with a longer backoff than forge's default, instead of failing the run.
+arbitrum_sepolia = { endpoint = "${ARBITRUM_SEPOLIA_RPC_URL}", retries = 10, retry_backoff = 2000 }
 arbitrum = "${ARBITRUM_ONE_RPC_URL}"
 sepolia = "${ETHEREUM_SEPOLIA_RPC_URL}"
 

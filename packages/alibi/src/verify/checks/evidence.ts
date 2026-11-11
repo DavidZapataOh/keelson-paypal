@@ -18,6 +18,7 @@ const DISCLOSED = new Set([
   "channel3.observation",
   "tlsn.web_fact",
   "api.checkout",
+  "api.fx_reference",
 ]);
 
 /** The media type Keelson accepts for an item type; the leaf hides it until the item is opened. */

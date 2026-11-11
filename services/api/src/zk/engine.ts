@@ -35,13 +35,13 @@ const run = promisify(execFile);
 export const ENGINE_PROVER = {
   url: "https://github.com/DavidZapataOh/keelson-paypal/releases/download/engine-proof-0000000/keelson-engine-proof-linux-x64",
   sha256: "0000000000000000000000000000000000000000000000000000000000000000",
-  vkey: "0x008eb02e13c538c0b1f2edbbde39d8400956f1aa1e9952de4746106312ec02a0" as Hex,
+  vkey: "0x00c4587b3359aa358e91653bb21d40ba649a31fcdc3ac0ad51f9aacaac0a615b" as Hex,
 } as const;
 
 /** The chain `EngineProofVerifier` records proofs on. */
 const ENGINE_PROOF_CHAIN_ID = arbitrumSepolia.id;
 /** The block `EngineProofVerifier` was deployed at, where its `EngineProven` history starts. */
-const ENGINE_PROOF_FROM_BLOCK = 328_271_292n;
+const ENGINE_PROOF_FROM_BLOCK = 328_312_505n;
 
 /**
  * The most PROVE, in wei, one dispute's proof may cost on the Succinct Prover Network: the prover

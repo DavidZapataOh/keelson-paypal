@@ -210,6 +210,9 @@ jobs:
           forge test --match-path 'test/invariant/*' --compute-units-per-second "$FOUNDRY_COMPUTE_UNITS_PER_SECOND" > forge-invariant.log 2>&1
           status=$?
           set -e
+          # Forge's suite results and failures, without traces; 32-byte hex values are redacted.
+          grep -E '^(Ran [0-9]+ tests? for |Suite result: |Encountered |Failing tests:|Error|\[FAIL)' forge-invariant.log \
+            | sed -E 's/(0x)?[0-9a-fA-F]{64}/<redacted>/g' | cut -c1-400 || true
           grep -oE '^\[(PASS|FAIL)[^]]*\] [A-Za-z0-9_]+' forge-invariant.log \
             | jq -Rn '[{test_results: ([inputs | capture("^\\[(?<s>PASS|FAIL)[^]]*\\] (?<n>.+)$")
                 | {(.n): {status: (if .s == "PASS" then "Success" else "Failure" end)}}] | add)}]' > invariant.json

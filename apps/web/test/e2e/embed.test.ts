@@ -496,7 +496,7 @@ describe("the embedded approval", () => {
   });
 
   test("where the page cannot create a passkey in a frame, the Keelson window finishes", async () => {
-    const { context, page, api } = await world({
+    const { context, page } = await world({
       hostPermissions: `publickey-credentials-get=("${API}"), publickey-credentials-create=()`,
     });
     const frame = frameOf(page);

@@ -1,0 +1,32 @@
+{
+  "data": {
+    "checkoutSession": {
+      "cart": {
+        "intent": "AUTHORIZE",
+        "amounts": {
+          "subtotal": {
+            "currencyValue": "2.50",
+            "currencyCode": "USD"
+          },
+          "shippingAndHandling": {
+            "currencyValue": "0.27",
+            "currencyCode": "USD"
+          },
+          "tax": {
+            "currencyValue": "0.18",
+            "currencyCode": "USD"
+          },
+          "total": {
+            "currencyValue": "2.95",
+            "currencyCode": "USD"
+          }
+        }
+      },
+      "payees": [
+        {
+          "merchantId": "SANDBOXPAYEE01"
+        }
+      ]
+    }
+  }
+}
