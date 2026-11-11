@@ -432,6 +432,20 @@ fn refuses_a_framed_assertion_that_does_not_match_the_embed() {
 }
 
 #[test]
+fn refuses_an_embed_hidden_behind_a_disclosure() {
+    let mut r = embedded(|c| framed_client_data(EMBED_ORIGIN, PLATFORM, c));
+    // The same claims with `embed` selectively disclosed instead of in clear.
+    let disclosure =
+        b64u(json!(["c2FsdHNhbHRzYWx0", "embed", { "top_origin": PLATFORM }]).to_string());
+    let payload = r.payload_sd.as_object_mut().unwrap();
+    payload.remove("embed");
+    payload.insert("_sd".into(), json!([b64u(Sha256::digest(&disclosure))]));
+    r.disclosures = vec![disclosure];
+    let err = leg_a().register_mandate(&r, at(NOW)).unwrap_err();
+    assert_eq!(err.to_string(), "bad_request: embed");
+}
+
+#[test]
 fn registers_only_for_the_pinned_rp_id() {
     let mut r = mandate_for(&sub(), &other_passkey());
     let mut m = r.payload_sd.clone();

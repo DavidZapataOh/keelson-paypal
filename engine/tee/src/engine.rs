@@ -459,6 +459,10 @@ impl Engine {
         }
         let h = h_sd(&r.payload_sd).map_err(|_| bad("mandate"))?;
         let mandate_hash = mandate_challenge(&h, &cm);
+        // Every verifier, the Alibi's included, reads `embed` in clear.
+        if r.payload_sd.get("embed") != m.get("embed") {
+            return Err(bad("embed"));
+        }
         verify_user_auth(
             &(&r.assertion).into(),
             &m,
@@ -1117,6 +1121,9 @@ impl Engine {
             client_data_json: part("clientDataJSON"),
             signature: part("signature"),
         };
+        if open.payload.get("embed") != mandate.get("embed") {
+            return Err(auth("open_mandate"));
+        }
         verify_user_auth(&assertion, &mandate, mandate_hash, &self.config.origin)?;
         Ok(Authenticated {
             mandate,
