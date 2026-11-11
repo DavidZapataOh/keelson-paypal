@@ -2250,6 +2250,7 @@ export const iLogBondAbi = [
     outputs: [],
     stateMutability: "nonpayable",
   },
+  { type: "function", name: "release", inputs: [], outputs: [], stateMutability: "nonpayable" },
   {
     type: "function",
     name: "requestWithdrawal",
@@ -2350,6 +2351,7 @@ export const iLogBondAbi = [
     anonymous: false,
   },
   { type: "error", name: "AlreadySlashed", inputs: [] },
+  { type: "error", name: "InvalidBeneficiary", inputs: [] },
   { type: "error", name: "InvalidBounty", inputs: [] },
   {
     type: "error",
@@ -4987,6 +4989,7 @@ export const logBondAbi = [
     outputs: [],
     stateMutability: "nonpayable",
   },
+  { type: "function", name: "release", inputs: [], outputs: [], stateMutability: "nonpayable" },
   {
     type: "function",
     name: "requestWithdrawal",
@@ -5087,6 +5090,7 @@ export const logBondAbi = [
     anonymous: false,
   },
   { type: "error", name: "AlreadySlashed", inputs: [] },
+  { type: "error", name: "InvalidBeneficiary", inputs: [] },
   { type: "error", name: "InvalidBounty", inputs: [] },
   {
     type: "error",

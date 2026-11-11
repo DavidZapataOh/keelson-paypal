@@ -45,8 +45,10 @@ interface ILogBond {
     );
 
     error NotOwner();
-    /// @notice The bounty is more than the whole bond.
+    /// @notice The bounty is more than half the bond.
     error InvalidBounty();
+    /// @notice The beneficiary is the zero address.
+    error InvalidBeneficiary();
     /// @notice Note `which` (0 or 1) is not a checkpoint of the origin signed by its key.
     error InvalidNote(uint8 which);
     /// @notice The two checkpoints do not state different roots for the same size.
@@ -89,6 +91,10 @@ interface ILogBond {
 
     /// @notice Pays the pending withdrawal once unlocked, capped at what the bond holds. Owner only.
     function completeWithdrawal() external;
+
+    /// @notice After a slash, sends what the bond still holds to the beneficiary: its share, when the token refused it
+    /// at the slash. Anyone may call it.
+    function release() external;
 
     /// @notice Slashes the whole bond if `noteA` and `noteB` are c2sp.org/tlog-checkpoint signed notes of the origin, both
     /// signed by its key, stating different roots for the same size: `bountyBps` of it to the caller, the rest to the

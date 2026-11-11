@@ -91,6 +91,18 @@ describe("Ed25519 as the chain checks it", () => {
     expect(verifyCheckpoint(sign(P.ZERO), [vkey]).size).toBe(8n);
   });
 
+  test("a key with a torsion component is refused even when the chain would accept the signature", () => {
+    const torsion = P.fromHex("26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05");
+    const mixed = P.fromBytes(key).add(torsion).toBytes();
+    const raw = new Uint8Array([1, ...mixed]);
+    const id = sha256(new Uint8Array([...new TextEncoder().encode(`${name}\n`), ...raw])).subarray(
+      0,
+      4,
+    );
+    const mixedVkey = `${name}+${Buffer.from(id).toString("hex")}+${Buffer.from(raw).toString("base64")}`;
+    expect(() => verifyCheckpoint(sign(P.ZERO), [mixedVkey])).toThrow(/not signed/);
+  });
+
   test("a signature whose R has a torsion component is refused, as Ed25519Verifier refuses it", () => {
     const torsion = P.fromHex("26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05");
     const note = sign(torsion);

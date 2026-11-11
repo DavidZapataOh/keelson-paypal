@@ -35,6 +35,7 @@ contract LogBond is ILogBond, ReentrancyGuardTransient {
     uint256 internal constant SIG_BASE64 = 92;
     /// @dev A base64 SHA-256 root.
     uint256 internal constant ROOT_BASE64 = 44;
+    uint16 internal constant MAX_BOUNTY_BPS = 5000;
     /// @dev ArbSys, the Arbitrum system precompile.
     address internal constant ARB_SYS = address(100);
 
@@ -68,7 +69,9 @@ contract LogBond is ILogBond, ReentrancyGuardTransient {
         address beneficiary_,
         uint16 bountyBps_
     ) {
-        if (bountyBps_ > 10_000) revert InvalidBounty();
+        // At most half: whoever holds the key can prove its own equivocation and take the bounty back.
+        if (bountyBps_ > MAX_BOUNTY_BPS) revert InvalidBounty();
+        if (beneficiary_ == address(0)) revert InvalidBeneficiary();
         token = token_;
         verifier = verifier_;
         owner = owner_;
@@ -159,7 +162,15 @@ contract LogBond is ILogBond, ReentrancyGuardTransient {
         // forge-lint: disable-next-line(reentrancy-events)
         emit EquivocationProven(msg.sender, a.size, a.root, b.root, amount, bounty, keccak256(noteA), keccak256(noteB));
         if (bounty > 0) token.safeTransfer(msg.sender, bounty);
-        if (amount > bounty) token.safeTransfer(beneficiary, amount - bounty);
+        // A beneficiary the token refuses (frozen) must not make the bond unslashable: its share then
+        // stays here, and `release` sends it once the token accepts it.
+        if (amount > bounty) token.trySafeTransfer(beneficiary, amount - bounty);
+    }
+
+    /// @inheritdoc ILogBond
+    function release() external nonReentrant {
+        if (!slashed()) revert NotReady();
+        token.safeTransfer(beneficiary, token.balanceOf(address(this)));
     }
 
     /// @dev Opens `note` as a checkpoint of the origin with a valid signature of the key: the text is the origin line,

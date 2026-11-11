@@ -92,14 +92,14 @@ contract LogBondForkTest is ForkTest {
     }
 
     function test_deployScriptLinksTheVerifier() public {
-        vm.setEnv("LOG_BOND_NAME", "LogBondDrill");
+        vm.setEnv("LOG_BOND_NAME", "LogBondTestOrigin");
         vm.setEnv("LOG_BOND_ORIGIN", "log.keelson.finance/conformance/2026-1");
         vm.setEnv("LOG_BOND_KEY", vm.toString(CONFORMANCE_KEY));
         vm.setEnv("LOG_BOND_OWNER", vm.toString(owner));
         vm.setEnv("LOG_BOND_NOTE", vm.toString(_note(CONFORMANCE_16)));
         DeployLogBond script = new DeployLogBond();
         LogBond deployed = script.run();
-        assertEq(address(deployed), script.predict("LogBondDrill"));
+        assertEq(address(deployed), script.predict("LogBondTestOrigin"));
         assertEq(deployed.owner(), owner);
         assertEq(deployed.withdrawalDelay(), 7 days);
         assertEq(deployed.completionWindow(), 1 days);
@@ -117,9 +117,27 @@ contract LogBondForkTest is ForkTest {
         bond.checkpoint(_note(SANDBOX));
     }
 
-    function test_refusesABountyAboveTheBond() public {
+    function test_refusesABountyAboveHalfOrNoBeneficiary() public {
         vm.expectRevert(ILogBond.InvalidBounty.selector);
-        new LogBond(IERC20(address(pyusd)), ed, owner, bytes32(0), CONFORMANCE_KEY, DELAY, WINDOW, beneficiary, 10_001);
+        new LogBond(IERC20(address(pyusd)), ed, owner, bytes32(0), CONFORMANCE_KEY, DELAY, WINDOW, beneficiary, 5001);
+        vm.expectRevert(ILogBond.InvalidBeneficiary.selector);
+        new LogBond(IERC20(address(pyusd)), ed, owner, bytes32(0), CONFORMANCE_KEY, DELAY, WINDOW, address(0), 1000);
+    }
+
+    /// @dev The real PYUSD freeze on the beneficiary: the slash still goes through, and its share waits for `release`.
+    function test_aFrozenBeneficiaryDoesNotBlockTheSlash() public {
+        vm.expectRevert(ILogBond.NotReady.selector);
+        bond.release();
+        _freeze(beneficiary);
+        _prove(_note(CONFORMANCE_8), _note(FORK_8));
+        assertEq(pyusd.balanceOf(prover), 4e6);
+        assertEq(pyusd.balanceOf(address(bond)), 36e6, "the beneficiary's share waits");
+        vm.expectRevert();
+        bond.release();
+        vm.prank(vm.parseJsonAddress(_json(), ".external.pyusdAssetProtector"));
+        pyusd.unfreeze(beneficiary);
+        bond.release();
+        assertEq(pyusd.balanceOf(beneficiary), 36e6);
     }
 
     function test_twoViewsOfOneSizeSlashTheWholeBond() public {

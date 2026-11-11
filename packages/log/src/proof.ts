@@ -119,13 +119,16 @@ function parseNote(signed: string) {
 
 /**
  * Ed25519 as the Go `crypto/ed25519` package and the on-chain `Ed25519Verifier` check it: noble
- * checks the cofactored equation, so `R` must also have no torsion component, or a signature only
- * this client accepts could not be proven anywhere else.
+ * checks the cofactored equation, so `R` and the key must also have no torsion component, or a
+ * signature only this client accepts could not be proven anywhere else.
  */
 function verifyEd25519(sig: Uint8Array, message: Uint8Array, key: Uint8Array): boolean {
   if (sig.length !== 64 || !ed25519.verify(sig, message, key, { zip215: false })) return false;
   try {
-    return ed25519.Point.fromBytes(sig.subarray(0, 32)).isTorsionFree();
+    return (
+      ed25519.Point.fromBytes(sig.subarray(0, 32)).isTorsionFree() &&
+      ed25519.Point.fromBytes(key).isTorsionFree()
+    );
   } catch {
     return false;
   }
