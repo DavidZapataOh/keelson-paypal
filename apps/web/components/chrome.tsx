@@ -5,7 +5,16 @@ import type { ReactNode } from "react";
 import { Header } from "./header";
 
 /** Routes that draw their own chrome: the onboarding steps and the app. */
-const OWN_CHROME = new Set(["/", "/new/", "/purchase/", "/disputes/"]);
+const OWN_CHROME = new Set([
+  "/",
+  "/new/",
+  "/purchase/",
+  "/disputes/",
+  "/mandate/",
+  "/live/",
+  "/scoreboard/",
+  "/scoreboard/methodology/",
+]);
 
 export function Chrome({ children }: { children: ReactNode }) {
   const path = usePathname();
