@@ -2,6 +2,7 @@ import { Agent, fetch as undiciFetch } from "undici";
 import { type Hex, hexToBytes } from "viem";
 import { z } from "zod";
 import { getCollateral, type SignerAttestation } from "./attest.ts";
+import type { StatementAsk } from "./statements.ts";
 
 const hex = (pattern: RegExp) => z.custom<Hex>((v) => typeof v === "string" && pattern.test(v));
 const Hex32 = hex(/^0x[0-9a-f]{64}$/);
@@ -83,6 +84,8 @@ const CountersignedSchema = z.strictObject({
   tee: z.number(),
   trace_jcs: z.string(),
   observation: ObservationSchema,
+  /** The purchase's SCITT statement, standard base64; only legs that sign statements send it. */
+  statement: z.base64().optional(),
 });
 export type Countersigned = z.infer<typeof CountersignedSchema>;
 
@@ -141,6 +144,8 @@ const HealthSchema = z.looseObject({
   boot_epoch: z.number(),
   oci_digest: z.string(),
   now_ms: z.number(),
+  /** 1 on a leg that signs SCITT statements. */
+  statements: z.number().optional(),
 });
 type Health = z.infer<typeof HealthSchema>;
 
@@ -242,6 +247,8 @@ export interface CountersignRequest {
   observation?: Observation;
   /** The mandate's commitment salt as leg A sealed it, standard base64; leg A proves C1 with it. */
   sealed_salt?: string;
+  /** Asks for the purchase's SCITT statement; sent only to legs that sign them. */
+  statement?: StatementAsk;
 }
 
 /** The body of `POST /v1/mandates/register` on leg A. */
