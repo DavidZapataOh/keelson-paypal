@@ -3,7 +3,7 @@ import { compactVerify, decodeProtectedHeader, importJWK, SignJWT } from "jose";
 import { transform } from "./bindings.ts";
 import { ap2Constraints } from "./constraints.ts";
 import { type PurchaseFacts, type StatementFacts, statementFacts } from "./facts.ts";
-import { b64uSha256, jwtPayload, sdHash, sha256Hasher } from "./jose.ts";
+import { b64uSha256, issuedBy, jwtPayload, sdHash, sha256Hasher, verifiesWith } from "./jose.ts";
 import type { AgentSigner, EcPublicJwk, ExportSigner } from "./signer.ts";
 import type { AlibiRef } from "./statement.ts";
 import type { CheckId, ExportReport } from "./verify.ts";
@@ -152,7 +152,8 @@ export function checkoutObject(f: PurchaseFacts): Record<string, unknown> {
   };
 }
 
-function instrumentOf(f: PurchaseFacts): Record<string, string> {
+/** The purchase's payment instrument, as AP2 and Verifiable Intent describe it. */
+export function instrumentOf(f: PurchaseFacts): Record<string, string> {
   return f.card
     ? {
         id: `card:${f.card.lastFour}`,
@@ -161,6 +162,14 @@ function instrumentOf(f: PurchaseFacts): Record<string, string> {
       }
     : { id: `paypal:${f.payee}`, type: "PAYPAL", description: "PayPal" };
 }
+
+/** The purchase's checkout as a JWT signed in the issuer slot. */
+export const signCheckoutJwt = (f: PurchaseFacts, ref: AlibiRef, issuer: ExportSigner) =>
+  issuer.sign(
+    JWT,
+    { ...checkoutObject(f), keelson: keelsonClaim(f, ref, AP2_CHECKOUT_JWT) },
+    ref.statement,
+  );
 
 /** A receipt's `reference`: the hash of the final segment of a closed mandate chain. */
 export const receiptReference = (chain: string): string =>
@@ -262,7 +271,7 @@ async function receipts(
 }
 
 /** The nonce of a purchase's closed mandates: its countersigned request id, as a ULID. */
-const nonceOf = (facts: StatementFacts) =>
+export const nonceOf = (facts: StatementFacts) =>
   transform("UlidOfRequest", facts.request_id, facts) as string;
 
 /**
@@ -276,11 +285,7 @@ export async function exportAp2(
   o: { now: number },
 ): Promise<Ap2Export> {
   const open = await issueAp2Open(f, ref, k.issuer);
-  const checkoutJwt = await k.issuer.sign(
-    JWT,
-    { ...checkoutObject(f), keelson: keelsonClaim(f, ref, AP2_CHECKOUT_JWT) },
-    ref.statement,
-  );
+  const checkoutJwt = await signCheckoutJwt(f, ref, k.issuer);
   const x: Ap2Export = {
     type: "keelson.ap2/1",
     alibi: ref,
@@ -340,21 +345,6 @@ function delegateOf(segment: string): Record<string, unknown> | undefined {
 
 const base64UrlDecode = (s: string) =>
   Uint8Array.from(atob(s.replaceAll("-", "+").replaceAll("_", "/")), (c) => c.charCodeAt(0));
-
-async function verifiesWith(jws: string, jwk: object): Promise<boolean> {
-  try {
-    await compactVerify(jws, await importJWK(jwk as never, "ES256"));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function issuedBy(jws: string, keys: EcPublicJwk[]): Promise<boolean> {
-  const { kid } = decodeProtectedHeader(jws);
-  const key = keys.find((k) => k.kid === kid);
-  return key !== undefined && verifiesWith(jws, key);
-}
 
 /** Checks one closed chain `open~d~~closed~d~` and returns its delegate payload. */
 async function closedChain(

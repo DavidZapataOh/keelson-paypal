@@ -4,6 +4,7 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { exportAp2 } from "../src/ap2.ts";
+import { exportVi } from "../src/vi.ts";
 import {
   ALLOW_CARD,
   ALLOW_PAYPAL,
@@ -22,6 +23,7 @@ for (const id of [ALLOW_PAYPAL, DENY_PAYPAL, ALLOW_CARD]) {
   const agent = await testAgent();
   const f = factsFor(id, agent);
   const ap2 = await exportAp2(f, refFor(id), { issuer, agent }, { now: NOW });
+  const vi = await exportVi(f, refFor(id), { issuer, agent }, { now: NOW });
   writeFileSync(
     new URL(`${id}.json`, out),
     `${JSON.stringify(
@@ -31,7 +33,9 @@ for (const id of [ALLOW_PAYPAL, DENY_PAYPAL, ALLOW_CARD]) {
         cart_disclosed: f.lines !== undefined,
         now: NOW,
         issuer_jwk: issuer.jwk,
+        agent_jwk: agent.jwk,
         ap2,
+        vi,
       },
       null,
       2,

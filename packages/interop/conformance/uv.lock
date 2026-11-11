@@ -123,10 +123,14 @@ version = "0"
 source = { virtual = "." }
 dependencies = [
     { name = "ap2" },
+    { name = "verifiable-intent" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "ap2", git = "https://github.com/google-agentic-commerce/AP2?rev=e1ea56db72a6385bce3e5c1112b3a56ce60acb43" }]
+requires-dist = [
+    { name = "ap2", git = "https://github.com/google-agentic-commerce/AP2?rev=e1ea56db72a6385bce3e5c1112b3a56ce60acb43" },
+    { name = "verifiable-intent", git = "https://github.com/agent-intent/verifiable-intent?rev=356c29635f1c44df7de02edb58699ca9f29bece6" },
+]
 
 [[package]]
 name = "packaging"
@@ -283,4 +287,12 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/ff/50/0195198eb1d75bab716bb0a813abea4cc394bfa17a92a189f021a34859af/typing_inspection-0.4.5.tar.gz", hash = "sha256:7f16c411e7930dc79596d42ab44672a3fe5f60eb34b781a1647e7872363120c7", size = 81194, upload-time = "2026-11-04T14:13:23.774Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/de/0c/ea2544850a7c135e15033a5c7a8e7211136184b7ae63e2239d557c2b3019/typing_inspection-0.4.5-py3-none-any.whl", hash = "sha256:bc210535442b39e1bf2805e0c7a17dfd6a4ace760c84c7f7d16245d23a6b1c39", size = 14874, upload-time = "2026-11-04T14:13:22.616Z" },
+]
+
+[[package]]
+name = "verifiable-intent"
+version = "0.1.0"
+source = { git = "https://github.com/agent-intent/verifiable-intent?rev=356c29635f1c44df7de02edb58699ca9f29bece6#356c29635f1c44df7de02edb58699ca9f29bece6" }
+dependencies = [
+    { name = "cryptography" },
 ]

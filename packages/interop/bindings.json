@@ -46,5 +46,15 @@
         "transform": "StatusOfDecision"
       }
     ]
+  },
+  {
+    "profile": "vi.l1/1",
+    "typ": "sd+jwt",
+    "rows": []
+  },
+  {
+    "profile": "vi.l2/1",
+    "typ": "kb-sd-jwt+kb",
+    "rows": []
   }
 ]
