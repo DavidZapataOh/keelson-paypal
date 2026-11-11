@@ -17,6 +17,7 @@ import type { Compiled } from "../lib/types";
 import { MandateVisual } from "./mandate-visual";
 import { ErrorNotice } from "./notice";
 import { OnboardingFrame } from "./onboarding/frame";
+import { GoLive } from "./onboarding/go-live";
 import { PasskeySetup } from "./passkey-setup";
 import { SignSheet } from "./sign-sheet";
 import { WhoAnswers } from "./who-answers";
@@ -141,7 +142,13 @@ function Label({ children, htmlFor }: { children: string; htmlFor?: string }) {
   );
 }
 
+/** The guided first mandate: rules, then signing, then the PayPal hold (`?hold=`). */
 export function NewMandate() {
+  const hold = useSearchParams().get("hold");
+  return hold ? <GoLive id={hold} /> : <Rules />;
+}
+
+function Rules() {
   const router = useRouter();
   const session = authClient.useSession();
   const handed = useSearchParams().get("request");
@@ -211,7 +218,7 @@ export function NewMandate() {
         salt: s.salt,
         assertion,
       });
-      router.push(`/mandate/?id=${created.id}`);
+      router.replace(`/new/?hold=${created.id}`);
     } catch (e) {
       setError(message(e));
       setBusy(false);
@@ -226,17 +233,16 @@ export function NewMandate() {
 
   if (phase === "passkey") {
     return (
-      <div className="mx-auto max-w-xl px-5 py-12">
-        <PasskeySetup
-          onDone={() =>
-            get<{ passkeys: PasskeyRef[] }>("/v1/passkeys").then((r) => {
-              setPasskeys(r.passkeys);
-              setPhase("review");
-              setConfirming(true);
-            })
-          }
-        />
-      </div>
+      <PasskeySetup
+        onBack={() => setPhase("review")}
+        onDone={() =>
+          get<{ passkeys: PasskeyRef[] }>("/v1/passkeys").then((r) => {
+            setPasskeys(r.passkeys);
+            setPhase("review");
+            setConfirming(true);
+          })
+        }
+      />
     );
   }
 

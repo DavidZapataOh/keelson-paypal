@@ -7,10 +7,13 @@ import { useSessionHint } from "../header";
 export const STEPS = ["PayPal", "Rules", "Sign", "Agent"] as const;
 export type Step = (typeof STEPS)[number];
 
-function Progress({ current }: { current: Step }) {
-  const at = STEPS.indexOf(current);
+function Progress({ current, complete }: { current: Step; complete: boolean }) {
+  const at = complete ? STEPS.length : STEPS.indexOf(current);
   return (
-    <ol aria-label={`Step ${at + 1} of ${STEPS.length}`} className="flex items-center gap-1.5">
+    <ol
+      aria-label={complete ? "All steps done" : `Step ${at + 1} of ${STEPS.length}`}
+      className="flex items-center gap-1.5"
+    >
       {STEPS.map((s, i) => (
         <li key={s} aria-current={i === at ? "step" : undefined} className="grid gap-1.5">
           <span
@@ -35,6 +38,7 @@ export function OnboardingFrame({
   step,
   stage,
   stageLabel,
+  complete = false,
   children,
   action,
 }: {
@@ -42,6 +46,8 @@ export function OnboardingFrame({
   stage: ReactNode;
   /** Names the picture when it carries information; otherwise it is decoration. */
   stageLabel?: string;
+  /** Every step is done: the bar fills. */
+  complete?: boolean;
   children: ReactNode;
   action: ReactNode;
 }) {
@@ -53,7 +59,7 @@ export function OnboardingFrame({
           {/* biome-ignore lint/performance/noImgElement: a static export serves the SVG as is */}
           <img src="/keelson.svg" alt="" width={94} height={28} className="h-6 w-auto sm:h-7" />
         </Link>
-        <Progress current={step} />
+        <Progress current={step} complete={complete} />
         <span className="hidden rounded-md border px-2 py-1 font-mono text-[11px] text-muted-foreground lg:block">
           PayPal sandbox
         </span>
