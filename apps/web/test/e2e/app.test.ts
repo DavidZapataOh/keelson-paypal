@@ -291,6 +291,7 @@ describe.each(Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[])("home on %s"
               createdAt: now,
               state: "CAPTURED",
               mode: "2of2",
+              checks: [{ field: "total", mandate: "$100.00", cart: "$89.00", pass: true }],
               disputes: [],
             },
             {
@@ -314,6 +315,7 @@ describe.each(Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[])("home on %s"
     expect(await page.getByText("$11", { exact: false }).count()).toBeGreaterThan(0);
     const activity = page.getByRole("region", { name: "Activity" });
     expect(await activity.getByRole("link").count()).toBe(2);
+    expect(await activity.getByText("$89.00 ≤ $100.00 ✓").count()).toBe(1);
     await activity.getByRole("tab", { name: /Blocked/ }).click();
     expect(await activity.getByRole("link").count()).toBe(1);
     expect(await activity.getByText("Cart $340.00 · max $100.00").count()).toBe(1);
@@ -451,6 +453,10 @@ describe("receipts and disputes", () => {
     state: "CAPTURED",
     mode: "2of2",
     logIndex: "12",
+    checks: [
+      { field: "total", mandate: "$100.00", cart: "$89.00", pass: true },
+      { field: "variant", mandate: "size_us 10", cart: "size_us 10", pass: true },
+    ],
     disputes: [] as { id: string; state: string }[],
   };
 
@@ -460,8 +466,18 @@ describe("receipts and disputes", () => {
       `/purchase/?mandate=${id}&id=${bought.id}`,
       (path) => (path === `/v1/mandates/${id}` ? viewIn(id, "ACTIVE", [bought]) : undefined),
     );
+    const checks = page.getByRole("list", { name: "What Keelson checked" });
+    await checks.waitFor();
+    expect(await checks.getByRole("listitem").count()).toBe(2);
+    expect(await checks.getByRole("listitem").first().textContent()).toMatch(
+      /\$89\.00\s+within\s+\$100\.00/,
+    );
     await page.getByRole("button", { name: /Not what you asked for/ }).click();
-    await page.getByRole("heading", { name: "What was wrong?" }).waitFor();
+    await page.getByRole("heading", { name: "What happened?" }).waitFor();
+    for (const kind of ["I don't remember it", "Not what I meant", "The agent went rogue"]) {
+      expect(await page.getByRole("dialog").getByText(kind).count()).toBe(1);
+    }
+    await page.getByRole("dialog").getByText("The agent got it wrong").click();
     await page.getByRole("dialog").getByText("Variant", { exact: true }).click();
     await page.getByText("The agent's operator answers for this, from its bond.").waitFor();
     expect(await page.getByRole("link", { name: /Open on PayPal/ }).getAttribute("href")).toBe(
