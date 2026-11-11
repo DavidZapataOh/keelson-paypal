@@ -99,9 +99,40 @@ const newSalt = () => BigInt(`0x${randomBytes(31).toString("hex")}`);
 const hex32 = (x: bigint) => `0x${x.toString(16).padStart(64, "0")}`;
 
 /**
+ * Whether the evidence's `tlsn.web_fact` item notarized `url` and the store answered exactly
+ * `amber` there: the answer `AmberContradictionCourt` holds an attestation to, so an operator never
+ * attests what the store's own notarized answer at the purchase does not say.
+ *
+ * @internal
+ */
+export function notarizes(webFact: unknown, url: URL, amber: Amber): boolean {
+  const doc = webFact as { url?: unknown; committed?: unknown } | null;
+  if (doc?.url !== url.href || typeof doc.committed !== "string") return false;
+  let answer: unknown;
+  try {
+    answer = JSON.parse(Buffer.from(doc.committed, "hex").toString("utf8"));
+  } catch {
+    return false;
+  }
+  const a = answer as Record<string, unknown> | null;
+  return (
+    a !== null &&
+    typeof a === "object" &&
+    Object.keys(a).length === 5 &&
+    a.sku === amber.sku &&
+    a.size === amber.size &&
+    a.color === amber.color &&
+    a.unit_minor === Number(amber.unitMinor) &&
+    a.returns_free === amber.returnsFree
+  );
+}
+
+/**
  * The purchase's amber attestation, made from its evidence's `api.cart` and `api.product` items on
  * the first call and fixed on the purchase, so that every cover attempt signs the same
- * `amberCommitment`. `null` when the purchase's cart is not one {@link amberOf} attests, or when
+ * `amberCommitment`. Only what the evidence's notarized answer of the store says is attested: the
+ * court convicts from that answer alone. `null` when the purchase's cart is not one
+ * {@link amberOf} attests, when its evidence holds no notarized answer that matches it, or when
  * `attest` is false and none is fixed yet: an attempt already sent without one.
  */
 export async function fixAmber(
@@ -126,7 +157,7 @@ export async function fixAmber(
     .where(
       and(
         eq(evidenceItems.root, row.evidenceRoot),
-        inArray(evidenceItems.type, ["api.cart", "api.product"]),
+        inArray(evidenceItems.type, ["api.cart", "api.product", "tlsn.web_fact"]),
       ),
     );
   const json = (type: string) => {
@@ -138,7 +169,7 @@ export async function fixAmber(
     }
   };
   const attested = amberOf(row.merchantId, json("api.cart"), json("api.product"));
-  if (!attested) return null;
+  if (!attested || !notarizes(json("tlsn.web_fact"), attested.url, attested.amber)) return null;
   const { url, amber } = attested;
   const salt = newSalt();
   const stored: StoredAmber = {
