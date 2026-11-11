@@ -1,5 +1,5 @@
 import { keelsonClaim } from "./ap2.ts";
-import { transform } from "./bindings.ts";
+import { holds, transform } from "./bindings.ts";
 import { type PurchaseFacts, type StatementFacts, statementFacts } from "./facts.ts";
 import { issuedBy, jwtPayload } from "./jose.ts";
 import type { EcPublicJwk, ExportSigner } from "./signer.ts";
@@ -282,11 +282,13 @@ export async function verifyEvidencePack(
     },
     {
       id: "facts",
-      ok:
-        facts !== undefined &&
-        p.transaction.amount_minor === facts.amount_minor &&
-        p.transaction.currency === transform("UpperCurrency", facts.currency, facts) &&
-        p.transaction.decision === facts.decision,
+      ok: holds(
+        () =>
+          facts !== undefined &&
+          p.transaction.amount_minor === facts.amount_minor &&
+          p.transaction.currency === transform("UpperCurrency", facts.currency, facts) &&
+          p.transaction.decision === facts.decision,
+      ),
     },
   ];
   return { format: "visa", ok: checks.every((c) => c.ok), checks, ms: performance.now() - started };

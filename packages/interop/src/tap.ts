@@ -70,8 +70,11 @@ export class AgentSignatureError extends Error {
 /** The nonces seen in the last `ttlSeconds`. */
 export class NonceCache {
   readonly #expiry = new Map<string, number>();
+  readonly ttlSeconds: number;
 
-  constructor(readonly ttlSeconds: number = TAP_MAX_WINDOW_SECONDS) {}
+  constructor(ttlSeconds: number = TAP_MAX_WINDOW_SECONDS) {
+    this.ttlSeconds = ttlSeconds;
+  }
 
   /** Whether `nonce` was seen within the ttl; records it either way. */
   seen(nonce: string, now: number): boolean {

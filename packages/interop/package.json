@@ -28,12 +28,15 @@
     "test": "vitest run",
     "vendor": "node scripts/vendor.ts",
     "bindings": "node scripts/bindings-json.ts",
-    "conformance": "node conformance/write-exports.ts && uv run --python 3.12 --project conformance python conformance/verify.py"
+    "conformance": "node conformance/write-exports.ts && uv run --python 3.12 --project conformance python conformance/verify.py",
+    "bench": "node bench/exports.bench.ts"
   },
   "dependencies": {
     "@keelson/alibi": "workspace:*",
     "@keelson/core": "workspace:*",
+    "@keelson/log": "workspace:*",
     "@keelson/mandate": "workspace:*",
+    "@keelson/scitt": "workspace:*",
     "@noble/hashes": "catalog:",
     "@sd-jwt/core": "0.24.3",
     "http-message-sig": "0.3.0",

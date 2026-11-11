@@ -10,7 +10,7 @@ import type { EcPublicJwk, ExportSigner } from "./signer.ts";
 export async function localExportSigner(
   privateJwk: JWK,
   factsOf: (statement: string) => StatementFacts,
-): Promise<ExportSigner> {
+): Promise<ExportSigner & { privateKey: CryptoKey }> {
   const key = await importJWK(privateJwk, "ES256");
   const { kty, crv, x, y } = privateJwk as { kty: "EC"; crv: "P-256"; x: string; y: string };
   const jwk: EcPublicJwk = {
@@ -22,6 +22,7 @@ export async function localExportSigner(
   };
   return {
     jwk,
+    privateKey: key as CryptoKey,
     async sign(typ, payload, statement) {
       checkBinding(typ, payload, factsOf(statement), statement);
       return new SignJWT(payload).setProtectedHeader({ alg: "ES256", typ, kid: jwk.kid }).sign(key);

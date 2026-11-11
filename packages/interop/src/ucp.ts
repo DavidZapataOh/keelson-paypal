@@ -1,7 +1,7 @@
 import { type Json, jcs } from "@keelson/core";
 import { base64url, decodeProtectedHeader, FlattenedSign, flattenedVerify, importJWK } from "jose";
 import { checkoutObject, exportAp2, keelsonClaim, verifyAp2Chain } from "./ap2.ts";
-import { transform } from "./bindings.ts";
+import { holds, transform } from "./bindings.ts";
 import type { PurchaseFacts, StatementFacts } from "./facts.ts";
 import { issuedBy, jwtPayload } from "./jose.ts";
 import { type AgentSigner, type EcPublicJwk, ExportRefused, type ExportSigner } from "./signer.ts";
@@ -160,11 +160,13 @@ export async function verifyUcp(
     },
     {
       id: "facts",
-      ok:
-        facts !== undefined &&
-        totals?.[0]?.type === "total" &&
-        totals[0].amount === facts.amount_minor &&
-        x.checkout.currency === transform("UpperCurrency", facts.currency, facts),
+      ok: holds(
+        () =>
+          facts !== undefined &&
+          totals?.[0]?.type === "total" &&
+          totals[0].amount === facts.amount_minor &&
+          x.checkout.currency === transform("UpperCurrency", facts.currency, facts),
+      ),
     },
     { id: "chain_binding", ok: binding },
   ];

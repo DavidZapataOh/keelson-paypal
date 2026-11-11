@@ -770,9 +770,15 @@ importers:
       '@keelson/core':
         specifier: workspace:*
         version: link:../core
+      '@keelson/log':
+        specifier: workspace:*
+        version: link:../log
       '@keelson/mandate':
         specifier: workspace:*
         version: link:../mandate
+      '@keelson/scitt':
+        specifier: workspace:*
+        version: link:../scitt
       '@noble/hashes':
         specifier: 'catalog:'
         version: 2.4.0

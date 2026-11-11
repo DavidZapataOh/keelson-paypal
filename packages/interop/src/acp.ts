@@ -2,7 +2,7 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { base64url } from "jose";
 import { keelsonClaim } from "./ap2.ts";
-import { transform } from "./bindings.ts";
+import { holds, transform } from "./bindings.ts";
 import { type PurchaseFacts, type StatementFacts, statementFacts } from "./facts.ts";
 import { issuedBy, jwtPayload } from "./jose.ts";
 import { type EcPublicJwk, ExportRefused, type ExportSigner } from "./signer.ts";
@@ -116,13 +116,15 @@ export async function verifyAcp(
     },
     {
       id: "facts",
-      ok:
-        facts !== undefined &&
-        x.allowance.max_amount >= facts.amount_minor &&
-        x.allowance.currency === transform("LowerCurrency", facts.currency, facts) &&
-        x.metadata.keelson_alibi_sha256 ===
-          bytesToHex(sha256(base64url.decode(x.alibi.statement))) &&
-        x.metadata.keelson_mandate_hash === facts.mandate_hash,
+      ok: holds(
+        () =>
+          facts !== undefined &&
+          x.allowance.max_amount >= facts.amount_minor &&
+          x.allowance.currency === transform("LowerCurrency", facts.currency, facts) &&
+          x.metadata.keelson_alibi_sha256 ===
+            bytesToHex(sha256(base64url.decode(x.alibi.statement))) &&
+          x.metadata.keelson_mandate_hash === facts.mandate_hash,
+      ),
     },
   ];
   return { format: "acp", ok: checks.every((c) => c.ok), checks, ms: performance.now() - started };

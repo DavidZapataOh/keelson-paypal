@@ -174,3 +174,12 @@ export function checkBinding(
     }
   }
 }
+
+/** `check()`, or `false` when the values it reads cannot be stated (an unknown currency). */
+export function holds(check: () => boolean): boolean {
+  try {
+    return check();
+  } catch {
+    return false;
+  }
+}
