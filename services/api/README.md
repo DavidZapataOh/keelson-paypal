@@ -294,6 +294,52 @@ mandate, so `POST /v1/countersign` refuses an authorization that is the hold of 
 or another request, and, for a per-purchase mandate, one that is not a hold Keelson created
 (`422 authorization-not-held`).
 
+## Live checkouts in another currency
+
+At a store's own checkout, the mandate, the countersign and PayPal's order stay in the store's
+currency. PayPal may still charge the buyer in their own currency: it converts the order total at
+its rate on the funding side and shows the converted total on its review page. The agent's
+pay-click gate (`services/agent/src/gate.ts`) decides on PayPal's order itself:
+
+1. **Order.** Right before each pay action on PayPal, the page asks PayPal's own GraphQL for
+   `GetCheckoutDetails`, the query PayPal's Smart Payment Buttons send. The total's
+   `currencyValue` and `currencyCode` must be the countersigned total exactly; its `subtotal`,
+   `shippingAndHandling` and `tax`, when PayPal holds them, the countersigned breakdown (a
+   breakdown that adds tax or shipping to the countersigned items is re-quoted). The intent must
+   be `SALE` or `AUTHORIZE`, and the only payee the merchant the mandate names, when it names one.
+   The formatted amount is never read.
+2. **Conversion.** The rate and the converted total come from PayPal's own
+   `fundingOptions[].currencyConversion` in the review page's GraphQL answers. Without them, the
+   page is switched once to `en_US` and its text read: one rate line (`1 USD = 3,468.14 COP`), every
+   rate line the same, no amount in a third currency, and the converted total within
+   `10^-d + amount × 10^-r / 2` of the order total at that rate, where `d` and `r` are the decimals
+   shown for the converted total and the rate. That bound is PayPal's rounding of the total (under
+   one shown digit in any rounding mode) and of the rate (half a shown digit, times the amount); a
+   rate shown with fewer than 4 significant digits is held. No larger amount may show, in either
+   currency.
+3. **Spread.** PayPal's rate must be within the mandate's `fx.max_spread_bps` (750 when absent) of
+   the reference mid-market rate. 750 bps leaves room for PayPal's published conversion fee of 3 to
+   4.5% over its base rate, the base rate's own distance from mid-market, and a day-old reference:
+   on 11 November 2026, PayPal's COP rate was 584 bps over the reference.
+
+**Reference rates.** `GET /v1/fx/reference/{base}` serves ExchangeRate-API's open access rates
+(`https://open.er-api.com/v6/latest/{base}`; Rates By Exchange Rate API). It is free and needs no
+key. It covers over 160 currencies, where the European Central Bank's reference rates cover about
+30 and leave out COP and KWD. The rates are updated once a day, cached for an hour as its terms ask,
+and refused when more than 48 hours old. The agent binds them into the purchase's evidence as an
+`api.fx_reference` item that holds each rate as a digest, and `POST /v1/countersign` accepts only a
+reference the API issued in the last 6 hours (`422 evidence-fx-reference-unknown`). The trust model
+is one third party over TLS, bounded by the countersign. The reference caps PayPal's spread and
+prices nothing. When it is unavailable, the gate holds every converted charge and pays only charges
+in the store's currency.
+
+The agent reports PayPal's order and the conversion with the transaction id
+(`PUT /v1/purchases/{id}/paypal-transaction`). The API checks the conversion against the evidence
+and the mandate. The Alibi then carries them, marked as not signed, with the reference rate it used
+disclosed from the evidence, and `evidence.conversion` checks their arithmetic. For an `AUTHORIZE`
+order, the Alibi also records how much PayPal lets the store capture: 115% of the authorization or
+USD 75 more, whichever is less.
+
 ## Purchase pipeline
 
 `POST /v1/countersign` accepts a cart only for an `ACTIVE` mandate that is not being revoked, of

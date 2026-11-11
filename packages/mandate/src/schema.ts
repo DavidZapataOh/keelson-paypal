@@ -281,11 +281,8 @@ export const MandateSchema = z.strictObject({
    * How far the rate PayPal converts a charge to the buyer's own currency at may be from the
    * reference mid-market rate, in basis points; {@link maxSpreadBps} when absent.
    */
-  fx: z
-    .strictObject({ max_spread_bps: z.number().int().min(0).max(MAX_SPREAD_BPS) })
-    .optional(),
+  fx: z.strictObject({ max_spread_bps: z.number().int().min(0).max(MAX_SPREAD_BPS) }).optional(),
 });
-
 
 /** A `keelson.mandate.1` payload. */
 export type Mandate = z.infer<typeof MandateSchema>;

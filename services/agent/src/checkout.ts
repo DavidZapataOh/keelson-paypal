@@ -3,6 +3,8 @@ import {
   type CheckoutTotal,
   cartHash,
   checkoutTotal,
+  commitReference,
+  type FxReference,
   toHex,
   toPayPalAmount,
 } from "@keelson/core";
@@ -101,6 +103,11 @@ export interface CheckoutResult {
   capture: Pick<Capture, "findings" | "timings">;
   status: number;
   body: Record<string, unknown>;
+  /**
+   * The reference rates the evidence binds, for a live purchase: the pay-click gate checks the rate
+   * PayPal converts the charge at against them. Undefined when Keelson had none.
+   */
+  reference?: FxReference;
 }
 
 const post = async (keelson: Keelson, path: string, headers: HeadersInit, body: unknown) => {
@@ -152,6 +159,23 @@ export async function checkout(o: {
     bytes: canonicalBytes(amount),
     salt: crypto.getRandomValues(new Uint8Array(32)),
   });
+  // A live purchase binds the reference rates the gate will check PayPal's conversion against.
+  let reference: FxReference | undefined;
+  if (o.live) {
+    const res = await o.keelson.request(`/v1/fx/reference/${o.quote.cart.currency}`, {
+      method: "GET",
+      headers: o.headers,
+    });
+    if (res.status === 200) {
+      reference = (await res.json()) as FxReference;
+      capture.items.push({
+        type: "api.fx_reference",
+        mediaType: MEDIA_TYPES["api.fx_reference"],
+        bytes: canonicalBytes(commitReference(reference)),
+        salt: crypto.getRandomValues(new Uint8Array(32)),
+      });
+    }
+  }
   if (o.observe) {
     t = performance.now();
     capture.items.push(...(await o.observe(capture)));
@@ -200,5 +224,6 @@ export async function checkout(o: {
     timings,
     capture: { findings: capture.findings, timings: capture.timings },
     ...answer,
+    ...(reference ? { reference } : {}),
   };
 }

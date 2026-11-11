@@ -1,9 +1,20 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import {
+  type Conversion,
+  CURRENCIES,
+  type CurrencyCode,
+  conversionProblem,
+  DEFAULT_MAX_SPREAD_BPS,
+  type FxReferenceCommitment,
+  referenceProblem,
+} from "@keelson/core";
+import type { Db } from "@keelson/db";
+import {
   alibis,
   and,
   desc,
   eq,
+  evidenceItems,
   isNotNull,
   isNull,
   like,
@@ -159,6 +170,30 @@ const route = createRoute({
 const problemContent = { "application/problem+json": { schema: ProblemSchema } };
 const Id = z.string().regex(/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/);
 
+const Decimal = z
+  .string()
+  .regex(/^(0|[1-9][0-9]*)(\.[0-9]+)?$/)
+  .max(40);
+const Code = z.string().regex(/^[A-Z]{3}$/);
+const ConversionSchema = z
+  .object({
+    v: z.literal("keelson.conversion/1"),
+    merchant: z.object({ currency: Code, value: Decimal }),
+    buyer: z.object({ currency: Code, value: Decimal }),
+    rate: Decimal,
+    reference: z.object({
+      rate: Decimal,
+      provider: z.string().max(64),
+      source: z.string().max(256),
+      as_of: z.string().max(40),
+    }),
+    spread_bps: z.number().int().min(0).max(1_000_000),
+    max_spread_bps: z.number().int().min(0).max(10_000),
+    locale: z.string().max(35),
+  })
+  .strict()
+  .openapi("Conversion");
+
 const transactionRoute = createRoute({
   method: "put",
   path: "/v1/purchases/{id}/paypal-transaction",
@@ -179,6 +214,20 @@ const transactionRoute = createRoute({
                 .string()
                 .regex(/^[0-9A-Z]{17}$/)
                 .openapi({ description: "PayPal's 17-character transaction id." }),
+              order: z
+                .object({
+                  intent: z.enum(["SALE", "AUTHORIZE"]),
+                  payee: z.string().regex(/^[0-9A-Z]{8,20}$/),
+                })
+                .optional()
+                .openapi({
+                  description:
+                    "PayPal's order as its checkout stated it right before the pay click: its intent and its only payee's merchant id.",
+                }),
+              conversion: ConversionSchema.optional().openapi({
+                description:
+                  "When PayPal converted the charge to the buyer's currency: the conversion as the pay-click gate checked it. It must be the countersigned amount at PayPal's rate, use the reference rate the evidence binds, and be within the mandate's `fx.max_spread_bps`.",
+              }),
             })
             .openapi("PayPalTransaction"),
         },
@@ -191,6 +240,11 @@ const transactionRoute = createRoute({
     409: {
       description:
         "The purchase is not live, its Alibi is not issued yet, or another transaction id is recorded",
+      content: problemContent,
+    },
+    422: {
+      description:
+        "The conversion is not the countersigned amount at PayPal's rate, does not use the reference rate the evidence binds, or is over the mandate's spread",
       content: problemContent,
     },
   },
@@ -207,6 +261,10 @@ const LivePurchase = z
     decision: z.enum(["allow", "deny"]),
     transactionId: z.string().nullable().openapi({
       description: "The PayPal transaction the store was paid by; `null` for a DENY.",
+    }),
+    conversion: ConversionSchema.optional().openapi({
+      description:
+        "When PayPal converted the charge to the buyer's currency: what the buyer paid at PayPal's rate, the reference rate and the spread, as the pay-click gate checked them. Reported by the agent; its Alibi verifies the arithmetic.",
     }),
     blocked: z.array(z.string()).openapi({
       description:
@@ -287,6 +345,46 @@ const liveRoute = createRoute({
   },
 });
 
+/**
+ * Why `conversion` is not the one the pay-click gate could have let through for `row`, or
+ * undefined: it converts the countersigned amount at PayPal's rate, its reference rate is the one
+ * the purchase's evidence binds, and its cap is the mandate's.
+ */
+async function conversionInvalid(
+  db: Db,
+  row: typeof purchases.$inferSelect,
+  conversion: Conversion,
+): Promise<string | undefined> {
+  const digits = CURRENCIES[row.currency as CurrencyCode]?.exponent ?? 2;
+  const t = row.amountMinor.toString().padStart(digits + 1, "0");
+  const value = digits ? `${t.slice(0, -digits)}.${t.slice(-digits)}` : t;
+  if (conversion.merchant.currency !== row.currency || conversion.merchant.value !== value) {
+    return "the conversion is not of the countersigned amount";
+  }
+  const problem = conversionProblem(conversion);
+  if (problem) return problem;
+  const [item] = row.evidenceRoot
+    ? await db
+        .select({ bytes: evidenceItems.bytes })
+        .from(evidenceItems)
+        .where(
+          and(eq(evidenceItems.root, row.evidenceRoot), eq(evidenceItems.type, "api.fx_reference")),
+        )
+    : [];
+  if (!item?.bytes) return "the purchase's evidence binds no reference rates";
+  const committed = JSON.parse(Buffer.from(item.bytes).toString()) as FxReferenceCommitment;
+  const reference = referenceProblem(conversion, committed);
+  if (reference) return reference;
+  const [mandate] = await db
+    .select({ payloadSd: mandates.payloadSd })
+    .from(mandates)
+    .where(eq(mandates.id, row.mandateId));
+  const cap =
+    (mandate?.payloadSd as { fx?: { max_spread_bps?: number } } | null)?.fx?.max_spread_bps ??
+    DEFAULT_MAX_SPREAD_BPS;
+  return conversion.max_spread_bps === cap ? undefined : "the cap is not the mandate's";
+}
+
 export function registerPurchases(
   app: OpenAPIHono,
   deps: Pick<Deps, "db" | "demoAgentId" | "cards">,
@@ -339,6 +437,7 @@ export function registerPurchases(
             merchant: p.merchantId,
             decision: p.state === "DENIED" ? ("deny" as const) : ("allow" as const),
             transactionId: p.paypalTransactionId,
+            ...(p.conversion ? { conversion: p.conversion as unknown as Conversion } : {}),
             blocked: p.state === "DENIED" ? denyReasons(p.evalTrace) : [],
             ...(card
               ? {
@@ -364,7 +463,7 @@ export function registerPurchases(
 
   app.openapi(transactionRoute, async (c) => {
     const { id } = c.req.valid("param");
-    const { transactionId } = c.req.valid("json");
+    const { transactionId, order, conversion } = c.req.valid("json");
     const [row] = await deps.db.select().from(purchases).where(eq(purchases.id, id));
     if (!row || row.clientId !== c.var.principal?.subject) {
       return problem(c, 404, "not-found", "Not found");
@@ -389,9 +488,19 @@ export function registerPurchases(
         "Transaction recorded",
         "Another PayPal transaction id is recorded for this purchase, or this one for another.",
       );
+    if (conversion) {
+      const why = await conversionInvalid(deps.db, row, conversion);
+      if (why) {
+        return problem(c, 422, "invalid-conversion", "Invalid conversion", `${why}.`);
+      }
+    }
     const set = await deps.db
       .update(purchases)
-      .set({ paypalTransactionId: transactionId })
+      .set({
+        paypalTransactionId: transactionId,
+        ...(order ? { paypalOrderIntent: order.intent, paypalPayeeId: order.payee } : {}),
+        ...(conversion ? { conversion } : {}),
+      })
       .where(and(eq(purchases.id, id), isNull(purchases.paypalTransactionId)))
       .returning()
       .then(([r]) => r)
