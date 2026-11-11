@@ -122,6 +122,30 @@
       "entry": ["src/index.ts!"],
       "project": ["src/**/*.ts!", "test/**/*.ts"]
     },
+    "packages/sdk": {
+      "entry": ["src/index.ts!", "src/ai-sdk.ts!", "src/cli.ts!", "examples/*.ts"],
+      "project": ["src/**/*.ts!", "examples/**/*.ts", "test/**/*.ts"],
+      "ignore": ["src/generated/**"],
+      "ignoreDependencies": [
+        "@abraham/reflection",
+        "@aztec/bb.js",
+        "@cedar-policy/cedar-wasm",
+        "@noble/curves",
+        "@noble/hashes",
+        "@noble/post-quantum",
+        "@openzeppelin/merkle-tree",
+        "@peculiar/x509",
+        "@phala/dcap-qvl",
+        "@sd-jwt/core",
+        "@sd-jwt/sd-jwt-vc",
+        "asn1js",
+        "canonicalize",
+        "cbor-x",
+        "jose",
+        "pkijs",
+        "viem"
+      ]
+    },
     "services/mcp": {
       "entry": ["src/index.ts!", "src/stdio.ts!", "view/alibi.ts!", "scripts/*.ts"],
       "project": ["src/**/*.ts!", "view/**/*.ts!", "scripts/**/*.ts", "test/**/*.ts"]

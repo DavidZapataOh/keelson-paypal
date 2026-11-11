@@ -1,0 +1,90 @@
+{
+  "name": "@keelson/sdk",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for Keelson's API: mandates, countersigns and offline Alibi verification",
+  "license": "Apache-2.0",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DavidZapataOh/keelson-paypal.git",
+    "directory": "packages/sdk"
+  },
+  "homepage": "https://keelson.finance",
+  "keywords": [
+    "keelson",
+    "paypal",
+    "agents",
+    "mandates",
+    "openapi"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./ai-sdk": {
+      "types": "./dist/ai-sdk.d.ts",
+      "default": "./dist/ai-sdk.js"
+    }
+  },
+  "bin": {
+    "keelson-verify": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "generate": "openapi-ts",
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@abraham/reflection": "0.13.0",
+    "@aztec/bb.js": "5.3.0",
+    "@cedar-policy/cedar-wasm": "4.14.0",
+    "@noble/curves": "2.4.0",
+    "@noble/hashes": "catalog:",
+    "@noble/post-quantum": "0.7.1",
+    "@openzeppelin/merkle-tree": "1.0.8",
+    "@peculiar/x509": "3.1.0",
+    "@phala/dcap-qvl": "0.7.1",
+    "@sd-jwt/core": "0.24.3",
+    "@sd-jwt/sd-jwt-vc": "0.24.3",
+    "asn1js": "4.0.0",
+    "canonicalize": "5.1.0",
+    "cbor-x": "1.6.9",
+    "jose": "6.2.15",
+    "pkijs": "4.0.1",
+    "ulid": "3.0.2",
+    "viem": "catalog:",
+    "zod": "catalog:"
+  },
+  "peerDependencies": {
+    "ai": ">=6"
+  },
+  "peerDependenciesMeta": {
+    "ai": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@hey-api/openapi-ts": "0.99.0",
+    "@keelson/alibi": "workspace:*",
+    "@keelson/core": "workspace:*",
+    "@keelson/evidence": "workspace:*",
+    "@keelson/mandate": "workspace:*",
+    "@types/node": "26.6.6",
+    "ai": "7.0.166",
+    "tsdown": "0.23.7",
+    "typescript": "6.0.3",
+    "vitest": "catalog:",
+    "yaml": "2.9.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

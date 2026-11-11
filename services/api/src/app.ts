@@ -242,7 +242,10 @@ function documentSecurity(app: OpenAPIHono): void {
   });
 }
 
-/** The OpenAPI 3.1 document of an app {@link createApp} built. */
+/**
+ * The OpenAPI 3.1 document of an app {@link createApp} built.
+ * @internal
+ */
 export function openApiDocument(app: OpenAPIHono): ReturnType<OpenAPIHono["getOpenAPI31Document"]> {
   return app.getOpenAPI31Document({
     openapi: "3.1.0",
