@@ -1,5 +1,6 @@
 import { sha256 } from "@noble/hashes/sha2.js";
-import { base64url, decodeJwt } from "jose";
+import { base64url, compactVerify, decodeJwt, decodeProtectedHeader, importJWK } from "jose";
+import type { EcPublicJwk } from "./signer.ts";
 
 const encoder = new TextEncoder();
 
@@ -20,4 +21,21 @@ export const jwtPayload = (jwt: string): Record<string, unknown> =>
 export function sha256Hasher(data: string | ArrayBuffer, alg: string): Uint8Array {
   if (alg !== "sha-256") throw new RangeError(`unsupported _sd_alg ${alg}`);
   return sha256(typeof data === "string" ? encoder.encode(data) : new Uint8Array(data));
+}
+
+/** Whether a compact JWS verifies under `jwk` (ES256). */
+export async function verifiesWith(jws: string, jwk: object): Promise<boolean> {
+  try {
+    await compactVerify(jws, await importJWK(jwk as never, "ES256"));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Whether a compact JWS is signed by the key its `kid` names among `keys`. */
+export async function issuedBy(jws: string, keys: EcPublicJwk[]): Promise<boolean> {
+  const { kid } = decodeProtectedHeader(jws);
+  const key = keys.find((k) => k.kid === kid);
+  return key !== undefined && verifiesWith(jws, key);
 }

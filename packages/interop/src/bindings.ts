@@ -46,6 +46,10 @@ export const EXPORT_BINDINGS: Record<string, Profile> = {
     typ: "JWT",
     rows: [{ pointer: "/status", fact: "decision", transform: "StatusOfDecision" }],
   },
+  "acp.allowance/1": {
+    typ: "JWT",
+    rows: [{ pointer: "/allowance/currency", fact: "currency", transform: "LowerCurrency" }],
+  },
   "ap2.payment_receipt/1": {
     typ: "JWT",
     rows: [{ pointer: "/status", fact: "decision", transform: "StatusOfDecision" }],
