@@ -75,6 +75,8 @@ export function arbitrumSepoliaTransport(primary: string | undefined): Transport
  * 10 blocks per call, about 110 calls for five minutes of Arbitrum Sepolia, and dRPC's refuses the
  * chain's ranges outright; the public RPC answers 10,000 blocks in one.
  * https://www.alchemy.com/docs/reference/eth-getlogs
+ *
+ * @internal
  */
 export function arbitrumSepoliaLogsRpcUrls(provider: string | undefined): string[] {
   return arbitrumSepoliaRpcUrls(provider).reverse();
