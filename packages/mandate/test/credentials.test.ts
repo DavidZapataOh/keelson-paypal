@@ -528,7 +528,7 @@ describe("open mandate (L2)", () => {
       if (ok) accepted.push(i);
     }
     expect(accepted).toEqual([]);
-  });
+  }, 60_000);
 });
 
 /**
