@@ -5,7 +5,7 @@ export interface Money {
 }
 
 /** What a page shows in one currency, read in the page's own locale. */
-export interface PageAmounts {
+interface PageAmounts {
   locale: string;
   currency: string;
   /** Every amount in `currency`, in its minor units, in page order. */
