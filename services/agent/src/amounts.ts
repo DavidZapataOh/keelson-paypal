@@ -30,21 +30,21 @@ export function minorDigits(currency: string): number {
 
 /** How `locale` writes amounts of `currency`, read from CLDR through `Intl.NumberFormat`. */
 interface Shape {
-  /** What ends the whole units of an amount, which decides 1.234 of a currency with 3 minor digits. */
-  decimal: string;
   fraction: number;
   /** The marks that name `currency` in this locale: its symbol and its ISO code. */
   marks: string[];
   /** The narrow symbol (`$` for USD), which names the currency only next to its ISO code. */
   narrow: string;
+  /** The signs other locales write the currency with (US$, $, $US). */
+  signs: string[];
 }
 
 /**
  * The symbols other locales write the currency with that also spell out its country (US$, $US,
  * CA$, R$): each one names this currency alone, whatever locale the page is in.
  */
-function spelled(currency: string): string[] {
-  return ["en", "en-GB", "en-CA", "en-AU", "es", "fr", "pt", "de"]
+function spelled(currency: string, any = false): string[] {
+  return ["en", "en-GB", "en-CA", "en-AU", "es", "fr", "pt", "de", "ja", "zh", "ko", "ar", "hi"]
     .map((l) =>
       flat(
         new Intl.NumberFormat(l, { style: "currency", currency })
@@ -52,7 +52,7 @@ function spelled(currency: string): string[] {
           .find((p) => p.type === "currency")?.value ?? "",
       ).trim(),
     )
-    .filter((m) => /\p{L}/u.test(m) && /\p{Sc}/u.test(m));
+    .filter((m) => (any || /\p{L}/u.test(m)) && /\p{Sc}/u.test(m));
 }
 
 const shapes = new Map<string, Shape>();
@@ -69,7 +69,6 @@ function shape(locale: string, currency: string): Shape {
       currencyDisplay: display,
       useGrouping: "always",
     });
-  const parts = format("symbol").formatToParts(1234567890.5);
   const mark = (display: "symbol" | "code" | "narrowSymbol") =>
     flat(
       format(display)
@@ -88,20 +87,12 @@ function shape(locale: string, currency: string): Shape {
       ).trim(),
     );
   const s: Shape = {
-    // Some locales write money with another decimal than plain numbers (fr-CH: 0.01 vs 0,01).
-    decimal: flat(
-      (
-        parts.find((p) => p.type === "decimal") ??
-        new Intl.NumberFormat(locale, { minimumFractionDigits: 1 })
-          .formatToParts(1.5)
-          .find((p) => p.type === "decimal")
-      )?.value ?? ".",
-    ),
     fraction,
     marks: [
       ...new Set([mark("symbol"), mark("code"), currency, ...spelled(currency), ...names()]),
     ].filter(Boolean),
     narrow: mark("narrowSymbol"),
+    signs: spelled(currency, true),
   };
   shapes.set(key, s);
   return s;
@@ -135,6 +126,23 @@ const TAX_LABELS: ReadonlySet<string> = new Set([
   "ALV",
 ]);
 const ISO: ReadonlySet<string> = new Set(Intl.supportedValuesOf("currency"));
+/** ISO codes that are also words a page may write in capitals (`text-transform: uppercase`). */
+const WORDS: ReadonlySet<string> = new Set([
+  "ALL",
+  "BOB",
+  "CUP",
+  "MAD",
+  "PEN",
+  "SOS",
+  "TOP",
+  "TRY",
+  "RON",
+  "BAM",
+  "GEL",
+  "MOP",
+  "NIO",
+  "AED",
+]);
 
 /** Every decimal digit Unicode has (Arabic-Indic, Devanagari, Thai, …), as its value 0 to 9. */
 const DIGITS: ReadonlyMap<string, string> = new Map(
@@ -183,7 +191,7 @@ function grouped(groups: readonly string[]): boolean {
  *
  * @internal
  */
-export function values(run: string, fraction: number, decimal?: string): number[] {
+export function values(run: string, fraction: number): number[] {
   const parts = run.split(RUN_SEPARATOR);
   const digits = parts.filter((_, i) => i % 2 === 0);
   const seps = parts.filter((_, i) => i % 2 === 1);
@@ -208,10 +216,6 @@ export function values(run: string, fraction: number, decimal?: string): number[
     out.add(Number(digits.join("")) * scale);
   }
   const all = [...out];
-  // 1.234 of a currency with 3 minor digits: the page's own decimal separator decides.
-  if (all.length > 1 && decimal !== undefined) {
-    return [last === decimal ? Math.min(...all) : Math.max(...all)];
-  }
   return all;
 }
 
@@ -228,32 +232,27 @@ const TOTAL = [
   "gesamt",
   "gesamtbetrag",
   "gesamtsumme",
-  "summe",
-  "montant",
-  "importe",
-  "valor",
   "you pay",
   "you'll pay",
   "you will pay",
-  "pay",
   "pagas",
   "pagarás",
-  "pagar",
   "a pagar",
-  "pague",
+  "total a pagar",
+  "importe total",
+  "valor total",
+  "montant total",
+  "pay now",
   "pagará",
   "vai pagar",
   "você paga",
-  "charge",
   "charged",
   "cobro",
-  "cargo",
   "cobrará",
   "итого",
   "к оплате",
   "toplam",
   "razem",
-  "suma",
   "do zapłaty",
   "celkem",
   "yhteensä",
@@ -314,13 +313,14 @@ export type Context = "total" | "aside" | "line";
 
 /**
  * Where an amount labeled `label` sits; an amount with no words before it, right after another
- * one, sits on that one's row.
+ * one, sits on that one's row, unless that one is aside.
  *
  * @internal
  */
 export function contextOf(label: string, previous: Context): Context {
   const text = label.normalize("NFKC").toLowerCase();
-  if (!/\p{L}/u.test(text)) return previous;
+  // A balance or a rate labels its own amount only: rows run together in the page's text.
+  if (!/\p{L}/u.test(text)) return previous === "aside" ? "line" : previous;
   const total = totalEnd(text);
   const aside = wordEnd(text, ASIDE);
   const part = partEnd(text);
@@ -340,6 +340,8 @@ export interface Token {
   number: string;
   /** The marks before and after the number. */
   marks: string[];
+  /** For an amount of another currency, the ISO code that names it, if one does. */
+  currency?: string;
   /**
    * `target`: an amount of the currency read. `other`: of another currency. `loose`: it may be
    * the currency read (no mark, or a mark several currencies on the page share). `plain`: a
@@ -413,6 +415,11 @@ function scanPlain(t: string, locale: string, currency: string): Token[] {
       return o.narrow === mark || o.marks.includes(mark);
     });
   const own = narrowOk ? [...marks, narrow].sort((a, b) => b.length - a.length) : marks;
+  const signs = new Set(
+    [...marks, narrow, ...s.signs]
+      .filter((m) => /\p{Sc}/u.test(m))
+      .map((m) => m.replace(/\p{L}/gu, "")),
+  );
   const tokens: Token[] = [];
   let end = 0;
   let claimed = 0;
@@ -426,18 +433,40 @@ function scanPlain(t: string, locale: string, currency: string): Token[] {
     const ownBefore =
       before !== undefined && t.lastIndexOf(before, from) >= claimed ? before : undefined;
     const found = [ownBefore, after].filter((m): m is string => m !== undefined);
-    const ownMark = (m: string) => m === currency || own.includes(m);
     const code = (m: string) => /^\p{Lu}{3}$/u.test(m) && ISO.has(m);
-    // This currency's code or a mark no other currency on the page writes names it for sure; a
-    // sign another named currency shares, or three capitals no currency has, only may.
-    const sure = found.some((m) => m === currency || (ownMark(m) && !shared(m)));
-    const other = found.some(
-      (m) => (code(m) && m !== currency) || (/\p{Sc}/u.test(m) && !ownMark(m)),
-    );
+    let sure = false;
+    const maybe: string[] = [];
+    let other: string | undefined;
+    for (const m of found) {
+      if (m === currency) sure = true;
+      else if (code(m)) {
+        // A code that is also a word a checkout may write in capitals (ALL, TOP, PEN) may label.
+        if (WORDS.has(m)) maybe.push(m);
+        else other = m;
+      } else if (own.includes(m)) {
+        if (shared(m)) maybe.push(m);
+        else sure = true;
+      } else if (/\p{Sc}/u.test(m)) {
+        // Any sign this currency is written with somewhere ($ for USD: US$, USD$, A$ look alike).
+        if (m.includes(currency) || signs.has(m.replace(/\p{L}/gu, ""))) maybe.push(m);
+        else other ??= m;
+      } else maybe.push(m);
+    }
+    // "$10.231 COP": a sign both currencies write, and the other one's code, is the other one.
+    const writes = (c: string, m: string) => {
+      const o = shape(locale, c);
+      return o.narrow === m || o.marks.includes(m);
+    };
     let kind: Token["kind"];
     if (found.length === 0) kind = RUN_SEPARATOR.test(run[0]) ? "loose" : "plain";
-    else if (other) kind = sure ? "loose" : "other";
-    else kind = sure && found.every((m) => ownMark(m) || code(m)) ? "target" : "loose";
+    else if (sure && other === undefined) kind = "target";
+    else if (
+      other !== undefined &&
+      !sure &&
+      maybe.every((m) => code(other as string) && writes(other as string, m))
+    ) {
+      kind = "other";
+    } else kind = "loose";
     if (ownBefore !== undefined) from = t.lastIndexOf(ownBefore, from);
     if (after !== undefined) to = t.indexOf(after, to) + after.length;
     if (found.length > 0) claimed = to;
@@ -453,8 +482,9 @@ function scanPlain(t: string, locale: string, currency: string): Token[] {
       text: t.slice(from, to),
       number: run[0],
       marks: found,
+      ...(kind === "other" && other && code(other) ? { currency: other } : {}),
       kind,
-      values: kind === "target" || kind === "loose" ? values(run[0], s.fraction, s.decimal) : [],
+      values: kind === "target" || kind === "loose" ? values(run[0], s.fraction) : [],
       label,
       context,
     });
@@ -470,43 +500,137 @@ export function scan(text: string, locale: string, currency: string): Token[] {
 /** What a page shows in the currency read, in its own locale. */
 export interface PageReading {
   locale: string;
-  /** Every amount in the currency, in minor units, in page order, but money it is not charged. */
+  /** Every amount in the currency, in minor units, in page order, but a rate's unit (`1 USD =`). */
   minor: number[];
   /** What the page labels each of `minor`: the text back to the number before it. */
   labels: string[];
-  /** The amounts of `minor` the page labels its total or charge. */
+  /** The amounts of `minor` the page labels its total or charge, and not a balance or rate. */
   totals: number[];
   /**
-   * The largest values numbers that may be the currency take (no mark, or a mark several
-   * currencies on the page share), but money the page labels as not charged.
+   * The largest value each number that may be the currency can take: one with no mark, with a
+   * mark several currencies share, or written as no locale writes an amount.
    */
   loose: number[];
+  /**
+   * Amounts in another currency but money the page labels as not charged (a balance), in that
+   * currency's whole units, and whether the page labels each its total or charge: a conversion of
+   * the total ("Pagarás $10.231 COP") or of a part of it. `currency` is undefined when only a sign
+   * names it.
+   */
+  conversions: { currency?: string; units: number; total: boolean }[];
+  /** The rates the page writes from the currency (`1 USD = 3.468,14 COP`), by currency. */
+  rates: Record<string, number>;
   /** Why the page cannot be read for sure; undefined when it can. */
   unsure?: string;
 }
 
+/**
+ * A number's value in whole units of another currency, which a page may write with more decimals
+ * than CLDR shows it with (COP: `3.468,14`); undefined unless it reads one way.
+ */
+function units(run: string, currency: string | undefined): number | undefined {
+  for (const f of new Set([currency ? minorDigits(currency) : 2, 2, 0])) {
+    const [value, ...more] = values(run, f);
+    if (value !== undefined && more.length === 0) return value / 10 ** f;
+  }
+  return undefined;
+}
+
+/**
+ * A rate as a page writes it (`3.468,14`, `0.000288`, `16,6667`), with as many decimals as it
+ * likes; undefined when a single separator with 3 digits after it may group or end the units.
+ */
+function rateOf(run: string): number | undefined {
+  const parts = run.split(RUN_SEPARATOR);
+  const digits = parts.filter((_, i) => i % 2 === 0);
+  const seps = parts.filter((_, i) => i % 2 === 1);
+  const last = seps.at(-1);
+  if (last === undefined) return Number(run);
+  const cents = digits.at(-1) ?? "";
+  const whole = digits.slice(0, -1);
+  const between = seps.slice(0, -1);
+  const decimal =
+    DECIMALS.has(last) &&
+    between.every((x) => x === between[0] && x !== last && GROUPS.has(x)) &&
+    grouped(whole) &&
+    (between.length > 0 || cents.length !== 3);
+  if (decimal) return Number(`${whole.join("")}.${cents}`);
+  if (seps.every((x) => x === last && GROUPS.has(x)) && grouped(digits) && seps.length > 1) {
+    return Number(digits.join(""));
+  }
+  return undefined;
+}
+
+/** The value a number with no reading may at most have: every digit a whole unit. */
+const ceiling = (run: string, fraction: number) =>
+  Number(run.replace(/\D/g, "").slice(0, 15)) * 10 ** fraction;
+
 function read(text: string, locale: string, currency: string): Omit<PageReading, "locale"> {
+  const fraction = minorDigits(currency);
+  const tokens = scan(text, locale, currency);
+  const t = plain(text);
   const minor: number[] = [];
   const labels: string[] = [];
   const totals: number[] = [];
   const loose: number[] = [];
+  const conversions: PageReading["conversions"] = [];
+  const rates: Record<string, number> = {};
   let unsure: string | undefined;
-  for (const token of scan(text, locale, currency)) {
+  for (const [i, token] of tokens.entries()) {
     if (token.kind === "target") {
       const [value, ...more] = token.values;
       if (value === undefined || more.length > 0) {
         unsure ??= value === undefined ? "an amount not read whole" : "an amount read two ways";
         continue;
       }
-      if (token.context === "aside") continue;
+      // "1 USD = 3.468,14 COP": the unit of a rate, not money.
+      const next = tokens.slice(i + 1).find((n) => n.kind !== "plain");
+      if (
+        value === 10 ** fraction &&
+        /^ ?= ?$/.test(t.slice(token.to, next?.from ?? token.to)) &&
+        next?.kind === "other" &&
+        next.currency
+      ) {
+        const rate = rateOf(next.number);
+        if (rate !== undefined) rates[next.currency] = rate;
+        continue;
+      }
       minor.push(value);
       labels.push(token.label);
       if (token.context === "total") totals.push(value);
-    } else if (token.kind === "loose" && token.context !== "aside" && token.values.length > 0) {
-      loose.push(Math.max(...token.values));
+    } else if (token.kind === "loose") {
+      if (token.values.length > 0) loose.push(Math.max(...token.values));
+      // A number with a separator no locale writes so may still be an amount: count it whole.
+      else if (/[.,\u066b]/u.test(token.number)) loose.push(ceiling(token.number, fraction));
+    } else if (token.kind === "other" && token.context !== "aside") {
+      // The number of a rate ("1 USD = 3.468,14 COP") is no amount.
+      if (
+        tokens[i - 1]?.kind === "target" &&
+        /^ ?= ?$/.test(t.slice(tokens[i - 1]?.to, token.from))
+      ) {
+        continue;
+      }
+      const value = units(token.number, token.currency);
+      if (value === undefined) {
+        unsure ??= "an amount in another currency not read whole";
+        continue;
+      }
+      conversions.push({
+        ...(token.currency ? { currency: token.currency } : {}),
+        units: value,
+        total: token.context === "total",
+      });
     }
   }
-  return { minor, labels, totals, loose, ...(unsure ? { unsure } : {}) };
+  return {
+    minor,
+    labels,
+    totals,
+    loose,
+    conversions,
+    rates,
+    ...(unsure ? { unsure } : {}),
+  };
 }
 
 /**
@@ -530,7 +654,16 @@ export function readAmounts(text: string, locale: string, currency: string): Pag
 export function readPage(text: string, locales: readonly string[], currency: string): PageReading {
   const [first] = locales;
   if (first === undefined) {
-    return { locale: "", minor: [], labels: [], totals: [], loose: [], unsure: "no locale" };
+    return {
+      locale: "",
+      minor: [],
+      labels: [],
+      totals: [],
+      loose: [],
+      conversions: [],
+      rates: {},
+      unsure: "no locale",
+    };
   }
   const readings = locales.map((l) => read(text, l, currency));
   const reading = readings[0] as Omit<PageReading, "locale">;
@@ -539,7 +672,9 @@ export function readPage(text: string, locales: readonly string[], currency: str
   const same = (r: Omit<PageReading, "locale">) =>
     r.minor.join() === reading.minor.join() &&
     r.totals.join() === reading.totals.join() &&
-    r.loose.join() === reading.loose.join();
+    r.loose.join() === reading.loose.join() &&
+    JSON.stringify([r.conversions, r.rates]) ===
+      JSON.stringify([reading.conversions, reading.rates]);
   if (!readings.every(same)) {
     return { locale: first, ...reading, unsure: "its locales read it differently" };
   }
@@ -547,16 +682,26 @@ export function readPage(text: string, locales: readonly string[], currency: str
 }
 
 /**
- * Whether a page charges `minor` and nothing more: read for sure, labeling exactly that amount as
- * its total or charge, and showing no larger amount the buyer may be charged, whether of the
- * currency or a number that may be. Amounts of other currencies (a conversion of the total) and
- * money the page labels as not charged (a balance, a rate) do not count.
+ * Whether a page charges `minor` of its currency and nothing more: read for sure, labeling exactly
+ * that amount as its total or charge, and showing no larger amount the buyer may be charged,
+ * whether of the currency or a number that may be. An amount in another currency counts only at
+ * the rate the page writes for it (`1 USD = 3.468,14 COP`): labeled the total, it must be `minor`
+ * converted, within 1%; on another line, no more than that. A balance in any currency does not
+ * count.
  */
-export function charges(page: PageReading, minor: number): boolean {
+export function charges(page: PageReading, minor: number, currency: string): boolean {
+  const whole = minor / 10 ** minorDigits(currency);
   return (
     page.unsure === undefined &&
     page.totals.includes(minor) &&
-    Math.max(...page.minor, ...page.loose) <= minor
+    Math.max(...page.minor, ...page.loose) <= minor &&
+    page.conversions.every(({ currency: c, units, total }) => {
+      const rate = c === undefined ? undefined : page.rates[c];
+      if (rate === undefined) return false;
+      const converted = whole * rate;
+      const margin = Math.max(1, converted * 0.01);
+      return total ? Math.abs(units - converted) <= margin : units <= converted + margin;
+    })
   );
 }
 

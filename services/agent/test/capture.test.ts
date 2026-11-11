@@ -46,7 +46,7 @@ describe("what the gate logs of a held page", () => {
         label: "Tasa de conversión:",
         region: "",
       },
-      { amount: "3.468,14 COP", kind: "other", context: "aside", label: "=", region: "" },
+      { amount: "3.468,14 COP", kind: "other", context: "line", label: "=", region: "" },
     ]);
   });
 
@@ -107,6 +107,40 @@ describe("what the gate logs of a held page", () => {
           for (const secret of secrets) expect(log, text).not.toContain(secret);
         },
       ),
+      { numRuns: 5_000 },
+    );
+  });
+});
+
+describe("numbers next to capitals that are no currency", () => {
+  test.each([
+    "DNI 12.345.678 Total $2.95 USD",
+    "CPF 123.456.789-09 Total $2.95 USD",
+    "RUT 12.345.678-9 Total $2.95 USD",
+    "NIT 900.123.456-7 Total $2.95 USD",
+    "TEL 612 345 678 Total $2.95 USD",
+    "FAX 555 123 456 Total $2.95 USD",
+    "APT 1,204 Total $2.95 USD",
+    "IBAN DE89 370 400 USD Total $2.95 USD",
+    "ID CC 1.023.456 USD Total $2.95 USD",
+    "BOB SMITH Total $2.95 USD",
+  ])("%s keeps no identifier", (text) => {
+    const log = JSON.stringify(sanitize([row(text)], "es", "USD"));
+    for (const secret of text.match(/[\d.,' -]{3,}\d|SMITH|BOB|DE89/g) ?? []) {
+      if (secret.trim() === "2.95") continue;
+      expect(log, secret).not.toContain(secret.trim());
+    }
+    expect(log).toContain("$2.95 USD");
+  });
+
+  test("capitals and grouped digits never reach the log as an amount", () => {
+    const capitals = fc.stringMatching(/^[A-Z]{3}$/);
+    const grouped = fc.stringMatching(/^[1-9]\d{1,2}(?:[. ]\d{3}){1,3}$/);
+    fc.assert(
+      fc.property(capitals, grouped, (mark, id) => {
+        const log = JSON.stringify(sanitize([row(`${mark} ${id} · Total $2.95 USD`)], "es", "USD"));
+        expect(log, `${mark} ${id}`).not.toContain(id);
+      }),
       { numRuns: 5_000 },
     );
   });

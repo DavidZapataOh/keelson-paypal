@@ -29,13 +29,13 @@ export interface Seen {
  * in. Anything else in a row (a name, an email, an address, a store's product) is redacted.
  */
 const VOCABULARY = new Set(
-  `total subtotal sub-total tax taxes estimated shipping delivery discount order summary item items
-  quantity qty price amount pay paying now with and of the to in for your you you'll be charged
-  charge balance available rewards points rate exchange conversion currency options see change
-  review continue back cancel fee fees free card bank account paypal visa mastercard amex credit
-  debit ending preferred method payment payments cart purchase complete agree terms digital
-  download interest installments later buy store merchant seller receives details view hide show
-  more less or no due today pending converted convert from via using info information
+  `total subtotal sub-total tax taxes estimated shipping delivery discount order item items
+  quantity qty amount pay paying now with and of the to in for your you you'll be charged
+  charge balance available rewards points exchange conversion currency options
+  review continue cancel fee fees card account paypal visa mastercard amex credit
+  debit ending preferred method payment payments cart purchase complete agree digital
+  download interest installments later merchant seller receives
+  or no due today pending converted from using information
   impuestos impuesto iva envío envio entrega descuento pedido resumen artículo artículos cantidad
   precio importe monto pagar pagas pagarás pague paga ahora con y de del la el los las a en para tu
   su se cobrará cobro cargo saldo disponible recompensas puntos tasa tipo cambio conversión moneda
@@ -52,6 +52,22 @@ const VOCABULARY = new Set(
     .map((w) => fold(w)),
 );
 const ISO: ReadonlySet<string> = new Set(Intl.supportedValuesOf("currency"));
+/** ISO codes that are also names or words a page may write in capitals (BOB, RON, ALL). */
+const NAMES: ReadonlySet<string> = new Set([
+  "BOB",
+  "RON",
+  "ALL",
+  "TOP",
+  "PEN",
+  "SOS",
+  "TRY",
+  "MAD",
+  "CUP",
+  "GEL",
+  "NIO",
+  "MOP",
+  "BAM",
+]);
 
 function fold(word: string): string {
   return word.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase();
@@ -61,7 +77,7 @@ function fold(word: string): string {
 function keep(word: string): string {
   const bare = word.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
   if (bare === "") return word;
-  if (ISO.has(bare) || VOCABULARY.has(fold(bare))) return word;
+  if ((ISO.has(bare) && !NAMES.has(bare)) || VOCABULARY.has(fold(bare))) return word;
   if (/^[\d.,'’ ]+$/u.test(bare)) return "#";
   return "▪";
 }
@@ -88,11 +104,14 @@ const mark = (m: string) =>
  * currency mark next to a number some locale writes as an amount.
  */
 function amountOf(token: Token): string {
-  const money =
-    token.marks.length > 0 &&
-    token.kind !== "plain" &&
-    [0, 2, 3].some((f) => values(token.number, f).length > 0);
   const digits = token.number.replace(/\D/g, "").length;
+  // A sign names money; a code alone ("1.023.456 USD" may be an ID) only with cents or few digits.
+  const sign = token.marks.some((m) => /\p{Sc}/u.test(m));
+  const code = token.marks.some((m) => ISO.has(m));
+  const money =
+    token.kind !== "plain" &&
+    (sign || (code && (digits <= 4 || /[.,٫]\d\d$/u.test(token.number)))) &&
+    [0, 2, 3].some((f) => values(token.number, f).length > 0);
   let out = token.text;
   for (const m of token.marks) out = out.replace(m, mark(m));
   return money && digits <= 9 ? out : out.replace(/\d/g, "#");

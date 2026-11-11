@@ -171,7 +171,7 @@ export class PayGate {
     const cartOk =
       !this.#cart ||
       (cart?.currency === total.currency && cart.minor === total.items - total.discount);
-    if (!charges(read, total.minor) || !cartOk) {
+    if (!charges(read, total.minor, total.currency) || !cartOk) {
       // A re-quote is the page's largest amount, which it must label its total, with nothing
       // that may be the currency above it.
       const top = Math.max(...read.minor);

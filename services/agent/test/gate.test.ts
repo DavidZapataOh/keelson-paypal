@@ -346,7 +346,8 @@ describe("the pay-click gate", () => {
     expect(text(r)).toMatch(/does not label USD 2\.95 as its total/);
     expect(await out()).toBe("");
     const [held] = gate.held;
-    expect(held).toMatchObject({ locale: "es", amounts: ["USD 2.95", "USD 1.00", "USD 1.00"] });
+    // "1 USD = 3.468,14 COP" is a rate, not an amount.
+    expect(held).toMatchObject({ locale: "es", amounts: ["USD 2.95"] });
     expect(held?.totals).toEqual([]);
     const log = JSON.stringify(gate.held);
     for (const secret of ["023", "456", "789", "300", "4567"]) expect(log).not.toContain(secret);
