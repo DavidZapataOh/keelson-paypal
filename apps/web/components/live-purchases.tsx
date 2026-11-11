@@ -13,6 +13,7 @@ import { VERIFY } from "../lib/config";
 import { major, when } from "../lib/format";
 import { alibiUrl, type LivePurchase, livePurchases, reasonOf } from "../lib/live";
 import { CheckoutBreakdown } from "./checkout-breakdown";
+import { ConversionLine } from "./conversion-line";
 import { ErrorNotice } from "./notice";
 
 const host = (origin: string) => new URL(origin).hostname.replace(/^www\./, "");
@@ -71,10 +72,13 @@ function Entry({ p }: { p: LivePurchase }) {
             </span>
           </p>
         ) : p.transactionId ? (
-          <p className="flex flex-wrap items-center gap-x-2 text-sm">
-            <span className="text-muted-foreground">Paid through PayPal, transaction</span>
-            <CopyValue value={p.transactionId} label="PayPal transaction id" />
-          </p>
+          <>
+            {p.conversion ? <ConversionLine conversion={p.conversion} /> : null}
+            <p className="flex flex-wrap items-center gap-x-2 text-sm">
+              <span className="text-muted-foreground">Paid through PayPal, transaction</span>
+              <CopyValue value={p.transactionId} label="PayPal transaction id" />
+            </p>
+          </>
         ) : null}
       </div>
       <div className="flex items-center gap-2">

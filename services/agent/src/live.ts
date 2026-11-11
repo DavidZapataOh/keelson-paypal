@@ -3,6 +3,7 @@ import {
   type Cart,
   type CheckoutTotal,
   checkoutTotal,
+  type FxReference,
   type Json,
   jcs,
   sha256,
@@ -260,8 +261,11 @@ export async function runCheckout(o: {
   gate: PayGate;
   quote: Quote;
   proposal: ProposedCart;
-  /** Countersigns a re-quoted checkout total; true when Keelson allowed it. */
-  requote?: (total: CheckoutTotal) => Promise<boolean>;
+  /**
+   * Countersigns a re-quoted checkout total: whether Keelson allowed it, and the reference rates
+   * its evidence binds.
+   */
+  requote?: (total: CheckoutTotal) => Promise<{ allowed: boolean; reference?: FxReference }>;
   onStep?: (step: Step) => void;
 }): Promise<CheckoutRun> {
   const started = performance.now();
@@ -360,14 +364,14 @@ export async function runCheckout(o: {
       const next = o.gate.takeRequote();
       if (next && o.requote) {
         const t = performance.now();
-        const allowed = await o.requote(next);
+        const { allowed, reference } = await o.requote(next);
         step({
           kind: "requote",
           detail: `${show(next)} ${allowed ? "allowed" : "not allowed"}`,
           ms: Math.round(performance.now() - t),
         });
         if (allowed) {
-          o.gate.allow(next);
+          o.gate.allow(next, reference);
           total = next;
         }
         content.push({

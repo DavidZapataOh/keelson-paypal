@@ -2491,6 +2491,16 @@ components:
           required:
             - top_origin
           additionalProperties: false
+        fx:
+          type: object
+          properties:
+            max_spread_bps:
+              type: integer
+              minimum: 0
+              maximum: 3000
+          required:
+            - max_spread_bps
+          additionalProperties: false
       required:
         - v
         - mid
@@ -2961,6 +2971,8 @@ components:
             - string
             - "null"
           description: The PayPal transaction the store was paid by; `null` for a DENY.
+        conversion:
+          $ref: "#/components/schemas/Conversion"
         blocked:
           type: array
           items:
@@ -3012,6 +3024,89 @@ components:
         - blocked
         - logIndex
         - createdAt
+    Conversion:
+      type: object
+      properties:
+        v:
+          type: string
+          enum:
+            - keelson.conversion/1
+        merchant:
+          type: object
+          properties:
+            currency:
+              type: string
+              pattern: ^[A-Z]{3}$
+            value:
+              type: string
+              maxLength: 40
+              pattern: ^(0|[1-9][0-9]*)(\.[0-9]+)?$
+          required:
+            - currency
+            - value
+        buyer:
+          type: object
+          properties:
+            currency:
+              type: string
+              pattern: ^[A-Z]{3}$
+            value:
+              type: string
+              maxLength: 40
+              pattern: ^(0|[1-9][0-9]*)(\.[0-9]+)?$
+          required:
+            - currency
+            - value
+        rate:
+          type: string
+          maxLength: 40
+          pattern: ^(0|[1-9][0-9]*)(\.[0-9]+)?$
+        reference:
+          type: object
+          properties:
+            rate:
+              type: string
+              maxLength: 40
+              pattern: ^(0|[1-9][0-9]*)(\.[0-9]+)?$
+            provider:
+              type: string
+              maxLength: 64
+            source:
+              type: string
+              maxLength: 256
+            as_of:
+              type: string
+              maxLength: 40
+          required:
+            - rate
+            - provider
+            - source
+            - as_of
+        spread_bps:
+          type: integer
+          minimum: 0
+          maximum: 1000000
+        max_spread_bps:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        locale:
+          type: string
+          maxLength: 35
+      required:
+        - v
+        - merchant
+        - buyer
+        - rate
+        - reference
+        - spread_bps
+        - max_spread_bps
+        - locale
+      additionalProperties: false
+      description: "When PayPal converted the charge to the buyer's currency: what the
+        buyer paid at PayPal's rate, the reference rate and the spread, as the
+        pay-click gate checked them. Reported by the agent; its Alibi verifies
+        the arithmetic."
     Purchase:
       type: object
       properties:
@@ -3255,6 +3350,30 @@ components:
           type: string
           pattern: ^[0-9A-Z]{17}$
           description: PayPal's 17-character transaction id.
+        order:
+          type: object
+          properties:
+            intent:
+              type: string
+              enum:
+                - SALE
+                - AUTHORIZE
+            payee:
+              type: string
+              pattern: ^[0-9A-Z]{8,20}$
+          required:
+            - intent
+            - payee
+          description: "PayPal's order as its checkout stated it right before the pay
+            click: its intent and its only payee's merchant id."
+        conversion:
+          allOf:
+            - $ref: "#/components/schemas/Conversion"
+            - description: "When PayPal converted the charge to the buyer's currency: the
+                conversion as the pay-click gate checked it. It must be the
+                countersigned amount at PayPal's rate, use the reference rate
+                the evidence binds, and be within the mandate's
+                `fx.max_spread_bps`."
       required:
         - transactionId
     PurchaseCard:
@@ -3302,7 +3421,7 @@ components:
               - salt
               - bytes
           minItems: 1
-          maxItems: 24
+          maxItems: 26
       required:
         - mandateId
         - manifest
@@ -3336,7 +3455,7 @@ components:
               - media_type
               - leaf
           minItems: 1
-          maxItems: 24
+          maxItems: 26
       required:
         - v
         - root
@@ -3562,6 +3681,37 @@ components:
         - mandateId
         - url
         - agentView
+    FxReference:
+      type: object
+      properties:
+        v:
+          type: string
+          enum:
+            - keelson.fx_reference/1
+        provider:
+          type: string
+        source:
+          type: string
+        base:
+          type: string
+        as_of:
+          type: string
+          description: When the provider last updated the rates.
+        fetched_at:
+          type: string
+        rates:
+          type: object
+          additionalProperties:
+            type: string
+          description: Units of each currency one unit of `base` buys, as decimal strings.
+      required:
+        - v
+        - provider
+        - source
+        - base
+        - as_of
+        - fetched_at
+        - rates
     WebFact:
       type: object
       properties:
@@ -9283,9 +9433,10 @@ paths:
           description: The request is invalid, the purchase unit's amount does not
             reconcile with the cart (`invalid-amount`), the authorization is not
             this purchase's hold, the cart is not the one held for this request,
-            the evidence holds another cart or another checkout amount, its
-            Channel3 observation is not usable, its WebFact is not this
-            purchase's, or a live store is not the website the mandate allows
+            the evidence holds another cart or another checkout amount or
+            reference rates Keelson did not issue, its Channel3 observation is
+            not usable, its WebFact is not this purchase's, or a live store is
+            not the website the mandate allows
           content:
             application/problem+json:
               schema:
@@ -9372,6 +9523,15 @@ paths:
         "409":
           description: The purchase is not live, its Alibi is not issued yet, or another
             transaction id is recorded
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: The order's payee is not one the mandate allows, or the conversion
+            is not the countersigned amount at PayPal's rate, does not use the
+            reference rate the evidence binds, or is over the mandate's spread.
+            The transaction id is recorded without them.
           content:
             application/problem+json:
               schema:
@@ -9559,7 +9719,7 @@ paths:
               - integer
               - "null"
             minimum: 0
-            maximum: 23
+            maximum: 25
           required: true
           name: index
           in: path
@@ -9710,6 +9870,63 @@ paths:
                   - content_hash
         "404":
           description: No such observation
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/fx/reference/{base}:
+    get:
+      tags:
+        - purchases
+      summary: Reference exchange rates
+      description: Mid-market rates from the merchant's currency to every other one,
+        from ExchangeRate-API (Rates By Exchange Rate API,
+        https://www.exchangerate-api.com), at most 48 hours old. The agent binds
+        them into a purchase's evidence as an `api.fx_reference` item,
+        `commitReference` of this answer, which a countersign accepts only for
+        references the API issued in the last 6 hours. The pay-click gate checks
+        the rate PayPal converts the charge at against them, within the
+        mandate's `fx.max_spread_bps`.
+      parameters:
+        - schema:
+            type: string
+            enum:
+              - AUD
+              - BRL
+              - CAD
+              - CNY
+              - CZK
+              - DKK
+              - EUR
+              - HKD
+              - HUF
+              - ILS
+              - JPY
+              - MYR
+              - MXN
+              - TWD
+              - NZD
+              - NOK
+              - PHP
+              - PLN
+              - GBP
+              - SGD
+              - SEK
+              - CHF
+              - THB
+              - USD
+          required: true
+          name: base
+          in: path
+      responses:
+        "200":
+          description: The rates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FxReference"
+        "503":
+          description: "No current reference rates: a converted charge is then never paid"
           content:
             application/problem+json:
               schema:

@@ -1,5 +1,12 @@
 import { randomBytes } from "node:crypto";
-import { cartHash, checkoutTotal, type Json, jcs, toPayPalAmount } from "@keelson/core";
+import {
+  cartHash,
+  checkoutTotal,
+  type FxReference,
+  type Json,
+  jcs,
+  toPayPalAmount,
+} from "@keelson/core";
 import { eq, mandates, operators, purchases, user } from "@keelson/db";
 import { buildSdPayload, parseMandate } from "@keelson/mandate";
 import { pino } from "pino";
@@ -7,6 +14,7 @@ import { ulid } from "ulid";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import demo from "../../../packages/mandate/test/fixtures/demo-mandate.json" with { type: "json" };
 import { createApp } from "../src/app.ts";
+import { commitmentBytes, referenceRates } from "../src/fx.ts";
 import { createTee } from "../src/tee/config.ts";
 import { EvidenceUploader } from "./evidence.ts";
 import { testDb, testKv } from "./setup.ts";
@@ -339,6 +347,32 @@ describe("countersigning the same cart again", { timeout: 120_000 }, () => {
       expect(row).toBeUndefined();
     }
     expect((await send({})).row?.liveStore).toBe(STORE);
+  });
+
+  test("reference rates bind into the evidence only as the API issued them", async () => {
+    const m = await heldMandate();
+    const reference = await referenceRates(testKv, "USD");
+    expect(reference?.rates.COP).toMatch(/^[0-9]+(\.[0-9]+)?$/);
+    const withRates = async (bytes: Uint8Array) =>
+      evidence.store(app, m.id, await evidence.capture(cart), agent, {
+        type: "api.fx_reference",
+        mediaType: "application/json",
+        bytes,
+        salt: randomBytes(32),
+      });
+    const forged = commitmentBytes({
+      ...(reference as FxReference),
+      rates: { ...reference?.rates, COP: "4000" },
+    });
+    const refused = await countersign(m, { evidenceRoot: await withRates(forged) });
+    expect(refused.res.status).toBe(422);
+    expect(refused.body.type).toMatch(/evidence-fx-reference-unknown$/);
+    expect(refused.row).toBeUndefined();
+    const issued = await countersign(m, {
+      evidenceRoot: await withRates(commitmentBytes(reference as FxReference)),
+    });
+    // Past the evidence checks: the legs decide, when they are reachable.
+    expect(issued.res.status, JSON.stringify(issued.body)).not.toBe(422);
   });
 
   test("the whole checkout total is countersigned, with its breakdown bound by the evidence", async () => {

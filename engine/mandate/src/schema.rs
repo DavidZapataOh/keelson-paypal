@@ -21,6 +21,10 @@ pub const MCC_CODES: [&str; 25] = [
     "7832",
 ];
 
+/// The largest spread over the reference rate a mandate's `fx.max_spread_bps` may allow: 30%.
+/// Mirrors `MAX_SPREAD_BPS` in the TypeScript schema.
+pub const MAX_SPREAD_BPS: i64 = 3_000;
+
 /// Maximum lifetime of a mandate, in seconds.
 pub const MAX_LIFETIME_SECONDS: i64 = 30 * 86400;
 
@@ -746,6 +750,15 @@ fn members(root: &Map<String, Value>) -> Result<(&Map<String, Value>, i64, i64, 
             matching(get(e, "top_origin"), "embed.top_origin", is_https_origin).map(drop)
         })?;
     }
+    if let Some(fx) = root.get("fx") {
+        strict(fx, "fx", &["max_spread_bps"], |f| {
+            let bps = integer(get(f, "max_spread_bps"), "fx.max_spread_bps", 0.0)?;
+            if bps > MAX_SPREAD_BPS {
+                return Err(invalid("fx.max_spread_bps", "too big"));
+            }
+            Ok(())
+        })?;
+    }
     Ok((root, iat, nbf, exp))
 }
 
@@ -770,6 +783,7 @@ pub fn parse_mandate(m: &Value) -> Result {
         "zk",
         "risk_data",
         "embed?",
+        "fx?",
     ];
     let (root, iat, nbf, exp) = strict(m, "", &keys, members)?;
     let at = |k: &str| get(root, k);

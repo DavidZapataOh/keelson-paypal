@@ -7,6 +7,7 @@ import { nitro, tdx } from "./checks/attestation.ts";
 import { card } from "./checks/card.ts";
 import { anchorRoot, anchorTx, chainIdOf, queryOf, registry } from "./checks/chain.ts";
 import { checkout } from "./checks/checkout.ts";
+import { conversion } from "./checks/conversion.ts";
 import { countersign } from "./checks/countersign.ts";
 import { evidence } from "./checks/evidence.ts";
 import { format } from "./checks/format.ts";
@@ -85,6 +86,7 @@ const CHECKS = [
   evidence,
   webFact,
   checkout,
+  conversion,
   paypal,
   card,
 ];

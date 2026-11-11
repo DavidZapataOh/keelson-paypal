@@ -18,6 +18,7 @@ export {
   type Keelson,
   type Quote,
   quoteCart,
+  referenceItem,
 } from "./checkout.ts";
 export { injectedListing, injectionText, storeMandate } from "./demo.ts";
 export { StoreBrowser, type StoreBrowserOptions } from "./driver.ts";

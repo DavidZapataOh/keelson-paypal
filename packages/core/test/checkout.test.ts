@@ -8,6 +8,7 @@ import shoes from "../../../engine/canon/tests/fixtures/demo-shoes.json" with { 
 import type { Cart } from "../src/cart.ts";
 import {
   CheckoutTotalError,
+  captureCeiling,
   checkoutTotal,
   fromPayPalAmount,
   toPayPalAmount,
@@ -176,5 +177,14 @@ describe("as a PayPal amount", () => {
       ),
       { numRuns: 2_000 },
     );
+  });
+});
+
+describe("captureCeiling", () => {
+  test("is 115% of an authorization, or USD 75 more when that is less", () => {
+    expect(captureCeiling("USD", 295)).toBe(339);
+    expect(captureCeiling("USD", 100_000)).toBe(107_500);
+    expect(captureCeiling("USD", 50_000)).toBe(57_500);
+    expect(captureCeiling("EUR", 100_000)).toBe(115_000);
   });
 });

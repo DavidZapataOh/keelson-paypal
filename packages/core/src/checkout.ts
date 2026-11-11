@@ -157,3 +157,13 @@ export function fromPayPalAmount(amount: unknown, cart?: Cart): CheckoutTotal {
   }
   return t;
 }
+
+/**
+ * The most PayPal lets a merchant capture of an authorization of `minor`: 115% of it or USD 75
+ * more, whichever is less. PayPal states the USD 75 in USD only, so in another currency the bound
+ * is the 115%, never below the real ceiling.
+ */
+export function captureCeiling(currency: string, minor: number): number {
+  const share = Math.floor((minor * 115) / 100);
+  return currency === "USD" ? Math.min(share, minor + 7_500) : share;
+}
