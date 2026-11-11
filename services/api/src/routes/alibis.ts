@@ -233,15 +233,27 @@ async function send(
   return c.body((await body()) as Uint8Array<ArrayBuffer>, 200);
 }
 
+/**
+ * The Alibi `id` as the request's principal may read it: whole, its public copy, or `null` when
+ * it may not read it at all.
+ */
+export async function readableAlibi(
+  deps: Pick<Deps, "db" | "demoAgentId">,
+  c: Context,
+  id: string,
+): Promise<{ bundle: AlibiBundle; full: boolean } | null> {
+  const b = await loadAlibi(deps.db, id);
+  const level = b && (await access(deps, c.get("principal"), b));
+  if (level === "full") return { bundle: b as AlibiBundle, full: true };
+  return level === "public" ? { bundle: publicCopy(b as AlibiBundle), full: false } : null;
+}
+
 export function registerAlibis(
   app: OpenAPIHono,
   deps: Pick<Deps, "db" | "alibiChain" | "demoAgentId">,
 ): void {
-  const readable = async (c: Context, id: string) => {
-    const b = await loadAlibi(deps.db, id);
-    const level = b && (await access(deps, c.get("principal"), b));
-    return level === "full" ? b : level === "public" ? publicCopy(b as AlibiBundle) : null;
-  };
+  const readable = async (c: Context, id: string) =>
+    (await readableAlibi(deps, c, id))?.bundle ?? null;
   const missing = (c: Context) =>
     problem(c, 404, "alibi-not-found", "Not found", "No alibi with this id.");
 

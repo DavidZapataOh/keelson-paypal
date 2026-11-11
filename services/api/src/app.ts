@@ -3,6 +3,7 @@ import { httpInstrumentationMiddleware } from "@hono/otel";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import type { ChainReader } from "@keelson/alibi/verify";
 import type { Db } from "@keelson/db";
+import type { Signer } from "@keelson/interop";
 import type { CertStore } from "@keelson/paypal";
 import type { Relayer } from "@keelson/relayer";
 import type { Context, MiddlewareHandler } from "hono";
@@ -51,6 +52,7 @@ import { noFraming, registerEmbedPage } from "./routes/embed-page.ts";
 import { registerEmbedSigning } from "./routes/embed-signing.ts";
 import { registerEvents } from "./routes/events.ts";
 import { registerEvidence } from "./routes/evidence.ts";
+import { registerExports } from "./routes/exports.ts";
 import { registerFeedback } from "./routes/feedback.ts";
 import { registerGrades } from "./routes/grades.ts";
 import { registerHealth } from "./routes/health.ts";
@@ -123,6 +125,13 @@ export interface Deps {
    * operator with it, and nothing else (see `delegated.ts`). Their countersigns answer 503 without it.
    */
   hostedAgentKey?: CryptoKey;
+  /** The same key as an ES256 signer: it closes the hosted operator's mandates in their exports. */
+  hostedAgent?: Signer | undefined;
+  /**
+   * Keelson's ES256 export key, published at `/.well-known/jwks.json`: it signs the AP2, VI and UCP
+   * exports as the trusted surface; the export routes answer 503 without it.
+   */
+  exportSigner?: Signer | undefined;
   /** What the hosted operator's bond backs for apps it does not know; uncapped without it. */
   hostedCaps?: HostedCaps;
   /** Browser origin of the public verifier, allowed to read public Alibis, receipts and timestamps without credentials. */
@@ -361,6 +370,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerTee(app, deps);
   registerTimestamps(app, deps);
   registerAlibis(app, deps);
+  registerExports(app, deps);
   registerAnonymousMandates(app, deps);
   registerDisputes(app, deps);
   registerPasskeys(app, deps);

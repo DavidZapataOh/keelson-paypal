@@ -47,6 +47,11 @@ const schema = z
      */
     KEELSON_AGENT_KEY: z.string().min(1).optional(),
     /**
+     * Keelson's private P-256 JWK that signs its AP2, Verifiable Intent and UCP exports, published
+     * at `/.well-known/jwks.json`.
+     */
+    KEELSON_EXPORT_KEY: z.string().min(1).optional(),
+    /**
      * What the hosted operator's bond backs for apps that registered themselves (see
      * `hosted-caps.ts`), in minor units: one user's exposure to apps it does not know, one user's
      * to all of them (known hosts included), and every user's funded exposure.

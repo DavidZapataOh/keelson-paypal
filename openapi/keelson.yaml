@@ -3910,6 +3910,16 @@ components:
         - leaf_hash
         - tlog_proof
         - timestamps
+    Jwks:
+      type: object
+      properties:
+        keys:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+      required:
+        - keys
     AnonymousMandate:
       type: object
       properties:
@@ -9976,6 +9986,96 @@ paths:
                 $ref: "#/components/schemas/AlibiReceipt"
         "404":
           description: No alibi with this id that the caller may read
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /.well-known/jwks.json:
+    get:
+      tags:
+        - alibis
+      summary: Keelson's export signing keys
+      description: The ES256 keys that sign Keelson's AP2, Verifiable Intent and UCP
+        exports and receipts (RFC 7517).
+      responses:
+        "200":
+          description: The JWK set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Jwks"
+  /v1/alibis/{id}/exports/{format}:
+    get:
+      tags:
+        - alibis
+      summary: An alibi in an industry format
+      description: "The Alibi's mandate and purchase in AP2 v0.2 (`ap2`), Mastercard
+        Verifiable Intent v0.1 (`vi`), UCP 2026-08-25 with AP2 mandates (`ucp`),
+        ACP 2026-04-17 Delegate Payment (`acp`), Visa TAP / Web Bot Auth (`tap`)
+        or the Visa §4.1.23 / CE3.0 Agentic Evidence Pack (`visa`, `visa.pdf`).
+        Same readers as the bundle: anyone else gets the export of its public
+        copy, whose evidence pack withholds the CE3.0 personal elements. Keelson
+        signs as the trusted surface (keys at `/.well-known/jwks.json`); the
+        closed mandates and TAP signature need the agent's own key, so they are
+        present only for Keelson's hosted operator, and the agent closes the
+        open mandates itself otherwise. Signed claims are dated at the
+        countersign (`verify_at`)."
+      parameters:
+        - schema:
+            type: string
+            pattern: ^[0-7][0-9A-HJKMNP-TV-Z]{25}$
+          required: true
+          name: id
+          in: path
+        - schema:
+            type: string
+            enum:
+              - ap2
+              - vi
+              - ucp
+              - acp
+              - tap
+              - visa
+              - visa.pdf
+          required: true
+          name: format
+          in: path
+        - schema:
+            type: string
+            maxLength: 2048
+            description: "The audience of the closed mandates: the merchant."
+          required: false
+          description: "The audience of the closed mandates: the merchant."
+          name: aud
+          in: query
+        - schema:
+            type: string
+            maxLength: 256
+            description: The verifier's nonce; the Alibi id by default.
+          required: false
+          description: The verifier's nonce; the Alibi id by default.
+          name: nonce
+          in: query
+      responses:
+        "200":
+          description: The export; `visa.pdf` is a PDF/A-3b that embeds the JSON pack
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: No alibi with this id that the caller may read
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: Exports are not configured
           content:
             application/problem+json:
               schema:

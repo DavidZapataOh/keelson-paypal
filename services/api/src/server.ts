@@ -7,6 +7,7 @@ import { serve } from "@hono/node-server";
 import { agentKey } from "@keelson/agent/keelson";
 import { createChainReader } from "@keelson/alibi/verify";
 import { createDb } from "@keelson/db";
+import { signerFromJwk } from "@keelson/interop";
 import { CertStore } from "@keelson/paypal";
 import { Render } from "@renderinc/sdk";
 import { identityToRecipient } from "age-encryption";
@@ -213,6 +214,12 @@ const cards = env.LITHIC_API_KEY
 const hostedAgentKey = env.KEELSON_AGENT_KEY
   ? (await agentKey(env.KEELSON_AGENT_KEY)).privateKey
   : undefined;
+const hostedAgent = env.KEELSON_AGENT_KEY
+  ? await signerFromJwk(JSON.parse(env.KEELSON_AGENT_KEY))
+  : undefined;
+const exportSigner = env.KEELSON_EXPORT_KEY
+  ? await signerFromJwk(JSON.parse(env.KEELSON_EXPORT_KEY))
+  : undefined;
 const app = createApp({
   db,
   kv,
@@ -228,6 +235,8 @@ const app = createApp({
   authBaseUrl: env.BETTER_AUTH_URL,
   demoAgentId: env.DEMO_AGENT_ID,
   ...(hostedAgentKey ? { hostedAgentKey } : {}),
+  hostedAgent,
+  exportSigner,
   hostedCaps: {
     perUserMinor: env.HOSTED_CAP_PER_USER_MINOR,
     knownPerUserMinor: env.HOSTED_CAP_KNOWN_PER_USER_MINOR,
