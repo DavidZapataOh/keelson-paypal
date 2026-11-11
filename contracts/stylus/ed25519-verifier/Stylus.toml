@@ -1,0 +1,9 @@
+[workspace]
+
+[workspace.networks]
+
+[contract]
+
+[wasm-opt]
+version = "133"
+flags = ["-Oz", "--enable-bulk-memory", "--enable-bulk-memory-opt"]

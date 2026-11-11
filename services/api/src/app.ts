@@ -43,6 +43,7 @@ import { registerGrades } from "./routes/grades.ts";
 import { registerHealth } from "./routes/health.ts";
 import { registerHold } from "./routes/hold.ts";
 import { registerJudge } from "./routes/judge.ts";
+import { registerLogBonds } from "./routes/log-bonds.ts";
 import { registerMandates } from "./routes/mandates.ts";
 import { registerMerchantAssistant } from "./routes/merchant-assistant.ts";
 import { registerMerchantConsole } from "./routes/merchant-console.ts";
@@ -312,6 +313,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerFeedback(app, deps);
   registerValidations(app, deps);
   registerBonds(app, deps);
+  registerLogBonds(app, deps);
   registerMerchantsPayout(app, deps);
   registerMerchantsSettlement(app, deps);
   registerMerchantConsole(app, deps);

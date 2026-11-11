@@ -480,6 +480,27 @@ jobs:
           pnpm --filter @keelson/chain generate
           git diff --exit-code packages/chain/src
 
+  stylus:
+    needs: changes
+    if: needs.changes.outputs.contracts == 'true'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: contracts/stylus/ed25519-verifier
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      # rust-toolchain.toml pins the toolchain and the wasm32 target cargo-stylus builds with.
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contracts/stylus/ed25519-verifier
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+      - run: cargo build --release --target wasm32-unknown-unknown --lib
+
   contracts-live:
     needs: [changes, contracts]
     if: (needs.changes.outputs.contracts == 'true') && (github.event_name == 'push' && github.ref == 'refs/heads/main')
