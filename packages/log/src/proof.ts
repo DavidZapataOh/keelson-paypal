@@ -1,7 +1,7 @@
 import { sha256 } from "@keelson/core";
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { ml_dsa44 } from "@noble/post-quantum/ml-dsa.js";
-import { LOG_VKEYS, LOG_WITNESSES } from "./client.ts";
+import { LOG_VKEYS, LOG_WITNESSES, logVkeySets } from "./client.ts";
 
 const encoder = new TextEncoder();
 
@@ -118,6 +118,23 @@ function parseNote(signed: string) {
 }
 
 /**
+ * Ed25519 as the Go `crypto/ed25519` package and the on-chain `Ed25519Verifier` check it: noble
+ * checks the cofactored equation, so `R` and the key must also have no torsion component, or a
+ * signature only this client accepts could not be proven anywhere else.
+ */
+function verifyEd25519(sig: Uint8Array, message: Uint8Array, key: Uint8Array): boolean {
+  if (sig.length !== 64 || !ed25519.verify(sig, message, key, { zip215: false })) return false;
+  try {
+    return (
+      ed25519.Point.fromBytes(sig.subarray(0, 32)).isTorsionFree() &&
+      ed25519.Point.fromBytes(key).isTorsionFree()
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Verifies a signed checkpoint and requires a valid signature from every vkey, each named
  * after the checkpoint's origin.
  */
@@ -130,7 +147,7 @@ export function verifyCheckpoint(signed: string, vkeys: readonly string[]): Veri
     const ok = sigs.some(({ name, sig }) => {
       if (name !== vkey.name || !equal(sig.subarray(0, 4), vkey.hash)) return false;
       if (vkey.alg === 0x01) {
-        return ed25519.verify(sig.subarray(4), encoder.encode(text), vkey.key, { zip215: false });
+        return verifyEd25519(sig.subarray(4), encoder.encode(text), vkey.key);
       }
       if (sig.length !== 4 + 8 + 2420 || lines.length !== 4) return false;
       const time = new DataView(sig.buffer, sig.byteOffset + 4, 8).getBigUint64(0);
@@ -180,7 +197,7 @@ export function verifyCosignatures(
       if (!equal(sig.subarray(0, 4), vkey.hash)) continue;
       const time = new DataView(sig.buffer, sig.byteOffset + 4, 8).getBigUint64(0);
       const msg = encoder.encode(`cosignature/v1\ntime ${time}\n${text}`);
-      if (!ed25519.verify(sig.subarray(12), msg, vkey.key, { zip215: false })) continue;
+      if (!verifyEd25519(sig.subarray(12), msg, vkey.key)) continue;
       if (time > latest) continue;
       cosigners.push(vkey.name);
       times.push(time);
@@ -304,9 +321,50 @@ export function verifyWitnessedCheckpoint(
   now: Date = new Date(),
 ): VerifiedCheckpoint & { cosigners: string[] } {
   const { cp } = parseNote(signed);
-  const vkeys = LOG_VKEYS[cp.origin];
   const witnesses = LOG_WITNESSES[cp.origin];
-  if (!vkeys || !witnesses) throw new Error(`not a pinned log origin: ${cp.origin}`);
-  const verified = verifyCheckpoint(signed, vkeys);
+  if (!LOG_VKEYS[cp.origin] || !witnesses) throw new Error(`not a pinned log origin: ${cp.origin}`);
+  const verified = verifyCheckpointOfOrigin(signed, cp.origin);
   return { ...verified, cosigners: verifyCosignatures(signed, witnesses, now).cosigners };
+}
+
+/** {@link verifyCheckpoint} under the first key set of `origin` that signed it. */
+export function verifyCheckpointOfOrigin(signed: string, origin: string): VerifiedCheckpoint {
+  return firstSet(
+    origin,
+    (vkeys) => verifyCheckpoint(signed, vkeys),
+    (cp) => cp.size,
+  );
+}
+
+/** {@link verifyProof} under the first key set of `origin` whose keys signed its checkpoint. */
+export function verifyProofOfOrigin(
+  proof: string,
+  leafHash: Uint8Array,
+  origin: string,
+): { index: bigint; checkpoint: VerifiedCheckpoint } {
+  return firstSet(
+    origin,
+    (vkeys) => verifyProof(proof, leafHash, vkeys),
+    (out) => out.checkpoint.size,
+  );
+}
+
+function firstSet<T>(
+  origin: string,
+  verify: (vkeys: readonly string[]) => T,
+  sizeOf: (out: T) => bigint,
+): T {
+  const sets = logVkeySets(origin);
+  if (sets.length === 0) throw new Error(`not a pinned log origin: ${origin}`);
+  let last: unknown;
+  for (const { vkeys, untilSize } of sets) {
+    try {
+      const out = verify(vkeys);
+      if (sizeOf(out) <= untilSize) return out;
+      last = new Error(`a retired key of ${origin} signed a tree past its last size`);
+    } catch (err) {
+      last = err;
+    }
+  }
+  throw last;
 }

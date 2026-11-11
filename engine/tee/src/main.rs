@@ -28,6 +28,7 @@
 //! | `KEELSON_DATA_DIR` | with `--platform tdx`, where the sealed user records are kept; `/data` by default |
 //! | `KEELSON_BB` | with `--platform tdx`, the `bb` binary leg A proves C1 with; no proofs when unset |
 //! | `CRS_PATH` | with `KEELSON_BB`, the directory holding the CRS points `bb` reads (`zk/bn254_g1.dat`) |
+//! | `KEELSON_RATLS_LISTEN`, `KEELSON_RATLS_HOST` | with `--platform tdx`, optional: where the RA-TLS listener binds and the name its certificate carries; `POST /v1/log/sign` is served only there |
 //! | `KEELSON_BOND_VAULT`, `KEELSON_VERIFYING_CONTRACT` | optional, the zero address by default: the bond vault bound into the attestation and the `VerdictVerifier`, `verifyingContract` of every EIP-712 domain |
 //!
 //! With `--platform tdx`, `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` are required: the engine
@@ -142,8 +143,12 @@ fn args() -> Result<(Platform, Listen), String> {
     }
 }
 
+/// Leg A's state and, when `KEELSON_RATLS_LISTEN` is set, its RA-TLS listener.
 #[cfg(feature = "tdx")]
-async fn tdx_state(config: EngineConfig, token_hash: [u8; 32]) -> Result<AppState, String> {
+async fn tdx_state(
+    config: EngineConfig,
+    token_hash: [u8; 32],
+) -> Result<(AppState, Option<keelson_tee::ratls::TlsListener>), String> {
     let started = std::time::Instant::now();
     let at = time::OffsetDateTime::now_utc();
     let (engine, attestation) = keelson_tee::tdx::boot(config)
@@ -160,21 +165,41 @@ async fn tdx_state(config: EngineConfig, token_hash: [u8; 32]) -> Result<AppStat
     let dir = std::env::var("KEELSON_DATA_DIR").unwrap_or_else(|_| DEFAULT_DATA_DIR.into());
     let records = keelson_tee::FileRecords::open(&dir)
         .map_err(|e| format!("cannot open the record store {dir}: {e}"))?;
-    let mut engine = engine.with_user_records(Arc::new(records));
+    let records: Arc<dyn keelson_tee::UserRecords> = Arc::new(records);
+    let dstack = keelson_tee::tdx::Dstack::from_env();
+    let mut keys = Vec::new();
+    for origin in keelson_tee::logsign::SIGNED_ORIGINS {
+        keys.push(dstack.log_key(origin).await.map_err(|e| e.to_string())?);
+    }
+    let log = keelson_tee::logsign::LogSigner::new(keys, records.clone());
+    let mut engine = engine
+        .with_user_records(records)
+        .with_log_signer(Arc::new(log));
     if let Some(bb) = std::env::var_os("KEELSON_BB") {
         let prover = keelson_tee::zk::Prover::spawn(bb.as_ref())
             .map_err(|e| format!("cannot start the C1 prover: {e}"))?;
         engine = engine.with_prover(Arc::new(prover));
     }
-    Ok(AppState::new(engine, token_hash)
+    let mut state = AppState::new(engine, token_hash)
         .with_attestation(attestation, at)
         .with_paypal(paypal)
-        .with_notary())
-}
-
-#[cfg(not(feature = "tdx"))]
-async fn tdx_state(_: EngineConfig, _: [u8; 32]) -> Result<AppState, String> {
-    Err("--platform tdx needs a build with the tdx feature".into())
+        .with_notary();
+    let Ok(address) = std::env::var("KEELSON_RATLS_LISTEN") else {
+        return Ok((state, None));
+    };
+    let host = var("KEELSON_RATLS_HOST")?;
+    let (key, chain) = dstack
+        .ra_tls_cert(&[host])
+        .await
+        .map_err(|e| e.to_string())?;
+    let (tls, certificate_sha256) = keelson_tee::ratls::server_config(&key, &chain)?;
+    state = state
+        .with_tls_certificate(certificate_sha256)
+        .map_err(|e| e.to_string())?;
+    let tcp = tokio::net::TcpListener::bind(&address)
+        .await
+        .map_err(|e| format!("cannot listen on {address}: {e}"))?;
+    Ok((state, Some(keelson_tee::ratls::TlsListener::new(tcp, tls))))
 }
 
 #[cfg(feature = "nitro")]
@@ -196,14 +221,26 @@ async fn run() -> Result<(), String> {
     let (config, token_hash) = config(platform)?;
     let state = match platform {
         Platform::Plain => AppState::new(Engine::new(config, None), token_hash),
-        Platform::Tdx => tdx_state(config, token_hash).await?,
+        #[cfg(feature = "tdx")]
+        Platform::Tdx => {
+            let (state, tls) = tdx_state(config, token_hash).await?;
+            let state = Arc::new(state);
+            keelson_tee::server::spawn_reattest(state.clone());
+            if let Some(tls) = tls {
+                let app =
+                    router(state.clone()).merge(keelson_tee::server::log_router(state.clone()));
+                tokio::spawn(async move { axum::serve(tls, app).await });
+            }
+            return serve(address, state).await;
+        }
+        #[cfg(not(feature = "tdx"))]
+        Platform::Tdx => return Err("--platform tdx needs a build with the tdx feature".into()),
         Platform::Nitro => unreachable!("an enclave listens on vsock"),
     };
-    let state = Arc::new(state);
-    #[cfg(feature = "tdx")]
-    if platform == Platform::Tdx {
-        keelson_tee::server::spawn_reattest(state.clone());
-    }
+    serve(address, Arc::new(state)).await
+}
+
+async fn serve(address: String, state: Arc<AppState>) -> Result<(), String> {
     let listener = tokio::net::TcpListener::bind(&address)
         .await
         .map_err(|e| format!("cannot listen on {address}: {e}"))?;

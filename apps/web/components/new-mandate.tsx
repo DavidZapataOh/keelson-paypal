@@ -1,22 +1,20 @@
 "use client";
 
-import {
-  type PasskeyRef,
-  prepareSigning,
-  type Signing,
-  signMandate,
-} from "@keelson/mandate/browser";
+import { prepareSigning, type Signing, signMandate } from "@keelson/mandate/browser";
 import { Button } from "@keelson/ui/components/button";
 import { Check, Loader2, PenLine } from "lucide-react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useId, useMemo, useState } from "react";
 import { ApiError, get, post } from "../lib/api";
 import { authClient } from "../lib/auth";
 import { deviceId } from "../lib/device";
+import { devicePasskey, type Passkey, rememberPasskey } from "../lib/passkeys";
 import type { Compiled } from "../lib/types";
 import { MandateVisual } from "./mandate-visual";
 import { ErrorNotice } from "./notice";
 import { OnboardingFrame } from "./onboarding/frame";
+import { GoLive } from "./onboarding/go-live";
 import { PasskeySetup } from "./passkey-setup";
 import { SignSheet } from "./sign-sheet";
 import { WhoAnswers } from "./who-answers";
@@ -141,7 +139,13 @@ function Label({ children, htmlFor }: { children: string; htmlFor?: string }) {
   );
 }
 
+/** The guided first mandate: rules, then signing, then the PayPal hold (`?hold=`). */
 export function NewMandate() {
+  const hold = useSearchParams().get("hold");
+  return hold ? <GoLive id={hold} /> : <Rules />;
+}
+
+function Rules() {
   const router = useRouter();
   const session = authClient.useSession();
   const handed = useSearchParams().get("request");
@@ -150,7 +154,7 @@ export function NewMandate() {
   const [anyStore, setAnyStore] = useState<"any" | "one">("one");
   const [store, setStore] = useState("");
   const [span, setSpan] = useState<Window>("week");
-  const [passkeys, setPasskeys] = useState<PasskeyRef[]>();
+  const [passkeys, setPasskeys] = useState<Passkey[]>();
   const [compiled, setCompiled] = useState<Compiled>();
   const [signing, setSigning] = useState<Signing>();
   const [phase, setPhase] = useState<"edit" | "reading" | "review" | "passkey">("edit");
@@ -165,7 +169,7 @@ export function NewMandate() {
       router.replace("/");
       return;
     }
-    get<{ passkeys: PasskeyRef[] }>("/v1/passkeys")
+    get<{ passkeys: Passkey[] }>("/v1/passkeys")
       .then((r) => setPasskeys(r.passkeys))
       .catch((e) => setError(message(e)));
   }, [session.isPending, session.data, router]);
@@ -182,9 +186,11 @@ export function NewMandate() {
     setPhase("reading");
     setError(undefined);
     try {
+      // The mandate names the passkey that signs it: one known to be on this device, if any.
+      const credentialId = passkeys ? devicePasskey(passkeys)?.credentialId : undefined;
       const c = await post<Compiled>(
         "/v1/mandates/compile",
-        { prompt: request, mode: "autonomous" },
+        { prompt: request, mode: "autonomous", ...(credentialId ? { credentialId } : {}) },
         { "keelson-device": deviceId() },
       );
       setCompiled(c);
@@ -198,12 +204,18 @@ export function NewMandate() {
     }
   };
 
-  const sign = async (s: Signing) => {
+  const sign = async (c: Compiled, s: Signing) => {
     setBusy(true);
     setError(undefined);
     try {
-      const { passkeys } = await get<{ passkeys: PasskeyRef[] }>("/v1/passkeys");
-      const assertion = await signMandate(s.challenge, passkeys, { spc: s.spc });
+      const { passkeys } = await get<{ passkeys: Passkey[] }>("/v1/passkeys");
+      const named = passkeys.filter((p) => p.credentialId === c.mandateDraft.user.cred.id);
+      if (named.length === 0) {
+        throw new Error(
+          "The passkey this mandate names was removed. Edit the rules to sign again.",
+        );
+      }
+      const assertion = await signMandate(s.challenge, named, { spc: s.spc });
       const created = await post<{ id: string }>("/v1/mandates", {
         payloadSd: s.payloadSd,
         disclosures: s.disclosures,
@@ -211,7 +223,8 @@ export function NewMandate() {
         salt: s.salt,
         assertion,
       });
-      router.push(`/mandate/?id=${created.id}`);
+      rememberPasskey(assertion.credentialId);
+      router.replace(`/new/?hold=${created.id}`);
     } catch (e) {
       setError(message(e));
       setBusy(false);
@@ -226,17 +239,16 @@ export function NewMandate() {
 
   if (phase === "passkey") {
     return (
-      <div className="mx-auto max-w-xl px-5 py-12">
-        <PasskeySetup
-          onDone={() =>
-            get<{ passkeys: PasskeyRef[] }>("/v1/passkeys").then((r) => {
-              setPasskeys(r.passkeys);
-              setPhase("review");
-              setConfirming(true);
-            })
-          }
-        />
-      </div>
+      <PasskeySetup
+        onBack={() => setPhase("review")}
+        onDone={() =>
+          get<{ passkeys: Passkey[] }>("/v1/passkeys").then((r) => {
+            setPasskeys(r.passkeys);
+            setPhase("review");
+            setConfirming(true);
+          })
+        }
+      />
     );
   }
 
@@ -266,6 +278,15 @@ export function NewMandate() {
       />
       {phase === "reading" ? <Reading /> : null}
       {read && compiled ? <WhoAnswers card={compiled.card} /> : null}
+      {passkeys && passkeys.length > 0 && !devicePasskey(passkeys) ? (
+        <p className="text-muted-foreground text-sm">
+          Signing on a new device?{" "}
+          <Link href="/passkeys/" className="underline underline-offset-4 hover:text-foreground">
+            Add a passkey for it
+          </Link>{" "}
+          first, or sign with a passkey you already have.
+        </p>
+      ) : null}
       {read && compiled && compiled.check.status !== "ok" ? (
         <p className="rounded-xl bg-card px-4 py-3 text-sm text-warn">
           Read each part before you sign: the read-back check said {compiled.check.status}.
@@ -425,7 +446,7 @@ export function NewMandate() {
           signing={signing}
           compiled={compiled}
           busy={busy}
-          onSign={() => sign(signing)}
+          onSign={() => sign(compiled, signing)}
         />
       ) : null}
     </OnboardingFrame>

@@ -121,7 +121,7 @@ impl<'a> NoteKey<'a> {
         let raw = STANDARD.decode(encoded).ok()?;
         let (&[t], key) = raw.split_first_chunk::<1>()?;
         let key: &[u8; 32] = key.try_into().ok()?;
-        let id = key_id(name, t, key);
+        let id = note_key_id(name, t, key);
         let hex: String = id.iter().map(|b| format!("{b:02x}")).collect();
         (t == kind && hex == id_hex).then_some(Self {
             name,
@@ -131,7 +131,8 @@ impl<'a> NoteKey<'a> {
     }
 }
 
-fn key_id(name: &str, kind: u8, key: &[u8]) -> [u8; 4] {
+/// The note key id, `SHA-256(name ‖ "\n" ‖ type ‖ key)[:4]`.
+pub(crate) fn note_key_id(name: &str, kind: u8, key: &[u8]) -> [u8; 4] {
     let hash = Sha256::new()
         .chain_update(name)
         .chain_update([b'\n', kind])
@@ -146,11 +147,13 @@ pub fn origin(name: &str) -> Option<&'static LogOrigin> {
 }
 
 /// Verifies a signed checkpoint note against its origin's policy and returns the `Checkpoint`
-/// it states, for an anchor on `chain_id`.
+/// it states, for an anchor on `chain_id`. `tee_keys` are the Ed25519 log keys leg A holds,
+/// `(origin, key)`, trusted for their origin besides its pinned key.
 pub fn verify_checkpoint(
     note: &[u8],
     chain_id: u64,
     now: OffsetDateTime,
+    tee_keys: &[(&str, [u8; 32])],
 ) -> Result<Checkpoint, CheckpointError> {
     use CheckpointError::*;
     let note = std::str::from_utf8(note).map_err(|_| Format)?;
@@ -176,7 +179,16 @@ pub fn verify_checkpoint(
     if origin.chain_id != chain_id {
         return Err(Chain);
     }
-    let log_key = NoteKey::parse(origin.log_key, TYPE_ED25519).expect("a valid log key");
+    let mut log_keys = vec![NoteKey::parse(origin.log_key, TYPE_ED25519).expect("a valid log key")];
+    for (_, key) in tee_keys.iter().filter(|(o, _)| *o == origin.name) {
+        if let Ok(key) = VerifyingKey::from_bytes(key) {
+            log_keys.push(NoteKey {
+                name: origin.name,
+                id: note_key_id(origin.name, TYPE_ED25519, key.as_bytes()),
+                key,
+            });
+        }
+    }
     let witnesses: Vec<NoteKey> = origin
         .witnesses
         .iter()
@@ -197,7 +209,7 @@ pub fn verify_checkpoint(
         let Some((id, sig)) = raw.split_first_chunk::<4>() else {
             return Err(Format);
         };
-        if signer == log_key.name && *id == log_key.id {
+        if let Some(log_key) = log_keys.iter().find(|k| k.name == signer && k.id == *id) {
             let ok =
                 <&[u8; 64]>::try_from(sig).is_ok_and(|s| verify(&log_key.key, text.as_bytes(), s));
             if !ok {

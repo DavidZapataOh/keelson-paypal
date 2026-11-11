@@ -13,3 +13,6 @@
 [submodule "contracts/lib/erc4626-tests"]
 	path = contracts/lib/erc4626-tests
 	url = https://github.com/a16z/erc4626-tests
+[submodule "contracts/lib/crypto-lib"]
+	path = contracts/lib/crypto-lib
+	url = https://github.com/get-smooth/crypto-lib

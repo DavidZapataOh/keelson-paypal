@@ -205,6 +205,12 @@ export default function MerchantStudio({
     [disputes],
   );
   const [modules] = useState(() => [AgStudioAiModule]);
+  // On a phone the assistant would cover the report: it opens folded.
+  const [initial] = useState<AgReportState<Registry>>(() =>
+    matchMedia("(max-width: 767px)").matches
+      ? { ...REPORT, panels: { ...REPORT.panels, ai: { collapsed: true } } }
+      : REPORT,
+  );
   const widgets = useMemo(
     () =>
       createWidgets<Registry>({
@@ -370,7 +376,7 @@ export default function MerchantStudio({
         className="h-full w-full"
         data={data}
         context={context}
-        initialState={REPORT}
+        initialState={initial}
         widgets={widgets}
         theme={keelsonStudioTheme}
         mode="edit"

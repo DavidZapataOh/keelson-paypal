@@ -9,12 +9,16 @@ mod countersign;
 mod engine;
 mod error;
 mod keys;
+pub mod kms;
+pub mod logsign;
 #[cfg(feature = "nitro")]
 pub mod nitro;
 #[cfg(feature = "tdx")]
 pub mod notary;
 pub mod paypal;
 pub mod process;
+#[cfg(feature = "tdx")]
+pub mod ratls;
 mod records;
 mod report_data;
 pub mod server;
@@ -30,8 +34,7 @@ pub use countersign::{
     failed_fields_mask,
 };
 pub use engine::{
-    C1Status, CapturedSource, Engine, EngineConfig, EngineError, MANDATE_SALT_PURPOSE,
-    USER_PASSKEY_PURPOSE, UserRecords,
+    C1Status, CapturedSource, Engine, EngineConfig, EngineError, MANDATE_SALT_PURPOSE, UserRecords,
 };
 pub use error::Error;
 pub use keys::{Root, SealAad, SealError};

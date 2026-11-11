@@ -48,17 +48,110 @@ export interface PurchaseView {
   capture?: { id: string; invoiceId: string; status: string | null };
   failure?: { step: string; reason: string };
   blocked?: string[];
+  /** For a `DENIED` cart, each failed field with what the mandate allowed and what the cart had. */
+  reasons?: BlockReason[];
+  /** For a countersigned purchase, each mandate field with both values and that it held. */
+  checks?: FieldCheck[];
   /** A purchase the buyer pays at the store's own checkout: the store and PayPal's transaction. */
   live?: { store: string; transactionId: string | null };
 }
 
 type Row = typeof purchases.$inferSelect;
 
-/** The mandate fields whose check failed, from the engine's evaluation trace. */
+/** The policy ids whose check failed, from the engine's evaluation trace. */
 export function failedFields(trace: unknown): string[] {
   const fields = (trace as { fields?: { id?: unknown; pass?: unknown }[] } | null)?.fields;
   if (!Array.isArray(fields)) return [];
   return fields.flatMap((f) => (typeof f.id === "string" && f.pass === false ? [f.id] : []));
+}
+
+/** A failed mandate field, its bound and the cart's value, as the buyer reads them. */
+interface BlockReason {
+  field: string;
+  mandate: string | null;
+  cart: string | null;
+}
+
+interface FieldTrace {
+  field?: unknown;
+  pass?: unknown;
+  observed?: unknown;
+  bound?: unknown;
+}
+
+const MONEY_FIELDS = new Set(["total", "budget"]);
+
+const day = (ms: number) =>
+  new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: "UTC" }).format(ms);
+
+/** A Cedar JSON value from the engine's trace, as text (`keelson.eval/1`). */
+function shown(field: string, value: unknown, currency: string): string | null {
+  if (value === null || value === undefined) return null;
+  if (MONEY_FIELDS.has(field) && typeof value === "number") {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(value / 100);
+  }
+  if (field === "deadline") {
+    const ms =
+      typeof value === "number" ? value : (value as { expires_at_ms?: unknown }).expires_at_ms;
+    return typeof ms === "number" ? day(ms) : null;
+  }
+  if (Array.isArray(value)) {
+    const parts = value.map((v) => shown(field, v, currency)).filter((v) => v !== null);
+    return parts.length > 0 ? parts.join("; ") : null;
+  }
+  if (typeof value === "object") {
+    const parts = Object.entries(value as Record<string, unknown>)
+      .filter(([k]) => k !== "sku" && !k.startsWith("__"))
+      .map(([k, v]) => `${k.replaceAll("_", " ")} ${String(v)}`);
+    return parts.length > 0 ? parts.join(", ") : null;
+  }
+  if (typeof value === "boolean") return value ? "yes" : "no";
+  return String(value);
+}
+
+/** One mandate field as the engine checked it: both values and whether it held. */
+interface FieldCheck extends BlockReason {
+  pass: boolean;
+}
+
+/**
+ * Each mandate field of the engine's evaluation trace, once, with both sides. A field holds only
+ * if every policy reading it passed. The cart's own sanity check has no mandate side and is left
+ * out.
+ */
+function fieldChecks(trace: unknown, currency: string): FieldCheck[] {
+  const fields = (trace as { fields?: FieldTrace[] } | null)?.fields;
+  if (!Array.isArray(fields)) return [];
+  const byField = new Map<string, FieldCheck>();
+  for (const f of fields) {
+    if (typeof f.field !== "string" || f.field === "cart") continue;
+    const seen = byField.get(f.field);
+    if (seen) {
+      if (f.pass === false && seen.pass) {
+        byField.set(f.field, {
+          field: f.field,
+          mandate: shown(f.field, f.bound, currency),
+          cart: shown(f.field, f.observed, currency),
+          pass: false,
+        });
+      }
+      continue;
+    }
+    byField.set(f.field, {
+      field: f.field,
+      mandate: shown(f.field, f.bound, currency),
+      cart: shown(f.field, f.observed, currency),
+      pass: f.pass !== false,
+    });
+  }
+  return [...byField.values()];
+}
+
+function verdict(p: Row) {
+  const checks = fieldChecks(p.evalTrace, p.currency);
+  if (p.state !== "DENIED") return checks.length > 0 ? { checks } : {};
+  const reasons = checks.filter((c) => !c.pass).map(({ pass: _, ...r }) => r);
+  return { blocked: reasons.map((r) => r.field), reasons };
 }
 
 export function purchaseView(p: Row): PurchaseView {
@@ -85,7 +178,7 @@ export function purchaseView(p: Row): PurchaseView {
     ...(failure
       ? { failure: rest.length > 0 ? { step, reason: rest.join(":") } : { step, reason: failure } }
       : {}),
-    ...(p.state === "DENIED" ? { blocked: failedFields(p.evalTrace) } : {}),
+    ...verdict(p),
     ...(p.liveStore !== null
       ? { live: { store: p.liveStore, transactionId: p.paypalTransactionId } }
       : {}),

@@ -74,6 +74,34 @@ beforeAll(async () => {
       invoiceId: `inv-${captured}`,
       paypalCaptureId: `cap-${captured}`,
       captureStatus: "COMPLETED",
+      evalTrace: {
+        fields: [
+          {
+            id: "amount",
+            field: "total",
+            color: "green",
+            pass: true,
+            observed: 4000,
+            bound: 10000,
+          },
+          {
+            id: "merchant",
+            field: "merchant",
+            color: "green",
+            pass: true,
+            observed: "store",
+            bound: ["store"],
+          },
+          {
+            id: "sanity",
+            field: "cart",
+            color: "green",
+            pass: true,
+            observed: { total_minor: 4000 },
+            bound: null,
+          },
+        ],
+      },
     },
     {
       ...purchase(failed, newer, new Date()),
@@ -83,11 +111,49 @@ beforeAll(async () => {
     {
       ...purchase(denied, older, new Date()),
       state: "DENIED",
+      // The engine's keelson.eval/1 trace: policy id, mandate field, cart value, mandate value.
       evalTrace: {
         fields: [
-          { id: "total", color: "green", pass: false },
-          { id: "merchant", color: "green", pass: true },
-          { id: "items", color: "green", pass: false },
+          {
+            id: "amount",
+            field: "total",
+            color: "green",
+            pass: false,
+            observed: 34000,
+            bound: 10000,
+          },
+          {
+            id: "budget",
+            field: "budget",
+            color: "green",
+            pass: false,
+            observed: 34000,
+            bound: 6000,
+          },
+          {
+            id: "merchant",
+            field: "merchant",
+            color: "green",
+            pass: true,
+            observed: "store",
+            bound: ["store"],
+          },
+          {
+            id: "variant",
+            field: "variant",
+            color: "amber",
+            pass: false,
+            observed: [{ sku: "sku-trail", size: "11" }],
+            bound: [{ sku: "sku-trail", size: "10", color: "any" }],
+          },
+          {
+            id: "window",
+            field: "deadline",
+            color: "green",
+            pass: false,
+            observed: 1_794_700_800_000,
+            bound: { expires_at_ms: 1_794_614_399_000, not_before_ms: 1_794_024_122_000 },
+          },
         ],
       },
     },
@@ -157,6 +223,17 @@ describe("GET /v1/mandates/{id}", () => {
     });
   });
 
+  test("a countersigned purchase shows each check it passed, with both values", async () => {
+    const res = await get(`/v1/mandates/${newer}`, asUser(owner));
+    const body = (await res.json()) as { purchases: Record<string, unknown>[] };
+    const bought = body.purchases.find((p) => p.id === captured);
+    expect(bought?.checks).toEqual([
+      { field: "total", mandate: "$100.00", cart: "$40.00", pass: true },
+      { field: "merchant", mandate: "store", cart: "store", pass: true },
+    ]);
+    expect(bought).not.toHaveProperty("blocked");
+  });
+
   test("carries the purchase holds still waiting for the buyer's approval", async () => {
     const res = await get(`/v1/mandates/${newer}`, asUser(owner));
     const body = (await res.json()) as { pendingHolds: unknown[] };
@@ -165,13 +242,19 @@ describe("GET /v1/mandates/{id}", () => {
     ]);
   });
 
-  test("a blocked cart names the fields that failed their check", async () => {
+  test("a blocked cart names each failed field with what the mandate allowed and what the cart had", async () => {
     const res = await get(`/v1/mandates/${older}`, asUser(owner));
     const body = (await res.json()) as { purchases: Record<string, unknown>[] };
     expect(body.purchases[0]).toMatchObject({
       id: denied,
       state: "DENIED",
-      blocked: ["total", "items"],
+      blocked: ["total", "budget", "variant", "deadline"],
+      reasons: [
+        { field: "total", mandate: "$100.00", cart: "$340.00" },
+        { field: "budget", mandate: "$60.00", cart: "$340.00" },
+        { field: "variant", mandate: "size 10, color any", cart: "size 11" },
+        { field: "deadline", mandate: "Nov 13, 2026", cart: "Nov 15, 2026" },
+      ],
     });
     expect(body.purchases[0]).not.toHaveProperty("failure");
   });

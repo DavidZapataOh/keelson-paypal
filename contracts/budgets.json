@@ -40,5 +40,6 @@
   "c3_verify": 750000,
   "c1c3_verify": 820000,
   "userSet_publish": 62000,
-  "userSet_verify": 760000
+  "userSet_verify": 760000,
+  "logBond_proveEquivocation": 2150000
 }
