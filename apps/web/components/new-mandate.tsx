@@ -182,12 +182,12 @@ function Rules() {
     return parts.filter(Boolean).join(", ");
   }, [what, budget, anyStore, store, until]);
 
-  const check = async () => {
+  const check = async (known = passkeys) => {
     setPhase("reading");
     setError(undefined);
     try {
       // The mandate names the passkey that signs it: one known to be on this device, if any.
-      const credentialId = passkeys ? devicePasskey(passkeys)?.credentialId : undefined;
+      const credentialId = known ? devicePasskey(known)?.credentialId : undefined;
       const c = await post<Compiled>(
         "/v1/mandates/compile",
         { prompt: request, mode: "autonomous", ...(credentialId ? { credentialId } : {}) },
@@ -240,12 +240,14 @@ function Rules() {
   if (phase === "passkey") {
     return (
       <PasskeySetup
-        onBack={() => setPhase("review")}
+        onBack={() => setPhase(compiled ? "review" : "edit")}
         onDone={() =>
           get<{ passkeys: Passkey[] }>("/v1/passkeys").then((r) => {
             setPasskeys(r.passkeys);
-            setPhase("review");
-            setConfirming(true);
+            if (compiled) {
+              setPhase("review");
+              setConfirming(true);
+            } else void check(r.passkeys);
           })
         }
       />
@@ -304,7 +306,10 @@ function Rules() {
         editing || phase === "reading" ? (
           <Button
             size="lg"
-            onClick={check}
+            onClick={() =>
+              // The mandate names the passkey that signs it, so a first one comes first.
+              passkeys?.length === 0 ? setPhase("passkey") : void check()
+            }
             disabled={phase === "reading" || what.trim() === "" || passkeys === undefined}
             className="h-13 w-full rounded-xl text-base"
           >
