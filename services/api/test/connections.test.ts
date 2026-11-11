@@ -602,9 +602,9 @@ test("a client linked to several operators cannot ask: the mandate would name on
     cnfJwk: {},
     clientId: op.clientId,
   });
-  const { res } = await ask(op);
+  const { res, body } = await ask(op);
   expect(res.status).toBe(409);
-  expect((await res.json()).type).toMatch(/\/several-operators$/);
+  expect(body.type).toMatch(/\/several-operators$/);
 });
 
 test("guessing user codes is budgeted across reads, denials and drafts", async () => {
