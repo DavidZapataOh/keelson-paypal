@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net"
@@ -64,6 +65,7 @@ type testWitness struct {
 	url  string
 	vkey string
 	cmd  *exec.Cmd
+	done chan struct{}
 }
 
 // startWitness runs services/witness/entrypoint.sh with a fresh database,
@@ -91,48 +93,69 @@ func startWitness(t testing.TB, name string, key ed25519.PrivateKey, logs map[st
 	for origin, vkey := range logs {
 		pairs = append(pairs, origin+"="+vkey)
 	}
-	port := freePort(t)
-	cmd := exec.Command("sh", "../witness/entrypoint.sh")
-	cmd.Env = []string{
+	env := []string{
 		"PATH=" + litewitnessBin(t) + ":" + os.Getenv("PATH"),
 		"HOME=" + dir,
 		"WITNESS_NAME=" + name,
 		"WITNESS_KEY=" + string(pem.EncodeToMemory(block)),
 		"WITNESS_LOGS=" + strings.Join(pairs, ";"),
 		"DB=" + filepath.Join(dir, "litewitness.db"),
-		"PORT=" + strconv.Itoa(port),
 		"LITEWITNESS_SOCK=" + filepath.Join(dir, "agent.sock"),
 	}
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	// Another test process can bind the port between freePort and litewitness, and then answers
+	// in its place: the witness is up only once it serves its own key, and starts again on
+	// another port if it exits.
 	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
-	w := &testWitness{name: name, key: key, url: fmt.Sprintf("http://127.0.0.1:%d", port), vkey: signer.Verifier().String(), cmd: cmd}
-	t.Cleanup(w.stop)
-	deadline := time.Now().Add(10 * time.Second)
-	for {
-		res, err := http.Get(w.url + "/")
-		if err == nil {
-			res.Body.Close()
-			if res.StatusCode == http.StatusOK {
-				return w
-			}
+	for range 3 {
+		port := freePort(t)
+		cmd := exec.Command("sh", "../witness/entrypoint.sh")
+		cmd.Env = append(env, "PORT="+strconv.Itoa(port))
+		// The witness and its ssh-agent share a process group, stopped together.
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		stderr.Reset()
+		cmd.Stderr = &stderr
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
 		}
-		if time.Now().After(deadline) {
-			w.stop()
-			t.Fatalf("%s did not start: %s", name, stderr.String())
+		w := &testWitness{name: name, key: key, url: fmt.Sprintf("http://127.0.0.1:%d", port), vkey: signer.Verifier().String(), cmd: cmd, done: make(chan struct{})}
+		go func() {
+			_ = cmd.Wait()
+			close(w.done)
+		}()
+		t.Cleanup(w.stop)
+		if w.ready(10 * time.Second) {
+			return w
+		}
+		w.stop()
+	}
+	t.Fatalf("%s did not start: %s", name, stderr.String())
+	return nil
+}
+
+// ready reports whether the witness serves its index, with its own key, before timeout.
+func (w *testWitness) ready(timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		select {
+		case <-w.done:
+			return false
+		default:
+		}
+		if res, err := http.Get(w.url + "/"); err == nil {
+			body, _ := io.ReadAll(res.Body)
+			res.Body.Close()
+			if res.StatusCode == http.StatusOK && bytes.Contains(body, []byte(w.vkey)) {
+				return true
+			}
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+	return false
 }
 
 func (w *testWitness) stop() {
-	if w.cmd.Process != nil {
-		_ = syscall.Kill(-w.cmd.Process.Pid, syscall.SIGKILL)
-		_ = w.cmd.Wait()
-	}
+	_ = syscall.Kill(-w.cmd.Process.Pid, syscall.SIGKILL)
+	<-w.done
 }
 
 func freePort(t testing.TB) int {
