@@ -9,6 +9,7 @@ import {
   issueUserCredential,
   OPEN_MANDATE_TYP,
   type OpenMandateVerifyOptions,
+  readOpenMandate,
   USER_CREDENTIAL_TYP,
   type UserAuth,
   verifyCredential,
@@ -589,3 +590,42 @@ function isLogin(d: string): boolean {
   const parts = JSON.parse(Buffer.from(d, "base64url").toString());
   return parts[1] === "app_login_id";
 }
+
+describe("open mandate with decoy digests", () => {
+  it("verifies only with its decoy salts", async () => {
+    const m = await liveMandate();
+    const { payloadSd, disclosures, decoySalts } = await buildSdPayload(m, randomSalt, {
+      decoys: true,
+    });
+    const token = await issueOpenMandate(
+      {
+        userCredential: l1,
+        payloadSd,
+        disclosures,
+        userAuth: await assertion(passkey, randomSalt()),
+        aud: AUD,
+        nonce: m.nonce,
+      },
+      holder.privateKey,
+    );
+    const opts = {
+      expectedAud: AUD,
+      expectedNonce: m.nonce,
+      now: Math.floor(Date.now() / 1000),
+      maxSkewSec: 60,
+    };
+    const verified = await verifyCredential(token, OPEN_MANDATE_TYP, issuer.publicKey, {
+      ...opts,
+      decoySalts,
+    });
+    expect((verified as { mandate: unknown }).mandate).toEqual(m);
+    await rejects(token, opts).toThrow(/digest/);
+    await rejects(token, {
+      ...opts,
+      decoySalts: [...decoySalts, "AAAAAAAAAAAAAAAAAAAAAA"],
+    }).toThrow("decoy");
+    expect(readOpenMandate(token, decoySalts)).toEqual(m);
+    // An agent reads its grant without the salts: the decoys are skipped.
+    expect(readOpenMandate(token)).toEqual(m);
+  });
+});

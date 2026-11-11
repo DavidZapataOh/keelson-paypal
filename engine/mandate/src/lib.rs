@@ -38,7 +38,7 @@ pub use schema::{
     ANY_ITEM, ANY_MERCHANT, MAX_LIFETIME_SECONDS, MAX_SPREAD_BPS, MCC_CODES, MCC_TABLE_VERSION,
     is_merchant_id, parse_mandate,
 };
-pub use sd::{decode_disclosed, decode_mandate};
+pub use sd::{decode_disclosed, decode_mandate, decode_mandate_with_decoys};
 pub use spc::{
     EMBED_ORIGIN, RP_ID, SPC_INSTRUMENT_DISPLAY_NAME, SPC_INSTRUMENT_ICON, SPC_PAYEE_NAME,
     SPC_PAYEE_ORIGIN, SpcDetails, spc_details,

@@ -13,7 +13,7 @@ import { Check, CreditCard, Loader2, PenLine } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useId, useMemo, useState } from "react";
-import { ApiError, get, post } from "../lib/api";
+import { ApiError, engineDecoys, get, post } from "../lib/api";
 import { authClient } from "../lib/auth";
 import { deviceId } from "../lib/device";
 import { devicePasskey, type Passkey, rememberPasskey } from "../lib/passkeys";
@@ -214,7 +214,9 @@ function Rules() {
       setPhase("review");
       // Built now, so the passkey prompt opens on the click.
       const salt = crypto.getRandomValues(new Uint8Array(16));
-      const s = await prepareSigning(draft, salt, NO_EVIDENCE, c.ambiguous);
+      const s = await prepareSigning(draft, salt, NO_EVIDENCE, c.ambiguous, {
+        decoys: await engineDecoys(),
+      });
       // The card read back is the one signed: for a card mandate, the client's own.
       if (anyStore === "card") setCompiled({ ...c, mandateDraft: draft, card: s.card });
       setSigning(s);
@@ -239,6 +241,7 @@ function Rules() {
       const created = await post<{ id: string }>("/v1/mandates", {
         payloadSd: s.payloadSd,
         disclosures: s.disclosures,
+        ...(s.decoySalts.length > 0 ? { decoySalts: s.decoySalts } : {}),
         commitment: s.commitment,
         salt: s.salt,
         assertion,

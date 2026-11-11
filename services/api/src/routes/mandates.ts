@@ -50,6 +50,7 @@ import { cardViewOf, purchaseView } from "../pipeline/drive.ts";
 import { type Principal, principalChannel } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 import { LegError, type MandateIssued } from "../tee/client.ts";
+import { bothLegs } from "../tee/coordinator.ts";
 import { unboundPolicy } from "../tee/engine-source.ts";
 import { PurchaseProgress } from "./purchases.ts";
 import { REVOCABLE, revokeMandate } from "./revoke.ts";
@@ -78,6 +79,14 @@ export const CreateMandate = z
     disclosures: z.array(z.string()).max(1024).openapi({
       description: "Every disclosure of the payload; each digest must resolve.",
     }),
+    decoySalts: z
+      .array(z.string().regex(/^[A-Za-z0-9_-]{22}$/))
+      .max(512)
+      .optional()
+      .openapi({
+        description:
+          "The salts of the payload's decoy digests (RFC 9901 section 4.2.5); every other digest resolves to a disclosure. Accepted once both TEEs resolve decoys.",
+      }),
     commitment: Hex32.openapi({ description: "`C_m`; must equal the payload's `zk.commitment`." }),
     salt: z
       .string()
@@ -396,7 +405,7 @@ export async function storeMandate(
 
   let m: Mandate;
   try {
-    m = decodeMandate(body.payloadSd, body.disclosures);
+    m = decodeMandate(body.payloadSd, body.disclosures, body.decoySalts);
   } catch (err) {
     return invalid(err instanceof Error ? err.message : "The mandate does not decode.");
   }
@@ -595,13 +604,24 @@ export async function storeMandate(
   }
 
   let issued: MandateIssued | undefined;
+  const decoySalts = body.decoySalts ?? [];
   if (deps.tee) {
     if (!body.salt) return invalid("salt is required");
+    if (decoySalts.length > 0 && !(await bothLegs({ tee: deps.tee })).decoys) {
+      return problem(
+        c,
+        409,
+        "decoys-unsupported",
+        "Decoys not supported yet",
+        "The TEEs do not resolve decoy digests yet: sign the mandate without them.",
+      );
+    }
     try {
       issued = await deps.tee.client.a.registerMandate({
         sub: userId,
         payload_sd: body.payloadSd,
         disclosures: body.disclosures,
+        ...(decoySalts.length > 0 ? { decoy_salts: decoySalts } : {}),
         assertion: {
           authenticatorData: assertion.authenticatorData,
           clientDataJSON: assertion.clientDataJSON,
@@ -658,6 +678,7 @@ export async function storeMandate(
         commitment: Buffer.from(fromHex(body.commitment)),
         payloadSd: body.payloadSd,
         disclosures: body.disclosures,
+        decoySalts,
         userAuth: assertion,
         credentialId: key.credentialID,
         ...(issued
@@ -852,7 +873,7 @@ export function registerMandates(app: OpenAPIHono, deps: MandateDeps): void {
     c.header("Cache-Control", "no-store");
     const card =
       row.payloadSd && row.disclosures
-        ? renderCard(row.payloadSd as object, row.disclosures, NO_EVIDENCE)
+        ? renderCard(row.payloadSd as object, row.disclosures, NO_EVIDENCE, row.decoySalts)
         : null;
     const cards = new Map(
       await Promise.all(

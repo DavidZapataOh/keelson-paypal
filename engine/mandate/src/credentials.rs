@@ -94,6 +94,9 @@ pub struct OpenMandateVerifyOptions {
     pub now: i64,
     /// Clock skew tolerated on `iat`, `nbf` and `exp`, in seconds.
     pub max_skew_sec: i64,
+    /// The salts of the delegate payload's decoy digests (RFC 9901 section 4.2.5), which the
+    /// user's agent keeps beside the mandate; empty for a mandate without decoys.
+    pub decoy_salts: Vec<String>,
 }
 
 /// What a closed mandate must be bound to, on top of its open mandate.
@@ -411,7 +414,8 @@ fn verify_open_mandate(
         .map(|d| Disclosure::decode(d).map(|d| d.value))
         .transpose()?
         .ok_or_else(|| invalid("delegate payload is not disclosed"))?;
-    assert_digests_resolved(&Value::Object(signed.clone()), disclosures)?;
+    let decoys: Vec<&str> = opts.decoy_salts.iter().map(String::as_str).collect();
+    assert_digests_resolved(&Value::Object(signed.clone()), disclosures, &decoys)?;
     let Value::Object(delegate) = delegates else {
         return Err(invalid("delegate payload is not an object"));
     };

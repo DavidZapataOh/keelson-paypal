@@ -10,7 +10,7 @@ import { Button } from "@keelson/ui/components/button";
 import { Ban, Check, Fingerprint, Hand, Loader2, ShieldCheck, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
-import { ApiError, get, post } from "../lib/api";
+import { ApiError, engineDecoys, get, post } from "../lib/api";
 import type { ConnectionView } from "../lib/connections";
 import { untilIn } from "../lib/connections";
 import { deviceId } from "../lib/device";
@@ -355,6 +355,7 @@ export function Approval({
           salt,
           NO_EVIDENCE,
           compiled.ambiguous,
+          { decoys: await engineDecoys() },
         );
         if (n === drafting.current) {
           setSigning({ for: c, signing, compiled });
@@ -395,6 +396,7 @@ export function Approval({
       const created = await post<{ id: string; state: string }>("/v1/mandates", {
         payloadSd: s.payloadSd,
         disclosures: s.disclosures,
+        ...(s.decoySalts.length > 0 ? { decoySalts: s.decoySalts } : {}),
         commitment: s.commitment,
         salt: s.salt,
         assertion,

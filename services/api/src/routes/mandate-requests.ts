@@ -167,7 +167,7 @@ async function clientMandate(c: Context, db: Deps["db"], id: string) {
 
 const decoded = (m: typeof mandates.$inferSelect) =>
   m.payloadSd && m.disclosures
-    ? decodeMandate(m.payloadSd as Record<string, unknown>, m.disclosures)
+    ? decodeMandate(m.payloadSd as Record<string, unknown>, m.disclosures, m.decoySalts)
     : undefined;
 
 export function registerMandateRequests(

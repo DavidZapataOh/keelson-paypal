@@ -190,6 +190,8 @@ export interface CardAuthorizeRequest {
   signature: Hex;
   payload_sd: unknown;
   disclosures: string[];
+  /** The mandate's decoy salts; sent only when it has any, to legs that resolve them. */
+  decoy_salts?: string[];
   authorization: CardNetworkAuthorization;
 }
 
@@ -209,6 +211,8 @@ const HealthSchema = z.looseObject({
   now_ms: z.number(),
   /** 1 on a leg that signs SCITT statements. */
   statements: z.number().optional(),
+  /** 1 on a leg that resolves decoy digests by their salts. */
+  decoys: z.number().optional(),
 });
 type Health = z.infer<typeof HealthSchema>;
 
@@ -312,6 +316,8 @@ export interface CountersignRequest {
   sealed_salt?: string;
   /** Asks for the purchase's SCITT statement; sent only to legs that sign them. */
   statement?: StatementAsk;
+  /** The mandate's decoy salts; sent only when it has any, to legs that resolve them. */
+  decoy_salts?: string[];
 }
 
 /** The body of `POST /v1/mandates/register` on leg A. */
@@ -323,6 +329,8 @@ interface RegisterMandate {
   /** The commitment salt, 16 bytes of lowercase hex. */
   salt: Hex;
   user_credential?: string;
+  /** The mandate's decoy salts; sent only when it has any, to legs that resolve them. */
+  decoy_salts?: string[];
 }
 
 interface ChainBlock {

@@ -9,8 +9,29 @@ export interface StatementAsk {
 
 /** Whether a leg's `/v1/health` says it signs SCITT statements; a leg on an older engine does not. */
 export function supportsStatements(health: unknown): boolean {
-  return (health as { statements?: unknown } | null)?.statements === 1;
+  return capabilitiesOf(health).statements;
 }
+
+/**
+ * What a leg's engine does beyond the countersign of the oldest build still deployed, from its
+ * `/v1/health`: each is off for an engine that does not report it, since an older engine refuses
+ * a request carrying fields it does not know.
+ */
+export interface Capabilities {
+  /** It signs the purchase's SCITT statement. */
+  statements: boolean;
+  /** It resolves decoy digests by the salts a request presents. */
+  decoys: boolean;
+}
+
+/** The {@link Capabilities} a leg's `/v1/health` reports. */
+export function capabilitiesOf(health: unknown): Capabilities {
+  const h = (health ?? {}) as Record<string, unknown>;
+  return { statements: h.statements === 1, decoys: h.decoys === 1 };
+}
+
+/** What no leg is known to do: the answer for a leg that cannot be reached. */
+export const NO_CAPABILITIES: Capabilities = { statements: false, decoys: false };
 
 /**
  * The `statement` field of a countersign request, or `undefined` for a leg that does not sign

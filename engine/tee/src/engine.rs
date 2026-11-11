@@ -14,7 +14,7 @@ use keelson_core::{AcirField, currency_numeric};
 use keelson_mandate::{
     ClosedMandateVerifyOptions, EMBED_ORIGIN, Expected, Fr, Jwk, OpenMandateParams,
     OpenMandateVerifyOptions, PasskeyCredential, RP_ID, USER_CREDENTIAL_TYP, UserAuth,
-    UserCredentialParams, WebAuthnError, decode_mandate, h_sd, issue_open_mandate,
+    UserCredentialParams, WebAuthnError, decode_mandate_with_decoys, h_sd, issue_open_mandate,
     issue_user_credential, mandate_challenge, mandate_commitment, mandate_opening, merchant_leaf,
     merchant_membership, spc_details, verify_assertion, verify_closed_mandate, verify_credential,
 };
@@ -439,7 +439,8 @@ impl Engine {
     ) -> Result<MandateIssued, EngineError> {
         let root = self.root.as_ref().ok_or(EngineError::NoRoot)?;
         check_register(r)?;
-        let m = decode_mandate(&r.payload_sd, &r.disclosures).map_err(|_| bad("mandate"))?;
+        let m = decode_mandate_with_decoys(&r.payload_sd, &r.disclosures, &r.decoy_salts)
+            .map_err(|_| bad("mandate"))?;
         if m["user"]["sub"] != r.sub.as_str() {
             return Err(bad("sub"));
         }
@@ -708,7 +709,8 @@ impl Engine {
         if !self.signer.signed(&digest, &r.signature.0) {
             return Err(bad("signature"));
         }
-        let m = decode_mandate(&r.payload_sd, &r.disclosures).map_err(|_| bad("mandate"))?;
+        let m = decode_mandate_with_decoys(&r.payload_sd, &r.disclosures, &r.decoy_salts)
+            .map_err(|_| bad("mandate"))?;
         let cm = commitment(&m).ok_or(bad("mandate"))?;
         let h = h_sd(&r.payload_sd).map_err(|_| bad("mandate"))?;
         let mandate_hash = mandate_challenge(&h, &Fr::from_be_bytes_reduce(&cm));
@@ -1775,6 +1777,7 @@ impl Engine {
                 expected_nonce: nonce.clone(),
                 now: now_s,
                 max_skew_sec: MAX_SKEW_SEC,
+                decoy_salts: r.decoy_salts.clone(),
             },
             request_id: r.request_id.to_string(),
             cart_hash: sha256_tag(cart_hash),

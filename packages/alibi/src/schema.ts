@@ -76,6 +76,8 @@ const mandateSection = z.strictObject({
   payload_sd: json,
   user_auth: json,
   issuer_jwk: json,
+  /** The salts of the payload's decoy digests (RFC 9901 section 4.2.5), when it carries any. */
+  decoy_salts: z.array(z.string()).optional(),
 });
 
 const manifestSection = z.strictObject({

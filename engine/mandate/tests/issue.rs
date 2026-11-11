@@ -82,6 +82,7 @@ fn verify_options(v: &Value) -> OpenMandateVerifyOptions {
         expected_nonce: str(&v["expectedNonce"]),
         now: v["now"].as_i64().unwrap(),
         max_skew_sec: v["maxSkewSec"].as_i64().unwrap(),
+        decoy_salts: vec![],
     }
 }
 

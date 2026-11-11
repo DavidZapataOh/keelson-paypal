@@ -24,6 +24,13 @@ components:
         - status
         - instance
       additionalProperties: {}
+    Capabilities:
+      type: object
+      properties:
+        decoys:
+          type: boolean
+      required:
+        - decoys
     CreatedMandate:
       type: object
       properties:
@@ -63,6 +70,15 @@ components:
             type: string
           maxItems: 1024
           description: Every disclosure of the payload; each digest must resolve.
+        decoySalts:
+          type: array
+          items:
+            type: string
+            pattern: ^[A-Za-z0-9_-]{22}$
+          maxItems: 512
+          description: The salts of the payload's decoy digests (RFC 9901 section 4.2.5);
+            every other digest resolves to a disclosure. Accepted once both TEEs
+            resolve decoys.
         commitment:
           type: string
           pattern: ^0x[0-9a-f]{64}$
@@ -6765,6 +6781,20 @@ paths:
                       - ok
                 required:
                   - status
+  /v1/engine/capabilities:
+    get:
+      tags:
+        - system
+      summary: What both TEEs do
+      description: "The features both TEE legs run, which a client may use: `decoys`,
+        a mandate padded with decoy digests (RFC 9901 section 4.2.5)."
+      responses:
+        "200":
+          description: The features both legs report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Capabilities"
   /status:
     get:
       tags:
@@ -8655,6 +8685,15 @@ paths:
                     type: string
                   maxItems: 1024
                   description: Every disclosure of the payload; each digest must resolve.
+                decoySalts:
+                  type: array
+                  items:
+                    type: string
+                    pattern: ^[A-Za-z0-9_-]{22}$
+                  maxItems: 512
+                  description: The salts of the payload's decoy digests (RFC 9901 section 4.2.5);
+                    every other digest resolves to a disclosure. Accepted once
+                    both TEEs resolve decoys.
                 commitment:
                   type: string
                   pattern: ^0x[0-9a-f]{64}$

@@ -523,7 +523,9 @@ function outsideMandate(
   try {
     const grant =
       m.payloadSd && m.disclosures
-        ? grantOf(decodeMandate(m.payloadSd as Record<string, unknown>, m.disclosures))
+        ? grantOf(
+            decodeMandate(m.payloadSd as Record<string, unknown>, m.disclosures, m.decoySalts),
+          )
         : undefined;
     if (grant && grant.perPurchaseMinor < cap) cap = grant.perPurchaseMinor;
   } catch {
@@ -1370,6 +1372,7 @@ export function registerCountersign(
             ...(mandate.sealedSalt
               ? { sealed_salt: Buffer.from(mandate.sealedSalt).toString("base64") }
               : {}),
+            ...(mandate.decoySalts.length > 0 ? { decoy_salts: mandate.decoySalts } : {}),
           },
           want,
           await paypalRefSaltOf(db, purchaseId),

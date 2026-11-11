@@ -72,7 +72,11 @@ export async function purchaseHoldOf(db: Db, requestId: string): Promise<Purchas
 /** The payee ids the signed mandate allows. */
 export function allowedPayees(row: MandateRow): string[] {
   if (!row.payloadSd || !row.disclosures) return [];
-  const m = decodeMandate(row.payloadSd as Record<string, unknown>, row.disclosures);
+  const m = decodeMandate(
+    row.payloadSd as Record<string, unknown>,
+    row.disclosures,
+    row.decoySalts,
+  );
   const payees = m.payment.constraints.find((c) => c.type === "payment.allowed_payees");
   return payees?.type === "payment.allowed_payees"
     ? payees.allowed.map((p) => p.paypal_merchant_id)
@@ -82,7 +86,11 @@ export function allowedPayees(row: MandateRow): string[] {
 /** The website the signed mandate names for the merchant, or `undefined` when it names none. */
 export function merchantWebsite(row: MandateRow, merchantId: string): string | undefined {
   if (!row.payloadSd || !row.disclosures) return undefined;
-  const m = decodeMandate(row.payloadSd as Record<string, unknown>, row.disclosures);
+  const m = decodeMandate(
+    row.payloadSd as Record<string, unknown>,
+    row.disclosures,
+    row.decoySalts,
+  );
   const merchants = m.checkout.constraints.find((c) => c.type === "checkout.allowed_merchants");
   return merchants?.type === "checkout.allowed_merchants"
     ? merchants.allowed.find((x) => x.id === merchantId)?.website

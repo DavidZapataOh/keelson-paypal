@@ -385,6 +385,7 @@ export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<vo
       // The assertion as the open mandate signs it: the stored one also keeps credentialId and userHandle.
       user_auth: userAuthOf(m.userAuth),
       issuer_jwk: json(issuerJwk),
+      ...(m.decoySalts.length > 0 ? { decoy_salts: m.decoySalts } : {}),
     },
     manifest: { public: evidence.manifest, disclosures: evidence.disclosures },
     ...(evidence.cart ? { cart: evidence.cart } : {}),

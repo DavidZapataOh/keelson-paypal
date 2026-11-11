@@ -49,6 +49,7 @@ import { registerDisputes } from "./routes/disputes.ts";
 import { registerEmbed } from "./routes/embed.ts";
 import { noFraming, registerEmbedPage } from "./routes/embed-page.ts";
 import { registerEmbedSigning } from "./routes/embed-signing.ts";
+import { registerEngineCapabilities } from "./routes/engine-capabilities.ts";
 import { registerEngineProofs } from "./routes/engine-proofs.ts";
 import { registerEvents } from "./routes/events.ts";
 import { registerEvidence } from "./routes/evidence.ts";
@@ -334,6 +335,7 @@ export function createApp(deps: Deps): OpenAPIHono {
     );
   }
   registerHealth(app);
+  registerEngineCapabilities(app, deps);
   registerAgentDocs(app);
   registerStatus(app, deps);
   registerEvents(app, deps);

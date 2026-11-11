@@ -82,6 +82,7 @@ fn request(f: &Fixture, n: CardNetworkAuthorization) -> CardAuthorizeRequest {
         chain_id: None,
         payload_sd: f.mandate.payload_sd.clone(),
         disclosures: f.mandate.disclosures.clone(),
+        decoy_salts: Vec::new(),
         authorization: n,
     }
 }

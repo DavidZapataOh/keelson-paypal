@@ -212,43 +212,83 @@ pub fn decode_disclosed(payload_sd: &Value, disclosures: &[String]) -> Result<Va
 }
 
 /// Requires every `_sd` digest and every array element placeholder in `payload` and in the
-/// disclosed values to belong to one of `disclosures`. Keelson issues no decoy digests, so an
-/// unresolved digest is a withheld disclosure.
-pub(crate) fn assert_digests_resolved(payload: &Value, disclosures: &[&str]) -> Result<(), Error> {
-    fn walk(v: &Value, present: &HashSet<String>) -> Result<(), Error> {
-        let resolved = |d: &Value| match d.as_str() {
-            Some(d) if !present.contains(d) => Err(invalid("undisclosed digest")),
-            _ => Ok(()),
-        };
+/// disclosed values to be resolved by one of `disclosures` or by one of `decoy_salts` (RFC 9901
+/// section 4.2.5). Each decoy salt must resolve exactly one digest and be no disclosure's salt, so
+/// a decoy never stands in for a withheld disclosure.
+pub(crate) fn assert_digests_resolved(
+    payload: &Value,
+    disclosures: &[&str],
+    decoy_salts: &[&str],
+) -> Result<(), Error> {
+    fn count(d: &Value, present: &HashSet<String>, unresolved: &mut HashMap<String, usize>) {
+        if let Some(d) = d.as_str()
+            && !present.contains(d)
+        {
+            *unresolved.entry(d.to_owned()).or_default() += 1;
+        }
+    }
+    fn walk(v: &Value, present: &HashSet<String>, unresolved: &mut HashMap<String, usize>) {
         match v {
-            Value::Array(items) => items.iter().try_for_each(|item| {
-                if let Some(d) = item.as_object().and_then(|o| o.get("...")) {
-                    resolved(d)?;
+            Value::Array(items) => {
+                for item in items {
+                    if let Some(d) = item.as_object().and_then(|o| o.get("...")) {
+                        count(d, present, unresolved);
+                    }
+                    walk(item, present, unresolved);
                 }
-                walk(item, present)
-            }),
+            }
             Value::Object(o) => {
                 if let Some(Value::Array(digests)) = o.get("_sd") {
-                    digests.iter().try_for_each(resolved)?;
+                    for d in digests {
+                        count(d, present, unresolved);
+                    }
                 }
-                o.values().try_for_each(|item| walk(item, present))
+                for item in o.values() {
+                    walk(item, present, unresolved);
+                }
             }
-            _ => Ok(()),
+            _ => {}
         }
     }
     let present: HashSet<String> = disclosures.iter().map(|d| digest(d)).collect();
-    walk(payload, &present)?;
-    disclosures
-        .iter()
-        .try_for_each(|d| walk(&Disclosure::decode(d)?.value, &present))
+    let mut unresolved = HashMap::new();
+    walk(payload, &present, &mut unresolved);
+    let mut salts = HashSet::new();
+    for d in disclosures {
+        walk(&Disclosure::decode(d)?.value, &present, &mut unresolved);
+        if let Some(Value::String(salt)) = b64::decode_json(d).and_then(|v| v.get(0).cloned()) {
+            salts.insert(salt);
+        }
+    }
+    let mut decoys = HashSet::new();
+    for salt in decoy_salts {
+        let d = digest(salt);
+        if salts.contains(*salt) || unresolved.get(&d) != Some(&1) || !decoys.insert(d) {
+            return Err(invalid("decoy"));
+        }
+    }
+    if unresolved.values().sum::<usize>() > decoys.len() {
+        return Err(invalid("undisclosed digest"));
+    }
+    Ok(())
 }
 
 /// [`decode_disclosed`] for a fully disclosed mandate: every digest in `payload_sd` and in the
 /// disclosures must be resolved, and the result must pass [`parse_mandate`].
 pub fn decode_mandate(payload_sd: &Value, disclosures: &[String]) -> Result<Value, Error> {
+    decode_mandate_with_decoys(payload_sd, disclosures, &[])
+}
+
+/// [`decode_mandate`] for a mandate padded with decoy digests, which only `decoy_salts` resolve.
+pub fn decode_mandate_with_decoys(
+    payload_sd: &Value,
+    disclosures: &[String],
+    decoy_salts: &[String],
+) -> Result<Value, Error> {
     let m = decode_disclosed(payload_sd, disclosures)?;
     let disclosures: Vec<&str> = disclosures.iter().map(String::as_str).collect();
-    assert_digests_resolved(payload_sd, &disclosures)?;
+    let decoy_salts: Vec<&str> = decoy_salts.iter().map(String::as_str).collect();
+    assert_digests_resolved(payload_sd, &disclosures, &decoy_salts)?;
     parse_mandate(&m)?;
     Ok(m)
 }

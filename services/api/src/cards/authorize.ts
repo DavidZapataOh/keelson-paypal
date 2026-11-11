@@ -185,6 +185,7 @@ export async function decide(
       signature,
       payload_sd: row.mandate.payloadSd,
       disclosures: row.mandate.disclosures as string[],
+      ...(row.mandate.decoySalts.length > 0 ? { decoy_salts: row.mandate.decoySalts } : {}),
       authorization: {
         id: n.id,
         amount_minor: n.amount_minor,

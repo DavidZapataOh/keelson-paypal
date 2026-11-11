@@ -220,7 +220,11 @@ fn bound(fact: &Value, transform: Option<&str>, x: &keelson_tee::wire::Countersi
         Some("UpperCurrency") => json!("USD"),
         Some("LowerCurrency") => json!("usd"),
         Some("StatusOfDecision") => {
-            json!(if x.countersign.decision == "1" { "Success" } else { "Error" })
+            json!(if x.countersign.decision == "1" {
+                "Success"
+            } else {
+                "Error"
+            })
         }
         Some(other) => panic!("no test value for transform {other}"),
     }
@@ -231,7 +235,8 @@ fn signs_every_profile_only_when_its_bound_pointers_hold() {
     let engine = leg();
     let (statement, x) = logged(&engine);
     let f = facts(&x);
-    let profiles: Value = serde_json::from_str(include_str!("../src/export_bindings.json")).unwrap();
+    let profiles: Value =
+        serde_json::from_str(include_str!("../src/export_bindings.json")).unwrap();
     assert_eq!(profiles.as_array().unwrap().len(), 10);
     for p in profiles.as_array().unwrap() {
         let name = p["profile"].as_str().unwrap();
@@ -244,10 +249,17 @@ fn signs_every_profile_only_when_its_bound_pointers_hold() {
             let v = bound(fact, row["transform"].as_str(), &x);
             set(&mut r.payload, row["pointer"].as_str().unwrap(), v);
         }
-        assert!(engine.sign_export(&r).is_ok(), "{name} with its bound values");
+        assert!(
+            engine.sign_export(&r).is_ok(),
+            "{name} with its bound values"
+        );
         for row in rows {
             let mut wrong = r.clone();
-            set(&mut wrong.payload, row["pointer"].as_str().unwrap(), json!("not the fact"));
+            set(
+                &mut wrong.payload,
+                row["pointer"].as_str().unwrap(),
+                json!("not the fact"),
+            );
             assert_eq!(
                 engine.sign_export(&wrong).unwrap_err(),
                 EngineError::BadRequest("export.binding"),

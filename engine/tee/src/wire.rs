@@ -137,6 +137,9 @@ pub struct RegisterMandate {
     pub sub: String,
     pub payload_sd: Value,
     pub disclosures: Vec<String>,
+    /// The salts of the mandate's decoy digests (RFC 9901 section 4.2.5); empty without decoys.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub decoy_salts: Vec<String>,
     /// The passkey assertion over `M`, made on the engine's configured origin.
     pub assertion: Assertion,
     /// The salt that opens `zk.commitment`.
@@ -253,6 +256,9 @@ pub struct CountersignRequest {
     /// Asks for the purchase's SCITT signed statement alongside the countersign.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub statement: Option<StatementRequest>,
+    /// The salts of the mandate's decoy digests (RFC 9901 section 4.2.5); empty without decoys.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub decoy_salts: Vec<String>,
 }
 
 /// What a leg needs, beyond the countersign, to sign the purchase's statement.
@@ -566,6 +572,9 @@ pub struct CardAuthorizeRequest {
     /// The mandate the countersign names, as registered.
     pub payload_sd: Value,
     pub disclosures: Vec<String>,
+    /// The salts of the mandate's decoy digests (RFC 9901 section 4.2.5); empty without decoys.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub decoy_salts: Vec<String>,
     pub authorization: CardNetworkAuthorization,
 }
 

@@ -451,7 +451,7 @@ const draft = createRoute({
 function parentGrant(m: typeof mandates.$inferSelect) {
   try {
     return m.payloadSd && m.disclosures
-      ? grantOf(decodeMandate(m.payloadSd as Record<string, unknown>, m.disclosures))
+      ? grantOf(decodeMandate(m.payloadSd as Record<string, unknown>, m.disclosures, m.decoySalts))
       : undefined;
   } catch {
     return undefined;
@@ -597,12 +597,20 @@ async function inherited(
   const open = { category: [...CATEGORY_TABLE.ids], attributes: {}, returns: null };
   if (!request.parentMandateId) return open;
   const [parent] = await db
-    .select({ payloadSd: mandates.payloadSd, disclosures: mandates.disclosures })
+    .select({
+      payloadSd: mandates.payloadSd,
+      disclosures: mandates.disclosures,
+      decoySalts: mandates.decoySalts,
+    })
     .from(mandates)
     .where(eq(mandates.id, request.parentMandateId));
   if (!parent?.payloadSd || !parent.disclosures)
     throw new Error("the parent mandate is not signed");
-  const m = decodeMandate(parent.payloadSd as Record<string, unknown>, parent.disclosures);
+  const m = decodeMandate(
+    parent.payloadSd as Record<string, unknown>,
+    parent.disclosures,
+    parent.decoySalts,
+  );
   const of = <T extends Mandate["checkout"]["constraints"][number]["type"]>(type: T) =>
     m.checkout.constraints.find((c) => c.type === type) as
       | Extract<Mandate["checkout"]["constraints"][number], { type: T }>

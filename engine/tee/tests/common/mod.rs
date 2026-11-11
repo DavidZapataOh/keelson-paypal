@@ -180,6 +180,7 @@ pub fn register_request() -> RegisterMandate {
         },
         salt: seed("salt/l2/commitment")[..16].try_into().unwrap(),
         user_credential: None,
+        decoy_salts: Vec::new(),
     }
 }
 
@@ -291,6 +292,7 @@ pub fn mandate_signed(
         assertion: sign(&challenge),
         salt: base.salt,
         user_credential: None,
+        decoy_salts: Vec::new(),
     }
 }
 
@@ -416,6 +418,7 @@ pub fn countersign_request(
         chain_id: None,
         sealed_salt: None,
         statement: None,
+        decoy_salts: Vec::new(),
     }
 }
 

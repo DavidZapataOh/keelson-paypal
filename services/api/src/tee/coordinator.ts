@@ -18,7 +18,13 @@ import {
   type Observation,
 } from "./client.ts";
 import { activeSigner, type Leg, refreshLeg, revokeSigner, type TeeConfig } from "./signers.ts";
-import { chosenStatement, statementAsk, supportsStatements } from "./statements.ts";
+import {
+  type Capabilities,
+  capabilitiesOf,
+  chosenStatement,
+  NO_CAPABILITIES,
+  statementAsk,
+} from "./statements.ts";
 
 /** The channel the coordinator raises its alarms on. */
 const TEE_EVENTS = "public:tee";
@@ -78,26 +84,40 @@ interface CoordinatedCountersign {
 const DOMAIN_CHAIN = CHAIN_IDS.arbitrumSepolia;
 
 const HEALTH_TTL_MS = 60_000;
-const health = new Map<Leg, { supports: boolean; at: number }>();
+const health = new Map<Leg, { capabilities: Capabilities; at: number }>();
 
 /**
- * Whether a leg signs SCITT statements, from its `/v1/health` (cached a minute, read again after
- * any failure): a leg on an older engine refuses a request carrying the field.
+ * What a leg's engine does, from its `/v1/health` (cached a minute, read again after any
+ * failure): a leg on an older engine refuses a request carrying a field it does not know.
  */
+export async function legCapabilities(
+  deps: { tee: Pick<TeeConfig, "client"> },
+  leg: Leg,
+): Promise<Capabilities> {
+  const cached = health.get(leg);
+  if (cached && Date.now() - cached.at < HEALTH_TTL_MS) return cached.capabilities;
+  try {
+    const capabilities = capabilitiesOf(await deps.tee.client[leg].health());
+    health.set(leg, { capabilities, at: Date.now() });
+    return capabilities;
+  } catch {
+    health.delete(leg);
+    return NO_CAPABILITIES;
+  }
+}
+
+/** Whether a leg signs SCITT statements; see {@link legCapabilities}. */
 export async function legSupportsStatements(
   deps: { tee: Pick<TeeConfig, "client"> },
   leg: Leg,
 ): Promise<boolean> {
-  const cached = health.get(leg);
-  if (cached && Date.now() - cached.at < HEALTH_TTL_MS) return cached.supports;
-  try {
-    const supports = supportsStatements(await deps.tee.client[leg].health());
-    health.set(leg, { supports, at: Date.now() });
-    return supports;
-  } catch {
-    health.delete(leg);
-    return false;
-  }
+  return (await legCapabilities(deps, leg)).statements;
+}
+
+/** What both legs do: a feature is used only once each leg reports it. */
+export async function bothLegs(deps: { tee: Pick<TeeConfig, "client"> }): Promise<Capabilities> {
+  const [a, b] = await Promise.all([legCapabilities(deps, "a"), legCapabilities(deps, "b")]);
+  return { statements: a.statements && b.statements, decoys: a.decoys && b.decoys };
 }
 
 /** The 32-byte measurement of a `tdx:<hex>` or `nitro:<hex>` id. */

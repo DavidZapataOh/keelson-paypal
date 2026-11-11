@@ -73,7 +73,11 @@ export async function issueCardStep(
   if (!cs || !(expiresAt.getTime() > Date.now())) return final("card:expired");
   if (!mandate.payloadSd || !mandate.disclosures) return final("card:mandate-unreadable");
   const controls = cardControlsOf(
-    decodeMandate(mandate.payloadSd as Record<string, unknown>, mandate.disclosures),
+    decodeMandate(
+      mandate.payloadSd as Record<string, unknown>,
+      mandate.disclosures,
+      mandate.decoySalts,
+    ),
     purchase.merchantId,
   );
   if (!controls) return final("card:merchant-not-allowed");
