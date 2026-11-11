@@ -74,6 +74,12 @@ const schema = z
     CHANNEL3_API_KEY: z.string().min(1).optional(),
     PROVER_URL: z.url().optional(),
     CHANNEL3_WEBHOOK_SECRET: z.string().startsWith("whsec_").optional(),
+    /** The Lithic sandbox key that issues card purchases' single-use cards. */
+    LITHIC_API_KEY: z.string().min(1).optional(),
+    /** The HMAC secret Lithic signs Auth Stream Access requests with. */
+    LITHIC_ASA_SECRET: z.string().min(1).optional(),
+    /** The secret of the Lithic event subscription card transactions are delivered to. */
+    LITHIC_WEBHOOK_SECRET: z.string().min(1).optional(),
     TSA_DIGICERT_URL: z.url().optional(),
     TSA_SIGSTORE_URL: z.url().optional(),
     TSA_FREETSA_URL: z.url().optional(),

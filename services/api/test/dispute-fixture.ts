@@ -61,9 +61,9 @@ export async function seed(
       currency: "USD",
       amountMinor: BigInt(c.amount),
       cartHash: Buffer.from(c.cartHash.slice(2), "hex"),
-      invoiceId: b.paypal.invoice_id ?? null,
-      paypalCaptureId: b.paypal.capture_id ?? null,
-      paypalOrderId: b.paypal.order_id ?? null,
+      invoiceId: b.paypal?.invoice_id ?? null,
+      paypalCaptureId: b.paypal?.capture_id ?? null,
+      paypalOrderId: b.paypal?.order_id ?? null,
       countersign: Object.fromEntries(Object.entries(c).map(([k, v]) => [k, String(v)])),
     })
     .onConflictDoNothing();

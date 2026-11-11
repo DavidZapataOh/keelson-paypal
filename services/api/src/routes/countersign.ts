@@ -31,6 +31,7 @@ import {
   like,
   mandates,
   ne,
+  notInArray,
   operators,
   or,
   purchaseHolds,
@@ -115,9 +116,9 @@ export const CartSchema = z
 
 const Body = z
   .object({
-    authorizationId: z.string().min(1).max(64).openapi({
+    authorizationId: z.string().min(1).max(64).optional().openapi({
       description:
-        "The PayPal authorization that holds the mandate's funds, or this request's own hold when the mandate holds each purchase separately; leg A reads it.",
+        "The PayPal authorization that holds the mandate's funds, or this request's own hold when the mandate holds each purchase separately; leg A reads it. Absent for a card mandate, whose purchase is paid with a single-use card issued after the ALLOW.",
     }),
     closedMandate: z.string().min(1).max(131_072).optional().openapi({
       description:
@@ -396,7 +397,7 @@ async function redrive(
   want: CountersignExpectation,
   cart: { merchant: string; currency: string },
   evidenceRoot: Buffer,
-  hold: { orderId: string; authorizationId: string },
+  hold: { orderId: string | null; authorizationId: string | null },
 ): Promise<boolean> {
   const [row] = await db.select().from(purchases).where(eq(purchases.id, id));
   if (!row) return false;
@@ -563,6 +564,7 @@ export function registerCountersign(
     | "operators"
     | "chains"
     | "paypal"
+    | "cards"
     | "appOrigin"
     | "demoAgentId"
     | "hostedAgentKey"
@@ -570,7 +572,11 @@ export function registerCountersign(
   >,
 ): void {
   const { db, kv, log, tee } = deps;
-  const pipeline: PipelineDeps = { ...deps, chain: deps.chains?.[421614] };
+  const pipeline: PipelineDeps = {
+    ...deps,
+    chain: deps.chains?.[421614],
+    cardIssuer: deps.cards?.issuer,
+  };
   const appOrigin = deps.appOrigin ?? "https://app.keelson.finance";
 
   /**
@@ -740,6 +746,20 @@ export function registerCountersign(
         "Keelson's hosted operator cannot countersign now.",
       );
     }
+    const card = mandate.rail === "card";
+    if (
+      card ? body.authorizationId !== undefined || body.live : body.authorizationId === undefined
+    ) {
+      return problem(
+        c,
+        422,
+        "invalid-request",
+        "Invalid request",
+        card
+          ? "A card mandate's purchase is paid with the card issued after the ALLOW: send no authorizationId and no live store."
+          : "authorizationId is required: the PayPal authorization that holds the funds.",
+      );
+    }
     // A countersign is only worth something against a live hold.
     if (
       mandate.state !== "ACTIVE" ||
@@ -778,6 +798,7 @@ export function registerCountersign(
     // A mandate whose merchant Keelson cannot capture for holds a budget only: the buyer pays
     // its purchases at the store's own checkout.
     if (
+      !card &&
       !body.live &&
       deps.paypal &&
       mandate.holdMode !== "per_purchase" &&
@@ -798,7 +819,11 @@ export function registerCountersign(
     let held: typeof purchaseHolds.$inferSelect | undefined;
     let holdsAuthorization: boolean;
     let orderId: string | null;
-    if (mandate.holdMode === "per_purchase") {
+    if (card) {
+      // The user's budget is held on PayPal; each card charge is captured from that hold.
+      holdsAuthorization = mandate.holdMode === "mandate" && mandate.paypalAuthorizationId !== null;
+      orderId = mandate.paypalOrderId;
+    } else if (mandate.holdMode === "per_purchase") {
       [held] = await db
         .select()
         .from(purchaseHolds)
@@ -1152,6 +1177,28 @@ export function registerCountersign(
         if (await stoppedSince(tx, mandate.userId, mandate.createdAt)) {
           return { revoked: true as const };
         }
+        // A card's charge is collected from the hold after the fact, so the budget a card
+        // mandate's live cards may still charge is checked here too, one cart at a time.
+        if (card) {
+          await tx.execute(
+            sql`select pg_advisory_xact_lock(hashtext(${`card-budget:${mandate.id}`}))`,
+          );
+          const [{ committed } = { committed: "0" }] = await tx
+            // A settled card purchase counts what the network settled; any other, its cart.
+            .select({
+              committed: sql<string>`coalesce(sum(coalesce((select pc.settled_minor from purchase_cards pc where pc.purchase_id = ${purchases.id}), ${purchases.amountMinor})), 0)::text`,
+            })
+            .from(purchases)
+            .where(
+              and(
+                eq(purchases.mandateId, mandate.id),
+                eq(purchases.rail, "card"),
+                ne(purchases.id, purchaseId),
+                notInArray(purchases.state, ["PROPOSED", "DENIED", "FAILED"]),
+              ),
+            );
+          if (BigInt(committed) + total > mandate.maxMinor) return { overBudget: true as const };
+        }
         // Serializes the purchases of one cart under one mandate, so two retries cannot both pass.
         await tx.execute(
           sql`select pg_advisory_xact_lock(hashtext(${`purchase:${mandate.id}:${want.cartHash}`}))`,
@@ -1168,8 +1215,9 @@ export function registerCountersign(
             amountMinor: total,
             cartHash: Buffer.from(want.cartHash.slice(2), "hex"),
             evidenceRoot,
+            rail: mandate.rail,
             paypalOrderId: orderId,
-            paypalAuthorizationId: body.authorizationId,
+            paypalAuthorizationId: body.authorizationId ?? mandate.paypalAuthorizationId,
             paypalRefSalt: randomBytes(32),
             ...(body.live ? { liveStore: body.live.store } : {}),
             ...(c.var.principal?.kind === "client" ? { clientId: c.var.principal.subject } : {}),
@@ -1182,7 +1230,7 @@ export function registerCountersign(
             ? await transition(tx, "purchases", purchaseId, "PROPOSED", "EVALUATING")
             : await redrive(tx, purchaseId, mandate.id, want, body.cart, evidenceRoot, {
                 orderId,
-                authorizationId: body.authorizationId,
+                authorizationId: body.authorizationId ?? mandate.paypalAuthorizationId,
               });
         return { driven };
       })
@@ -1193,6 +1241,15 @@ export function registerCountersign(
         throw err;
       });
     if (claim === null) return evidenceUsed(c);
+    if ("overBudget" in claim) {
+      return problem(
+        c,
+        409,
+        "budget-committed",
+        "Budget committed",
+        "The mandate's live and settled card purchases already commit its budget.",
+      );
+    }
     if ("revoked" in claim) {
       return problem(
         c,
@@ -1280,7 +1337,13 @@ export function registerCountersign(
             unit: body.unit,
             evidence: evidenceSources,
             evidence_root: body.evidenceRoot as `0x${string}`,
-            authorization_id: body.authorizationId,
+            // Leg A reads the hold of a card mandate too: it backs the budget the cards spend.
+            ...(body.authorizationId || mandate.paypalAuthorizationId
+              ? {
+                  authorization_id: (body.authorizationId ??
+                    mandate.paypalAuthorizationId) as string,
+                }
+              : {}),
             ...(mandate.sealedSalt
               ? { sealed_salt: Buffer.from(mandate.sealedSalt).toString("base64") }
               : {}),

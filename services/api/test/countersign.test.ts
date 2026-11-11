@@ -134,7 +134,7 @@ describe("countersigning the same cart again", { timeout: 120_000 }, () => {
       method: "POST",
       headers: { "content-type": "application/json", "idempotency-key": ulid(), ...principal },
       body: JSON.stringify({
-        authorizationId: m.authorizationId,
+        ...(m.authorizationId ? { authorizationId: m.authorizationId } : {}),
         closedMandate: closed(m.id, requestId),
         cart,
         unit,
@@ -186,6 +186,30 @@ describe("countersigning the same cart again", { timeout: 120_000 }, () => {
     expect(body.type).toMatch(/\/tee-unavailable$/);
     expect(row?.state).toBe("FAILED");
     expect(row?.cartHash.equals(hash)).toBe(true);
+  });
+
+  test("a card mandate's live card purchases commit its budget, and a card cart names no hold", async () => {
+    const m = await heldMandate();
+    await testDb
+      .update(mandates)
+      .set({ rail: "card", maxMinor: 15_000n, remainingMinor: 15_000n })
+      .where(eq(mandates.id, m.id));
+    const withHold = await countersign(m);
+    expect(withHold.res.status).toBe(422);
+    await testDb.insert(purchases).values({
+      id: ulid(),
+      mandateId: m.id,
+      state: "COVERED",
+      rail: "card",
+      merchantId: "*",
+      currency: cart.currency,
+      amountMinor: 6_000n,
+      cartHash: randomBytes(32),
+    });
+    const { res, body, row } = await countersign({ id: m.id, authorizationId: undefined as never });
+    expect(res.status).toBe(409);
+    expect(body.type).toMatch(/\/budget-committed$/);
+    expect(row).toBeUndefined();
   });
 
   test("another cart on the same mandate is not held back", async () => {

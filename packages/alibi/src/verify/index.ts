@@ -4,6 +4,7 @@ import type { AlibiBundle, AlibiReceipt } from "../schema.ts";
 import { type Context, runCheck } from "./check.ts";
 import { anchor } from "./checks/anchor.ts";
 import { nitro, tdx } from "./checks/attestation.ts";
+import { card } from "./checks/card.ts";
 import { anchorRoot, anchorTx, chainIdOf, queryOf, registry } from "./checks/chain.ts";
 import { checkout } from "./checks/checkout.ts";
 import { countersign } from "./checks/countersign.ts";
@@ -82,6 +83,7 @@ const CHECKS = [
   webFact,
   checkout,
   paypal,
+  card,
 ];
 
 /** The one chain read of a verification, started before any offline check runs. */

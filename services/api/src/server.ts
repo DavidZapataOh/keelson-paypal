@@ -1,4 +1,5 @@
 // Loads reflect-metadata before anything pulls in @keelson/attest (see tee/attest.ts).
+import { LithicIssuer } from "./cards/issuer.ts";
 import "./tee/attest.ts";
 import "./telemetry.ts";
 import Anthropic from "@anthropic-ai/sdk";
@@ -199,6 +200,13 @@ const operators =
   env.KEELSON_OPERATOR_KEY && env.DEMO_AGENT_ID
     ? operatorSigners(env.DEMO_AGENT_ID, env.KEELSON_OPERATOR_KEY)
     : undefined;
+const cards = env.LITHIC_API_KEY
+  ? {
+      issuer: new LithicIssuer(env.LITHIC_API_KEY),
+      asaSecret: env.LITHIC_ASA_SECRET,
+      webhookSecret: env.LITHIC_WEBHOOK_SECRET,
+    }
+  : undefined;
 // Keelson's hosted operator closes, with its own cnf key, the mandates of apps that have no
 // operator of their own (see delegated.ts).
 const hostedAgentKey = env.KEELSON_AGENT_KEY
@@ -235,6 +243,7 @@ const app = createApp({
   proveAnonymousMandate: proveC3,
   proveAnonymousPurchase: proveC1C3,
   ...(env.PAYPAL_WEBHOOK_ID ? { paypalWebhook: { webhookId: env.PAYPAL_WEBHOOK_ID, certs } } : {}),
+  ...(cards ? { cards } : {}),
   ...(operators ? { operators } : {}),
   ...(relayer ? { relayer } : {}),
   ...(env.CHANNEL3_API_KEY ? { channel3: createChannel3(env.CHANNEL3_API_KEY) } : {}),
@@ -271,6 +280,7 @@ const stopResumer = startPipelineResumer({
   relayer,
   stamps,
   chain: chains[arbitrumSepolia.id],
+  cardIssuer: cards?.issuer,
   proveAnonymousPurchase: proveC1C3,
   notifier,
   ...(env.LOG_URL && env.LOG_WRITE_TOKEN

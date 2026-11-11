@@ -1210,6 +1210,9 @@ importers:
       jose:
         specifier: 6.2.15
         version: 6.2.15
+      lithic:
+        specifier: 0.150.0
+        version: 0.150.0
       pino:
         specifier: 10.4.0
         version: 10.4.0
@@ -5777,6 +5780,10 @@ packages:
 
   linebreak@1.1.0:
     resolution: {integrity: sha512-MHp03UImeVhB7XZtjd0E4n6+3xr5Dq/9xI/5FptGk5FrbDR3zagPa2DS6U8ks/3HjbKWG9Q1M2ufOzxV2qLYSQ==}
+
+  lithic@0.150.0:
+    resolution: {integrity: sha512-qy5s+vmV+NsMzKco5/9sBTpDh2tPIzUis6Njh8Uh3Zdv4OSzOgNZl4sqnM7D2BaxQbNHH63pQjBXBqn1LViSpw==}
+    hasBin: true
 
   locate-path@5.0.0:
     resolution: {integrity: sha512-t7hw9pI+WvuwNJXwk5zVHpyhIqzg2qTlklJOf0mVxGSbe3Fp2VieZcduNYjaLDoy6p9uGpQEGWG87WpMKlNq8g==}
@@ -11121,6 +11128,10 @@ snapshots:
     dependencies:
       base64-js: 0.0.8
       unicode-trie: 2.0.0
+
+  lithic@0.150.0:
+    dependencies:
+      standardwebhooks: 1.1.1
 
   locate-path@5.0.0:
     dependencies:

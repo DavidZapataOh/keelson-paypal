@@ -57,6 +57,10 @@ export const mandates = pgTable(
     /** The authorization captures use: the parent, or its reauthorization. */
     paypalAuthorizationId: text().unique("mandates_paypal_authorization_id_unique"),
     /** `mandate`: one hold for the budget; `per_purchase`: one hold per cart. */
+    /** `card` when the mandate's purchases are paid with single-use cards. */
+    rail: text({ enum: ["paypal", "card"] })
+      .notNull()
+      .default("paypal"),
     holdMode: text({ enum: ["mandate", "per_purchase"] })
       .notNull()
       .default("mandate"),
@@ -78,6 +82,7 @@ export const mandates = pgTable(
     check("mandates_mandate_hash_len", sql`octet_length(${t.mandateHash}) = 32`),
     check("mandates_commitment_len", sql`octet_length(${t.commitment}) = 32`),
     check("mandates_hold_mode_valid", sql`${t.holdMode} in ('mandate', 'per_purchase')`),
+    check("mandates_rail_valid", sql`${t.rail} in ('paypal', 'card')`),
     index("mandates_user_id_created_at_idx").on(t.userId, t.createdAt.desc(), t.id.desc()),
     index("mandates_operator_agent_id_idx").on(t.operatorAgentId),
   ],

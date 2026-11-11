@@ -12,6 +12,9 @@ import { type VerifyOptions, verifyAlibi } from "../src/verify/index.ts";
 import { copy, fixtures } from "./fixtures.ts";
 import { liveChain, memoized } from "./live.ts";
 
+/** The PayPal section of a PayPal purchase's bundle. */
+const paypalOf = (b: AlibiBundle) => b.paypal as NonNullable<AlibiBundle["paypal"]>;
+
 const live = process.env.KEELSON_LIVE === "1";
 const full = fixtures.find((f) => f.mode === "2of2" && f.anchored);
 const degraded = fixtures.find((f) => f.mode === "degraded");
@@ -261,7 +264,7 @@ describe.skipIf(!live || !full || !degraded)("every tampering class fails verifi
       "paypal.ids",
       "another",
       (x) => {
-        x.paypal.invoice_id = d.bundle.paypal.invoice_id;
+        paypalOf(x).invoice_id = paypalOf(d.bundle).invoice_id;
       },
     ],
     [

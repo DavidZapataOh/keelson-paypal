@@ -155,7 +155,7 @@ export function disputeFacts({
   }
 
   const countersigned = BigInt(bundle.tee.countersign.amount);
-  const invoice = bundle.paypal.invoice_id;
+  const invoice = bundle.paypal?.invoice_id;
   const captures = (reads.order.purchaseUnits ?? []).flatMap((u) => u.payments?.captures ?? []);
   const live = (c: { status?: string }) => c.status !== "DECLINED" && c.status !== "FAILED";
 

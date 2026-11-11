@@ -28,7 +28,8 @@ export type CheckId =
   | "evidence.manifest"
   | "evidence.web_fact"
   | "evidence.checkout"
-  | "paypal.ids";
+  | "paypal.ids"
+  | "card.authorizations";
 
 export interface Check {
   id: CheckId;

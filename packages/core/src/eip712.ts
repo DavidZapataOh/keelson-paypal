@@ -95,6 +95,19 @@ export const KEELSON_TYPES = {
     { name: "nonce", type: "uint256" },
     { name: "deadline", type: "uint256" },
   ],
+  CardAuthorization: [
+    { name: "requestId", type: "bytes32" },
+    { name: "countersignDigest", type: "bytes32" },
+    { name: "authorizationHash", type: "bytes32" },
+    { name: "merchantHash", type: "bytes32" },
+    { name: "mcc", type: "uint16" },
+    { name: "country", type: "bytes2" },
+    { name: "amount", type: "uint64" },
+    { name: "currency", type: "uint16" },
+    { name: "decision", type: "uint8" },
+    { name: "failedMask", type: "uint32" },
+    { name: "issuedAt", type: "uint40" },
+  ],
   WebFact: [
     { name: "hostHash", type: "bytes32" },
     { name: "urlPathHash", type: "bytes32" },
@@ -130,6 +143,12 @@ function assertMessage(primaryType: KeelsonPrimaryType, message: Record<string, 
     if (type === "bytes32") {
       if (typeof value !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(value)) {
         throw new TypeError(`${primaryType}.${name} must be a 32-byte hex string`);
+      }
+      continue;
+    }
+    if (type === "bytes2") {
+      if (typeof value !== "string" || !/^0x[0-9a-fA-F]{4}$/.test(value)) {
+        throw new TypeError(`${primaryType}.${name} must be a 2-byte hex string`);
       }
       continue;
     }
@@ -177,6 +196,30 @@ export function countersignDigest(c: Countersign, domain: TypedDataDomain): Hex 
   assertChain(domain.chainId);
   return hashKeelson("Countersign", c, domain);
 }
+
+export type CardAuthorization = TypedDataDefinition<
+  typeof KEELSON_TYPES,
+  "CardAuthorization"
+>["message"];
+
+/** The EIP-712 signing hash of a `CardAuthorization`; only Arbitrum Sepolia and Arbitrum One. */
+export function cardAuthorizationDigest(a: CardAuthorization, domain: TypedDataDomain): Hex {
+  assertChain(domain.chainId);
+  return hashKeelson("CardAuthorization", a, domain);
+}
+
+/** The `failedMask` bit of each reason a leg declines a card authorization. Append-only. */
+export const CARD_BITS = {
+  decision: 0,
+  rail: 1,
+  expired: 2,
+  currency: 3,
+  amount: 4,
+  mcc: 5,
+  country: 6,
+  merchant: 7,
+  used: 8,
+} as const;
 
 /** The `failedFieldsMask` bit of each policy `@id`. Append-only. */
 export const FIELD_BITS = {
