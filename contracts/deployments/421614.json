@@ -73,7 +73,8 @@
     "AnonymousMandateReferenceVerifier": "0x07639DbF0E01E4c134B51Dc6210968600b499c6B",
     "RegisteredUserSet": "0x1Ad48b9ff3A87Adec54855454c83029f66f2A0E5",
     "AnonymousPurchaseVerifier": "0x18b2F0b2D235F69461989C0B7dB86efa91e6B77c",
-    "AnonymousPurchaseReferenceVerifier": "0x9e4AbD6603F21aB9d72De73c83eaa2E8b5CFfaA1"
+    "AnonymousPurchaseReferenceVerifier": "0x9e4AbD6603F21aB9d72De73c83eaa2E8b5CFfaA1",
+    "EngineProofVerifier": "0xCcBea90603a936768c6dEC5fc6AD1A16FCaFEDA1"
   },
   "constructorArgs": {
     "KeelsonDeployer": "0x0000000000000000000000009c0215b66f6a64c34ccb0126cb8d027689fa68b9",
@@ -100,6 +101,7 @@
     "AnonymousMandateReferenceVerifier": "0x",
     "RegisteredUserSet": "0x00000000000000000000000057c30a4a175978673bad2b2b2d3667966cd58314000000000000000000000000103cc9650c1f1d9568e5edf45cd1a3c0978bfc7c",
     "AnonymousPurchaseVerifier": "0x",
-    "AnonymousPurchaseReferenceVerifier": "0x"
+    "AnonymousPurchaseReferenceVerifier": "0x",
+    "EngineProofVerifier": "0x000000000000000000000000397a5f7f3dbd538f23de225b51f532c34448da9b002239e16cb091e30fe341ef30ed323dc2064c7afcb39e4aa63e6fa1b9961a55"
   }
 }
