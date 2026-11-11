@@ -209,7 +209,8 @@ function NumberMatch({
         Which number does {request.name} show?
       </h1>
       <p className="mt-3 text-pretty text-lg text-muted-foreground leading-snug">
-        This proves the link came from your own agent. A wrong pick cancels the request.
+        Picking it confirms you're answering your own agent, not a link someone forwarded you. A
+        wrong pick cancels the request.
       </p>
       {error ? (
         <div className="mt-6">
@@ -334,7 +335,7 @@ export function ConnectPage() {
     );
   }
   const match = request.match;
-  if (match && !match.matched && !embed) {
+  if (match && !match.matched) {
     return (
       <NumberMatch
         request={request}

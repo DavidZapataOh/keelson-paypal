@@ -261,8 +261,9 @@ describe("an agent asks to change its mandate", () => {
       await app.request(`/v1/connections/${asked.user_code}`, { headers: asUser(sub) })
     ).json();
     expect(view).toMatchObject({
+      kind: "change",
       reason: "Needs $40 more for shipping",
-      parent: { mandateId: mid },
+      parent: { mandateId: mid, totalMinor: "100000", remainingMinor: "100000" },
       match: null,
       limits: { totalMinor: "140000", perPurchaseMinor: "140000" },
     });
@@ -278,6 +279,22 @@ describe("an agent asks to change its mandate", () => {
     });
     expect(again.status).toBe(409);
     expect(await again.json()).toMatchObject({ requestId: asked.request_id });
+  });
+
+  test("left out, the total asked is what is left of the mandate, not its total again", async () => {
+    const op = await newOperator();
+    const sub = await newUser();
+    const mid = await liveMandate(sub, op, { remainingMinor: 5_000n });
+    const res = await send(`/v1/mandates/${mid}/changes`, client(op.clientId), {
+      note: "Needs a few more days to compare prices",
+      limits: { until: inDays(3) },
+    });
+    const asked = (await res.json()) as { user_code: string };
+    const view = await (
+      await app.request(`/v1/connections/${asked.user_code}`, { headers: asUser(sub) })
+    ).json();
+    expect(view.limits.totalMinor).toBe("5000");
+    expect(BigInt(view.limits.perPurchaseMinor)).toBeLessThanOrEqual(5_000n);
   });
 
   test("only the operator's client may ask, and only for a live mandate", async () => {

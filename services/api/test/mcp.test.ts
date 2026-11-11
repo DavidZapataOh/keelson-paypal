@@ -588,11 +588,14 @@ test("an agent checks a cart, asks for more room and polls a purchase, each in t
     retryable: false,
     next: { action: "poll", tool: "keelson.get_purchase" },
   });
-  await testDb
-    .update(purchases)
-    .set({ state: "CAPTURED", failureReason: null })
-    .where(eq(purchases.id, purchaseId));
-  const done = await client.callTool({ name: "keelson.get_purchase", arguments: { purchaseId } });
-  expect(done.structuredContent).toMatchObject({ status: "success", outcome: "known" });
+  // Captured, and whatever came after, is done: the agent never buys it again.
+  for (const state of ["CAPTURED", "DISPUTED"] as const) {
+    await testDb
+      .update(purchases)
+      .set({ state, failureReason: null })
+      .where(eq(purchases.id, purchaseId));
+    const done = await client.callTool({ name: "keelson.get_purchase", arguments: { purchaseId } });
+    expect(done.structuredContent).toMatchObject({ status: "success", outcome: "known" });
+  }
   await client.close();
 });

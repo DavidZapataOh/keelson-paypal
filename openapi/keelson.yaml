@@ -818,6 +818,10 @@ components:
           enum:
             - connect
             - once
+            - change
+          description: "`connect`: standing limits. `once`: one cart its mandate does not
+            allow. `change`: new limits that replace `parent`, whose hold is
+            released."
         state:
           type: string
           enum:
@@ -898,12 +902,18 @@ components:
               type: string
             perPurchaseMinor:
               type: string
+            totalMinor:
+              type: string
             remainingMinor:
+              type: string
+            until:
               type: string
           required:
             - mandateId
             - perPurchaseMinor
+            - totalMinor
             - remainingMinor
+            - until
         mandateId:
           type:
             - string

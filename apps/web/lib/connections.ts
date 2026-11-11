@@ -1,7 +1,7 @@
 /** An agent's request for a mandate, as the approval page reads it. */
 export interface ConnectionView {
   code: string;
-  kind: "connect" | "once";
+  kind: "connect" | "once" | "change";
   state: "PENDING" | "APPROVED" | "DENIED" | "EXPIRED";
   name: string;
   reason: string;
@@ -18,7 +18,14 @@ export interface ConnectionView {
     merchants: { id: string; name: string }[];
     until: string;
   };
-  parent: { mandateId: string; perPurchaseMinor: string; remainingMinor: string } | null;
+  /** The mandate a `once` cart is outside of, or a `change` replaces. */
+  parent: {
+    mandateId: string;
+    perPurchaseMinor: string;
+    totalMinor: string;
+    remainingMinor: string;
+    until: string;
+  } | null;
   mandateId: string | null;
   /** The three numbers to pick the agent's from, until the user did; null when none is needed. */
   match: { options: number[]; matched: boolean } | null;

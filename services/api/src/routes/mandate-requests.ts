@@ -1,7 +1,7 @@
 import { getCedarLangVersion, getCedarVersion } from "@cedar-policy/cedar-wasm";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { type Cart, cartHash } from "@keelson/core";
-import { agentConnections, and, eq, gt, mandates, operators } from "@keelson/db";
+import { agentConnections, and, eq, gt, mandates, operators, sql } from "@keelson/db";
 import { decodeMandate } from "@keelson/mandate";
 import { cartContext, type EngineMeta, evaluate, mandateAgent } from "@keelson/policy";
 import type { Context } from "hono";
@@ -197,32 +197,13 @@ export function registerMandateRequests(
     if (!grant) {
       return problem(c, 409, "mandate-ended", "Mandate ended", "The mandate is not signed.");
     }
-    const [pending] = await db
-      .select({ id: agentConnections.id })
-      .from(agentConnections)
-      .where(
-        and(
-          eq(agentConnections.parentMandateId, mandate.id),
-          eq(agentConnections.kind, "connect"),
-          eq(agentConnections.state, "PENDING"),
-          gt(agentConnections.expiresAt, new Date()),
-        ),
-      )
-      .limit(1);
-    if (pending) {
-      return problem(
-        c,
-        409,
-        "change-pending",
-        "Change pending",
-        "A change of this mandate is already waiting for the user; poll it.",
-        { requestId: pending.id },
-      );
-    }
     const { note, limits = {} } = c.req.valid("json");
     const until = limits.until ? new Date(limits.until) : grant.notAfter;
-    const perPurchase = BigInt(limits.perPurchaseMinor ?? grant.perPurchaseMinor);
-    const total = BigInt(limits.totalMinor ?? grant.totalMinor);
+    // Unless the agent asks for more, the new mandate holds what is left of this one, not its total.
+    const total = BigInt(limits.totalMinor ?? mandate.remainingMinor);
+    const perPurchase = BigInt(
+      limits.perPurchaseMinor ?? (grant.perPurchaseMinor < total ? grant.perPurchaseMinor : total),
+    );
     const [answered] = await db
       .select({ askAbove: agentConnections.askAboveMinor })
       .from(agentConnections)
@@ -244,22 +225,49 @@ export function registerMandateRequests(
               ? "until is more than 30 days away"
               : undefined;
     if (invalid) return problem(c, 422, "invalid-limits", "Invalid limits", invalid);
-    const auth = await requestChange(
-      { db, kv: deps.kv, appOrigin },
-      {
-        mandate,
-        clientId: (c.get("principal") as Principal).subject,
-        note,
-        grant: {
-          currency: grant.currency,
-          perPurchaseMinor: perPurchase,
-          totalMinor: total,
-          merchantIds: grant.merchantIds,
-          notAfter: until,
-          askAboveMinor: askAbove,
+    // One change of a mandate waits for the user at a time.
+    const auth = await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`change:${mandate.id}`}))`);
+      const [pending] = await tx
+        .select({ id: agentConnections.id })
+        .from(agentConnections)
+        .where(
+          and(
+            eq(agentConnections.parentMandateId, mandate.id),
+            eq(agentConnections.kind, "connect"),
+            eq(agentConnections.state, "PENDING"),
+            gt(agentConnections.expiresAt, new Date()),
+          ),
+        )
+        .limit(1);
+      if (pending) {
+        return problem(
+          c,
+          409,
+          "change-pending",
+          "Change pending",
+          "A change of this mandate is already waiting for the user; poll it.",
+          { requestId: pending.id },
+        );
+      }
+      return requestChange(
+        { db: tx, kv: deps.kv, appOrigin },
+        {
+          mandate,
+          clientId: (c.get("principal") as Principal).subject,
+          note,
+          grant: {
+            currency: grant.currency,
+            perPurchaseMinor: perPurchase,
+            totalMinor: total,
+            merchantIds: grant.merchantIds,
+            notAfter: until,
+            askAboveMinor: askAbove,
+          },
         },
-      },
-    );
+      );
+    });
+    if (auth instanceof Response) return auth;
     const { device_code: _, ...shown } = auth;
     return c.json(shown, 201, { "cache-control": "no-store" });
   });

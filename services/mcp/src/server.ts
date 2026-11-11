@@ -42,6 +42,18 @@ const version = "0.1.0";
 /** How long `request_countersign` follows the purchase before it answers with its state. */
 const SETTLE_MS = 30_000;
 const PENDING = new Set(["PROPOSED", "EVALUATING", "COUNTERSIGNED", "LOGGED", "COVERED"]);
+/** States of a purchase PayPal captured: done, whatever happened after. */
+const CAPTURED_OR_AFTER = new Set([
+  "CAPTURED",
+  "DELIVERED",
+  "SETTLED",
+  "DISPUTED",
+  "ATTRIBUTED",
+  "SLASHED",
+  "WARRANTY_PAID",
+  "DEFENDED",
+  "MERCHANT_LIABLE",
+]);
 
 export interface KeelsonServerOptions {
   /** Keelson's API, called with the client's own credentials. */
@@ -313,7 +325,7 @@ function alibiView(): string {
  * link and poll.
  */
 export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
-  const codec = createRequestStateCodec<{ requestId: string }>({
+  const codec = createRequestStateCodec<{ tool: string; requestId: string }>({
     key: o.stateKey ?? crypto.getRandomValues(new Uint8Array(32)),
     ttlSeconds: 900,
     // Only the client that started a request may resume it.
@@ -432,21 +444,45 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
    * else, the envelope says to show the link and poll.
    */
   const askUser = async (
+    tool: string,
     ctx: ServerContext,
     message: string,
     make: () => Promise<{ requestId: string; url: string }>,
   ): Promise<CallToolResult | InputRequiredResult> => {
-    const resumed = ctx.mcpReq.requestState<{ requestId: string }>();
-    if (resumed) return requestAnswer(await readRequest(resumed.requestId));
+    const resumed = ctx.mcpReq.requestState<{ tool: string; requestId: string }>();
+    if (resumed) {
+      if (resumed.tool !== tool) throw new Error("This state belongs to another tool.");
+      return requestAnswer(await readRequest(resumed.requestId));
+    }
     const made = await make();
     if (opensUrls(server, ctx)) {
       return inputRequired({
         inputRequests: { approve: inputRequired.elicitUrl({ message, url: made.url }) },
-        requestState: await codec.mint({ requestId: made.requestId }, ctx),
+        requestState: await codec.mint({ tool, requestId: made.requestId }, ctx),
       });
     }
-    return requestAnswer(await readRequest(made.requestId));
+    // The request exists now: whatever happens next, the agent polls it, never asks again.
+    try {
+      return requestAnswer(await readRequest(made.requestId));
+    } catch {
+      return polling(made.requestId);
+    }
   };
+
+  /** A request whose state could not be read yet: poll it. */
+  const polling = (requestId: string): CallToolResult =>
+    envelope(
+      "pending_approval",
+      {
+        action: "poll",
+        tool: "keelson.get_request",
+        arguments: { requestId },
+        afterSeconds: 5,
+        say: "The request was made. Poll keelson.get_request for its link and the user's answer.",
+      },
+      "The request was made; its state could not be read yet.",
+      { requestId },
+    );
 
   server.registerTool(
     "keelson.compile_mandate",
@@ -546,6 +582,7 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
           currency: "USD",
         }).format(totalMinor / 100);
         const answered = await askUser(
+          "keelson.request_mandate",
           ctx,
           `${name} asks to spend up to ${amount}. Review it and approve with your passkey.`,
           async () => {
@@ -636,30 +673,35 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
     },
     async ({ mandateId, note, perPurchaseMinor, totalMinor, until }, ctx) => {
       try {
-        return await askUser(ctx, `Your agent asks for more room: ${note}`, async () => {
-          const limits = {
-            ...(perPurchaseMinor === undefined ? {} : { perPurchaseMinor }),
-            ...(totalMinor === undefined ? {} : { totalMinor }),
-            ...(until === undefined ? {} : { until }),
-          };
-          try {
-            const res = await call(
-              keelson,
-              `/v1/mandates/${mandateId}/changes`,
-              post({ note, limits }),
-            );
-            const auth = (await res.json()) as {
-              request_id: string;
-              verification_uri_complete: string;
+        return await askUser(
+          "keelson.request_mandate_change",
+          ctx,
+          `Your agent asks for more room: ${note}`,
+          async () => {
+            const limits = {
+              ...(perPurchaseMinor === undefined ? {} : { perPurchaseMinor }),
+              ...(totalMinor === undefined ? {} : { totalMinor }),
+              ...(until === undefined ? {} : { until }),
             };
-            return { requestId: auth.request_id, url: auth.verification_uri_complete };
-          } catch (err) {
-            // Asked already: the open request is the answer.
-            const open = err instanceof KeelsonError ? err.problem.requestId : undefined;
-            if (typeof open !== "string") throw err;
-            return { requestId: open, url: (await readRequest(open)).approvalUrl };
-          }
-        });
+            try {
+              const res = await call(
+                keelson,
+                `/v1/mandates/${mandateId}/changes`,
+                post({ note, limits }),
+              );
+              const auth = (await res.json()) as {
+                request_id: string;
+                verification_uri_complete: string;
+              };
+              return { requestId: auth.request_id, url: auth.verification_uri_complete };
+            } catch (err) {
+              // Asked already: the open request is the answer.
+              const open = err instanceof KeelsonError ? err.problem.requestId : undefined;
+              if (typeof open !== "string") throw err;
+              return { requestId: open, url: (await readRequest(open)).approvalUrl };
+            }
+          },
+        );
       } catch (err) {
         return failed(err, "keelson.request_mandate_change");
       }
@@ -928,14 +970,16 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
       arguments: { purchaseId: p.id },
       afterSeconds: 5,
     };
-    if (p.state === "CAPTURED") {
+    if (CAPTURED_OR_AFTER.has(p.state)) {
       return envelope(
         "success",
         {
           action: "tell_user",
           say: `Bought. PayPal captured it; its Alibi is at keelson.get_alibi ${p.id}.`,
         },
-        `Purchase ${p.id} is captured.`,
+        p.state === "CAPTURED"
+          ? `Purchase ${p.id} is captured.`
+          : `Purchase ${p.id} was captured; it is now ${p.state}.`,
         { ...fields, outcome: "known" },
       );
     }
@@ -1048,9 +1092,16 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
         ...scopes("countersign:write"),
       },
       async ({ mandateId, evidenceRoot, cart, agentId, repeatOf }, ctx) => {
-        const resumed = ctx.mcpReq.requestState<{ requestId: string }>();
+        const resumed = ctx.mcpReq.requestState<{ tool: string; requestId: string }>();
+        // Once the countersign is sent, its outcome is polled, never sent again.
+        let sent: string | undefined;
         try {
-          if (resumed) return requestAnswer(await readRequest(resumed.requestId));
+          if (resumed) {
+            if (resumed.tool !== "keelson.request_countersign") {
+              throw new Error("This state belongs to another tool.");
+            }
+            return requestAnswer(await readRequest(resumed.requestId));
+          }
           const mandate = (await listMandates(agentId)).find((m) => m.id === mandateId);
           if (!mandate) throw new Error(`Mandate ${mandateId} is not active for this operator.`);
           if (mandate.holdMode !== "mandate" || mandate.authorizationId === null) {
@@ -1065,6 +1116,7 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
           );
           const value = toPayPalValue({ currency: cart.currency as CurrencyCode, minor: total });
           let purchaseId = requestId;
+          sent = requestId;
           let approval: { request_id?: string; verification_uri_complete?: string } | undefined;
           try {
             const res = await call(
@@ -1098,7 +1150,10 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
           } catch (err) {
             if (!(err instanceof KeelsonError)) throw err;
             // A retry after a lost answer: the purchase already made of this cart is the answer.
-            if (err.type === "purchase-exists" && err.purchaseId) purchaseId = err.purchaseId;
+            if (err.type === "purchase-exists" && err.purchaseId) {
+              purchaseId = err.purchaseId;
+              sent = purchaseId;
+            }
             // Above the user's ask-me amount: paused before any TEE saw it.
             else if (err.type === "approval-required") {
               approval = err.problem.approval as typeof approval;
@@ -1115,7 +1170,10 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
                     url: approval.verification_uri_complete,
                   }),
                 },
-                requestState: await codec.mint({ requestId: id }, ctx),
+                requestState: await codec.mint(
+                  { tool: "keelson.request_countersign", requestId: id },
+                  ctx,
+                ),
               });
             }
             return requestAnswer(await readRequest(id));
@@ -1131,6 +1189,26 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
             throw new Error(`Purchase ${purchaseId} could not be read; poll keelson.get_purchase.`);
           return purchaseAnswer(p);
         } catch (err) {
+          // A refusal answered before anything ran may be retried; anything after the send is polled.
+          const refused =
+            err instanceof KeelsonError &&
+            err.status >= 400 &&
+            err.status < 500 &&
+            err.status !== 429;
+          if (sent && !refused) {
+            return envelope(
+              "error",
+              {
+                action: "poll",
+                tool: "keelson.get_purchase",
+                arguments: { purchaseId: sent },
+                afterSeconds: 30,
+                say: "The countersign was sent and its outcome is not known yet. Don't send it again; poll keelson.get_purchase.",
+              },
+              err instanceof Error ? err.message : String(err),
+              { purchaseId: sent, outcome: "unknown", retryable: false },
+            );
+          }
           return failed(err, "keelson.request_countersign");
         }
       },

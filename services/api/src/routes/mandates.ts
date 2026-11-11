@@ -460,6 +460,10 @@ export function registerMandates(
         !request ||
         (request.userId !== null && request.userId !== userId) ||
         (request.kind === "once" && (parent?.state !== "ACTIVE" || parent.revokeRequestedAt)) ||
+        (kindOf(request) === "change" &&
+          (!parent ||
+            !(REVOCABLE as readonly string[]).includes(parent.state) ||
+            parent.revokeRequestedAt)) ||
         (request.parentMandateId !== null && parent?.userId !== userId)
       ) {
         return problem(
@@ -637,6 +641,13 @@ export function registerMandates(
             )
             .returning({ id: agentConnections.id });
           if (approved.length !== 1) throw new RequestClosed();
+          // A change replaces its mandate: countersigns under the old one stop with this commit.
+          if (kindOf(request) === "change" && request.parentMandateId) {
+            await tx
+              .update(mandates)
+              .set({ revokeRequestedAt: sql`coalesce(${mandates.revokeRequestedAt}, now())` })
+              .where(eq(mandates.id, request.parentMandateId));
+          }
         }
       });
     } catch (err) {
@@ -670,7 +681,7 @@ export function registerMandates(
         request.id,
         { type: "connection.approved", userCode: request.userCode, mandateId: m.mid },
       );
-      // A change replaces the mandate it changes: that one stops now and its hold is released.
+      // Its hold is released now; the sweeper voids it if PayPal is down.
       if (kindOf(request) === "change" && request.parentMandateId) {
         const parent = await queries.mandateById(request.parentMandateId);
         if (parent && (REVOCABLE as readonly string[]).includes(parent.state)) {

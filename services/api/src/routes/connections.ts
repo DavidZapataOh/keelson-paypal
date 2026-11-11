@@ -18,6 +18,7 @@ import { agentBond, operatorAgent } from "../compile-sources.ts";
 import {
   type Connection,
   deviceAuthorization,
+  grantOf,
   hashDeviceCode,
   kindOf,
   matchOptions,
@@ -137,7 +138,10 @@ const Approved = z
 export const ConnectionView = z
   .object({
     code: z.string(),
-    kind: z.enum(["connect", "once"]),
+    kind: z.enum(["connect", "once", "change"]).openapi({
+      description:
+        "`connect`: standing limits. `once`: one cart its mandate does not allow. `change`: new limits that replace `parent`, whose hold is released.",
+    }),
     state: z.enum(["PENDING", "APPROVED", "DENIED", "EXPIRED"]),
     name: z.string(),
     reason: z.string(),
@@ -158,7 +162,9 @@ export const ConnectionView = z
       .object({
         mandateId: z.string(),
         perPurchaseMinor: z.string(),
+        totalMinor: z.string(),
         remainingMinor: z.string(),
+        until: z.string(),
       })
       .nullable(),
     mandateId: z.string().nullable(),
@@ -400,6 +406,17 @@ const draft = createRoute({
   },
 });
 
+/** What a signed mandate grants, or undefined when it is not signed. */
+function parentGrant(m: typeof mandates.$inferSelect) {
+  try {
+    return m.payloadSd && m.disclosures
+      ? grantOf(decodeMandate(m.payloadSd as Record<string, unknown>, m.disclosures))
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** A request as the approval pages read it. */
 export async function connectionView(
   db: Deps["db"],
@@ -415,7 +432,7 @@ export async function connectionView(
   const expired = request.state === "PENDING" && request.expiresAt.getTime() <= Date.now();
   return {
     code: request.userCode,
-    kind: request.kind,
+    kind: kindOf(request),
     state: expired ? ("EXPIRED" as const) : request.state,
     name: request.name,
     reason: request.reason,
@@ -438,8 +455,10 @@ export async function connectionView(
     parent: parent
       ? {
           mandateId: parent.id,
-          perPurchaseMinor: parent.maxMinor.toString(),
+          perPurchaseMinor: (parentGrant(parent)?.perPurchaseMinor ?? parent.maxMinor).toString(),
+          totalMinor: parent.maxMinor.toString(),
           remainingMinor: parent.remainingMinor.toString(),
+          until: parent.expiresAt.toISOString(),
         }
       : null,
     mandateId: request.mandateId,
