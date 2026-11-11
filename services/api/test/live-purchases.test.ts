@@ -1,5 +1,8 @@
+// Loads reflect-metadata before @keelson/alibi/verify pulls in @keelson/attest (see tee/attest.ts).
+import "../src/tee/attest.ts";
 import { randomBytes } from "node:crypto";
 import { decodeAlibi, leafHashOf } from "@keelson/alibi";
+import { verifyAlibi } from "@keelson/alibi/verify";
 import { alibis, eq, mandates, purchases, sql, user } from "@keelson/db";
 import { pino } from "pino";
 import { ulid } from "ulid";
@@ -110,8 +113,11 @@ const f = fixtures[0];
 
 describe.skipIf(!f)("live Alibis are public", () => {
   const b = f?.bundle as NonNullable<typeof f>["bundle"];
+  let owner: string;
   beforeAll(async () => {
     const mandateId = await channel3Mandate();
+    const [m] = await testDb.select().from(mandates).where(eq(mandates.id, mandateId));
+    owner = m?.userId as string;
     const c = b.tee.countersign;
     await testDb.insert(purchases).values({
       id: b.alibi_id,
@@ -143,6 +149,36 @@ describe.skipIf(!f)("live Alibis are public", () => {
     expect(res.status).toBe(200);
     const bundle = decodeAlibi(new Uint8Array(await res.arrayBuffer()));
     expect(bundle.paypal.transaction_id).toBe("5MC585209K746392H");
+  });
+
+  test("the public copy withholds the user's login id and risk data, and verifies", async () => {
+    const names = (ds: string[]) =>
+      ds.map((d) => JSON.parse(Buffer.from(d, "base64url").toString())[1]);
+    expect(names(b.mandate.disclosures)).toContain("app_login_id");
+    const res = await app.request(`/v1/alibis/${b.alibi_id}`);
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    const pub = decodeAlibi(bytes);
+    for (const shown of [pub.mandate.disclosures, pub.mandate.sd_jwt.split("~").slice(3, -1)]) {
+      expect(names(shown)).not.toContain("app_login_id");
+      expect(names(shown)).not.toContain("risk_data");
+    }
+    const login = b.mandate.disclosures.find((d) => names([d])[0] === "app_login_id") as string;
+    const email = JSON.parse(Buffer.from(login, "base64url").toString())[2] as string;
+    expect(Buffer.from(bytes).toString()).not.toContain(email);
+    const pdf = await app.request(`/v1/alibis/${b.alibi_id}.pdf`);
+    expect(pdf.status).toBe(200);
+    expect(Buffer.from(await pdf.arrayBuffer()).toString("latin1")).not.toContain(login);
+    const report = await verifyAlibi(pub);
+    expect(report.checks.filter((c) => c.status === "fail")).toEqual([]);
+  });
+
+  test("the mandate's user still reads the whole Alibi", async () => {
+    const res = await app.request(`/v1/alibis/${b.alibi_id}`, {
+      headers: { "x-test-principal": JSON.stringify({ kind: "user", subject: owner }) },
+    });
+    expect(res.status).toBe(200);
+    const full = decodeAlibi(new Uint8Array(await res.arrayBuffer()));
+    expect(full.mandate.disclosures).toEqual(b.mandate.disclosures);
   });
 
   test("the live purchases list names the store, the amount and the transaction", async () => {

@@ -12,6 +12,7 @@ import {
 import { renderAlibiPdf } from "@keelson/alibi/pdf";
 import { verifyAlibi } from "@keelson/alibi/verify";
 import { and, eq, evidenceBundles, mandates, purchases, user } from "@keelson/db";
+import { isPersonalDisclosure, withholdPersonal } from "@keelson/mandate";
 import type { Context } from "hono";
 import { loadAlibi } from "../alibi/issue.ts";
 import type { Deps } from "../app.ts";
@@ -154,27 +155,30 @@ const verifyRoute = createRoute({
 });
 
 /**
- * Whether the principal is the mandate's user or the client that uploaded the evidence. The
- * Alibi of a live purchase is public once its PayPal transaction is recorded; a live cart denied
- * before any payment is public when it is one of Keelson's own test runs ({@link publicDenial}).
+ * What the principal may read of the Alibi: all of it when it is the mandate's user or the client
+ * that uploaded the evidence; its public copy when it is the Alibi of a live purchase whose PayPal
+ * transaction is recorded, or of a live cart denied in one of Keelson's own test runs
+ * ({@link publicDenial}); nothing otherwise.
  */
-async function mayRead(
+async function access(
   deps: Pick<Deps, "db" | "demoAgentId">,
   principal: Principal | undefined,
   b: AlibiBundle,
-) {
-  if (b.paypal.transaction_id !== undefined) return true;
+): Promise<"full" | "public" | null> {
+  if (principal && (await isOwner(deps, principal, b))) return "full";
+  if (b.paypal.transaction_id !== undefined) return "public";
   const denial = publicDenial(deps.demoAgentId);
-  if (denial) {
-    const [p] = await deps.db
-      .select({ id: purchases.id })
-      .from(purchases)
-      .innerJoin(mandates, eq(mandates.id, purchases.mandateId))
-      .innerJoin(user, eq(user.id, mandates.userId))
-      .where(and(eq(purchases.id, b.alibi_id), denial));
-    if (p) return true;
-  }
-  if (!principal) return false;
+  if (!denial) return null;
+  const [p] = await deps.db
+    .select({ id: purchases.id })
+    .from(purchases)
+    .innerJoin(mandates, eq(mandates.id, purchases.mandateId))
+    .innerJoin(user, eq(user.id, mandates.userId))
+    .where(and(eq(purchases.id, b.alibi_id), denial));
+  return p ? "public" : null;
+}
+
+async function isOwner(deps: Pick<Deps, "db">, principal: Principal, b: AlibiBundle) {
   if (principal.kind === "user") {
     const [row] = await deps.db
       .select({ userId: mandates.userId })
@@ -196,6 +200,21 @@ async function mayRead(
     row?.uploadedBy === principal.subject &&
     (row.clientId === null || row.clientId === principal.subject)
   );
+}
+
+/**
+ * The public copy of an Alibi: the mandate presented without the user's login id and risk data.
+ * Their digests stay in the signed payload, so the copy verifies as the original does.
+ */
+function publicCopy(b: AlibiBundle): AlibiBundle {
+  return {
+    ...b,
+    mandate: {
+      ...b.mandate,
+      sd_jwt: withholdPersonal(b.mandate.sd_jwt),
+      disclosures: b.mandate.disclosures.filter((d) => !isPersonalDisclosure(d)),
+    },
+  };
 }
 
 const etagOf = (bundle: Uint8Array, kind: string) =>
@@ -228,7 +247,8 @@ export function registerAlibis(
 ): void {
   const readable = async (c: Context, id: string) => {
     const b = await loadAlibi(deps.db, id);
-    return b && (await mayRead(deps, c.get("principal"), b)) ? b : null;
+    const level = b && (await access(deps, c.get("principal"), b));
+    return level === "full" ? b : level === "public" ? publicCopy(b as AlibiBundle) : null;
   };
   const missing = (c: Context) =>
     problem(c, 404, "alibi-not-found", "Not found", "No alibi with this id.");
