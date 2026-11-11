@@ -7,15 +7,19 @@ import {stdJson} from "forge-std/StdJson.sol";
 
 /// @notice Deploys the `EngineProofVerifier` over the chain's SP1 Groth16 verifier gateway, for the engine program's
 /// verifying key in `test/vectors/engine-proof.json`.
+/// @dev The verifier is immutable: a new program is recorded as `EngineProofVerifier` at the CREATE3 address of a new
+/// `VERSION`, and the verifier of the earlier program keeps its own address and the proofs it recorded.
 contract DeployEngineProofVerifier is KeelsonDeploy {
     using stdJson for string;
 
     string internal constant NAME = "EngineProofVerifier";
+    /// @notice The program that reads a mandate's optional `embed`.
+    string public constant VERSION = "EngineProofVerifier/2";
 
     function run() external returns (EngineProofVerifier verifier) {
         vm.startBroadcast(_owner());
         _ensureDeployer();
-        verifier = EngineProofVerifier(_deploy(NAME, type(EngineProofVerifier).creationCode, args()));
+        verifier = EngineProofVerifier(_deployVersion(NAME, VERSION, type(EngineProofVerifier).creationCode, args()));
         vm.stopBroadcast();
     }
 
