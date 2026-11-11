@@ -115,6 +115,17 @@ sol! {
         uint40 issuedAt;
     }
 
+    struct WebFact {
+        bytes32 hostHash;
+        bytes32 urlPathHash;
+        uint40 tCapture;
+        bytes32 rangeCommitment;
+        bytes32 attId;
+    }
+}
+
+#[cfg(feature = "statement")]
+sol! {
     struct CardSettlement {
         bytes32 requestId;
         bytes32 cardRef;
@@ -124,14 +135,6 @@ sol! {
         uint8 status;
         uint40 settledAt;
         uint40 observedAt;
-    }
-
-    struct WebFact {
-        bytes32 hostHash;
-        bytes32 urlPathHash;
-        uint40 tCapture;
-        bytes32 rangeCommitment;
-        bytes32 attId;
     }
 }
 
