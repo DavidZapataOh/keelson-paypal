@@ -170,7 +170,13 @@ export class PayGate {
       Math.max(...read.minor) > total.minor ||
       !cartOk
     ) {
-      const next = cartOk ? requote(total, read) : undefined;
+      let next: CheckoutTotal | undefined;
+      try {
+        next = cartOk ? requote(total, read) : undefined;
+      } catch {
+        // A part PayPal cannot write, or out of range: no re-quote, the page stays held.
+        next = undefined;
+      }
       this.#requote = next && next.minor !== total.minor ? next : undefined;
       this.held.push({
         locale: read.locale || null,

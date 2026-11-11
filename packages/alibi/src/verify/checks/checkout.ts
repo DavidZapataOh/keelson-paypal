@@ -15,8 +15,10 @@ import { isBundle, UNDISCLOSED } from "./util.ts";
  * The checkout total the countersign names, with its breakdown: the disclosed `api.checkout`
  * item is the PayPal amount the legs evaluated, the evidence root binds it, its items are the
  * disclosed cart's, its parts add up to its value, and that value and currency are the
- * countersign's `amount` and `currency`. An `api.checkout` item the manifest holds but the Alibi
- * leaves out is undisclosed; a purchase countersigned before the item existed has none.
+ * countersign's `amount` and `currency`. How the total splits into tax and shipping is the agent's
+ * reading of the store's checkout, checked here for its arithmetic only. An `api.checkout` item
+ * the manifest holds but the Alibi leaves out, or one disclosed without its cart, is undisclosed;
+ * a purchase countersigned before the item existed has none.
  */
 export const checkout: CheckDef = {
   id: "evidence.checkout",
@@ -30,6 +32,7 @@ export const checkout: CheckDef = {
         ? { status: "undisclosed", reads: ["/checkout", "/manifest/public/items"] }
         : { status: "absent", reads: ["/checkout"] };
     }
+    if (input.cart === undefined) return { status: "undisclosed", reads: ["/cart"] };
     const i = input.manifest.disclosures.findIndex((d) => d.type === "api.checkout");
     expect(
       toHex(sha256(new TextEncoder().encode(jcs(amount as Json)))) ===

@@ -1474,7 +1474,8 @@ components:
             the checkout charges them, `tax_total`, `shipping` and `discount`.
             Keelson countersigns `amount.value`, which must be `item_total +
             tax_total + shipping − discount`, and checks it against the
-            mandate's budget."
+            mandate's budget. `handling`, `insurance` and `shipping_discount`
+            are refused: fold them into `shipping`."
         evidence:
           type: object
           additionalProperties:

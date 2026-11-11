@@ -71,7 +71,7 @@ describe("the checkout total of an Alibi", () => {
     const more = toPayPalAmount(checkoutTotal("USD", { items: 590, tax: 21 }));
     expect((await run(bundle({ checkout: more, amount: "611" }))).reason).toMatch(/cart/);
     expect((await run(bundle({ checkout: more, amount: "611", withCart: false }))).status).toBe(
-      "pass",
+      "undisclosed",
     );
   });
 

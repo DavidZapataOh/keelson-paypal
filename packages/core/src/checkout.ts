@@ -91,8 +91,10 @@ export function checkoutTotal(
     if (!Number.isSafeInteger(t[k]) || t[k] < 0) fail(`${k} is not a whole amount`);
     write(currency as CurrencyCode, t[k]);
   }
-  t.minor = t.items + t.tax + t.shipping - t.discount;
-  if (!Number.isSafeInteger(t.minor) || t.minor < 0) fail("the total is not a whole amount");
+  const minor = BigInt(t.items) + BigInt(t.tax) + BigInt(t.shipping) - BigInt(t.discount);
+  if (minor < 0n || minor > BigInt(Number.MAX_SAFE_INTEGER))
+    fail("the total is not a whole amount");
+  t.minor = Number(minor);
   write(currency as CurrencyCode, t.minor);
   return t;
 }
@@ -150,8 +152,8 @@ export function fromPayPalAmount(amount: unknown, cart?: Cart): CheckoutTotal {
   const t = checkoutTotal(currency, parts);
   if (t.minor !== value) fail("the breakdown does not add up to the value");
   if (cart) {
-    const items = cart.lines.reduce((sum, l) => sum + l.qty * l.unit_minor, 0);
-    if (items !== t.items) fail("the item total is not the cart's");
+    const items = cart.lines.reduce((sum, l) => sum + BigInt(l.qty) * BigInt(l.unit_minor), 0n);
+    if (items !== BigInt(t.items)) fail("the item total is not the cart's");
   }
   return t;
 }

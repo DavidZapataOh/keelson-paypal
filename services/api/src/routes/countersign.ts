@@ -114,7 +114,7 @@ const Body = z
       .refine((unit) => bytes(unit) <= MAX_UNIT_BYTES, "The purchase unit is too large.")
       .openapi({
         description:
-          "The PayPal purchase unit the cart is checked against: `{amount}`, the checkout total the buyer pays as a PayPal Orders v2 amount, whose `breakdown` has the `item_total` of the cart's lines and, when the checkout charges them, `tax_total`, `shipping` and `discount`. Keelson countersigns `amount.value`, which must be `item_total + tax_total + shipping − discount`, and checks it against the mandate's budget.",
+          "The PayPal purchase unit the cart is checked against: `{amount}`, the checkout total the buyer pays as a PayPal Orders v2 amount, whose `breakdown` has the `item_total` of the cart's lines and, when the checkout charges them, `tax_total`, `shipping` and `discount`. Keelson countersigns `amount.value`, which must be `item_total + tax_total + shipping − discount`, and checks it against the mandate's budget. `handling`, `insurance` and `shipping_discount` are refused: fold them into `shipping`.",
       }),
     evidence: z
       .record(z.string(), z.array(z.string().max(MAX_STRING)).max(MAX_SOURCES))
