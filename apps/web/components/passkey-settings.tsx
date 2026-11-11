@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError, del, get } from "../lib/api";
 import { authClient } from "../lib/auth";
 import { addPasskey, localPasskeys, type Passkey } from "../lib/passkeys";
+import { AppShell } from "./app-shell";
 import { ErrorNotice, Eyebrow } from "./notice";
 
 const added = new Intl.DateTimeFormat("en-US", { dateStyle: "medium" });
@@ -100,88 +101,90 @@ export function PasskeySettings() {
   const last = passkeys?.length === 1;
 
   return (
-    <div className="grid max-w-2xl gap-8">
-      <div className="grid gap-3">
-        <Eyebrow>Account</Eyebrow>
-        <h1 className="text-balance font-semibold text-3xl tracking-[-0.03em]">Passkeys</h1>
-        <p className="text-pretty text-muted-foreground">
-          Any of your passkeys signs you in and signs your mandates. Add one on each device you sign
-          from. You keep at least one.
-        </p>
-      </div>
-
-      {passkeys === undefined ? (
-        error ? null : (
-          <p role="status" className="sr-only">
-            Loading…
+    <AppShell>
+      <div className="grid max-w-2xl gap-8">
+        <div className="grid gap-3">
+          <Eyebrow>Account</Eyebrow>
+          <h1 className="text-balance font-semibold text-3xl tracking-[-0.03em]">Passkeys</h1>
+          <p className="text-pretty text-muted-foreground">
+            Any of your passkeys signs you in and signs your mandates. Add one on each device you
+            sign from. You keep at least one.
           </p>
-        )
-      ) : (
-        <ul className="divide-y divide-border rounded-lg border">
-          {passkeys.map((p) => (
-            <li key={p.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
-              <div className="mr-auto grid gap-0.5">
-                <span className="flex items-center gap-2 font-medium">
-                  {p.name ?? "Passkey"}
-                  {here.has(p.credentialId) ? <Badge variant="outline">This device</Badge> : null}
-                </span>
-                <span className="font-mono text-muted-foreground text-xs">
-                  {p.createdAt ? `Added ${added.format(new Date(p.createdAt))}` : "Added earlier"}
-                </span>
-              </div>
-              {confirming === p.id ? (
-                <div className="flex gap-2">
-                  <Button disabled={busy !== undefined} onClick={() => remove(p.id)}>
-                    {busy === p.id ? "Removing…" : "Remove"}
-                  </Button>
-                  <Button variant="outline" onClick={() => setConfirming(undefined)}>
-                    Keep
-                  </Button>
+        </div>
+
+        {passkeys === undefined ? (
+          error ? null : (
+            <p role="status" className="sr-only">
+              Loading…
+            </p>
+          )
+        ) : (
+          <ul className="divide-y divide-border rounded-lg border">
+            {passkeys.map((p) => (
+              <li key={p.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+                <div className="mr-auto grid gap-0.5">
+                  <span className="flex items-center gap-2 font-medium">
+                    {p.name ?? "Passkey"}
+                    {here.has(p.credentialId) ? <Badge variant="outline">This device</Badge> : null}
+                  </span>
+                  <span className="font-mono text-muted-foreground text-xs">
+                    {p.createdAt ? `Added ${added.format(new Date(p.createdAt))}` : "Added earlier"}
+                  </span>
                 </div>
-              ) : (
-                <Button
-                  variant="outline"
-                  disabled={last || busy !== undefined}
-                  title={last ? "Add another passkey before removing this one." : undefined}
-                  onClick={() => setConfirming(p.id)}
-                >
-                  Remove
+                {confirming === p.id ? (
+                  <div className="flex gap-2">
+                    <Button disabled={busy !== undefined} onClick={() => remove(p.id)}>
+                      {busy === p.id ? "Removing…" : "Remove"}
+                    </Button>
+                    <Button variant="outline" onClick={() => setConfirming(undefined)}>
+                      Keep
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    variant="outline"
+                    disabled={last || busy !== undefined}
+                    title={last ? "Add another passkey before removing this one." : undefined}
+                    onClick={() => setConfirming(p.id)}
+                  >
+                    Remove
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {stale ? (
+          <div className="grid gap-3 rounded-lg border p-4">
+            <p className="text-pretty">
+              {judge
+                ? "To change your passkeys, confirm it's you: sign in again with a passkey you have."
+                : "To change your passkeys, confirm it's you: sign in again with a passkey you have, or with PayPal."}
+            </p>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button onClick={reauthWithPasskey} disabled={busy !== undefined}>
+                {busy === "reauth" ? "Waiting for your passkey…" : "Use a passkey"}
+              </Button>
+              {judge ? null : (
+                <Button variant="outline" onClick={reauthWithPayPal} disabled={busy !== undefined}>
+                  Continue with PayPal
                 </Button>
               )}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {stale ? (
-        <div className="grid gap-3 rounded-lg border p-4">
-          <p className="text-pretty">
-            {judge
-              ? "To change your passkeys, confirm it's you: sign in again with a passkey you have."
-              : "To change your passkeys, confirm it's you: sign in again with a passkey you have, or with PayPal."}
-          </p>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <Button onClick={reauthWithPasskey} disabled={busy !== undefined}>
-              {busy === "reauth" ? "Waiting for your passkey…" : "Use a passkey"}
-            </Button>
-            {judge ? null : (
-              <Button variant="outline" onClick={reauthWithPayPal} disabled={busy !== undefined}>
-                Continue with PayPal
-              </Button>
-            )}
+            </div>
           </div>
-        </div>
-      ) : (
-        <Button
-          size="lg"
-          onClick={add}
-          disabled={passkeys === undefined || busy !== undefined}
-          className="sm:w-fit"
-        >
-          {busy === "add" ? "Waiting for your device…" : "Add a passkey on this device"}
-        </Button>
-      )}
-      {error ? <ErrorNotice>{error}</ErrorNotice> : null}
-    </div>
+        ) : (
+          <Button
+            size="lg"
+            onClick={add}
+            disabled={passkeys === undefined || busy !== undefined}
+            className="sm:w-fit"
+          >
+            {busy === "add" ? "Waiting for your device…" : "Add a passkey on this device"}
+          </Button>
+        )}
+        {error ? <ErrorNotice>{error}</ErrorNotice> : null}
+      </div>
+    </AppShell>
   );
 }
