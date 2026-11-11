@@ -14,6 +14,7 @@ import {
   isNotNull,
   isNull,
   lt,
+  lte,
   mandates,
   ne,
   or,
@@ -58,8 +59,12 @@ export const REQUEST_CLAIM = "requesting";
 const RECORD_ATTEMPTS = 2;
 /** The `proveEngine` workflow task's timeout: no run holds a purchase it attempted longer ago. */
 export const ENGINE_RUN_MS = 60 * 60 * 1000;
+/** How many runs the sweep starts for one purchase before giving its proof up. */
+export const ENGINE_RESUMES = 3;
+/** The prover's download. */
+const DOWNLOAD_TIMEOUT_MS = 60_000;
 /** How long a run holds its claim: the prover's download, the free check and the request. */
-const CLAIM_MS = EXECUTE_TIMEOUT_MS + REQUEST_TIMEOUT_MS + 60_000;
+const CLAIM_MS = DOWNLOAD_TIMEOUT_MS + EXECUTE_TIMEOUT_MS + REQUEST_TIMEOUT_MS;
 
 /** The `CountersignInput` the SP1 program reads, as JSON. */
 interface CountersignInput {
@@ -151,7 +156,10 @@ async function prover(): Promise<string> {
   ) {
     return path;
   }
-  const res = await fetch(ENGINE_PROVER.url, { redirect: "follow" });
+  const res = await fetch(ENGINE_PROVER.url, {
+    redirect: "follow",
+    signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+  });
   if (!res.ok) throw new Error(`engine prover download: ${res.status}`);
   const bytes = Buffer.from(await res.arrayBuffer());
   const sha256 = createHash("sha256").update(bytes).digest("hex");
@@ -431,34 +439,63 @@ const resumable = and(
   ),
 );
 
+/** Whether a purchase was last attempted before `at`, or never marked by a run. */
+const attemptedBefore = (at: Date) =>
+  or(isNull(purchases.engineAttemptedAt), lt(purchases.engineAttemptedAt, at));
+
 /**
  * Starts `proveEngine` again for every purchase whose proof was paid for, or requested, by a run
  * that is over without recording it. The new run waits for the stored request or records the
- * stored proof, so it never pays again. A claim with no request that outlived its run may have
- * paid, so it is never started again: it is returned as `stuck` and logged as an error, for an
- * operator to clear once the requester's explorer page shows whether a request was made.
+ * stored proof, so it never pays again. A purchase is started at most `ENGINE_RESUMES` times, then
+ * given up on once: it is returned as `abandoned` and logged as an error. A claim with no request
+ * that outlived its run may have paid, so it is never started again: it is returned as `stuck`
+ * and logged as an error, for an operator to clear once the requester's explorer page shows
+ * whether a request was made.
  */
 export async function sweepEngineProofs(
   deps: { db: Db; log: Logger; start: (purchaseId: string, key: string) => Promise<void> },
   now: Date = new Date(),
-): Promise<{ resumed: string[]; stuck: string[] }> {
+): Promise<{ resumed: string[]; abandoned: string[]; stuck: string[] }> {
   const { db, log, start } = deps;
-  const over = new Date(now.getTime() - ENGINE_RUN_MS);
   const stalled = await db
-    .select({ id: purchases.id })
+    .select({ id: purchases.id, resumes: purchases.engineResumes })
     .from(purchases)
-    .where(and(resumable, lt(purchases.engineAttemptedAt, over)));
-  // One start per hour: the run marks the purchase as soon as it begins, and a run that failed
-  // before that is started again in the next hour.
-  const window = Math.floor(now.getTime() / ENGINE_RUN_MS);
+    .where(
+      and(
+        resumable,
+        attemptedBefore(new Date(now.getTime() - ENGINE_RUN_MS)),
+        lte(purchases.engineResumes, ENGINE_RESUMES),
+      ),
+    );
   const resumed: string[] = [];
-  for (const { id } of stalled) {
+  const abandoned: string[] = [];
+  for (const { id, resumes } of stalled) {
+    const counted = and(eq(purchases.id, id), eq(purchases.engineResumes, resumes));
+    if (resumes >= ENGINE_RESUMES) {
+      const [given] = await db
+        .update(purchases)
+        .set({ engineResumes: resumes + 1 })
+        .where(counted)
+        .returning({ id: purchases.id });
+      if (given) {
+        abandoned.push(id);
+        log.error({ purchaseId: id, resumes }, "engine proof given up after its resumed runs");
+      }
+      continue;
+    }
     try {
-      await start(id, `proveEngine:${id}:resume:${window}`);
-      resumed.push(id);
+      // Every API instance starts the same resume under the same key, which Render runs once.
+      await start(id, `proveEngine:${id}:resume:${resumes + 1}`);
     } catch (err) {
       log.warn({ err, purchaseId: id }, "engine proof not resumed");
+      continue;
     }
+    // Marked as attempted now, so a run that has not begun yet is not started twice.
+    await db
+      .update(purchases)
+      .set({ engineResumes: resumes + 1, engineAttemptedAt: now })
+      .where(counted);
+    resumed.push(id);
   }
   const stuck = (
     await db
@@ -469,7 +506,7 @@ export async function sweepEngineProofs(
           isNull(purchases.engineProof),
           isNull(purchases.engineProved),
           eq(purchases.engineRequest, REQUEST_CLAIM),
-          lt(purchases.engineAttemptedAt, new Date(now.getTime() - CLAIM_MS)),
+          attemptedBefore(new Date(now.getTime() - CLAIM_MS)),
         ),
       )
   ).map((r) => r.id);
@@ -479,5 +516,5 @@ export async function sweepEngineProofs(
       "engine proof claim outlived its run: check the requester for a paid request before clearing it",
     );
   }
-  return { resumed, stuck };
+  return { resumed, abandoned, stuck };
 }

@@ -142,6 +142,8 @@ export const purchases = pgTable(
      * resumes it only once no run can still hold it.
      */
     engineAttemptedAt: timestamp({ withTimezone: true }),
+    /** How many runs the engine proof sweep started for this purchase. */
+    engineResumes: integer().notNull().default(0),
     /**
      * What the operator attested about the item the coverage backs, fixed by the first cover
      * attempt: the product page, the amber fields, the salt and their `amberCommitment`.

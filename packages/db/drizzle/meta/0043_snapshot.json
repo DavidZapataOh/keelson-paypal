@@ -1,5 +1,5 @@
 {
-  "id": "f7e12569-cee5-4cfd-8b9d-08a28b061d2e",
+  "id": "6f99fd4f-fd66-4c32-a15f-9aa7e916213c",
   "prevId": "323f36dc-3fa9-4b78-a774-5ea9760de0fa",
   "version": "7",
   "dialect": "postgresql",
@@ -4955,6 +4955,13 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
+        },
+        "engine_resumes": {
+          "name": "engine_resumes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         },
         "amber": {
           "name": "amber",

@@ -3,9 +3,9 @@ import { disputes, eq, purchases } from "@keelson/db";
 import { CHAINS, isChainId } from "@keelson/relayer";
 import type { Deps } from "../app.ts";
 import { ProblemSchema, problem } from "../problem.ts";
-import { REQUEST_CLAIM } from "../zk/engine.ts";
+import { ENGINE_RESUMES, ENGINE_RUN_MS, REQUEST_CLAIM } from "../zk/engine.ts";
 
-/** The `proveEngine` workflow task's single one-hour attempt, plus the queue. */
+/** The first `proveEngine` run's hour, plus the queue, for a proof that was never paid for. */
 const PROVING_MS = 3_600_000;
 
 const Hex32 = z.string().regex(/^0x[0-9a-f]{64}$/);
@@ -81,6 +81,8 @@ export function registerEngineProofs(app: OpenAPIHono, deps: Pick<Deps, "db">): 
         proof: purchases.engineProof,
         proved: purchases.engineProved,
         request: purchases.engineRequest,
+        attemptedAt: purchases.engineAttemptedAt,
+        resumes: purchases.engineResumes,
         disputeId: disputes.id,
         disputedAt: disputes.createdAt,
       })
@@ -94,9 +96,11 @@ export function registerEngineProofs(app: OpenAPIHono, deps: Pick<Deps, "db">): 
     const evalHash = row.countersign.evalHash as string;
     const digest = `0x${Buffer.from(row.digest).toString("hex")}`;
     const p = row.proof;
-    // A paid request or proof is finished by the engine proof sweep, however long it took.
+    // A paid request or proof is finished by the engine proof sweep's runs until it gives it up.
     const resumable =
-      row.proved !== null || (row.request !== null && row.request !== REQUEST_CLAIM);
+      (row.proved !== null || (row.request !== null && row.request !== REQUEST_CLAIM)) &&
+      (row.resumes < ENGINE_RESUMES ||
+        (row.attemptedAt !== null && Date.now() - row.attemptedAt.getTime() < ENGINE_RUN_MS));
     const failed =
       !p &&
       !resumable &&

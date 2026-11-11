@@ -5,7 +5,7 @@ import { ulid } from "ulid";
 import { beforeAll, describe, expect, test } from "vitest";
 import vector from "../../../engine/tee/tests/vectors/countersign-allow.json" with { type: "json" };
 import { createApp } from "../src/app.ts";
-import { engineInputOf, sweepEngineProofs } from "../src/zk/engine.ts";
+import { ENGINE_RESUMES, engineInputOf, sweepEngineProofs } from "../src/zk/engine.ts";
 import { testDb, testKv } from "./setup.ts";
 
 const log = pino({ level: "silent" });
@@ -179,17 +179,18 @@ describe("engine proof sweep", () => {
     return id;
   }
 
-  async function sweep() {
+  async function sweep(at = now, start?: (purchaseId: string) => Promise<void>) {
     const started: { purchaseId: string; key: string }[] = [];
     const result = await sweepEngineProofs(
       {
         db: testDb,
         log,
         start: async (purchaseId, key) => {
+          await start?.(purchaseId);
           started.push({ purchaseId, key });
         },
       },
-      now,
+      at,
     );
     return { ...result, started: started.map((s) => s.purchaseId), keys: started };
   }
@@ -239,6 +240,83 @@ describe("engine proof sweep", () => {
       .from(purchases)
       .where(eq(purchases.id, stuck));
     expect(row?.request).toBe("requesting");
+  });
+
+  test("leaves a run until its hour is over, and resumes a request no run ever marked", async () => {
+    const recent = await stalled({
+      engineRequest: `0x${"12".repeat(32)}`,
+      engineAttemptedAt: minutesAgo(59),
+    });
+    const unmarked = await stalled({ engineRequest: `0x${"34".repeat(32)}` });
+    const { started } = await sweep();
+    expect(started).not.toContain(recent);
+    expect(started).toContain(unmarked);
+  });
+
+  test("starts a resumed run once, under a key of its own, until it is given up", async () => {
+    const id = await stalled({
+      engineRequest: `0x${"56".repeat(32)}`,
+      engineAttemptedAt: minutesAgo(61),
+    });
+    const keys: string[] = [];
+    let at = now;
+    for (let i = 0; i < ENGINE_RESUMES; i++) {
+      const { keys: started } = await sweep(at);
+      const key = started.find((k) => k.purchaseId === id)?.key;
+      if (key) keys.push(key);
+      // The started run dies at once; the next sweep comes five minutes later, then an hour later.
+      const soon = await sweep(new Date(at.getTime() + 5 * 60_000));
+      expect(soon.started).not.toContain(id);
+      at = new Date(at.getTime() + 61 * 60_000);
+    }
+    expect(keys).toHaveLength(ENGINE_RESUMES);
+    expect(new Set(keys).size).toBe(ENGINE_RESUMES);
+    const last = await sweep(at);
+    expect(last.started).not.toContain(id);
+    expect(last.abandoned).toContain(id);
+    // Given up on once: the error is not repeated on every sweep.
+    expect((await sweep(new Date(at.getTime() + 5 * 60_000))).abandoned).not.toContain(id);
+  });
+
+  test("tries a run again when Render did not start it", async () => {
+    const id = await stalled({
+      engineRequest: `0x${"78".repeat(32)}`,
+      engineAttemptedAt: minutesAgo(61),
+    });
+    await sweep(now, async (purchaseId) => {
+      if (purchaseId === id) throw new Error("render is down");
+    });
+    expect((await sweep()).started).toContain(id);
+  });
+
+  test("never flags a claim whose proof was paid for or recorded", async () => {
+    const paid = await stalled({
+      engineRequest: "requesting",
+      engineProved: proved,
+      engineAttemptedAt: minutesAgo(20),
+    });
+    expect((await sweep()).stuck).not.toContain(paid);
+  });
+
+  test("is failed for a bare claim, and for a proof given up on", async () => {
+    const claim = await stalled({ engineRequest: "requesting", engineAttemptedAt: minutesAgo(90) });
+    const givenUp = await stalled({
+      engineRequest: `0x${"9a".repeat(32)}`,
+      engineResumes: ENGINE_RESUMES,
+    });
+    for (const purchaseId of [claim, givenUp]) {
+      await testDb.insert(disputes).values({
+        id: `PP-D-${randomBytes(4).toString("hex")}`,
+        purchaseId,
+        reason: "UNAUTHORISED",
+        raw: {},
+        createdAt: new Date(Date.now() - 8 * 3_600_000),
+      });
+      const body = (await (await app.request(`/v1/engine-proofs/${purchaseId}`)).json()) as {
+        status: string;
+      };
+      expect(body.status).toBe("failed");
+    }
   });
 
   test("keeps a disputed purchase proving while its proof can still be resumed", async () => {
