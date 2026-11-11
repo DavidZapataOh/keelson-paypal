@@ -80,3 +80,53 @@ export function v2Bundle(): AlibiBundleV2 {
     ...(v1.paypal ? { paypal: v1.paypal } : {}),
   };
 }
+
+/** A v2 card purchase: the `card-2of2` statement and its two decisions and settlement, each with a receipt. */
+export function cardV2Bundle(): AlibiBundleV2 {
+  const { paypal, ...base } = v2Bundle();
+  if (!paypal) throw new Error("the base fixture is a PayPal purchase");
+  const statement = hexToBytes(vector("card-2of2").statement_hex);
+  const card = ["card-auth-approve", "card-auth-decline", "card-settlement"].map((n) => vector(n));
+  const withReceipt = (hex: string) => {
+    const s = hexToBytes(hex);
+    return toBase64(transparent(s, [receiptFor(s).receipt]));
+  };
+  const authorizations = card.slice(0, 2).map((v, i) => ({
+    id: `auth_vector_${i}`,
+    amount_minor: v.inputs.facts.amount,
+    currency: "USD",
+    mcc: v.inputs.facts.mcc,
+    merchant_name: "Vector Store",
+    merchant_country: "US",
+    network_id: "vector-merchant",
+    approved: v.inputs.facts.decision === "1",
+    verdicts: v.inputs.legs.map(
+      (l: { kind: "tdx" | "nitro"; signer: string; signature: string }) => ({
+        kind: l.kind,
+        authorization: v.inputs.facts,
+        digest: `0x${v.digest_hex}`,
+        signature: l.signature,
+        signer: l.signer,
+      }),
+    ),
+  }));
+  return {
+    ...base,
+    statement: withReceipt(bytesToHex(statement)),
+    card: {
+      issuer: "lithic",
+      card_token: "card_vector_token",
+      last_four: "4242",
+      ref_salt: paypal.ref_salt,
+      controls: {},
+      authorizations,
+      statements: card.map((v) => withReceipt(v.statement_hex)),
+      settlement: {
+        transaction_token: "txn_vector",
+        settled_minor: card[2].inputs.facts.settledMinor,
+        settled_at: new Date(Number(card[2].inputs.facts.settledAt) * 1000).toISOString(),
+        raw: toBase64(new TextEncoder().encode("issuer transaction response")),
+      },
+    },
+  } as AlibiBundleV2;
+}

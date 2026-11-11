@@ -31,6 +31,7 @@ export type CheckId =
   | "evidence.conversion"
   | "paypal.ids"
   | "card.authorizations"
+  | "card.statements"
   | "scitt.statement"
   | "scitt.receipt"
   | "rats.cmw";

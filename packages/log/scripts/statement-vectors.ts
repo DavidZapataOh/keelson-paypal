@@ -19,7 +19,7 @@ import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { Tag } from "cbor2";
-import { getAddress, type Hex } from "viem";
+import { getAddress, type Hex, keccak256, toHex } from "viem";
 import { cardRefCommit, paypalRefCommit } from "../src/leaf.ts";
 import {
   BRIDGE_CONTENT_TYPE,
@@ -210,8 +210,9 @@ function cardVectors() {
     const facts = {
       requestId: cs.requestId as string,
       countersignDigest: `0x${purchase.countersign_digest_hex}`,
-      authorizationHash: `0x${bytesToHex(sha256(new TextEncoder().encode(`authorization ${name}`)))}`,
-      merchantHash: `0x${bytesToHex(sha256(new TextEncoder().encode("merchant vector")))}`,
+      // As the legs hash the issuer's request: the authorization id, and network id NUL merchant name.
+      authorizationHash: keccak256(toHex(`auth_vector_${name === "card-auth-approve" ? 0 : 1}`)),
+      merchantHash: keccak256(toHex("vector-merchant\0Vector Store")),
       mcc: "5661",
       country: "0x5553",
       amount: "100",

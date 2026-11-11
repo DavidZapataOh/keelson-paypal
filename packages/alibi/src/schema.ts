@@ -119,52 +119,51 @@ const zkSection = z
   })
   .optional();
 
-const cardSection = z
-  .strictObject({
-    issuer: z.string().min(1),
-    /** The issuer's card token; the card number is never kept. */
-    card_token: z.string().min(1),
-    last_four: z.string().regex(/^[0-9]{4}$/),
-    /** The salt of the leaf's payment commitment, which opens to the issuer and card token. */
-    ref_salt: hex32,
-    /** The issuer-side controls the card was issued with. */
-    controls: json,
-    /**
-     * Each card network authorization of the card, with both legs' signed EIP-712
-     * `CardAuthorization`. Reported by the issuer; the legs' signatures are the evidence.
-     */
-    authorizations: z.array(
-      z.strictObject({
-        id: z.string().min(1),
-        amount_minor: decimal,
-        currency: z.string().length(3),
-        mcc: z.string().regex(/^[0-9]{4}$/),
-        merchant_name: z.string(),
-        merchant_country: z.string(),
-        /** The acquirer's id for the merchant, which the legs' `merchantHash` commits to. */
-        network_id: z.string(),
-        approved: z.boolean(),
-        verdicts: z.array(
-          z.strictObject({
-            kind: teeKind,
-            authorization: z.record(z.string(), z.string()),
-            digest: hex32,
-            signature: hex(65),
-            signer: address,
-          }),
-        ),
-      }),
-    ),
-    /** The capture the card network settled, as the issuer reported it. Not signed. */
-    settlement: z
-      .strictObject({
-        transaction_token: z.string(),
-        settled_minor: decimal,
-        settled_at: z.string(),
-      })
-      .optional(),
-  })
-  .optional();
+const cardObject = z.strictObject({
+  issuer: z.string().min(1),
+  /** The issuer's card token; the card number is never kept. */
+  card_token: z.string().min(1),
+  last_four: z.string().regex(/^[0-9]{4}$/),
+  /** The salt of the leaf's payment commitment, which opens to the issuer and card token. */
+  ref_salt: hex32,
+  /** The issuer-side controls the card was issued with. */
+  controls: json,
+  /**
+   * Each card network authorization of the card, with both legs' signed EIP-712
+   * `CardAuthorization`. Reported by the issuer; the legs' signatures are the evidence.
+   */
+  authorizations: z.array(
+    z.strictObject({
+      id: z.string().min(1),
+      amount_minor: decimal,
+      currency: z.string().length(3),
+      mcc: z.string().regex(/^[0-9]{4}$/),
+      merchant_name: z.string(),
+      merchant_country: z.string(),
+      /** The acquirer's id for the merchant, which the legs' `merchantHash` commits to. */
+      network_id: z.string(),
+      approved: z.boolean(),
+      verdicts: z.array(
+        z.strictObject({
+          kind: teeKind,
+          authorization: z.record(z.string(), z.string()),
+          digest: hex32,
+          signature: hex(65),
+          signer: address,
+        }),
+      ),
+    }),
+  ),
+  /** The capture the card network settled, as the issuer reported it. Not signed. */
+  settlement: z
+    .strictObject({
+      transaction_token: z.string(),
+      settled_minor: decimal,
+      settled_at: z.string(),
+    })
+    .optional(),
+});
+const cardSection = cardObject.optional();
 
 const paypalSection = z
   .strictObject({
@@ -314,6 +313,24 @@ const transparentStatement = base64.superRefine((b64, ctx) => {
   }
 });
 
+/**
+ * A v2 card purchase: the same card, plus each decision's and the settlement's own transparent
+ * statement (standard base64) and the issuer's raw transaction response the legs read.
+ */
+const cardSectionV2 = cardObject
+  .extend({
+    statements: z.array(transparentStatement),
+    settlement: z
+      .strictObject({
+        transaction_token: z.string(),
+        settled_minor: decimal,
+        settled_at: z.string(),
+        raw: base64,
+      })
+      .optional(),
+  })
+  .optional();
+
 const cmwRecord = z.tuple([
   z.string(),
   z.string().regex(/^[A-Za-z0-9_-]+$/),
@@ -345,7 +362,7 @@ export const alibiSchemaV2 = z.strictObject({
   web_fact: json.optional(),
   checkout: json.optional(),
   zk: zkSection,
-  card: cardSection,
+  card: cardSectionV2,
   paypal: paypalSection,
 });
 
