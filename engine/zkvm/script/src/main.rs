@@ -57,6 +57,8 @@ struct Proved {
     sp1_version: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     network: Option<NetworkRequest>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    peak_rss_kb: Option<u64>,
 }
 
 /// A request the Succinct Prover Network took. Amounts are PROVE wei.
@@ -67,6 +69,8 @@ struct Requested {
     cycle_limit: u64,
     gas_limit: u64,
     max_cost: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    peak_rss_kb: Option<u64>,
 }
 
 /// A proof request fulfilled by the Succinct Prover Network. Amounts are PROVE wei.
@@ -221,6 +225,7 @@ fn request(stdin: SP1Stdin) {
         cycle_limit,
         gas_limit,
         max_cost: worst.to_string(),
+        peak_rss_kb: peak_rss_kb(),
     });
     std::io::stdout().flush().expect("the request is printed");
 
@@ -333,7 +338,15 @@ fn proved(
         proof_bytes: bytes.len(),
         sp1_version: sp1_sdk::SP1_CIRCUIT_VERSION,
         network,
+        peak_rss_kb: peak_rss_kb(),
     }
+}
+
+/// This process's peak resident memory, where Linux reports it.
+fn peak_rss_kb() -> Option<u64> {
+    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+    let line = status.lines().find(|l| l.starts_with("VmHWM:"))?;
+    line.split_whitespace().nth(1)?.parse().ok()
 }
 
 /// The program's stdin and the public values the native recomputation expects.
