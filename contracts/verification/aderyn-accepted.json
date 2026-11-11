@@ -151,7 +151,7 @@
   },
   {
     "detector": "reentrancy-state-change",
-    "location": "src/LogBond.sol:151",
+    "location": "src/LogBond.sol:149",
     "reason": "The calls before the write are views (STATICCALL) to the immutable Ed25519 verifier and the token's balanceOf, inside nonReentrant; the transfers come after every write."
   }
 ]
