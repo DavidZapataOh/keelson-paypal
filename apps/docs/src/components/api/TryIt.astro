@@ -9,7 +9,7 @@ const verify = op.method === "post" && op.path === "/v1/alibis/verify";
 const path = op.path.replace("{id}", "01M6ZWZJHWRRHQEYNJAT7NMSV8");
 ---
 <div class="tryit" data-tryit data-method={op.method.toUpperCase()} data-url={API + path} data-sample={verify ? "/samples/01M6ZWZJHWRRHQEYNJAT7NMSV8.alibi" : undefined}>
-  <button type="button" class="tryit-send">{verify ? "Send the sample Alibi" : `Send ${op.method.toUpperCase()} ${path}`}</button>
+  <button type="button" class="tryit-send">{verify ? "Send the sample Alibi" : <>Send <code>{op.method.toUpperCase()} {path}</code></>}</button>
   <output class="tryit-out" aria-live="polite"></output>
 </div>
 <script>

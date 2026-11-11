@@ -34,7 +34,9 @@ const columns = [
     ],
   },
 ].filter((c) => c.items.length > 0);
-const command = `curl -sL https://docs.keelson.finance/samples/01M6ZWZJHWRRHQEYNJAT7NMSV8.alibi \\
+const command = `ALIBI=https://docs.keelson.finance/samples/01M6ZWZJHWRRHQEYNJAT7NMSV8.alibi
+
+curl -sL "$ALIBI" \\
 | curl -s https://api.keelson.finance/v1/alibis/verify \\
     -H 'content-type: application/vnd.keelson.alibi.v1+json' \\
     -H "idempotency-key: docs-$RANDOM" --data-binary @- \\

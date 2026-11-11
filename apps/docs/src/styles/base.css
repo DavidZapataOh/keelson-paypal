@@ -116,22 +116,29 @@ kbd {
   font: var(--code-font);
   flex: 1;
 }
+/* Long lines (URLs, headers) wrap inside the panel instead of running past its edge. */
+pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .pane pre {
   counter-reset: line;
   padding: 1rem 0;
 }
 .pane .line {
+  position: relative;
   display: inline-block;
-  min-width: 100%;
-  padding-right: 1.25rem;
+  width: 100%;
+  min-height: 1lh;
+  padding: 0 1.25rem 0 3.5rem;
   transition: background-color var(--reveal) var(--ease);
 }
 .pane .line::before {
   counter-increment: line;
   content: counter(line);
-  display: inline-block;
-  width: 3rem;
-  padding-right: 1rem;
+  position: absolute;
+  left: 0;
+  width: 2.5rem;
   text-align: right;
   color: var(--line-number);
 }

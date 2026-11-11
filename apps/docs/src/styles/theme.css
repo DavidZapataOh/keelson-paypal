@@ -90,8 +90,7 @@ a {
   gap: 2.5rem;
   height: 4rem;
   padding: 0 2rem;
-  background: color-mix(in srgb, var(--ground) 92%, transparent);
-  backdrop-filter: blur(12px);
+  background: var(--ground);
   border-bottom: 1px solid var(--rule);
 }
 .brand {

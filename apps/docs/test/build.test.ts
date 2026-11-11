@@ -72,6 +72,44 @@ describe("the built site", () => {
   });
 });
 
+function htmlFiles(dir = dist()): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((d) =>
+    d.isDirectory()
+      ? htmlFiles(join(dir, d.name))
+      : d.name.endsWith(".html")
+        ? [join(dir, d.name)]
+        : [],
+  );
+}
+/** The page's readable prose: no scripts, styles, code, attributes or tags. */
+const prose = (html: string) =>
+  html
+    .replace(/<(script|style|pre|code)\b[\s\S]*?<\/\1>/g, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&[a-z]+;/g, " ");
+
+describe("the copy", () => {
+  test("writes Alibi as a proper noun", () => {
+    const bad = htmlFiles()
+      .map(
+        (f) =>
+          [
+            f.slice(dist().length),
+            prose(readFileSync(f, "utf8")).match(/(?<![.\w-])alibis?(?![.\w-])/g),
+          ] as const,
+      )
+      .filter(([, m]) => m);
+    expect(bad).toEqual([]);
+  });
+
+  test("shows durations rounded, not with machine precision", () => {
+    const text = prose(
+      read("reference/api/post-v1-alibis-verify/index.html").replace(/<\/?(pre|code)\b[^>]*>/g, ""),
+    );
+    expect(text.match(/\b\d+\.\d{4,}\b/g)).toBeNull();
+  });
+});
+
 describe("Markdoc validation", () => {
   test("an unknown callout type fails the build", () => {
     const page = join(app, "src/content/docs/invalid-callout.mdoc");
