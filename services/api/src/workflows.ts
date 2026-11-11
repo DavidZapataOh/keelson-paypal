@@ -186,8 +186,9 @@ task(
 /**
  * Proves in SP1 that the engine evaluation a disputed purchase was countersigned on gives its
  * `evalHash`, and records the Groth16 proof with `EngineProofVerifier`. The Succinct Prover
- * Network proves; this instance only simulates the program, waits and verifies the proof, so it
- * needs a fraction of the 45 GB a local proof does. A failure is not retried: a run started again
+ * Network proves; this instance only simulates the program, waits and verifies the proof. Setting
+ * the program up peaks at about 7.8 GB, so it runs on 16 GB rather than the 45 GB a local proof
+ * needs. A failure is not retried: a run started again
  * waits for the request the last one stored rather than paying for another. The hour holds the
  * free check, the request, the network's 35 minutes and two recording attempts.
  */
@@ -196,7 +197,7 @@ task(
     name: "proveEngine",
     retry: { maxRetries: 0, waitDurationMs: 10_000 },
     timeoutSeconds: 60 * 60,
-    plan: "2c-8g",
+    plan: "4c-16g",
   },
   async function proveEngineTask(_ctx, purchaseId: string) {
     deps ??= connect().catch((err: unknown) => {
