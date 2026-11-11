@@ -1,7 +1,7 @@
 "use client";
 
 import { Skeleton } from "@keelson/ui/components/skeleton";
-import { ArrowUpRight, Check, ChevronRight, Hand, Plus, ShieldCheck, X } from "lucide-react";
+import { ArrowUpRight, ChevronRight, Hand, Plus, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useState } from "react";
@@ -15,6 +15,7 @@ import { AppShell } from "./app-shell";
 import { HoldButton } from "./hold-button";
 import { CardAmount, MandateVisual } from "./mandate-visual";
 import { ErrorNotice } from "./notice";
+import { Mark, type MarkKind, Panel } from "./surface";
 import { WhoAnswers } from "./who-answers";
 
 const short = (iso: string) =>
@@ -78,7 +79,7 @@ function passedLine(p: Purchase): string | undefined {
   return c?.cart && c.mandate ? `${c.cart} ≤ ${c.mandate} ✓` : undefined;
 }
 
-type Kind = "bought" | "blocked" | "checking" | "attention";
+type Kind = MarkKind;
 
 function kindOf(p: Purchase): Kind {
   const s = purchaseStatus(p);
@@ -86,29 +87,6 @@ function kindOf(p: Purchase): Kind {
   if (s === "checking") return "checking";
   if (s === "error" || s === "disputed") return "attention";
   return "bought";
-}
-
-function Mark({ kind }: { kind: Kind }) {
-  const base = "grid size-10 shrink-0 place-items-center rounded-xl";
-  if (kind === "blocked")
-    return (
-      <span className={`${base} bg-vermilion text-graphite`}>
-        <X className="size-5" strokeWidth={2.5} aria-hidden="true" />
-      </span>
-    );
-  if (kind === "bought")
-    return (
-      <span className={`${base} bg-ok text-bone`}>
-        <Check className="size-5" strokeWidth={2.5} aria-hidden="true" />
-      </span>
-    );
-  return (
-    <span className={`${base} bg-bone-2`}>
-      <span
-        className={`size-2.5 rounded-full ${kind === "checking" ? "animate-pending bg-foreground" : "bg-warn"}`}
-      />
-    </span>
-  );
 }
 
 const SAY: Record<Kind, string> = {
@@ -143,26 +121,6 @@ function Row({ p, store, mandateId }: { p: Purchase; store: string; mandateId: s
         </span>
       </Link>
     </li>
-  );
-}
-
-function Panel({
-  title,
-  aside,
-  children,
-}: {
-  title: string;
-  aside?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <section aria-label={title} className="rounded-3xl border bg-card p-5 sm:p-6">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-semibold text-lg tracking-tight">{title}</h2>
-        {aside}
-      </div>
-      {children}
-    </section>
   );
 }
 
@@ -356,7 +314,9 @@ function Focus({ id }: { id: string }) {
             </span>
             <span className="truncate text-muted-foreground text-sm">
               {store(latestBlock.merchantId)} ·{" "}
-              {money(latestBlock.amount.minor, latestBlock.amount.currency)} ·{" "}
+              {latestBlock.reasons?.length
+                ? ""
+                : `${money(latestBlock.amount.minor, latestBlock.amount.currency)} · `}
               {blockedWhy(latestBlock)} · nothing paid
             </span>
           </span>

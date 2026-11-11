@@ -278,6 +278,41 @@ struct BootConfig {
     /// The user credential issuer's public JWK: the enclave holds no root to derive it from.
     issuer: serde_json::Value,
     origin: String,
+    /// Leg A's log keys as its `/v1/health` serves them; each is trusted only with a KMS chain
+    /// that shows leg A's app derived it.
+    #[serde(default)]
+    log_keys: Vec<BootLogKey>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BootLogKey {
+    origin: String,
+    public_key: Hex32,
+    signature_chain: Vec<String>,
+}
+
+impl BootLogKey {
+    fn verified(&self) -> Option<(&'static str, [u8; 32])> {
+        let origin = crate::logsign::SIGNED_ORIGINS
+            .into_iter()
+            .find(|o| *o == self.origin)?;
+        let chain = self
+            .signature_chain
+            .iter()
+            .map(alloy_primitives::hex::decode)
+            .collect::<Result<Vec<_>, _>>()
+            .ok()?;
+        crate::kms::verify_chain(
+            "ed25519",
+            &crate::logsign::key_domain(origin),
+            &self.public_key.0,
+            &chain,
+            &crate::kms::APP_ID,
+            &crate::kms::KMS_ROOT,
+        )
+        .then_some((origin, self.public_key.0))
+    }
 }
 
 #[derive(Serialize)]
@@ -294,6 +329,12 @@ impl BootConfig {
         keelson_core::domain(self.chain_id, self.verifying_contract)
             .map_err(|_| invalid("bad_request"))?;
         let issuer = Jwk::from_value(&self.issuer).map_err(|_| invalid("bad_request"))?;
+        let log_keys = self
+            .log_keys
+            .iter()
+            .map(BootLogKey::verified)
+            .collect::<Option<Vec<_>>>()
+            .ok_or_else(|| invalid("log_key_chain"))?;
         Ok(Engine::new(
             EngineConfig {
                 chain_id: self.chain_id,
@@ -306,7 +347,8 @@ impl BootConfig {
                 origin: self.origin,
             },
             None,
-        ))
+        )
+        .with_tee_log_keys(log_keys))
     }
 }
 

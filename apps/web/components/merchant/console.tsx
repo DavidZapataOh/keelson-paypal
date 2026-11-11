@@ -1,9 +1,7 @@
 "use client";
 
-import { Badge } from "@keelson/ui/components/badge";
-import { Button } from "@keelson/ui/components/button";
-import { cn } from "@keelson/ui/lib/utils";
 import type { AgStudioApi } from "ag-studio";
+import { Radio, Store, Trophy } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -16,12 +14,17 @@ import {
   evaluationsOf,
   injectedWallet,
   type MerchantDispute,
+  type MerchantOrder,
   type MerchantSelf,
   me,
+  ordersOf,
   type Settlement,
   settlementOf,
   signIn,
 } from "../../lib/merchant";
+import { AppShell, type NavItem } from "../app-shell";
+import { ConsoleSignIn } from "../console-sign-in";
+import { Orders } from "./orders";
 import { consequence, SettlementSheet } from "./settlement";
 
 // Studio renders only in the browser; the static export ships its shell.
@@ -29,6 +32,12 @@ const MerchantStudio = dynamic(() => import("./studio"), {
   ssr: false,
   loading: () => <p className="p-6 text-muted-foreground text-sm">Loading the console…</p>,
 });
+
+const NAV: NavItem[] = [
+  { href: "/merchant/", label: "Console", icon: Store },
+  { href: "/live/", label: "Live", icon: Radio },
+  { href: "/scoreboard/", label: "Scoreboard", icon: Trophy },
+];
 
 type Phase =
   | { kind: "loading" }
@@ -38,6 +47,7 @@ type Phase =
       merchant: MerchantSelf;
       settlement: Settlement;
       disputes: MerchantDispute[];
+      orders: MerchantOrder[];
       evaluations: Evaluations;
     };
 
@@ -46,20 +56,16 @@ const PAGES = [
   { id: "forensics", label: "Forensics" },
 ] as const;
 
+const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
+
 async function load(merchant: MerchantSelf): Promise<Phase> {
-  const [settlement, disputes, evaluations] = await Promise.all([
+  const [settlement, disputes, orders, evaluations] = await Promise.all([
     settlementOf(merchant.merchant_id),
     disputesOf(merchant.merchant_id),
+    ordersOf(merchant.merchant_id),
     evaluationsOf(merchant.merchant_id),
   ]);
-  return { kind: "ready", merchant, settlement, disputes, evaluations };
-}
-
-/** The page's host, read after hydration so the static first paint and the client agree. */
-function Host() {
-  const [host, setHost] = useState("");
-  useEffect(() => setHost(location.host), []);
-  return <>{host}</>;
+  return { kind: "ready", merchant, settlement, disputes, orders, evaluations };
 }
 
 function SignIn({
@@ -73,7 +79,6 @@ function SignIn({
 }) {
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string>();
-  const error = failure ?? reason;
   async function go() {
     const wallet = injectedWallet();
     if (!wallet) {
@@ -100,45 +105,21 @@ function SignIn({
     }
   }
   return (
-    <section
-      aria-labelledby="sign-in"
-      className={cn("mx-auto grid max-w-md gap-5 py-16", pending && "pending-session")}
-    >
-      <Badge variant="outline" className="w-fit font-mono">
-        PayPal sandbox · Arbitrum Sepolia
-      </Badge>
-      <h1 id="sign-in" className="text-balance font-semibold text-4xl tracking-[-0.03em]">
-        Merchant console
-      </h1>
-      <p className="text-pretty text-lg text-muted-foreground">
-        Your disputes over agent purchases, the verdict on each, and which agents fail which mandate
-        checks. Sign in with your settlement wallet: the address that signs your payout choices.
-      </p>
-      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-[10px] border p-4 text-sm">
-        <dt className="text-muted-foreground">You sign</dt>
-        <dd>A Sign-In with Ethereum message (EIP-4361)</dd>
-        <dt className="text-muted-foreground">For</dt>
-        <dd className="font-mono">
-          <Host />
-        </dd>
-        <dt className="text-muted-foreground">Chain</dt>
-        <dd className="font-mono">{CHAIN_ID}</dd>
-        <dt className="text-muted-foreground">Valid for</dt>
-        <dd>10 minutes, once</dd>
-      </dl>
-      <Button size="lg" onClick={go} disabled={busy || pending}>
-        {busy ? "Waiting for your wallet…" : "Sign in with wallet"}
-      </Button>
-      <p role="status" className="min-h-6 text-sm text-destructive">
-        {error}
-      </p>
-    </section>
+    <ConsoleSignIn
+      title="Merchant console"
+      line="Sign in with your settlement wallet."
+      chainId={CHAIN_ID}
+      pending={pending}
+      busy={busy}
+      error={failure || reason}
+      onSignIn={go}
+    />
   );
 }
 
 /**
- * The merchant console: sign-in with the settlement wallet, the settlement choice, and the AG
- * Studio report over the merchant's disputes and agent evaluations.
+ * The merchant console: sign-in with the settlement wallet, the agents' orders with what Keelson
+ * blocked, the settlement choice, and the AG Studio report over disputes and evaluations.
  */
 export function MerchantConsole() {
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
@@ -172,79 +153,107 @@ export function MerchantConsole() {
     // A visitor's view is the static first paint; a browser with a session hides it
     // (html[data-session]) until the session is read.
     return (
-      <SignIn
-        pending={phase.kind === "loading"}
-        {...(phase.kind === "signed-out" && phase.reason ? { reason: phase.reason } : {})}
-        onSignedIn={(m) => void open(m)}
-      />
+      <AppShell nav={NAV} account={null}>
+        <SignIn
+          pending={phase.kind === "loading"}
+          {...(phase.kind === "signed-out" && phase.reason ? { reason: phase.reason } : {})}
+          onSignedIn={(m) => void open(m)}
+        />
+      </AppShell>
     );
   }
   const { merchant, settlement } = phase;
+  const signOut = () => authClient.signOut().then(() => setPhase({ kind: "signed-out" }));
   return (
-    <div className="-mt-6 ml-[calc(50%-50vw)] grid h-[calc(100dvh-4rem)] w-screen grid-rows-[auto_1fr] border-t">
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-5 py-3 sm:px-8">
-        <h1 className="font-semibold text-xl tracking-tight">{merchant.name}</h1>
-        <nav aria-label="Console pages" className="flex gap-1">
-          {PAGES.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              aria-current={page === p.id ? "page" : undefined}
-              disabled={!api}
-              onClick={() => {
-                if (!api) return;
-                api.setState({ ...api.getState(), selectedPageId: p.id });
-                setPage(p.id);
-              }}
-              className="rounded-md px-3 py-1.5 font-medium text-sm text-muted-foreground hover:bg-accent aria-[current=page]:bg-foreground aria-[current=page]:text-background"
-            >
-              {p.label}
-            </button>
-          ))}
-        </nav>
-        <p className="mr-auto text-sm" data-testid="settlement-summary">
-          {consequence(merchant, settlement)}{" "}
-          {merchant.read_only ? null : (
-            <button type="button" className="underline" onClick={() => setSheet(true)}>
-              Change
-            </button>
-          )}
-        </p>
-        {merchant.read_only ? (
-          <Badge variant="outline" className="font-mono">
-            Judge Mode · read only
-          </Badge>
-        ) : null}
-        {model === "claude-haiku-5-5" ? (
-          <Badge variant="outline">
-            {merchant.read_only
-              ? "Assistant on Claude Haiku 5.5: this session's budget is spent"
-              : "Assistant on Claude Haiku 5.5: today's budget is spent"}
-          </Badge>
-        ) : null}
-        {merchant.read_only ? (
-          <Link href="/judge/" className="font-medium text-sm underline">
-            Back to the tour
-          </Link>
-        ) : (
-          <button
-            type="button"
-            className="text-muted-foreground text-sm hover:text-foreground"
-            onClick={() => authClient.signOut().then(() => setPhase({ kind: "signed-out" }))}
-          >
-            Sign out
-          </button>
-        )}
-      </div>
-      <div className="min-h-0">
-        <MerchantStudio
-          merchantId={merchant.merchant_id}
-          disputes={phase.disputes}
-          evaluations={phase.evaluations}
-          onModel={setModel}
-          onApi={setApi}
-          onPage={setPage}
-        />
+    <AppShell
+      nav={NAV}
+      wide
+      account={{
+        name: merchant.name,
+        detail: merchant.read_only ? "Read only" : short(merchant.settlement_address),
+        onSignOut: merchant.read_only
+          ? () => authClient.signOut().then(() => location.assign("/judge/"))
+          : signOut,
+      }}
+    >
+      <div className="grid gap-6">
+        <header className="grid gap-2">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <h1 className="font-semibold text-[1.75rem] leading-[1.1] tracking-[-0.025em]">
+              {merchant.name}
+            </h1>
+            {merchant.read_only ? (
+              <span className="rounded-md border px-2 py-1 font-mono text-[11px] text-muted-foreground">
+                Judge Mode · read only
+              </span>
+            ) : null}
+            {merchant.read_only ? (
+              <Link
+                href="/judge/"
+                className="ml-auto font-medium text-sm underline-offset-4 hover:underline"
+              >
+                Back to the tour
+              </Link>
+            ) : null}
+          </div>
+          <p className="text-pretty text-muted-foreground" data-testid="settlement-summary">
+            {consequence(merchant, settlement)}{" "}
+            {merchant.read_only ? null : (
+              <button
+                type="button"
+                className="font-medium text-foreground underline-offset-4 hover:underline"
+                onClick={() => setSheet(true)}
+              >
+                Change
+              </button>
+            )}
+          </p>
+        </header>
+
+        <Orders orders={phase.orders} />
+
+        <section
+          aria-label="Disputes and forensics"
+          className="grid gap-4 rounded-3xl border bg-card p-3 sm:p-4"
+        >
+          <div className="flex flex-wrap items-center gap-3 px-2 pt-1">
+            <nav aria-label="Console pages" className="flex gap-1 rounded-xl bg-bone-2 p-1">
+              {PAGES.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  aria-current={page === p.id ? "page" : undefined}
+                  disabled={!api}
+                  onClick={() => {
+                    if (!api) return;
+                    api.setState({ ...api.getState(), selectedPageId: p.id });
+                    setPage(p.id);
+                  }}
+                  className="h-8 rounded-lg px-3 text-sm disabled:opacity-60 aria-[current=page]:bg-card aria-[current=page]:font-medium aria-[current=page]:shadow-[0_1px_3px_rgb(23_24_27/0.12)]"
+                >
+                  {p.label}
+                </button>
+              ))}
+            </nav>
+            {model === "claude-haiku-5-5" ? (
+              <span className="text-muted-foreground text-sm">
+                {merchant.read_only
+                  ? "Assistant on Claude Haiku 5.5: this session's budget is spent"
+                  : "Assistant on Claude Haiku 5.5: today's budget is spent"}
+              </span>
+            ) : null}
+          </div>
+          <div className="h-[calc(100dvh-12rem)] min-h-[560px] overflow-hidden rounded-2xl border bg-background">
+            <MerchantStudio
+              merchantId={merchant.merchant_id}
+              disputes={phase.disputes}
+              evaluations={phase.evaluations}
+              onModel={setModel}
+              onApi={setApi}
+              onPage={setPage}
+            />
+          </div>
+        </section>
       </div>
       <SettlementSheet
         open={sheet}
@@ -253,6 +262,6 @@ export function MerchantConsole() {
         current={settlement}
         onSaved={(s) => setPhase({ ...phase, settlement: s })}
       />
-    </div>
+    </AppShell>
   );
 }

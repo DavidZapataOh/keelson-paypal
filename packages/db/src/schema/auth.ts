@@ -17,7 +17,10 @@ export const user = pgTable("user", {
   email: text("email").notNull().unique(),
   emailVerified: boolean("email_verified").default(false).notNull(),
   image: text("image"),
-  /** The credential (L1) the TEE issued for this user; presented again with later mandates. */
+  /**
+   * @deprecated Leg A issues a user credential per passkey, kept in `passkey.userCredential`.
+   * Kept while a running API that still reads it may be serving; nothing writes it.
+   */
   userCredential: text("user_credential"),
   role: text("role", { enum: ["user", "admin"] })
     .default("user")
@@ -299,6 +302,8 @@ export const passkey = pgTable(
     aaguid: text("aaguid"),
     /** Registered with the SPC `payment` extension the server issued for that ceremony. */
     payment: boolean("payment").default(false).notNull(),
+    /** The user credential (L1) leg A issued for this passkey; presented with its later mandates. */
+    userCredential: text("user_credential"),
   },
   (table) => [
     index("passkey_userId_idx").on(table.userId),

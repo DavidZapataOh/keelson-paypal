@@ -45,6 +45,106 @@ describe.each(Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[])("signed out 
   });
 });
 
+async function axe(page: Page) {
+  const { violations } = await new AxeBuilder({ page })
+    .withTags(AXE_TAGS)
+    // The assistant's model picker and send button are AG Studio's own markup.
+    .exclude('button[aria-label="Model"]')
+    .exclude(".ag-studio-ai-assistant-send-button")
+    .analyze();
+  return violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`);
+}
+
+const BLOCKED = {
+  purchase_id: "01M7DENIED0000000000000000",
+  created_at: "2026-11-09T10:04:00.000Z",
+  state: "DENIED",
+  amount_minor: "34000",
+  currency: "USD",
+  agent_id: "351",
+  has_alibi: true,
+  blocked: [{ field: "total", cart: "$340.00" }],
+  dispute: null,
+};
+const DISPUTED = {
+  purchase_id: "01M7SLASHED000000000000000",
+  created_at: "2026-11-08T09:00:00.000Z",
+  state: "SLASHED",
+  amount_minor: "13900",
+  currency: "USD",
+  agent_id: "351",
+  has_alibi: true,
+  blocked: [],
+  dispute: { dispute_id: "PP-D-27803", state: "RESOLVED", liable: "operator" },
+};
+const BOUGHT = {
+  ...DISPUTED,
+  purchase_id: "01M7CAPTURED00000000000000",
+  state: "CAPTURED",
+  amount_minor: "4250",
+  dispute: null,
+};
+
+describe.each(Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[])("signed in on %s", (kind) => {
+  test("orders carry their marks, a blocked cart opens its Alibi with what the cart had", async () => {
+    const context = await browser.newContext(VIEWPORTS[kind]);
+    await context.route(`${API}/**`, (route) => {
+      const path = new URL(route.request().url()).pathname;
+      const json = (value: unknown) =>
+        route.fulfill({ contentType: "application/json", body: JSON.stringify(value) });
+      if (path === "/v1/merchants/me")
+        return json({
+          merchant_id: "mrc_runfast",
+          name: "RunFast",
+          website: "https://store.keelson.finance",
+          settlement_address: "0x467D2beBb479D9B80Ab1c461243E05A2b82387d8",
+          read_only: false,
+        });
+      if (path.endsWith("/settlement"))
+        return json({ rail: "pyusd", paypal_receiver: null, nonce: "0", updated_at: null });
+      if (path.endsWith("/disputes")) return json({ disputes: [] });
+      if (path.endsWith("/orders")) return json({ orders: [BLOCKED, DISPUTED, BOUGHT] });
+      if (path.endsWith("/evaluations")) return json({ columns: [], rows: [] });
+      if (path === `/v1/alibis/${BLOCKED.purchase_id}/receipt`)
+        return json({
+          alibi_id: BLOCKED.purchase_id,
+          leaf: "AA",
+          leaf_hash: "q1Wq0bN3bU3cCk0bd3Kp0D8b1H5b0vC8x9yQ2f7mN4s",
+          tlog_proof: "",
+          timestamps: [{ tsa: "freetsa", token: "AA" }],
+        });
+      if (path === "/api/auth/get-session") return json(null);
+      return route.abort("connectionrefused");
+    });
+    await context.addInitScript(() => localStorage.setItem("keelson.session", "1"));
+    const page = await context.newPage();
+    await page.goto(`${site.base}/merchant/`);
+    await page.getByRole("heading", { level: 1, name: "RunFast" }).waitFor();
+    await page.getByTestId("settlement-summary").waitFor();
+    const orders = page.getByRole("region", { name: "Agent orders" });
+    expect(await orders.getByRole("listitem").count()).toBe(3);
+    await orders.getByRole("tab", { name: /^Blocked/ }).click();
+    expect(await orders.getByRole("listitem").count()).toBe(1);
+    await page.waitForLoadState("networkidle");
+    expect(await axe(page)).toEqual([]);
+
+    await orders.getByRole("button", { name: /Agent #351/ }).click();
+    const sheet = page.getByRole("dialog", { name: "Alibi" });
+    await sheet.getByText("Keelson stopped this cart. Nothing was charged.").waitFor();
+    expect(await sheet.locator("[data-slot=block-diff]").textContent()).toMatch(
+      /Mandate private to the buyer.*Cart \$340\.00/,
+    );
+    await sheet.getByText("Checks the public log entry; it needs no account.").waitFor();
+    const link = sheet.getByRole("link", { name: "Verify in your browser" });
+    expect(await link.getAttribute("href")).toMatch(/\/a\/01M7DENIED0000000000000000$/);
+    expect(await axe(page)).toEqual([]);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
+    await context.close();
+  });
+});
+
 // The 250k-row budget: a generated table the size of a large merchant's year of agent
 // evaluations, loaded into the same Studio build the console ships.
 const ROWS = 250_000;

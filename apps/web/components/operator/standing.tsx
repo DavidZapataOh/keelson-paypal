@@ -1,17 +1,32 @@
 "use client";
 
+import { addresses } from "@keelson/chain";
 import { Amount } from "@keelson/ui/components/amount";
-import { Button } from "@keelson/ui/components/button";
 import { DataItem, DataList } from "@keelson/ui/components/data-list";
-import { useCallback, useEffect, useState } from "react";
+import { Skeleton } from "@keelson/ui/components/skeleton";
+import { ArrowUpRight, Check, Plus, TriangleAlert } from "lucide-react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { API } from "../../lib/config";
 import { major } from "../../lib/format";
-import { type Bond, bondOf, gradeOf, type TrustGrade } from "../../lib/operator";
+import {
+  type Bond,
+  bondOf,
+  CHAIN_ID,
+  EXPLORER,
+  gradeOf,
+  type TrustGrade,
+} from "../../lib/operator";
+import { SplitK } from "../brand";
+import { CardAmount } from "../mandate-visual";
+import { ErrorNotice } from "../notice";
+import { Panel } from "../surface";
 import { DepositSheet } from "./deposit-sheet";
 
 /** PYUSD has 6 decimals; it trades 1:1 with the US dollar. */
 const pyusd = (base: string | bigint) => Number(BigInt(base)) / 1e6;
 const pct = (ppm: number) => `${(ppm / 10_000).toFixed(2)} %`;
+const plain = (v: number) =>
+  new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
 
 const GRADES: Record<TrustGrade["grade"], { word: string; ceilingPpm: number }> = {
   A: { word: "Sound", ceilingPpm: 10_000 },
@@ -21,14 +36,7 @@ const GRADES: Record<TrustGrade["grade"], { word: string; ceilingPpm: number }> 
   F: { word: "Failing", ceilingPpm: Number.POSITIVE_INFINITY },
 };
 
-function Usd({ value, className }: { value: number; className?: string }) {
-  return (
-    <span className={className}>
-      <Amount value={value} hideCurrency />{" "}
-      <span className="text-[0.75em] text-muted-foreground">PYUSD</span>
-    </span>
-  );
-}
+const VAULT = addresses[CHAIN_ID].KeelsonBondVault;
 
 function ago(iso: string, now: number): string {
   const s = Math.max(0, Math.round((now - Date.parse(iso)) / 1000));
@@ -37,10 +45,115 @@ function ago(iso: string, now: number): string {
   return m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`;
 }
 
+/** The bond as an object you hold: what backs coverage now, how it splits, and the minimum. */
+function BondCard({
+  free,
+  locked,
+  queued,
+  minimum,
+}: {
+  free: number;
+  locked: number;
+  queued: number;
+  minimum: number;
+}) {
+  return (
+    <section
+      aria-label="Bond"
+      className="relative isolate flex aspect-[1.586/1] w-full flex-col overflow-hidden rounded-[22px] bg-graphite p-[6%] text-bone shadow-[0_30px_60px_-30px_rgb(23_24_27/0.55),0_2px_6px_-2px_rgb(23_24_27/0.3)]"
+      style={{ containerType: "inline-size" }}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <span className="flex items-center gap-2">
+          <SplitK stem="#F2F0EA" className="size-[max(18px,5cqi)]" />
+          <span className="font-mono text-[max(10px,2.6cqi)] text-bone/70 uppercase tracking-[0.16em]">
+            Bond
+          </span>
+        </span>
+        <span className="rounded-full border border-bone/20 px-2.5 py-0.5 font-mono text-[max(10px,2.4cqi)] text-bone/80 uppercase tracking-[0.12em]">
+          PYUSD
+        </span>
+      </div>
+      <div className="mt-auto grid gap-[1.5cqi]">
+        <span className="text-[max(12px,3.2cqi)] text-bone/70">Backing coverage</span>
+        <span className="text-[max(34px,11cqi)] leading-none">
+          <CardAmount value={free + locked} currency="USD" />
+        </span>
+      </div>
+      <ul
+        data-testid="bond-ledger"
+        className="mt-[4cqi] flex flex-wrap gap-1.5 font-mono text-[max(11px,2.8cqi)] text-bone/85"
+      >
+        <li className="rounded-md bg-bone/10 px-2 py-0.5">
+          Free <span className="tnum">{plain(free)}</span>
+        </li>
+        <li className="rounded-md bg-bone/10 px-2 py-0.5">
+          Locked <span className="tnum">{plain(locked)}</span>
+        </li>
+        <li className="rounded-md bg-bone/10 px-2 py-0.5">
+          Queued <span className="tnum">{plain(queued)}</span>
+        </li>
+        <li className="rounded-md border border-bone/25 px-2 py-0.5">
+          Min <span className="tnum">{plain(minimum)}</span>
+        </li>
+      </ul>
+    </section>
+  );
+}
+
+function Action({
+  label,
+  icon,
+  primary,
+  ...rest
+}: { label: string; icon: ReactNode; primary?: boolean } & (
+  | { onClick: () => void; href?: never }
+  | { href: string; onClick?: never }
+)) {
+  const circle = `grid size-14 place-items-center rounded-full transition-transform duration-200 group-hover:-translate-y-0.5 group-active:scale-95 ${primary ? "bg-graphite text-bone" : "bg-bone-2 text-foreground"}`;
+  return "href" in rest && rest.href ? (
+    <a
+      href={rest.href}
+      target="_blank"
+      rel="noopener"
+      className="group grid justify-items-center gap-2 text-sm"
+    >
+      <span className={circle}>{icon}</span>
+      {label}
+    </a>
+  ) : (
+    <button
+      type="button"
+      onClick={rest.onClick}
+      className="group grid justify-items-center gap-2 text-sm"
+    >
+      <span className={circle}>{icon}</span>
+      {label}
+    </button>
+  );
+}
+
+function Reason({ ok, children }: { ok: boolean; children: ReactNode }) {
+  return (
+    <li className="flex items-start gap-3 py-2">
+      <span
+        className={`mt-0.5 grid size-6 shrink-0 place-items-center rounded-md ${ok ? "bg-ok text-bone" : "bg-bone-2 text-warn"}`}
+      >
+        {ok ? (
+          <Check className="size-3.5" strokeWidth={3} aria-hidden="true" />
+        ) : (
+          <TriangleAlert className="size-3.5" strokeWidth={2.5} aria-hidden="true" />
+        )}
+      </span>
+      <span className="text-pretty">{children}</span>
+    </li>
+  );
+}
+
 /**
- * The operator's standing: its bond as a ledger (free, locked, queued, and the minimum), its trust
- * grade with the evidence behind it, and the premium each coverage pays. The grade follows the
- * API's event stream.
+ * The operator's standing: its bond as a card (what backs coverage, how it splits, the minimum)
+ * with the gasless top-up, and its trust grade with the reasons behind it and the premium it
+ * prices. The grade follows the API's event stream.
  */
 export function Standing({ agentId, owner }: { agentId: string; owner: `0x${string}` }) {
   const [bond, setBond] = useState<Bond>();
@@ -71,130 +184,132 @@ export function Standing({ agentId, owner }: { agentId: string; owner: `0x${stri
     };
   }, [agentId, refresh]);
 
-  if (error) {
-    return (
-      <p role="alert" className="text-destructive text-sm">
-        The bond could not be read: {error}
-      </p>
-    );
-  }
+  if (error) return <ErrorNotice>The bond could not be read: {error}</ErrorNotice>;
   if (!bond || !grade) {
-    return <p className="text-muted-foreground text-sm">Reading the bond on Arbitrum Sepolia…</p>;
+    return (
+      <div className="grid gap-6 lg:grid-cols-[400px_1fr]">
+        <p className="sr-only" role="status">
+          Reading the bond on Arbitrum Sepolia…
+        </p>
+        <Skeleton className="aspect-[1.586/1] rounded-[22px]" />
+        <Skeleton className="h-72 rounded-3xl" />
+      </div>
+    );
   }
 
   const free = pyusd(bond.bond.free);
   const locked = pyusd(bond.bond.locked);
   const queued = pyusd(bond.bond.queued);
-  const total = free + locked + queued;
   const minimum = major(grade.bond.requiredMinor, "USD");
-  const backing = free + locked;
-  const gap = backing - minimum;
+  const gap = free + locked - minimum;
   const g = GRADES[grade.grade];
-  const incidents = grade.evidence.incidents.total;
+  const { incidents, coverages } = grade.evidence;
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <section aria-labelledby="bond" className="rounded-[10px] border p-5">
-        <div className="flex items-baseline justify-between gap-4">
-          <h2 id="bond" className="font-semibold">
-            Bond
-          </h2>
-          <span className="text-muted-foreground text-xs">KeelsonBondVault · Arbitrum Sepolia</span>
-        </div>
-        <DataList className="mt-3" data-testid="bond-ledger">
-          <DataItem label="Free: backs new coverage, withdrawable">
-            <Usd value={free} />
-          </DataItem>
-          <DataItem label="Locked: backing open coverages until their dispute window ends">
-            <Usd value={locked} />
-          </DataItem>
-          <DataItem label="Queued: being withdrawn, still slashable">
-            <Usd value={queued} />
-          </DataItem>
-          <DataItem label={<span className="font-medium text-foreground">Total</span>}>
-            <Usd value={total} className="font-medium" />
-          </DataItem>
-        </DataList>
-        <p className="mt-4 text-sm" data-testid="bond-minimum">
+    <div className="grid items-start gap-6 lg:grid-cols-[400px_1fr]">
+      <div className="grid gap-5">
+        <BondCard free={free} locked={locked} queued={queued} minimum={minimum} />
+        <p className="flex items-center gap-2 text-sm" data-testid="bond-minimum">
           {gap >= 0 ? (
             <>
-              <span aria-hidden="true">■ </span>
-              Free and locked bond is <Usd value={gap} /> above the minimum of{" "}
-              <Usd value={minimum} /> the risk model asks for.
+              <Check className="size-4 text-ok" strokeWidth={2.5} aria-hidden="true" />
+              <span>
+                <Amount value={gap} hideCurrency /> PYUSD above the minimum
+              </span>
             </>
           ) : (
             <>
-              <span aria-hidden="true" className="text-warn">
-                ▲{" "}
+              <TriangleAlert className="size-4 text-warn" aria-hidden="true" />
+              <span>
+                <span className="font-medium text-warn">Below the minimum</span>: top up{" "}
+                <Amount value={-gap} hideCurrency /> PYUSD
               </span>
-              <span className="text-warn">Below minimum</span>: top up <Usd value={-gap} /> to reach{" "}
-              <Usd value={minimum} />.
             </>
           )}
         </p>
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <Button size="sm" onClick={() => setSheet(true)}>
-            Deposit PYUSD
-          </Button>
-          <span className="text-muted-foreground text-xs">
-            Signed in your wallet, sent by Keelson: no gas. {bond.bond.slashCount} slashes so far.
-          </span>
+        <div className="flex gap-6">
+          <Action
+            label="Top up"
+            primary
+            icon={<Plus className="size-6" aria-hidden="true" />}
+            onClick={() => setSheet(true)}
+          />
+          <Action
+            label="Vault"
+            icon={<ArrowUpRight className="size-5" aria-hidden="true" />}
+            href={`${EXPLORER}/address/${VAULT}`}
+          />
         </div>
-      </section>
+        <p className="text-muted-foreground text-xs">
+          No gas: you sign, Keelson sends. Slashed {bond.bond.slashCount}{" "}
+          {bond.bond.slashCount === 1 ? "time" : "times"}.
+        </p>
+      </div>
 
-      <section aria-labelledby="grade" className="rounded-[10px] border p-5">
-        <div className="flex items-baseline justify-between gap-4">
-          <h2 id="grade" className="font-semibold">
-            Trust grade and premium
-          </h2>
+      <Panel
+        title="Trust grade"
+        aside={
           <span className="text-muted-foreground text-xs" aria-live="polite">
             Updated {ago(grade.computedAt, now)} · live
           </span>
-        </div>
-        <div className="mt-3 flex items-center gap-4">
+        }
+      >
+        <div className="flex items-center gap-4">
           <span
             data-testid="grade"
-            className="grid size-14 place-items-center rounded-[6px] border-2 border-foreground font-mono font-semibold text-3xl"
+            className="grid size-16 place-items-center rounded-2xl bg-graphite font-mono font-semibold text-4xl text-bone"
           >
             {grade.grade}
           </span>
-          <div className="grid gap-0.5">
-            <span className="font-medium">{g.word}</span>
+          <span className="grid gap-0.5">
+            <span className="font-semibold text-lg">{g.word}</span>
             <span className="text-muted-foreground text-sm">
-              Incident rate at most {pct(grade.frequency.upper95_ppm)} (95 % bound), from{" "}
-              {grade.evidence.coverages.toLocaleString("en-US")} coverages and {incidents} incident
-              {incidents === 1 ? "" : "s"}.
+              {Number.isFinite(g.ceilingPpm)
+                ? `Holds while incidents stay at or below ${pct(g.ceilingPpm)}`
+                : "Below every other grade"}
             </span>
-          </div>
+          </span>
         </div>
-        <DataList className="mt-3">
+        <ul className="mt-4 grid divide-y">
+          <Reason ok={coverages > 0}>
+            <span className="font-mono tnum">{coverages.toLocaleString("en-US")}</span> covered
+            purchases
+          </Reason>
+          <Reason ok={incidents.total === 0}>
+            <span className="font-mono tnum">{incidents.total}</span>{" "}
+            {incidents.total === 1 ? "incident" : "incidents"} at fault
+            {incidents.total > 0
+              ? ` · ${incidents.slashes} slashed, ${incidents.pool} from the pool`
+              : ""}
+          </Reason>
+          <Reason ok={grade.frequency.upper95_ppm <= g.ceilingPpm}>
+            Incident rate at most{" "}
+            <span className="font-mono tnum">{pct(grade.frequency.upper95_ppm)}</span> (95 % bound)
+          </Reason>
+          <Reason ok>
+            <span className="font-mono tnum">{grade.reserve.warranties}</span> of Keelson&apos;s own
+            faults, paid by its reserve, not graded
+          </Reason>
+        </ul>
+        <DataList className="mt-4 border-t pt-2">
           <DataItem label="Premium per coverage">
             <span className="font-mono tabular-nums" data-testid="premium">
               {grade.premium.bps} bps
             </span>
           </DataItem>
-          <DataItem label="Model price · floor">
+          <DataItem label="Model · floor">
             <span className="font-mono tabular-nums">
               {grade.premium.modelBps} bps · {grade.premium.floorBps} bps
             </span>
           </DataItem>
-          <DataItem label={`Expected loss, next ${grade.loss.horizon} coverages`}>
+          <DataItem label={`Expected loss, next ${grade.loss.horizon}`}>
             <Amount value={major(grade.loss.expectedMinor, "USD")} />
           </DataItem>
           <DataItem label="Loss at 99 %">
             <Amount value={major(grade.loss.var99Minor, "USD")} />
           </DataItem>
-          <DataItem label="Keelson's own faults, paid by its reserve (not graded)">
-            <span className="font-mono tabular-nums">{grade.reserve.warranties}</span>
-          </DataItem>
         </DataList>
-        <p className="mt-3 text-muted-foreground text-xs">
-          {Number.isFinite(g.ceilingPpm)
-            ? `Grade ${grade.grade} holds while the bound stays at or below ${pct(g.ceilingPpm)}. `
-            : ""}
-          Each covered purchase updates it; a verdict with the operator at fault moves it most.
-        </p>
-      </section>
+      </Panel>
 
       <DepositSheet
         open={sheet}

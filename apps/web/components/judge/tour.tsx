@@ -1,17 +1,17 @@
 "use client";
 
-import { Badge } from "@keelson/ui/components/badge";
+import { Amount } from "@keelson/ui/components/amount";
 import { Button } from "@keelson/ui/components/button";
 import { DataItem, DataList } from "@keelson/ui/components/data-list";
-import { Status } from "@keelson/ui/components/status";
 import { Timeline, TimelineItem } from "@keelson/ui/components/timeline";
 import { cn } from "@keelson/ui/lib/utils";
+import { Activity, Gavel, Radio, Trophy } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../../lib/api";
 import { authClient, SESSION_HINT } from "../../lib/auth";
 import { VERIFY } from "../../lib/config";
-import { money, when } from "../../lib/format";
+import { major, money, when } from "../../lib/format";
 import {
   type DisputeStatus,
   disputeOf,
@@ -25,25 +25,91 @@ import {
   tour as tourOf,
 } from "../../lib/judge";
 import { percent, type Scoreboard, scoreboard } from "../../lib/scoreboard";
+import { AppShell, type NavItem } from "../app-shell";
 import { LogBonds } from "../log-bond";
 import { LiabilityLegend, MandateCard } from "../mandate-card";
-import { ErrorNotice, Eyebrow } from "../notice";
+import { ErrorNotice } from "../notice";
+import { Mark, Panel } from "../surface";
 import { EnvironmentTable, HealthList } from "./environment";
 
 type Role = "Shopper" | "Merchant" | "Operator";
 
-const STEPS: { id: string; title: string; role: Role }[] = [
-  { id: "mandate", title: "The mandate", role: "Shopper" },
-  { id: "agent", title: "The agent shops", role: "Shopper" },
-  { id: "alibi", title: "Try to cheat the Alibi", role: "Shopper" },
-  { id: "anonymous", title: "Anonymous, and still accountable", role: "Shopper" },
-  { id: "equivocation", title: "Catch the log lying", role: "Shopper" },
-  { id: "dispute", title: "A dispute arrives", role: "Merchant" },
-  { id: "verdict", title: "Verdict and settlement", role: "Merchant" },
-  { id: "forensics", title: "Merchant forensics", role: "Merchant" },
-  { id: "grade", title: "Operator grade", role: "Operator" },
-  { id: "scoreboard", title: "Red-team scoreboard", role: "Operator" },
-  { id: "status", title: "Live status", role: "Operator" },
+const STEPS: { id: string; title: string; role: Role; line: string }[] = [
+  {
+    id: "mandate",
+    title: "The mandate",
+    role: "Shopper",
+    line: "One sentence, compiled into a card and signed with a passkey.",
+  },
+  {
+    id: "agent",
+    title: "The agent shops",
+    role: "Shopper",
+    line: "Two runs at RunFast: one with a planted prompt, one clean.",
+  },
+  {
+    id: "alibi",
+    title: "Try to cheat the Alibi",
+    role: "Shopper",
+    line: "Swap the cart or fake the anchor, and see which check catches it.",
+  },
+  {
+    id: "anonymous",
+    title: "Anonymous, and still accountable",
+    role: "Shopper",
+    line: "A real, registered person approved it. Nobody learns who.",
+  },
+  {
+    id: "equivocation",
+    title: "Catch the log lying",
+    role: "Shopper",
+    line: "Two signed histories of the same log are proof, and its bond pays out.",
+  },
+  {
+    id: "dispute",
+    title: "A dispute arrives",
+    role: "Merchant",
+    line: "A PayPal sandbox dispute, attributed by Keelson.",
+  },
+  {
+    id: "verdict",
+    title: "Verdict and settlement",
+    role: "Merchant",
+    line: "Who pays and under which rule, signed by both TEEs.",
+  },
+  {
+    id: "forensics",
+    title: "Merchant forensics",
+    role: "Merchant",
+    line: "Every dispute, and which checks each agent fails.",
+  },
+  {
+    id: "grade",
+    title: "Operator grade",
+    role: "Operator",
+    line: "The grade prices the premium on every coverage.",
+  },
+  {
+    id: "scoreboard",
+    title: "Red-team scoreboard",
+    role: "Operator",
+    line: "We attack our own agent, continuously.",
+  },
+  {
+    id: "status",
+    title: "Live status",
+    role: "Operator",
+    line: "Everything you just saw, running now.",
+  },
+];
+
+const ROLES: Role[] = ["Shopper", "Merchant", "Operator"];
+
+const NAV: NavItem[] = [
+  { href: "/judge/", label: "Judge Mode", short: "Judge", icon: Gavel },
+  { href: "/live/", label: "Live", icon: Radio },
+  { href: "/scoreboard/", label: "Scoreboard", icon: Trophy },
+  { href: "/status/", label: "Status", icon: Activity },
 ];
 
 /** Where the tour is, kept across the merchant console and a reload. */
@@ -141,38 +207,47 @@ function Welcome({
     }
   }
   return (
-    <div className={cn("grid gap-12", pending && "pending-session")}>
-      <section aria-labelledby="judge-title" className="grid max-w-3xl gap-5">
-        <Eyebrow>Judge Mode</Eyebrow>
-        <h1
-          id="judge-title"
-          className="text-balance font-semibold text-4xl leading-[1.05] tracking-[-0.03em] sm:text-5xl"
+    <AppShell nav={NAV} account={null}>
+      <div className={cn("grid gap-6", pending && "pending-session")}>
+        <div className="grid max-w-3xl gap-2">
+          <h1 className="font-semibold text-[1.75rem] leading-[1.1] tracking-[-0.025em]">
+            Judge Mode
+          </h1>
+          <p className="text-pretty text-lg text-muted-foreground leading-snug">
+            Ten steps on the live sandbox. No keys, no sign-up.
+          </p>
+        </div>
+        <section
+          aria-label="Start"
+          className="flex flex-wrap items-center gap-x-5 gap-y-3 rounded-3xl border bg-card p-5 sm:p-6"
         >
-          Judge Keelson in five minutes, on the live system.
-        </h1>
-        <p className="max-w-prose text-pretty text-lg text-muted-foreground">
-          One click opens a temporary tenant with no keys and no sign-up. Ten steps walk you through
-          a real mandate, the agent run that bought under it, its Alibi, a PayPal dispute and its
-          verdict, then the merchant&apos;s and the operator&apos;s side. Every number comes from
-          production records on PayPal sandbox and Arbitrum Sepolia.
-        </p>
-        <div className="flex flex-wrap items-center gap-4">
+          <span className="flex gap-1.5" aria-hidden="true">
+            {ROLES.map((r) => (
+              <span
+                key={r}
+                className="grid size-10 place-items-center rounded-xl bg-bone-2 font-medium text-sm"
+              >
+                {r.charAt(0)}
+              </span>
+            ))}
+          </span>
+          <span className="grid min-w-0 flex-1 leading-snug">
+            <span className="font-semibold">Shopper, merchant, operator</span>
+            <span className="text-muted-foreground text-sm">
+              A temporary tenant that closes within a day.
+              {signedIn ? " This signs you out first." : ""}
+            </span>
+          </span>
           <Button size="lg" onClick={start} disabled={busy || pending}>
             {busy ? "Opening your tenant…" : "Start Judge Mode"}
           </Button>
-          <span className="text-muted-foreground text-sm">
-            Closes on its own within a day. {signedIn ? "This signs you out first." : null}
-          </span>
-        </div>
+        </section>
         {problem ? <ErrorNotice>{problem}</ErrorNotice> : null}
-      </section>
-      <section aria-labelledby="env-title" className="grid gap-4">
-        <h2 id="env-title" className="font-semibold text-xl tracking-tight">
-          What is real and what is sandbox
-        </h2>
-        <EnvironmentTable />
-      </section>
-    </div>
+        <Panel title="Real or sandbox">
+          <EnvironmentTable />
+        </Panel>
+      </div>
+    </AppShell>
   );
 }
 
@@ -199,70 +274,65 @@ function Walkthrough({ tour }: { tour: Tour }) {
     document.getElementById("step-title")?.focus();
   };
   const current = STEPS[step] as (typeof STEPS)[number];
-  const roles: Role[] = ["Shopper", "Merchant", "Operator"];
+  const inRole = STEPS.map((x, i) => ({ ...x, i })).filter((x) => x.role === current.role);
+  const exit = () =>
+    authClient.signOut().then(() => {
+      localStorage.removeItem(STEP_KEY);
+      localStorage.removeItem(STARTED_KEY);
+      location.assign("/judge/");
+    });
 
   return (
-    <div className="grid gap-8">
-      <section
-        aria-label="Judge Mode"
-        className="sticky top-0 z-10 -mx-5 flex flex-wrap items-center gap-x-5 gap-y-2 border-b bg-background/95 px-5 py-3 backdrop-blur sm:-mx-8 sm:px-8"
-      >
-        <Badge className="font-mono">Judge Mode</Badge>
-        <fieldset className="flex items-center gap-1 text-sm">
-          <legend className="sr-only">Viewing as</legend>
-          <span aria-hidden="true" className="mr-1 text-muted-foreground">
-            Viewing as
+    <AppShell
+      nav={NAV}
+      account={{ name: "Judge", detail: "Temporary tenant", onSignOut: () => void exit() }}
+    >
+      <div className="grid gap-6">
+        <section aria-label="Judge Mode" className="flex flex-wrap items-center gap-x-4 gap-y-3">
+          <fieldset className="flex gap-1 rounded-xl bg-bone-2 p-1">
+            <legend className="sr-only">Viewing as</legend>
+            {ROLES.map((r) => (
+              <button
+                key={r}
+                type="button"
+                aria-pressed={current.role === r}
+                onClick={() => go(STEPS.findIndex((x) => x.role === r))}
+                className="h-9 rounded-lg px-3.5 text-sm aria-pressed:bg-card aria-pressed:font-medium aria-pressed:shadow-[0_1px_3px_rgb(23_24_27/0.12)]"
+              >
+                {r}
+              </button>
+            ))}
+          </fieldset>
+          <span className="ml-auto font-mono text-muted-foreground text-sm tnum">
+            {step + 1}/{STEPS.length} · {elapsed(now - started)}
           </span>
-          {roles.map((r) => (
-            <button
-              key={r}
-              type="button"
-              aria-pressed={current.role === r}
-              onClick={() => go(STEPS.findIndex((s) => s.role === r))}
-              className="rounded-md px-2.5 py-1.5 font-medium text-muted-foreground hover:bg-accent aria-pressed:bg-foreground aria-pressed:text-background"
-            >
-              {r}
-            </button>
-          ))}
-        </fieldset>
-        <span className="ml-auto font-mono text-muted-foreground text-sm tabular-nums">
-          Step {step + 1} of {STEPS.length} · {elapsed(now - started)}
-        </span>
-        <button
-          type="button"
-          className="text-muted-foreground text-sm hover:text-foreground"
-          onClick={() =>
-            authClient.signOut().then(() => {
-              localStorage.removeItem(STEP_KEY);
-              localStorage.removeItem(STARTED_KEY);
-              location.assign("/judge/");
-            })
-          }
-        >
-          Exit
-        </button>
-      </section>
+          <button
+            type="button"
+            className="h-9 rounded-lg px-3 text-muted-foreground text-sm hover:bg-foreground/5 hover:text-foreground"
+            onClick={() => void exit()}
+          >
+            Exit
+          </button>
+        </section>
 
-      <div className="grid gap-10 md:grid-cols-[14rem_minmax(0,1fr)]">
-        <nav aria-label="Tour steps" className="hidden md:block">
-          <ol className="grid gap-0.5">
-            {STEPS.map((s, i) => (
-              <li key={s.id}>
+        <nav aria-label="Tour steps">
+          <ol className="flex gap-1.5">
+            {inRole.map((x) => (
+              <li key={x.id} className="min-w-0 flex-1">
                 <button
                   type="button"
-                  onClick={() => go(i)}
-                  aria-current={i === step ? "step" : undefined}
-                  className="flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left text-sm hover:bg-accent aria-[current=step]:bg-accent aria-[current=step]:font-medium"
+                  onClick={() => go(x.i)}
+                  aria-current={x.i === step ? "step" : undefined}
+                  className="group grid w-full gap-2 py-1 text-left"
                 >
                   <span
-                    aria-hidden="true"
-                    className={`grid size-5 shrink-0 place-items-center rounded-full border font-mono text-[11px] ${
-                      i < step ? "border-foreground bg-foreground text-background" : ""
-                    }`}
+                    className={`block h-1 rounded-full transition-colors ${x.i < step ? "bg-foreground" : x.i === step ? "bg-vermilion" : "bg-foreground/12 group-hover:bg-foreground/25"}`}
+                  />
+                  <span
+                    className={`truncate text-xs ${x.i === step ? "font-medium text-foreground" : "text-muted-foreground"} ${x.i === step ? "" : "sr-only sm:not-sr-only"}`}
                   >
-                    {i < step ? "✓" : i + 1}
+                    {x.title}
                   </span>
-                  <span className={i < step ? "text-muted-foreground" : ""}>{s.title}</span>
                 </button>
               </li>
             ))}
@@ -270,17 +340,15 @@ function Walkthrough({ tour }: { tour: Tour }) {
         </nav>
 
         <section aria-labelledby="step-title" className="grid content-start gap-6">
-          <div className="grid gap-2">
-            <Eyebrow>
-              {current.role} · step {step + 1}
-            </Eyebrow>
+          <div className="grid max-w-3xl gap-2">
             <h1
               id="step-title"
               tabIndex={-1}
-              className="text-balance font-semibold text-3xl tracking-[-0.02em] outline-none sm:text-4xl"
+              className="text-balance font-semibold text-[1.75rem] leading-[1.1] tracking-[-0.025em] outline-none"
             >
               {current.title}
             </h1>
+            <p className="text-pretty text-lg text-muted-foreground leading-snug">{current.line}</p>
           </div>
           <StepBody id={current.id} tour={tour} />
           <div className="flex items-center justify-between gap-3 border-t pt-5">
@@ -299,7 +367,7 @@ function Walkthrough({ tour }: { tour: Tour }) {
           </div>
         </section>
       </div>
-    </div>
+    </AppShell>
   );
 }
 
@@ -332,8 +400,16 @@ function StepBody({ id, tour }: { id: string; tour: Tour }) {
   }
 }
 
+/** The longer explanation, folded under the step's one line. */
 function Lead({ children }: { children: React.ReactNode }) {
-  return <p className="max-w-prose text-pretty text-lg text-muted-foreground">{children}</p>;
+  return (
+    <details className="w-fit max-w-prose">
+      <summary className="cursor-pointer list-none py-1 font-medium text-sm underline-offset-4 hover:underline">
+        How this works
+      </summary>
+      <p className="mt-2 text-pretty text-muted-foreground text-sm leading-relaxed">{children}</p>
+    </details>
+  );
 }
 
 function Missing({ what }: { what: string }) {
@@ -350,7 +426,7 @@ function MandateStep({ tour }: { tour: Tour }) {
         with a passkey. Each field says who answers if the agent gets it wrong. This is the mandate
         the demo agent last bought under, signed {when(m.created_at)}.
       </Lead>
-      <DataList layout="row" className="max-w-xl">
+      <DataList layout="row" className="max-w-2xl rounded-3xl border bg-card px-5 py-2 sm:px-6">
         <DataItem label="Budget">{money(m.budget.max_minor, m.budget.currency)}</DataItem>
         <DataItem label="Mandate">
           <span className="font-mono text-sm">{m.id}</span>
@@ -389,14 +465,20 @@ function AgentStep({
       </Lead>
       <div className="grid gap-4 lg:grid-cols-2">
         {blocked ? (
-          <article className="grid content-start gap-4 rounded-lg border p-5">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="font-semibold">Injected listing</h2>
-              <Status state="blocked" />
+          <article className="grid content-start gap-4 rounded-3xl border border-vermilion/35 bg-vermilion/[0.06] p-5 sm:p-6">
+            <div className="flex items-center gap-3.5">
+              <Mark kind="blocked" />
+              <span className="grid flex-1 leading-tight">
+                <h2 className="font-semibold">Injected listing</h2>
+                <span className="text-muted-foreground text-sm">Blocked · nothing paid</span>
+              </span>
             </div>
-            <p className="font-mono text-3xl tabular-nums">
-              {money(blocked.amount.minor, blocked.amount.currency)}
-            </p>
+            <Amount
+              value={major(blocked.amount.minor, blocked.amount.currency)}
+              currency={blocked.amount.currency}
+              className="text-[2.25rem]"
+              struck="Not paid"
+            />
             <DataList>
               <DataItem label="Checks failed">{checksFailed(blocked)}</DataItem>
               <DataItem label="Captured">Nothing</DataItem>
@@ -406,14 +488,19 @@ function AgentStep({
             </DataList>
           </article>
         ) : null}
-        <article className="grid content-start gap-4 rounded-lg border p-5">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="font-semibold">Clean store</h2>
-            <Status state="captured" />
+        <article className="grid content-start gap-4 rounded-3xl border bg-card p-5 sm:p-6">
+          <div className="flex items-center gap-3.5">
+            <Mark kind="bought" />
+            <span className="grid flex-1 leading-tight">
+              <h2 className="font-semibold">Clean store</h2>
+              <span className="text-muted-foreground text-sm">Bought · captured on PayPal</span>
+            </span>
           </div>
-          <p className="font-mono text-3xl tabular-nums">
-            {money(captured.amount.minor, captured.amount.currency)}
-          </p>
+          <Amount
+            value={major(captured.amount.minor, captured.amount.currency)}
+            currency={captured.amount.currency}
+            className="text-[2.25rem]"
+          />
           <DataList>
             <DataItem label="Countersigned">
               {captured.mode === "2of2" ? "By both TEEs (2 of 2)" : (captured.mode ?? "—")}
@@ -460,7 +547,7 @@ function AlibiStep({ captured }: { captured: TourPurchase | undefined }) {
         title="Alibi verifier"
         src={`${VERIFY}/a/${captured.id}?embed${captured.alibi_fragment ? `#${captured.alibi_fragment}` : ""}`}
         loading="lazy"
-        className="h-[34rem] w-full rounded-lg border bg-card"
+        className="h-[34rem] w-full rounded-3xl border bg-card"
       />
       <a
         className="text-sm underline"
@@ -488,7 +575,7 @@ function AnonymousStep({ purchase }: { purchase: Tour["anonymous_purchase"] }) {
         title="Anonymous proof verifier"
         src={link.replace("?proof=anonymous", "?embed&proof=anonymous")}
         loading="lazy"
-        className="h-[42rem] w-full rounded-lg border bg-card"
+        className="h-[42rem] w-full rounded-3xl border bg-card"
       />
       <a className="text-sm underline" href={link} target="_blank" rel="noopener">
         Open in the full verifier ↗
@@ -541,7 +628,7 @@ function DisputeStep({ id, part }: { id: string | null; part: "dispute" | "verdi
           purchase&apos;s Alibi and attributed fault. This dispute was opened ahead of time, so the
           tour skips PayPal&apos;s few minutes of delivery lag; its id is real.
         </Lead>
-        <DataList layout="row" className="max-w-xl">
+        <DataList layout="row" className="max-w-2xl rounded-3xl border bg-card px-5 py-2 sm:px-6">
           <DataItem label="PayPal dispute">
             <span className="font-mono text-sm">{d.dispute_id}</span>
           </DataItem>
@@ -579,7 +666,7 @@ function DisputeStep({ id, part }: { id: string | null; part: "dispute" | "verdi
         the operator&apos;s bond, Keelson&apos;s reserve, or nobody when the merchant is at fault.
         PayPal still decides the dispute; Keelson brings the evidence.
       </Lead>
-      <DataList layout="row" className="max-w-xl">
+      <DataList layout="row" className="max-w-2xl rounded-3xl border bg-card px-5 py-2 sm:px-6">
         <DataItem label="At fault">{d.liable ? PARTY[d.liable] : "Not yet"}</DataItem>
         {d.verdict ? (
           <>
@@ -651,14 +738,16 @@ function GradeStep({ agentId }: { agentId: string | null }) {
         The operator behind the agent posts a bond. Its grade comes from the red team&apos;s attack
         rates and its own covered purchases, and prices the premium it pays on each coverage.
       </Lead>
-      <div className="flex items-baseline gap-4">
-        <span className="font-semibold text-7xl tracking-tight">{g.grade}</span>
+      <div className="flex items-center gap-4">
+        <span className="grid size-16 shrink-0 place-items-center rounded-2xl bg-graphite font-mono font-semibold text-4xl text-bone">
+          {g.grade}
+        </span>
         <span className="text-muted-foreground">
           Agent #{g.agentId} · incidents at most {percent(g.frequency.upper95_ppm, true)} (95 %
           upper bound)
         </span>
       </div>
-      <DataList layout="row" className="max-w-xl">
+      <DataList layout="row" className="max-w-2xl rounded-3xl border bg-card px-5 py-2 sm:px-6">
         <DataItem label="Covered purchases">
           {g.evidence.coverages.toLocaleString("en-US")}
         </DataItem>
@@ -688,7 +777,7 @@ function ScoreboardStep({ campaign }: { campaign: string | null }) {
       </Lead>
       <div className="grid gap-3 sm:grid-cols-2">
         {all.map((r) => (
-          <article key={r.backbone} className="grid gap-2 rounded-lg border p-5">
+          <article key={r.backbone} className="grid gap-2 rounded-3xl border bg-card p-5 sm:p-6">
             <h2 className="font-medium">{r.backbone} agent</h2>
             <p className="text-muted-foreground text-sm">
               Hijacked {r.asr.k} of {r.asr.n} times.{" "}

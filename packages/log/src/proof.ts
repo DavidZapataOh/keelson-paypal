@@ -1,7 +1,7 @@
 import { sha256 } from "@keelson/core";
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { ml_dsa44 } from "@noble/post-quantum/ml-dsa.js";
-import { LOG_VKEYS, LOG_WITNESSES } from "./client.ts";
+import { LOG_VKEYS, LOG_WITNESSES, logVkeySets } from "./client.ts";
 
 const encoder = new TextEncoder();
 
@@ -321,9 +321,50 @@ export function verifyWitnessedCheckpoint(
   now: Date = new Date(),
 ): VerifiedCheckpoint & { cosigners: string[] } {
   const { cp } = parseNote(signed);
-  const vkeys = LOG_VKEYS[cp.origin];
   const witnesses = LOG_WITNESSES[cp.origin];
-  if (!vkeys || !witnesses) throw new Error(`not a pinned log origin: ${cp.origin}`);
-  const verified = verifyCheckpoint(signed, vkeys);
+  if (!LOG_VKEYS[cp.origin] || !witnesses) throw new Error(`not a pinned log origin: ${cp.origin}`);
+  const verified = verifyCheckpointOfOrigin(signed, cp.origin);
   return { ...verified, cosigners: verifyCosignatures(signed, witnesses, now).cosigners };
+}
+
+/** {@link verifyCheckpoint} under the first key set of `origin` that signed it. */
+export function verifyCheckpointOfOrigin(signed: string, origin: string): VerifiedCheckpoint {
+  return firstSet(
+    origin,
+    (vkeys) => verifyCheckpoint(signed, vkeys),
+    (cp) => cp.size,
+  );
+}
+
+/** {@link verifyProof} under the first key set of `origin` whose keys signed its checkpoint. */
+export function verifyProofOfOrigin(
+  proof: string,
+  leafHash: Uint8Array,
+  origin: string,
+): { index: bigint; checkpoint: VerifiedCheckpoint } {
+  return firstSet(
+    origin,
+    (vkeys) => verifyProof(proof, leafHash, vkeys),
+    (out) => out.checkpoint.size,
+  );
+}
+
+function firstSet<T>(
+  origin: string,
+  verify: (vkeys: readonly string[]) => T,
+  sizeOf: (out: T) => bigint,
+): T {
+  const sets = logVkeySets(origin);
+  if (sets.length === 0) throw new Error(`not a pinned log origin: ${origin}`);
+  let last: unknown;
+  for (const { vkeys, untilSize } of sets) {
+    try {
+      const out = verify(vkeys);
+      if (sizeOf(out) <= untilSize) return out;
+      last = new Error(`a retired key of ${origin} signed a tree past its last size`);
+    } catch (err) {
+      last = err;
+    }
+  }
+  throw last;
 }
