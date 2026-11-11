@@ -4,9 +4,10 @@ use std::sync::Arc;
 
 use keelson_tee::wire::{
     CardAuthorizeRequest, CardAuthorized, CardNetworkAuthorization, Countersigned, MandateIssued,
-    RegisterMandate,
+    PayPalObservation, RegisterMandate,
 };
 use keelson_tee::{CARD_BITS, Engine, EngineError};
+
 use serde_json::{Value, json};
 
 use common::*;
@@ -50,7 +51,10 @@ fn allowed(edit: impl FnOnce(&mut Value)) -> Fixture {
     let issued: MandateIssued = engine.register_mandate(&mandate, at(NOW)).unwrap();
     let f = CartFixture::demo();
     let allow = engine
-        .countersign(&countersign_request(&issued, &f, request_id(1), None), at(NOW + 10))
+        .countersign(
+            &countersign_request(&issued, &f, request_id(1), None),
+            at(NOW + 10),
+        )
         .unwrap();
     Fixture {
         engine,
@@ -112,7 +116,10 @@ fn approves_the_first_matching_authorization_once() {
     let f = allowed(to_card);
     let ok = f
         .engine
-        .authorize_card(&request(&f, network("iauth_1", 9400, "5661", "US")), at(NOW + 20))
+        .authorize_card(
+            &request(&f, network("iauth_1", 9400, "5661", "US")),
+            at(NOW + 20),
+        )
         .unwrap();
     assert_eq!(ok.authorization.decision, "1");
     assert_eq!(mask(&ok), 0);
@@ -128,14 +135,20 @@ fn approves_the_first_matching_authorization_once() {
     // A retry of the same authorization gets the same answer.
     let again = f
         .engine
-        .authorize_card(&request(&f, network("iauth_1", 9400, "5661", "US")), at(NOW + 21))
+        .authorize_card(
+            &request(&f, network("iauth_1", 9400, "5661", "US")),
+            at(NOW + 21),
+        )
         .unwrap();
     assert_eq!(again, ok);
 
     // Any other authorization of the card is a second use.
     let second = f
         .engine
-        .authorize_card(&request(&f, network("iauth_2", 100, "5661", "US")), at(NOW + 22))
+        .authorize_card(
+            &request(&f, network("iauth_2", 100, "5661", "US")),
+            at(NOW + 22),
+        )
         .unwrap();
     assert_eq!(second.authorization.decision, "2");
     assert_eq!(mask(&second), bit("used"));
@@ -158,7 +171,10 @@ fn declines_what_the_allow_does_not_cover() {
         ),
     ];
     for (n, want) in cases {
-        let out = f.engine.authorize_card(&request(&f, n), at(NOW + 20)).unwrap();
+        let out = f
+            .engine
+            .authorize_card(&request(&f, n), at(NOW + 20))
+            .unwrap();
         assert_eq!(out.authorization.decision, "2");
         assert_eq!(mask(&out), want);
     }
@@ -238,7 +254,10 @@ fn any_store_binds_the_code_and_country() {
         let mut cart = CartFixture::demo();
         cart.raw["cart"]["merchant"] = json!("*");
         let allow = engine
-            .countersign(&countersign_request(&issued, &cart, request_id(1), None), at(NOW + 10))
+            .countersign(
+                &countersign_request(&issued, &cart, request_id(1), None),
+                at(NOW + 10),
+            )
             .unwrap();
         Fixture {
             engine,
@@ -252,4 +271,94 @@ fn any_store_binds_the_code_and_country() {
         .authorize_card(&request(&f, network("a", 100, "5661", "US")), at(NOW + 20))
         .unwrap();
     assert_eq!(ok.authorization.decision, "1");
+}
+
+/// Leg A on a store that outlives it, booted long enough ago that its budget is live.
+fn leg_a_on(records: &Arc<Records>, boot: i64) -> Engine {
+    Engine::booted_at(config(None), Some(root()), at(boot)).with_user_records(records.clone())
+}
+
+#[test]
+fn a_restart_keeps_what_the_cards_approved() {
+    let records = Arc::new(Records::default());
+    let mandate = mandate_with(&sub(), &other_passkey(), to_card);
+    let first = leg_a_on(&records, NOW - 1_000);
+    let issued = first.register_mandate(&mandate, at(NOW)).unwrap();
+    let f = CartFixture::demo();
+    let allow = first
+        .countersign(
+            &countersign_request(&issued, &f, request_id(1), None),
+            at(NOW + 10),
+        )
+        .unwrap();
+    let fixture = Fixture {
+        engine: first,
+        mandate: mandate.clone(),
+        allow,
+    };
+    let ok = fixture
+        .engine
+        .authorize_card(
+            &request(&fixture, network("a", 9400, "5661", "US")),
+            at(NOW + 20),
+        )
+        .unwrap();
+    assert_eq!(ok.authorization.decision, "1");
+
+    // A new boot of leg A, past its warm-up, finds the charge in its records: the budget of
+    // 10,000 has 600 left, so another cart of 9,400 is denied on the budget.
+    let second = leg_a_on(&records, NOW - 1_000);
+    let again = second
+        .countersign(
+            &countersign_request(&issued, &f, request_id(2), None),
+            at(NOW + 30),
+        )
+        .unwrap();
+    assert_eq!(again.countersign.decision, "2");
+    assert_ne!(common::mask(&again) & BIT_BUDGET, 0);
+}
+
+#[test]
+fn a_card_mandate_is_backed_by_its_paypal_hold() {
+    let records = Arc::new(Records::default());
+    let mandate = mandate_with(&sub(), &other_passkey(), to_card);
+    let engine = leg_a_on(&records, NOW - 1_000);
+    let issued = engine.register_mandate(&mandate, at(NOW)).unwrap();
+    let m = keelson_mandate::decode_mandate(&mandate.payload_sd, &mandate.disclosures).unwrap();
+    let mid = m["mid"].as_str().unwrap();
+    let hold = |authorized: i64, captured: i64| PayPalObservation {
+        authorization_id: "AUTH1".into(),
+        order_id: "ORDER1".into(),
+        status: if captured > 0 {
+            "PARTIALLY_CAPTURED"
+        } else {
+            "CREATED"
+        }
+        .into(),
+        currency: "USD".into(),
+        authorized_minor: authorized,
+        captured_minor: captured,
+        order_captured_minor: captured,
+        // Keelson's own account, which no card mandate names as a payee.
+        payee_merchant_id: "KEELSONPAYEE".into(),
+        expires_at_ms: (NOW + 86_400) * 1000,
+        custom_id: format!("ks1.sm.{mid}.{}", "A".repeat(43)),
+        read_at_ms: NOW * 1000,
+        ..PayPalObservation::default()
+    };
+    let f = CartFixture::demo();
+    let mut r = countersign_request(&issued, &f, request_id(1), None);
+    r.authorization_id = Some("AUTH1".into());
+    let held = engine
+        .countersign_with(&r, at(NOW + 10), Some(hold(10_000, 0)))
+        .unwrap();
+    assert_eq!(held.countersign.decision, "1");
+
+    // A hold that no longer covers the cart denies it.
+    let mut r = countersign_request(&issued, &f, request_id(2), None);
+    r.authorization_id = Some("AUTH1".into());
+    let short = engine
+        .countersign_with(&r, at(NOW + 10), Some(hold(5_000, 0)))
+        .unwrap();
+    assert_eq!(short.countersign.decision, "2");
 }
