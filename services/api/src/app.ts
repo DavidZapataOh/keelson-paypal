@@ -38,6 +38,8 @@ import { type CompileSources, registerCompile } from "./routes/compile.ts";
 import { registerConnections } from "./routes/connections.ts";
 import { registerCountersign } from "./routes/countersign.ts";
 import { registerDisputes } from "./routes/disputes.ts";
+import { registerEmbed } from "./routes/embed.ts";
+import { noFraming, registerEmbedPage } from "./routes/embed-page.ts";
 import { registerEngineProofs } from "./routes/engine-proofs.ts";
 import { registerEvents } from "./routes/events.ts";
 import { registerEvidence } from "./routes/evidence.ts";
@@ -74,10 +76,11 @@ import type { StampWorker } from "./timestamps/worker.ts";
 
 /**
  * POST routes that stream their response, that read, or that an RFC 8628 client polls without an
- * `Idempotency-Key`: none changes anything a retry repeats.
+ * `Idempotency-Key`: none changes anything a retry repeats. Embed tokens and sessions are never
+ * stored for a replay; declining is a compare-and-set on a pending request.
  */
 const STREAMED_POSTS =
-  /^\/v1\/(merchants\/[^/]+\/assistant|operators\/[^/]+\/(coverages\/rows|grid-query)|connections\/token)$/;
+  /^\/v1\/(merchants\/[^/]+\/assistant|operators\/[^/]+\/(coverages\/rows|grid-query)|connections\/token|connections\/embed|embed\/(sessions|deny))$/;
 
 /**
  * The public reads the verifier makes: an Alibi when it is public, an Alibi's receipt, a leaf's
@@ -162,6 +165,8 @@ export interface Deps {
   proveAnonymousPurchase?: (purchaseId: string) => Promise<void>;
   /** Aborting it ends every open event stream so the server can close. */
   shutdown?: AbortSignal;
+  /** The markup of the app's embedded approval page; `/embed/approve` is not served without it. */
+  embedPage?: () => Promise<string>;
 }
 
 /**
@@ -194,6 +199,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   app.use(httpInstrumentationMiddleware());
   app.use(requestId({ generator: () => ulid() }));
   app.use(requestLogger(deps.log));
+  app.use(noFraming);
   // The app calls the API cross-origin with its session cookie; preflights end here, before
   // authentication, rate limiting and idempotency.
   const appCors = deps.appOrigin
@@ -302,6 +308,8 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerPurchaseHolds(app, deps);
   registerRevoke(app, deps);
   registerConnections(app, deps);
+  registerEmbed(app, deps);
+  if (deps.embedPage) registerEmbedPage(app, deps, deps.embedPage);
   registerAgents(app, deps);
   registerOAuthConsent(app, deps);
   registerCompile(app, deps);

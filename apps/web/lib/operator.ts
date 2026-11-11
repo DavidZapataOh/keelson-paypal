@@ -11,6 +11,7 @@ import {
 } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { createSiweMessage } from "viem/siwe";
+import type { AmberField } from "./amber";
 import { get, post, send } from "./api";
 import { authClient } from "./auth";
 import type { Eip1193 } from "./merchant";
@@ -74,6 +75,13 @@ export interface CoverageRow {
   paidBy: "chain" | "treasury" | "violation-pool" | null;
   settlementTx: string | null;
   settledAt: string | null;
+  amber: "none" | "attested" | "contradicted";
+  amberCommitment: string | null;
+  amberField: AmberField | null;
+  amberClaimed: string | null;
+  amberProvenAt: string | null;
+  amberWebFact: string | null;
+  amberTx: string | null;
 }
 
 export interface CoverageDay {

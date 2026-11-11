@@ -41,7 +41,9 @@ describe.skipIf(!live)("POST /v1/mandates with several passkeys (live leg A)", (
   });
 
   const register = async (passkey: VirtualPasskey, sub: string) => {
-    const signed = await signedMandate(passkey, sub);
+    const signed = await signedMandate(passkey, sub, undefined, (m) => {
+      m.mid = ulid();
+    });
     const res = await app.request("/v1/mandates", {
       method: "POST",
       headers: { "content-type": "application/json", "idempotency-key": ulid(), ...asUser(sub) },

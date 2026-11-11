@@ -19,6 +19,7 @@ import {
   hexToBytes,
   type PublicClient,
 } from "viem";
+import { fixAmber } from "../amber.ts";
 import { SETTLEMENT } from "../merchants.ts";
 import type { OperatorSigners } from "../operators/signer.ts";
 import { premiumBps } from "../risk.ts";
@@ -125,6 +126,8 @@ export async function coverStep(
     // a submission whose process died before signing, so every attempt submits.
     const amount = cs.amount * PYUSD_PER_MINOR;
     const bps = await premiumFor(db, purchaseId, cs.agentId, row.premiumBps);
+    // A coverage first sent without an attestation keeps none, so every attempt signs the same.
+    const amber = await fixAmber(db, purchaseId, !(await relayer.get(CHAIN_ID, key)));
     const coverage: Coverage = {
       coverageId: cs.requestId,
       agentId: cs.agentId,
@@ -134,7 +137,7 @@ export async function coverStep(
       // From the countersign rather than the clock, so every attempt signs the same coverage.
       expiresAt: cs.issuedAt + (await disputeWindow(chain.client)),
       mandateHash: cs.mandateHash,
-      amberCommitment: ZERO,
+      amberCommitment: (amber?.commitment as Hex | undefined) ?? ZERO,
       userKeyHash: userKeyHash(qx, qy),
     };
     const operatorSig = await operator.signTypedData(coverageTypedData(coverage, CHAIN_ID, VAULT));

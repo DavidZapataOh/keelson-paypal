@@ -104,6 +104,17 @@ contract KeelsonTypesTest is VerifierBase {
         if (p == keccak256("Checkpoint")) return KeelsonTypes.hash(_checkpoint(m));
         if (p == keccak256("Coverage")) return KeelsonTypes.hash(_coverage(m));
         if (p == keccak256("CoverageBatch")) return KeelsonTypes.hash(_coverageBatch(m));
+        if (p == keccak256("WebFact")) {
+            return KeelsonTypes.hash(
+                KeelsonTypes.WebFact({
+                    hostHash: vectors.readBytes32(string.concat(m, ".hostHash")),
+                    urlPathHash: vectors.readBytes32(string.concat(m, ".urlPathHash")),
+                    tCapture: uint40(vectors.readUint(string.concat(m, ".tCapture"))),
+                    rangeCommitment: vectors.readBytes32(string.concat(m, ".rangeCommitment")),
+                    attId: vectors.readBytes32(string.concat(m, ".attId"))
+                })
+            );
+        }
         if (p == keccak256("WithdrawalRequest")) {
             return KeelsonTypes.hashWithdrawal(
                 vectors.readUint(string.concat(m, ".agentId")),
@@ -143,7 +154,7 @@ contract KeelsonTypesTest is VerifierBase {
             assertEq(_digest(item, structHash), vectors.readBytes32(string.concat(item, ".expected")), item);
             ++checked;
         }
-        assertEq(checked, 16);
+        assertEq(checked, 18);
     }
 
     function test_TypeHashes() public pure {
@@ -163,6 +174,12 @@ contract KeelsonTypesTest is VerifierBase {
         );
         assertEq(
             KeelsonTypes.CLAIM_TYPEHASH, keccak256("Claim(address account,address to,uint256 nonce,uint256 deadline)")
+        );
+        assertEq(
+            KeelsonTypes.WEB_FACT_TYPEHASH,
+            keccak256(
+                "WebFact(bytes32 hostHash,bytes32 urlPathHash,uint40 tCapture,bytes32 rangeCommitment,bytes32 attId)"
+            )
         );
     }
 

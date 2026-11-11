@@ -4,7 +4,7 @@
   "tasks": {
     "build": {
       "outputs": ["out/**"],
-      "env": ["NEXT_PUBLIC_API_ORIGIN"]
+      "env": ["NEXT_PUBLIC_API_ORIGIN", "NEXT_PUBLIC_APP_ORIGIN", "NEXT_PUBLIC_ASSET_ORIGIN"]
     },
     "test": {
       "dependsOn": ["build"]

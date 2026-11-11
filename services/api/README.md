@@ -374,7 +374,8 @@ Each step is a span when tracing is on (`OTEL_TRACES_EXPORTER=console`, or an OT
 `purchase.CAPTURED`, with `purchase.id` and `countersign.mode`, and the outbound calls (undici)
 and queries (pg) of each step nested under it. `bench/money-path.bench.ts` drives real sandbox
 purchases (`PURCHASES`, `CONCURRENCY` mandates buying at once, `DEGRADED_EVERY`) and prints the
-waterfall from those spans as JSON.
+waterfall from those spans as JSON. Its agent is the demo operator's own OAuth client
+(`KEELSON_CLIENT_ID`, `KEELSON_CLIENT_SECRET`), with access tokens from the deployed API.
 
 On the warm path a purchase makes these round trips, in this order:
 

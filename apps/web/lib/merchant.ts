@@ -2,6 +2,7 @@ import { addresses } from "@keelson/chain";
 import { keelsonDomain } from "@keelson/core/eip712";
 import { getAddress, type Hex } from "viem";
 import { createSiweMessage } from "viem/siwe";
+import type { AmberCase } from "./amber";
 import { get, send } from "./api";
 import { authClient } from "./auth";
 import { API } from "./config";
@@ -47,6 +48,7 @@ export interface MerchantDispute {
   settled_at: string | null;
   explorer_url: string | null;
   has_alibi: boolean;
+  amber: AmberCase | null;
 }
 
 export interface Evaluations {
