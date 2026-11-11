@@ -174,6 +174,7 @@ contract AmberContradictionCourt is IConvictions {
         returns (uint8 code, uint40 provenAt, bytes32 evidenceDigest)
     {
         Conviction memory v = _convictions[coverageId];
+        // slither-disable-next-line incorrect-equality
         if (v.fieldId == 0 || block.timestamp <= payableAt(coverageId)) return (0, 0, 0);
         return (v.fieldId, v.provenAt, v.webFactDigest);
     }
