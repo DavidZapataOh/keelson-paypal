@@ -48,6 +48,7 @@ import type { Deps } from "../app.ts";
 import { cartChecks } from "../cart-checks.ts";
 import { deviceAuthorization, grantOf, requestOnce } from "../connections.ts";
 import { approvedMandate, closeForHost, isDelegated, notAnotherApps } from "../delegated.ts";
+import { issuedReference } from "../fx.ts";
 import { capturable, merchantWebsite } from "../hold/state.ts";
 import { MERCHANTS } from "../merchants.ts";
 import { requireAgent } from "../middleware/auth.ts";
@@ -283,7 +284,7 @@ const route = createRoute({
     413: { description: "A leg refused the request as too large", content: problemContent },
     422: {
       description:
-        "The request is invalid, the purchase unit's amount does not reconcile with the cart (`invalid-amount`), the authorization is not this purchase's hold, the cart is not the one held for this request, the evidence holds another cart or another checkout amount, its Channel3 observation is not usable, its WebFact is not this purchase's, or a live store is not the website the mandate allows",
+        "The request is invalid, the purchase unit's amount does not reconcile with the cart (`invalid-amount`), the authorization is not this purchase's hold, the cart is not the one held for this request, the evidence holds another cart or another checkout amount or reference rates Keelson did not issue, its Channel3 observation is not usable, its WebFact is not this purchase's, or a live store is not the website the mandate allows",
       content: problemContent,
     },
     429: { description: "Too many countersigns for this mandate", content: problemContent },
@@ -866,6 +867,7 @@ export function registerCountersign(
             "api.product",
             "api.cart",
             "api.checkout",
+            "api.fx_reference",
             "channel3.observation",
             "tlsn.web_fact",
           ]),
@@ -999,6 +1001,26 @@ export function registerCountersign(
         "Evidence checkout mismatch",
         "The checkout amount stored with the evidence is not the purchase unit's amount.",
       );
+    }
+
+    // Reference rates bind only as the API issued them, from the cart's currency.
+    const fx = item("api.fx_reference")?.bytes;
+    if (fx) {
+      let base: unknown;
+      try {
+        base = (JSON.parse(Buffer.from(fx).toString()) as { base?: unknown }).base;
+      } catch {
+        base = undefined;
+      }
+      if (base !== body.cart.currency || !(await issuedReference(kv, fx))) {
+        return problem(
+          c,
+          422,
+          "evidence-fx-reference-unknown",
+          "Evidence reference rates unknown",
+          "The api.fx_reference item stored with the evidence is not reference rates Keelson issued in the last 6 hours from the cart's currency.",
+        );
+      }
     }
 
     // The Alibi discloses the WebFact; one that is not this purchase's would fail its verification.

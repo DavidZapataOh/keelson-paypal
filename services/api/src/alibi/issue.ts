@@ -9,7 +9,7 @@ import {
   toBase64,
 } from "@keelson/alibi";
 import { verifyAlibi } from "@keelson/alibi/verify";
-import { type Json, jcs, toHex } from "@keelson/core";
+import { captureCeiling, type Json, jcs, toHex } from "@keelson/core";
 import {
   alibis,
   and,
@@ -58,6 +58,7 @@ const DISCLOSED = [
   "channel3.observation",
   "tlsn.web_fact",
   "api.checkout",
+  "api.fx_reference",
 ] as const;
 const ENV: Readonly<Record<number, "s" | "p">> = { 421614: "s", 42161: "p" };
 const KIND = { 1: "tdx", 2: "nitro" } as const;
@@ -369,6 +370,7 @@ export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<vo
     ...(evidence.observation ? { channel3_observation: evidence.observation } : {}),
     ...(evidence.webFact ? { web_fact: evidence.webFact } : {}),
     ...(evidence.checkout ? { checkout: evidence.checkout } : {}),
+    ...(evidence.fxReference ? { fx_reference: evidence.fxReference } : {}),
     ...(c1 || c3
       ? {
           zk: {
@@ -486,12 +488,15 @@ async function disclosures(db: Db, root: Buffer) {
   const cart = ct?.bytes ? json(JSON.parse(Buffer.from(ct.bytes).toString())) : undefined;
   const co = items.find((i) => i.type === "api.checkout");
   const checkout = co?.bytes ? json(JSON.parse(Buffer.from(co.bytes).toString())) : undefined;
+  const fx = items.find((i) => i.type === "api.fx_reference");
+  const fxReference = fx?.bytes ? json(JSON.parse(Buffer.from(fx.bytes).toString())) : undefined;
   return {
     root,
     manifest: manifest as AlibiBundle["manifest"]["public"],
     disclosures: out,
     cart,
     checkout,
+    fxReference,
     observation,
     webFact,
     opened: items.map((i) => i.index),
@@ -512,6 +517,11 @@ export async function loadAlibi(db: Db, purchaseId: string): Promise<AlibiBundle
       captureId: purchases.paypalCaptureId,
       invoiceId: purchases.invoiceId,
       transactionId: purchases.paypalTransactionId,
+      intent: purchases.paypalOrderIntent,
+      payee: purchases.paypalPayeeId,
+      conversion: purchases.conversion,
+      currency: purchases.currency,
+      amountMinor: purchases.amountMinor,
     })
     .from(alibis)
     .innerJoin(purchases, eq(purchases.id, alibis.purchaseId))
@@ -541,9 +551,25 @@ export async function loadAlibi(db: Db, purchaseId: string): Promise<AlibiBundle
             ...(row.captureId ? { capture_id: row.captureId } : {}),
             ...(row.invoiceId ? { invoice_id: row.invoiceId } : {}),
             ...(row.transactionId ? { transaction_id: row.transactionId } : {}),
+            ...(row.intent && row.payee
+              ? {
+                  store_order: {
+                    intent: row.intent,
+                    payee_id: row.payee,
+                    ...(row.intent === "AUTHORIZE"
+                      ? {
+                          capture_ceiling_minor: String(
+                            captureCeiling(row.currency, Number(row.amountMinor)),
+                          ),
+                        }
+                      : {}),
+                  },
+                }
+              : {}),
           },
         }
       : {}),
+    ...(row.conversion ? { conversion: row.conversion } : {}),
     ...(core.card ? { card: await cardSection(db, purchaseId, core.card) } : {}),
   });
 }

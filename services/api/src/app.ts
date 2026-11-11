@@ -53,6 +53,7 @@ import { registerEngineProofs } from "./routes/engine-proofs.ts";
 import { registerEvents } from "./routes/events.ts";
 import { registerEvidence } from "./routes/evidence.ts";
 import { registerFeedback } from "./routes/feedback.ts";
+import { registerFx } from "./routes/fx.ts";
 import { registerGrades } from "./routes/grades.ts";
 import { registerHealth } from "./routes/health.ts";
 import { registerHold } from "./routes/hold.ts";
@@ -404,6 +405,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerPurchases(app, deps);
   registerEvidence(app, deps);
   registerObservations(app, deps);
+  registerFx(app, deps);
   registerWebFacts(app, deps);
   registerChannel3Webhook(app, deps);
   registerPayPalWebhook(app, deps);

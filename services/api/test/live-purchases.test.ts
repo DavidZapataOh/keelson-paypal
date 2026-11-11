@@ -4,12 +4,31 @@ import { randomBytes } from "node:crypto";
 import { decodeAlibi, leafHashOf } from "@keelson/alibi";
 import { extractAlibi } from "@keelson/alibi/extract";
 import { verifyAlibi } from "@keelson/alibi/verify";
-import { alibis, eq, mandates, purchases, sql, user } from "@keelson/db";
+import {
+  type Conversion,
+  captureCeiling,
+  DEFAULT_MAX_SPREAD_BPS,
+  type FxReference,
+} from "@keelson/core";
+import {
+  alibis,
+  eq,
+  evidenceBundles,
+  evidenceItems,
+  mandates,
+  purchases,
+  sql,
+  user,
+} from "@keelson/db";
+import { buildSdPayload, parseMandate } from "@keelson/mandate";
 import { pino } from "pino";
 import { ulid } from "ulid";
 import { beforeAll, describe, expect, test } from "vitest";
 import { fixtures } from "../../../packages/alibi/test/fixtures.ts";
+import demo from "../../../packages/mandate/test/fixtures/demo-mandate.json" with { type: "json" };
+import { loadAlibi } from "../src/alibi/issue.ts";
 import { createApp } from "../src/app.ts";
+import { commitmentBytes } from "../src/fx.ts";
 import { drivePurchase, resumePurchases } from "../src/pipeline/drive.ts";
 import { channel3Mandate } from "./channel3.ts";
 import { testDb, testKv } from "./setup.ts";
@@ -108,6 +127,98 @@ describe("live purchases", () => {
     ).toBe(403);
     expect((await record(live, "not a paypal id")).status).toBe(422);
   });
+
+  test("PayPal's order and its conversion are recorded with the transaction, checked against the evidence", async () => {
+    const reference: FxReference = {
+      v: "keelson.fx_reference/1",
+      provider: "ExchangeRate-API",
+      source: "https://open.er-api.com/v6/latest/USD",
+      base: "USD",
+      as_of: "2026-11-11T00:02:32.000Z",
+      fetched_at: "2026-11-11T12:00:00.000Z",
+      rates: { COP: "3276.876985", EUR: "0.89871" },
+    };
+    const conversion: Conversion = {
+      v: "keelson.conversion/1",
+      merchant: { currency: "USD", value: "2.95" },
+      buyer: { currency: "COP", value: "10231" },
+      rate: "3468.14",
+      reference: {
+        rate: "3276.876985",
+        provider: reference.provider,
+        source: reference.source,
+        as_of: reference.as_of,
+      },
+      spread_bps: 584,
+      max_spread_bps: DEFAULT_MAX_SPREAD_BPS,
+      locale: "es-CO",
+    };
+    // A mandate signed as the demo one, which allows paying MERCH7XK2Q9LD.
+    const sd = await buildSdPayload(parseMandate(demo), () => randomBytes(16));
+    await testDb
+      .update(mandates)
+      .set({ payloadSd: sd.payloadSd, disclosures: sd.disclosures })
+      .where(eq(mandates.id, mandateId));
+    const order = { intent: "AUTHORIZE", payee: "MERCH7XK2Q9LD" };
+    const put = async (id: string, transactionId: string, body: Record<string, unknown>) =>
+      app.request(`/v1/purchases/${id}/paypal-transaction`, {
+        method: "PUT",
+        headers: { "content-type": "application/json", ...asClient(agent) },
+        body: JSON.stringify({ transactionId, order, ...body }),
+      });
+    /** A logged live purchase whose evidence binds `reference`. */
+    const live = async () => {
+      const root = randomBytes(32);
+      await testDb
+        .insert(evidenceBundles)
+        .values({ root, mandateId, manifest: {}, uploadedBy: agent });
+      await testDb.insert(evidenceItems).values({
+        root,
+        index: 0,
+        type: "api.fx_reference",
+        mediaType: "application/json",
+        contentHash: randomBytes(32),
+        salt: randomBytes(32),
+        bytes: Buffer.from(commitmentBytes(reference)),
+      });
+      const id = await purchase(mandateId, "LOGGED", STORE);
+      await testDb.update(purchases).set({ evidenceRoot: root }).where(eq(purchases.id, id));
+      return id;
+    };
+    for (const [n, wrong] of [
+      { ...conversion, rate: "3500.00" },
+      { ...conversion, merchant: { currency: "USD", value: "3.95" } },
+      { ...conversion, reference: { ...conversion.reference, rate: "3100" } },
+      { ...conversion, max_spread_bps: 500 },
+      { ...conversion, spread_bps: 900, max_spread_bps: 1000 },
+    ].entries()) {
+      const res = await put(await live(), `6AB2345${n}CD789012E`, { conversion: wrong });
+      expect(res.status, JSON.stringify(wrong)).toBe(422);
+    }
+    const unbound = await purchase(mandateId, "LOGGED", STORE);
+    expect((await put(unbound, "7AB23456CD789012E", { conversion })).status).toBe(422);
+    // Another payee: the transaction is recorded, the report is not.
+    const elsewhere = await live();
+    const res = await put(elsewhere, "9AB23456CD789012E", {
+      conversion,
+      order: { ...order, payee: "OTHERPAYEE01" },
+    });
+    expect(res.status).toBe(422);
+    const [kept] = await testDb.select().from(purchases).where(eq(purchases.id, elsewhere));
+    expect(kept).toMatchObject({
+      paypalTransactionId: "9AB23456CD789012E",
+      paypalPayeeId: null,
+      conversion: null,
+    });
+    const id = await live();
+    expect((await put(id, "8AB23456CD789012E", { conversion })).status).toBe(200);
+    const [row] = await testDb.select().from(purchases).where(eq(purchases.id, id));
+    expect(row).toMatchObject({
+      paypalOrderIntent: "AUTHORIZE",
+      paypalPayeeId: "MERCH7XK2Q9LD",
+      conversion,
+    });
+  });
 });
 
 const f = fixtures[0];
@@ -150,6 +261,44 @@ describe.skipIf(!f)("live Alibis are public", () => {
     expect(res.status).toBe(200);
     const bundle = decodeAlibi(new Uint8Array(await res.arrayBuffer()));
     expect(bundle.paypal?.transaction_id).toBe("5MC585209K746392H");
+  });
+
+  test("the Alibi carries the store's PayPal order and its capture ceiling, and the conversion", async () => {
+    const conversion = {
+      v: "keelson.conversion/1",
+      merchant: { currency: "USD", value: "2.95" },
+      buyer: { currency: "COP", value: "10231" },
+      rate: "3468.14",
+      reference: {
+        rate: "3276.876985",
+        provider: "ExchangeRate-API",
+        source: "https://open.er-api.com/v6/latest/USD",
+        as_of: "2026-11-11T00:02:32.000Z",
+      },
+      spread_bps: 584,
+      max_spread_bps: 750,
+      locale: "es-CO",
+    };
+    const set = (o: Partial<typeof purchases.$inferInsert>) =>
+      testDb.update(purchases).set(o).where(eq(purchases.id, b.alibi_id));
+    await set({ paypalOrderIntent: "AUTHORIZE", paypalPayeeId: "MERCH7XK2Q9LD", conversion });
+    try {
+      const alibi = await loadAlibi(testDb, b.alibi_id);
+      const amount = Number(b.tee.countersign.amount);
+      expect(alibi?.paypal?.store_order).toEqual({
+        intent: "AUTHORIZE",
+        payee_id: "MERCH7XK2Q9LD",
+        capture_ceiling_minor: String(captureCeiling("USD", amount)),
+      });
+      expect(alibi?.conversion).toEqual(conversion);
+      await set({ paypalOrderIntent: "SALE", conversion: null });
+      expect((await loadAlibi(testDb, b.alibi_id))?.paypal?.store_order).toEqual({
+        intent: "SALE",
+        payee_id: "MERCH7XK2Q9LD",
+      });
+    } finally {
+      await set({ paypalOrderIntent: null, paypalPayeeId: null, conversion: null });
+    }
   });
 
   test("the public copy withholds the user's login id and risk data, and verifies", async () => {

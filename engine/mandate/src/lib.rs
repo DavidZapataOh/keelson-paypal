@@ -35,8 +35,8 @@ pub use issue::{
     issue_user_credential,
 };
 pub use schema::{
-    ANY_ITEM, ANY_MERCHANT, MAX_LIFETIME_SECONDS, MCC_CODES, MCC_TABLE_VERSION, is_merchant_id,
-    parse_mandate,
+    ANY_ITEM, ANY_MERCHANT, MAX_LIFETIME_SECONDS, MAX_SPREAD_BPS, MCC_CODES, MCC_TABLE_VERSION,
+    is_merchant_id, parse_mandate,
 };
 pub use sd::{decode_disclosed, decode_mandate};
 pub use spc::{

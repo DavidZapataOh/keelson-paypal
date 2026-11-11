@@ -210,6 +210,9 @@ jobs:
           forge test --match-path 'test/invariant/*' --compute-units-per-second "$FOUNDRY_COMPUTE_UNITS_PER_SECOND" > forge-invariant.log 2>&1
           status=$?
           set -e
+          # Forge's suite results and failures, without traces; 32-byte hex values are redacted.
+          grep -E '^(Ran [0-9]+ tests? for |Suite result: |Encountered |Failing tests:|Error|\[FAIL)' forge-invariant.log \
+            | sed -E 's/(0x)?[0-9a-fA-F]{64}/<redacted>/g' | cut -c1-400 || true
           grep -oE '^\[(PASS|FAIL)[^]]*\] [A-Za-z0-9_]+' forge-invariant.log \
             | jq -Rn '[{test_results: ([inputs | capture("^\\[(?<s>PASS|FAIL)[^]]*\\] (?<n>.+)$")
                 | {(.n): {status: (if .s == "PASS" then "Success" else "Failure" end)}}] | add)}]' > invariant.json
@@ -308,7 +311,7 @@ jobs:
           - name: KeelsonReputationReporter
             tests: "test/ReputationReporter*.t.sol"
           - name: libraries
-            path: "src/{libraries,access,deploy}/*.sol"
+            path: "**/src/{libraries,access,deploy}/*.sol"
             tests: "test/**/*.t.sol"
     defaults:
       run:
@@ -328,7 +331,8 @@ jobs:
       - name: Mutate
         env:
           CONTRACT: ${{ matrix.name }}
-          MUTATE: ${{ matrix.path || format('src/{0}.sol', matrix.name) }}
+          # Forge matches the pattern against absolute source paths.
+          MUTATE: ${{ matrix.path || format('**/src/{0}.sol', matrix.name) }}
           TESTS: ${{ matrix.tests }}
         run: |
           forge test --mutate --mutate-path "$MUTATE" --match-path "$TESTS" --no-match-path 'test/**/*.live.t.sol' \

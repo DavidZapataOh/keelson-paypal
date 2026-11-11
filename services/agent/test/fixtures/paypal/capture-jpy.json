@@ -1,0 +1,32 @@
+{
+  "data": {
+    "checkoutSession": {
+      "cart": {
+        "intent": "SALE",
+        "amounts": {
+          "subtotal": {
+            "currencyValue": "0.00",
+            "currencyCode": "JPY"
+          },
+          "shippingAndHandling": {
+            "currencyValue": "0.00",
+            "currencyCode": "JPY"
+          },
+          "tax": {
+            "currencyValue": "0.00",
+            "currencyCode": "JPY"
+          },
+          "total": {
+            "currencyValue": "1234",
+            "currencyCode": "JPY"
+          }
+        }
+      },
+      "payees": [
+        {
+          "merchantId": "SANDBOXPAYEE01"
+        }
+      ]
+    }
+  }
+}
