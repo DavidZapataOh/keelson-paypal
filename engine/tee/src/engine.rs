@@ -915,7 +915,7 @@ impl Engine {
             (true, _) => self
                 .captured
                 .as_ref()
-                .ok_or(bad("authorization_id"))?
+                .ok_or(EngineError::NotReady)?
                 .captured_minor(&a.mandate_hash)
                 .ok_or(EngineError::NotReady)?
                 .max(0),

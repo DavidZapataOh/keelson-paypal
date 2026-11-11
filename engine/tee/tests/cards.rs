@@ -74,7 +74,7 @@ fn network(id: &str, amount: i64, mcc: &str, country: &str) -> CardNetworkAuthor
 fn request(f: &Fixture, n: CardNetworkAuthorization) -> CardAuthorizeRequest {
     CardAuthorizeRequest {
         countersign: f.allow.countersign.clone(),
-        signature: f.allow.signature.clone(),
+        signature: f.allow.signature,
         chain_id: None,
         payload_sd: f.mandate.payload_sd.clone(),
         disclosures: f.mandate.disclosures.clone(),
@@ -104,7 +104,7 @@ fn a_paypal_mandate_still_needs_its_paypal_reading() {
             at(NOW + 10),
         )
         .unwrap_err();
-    assert_eq!(err, EngineError::BadRequest("authorization_id"));
+    assert_eq!(err, EngineError::NotReady);
 }
 
 #[test]
