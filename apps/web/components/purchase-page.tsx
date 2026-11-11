@@ -40,22 +40,23 @@ const CAPTURED = new Set([
   "MERCHANT_LIABLE",
 ]);
 
-/**
- * One line per field that failed its check: what the mandate allows against the cart. The API
- * keeps only the cart's total, so other fields say the cart did not match.
- */
+/** One line per field that failed its check: what the mandate allows against the cart. */
 function Blocks({ p, card }: { p: Purchase; card: Card | null }) {
   if (!p.blocked?.length) return null;
   return (
     <div className="mt-2 grid gap-1">
       {p.blocked.map((field) => {
         const row = card?.rows.find((r) => r.field === field);
+        const reason = p.reasons?.find((r) => r.field === field);
         return (
           <BlockDiff
             key={field}
             field={row?.label ?? field.replaceAll("_", " ")}
-            mandate={row ? row.values.join(", ") : "as signed"}
-            cart={field === "total" ? money(p.amount.minor, p.amount.currency) : "not as signed"}
+            mandate={reason?.mandate ?? (row ? row.values.join(", ") : "as signed")}
+            cart={
+              reason?.cart ??
+              (field === "total" ? money(p.amount.minor, p.amount.currency) : "not as signed")
+            }
           />
         );
       })}

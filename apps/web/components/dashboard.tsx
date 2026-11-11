@@ -1,17 +1,18 @@
 "use client";
 
 import { Skeleton } from "@keelson/ui/components/skeleton";
-import { ArrowUpRight, Check, ChevronRight, Plus, ShieldCheck, X } from "lucide-react";
+import { ArrowUpRight, Check, ChevronRight, Hand, Plus, ShieldCheck, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useState } from "react";
-import { get } from "../lib/api";
+import { get, post } from "../lib/api";
 import { VERIFY } from "../lib/config";
 import { money } from "../lib/format";
 import { purchaseStatus } from "../lib/status";
 import type { MandateSummary, MandateView, Purchase } from "../lib/types";
 import { useMandate } from "../lib/use-mandate";
 import { AppShell } from "./app-shell";
+import { HoldButton } from "./hold-button";
 import { CardAmount, MandateVisual } from "./mandate-visual";
 import { ErrorNotice } from "./notice";
 import { WhoAnswers } from "./who-answers";
@@ -58,7 +59,14 @@ const FIELD_WORDS: Record<string, string> = {
   quantity: "the wrong quantity",
 };
 
+/** "Cart $340.00 · max $100.00" when the API says both sides, else the field in words. */
 function blockedWhy(p: Purchase): string {
+  const reason = p.reasons?.[0];
+  if (reason?.cart && reason.mandate) {
+    return reason.field === "total" || reason.field === "budget"
+      ? `Cart ${reason.cart} · max ${reason.mandate}`
+      : `${reason.cart}, not ${reason.mandate}`;
+  }
   const field = p.blocked?.[0];
   if (field) return FIELD_WORDS[field] ?? `outside your ${field}`;
   return p.failure?.reason ?? "outside your rules";
@@ -182,7 +190,8 @@ function Action({
 const FILTERS = ["All", "Bought", "Blocked"] as const;
 
 function Focus({ id }: { id: string }) {
-  const { mandate, error } = useMandate(id);
+  const { mandate, error, reload } = useMandate(id);
+  const [stopping, setStopping] = useState(false);
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("All");
 
   if (error) return <ErrorNotice>{error}</ErrorNotice>;
@@ -255,6 +264,25 @@ function Focus({ id }: { id: string }) {
               icon={<ArrowUpRight className="size-5" />}
               external
             />
+            {mandate.state === "ACTIVE" ? (
+              <div className="grid justify-items-center gap-2 text-sm">
+                <HoldButton
+                  hint="Hold for a second to stop your agent. PayPal releases what is still held."
+                  disabled={stopping}
+                  onConfirm={async () => {
+                    setStopping(true);
+                    await post(`/v1/mandates/${mandate.id}/revoke`).catch(() => {});
+                    setStopping(false);
+                    reload();
+                  }}
+                  className="grid size-14 place-items-center rounded-full bg-bone-2 transition-transform duration-200 hover:-translate-y-0.5"
+                >
+                  <Hand className="size-5" aria-hidden="true" />
+                  <span className="sr-only">Stop your agent</span>
+                </HoldButton>
+                <span aria-hidden="true">{stopping ? "Stopping" : "Hold to stop"}</span>
+              </div>
+            ) : null}
           </div>
         </div>
         <MandateVisual
@@ -271,6 +299,42 @@ function Focus({ id }: { id: string }) {
           seal="closed"
         />
       </div>
+
+      {mandate.state === "SIGNED" || mandate.state === "HOLD_PENDING" ? (
+        <Link
+          href={`/new/?hold=${mandate.id}`}
+          className="flex items-center gap-4 rounded-3xl border bg-card p-4 transition-colors hover:bg-foreground/4 sm:p-5"
+        >
+          <svg viewBox="0 0 40 40" className="size-12 shrink-0 -rotate-90" aria-hidden="true">
+            <circle
+              cx="20"
+              cy="20"
+              r="16"
+              fill="none"
+              strokeWidth="4"
+              className="stroke-foreground/10"
+            />
+            <circle
+              cx="20"
+              cy="20"
+              r="16"
+              fill="none"
+              strokeWidth="4"
+              strokeLinecap="round"
+              pathLength={4}
+              strokeDasharray="3 4"
+              className="stroke-vermilion"
+            />
+          </svg>
+          <span className="grid min-w-0 flex-1 leading-snug">
+            <span className="font-semibold">Finish setup · 3 of 4</span>
+            <span className="truncate text-muted-foreground text-sm">
+              Hold {money(budget.maxMinor, budget.currency)} on PayPal to go live
+            </span>
+          </span>
+          <ChevronRight className="size-5 text-muted-foreground" aria-hidden="true" />
+        </Link>
+      ) : null}
 
       {latestBlock ? (
         <Link

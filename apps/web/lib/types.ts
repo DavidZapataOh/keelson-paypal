@@ -49,6 +49,8 @@ export interface Purchase {
   failure?: { step: string; reason: string };
   /** For a blocked cart, the mandate fields whose check failed. */
   blocked?: string[];
+  /** For a blocked cart, each failed field with what the mandate allowed and what the cart had. */
+  reasons?: { field: string; mandate: string | null; cart: string | null }[];
   disputes: { id: string; state: "OPEN" | "ATTRIBUTED" | "RESOLVED" }[];
 }
 
