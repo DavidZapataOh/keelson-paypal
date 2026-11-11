@@ -20,13 +20,13 @@ const run = promisify(execFile);
 const ENGINE_PROVER = {
   url: "https://github.com/DavidZapataOh/keelson-paypal/releases/download/engine-proof-0000000/keelson-engine-proof-linux-x64",
   sha256: "0000000000000000000000000000000000000000000000000000000000000000",
-  vkey: "0x00bff880671bceb9f788e1bec1dc9f238392e7ee9e4bfe6175c75e54b8615fd3" as Hex,
+  vkey: "0x00c4587b3359aa358e91653bb21d40ba649a31fcdc3ac0ad51f9aacaac0a615b" as Hex,
 } as const;
 
 /** The chain `EngineProofVerifier` records proofs on. */
 const ENGINE_PROOF_CHAIN_ID = arbitrumSepolia.id;
 /** The block `EngineProofVerifier` was deployed at, where its `EngineProven` history starts. */
-const ENGINE_PROOF_FROM_BLOCK = 328_286_926n;
+const ENGINE_PROOF_FROM_BLOCK = 328_312_505n;
 
 /** How long a Groth16 proof may take on the workflow instance. */
 const PROVE_TIMEOUT_MS = 3 * 60 * 60 * 1000;
