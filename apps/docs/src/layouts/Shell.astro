@@ -1,0 +1,49 @@
+---
+import "@fontsource-variable/instrument-sans";
+import "@fontsource-variable/geist-mono";
+import "../styles/base.css";
+import Search from "../components/Search.astro";
+import { nav } from "../lib/docs";
+
+interface Props {
+  title: string;
+  description: string;
+  current: string;
+}
+const { title, description, current } = Astro.props;
+const sections = await nav();
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title === "Keelson documentation" ? title : `${title} · Keelson docs`}</title>
+    <meta name="description" content={description} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="topbar">
+      <a class="brand" href="/"><img src="/keelson.svg" alt="Keelson" width="86" height="26" /><span>Docs</span></a>
+      <Search />
+      <a class="top-link" href="https://app.keelson.finance/judge">Judge Mode</a>
+    </header>
+    <div class="frame">
+      <nav class="sidenav" aria-label="Documentation">
+        {sections.map((s) => (
+          <div class="nav-group">
+            <p class="nav-label">{s.section}</p>
+            <ul>
+              {s.items.map((i) => (
+                <li><a href={i.href} aria-current={i.href === current ? "page" : undefined}>{i.title}</a></li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </nav>
+      <main id="main" class="main"><slot /></main>
+    </div>
+  </body>
+</html>

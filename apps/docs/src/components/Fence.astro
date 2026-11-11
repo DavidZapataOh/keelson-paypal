@@ -1,0 +1,22 @@
+---
+import { Code } from "astro:components";
+
+interface Props {
+  content: string;
+  language?: string;
+  file?: string;
+  check?: string;
+}
+const { content, language = "text", file, check } = Astro.props;
+const code = content.replace(/\n$/, "");
+---
+{file ? (
+  <div class="pane" data-pane={file} data-lang={language} data-check={check}>
+    <Code code={code} lang={language as never} theme="css-variables" />
+  </div>
+) : (
+  <figure class="codeblock" data-check={check}>
+    {check && <figcaption><a href="/security/verify/#how-these-are-checked">Checked in CI</a></figcaption>}
+    <Code code={code} lang={language as never} theme="css-variables" />
+  </figure>
+)}

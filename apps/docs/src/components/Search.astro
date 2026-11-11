@@ -1,0 +1,47 @@
+<button class="search" type="button" data-search-open>Search docs <kbd>⌘K</kbd></button>
+<dialog class="search-dialog" aria-label="Search the documentation" data-search>
+  <form method="dialog" class="search-form" role="search">
+    <input type="search" name="q" placeholder="Search the docs" autocomplete="off" aria-label="Search the docs" />
+    <kbd>Esc</kbd>
+  </form>
+  <ol class="search-results" aria-live="polite"></ol>
+</dialog>
+<script>
+  type Pagefind = { search(q: string): Promise<{ results: { data(): Promise<{ url: string; meta: { title: string }; excerpt: string }> }[] }> };
+  const dialog = document.querySelector<HTMLDialogElement>("[data-search]")!;
+  const input = dialog.querySelector("input")!;
+  const list = dialog.querySelector("ol")!;
+  let pagefind: Pagefind | undefined;
+  const open = async () => {
+    dialog.showModal();
+    input.select();
+    pagefind ??= (await import(/* @vite-ignore */ "/pagefind/pagefind.js")) as Pagefind;
+  };
+  document.querySelector("[data-search-open]")!.addEventListener("click", open);
+  addEventListener("keydown", (e) => {
+    const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
+    if ((e.key === "k" && (e.metaKey || e.ctrlKey)) || (e.key === "/" && !typing)) {
+      e.preventDefault();
+      open();
+    }
+  });
+  input.addEventListener("input", async () => {
+    pagefind ??= (await import(/* @vite-ignore */ "/pagefind/pagefind.js")) as Pagefind;
+    const { results } = await pagefind.search(input.value);
+    const items = await Promise.all(results.slice(0, 8).map((r) => r.data()));
+    list.replaceChildren(
+      ...items.map((d) => {
+        const li = document.createElement("li");
+        const a = document.createElement("a");
+        a.href = d.url;
+        const t = document.createElement("strong");
+        t.textContent = d.meta.title;
+        const p = document.createElement("span");
+        p.innerHTML = d.excerpt;
+        a.append(t, p);
+        li.append(a);
+        return li;
+      }),
+    );
+  });
+</script>

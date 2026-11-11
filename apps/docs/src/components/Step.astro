@@ -1,0 +1,10 @@
+---
+interface Props {
+  title: string;
+  file: string;
+  lines?: string;
+}
+const { title } = Astro.props;
+---
+<h2>{title}</h2>
+<slot />
