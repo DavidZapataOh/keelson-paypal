@@ -211,6 +211,7 @@ jobs:
       - run: pnpm --filter @keelson/docs exec playwright install --with-deps chromium
       - run: pnpm turbo run build --filter=@keelson/docs...
       - run: pnpm --filter @keelson/docs test:live
+      - run: pnpm --filter @keelson/docs test:site
       - if: failure() && github.event_name == 'schedule'
         env:
           GH_TOKEN: ${{ github.token }}

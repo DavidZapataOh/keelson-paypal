@@ -145,7 +145,7 @@ jobs:
       - name: Every internal link and anchor of the built site
         uses: lycheeverse/lychee-action@v2.9.0
         with:
-          args: --offline --include-fragments=full --root-dir ${{ github.workspace }}/apps/docs/dist apps/docs/dist
+          args: --offline --include-fragments=full --index-files index.html --root-dir ${{ github.workspace }}/apps/docs/dist apps/docs/dist
           fail: true
       - name: Every link in the sources
         uses: lycheeverse/lychee-action@v2.9.0
