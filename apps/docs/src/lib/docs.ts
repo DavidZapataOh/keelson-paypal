@@ -24,11 +24,14 @@ export interface NavSection {
 }
 
 export async function nav(): Promise<NavSection[]> {
-  const all = await docs();
+  const all = (await docs()).filter((d) => d.id !== "index");
   return SECTIONS.map((section) => ({
     section,
-    items: all
-      .filter((d) => d.data.section === section)
-      .map((d) => ({ title: d.data.title, href: href(d.id) })),
+    items: [
+      ...all
+        .filter((d) => d.data.section === section)
+        .map((d) => ({ title: d.data.title, href: href(d.id) })),
+      ...(section === "Reference" ? [{ title: "API reference", href: "/reference/api/" }] : []),
+    ],
   })).filter((s) => s.items.length > 0);
 }

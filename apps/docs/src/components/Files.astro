@@ -1,7 +1,16 @@
+---
+// Tabs are rendered here, from the panes in the slot, so the panel never shifts when scripts run.
+const html = await Astro.slots.render("default");
+const files = [...html.matchAll(/data-pane="([^"]+)"/g)].map((m) => m[1] as string);
+---
 <div class="walk-files">
   <div class="files-bar">
-    <div class="tabs" role="tablist" aria-label="Files" data-tabs></div>
+    <div class="tabs" role="tablist" aria-label="Files">
+      {files.map((f, i) => (
+        <button type="button" role="tab" id={`tab-${f}`} data-tab={f} aria-controls={`pane-${f}`} aria-selected={i === 0 ? "true" : "false"}>{f}</button>
+      ))}
+    </div>
     <button type="button" class="copy" data-copy>Copy</button>
   </div>
-  <div class="files-body"><slot /></div>
+  <div class="files-body" set:html={html} />
 </div>

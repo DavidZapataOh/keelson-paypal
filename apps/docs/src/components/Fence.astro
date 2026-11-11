@@ -11,7 +11,7 @@ const { content, language = "text", file, check } = Astro.props;
 const code = content.replace(/\n$/, "");
 ---
 {file ? (
-  <div class="pane" data-pane={file} data-lang={language} data-check={check}>
+  <div class="pane" id={`pane-${file}`} role="tabpanel" aria-labelledby={`tab-${file}`} data-pane={file} data-lang={language} data-check={check}>
     <Code code={code} lang={language as never} theme="css-variables" />
   </div>
 ) : (

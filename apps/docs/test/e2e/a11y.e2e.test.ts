@@ -17,7 +17,12 @@ afterAll(async () => {
 
 describe("accessibility", () => {
   for (const scheme of ["light", "dark"] as const) {
-    for (const path of ["/", "/quickstart/verify-an-alibi/"]) {
+    for (const path of [
+      "/",
+      "/quickstart/verify-an-alibi/",
+      "/reference/api/",
+      "/reference/api/post-v1-alibis-verify/",
+    ]) {
       test(`${path} in ${scheme} has no serious or critical violations`, async () => {
         const context = await browser.newContext({
           viewport: { width: 1440, height: 900 },

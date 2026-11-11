@@ -42,3 +42,35 @@ writeFileSync(
   fileURLToPath(new URL("../src/data/live.json", import.meta.url)),
   `${JSON.stringify(live, null, 2)}\n`,
 );
+
+// Response examples for the public operations are real answers, captured when the site is built.
+const fixture = repo("packages/alibi/test/fixtures/01M6ZWZJHWRRHQEYNJAT7NMSV8.alibi");
+const capture = async (method, path, init = {}) => {
+  const res = await fetch(`https://api.keelson.finance${path}`, {
+    method,
+    signal: AbortSignal.timeout(30_000),
+    ...init,
+  });
+  if (!res.ok) throw new Error(`${method} ${path} answered ${res.status}`);
+  return res.json();
+};
+const examples = {
+  "GET /status": await capture("GET", "/status"),
+  "GET /v1/live-purchases": await capture("GET", "/v1/live-purchases"),
+  "GET /v1/log/bonds": await capture("GET", "/v1/log/bonds"),
+  "POST /v1/alibis/verify": await capture("POST", "/v1/alibis/verify", {
+    headers: {
+      "content-type": "application/vnd.keelson.alibi.v1+json",
+      "idempotency-key": crypto.randomUUID(),
+    },
+    body: readFileSync(fixture),
+  }),
+  "GET /v1/alibis/{id}/receipt": await capture(
+    "GET",
+    "/v1/alibis/01M6ZWZJHWRRHQEYNJAT7NMSV8/receipt",
+  ),
+};
+writeFileSync(
+  fileURLToPath(new URL("../src/data/examples.json", import.meta.url)),
+  `${JSON.stringify({ capturedAt: new Date().toISOString(), examples }, null, 2)}\n`,
+);

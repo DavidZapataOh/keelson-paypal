@@ -6,24 +6,15 @@
   for (const walk of document.querySelectorAll<HTMLElement>("[data-walk]")) {
     const steps = [...walk.querySelectorAll<HTMLElement>("[data-step]")];
     const panes = [...walk.querySelectorAll<HTMLElement>("[data-pane]")];
-    const tabs = walk.querySelector<HTMLElement>("[data-tabs]");
+    const tabs = walk.querySelector<HTMLElement>('[role="tablist"]');
     if (!tabs || panes.length === 0) continue;
 
     const show = (name: string) => {
       for (const t of tabs.querySelectorAll<HTMLElement>('[role="tab"]')) t.setAttribute("aria-selected", String(t.dataset.tab === name));
       for (const p of panes) p.hidden = p.dataset.pane !== name;
     };
-    for (const [i, p] of panes.entries()) {
-      const tab = document.createElement("button");
-      tab.type = "button";
-      tab.setAttribute("role", "tab");
-      tab.id = `${walk.id || "walk"}-tab-${i}`;
-      tab.dataset.tab = p.dataset.pane;
-      tab.textContent = p.dataset.pane ?? "";
-      p.setAttribute("role", "tabpanel");
-      p.setAttribute("aria-labelledby", tab.id);
+    for (const tab of tabs.querySelectorAll<HTMLElement>('[role="tab"]')) {
       tab.addEventListener("click", () => show(tab.dataset.tab ?? ""));
-      tabs.append(tab);
     }
 
     const activate = (step: HTMLElement) => {

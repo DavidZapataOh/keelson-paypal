@@ -1,0 +1,77 @@
+---
+import CodeTabs from "../../../components/CodeTabs.astro";
+import Fields from "../../../components/api/Fields.astro";
+import TryIt from "../../../components/api/TryIt.astro";
+import captured from "../../../data/examples.json";
+import Shell from "../../../layouts/Shell.astro";
+import { apiNav } from "../../../lib/api-nav";
+import { example, inline, type Operation, operations, sample, tagName } from "../../../lib/openapi";
+
+export function getStaticPaths() {
+  return operations().map((op) => ({ params: { slug: op.slug }, props: { op } }));
+}
+
+const { op } = Astro.props as { op: Operation };
+const key = `${op.method.toUpperCase()} ${op.path}`;
+const real = (captured.examples as Record<string, unknown>)[key];
+const success = op.responses.find((r) => r.status.startsWith("2"));
+const shown = real ?? example(success?.schema);
+const groups = (["path", "query", "header"] as const)
+  .map((where) => ({ where, params: op.params.filter((p) => p.in === where) }))
+  .filter((g) => g.params.length > 0);
+const titles = { path: "Path parameters", query: "Query parameters", header: "Headers" };
+---
+<Shell title={op.summary} description={op.description ?? op.summary} current={`/reference/api/${op.slug}/`} sidebar={apiNav()}>
+  <article class="op" data-pagefind-body>
+    <div class="op-main">
+      <p class="crumb"><a href="/reference/api/">API reference</a> <span aria-hidden="true">/</span> {tagName(op.tag)}</p>
+      <h1>{op.summary}</h1>
+      <p class="endpoint"><span class:list={["method", `method-${op.method}`]}>{op.method.toUpperCase()}</span><code>{op.path}</code></p>
+      {op.description && <p class="op-desc" set:html={inline(op.description)} />}
+      {groups.map((g) => (
+        <section>
+          <h2>{titles[g.where]}</h2>
+          <dl class="params">
+            {g.params.map((p) => (
+              <div class="param">
+                <dt><code>{p.name}</code><span class="param-type">{p.schema?.enum ? String(p.schema.enum[0]) : (p.schema?.type ?? "string")}</span>{p.required && <span class="param-req">Required</span>}</dt>
+                {p.description && <dd set:html={inline(p.description)} />}
+              </div>
+            ))}
+          </dl>
+        </section>
+      ))}
+      {op.body && (
+        <section>
+          <h2>Request body</h2>
+          <p class="media"><code>{op.body.mediaType}</code>{op.body.schema?.format === "binary" && " · the file's bytes"}</p>
+          <Fields schema={op.body.schema} />
+        </section>
+      )}
+      <section>
+        <h2>Responses</h2>
+        <ul class="responses">
+          {op.responses.map((r) => (
+            <li><span class:list={["status", `status-${r.status[0]}xx`]}>{r.status}</span><span set:html={inline(r.description)} /></li>
+          ))}
+        </ul>
+        {success && (
+          <>
+            <h3 class="sub">{success.status} response</h3>
+            <Fields schema={success.schema} />
+          </>
+        )}
+      </section>
+    </div>
+    <aside class="op-aside">
+      <CodeTabs label="Request" items={[{ name: "cURL", lang: "sh", code: sample(op, "curl") }, { name: "TypeScript", lang: "ts", code: sample(op, "ts") }]} />
+      {shown !== undefined && (
+        <div class="response-card">
+          <p class="response-label">{real ? `Response · captured from production on ${captured.capturedAt.slice(0, 10)}` : "Response · shape from the schema"}</p>
+          <CodeTabs label={`Response ${op.slug}`} items={[{ name: success?.status ?? "200", lang: "json", code: JSON.stringify(shown, null, 2) }]} />
+        </div>
+      )}
+      {op.tryIt && <TryIt op={op} />}
+    </aside>
+  </article>
+</Shell>

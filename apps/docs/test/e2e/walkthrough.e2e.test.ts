@@ -89,6 +89,10 @@ describe("the synced code panel", () => {
       await page.goto(preview.url + path);
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
     }
+    expect(await page.locator(".sidenav").isVisible()).toBe(false);
+    await page.getByRole("button", { name: "Menu" }).click();
+    expect(await page.locator(".sidenav").isVisible()).toBe(true);
+    await page.getByRole("button", { name: "Menu" }).click();
     const steps = await page.$$eval("[data-step][data-lines]", (els) =>
       els.map((e) => ({
         lines: e.getAttribute("data-lines"),

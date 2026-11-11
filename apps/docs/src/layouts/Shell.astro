@@ -1,20 +1,25 @@
 ---
 import "@fontsource-variable/instrument-sans";
 import "@fontsource-variable/geist-mono";
+import geistMono from "@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2?url";
+import instrumentSans from "@fontsource-variable/instrument-sans/files/instrument-sans-latin-wght-normal.woff2?url";
 import "../styles/base.css";
 import "../styles/theme.css";
 import Search from "../components/Search.astro";
 import live from "../data/live.json";
-import { nav } from "../lib/docs";
+import { type NavSection, nav } from "../lib/docs";
 
 interface Props {
   title: string;
   description: string;
   current: string;
   home?: boolean;
+  /** Replaces the side navigation, as the API reference does with its operations. */
+  sidebar?: NavSection[];
 }
-const { title, description, current, home = false } = Astro.props;
+const { title, description, current, home = false, sidebar } = Astro.props;
 const sections = await nav();
+const side = sidebar ?? sections;
 const operational = live.status === "ok";
 ---
 <!doctype html>
@@ -24,6 +29,8 @@ const operational = live.status === "ok";
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{home ? title : `${title} · Keelson docs`}</title>
     <meta name="description" content={description} />
+    <link rel="preload" href={instrumentSans} as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href={geistMono} as="font" type="font/woff2" crossorigin />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt" />
     <script is:inline>
@@ -37,10 +44,16 @@ const operational = live.status === "ok";
   <body>
     <a class="skip" href="#main">Skip to content</a>
     <header class="topbar">
+      {!home && (
+        <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="sidenav" data-menu>
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+          <span class="visually-hidden">Menu</span>
+        </button>
+      )}
       <a class="brand" href="/"><img src="/keelson.svg" alt="Keelson" width="86" height="26" /><span class="brand-sub">Docs</span></a>
       <nav class="topnav" aria-label="Sections">
         {sections.map((s) => (
-          <a href={s.items[0]?.href} aria-current={s.items.some((i) => i.href === current) && !home ? "true" : undefined}>{s.section}</a>
+          <a href={s.items[0]?.href} aria-current={!home && (s.items.some((i) => i.href === current) || (s.section === "Reference" && current.startsWith("/reference/api/"))) ? "true" : undefined}>{s.section}</a>
         ))}
       </nav>
       <div class="top-tools">
@@ -53,8 +66,8 @@ const operational = live.status === "ok";
     </header>
     <div class:list={["frame", { "frame-home": home }]}>
       {!home && (
-        <nav class="sidenav" aria-label="Documentation">
-          {sections.map((s) => (
+        <nav class="sidenav" id="sidenav" aria-label="Documentation">
+          {side.map((s) => (
             <div class="nav-group">
               <p class="nav-label">{s.section}</p>
               <ul>
@@ -74,6 +87,12 @@ const operational = live.status === "ok";
       <main id="main" class="main"><slot /></main>
     </div>
     <script>
+      const menu = document.querySelector<HTMLButtonElement>("[data-menu]");
+      menu?.addEventListener("click", () => {
+        const open = menu.getAttribute("aria-expanded") !== "true";
+        menu.setAttribute("aria-expanded", String(open));
+        document.body.classList.toggle("menu-open", open);
+      });
       document.querySelector("[data-theme-toggle]")?.addEventListener("click", () => {
         const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
         document.documentElement.dataset.theme = next;
