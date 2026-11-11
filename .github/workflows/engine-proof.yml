@@ -67,27 +67,20 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            engine/zkvm/target
-            !engine/zkvm/target/elf-compilation
-          key: zkvm-${{ hashFiles('engine/zkvm/Cargo.lock') }}-${{ github.sha }}
-          restore-keys: zkvm-
-      # The program itself is always built from scratch: an ELF left in the cache by another
-      # lockfile can differ from a clean build, and its verifying key with it.
+          key: zkvm-src-${{ hashFiles('engine/zkvm/Cargo.lock') }}-${{ github.sha }}
+          restore-keys: zkvm-src-
+      # Only the crate sources are cached: a build over a restored target directory can give the
+      # program another ELF, and its verifying key with it.
       - name: Build the program and the prover
-        run: |
-          rm -rf target/elf-compilation
-          cargo clean --release -p keelson-engine-proof
-          cargo build --release --locked -p keelson-engine-proof
-      # The prover's dependencies take most of the build: keep them even when the program fails.
+        run: cargo build --release --locked -p keelson-engine-proof
+      # Keep the crate sources even when the program fails.
       - uses: actions/cache/save@v6
         if: always()
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            engine/zkvm/target
-            !engine/zkvm/target/elf-compilation
-          key: zkvm-${{ hashFiles('engine/zkvm/Cargo.lock') }}-${{ github.sha }}
+          key: zkvm-src-${{ hashFiles('engine/zkvm/Cargo.lock') }}-${{ github.sha }}
       - name: Program size
         run: |
           elf=$(find target -path '*riscv64im-succinct-zkvm-elf/release/keelson-engine-program' | head -1)
