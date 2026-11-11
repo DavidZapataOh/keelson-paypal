@@ -1,5 +1,7 @@
 [workspace]
 members = ["engine/*"]
+# The SP1 program builds on its own toolchain, in its own workspace.
+exclude = ["engine/zkvm"]
 resolver = "3"
 
 [workspace.package]

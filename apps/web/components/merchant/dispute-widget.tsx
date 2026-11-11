@@ -7,6 +7,7 @@ import { VERIFY } from "../../lib/config";
 import { major } from "../../lib/format";
 import type { MerchantDispute } from "../../lib/merchant";
 import { AmberCase } from "../amber-case";
+import { EngineProof } from "../engine-proof";
 import { LIABLE, OUTCOME, PAID_BY, RAIL } from "./labels";
 
 export interface DisputeDef {
@@ -118,6 +119,7 @@ export function DisputeClock(params: AgWidgetParams<DisputeDef>) {
         ) : null}
       </ol>
       {d.amber ? <AmberCase amber={d.amber} purchaseId={d.purchase_id} compact /> : null}
+      <EngineProof purchaseId={d.purchase_id} compact />
       <nav aria-label="Checks outside Keelson" className="flex flex-wrap gap-x-4 gap-y-1">
         {d.has_alibi ? (
           <a

@@ -15,11 +15,13 @@ import {
   fallback,
   type Hex,
   http,
+  parseAbi,
   parseEventLogs,
   type TransactionReceipt,
 } from "viem";
 import { arbitrum, arbitrumSepolia } from "viem/chains";
 import { fromBase64 } from "../b64.ts";
+import { ENGINE_PROGRAM_VKEY } from "./engine-vk.ts";
 
 /** What one verification reads from the chain its Alibi is anchored on. */
 export interface ChainQuery {
@@ -303,6 +305,69 @@ export function createChainReader(opts: ChainReaderOptions = {}): ChainReader {
       }
     },
   };
+}
+
+const engineProofVerifierAbi = parseAbi([
+  "function verify(bytes publicValues, bytes proof) view returns (bytes32 evalHash, bytes32 countersignDigest)",
+  "function PROGRAM_VKEY() view returns (bytes32)",
+]);
+
+/** What `EngineProofVerifier.verify` answered for an SP1 proof of a countersign's evaluation. */
+export interface EngineProofAnswer {
+  /** The `evalHash` and countersign digest the proof commits to; null when the proof is rejected. */
+  proven: { evalHash: Hex; countersignDigest: Hex } | null;
+  /** The deployed verifier, pinned per chain, that answered. */
+  verifier: Address;
+  rpc: string;
+}
+
+/**
+ * Checks an SP1 proof of the engine evaluation with the pinned `EngineProofVerifier` of `chainId`
+ * in an `eth_call`, which verifies it through Succinct's SP1 verifier gateway, after checking that
+ * the verifier holds the pinned engine program key.
+ */
+export async function verifyEngineProof(
+  chainId: number,
+  publicValues: Hex,
+  proof: Hex,
+  opts: ChainReaderOptions = {},
+): Promise<EngineProofAnswer> {
+  const known = CHAINS[chainId];
+  const verifier = known ? deploymentsFor(chainId).EngineProofVerifier : undefined;
+  if (!known || !verifier) {
+    throw new ChainUnreachableError(`no engine proof verifier is known for chain ${chainId}`);
+  }
+  const chosen = opts.rpc?.[chainId];
+  const urls = chosen ? [chosen].flat() : known.rpcs;
+  const client = createPublicClient({
+    chain: known.chain,
+    transport: fallback(
+      urls.map((url) =>
+        http(url, {
+          retryCount: 0,
+          timeout: opts.timeoutMs ?? 10_000,
+          ...(opts.fetchFn ? { fetchFn: opts.fetchFn } : {}),
+        }),
+      ),
+    ),
+  });
+  const contract = { address: verifier, abi: engineProofVerifierAbi } as const;
+  const rpc = urls[0] as string;
+  try {
+    const vkey = await client.readContract({ ...contract, functionName: "PROGRAM_VKEY" });
+    if (vkey.toLowerCase() !== ENGINE_PROGRAM_VKEY) return { proven: null, verifier, rpc };
+    const [evalHash, countersignDigest] = await client.readContract({
+      ...contract,
+      functionName: "verify",
+      args: [publicValues, proof],
+    });
+    return { proven: { evalHash, countersignDigest }, verifier, rpc };
+  } catch (err) {
+    if ((err as BaseError).walk?.((e) => e instanceof ContractFunctionRevertedError)) {
+      return { proven: null, verifier, rpc };
+    }
+    throw new ChainUnreachableError((err as Error).message);
+  }
 }
 
 /** What the chain says of a composed proof: whether the verifier accepts it, and its root. */

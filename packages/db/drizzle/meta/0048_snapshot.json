@@ -1,5 +1,5 @@
 {
-  "id": "ca9f1bd8-ef4e-404d-9909-49a7610deccf",
+  "id": "6100ba3a-6c9e-481e-8e51-3989fde1b1c2",
   "prevId": "7c2b334b-58de-4c1e-bc84-a7847fb27e42",
   "version": "7",
   "dialect": "postgresql",
@@ -5370,24 +5370,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "paypal_order_intent": {
-          "name": "paypal_order_intent",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "paypal_payee_id": {
-          "name": "paypal_payee_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "conversion": {
-          "name": "conversion",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
         "paypal_ref_salt": {
           "name": "paypal_ref_salt",
           "type": "bytea",
@@ -5450,6 +5432,18 @@
         },
         "c1c3_proof": {
           "name": "c1c3_proof",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "engine_input": {
+          "name": "engine_input",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "engine_proof": {
+          "name": "engine_proof",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
@@ -5645,10 +5639,6 @@
         "purchases_premium_bps_range": {
           "name": "purchases_premium_bps_range",
           "value": "\"purchases\".\"premium_bps\" between 0 and 10000"
-        },
-        "purchases_paypal_order_intent_valid": {
-          "name": "purchases_paypal_order_intent_valid",
-          "value": "\"purchases\".\"paypal_order_intent\" is null or \"purchases\".\"paypal_order_intent\" in ('SALE', 'AUTHORIZE')"
         },
         "purchases_paypal_transaction_id_live": {
           "name": "purchases_paypal_transaction_id_live",

@@ -61,7 +61,7 @@ function Entry({ p }: { p: LivePurchase }) {
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
             <CreditCard className="size-4" aria-hidden="true" />
             <span>
-              Single-use card •••• {p.card.lastFour}
+              Paid with PayPal · Keelson single-use card •••• {p.card.lastFour}
               {p.card.mcc ? ` at ${MCC_LABELS[p.card.mcc] ?? `MCC ${p.card.mcc}`}` : ""}
             </span>
             <span className="text-muted-foreground">

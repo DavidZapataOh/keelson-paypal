@@ -8,6 +8,7 @@
 //! `@id`, `@field` and `@color` annotations, and its Cedar policy id is its `@id`.
 
 mod attribution;
+mod countersign;
 mod entity;
 mod evaluate;
 mod extras;
@@ -21,6 +22,11 @@ pub use attribution::{
     ATTRIBUTION_SCHEMA_SRC, Attribution, AttributionError, Facts, Liable, RULES, Reason, Rule,
     attribute, attribution_policy_set_hash, attribution_policy_src, attribution_policy_text,
     attribution_schema, attribution_schema_hash, attribution_sets,
+};
+pub use countersign::{
+    BIT_CANON, BIT_CEDAR_ERROR, BIT_EXTRA, BIT_PAYPAL, CountersignInput, FIELD_BITS, NO_CATEGORY,
+    RecomputeError, Recomputed, canon_reason, cart_trace, category, deny_trace, eval_hash,
+    failed_fields_mask, recompute,
 };
 pub(crate) use entity::{agent_entity_uid, variant_expr};
 pub use entity::{agent_uid, mandate_agent, mandate_entity};

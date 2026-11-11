@@ -881,6 +881,80 @@ export const ed25519VerifierAbi = [
   },
 ] as const;
 
+export const engineProofVerifierAbi = [
+  {
+    type: "constructor",
+    inputs: [
+      { name: "verifier", type: "address", internalType: "contract ISP1Verifier" },
+      { name: "programVKey", type: "bytes32", internalType: "bytes32" },
+    ],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "PROGRAM_VKEY",
+    inputs: [],
+    outputs: [{ name: "", type: "bytes32", internalType: "bytes32" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "VERIFIER",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "contract ISP1Verifier" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "proven",
+    inputs: [{ name: "countersignDigest", type: "bytes32", internalType: "bytes32" }],
+    outputs: [{ name: "evalHash", type: "bytes32", internalType: "bytes32" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "record",
+    inputs: [
+      { name: "publicValues", type: "bytes", internalType: "bytes" },
+      { name: "proof", type: "bytes", internalType: "bytes" },
+    ],
+    outputs: [
+      { name: "evalHash", type: "bytes32", internalType: "bytes32" },
+      { name: "countersignDigest", type: "bytes32", internalType: "bytes32" },
+    ],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "verify",
+    inputs: [
+      { name: "publicValues", type: "bytes", internalType: "bytes" },
+      { name: "proof", type: "bytes", internalType: "bytes" },
+    ],
+    outputs: [
+      { name: "evalHash", type: "bytes32", internalType: "bytes32" },
+      { name: "countersignDigest", type: "bytes32", internalType: "bytes32" },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "event",
+    name: "EngineProven",
+    inputs: [
+      { name: "countersignDigest", type: "bytes32", indexed: true, internalType: "bytes32" },
+      { name: "evalHash", type: "bytes32", indexed: false, internalType: "bytes32" },
+      { name: "prover", type: "address", indexed: true, internalType: "address" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "error",
+    name: "AlreadyProven",
+    inputs: [{ name: "countersignDigest", type: "bytes32", internalType: "bytes32" }],
+  },
+  { type: "error", name: "InvalidPublicValues", inputs: [] },
+] as const;
+
 export const errorsAbi = [
   { type: "error", name: "ConsistencyCheckFailed", inputs: [] },
   { type: "error", name: "GeminiChallengeInSubgroup", inputs: [] },

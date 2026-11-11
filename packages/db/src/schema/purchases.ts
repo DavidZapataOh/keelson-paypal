@@ -124,6 +124,25 @@ export const purchases = pgTable(
      */
     c1c3Proof: jsonb().$type<{ proof: string; public_inputs: string[] }>(),
     /**
+     * What the legs evaluated besides the mandate, kept so a dispute can run the evaluation again
+     * in the SP1 zkVM: the cart, the PayPal unit, the evidence sources, leg A's clock and budget,
+     * and the countersign's EIP-712 domain.
+     */
+    engineInput: jsonb().$type<{
+      cart: unknown;
+      unit: unknown;
+      evidence: Record<string, string[]>;
+      now_ms: number;
+      budget_left_minor: number;
+      chain_id: number;
+      verifying_contract: string;
+    }>(),
+    /**
+     * The SP1 Groth16 proof that the engine program, run over the purchase's inputs, gives the
+     * countersign's `evalHash`, and the `EngineProofVerifier.record` transaction that verified it.
+     */
+    engineProof: jsonb().$type<EngineProof>(),
+    /**
      * What the operator attested about the item the coverage backs, fixed by the first cover
      * attempt: the product page, the amber fields, the salt and their `amberCommitment`.
      */
@@ -158,3 +177,21 @@ export const purchases = pgTable(
     index("purchases_open_created_at_idx").on(t.createdAt, t.id).where(openPurchase(t.state)),
   ],
 );
+
+/** An SP1 proof of a purchase's engine evaluation, as `purchases.engine_proof` stores it. */
+export interface EngineProof {
+  vkey: string;
+  public_values: string;
+  proof: string;
+  eval_hash: string;
+  countersign_digest: string;
+  cycles: number;
+  prove_ms: number;
+  proof_bytes: number;
+  sp1_version: string;
+  chain_id: number;
+  verifier: string;
+  tx: string;
+  gas_used: string;
+  proven_at: string;
+}

@@ -102,4 +102,9 @@ an agent set `intent` or `custom_id`, so an agent using it can neither place a h
 order. Adding both, with the limits of the Orders v2 API, is enough for any agent to follow this
 extension.
 
-> TODO: link the Agent Toolkit pull request and its issue comments once they are published.
+The change is proposed upstream in
+[paypal/agent-toolkit#127](https://github.com/paypal/agent-toolkit/pull/127). This convention is
+also offered for agent-placed orders under disputes in
+[#113](https://github.com/paypal/agent-toolkit/issues/113#issuecomment-6804356281), and the
+per-call idempotency it relies on is tracked in
+[#98](https://github.com/paypal/agent-toolkit/issues/98#issuecomment-6804357607).
