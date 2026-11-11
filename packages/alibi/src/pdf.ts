@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { CURRENCIES, type CurrencyCode, toHex } from "@keelson/core";
+import { CURRENCIES, type CurrencyCode, describeConversion, toHex } from "@keelson/core";
 import PDFDocument from "pdfkit";
 import { toBytes } from "pdfkit/output";
 import QRCode from "qrcode";
@@ -153,6 +153,12 @@ export async function renderAlibiPdf(b: AlibiBundle): Promise<Uint8Array> {
             ? `Capture ${b.paypal.capture_id} (reported by PayPal, not signed)`
             : "Not captured yet",
         b.paypal.invoice_id ? `Invoice ${b.paypal.invoice_id}` : "",
+        b.paypal.store_order
+          ? `Store's PayPal order: ${b.paypal.store_order.intent}, payee ${b.paypal.store_order.payee_id}${b.paypal.store_order.capture_ceiling_minor ? `, capturable up to ${b.paypal.store_order.capture_ceiling_minor} minor units` : ""} (reported by the agent, not signed)`
+          : "",
+        b.conversion
+          ? `${describeConversion(b.conversion)}; reference ${b.conversion.reference.rate} from ${b.conversion.reference.provider} as of ${b.conversion.reference.as_of}, spread ${b.conversion.spread_bps} of ${b.conversion.max_spread_bps} bps allowed (reported by the agent, not signed)`
+          : "",
       ]
         .filter(Boolean)
         .join("\n"),

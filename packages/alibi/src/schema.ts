@@ -137,6 +137,33 @@ export const alibiSchema = z.strictObject({
    * the countersign names and its breakdown into items, tax, shipping and discount.
    */
   checkout: json.optional(),
+  /**
+   * The disclosed `api.fx_reference` item: the reference rates the API issued for the countersign,
+   * each held as its digest.
+   */
+  fx_reference: json.optional(),
+  /**
+   * A live purchase PayPal converted to the buyer's currency: the countersigned amount, what PayPal
+   * charged the buyer at its rate, and the reference rate the evidence binds, with the spread
+   * between them. Reported by the agent from PayPal's checkout. Not signed.
+   */
+  conversion: z
+    .strictObject({
+      v: z.literal("keelson.conversion/1"),
+      merchant: z.strictObject({ currency: z.string(), value: z.string() }),
+      buyer: z.strictObject({ currency: z.string(), value: z.string() }),
+      rate: z.string(),
+      reference: z.strictObject({
+        rate: z.string(),
+        provider: z.string(),
+        source: z.string(),
+        as_of: z.string(),
+      }),
+      spread_bps: z.int().nonnegative(),
+      max_spread_bps: z.int().nonnegative(),
+      locale: z.string(),
+    })
+    .optional(),
   zk: z
     .strictObject({
       /**
@@ -221,6 +248,18 @@ export const alibiSchema = z.strictObject({
        * PayPal reported it to the buyer. Not signed.
        */
       transaction_id: z.string().optional(),
+      /**
+       * A live purchase only: the store's PayPal order as PayPal's checkout stated it right before
+       * the pay click. For `AUTHORIZE`, the most PayPal lets the store capture: 115% of the
+       * authorization or USD 75 more, whichever is less (115% in other currencies). Not signed.
+       */
+      store_order: z
+        .strictObject({
+          intent: z.enum(["SALE", "AUTHORIZE"]),
+          payee_id: z.string(),
+          capture_ceiling_minor: decimal.optional(),
+        })
+        .optional(),
     })
     .optional(),
 });
