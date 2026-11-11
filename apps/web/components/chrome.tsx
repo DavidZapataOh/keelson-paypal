@@ -4,8 +4,8 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { Header } from "./header";
 
-/** Routes that draw their own chrome: the onboarding steps and the home. */
-const OWN_CHROME = new Set(["/", "/new/"]);
+/** Routes that draw their own chrome: the onboarding steps and the app. */
+const OWN_CHROME = new Set(["/", "/new/", "/purchase/", "/disputes/"]);
 
 export function Chrome({ children }: { children: ReactNode }) {
   const path = usePathname();
