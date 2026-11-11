@@ -27,9 +27,10 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use time::macros::format_description;
 use time::{Duration, OffsetDateTime, UtcOffset};
+use ulid::Ulid;
 
 use crate::budget::{Budget, Claimed, Replay};
-use crate::cards::{Approval, CardLedger, card_bit};
+use crate::cards::{Approval, CardLedger, DurableCards, card_bit};
 use crate::checkpoint::{CheckpointError, verify_checkpoint};
 use crate::logsign::{LogSigner, SignError, SignRequest, Signed};
 use crate::paypal::{HoldKind, PayPalDeny, paypal_check};
@@ -779,8 +780,24 @@ impl Engine {
             [n.network_id.as_bytes(), &[0], n.merchant_name.as_bytes()].concat(),
         );
         let request_id = c.requestId.0;
+        let durable = match (&self.root, &self.users) {
+            (Some(root), Some(users)) => Some(DurableCards {
+                root,
+                users: users.as_ref(),
+            }),
+            _ => None,
+        };
         self.cards.decide(request_id, &n.id, now_s, |used| {
-            let failed = failed | if used { card_bit("used") } else { 0 };
+            let mut failed = failed | if used { card_bit("used") } else { 0 };
+            // Leg A's approval holds across restarts: the card's use and the mandate's charge
+            // are sealed into its records before it is signed.
+            if let (0, Some(d)) = (failed, &durable) {
+                if !d.claim_use(&request_id, &n.id) {
+                    failed |= card_bit("used");
+                } else if !d.record_spend(&mandate_hash, &request_id, n.amount_minor) {
+                    return Err(EngineError::Busy);
+                }
+            }
             let a = CardAuthorization {
                 requestId: c.requestId,
                 countersignDigest: B256::new(digest),
@@ -908,13 +925,38 @@ impl Engine {
         let context = canonicalize(&r.cart, &r.unit);
         let total = context.as_ref().map_or(0, |c| c.total_minor);
         let amount = u64::try_from(total).map_err(|_| bad("cart"))?;
-        // A card mandate spends on cards, never through PayPal.
+        // A card mandate spends on single-use cards. Leg A counts what its cards approved from
+        // its sealed records and, when the mandate's PayPal hold is read, counts the charges
+        // already collected from the hold as PayPal reports them and the rest from the records.
         let card = m["payment"]["rail"] == "card";
-        if card && observed.is_some_and(|o| !o.authorization_id.is_empty()) {
-            return Err(bad("authorization_id"));
-        }
+        let spends = match (&self.root, &self.users) {
+            (Some(root), Some(users)) if card => DurableCards {
+                root,
+                users: users.as_ref(),
+            }
+            .spends(&a.mandate_hash),
+            _ => Vec::new(),
+        };
+        let recorded = |collected: &BTreeMap<Ulid, i64>| {
+            spends
+                .iter()
+                .filter(|(id, _)| {
+                    let ulid =
+                        Ulid::from(u128::from_be_bytes(id[16..].try_into().expect("16 bytes")));
+                    !collected.contains_key(&ulid)
+                })
+                .fold(0i64, |n, (_, amount)| n.saturating_add(*amount))
+        };
         let captured = match (ledger, &paypal) {
-            (true, _) if card => self.cards.spent(&a.mandate_hash, now_s),
+            (true, _) if card => self
+                .cards
+                .spent(&a.mandate_hash, now_s)
+                .max(recorded(&BTreeMap::new())),
+            (false, Some(read)) if card => read
+                .captured_minor
+                .max(read.order_captured_minor)
+                .max(0)
+                .saturating_add(recorded(&read.captured_by_request)),
             // A negative capture would raise the budget past its max.
             (true, _) => self
                 .captured
