@@ -23,6 +23,7 @@ const PAYPAL_EVENT_TYPES = [
   "CUSTOMER.DISPUTE.CREATED",
   "CUSTOMER.DISPUTE.UPDATED",
   "CUSTOMER.DISPUTE.RESOLVED",
+  "VAULT.PAYMENT-TOKEN.DELETED",
 ] as const;
 
 const URL = process.env.PAYPAL_WEBHOOK_URL ?? "https://api.keelson.finance/webhooks/paypal";

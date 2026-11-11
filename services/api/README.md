@@ -271,6 +271,41 @@ request includes the round trips to `api-m.sandbox.paypal.com` (authorize makes 
 | `POST /hold/authorize` (authorize + checks) | local workstation, 2026-11-08 | 20      | 3,167 ms | 3,455 ms | 1.5 s      |
 | `POST /revoke` (void of the parent)         | local workstation, 2026-11-08 | 20      | 2,689 ms | 2,862 ms | 1.2 s      |
 
+### Saved PayPal (Vault)
+
+A user can save PayPal once, so later holds need no PayPal login. PayPal keeps the saved
+PayPal as a [Vault payment token](https://developer.paypal.com/docs/checkout/save-payment-methods/purchase-later/payment-tokens-api/paypal/),
+one per user, in `paypal_wallets`. The vault id never leaves the API.
+
+| Route                                            | PayPal calls                                   | `PayPal-Request-Id`                                             |
+| ------------------------------------------------ | ---------------------------------------------- | --------------------------------------------------------------- |
+| `POST /v1/paypal/wallet/setup-token`             | Create Setup Token                             | `operationRequestId("<user>:<Idempotency-Key>", "setup-token")` |
+| buyer approval (JS SDK v6, save payment session) | none from the API                              | —                                                               |
+| `POST /v1/paypal/wallet`                         | Create Payment Token from the setup token      | `operationRequestId(setupToken, "payment-token")`               |
+| `GET /v1/paypal/wallet`                          | none                                           | —                                                               |
+| `DELETE /v1/paypal/wallet`                       | Delete Payment Token (a 404 counts as deleted) | —                                                               |
+
+The setup token asks for a merchant token of a consumer (`usage_type: MERCHANT`,
+`customer_type: CONSUMER`) billed `UNSCHEDULED_PREPAID`: amounts and dates vary, on the terms of
+the mandates the user signs. PayPal shows the buyer the description "Keelson holds your agent's
+budget, only under mandates you sign", during approval and later on paypal.com, where the
+buyer can also remove it. Only the user who asked for a setup token can save it: the API keeps
+the token's owner for the setup token's 3-day life. Saving PayPal again replaces the saved one
+and deletes the old token at PayPal. Removing it deletes the token at PayPal. Holds already
+authorized stay until they are captured, voided or expire.
+
+`VAULT.PAYMENT-TOKEN.DELETED` (the buyer removed it on paypal.com) is applied like every other
+event, from a re-read: the saved PayPal is forgotten once PayPal answers 404 for the token.
+
+**Where it works.** PayPal saves PayPal for merchants in the United States, Canada, China, Hong
+Kong, Japan, Singapore, Australia and 28 European countries (Austria, Belgium, Bulgaria, Cyprus,
+the Czech Republic, Denmark, Estonia, Finland, France, Germany, Hungary, Ireland, Italy, Latvia,
+Liechtenstein, Lithuania, Luxembourg, Malta, the Netherlands, Norway, Poland, Portugal, Romania,
+Slovakia, Slovenia, Spain, Sweden and the United Kingdom). **Colombia is not one of them**: a
+production Keelson merchant account must be in one of these countries, approved for reference
+transactions, with "Save payment methods" enabled. On the sandbox, the REST app needs **Vault**
+under Advanced options.
+
 ## Per-purchase holds
 
 A mandate that allows more than one merchant is stored with `hold_mode = 'per_purchase'` and is
