@@ -250,6 +250,40 @@ pub struct CountersignRequest {
     /// ALLOW; leg B cannot open it and ignores it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sealed_salt: Option<Base64>,
+    /// Asks for the purchase's SCITT signed statement alongside the countersign.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statement: Option<StatementRequest>,
+}
+
+/// What a leg needs, beyond the countersign, to sign the purchase's statement.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StatementRequest {
+    /// The registered measurement of each leg, as the signer registry holds it; the log and the
+    /// verifier check each against the leg's attestation.
+    pub measurements: LegMeasurements,
+    /// The salt of the PayPal payment reference; absent for a card purchase.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ref_salt: Option<Hex32>,
+    /// Leg A's countersignature, on leg B: the statement then carries both.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leg_a: Option<LegA>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LegMeasurements {
+    pub tdx: Hex32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nitro: Option<Hex32>,
+}
+
+/// Leg A's signer and its signature over the countersign.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LegA {
+    pub signer: Address,
+    pub signature: Hex65,
 }
 
 /// A C1 `mandate_predicate` proof: UltraHonk for the EVM, as `verify(bytes, bytes32[])` takes it.
@@ -334,6 +368,10 @@ pub struct Countersigned {
     pub trace_jcs: Base64,
     /// The facts the decision used, for leg B.
     pub observation: Observation,
+    /// The purchase's SCITT signed statement (RFC 9943), when asked for: leg A's alone
+    /// (`degraded`), or on leg B with both legs' signatures (`2of2`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statement: Option<Base64>,
 }
 
 /// A checkpoint to sign as the EIP-712 `Checkpoint`.
@@ -578,4 +616,126 @@ pub struct CardAuthorized {
     pub signature: Hex65,
     pub signer: Address,
     pub tee: TeeKind,
+}
+
+/// Asks a leg to sign a card network authorization decision both legs already signed as its own
+/// SCITT statement, linked to the purchase leaf.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CardStatementRequest {
+    pub authorization: CardAuthorizationJson,
+    pub signatures: LegSignatures,
+    pub measurements: LegMeasurements,
+    /// The purchase leaf's RFC 6962 hash.
+    pub parent: Hex32,
+    pub issuer: String,
+    pub card_token: String,
+    pub ref_salt: Hex32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chain_id: Option<u64>,
+}
+
+/// Each leg's `r ‖ s ‖ v`; `nitro` is absent when only leg A decided.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LegSignatures {
+    pub tdx: Hex65,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nitro: Option<Hex65>,
+}
+
+/// A signed statement.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StatementSigned {
+    pub statement: Base64,
+}
+
+/// Asks the legs to sign one card settlement: leg A reads it from the issuer, leg B checks leg A's
+/// reading byte for byte.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CardSettlementRequest {
+    pub request_id: Ulid,
+    pub transaction_token: String,
+    pub card_token: String,
+    pub issuer: String,
+    /// The purchase leaf's RFC 6962 hash.
+    pub parent: Hex32,
+    pub ref_salt: Hex32,
+    pub measurements: LegMeasurements,
+    /// Leg A's reading, on leg B.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observation: Option<SettlementObservation>,
+    /// Leg A's signature over the settlement, on leg B.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leg_a: Option<LegA>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chain_id: Option<u64>,
+}
+
+/// The issuer's raw answers leg A read, and when.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SettlementObservation {
+    pub transaction: Base64,
+    pub card: Base64,
+    pub observed_at: u64,
+}
+
+/// The EIP-712 `CardSettlement` with integers as decimal strings.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CardSettlementJson {
+    pub request_id: Hex32,
+    pub card_ref: Hex32,
+    pub transaction_hash: Hex32,
+    pub settled_minor: String,
+    pub currency: String,
+    pub status: String,
+    pub settled_at: String,
+    pub observed_at: String,
+}
+
+/// A leg's signed settlement, the reading it signed, and its statement.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CardSettled {
+    pub settlement: CardSettlementJson,
+    pub digest: Hex32,
+    pub signature: Hex65,
+    pub signer: Address,
+    pub observation: SettlementObservation,
+    pub statement: Base64,
+}
+
+/// Asks leg A to carry a v1 Alibi into v2: its leaf, an inclusion proof of it in a checkpoint this
+/// leg signed, and the countersign the leaf names.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BridgeRequest {
+    pub leaf: Base64,
+    pub tlog_proof: String,
+    pub countersign: CountersignJson,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chain_id: Option<u64>,
+}
+
+/// Asks leg A to sign a standard export (`POST /v1/exports/sign`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExportRequest {
+    /// The JWS `typ` the standard requires.
+    pub typ: String,
+    /// The JWT claims; `keelson.profile`, `keelson.statement` and `keelson.facts` are required.
+    pub payload: Value,
+    /// The transparent statement the export carries, with a receipt this leg's log key signed.
+    pub statement: Base64,
+}
+
+/// A compact ES256 JWS.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExportSigned {
+    pub jws: String,
 }

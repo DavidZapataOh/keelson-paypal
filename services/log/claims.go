@@ -92,3 +92,15 @@ func (c *claims) record(alibiID string, leafHash [32]byte) error {
 	}
 	return os.Rename(f.Name(), path)
 }
+
+// get returns the leaf hash claim was logged with, if any.
+func (c *claims) get(claim string) ([32]byte, bool, error) {
+	got, err := os.ReadFile(filepath.Join(c.dir, claim))
+	if errors.Is(err, os.ErrNotExist) {
+		return [32]byte{}, false, nil
+	}
+	if err != nil || len(got) != 32 {
+		return [32]byte{}, false, err
+	}
+	return [32]byte(got), true, nil
+}

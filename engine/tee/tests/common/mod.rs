@@ -415,6 +415,7 @@ pub fn countersign_request(
         observation,
         chain_id: None,
         sealed_salt: None,
+        statement: None,
     }
 }
 

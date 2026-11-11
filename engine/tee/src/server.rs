@@ -47,6 +47,8 @@ pub struct AppState {
     attestation: Option<std::sync::RwLock<Attested>>,
     #[cfg(feature = "tdx")]
     paypal: Option<crate::paypal::PayPalClient>,
+    #[cfg(feature = "tdx")]
+    lithic: Option<crate::issuer::LithicClient>,
     #[cfg(feature = "nitro")]
     nitro: Option<crate::nitro::Nitro>,
     #[cfg(feature = "tdx")]
@@ -76,6 +78,8 @@ impl AppState {
             attestation: None,
             #[cfg(feature = "tdx")]
             paypal: None,
+            #[cfg(feature = "tdx")]
+            lithic: None,
             #[cfg(feature = "nitro")]
             nitro: None,
             #[cfg(feature = "tdx")]
@@ -114,6 +118,13 @@ impl AppState {
     #[cfg(feature = "tdx")]
     pub(crate) fn notary_slot(&self) -> &Arc<tokio::sync::Semaphore> {
         self.notary.as_ref().expect("routed only with a notary")
+    }
+
+    /// Leg A reads card settlements from the issuer with this client.
+    #[cfg(feature = "tdx")]
+    pub fn with_lithic(mut self, client: crate::issuer::LithicClient) -> Self {
+        self.lithic = Some(client);
+        self
     }
 
     /// Makes leg A read the request's PayPal authorization through `client` before every
@@ -182,6 +193,13 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/v1/mandates/register", post(register))
         .route("/v1/verdict", post(verdict))
         .route("/v1/card/authorize", post(card_authorize))
+        .route("/v1/card/settlement", post(card_settlement))
+        .route("/v1/statements/bridge", post(bridge_statement))
+        .route("/v1/exports/sign", post(sign_export))
+        .route(
+            "/v1/statements/card-authorization",
+            post(card_authorization_statement),
+        )
         .layer(DefaultBodyLimit::max(BODY_LIMIT));
     #[cfg(feature = "tdx")]
     let (open, protected) = if state.attestation.is_some() {
@@ -348,6 +366,8 @@ async fn authorized(token_hash: &[u8; 32], request: Request, next: Next) -> Resp
 #[derive(Serialize)]
 struct Health {
     tee: TeeKind,
+    /// 1: countersigns answer with the purchase's SCITT statement when asked.
+    statements: u8,
     signer: Address,
     boot_epoch: u64,
     oci_digest: String,
@@ -372,6 +392,11 @@ pub(crate) struct LogKeyInfo {
     pub vkey: String,
     /// The raw Ed25519 public key, hex.
     pub public_key: String,
+    /// The origin's RFC 9942 receipt key, hex, and its key id (hex SHA-256 of the key).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub receipt_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub receipt_kid: Option<String>,
     /// `GetKey`'s signature chain, hex: absent on leg B.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub signature_chain: Vec<String>,
@@ -381,6 +406,7 @@ async fn health(State(state): State<Arc<AppState>>) -> Json<Health> {
     let engine = &state.engine;
     Json(Health {
         tee: engine.config().tee_kind,
+        statements: 1,
         signer: engine.signer(),
         boot_epoch: engine.boot_epoch(),
         oci_digest: engine.config().oci_digest.clone(),
@@ -404,6 +430,10 @@ fn log_keys(engine: &Engine) -> Vec<LogKeyInfo> {
                 origin: k.origin,
                 vkey: k.vkey(),
                 public_key: format!("0x{}", hex(&k.public_key())),
+                receipt_key: Some(hex(&k.receipt_public_key())),
+                receipt_kid: Some(hex(&<[u8; 32]>::from(sha2::Sha256::digest(
+                    k.receipt_public_key(),
+                )))),
                 signature_chain: k.signature_chain.iter().map(|l| hex(l)).collect(),
             })
             .collect();
@@ -415,6 +445,8 @@ fn log_keys(engine: &Engine) -> Vec<LogKeyInfo> {
             origin,
             vkey: crate::logsign::vkey(origin, key),
             public_key: format!("0x{}", hex(key)),
+            receipt_key: None,
+            receipt_kid: None,
             signature_chain: Vec::new(),
         })
         .collect()
@@ -607,6 +639,71 @@ async fn verdict(
 
 /// A card issuer's authorization of a single-use card, checked against the ALLOW it was issued
 /// under. The card issuer waits about two seconds for the answer, so nothing here goes out.
+async fn card_authorization_statement(
+    State(state): State<Arc<AppState>>,
+    body: Result<Bytes, BytesRejection>,
+) -> Result<Json<crate::wire::StatementSigned>, Problem> {
+    let request: crate::wire::CardStatementRequest = parse(body)?;
+    blocking(move || state.engine.card_authorization_statement(&request)).await
+}
+
+async fn sign_export(
+    State(state): State<Arc<AppState>>,
+    body: Result<Bytes, BytesRejection>,
+) -> Result<Json<crate::wire::ExportSigned>, Problem> {
+    let request: crate::wire::ExportRequest = parse(body)?;
+    blocking(move || state.engine.sign_export(&request)).await
+}
+
+async fn bridge_statement(
+    State(state): State<Arc<AppState>>,
+    body: Result<Bytes, BytesRejection>,
+) -> Result<Json<crate::wire::StatementSigned>, Problem> {
+    let request: crate::wire::BridgeRequest = parse(body)?;
+    blocking(move || state.engine.bridge(&request)).await
+}
+
+async fn card_settlement(
+    State(state): State<Arc<AppState>>,
+    body: Result<Bytes, BytesRejection>,
+) -> Result<Json<crate::wire::CardSettled>, Problem> {
+    let request: crate::wire::CardSettlementRequest = parse(body)?;
+    let observed = match &request.observation {
+        Some(o) => o.clone(),
+        None => read_settlement(&state, &request).await?,
+    };
+    blocking(move || state.engine.card_settlement(&request, &observed)).await
+}
+
+/// Leg A's own reading of the settlement; refused on a leg that cannot read the issuer.
+#[cfg(feature = "tdx")]
+async fn read_settlement(
+    state: &AppState,
+    r: &crate::wire::CardSettlementRequest,
+) -> Result<crate::wire::SettlementObservation, Problem> {
+    let Some(client) = &state.lithic else {
+        return Err(Problem::new(StatusCode::BAD_REQUEST, "observation"));
+    };
+    let (transaction, card) = client
+        .read(&r.transaction_token, &r.card_token)
+        .await
+        .map_err(|_| Problem::new(StatusCode::SERVICE_UNAVAILABLE, "issuer"))?;
+    let observed_at = u64::try_from((state.clock)().unix_timestamp()).unwrap_or_default();
+    Ok(crate::wire::SettlementObservation {
+        transaction: crate::wire::Base64(transaction),
+        card: crate::wire::Base64(card),
+        observed_at,
+    })
+}
+
+#[cfg(not(feature = "tdx"))]
+async fn read_settlement(
+    _state: &AppState,
+    _r: &crate::wire::CardSettlementRequest,
+) -> Result<crate::wire::SettlementObservation, Problem> {
+    Err(Problem::new(StatusCode::BAD_REQUEST, "observation"))
+}
+
 async fn card_authorize(
     State(state): State<Arc<AppState>>,
     body: Result<Bytes, BytesRejection>,

@@ -48,6 +48,9 @@ func run(log *slog.Logger) error {
 			if remote, err = newRemoteSigner(vkey, cfg.RemoteURL, cfg.TEEToken, s.registry); err != nil {
 				return err
 			}
+			if key, ok := cfg.RemoteReceiptKeys[spec.Name]; ok {
+				remote.receipts = newRemoteReceipts(key)
+			}
 			signers = append([]note.Signer{remote}, signers...)
 		}
 		o, err := openOrigin(appendCtx, spec, cfg.originDir(spec), cfg.VerifyingContract, signers, cfg.Policies[spec.Name])
@@ -56,6 +59,11 @@ func run(log *slog.Logger) error {
 		}
 		if remote != nil {
 			remote.setReader(o.reader.ReadTile)
+			if remote.receipts != nil {
+				o.receipts = remote.receipts
+			}
+		} else if key, ok := cfg.ReceiptKeys[spec.Name]; ok {
+			o.receipts = localReceipts{key}
 		}
 		s.origins = append(s.origins, o)
 	}

@@ -289,6 +289,7 @@ type testLog struct {
 	s       *server
 	public  *httptest.Server
 	private *httptest.Server
+	db      *pgxpool.Pool
 }
 
 func startLog(t testing.TB, keys testKeys, dataDir string, db *pgxpool.Pool, dbURL string) *testLog {
@@ -304,6 +305,9 @@ func startLog(t testing.TB, keys testKeys, dataDir string, db *pgxpool.Pool, dbU
 		o, err := openOrigin(ctx, spec, cfg.originDir(spec), cfg.VerifyingContract, cfg.Signers[spec.Name], cfg.Policies[spec.Name])
 		if err != nil {
 			t.Fatal(err)
+		}
+		if seed, ok := cfg.ReceiptKeys[spec.Name]; ok {
+			o.receipts = localReceipts{seed}
 		}
 		s.origins = append(s.origins, o)
 	}

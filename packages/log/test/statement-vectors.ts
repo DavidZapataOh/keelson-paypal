@@ -1,6 +1,7 @@
 import { hexToBytes } from "@noble/hashes/utils.js";
 import type { Hex } from "viem";
 import type {
+  BridgeClaims,
   CardAuthorizationClaims,
   CardSettlementClaims,
   LegSignature,
@@ -119,4 +120,12 @@ export function cardFromVector(
         kind: v.kind,
         claims: { ...signed, settlement: facts as unknown as CardSettlementClaims["settlement"] },
       };
+}
+
+export function bridgeFromVector(
+  v: StatementVector & { inputs: { predecessor: Hex } },
+): BridgeClaims {
+  const { claims } = fromVector(v);
+  const { payRef: _, ...rest } = claims;
+  return { ...rest, predecessor: v.inputs.predecessor };
 }

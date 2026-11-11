@@ -19,7 +19,8 @@ export const leaf: CheckDef = {
   id: "leaf.view",
   step: 0,
   reads: ["/leaf", "/leaf_view"],
-  run(input) {
+  run(input, ctx) {
+    if (ctx.view) return { status: "absent", reads: [] };
     const bytes = leafBytesOf(input);
     const text = decoder.decode(bytes);
     expect(text.startsWith(LEAF_PREFIX), "the leaf does not start with the log's prefix", [

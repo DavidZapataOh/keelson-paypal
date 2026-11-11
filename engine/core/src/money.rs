@@ -64,6 +64,14 @@ pub fn currency_numeric(code: &str) -> Result<u16, Error> {
     info(code).map(|c| c.numeric)
 }
 
+/// The ISO 4217 alphabetic code of a supported currency's numeric code.
+pub fn currency_code(numeric: u16) -> Option<&'static str> {
+    CURRENCIES
+        .iter()
+        .find(|c| c.numeric == numeric)
+        .map(|c| c.code)
+}
+
 /// Formats an amount as the decimal string PayPal expects, e.g. `"94.00"` or `"94"` for JPY.
 pub fn to_paypal_value(money: &Money) -> Result<String, Error> {
     let Currency {

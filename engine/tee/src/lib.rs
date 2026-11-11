@@ -9,6 +9,9 @@ pub mod checkpoint;
 mod countersign;
 mod engine;
 mod error;
+mod exports;
+#[cfg(feature = "tdx")]
+pub mod issuer;
 mod keys;
 pub mod kms;
 pub mod logsign;
@@ -39,7 +42,8 @@ pub use engine::{
     C1Status, CapturedSource, Engine, EngineConfig, EngineError, MANDATE_SALT_PURPOSE, UserRecords,
 };
 pub use error::Error;
+pub use exports::ascii_json;
 pub use keys::{Root, SealAad, SealError};
 pub use records::FileRecords;
 pub use report_data::{SignerBinding, TeeKind, report_data};
-pub use signer::Signer;
+pub use signer::{Signer, recover_address};

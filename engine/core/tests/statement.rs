@@ -268,3 +268,138 @@ fn card_statement_vectors_match() {
         );
     }
 }
+
+#[test]
+fn bridge_vectors_match() {
+    for raw in [
+        include_str!("../../../internal/alibilog/testdata/statement-v2/bridge-2of2.json"),
+        include_str!("../../../internal/alibilog/testdata/statement-v2/bridge-degraded.json"),
+    ] {
+        let v: Value = serde_json::from_str(raw).unwrap();
+        let i = &v["inputs"];
+        let cs = countersign(&i["countersign"]);
+        let legs = legs_of(i);
+        let verifying_contract: Address =
+            i["verifying_contract"].as_str().unwrap().parse().unwrap();
+        let claims = keelson_core::statement::BridgeClaims {
+            countersign: &cs,
+            chain_id: i["chain_id"].as_u64().unwrap(),
+            verifying_contract: verifying_contract.into_array(),
+            mode: if i["mode"] == "2of2" {
+                Mode::TwoOfTwo
+            } else {
+                Mode::Degraded
+            },
+            legs: &legs,
+            predecessor: fixed(i["predecessor"].as_str().unwrap()),
+        };
+        let payload = keelson_core::statement::bridge_claims_bytes(&claims);
+        assert_eq!(hex_of(&payload), v["claims_hex"], "{} claims", v["name"]);
+        let protected = protected_header(
+            fixed(i["bridge_signer"].as_str().unwrap()),
+            i["alibi_id"].as_str().unwrap(),
+            cs.issuedAt.to::<u64>(),
+            keelson_core::statement::BRIDGE_CONTENT_TYPE,
+        );
+        assert_eq!(
+            hex_of(&protected),
+            v["protected_hex"],
+            "{} protected",
+            v["name"]
+        );
+        let decoded =
+            CoseSign1::from_tagged_slice(&hex_bytes(v["statement_hex"].as_str().unwrap())).unwrap();
+        let signature: [u8; 64] = decoded.signature.clone().try_into().unwrap();
+        assert_eq!(
+            hex_of(&statement(protected, payload, signature)),
+            v["statement_hex"],
+            "{} statement",
+            v["name"]
+        );
+    }
+}
+
+#[test]
+fn receipt_protected_matches_the_typescript_one() {
+    let v: Value = serde_json::from_str(include_str!(
+        "../../../internal/scitt/testdata/receipt.json"
+    ))
+    .unwrap();
+    let public: [u8; 32] = fixed(v["public_key_hex"].as_str().unwrap());
+    let protected =
+        keelson_core::statement::receipt_protected(&public, v["origin"].as_str().unwrap());
+    assert_eq!(hex_of(&protected), v["protected_hex"]);
+    let root: [u8; 32] = fixed(v["root_hex"].as_str().unwrap());
+    let tbs = to_be_signed(&protected, &root);
+    assert_eq!(&hex_of(&tbs)[..24], "846a5369676e617475726531");
+}
+
+#[test]
+fn receipts_match_and_verify_against_the_typescript_ones() {
+    use keelson_core::statement::{
+        build_receipt, leaf_hash, receipt_protected, root_from_inclusion, verify_receipt,
+    };
+    let v: Value = serde_json::from_str(include_str!(
+        "../../../internal/scitt/testdata/receipt.json"
+    ))
+    .unwrap();
+    let public: [u8; 32] = fixed(v["public_key_hex"].as_str().unwrap());
+    let origin = v["origin"].as_str().unwrap();
+    let entries: Vec<Vec<u8>> = v["entries_hex"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| hex_bytes(e.as_str().unwrap()))
+        .collect();
+    let root: [u8; 32] = fixed(v["root_hex"].as_str().unwrap());
+    for (i, expected) in v["receipts_hex"].as_array().unwrap().iter().enumerate() {
+        let bytes = hex_bytes(expected.as_str().unwrap());
+        let out = verify_receipt(&bytes, &entries[i], &[public]).expect("the receipt verifies");
+        assert_eq!(
+            (out.size, out.index, out.root),
+            (entries.len() as u64, i as u64, root)
+        );
+        let decoded = CoseSign1::from_tagged_slice(&bytes).unwrap();
+        let sig: [u8; 64] = decoded.signature.clone().try_into().unwrap();
+        let rebuilt = build_receipt(
+            &receipt_protected(&public, origin),
+            sig,
+            out.size,
+            out.index,
+            &out.path,
+        );
+        assert_eq!(hex_of(&rebuilt), expected.as_str().unwrap(), "receipt {i}");
+        let mut wrong = entries[i].clone();
+        wrong.push(0);
+        assert!(verify_receipt(&bytes, &wrong, &[public]).is_none());
+        assert!(verify_receipt(&bytes, &entries[i], &[[0; 32]]).is_none());
+        assert_eq!(
+            root_from_inclusion(&leaf_hash(&entries[i]), out.index, out.size, &out.path),
+            Some(root)
+        );
+    }
+}
+
+#[test]
+fn reads_back_the_purchase_claims_it_wrote() {
+    for (name, raw) in VECTORS {
+        let v: Value = serde_json::from_str(raw).unwrap();
+        let read = keelson_core::statement::read_purchase(&hex_bytes(
+            v["statement_hex"].as_str().unwrap(),
+        ))
+        .expect(name);
+        assert_eq!(hex_of(&read.claims_bytes), v["claims_hex"], "{name}");
+        assert_eq!(read.alibi_id, v["inputs"]["alibi_id"], "{name}");
+        assert_eq!(
+            read.legs.len(),
+            v["inputs"]["legs"].as_array().unwrap().len(),
+            "{name}"
+        );
+        assert_eq!(
+            read.countersign.amount.to_string(),
+            v["inputs"]["countersign"]["amount"],
+            "{name}"
+        );
+        assert_eq!(read.chain_id, v["inputs"]["chain_id"].as_u64().unwrap());
+    }
+}

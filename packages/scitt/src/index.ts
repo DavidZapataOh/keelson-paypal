@@ -44,3 +44,4 @@ export {
   verifyEs256k,
   verifyEs256kMessage,
 } from "./sign1.ts";
+export { statementImprint } from "./tst.ts";

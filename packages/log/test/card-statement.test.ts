@@ -31,7 +31,7 @@ describe("card statement vectors", () => {
     const parsed = parseStatementLeaf(hexToBytes(v.statement_hex));
     expect(parsed.kind).toBe(c.kind);
     expect(parsed.alibiId).toBe(v.inputs.alibi_id);
-    expect(parsed.kind !== "purchase" && parsed.card).toEqual(c.claims);
+    expect("card" in parsed && parsed.card).toEqual(c.claims);
     const domain = keelsonDomain(v.inputs.chain_id, v.inputs.verifying_contract);
     const digest =
       c.kind === "card-authorization"

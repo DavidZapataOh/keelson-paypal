@@ -32,6 +32,8 @@ export const CARD_AUTHORIZATION_CONTENT_TYPE =
   "application/vnd.keelson.card-authorization-claims+cbor";
 /** The content type of a card settlement's payload. */
 export const CARD_SETTLEMENT_CONTENT_TYPE = "application/vnd.keelson.card-settlement-claims+cbor";
+/** The content type of a bridge statement: a v1 Alibi's countersigned facts carried into v2. */
+export const BRIDGE_CONTENT_TYPE = "application/vnd.keelson.alibi-bridge-claims+cbor";
 /** The issuer every Alibi statement names in its CWT claims. */
 export const STATEMENT_ISSUER = "https://keelson.finance";
 
@@ -81,12 +83,21 @@ export interface CardSettlementClaims extends Signed {
   parent: Hex;
 }
 
+/**
+ * A v1 Alibi's countersigned facts, its own legs' signatures and the hash of its v1 leaf. No
+ * payment commit: v1 never countersigned it.
+ */
+export interface BridgeClaims extends Omit<StatementClaims, "payRef"> {
+  predecessor: Hex;
+}
+
 export type ParsedStatement = {
   alibiId: string;
   signer: Hex;
   sign1: Sign1;
 } & (
   | { kind: "purchase"; claims: StatementClaims }
+  | { kind: "bridge"; claims: BridgeClaims }
   | { kind: "card-authorization"; card: CardAuthorizationClaims }
   | { kind: "card-settlement"; card: CardSettlementClaims }
 );
@@ -136,8 +147,21 @@ function statementSigner(c: Signed): LegSignature {
 
 /** The payload: the claims as an integer-keyed map in deterministic CBOR. */
 export function claimsBytes(c: StatementClaims): Uint8Array {
+  const map = countersignEntries(c);
+  if (c.payRef !== undefined) map.set(22, bytes(c.payRef, 32, "payRef"));
+  return encode(map);
+}
+
+/** A bridge statement's payload: the purchase claims without a payment commit, with key 23. */
+export function bridgeClaimsBytes(c: BridgeClaims): Uint8Array {
+  const map = countersignEntries(c);
+  map.set(23, bytes(c.predecessor, 32, "predecessor"));
+  return encode(map);
+}
+
+function countersignEntries(c: Omit<StatementClaims, "payRef">): Map<number, unknown> {
   const n = c.countersign;
-  const map = new Map<number, unknown>([
+  return new Map<number, unknown>([
     [1, 2],
     [2, bytes(n.requestId, 32, "requestId")],
     [3, bytes(n.mandateHash, 32, "mandateHash")],
@@ -157,8 +181,6 @@ export function claimsBytes(c: StatementClaims): Uint8Array {
     [17, BigInt(n.expiresAt)],
     ...signedEntries(c),
   ]);
-  if (c.payRef !== undefined) map.set(22, bytes(c.payRef, 32, "payRef"));
-  return encode(map);
 }
 
 function signedEntries(c: Signed): [number, unknown][] {
@@ -308,11 +330,13 @@ const KEYS: Record<ParsedStatement["kind"], Set<number>> = {
   purchase: new Set(Array.from({ length: 22 }, (_, i) => i + 1)),
   "card-authorization": new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 18, 19, 20, 21]),
   "card-settlement": new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 14, 18, 19, 20, 21]),
+  bridge: new Set([...Array.from({ length: 21 }, (_, i) => i + 1), 23]),
 };
 const KIND_OF: Record<string, ParsedStatement["kind"]> = {
   [CLAIMS_CONTENT_TYPE]: "purchase",
   [CARD_AUTHORIZATION_CONTENT_TYPE]: "card-authorization",
   [CARD_SETTLEMENT_CONTENT_TYPE]: "card-settlement",
+  [BRIDGE_CONTENT_TYPE]: "bridge",
 };
 
 /** Reads the shared domain, mode and legs of a claims map. */
@@ -355,7 +379,10 @@ function signedOf(m: Map<unknown, unknown>): Signed {
  * settlement) with an empty unprotected header, whose payload's legs signed one EIP-712 digest and
  * whose COSE signature is by the leg its mode names.
  */
-export function parseStatementLeaf(leaf: Uint8Array): ParsedStatement {
+export function parseStatementLeaf(
+  leaf: Uint8Array,
+  opts: { verify?: boolean } = {},
+): ParsedStatement {
   if (leaf.length > MAX_LEAF_BYTES) fail("leaf.size", `${leaf.length} bytes`);
   let s: Sign1;
   let header: Map<number, unknown>;
@@ -414,7 +441,7 @@ export function parseStatementLeaf(leaf: Uint8Array): ParsedStatement {
   let digest: Hex;
   let requestId: Hex;
   let iat: number;
-  if (kind === "purchase") {
+  if (kind === "purchase" || kind === "bridge") {
     const countersign: Countersign = {
       requestId: b(2, 32, "requestId"),
       mandateHash: b(3, 32, "mandateHash"),
@@ -433,15 +460,26 @@ export function parseStatementLeaf(leaf: Uint8Array): ParsedStatement {
       issuedAt: u(16, "issuedAt"),
       expiresAt: u(17, "expiresAt"),
     };
-    const claims: StatementClaims = {
-      countersign,
-      ...signed,
-      ...(m.has(22) ? { payRef: b(22, 32, "payRef") } : {}),
-    };
     requestId = countersign.requestId;
     iat = Number(countersign.issuedAt);
     digest = countersignDigest(countersign, domain());
-    parsed = { kind, claims, alibiId: "", signer: "0x", sign1: s };
+    const common = { alibiId: "", signer: "0x" as Hex, sign1: s };
+    parsed =
+      kind === "bridge"
+        ? {
+            kind,
+            claims: { countersign, ...signed, predecessor: b(23, 32, "predecessor") },
+            ...common,
+          }
+        : {
+            kind,
+            claims: {
+              countersign,
+              ...signed,
+              ...(m.has(22) ? { payRef: b(22, 32, "payRef") } : {}),
+            },
+            ...common,
+          };
   } else if (kind === "card-authorization") {
     const authorization: CardAuthorization = {
       requestId: b(2, 32, "requestId"),
@@ -487,8 +525,10 @@ export function parseStatementLeaf(leaf: Uint8Array): ParsedStatement {
   const alibiId = cwt.get(2) as string;
   if (ulidOfRequestId(requestId) !== alibiId) fail("leaf.field", "sub is not the request id");
   if (asUint(cwt.get(6), "iat") !== BigInt(iat)) fail("leaf.field", "iat");
-  const expected = statementSigner(signed);
-  if (hex(kid).toLowerCase() !== expected.signer.toLowerCase()) {
+  if (opts.verify === false) return { ...parsed, alibiId, signer: getAddress(hex(kid)) };
+  // A bridge is signed by leg A's current signer, which the verifier checks against the registry.
+  const expected = kind === "bridge" ? null : statementSigner(signed);
+  if (expected && hex(kid).toLowerCase() !== expected.signer.toLowerCase()) {
     fail("leaf.signer", `the statement is signed by ${hex(kid)}, not the ${expected.kind} leg`);
   }
   if (!verifyEs256k(s, kid)) fail("leaf.signature", "the statement signature does not verify");
