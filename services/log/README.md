@@ -105,6 +105,23 @@ cast call 0x049621749722D0660d5026456F25192fBD9A57ab "rootAt(bytes32,uint64)(byt
 The signed note of each anchor is the `signedNote` argument of its transaction, and the
 `CheckpointAnchored` event carries its `keccak256`.
 
+## Bonds
+
+A `LogBond` ([contracts](../../contracts#deployments)) puts PYUSD behind an origin's Ed25519 key:
+two checkpoints of the origin signed by the key, with different roots for the same size, pay the
+whole bond to whoever submits them to `proveEquivocation`. The contract verifies both signatures
+on chain. A split view the monitor publishes (`GET /equivocations/<id>`, kind `same-size`) is
+exactly that pair:
+
+```sh
+cast send <bond> "proveEquivocation(bytes,bytes)" "$(printf %s "$a" | xxd -p | tr -d '\n' | sed 's/^/0x/')" \
+  "$(printf %s "$b" | xxd -p | tr -d '\n' | sed 's/^/0x/')" --rpc-url https://sepolia-rollup.arbitrum.io/rpc
+```
+
+`GET https://api.keelson.finance/v1/log/bonds` lists every bond with its balance and, once slashed,
+the two checkpoints and the transaction. The conformance origin's bond was slashed by a drill with
+its tree and a fork of it at size 8.
+
 ## Hosting
 
 The service runs on Render with its log on a persistent disk, behind Cloudflare. The write

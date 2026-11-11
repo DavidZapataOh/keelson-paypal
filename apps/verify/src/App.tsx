@@ -1,6 +1,7 @@
 import type { ChainReader, Check, Report as VerifyReport } from "@keelson/alibi/verify";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Anonymous } from "./Anonymous.tsx";
+import { Bonds } from "./Bonds.tsx";
 import type { Loaded } from "./load.ts";
 import { Report } from "./Report.tsx";
 import { parseRoute, type Route, verifyLinkOf } from "./route.ts";
@@ -331,6 +332,7 @@ export function App() {
             {route.anonymous && current && <Anonymous alibi={current} rpc={rpc} />}
             <Report checks={run.checks} report={run.report} receipt={isReceipt(loaded)} />
             {!route.anonymous && current && <Anonymous alibi={current} rpc={rpc} />}
+            <Bonds rpc={route.rpc} />
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
