@@ -13,8 +13,8 @@ contract DeployEngineProofVerifier is KeelsonDeploy {
     using stdJson for string;
 
     string internal constant NAME = "EngineProofVerifier";
-    /// @notice The program that reads a mandate's optional `embed`.
-    string public constant VERSION = "EngineProofVerifier/2";
+    /// @notice The program built from the current mandate schema.
+    string public constant VERSION = "EngineProofVerifier/3";
 
     function run() external returns (EngineProofVerifier verifier) {
         vm.startBroadcast(_owner());

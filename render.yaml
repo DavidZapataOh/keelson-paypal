@@ -108,6 +108,16 @@ services:
       # The invite in the hackathon's testing instructions: it lets judges past the daily cap.
       - key: JUDGE_INVITE_CODE
         sync: false
+      # Phone alerts: the VAPID key pair (RFC 8292) and its contact, a mailto: URI.
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        sync: false
+      # Alert emails, sent from notify@keelson.finance.
+      - key: RESEND_API_KEY
+        sync: false
       - fromGroup: keelson-secrets
 
   # Dispute evaluation runs as Render Workflows tasks, started by the API with the task slug.
@@ -468,6 +478,10 @@ services:
       - path: /embed/v1.js
         name: Cache-Control
         value: public, max-age=300
+      # The service worker is checked for updates on every navigation.
+      - path: /sw.js
+        name: Cache-Control
+        value: no-cache
       - path: /embed/v1.js
         name: Cross-Origin-Resource-Policy
         value: cross-origin

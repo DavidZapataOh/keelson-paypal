@@ -9,6 +9,7 @@ import { CertStore } from "@keelson/paypal";
 import { Render } from "@renderinc/sdk";
 import { identityToRecipient } from "age-encryption";
 import { pino } from "pino";
+import { Resend } from "resend";
 import { createPublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 import { anchorCovered } from "./alibi/anchors.ts";
@@ -31,6 +32,7 @@ import { startHoldMaintenance } from "./hold/maintenance.ts";
 import { createKv } from "./kv.ts";
 import { createLogger } from "./logger.ts";
 import { authenticate } from "./middleware/auth.ts";
+import type { Notifier } from "./notify/notifier.ts";
 import { relayerFromEnv } from "./onchain/relayer.ts";
 import { recordOutcomes, startValidationSweeper } from "./onchain/validations.ts";
 import { operatorSigners } from "./operators/signer.ts";
@@ -192,7 +194,32 @@ const proveC1C3 = c1c3Prover(
   { db, log },
   render && env.DISPUTE_WORKFLOW ? { render, slug: env.DISPUTE_WORKFLOW } : undefined,
 );
-const paypalEvents = startPayPalEventWorker({ db, kv, log, paypal, startDisputeWorkflow });
+const notifier: Notifier = {
+  db,
+  log,
+  appOrigin: env.APP_ORIGIN,
+  apiOrigin: new URL(env.BETTER_AUTH_URL).origin,
+  verifyOrigin: env.VERIFY_ORIGIN,
+  secret: env.BETTER_AUTH_SECRET,
+  ...(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY && env.VAPID_SUBJECT
+    ? {
+        vapid: {
+          subject: env.VAPID_SUBJECT,
+          publicKey: env.VAPID_PUBLIC_KEY,
+          privateKey: env.VAPID_PRIVATE_KEY,
+        },
+      }
+    : {}),
+  ...(env.RESEND_API_KEY ? { resend: new Resend(env.RESEND_API_KEY) } : {}),
+};
+const paypalEvents = startPayPalEventWorker({
+  db,
+  kv,
+  log,
+  paypal,
+  startDisputeWorkflow,
+  notifier,
+});
 const operators =
   env.KEELSON_OPERATOR_KEY && env.DEMO_AGENT_ID
     ? operatorSigners(env.DEMO_AGENT_ID, env.KEELSON_OPERATOR_KEY)
@@ -214,6 +241,7 @@ const app = createApp({
   judgeInvite: env.JUDGE_INVITE_CODE,
   rateLimit: { trustProxy: process.env.RENDER === "true" },
   shutdown: shutdown.signal,
+  notifier,
   stamps,
   chains,
   paypal,
@@ -258,12 +286,21 @@ const stopResumer = startPipelineResumer({
   stamps,
   chain: chains[arbitrumSepolia.id],
   proveAnonymousPurchase: proveC1C3,
+  notifier,
   ...(env.LOG_URL && env.LOG_WRITE_TOKEN
     ? { tlog: { url: env.LOG_URL, token: env.LOG_WRITE_TOKEN } }
     : {}),
 });
 const stopHolds = startHoldMaintenance({ db, kv, log, paypal });
-const poller = startPayPalPoller({ db, kv, log, paypal, paypalEvents, startDisputeWorkflow });
+const poller = startPayPalPoller({
+  db,
+  kv,
+  log,
+  paypal,
+  paypalEvents,
+  startDisputeWorkflow,
+  notifier,
+});
 const stopReconciler = relayer?.startReconciler();
 const sweeperDeps = relayer
   ? { db, log, relayer, operators, chain: chains[arbitrumSepolia.id] }

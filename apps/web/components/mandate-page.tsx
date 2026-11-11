@@ -66,7 +66,7 @@ function MandateDetail() {
     setRevoking(true);
     await post(`/v1/mandates/${mandate.id}/revoke`).catch(() => {});
     setRevoking(false);
-    reload();
+    void reload();
   };
 
   return (
