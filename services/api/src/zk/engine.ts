@@ -4,11 +4,11 @@ import { access, chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promise
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { addresses } from "@keelson/chain";
+import { addresses, engineProofVerifierAbi } from "@keelson/chain";
 import { type Db, type EngineProof, eq, mandates, purchases } from "@keelson/db";
 import type { Relayer } from "@keelson/relayer";
 import type { Logger } from "pino";
-import { bytesToHex, type Hex, type PublicClient } from "viem";
+import { type Address, bytesToHex, type Hex, type PublicClient } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 
 const run = promisify(execFile);
@@ -25,6 +25,8 @@ const ENGINE_PROVER = {
 
 /** The chain `EngineProofVerifier` records proofs on. */
 const ENGINE_PROOF_CHAIN_ID = arbitrumSepolia.id;
+/** The block `EngineProofVerifier` was deployed at, where its `EngineProven` history starts. */
+const ENGINE_PROOF_FROM_BLOCK = 328_028_156n;
 
 /** How long a Groth16 proof may take on the workflow instance. */
 const PROVE_TIMEOUT_MS = 3 * 60 * 60 * 1000;
@@ -151,6 +153,33 @@ async function proveInput(input: CountersignInput): Promise<Proved> {
 }
 
 /**
+ * The transaction that recorded `evalHash` for countersign `digest` on `verifier`, when one did:
+ * `record` is permissionless, so another prover's transaction may have recorded it first.
+ */
+async function recordedBy(
+  chain: PublicClient,
+  verifier: Address,
+  digest: Hex,
+  evalHash: Hex,
+): Promise<Hex | undefined> {
+  const proven = await chain.readContract({
+    address: verifier,
+    abi: engineProofVerifierAbi,
+    functionName: "proven",
+    args: [digest],
+  });
+  if (proven.toLowerCase() !== evalHash.toLowerCase()) return undefined;
+  const [event] = await chain.getContractEvents({
+    address: verifier,
+    abi: engineProofVerifierAbi,
+    eventName: "EngineProven",
+    args: { countersignDigest: digest },
+    fromBlock: ENGINE_PROOF_FROM_BLOCK,
+  });
+  return event?.transactionHash;
+}
+
+/**
  * Proves in SP1 that the engine's canonicalizer and Cedar evaluation, run over purchase
  * `purchaseId`'s stored inputs, give its countersign's `evalHash`, records the proof with
  * `EngineProofVerifier.record` through the relayer and stores it on the purchase. A purchase that
@@ -195,12 +224,15 @@ export async function proveEngine(
     await new Promise((r) => setTimeout(r, 500));
     record = (await relayer.getById(record.id)) ?? record;
   }
-  if (record.status !== "confirmed" || !record.hash) {
+  const tx =
+    record.status === "confirmed" && record.hash
+      ? (record.hash as Hex)
+      : await recordedBy(chain, verifier, digest, evalHash);
+  if (!tx) {
     throw new Error(
       `engine proof of ${purchaseId} is ${record.status}${record.errorCode ? ` (${record.errorCode})` : ""}`,
     );
   }
-  const tx = record.hash as Hex;
   const receipt = await chain.getTransactionReceipt({ hash: tx });
 
   const proof: EngineProof = {
