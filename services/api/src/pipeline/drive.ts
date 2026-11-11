@@ -56,6 +56,13 @@ export interface PurchaseView {
 
 type Row = typeof purchases.$inferSelect;
 
+/** The policy ids whose check failed, from the engine's evaluation trace. */
+export function failedFields(trace: unknown): string[] {
+  const fields = (trace as { fields?: { id?: unknown; pass?: unknown }[] } | null)?.fields;
+  if (!Array.isArray(fields)) return [];
+  return fields.flatMap((f) => (typeof f.id === "string" && f.pass === false ? [f.id] : []));
+}
+
 /** A failed mandate field, its bound and the cart's value, as the buyer reads them. */
 export interface BlockReason {
   field: string;
