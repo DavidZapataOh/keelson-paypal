@@ -1,7 +1,8 @@
 name: apt-get update
 description: >-
-  Updates apt's package lists, three attempts with one fetch retry each. The image's mirror list leads with azure.archive.ubuntu.com, which the
-  runners at times cannot resolve for minutes, so a failed update moves apt to the Ubuntu archive for the next attempts.
+  Updates apt's package lists, three attempts with one fetch retry each. The image's mirror list leads with
+  azure.archive.ubuntu.com, which the runners at times cannot resolve for minutes, so a failed update moves apt to the
+  Ubuntu archive for the next attempts.
 
 runs:
   using: composite
