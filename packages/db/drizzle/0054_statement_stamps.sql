@@ -1,0 +1,2 @@
+ALTER TABLE "timestamps" DROP CONSTRAINT "timestamps_kind_valid";--> statement-breakpoint
+ALTER TABLE "timestamps" ADD CONSTRAINT "timestamps_kind_valid" CHECK ("timestamps"."kind" in ('leaf', 'channel3', 'statement'));

@@ -15,9 +15,11 @@ import { AppShell } from "./app-shell";
 import { HoldButton } from "./hold-button";
 import { LiveView } from "./live-view";
 import { MandateCard } from "./mandate-card";
+import { MandateStatus } from "./mandate-status";
 import { MandateVisual } from "./mandate-visual";
 import { ErrorNotice } from "./notice";
 import { PayPalHold } from "./paypal-hold";
+import { RenewApproval } from "./renew-approval";
 
 export function MandatePage() {
   return (
@@ -90,6 +92,8 @@ function MandateDetail() {
           </h1>
           <Meter label="Spent" value={max - left} max={max} format={dollars} className="max-w-md" />
           <p className="text-muted-foreground text-sm">Valid until {when(mandate.expiresAt)}</p>
+          <MandateStatus status={mandate.status ?? null} />
+          {mandate.needsRenewal ? <RenewApproval mandate={mandate} /> : null}
         </div>
         <MandateVisual
           className="mx-auto max-w-[400px]"

@@ -1,4 +1,4 @@
-import { createChainReader, verifyAlibi } from "@keelson/alibi/verify";
+import { createChainReader, v1Shape, verifyAlibi } from "@keelson/alibi/verify";
 import { deploymentsFor, mandateViolationCourtAbi } from "@keelson/chain";
 import { type CurrencyCode, fromPayPalValue } from "@keelson/core";
 import {
@@ -196,7 +196,7 @@ export async function evaluateDispute(deps: EvaluateDeps, disputeId: string): Pr
   if (dispute.status === "RESOLVED") return { status: "resolved", disputeId };
   const { facts, failedFields } = disputeFacts({
     reads: { dispute, capture, order, trackers },
-    bundle,
+    bundle: v1Shape(bundle),
     verified: report.verdict === "verified" && !violated,
     sameCartCountersigned: sameCart.length > 0,
   });
@@ -314,7 +314,7 @@ async function evaluateCardDispute(
   const { facts, failedFields } = cardDisputeFacts({
     chargeback,
     settledMinor: card.settledMinor,
-    bundle,
+    bundle: v1Shape(bundle),
     verified: report.verdict === "verified" && !violated,
     sameCartCountersigned: sameCart.length > 0,
   });

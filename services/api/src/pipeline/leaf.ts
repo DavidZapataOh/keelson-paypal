@@ -9,7 +9,14 @@ import {
   teeSignatures,
   teeSigners,
 } from "@keelson/db";
-import { cardRefCommit, leafBytes, leafFromCountersign, paypalRefCommit } from "@keelson/log";
+import {
+  cardRefCommit,
+  type LeafFormatError,
+  leafBytes,
+  leafFromCountersign,
+  parseStatementLeaf,
+  paypalRefCommit,
+} from "@keelson/log";
 import { type Address, getAddress, type Hex, recoverAddress, toHex } from "viem";
 import type { CountersignJson } from "../tee/client.ts";
 import { VERIFYING_CONTRACT } from "../tee/config.ts";
@@ -92,6 +99,36 @@ export async function countersignOf(db: Db, purchaseId: string): Promise<StoredC
  * The Alibi leaf of a purchase: its countersign, the measurements its signers were admitted with
  * and the commitment to its PayPal order and authorization, or to its single-use card.
  */
+/**
+ * A purchase's SCITT statement as its v2 leaf, once it is the statement of `out`: the same
+ * countersign, mode and legs' signatures, its own signatures verifying.
+ *
+ * @throws when the statement is malformed or names another countersign, mode or signature.
+ *
+ * @internal
+ */
+export function statementLeaf(statement: Uint8Array, out: StoredCountersign): Uint8Array {
+  let parsed: ReturnType<typeof parseStatementLeaf>;
+  try {
+    parsed = parseStatementLeaf(statement);
+  } catch (err) {
+    throw new Error(`the stored statement does not verify: ${(err as LeafFormatError).message}`);
+  }
+  if (parsed.kind !== "purchase") throw new Error("the stored statement is not a purchase's");
+  const c = parsed.claims.countersign;
+  const same = Object.entries(out.countersign).every(
+    ([k, v]) => String((c as Record<string, unknown>)[k]).toLowerCase() === String(v).toLowerCase(),
+  );
+  if (!same) throw new Error("the stored statement names another countersign");
+  if (parsed.claims.mode !== out.mode) throw new Error("the stored statement has another mode");
+  const sigs = [out.signatures.tdx, out.signatures.nitro].filter((s) => s !== null);
+  const legs = parsed.claims.legs.map((l) => l.signature.toLowerCase());
+  if (sigs.length !== legs.length || sigs.some((s, i) => s.toLowerCase() !== legs[i])) {
+    throw new Error("the stored statement carries another signature");
+  }
+  return statement;
+}
+
 export async function purchaseLeaf(
   db: Db,
   purchaseId: string,
@@ -99,6 +136,7 @@ export async function purchaseLeaf(
 ): Promise<Uint8Array> {
   const [p] = await db
     .select({
+      statement: purchases.statement,
       salt: purchases.paypalRefSalt,
       rail: purchases.rail,
       orderId: purchases.paypalOrderId,
@@ -109,6 +147,7 @@ export async function purchaseLeaf(
     .from(purchases)
     .leftJoin(purchaseCards, eq(purchaseCards.purchaseId, purchases.id))
     .where(eq(purchases.id, purchaseId));
+  if (p?.statement) return statementLeaf(new Uint8Array(p.statement), out);
   let ref: Hex;
   if (p?.salt && p.rail === "card" && p.issuer && p.cardToken) {
     ref = cardRefCommit(p.salt, p.issuer, p.cardToken);

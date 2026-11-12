@@ -3,6 +3,7 @@ package main
 import (
 	"cmp"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/mldsa"
 	"crypto/sha256"
 	"encoding/base64"
@@ -68,6 +69,11 @@ type config struct {
 	SigsumSigner sigsumcrypto.Signer
 	// Anchor anchors checkpoints on-chain when ANCHOR_SUBMITTER_KEY is set.
 	Anchor *anchorConfig
+	// ReceiptKeys sign the RFC 9942 receipts of origins signed here (LOG_RECEIPT_SEED_<env>, base64).
+	ReceiptKeys map[string]ed25519.PrivateKey
+	// RemoteReceiptKeys are the receipt keys leg A holds for the origins it signs
+	// (LOG_RECEIPT_KEY_<env>, hex): its root signatures are checked against them.
+	RemoteReceiptKeys map[string]ed25519.PublicKey
 }
 
 // anchorConfig is where and with what checkpoints are anchored: the
@@ -116,15 +122,17 @@ func loadAnchorConfig(getenv func(string) string) (*anchorConfig, error) {
 
 func loadConfig(getenv func(string) string) (*config, error) {
 	c := &config{
-		DataDir:     getenv("LOG_DATA_DIR"),
-		PublicAddr:  ":" + cmp.Or(getenv("PORT"), "10000"),
-		PrivateAddr: cmp.Or(getenv("LOG_PRIVATE_ADDR"), ":8081"),
-		DatabaseURL: getenv("DATABASE_URL"),
-		Signers:     map[string][]note.Signer{},
-		RemoteVkeys: map[string]string{},
-		RemoteURL:   getenv("LOG_REMOTE_SIGNER_URL"),
-		TEEToken:    getenv("KEELSON_TEE_TOKEN"),
-		Policies:    map[string][]byte{},
+		DataDir:           getenv("LOG_DATA_DIR"),
+		PublicAddr:        ":" + cmp.Or(getenv("PORT"), "10000"),
+		PrivateAddr:       cmp.Or(getenv("LOG_PRIVATE_ADDR"), ":8081"),
+		DatabaseURL:       getenv("DATABASE_URL"),
+		Signers:           map[string][]note.Signer{},
+		RemoteVkeys:       map[string]string{},
+		ReceiptKeys:       map[string]ed25519.PrivateKey{},
+		RemoteReceiptKeys: map[string]ed25519.PublicKey{},
+		RemoteURL:         getenv("LOG_REMOTE_SIGNER_URL"),
+		TEEToken:          getenv("KEELSON_TEE_TOKEN"),
+		Policies:          map[string][]byte{},
 	}
 	policyDir := getenv("LOG_POLICY_DIR")
 	if c.DataDir == "" || c.DatabaseURL == "" || policyDir == "" {
@@ -144,6 +152,20 @@ func loadConfig(getenv func(string) string) (*config, error) {
 	}
 	copy(c.TokenHash[:], th)
 	for _, o := range originSpecs {
+		if seed := getenv("LOG_RECEIPT_SEED_" + o.Env); seed != "" {
+			b, err := base64.StdEncoding.DecodeString(seed)
+			if err != nil || len(b) != ed25519.SeedSize {
+				return nil, fmt.Errorf("LOG_RECEIPT_SEED_%s is not a base64 Ed25519 seed", o.Env)
+			}
+			c.ReceiptKeys[o.Name] = ed25519.NewKeyFromSeed(b)
+		}
+		if key := getenv("LOG_RECEIPT_KEY_" + o.Env); key != "" {
+			b, err := hex.DecodeString(key)
+			if err != nil || len(b) != ed25519.PublicKeySize {
+				return nil, fmt.Errorf("LOG_RECEIPT_KEY_%s is not a hex Ed25519 public key", o.Env)
+			}
+			c.RemoteReceiptKeys[o.Name] = ed25519.PublicKey(b)
+		}
 		if vkey := getenv("LOG_SIGNER_VKEY_" + o.Env); vkey != "" {
 			if c.RemoteURL == "" || c.TEEToken == "" {
 				return nil, fmt.Errorf("%s: LOG_REMOTE_SIGNER_URL and KEELSON_TEE_TOKEN are required with LOG_SIGNER_VKEY_%s", o.Name, o.Env)

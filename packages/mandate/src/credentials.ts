@@ -11,11 +11,12 @@ import {
 import { SDJwtVcInstance } from "@sd-jwt/sd-jwt-vc";
 import { compactVerify, decodeJwt, decodeProtectedHeader, importJWK } from "jose";
 import { type Mandate, parseMandate } from "./schema.ts";
-import { assertSdAlg, decodeMandate, sdHasher } from "./sd.ts";
+import { assertSdAlg, decodeDisclosed, decodeMandate, sdHasher } from "./sd.ts";
 import {
   assertStrictJson,
   assertStrictJwt,
   decodeStrictJson,
+  decoysResolved,
   undisclosedDigests,
 } from "./strict.ts";
 
@@ -69,6 +70,8 @@ export interface OpenMandateParams {
   nonce: string;
   /** Defaults to now, in seconds since the epoch. */
   iat?: number;
+  /** The mandate's entry in Keelson's status list (draft-ietf-oauth-status-list-21). */
+  status?: { idx: number; uri: string };
 }
 
 /** Draws the 16 bytes of a disclosure salt. */
@@ -108,6 +111,8 @@ export interface OpenMandateVerifyOptions {
    * as a public Alibi does; every other digest must still be resolved.
    */
   personalWithheld?: boolean;
+  /** The salts of the delegate payload's decoy digests (RFC 9901 section 4.2.5). */
+  decoySalts?: readonly string[];
 }
 
 /** What {@link closeMandate} binds the open mandate to. */
@@ -333,6 +338,7 @@ export async function issueOpenMandate(
       nonce,
       sd_hash: sdHash(userCredential),
       user_auth: userAuth,
+      ...(params.status ? { status: { status_list: params.status } } : {}),
     },
   }).sign(es256Signer(signer));
   const holderKey = (await importJWK(holderJwk, "ES256")) as CryptoKey;
@@ -438,8 +444,12 @@ export async function verifyOpenMandate(
     risk: opts.personalWithheld === true && !Object.hasOwn(rawMandate, "risk_data"),
   };
   const missing = undisclosedDigests(signed, rest.slice(0, -1));
+  const decoys = decoysResolved(missing.unresolved, opts.decoySalts ?? [], rest.slice(0, -1));
   // Each withheld object claim leaves exactly one unresolved digest, so no other claim is.
-  if (missing.elements > 0 || missing.claims !== Number(withheld.login) + Number(withheld.risk)) {
+  if (
+    missing.elements !== decoys.elements ||
+    missing.claims - decoys.claims !== Number(withheld.login) + Number(withheld.risk)
+  ) {
     throw new RangeError("undisclosed digest");
   }
   jwkOf(cnf);
@@ -466,10 +476,13 @@ export async function verifyOpenMandate(
 }
 
 /**
- * The mandate an open mandate delegates: its one delegate payload with every disclosure resolved.
- * No signature is checked; use {@link verifyCredential} where the token is not already trusted.
+ * The mandate an open mandate delegates: its one delegate payload with every disclosure applied.
+ * With `decoySalts`, every digest must resolve to a disclosure or a decoy; without them, decoy
+ * digests (which only their salts resolve) are skipped and the result must still parse as a
+ * mandate. No signature is checked; use {@link verifyCredential} where the token is not already
+ * trusted.
  */
-export function readOpenMandate(openMandate: string): Mandate {
+export function readOpenMandate(openMandate: string, decoySalts?: readonly string[]): Mandate {
   if (!openMandate.includes("~~")) throw new RangeError("not an open mandate");
   const disclosures = finalKbSdJwt(openMandate).split("~").slice(1, -1);
   const delegate = disclosures.findIndex((d) => {
@@ -478,10 +491,10 @@ export function readOpenMandate(openMandate: string): Mandate {
   });
   if (delegate < 0) throw new RangeError("the open mandate delegates no mandate");
   const payloadSd = (decodeStrictJson(disclosures[delegate] as string) as unknown[]).at(-1);
-  return decodeMandate(
-    payloadSd as object,
-    disclosures.filter((_, i) => i !== delegate),
-  );
+  const rest = disclosures.filter((_, i) => i !== delegate);
+  return decoySalts
+    ? decodeMandate(payloadSd as object, rest, decoySalts)
+    : parseMandate(decodeDisclosed(payloadSd as object, rest));
 }
 
 /** The final KB-SD-JWT of a dSD-JWT and its disclosures, which the closing KB-JWT's `sd_hash` covers. */

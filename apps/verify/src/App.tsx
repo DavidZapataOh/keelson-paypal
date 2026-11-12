@@ -6,10 +6,12 @@ import { EngineProof } from "./EngineProof.tsx";
 import type { Loaded } from "./load.ts";
 import { Report } from "./Report.tsx";
 import { parseRoute, type Route, verifyLinkOf } from "./route.ts";
+import { saveBytes } from "./save.ts";
 import { loader, memoized, verifier } from "./verifier.ts";
 
 const Cheat = lazy(() => import("./Cheat.tsx"));
 const Amber = lazy(() => import("./Amber.tsx"));
+const Standards = lazy(() => import("./Standards.tsx"));
 const VERIFY_ORIGIN = "https://verify.keelson.finance";
 
 interface Run {
@@ -17,7 +19,7 @@ interface Run {
   report?: VerifyReport;
 }
 
-const isReceipt = (l: Loaded) => !("type" in l.alibi);
+const isReceipt = (l: Loaded) => !("eval" in l.alibi);
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 /** One reader per RPC choice, memoized so edits re-verify without asking the chain again. */
@@ -27,15 +29,14 @@ const readerFor = (rpc: string | undefined): Promise<ChainReader> =>
   );
 
 function download(l: Loaded) {
-  const name = `${l.alibi.alibi_id}${isReceipt(l) ? ".receipt.json" : ".alibi"}`;
-  const url = URL.createObjectURL(
-    new Blob([l.bytes as Uint8Array<ArrayBuffer>], {
-      type: "application/vnd.keelson.alibi.v1+json",
-    }),
-  );
-  const a = Object.assign(document.createElement("a"), { href: url, download: name });
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const cose = l.bytes[0] === 0xd2;
+  const name = `${l.alibi.alibi_id}${cose ? ".cose" : isReceipt(l) ? ".receipt.json" : ".alibi"}`;
+  const type = cose
+    ? "application/scitt-statement+cose"
+    : "type" in l.alibi
+      ? l.alibi.type
+      : "application/json";
+  saveBytes(name, l.bytes, type);
 }
 
 export function App() {
@@ -273,7 +274,7 @@ export function App() {
             <input
               type="file"
               className="sr-only"
-              accept=".pdf,.alibi,.json,application/pdf,application/json,image/*"
+              accept=".pdf,.alibi,.json,.cose,application/pdf,application/json,application/scitt-statement+cose,image/*"
               data-testid="file"
               onChange={(e) => {
                 const f = e.currentTarget.files?.[0];
@@ -333,6 +334,11 @@ export function App() {
             )}
             {route.anonymous && current && <Anonymous alibi={current} rpc={rpc} />}
             <Report checks={run.checks} report={run.report} receipt={isReceipt(loaded)} />
+            {current && "statement" in current && (
+              <Suspense fallback={null}>
+                <Standards alibi={current} checks={run.checks} report={run.report} />
+              </Suspense>
+            )}
             {!route.anonymous && current && <Anonymous alibi={current} rpc={rpc} />}
             <EngineProof alibi={loaded.alibi} rpc={rpc} />
             <Bonds rpc={route.rpc} />

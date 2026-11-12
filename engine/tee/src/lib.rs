@@ -9,8 +9,13 @@ pub mod checkpoint;
 mod countersign;
 mod engine;
 mod error;
+mod exports;
+#[cfg(feature = "tdx")]
+pub mod issuer;
 mod keys;
 pub mod kms;
+#[cfg(feature = "nitro")]
+pub mod kmsseal;
 pub mod logsign;
 #[cfg(feature = "nitro")]
 pub mod nitro;
@@ -24,8 +29,11 @@ mod records;
 mod report_data;
 pub mod server;
 mod signer;
+pub mod status;
 #[cfg(feature = "tdx")]
 pub mod tdx;
+#[cfg(any(feature = "tdx", feature = "nitro"))]
+pub mod tls_client;
 pub mod wire;
 pub mod zk;
 
@@ -39,7 +47,8 @@ pub use engine::{
     C1Status, CapturedSource, Engine, EngineConfig, EngineError, MANDATE_SALT_PURPOSE, UserRecords,
 };
 pub use error::Error;
+pub use exports::ascii_json;
 pub use keys::{Root, SealAad, SealError};
 pub use records::FileRecords;
 pub use report_data::{SignerBinding, TeeKind, report_data};
-pub use signer::Signer;
+pub use signer::{Signer, recover_address};

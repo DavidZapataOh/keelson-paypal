@@ -108,6 +108,7 @@ export async function coverStep(
       rail: purchases.rail,
       payloadSd: mandates.payloadSd,
       disclosures: mandates.disclosures,
+      decoySalts: mandates.decoySalts,
       userAuth: mandates.userAuth,
       premiumBps: purchases.premiumBps,
     })
@@ -123,7 +124,7 @@ export async function coverStep(
     : undefined;
   if (!row?.payloadSd || !row.disclosures || !row.userAuth) return final("cover:mandate-unsigned");
   if (!merchant) return final("cover:merchant-unknown");
-  const jwk = decodeMandate(row.payloadSd as object, row.disclosures).user.cred.jwk;
+  const jwk = decodeMandate(row.payloadSd as object, row.disclosures, row.decoySalts).user.cred.jwk;
   const { qx, qy } = passkeyPublicKey(jwk);
 
   const key = coverageKey(cs.requestId);

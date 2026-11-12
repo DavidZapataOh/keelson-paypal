@@ -1,0 +1,1 @@
+ALTER TABLE "mandates" ADD COLUMN "decoy_salts" jsonb DEFAULT '[]'::jsonb NOT NULL;

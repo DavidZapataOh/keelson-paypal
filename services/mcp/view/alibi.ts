@@ -16,6 +16,8 @@ interface AlibiCard {
   failure: { step: string; reason: string } | null;
   verifyUrl: string | null;
   issuedAt: string | null;
+  envelope: "scitt" | "v1" | null;
+  statementUrl: string | null;
 }
 type Liability = "verified" | "attested" | "yours";
 
@@ -109,6 +111,14 @@ function render(card: AlibiCard, host: Host): void {
         : "Pending",
     ),
   );
+  if (card.envelope === "scitt" && card.statementUrl) {
+    const url = card.statementUrl;
+    const statement = el("button", "link", "SCITT · RFC 9943 ↓");
+    statement.type = "button";
+    statement.setAttribute("aria-label", "Download the IETF SCITT transparent statement");
+    statement.addEventListener("click", () => void host.request("ui/open-link", { url }));
+    facts.append(row("Envelope", statement));
+  }
   if (card.capture) facts.append(row("PayPal capture", el("span", "mono", card.capture.id)));
   if (card.failure) facts.append(row("Failed at", `${card.failure.step}: ${card.failure.reason}`));
 
