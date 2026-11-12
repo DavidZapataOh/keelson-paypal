@@ -18,13 +18,15 @@ A client finds its credentials on its own, in this order:
 
 {% languages label="Sign in" %}
 ```sh {% title="TypeScript" %}
-node packages/sdk/dist/cli.js login
+npx keelson login
 ```
 
 ```sh {% title="Python" %}
-uv run --project packages/sdk-python keelson login
+keelson login
 ```
 {% /languages %}
+
+From a clone of the repository, the same command is `node packages/sdk/dist/cli.js login`, or `uv run --project packages/sdk-python keelson login`.
 
 Your browser opens Keelson's sign-in page, with a passkey or with Judge Mode, which needs no account. The CLI registers itself as an OAuth client for your machine, signs in with an authorization code and PKCE on a loopback redirect ([RFC 8252](https://www.rfc-editor.org/rfc/rfc8252)), and saves the sign-in to `~/.config/keelson/credentials.json`, readable by you only. Both SDKs read the same file and refresh the token when it expires. There is no key to copy.
 

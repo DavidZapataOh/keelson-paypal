@@ -22,33 +22,24 @@ req = keelson.mandates.request(name="My agent", reason=reason, per_purchase="$10
 print(req.approval_url)  # you approve with your passkey
 mandate = keelson.mandates.wait_for_approval(req.id)`;
 
-/**
- * Until the packages are on npm and PyPI they are built from the repository, exactly as
- * docs.keelson.finance/sdk/install says; a test holds the two pages to the same commands.
- */
-const FROM_REPO = `git clone https://github.com/DavidZapataOh/keelson-paypal.git
-cd keelson-paypal
-pnpm install
-pnpm --filter "@keelson-finance/sdk..." --filter "@keelson-finance/verifier..." build`;
-
 /** The five steps from an empty folder to a verified purchase, in both languages. */
 export const STEPS: Step[] = [
   {
     id: "install",
     docs: `${DOCS}/sdk/install`,
     title: "Install",
-    body: "The SDK and the verifier that checks receipts on your machine, built from the repository until they are on npm and PyPI.",
-    code: { typescript: FROM_REPO, python: FROM_REPO },
+    body: "Two packages: the SDK, and the verifier that checks receipts on your machine.",
+    code: {
+      typescript: "npm install @keelson-finance/sdk @keelson-finance/verifier",
+      python: "pip install keelson-finance",
+    },
   },
   {
     id: "login",
     docs: `${DOCS}/sdk/authentication`,
     title: "Sign in from your terminal",
     body: "Your browser opens; you allow it once. No key to paste.",
-    code: {
-      typescript: "node packages/sdk/dist/cli.js login",
-      python: "uv run --project packages/sdk-python keelson login",
-    },
+    code: { typescript: "npx keelson login", python: "keelson login" },
   },
   {
     id: "mandate",

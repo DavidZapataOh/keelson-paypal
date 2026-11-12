@@ -70,13 +70,15 @@ describe("the SDK pages call only what the SDKs have", () => {
     });
   }
 
-  test("install says the packages are not on a registry yet, and installs from the repository", () => {
+  test("install installs the published packages, and still builds from the repository", () => {
     const install = page("install");
     expect(read("packages/sdk/package.json")).toContain('"name": "@keelson-finance/sdk"');
     expect(read("packages/verify/package.json")).toContain('"name": "@keelson-finance/verifier"');
     expect(read("packages/sdk-python/pyproject.toml")).toContain('name = "keelson-finance"');
-    expect(install).toContain("not on npm or PyPI yet");
-    expect(install).not.toMatch(/^(npm install|pip install) /m);
+    expect(install).toMatch(/^npm install @keelson-finance\/sdk @keelson-finance\/verifier$/m);
+    expect(install).toMatch(/^pip install keelson-finance$/m);
+    expect(install).not.toContain("not on npm or PyPI yet");
+    expect(install).toContain("git clone https://github.com/DavidZapataOh/keelson-paypal.git");
   });
 
   test("authentication lists the environment variables the clients read", () => {

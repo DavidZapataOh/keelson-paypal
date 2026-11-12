@@ -13,6 +13,14 @@ const commands = (page: string) =>
     .filter((line) => line && !line.startsWith("#"));
 
 describe("the developers page's commands are the ones the docs show", () => {
+  test("it installs the published packages", () => {
+    const install = STEPS.find((s) => s.id === "install")?.code;
+    expect(install).toEqual({
+      typescript: "npm install @keelson-finance/sdk @keelson-finance/verifier",
+      python: "pip install keelson-finance",
+    });
+  });
+
   test.each([
     ["install", "install"],
     ["login", "authentication"],
