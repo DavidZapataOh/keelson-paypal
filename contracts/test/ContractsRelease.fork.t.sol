@@ -9,6 +9,7 @@ import {DeployMandateViolationCourt} from "../script/DeployMandateViolationCourt
 import {DeployReserve} from "../script/DeployReserve.s.sol";
 import {DeployVerdictVerifier} from "../script/DeployVerdictVerifier.s.sol";
 import {DeployViolationBondPool} from "../script/DeployViolationBondPool.s.sol";
+import {KeelsonDeploy} from "../script/KeelsonDeploy.sol";
 import {AmberContradictionCourt} from "../src/AmberContradictionCourt.sol";
 import {CheckpointAnchor} from "../src/CheckpointAnchor.sol";
 import {KeelsonBondVault} from "../src/KeelsonBondVault.sol";
@@ -60,26 +61,41 @@ contract ContractsReleaseForkTest is ForkTest {
             assertGt(first.code.length, 0, names[i]);
             firstCode[names[i]] = first.codehash;
         }
-        vm.setEnv("KEELSON_CONTRACTS_RELEASE", RELEASE);
         verifierScript = new DeployVerdictVerifier();
         vaultScript = new DeployBondVault();
         reserveScript = new DeployReserve();
         amberScript = new DeployAmberContradictionCourt();
+        DeployCheckpointAnchor anchorScript = new DeployCheckpointAnchor();
+        DeployErc8004 erc8004Script = new DeployErc8004();
+        DeployMandateViolationCourt courtScript = new DeployMandateViolationCourt();
+        DeployViolationBondPool poolScript = new DeployViolationBondPool();
+        KeelsonDeploy[8] memory scripts = [
+            KeelsonDeploy(verifierScript),
+            anchorScript,
+            vaultScript,
+            reserveScript,
+            erc8004Script,
+            courtScript,
+            poolScript,
+            amberScript
+        ];
+        for (uint256 i; i < scripts.length; ++i) {
+            scripts[i].useContractsRelease(RELEASE);
+        }
 
         verifierScript.run();
-        new DeployCheckpointAnchor().run();
+        anchorScript.run();
         vaultScript.run("KeelsonBondVault");
         reserveScript.run();
-        new DeployErc8004().run();
-        new DeployMandateViolationCourt().run();
-        new DeployViolationBondPool().run();
+        erc8004Script.run();
+        courtScript.run();
+        poolScript.run();
         amberScript.run();
         vm.warp(vm.getBlockTimestamp() + _timelock().getMinDelay());
         verifierScript.wire();
         vaultScript.wire("KeelsonBondVault");
         reserveScript.wire();
         amberScript.list();
-        vm.setEnv("KEELSON_CONTRACTS_RELEASE", "");
     }
 
     function _at(string memory name) internal view returns (address) {

@@ -15,6 +15,9 @@ abstract contract KeelsonDeploy is Script {
     /// @notice Bumping the release redeploys the whole system at a new, again identical, set of addresses.
     string internal constant RELEASE = "keelson/v1";
 
+    string internal _release;
+    bool internal _releaseSet;
+
     error DeployerOwnerMismatch(address expected, address actual);
 
     /// @notice The salt suffix of the contracts that hold the `VerdictVerifier` or the `KeelsonBondVault` address
@@ -22,7 +25,14 @@ abstract contract KeelsonDeploy is Script {
     /// beside the earlier ones, which keep their addresses and keep settling what they hold. Governance, the circuit
     /// verifiers and the log bonds keep their own salts.
     function contractsRelease() public view returns (string memory) {
-        return vm.envOr("KEELSON_CONTRACTS_RELEASE", string(""));
+        return _releaseSet ? _release : vm.envOr("KEELSON_CONTRACTS_RELEASE", string(""));
+    }
+
+    /// @notice Sets this script's contracts release instead of the environment's, for a test or a script that runs
+    /// another.
+    function useContractsRelease(string calldata release) external {
+        _release = release;
+        _releaseSet = true;
     }
 
     /// @notice `name` in the current contracts release: its CREATE3 salt name and its registry name.
