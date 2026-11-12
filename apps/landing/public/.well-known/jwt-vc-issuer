@@ -1,0 +1,4 @@
+{
+  "issuer": "https://keelson.finance",
+  "jwks_uri": "https://api.keelson.finance/v1/credentials/issuer/jwks.json"
+}

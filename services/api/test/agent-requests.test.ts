@@ -358,3 +358,87 @@ describe("checking a cart before the countersign", () => {
     expect((await check(await newOperator(), ended, carts.demo.cart)).status).toBe(404);
   });
 });
+
+describe("OpenID AuthZEN evaluations over the cart check", () => {
+  const evaluation = (op: Operator, mid: string, cart: unknown) => ({
+    subject: { type: "agent", id: op.agentId.toString() },
+    action: { name: "purchase" },
+    resource: { type: "mandate", id: mid, properties: { cart } },
+  });
+  const big = {
+    ...carts.demo.cart,
+    lines: carts.demo.cart.lines.map((l) => ({ ...l, unit_minor: 9_000_000 })),
+  };
+  const checkOf = async (op: Operator, mid: string, cart: unknown) =>
+    (await send(`/v1/mandates/${mid}/check`, client(op.clientId), { cart })).json();
+
+  test("the PDP publishes its endpoints", async () => {
+    const res = await app.request("/.well-known/authzen-configuration");
+    expect(await res.json()).toEqual({
+      policy_decision_point: "https://api.keelson.finance",
+      access_evaluation_endpoint: "https://api.keelson.finance/access/v1/evaluation",
+      access_evaluations_endpoint: "https://api.keelson.finance/access/v1/evaluations",
+    });
+  });
+
+  test("the decision is the cart check's, never binding, with the failed fields", async () => {
+    const op = await newOperator();
+    const mid = await liveMandate(await newUser(), op);
+    const check = await checkOf(op, mid, big);
+    const res = await send("/access/v1/evaluation", client(op.clientId), evaluation(op, mid, big));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.decision).toBe(false);
+    expect(body.context.binding).toBe(false);
+    expect(body.context.checks).toEqual(check.checks);
+    expect(body.context.blockers.map((b: { code: string }) => b.code)).toContain("field:total");
+    expect(body.context.reason_admin.en).toContain("total");
+    const fits = await checkOf(op, mid, carts.demo.cart);
+    const ok = await send(
+      "/access/v1/evaluation",
+      client(op.clientId),
+      evaluation(op, mid, carts.demo.cart),
+    );
+    expect((await ok.json()).decision).toBe(fits.canAttempt);
+  });
+
+  test("another client's mandate, or another agent, is denied without saying why it exists", async () => {
+    const op = await newOperator();
+    const mid = await liveMandate(await newUser(), op);
+    const other = await newOperator();
+    const theirs = await send(
+      "/access/v1/evaluation",
+      client(other.clientId),
+      evaluation(other, mid, carts.demo.cart),
+    );
+    expect(await theirs.json()).toMatchObject({
+      decision: false,
+      context: { reason_admin: { en: "No such mandate for this client." } },
+    });
+    const wrongAgent = await send("/access/v1/evaluation", client(op.clientId), {
+      ...evaluation(op, mid, carts.demo.cart),
+      subject: { type: "agent", id: other.agentId.toString() },
+    });
+    expect((await wrongAgent.json()).decision).toBe(false);
+  });
+
+  test("a boxcar answers each evaluation in order, filling what it omits from the defaults", async () => {
+    const op = await newOperator();
+    const mid = await liveMandate(await newUser(), op);
+    const base = evaluation(op, mid, carts.demo.cart);
+    const res = await send("/access/v1/evaluations", client(op.clientId), {
+      subject: base.subject,
+      action: base.action,
+      evaluations: [
+        { resource: base.resource },
+        { resource: { ...base.resource, properties: { cart: big } } },
+      ],
+    });
+    const { evaluations } = await res.json();
+    expect(evaluations).toHaveLength(2);
+    expect(evaluations[1].decision).toBe(false);
+    expect(evaluations[1].context.blockers.map((b: { code: string }) => b.code)).toContain(
+      "field:total",
+    );
+  });
+});
