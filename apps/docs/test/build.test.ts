@@ -105,7 +105,7 @@ describe("the copy", () => {
 
   test("shows durations rounded, not with machine precision", () => {
     const text = prose(
-      read("reference/api/post-v1-alibis-verify/index.html").replace(/<\/?(pre|code)\b[^>]*>/g, ""),
+      read("reference/api/verifyAlibi/index.html").replace(/<\/?(pre|code)\b[^>]*>/g, ""),
     );
     expect(text.match(/\b\d+\.\d{4,}\b/g)).toBeNull();
   });

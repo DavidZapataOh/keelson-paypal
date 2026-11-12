@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { REPO } from "../lib/markdown";
 
 const SITE = process.env.DOCS_ORIGIN ?? "https://docs.keelson.finance";
-const PAGES = ["/", "/quickstart/verify-an-alibi/", "/reference/api/post-v1-alibis-verify/"];
+const PAGES = ["/", "/quickstart/verify-an-alibi/", "/reference/api/verifyAlibi/"];
 let browser: Browser;
 
 beforeAll(async () => {
@@ -73,7 +73,10 @@ describe(`the deployed site at ${SITE}`, () => {
           }).observe({ type: "largest-contentful-paint", buffered: true });
         });
         await page.goto(SITE + path, { waitUntil: "networkidle" });
-        const m = await page.evaluate(() => window as unknown as { cls: number; lcp: number });
+        const m = await page.evaluate(() => {
+          const w = window as unknown as { cls: number; lcp: number };
+          return { cls: w.cls, lcp: w.lcp };
+        });
         console.log(`${path} ${width}: cls ${m.cls} lcp ${Math.round(m.lcp)} ms`);
         expect(m.cls).toBe(0);
         expect(m.lcp).toBeLessThan(1500);
@@ -91,7 +94,7 @@ describe(`the deployed site at ${SITE}`, () => {
   test("search finds the Alibi pages", async () => {
     const page = await browser.newPage();
     await page.goto(`${SITE}/`);
-    await page.keyboard.press("Meta+K");
+    await page.keyboard.press("ControlOrMeta+K");
     await page.getByRole("searchbox", { name: "Search the docs" }).fill("Alibi");
     await expect
       .poll(() => page.locator(".search-results li").count(), { timeout: 10_000 })
@@ -101,7 +104,7 @@ describe(`the deployed site at ${SITE}`, () => {
 
   test("try-it verifies the sample Alibi from the docs origin", async () => {
     const page = await browser.newPage();
-    await page.goto(`${SITE}/reference/api/post-v1-alibis-verify/`);
+    await page.goto(`${SITE}/reference/api/verifyAlibi/`);
     await page.getByRole("button", { name: "Send the sample Alibi" }).click();
     await expect
       .poll(() => page.locator(".tryit-out").textContent(), { timeout: 30_000 })

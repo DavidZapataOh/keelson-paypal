@@ -26,7 +26,7 @@ describe("the API reference", () => {
 
   test("documents the verify operation's headers and body from the schema", () => {
     const op = operations().find((o) => o.method === "post" && o.path === "/v1/alibis/verify");
-    expect(op?.slug).toBe("post-v1-alibis-verify");
+    expect(op?.slug).toBe("verifyAlibi");
     expect(op?.body?.mediaType).toBe("application/vnd.keelson.alibi.v1+json");
     const header = op?.params.find((p) => p.in === "header" && p.name === "Idempotency-Key");
     expect(header?.required).toBe(true);
@@ -42,7 +42,7 @@ describe("the API reference", () => {
   });
 
   test("builds a cURL sample with the method, URL, headers and an idempotency key", () => {
-    const op = operations().find((o) => o.slug === "post-v1-alibis-verify");
+    const op = operations().find((o) => o.slug === "verifyAlibi");
     if (!op) throw new Error("the verify operation is missing");
     const curl = sample(op, "curl");
     expect(curl).toContain("curl -X POST https://api.keelson.finance/v1/alibis/verify");
