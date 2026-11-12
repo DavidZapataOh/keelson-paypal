@@ -28,6 +28,7 @@ describe("the threat model", () => {
       "Compromises, by impact",
       "Attacks and defenses",
       "Limits",
+      "Third-party keys",
       "Reporting a vulnerability",
     ]);
   });
@@ -105,5 +106,31 @@ describe("the threat model", () => {
     ]) {
       expect(limits, k).toContain(k);
     }
+  });
+
+  test("names every third-party key that can change what Keelson trusts, and what limits it", () => {
+    const [head, ...rows] = table("Third-party keys");
+    expect(cells(head ?? "")).toEqual([
+      "Party",
+      "Key",
+      "Can change",
+      "Worst case for Keelson",
+      "Mitigation",
+    ]);
+    const text = rows.join("\n");
+    for (const k of [
+      "setQuoteVerifier",
+      "setZkConfiguration",
+      "updateProgramIdentifier",
+      "addVerifyRoute",
+      "setConfig",
+      "setQeIdDaoVersionedAddr",
+      "setFmspcTcbDaoVersionedAddr",
+      "unrevokeCert",
+      "Phala Cloud",
+    ]) {
+      expect(text, k).toContain(k);
+    }
+    for (const r of rows) expect(cells(r)[4], cells(r)[0]).not.toBe("");
   });
 });
