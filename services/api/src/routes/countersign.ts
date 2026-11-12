@@ -50,6 +50,7 @@ import { deviceAuthorization, grantOf, requestOnce } from "../connections.ts";
 import { approvedMandate, closeForHost, isDelegated, notAnotherApps } from "../delegated.ts";
 import { issuedReference } from "../fx.ts";
 import { capturable, merchantWebsite } from "../hold/state.ts";
+import { currentIssuer, needsRenewal } from "../issuer.ts";
 import { MERCHANTS } from "../merchants.ts";
 import { requireAgent } from "../middleware/auth.ts";
 import { money, notify, purchaseAlert, requestAlert } from "../notify/notifier.ts";
@@ -730,6 +731,15 @@ export function registerCountersign(
             found?.clientId && found.clientId === principal.subject ? found.mandate : undefined,
           );
     if (!mandate) return problem(c, 404, "not-found", "Not found");
+    if (needsRenewal(mandate.issuerThumbprint, await currentIssuer(db))) {
+      return problem(
+        c,
+        409,
+        "mandate-needs-renewal",
+        "Mandate needs renewal",
+        "Keelson moved its TEE keys under on-chain governance: the user signs this mandate again.",
+      );
+    }
     // Keelson closes only mandates of its hosted operator, with that operator's key.
     const hostedKey =
       body.mandateId !== undefined && mandate.operatorAgentId === deps.demoAgentId

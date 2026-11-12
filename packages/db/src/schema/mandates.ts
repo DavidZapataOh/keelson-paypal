@@ -41,6 +41,8 @@ export const mandates = pgTable(
     decoySalts: jsonb().$type<string[]>().notNull().default([]),
     /** The mandate's index in the status list, drawn at random and never reused. */
     statusIdx: integer().unique("mandates_status_idx_unique"),
+    /** The RFC 7638 thumbprint (hex) of the credential issuer key leg A issued the mandate with. */
+    issuerThumbprint: text(),
     /** The WebAuthn assertion over `mandate_hash`. */
     userAuth: jsonb(),
     credentialId: text(),

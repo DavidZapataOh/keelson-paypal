@@ -16,7 +16,7 @@ const production = {
   TEE_A_URL: "https://tee-a.example",
   TEE_B_URL: "https://tee-b.example",
   KEELSON_TEE_TOKEN: "t".repeat(64),
-  KEELSON_ISSUER_THUMBPRINT: `0x${"ab".repeat(32)}`,
+  KEELSON_ISSUER_THUMBPRINTS: `0x${"ab".repeat(32)}`,
   CHANNEL3_API_KEY: "channel3-key",
   PAYPAL_WEBHOOK_ID: "4JH86294D6297924G",
   NODE_ENV: "production",
@@ -66,10 +66,20 @@ test("the TEE settings come together and are required in production", () => {
 });
 
 test("production pins the credential issuer", () => {
-  const { KEELSON_ISSUER_THUMBPRINT: _pin, ...unpinned } = production;
-  expect(() => parseEnv(unpinned)).toThrow(/KEELSON_ISSUER_THUMBPRINT/);
-  expect(() => parseEnv({ ...production, KEELSON_ISSUER_THUMBPRINT: "0x12" })).toThrow();
-  expect(parseEnv(production).KEELSON_ISSUER_THUMBPRINT).toBe(`0x${"ab".repeat(32)}`);
+  const { KEELSON_ISSUER_THUMBPRINTS: _pin, ...unpinned } = production;
+  expect(() => parseEnv(unpinned)).toThrow(/KEELSON_ISSUER_THUMBPRINTS/);
+  expect(() => parseEnv({ ...production, KEELSON_ISSUER_THUMBPRINTS: "0x12" })).toThrow();
+  expect(parseEnv(production).KEELSON_ISSUER_THUMBPRINTS).toEqual([`0x${"ab".repeat(32)}`]);
+});
+
+test("a key move admits two credential issuers", () => {
+  const both = `0x${"ab".repeat(32)},0x${"cd".repeat(32)}`;
+  expect(
+    parseEnv({ ...production, KEELSON_ISSUER_THUMBPRINTS: both }).KEELSON_ISSUER_THUMBPRINTS,
+  ).toEqual([`0x${"ab".repeat(32)}`, `0x${"cd".repeat(32)}`]);
+  expect(() =>
+    parseEnv({ ...production, KEELSON_ISSUER_THUMBPRINTS: `0x${"ab".repeat(32)},0x12` }),
+  ).toThrow();
 });
 
 test("the log's address and write token come together", () => {

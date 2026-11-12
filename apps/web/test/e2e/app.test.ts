@@ -449,6 +449,55 @@ describe("signing and going live", () => {
     await context.close();
   });
 
+  test("an approval from before the key move asks to be renewed with the same limits", async () => {
+    const id = "01M7MANDATE000000000000010";
+    const compiled = await demoCompiled();
+    let prompt = "";
+    const { context, page } = await signedIn(
+      "desktop",
+      `/mandate/?id=${id}`,
+      async (path, body) => {
+        if (path === `/v1/mandates/${id}`)
+          return { ...(await viewIn(id, "ACTIVE")), needsRenewal: true };
+        if (path === "/v1/passkeys") {
+          return {
+            passkeys: [
+              {
+                id: "pk_1",
+                name: "Keelson",
+                credentialId: "cred-1",
+                createdAt: new Date().toISOString(),
+              },
+            ],
+          };
+        }
+        if (path === "/v1/mandates/compile") {
+          prompt = (JSON.parse(body ?? "{}") as { prompt: string }).prompt;
+          return compiled;
+        }
+        return undefined;
+      },
+    );
+    const card = page.getByRole("region", { name: "Renew approval" });
+    await card
+      .getByText(
+        "Keelson moved its TEE keys under on-chain governance; approvals from before must be signed again.",
+      )
+      .waitFor();
+    const { violations } = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+    expect(violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
+    await card.getByRole("link", { name: "Renew approval" }).click();
+    await page.getByRole("heading", { level: 1, name: "What may your agent buy?" }).waitFor();
+    await page
+      .getByText("Same limits as your approval. Sign it again to keep it working.")
+      .waitFor();
+    expect(await page.getByLabel("Store name").inputValue()).toBe("RunFast");
+    await page.getByRole("button", { name: "Review rules" }).click();
+    await page.getByRole("heading", { level: 1, name: "Check it, then sign" }).waitFor();
+    expect(prompt).toMatch(/^Trail running shoe, under \$100, from RunFast, by /);
+    await context.close();
+  });
+
   test("a revoked mandate says it is listed publicly, with its status list entry", async () => {
     const id = "01M7MANDATE000000000000009";
     const status = { uri: "https://api.keelson.finance/status/v1/mandates/2026-1", idx: 4242 };

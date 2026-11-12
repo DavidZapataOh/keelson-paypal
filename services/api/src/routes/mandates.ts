@@ -45,6 +45,7 @@ import {
 import { clientEmbedOrigins } from "../embed.ts";
 import { publishEvent } from "../events.ts";
 import { hostedCapError } from "../hosted-caps.ts";
+import { currentIssuer, needsRenewal } from "../issuer.ts";
 import { passkeyJwk, SignatureError, verifyMandateSignature } from "../mandate-signature.ts";
 import { requireSession } from "../middleware/auth.ts";
 import { cardViewOf, purchaseView } from "../pipeline/drive.ts";
@@ -90,6 +91,10 @@ export const CreateMandate = z
           "The salts of the payload's decoy digests (RFC 9901 section 4.2.5); every other digest resolves to a disclosure. Accepted once both TEEs resolve decoys.",
       }),
     commitment: Hex32.openapi({ description: "`C_m`; must equal the payload's `zk.commitment`." }),
+    renews: z.string().length(26).optional().openapi({
+      description:
+        "A mandate of yours that `needsRenewal`, which this one replaces: it is revoked, and its PayPal hold voided, once this one is stored.",
+    }),
     salt: z
       .string()
       .regex(/^0x[0-9a-f]{32}$/)
@@ -251,6 +256,10 @@ const MandateView = z
         description:
           "The mandate's entry in the public status list (draft-ietf-oauth-status-list-21): `revoked` once its revocation is requested, which the list carries from its next signing.",
       }),
+    needsRenewal: z.boolean().openapi({
+      description:
+        "`true` when leg A no longer holds the credential issuer key the mandate was issued with: countersigns answer `mandate-needs-renewal` until the user signs a new mandate with `renews`.",
+    }),
   })
   .openapi("Mandate");
 
@@ -622,6 +631,7 @@ export async function storeMandate(
   }
 
   let issued: MandateIssued | undefined;
+  let issuerThumbprint: string | null = null;
   const decoySalts = body.decoySalts ?? [];
   let statusIdx: number | null = null;
   if (deps.tee) {
@@ -638,6 +648,7 @@ export async function storeMandate(
         "The TEEs do not resolve decoy digests yet: sign the mandate without them.",
       );
     }
+    issuerThumbprint = await currentIssuer(deps.db);
     try {
       issued = await deps.tee.client.a.registerMandate({
         sub: userId,
@@ -703,6 +714,7 @@ export async function storeMandate(
         disclosures: body.disclosures,
         decoySalts,
         statusIdx,
+        issuerThumbprint,
         userAuth: assertion,
         credentialId: key.credentialID,
         ...(issued
@@ -767,6 +779,12 @@ export async function storeMandate(
             .where(eq(mandates.id, request.parentMandateId));
         }
       }
+      if (body.renews) {
+        await tx
+          .update(mandates)
+          .set({ revokeRequestedAt: sql`coalesce(${mandates.revokeRequestedAt}, now())` })
+          .where(and(eq(mandates.id, body.renews), eq(mandates.userId, userId)));
+      }
     });
   } catch (err) {
     if (err instanceof OverHostedCap) {
@@ -810,6 +828,16 @@ export async function storeMandate(
           deps.log.warn({ err, mandateId: parent.id }, "replaced mandate not revoked yet"),
         );
       }
+    }
+  }
+
+  // The renewed mandate's hold is released now; the sweeper voids it if PayPal is down.
+  if (body.renews) {
+    const renewed = await queries.mandateById(body.renews);
+    if (renewed?.userId === userId && (REVOCABLE as readonly string[]).includes(renewed.state)) {
+      await revokeMandate(deps, renewed).catch((err: unknown) =>
+        deps.log.warn({ err, mandateId: renewed.id }, "renewed mandate not revoked yet"),
+      );
     }
   }
 
@@ -934,6 +962,7 @@ export function registerMandates(app: OpenAPIHono, deps: MandateDeps): void {
           row.statusIdx === null
             ? null
             : { uri: STATUS_URI, idx: row.statusIdx, revoked: row.revokeRequestedAt !== null },
+        needsRenewal: needsRenewal(row.issuerThumbprint, await currentIssuer(db)),
       },
       200,
     );

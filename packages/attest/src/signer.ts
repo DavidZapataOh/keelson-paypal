@@ -55,8 +55,8 @@ export interface Expectations {
   now: Date;
   /** When set, the attested block hash is read from the chain and must be less than an hour old. */
   rpc?: PublicClient;
-  /** When set, the issuer key the attestation must commit to. */
-  issuerJwkThumbprint?: Hex;
+  /** When set, the issuer keys the attestation may commit to: two while the issuer key moves. */
+  issuerJwkThumbprints?: readonly Hex[];
   /** The TDX devices allowed; `TDX_DEVICES` by default. */
   tdxDevices?: readonly Hex[];
   /** When set, a platform verification of the same evidence and allowlist is reused while valid. */
@@ -184,7 +184,8 @@ export async function verifySigner(
     throw mismatch("bondVault differs");
   if (!same(b.policySetHash, expect.policySetHash)) throw mismatch("policySetHash differs");
   if (!same(b.engineBuildId, expect.engineBuildId)) throw mismatch("engineBuildId differs");
-  if (expect.issuerJwkThumbprint && !same(b.issuerJwkThumbprint, expect.issuerJwkThumbprint)) {
+  const issuers = expect.issuerJwkThumbprints;
+  if (issuers && !issuers.some((t) => same(b.issuerJwkThumbprint, t))) {
     throw mismatch("issuerJwkThumbprint differs");
   }
 
