@@ -34,10 +34,10 @@ after every new checkpoint:
   Findings: `leaf.tee_signature`, `leaf.tee_signer`, `leaf.tee_measurement`,
   `leaf.tee_equivocated`.
 
-| Origin                                  | Chain            | Contracts                                                                                         |
-| --------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------- |
+| Origin                                  | Chain            | Contracts                                                                                                                                                     |
+| --------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `log.keelson.finance/alibi/2026-1`      | Arbitrum Sepolia | `CheckpointAnchor` `0x049621749722D0660d5026456F25192fBD9A57ab`, `VerdictVerifier` `0xe16E8767EC1DA59Ef0D9Bc7851637E4D22352d96` (events from block 327178923) |
-| `log.keelson.finance/alibi-live/2026-1` | Arbitrum One     | Not deployed; the report says `not-deployed`                                                      |
+| `log.keelson.finance/alibi-live/2026-1` | Arbitrum One     | Not deployed; the report says `not-deployed`                                                                                                                  |
 
 The addresses are pinned in `chain.go` and a test compares them with
 [`contracts/deployments`](../../contracts/deployments). It reads `ARBITRUM_SEPOLIA_RPC_URL` when set,
@@ -75,14 +75,14 @@ compare them with what the log publishes at `https://<origin>/policy` and with
 
 ## API
 
-| Request                     | Answer                                                                                                                    |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Request                     | Answer                                                                                                                                                |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /report`               | Per origin: size, root, latest verified checkpoint, cosigners, leaves audited, degraded leaves, Sigsum status, on-chain anchor, TEE signers, findings |
-| `GET /checkpoints/<origin>` | The latest verified signed checkpoint, `text/plain`                                                                       |
-| `POST /gossip`              | A signed checkpoint (`text/plain`, at most 16 KiB, 10 a minute per client): `200 {status}`, `409 {equivocation}` or `422` |
-| `GET /equivocations`        | `[{id, origin, kind, detectedAt}]`                                                                                        |
-| `GET /equivocations/<id>`   | `{origin, kind, a, b, consistencyProof?, sigsumProof?, detectedAt}`: the two conflicting views; never rewritten           |
-| `GET /`                     | The public page                                                                                                           |
+| `GET /checkpoints/<origin>` | The latest verified signed checkpoint, `text/plain`                                                                                                   |
+| `POST /gossip`              | A signed checkpoint (`text/plain`, at most 16 KiB, 10 a minute per client): `200 {status}`, `409 {equivocation}` or `422`                             |
+| `GET /equivocations`        | `[{id, origin, kind, detectedAt}]`                                                                                                                    |
+| `GET /equivocations/<id>`   | `{origin, kind, a, b, consistencyProof?, sigsumProof?, detectedAt}`: the two conflicting views; never rewritten                                       |
+| `GET /`                     | The public page                                                                                                                                       |
 
 A gossiped checkpoint needs only the log's signatures, so a split view shown to a single user is
 still caught: `status` is `consistent`, `ahead` or `behind` the monitor's view, and a conflict
