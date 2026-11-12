@@ -178,6 +178,12 @@ jobs:
           forge build --root lib/nitro-validator
           script/seeded.sh anchor-rewrite forge | tee seeded-anchor-rewrite.txt
           { echo "### anchor-rewrite"; echo '```'; grep -B2 -A8 '\[FAIL' seeded-anchor-rewrite.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: A veto that leaves the dispute settled fails the veto test
+        env:
+          KEELSON_FUNDER_KEYS: ${{ secrets.KEELSON_FUNDER_KEYS }}
+        run: |
+          script/seeded.sh veto-final forge | tee seeded-veto-final.txt
+          { echo "### veto-final"; echo '```'; grep -B2 -A8 '\[FAIL' seeded-veto-final.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
   invariant:
     # Minutes-long runs: on main after merge and on schedule; pull requests run the short campaigns in ci.

@@ -31,10 +31,35 @@ rule slashRequiresValidVerdictReachable(env e, method f, KeelsonTypes.Verdict v,
 
 // ---------------------------------------------------------------- I2
 
-rule settledIsPermanent(env e, method f, calldataarg args, bytes32 disputeId) {
+/// Only a veto unsettles a dispute.
+rule settledIsPermanent(env e, method f, calldataarg args, bytes32 disputeId)
+    filtered { f -> f.selector != sig:vetoSlash(bytes32, string).selector }
+{
     bool before = settled(disputeId);
     f(e, args);
     assert before => settled(disputeId);
+}
+
+/// A veto reopens the dispute instead of closing it, and only once: the dispute is no longer settled, a fresh verdict
+/// can settle it again, and a second veto of it reverts.
+rule vetoReopens(env e, bytes32 disputeId, string reason) {
+    bool vetoedBefore = vetoed(disputeId);
+    vetoSlash@withrevert(e, disputeId, reason);
+    bool reverted = lastReverted;
+    assert vetoedBefore => reverted;
+    assert !reverted => !settled(disputeId) && vetoed(disputeId);
+}
+
+rule vetoReopensReachable(env e, bytes32 disputeId, string reason) {
+    vetoSlash(e, disputeId, reason);
+    satisfy !settled(disputeId);
+}
+
+/// Nothing clears a veto.
+rule vetoIsPermanent(env e, method f, calldataarg args, bytes32 disputeId) {
+    bool before = vetoed(disputeId);
+    f(e, args);
+    assert before => vetoed(disputeId);
 }
 
 rule settledIsPermanentReachable(env e, method f, calldataarg args, bytes32 disputeId) filtered { f -> isSlash(f) } {
@@ -58,9 +83,11 @@ rule noDoubleSettleReachable(env e, method f, KeelsonTypes.Verdict v, uint64 tre
     satisfy settled(v.disputeId);
 }
 
-/// A queued slash always belongs to a settled dispute.
+/// A queued or executed slash always belongs to a settled dispute; a vetoed one to a reopened dispute.
 invariant queuedImpliesSettled(bytes32 disputeId)
-    queuedSlashes(disputeId).status != IKeelsonBondVault.SlashStatus.None => settled(disputeId);
+    (queuedSlashes(disputeId).status == IKeelsonBondVault.SlashStatus.Queued
+            || queuedSlashes(disputeId).status == IKeelsonBondVault.SlashStatus.Executed => settled(disputeId))
+        && (queuedSlashes(disputeId).status == IKeelsonBondVault.SlashStatus.Vetoed => vetoed(disputeId));
 
 // ---------------------------------------------------------------- I3
 

@@ -126,6 +126,8 @@ interface IKeelsonBondVault {
         bool degraded,
         bytes32 verdictDigest
     );
+    /// @notice A veto reopened the dispute: `vetoed(disputeId)` is set, `settled(disputeId)` cleared, and the coverage's
+    /// (or batch's) release time moved to at least one dispute window from now.
     event SlashVetoed(bytes32 indexed disputeId, string reason);
     /// @notice The transfer to `recipient` failed (a frozen address, a paused token): the amount waits in `claimable`.
     event PayoutFailed(bytes32 indexed disputeId, address indexed recipient, uint96 amount);
@@ -164,6 +166,8 @@ interface IKeelsonBondVault {
     error NotInBatch();
     error NotQueued();
     error VetoClosed();
+    /// @notice The dispute was vetoed once already; its next slash can only execute.
+    error AlreadyVetoed();
 
     function depositWithAuthorization(
         uint256 agentId,
@@ -244,8 +248,14 @@ interface IKeelsonBondVault {
     /// @notice Pays a queued slash once its veto window has passed. Permissionless.
     function executeSlash(bytes32 disputeId) external;
 
-    /// @notice Cancels a queued slash inside its veto window. Moves no funds; the dispute stays settled.
+    /// @notice Cancels a queued slash inside its veto window and reopens its dispute, once. Moves no funds. The dispute
+    /// is no longer settled, so a fresh verdict, a court conviction or a warranty can still pay it, and the coverage (or
+    /// batch) stays locked for at least one more dispute window. A later slash of the same dispute always queues for the
+    /// veto window and cannot be vetoed again.
     function vetoSlash(bytes32 disputeId, string calldata reason) external;
+
+    /// @notice Whether a veto reopened `disputeId`.
+    function vetoed(bytes32 disputeId) external view returns (bool);
 
     /// @notice Pays all of `account`'s failed payouts to `to`. Gasless: anyone may submit `account`'s `Claim`
     /// signature; `sig` is ignored when `account` is the caller.

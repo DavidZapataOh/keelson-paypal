@@ -126,11 +126,13 @@ contract BondVaultVetoForkTest is SlashBase {
         assertEq(pyusd.balanceOf(merchant), 0);
     }
 
-    /// @dev I9: a veto restores the coverage and moves nothing; the dispute stays settled.
+    /// @dev I9: a veto restores the coverage, moves nothing and reopens the dispute for one more dispute window.
     function test_veto() public {
         (Vector memory v, KeelsonTypes.Verdict memory verdict) = _queued();
         uint256 vaultBalance = pyusd.balanceOf(address(vault));
         IKeelsonBondVault.Bond memory before = _bond();
+        uint40 reopenedUntil = uint40(vm.getBlockTimestamp() + vault.params().disputeWindow);
+        assertGt(reopenedUntil, vault.coverages(v.coverage.coverageId).releaseAfter, "the veto extends the coverage");
 
         vm.expectEmit(address(vault));
         emit IKeelsonBondVault.SlashVetoed(verdict.disputeId, "compromised leg");
@@ -144,18 +146,90 @@ contract BondVaultVetoForkTest is SlashBase {
         assertEq(vault.pendingSlashes(agentId), 0);
         assertEq(pyusd.balanceOf(address(vault)), vaultBalance);
         assertEq(abi.encode(_bond()), abi.encode(before));
+        assertFalse(vault.settled(verdict.disputeId), "reopened");
+        assertTrue(vault.vetoed(verdict.disputeId));
+        assertEq(vault.coverages(v.coverage.coverageId).releaseAfter, reopenedUntil);
 
         vm.expectRevert(IKeelsonBondVault.NotQueued.selector);
         vault.executeSlash(verdict.disputeId);
 
-        bytes memory sigs = _sign2of2(verdict);
-        vm.expectRevert(IKeelsonBondVault.AlreadySettled.selector);
-        vault.slash(verdict, treeSize, sigs);
-
-        vm.warp(uint256(vault.coverages(v.coverage.coverageId).releaseAfter) + 1);
+        vm.warp(reopenedUntil);
+        vm.expectRevert(IKeelsonBondVault.NotReleasable.selector);
+        vault.releaseCoverage(v.coverage.coverageId);
+        vm.warp(uint256(reopenedUntil) + 1);
         vault.releaseCoverage(v.coverage.coverageId);
         assertEq(_bond().locked, 0);
         assertEq(_bond().free, deposited - v.coverage.premium);
+    }
+
+    /// @dev A fresh verdict on the vetoed dispute queues even below the instant cap, cannot be vetoed again, and pays
+    /// once its veto window passed.
+    function test_veto_thenFreshVerdictQueuesAndExecutes() public {
+        (Vector memory v, KeelsonTypes.Verdict memory verdict) = _queued();
+        vm.prank(guardian);
+        vault.vetoSlash(verdict.disputeId, "compromised leg");
+        _lowerCap(AMOUNT);
+        assertGe(vault.rateLimitAvailable(), AMOUNT, "it would pay at once if not for the veto");
+
+        KeelsonTypes.Verdict memory fresh = _amber(v, AMOUNT);
+        fresh.deadline = uint40(vm.getBlockTimestamp() + 1 hours);
+        bytes memory sigs = _sign2of2(fresh);
+        uint40 readyAt = uint40(vm.getBlockTimestamp() + vault.params().vetoWindow);
+        vm.expectEmit(address(vault));
+        emit IKeelsonBondVault.SlashQueued(
+            fresh.disputeId, fresh.coverageId, agentId, AMOUNT, readyAt, false, _digest(fresh)
+        );
+        vault.slash(fresh, treeSize, sigs);
+        assertTrue(vault.settled(fresh.disputeId));
+        assertEq(pyusd.balanceOf(merchant), 0);
+
+        vm.prank(guardian);
+        vm.expectRevert(IKeelsonBondVault.AlreadyVetoed.selector);
+        vault.vetoSlash(fresh.disputeId, "again");
+        vm.expectRevert(IKeelsonBondVault.AlreadySettled.selector);
+        vault.slash(fresh, treeSize, sigs);
+
+        vm.warp(readyAt);
+        vault.executeSlash(fresh.disputeId);
+        assertEq(pyusd.balanceOf(merchant), AMOUNT);
+        assertEq(vault.coverages(v.coverage.coverageId).pendingSlashes, 0);
+        _assertBacked();
+    }
+
+    /// @dev The reserve pays a vetoed dispute when the legs find Keelson liable, and then nothing else settles it.
+    function test_veto_thenWarrantyPaysOnce() public {
+        (Vector memory v, KeelsonTypes.Verdict memory verdict) = _queued();
+        address treasury = makeAddr("treasury");
+        _fundFromHolder(treasury, 100e6);
+        vm.startPrank(treasury);
+        pyusd.approve(address(reserve), 100e6);
+        reserve.deposit(100e6, treasury);
+        vm.stopPrank();
+        vm.prank(guardian);
+        vault.vetoSlash(verdict.disputeId, "Keelson's fault, not the operator's");
+
+        KeelsonTypes.Verdict memory warranty = _verdict(v, AMOUNT, KEELSON, "PP-D-amber");
+        assertEq(warranty.disputeId, verdict.disputeId);
+        reserve.payWarranty(warranty, treeSize, _sign2of2(warranty));
+        assertEq(pyusd.balanceOf(merchant), AMOUNT);
+        assertTrue(reserve.settled(verdict.disputeId));
+
+        KeelsonTypes.Verdict memory fresh = _amber(v, AMOUNT);
+        bytes memory sigs = _sign2of2(fresh);
+        vm.expectRevert(IKeelsonBondVault.AlreadySettled.selector);
+        vault.slash(fresh, treeSize, sigs);
+    }
+
+    /// @dev A coverage past its release time when vetoed is held for one more dispute window.
+    function test_veto_lateInTheCoverageExtendsIt() public {
+        (Vector memory v, KeelsonTypes.Verdict memory verdict) = _queued();
+        uint40 releaseAfter = vault.coverages(v.coverage.coverageId).releaseAfter;
+        vm.warp(vault.queuedSlashes(verdict.disputeId).readyAt - 1);
+        vm.prank(guardian);
+        vault.vetoSlash(verdict.disputeId, "late");
+        uint40 extended = vault.coverages(v.coverage.coverageId).releaseAfter;
+        assertEq(extended, uint40(vm.getBlockTimestamp() + vault.params().disputeWindow));
+        assertGe(extended, releaseAfter);
     }
 
     function test_veto_afterReadyAtReverts() public {

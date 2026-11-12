@@ -10,6 +10,7 @@ using CheckpointAnchor as anchorContract;
 
 methods {
     function settled(bytes32) external returns (bool) envfree;
+    function vetoed(bytes32) external returns (bool) envfree;
     function slashed(bytes32) external returns (uint96) envfree;
     function claimable(address) external returns (uint256) envfree;
     function pendingSlashes(uint256) external returns (uint256) envfree;

@@ -1,0 +1,13 @@
+diff --git a/contracts/src/KeelsonBondVault.sol b/contracts/src/KeelsonBondVault.sol
+index 1f347cb..1ce84b2 100644
+--- a/contracts/src/KeelsonBondVault.sol
++++ b/contracts/src/KeelsonBondVault.sol
+@@ -414,7 +414,7 @@ contract KeelsonBondVault is IKeelsonBondVault, AccessManaged, EIP712, Nonces, R
+         if (block.timestamp >= q.readyAt) revert VetoClosed();
+         if (_disputes[disputeId].vetoed) revert AlreadyVetoed();
+         q.status = SlashStatus.Vetoed;
+-        _disputes[disputeId] = Dispute({settled: false, vetoed: true});
++        _disputes[disputeId] = Dispute({settled: true, vetoed: true});
+         slashed[q.coverageId] -= q.amount;
+         // A timestamp plus a `uint40` window fits 40 bits for the next 30,000 years.
+         // forge-lint: disable-next-line(unsafe-typecast)
