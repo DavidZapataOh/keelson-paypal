@@ -1,3 +1,10 @@
+/** Who stands behind an app, as the API proved it. */
+export type ClientIdentity =
+  | { kind: "cimd"; host: string; clientUri: string | null }
+  | { kind: "operator"; agentId: string; operator: string; registry: string }
+  | { kind: "hosted" }
+  | { kind: "unverified" };
+
 /** An agent's request for a mandate, as the approval page reads it. */
 export interface ConnectionView {
   code: string;
@@ -10,6 +17,8 @@ export interface ConnectionView {
     operator: string;
     bond: { asset: string; min: number; vault: string } | null;
   };
+  /** Who stands behind the app that asked. */
+  identity?: ClientIdentity;
   limits: {
     currency: string;
     perPurchaseMinor: string;

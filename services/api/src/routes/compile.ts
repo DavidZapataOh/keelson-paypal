@@ -23,6 +23,7 @@ import { clientAddress, rateLimit } from "../middleware/rate-limit.ts";
 import { userPasskeys } from "../passkeys.ts";
 import type { Principal } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
+import type { ProblemSlug } from "../problem-types.ts";
 import { Card } from "./mandates.ts";
 
 /**
@@ -106,7 +107,7 @@ const problemContent = { "application/problem+json": { schema: ProblemSchema } }
 const COMPILE_LIMIT = { name: "compile", limit: 10, windowSec: 60, failClosed: true } as const;
 
 /** Compile errors the user settles by restating the request, with the slug that answers each. */
-const USER_ERRORS: Readonly<Record<string, [slug: string, title: string, detail: string]>> = {
+const USER_ERRORS: Readonly<Record<string, [slug: ProblemSlug, title: string, detail: string]>> = {
   conflict: [
     "compile-conflict",
     "Compilations conflict",

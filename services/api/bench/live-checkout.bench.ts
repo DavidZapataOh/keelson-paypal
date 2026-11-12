@@ -4,6 +4,7 @@ import { appendFileSync } from "node:fs";
 import Anthropic from "@anthropic-ai/sdk";
 import {
   ALFRED,
+  amountAuthority,
   apiClient,
   checkout,
   decimal,
@@ -96,6 +97,28 @@ async function settle(id: string) {
   }
 }
 
+/**
+ * The bench user answering each amount confirmation the gate asks for, with its passkey, as the
+ * user would on their phone: Alfred Music's PayPal orders are created by its own PayPal app, so
+ * Keelson cannot read them and the user confirms the amount. Runs until `signal` aborts.
+ */
+async function confirmAmounts(purchase: () => string, signal: AbortSignal): Promise<void> {
+  while (!signal.aborted) {
+    const path = `/v1/purchases/${purchase()}/amount-confirmation`;
+    const res = await user.api.request(path).catch(() => undefined);
+    const c = res?.ok ? ((await res.json()) as { state: string; challenge: string }) : undefined;
+    if (c?.state === "PENDING") {
+      const assertion = await passkey.assert(Buffer.from(c.challenge, "base64url"));
+      await user.api.request(path, {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
+        body: JSON.stringify({ assertion: { ...assertion, credentialId: passkey.credentialId } }),
+      });
+    }
+    await new Promise((r) => setTimeout(r, 2_000));
+  }
+}
+
 const log = (s: { at: number; kind: string; detail: string }) =>
   console.error(`+${s.at}ms ${s.kind} ${s.detail.slice(0, 160)}`);
 
@@ -177,15 +200,17 @@ try {
       live: { store: ALFRED.origin },
     });
     const allowed = result.status < 300 && result.body.decision === "allow";
+    // The purchase the payment is for: the first countersign, or the last re-quote Keelson allowed.
+    let paid = result.requestId;
     const gate = new PayGate({
       checkoutHosts: ALFRED.checkoutHosts,
       cart: shopifyCart(session.context, ALFRED.origin),
       maxSpreadBps: maxSpreadBps(signed),
       payees: allowedPayees(signed),
+      // PayPal's Orders API or the user's passkey decides the amount; the checkout cross-checks.
+      authority: amountAuthority(agentApi, () => paid),
     });
     if (allowed) gate.allow(quote.total, result.reference);
-    // The purchase the payment is for: the first countersign, or the last re-quote Keelson allowed.
-    let paid = result.requestId;
     const requotes: Record<string, unknown>[] = [];
     // A re-quoted total is countersigned on evidence captured in a tab of its own on the product
     // page, so nothing of the checkout's pages, which show the buyer's address, is sealed.
@@ -242,6 +267,8 @@ try {
     const paying = RUN === "blocked" || allowed;
     // The pay click comes after this; the activity entry for it cannot be older.
     const since = new Date();
+    const confirming = new AbortController();
+    const confirmer = paying ? confirmAmounts(() => paid, confirming.signal) : undefined;
     const run = paying
       ? await runCheckout({
           client,
@@ -253,8 +280,9 @@ try {
           proposal,
           requote,
           onStep: log,
-        })
+        }).finally(() => confirming.abort())
       : undefined;
+    await confirmer;
     const purchase = await settle(paid);
     let transactionId: string | undefined;
     let recorded: number | undefined;
@@ -321,6 +349,12 @@ try {
           payee: gate.paid.charge.payee,
         },
         conversion: gate.paid?.conversion,
+        // What decided the amount: PayPal's Orders API or the user's passkey.
+        amountAuthority: gate.paid?.check && {
+          authority: gate.paid.check.authority,
+          via: gate.paid.check.via,
+          crossCheck: gate.paid.check.cross_check,
+        },
         // Where PayPal's charge to the buyer was read, the rate it gives and the rate PayPal shows.
         funding: gate.paid?.funding,
         // Only the amounts read on each page where a pay action was held.

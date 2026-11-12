@@ -167,6 +167,30 @@ class AmberCase(BaseModel):
     ]
 
 
+class Authority(StrEnum):
+    paypal_order = "paypal_order"
+    merchant_signed_cart = "merchant_signed_cart"
+    user_confirmed = "user_confirmed"
+    checkout_page = "checkout_page"
+
+
+class Via(StrEnum):
+    own = "own"
+    partner = "partner"
+    ucp = "ucp"
+
+
+class CrossCheck(StrEnum):
+    agrees = "agrees"
+    unavailable = "unavailable"
+
+
+class AmountAuthority(BaseModel):
+    authority: Authority
+    via: Via | None = None
+    crossCheck: CrossCheck
+
+
 class Line(BaseModel):
     sku: Annotated[str, Field(max_length=256)]
     size: Annotated[str | None, Field(max_length=256)] = None
@@ -524,6 +548,7 @@ class Card(BaseModel):
 class Live1(BaseModel):
     store: str
     transactionId: str | None
+    amountAuthority: AmountAuthority | None = None
 
 
 class DeviceAuthorization(BaseModel):
@@ -982,7 +1007,7 @@ class Purchase(BaseModel):
     live: Annotated[
         Live1 | None,
         Field(
-            description="A purchase the buyer pays at the store's own checkout: the store's origin and the PayPal transaction id once the agent recorded it. Never covered nor captured."
+            description="A purchase the buyer pays at the store's own checkout: the store's origin, what decided the amount at the pay click, and the PayPal transaction id once the agent recorded it. Never covered nor captured."
         ),
     ] = None
 
@@ -1202,6 +1227,6 @@ class Countersigned(BaseModel):
     live: Annotated[
         Live1 | None,
         Field(
-            description="A purchase the buyer pays at the store's own checkout: the store's origin and the PayPal transaction id once the agent recorded it. Never covered nor captured."
+            description="A purchase the buyer pays at the store's own checkout: the store's origin, what decided the amount at the pay click, and the PayPal transaction id once the agent recorded it. Never covered nor captured."
         ),
     ] = None

@@ -10,6 +10,11 @@ on:
   schedule:
     - cron: "23 5 * * *"
   workflow_dispatch:
+    inputs:
+      mutate:
+        description: Run only the mutation job of this matrix name (for example KeelsonBondVault); empty runs every job.
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -31,6 +36,7 @@ env:
 
 jobs:
   static:
+    if: ${{ !inputs.mutate }}
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -65,7 +71,7 @@ jobs:
 
   # CHC takes hours per contract, so it runs nightly, one job per contract.
   smtchecker:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && !inputs.mutate
     runs-on: ubuntu-24.04
     timeout-minutes: 350
     strategy:
@@ -115,7 +121,7 @@ jobs:
 
   symbolic:
     # Minutes-long runs: on main after merge and on schedule; pull requests run the short campaigns in ci.
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && !inputs.mutate
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -150,6 +156,7 @@ jobs:
             contracts/forge-symbolic.json
 
   seeded-bugs:
+    if: ${{ !inputs.mutate }}
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -181,7 +188,7 @@ jobs:
 
   invariant:
     # Minutes-long runs: on main after merge and on schedule; pull requests run the short campaigns in ci.
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && !inputs.mutate
     runs-on: ubuntu-24.04
     env:
       KEELSON_FUNDER_KEYS: ${{ secrets.KEELSON_FUNDER_KEYS }}
@@ -227,7 +234,7 @@ jobs:
 
   medusa:
     # Minutes-long runs: on main after merge and on schedule; pull requests run the short campaigns in ci.
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && !inputs.mutate
     runs-on: ubuntu-24.04
     env:
       MEDUSA_VERSION: v1.5.1
@@ -318,17 +325,22 @@ jobs:
         working-directory: contracts
     steps:
       - uses: actions/checkout@v7
+        if: ${{ !inputs.mutate || inputs.mutate == matrix.name }}
         with:
           submodules: recursive
       - uses: ./.github/actions/select-rpc
+        if: ${{ !inputs.mutate || inputs.mutate == matrix.name }}
         with:
           alchemy-api-key: ${{ secrets.ALCHEMY_API_KEY }}
           drpc-arbitrum-sepolia-url: ${{ secrets.DRPC_ARBITRUM_SEPOLIA_URL }}
       - uses: ./.github/actions/setup-foundry
+        if: ${{ !inputs.mutate || inputs.mutate == matrix.name }}
         with:
           version: ${{ env.FOUNDRY_VERSION }}
       - run: forge build --root lib/nitro-validator
+        if: ${{ !inputs.mutate || inputs.mutate == matrix.name }}
       - name: Mutate
+        if: ${{ !inputs.mutate || inputs.mutate == matrix.name }}
         env:
           CONTRACT: ${{ matrix.name }}
           # Forge matches the pattern against absolute source paths.
@@ -338,8 +350,9 @@ jobs:
           forge test --mutate --mutate-path "$MUTATE" --match-path "$TESTS" --no-match-path 'test/**/*.live.t.sol' \
             --mutation-jobs 0 --json > "mutation-${CONTRACT}.json"
       - run: script/mutation-gate.sh "mutation-${{ matrix.name }}.json"
+        if: ${{ !inputs.mutate || inputs.mutate == matrix.name }}
       - uses: actions/upload-artifact@v6
-        if: always()
+        if: always() && (!inputs.mutate || inputs.mutate == matrix.name)
         with:
           name: mutation-${{ matrix.name }}
           path: contracts/mutation-${{ matrix.name }}.json
@@ -347,7 +360,7 @@ jobs:
   # The Prover's free plan allows 2,120 job-minutes a month, which seven confs on every change would exhaust: the
   # results of the latest run are pinned in contracts/verification/certora/ and refreshed by dispatching this workflow.
   certora:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && !inputs.mutate
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     strategy:
@@ -403,7 +416,7 @@ jobs:
 
   # The README declares exactly what the full run established.
   report:
-    if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && !inputs.mutate
     needs: [static, smtchecker, symbolic, seeded-bugs, invariant, medusa, certora, mutation]
     runs-on: ubuntu-24.04
     defaults:

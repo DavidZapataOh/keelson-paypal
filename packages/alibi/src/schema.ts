@@ -194,6 +194,42 @@ const paypalSection = z
         capture_ceiling_minor: decimal.optional(),
       })
       .optional(),
+    /**
+     * A live purchase only: what decided the amount at the pay click, PayPal's Orders API read by
+     * Keelson's API or the user's passkey over it, named by the order id's SHA-256. Not signed by
+     * the TEEs; the passkey's assertion verifies offline.
+     */
+    amount_authority: z
+      .strictObject({
+        v: z.literal("keelson.amount_check/1"),
+        authority: z.enum([
+          "paypal_order",
+          "merchant_signed_cart",
+          "user_confirmed",
+          "checkout_page",
+        ]),
+        via: z.enum(["own", "partner", "ucp"]).optional(),
+        read_by: z.enum(["api", "tee:A"]),
+        order_id_hash: hex32,
+        total: z.strictObject({ currency: z.string(), minor: z.number().int().nonnegative() }),
+        payee: z.string(),
+        intent: z.enum(["CAPTURE", "AUTHORIZE"]),
+        checked_at: z.string(),
+        cross_check: z.enum(["agrees", "unavailable"]),
+        evidence: z
+          .strictObject({
+            assertion: z
+              .strictObject({
+                credentialId: z.string(),
+                authenticatorData: z.string(),
+                clientDataJSON: z.string(),
+                signature: z.string(),
+              })
+              .optional(),
+          })
+          .optional(),
+      })
+      .optional(),
   })
   .optional();
 

@@ -1,5 +1,5 @@
 import type { Check, FieldRow, Report as VerifyReport } from "@keelson/alibi/verify";
-import { CHECKS, evidenceOf, STATUS, STEPS } from "./labels.ts";
+import { amountAuthorityNote, CHECKS, evidenceOf, STATUS, STEPS } from "./labels.ts";
 
 const TONE = {
   pass: "text-ok",
@@ -116,6 +116,11 @@ function Row({ check }: { check: Check }) {
           </p>
         )}
         {check.detail?.alert && <p className="mt-0.5 text-sm text-warn">{check.detail.alert}</p>}
+        {check.id === "paypal.amount_authority" && check.detail && (
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            {amountAuthorityNote(check.detail)}
+          </p>
+        )}
         {evidence.note && <p className="mt-0.5 text-sm text-muted-foreground">{evidence.note}</p>}
         {evidence.link && (
           <a

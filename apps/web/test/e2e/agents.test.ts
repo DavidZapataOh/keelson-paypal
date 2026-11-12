@@ -361,6 +361,7 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("an app's consent on %s", (kind)
                 name: "Inspector",
                 uri: "https://inspector.example",
                 verified: false,
+                identity: { kind: "unverified" },
               },
               agent: null,
               scopes: ["alibis:read"],
@@ -380,7 +381,8 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("an app's consent on %s", (kind)
           : undefined,
     );
     await page.getByRole("heading", { level: 1, name: "Inspector wants to connect" }).waitFor();
-    expect(await page.getByText("Unverified client").count()).toBe(1);
+    expect(await page.getByText("Unverified app").count()).toBe(1);
+    expect(await page.getByTestId("identity-lock").count()).toBe(0);
     expect(await page.getByRole("checkbox", { name: /receipt/ }).isChecked()).toBe(true);
     expect(
       await page.getByText("It cannot pay outside these rules", { exact: false }).count(),
@@ -414,7 +416,13 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("an app's consent on %s", (kind)
         }
         return path === "/v1/oauth/consent"
           ? {
-              client: { id: "c2", name: "Claude", uri: "https://claude.ai", verified: false },
+              client: {
+                id: "https://claude.ai/oauth/mcp-oauth-client-metadata",
+                name: "Claude",
+                uri: "https://claude.ai",
+                verified: true,
+                identity: { kind: "cimd", host: "claude.ai", clientUri: "https://claude.ai" },
+              },
               agent: { agentId: "351", operator: "Keelson", hosted: true },
               scopes,
               spending: null,
@@ -424,6 +432,10 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("an app's consent on %s", (kind)
       },
     );
     await page.getByRole("heading", { level: 1, name: "Claude wants to connect" }).waitFor();
+    // The host the server fetched Claude's metadata document from, next to a lock.
+    await page.getByTestId("identity-lock").waitFor();
+    expect(await page.getByText("Verified claude.ai").count()).toBe(1);
+    expect(await page.getByText("Unverified app").count()).toBe(0);
     const can = page.getByRole("region", { name: "It can" });
     for (const name of [
       /Ask you for a spending mandate/,
@@ -451,6 +463,39 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("an app's consent on %s", (kind)
         accept: true,
         scope: "alibis:read mandates:request evidence:write purchases:write",
       });
+    await context.close();
+  });
+});
+
+describe.each(Object.keys(VIEWPORTS) as Kind[])("a lookalike app name on %s", (kind) => {
+  test("a name that mixes alphabets is flagged with what it looks like", async () => {
+    const { context, page } = await signedIn(
+      kind,
+      "/consent/?client_id=c3&scope=alibis%3Aread&sig=x",
+      (path) =>
+        path === "/v1/oauth/consent"
+          ? {
+              client: {
+                id: "c3",
+                // A Cyrillic "а" in place of the Latin "a".
+                name: "P\u0430yPal Store",
+                uri: null,
+                verified: false,
+                identity: { kind: "unverified" },
+              },
+              agent: null,
+              scopes: ["alibis:read"],
+              spending: null,
+              spendingError: null,
+            }
+          : undefined,
+    );
+    await page
+      .getByText("Looks like “PayPal Store”. This name mixes alphabets.", { exact: false })
+      .waitFor();
+    expect(await page.getByText("Unverified app").count()).toBe(1);
+    await axe(page);
+    await shot(page, kind, "consent-lookalike");
     await context.close();
   });
 });

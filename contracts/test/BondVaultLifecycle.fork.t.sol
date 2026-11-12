@@ -174,6 +174,32 @@ contract BondVaultLifecycleForkTest is LockBase {
         vault.requestWithdrawal(agentId, 1e6, recipient, 0, deadline, sig);
     }
 
+    /// @dev A withdrawal signature is valid through its deadline's second.
+    function test_withdrawal_atDeadline() public {
+        uint256 deadline = vm.getBlockTimestamp();
+        bytes memory sig = _withdrawalSig(operatorKey, 1e6, recipient, 0, deadline);
+        uint256 id = vault.requestWithdrawal(agentId, 1e6, recipient, 0, deadline, sig);
+        assertEq(vault.withdrawals(id).amount, 1e6);
+    }
+
+    function test_withdrawal_zeroAmountOrRecipientReverts() public {
+        uint256 deadline = vm.getBlockTimestamp() + 1 hours;
+        bytes memory sig = _withdrawalSig(operatorKey, 0, recipient, 0, deadline);
+        vm.expectRevert(IKeelsonBondVault.ZeroAmount.selector);
+        vault.requestWithdrawal(agentId, 0, recipient, 0, deadline, sig);
+        sig = _withdrawalSig(operatorKey, 1e6, address(0), 0, deadline);
+        vm.expectRevert(IKeelsonBondVault.ZeroAmount.selector);
+        vault.requestWithdrawal(agentId, 1e6, address(0), 0, deadline, sig);
+    }
+
+    /// @dev The whole free bond can be withdrawn.
+    function test_withdrawal_ofTheWholeFreeBond() public {
+        uint128 free = _bond().free;
+        _request(free);
+        assertEq(_bond().free, 0);
+        assertEq(_bond().queued, free);
+    }
+
     function test_withdrawal_overFreeReverts() public {
         Vector memory v = _locked(WEBAUTHN);
         uint128 free = _bond().free;
@@ -201,5 +227,19 @@ contract BondVaultLifecycleForkTest is LockBase {
 
         vm.expectRevert(IKeelsonBondVault.InvalidSignature.selector);
         vault.setPayoutAddress(merchant, makeAddr("thief"), 1, deadline, sig);
+    }
+
+    /// @dev A payout signature is valid through its deadline's second, not after it.
+    function test_setPayoutAddress_deadlineBoundary() public {
+        (address merchant, uint256 merchantKey) = makeAddrAndKey("merchant");
+        address payout = makeAddr("merchant payout");
+        uint256 deadline = vm.getBlockTimestamp() + 1 hours;
+        bytes memory sig = _signVault(merchantKey, KeelsonTypes.hashPayoutAddress(merchant, payout, 0, deadline));
+        vm.warp(deadline + 1);
+        vm.expectRevert(IKeelsonBondVault.Expired.selector);
+        vault.setPayoutAddress(merchant, payout, 0, deadline, sig);
+        vm.warp(deadline);
+        vault.setPayoutAddress(merchant, payout, 0, deadline, sig);
+        assertEq(vault.payoutAddress(merchant), payout);
     }
 }

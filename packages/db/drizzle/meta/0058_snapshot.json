@@ -1,5 +1,5 @@
 {
-  "id": "79ab7232-5437-44b9-b08f-58d94fca77ca",
+  "id": "bdee8aa3-9387-443f-8cdc-2ee25d9a5e68",
   "prevId": "a5247b5d-0f86-4b88-b488-99c96bb28f97",
   "version": "7",
   "dialect": "postgresql",
@@ -5590,6 +5590,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "amount_check": {
+          "name": "amount_check",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "amount_confirm": {
+          "name": "amount_confirm",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "paypal_ref_salt": {
           "name": "paypal_ref_salt",
           "type": "bytea",
@@ -5923,159 +5935,6 @@
         }
       },
       "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.ssf_events": {
-      "name": "ssf_events",
-      "schema": "",
-      "columns": {
-        "jti": {
-          "name": "jti",
-          "type": "char(26)",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "stream_id": {
-          "name": "stream_id",
-          "type": "char(26)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "set": {
-          "name": "set",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "acked_at": {
-          "name": "acked_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "ssf_events_pending_idx": {
-          "name": "ssf_events_pending_idx",
-          "columns": [
-            {
-              "expression": "stream_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "ssf_events_stream_id_ssf_streams_id_fk": {
-          "name": "ssf_events_stream_id_ssf_streams_id_fk",
-          "tableFrom": "ssf_events",
-          "tableTo": "ssf_streams",
-          "columnsFrom": ["stream_id"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.ssf_streams": {
-      "name": "ssf_streams",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "char(26)",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "client_id": {
-          "name": "client_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'enabled'"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "ssf_streams_client_id_user_id_idx": {
-          "name": "ssf_streams_client_id_user_id_idx",
-          "columns": [
-            {
-              "expression": "client_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "ssf_streams_user_id_user_id_fk": {
-          "name": "ssf_streams_user_id_user_id_fk",
-          "tableFrom": "ssf_streams",
-          "tableTo": "user",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},

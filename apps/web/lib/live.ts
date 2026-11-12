@@ -1,4 +1,5 @@
 import type { Conversion } from "@keelson/core";
+import type { AmountAuthority } from "../components/amount-authority";
 import { API } from "./config";
 import type { Amount } from "./types";
 
@@ -17,6 +18,8 @@ export interface LivePurchase {
   transactionId: string | null;
   /** When PayPal converted the charge to the buyer's currency, as the pay-click gate checked it. */
   conversion?: Conversion;
+  /** What decided the amount the agent paid on PayPal's checkout. */
+  amountAuthority?: AmountAuthority;
   /** For a DENY, the mandate fields that failed, or leg A's PayPal reason. */
   blocked: string[];
   /** A card purchase: the merchant the card network named and what both enclaves decided. */

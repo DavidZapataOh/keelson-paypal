@@ -8,6 +8,13 @@
  */
 
 export {
+  type AmountAuthority,
+  type AmountCheck,
+  type AmountConfirmation,
+  amountConfirmChallenge,
+  orderIdHash,
+} from "./amount.ts";
+export {
   C3_MAX_CLIENT_DATA,
   type C3Assertion,
   type C3Inputs,
