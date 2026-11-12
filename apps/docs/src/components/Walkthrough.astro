@@ -1,0 +1,68 @@
+---
+// Narrow screens hide the shared panel, so each step carries its own lines. They are cut
+// from the rendered panes here, on the server, so nothing shifts when scripts run.
+const rendered = await Astro.slots.render("default");
+const html = rendered.replace(
+  /<div class="inline-code" data-inline="([^"]+)"><\/div>/g,
+  (tag, ref: string) => {
+    const [file, lines = ""] = ref.split(":");
+    const pre = new RegExp(`data-pane="${file}"[^>]*>(<pre[^>]*>)<code>([\\s\\S]*?)</code></pre>`)
+      .exec(rendered)
+      ?.slice(1);
+    if (!pre) return tag;
+    const [a = 0, b = a] = lines.split("-").map(Number);
+    const kept = (pre[1] ?? "")
+      .split("\n")
+      .slice(a - 1, b)
+      .join("\n");
+    return `<div class="inline-code">${(pre[0] ?? "").replace(' tabindex="0"', "")}<code>${kept}</code></pre></div>`;
+  },
+);
+---
+<div class="walk" data-walk set:html={html} />
+<script>
+  const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const range = (el: HTMLElement) => (el.dataset.lines ?? "").split("-").map(Number);
+
+  for (const walk of document.querySelectorAll<HTMLElement>("[data-walk]")) {
+    const steps = [...walk.querySelectorAll<HTMLElement>("[data-step]")];
+    const panes = [...walk.querySelectorAll<HTMLElement>("[data-pane]")];
+    const tabs = walk.querySelector<HTMLElement>('[role="tablist"]');
+    if (!tabs || panes.length === 0) continue;
+
+    const show = (name: string) => {
+      for (const t of tabs.querySelectorAll<HTMLElement>('[role="tab"]')) t.setAttribute("aria-selected", String(t.dataset.tab === name));
+      for (const p of panes) p.hidden = p.dataset.pane !== name;
+    };
+    for (const tab of tabs.querySelectorAll<HTMLElement>('[role="tab"]')) {
+      tab.addEventListener("click", () => show(tab.dataset.tab ?? ""));
+    }
+
+    const activate = (step: HTMLElement) => {
+      for (const s of steps) s.toggleAttribute("data-active", s === step);
+      const name = step.dataset.file ?? "";
+      show(name);
+      for (const l of walk.querySelectorAll(".is-hl")) l.classList.remove("is-hl");
+      const pane = panes.find((p) => p.dataset.pane === name);
+      const [a, b] = range(step);
+      if (!pane || !a) return;
+      const lines = [...pane.querySelectorAll<HTMLElement>(".line")];
+      lines.forEach((l, i) => l.classList.toggle("is-hl", i + 1 >= a && i + 1 <= (b || a)));
+      pane.querySelector("pre")?.scrollTo({ top: Math.max(0, (lines[a - 1]?.offsetTop ?? 0) - 48), behavior: reduced() ? "auto" : "smooth" });
+    };
+
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) if (e.isIntersecting) activate(e.target as HTMLElement);
+    }, { rootMargin: "-35% 0px -60% 0px" });
+    for (const s of steps) io.observe(s);
+    if (steps[0]) activate(steps[0]);
+
+    walk.querySelector("[data-copy]")?.addEventListener("click", async (event) => {
+      const button = event.currentTarget as HTMLElement;
+      const text = panes.find((p) => !p.hidden)?.querySelector("pre")?.textContent ?? "";
+      await navigator.clipboard.writeText(text);
+      button.textContent = "Copied";
+      setTimeout(() => (button.textContent = "Copy"), 1200);
+    });
+  }
+</script>

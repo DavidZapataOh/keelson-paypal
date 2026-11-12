@@ -1,0 +1,17 @@
+include_fragments = "full"
+max_retries = 2
+timeout = 20
+accept = ["200", "206", "429"]
+# API URLs in code samples are exercised by the documentation's checks, not fetched as pages
+# (`https://api/` is what a regex in an `# expect:` line reads as). The RPC answers JSON-RPC only.
+# Pages of the site are checked offline against the build, links into this repository's main
+# branch against the working tree (test/hygiene.test.ts), and the deployed site after each deploy.
+exclude = [
+  '^https://api\.keelson\.finance',
+  '^https://api/$',
+  '^https://sepolia-rollup\.arbitrum\.io/rpc$',
+  '^https://docs\.keelson\.finance',
+  '^https://github\.com/DavidZapataOh/keelson-paypal/(blob|tree)/main/',
+]
+extensions = ["md", "mdoc", "html"]
+exclude_path = ["(^|/)node_modules/", "(^|/)dist/"]
