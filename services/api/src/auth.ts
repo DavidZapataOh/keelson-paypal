@@ -15,6 +15,7 @@ import { type Hex, verifyMessage } from "viem";
 import { generateSiweNonce } from "viem/siwe";
 import { SETTLEMENT } from "./merchants.ts";
 import { ownsLinkedOperator } from "./operators/owners.ts";
+import { securityEvents } from "./ssf.ts";
 
 /** RFC 8707 resource identifier of this API; the `aud` of every access token it accepts. */
 export const apiAudience = "https://api.keelson.finance";
@@ -249,6 +250,7 @@ export function createAuth(
     },
     plugins: [
       jwt(),
+      securityEvents(),
       // Agents act for themselves with client credentials. MCP clients act for a user with the
       // authorization code grant and PKCE (S256 only, required of public clients), registering
       // themselves (RFC 7591) as the MCP authorization spec asks; such a client gets the

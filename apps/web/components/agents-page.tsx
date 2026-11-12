@@ -3,7 +3,7 @@
 import { STATUS_URI } from "@keelson/mandate/browser";
 import { Button } from "@keelson/ui/components/button";
 import { Skeleton } from "@keelson/ui/components/skeleton";
-import { Bot, EllipsisVertical, OctagonX, Plus } from "lucide-react";
+import { Bot, EllipsisVertical, OctagonX, Plus, RadioTower } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { get, post } from "../lib/api";
@@ -205,6 +205,15 @@ function Row({ agent, onChange }: { agent: AgentRow; onChange: () => void }) {
                 ? "Connected"
                 : "Stopped"}
           </span>
+          {agent.signals ? (
+            <span
+              className="flex items-center gap-1 text-muted-foreground text-xs"
+              title="This app polls Keelson's Shared Signals stream (OpenID SSF): it learns at once when you stop or disconnect it."
+            >
+              <RadioTower className="size-3.5" aria-hidden="true" />
+              Gets stop signals
+            </span>
+          ) : null}
         </span>
         <span className="truncate text-muted-foreground text-sm">
           {agent.operator} · last active {ago(agent.lastActivityAt)}

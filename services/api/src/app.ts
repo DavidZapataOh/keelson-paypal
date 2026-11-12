@@ -86,6 +86,7 @@ import { registerTimestamps } from "./routes/timestamps.ts";
 import { registerTransactions } from "./routes/transactions.ts";
 import { registerValidations } from "./routes/validations.ts";
 import { registerWebFacts } from "./routes/web-facts.ts";
+import { registerSsf } from "./ssf.ts";
 import type { TeeConfig } from "./tee/signers.ts";
 import type { StampWorker } from "./timestamps/worker.ts";
 
@@ -433,6 +434,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerRevoke(app, deps);
   registerConnections(app, deps);
   registerMandateRequests(app, deps);
+  registerSsf(app, deps);
   registerEmbed(app, deps);
   registerEmbedSigning(app, deps);
   if (deps.embedPage) registerEmbedPage(app, deps, deps.embedPage);

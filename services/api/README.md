@@ -566,6 +566,15 @@ buyer approved in that time is voided, so neither counts. A request, a change, a
 over a cap answers `422 hosted-cap`; approvals and holds are measured under an advisory lock, so
 concurrent ones cannot pass a cap. The consent page shows the per-user cap of the host's tier.
 
+**Telling connected apps.** An app acting for a user can learn of a stop or a disconnect the
+moment it happens through OpenID Shared Signals 1.0 (`/.well-known/ssf-configuration`). It creates
+its stream (`POST /ssf/streams`, one per app and user) and polls `POST /ssf/poll` (RFC 8936,
+`ack` to acknowledge). Each stop of every agent, and each disconnect of that app, queues a CAEP
+1.0 `session-revoked` Security Event Token (RFC 8417, `typ: secevent+jwt`, `sub_id` in `iss_sub`
+format) signed with the authorization server's key, so it verifies against `/api/auth/jwks`. A
+stream holds only its own user's events. Push delivery (RFC 8935) is not offered: polling needs no
+outbound request to an app's URL. The agents page shows "Gets stop signals" on such an app.
+
 Refresh tokens rotate and can be revoked (RFC 7009, `/api/auth/oauth2/revoke`). Stopping every
 agent (`POST /v1/agents/stop`) revokes the user's refresh tokens and consents and refuses every
 access token issued before it, on the API and on `/mcp`. Disconnecting one host
