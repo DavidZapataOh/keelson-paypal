@@ -11,7 +11,10 @@ import { requirePrincipal } from "./middleware/auth.ts";
 import type { Principal } from "./principal.ts";
 import { ProblemSchema, problem } from "./problem.ts";
 
-/** CAEP 1.0 §3.1: a session the user had with the receiver was revoked. */
+/**
+ * CAEP 1.0 §3.1: a session the user had with the receiver was revoked.
+ * @internal
+ */
 export const CAEP_SESSION_REVOKED =
   "https://schemas.openid.net/secevent/caep/event-type/session-revoked";
 const POLL = "urn:ietf:rfc:8936";
