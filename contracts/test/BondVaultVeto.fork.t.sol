@@ -54,6 +54,22 @@ contract BondVaultVetoForkTest is SlashBase {
         GasBudget.check("slash_queued", gSlashQueued);
     }
 
+    /// @dev A slash of exactly the instant cap is paid at once; one unit more is queued.
+    function test_slash_atCapPaysAtOnce() public {
+        Vector memory v = _locked(WEBAUTHN);
+        uint96 cap = 10e6;
+        _lowerCap(cap);
+        _slash(_verdict(v, cap, OPERATOR, "PP-D-cap"));
+        assertEq(pyusd.balanceOf(merchant), cap);
+        assertEq(vault.pendingSlashes(agentId), 0);
+
+        KeelsonTypes.Verdict memory over = _verdict(v, cap + 1, OPERATOR, "PP-D-over");
+        _slash(over);
+        assertEq(uint8(vault.queuedSlashes(over.disputeId).status), uint8(IKeelsonBondVault.SlashStatus.Queued));
+        assertEq(vault.pendingSlashes(agentId), 1);
+        assertEq(pyusd.balanceOf(merchant), cap);
+    }
+
     function test_slash_aboveCapQueues() public {
         (Vector memory v, KeelsonTypes.Verdict memory verdict) = _queued();
         IKeelsonBondVault.QueuedSlash memory q = vault.queuedSlashes(verdict.disputeId);
