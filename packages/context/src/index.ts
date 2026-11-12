@@ -51,7 +51,7 @@ export function createContextServer(): McpServer {
     {
       name: "keelson-docs",
       title: "Keelson Context Plugin",
-      version: "0.1.1",
+      version: "0.1.2",
       websiteUrl: "https://keelson.finance",
     },
     {
