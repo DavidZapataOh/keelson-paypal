@@ -33,8 +33,8 @@ const run = promisify(execFile);
  * key `EngineProofVerifier` holds. A new program needs a new verifier and a new pin.
  */
 export const ENGINE_PROVER = {
-  url: "https://github.com/DavidZapataOh/keelson-paypal/releases/download/engine-proof-0000000/keelson-engine-proof-linux-x64",
-  sha256: "0000000000000000000000000000000000000000000000000000000000000000",
+  url: "https://github.com/DavidZapataOh/keelson-paypal/releases/download/engine-proof-b01871d/keelson-engine-proof-linux-x64",
+  sha256: "912e89e8a27a341cee7327ceaac416669c573036a4ac8f965aabcc3c677b6155",
   vkey: "0x00b2289ef8373024486aab72320bbff5f27056aeaf1a9e2c99dffc10ced3ec0c" as Hex,
 } as const;
 
