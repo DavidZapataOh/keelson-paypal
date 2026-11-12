@@ -30,6 +30,7 @@ export type CheckId =
   | "evidence.checkout"
   | "evidence.conversion"
   | "paypal.ids"
+  | "paypal.amount_authority"
   | "card.authorizations"
   | "card.statements"
   | "scitt.statement"
@@ -105,6 +106,7 @@ const OPTIONAL_CHECKS: ReadonlySet<CheckId> = new Set([
   "evidence.web_fact",
   "evidence.checkout",
   "evidence.conversion",
+  "paypal.amount_authority",
 ]);
 
 /**
