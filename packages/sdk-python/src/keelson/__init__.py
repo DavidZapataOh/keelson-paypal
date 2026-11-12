@@ -46,7 +46,7 @@ from .resources.events import ServerEvent
 from .resources.mandates import Mandate, MandateRequest
 from .resources.purchases import CountersignResult
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 __all__ = [
     "AUDIENCE",
