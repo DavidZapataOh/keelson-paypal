@@ -1,5 +1,5 @@
 import { convertsTo, decimalParts, exceedsConversion } from "@keelson/core";
-import { partEnd, wordEnd } from "./requote.ts";
+import { partEnd, patternEnd, wordEnd, wordPatterns } from "./requote.ts";
 
 /** An amount in minor units of an ISO 4217 currency: cents of USD, yen of JPY, fils of KWD. */
 export interface Money {
@@ -25,9 +25,15 @@ const flat = (s: string) => s.replace(BIDI, "").replace(SPACES, " ");
 
 /** The minor units of `currency`: 2 for USD, 0 for JPY, 3 for KWD (ISO 4217, as CLDR has them). */
 export function minorDigits(currency: string): number {
-  return new Intl.NumberFormat("en", { style: "currency", currency }).resolvedOptions()
-    .maximumFractionDigits as number;
+  let digits = minor.get(currency);
+  if (digits === undefined) {
+    digits = new Intl.NumberFormat("en", { style: "currency", currency }).resolvedOptions()
+      .maximumFractionDigits as number;
+    minor.set(currency, digits);
+  }
+  return digits;
 }
+const minor = new Map<string, number>();
 
 /** How `locale` writes amounts of `currency`, read from CLDR through `Intl.NumberFormat`. */
 interface Shape {
@@ -45,16 +51,35 @@ interface Shape {
  * CA$, R$): each one names this currency alone, whatever locale the page is in.
  */
 function spelled(currency: string, any = false): string[] {
-  return ["en", "en-GB", "en-CA", "en-AU", "es", "fr", "pt", "de", "ja", "zh", "ko", "ar", "hi"]
-    .map((l) =>
+  let all = signsOf.get(currency);
+  if (!all) {
+    all = [
+      "en",
+      "en-GB",
+      "en-CA",
+      "en-AU",
+      "es",
+      "fr",
+      "pt",
+      "de",
+      "ja",
+      "zh",
+      "ko",
+      "ar",
+      "hi",
+    ].map((l) =>
       flat(
         new Intl.NumberFormat(l, { style: "currency", currency })
           .formatToParts(1)
           .find((p) => p.type === "currency")?.value ?? "",
       ).trim(),
-    )
-    .filter((m) => (any || /\p{L}/u.test(m)) && /\p{Sc}/u.test(m));
+    );
+    signsOf.set(currency, all);
+  }
+  return all.filter((m) => (any || /\p{L}/u.test(m)) && /\p{Sc}/u.test(m));
 }
+/** The symbol each of a few locales writes a currency with, by currency. */
+const signsOf = new Map<string, string[]>();
 
 const shapes = new Map<string, Shape>();
 
@@ -375,17 +400,11 @@ const ASIDE = [
   "qualifying",
 ];
 
-/** Where in `label` a total word last ends, or -1; "subtotal" and "sub-total" are no total. */
-function totalEnd(label: string): number {
-  let end = -1;
-  for (const word of TOTAL) {
-    const pattern = /^\p{Script=Latin}|^\p{Script=Cyrillic}/u.test(word)
-      ? new RegExp(`(?<![\\p{L}\\-])${escapeRegex(word)}(?!\\p{L})`, "giu")
-      : new RegExp(escapeRegex(word), "gu");
-    for (const m of label.matchAll(pattern)) end = Math.max(end, m.index + m[0].length);
-  }
-  return end;
-}
+/** The total words as patterns, compiled once; "subtotal" and "sub-total" are no total. */
+const TOTAL_PATTERNS = wordPatterns(TOTAL.map(escapeRegex), "\\p{L}\\-");
+
+/** Where in `label` a total word last ends, or -1. */
+const totalEnd = (label: string): number => patternEnd(label, TOTAL_PATTERNS);
 
 /** Where an amount sits on its page: the charge, money it is not charged, or another line. */
 export type Context = "total" | "aside" | "line";

@@ -90,6 +90,16 @@ function locales(): string[] {
 }
 
 const LOCALES = locales();
+/**
+ * A failing run's seed and path, as fast-check reports them, to replay it:
+ * `FC_SEED=… FC_PATH=… vitest run test/amounts.test.ts`.
+ */
+const REPLAY: { seed?: number; path?: string } = process.env.FC_SEED
+  ? {
+      seed: Number(process.env.FC_SEED),
+      ...(process.env.FC_PATH ? { path: process.env.FC_PATH } : {}),
+    }
+  : {};
 const CURRENCIES = ["USD", "EUR", "JPY", "KWD", "BRL", "INR", "EGP", "GBP", "CHF", "MXN"];
 
 describe("reading amounts in any locale", () => {
@@ -97,30 +107,49 @@ describe("reading amounts in any locale", () => {
     expect(LOCALES.length).toBeGreaterThan(150);
   });
 
-  test("every locale reads back, to the minor unit, what it formats in each currency", () => {
+  /** Formats `minor` of `currency` in `locale` as a checkout writes it, and reads the page back. */
+  const formats = new Map<string, Intl.NumberFormat>();
+  const readBack = (locale: string, currency: string, minor: number, display: string) => {
+    const key = `${locale}|${currency}|${display}`;
+    let format = formats.get(key);
+    if (!format) {
+      format = new Intl.NumberFormat(locale, {
+        style: "currency",
+        currency,
+        currencyDisplay: display as "symbol",
+      });
+      formats.set(key, format);
+    }
+    const digits = minorDigits(currency);
+    const text = format.format(minor / 10 ** digits);
+    // The narrow symbol is read only next to the ISO code, as checkouts write "$2.95 USD".
+    const shown = display === "narrowSymbol" ? `${text} ${currency}` : `Total ${text}`;
+    const page = readPage(shown, [locale], currency);
+    // 1.234 of a currency with 3 minor digits reads two ways: the page is held.
+    if (page.unsure === "an amount read two ways" && digits === 3) return;
+    expect(page.unsure, `${locale} ${shown}`).toBeUndefined();
+    expect(page.minor, `${locale} ${shown}`).toEqual([minor]);
+  };
+  const DISPLAYS = ["symbol", "code", "narrowSymbol"] as const;
+
+  test("every locale reads back an amount with every digit group in each currency and display", () => {
+    for (const locale of LOCALES) {
+      for (const currency of CURRENCIES) {
+        for (const display of DISPLAYS) readBack(locale, currency, 12_345_678, display);
+      }
+    }
+  });
+
+  test("every locale reads back, to the minor unit, any amount it formats in each currency", () => {
     fc.assert(
       fc.property(
         fc.constantFrom(...LOCALES),
         fc.constantFrom(...CURRENCIES),
         fc.integer({ min: 0, max: 99_999_999 }),
-        fc.constantFrom("symbol", "code", "narrowSymbol"),
-        (locale, currency, minor, display) => {
-          const digits = minorDigits(currency);
-          const text = new Intl.NumberFormat(locale, {
-            style: "currency",
-            currency,
-            currencyDisplay: display as "symbol",
-          }).format(minor / 10 ** digits);
-          // The narrow symbol is read only next to the ISO code, as checkouts write "$2.95 USD".
-          const shown = display === "narrowSymbol" ? `${text} ${currency}` : `Total ${text}`;
-          const page = readPage(shown, [locale], currency);
-          // 1.234 of a currency with 3 minor digits reads two ways: the page is held.
-          if (page.unsure === "an amount read two ways" && digits === 3) return;
-          expect(page.unsure, `${locale} ${shown}`).toBeUndefined();
-          expect(page.minor, `${locale} ${shown}`).toEqual([minor]);
-        },
+        fc.constantFrom(...DISPLAYS),
+        (locale, currency, minor, display) => readBack(locale, currency, minor, display),
       ),
-      { numRuns: 20_000 },
+      { numRuns: 4_000, ...REPLAY },
     );
   });
 
