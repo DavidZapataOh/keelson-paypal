@@ -94,8 +94,9 @@ def _no_credentials() -> AuthenticationError:
 
 
 class _StoredLogin:
-    def __init__(self, path: Path | None) -> None:
+    def __init__(self, path: Path | None, base_url: str | None = None) -> None:
         self._path = path or credentials_path()
+        self._base_url = base_url
         self._handed_out: str | None = None
 
     async def token(self, *, force: bool = False) -> str:
@@ -135,8 +136,9 @@ class _StoredLogin:
             if c.accessToken != stale and time.time() * 1000 < c.expiresAt - 30_000:
                 return c.accessToken
             try:
+                # The client's API, which the token is for, not whichever one the file names.
                 t = await token_request(
-                    c.apiUrl,
+                    self._base_url or c.apiUrl,
                     {"grant_type": "refresh_token", "refresh_token": c.refreshToken, "client_id": c.clientId},
                 )
             except APIError as err:
@@ -154,9 +156,9 @@ class _StoredLogin:
             lock.unlink(missing_ok=True)
 
 
-def stored_login(path: Path | str | None = None) -> AuthProvider:
-    """The user's sign-in that ``keelson login`` saved, refreshed as needed."""
-    return _StoredLogin(Path(path) if path else None)
+def stored_login(path: Path | str | None = None, *, base_url: str | None = None) -> AuthProvider:
+    """The user's sign-in that ``keelson login`` saved, refreshed as needed against ``base_url``."""
+    return _StoredLogin(Path(path) if path else None, base_url)
 
 
 def resolve_auth(base_url: str = DEFAULT_BASE_URL) -> AuthProvider:
@@ -166,4 +168,4 @@ def resolve_auth(base_url: str = DEFAULT_BASE_URL) -> AuthProvider:
         return client_credentials(cid, secret, base_url=base_url)
     if os.environ.get("KEELSON_TOKEN"):
         return static_token(os.environ["KEELSON_TOKEN"])
-    return stored_login()
+    return stored_login(base_url=base_url)

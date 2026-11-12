@@ -6,12 +6,12 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { login } from "../../src/index.ts";
-import { hasBuyer, judge, type User } from "./user.ts";
+import { buys, hasBuyer, judge, type User } from "./user.ts";
 
 const quickstart = fileURLToPath(new URL("../../examples/quickstart.mjs", import.meta.url));
 const live = process.env.KEELSON_LIVE === "1";
 
-describe.skipIf(!live || !hasBuyer)(
+describe.skipIf(!live || !hasBuyer || !buys("quickstart-ts"))(
   "the quickstart (live, PayPal sandbox)",
   { timeout: 360_000 },
   () => {

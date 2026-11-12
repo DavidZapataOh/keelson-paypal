@@ -100,7 +100,7 @@ const RELOGIN = "Your Keelson sign-in has ended. Run `npx keelson login` again."
  * The user's sign-in that `npx keelson login` saved. The file is read on every call, so a token
  * another process refreshed is used instead of refreshing again.
  */
-export function storedLogin(o: { path?: string } = {}): AuthProvider {
+export function storedLogin(o: { path?: string; baseUrl?: string } = {}): AuthProvider {
   const path = o.path ?? credentialsPath();
   let handedOut: string | undefined;
   return {
@@ -126,7 +126,8 @@ export function storedLogin(o: { path?: string } = {}): AuthProvider {
         }
         let t: Awaited<ReturnType<typeof tokenRequest>>;
         try {
-          t = await tokenRequest(now.apiUrl, {
+          // The client's API, which the token is for, not whichever one the file names.
+          t = await tokenRequest(o.baseUrl ?? now.apiUrl, {
             grant_type: "refresh_token",
             refresh_token: now.refreshToken,
             client_id: now.clientId,
@@ -185,5 +186,5 @@ export function resolveAuth(baseUrl: string = DEFAULT_BASE_URL): AuthProvider {
   } = process.env;
   if (id && secret) return clientCredentials({ clientId: id, clientSecret: secret, baseUrl });
   if (token) return { token: async () => token };
-  return storedLogin();
+  return storedLogin({ baseUrl });
 }

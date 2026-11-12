@@ -60,6 +60,8 @@ export class Purchases {
     cart: Cart;
     /** Only to buy this same cart again on purpose: the purchase of it you got last. */
     repeatOf?: string;
+    /** Stops waiting for the answer; the countersign may still happen (OutcomeUnknownError). */
+    signal?: AbortSignal;
   }): Promise<CountersignResult> {
     const { mandate, cart } = o;
     if (mandate.holdMode !== "mandate" || !mandate.authorizationId) {
@@ -93,6 +95,7 @@ export class Purchases {
             evidenceRoot: o.evidenceRoot,
             ...(o.repeatOf ? { repeatOf: o.repeatOf } : {}),
           },
+          ...(o.signal ? { signal: o.signal } : {}),
         },
       );
       return {
@@ -121,7 +124,12 @@ export class Purchases {
           countersigned: null,
         };
       }
-      if (err instanceof APIConnectionError || err instanceof InternalServerError) {
+      // Cancelled once sent: the TEEs may already have countersigned it.
+      if (
+        err instanceof APIConnectionError ||
+        err instanceof InternalServerError ||
+        o.signal?.aborted
+      ) {
         throw new OutcomeUnknownError(requestId, { cause: err });
       }
       throw err;

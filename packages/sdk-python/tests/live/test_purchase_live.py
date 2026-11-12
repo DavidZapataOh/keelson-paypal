@@ -11,7 +11,7 @@ import pytest
 import keelson
 from keelson import AsyncKeelson, login, quote, stored_login
 
-from .conftest import VERIFY_CLI, act, live, needs_buyer
+from .conftest import VERIFY_CLI, act, buys, live, needs_buyer
 
 pytestmark = [pytest.mark.live, live, needs_buyer]
 
@@ -23,6 +23,7 @@ REASON = (
 EXAMPLE = Path(__file__).resolve().parents[2] / "examples" / "quickstart.py"
 
 
+@buys("purchase-py")
 async def test_buys_a_sandbox_pair_and_verifies_it(tmp_path: Path) -> None:
     path = tmp_path / "credentials.json"
     await login(path=path, open=lambda url: act("login", url, judge="purchase"))
@@ -52,6 +53,7 @@ async def test_buys_a_sandbox_pair_and_verifies_it(tmp_path: Path) -> None:
     assert again.existing and again.purchase_id == signed.purchase_id
 
 
+@buys("quickstart-py")
 async def test_the_quickstart_runs_within_budget(tmp_path: Path) -> None:
     path = tmp_path / "credentials.json"
     await login(path=path, open=lambda url: act("login", url, judge="quickstart"))

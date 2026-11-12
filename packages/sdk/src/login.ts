@@ -96,15 +96,19 @@ export async function login(o: LoginOptions = {}): Promise<Credentials> {
     }
     const error = url.searchParams.get("error");
     const code = url.searchParams.get("code");
-    const ok = !error && code && url.searchParams.get("state") === state;
+    // Only an answer carrying this sign-in's state counts; anything else on this machine that
+    // hits the listener is turned away and the sign-in keeps waiting.
+    const ours = url.searchParams.get("state") === state;
+    const ok = ours && !error && code;
     res.writeHead(ok ? 200 : 400, { "content-type": "text/html; charset=utf-8" });
     res.end(
       `<!doctype html><title>Keelson</title><p style="font:16px system-ui;margin:3rem">${
         ok ? "Signed in. You can close this tab." : "Sign-in failed. Run npx keelson login again."
       }</p>`,
     );
+    if (!ours) return;
     if (ok) settle.resolve(code);
-    else settle.reject(new KeelsonError(`Sign-in failed: ${error ?? "state mismatch"}`));
+    else settle.reject(new KeelsonError(`Sign-in failed: ${error ?? "no code"}`));
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const redirectUri = `http://127.0.0.1:${(server.address() as AddressInfo).port}/callback`;
