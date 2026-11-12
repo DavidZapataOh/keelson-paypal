@@ -17,10 +17,7 @@ type Card = NonNullable<AlibiBundleV2["card"]> & {
 const cardOf = (b: AlibiBundleV2) => b.card as Card;
 
 describe("card statements", () => {
-  // The first verification in the file loads the verifier, seconds on a shared runner.
-  test("decisions and settlement verify, each linked to the purchase", {
-    timeout: 30_000,
-  }, async () => {
+  test("decisions and settlement verify, each linked to the purchase", async () => {
     const c = await status(cardV2Bundle());
     expect(c?.status, c?.reason).toBe("pass");
     expect((await status(cardV2Bundle(), "card.authorizations"))?.status).toBe("pass");
