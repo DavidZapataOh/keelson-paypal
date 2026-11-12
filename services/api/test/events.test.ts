@@ -1,3 +1,5 @@
+import type { AddressInfo } from "node:net";
+import { serve } from "@hono/node-server";
 import type { MiddlewareHandler } from "hono";
 import { pino } from "pino";
 import { expect, test } from "vitest";
@@ -25,6 +27,7 @@ interface Frame {
   event?: string;
   data?: string;
   comment?: string;
+  retry?: number;
 }
 
 class Sse {
@@ -51,6 +54,7 @@ class Sse {
           else if (line.startsWith("id:")) frame.id = line.slice(3).trim();
           else if (line.startsWith("event:")) frame.event = line.slice(6).trim();
           else if (line.startsWith("data:")) frame.data = line.slice(5).trim();
+          else if (line.startsWith("retry:")) frame.retry = Number(line.slice(6).trim());
         }
         return frame;
       }
@@ -235,4 +239,33 @@ test("a channel built by a publisher reaches the principal that owns it", async 
     { headers: { "x-test-subject": "client:x" } },
   );
   expect([spoof.status, await slug(spoof)]).toEqual([403, "forbidden-channel"]);
+});
+
+test("tells the client how long to wait before it reconnects", async () => {
+  const res = await app.request(`/v1/events?channel=${channel()}`, {
+    headers: { "x-test-subject": "u1" },
+  });
+  const sse = new Sse(res);
+  expect(await sse.next()).toEqual({ comment: "connected", retry: 3000 });
+  await sse.close();
+});
+
+test("keeps a stream with no events open past two minutes, over HTTP and past the request timeout", {
+  timeout: 150_000,
+}, async () => {
+  // As the server runs it: a socket, and the 30 s timeout every /v1 request gets.
+  const served = serve({ fetch: app.fetch, port: 0, hostname: "127.0.0.1" });
+  await new Promise<void>((resolve) => served.once("listening", () => resolve()));
+  const url = `http://127.0.0.1:${(served.address() as AddressInfo).port}/v1/events?channel=${channel()}`;
+  const sse = new Sse(await fetch(url, { headers: { "x-test-subject": "u1" } }));
+  const started = Date.now();
+  let heartbeats = 0;
+  while (Date.now() - started < 125_000) {
+    const frame = await sse.next(20_000);
+    expect(frame, `the stream ended after ${Date.now() - started} ms`).toBeDefined();
+    if (frame?.comment === "heartbeat") heartbeats++;
+  }
+  expect(heartbeats).toBeGreaterThanOrEqual(8);
+  await sse.close();
+  await new Promise((resolve) => served.close(resolve));
 });

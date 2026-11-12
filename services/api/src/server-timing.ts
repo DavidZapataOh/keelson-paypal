@@ -99,7 +99,12 @@ export class PurchaseTimings implements SpanProcessor {
     if (!step) return;
     if (stepId !== id) {
       const host = span.attributes["server.address"];
-      if (span.kind === SpanKind.CLIENT && typeof host === "string") {
+      // A query is Postgres time, not an outbound call to the database's host.
+      if (
+        span.kind === SpanKind.CLIENT &&
+        typeof host === "string" &&
+        !span.name.startsWith("pg.")
+      ) {
         step.out.set(host, (step.out.get(host) ?? 0) + ms(span));
       }
       if (span.name.startsWith("pg.")) {

@@ -7,7 +7,7 @@
     "build": "tsc -p tsconfig.build.json && cp -R src/chain/vendor dist/chain/",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "start": "node dist/server.js",
+    "start": "node --import ./dist/telemetry.js dist/server.js",
     "openapi": "node scripts/openapi.ts && node scripts/public-openapi.ts",
     "bench": "pnpm run build && node bench/health.bench.ts",
     "budgets": "KEELSON_BUDGETS=1 vitest run test/mandates.test.ts -t \"latency budget\"",

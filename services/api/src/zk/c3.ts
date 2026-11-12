@@ -17,6 +17,7 @@ import type { Render } from "@renderinc/sdk";
 import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
 import { passkeyJwk, SignatureError } from "../mandate-signature.ts";
+import { resumeAwaitingC3 } from "../pipeline/drive.ts";
 import { prove } from "./bb.ts";
 import { awaitingC3, proveAnonymousPurchase } from "./c1c3.ts";
 
@@ -199,6 +200,7 @@ export function c3Prover(
     return async (mandateId, salt) => {
       await proveAnonymousMandate({ db, log }, mandateId, salt);
       if (relayer) await publishUserSetRoots({ db, relayer, log });
+      await resumeAwaitingC3(db, mandateId);
       for (const purchaseId of await awaitingC3(db, mandateId)) {
         await proveAnonymousPurchase({ db, log }, purchaseId);
       }

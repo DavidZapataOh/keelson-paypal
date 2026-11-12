@@ -46,7 +46,13 @@ describe("Server-Timing", () => {
         inside,
       )
       .end();
-    tracer.startSpan("pg.query:SELECT", { kind: SpanKind.CLIENT }, inside).end();
+    tracer
+      .startSpan(
+        "pg.query:SELECT keelson",
+        { kind: SpanKind.CLIENT, attributes: { "server.address": "db.internal" } },
+        inside,
+      )
+      .end();
     tracer.startSpan("leg.a", { kind: SpanKind.INTERNAL }, inside).end();
     tracer.startSpan("outside", {}, context.active()).end();
     step.end();
