@@ -39,6 +39,7 @@ import { registerAgents } from "./routes/agents.ts";
 import { registerAlerts } from "./routes/alerts.ts";
 import { registerAlibis } from "./routes/alibis.ts";
 import { registerAnonymousMandates } from "./routes/anonymous-mandates.ts";
+import { registerAuthzen } from "./routes/authzen.ts";
 import { registerBonds } from "./routes/bonds.ts";
 import { registerCardWebhooks } from "./routes/card-webhooks.ts";
 import { registerChannel3Webhook } from "./routes/channel3-webhook.ts";
@@ -355,6 +356,10 @@ export function createApp(deps: Deps): OpenAPIHono {
   // An upload is refused before its body is read or fingerprinted.
   app.on("POST", "/v1/evidence", requireClient(["evidence:write"]));
   app.use("/v1/*", rateLimit(deps.kv, deps.rateLimit));
+  // The AuthZEN binding (`/access/v1/...`) reads and decides nothing a retry could repeat.
+  app.use("/access/*", smallBody);
+  if (deps.authenticate) app.use("/access/*", deps.authenticate);
+  app.use("/access/*", rateLimit(deps.kv, deps.rateLimit));
   // A model turn streams and changes nothing a retry could repeat; a buffered replay would end the stream.
   const idempotent = idempotency(deps.kv, deps.log);
   app.use("/v1/*", (c, next) => (STREAMED_POSTS.test(c.req.path) ? next() : idempotent(c, next)));
@@ -430,6 +435,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerConnections(app, deps);
   registerMandateRequests(app, deps);
   registerProblems(app);
+  registerAuthzen(app, deps);
   registerEmbed(app, deps);
   registerEmbedSigning(app, deps);
   if (deps.embedPage) registerEmbedPage(app, deps, deps.embedPage);
