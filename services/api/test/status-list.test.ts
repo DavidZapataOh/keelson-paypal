@@ -82,4 +82,17 @@ describe("the mandate status list", () => {
     expect(res.headers.get("content-type")).toBe("application/statuslist+jwt");
     expect(await res.text()).toMatch(/^token-\d+$/);
   });
+
+  test("a token past its refresh age is signed again before it is served", async () => {
+    await testDb
+      .update(statusLists)
+      .set({ signedAt: new Date(Date.now() - 241_000) })
+      .where(eq(statusLists.uri, STATUS_URI));
+    const before = signed.length;
+    const app = createApp({ db: testDb, kv: testKv, log, tee } as Parameters<typeof createApp>[0]);
+    const res = await app.request("/status/v1/mandates/2026-1");
+    expect(res.status).toBe(200);
+    expect(signed.length).toBe(before + 1);
+    expect(await res.text()).toBe(`token-${signed.length}`);
+  });
 });
