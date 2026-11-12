@@ -16,8 +16,33 @@ and checks, against keys and policies pinned in its own build:
   (`sigsum/<size>.msg` and `.proof`), whose proof it verifies under the Sigsum policy and compares
   with the checkpoint it verified at that size.
 
-The TEE signatures of each leaf (against the on-chain signer registry) and the on-chain checkpoint
-anchors are not checked yet; `/report` and the page say so.
+It also reads the chain each origin anchors to, through go-ethereum, at most once a minute and
+after every new checkpoint:
+
+- **the on-chain anchor.** The origin's latest `CheckpointAnchor.latest(keccak256(origin))` must be
+  in its verified tree: the same root at the same size, or a consistency proof from the anchored
+  size to its view, built from the log's tiles. Another root is the finding `anchor.root`. An anchor
+  ahead of the view is checked again later;
+- **every leaf's TEE signers.** It rebuilds `VerdictVerifier`'s signer registry from its
+  `SignerRegistered`, `SignerRevoked` and `SignerEquivocated` events, kept in `state.json` with a
+  block cursor, and checks that each signature of each leaf recovers to a signer registered for its
+  leg (TDX, then Nitro) under the measurement the leaf names, registered while the countersign was
+  valid (within the dispute window after its `issued_at`, since a leg first used by a countersign
+  registers before signing it), and not revoked before `issued_at`. A signer revoked later leaves
+  its earlier leaves valid; a signer proven to equivocate voids every leaf it signed, including
+  leaves checked before the proof. Leaves issued before the registry existed are counted apart.
+  Findings: `leaf.tee_signature`, `leaf.tee_signer`, `leaf.tee_measurement`,
+  `leaf.tee_equivocated`.
+
+| Origin                                  | Chain            | Contracts                                                                                                                                                     |
+| --------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `log.keelson.finance/alibi/2026-1`      | Arbitrum Sepolia | `CheckpointAnchor` `0x049621749722D0660d5026456F25192fBD9A57ab`, `VerdictVerifier` `0xe16E8767EC1DA59Ef0D9Bc7851637E4D22352d96` (events from block 327178923) |
+| `log.keelson.finance/alibi-live/2026-1` | Arbitrum One     | Not deployed; the report says `not-deployed`                                                                                                                  |
+
+The addresses are pinned in `chain.go` and a test compares them with
+[`contracts/deployments`](../../contracts/deployments). It reads `ARBITRUM_SEPOLIA_RPC_URL` when set,
+then Arbitrum's public RPC. A chain that cannot be read is reported as `error` on the origin, never
+as a finding; anyone's monitor reads the same chain and reaches the same result.
 
 Its view lives in `$MONITOR_DATA_DIR/state.json`, written atomically, so a restart resumes from the
 last verified checkpoint and a log rolled back below it is caught rather than followed again from
@@ -50,14 +75,14 @@ compare them with what the log publishes at `https://<origin>/policy` and with
 
 ## API
 
-| Request                     | Answer                                                                                                                    |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `GET /report`               | Per origin: size, root, latest verified checkpoint, cosigners, leaves audited, degraded leaves, Sigsum status, findings   |
-| `GET /checkpoints/<origin>` | The latest verified signed checkpoint, `text/plain`                                                                       |
-| `POST /gossip`              | A signed checkpoint (`text/plain`, at most 16 KiB, 10 a minute per client): `200 {status}`, `409 {equivocation}` or `422` |
-| `GET /equivocations`        | `[{id, origin, kind, detectedAt}]`                                                                                        |
-| `GET /equivocations/<id>`   | `{origin, kind, a, b, consistencyProof?, sigsumProof?, detectedAt}`: the two conflicting views; never rewritten           |
-| `GET /`                     | The public page                                                                                                           |
+| Request                     | Answer                                                                                                                                                |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /report`               | Per origin: size, root, latest verified checkpoint, cosigners, leaves audited, degraded leaves, Sigsum status, on-chain anchor, TEE signers, findings |
+| `GET /checkpoints/<origin>` | The latest verified signed checkpoint, `text/plain`                                                                                                   |
+| `POST /gossip`              | A signed checkpoint (`text/plain`, at most 16 KiB, 10 a minute per client): `200 {status}`, `409 {equivocation}` or `422`                             |
+| `GET /equivocations`        | `[{id, origin, kind, detectedAt}]`                                                                                                                    |
+| `GET /equivocations/<id>`   | `{origin, kind, a, b, consistencyProof?, sigsumProof?, detectedAt}`: the two conflicting views; never rewritten                                       |
+| `GET /`                     | The public page                                                                                                                                       |
 
 A gossiped checkpoint needs only the log's signatures, so a split view shown to a single user is
 still caught: `status` is `consistent`, `ahead` or `behind` the monitor's view, and a conflict
@@ -113,6 +138,7 @@ railway domain --service keelson-monitor --port 8080
 | `PORT`                     | HTTP listener (default `8080`)                                               |
 | `LOG_URL`                  | Where the log is read (default `https://log.keelson.finance`), e.g. a mirror |
 | `MONITOR_CLIENT_IP_HEADER` | The header a proxy in front sets to the client address, such as `X-Real-IP`  |
+| `ARBITRUM_SEPOLIA_RPC_URL` | Arbitrum Sepolia RPC tried before the public one (optional)                  |
 
 ## Tests
 
@@ -122,4 +148,9 @@ admission could), and serves split views, rollbacks, foreign keys and malformed 
 `pnpm --filter @keelson/monitor test` drives the page in Chromium over such a log, altering the
 checkpoint, a tile and a leaf in flight. `go test -tags live -run Live ./services/monitor/` checks the
 production logs and, with `MONITOR_URL` and `LOG_SIGNER_KEY_CONFORMANCE`, runs a drill against the
-deployed monitor.
+deployed monitor. `go test -tags fork ./services/monitor/` starts an anvil fork of Arbitrum Sepolia
+(`anvil` on the path, `ARBITRUM_SEPOLIA_RPC_URL` optional) and checks the production sandbox origin
+against it: the real anchor and every real leaf pass; a root changed with `anvil_setStorageAt`, a
+leaf re-signed by an unregistered key or naming another measurement, a signer revoked by the
+Guardian Safe and a signer reported to `VerdictVerifier.reportEquivocation` give the expected
+results; an unreachable RPC is an error, not a finding.

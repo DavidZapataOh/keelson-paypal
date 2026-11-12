@@ -42,7 +42,7 @@
   },
   "relayer": "0xEd4Aa68f4e0c704422894b072deDa99807Fb2915",
   "tee": {
-    "issuerJwkThumbprint": "0x7d575028b1b6b7208962ac880eeb146675423d9e5441cfca0decf85bb4626253"
+    "issuerJwkThumbprint": "0xb586843e969f2fdc8623012f8a5daf29fc5d57485a0b8ce8324c70f14e07b940"
   },
   "demo": {
     "agentId": 351,

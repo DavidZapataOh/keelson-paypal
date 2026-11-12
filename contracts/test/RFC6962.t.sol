@@ -93,6 +93,36 @@ contract RFC6962Test is Test {
         }
     }
 
+    struct StatementLeaf {
+        uint256 index;
+        bytes leaf;
+        bytes32 leafHash;
+        bytes32[] proof;
+    }
+
+    /// @notice A log mixing v1 JCS leaves with SCITT statement leaves (purchase, card, bridge): the
+    /// leaf hash of a CBOR statement is the same RFC 6962 hash, and every leaf proves into the root.
+    function test_statementLeafInclusion() public view {
+        string memory json = vm.readFile(string.concat(vm.projectRoot(), "/test/vectors/statement-inclusion.json"));
+        bytes32 root = vm.parseJsonBytes32(json, ".root");
+        uint64 size = uint64(vm.parseJsonUint(json, ".size"));
+        StatementLeaf[] memory leaves = abi.decode(vm.parseJson(json, ".leaves"), (StatementLeaf[]));
+        assertEq(leaves.length, uint256(size));
+        uint256 statements;
+        for (uint256 i; i < leaves.length; ++i) {
+            StatementLeaf memory l = leaves[i];
+            assertEq(sha256(abi.encodePacked(bytes1(0), l.leaf)), l.leafHash, "leaf hash");
+            (bytes32 r, bool ok) = lib.rootFromInclusion(uint64(l.index), size, l.leafHash, l.proof);
+            assertTrue(ok && r == root, "inclusion");
+            bytes32[] memory bad = l.proof;
+            bad[0] ^= bytes32(uint256(1));
+            (r, ok) = lib.rootFromInclusion(uint64(l.index), size, l.leafHash, bad);
+            assertFalse(ok && r == root, "flipped path");
+            if (l.leaf[0] == 0xd2) ++statements;
+        }
+        assertEq(statements, 6);
+    }
+
     function test_sandboxVectors() public view {
         string memory json = _json();
         Consistency[] memory c = _consistency(json, ".sandboxConsistency");

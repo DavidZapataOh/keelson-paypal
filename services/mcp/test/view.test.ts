@@ -28,6 +28,8 @@ const card = {
   failure: null,
   verifyUrl: "https://verify.keelson.finance/a/01M725SRGK6SS7HEXN1K572KJY#x.0.421614",
   issuedAt: "2026-11-10T07:30:00Z",
+  envelope: "scitt",
+  statementUrl: "https://api.keelson.finance/v1/alibis/01M725SRGK6SS7HEXN1K572KJY.cose",
 };
 
 const HOST = `
@@ -150,4 +152,12 @@ test("Verify calls keelson.verify_alibi through the host, and the verifier opens
 
 test("the View stays small", () => {
   expect(Buffer.byteLength(html)).toBeLessThan(16 * 1024);
+});
+
+test("a SCITT Alibi names its envelope, and its statement downloads through the host", async () => {
+  const { page, view, links } = await open("light");
+  expect(await view.locator("#alibi").textContent()).toContain("SCITT · RFC 9943");
+  await view.getByRole("button", { name: "Download the IETF SCITT transparent statement" }).click();
+  await expect.poll(() => links).toEqual([card.statementUrl]);
+  await page.close();
 });

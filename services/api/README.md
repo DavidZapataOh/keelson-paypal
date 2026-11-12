@@ -338,6 +338,33 @@ mandate, so `POST /v1/countersign` refuses an authorization that is the hold of 
 or another request, and, for a per-purchase mandate, one that is not a hold Keelson created
 (`422 authorization-not-held`).
 
+## Live checkout amounts
+
+On a live checkout the agent pays the store's PayPal order. Before each pay action on PayPal, the
+pay-click gate asks `POST /v1/purchases/{id}/amount-check` what decides that order's amount, and
+pays only on its answer:
+
+1. **PayPal's Orders API** (`paypal_order`). Keelson reads the order with
+   `GET /v2/checkout/orders/{id}` and its own credentials, which PayPal answers only for orders
+   Keelson's PayPal app created (the demo store's, for example; any other answers `404`). The order
+   must have one purchase unit, be payable (`CREATED`, `SAVED`, `APPROVED` or
+   `PAYER_ACTION_REQUIRED`), and charge exactly the countersigned currency and total, its
+   breakdown when PayPal holds one, to a payee the mandate's `payment.allowed_payees` names.
+2. **The user's passkey** (`user_confirmed`), for an order Keelson cannot read. The first call
+   answers `202`, and the user gets a push and an email that open the confirmation in the app. They
+   confirm with the passkey that signed the mandate, over
+   `SHA-256("keelson/amount-confirm/v1" || 0x00 || JCS({purchase_id, order_id_hash, currency, minor, payee}))`,
+   as WebAuthn or Secure Payment Confirmation; or they decline. The gate waits up to three minutes;
+   the confirmation expires after ten, and then the agent stops.
+
+PayPal's checkout session (`GetCheckoutDetails`, below) is a cross-check: it never decides alone,
+and when it disagrees with the countersign or the authority, the gate holds. The decision must name
+the page's order (`order_id_hash`), is stored once per purchase, and is shown on the purchase, in
+`GET /v1/live-purchases` and in the Alibi as `paypal.amount_authority`, which the verifier checks
+(`paypal.amount_authority`): a passkey confirmation verifies offline with the mandate's passkey;
+`paypal_order` is stated as read by Keelson's API, since the TEE legs do not read the store's
+order. The user confirms the amount for stores whose orders another PayPal app creates.
+
 ## Live checkouts in another currency
 
 At a store's own checkout, the mandate, the countersign and PayPal's order stay in the store's
@@ -346,7 +373,8 @@ its rate on the funding side and shows the converted total on its review page. T
 pay-click gate (`services/agent/src/gate.ts`) decides on PayPal's order itself:
 
 1. **Order.** Right before each pay action on PayPal, the page asks PayPal's own GraphQL for
-   `GetCheckoutDetails`, the query PayPal's Smart Payment Buttons send. The total's
+   `GetCheckoutDetails`, the query PayPal's Smart Payment Buttons send, as a cross-check of the
+   amount authority above. The total's
    `currencyValue` and `currencyCode` must be the countersigned total exactly; its `subtotal`,
    `shippingAndHandling` and `tax`, when PayPal holds them, the countersigned breakdown (a
    breakdown that adds tax or shipping to the countersigned items is re-quoted). The intent must
@@ -454,6 +482,11 @@ asked for the countersign. Each step is published on their `purchase:<id>` chann
 `GET /v1/events`: `purchase.countersigned`, `purchase.logged`, `purchase.covered`,
 `purchase.captured`, `purchase.failed`, `purchase.denied`.
 
+A stream starts with `retry: 3000` and a `: connected` comment, and sends a `: heartbeat` comment
+every 15 s, so no proxy closes it while no event comes: it was measured open past 150 s through
+Cloudflare and Render. A client that loses it reconnects after 3 s with `Last-Event-ID` and gets
+only the events after that id.
+
 A DENY is logged too and stays `DENIED`. The ERC-8004 validation of a DENY is recorded with the
 operator's signature over its `ValidationRequest`, and coverages are released
 (`releaseCoverage`) once their window has passed. Keelson signs coverage only for the operator
@@ -474,8 +507,20 @@ else gets the header: not another user, not a 401 or 404. With an OTLP exporter 
 (`OTEL_EXPORTER_OTLP_ENDPOINT` or `OTEL_TRACES_EXPORTER`) the spans go there instead, and the
 header is not sent.
 
+Tracing must start before the server's modules load: `pg` reaches the server through ESM imports
+that run before any of its modules could start it, and an unpatched `pg` times no query. So
+`pnpm start` runs `node --import ./dist/telemetry.js dist/server.js`.
+
 `bench/money-path.bench.ts` drives real sandbox purchases (`PURCHASES`, `CONCURRENCY` mandates
-buying at once) through the public API and prints the waterfall from those headers as JSON. Its
+buying at once) through the public API and prints the waterfall from those headers as JSON. It
+reports two numbers. The steady money path is timed on mandates whose C3 proof is published
+(`GET /v1/mandates/{id}` says `c3Published`), against the 8 s p95 budget. The first purchase on a
+mandate signed just before it is reported apart: its Alibi waits for that mandate's C3 proof,
+which takes about 10 s after signing (a worker's start and some 7 s of proving), and the bench
+also reports that time for each mandate. Once the proof is published, the C3 task makes the
+mandate's waiting purchases due at once, so the resumer drives them on its next 5 s pass instead
+of after their 20 s lease. A purchase ends when its event or its state says so: the bench reads
+`GET /v1/purchases/{id}` once a second alongside the stream. Its
 agent is the demo operator's own OAuth client (`KEELSON_CLIENT_ID`, `KEELSON_CLIENT_SECRET`), with
 access tokens from the deployed API. Purchases with a leg down are measured by the in-process live
 tests (`tamper.live`, `coverage.live`).

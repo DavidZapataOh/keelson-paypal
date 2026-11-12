@@ -26,7 +26,9 @@ const maxListed = 1000
 // Finding is something the monitor checked and found wrong.
 type Finding struct {
 	// Kind is checkpoint.signature, checkpoint.rollback, leaf.format,
-	// leaf.inclusion, sigsum or equivocation.
+	// leaf.inclusion, leaf.tee_signature, leaf.tee_signer,
+	// leaf.tee_measurement, leaf.tee_equivocated, anchor.root, sigsum or
+	// equivocation.
 	Kind   string    `json:"kind"`
 	Index  *uint64   `json:"index,omitempty"`
 	Detail string    `json:"detail"`
@@ -53,6 +55,11 @@ type OriginState struct {
 	// Gossiped holds one signed checkpoint per size for an origin known only
 	// through gossip.
 	Gossiped map[uint64][]byte `json:"gossiped,omitempty"`
+	// Anchor is the last check of the on-chain anchor, Signers the last check
+	// of the leaves' TEE signers, and SignerIndex the registry it used.
+	Anchor      *AnchorCheck `json:"anchor,omitempty"`
+	Signers     *SignerCheck `json:"signers,omitempty"`
+	SignerIndex *signerIndex `json:"signerIndex,omitempty"`
 }
 
 // CoLog is a checkpoint body whose Sigsum proof the monitor verified.
@@ -102,6 +109,16 @@ func (o OriginState) clone() OriginState {
 		c := *o.CoLogged
 		o.CoLogged = &c
 	}
+	if o.Anchor != nil {
+		a := *o.Anchor
+		a.Root = slices.Clone(a.Root)
+		o.Anchor = &a
+	}
+	if o.Signers != nil {
+		sc := *o.Signers
+		o.Signers = &sc
+	}
+	o.SignerIndex = o.SignerIndex.clone()
 	return o
 }
 

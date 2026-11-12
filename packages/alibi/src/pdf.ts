@@ -3,9 +3,16 @@ import { CURRENCIES, type CurrencyCode, describeConversion, toHex } from "@keels
 import PDFDocument from "pdfkit";
 import { toBytes } from "pdfkit/output";
 import QRCode from "qrcode";
-import { encodeAlibi, leafHashOf } from "./codec.ts";
+import { encodeAny, leafHashOf, statementOf } from "./codec.ts";
 import { verifyUrl } from "./qr.ts";
-import { ALIBI_MEDIA_TYPE, type AlibiBundle } from "./schema.ts";
+import {
+  ALIBI_MEDIA_TYPE,
+  ALIBI_MEDIA_TYPE_V2,
+  type AlibiBundle,
+  type AlibiBundleV2,
+  STATEMENT_MEDIA_TYPE,
+} from "./schema.ts";
+import { legacyOf, statementView } from "./verify/view.ts";
 
 const font = (name: string) => readFileSync(new URL(`../fonts/${name}.ttf`, import.meta.url));
 const SANS = font("Geist-Regular");
@@ -46,10 +53,13 @@ function proofPosition(proof: string): { index: string; size: string } {
 
 /**
  * Renders the Alibi as a one-page PDF/A-3b: a readable summary, a QR to its verify URL, and the
- * bundle itself embedded as `<alibi_id>.alibi` with `AFRelationship /Source`. Every byte is a
+ * bundle itself embedded as `<alibi_id>.alibi` with `AFRelationship /Source`; a v2 Alibi's
+ * transparent statement also as `<alibi_id>.cose` with `AFRelationship /Data`. Every byte is a
  * function of the bundle, so the same bundle renders the same file.
  */
-export async function renderAlibiPdf(b: AlibiBundle): Promise<Uint8Array> {
+export async function renderAlibiPdf(input: AlibiBundle | AlibiBundleV2): Promise<Uint8Array> {
+  const v2 = input.type === ALIBI_MEDIA_TYPE_V2 ? (input as AlibiBundleV2) : null;
+  const b = (v2 ? legacyOf(v2, statementView(v2)) : input) as AlibiBundle;
   const issuedAt = new Date(String(b.leaf_view.issued_at));
   const doc = new PDFDocument({
     subset: "PDF/A-3b",
@@ -71,14 +81,24 @@ export async function renderAlibiPdf(b: AlibiBundle): Promise<Uint8Array> {
   doc.registerFont("sans", SANS);
   doc.registerFont("semibold", SEMIBOLD);
   doc.registerFont("mono", MONO);
-  doc.file(Buffer.from(encodeAlibi(b)), {
+  doc.file(Buffer.from(encodeAny(input)), {
     name: `${b.alibi_id}.alibi`,
-    type: ALIBI_MEDIA_TYPE,
+    type: v2 ? ALIBI_MEDIA_TYPE_V2 : ALIBI_MEDIA_TYPE,
     description: "Keelson Alibi bundle",
     relationship: "Source",
     creationDate: issuedAt,
     modifiedDate: issuedAt,
   });
+  if (v2) {
+    doc.file(Buffer.from(statementOf(v2)), {
+      name: `${b.alibi_id}.cose`,
+      type: STATEMENT_MEDIA_TYPE,
+      description: "IETF SCITT transparent statement (RFC 9943)",
+      relationship: "Data",
+      creationDate: issuedAt,
+      modifiedDate: issuedAt,
+    });
+  }
 
   const width = doc.page.width - 2 * MARGIN - QR_WIDTH - 8 * MM;
   // PDF/A forbids drawing a glyph the embedded font lacks, so such characters print as "?".
@@ -104,7 +124,7 @@ export async function renderAlibiPdf(b: AlibiBundle): Promise<Uint8Array> {
   label("Alibi id");
   value(b.alibi_id, true);
   label("Leaf hash");
-  value(toHex(leafHashOf(b)), true);
+  value(toHex(leafHashOf(input)), true);
   label("Issued at (UTC)");
   value(issuedAt.toISOString().replace(".000Z", "Z"));
 
@@ -117,6 +137,10 @@ export async function renderAlibiPdf(b: AlibiBundle): Promise<Uint8Array> {
   value(b.eval.decision === "allow" ? "Allow" : "Deny");
   label("Countersigned by");
   value(MODE[b.tee.mode]);
+  if (v2) {
+    label("Envelope");
+    value("IETF SCITT transparent statement (RFC 9943), embedded as a COSE file");
+  }
 
   label("Policy checks");
   doc.moveDown(0.2);
@@ -156,6 +180,14 @@ export async function renderAlibiPdf(b: AlibiBundle): Promise<Uint8Array> {
         b.paypal.store_order
           ? `Store's PayPal order: ${b.paypal.store_order.intent}, payee ${b.paypal.store_order.payee_id}${b.paypal.store_order.capture_ceiling_minor ? `, capturable up to ${b.paypal.store_order.capture_ceiling_minor} minor units` : ""} (reported by the agent, not signed)`
           : "",
+        b.paypal.amount_authority
+          ? {
+              paypal_order: "Amount confirmed with PayPal's Orders API (read by Keelson's API)",
+              user_confirmed: "Amount the user confirmed with their passkey",
+              merchant_signed_cart: "Amount signed by the store",
+              checkout_page: "Amount read from PayPal's checkout page, not confirmed",
+            }[b.paypal.amount_authority.authority]
+          : "",
         b.conversion
           ? `${describeConversion(b.conversion)}; reference ${b.conversion.reference.rate} from ${b.conversion.reference.provider} as of ${b.conversion.reference.as_of}, spread ${b.conversion.spread_bps} of ${b.conversion.max_spread_bps} bps allowed (reported by the agent, not signed)`
           : "",
@@ -181,7 +213,7 @@ export async function renderAlibiPdf(b: AlibiBundle): Promise<Uint8Array> {
     );
   }
 
-  const url = verifyUrl(b);
+  const url = verifyUrl(input);
   const qr = QRCode.create(url, { errorCorrectionLevel: "M" });
   const n = qr.modules.size;
   const unit = QR_WIDTH / (n + 8);
@@ -217,7 +249,7 @@ export async function renderAlibiPdf(b: AlibiBundle): Promise<Uint8Array> {
 }
 
 /** The QR's version and the printed size of one module, in millimetres. */
-export function qrMetrics(b: AlibiBundle): { version: number; moduleMm: number } {
+export function qrMetrics(b: AlibiBundle | AlibiBundleV2): { version: number; moduleMm: number } {
   const qr = QRCode.create(verifyUrl(b), { errorCorrectionLevel: "M" });
   return { version: qr.version, moduleMm: QR_WIDTH / (qr.modules.size + 8) / MM };
 }

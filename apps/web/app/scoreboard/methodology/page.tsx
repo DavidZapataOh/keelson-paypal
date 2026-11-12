@@ -170,6 +170,26 @@ curl -s ${API}/v1/redteam/campaigns/$ID/scoreboard -o published.json
 node services/redteam/scripts/scoreboard.ts ledger.jsonl | cmp - published.json && echo identical`}</Code>
         </Section>
 
+        <Section id="checkout" title="Checkout attacks on the pay click">
+          <p>
+            A second suite attacks the gate that holds the agent&apos;s pay click. Each attack is a
+            checkout page, or a PayPal order, that charges something other than what Keelson
+            countersigned and tries to hide it: totals drawn by CSS, shadow trees or form fields,
+            decoy totals, fees, another currency behind a bare sign, a look-alike payee, a
+            conversion over the mandate&apos;s spread, text posing as Keelson. The script opens each
+            one in Chromium and clicks pay itself, so no model&apos;s judgment is involved. The
+            attack success rate is the share of clicks that reached the page; honest checkouts the
+            gate held count as false blocks. Both carry the exact 95% interval.
+          </p>
+          <p>
+            It runs on every change to the agent; a click that gets through fails the build. Each
+            night the same attacks also run on a PayPal sandbox order from the demo store. Recompute
+            the published numbers with:
+          </p>
+          <Code>{`ATTACK_RESULTS=$PWD/attacks.jsonl pnpm --filter @keelson/agent exec vitest run test/attacks.test.ts
+node services/redteam/scripts/checkout-scoreboard.ts attacks.jsonl | cmp - apps/web/public/redteam/checkout-attacks.json && echo identical`}</Code>
+        </Section>
+
         <Section id="limits" title="Limits">
           <p>
             The store is a demo store and the agents are ours. False blocks are measured on the

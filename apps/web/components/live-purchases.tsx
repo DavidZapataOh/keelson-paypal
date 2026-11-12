@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 import { VERIFY } from "../lib/config";
 import { major, when } from "../lib/format";
 import { alibiUrl, type LivePurchase, livePurchases, reasonOf } from "../lib/live";
+import { AmountAuthorityLine } from "./amount-authority";
 import { CheckoutBreakdown } from "./checkout-breakdown";
 import { ConversionLine } from "./conversion-line";
 import { ErrorNotice } from "./notice";
@@ -73,6 +74,12 @@ function Entry({ p }: { p: LivePurchase }) {
           </p>
         ) : p.transactionId ? (
           <>
+            {p.amountAuthority ? (
+              <AmountAuthorityLine
+                a={p.amountAuthority}
+                {...(p.store ? { store: host(p.store) } : {})}
+              />
+            ) : null}
             {p.conversion ? <ConversionLine conversion={p.conversion} /> : null}
             <p className="flex flex-wrap items-center gap-x-2 text-sm">
               <span className="text-muted-foreground">Paid through PayPal, transaction</span>

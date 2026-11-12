@@ -29,7 +29,7 @@ export const timestamps = pgTable(
   (t) => [
     primaryKey({ name: "timestamps_hash_tsa_pk", columns: [t.hash, t.tsa] }),
     check("timestamps_hash_len", sql`octet_length(${t.hash}) = 32`),
-    check("timestamps_kind_valid", sql`${t.kind} in ('leaf', 'channel3')`),
+    check("timestamps_kind_valid", sql`${t.kind} in ('leaf', 'channel3', 'statement')`),
     check("timestamps_role_valid", sql`${t.role} in ('primary', 'fallback')`),
     check(
       "timestamps_status_valid",

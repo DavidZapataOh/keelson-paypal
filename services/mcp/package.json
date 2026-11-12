@@ -27,6 +27,7 @@
     "@keelson/evidence": "workspace:*",
     "@keelson/mandate": "workspace:*",
     "@keelson/policy": "workspace:*",
+    "@keelson/scitt": "workspace:*",
     "@modelcontextprotocol/ext-apps": "2.0.4",
     "@modelcontextprotocol/server": "2.4.0",
     "ulid": "3.0.2",

@@ -12,6 +12,7 @@ import {
   purchases,
   sql,
 } from "@keelson/db";
+import type { AmountCheck } from "@keelson/mandate";
 import type { Relayer } from "@keelson/relayer";
 import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
@@ -73,7 +74,7 @@ export interface PurchaseView {
   /** For a countersigned purchase, each mandate field with both values and that it held. */
   checks?: FieldCheck[];
   /** A purchase the buyer pays at the store's own checkout: the store and PayPal's transaction. */
-  live?: { store: string; transactionId: string | null };
+  live?: { store: string; transactionId: string | null; amountAuthority?: AmountAuthorityView };
   /** A card purchase: its single-use card and each authorization the card network sent it. */
   card?: CardView;
 }
@@ -229,9 +230,28 @@ export function purchaseView(p: Row): PurchaseView {
       : {}),
     ...verdict(p),
     ...(p.liveStore !== null
-      ? { live: { store: p.liveStore, transactionId: p.paypalTransactionId } }
+      ? {
+          live: {
+            store: p.liveStore,
+            transactionId: p.paypalTransactionId,
+            ...(p.amountCheck ? { amountAuthority: amountAuthorityView(p.amountCheck) } : {}),
+          },
+        }
       : {}),
   };
+}
+
+/** What decided a live purchase's amount, as its views show it. */
+export interface AmountAuthorityView {
+  authority: AmountCheck["authority"];
+  via?: NonNullable<AmountCheck["via"]>;
+  crossCheck: AmountCheck["cross_check"];
+}
+
+/** The view of a stored `keelson.amount_check/1`. */
+export function amountAuthorityView(stored: Record<string, unknown>): AmountAuthorityView {
+  const c = stored as unknown as AmountCheck;
+  return { authority: c.authority, ...(c.via ? { via: c.via } : {}), crossCheck: c.cross_check };
 }
 
 /** The single-use card of a card purchase and its authorizations, oldest first. */
@@ -571,6 +591,28 @@ export async function resumePurchases(deps: PipelineDeps): Promise<number> {
     .limit(RESUME_BATCH);
   await Promise.all(rows.map((r) => drivePurchase(deps, r.id)));
   return rows.length;
+}
+
+/**
+ * Makes the purchases of mandate `mandateId` that no driver holds due at once, by giving them a
+ * lease that has run out: the resumer drives them on its next pass. Called once the mandate's C3
+ * proof is published, so a purchase whose Alibi waited for it goes on within a pass instead of
+ * after its lease and last update age. Returns how many it made due.
+ */
+export async function resumeAwaitingC3(db: Db, mandateId: string): Promise<number> {
+  const due = await db
+    .update(purchases)
+    // Not a change to the purchase: `updated_at` keeps its last real update.
+    .set({ leaseUntil: sql`now() - interval '1 second'`, updatedAt: sql`${purchases.updatedAt}` })
+    .where(
+      and(
+        eq(purchases.mandateId, mandateId),
+        inArray(purchases.state, [...DRIVEN]),
+        or(isNull(purchases.leaseUntil), lt(purchases.leaseUntil, sql`now()`)),
+      ),
+    )
+    .returning({ id: purchases.id });
+  return due.length;
 }
 
 /** Logs the DENY purchases whose leaf is not in the log yet. Returns how many it logged. */

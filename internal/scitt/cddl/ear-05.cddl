@@ -1,0 +1,43 @@
+; The JSON serialization of draft-ietf-rats-ear-05 Figures 1 and 2, with the
+; RFC 9711 and draft-ietf-rats-ar4si-11 types it imports resolved for JSON.
+
+EAR = {
+  "eat_profile" => "tag:ietf.org,2026:rats/ear#05"
+  ? "ear_status" => trustworthiness-tier
+  ? "ear_status_details" => [ + text ]
+  "iat" => int
+  ? "exp" => int
+  "ear_verifier_id" => verifier-id
+  ? "ear_raw_evidence" => [ text, text, ? uint ]
+  "submods" => { + text => EAR-appraisal }
+  * text => any
+}
+
+EAR-appraisal = {
+  ? "eat_profile" => text
+  "ear_status" => trustworthiness-tier
+  ? "ear_status_details" => [ + text ]
+  ? "ear_trustworthiness_vector" => trustworthiness-vector
+  ? "ear_appraisal_policy_ids" => [ + text ]
+  * text => any
+}
+
+trustworthiness-tier = "none" / "affirming" / "warning" / "contraindicated"
+
+verifier-id = {
+  "developer" => text
+  "build" => text
+}
+
+trustworthiness-claim = -128..127
+
+trustworthiness-vector = {
+  ? "instance-identity" => trustworthiness-claim
+  ? "configuration" => trustworthiness-claim
+  ? "executables" => trustworthiness-claim
+  ? "file-system" => trustworthiness-claim
+  ? "hardware" => trustworthiness-claim
+  ? "runtime-opaque" => trustworthiness-claim
+  ? "storage-opaque" => trustworthiness-claim
+  ? "sourced-data" => trustworthiness-claim
+}

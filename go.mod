@@ -6,10 +6,13 @@ require (
 	filippo.io/torchwood v0.10.0
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1
 	github.com/ethereum/go-ethereum v1.17.10
+	github.com/fxamacker/cbor/v2 v2.10.0
 	github.com/jackc/pgx/v5 v5.12.0
 	github.com/transparency-dev/formats v0.1.1
 	github.com/transparency-dev/merkle v0.0.2
 	github.com/transparency-dev/tessera v1.0.4
+	github.com/veraison/cmw v0.3.0
+	github.com/veraison/go-cose v1.3.0
 	golang.org/x/crypto v0.58.0
 	golang.org/x/mod v0.42.0
 	sigsum.org/sigsum-go v1.0.0
@@ -49,6 +52,7 @@ require (
 	github.com/supranational/blst v0.3.16 // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
+	github.com/x448/float16 v0.8.4 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel v1.46.0 // indirect
 	go.opentelemetry.io/otel/metric v1.46.0 // indirect

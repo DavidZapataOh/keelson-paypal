@@ -73,6 +73,7 @@ fn open_mandate_params(p: &Value) -> OpenMandateParams {
         },
         aud: str(&p["aud"]),
         nonce: str(&p["nonce"]),
+        status: None,
     }
 }
 
@@ -82,6 +83,7 @@ fn verify_options(v: &Value) -> OpenMandateVerifyOptions {
         expected_nonce: str(&v["expectedNonce"]),
         now: v["now"].as_i64().unwrap(),
         max_skew_sec: v["maxSkewSec"].as_i64().unwrap(),
+        decoy_salts: vec![],
     }
 }
 

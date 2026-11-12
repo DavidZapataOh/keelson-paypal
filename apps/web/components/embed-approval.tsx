@@ -18,6 +18,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { engineDecoys } from "../lib/api";
 import { untilIn } from "../lib/connections";
 import { deviceId } from "../lib/device";
 import {
@@ -425,6 +426,7 @@ export function EmbedApproval() {
           crypto.getRandomValues(new Uint8Array(16)),
           NO_EVIDENCE,
           compiled.ambiguous,
+          { decoys: await engineDecoys() },
         );
         if (!stop)
           setSigning({ for: chosenKey, s, credentialId: compiled.mandateDraft.user.cred.id });
@@ -593,6 +595,7 @@ export function EmbedApproval() {
       const created = await approveEmbed(session, {
         payloadSd: s.payloadSd,
         disclosures: s.disclosures,
+        ...(s.decoySalts.length > 0 ? { decoySalts: s.decoySalts } : {}),
         commitment: s.commitment,
         salt: s.salt,
         assertion,

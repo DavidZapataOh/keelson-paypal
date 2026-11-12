@@ -24,6 +24,7 @@ export const CHECKS: Record<CheckId, { label: string; who: string }> = {
     who: "Agent operator",
   },
   "paypal.ids": { label: "PayPal ids", who: "Keelson" },
+  "paypal.amount_authority": { label: "Who decided the amount paid on PayPal", who: "User" },
   "card.authorizations": { label: "Card charges approved by both TEEs", who: "Keelson" },
   "mandate.challenge": { label: "Mandate challenge", who: "User" },
   "mandate.passkey": { label: "User's passkey signature", who: "User" },
@@ -37,6 +38,10 @@ export const CHECKS: Record<CheckId, { label: string; who: string }> = {
   "log.inclusion": { label: "Included in the log", who: "Keelson" },
   "log.witnesses": { label: "Witness cosignatures", who: "Witnesses" },
   "anchor.consistency": { label: "Anchor consistent with the log", who: "Keelson" },
+  "scitt.statement": { label: "Signed statement (IETF SCITT)", who: "Keelson" },
+  "scitt.receipt": { label: "Log receipt (COSE)", who: "Keelson" },
+  "rats.cmw": { label: "TEE evidence package", who: "Keelson" },
+  "card.statements": { label: "Card decisions and settlement, each logged", who: "Keelson" },
   "anchor.root": { label: "Root anchored on-chain", who: "Arbitrum" },
   "anchor.tx": { label: "Anchor transaction", who: "Arbitrum" },
   timestamps: { label: "RFC 3161 timestamps", who: "Timestamp authorities" },
@@ -84,4 +89,19 @@ export function evidenceOf(check: Check): {
         }
       : {}),
   };
+}
+
+/** What decided a live purchase's amount, from its `paypal.amount_authority` check. */
+export function amountAuthorityNote(d: Readonly<Record<string, string>>): string | undefined {
+  const by = d.read_by === "api" ? ", read by Keelson's API" : "";
+  switch (d.authority) {
+    case "paypal_order":
+      return d.via === "partner"
+        ? `Amount confirmed with PayPal: PayPal's Orders API, with the store's permission${by}`
+        : `Amount confirmed with PayPal: PayPal's Orders API, Keelson's own PayPal order${by}`;
+    case "user_confirmed":
+      return "Amount the user confirmed with the passkey that signed the mandate";
+    default:
+      return undefined;
+  }
 }

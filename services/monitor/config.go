@@ -43,6 +43,9 @@ type origin struct {
 	Verifier note.Verifier
 	// Retired are the Ed25519 keys the log signed with before Verifier.
 	Retired []RetiredKey
+	// Chain is where the origin anchors, or nil for an origin the monitor
+	// checks against no chain.
+	Chain *chainTrust
 }
 
 // RetiredKey is a key an origin signed with until its tree reached UntilSize
@@ -53,6 +56,11 @@ type RetiredKey struct {
 	UntilSize uint64
 }
 
+// cutoverPending is the size of a move whose cutover is not known yet, as
+// @keelson/log's CUTOVER_PENDING: the retired key still covers every size, and
+// a test refuses to ship it.
+const cutoverPending = ^uint64(0)
+
 // retiredKeys are the keys each origin moved from, with the size it had
 // reached when it moved, as in @keelson/log's LOG_VKEY_HISTORY.
 var retiredKeys = map[string][]struct {
@@ -61,9 +69,11 @@ var retiredKeys = map[string][]struct {
 }{
 	"log.keelson.finance/alibi/2026-1": {
 		{"log.keelson.finance/alibi/2026-1+2e11a7ea+AfBrbrDNyb9uyXNtg3PXXnVxKQBcMGqa1OlCtxlttUBX", 796},
+		{"log.keelson.finance/alibi/2026-1+8553fcbd+ATEHrhTfdzkwLLgf9SZhMsIhsHzRmvpFnaBfgK0D10Id", 898},
 	},
 	"log.keelson.finance/alibi-live/2026-1": {
 		{"log.keelson.finance/alibi-live/2026-1+2cbeb917+AUYYGFiA5vhiLgoStIMQMZCqkg5QPBseIXyURpLLwvph", 0},
+		{"log.keelson.finance/alibi-live/2026-1+39e7ebfa+AUiaY8TAW9gFbueTv6mPbHeZq5ClgTnG9a4kGEnU5uyL", 0},
 	},
 }
 
@@ -99,11 +109,16 @@ func loadConfig(getenv func(string) string) (*config, error) {
 		return nil, errors.New("MONITOR_DATA_DIR is required")
 	}
 	logURL := strings.TrimSuffix(cmp.Or(getenv("LOG_URL"), "https://"+logHost), "/")
+	chains := map[string]*chainTrust{
+		"alibi/2026-1":      arbitrumSepolia(getenv),
+		"alibi-live/2026-1": arbitrumOne,
+	}
 	for _, path := range []string{"alibi/2026-1", "alibi-live/2026-1"} {
 		o, err := pinnedOrigin(logHost+"/"+path, logURL+"/"+path+"/")
 		if err != nil {
 			return nil, err
 		}
+		o.Chain = chains[path]
 		c.Origins = append(c.Origins, o)
 	}
 	var err error

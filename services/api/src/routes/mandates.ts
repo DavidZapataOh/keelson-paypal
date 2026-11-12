@@ -25,6 +25,7 @@ import {
   mandateChallenge,
   RP_ID,
   renderCard,
+  STATUS_URI,
   spcDetails,
 } from "@keelson/mandate";
 import type { SignedChallenge } from "@keelson/mandate/browser";
@@ -44,13 +45,17 @@ import {
 import { clientEmbedOrigins } from "../embed.ts";
 import { publishEvent } from "../events.ts";
 import { hostedCapError } from "../hosted-caps.ts";
+import { currentIssuer, needsRenewal } from "../issuer.ts";
 import { passkeyJwk, SignatureError, verifyMandateSignature } from "../mandate-signature.ts";
 import { requireSession } from "../middleware/auth.ts";
 import { cardViewOf, purchaseView } from "../pipeline/drive.ts";
 import { type Principal, principalChannel } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
+import { drawStatusIdx } from "../status-list.ts";
 import { LegError, type MandateIssued } from "../tee/client.ts";
+import { bothLegs } from "../tee/coordinator.ts";
 import { unboundPolicy } from "../tee/engine-source.ts";
+import { c3Published } from "../zk/c3.ts";
 import { PurchaseProgress } from "./purchases.ts";
 import { REVOCABLE, revokeMandate } from "./revoke.ts";
 
@@ -70,6 +75,9 @@ const Assertion = z
     description: "A WebAuthn or Secure Payment Confirmation assertion, base64url fields.",
   });
 
+/** Leg A's code for a user credential it cannot open: issued under an earlier issuer key. */
+const STALE_USER_CREDENTIAL = "auth.open_user_credential";
+
 export const CreateMandate = z
   .object({
     payloadSd: z.record(z.string(), z.unknown()).openapi({
@@ -78,7 +86,19 @@ export const CreateMandate = z
     disclosures: z.array(z.string()).max(1024).openapi({
       description: "Every disclosure of the payload; each digest must resolve.",
     }),
+    decoySalts: z
+      .array(z.string().regex(/^[A-Za-z0-9_-]{22}$/))
+      .max(512)
+      .optional()
+      .openapi({
+        description:
+          "The salts of the payload's decoy digests (RFC 9901 section 4.2.5); every other digest resolves to a disclosure. Accepted once both TEEs resolve decoys.",
+      }),
     commitment: Hex32.openapi({ description: "`C_m`; must equal the payload's `zk.commitment`." }),
+    renews: z.string().length(26).optional().openapi({
+      description:
+        "A mandate of yours that `needsRenewal`, which this one replaces: it is revoked, and its PayPal hold voided, once this one is stored.",
+    }),
     salt: z
       .string()
       .regex(/^0x[0-9a-f]{32}$/)
@@ -223,9 +243,30 @@ const MandateView = z
     purchases: z.array(MandatePurchase).openapi({
       description: `The mandate's latest ${PURCHASES_SHOWN} purchases, newest first.`,
     }),
+    c3Published: z.boolean().openapi({
+      description:
+        "Whether the mandate's C3 proof (its user is registered, without saying who) is stored and its root is on chain. Its purchases' Alibis wait for it.",
+    }),
     pendingHolds: z.array(PendingPurchaseHold).openapi({
       description:
         "Purchase holds of a several-store mandate still waiting for the buyer's PayPal approval, oldest first. Later changes arrive as `mandate.purchase_hold` events.",
+    }),
+    status: z
+      .union([
+        z.object({
+          uri: z.string(),
+          idx: z.int(),
+          revoked: z.boolean(),
+        }),
+        z.null(),
+      ])
+      .openapi({
+        description:
+          "The mandate's entry in the public status list (draft-ietf-oauth-status-list-21): `revoked` once its revocation is requested, which the list carries from its next signing.",
+      }),
+    needsRenewal: z.boolean().openapi({
+      description:
+        "`true` when leg A no longer holds the credential issuer key the mandate was issued with: countersigns answer `mandate-needs-renewal` until the user signs a new mandate with `renews`.",
     }),
   })
   .openapi("Mandate");
@@ -399,7 +440,7 @@ export async function storeMandate(
 
   let m: Mandate;
   try {
-    m = decodeMandate(body.payloadSd, body.disclosures);
+    m = decodeMandate(body.payloadSd, body.disclosures, body.decoySalts);
   } catch (err) {
     return invalid(err instanceof Error ? err.message : "The mandate does not decode.");
   }
@@ -598,21 +639,53 @@ export async function storeMandate(
   }
 
   let issued: MandateIssued | undefined;
+  let issuerThumbprint: string | null = null;
+  const decoySalts = body.decoySalts ?? [];
+  let statusIdx: number | null = null;
   if (deps.tee) {
     if (!body.salt) return invalid("salt is required");
-    try {
-      issued = await deps.tee.client.a.registerMandate({
+    const legs = await bothLegs({ tee: deps.tee });
+    // A mandate gets its status list entry once both legs check the list.
+    if (legs.status_list) statusIdx = await drawStatusIdx(deps.db);
+    if (decoySalts.length > 0 && !legs.decoys) {
+      return problem(
+        c,
+        409,
+        "decoys-unsupported",
+        "Decoys not supported yet",
+        "The TEEs do not resolve decoy digests yet: sign the mandate without them.",
+      );
+    }
+    issuerThumbprint = await currentIssuer(deps.db);
+    const legA = deps.tee.client.a;
+    const register = (userCredential: string | null) =>
+      legA.registerMandate({
         sub: userId,
         payload_sd: body.payloadSd,
         disclosures: body.disclosures,
+        ...(decoySalts.length > 0 ? { decoy_salts: decoySalts } : {}),
+        ...(statusIdx === null ? {} : { status_idx: statusIdx }),
         assertion: {
           authenticatorData: assertion.authenticatorData,
           clientDataJSON: assertion.clientDataJSON,
           signature: assertion.signature,
         },
         salt: body.salt as `0x${string}`,
-        ...(key.userCredential ? { user_credential: key.userCredential } : {}),
+        ...(userCredential ? { user_credential: userCredential } : {}),
       });
+    try {
+      try {
+        issued = await register(key.userCredential);
+      } catch (err) {
+        // A user credential leg A issued under its previous issuer key no longer opens after the
+        // key moves; leg A issues a new one, still bound to this passkey's verified assertion.
+        if (
+          !(err instanceof LegError && err.code === STALE_USER_CREDENTIAL && key.userCredential)
+        ) {
+          throw err;
+        }
+        issued = await register(null);
+      }
     } catch (err) {
       if (!(err instanceof LegError)) throw err;
       if (err.kind !== "problem" || (err.status ?? 0) >= 500) {
@@ -661,6 +734,9 @@ export async function storeMandate(
         commitment: Buffer.from(fromHex(body.commitment)),
         payloadSd: body.payloadSd,
         disclosures: body.disclosures,
+        decoySalts,
+        statusIdx,
+        issuerThumbprint,
         userAuth: assertion,
         credentialId: key.credentialID,
         ...(issued
@@ -725,6 +801,12 @@ export async function storeMandate(
             .where(eq(mandates.id, request.parentMandateId));
         }
       }
+      if (body.renews) {
+        await tx
+          .update(mandates)
+          .set({ revokeRequestedAt: sql`coalesce(${mandates.revokeRequestedAt}, now())` })
+          .where(and(eq(mandates.id, body.renews), eq(mandates.userId, userId)));
+      }
     });
   } catch (err) {
     if (err instanceof OverHostedCap) {
@@ -768,6 +850,16 @@ export async function storeMandate(
           deps.log.warn({ err, mandateId: parent.id }, "replaced mandate not revoked yet"),
         );
       }
+    }
+  }
+
+  // The renewed mandate's hold is released now; the sweeper voids it if PayPal is down.
+  if (body.renews) {
+    const renewed = await queries.mandateById(body.renews);
+    if (renewed?.userId === userId && (REVOCABLE as readonly string[]).includes(renewed.state)) {
+      await revokeMandate(deps, renewed).catch((err: unknown) =>
+        deps.log.warn({ err, mandateId: renewed.id }, "renewed mandate not revoked yet"),
+      );
     }
   }
 
@@ -855,7 +947,7 @@ export function registerMandates(app: OpenAPIHono, deps: MandateDeps): void {
     c.header("Cache-Control", "no-store");
     const card =
       row.payloadSd && row.disclosures
-        ? renderCard(row.payloadSd as object, row.disclosures, NO_EVIDENCE)
+        ? renderCard(row.payloadSd as object, row.disclosures, NO_EVIDENCE, row.decoySalts)
         : null;
     const cards = new Map(
       await Promise.all(
@@ -887,7 +979,13 @@ export function registerMandates(app: OpenAPIHono, deps: MandateDeps): void {
               .map((d) => ({ id: d.id, state: d.state })),
           };
         }),
+        c3Published: await c3Published(db, row.c3Proof),
         pendingHolds: waiting.map((h) => ({ ...h, amountMinor: h.amountMinor.toString() })),
+        status:
+          row.statusIdx === null
+            ? null
+            : { uri: STATUS_URI, idx: row.statusIdx, revoked: row.revokeRequestedAt !== null },
+        needsRenewal: needsRenewal(row.issuerThumbprint, await currentIssuer(db)),
       },
       200,
     );

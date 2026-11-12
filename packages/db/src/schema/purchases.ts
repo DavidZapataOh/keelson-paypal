@@ -18,6 +18,21 @@ import { purchaseState } from "./enums.ts";
 import { mandates } from "./mandates.ts";
 import { bytea, createdAt, updatedAt } from "./types.ts";
 
+/**
+ * A live purchase whose amount only the user can confirm: what they are asked to confirm with
+ * their passkey, until when, and their answer.
+ */
+export interface StoredAmountConfirm {
+  order_id_hash: `0x${string}`;
+  currency: string;
+  minor: number;
+  payee: string;
+  intent: "CAPTURE" | "AUTHORIZE";
+  cross_check: "agrees" | "unavailable";
+  state: "PENDING" | "CONFIRMED" | "DECLINED";
+  expires_at: string;
+}
+
 /** A purchase's amber attestation; the salt and the commitment as 0x hex, `unit_minor` decimal. */
 export interface StoredAmber {
   url: string;
@@ -93,8 +108,13 @@ export const purchases = pgTable(
      * checked against the reference rates its evidence binds.
      */
     conversion: jsonb().$type<Record<string, unknown>>(),
+    /** What decided a live purchase's amount at the pay click: its `keelson.amount_check/1`. */
+    amountCheck: jsonb().$type<Record<string, unknown>>(),
+    amountConfirm: jsonb().$type<StoredAmountConfirm>(),
     /** The salt of the leaf's `paypal_ref_commit`. */
     paypalRefSalt: bytea(),
+    /** The purchase's SCITT signed statement, as the legs answered the countersign: its v2 leaf. */
+    statement: bytea(),
     /** The capture's sequence number among the mandate's captures, as its `invoice_id` states it. */
     captureSeq: smallint(),
     /** PayPal's status of the capture. */

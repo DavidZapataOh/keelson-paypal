@@ -1,0 +1,10 @@
+[Unit]
+Description=vsock-proxy for the enclave: 8101 PayPal sandbox, 8102 PayPal live, 8103 AWS KMS
+After=network.target nitro-enclaves-allocator.service
+
+[Service]
+ExecStart=/bin/sh -c '/usr/bin/vsock-proxy 8101 api-m.sandbox.paypal.com 443 --config /etc/nitro_enclaves/vsock-proxy.yaml & /usr/bin/vsock-proxy 8102 api-m.paypal.com 443 --config /etc/nitro_enclaves/vsock-proxy.yaml & exec /usr/bin/vsock-proxy 8103 kms.us-west-2.amazonaws.com 443 --config /etc/nitro_enclaves/vsock-proxy.yaml'
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

@@ -117,7 +117,13 @@
       "project": ["app/**/*.tsx!", "components/**/*.tsx!", "lib/**/*.ts!", "test/**/*.ts"]
     },
     "services/api": {
-      "entry": ["src/server.ts!", "src/workflows.ts!", "scripts/*.ts", "bench/*.bench.ts"],
+      "entry": [
+        "src/server.ts!",
+        "src/workflows.ts!",
+        "scripts/bridge-backfill.ts!",
+        "scripts/*.ts",
+        "bench/*.bench.ts"
+      ],
       "project": ["src/**/*.ts!", "scripts/**/*.ts", "bench/**/*.ts", "test/**/*.ts"]
     },
     "services/agent": {
@@ -138,6 +144,10 @@
     },
     "services/witness": {
       "entry": [".railway/railway.ts"]
+    },
+    "packages/scitt": {
+      "entry": ["src/index.ts!", "src/testing.ts!", "scripts/*.ts"],
+      "project": ["src/**/*.ts!", "scripts/**/*.ts", "test/**/*.ts"]
     },
     "packages/sdk": {
       "entry": ["src/index.ts!", "src/cli.ts!", "src/adapters/*.ts!", "scripts/*.ts", "examples/*"],

@@ -8,8 +8,10 @@ import {
   LogClient,
   LogError,
   leafHash,
+  parseStatementLeaf,
   verifyProof,
 } from "@keelson/log";
+import { decodeSign1, statementImprint } from "@keelson/scitt";
 import type { Logger } from "pino";
 import { enqueueStamp } from "../timestamps/queue.ts";
 import type { StampWorker } from "../timestamps/worker.ts";
@@ -27,6 +29,15 @@ const decoder = new TextDecoder();
 
 /** The `alibi_id` and `mode` the leaf states; the log checks the rest. */
 function stated(leaf: Uint8Array): { alibiId: string; mode: string } {
+  if (leaf[0] === 0xd2) {
+    try {
+      const s = parseStatementLeaf(leaf, { verify: false });
+      const mode = "claims" in s ? s.claims.mode : s.card.mode;
+      return { alibiId: s.alibiId, mode };
+    } catch {
+      throw new LogError("rejected", "leaf.noncanonical");
+    }
+  }
   const text = decoder.decode(leaf);
   if (!text.startsWith(LEAF_PREFIX)) throw new LogError("rejected", "leaf.prefix");
   try {
@@ -45,8 +56,8 @@ function stated(leaf: Uint8Array): { alibiId: string; mode: string } {
  * another purchase, or whose mode is not the one the purchase was countersigned in, is refused
  * before the log is called. The index is recorded only once the log's leaf hash is the leaf's and
  * its proof verifies against a checkpoint both origin keys signed. Appending the same leaf again
- * returns the same index. The leaf hash is then queued for its RFC 3161 timestamps, which the
- * append never waits for.
+ * returns the same index. The leaf hash, or a statement's signature, is then queued for its
+ * RFC 3161 timestamps, which the append never waits for.
  *
  * @internal
  */
@@ -95,6 +106,44 @@ export async function appendLeaf(
     )
     .returning({ id: purchases.id });
   if (updated.length === 0) throw new LogError("rejected", "purchase.logged");
-  enqueueStamp(deps, result.leafHash, "leaf");
+  if (leaf[0] === 0xd2) {
+    // A v2 Alibi's RFC 3161 tokens cover the statement's signature (RFC 9921), not the leaf.
+    enqueueStamp(deps, statementImprint(decodeSign1(leaf).signature), "statement");
+  } else {
+    enqueueStamp(deps, result.leafHash, "leaf");
+  }
+  return result;
+}
+
+/**
+ * Appends a card decision's or settlement's statement to its purchase's log: its purchase leaf is
+ * already there (the log checks the link), and nothing about the purchase row changes. The
+ * statement's own receipt and proof come back.
+ *
+ * @internal
+ */
+export async function appendStatement(
+  deps: { db: Db; tlog: LogConfig },
+  purchaseId: string,
+  leaf: Uint8Array,
+  countersign: Record<string, string>,
+): Promise<AppendResult> {
+  const [purchase] = await deps.db
+    .select({ chainId: purchases.chainId })
+    .from(purchases)
+    .where(eq(purchases.id, purchaseId));
+  if (!purchase) throw new LogError("rejected", "purchase.unknown");
+  if (stated(leaf).alibiId !== purchaseId) throw new LogError("rejected", "card.parent");
+  const origin = LOG_ORIGINS[purchase.chainId ?? CHAIN_IDS.arbitrumSepolia];
+  if (!origin) throw new LogError("rejected", "purchase.chain");
+  const client = new LogClient(deps.tlog.url, deps.tlog.token, origin, deps.tlog.timeoutMs);
+  const result = await client.add(leaf, countersign);
+  const expected = leafHash(leaf);
+  if (!result.leafHash.every((b, i) => b === expected[i]))
+    throw new LogError("invalid", "leaf_hash");
+  const vkeys = deps.tlog.vkeys?.[origin] ?? LOG_VKEYS[origin];
+  if (vkeys === undefined || verifyProof(result.proof, expected, vkeys).index !== result.index) {
+    throw new LogError("invalid", "proof");
+  }
   return result;
 }
