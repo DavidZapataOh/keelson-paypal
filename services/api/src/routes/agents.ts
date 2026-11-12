@@ -13,6 +13,7 @@ import {
   operators,
   purchases,
   sql,
+  ssfStreams,
 } from "@keelson/db";
 import type { Deps } from "../app.ts";
 import { publishEvent } from "../events.ts";
@@ -20,6 +21,7 @@ import { MERCHANTS } from "../merchants.ts";
 import { requireSession } from "../middleware/auth.ts";
 import { type Principal, principalChannel } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
+import { emitSessionRevoked } from "../ssf.ts";
 import { stopAgents, userStops } from "../stop.ts";
 import { REVOCABLE, revokeMandate } from "./revoke.ts";
 
@@ -36,6 +38,10 @@ const AgentRow = z
     name: z.string(),
     operator: z.string(),
     connected: z.boolean(),
+    signals: z.boolean().openapi({
+      description:
+        "Whether the app polls a Shared Signals stream (OpenID SSF), so it learns at once when you stop or disconnect it.",
+    }),
     mandate: z
       .object({
         id: z.string(),
@@ -199,7 +205,17 @@ export function registerAgents(
   app: OpenAPIHono,
   deps: Pick<
     Deps,
-    "db" | "kv" | "log" | "paypal" | "tlog" | "notifier" | "demoAgentId" | "tee" | "cards"
+    | "db"
+    | "kv"
+    | "log"
+    | "paypal"
+    | "tlog"
+    | "notifier"
+    | "demoAgentId"
+    | "tee"
+    | "auth"
+    | "authBaseUrl"
+    | "cards"
   >,
 ): void {
   const { db } = deps;
@@ -244,6 +260,10 @@ export function registerAgents(
       await db
         .delete(oauthConsent)
         .where(and(eq(oauthConsent.userId, userId), eq(oauthConsent.clientId, clientId)));
+      await emitSessionRevoked(
+        { db, auth: deps.auth, ssfIssuer: deps.authBaseUrl ?? "https://api.keelson.finance" },
+        { userId, clientId, at: new Date(), reason: "The user disconnected this app." },
+      ).catch((err: unknown) => deps.log.warn({ err, clientId }, "disconnect signal not queued"));
     }
     await db
       .update(agentConnections)
@@ -347,6 +367,14 @@ export function registerAgents(
       : [];
     const lastBuy = new Map(bought.map((b) => [b.mandateId, new Date(b.at)]));
 
+    const streaming = new Set(
+      (
+        await db
+          .select({ clientId: ssfStreams.clientId })
+          .from(ssfStreams)
+          .where(and(eq(ssfStreams.userId, userId), eq(ssfStreams.status, "enabled")))
+      ).map((s) => s.clientId),
+    );
     const agents = new Map<string, z.infer<typeof AgentRow> & { at: number }>();
     // Apps acting through the hosted operator share it: each is its own row.
     const touch = (
@@ -369,6 +397,7 @@ export function registerAgents(
             : operator.name),
         operator: operator.name,
         connected: false,
+        signals: app !== null && streaming.has(app),
         mandate: null,
         lastActivityAt: at.toISOString(),
         at: at.getTime(),

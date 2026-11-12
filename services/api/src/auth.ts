@@ -19,6 +19,7 @@ import { generateSiweNonce } from "viem/siwe";
 import { SETTLEMENT } from "./merchants.ts";
 import { rarExtension } from "./oauth/rar.ts";
 import { ownsLinkedOperator } from "./operators/owners.ts";
+import { securityEvents } from "./ssf.ts";
 
 /** RFC 8707 resource identifier of this API; the `aud` of every access token it accepts. */
 export const apiAudience = "https://api.keelson.finance";
@@ -264,6 +265,7 @@ export function createAuth(
     },
     plugins: [
       jwt({ jwks: env.jwks ?? JWKS_ROTATION }),
+      securityEvents(),
       // Agents act for themselves with client credentials. MCP clients act for a user with the
       // authorization code grant and PKCE (S256 only, required of public clients), named by a
       // Client ID Metadata Document or else registering themselves (RFC 7591), as the MCP

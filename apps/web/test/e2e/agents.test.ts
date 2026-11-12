@@ -508,6 +508,7 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("agents on %s", (kind) => {
         name: "Claude Code",
         operator: "Anthropic Labs",
         connected: true,
+        signals: true,
         mandate: {
           id: "01M7MANDATE000000000000000",
           state: "ACTIVE",
@@ -526,6 +527,7 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("agents on %s", (kind) => {
     await page.getByRole("heading", { level: 1, name: "Agents" }).waitFor();
     await page.getByText("$11.94").waitFor();
     expect(await page.getByText("left of $50.00").count()).toBe(1);
+    expect(await page.getByText("Gets stop signals").count()).toBe(1);
     expect(
       await page
         .getByRole("meter", { name: "Claude Code has spent" })

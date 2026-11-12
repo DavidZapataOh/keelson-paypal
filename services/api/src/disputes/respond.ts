@@ -1,10 +1,10 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { renderAlibiPdf } from "@keelson/alibi/pdf";
 import { and, type Db, disputeResponses, disputes, eq, purchases, verdicts } from "@keelson/db";
 import { acceptClaim, getDispute, provideEvidence, sendMessage } from "@keelson/paypal";
 import type { Logger } from "pino";
 import { ulid } from "ulid";
 import { loadAlibi, publicCopy } from "../alibi/issue.ts";
+import { alibiPdf } from "../alibi/pdf.ts";
 import { call, type PayPalDeps } from "../paypal.ts";
 import { type Draft, draftResponse } from "./drafter.ts";
 import {
@@ -111,7 +111,7 @@ export async function respondToDispute(deps: RespondDeps, disputeId: string): Pr
     const bundle = await loadAlibi(db, row.purchaseId);
     if (!bundle) throw new Error(`purchase ${row.purchaseId} has no alibi`);
     // PayPal and the drafting model get the Alibi without the user's login id and risk data.
-    const pdf = await renderAlibiPdf(publicCopy(bundle));
+    const { pdf } = await alibiPdf(deps.log, publicCopy(bundle));
     const amount = dispute.dispute_amount;
     const drafted = await draftResponse(deps.anthropic, {
       plan,

@@ -421,6 +421,13 @@
       "when": 1794489330180,
       "tag": "0059_stop_cards",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1794495138400,
+      "tag": "0060_ssf",
+      "breakpoints": true
     }
   ]
 }

@@ -29,6 +29,7 @@ import {
 import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
 import { ulid } from "ulid";
+import type { Auth } from "./auth.ts";
 import type { CardIssuer } from "./cards/issuer.ts";
 import { publishEvent } from "./events.ts";
 import type { LogConfig } from "./log/append.ts";
@@ -36,6 +37,7 @@ import { type Notifier, notify, stopAlert } from "./notify/notifier.ts";
 import type { PayPalDeps } from "./paypal.ts";
 import { principalChannel } from "./principal.ts";
 import { REVOCABLE, revokeMandate } from "./routes/revoke.ts";
+import { emitSessionRevoked } from "./ssf.ts";
 import type { TeeConfig } from "./tee/signers.ts";
 
 export interface StopDeps {
@@ -45,6 +47,9 @@ export interface StopDeps {
   paypal?: PayPalDeps;
   tlog?: LogConfig;
   notifier?: Notifier;
+  /** Signs the Shared Signals events connected apps poll; none are queued without it. */
+  auth?: Auth | undefined;
+  authBaseUrl?: string | undefined;
   cards?: { issuer: CardIssuer } | undefined;
   tee?: TeeConfig;
 }
@@ -188,6 +193,10 @@ export async function stopAgents(deps: StopDeps, userId: string): Promise<StopRe
     logIndexes: done.logIndexes,
   });
   notify(deps.notifier, (n) => stopAlert(n, userId, done));
+  await emitSessionRevoked(
+    { db, auth: deps.auth, ssfIssuer: deps.authBaseUrl ?? "https://api.keelson.finance" },
+    { userId, at: row.createdAt, reason: "The user stopped every agent." },
+  ).catch((err: unknown) => deps.log.warn({ err, stopId: id }, "stop signal not queued"));
   return { ...done, statusListed: rows.filter((m) => m.statusIdx !== null).length };
 }
 
