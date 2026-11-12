@@ -51,7 +51,7 @@ const common = {
 const setup = createRoute({
   method: "post",
   path: "/v1/paypal/wallet/setup-token",
-  operationId: "createPayPalWalletSetupToken",
+  operationId: "createPayPalSetupToken",
   tags: ["paypal"],
   summary: "Start saving PayPal",
   description:
@@ -106,7 +106,7 @@ const read = createRoute({
 const remove = createRoute({
   method: "delete",
   path: "/v1/paypal/wallet",
-  operationId: "deletePayPalWallet",
+  operationId: "removePayPalWallet",
   tags: ["paypal"],
   summary: "Remove the saved PayPal",
   description:
