@@ -1,13 +1,14 @@
 import { randomBytes } from "node:crypto";
+import { checkoutTotal, toPayPalAmount } from "@keelson/core";
+import { eq, evidenceBundles, evidenceItems, mandates, purchases, sql } from "@keelson/db";
 import {
   type AmountCheck,
   amountConfirmChallenge,
-  checkoutTotal,
+  buildSdPayload,
   orderIdHash,
-  toPayPalAmount,
-} from "@keelson/core";
-import { eq, evidenceBundles, evidenceItems, mandates, purchases, sql } from "@keelson/db";
-import { buildSdPayload, parseMandate, RP_ID } from "@keelson/mandate";
+  parseMandate,
+  RP_ID,
+} from "@keelson/mandate";
 import { pino } from "pino";
 import { ulid } from "ulid";
 import { beforeAll, describe, expect, test } from "vitest";

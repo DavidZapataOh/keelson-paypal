@@ -1,21 +1,20 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { type CheckoutTotal, type CurrencyCode, checkoutTotal, toPayPalValue } from "@keelson/core";
+import { eq, mandates, passkey, purchases, type StoredAmountConfirm, sql } from "@keelson/db";
 import {
   type AmountCheck,
-  AmountMismatch,
+  allowedPayees,
   amountConfirmChallenge,
-  type CheckoutTotal,
-  type CurrencyCode,
-  checkoutTotal,
-  compareOrder,
-  orderFacts,
+  decodeMandate,
+  type Mandate,
   orderIdHash,
-  toPayPalValue,
-} from "@keelson/core";
-import { eq, mandates, passkey, purchases, type StoredAmountConfirm, sql } from "@keelson/db";
-import { allowedPayees, decodeMandate, type Mandate, payeeAllowed, RP_ID } from "@keelson/mandate";
+  payeeAllowed,
+  RP_ID,
+} from "@keelson/mandate";
 import { PayPalError } from "@keelson/paypal";
 import { isoBase64URL } from "@simplewebauthn/server/helpers";
 import type { Context } from "hono";
+import { AmountMismatch, compareOrder, orderFacts } from "../amount.ts";
 import type { Deps } from "../app.ts";
 import { breakdowns } from "../checkout.ts";
 import { SignatureError, verifyPasskeyAssertion } from "../mandate-signature.ts";

@@ -1,5 +1,4 @@
 export * from "./alibi.ts";
-export * from "./amount-authority.ts";
 export * from "./cart.ts";
 export * from "./channel3.ts";
 export * from "./checkout.ts";
