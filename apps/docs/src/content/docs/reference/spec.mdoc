@@ -223,7 +223,7 @@ Agents reach Keelson over REST or MCP (`https://api.keelson.finance/mcp`, Stream
 | --- | --- |
 | RFC 9457 problem details | Every `type` resolves to a page at `https://api.keelson.finance/problems/{slug}` |
 | OpenID AuthZEN Authorization API 1.0 | `/.well-known/authzen-configuration`, `POST /access/v1/evaluation` and the boxcar `POST /access/v1/evaluations`: a non-binding preview of a cart against a mandate, from the policy set the TEE legs run |
-| SD-JWT VC (draft-ietf-oauth-sd-jwt-vc) | `https://keelson.finance/.well-known/jwt-vc-issuer`, whose `jwks_uri` serves the attested issuer key, and the Type Metadata at the user credential's `vct` |
+| SD-JWT VC (draft-ietf-oauth-sd-jwt-vc) | `/.well-known/jwt-vc-issuer` on keelson.finance, whose `jwks_uri` serves the attested issuer key, and the Type Metadata at the user credential's `vct` |
 
 ## 13. Risk
 
