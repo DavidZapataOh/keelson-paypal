@@ -18,15 +18,16 @@ import {
   runAgent,
   runCheckout,
   shopifyCart,
+  storePayPalMerchantId,
 } from "@keelson/agent";
 import { decodeAlibi } from "@keelson/alibi";
 import { verifyAlibi } from "@keelson/alibi/verify";
 import type { CheckoutTotal, FxReference } from "@keelson/core";
 import { startRecorder } from "@keelson/evidence/capture";
-import { maxSpreadBps, parseMandate } from "@keelson/mandate";
+import { allowedPayees, maxSpreadBps, parseMandate } from "@keelson/mandate";
 import { demoOperator } from "../test/pipeline-live.ts";
 import { SoftwarePasskey, signedMandate } from "../test/tee-live.ts";
-import { type Hold, openHold, signIn } from "./public-client.ts";
+import { type Hold, openHold, revokeMandate, signIn } from "./public-client.ts";
 
 // The shopping agent at a real store, with real money, under a fresh mandate for one digital
 // copy of the live item from Alfred Music (at most $5). The buyer's PayPal session is the KERNEL
@@ -100,18 +101,27 @@ const log = (s: { at: number; kind: string; detail: string }) =>
 
 let held: Hold | undefined;
 try {
-  let mandate: unknown;
-  const hold: Hold = await openHold(
-    user,
-    (sub, edit) => signedMandate(passkey, sub, demoOperator, edit),
-    (m) => {
-      liveMandate(m, MAX_MINOR, process.env.ALFRED_PAYPAL_MERCHANT_ID ?? "unknown");
-      mandate = structuredClone(m);
-    },
-  );
-  held = hold;
   const session = await openSession({ hosts: ALFRED.hosts, profile: PROFILE, locale: "en-US" });
   try {
+    // The mandate names the PayPal account the store's own PayPal integration names; one that
+    // names another than the store's known account is never signed for.
+    await session.page.goto(productUrl);
+    await session.page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {});
+    const served = await storePayPalMerchantId(session.page);
+    if (served && served !== ALFRED.paypalMerchantId) {
+      throw new Error("the store's PayPal integration names another PayPal account");
+    }
+    let mandate: unknown;
+    const hold: Hold = await openHold(
+      user,
+      (sub, edit) => signedMandate(passkey, sub, demoOperator, edit),
+      (m) => {
+        liveMandate(m, MAX_MINOR, served ?? ALFRED.paypalMerchantId);
+        mandate = structuredClone(m);
+      },
+    );
+    held = hold;
+    const signed = parseMandate(structuredClone(mandate));
     let proposal: ProposedCart;
     let agent: Awaited<ReturnType<typeof runAgent>> | undefined;
     if (RUN === "buy") {
@@ -170,10 +180,8 @@ try {
     const gate = new PayGate({
       checkoutHosts: ALFRED.checkoutHosts,
       cart: shopifyCart(session.context, ALFRED.origin),
-      maxSpreadBps: maxSpreadBps(parseMandate(structuredClone(mandate))),
-      ...(process.env.ALFRED_PAYPAL_MERCHANT_ID
-        ? { payee: process.env.ALFRED_PAYPAL_MERCHANT_ID }
-        : {}),
+      maxSpreadBps: maxSpreadBps(signed),
+      payees: allowedPayees(signed),
     });
     if (allowed) gate.allow(quote.total, result.reference);
     // The purchase the payment is for: the first countersign, or the last re-quote Keelson allowed.
@@ -232,6 +240,8 @@ try {
     };
 
     const paying = RUN === "blocked" || allowed;
+    // The pay click comes after this; the activity entry for it cannot be older.
+    const since = new Date();
     const run = paying
       ? await runCheckout({
           client,
@@ -249,12 +259,11 @@ try {
     let transactionId: string | undefined;
     let recorded: number | undefined;
     if (run?.outcome === "paid") {
-      transactionId = await paypalTransactionId(
-        session.context,
-        session.page,
-        decimal(run.total.currency, run.total.minor),
-        "Alfred",
-      );
+      transactionId = await paypalTransactionId(session.context, session.page, {
+        currency: run.total.currency,
+        value: decimal(run.total.currency, run.total.minor),
+        since,
+      });
       if (transactionId) {
         const res = await agentApi.request(`/v1/purchases/${paid}/paypal-transaction`, {
           method: "PUT",
@@ -299,6 +308,9 @@ try {
       agent: agent && { outcome: agent.outcome, ms: agent.ms, usd: agent.usage.usd },
       checkout: run && {
         outcome: run.outcome,
+        // What the agent said the page showed, and where a checkout that did not pay ended.
+        note: run.note,
+        ...(run.stop ? { stop: run.stop } : {}),
         ms: run.ms,
         usd: run.usage.usd,
         refusedByGate: gate.refused,
@@ -341,6 +353,9 @@ try {
           recorded === 200 &&
           summary.alibi.status === 200 &&
           summary.alibi.listed;
+    if (run?.outcome === "declined") {
+      console.error(`declined: the store or PayPal declined the payment. ${run.note}`);
+    }
     if (!ok) process.exitCode = 1;
   } finally {
     await session.close();
@@ -348,7 +363,6 @@ try {
 } finally {
   // As every run does: the mandate's sandbox hold is released.
   if (held) {
-    const revoked = await user.post(`/v1/mandates/${held.mid}/revoke`);
-    if (revoked.status >= 300) console.error(`mandate ${held.mid} not revoked: ${revoked.status}`);
+    await revokeMandate(user, held.mid).catch((err: unknown) => console.error(String(err)));
   }
 }

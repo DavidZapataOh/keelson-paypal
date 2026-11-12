@@ -1,5 +1,11 @@
 export { type AttackContext, type AttackPlan, failedAttack, runAttack } from "./attack.ts";
 export { type CampaignConfig, type CampaignHooks, runCampaign } from "./campaign.ts";
+export {
+  type CheckoutClass,
+  type CheckoutResult,
+  type CheckoutScoreboard,
+  scoreCheckout,
+} from "./checkout.ts";
 export { cartContext, EVALUATOR, judge, keelson, type Verdict } from "./judge.ts";
 export {
   type Attack,

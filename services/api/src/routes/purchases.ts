@@ -25,7 +25,7 @@ import {
   type SQL,
   user,
 } from "@keelson/db";
-import { decodeMandate } from "@keelson/mandate";
+import { allowedPayees, decodeMandate, payeeAllowed } from "@keelson/mandate";
 import type { Deps } from "../app.ts";
 import { Amount, breakdowns, withBreakdown } from "../checkout.ts";
 import { requireClient, requirePrincipal } from "../middleware/auth.ts";
@@ -351,8 +351,8 @@ const liveRoute = createRoute({
 });
 
 /**
- * Why `payee` is not a payee the mandate allows, or undefined: a merchant id among its
- * `payment.allowed_payees`, when they name any.
+ * Why `payee` is not a payee the mandate allows, or undefined: the rule the pay click applies
+ * ({@link payeeAllowed}), a merchant id among its `payment.allowed_payees`.
  */
 async function payeeInvalid(db: Db, mandateId: string, payee: string): Promise<string | undefined> {
   const [m] = await db
@@ -364,16 +364,8 @@ async function payeeInvalid(db: Db, mandateId: string, payee: string): Promise<s
     .from(mandates)
     .where(eq(mandates.id, mandateId));
   if (!m?.payloadSd || !m.disclosures) return "the mandate is not signed";
-  const allowed = decodeMandate(
-    m.payloadSd,
-    m.disclosures,
-    m.decoySalts,
-  ).payment.constraints.flatMap((k) =>
-    k.type === "payment.allowed_payees" ? k.allowed.map((a) => a.paypal_merchant_id) : [],
-  );
-  // A mandate that names no PayPal merchant id (a store whose id is not known yet) binds none.
-  const ids = allowed.filter((id) => /^[0-9A-Z]{8,20}$/.test(id));
-  return ids.length === 0 || ids.includes(payee)
+  const allowed = allowedPayees(decodeMandate(m.payloadSd, m.disclosures, m.decoySalts));
+  return payeeAllowed(allowed, payee)
     ? undefined
     : "PayPal's order pays a merchant the mandate does not allow";
 }

@@ -60,6 +60,7 @@ jobs:
               - internal/scitt/**
               - services/api/**
               - services/agent/**
+              - services/redteam/**
               - services/mcp/**
               - services/monitor/**
               - apps/**
@@ -227,6 +228,38 @@ jobs:
           pnpm --filter @keelson/policy vectors
           pnpm --filter @keelson/log vectors
           test -z "$(git status --porcelain)"
+
+  # Every checkout attack in the corpus against the real pay-click gate in Chromium; any attack the
+  # gate lets through fails the job, and the published scoreboard must match what this run measured.
+  red-team:
+    needs: changes
+    if: needs.changes.outputs.ts == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @keelson/agent exec playwright install --with-deps chromium
+      - run: pnpm turbo run build --filter=@keelson/agent^... --filter=@keelson/redteam^...
+      - name: Checkout-attack corpus
+        env:
+          ATTACK_RESULTS: ${{ runner.temp }}/attacks.jsonl
+        run: pnpm --filter @keelson/agent exec vitest run test/attacks.test.ts
+      - name: The published scoreboard is this run's
+        if: always()
+        run: |
+          node services/redteam/scripts/checkout-scoreboard.ts "$RUNNER_TEMP/attacks.jsonl" > "$RUNNER_TEMP/checkout-attacks.json"
+          { echo "### Checkout attacks"; echo '```json'; jq '{attacks, asr, through, controls, false_blocks, blocked_controls, classes: [.classes[] | {class, attacks, through}]}' "$RUNNER_TEMP/checkout-attacks.json"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          cmp "$RUNNER_TEMP/checkout-attacks.json" apps/web/public/redteam/checkout-attacks.json || {
+            echo "apps/web/public/redteam/checkout-attacks.json is not this run's scoreboard, which is:"
+            cat "$RUNNER_TEMP/checkout-attacks.json"
+            exit 1
+          }
 
   alibi-pdf:
     needs: changes

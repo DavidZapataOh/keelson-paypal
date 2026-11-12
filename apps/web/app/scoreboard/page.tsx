@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { AppShell } from "../../components/app-shell";
+import { CheckoutAttacks } from "../../components/checkout-attacks";
 import { PageHead } from "../../components/page-head";
 import { ScoreboardPage } from "../../components/scoreboard";
 
@@ -29,9 +30,12 @@ export default function Page() {
           </p>
         }
       />
-      <Suspense>
-        <ScoreboardPage />
-      </Suspense>
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-12">
+        <Suspense>
+          <ScoreboardPage />
+        </Suspense>
+        <CheckoutAttacks />
+      </div>
     </AppShell>
   );
 }

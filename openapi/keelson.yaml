@@ -284,6 +284,11 @@ components:
           items:
             $ref: "#/components/schemas/MandatePurchase"
           description: The mandate's latest 100 purchases, newest first.
+        c3Published:
+          type: boolean
+          description: Whether the mandate's C3 proof (its user is registered, without
+            saying who) is stored and its root is on chain. Its purchases'
+            Alibis wait for it.
         pendingHolds:
           type: array
           items:
@@ -324,6 +329,7 @@ components:
         - hold
         - card
         - purchases
+        - c3Published
         - pendingHolds
         - status
         - needsRenewal

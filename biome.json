@@ -20,6 +20,7 @@
       "!**/test/evidence",
       "!**/test/snapshots",
       "!engine/tee/measurements.json",
+      "!apps/web/public/redteam",
       "!engine/tee/measurements-rotation.json",
       "!engine/tee/phala/app-compose.json",
       "!engine/tee/zk",

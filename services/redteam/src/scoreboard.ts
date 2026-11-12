@@ -98,7 +98,8 @@ export interface Rate {
   hi_ppm: number;
 }
 
-function rate(method: Rate["method"], k: number, n: number): Rate {
+/** @internal */
+export function rate(method: Rate["method"], k: number, n: number): Rate {
   const [lo, hi] = method === "wilson" ? wilson(k, n) : clopperPearson(k, n);
   return {
     method,

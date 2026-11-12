@@ -25,11 +25,18 @@ async function token(): Promise<string> {
   return ((await res.json()) as { access_token: string }).access_token;
 }
 
-/** Creates a sandbox order for `value` of `currency` and returns its id and approval link. */
+/**
+ * Creates a sandbox order for `value` of `currency` and returns its id, approval link and the
+ * merchant id PayPal names its payee.
+ */
 async function createOrder(bearer: string, currency: string, value: string, locale: string) {
   const created = await fetch(`${API}/v2/checkout/orders`, {
     method: "POST",
-    headers: { authorization: `Bearer ${bearer}`, "content-type": "application/json" },
+    headers: {
+      authorization: `Bearer ${bearer}`,
+      "content-type": "application/json",
+      prefer: "return=representation",
+    },
     body: JSON.stringify({
       intent: "CAPTURE",
       purchase_units: [
@@ -53,10 +60,15 @@ async function createOrder(bearer: string, currency: string, value: string, loca
       },
     }),
   });
-  const order = (await created.json()) as { id: string; links: { rel: string; href: string }[] };
+  const order = (await created.json()) as {
+    id: string;
+    links: { rel: string; href: string }[];
+    purchase_units: { payee: { merchant_id: string } }[];
+  };
   return {
     id: order.id,
     approve: order.links.find((l) => l.rel === "payer-action")?.href as string,
+    payees: [order.purchase_units[0]?.payee.merchant_id as string],
   };
 }
 
@@ -118,7 +130,7 @@ describe.skipIf(!ready)(
       const order = await createOrder(bearer, "USD", "2.95", "es-CO");
       const context = await browser.newContext({ locale: "es-CO" });
       await context.route(`${RETURN}**`, (r) => r.fulfill({ status: 200, body: "" }));
-      const gate = new PayGate({ checkoutHosts: ["www.sandbox.paypal.com"] });
+      const gate = new PayGate({ checkoutHosts: ["www.sandbox.paypal.com"], payees: order.payees });
       const page = await context.newPage();
       page.setDefaultTimeout(45_000);
       try {
@@ -154,7 +166,7 @@ describe.skipIf(!ready)(
       const bearer = await token();
       const order = await createOrder(bearer, "EUR", "2.95", "es-CO");
       const context = await browser.newContext({ locale: "es-CO" });
-      const gate = new PayGate({ checkoutHosts: ["www.sandbox.paypal.com"] });
+      const gate = new PayGate({ checkoutHosts: ["www.sandbox.paypal.com"], payees: order.payees });
       const page = await context.newPage();
       page.setDefaultTimeout(45_000);
       try {
@@ -184,7 +196,10 @@ describe.skipIf(!ready)(
       try {
         const pay = await signIn(page, order.approve);
         const reference = await referenceFrom("MXN");
-        const gate = new PayGate({ checkoutHosts: ["www.sandbox.paypal.com"] });
+        const gate = new PayGate({
+          checkoutHosts: ["www.sandbox.paypal.com"],
+          payees: order.payees,
+        });
         gate.allow(checkoutTotal("MXN", { items: 5900 }), reference);
         await gate.check(page, { kind: "click", target: pay });
         const buyer = gate.paid?.conversion?.buyer;
@@ -195,7 +210,10 @@ describe.skipIf(!ready)(
           fee.textContent = "Fee $9,999.00";
           document.body.prepend(fee);
         });
-        const again = new PayGate({ checkoutHosts: ["www.sandbox.paypal.com"] });
+        const again = new PayGate({
+          checkoutHosts: ["www.sandbox.paypal.com"],
+          payees: order.payees,
+        });
         again.allow(checkoutTotal("MXN", { items: 5900 }), reference);
         const held = await again.check(page, { kind: "click", target: pay }).catch((e) => e);
         expect(held).toBeInstanceOf(ToolError);

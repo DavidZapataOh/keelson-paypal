@@ -1,3 +1,7 @@
+import type { Server } from "node:http";
+import type { AddressInfo } from "node:net";
+import { serve } from "@hono/node-server";
+import { Keelson } from "@keelson-finance/sdk";
 import type { MiddlewareHandler } from "hono";
 import { pino } from "pino";
 import { expect, test } from "vitest";
@@ -25,6 +29,7 @@ interface Frame {
   event?: string;
   data?: string;
   comment?: string;
+  retry?: number;
 }
 
 class Sse {
@@ -51,6 +56,7 @@ class Sse {
           else if (line.startsWith("id:")) frame.id = line.slice(3).trim();
           else if (line.startsWith("event:")) frame.event = line.slice(6).trim();
           else if (line.startsWith("data:")) frame.data = line.slice(5).trim();
+          else if (line.startsWith("retry:")) frame.retry = Number(line.slice(6).trim());
         }
         return frame;
       }
@@ -235,4 +241,76 @@ test("a channel built by a publisher reaches the principal that owns it", async 
     { headers: { "x-test-subject": "client:x" } },
   );
   expect([spoof.status, await slug(spoof)]).toEqual([403, "forbidden-channel"]);
+});
+
+test("tells the client how long to wait before it reconnects", async () => {
+  const res = await app.request(`/v1/events?channel=${channel()}`, {
+    headers: { "x-test-subject": "u1" },
+  });
+  const sse = new Sse(res);
+  expect(await sse.next()).toEqual({ comment: "connected", retry: 3000 });
+  await sse.close();
+});
+
+test("keeps a stream with no events open past two minutes, over HTTP and past the request timeout", {
+  timeout: 150_000,
+}, async () => {
+  // As the server runs it: a socket, and the 30 s timeout every /v1 request gets.
+  const served = serve({ fetch: app.fetch, port: 0, hostname: "127.0.0.1" });
+  await new Promise<void>((resolve) => served.once("listening", () => resolve()));
+  const url = `http://127.0.0.1:${(served.address() as AddressInfo).port}/v1/events?channel=${channel()}`;
+  const sse = new Sse(await fetch(url, { headers: { "x-test-subject": "u1" } }));
+  const started = Date.now();
+  let heartbeats = 0;
+  while (Date.now() - started < 125_000) {
+    const frame = await sse.next(20_000);
+    expect(frame, `the stream ended after ${Date.now() - started} ms`).toBeDefined();
+    if (frame?.comment === "heartbeat") heartbeats++;
+  }
+  expect(heartbeats).toBeGreaterThanOrEqual(8);
+  await sse.close();
+  await new Promise((resolve) => served.close(resolve));
+});
+
+test("the SDK follows a stream across a dropped connection, after the server's retry, and loses or repeats nothing", {
+  timeout: 20_000,
+}, async () => {
+  // The SDK's bearer token stands for the user here.
+  const byToken: MiddlewareHandler = async (c, next) => {
+    const subject = c.req.header("authorization")?.replace(/^Bearer /, "");
+    if (subject) c.set("principal", { kind: "user", subject });
+    await next();
+  };
+  const served = serve({
+    fetch: createApp({ db: testDb, kv: testKv, log, authenticate: byToken }).fetch,
+    port: 0,
+    hostname: "127.0.0.1",
+  });
+  await new Promise<void>((resolve) => served.once("listening", () => resolve()));
+  const keelson = new Keelson({
+    baseUrl: `http://127.0.0.1:${(served.address() as AddressInfo).port}`,
+    auth: { token: async () => "u1" },
+  });
+  const name = channel();
+  const abort = new AbortController();
+  const events = keelson.events.stream(name, { signal: abort.signal });
+
+  const first = events.next();
+  // The stream is open once the server holds its subscriber.
+  while (Number((await testKv.pubSubNumSub(`events:${name}`))[`events:${name}`]) === 0) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  const one = await publishEvent(deps, name, "m1", { n: 1 });
+  expect((await first).value).toEqual({ id: String(one), event: name, data: '{"n":1}' });
+
+  (served as unknown as Server).closeAllConnections();
+  const dropped = Date.now();
+  const two = await publishEvent(deps, name, "m1", { n: 2 });
+  const next = await events.next();
+  expect(next.value).toEqual({ id: String(two), event: name, data: '{"n":2}' });
+  expect(Date.now() - dropped).toBeGreaterThanOrEqual(3_000);
+
+  await events.return(undefined);
+  abort.abort();
+  await new Promise((resolve) => served.close(resolve));
 });
