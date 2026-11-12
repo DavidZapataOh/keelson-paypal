@@ -6,4 +6,8 @@ dir="$(cd "$(dirname "$0")" && pwd)"
 schema="$(mktemp)"
 trap 'rm -f "$schema"' EXIT
 { echo "start = $2"; cat "$dir/$1"; } > "$schema"
-"${CDDL_BIN:-cddl}" validate --cddl "$schema" "$3"
+case "$3" in
+  *.json) input=--json ;;
+  *) input=--cbor ;;
+esac
+"${CDDL_BIN:-cddl}" validate --cddl "$schema" "$input" "$3"

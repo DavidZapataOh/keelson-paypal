@@ -27,7 +27,8 @@ export function validateCddl(file: string, rule: string, data: Uint8Array, ext =
     writeFileSync(path, data);
     execFileSync(script, [file, rule, path], { stdio: "pipe" });
     return true;
-  } catch {
+  } catch (e) {
+    console.error(`cddl: ${rule} of ${file}:\n${(e as { stderr?: Buffer }).stderr ?? e}`);
     return false;
   } finally {
     rmSync(tmp, { recursive: true, force: true });
