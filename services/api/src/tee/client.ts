@@ -119,6 +119,7 @@ const SettlementObservationSchema = z.strictObject({
   card: z.base64(),
   observed_at: z.number(),
 });
+/** @internal */
 export type SettlementObservation = z.infer<typeof SettlementObservationSchema>;
 
 const CardSettledSchema = z.strictObject({

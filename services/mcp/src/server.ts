@@ -288,7 +288,9 @@ function opensUrls(server: McpServer, ctx: ServerContext): boolean {
 const LIABILITY = { green: "verified", amber: "attested" } as const;
 const API_ORIGIN = "https://api.keelson.finance";
 
-/** How an Alibi is enveloped: what the card says of its format, statement and issue time. */
+/** How an Alibi is enveloped: what the card says of its format, statement and issue time. *
+ * @internal
+ */
 export interface Envelope {
   envelope: "scitt" | "v1";
   statementUrl: string | null;

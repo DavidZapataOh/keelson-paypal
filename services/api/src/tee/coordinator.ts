@@ -92,7 +92,7 @@ const health = new Map<Leg, { capabilities: Capabilities; at: number }>();
  * What a leg's engine does, from its `/v1/health` (cached a minute, read again after any
  * failure): a leg on an older engine refuses a request carrying a field it does not know.
  */
-export async function legCapabilities(
+async function legCapabilities(
   deps: { tee: Pick<TeeConfig, "client"> },
   leg: Leg,
 ): Promise<Capabilities> {

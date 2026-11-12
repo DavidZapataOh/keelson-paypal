@@ -101,7 +101,7 @@ const DECOY_BUCKETS = [4, 8, 16, 32, 64] as const;
 const MAX_DIGESTS = 512;
 
 /** The digest a decoy salt stands for: SHA-256 over the ASCII of its base64url form. */
-export function decoyDigest(salt: string): string {
+function decoyDigest(salt: string): string {
   return uint8ArrayToBase64Url(sdHasher(salt, "sha-256"));
 }
 

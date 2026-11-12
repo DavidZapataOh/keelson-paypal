@@ -27,13 +27,17 @@ export interface CardStatementDeps {
 type Verdicts = { tdx: StoredCardVerdict | null; nitro: StoredCardVerdict | null };
 const hex = (b: Uint8Array | Buffer) => `0x${Buffer.from(b).toString("hex")}` as Hex;
 
-/** The leg that signs a decision's statement: the last that decided (leg B when both did). */
+/** The leg that signs a decision's statement: the last that decided (leg B when both did). *
+ * @internal
+ */
 export function signingLeg(v: Verdicts): "a" | "b" | null {
   if (!v.tdx) return null;
   return v.nitro ? "b" : "a";
 }
 
-/** The request for a decision's statement, from the legs' stored answers. */
+/** The request for a decision's statement, from the legs' stored answers. *
+ * @internal
+ */
 export function cardStatementRequest(o: {
   verdicts: Verdicts;
   measurements: { tdx: Hex; nitro: Hex | null };

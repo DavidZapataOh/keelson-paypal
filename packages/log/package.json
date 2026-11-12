@@ -24,11 +24,11 @@
     "@noble/hashes": "catalog:",
     "@noble/post-quantum": "0.7.1",
     "viem": "catalog:",
-    "@keelson/scitt": "workspace:*",
-    "cbor2": "2.4.1"
+    "@keelson/scitt": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "26.6.6",
+    "cbor2": "2.4.1",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

@@ -104,6 +104,8 @@ export async function countersignOf(db: Db, purchaseId: string): Promise<StoredC
  * countersign, mode and legs' signatures, its own signatures verifying.
  *
  * @throws when the statement is malformed or names another countersign, mode or signature.
+ *
+ * @internal
  */
 export function statementLeaf(statement: Uint8Array, out: StoredCountersign): Uint8Array {
   let parsed: ReturnType<typeof parseStatementLeaf>;
