@@ -459,6 +459,12 @@ every 15 s, so no proxy closes it while no event comes: it was measured open pas
 Cloudflare and Render. A client that loses it reconnects after 3 s with `Last-Event-ID` and gets
 only the events after that id.
 
+Events reach merchants and operators only through this stream: Keelson sends no outbound webhooks.
+A second push channel would duplicate delivery, retries and secrets for no consumer that needs it.
+If outbound webhooks are ever added, they follow Standard Webhooks (`webhook-id`,
+`webhook-timestamp`, `webhook-signature`), signed with the `svix` library that already verifies
+Channel3's.
+
 A DENY is logged too and stays `DENIED`. The ERC-8004 validation of a DENY is recorded with the
 operator's signature over its `ValidationRequest`, and coverages are released
 (`releaseCoverage`) once their window has passed. Keelson signs coverage only for the operator
