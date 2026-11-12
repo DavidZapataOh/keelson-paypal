@@ -64,6 +64,7 @@ import { publishPurchase } from "../pipeline/events.ts";
 import { logStep } from "../pipeline/log-step.ts";
 import { principalKey } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
+import { purchaseTimings, serverTiming, timings } from "../server-timing.ts";
 import { stoppedSince } from "../stop.ts";
 import { LegError } from "../tee/client.ts";
 import { VERIFYING_CONTRACT } from "../tee/config.ts";
@@ -1448,6 +1449,10 @@ export function registerCountersign(
       }
       c.header("Keelson-Countersign-Mode", out.mode);
       if (pending) c.header("Location", `/v1/purchases/${purchaseId}`);
+      // The steps done before this answer, for the client that asked: the rest are on the purchase.
+      await timings.forceFlush();
+      const steps = await purchaseTimings(kv, purchaseId);
+      if (Object.keys(steps).length > 0) c.header("Server-Timing", serverTiming(steps));
       return c.json(
         {
           purchaseId,

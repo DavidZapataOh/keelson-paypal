@@ -1,0 +1,27 @@
+{
+  "id": "8gk43s4",
+  "customer": {
+    "id": "kh4Wd1FbMx"
+  },
+  "paymentSource": {
+    "paypal": {
+      "description": "Keelson holds your agent's budget, only under mandates you sign",
+      "usageType": "MERCHANT",
+      "customerType": "CONSUMER",
+      "emailAddress": "buyer@example.com",
+      "payerId": "QYR5Z8XDVJNXQ"
+    }
+  },
+  "links": [
+    {
+      "href": "https://api.sandbox.paypal.com/v3/vault/payment-tokens/8gk43s4",
+      "rel": "self",
+      "method": "GET"
+    },
+    {
+      "href": "https://api.sandbox.paypal.com/v3/vault/payment-tokens/8gk43s4",
+      "rel": "delete",
+      "method": "DELETE"
+    }
+  ]
+}

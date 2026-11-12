@@ -674,9 +674,14 @@ components:
           type: string
           enum:
             - HOLD_PENDING
+        approved:
+          type: boolean
+          description: "The user's saved PayPal paid the order, so PayPal shows the buyer
+            nothing: authorize it next."
       required:
         - orderId
         - state
+        - approved
     AuthorizedHold:
       type: object
       properties:
@@ -718,6 +723,31 @@ components:
       required:
         - orderId
       description: The order the buyer approved.
+    PayPalSetupToken:
+      type: object
+      properties:
+        setupToken:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: ^[0-9A-Za-z_-]+$
+      required:
+        - setupToken
+    PayPalWallet:
+      type: object
+      properties:
+        email:
+          type:
+            - string
+            - "null"
+          description: The PayPal account, as PayPal names it.
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - email
+        - createdAt
+      description: The PayPal the user saved for holds under the mandates they sign.
     PurchaseHoldOrder:
       type: object
       properties:
@@ -7229,8 +7259,10 @@ paths:
       summary: Hold a mandate's budget
       description: Creates the PayPal `AUTHORIZE` order for the budget of a signed
         mandate, bound to the signed mandate hash by its `custom_id`, and moves
-        the mandate to `HOLD_PENDING`. While the mandate waits for approval the
-        same order is returned; an order PayPal no longer offers is replaced.
+        the mandate to `HOLD_PENDING`. With the user's saved PayPal, PayPal
+        authorizes the order as it creates it (`approved`); otherwise the buyer
+        approves it in PayPal. While the mandate waits for approval the same
+        order is returned; an order PayPal no longer offers is replaced.
       security:
         - session: []
       parameters:
@@ -7350,6 +7382,170 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "422":
           description: The authorization does not match the mandate, or PayPal refused
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: PayPal is unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/paypal/wallet/setup-token:
+    post:
+      tags:
+        - paypal
+      summary: Start saving PayPal
+      description: Creates the PayPal Vault setup token the user approves in PayPal,
+        for one merchant-initiated token billed on the terms of the mandates
+        they sign.
+      security:
+        - session: []
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      responses:
+        "201":
+          description: The setup token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PayPalSetupToken"
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: PayPal refused
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: PayPal is unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/paypal/wallet:
+    post:
+      tags:
+        - paypal
+      summary: Save PayPal
+      description: Exchanges the setup token the user approved for a payment token and
+        saves it as the user's PayPal for holds, in place of any saved before.
+      security:
+        - session: []
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PayPalSetupToken"
+      responses:
+        "201":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PayPalWallet"
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: No such setup token of this user
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: PayPal refused
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: PayPal is unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    get:
+      tags:
+        - paypal
+      summary: The saved PayPal
+      security:
+        - session: []
+      responses:
+        "200":
+          description: The saved PayPal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PayPalWallet"
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: No saved PayPal
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: PayPal is unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    delete:
+      tags:
+        - paypal
+      summary: Remove the saved PayPal
+      description: Deletes the payment token at PayPal and forgets it. Holds already
+        authorized stay until they are captured, voided or expire; new holds
+        need PayPal's approval again.
+      security:
+        - session: []
+      responses:
+        "204":
+          description: Removed
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: No saved PayPal
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: PayPal refused
           content:
             application/problem+json:
               schema:

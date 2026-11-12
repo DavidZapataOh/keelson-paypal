@@ -141,7 +141,10 @@ export function requestIdFromDigest(countersignDigest: Uint8Array): string {
 }
 
 /** `PayPal-Request-Id` of an operation on an order or an authorization: `hex(sha256("<op>:<id>"))[:36]`. */
-export function operationRequestId(id: string, op: "authorize" | "void" | "reauthorize"): string {
+export function operationRequestId(
+  id: string,
+  op: "authorize" | "void" | "reauthorize" | "setup-token" | "payment-token",
+): string {
   return toHex(sha256(new TextEncoder().encode(`${op}:${id}`))).slice(2, 38);
 }
 
