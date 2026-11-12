@@ -49,21 +49,27 @@ function scriptsOf(c: string): Set<string> | undefined {
   return set;
 }
 
-/** UTS #39 §4 skeleton: NFD, each character to its prototype, NFD again. */
+/**
+ * UTS #39 §4 skeleton: NFD, each character to its prototype, NFD again.
+ * @internal
+ */
 export function skeleton(s: string): string {
   let out = "";
   for (const c of s.normalize("NFD")) out += CONFUSABLES[c] ?? c;
   return out.normalize("NFD");
 }
 
-export type RestrictionLevel =
+type RestrictionLevel =
   | "ascii"
   | "single-script"
   | "highly-restrictive"
   | "moderately-restrictive"
   | "minimally-restrictive";
 
-/** UTS #39 §5.2 restriction level of `s`. */
+/**
+ * UTS #39 §5.2 restriction level of `s`.
+ * @internal
+ */
 export function restrictionLevel(s: string): RestrictionLevel {
   if ([...s].every((c) => (c.codePointAt(0) as number) < 0x80)) return "ascii";
   let resolved: Set<string> | undefined;

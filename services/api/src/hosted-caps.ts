@@ -21,7 +21,7 @@ import type { PayPalDeps } from "./paypal.ts";
  * (RFC 7591), whatever name or redirect URIs it claims; a known host's app gets the higher tier
  * (see {@link HostedCaps}).
  */
-export const KNOWN_CIMD_HOSTS: readonly string[] = [
+const KNOWN_CIMD_HOSTS: readonly string[] = [
   "claude.ai",
   "claude.com",
   "chatgpt.com",
