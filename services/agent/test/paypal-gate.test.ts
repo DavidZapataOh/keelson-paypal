@@ -12,6 +12,9 @@ import {
   type Buyer,
   checkoutDetails,
   convert,
+  ES_CO_CARD_CONVERSION,
+  ES_CO_CARD_REVIEW,
+  fundingConversion,
   fundingOptions,
   money,
   reference,
@@ -408,5 +411,96 @@ describe("the pay-click gate on PayPal's review page", () => {
       { total: checkoutTotal("JPY", { items: 1234 }) },
     );
     expect(r.clicked, r.results.join("\n")).toBe(true);
+  });
+
+  describe("a Colombian buyer paying a USD order with a card, on PayPal's page in Spanish", () => {
+    const { usd, cop, rate } = ES_CO_CARD_CONVERSION;
+    const card = (funding?: unknown): Case => ({
+      lines: () => [...ES_CO_CARD_REVIEW],
+      lang: "es",
+      details: checkoutDetails({ value: usd }),
+      ...(funding ? { funding } : {}),
+    });
+
+    test.each([
+      ["from the buyer's currency", true, "0.00028820"],
+      ["from the order's", false, rate],
+    ])("is paid on PayPal's own conversion stated %s", async (_, inverse, stated) => {
+      const r = await pay(
+        order(
+          card(
+            fundingConversion({ order: usd, buyer: cop, currency: "COP", rate: stated, inverse }),
+          ),
+        ),
+        { clicks: 1 },
+      );
+      expect(r.clicked, r.results.join("\n")).toBe(true);
+      expect(r.gate.refused).toBe(0);
+      expect(r.gate.paid?.conversion).toMatchObject({
+        merchant: { currency: "USD", value: usd },
+        buyer: { currency: "COP", value: cop },
+      });
+    });
+
+    test("is held when PayPal's conversion is not of the order's total", async () => {
+      const r = await pay(
+        order(
+          card(
+            fundingConversion({ order: "3.95", buyer: "13706", currency: "COP", rate: "3469.83" }),
+          ),
+        ),
+        { clicks: 1 },
+      );
+      expect(r.clicked).toBe(false);
+      expect(r.results[0]).toMatch(/converts another amount/);
+    });
+
+    test("is held when PayPal's rate from the buyer's currency does not give its amounts", async () => {
+      const r = await pay(
+        order(
+          card(
+            fundingConversion({
+              order: usd,
+              buyer: cop,
+              currency: "COP",
+              rate: "0.00030000",
+              inverse: true,
+            }),
+          ),
+        ),
+        { clicks: 1 },
+      );
+      expect(r.clicked).toBe(false);
+      expect(r.results[0]).toMatch(/does not add up/);
+    });
+
+    test("is held when the page's rate line contradicts PayPal's conversion", async () => {
+      const page = card(fundingConversion({ order: usd, buyer: cop, currency: "COP", rate }));
+      const r = await pay(
+        order({
+          ...page,
+          lines: () => ES_CO_CARD_REVIEW.map((l) => l.replace("0,00029", "0,00031")),
+        }),
+        { clicks: 1 },
+      );
+      expect(r.clicked).toBe(false);
+      expect(r.results[0]).toMatch(/rate line that is not PayPal's rate/);
+    });
+
+    test("is held for a larger peso amount than PayPal's conversion", async () => {
+      const page = card(fundingConversion({ order: usd, buyer: cop, currency: "COP", rate }));
+      const r = await pay(
+        order({ ...page, lines: () => [...ES_CO_CARD_REVIEW, "Comisión $ 30.000"] }),
+        { clicks: 1 },
+      );
+      expect(r.clicked).toBe(false);
+      expect(r.results[0]).toMatch(/a larger amount in the buyer's currency/);
+    });
+
+    test("is held without PayPal's own conversion", async () => {
+      const r = await pay(order(card()));
+      expect(r.clicked).toBe(false);
+      expect(r.gate.paid).toBeUndefined();
+    });
   });
 });

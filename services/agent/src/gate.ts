@@ -10,6 +10,7 @@ import {
 import type { Locator, Page } from "playwright";
 import {
   decimalText,
+  inverseOf,
   judge,
   type Money,
   minorDigits,
@@ -20,6 +21,7 @@ import {
 } from "./amounts.ts";
 import { rows, type Seen, sanitize } from "./capture.ts";
 import {
+  agrees,
   chargeProblem,
   type KnownConversion,
   orderToken,
@@ -107,6 +109,8 @@ export class PayGate {
     unsure?: string;
     cart?: string;
     requote?: string;
+    /** The conversions PayPal stated for the order's funding options, when it was held for them. */
+    conversions?: string[];
     seen: Seen[];
   }[] = [];
 
@@ -341,6 +345,14 @@ export class PayGate {
         totals: read.totals.map(show),
         unsure: reason,
         ...(this.#requote ? { requote: show(this.#requote.minor) } : {}),
+        ...(answer?.conversions.length
+          ? {
+              conversions: answer.conversions.map(
+                (c) =>
+                  `${c.from.currency} ${c.from.value} = ${c.currency} ${c.buyer} at ${c.inverse ? `1/${c.inverse}` : c.rate}`,
+              ),
+            }
+          : {}),
         seen: sanitize(await rows(page), read.locale || "en", total.currency),
       });
       this.#refuse(reason);
@@ -373,7 +385,14 @@ export class PayGate {
     if (options.some((c) => c.from.currency !== charge.currency || c.from.value !== charge.value)) {
       await fail("PayPal converts another amount than its order's total. Paying waits.");
     }
-    if (options.some((c) => !convertsTo(charge.value, c.rate, c.buyer))) {
+    // Stated from the buyer's currency, PayPal's own rate must give its two amounts.
+    if (
+      options.some((c) =>
+        c.inverse !== undefined
+          ? !agrees(c.buyer, c.inverse, charge.value)
+          : !convertsTo(charge.value, c.rate, c.buyer),
+      )
+    ) {
       await fail("PayPal's conversion of the order does not add up. Paying waits.");
     }
     // Whichever funding option the buyer pays with, its conversion is within the mandate's spread.
@@ -384,7 +403,12 @@ export class PayGate {
     if (!only) return { charge };
     if (more.length === 0) return { charge, known: only };
     // Several: the page must show which one the buyer pays with, by its rate.
-    const shown = options.filter((c) => Number(read.rates[c.currency]) === Number(c.rate));
+    const shown = options.filter(
+      (c) =>
+        Number(read.rates[c.currency]) === Number(c.rate) ||
+        (read.inverse[c.currency] !== undefined &&
+          inverseOf(c.rate, read.inverse[c.currency] as string)),
+    );
     if (shown.length !== 1) {
       await fail(
         "PayPal states several conversions and the page does not show which one it charges. Paying waits.",
