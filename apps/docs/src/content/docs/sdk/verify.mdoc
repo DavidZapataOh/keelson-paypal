@@ -1,0 +1,61 @@
+---
+title: Verify an Alibi
+description: Check a purchase's Alibi on your machine with @keelson/verifier, from code or from the command line.
+estimate: 3 min
+section: SDK
+order: 5
+---
+
+`@keelson/verifier` checks an Alibi on your machine, trusting no one, with the same code as [verify.keelson.finance](https://verify.keelson.finance): both TEE countersignatures, the evidence and the log inclusion proof. With `chain`, it also reads the checkpoint's anchor and the signer registry on Arbitrum Sepolia.
+
+## From code
+
+{% languages label="Verify from code" %}
+```ts
+import { verifyAlibi } from "@keelson/verifier";
+
+const report = await verifyAlibi(await keelson.alibis.retrieve(purchaseId));
+console.log(report.verdict); // verified-offline
+```
+
+```python
+from keelson import verify_alibi
+
+report = verify_alibi(keelson.alibis.retrieve(purchase_id))
+print(report["verdict"])  # verified-offline
+```
+{% /languages %}
+
+`verifyAlibi` takes the Alibi as issued (bytes), as base64 or JSON text, or parsed. Its options:
+
+| Option | What it does |
+| --- | --- |
+| `chain: true` | Also reads the anchor on chain, through the public RPCs |
+| `chain: { rpcUrl }` | The same, through your RPC |
+| `now` | The time to check validity at |
+
+Without `chain`, the verdict is at best `verified-offline`. `fetchAndVerify(purchaseId)` reads a public Alibi from Keelson's API and verifies it here.
+
+The Python `verify_alibi(alibi, chain=False, rpc_url=None)` runs the same verifier through `keelson-verify`, so both languages give the same verdict for the same bytes. It needs Node.js 20 or later. Until the package is on npm, point it at the one you built: `KEELSON_VERIFY_COMMAND="node /path/to/keelson-paypal/packages/verify/dist/cli.js"`.
+
+## From the command line
+
+```sh {% check="sdk-keelson-verify-json" %}
+pnpm --filter "@keelson/verifier..." build > /dev/null
+node packages/verify/dist/cli.js --json apps/docs/public/samples/01M6ZWZJHWRRHQEYNJAT7NMSV8.alibi 2> /dev/null | jq -r .verdict
+# expect: ^verified-offline$
+```
+
+`keelson-verify [--chain] [--rpc <url>] [--json] <file | - | purchase id>` reads an Alibi from a file, from standard input (`-`), or from Keelson's API by purchase id. It exits 0 when the Alibi is verified, 1 when a check fails and 2 when the result is incomplete, so a script can act on it.
+
+## What the report holds
+
+| Field | What it is |
+| --- | --- |
+| `verdict` | `verified`, `verified-unanchored`, `verified-offline`, `incomplete` or `failed` |
+| `checks` | Each check with its `id`, its `status` (`pass`, `fail`, `pending`, `absent`, `undisclosed` or `unreachable`), the pointers it `reads` and, when it did not pass, a `reason` |
+| `mode` | `2of2`, or `degraded` when only one leg countersigned |
+| `unbound` | Values no signature or hash covers, shown as the operator's word |
+| `ms` | How long the verification took |
+
+The checks are the same ones listed in [Verify an Alibi](/quickstart/verify-an-alibi/), and what each one proves is in the [threat model](/security/threat-model/).
