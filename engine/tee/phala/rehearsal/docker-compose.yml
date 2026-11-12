@@ -18,6 +18,8 @@ services:
       - KEELSON_SECURE_TIME=1
       - KEELSON_RATLS_HOST=4a3c4db01925b326746d1abd7b8978710f34de4e-8443s.dstack-base-prod5.phala.network
       - KEELSON_TEE_TOKEN_SHA256=${KEELSON_TEE_TOKEN_SHA256}
+      - PAYPAL_CLIENT_ID=${PAYPAL_CLIENT_ID}
+      - PAYPAL_CLIENT_SECRET=${PAYPAL_CLIENT_SECRET}
     restart: unless-stopped
 
 volumes:

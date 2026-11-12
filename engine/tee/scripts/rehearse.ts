@@ -8,7 +8,9 @@
  *   node scripts/rehearse.ts commit      # boots, writes tests/fixtures/onchain-kms/*
  *   node scripts/rehearse.ts delete      # deletes the CVM
  *
- * `PHALA_CLOUD_API_KEY` reads and writes the workspace. The app's owner runs the allow call.
+ * `PHALA_CLOUD_API_KEY` reads and writes the workspace; `PAYPAL_CLIENT_ID` and
+ * `PAYPAL_CLIENT_SECRET` are the sandbox app the engine boots with. The app's owner runs the
+ * allow call.
  */
 import { createHash, randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -58,7 +60,7 @@ async function provision() {
     compose_file: {
       name: "keelson-engine-rehearsal",
       docker_compose_file: compose,
-      allowed_envs: ["KEELSON_TEE_TOKEN_SHA256"],
+      allowed_envs: ["KEELSON_TEE_TOKEN_SHA256", "PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET"],
       kms_enabled: true,
       gateway_enabled: true,
       public_logs: false,
@@ -80,7 +82,7 @@ async function provision() {
   await writeFile(STATE, `${JSON.stringify(state, null, 2)}\n`);
   console.log("The app's owner allows the compose and the device, then run `commit`:");
   console.log(
-    `  forge script script/BootstrapDstackApp.s.sol --sig 'allow(bytes32,bytes32)' 0x${state.composeHash.replace(/^0x/, "")} 0x${state.deviceId.replace(/^0x/, "")} --rpc-url base --private-key "$BASE_DEPLOYER_KEY" --broadcast --slow`,
+    `  (cd ../../contracts && forge script script/BootstrapDstackApp.s.sol --sig 'allow(bytes32,bytes32)' 0x${state.composeHash.replace(/^0x/, "")} 0x${state.deviceId.replace(/^0x/, "")} --rpc-url "$BASE_RPC_URL" --private-key "$BASE_DEPLOYER_KEY" --broadcast --slow)`,
   );
 }
 
@@ -95,6 +97,11 @@ async function commit() {
   if (signer?.toLowerCase().replace(/^0x/, "") !== state.kmsRoot.toLowerCase().replace(/^0x/, "")) {
     throw new Error("the env encryption key is not signed by the KMS");
   }
+  const env = (name: string) => {
+    const value = process.env[name];
+    if (!value) throw new Error(`${name} is not set`);
+    return value;
+  };
   const teeToken = hex(randomBytes(32));
   const encrypted = await encryptEnvVars(
     [
@@ -102,6 +109,8 @@ async function commit() {
         key: "KEELSON_TEE_TOKEN_SHA256",
         value: createHash("sha256").update(teeToken).digest("hex"),
       },
+      { key: "PAYPAL_CLIENT_ID", value: env("PAYPAL_CLIENT_ID") },
+      { key: "PAYPAL_CLIENT_SECRET", value: env("PAYPAL_CLIENT_SECRET") },
     ],
     signed.public_key,
   );
@@ -126,9 +135,10 @@ async function commit() {
 async function capture(state: State) {
   const id = state.cvmId as string;
   let url: string | undefined;
+  // biome-ignore lint/suspicious/noExplicitAny: the SDK types the response per API version
+  let info: any;
   for (let i = 0; i < 120 && !url; i++) {
-    // biome-ignore lint/suspicious/noExplicitAny: the SDK types the response per API version
-    const info: any = await getCvmInfo(client, { id });
+    info = await getCvmInfo(client, { id });
     const app = info.endpoints?.find((e: { app?: string }) => e.app?.includes("-8080"))?.app;
     if (info.status === "running" && app) {
       const res = await fetch(`${app}/v1/health`).catch(() => undefined);
@@ -136,7 +146,16 @@ async function capture(state: State) {
     }
     if (!url) await new Promise((r) => setTimeout(r, 10_000));
   }
-  if (!url) throw new Error("the CVM did not answer /v1/health in 20 minutes");
+  if (!url) {
+    // The CVM's console and container output, kept for the next attempt.
+    for (const [name, link] of Object.entries((info?.logs ?? {}) as Record<string, string>)) {
+      const text = await (await fetch(link)).text().catch(() => "");
+      await writeFile(`${HERE}phala/rehearsal/${name}.log`, text);
+    }
+    throw new Error(
+      `the CVM did not answer /v1/health in 20 minutes (status ${info?.status}); logs in phala/rehearsal/`,
+    );
+  }
   const bootToReadyMs = Date.now() - (state.committedAt as number);
   const health = (await (await fetch(`${url}/v1/health`)).json()) as {
     log_keys: { origin: string; vkey: string; public_key: string; signature_chain: string[] }[];
@@ -173,7 +192,7 @@ async function remove() {
   await deleteCvm(client, { id: state.cvmId as string });
   console.log(`Deleted ${state.cvmId}. The owner removes the compose hash from the app:`);
   console.log(
-    `  cast send 0x${APP_ID} 'removeComposeHash(bytes32)' 0x${state.composeHash.replace(/^0x/, "")} --rpc-url base --private-key "$BASE_DEPLOYER_KEY"`,
+    `  cast send 0x${APP_ID} 'removeComposeHash(bytes32)' 0x${state.composeHash.replace(/^0x/, "")} --rpc-url "$BASE_RPC_URL" --private-key "$BASE_DEPLOYER_KEY"`,
   );
 }
 
